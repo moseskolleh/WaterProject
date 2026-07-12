@@ -253,14 +253,26 @@ def _narrative(interp: SiteInterpretation) -> str:
 
 def drilling_preference_table(
     interpretations: list[SiteInterpretation],
+    preferred_order: list[str] | None = None,
 ) -> list[dict]:
     """Ranked drilling preference table (one row per VES point).
 
     Matches the survey report layout: layers with thickness, depth and
     resistivity, possible water zones, maximum drilling depth and the
-    ranking. Ranks are assigned here (1st = most preferred).
+    ranking. Ranks are assigned from the suitability score (1st = most
+    preferred). When sites score close together the choice is a
+    professional judgment call, so ``preferred_order`` (a list of
+    sounding ids, most preferred first) lets the analyst set the
+    ranking explicitly; unlisted sites follow after, by score.
     """
-    ranked = sorted(interpretations, key=lambda i: (-i.score, i.sounding_id))
+    if preferred_order:
+        position = {sid: i for i, sid in enumerate(preferred_order)}
+        ranked = sorted(
+            interpretations,
+            key=lambda i: (position.get(i.sounding_id, len(position)), -i.score),
+        )
+    else:
+        ranked = sorted(interpretations, key=lambda i: (-i.score, i.sounding_id))
     for rank, interp in enumerate(ranked, start=1):
         interp.rank = rank
     rows = []
