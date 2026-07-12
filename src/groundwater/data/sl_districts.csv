@@ -1,0 +1,17 @@
+district,province,lon_min,lon_max,lat_min,lat_max
+Western Area Urban,Western Area,-13.32,-13.05,8.35,8.52
+Western Area Rural,Western Area,-13.35,-12.90,8.05,8.52
+Port Loko,North West,-13.25,-12.45,8.45,9.25
+Kambia,North West,-13.20,-12.40,8.85,9.75
+Karene,North West,-12.85,-11.95,8.90,9.70
+Bombali,North,-12.35,-11.70,8.75,9.85
+Falaba,North East,-11.75,-10.55,9.15,10.00
+Koinadugu,North East,-11.95,-10.95,9.00,9.85
+Tonkolili,North,-12.35,-11.30,8.35,9.35
+Kono,East,-11.35,-10.45,8.25,9.35
+Kenema,East,-11.70,-10.80,7.45,8.45
+Kailahun,East,-11.05,-10.20,7.50,8.65
+Bo,South,-12.15,-11.30,7.45,8.35
+Bonthe,South,-12.80,-12.00,6.95,7.85
+Moyamba,South,-12.90,-11.95,7.75,8.65
+Pujehun,South,-11.95,-11.05,6.85,7.75
