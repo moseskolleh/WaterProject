@@ -50,18 +50,23 @@ def parse_number(value, default=None) -> float | None:
     return float(match.group(0))
 
 
+_INTERVAL_RE = re.compile(
+    r"(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)", re.IGNORECASE
+)
+
+
 def parse_depth_interval(value) -> tuple[float, float] | None:
     """Parse a depth interval such as ``0-5``, ``5 - 10`` or ``12 to 18 m``.
 
-    Returns ``(top, bottom)`` in metres or ``None``.
+    Depths are unsigned; the hyphen is the range separator, never a
+    minus sign. Returns ``(top, bottom)`` in metres or ``None``.
     """
     if value is None:
         return None
-    text = str(value).strip().lower().replace("to", "-")
-    numbers = _NUMBER_RE.findall(text)
-    if len(numbers) < 2:
+    match = _INTERVAL_RE.search(str(value))
+    if match is None:
         return None
-    top, bottom = float(numbers[0]), float(numbers[1])
+    top, bottom = float(match.group(1)), float(match.group(2))
     if bottom < top:
         top, bottom = bottom, top
     return top, bottom

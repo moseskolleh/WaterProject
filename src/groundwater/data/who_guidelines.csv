@@ -1,0 +1,37 @@
+parameter,unit,who_health_gv,who_aesthetic,sl_standard,category,note
+pH,pH units,,6.5-8.5,6.5-8.5,physical,No health based guideline; operational range for corrosion control and disinfection
+Turbidity,NTU,,5,5,physical,Acceptability; should ideally be below 1 NTU where disinfection is practised
+Temperature,deg C,,,,physical,No guideline value
+Electrical conductivity,uS/cm,,,2500,physical,No WHO guideline; national limit adopted from regional practice
+TDS,mg/L,,1000,1000,physical,Palatability deteriorates above about 1000 mg/L
+Total hardness,mg/L as CaCO3,,500,500,physical,No health based guideline; consumer acceptability
+Alkalinity,mg/L as CaCO3,,,,physical,No guideline value
+Calcium,mg/L,,,,major ion,No guideline value
+Magnesium,mg/L,,,,major ion,No guideline value
+Sodium,mg/L,,200,200,major ion,Taste threshold
+Potassium,mg/L,,,,major ion,No guideline value; occurs at low levels in natural water
+Bicarbonate,mg/L,,,,major ion,No guideline value
+Chloride,mg/L,,250,250,major ion,Taste threshold
+Sulfate,mg/L,,250,250,major ion,Taste threshold; WHO notes health concern above 500 mg/L
+Nitrate (as NO3),mg/L,50,,50,inorganic,Short term exposure guideline protecting bottle fed infants
+Nitrite (as NO2),mg/L,3,,3,inorganic,Short term exposure guideline
+Ammonia (as N),mg/L,,1.5,1.5,inorganic,Odour threshold; indicator of possible pollution
+Fluoride,mg/L,1.5,,1.5,inorganic,Health based guideline
+Iron,mg/L,,0.3,0.3,metal,No health based guideline at levels in drinking water; staining and taste above 0.3 mg/L
+Manganese,mg/L,0.08,0.1,0.08,metal,Provisional health based guideline (2021); staining above about 0.1 mg/L
+Arsenic,mg/L,0.01,,0.01,metal,Provisional health based guideline
+Lead,mg/L,0.01,,0.01,metal,Provisional health based guideline
+Copper,mg/L,2,1,2,metal,Health based guideline; staining of laundry above about 1 mg/L
+Zinc,mg/L,,3,3,metal,Taste threshold
+Chromium (total),mg/L,0.05,,0.05,metal,Provisional health based guideline
+Cadmium,mg/L,0.003,,0.003,metal,Health based guideline
+Nickel,mg/L,0.07,,0.07,metal,Health based guideline
+Mercury,mg/L,0.006,,0.006,metal,Inorganic mercury health based guideline
+Aluminium,mg/L,0.9,0.2,0.2,metal,Health based value 0.9 mg/L; practicable acceptability 0.1 to 0.2 mg/L
+Selenium,mg/L,0.04,,0.04,metal,Provisional health based guideline
+Barium,mg/L,1.3,,1.3,metal,Health based guideline
+Boron,mg/L,2.4,,2.4,metal,Health based guideline
+Uranium,mg/L,0.03,,0.03,metal,Provisional health based guideline
+Antimony,mg/L,0.02,,0.02,metal,Health based guideline
+E. coli,CFU/100 mL,0,,0,microbiological,Must not be detectable in any 100 mL sample
+Total coliforms,CFU/100 mL,,0,0,microbiological,Indicator of treatment effectiveness and integrity; national limit 0

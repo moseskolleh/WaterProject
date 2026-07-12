@@ -58,7 +58,10 @@ def drilling_from_grid(grid: list[list], source: str = "") -> DrillingLog:
                 c = cols.get(key)
                 return row[c] if c is not None and c < len(row) else None
 
-            interval = parse_depth_interval(cell("interval"))
+            raw_interval = cell("interval")
+            if clean_text(raw_interval).lower().startswith("note"):
+                continue
+            interval = parse_depth_interval(raw_interval)
             if interval is None:
                 continue
             top, bottom = interval
@@ -82,9 +85,9 @@ def drilling_from_grid(grid: list[list], source: str = "") -> DrillingLog:
     for row in grid:
         for c in row:
             text = clean_text(c).lower()
-            if "water strike" in text:
+            if "water strike" in text and not text.startswith("note"):
                 value = parse_number(text.split(":")[-1])
-                if value is not None and value not in strikes:
+                if value is not None and value > 0 and value not in strikes:
                     strikes.append(value)
 
     total = fields.get("borehole_depth_m")
