@@ -1,0 +1,16 @@
+# Deployment requirements (Streamlit Community Cloud and similar hosts).
+# The app itself is installed from the repository root (the "." line).
+streamlit>=1.57,<2
+# pyarrow 25.0.0 segfaults in some sandboxed Linux environments when
+# streamlit serializes tables; 24.x is verified working
+pyarrow<25
+numpy>=1.24,<3
+scipy>=1.10
+matplotlib>=3.7
+openpyxl>=3.1
+python-docx>=1.1
+PyYAML>=6.0
+pandas>=2,<3
+# rule-based extraction of text PDFs in the Scanned sheets tab
+pdfplumber>=0.10
+.

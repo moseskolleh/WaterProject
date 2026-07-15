@@ -24,6 +24,19 @@ water quality guidelines.
 6. Five report types: geophysical survey, borehole completion, pumping
    test, water quality and project handover
 
+## Try it online
+
+Two hosted options are prepared and verified; see `DEPLOY.md` for the
+two-minute setup of each:
+
+- **GitHub Pages (no server):** a pre-built browser version of the app
+  lives in `docs/`. Enable Pages (Settings -> Pages -> deploy from
+  branch, folder `/docs`) and the full toolkit runs in the visitor's
+  browser via WebAssembly, with every sample dataset bundled.
+- **Streamlit Community Cloud (full version):** point share.streamlit.io
+  at this repository with main file `app/streamlit_app.py`; the
+  provided `requirements.txt` does the rest.
+
 ## Installation
 
 ```bash

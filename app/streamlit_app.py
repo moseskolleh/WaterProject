@@ -11,6 +11,7 @@ Run from the repository root:
 
 from __future__ import annotations
 
+import sys
 import tempfile
 from pathlib import Path
 
@@ -49,6 +50,7 @@ from groundwater.ves.plots import plot_sounding_curve
 st.set_page_config(page_title="Groundwater Toolkit", page_icon=":droplet:", layout="wide")
 
 CONFIG = Config()
+IN_BROWSER = sys.platform == "emscripten"  # running under Pyodide (GitHub Pages demo)
 
 
 def workdir() -> Path:
@@ -61,6 +63,40 @@ def save_upload(uploaded) -> Path:
     path = workdir() / uploaded.name
     path.write_bytes(uploaded.getbuffer())
     return path
+
+
+def sample_data_dir() -> Path | None:
+    """Bundled sample datasets, when present (repo checkout or web demo)."""
+    here = Path(__file__).resolve().parent
+    for candidate in (
+        here.parent / "examples" / "data",
+        here / "examples" / "data",
+        Path("examples/data"),
+    ):
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
+def choose_input(label: str, key: str, types: list[str], samples: list[str]) -> Path | None:
+    """File uploader with an optional bundled-sample fallback.
+
+    Returns the path of the uploaded file, the chosen sample, or None.
+    """
+    upload = st.file_uploader(label, type=types, key=f"upload_{key}")
+    if upload is not None:
+        return save_upload(upload)
+    root = sample_data_dir()
+    if root is not None:
+        available = [s for s in samples if (root / s).exists()]
+        if available:
+            none_option = "(or pick a bundled sample to try)"
+            pick = st.selectbox(
+                "No file uploaded yet", [none_option] + available, key=f"sample_{key}"
+            )
+            if pick != none_option:
+                return root / pick
+    return None
 
 
 def show_flags(flags) -> None:
@@ -84,6 +120,13 @@ st.caption(
     "Vertical electrical soundings, pumping tests, water quality and "
     "borehole design for rural water supply projects in Sierra Leone."
 )
+if IN_BROWSER:
+    st.info(
+        "This demo runs entirely in your browser; nothing is uploaded to any "
+        "server. Heavy steps such as the VES inversion take noticeably longer "
+        "here than in the full installation. Every tab has bundled sample "
+        "data so you can try it without your own files."
+    )
 
 tab_ves, tab_pump, tab_quality, tab_design, tab_extract, tab_templates = st.tabs(
     ["VES survey", "Pumping test", "Water quality", "Borehole design",
@@ -95,9 +138,11 @@ tab_ves, tab_pump, tab_quality, tab_design, tab_extract, tab_templates = st.tabs
 # ---------------------------------------------------------------------------
 with tab_ves:
     st.header("VES survey analysis")
-    upload = st.file_uploader("VES workbook (standard template)", type=["xlsx"], key="ves")
-    if upload is not None:
-        path = save_upload(upload)
+    path = choose_input(
+        "VES workbook (standard template)", "ves", ["xlsx"],
+        ["rokel/rokel_ves.xlsx"],
+    )
+    if path is not None:
         soundings = read_ves_workbook(path)
         if not soundings:
             st.error("No soundings found in the workbook.")
@@ -107,7 +152,7 @@ with tab_ves:
                 show_flags(s.flags)
             show_flags(check_all([(s.sounding_id, s.site) for s in soundings]))
 
-            if st.button("Run inversion and interpretation"):
+            if st.button("Run inversion and interpretation", key="run_ves"):
                 results = []
                 interps = []
                 progress = st.progress(0.0)
@@ -134,7 +179,7 @@ with tab_ves:
         st.subheader("Drilling preference")
         st.table(drilling_preference_table(interps))
 
-        if st.button("Build geophysical survey report"):
+        if st.button("Build geophysical survey report", key="build_geo_report"):
             report_path = build_geophysical_report(
                 GeophysicalReportInputs(
                     soundings=soundings,
@@ -154,11 +199,11 @@ with tab_ves:
 # ---------------------------------------------------------------------------
 with tab_pump:
     st.header("Pumping test analysis")
-    upload = st.file_uploader(
-        "Pumping test sheet (template .xlsx or field .docx)", type=["xlsx", "docx"], key="pump"
+    path = choose_input(
+        "Pumping test sheet (template .xlsx or field .docx)", "pump", ["xlsx", "docx"],
+        ["dr_timbo/dr_timbo_constant_test.xlsx", "kuntolo/kuntolo_step_test.xlsx"],
     )
-    if upload is not None:
-        path = save_upload(upload)
+    if path is not None:
         test = (
             read_pumping_docx(path) if path.suffix == ".docx" else read_pumping_workbook(path)
         )
@@ -222,7 +267,7 @@ with tab_pump:
                            f"{fmt_num(yr.pump_installation_depth_m)} m" if yr.pump_installation_depth_m else "pending")
             st.caption(yr.basis)
 
-        if st.button("Build pumping test report"):
+        if st.button("Build pumping test report", key="build_pump_report"):
             report_path = build_pumping_report(
                 PumpingReportInputs(analysis=analysis, figures_dir=workdir()),
                 workdir() / "Pumping_Test_Report.docx",
@@ -235,9 +280,11 @@ with tab_pump:
 # ---------------------------------------------------------------------------
 with tab_quality:
     st.header("Water quality assessment")
-    upload = st.file_uploader("Laboratory results (standard template)", type=["xlsx"], key="wq")
-    if upload is not None:
-        path = save_upload(upload)
+    path = choose_input(
+        "Laboratory results (standard template)", "wq", ["xlsx"],
+        ["dr_timbo/dr_timbo_water_quality.xlsx"],
+    )
+    if path is not None:
         sample = read_quality_workbook(path)
         assessment = assess_sample(sample)
         show_flags(assessment.flags)
@@ -276,7 +323,7 @@ with tab_quality:
             col1.image(str(piper))
             col2.image(str(stiff))
 
-        if st.button("Build water quality report"):
+        if st.button("Build water quality report", key="build_wq_report"):
             report_path = build_quality_report(
                 QualityReportInputs(assessment=assessment, figures_dir=workdir()),
                 workdir() / "Water_Quality_Report.docx",
@@ -289,10 +336,12 @@ with tab_quality:
 # ---------------------------------------------------------------------------
 with tab_design:
     st.header("Borehole design")
-    upload = st.file_uploader("Drilling log (standard template)", type=["xlsx"], key="log")
+    path = choose_input(
+        "Drilling log (standard template)", "log", ["xlsx"],
+        ["dr_timbo/dr_timbo_drilling_log.xlsx"],
+    )
     swl_input = st.number_input("Static water level (m)", min_value=0.0, value=0.0, step=0.1)
-    if upload is not None:
-        path = save_upload(upload)
+    if path is not None:
         log = read_drilling_workbook(path)
         show_flags(log.flags)
         design = design_borehole(
@@ -320,9 +369,19 @@ with tab_extract:
         "Anthropic API key is configured. Uncertain values are highlighted "
         "in the review workbook, never silently accepted."
     )
+    import importlib.util
+
+    # probe availability without importing (imports happen on Extract click)
+    extraction_available = importlib.util.find_spec("pdfplumber") is not None
+    if not extraction_available:
+        st.info(
+            "Extraction is not available in this installation. It needs the "
+            "optional dependencies: pip install groundwater-toolkit[extract] "
+            "for text PDFs and [ai] for photographed sheets."
+        )
     upload = st.file_uploader("Scan or PDF", type=["pdf", "png", "jpg", "jpeg"], key="scan")
     use_ai = st.checkbox("Use AI assisted extraction (needs ANTHROPIC_API_KEY)")
-    if upload is not None and st.button("Extract"):
+    if upload is not None and st.button("Extract", key="run_extract"):
         path = save_upload(upload)
         try:
             if use_ai or path.suffix.lower() != ".pdf":
@@ -360,6 +419,6 @@ with tab_templates:
     st.header("Blank field data templates")
     st.write("Download the standard templates for the field team.")
     template_dir = workdir() / "templates"
-    if st.button("Generate templates"):
+    if st.button("Generate templates", key="gen_templates"):
         for template in write_all_templates(template_dir):
             offer_download(template, f"Download {template.name}")
