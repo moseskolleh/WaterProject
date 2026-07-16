@@ -91,7 +91,37 @@ parameters on new rows with their units.
    step discharges).
 5. Download the figures and the report.
 
-## 7. Scanned sheets
+## 7. Costing tab
+
+Enter the planned depth, the overburden thickness if known and the
+one way distance from the contractor's base to the site, then press
+"Estimate cost". The estimate follows the RWSN Cost-Effective
+Boreholes method: line items roll up by construction stage and by
+resource category, the contractor's cost is kept apart from the
+contract price, and every rule of thumb applied is listed under
+"Assumptions applied".
+
+- The bundled unit rates are indicative. Open "Unit rate catalogue"
+  and type the current local prices before using an estimate for real
+  budgeting or contracting.
+- If a design was produced in the Borehole design tab, switch on "Use
+  the design" and the casing, screen and gravel quantities carry over
+  automatically.
+- Download the bill of quantities (`.xlsx`, with live formulas the
+  contractor can edit) or the full cost estimate report (`.docx`).
+
+## 8. Supervision tab
+
+The checklists follow the RWSN/UNICEF supervision guidance, stage by
+stage from procurement to post-construction monitoring. Answer each
+item Yes, No or N/A as the works proceed; items marked *critical*
+stop acceptance while they are open or failed. The tab also carries
+the field acceptance calculators (chlorine disinfection dose, sand
+content, verticality, specific capacity) and the minimum separation
+distances from pollution sources. When a stage is complete, download
+the signed checklist record from "Checklist record and sign off".
+
+## 9. Scanned sheets
 
 Photograph or scan the paper sheet squarely under good light and
 upload it in the Scanned sheets tab. The extractor transcribes the
@@ -99,7 +129,7 @@ header and the tables and highlights every value it is not sure about
 in amber in the review workbook. Check each highlighted cell against
 the paper before the data is used; nothing is accepted silently.
 
-## 8. Where results go
+## 10. Where results go
 
 Each project has one folder with a fixed layout: `raw` (your files,
 never modified), `processed` (parsed tables), `figures` and

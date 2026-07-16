@@ -1,0 +1,81 @@
+checklist,section,item,critical,guidance
+procurement,Prequalification,"Contractor registered in country with a current drilling licence",yes,
+procurement,Prequalification,"Contractor has completed at least 5 similar projects in the last 3 years, with referees contacted",no,
+procurement,Prequalification,"Contractor owns or has secured the rig, compressor and support equipment the job needs, and key staff CVs are on file",no,
+procurement,Prequalification,"Contractor financial capacity and litigation history reviewed",no,
+procurement,Contract,"Contract uses a bill of quantities and payment is for actual verified quantities, not an estimated lump sum",yes,"Lump sum payment hides real costs; BoQ payment keeps the price honest."
+procurement,Contract,"Dry hole and low yield payment policy clearly defined, with 'dry' defined by a yield threshold",yes,"Refusing to pay for dry holes pushes the contractor to inflate successful holes or cut corners."
+procurement,Contract,"Bill of quantities checked for front loading (mobilisation and siting items priced far above their share of the works)",no,"In a documented fraud case mobilisation and geophysics carried 53 percent of the contract value."
+procurement,Contract,"Performance bond of 5 to 10 percent of the contract value in place before signature",no,
+procurement,Supervision,"Independent supervision arranged and paid for, with the supervisor's transport independent of the driller",yes,"A supervisor who depends on the driller for transport or pay is not independent."
+pre_contract,Equipment,"Drilling rig inspected: mast raised and rig run for an hour without problems (record year of manufacture, manufacturer and lifting capacity)",yes,"Check for oil leaks and have them fixed before giving approval."
+pre_contract,Equipment,"Compressor run for an hour without problems (record year and manufacturer)",yes,
+pre_contract,Equipment,"Mud pump and generator ratings checked against the estimated borehole depths and tested",no,
+pre_contract,Equipment,"Water tanker checked for leaks",no,
+pre_contract,Equipment,"Support trucks available and in working order",no,
+pre_contract,Equipment,"Drill pipes adequate to reach the deepest planned borehole",yes,
+pre_contract,Equipment,"Drill bits and hammer of the correct diameter and right type for the expected ground, in good condition",yes,
+pre_contract,Equipment,"Geophysical survey equipment working and the personnel competent in its use",no,
+pre_contract,Personnel,"Drilling manager and hydrogeologist qualifications and experience recorded and adequate",no,
+pre_contract,Personnel,"Rig operator, driver, mechanic and rig assistants experienced (record years of experience)",no,
+pre_contract,Personnel,"Record Taker designated by the driller to remain on site at all times and complete all forms",yes,"The Record Taker role should be specified in the contract documents."
+siting,Water users,"Site convenient to the point of use with equitable access for all water users, especially women and the most disadvantaged",no,
+siting,Water users,"Land ownership and access rights for users and maintenance teams established and confirmed in writing",yes,
+siting,Hydrogeology,"Expected yield, renewable resources and water quality sufficient for the intended purpose",no,
+siting,Hydrogeology,"Interference with other groundwater sources and natural groundwater flows avoided",no,
+siting,Hydrogeology,"Chance of success rated (high, medium or low) and accepted by the client",no,
+siting,Contamination,"No potential pollution source within the minimum separation distances (see the separation distance table)",yes,"Pit latrines, burial grounds, refuse dumps, fuel depots, animal pens; where the aquifer is confined the distances can be relaxed."
+siting,Logistics,"Access allowed and physically possible for the drilling team, equipment and vehicles",no,
+siting,Logistics,"Siting report submitted by the driller and approved by the supervisor",yes,
+mobilisation,Contract,"Contract signed and the pre-mobilisation meeting held with design, materials and procedures discussed",yes,
+mobilisation,Contract,"Programme of works submitted and approved",no,
+mobilisation,Community,"Community briefed: process explained, roles and contributions agreed, contact persons exchanged, driller's representative introduced",no,
+mobilisation,Equipment,"Equipment on site matches what was inspected and is in working condition (drill rods adequate, hammer, bit and temporary casing diameters measured)",yes,
+mobilisation,Materials,"Material samples approved against the specification: drilling fluid, casing and screen (length, diameter and wall thickness measured), filter pack and gravel",yes,"Nominal 3 m casing lengths are often actually 2.95 m; measure mid pipe, not at the threaded end."
+mobilisation,Records,"Data collection forms agreed (RWSN Code of Practice Annex E formats)",no,
+mobilisation,Records,"Project filing system set up: a duplicate hard copy file per site with the checklists printed inside the folder flap",no,
+mobilisation,Camp,"Drill camp layout approved: inflammables away from heat, contaminants away from water and cooking areas, PVC casing and screens shaded from direct sunlight",no,
+drilling,Safety,"Health and safety in place: rig away from traffic and power lines, not on a steep slope, public barrier tape up, crew wearing PPE, inflammables stored in marked containers, mast never raised in a thunderstorm, first aid kit and emergency procedure ready",yes,
+drilling,Set up,"Rig positioned exactly over the pegged site, mast vertical (checked with a spirit level) and the ground stable",no,"A dry hole must not be attributable to drilling off location."
+drilling,Records,"Depth measured with marked drill pipes and logged every metre",yes,"Chalk marks at 1 m intervals numbered from zero; re-mark all pipes if the hammer is changed."
+drilling,Records,"Penetration rate recorded every metre",no,
+drilling,Fluids,"Drilling fluid type recorded and viscosity checked with a Marsh funnel; biodegradable polymer used instead of bentonite where required",no,
+drilling,Fluids,"Circulation pits hold at least three times the borehole volume and are kept clean (mud drilling)",no,
+drilling,Samples,"Cutting samples taken at the agreed interval (1 m default), washed as appropriate, bagged, labelled, photographed and stored in a sample box",yes,"Do not wash soft rocks such as clays; reduce the interval to 0.5 m where the lithology changes rapidly."
+drilling,Samples,"Strata log prepared from the samples",no,
+drilling,Water,"Water strikes recorded (depth and time) and airlift yield measured with a V plate or a timed bucket",no,"A handpump needs about 0.3 litres per second."
+drilling,Decision,"Final drilling depth instructed by the supervisor, not decided by the driller",yes,"For a handpump well with good yield: at least 5 m into the aquifer plus a 3 to 6 m sump below the screen."
+drilling,Records,"Daily drilling log signed by the rig operator and the supervisor at the end of every day",yes,
+design,Preparation,"Casing and screen assemblage sketched, laid out on the ground, measured piece by piece, totalled against the sketch and photographed before installation",yes,
+design,Materials,"Casing and screens new and to specification, with diameter and wall thickness checked with callipers mid pipe",no,
+design,Installation,"Joints clean and watertight; solvent cement setting time observed before lowering",no,
+design,Installation,"Installed casing and screen depth reconciled with the drilled depth; any discrepancy over 3 m resolved by removing, cleaning and reinstalling",yes,
+design,Screens,"Screens placed against the aquifer horizon with a slot size that retains the formation",yes,"Quick check: rub an aquifer sand sample against the screen; fines should pass and coarse grains be retained."
+design,Screens,"Screen open area sufficient for the design yield (open area of at least Q/30 square metres keeps the entrance velocity below 0.03 m/s)",no,
+design,Annulus,"Gravel pack placed as designed and free of mica, clay and laterite",yes,"For fine formations the pack to aquifer D50 ratio should be between 4 and 6."
+design,Annulus,"Backfill placed to 6 m below ground and the sanitary seal in the top 6 m (cement slurry at 25 litres of water per 50 kg bag, or bentonite)",yes,
+development,Development,"Development continued until the water runs clear and sand free, checked by letting samples settle in a clear container",yes,"Some holes clear in hours, some take days; months of pumping to clear indicates the wrong technique was used."
+development,Testing,"Pumping test carried out to specification with rate and water level measured simultaneously against time",yes,"Constant discharge test always; at least a 4 step test for motorised wells; 3 to 6 hours is adequate for a handpump."
+development,Acceptance,"Sand content at the end of the test no more than 0.2 cubic centimetres in each of three 20 litre samples (10 ppm by volume)",yes,
+development,Acceptance,"Turbidity within the stipulated limit",no,"Where excessive turbidity is an aquifer characteristic it is beyond the driller's control."
+development,Acceptance,"Plumb test passed: the plumb moves freely and deviation does not exceed two thirds of the casing inner diameter per 30 m of depth",yes,
+development,Quality,"Water sampled correctly (1 litre bottle rinsed and labelled; pH, conductivity, iron and bacteriology tested at or near the site) and sent to an approved laboratory",yes,
+development,Quality,"Borehole disinfected with chlorine at 20 mg per litre (1 litre of 0.2 percent solution per 100 litres of well volume) and left for at least 4 hours",yes,
+development,Platform,"Platform cast correctly: shuttering anchored, 1:2:4 mix, 1:50 drainage slope, surface trowelled smooth, borehole number and completion data embedded, kept moist for 72 hours",no,
+development,Decision,"Final decision recorded: borehole successful or abortive",yes,
+demobilisation,Completion,"All installation work complete and approved by the supervisor",no,
+demobilisation,Completion,"All testing complete and the documentation and data handed to the supervisor",yes,
+demobilisation,Site,"Site cleared: waste removed responsibly, circulation pits backfilled and compacted, barrier tape removed, site restored to its former state",no,
+demobilisation,Site,"Unused materials handled according to the contract and the borehole securely capped",no,
+demobilisation,Certificate,"Work completion certificate issued by the supervisor",yes,
+handover,Reporting,"Drilling report completed with copies to the client, the community and the government regulator",yes,"Data from dry or aborted holes must also be reported."
+handover,Handover,"Handover date agreed and the certificate signed by the supervisor, the driller and a community representative",yes,
+handover,Follow up,"Defect liability monitoring schedule agreed and site visits planned",no,
+handover,Follow up,"Problems found during the defect liability period reported to the client and repairs mobilised according to the contract",no,
+handover,Payment,"Supervision invoice submitted and final payment to the driller approved at the end of the defect liability period",no,
+post_construction,Water safety,"Groundwater pH tested before handpump installation; corrosion resistant riser pipes and rods (stainless steel 304/316 or uPVC) used where pH is below 6.5",yes,"Galvanised iron risers can fail within 3 months to 2 years in corrosive water and shed iron and heavy metals into the supply."
+post_construction,Water safety,"Sanitary inspection of the completed water point carried out (WHO sanitary inspection format)",no,
+post_construction,Monitoring,"Water users have a way to report technical problems during the first one to two years",no,
+post_construction,Monitoring,"Third party inspection of the works arranged within 6 months of construction",no,"Independent inspection with follow up action is the strongest incentive for construction quality."
+post_construction,Monitoring,"Post construction monitoring visit one to two years after construction, including a repeat water quality test",no,"A failure within the first one to two years usually points to a design, construction or installation defect."
+post_construction,Records,"Drilling log, pumping test and water quality records submitted to the authority for successful and unsuccessful boreholes, and the water quality results shared with the community",yes,

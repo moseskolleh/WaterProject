@@ -87,6 +87,30 @@ def test_design_flow_with_sample(app):
     assert not app.exception
 
 
+def test_costing_flow(app):
+    app.button(key="run_cost").click()
+    app.run()
+    assert not app.exception
+    estimate = app.session_state["cost_estimate"]
+    assert estimate.direct_cost_usd > 0
+    assert estimate.items
+    app.button(key="build_cost_report").click()
+    app.run()
+    assert not app.exception
+
+
+def test_supervision_flow(app):
+    from groundwater.supervision import load_checklists
+
+    first = load_checklists()[0]
+    app.radio(key=f"chk_{first.item_id}").set_value("Yes")
+    app.run()
+    assert not app.exception
+    app.button(key="build_sup_report").click()
+    app.run()
+    assert not app.exception
+
+
 def test_templates_tab(app):
     app.button(key="gen_templates").click()
     app.run()

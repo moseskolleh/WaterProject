@@ -21,8 +21,15 @@ water quality guidelines.
    recommended safe yield and pump setting depth
 5. Water quality assessment against WHO and national standards, with
    ionic balance checks and Piper/Stiff diagrams
-6. Five report types: geophysical survey, borehole completion, pumping
-   test, water quality and project handover
+6. Borehole cost estimates and bills of quantities following the RWSN
+   Cost-Effective Boreholes methodology (editable unit rates, cost and
+   price kept apart, stage and resource breakdowns)
+7. Drilling supervision checklists (procurement to post-construction)
+   with field acceptance checks: sand content, verticality, screen
+   open area, disinfection dose, handpump corrosion risk
+8. Seven report types: geophysical survey, borehole completion,
+   pumping test, water quality, project handover, cost estimate and
+   supervision checklist record
 
 ## Try it online
 
@@ -101,10 +108,28 @@ groundwater/
     quality/      WHO/national standards comparison, ionic balance,
                   Piper and Stiff diagrams
     design/       construction design rules and to-scale schematics
+    costing/      RWSN cost model: rate catalogue, BoQ, enterprise
+                  calculators (depreciation, wear, loans), Excel export
+    supervision/  stage checklists, separation distances and numeric
+                  field acceptance checks
     mapping/      site maps, iso-resistivity and overburden maps, GIS export
-    reporting/    house-styled .docx builders for the five report types
+    reporting/    house-styled .docx builders for the seven report types
     extraction/   scanned sheet extraction with review flagging
 ```
+
+## Reference library
+
+The methods for costing and supervision are grounded in the RWSN,
+Skat and UNICEF publications collected in `WaterProjectFiles/`:
+the Borehole Costing Model and quick start guide, "Costing and
+Pricing: a Guide for Water Well Drilling Enterprises", "Procurement
+and Contract Management of Drilled Well Construction", "Professional
+Water Well Drilling", "Supervising Water Well Drilling", the UNICEF
+"Borehole Drilling - Planning, Contracting and Management" toolkit
+and the WASH Funders infrastructure checklists. Checklist items,
+separation distances and unit rates live in editable CSVs under
+`src/groundwater/data/`, so field practice can be adapted without
+code changes.
 
 Key behaviours built in from the real field sheets:
 

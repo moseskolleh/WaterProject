@@ -1,0 +1,24 @@
+code,stage,category,item,unit,quantity_basis,unit_cost_usd,note
+SIT1,Siting,equipment,Geophysical siting survey and site selection report,lump sum,lump_sum,400.00,Survey equipment and consultancy and transport (RWSN costing and pricing guide worked example)
+MOB1,Mobilisation,vehicles,Rig and equipment mobilisation and demobilisation,km,per_km_round_trip,2.50,Truck and support vehicle running cost per kilometre travelled (quantity is the round trip)
+MOB2,Mobilisation,equipment,Rig depreciation charge,crew day,per_crew_day,135.00,Capital cost / 1250 working days over a 10000 hour rig life (RWSN depreciation model; a 170000 USD rig gives about 136 USD per day)
+MOB3,Mobilisation,labour,Drilling crew wages,crew day,per_crew_day,65.00,Driller plus assistants and helpers per day on site
+MOB4,Mobilisation,labour,Site establishment and camp,lump sum,lump_sum,150.00,Access preparation and water supply for drilling and camp set up
+DRL1,Drilling,fuel,Fuel and lubricants for overburden drilling,m,per_m_overburden,7.00,Mud or foam rotary through the weathered zone
+DRL2,Drilling,fuel,Fuel and lubricants for hard rock drilling,m,per_m_bedrock,11.00,Down the hole hammer works the compressor much harder than rotary
+DRL3,Drilling,consumables,Bits and hammers and drilling consumables,m,per_m_drilled,6.00,Bit wear share and shanks and oils over the whole drilled depth
+DRL4,Drilling,consumables,Drilling fluid and foam and additives,m,per_m_overburden,3.00,Bentonite or polymer or foam for the unconsolidated section
+CAS1,Casing,consumables,uPVC plain casing supplied and installed,m,per_m_casing,12.00,Production casing including couplings and solvent
+CAS2,Casing,consumables,uPVC screen supplied and installed,m,per_m_screen,20.00,Slotted screen at the design slot size
+CAS3,Casing,consumables,Gravel pack 2-4 mm well sorted siliceous,m3,per_m3_gravel,50.00,Supplied and placed in the annulus with placement allowance
+CAS4,Casing,consumables,Cement and sand for the sanitary seal and grout,bag,per_bag_cement,13.00,50 kg bags including the sand share of the grout mix
+CAS5,Casing,consumables,Bottom cap and centralisers and fittings,lump sum,lump_sum,40.00,
+DEV1,Development,equipment,Compressor time for airlift development,hour,per_hour_development,18.00,Development until the discharge runs clear
+DEV2,Development,labour,Crew time during development,hour,per_hour_development,6.00,
+TST1,Test pumping,equipment,Test pump and generator and dipper hire,hour,per_hour_test,10.00,
+TST2,Test pumping,labour,Test crew and measurements,hour,per_hour_test,6.00,
+WQL1,Water quality,consumables,Laboratory analysis physico chemical and bacteriological,sample,per_sample,120.00,Accredited laboratory analysis of the full parameter set
+WQL2,Water quality,consumables,Disinfection by chlorine shock dosing,lump sum,lump_sum,25.00,Chlorination after development and before sampling
+WHD1,Wellhead,consumables,Apron and drainage channel and soakaway materials,lump sum,lump_sum,260.00,Cement and sand and aggregate and formwork
+WHD2,Wellhead,labour,Mason and wellhead construction labour,lump sum,lump_sum,120.00,
+PMP1,Wellhead,equipment,Handpump supplied and installed,unit,per_handpump,950.00,For example India Mark II with rods and rising main and installation
