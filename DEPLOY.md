@@ -15,16 +15,16 @@ datasets are included, so anyone can try every tab with one click.
 
 Enable it once:
 
-1. Open the repository on GitHub: `https://github.com/moseskolleh/waterproject`
+1. Open the repository on GitHub: `https://github.com/moseskolleh/WaterProject`
 2. Go to **Settings -> Pages** (left sidebar, "Code and automation").
-3. Under **Build and deployment**:
-   - Source: **Deploy from a branch**
-   - Branch: the branch that contains this code (currently
-     `claude/groundwater-sierra-leone-2m1o0r`; switch to `main` after
-     merging), folder: **/docs**
-4. Click **Save**. After about a minute the site is live at:
+3. Under **Build and deployment**, set Source to **Deploy from a
+   branch**. If it currently shows "GitHub Actions", change it: that
+   mode publishes nothing until a workflow hands GitHub a site.
+4. Two dropdowns appear. Pick Branch: **main**, folder: **/docs**,
+   then click **Save**.
+5. After about a minute the site is live at:
 
-   `https://moseskolleh.github.io/waterproject/`
+   `https://moseskolleh.github.io/WaterProject/`
 
 Notes:
 
@@ -54,9 +54,12 @@ API key) the AI-assisted scan extraction.
 2. Click **Create app** -> **Deploy a public app from GitHub** (private
    repositories are also supported after granting access).
 3. Fill in:
-   - Repository: `moseskolleh/waterproject`
-   - Branch: `claude/groundwater-sierra-leone-2m1o0r` (or `main` after merging)
+   - Repository: `moseskolleh/WaterProject`
+   - Branch: `main`
    - Main file path: `app/streamlit_app.py`
+
+   If the form asks for a GitHub URL to a .py file instead, paste:
+   `https://github.com/moseskolleh/WaterProject/blob/main/app/streamlit_app.py`
 4. Click **Deploy**. The build installs `requirements.txt` (which also
    installs this package via the `.` line) and starts the app at
    `https://<your-app-name>.streamlit.app`.
