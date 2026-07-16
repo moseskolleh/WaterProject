@@ -135,6 +135,24 @@ CONFIG = Config()
 IN_BROWSER = sys.platform == "emscripten"  # running under Pyodide (GitHub Pages demo)
 
 
+# Static catalogues, parsed once per session (the script reruns on
+# every widget interaction; without caching each rerun re-reads the
+# bundled CSVs).
+@st.cache_data
+def cached_rates():
+    return load_rates()
+
+
+@st.cache_data
+def cached_checklists():
+    return load_checklists()
+
+
+@st.cache_data
+def cached_separation_distances():
+    return load_separation_distances()
+
+
 def workdir() -> Path:
     if "workdir" not in st.session_state:
         st.session_state.workdir = Path(tempfile.mkdtemp(prefix="gw_"))
@@ -670,7 +688,7 @@ with tab_cost:
             "Bundled rates are indicative; confirm against local quotations. "
             "Rates are in USD."
         )
-        base_rates = load_rates()
+        base_rates = cached_rates()
         rate_rows = [
             {
                 "Code": r.code,
@@ -722,7 +740,7 @@ with tab_cost:
         inputs.wq_samples = int(samples)
         inputs.development_hours = float(dev_hours)
         inputs.test_pumping_hours = float(test_hours)
-        st.session_state.cost_estimate = estimate_borehole_cost(
+        new_estimate = estimate_borehole_cost(
             inputs, rates,
             overheads_percent=overheads_pct,
             margin_percent=margin_pct,
@@ -730,6 +748,13 @@ with tab_cost:
             vat_percent=vat_pct,
             exchange_rate_sle_per_usd=fx,
         )
+        st.session_state.cost_estimate = new_estimate
+        # build the artifacts once per estimate, not on every rerun
+        chart_path = workdir() / "cost_breakdown.png"
+        plot_cost_breakdown(new_estimate, chart_path, app_config().style)
+        boq_path = workdir() / "Bill_of_Quantities.xlsx"
+        write_boq_workbook(new_estimate, boq_path)
+        st.session_state.cost_artifacts = (chart_path, boq_path)
 
     estimate = st.session_state.get("cost_estimate")
     if estimate is not None:
@@ -762,9 +787,14 @@ with tab_cost:
                 "to carry the expected failures."
             )
 
-        chart = workdir() / "cost_breakdown.png"
-        plot_cost_breakdown(estimate, chart, app_config().style)
-        st.image(str(chart))
+        if "cost_artifacts" not in st.session_state:
+            chart_path = workdir() / "cost_breakdown.png"
+            plot_cost_breakdown(estimate, chart_path, app_config().style)
+            boq_path = workdir() / "Bill_of_Quantities.xlsx"
+            write_boq_workbook(estimate, boq_path)
+            st.session_state.cost_artifacts = (chart_path, boq_path)
+        chart_path, boq_path = st.session_state.cost_artifacts
+        st.image(str(chart_path))
 
         col_boq, col_sum = st.columns([3, 2])
         with col_boq:
@@ -789,8 +819,6 @@ with tab_cost:
             st.text_input("Client", key="meta_client")
         dl1, dl2 = st.columns(2)
         with dl1:
-            boq_path = workdir() / "Bill_of_Quantities.xlsx"
-            write_boq_workbook(estimate, boq_path)
             offer_download(boq_path, "Download bill of quantities (.xlsx)")
         with dl2:
             if st.button("Build cost estimate report", key="build_cost_report"):
@@ -816,7 +844,7 @@ with tab_supervision:
         "needs on site. Critical items stop acceptance when they fail."
     )
 
-    checklist_items = load_checklists()
+    checklist_items = cached_checklists()
 
     def _responses() -> dict[str, ChecklistResponse]:
         responses: dict[str, ChecklistResponse] = {}
@@ -830,7 +858,8 @@ with tab_supervision:
             )
         return responses
 
-    assessment = evaluate_checklist(checklist_items, _responses())
+    responses = _responses()
+    assessment = evaluate_checklist(checklist_items, responses)
     top1, top2, top3 = st.columns([1, 1, 2])
     top1.metric("Items answered", f"{assessment.answered}/{assessment.total}")
     top2.metric("Critical failures", assessment.critical_failures)
@@ -927,7 +956,7 @@ with tab_supervision:
                     "Minimum distance (m)": f"{d.min_distance_m:g}",
                     "Note": d.note,
                 }
-                for d in load_separation_distances()
+                for d in cached_separation_distances()
             ]
         )
         st.caption("Adapted from FGN/NWRI 2010 via the RWSN supervision guide.")
@@ -954,8 +983,8 @@ with tab_supervision:
                 SupervisionReportInputs(
                     site=site,
                     items=checklist_items,
-                    responses=_responses(),
-                    assessment=evaluate_checklist(checklist_items, _responses()),
+                    responses=responses,
+                    assessment=assessment,
                     supervisor=st.session_state.get("meta_supervisor_sup", ""),
                     driller=st.session_state.get("meta_contractor_sup", ""),
                     community_rep=st.session_state.get("meta_community_rep_sup", ""),
