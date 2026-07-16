@@ -48,7 +48,8 @@ Option B.
 ## Option B: Streamlit Community Cloud (full version)
 
 Runs the real server app, including PDF text extraction and (with an
-API key) the AI-assisted scan extraction.
+API key) the AI-assisted scan extraction. The app is deployed at
+`https://waterproject.streamlit.app/`.
 
 1. Go to `https://share.streamlit.io` and sign in with GitHub.
 2. Click **Create app** -> **Deploy a public app from GitHub** (private
