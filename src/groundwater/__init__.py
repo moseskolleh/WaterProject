@@ -20,6 +20,12 @@ quality
     Water quality assessment against WHO and national standards.
 design
     Borehole design rules and to-scale schematic drawings.
+costing
+    Borehole cost estimation, pricing and bill of quantities following
+    the RWSN Cost-Effective Boreholes methodology.
+supervision
+    Drilling supervision checklists and field acceptance checks from
+    the RWSN/UNICEF supervision guidance.
 mapping
     Site maps, iso-resistivity and overburden thickness maps, GIS export.
 reporting

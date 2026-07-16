@@ -1,0 +1,9 @@
+structure,min_distance_m,note
+Water supply borehole,50,Existing drilled water supply sources
+Hand dug well,20,
+Other existing water wells,10,
+Septic tank or soakaway,20,Includes pit latrines and soakage pits
+Streams and canals and irrigation ditches,20,
+Buildings,3,
+Solid waste dump or burial ground,1000,Approved dumps and cemeteries
+Coastline,1000,Not normally within this distance (saline intrusion)

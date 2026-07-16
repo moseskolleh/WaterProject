@@ -30,7 +30,7 @@ dev = ["pytest>=7.4"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-groundwater = ["data/*.csv", "data/*.yaml"]
+groundwater = ["data/*.csv", "data/*.yaml", "data/brand/*.png", "data/brand/*.svg"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

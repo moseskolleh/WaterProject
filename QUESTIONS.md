@@ -43,3 +43,23 @@ need real project inputs or decisions to finish calibrating it.
    (`groundwater/data/sl_districts.csv`) good enough to catch gross
    copy-over errors. For boundary-accurate checks, supply district
    polygons (GADM/HDX GeoJSON) and the checker can use them directly.
+
+8. **Costing unit rates are indicative (added with the costing
+   module).** The catalogue in
+   `groundwater/data/borehole_cost_items.csv` follows the RWSN cost
+   structure and lands near the RWSN worked example (about 130 USD per
+   metre for a 50 m borehole), but the individual rates are
+   placeholders. Replace them with current Sierra Leone quotations
+   (drilling contractors, casing suppliers, laboratories) and confirm
+   the default exchange rate (23 SLE per USD) and whether GST (15
+   percent) applies to the contracts in question.
+
+9. **Supervision checklists may need project tailoring (added with
+   the supervision module).** The stages and items in
+   `groundwater/data/supervision_checklists.csv` follow the RWSN/
+   UNICEF supervision guidance and the WASH funders checklists. Items
+   can be added, reworded or re-flagged as critical in the CSV to
+   match the client's contract conditions; the minimum separation
+   distances table mirrors regional practice (FGN/NWRI 2010) and
+   should be checked against the Sierra Leone Ministry of Water
+   Resources requirements.

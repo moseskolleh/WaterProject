@@ -60,6 +60,7 @@ TEMPLATE = """<!doctype html>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
 <title>Groundwater Toolkit - Browser Demo</title>
+<link rel="icon" type="image/svg+xml" href="__FAVICON_SVG__" />
 <link rel="stylesheet" href="__STLITE_CSS__" />
 <style>
   html, body, #root { height: 100%; margin: 0; padding: 0; }
@@ -88,10 +89,14 @@ mount(
     requirements: __REQUIREMENTS_JSON__,
 __PYODIDE_LINE__
     streamlitConfig: {
+      "theme.base": "light",
       "theme.primaryColor": "#1F5C8B",
       "theme.backgroundColor": "#FFFFFF",
-      "theme.secondaryBackgroundColor": "#F4F6F8",
-      "theme.textColor": "#222222",
+      "theme.secondaryBackgroundColor": "#F2F6FA",
+      "theme.textColor": "#1A2733",
+      "theme.linkColor": "#1F5C8B",
+      "theme.borderColor": "#D8E2EC",
+      "theme.baseRadius": "0.6rem",
       "client.toolbarMode": "viewer",
     },
   },
@@ -136,6 +141,15 @@ def collect_files() -> dict:
     return files
 
 
+def _favicon_data_uri() -> str:
+    """The brand droplet SVG inlined as the page favicon."""
+    svg_path = REPO / "src" / "groundwater" / "data" / "brand" / "icon.svg"
+    if not svg_path.exists():
+        return ""
+    encoded = base64.b64encode(svg_path.read_bytes()).decode("ascii")
+    return f"data:image/svg+xml;base64,{encoded}"
+
+
 def build(out_dir: Path, stlite_base: str, pyodide_url: str | None) -> Path:
     files = collect_files()
     pyodide_line = (
@@ -143,6 +157,7 @@ def build(out_dir: Path, stlite_base: str, pyodide_url: str | None) -> Path:
     )
     html = (
         TEMPLATE
+        .replace("__FAVICON_SVG__", _favicon_data_uri())
         .replace("__STLITE_CSS__", f"{stlite_base}/stlite.css")
         .replace("__STLITE_JS__", f"{stlite_base}/stlite.js")
         .replace("__FILES_JSON__", json.dumps(files, ensure_ascii=True))
