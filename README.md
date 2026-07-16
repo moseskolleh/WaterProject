@@ -26,17 +26,19 @@ water quality guidelines.
 
 ## Try it online
 
-Two hosted options are prepared and verified; see `DEPLOY.md` for the
-two-minute setup of each:
+- **Full app (Streamlit Community Cloud):**
+  <https://waterproject.streamlit.app/>
+- **Browser demo (GitHub Pages, no server):**
+  <https://moseskolleh.github.io/WaterProject/>
 
-- **GitHub Pages (no server):** a pre-built browser version of the app
-  lives in `docs/`. Enable Pages (Settings -> Pages -> Source: deploy
-  from a branch -> `main`, folder `/docs`) and the full toolkit runs in
-  the visitor's browser via WebAssembly, with every sample dataset
-  bundled.
-- **Streamlit Community Cloud (full version):** point share.streamlit.io
-  at this repository with main file `app/streamlit_app.py`; the
-  provided `requirements.txt` does the rest.
+The Streamlit app is the complete server version. The GitHub Pages
+demo runs the toolkit inside the visitor's browser via WebAssembly:
+uploaded files never leave the machine, the first visit downloads the
+Python runtime (about 60 MB, cached afterwards), and the AI scan
+extraction tab is not available there. Both bundle every sample
+dataset, so every tab works with one click. Hosting setup lives in
+`DEPLOY.md`; the Pages demo goes live after the one-time Pages setting
+described there (Source: deploy from a branch, `main`, folder `/docs`).
 
 ## Installation
 
