@@ -140,6 +140,38 @@ def test_project_state_tracked(app):
     assert app.session_state["rates_overrides"], "working rates not tracked"
 
 
+def test_guided_wizard_flow(app):
+    """Walk the wizard: site details -> siting -> costing -> done."""
+    # step 0 gate: needs community and district from the sidebar
+    app.text_input(key="meta_community").set_value("Kuntolo")
+    app.selectbox(key="meta_district").select("Bombali")
+    app.run()
+    assert not app.exception
+    app.button(key="wiz_next").click()
+    app.run()
+    assert app.session_state["wiz_step"] == 1
+
+    # step 1: run the siting analysis on the bundled sample
+    app.selectbox(key="sample_wiz_ves").select("rokel/rokel_ves.xlsx")
+    app.run()
+    app.button(key="wiz_run_ves").click()
+    app.run()
+    assert not app.exception
+    assert "ves_results" in app.session_state
+    app.button(key="wiz_next").click()
+    app.run()
+    assert app.session_state["wiz_step"] == 2
+
+    # step 2: costing prefilled from the siting result
+    app.button(key="wiz_cost_run").click()
+    app.run()
+    assert not app.exception
+    assert app.session_state["cost_estimate"].direct_cost_usd > 0
+    app.button(key="wiz_next").click()
+    app.run()
+    assert app.session_state["wiz_step"] == 3
+
+
 def test_templates_tab(app):
     app.button(key="gen_templates").click()
     app.run()
