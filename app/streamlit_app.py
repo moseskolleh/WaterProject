@@ -17,6 +17,17 @@ import sys
 import tempfile
 from pathlib import Path
 
+# Always import the groundwater package from the repository checkout
+# this app ships with, not from a previously installed copy. Streamlit
+# Community Cloud pulls new source on every push but only reinstalls
+# packages when requirements.txt changes, so without this the app file
+# can be newer than the installed package and imports break.
+_SRC = Path(__file__).resolve().parent.parent / "src"
+if _SRC.is_dir() and str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+    for _mod in [m for m in list(sys.modules) if m.split(".")[0] == "groundwater"]:
+        del sys.modules[_mod]
+
 import streamlit as st
 import yaml
 
