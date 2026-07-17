@@ -43,6 +43,14 @@ need real project inputs or decisions to finish calibrating it.
    (`groundwater/data/sl_districts.csv`) good enough to catch gross
    copy-over errors. For boundary-accurate checks, supply district
    polygons (GADM/HDX GeoJSON) and the checker can use them directly.
+   An upgrade to the 16-district OCHA COD-AB boundaries was attempted
+   (July 2026) but no reachable source carries them: HDX and the ITOS
+   geoservices are blocked from the development environment and every
+   geoBoundaries variant (gbOpen, gbHumanitarian, gbAuthoritative)
+   still ships the pre-2017 14 districts. When the OCHA file
+   (`sle_admbnda_adm2` from data.humdata.org/dataset/cod-ab-sle) can
+   be downloaded, feed it through `web/build_geodata.py` to replace
+   `sl_admin_geoboundaries.geojson` and refresh the bounding boxes.
 
 8. **Costing unit rates are indicative (added with the costing
    module).** The catalogue in

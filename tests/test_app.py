@@ -369,6 +369,21 @@ def test_supervision_resume_jump(app):
     assert app.session_state["sup_stage"] in stages
 
 
+def test_maps_gis_export(app):
+    """With VES results in the session the Maps tab writes the GIS
+    layer and offers it for download."""
+    import json
+
+    workdir = Path(app.session_state["workdir"])
+    geojson = workdir / "survey_points.geojson"
+    assert geojson.exists(), "GIS export not written"
+    data = json.loads(geojson.read_text())
+    kinds = {f["properties"]["kind"] for f in data["features"]}
+    assert "VES point" in kinds
+    props = data["features"][0]["properties"]
+    assert "easting_utm" in props
+
+
 def test_cost_sensitivity_tornado(app):
     app.button(key="run_sensitivity").click()
     app.run()
