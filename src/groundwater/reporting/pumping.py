@@ -19,6 +19,7 @@ from ..config import Config
 from ..hydraulics.analysis import PumpingTestAnalysis
 from ..hydraulics.plots import (
     plot_cooper_jacob,
+    plot_diagnostic_derivative,
     plot_recovery,
     plot_step_test,
     plot_test_overview,
@@ -123,6 +124,30 @@ def build_pumping_report(
     rb.heading("3. Analysis", 1)
     swl = test.static_water_level_m
     section = 0
+
+    if swl is not None and len(test.steps) > 0:
+        step = test.steps[0]
+        diag_path = figures / "diagnostic_derivative.png"
+        if not diag_path.exists():
+            plot_diagnostic_derivative(
+                step.time_min, step.water_level_m - swl,
+                path=diag_path, style=config.style,
+            )
+        if diag_path.exists():
+            section += 1
+            rb.heading(f"3.{section} Flow regime diagnostic", 2)
+            rb.figure(
+                diag_path,
+                "Log-log drawdown with its Bourdet log-time derivative.",
+            )
+            rb.paragraph(
+                "The derivative identifies the flow regime: a flat late "
+                "time derivative marks infinite acting radial flow, the "
+                "condition under which the straight line analysis below "
+                "is valid; a rising derivative would indicate a barrier "
+                "boundary and a falling one recharge or leakage.",
+                align="justify",
+            )
 
     if analysis.cooper_jacob is not None:
         section += 1

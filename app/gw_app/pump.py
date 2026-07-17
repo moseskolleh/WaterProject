@@ -7,6 +7,7 @@ import streamlit as st
 from groundwater.hydraulics import analyse_pumping_test
 from groundwater.hydraulics.plots import (
     plot_cooper_jacob,
+    plot_diagnostic_derivative,
     plot_recovery,
     plot_step_test,
     plot_test_overview,
@@ -87,6 +88,22 @@ def render() -> None:
             st_path = workdir() / "steps.png"
             plot_step_test(test, analysis.step_test, path=st_path)
             st.image(str(st_path))
+
+        if test.static_water_level_m is not None:
+            diag_path = workdir() / "diagnostic_derivative.png"
+            step = test.steps[0]
+            if plot_diagnostic_derivative(
+                step.time_min,
+                step.water_level_m - test.static_water_level_m,
+                path=diag_path,
+            ) is not None:
+                st.image(str(diag_path))
+                st.caption(
+                    "Diagnostic derivative: a flat late-time derivative "
+                    "marks radial flow, where the Cooper-Jacob straight "
+                    "line is valid; rising suggests a barrier boundary, "
+                    "falling suggests recharge or leakage."
+                )
 
         st.subheader("Results")
         yr = analysis.yield_recommendation

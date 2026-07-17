@@ -369,6 +369,14 @@ def test_supervision_resume_jump(app):
     assert app.session_state["sup_stage"] in stages
 
 
+def test_cost_sensitivity_tornado(app):
+    app.button(key="run_sensitivity").click()
+    app.run()
+    assert not app.exception
+    base, entries, tornado_path = app.session_state["sensitivity_result"]
+    assert base > 0 and entries and tornado_path.exists()
+
+
 def test_ves_pending_path_from_extraction(sample_data):
     """The Scanned sheets handoff: a filled template path in session
     state makes the VES tab analyse it directly."""

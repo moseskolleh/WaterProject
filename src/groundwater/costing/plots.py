@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from ..config import HouseStyle
 from ..plotting import figure_context, save_figure
 from .model import CostEstimate
+from .sensitivity import SensitivityEntry
 
 
 def plot_cost_breakdown(
@@ -103,3 +104,30 @@ def plot_programme_gantt(
         )
         fig.tight_layout()
     return save_figure(fig, path, style)
+
+
+def plot_sensitivity_tornado(
+    base_price_usd: float,
+    entries: list[SensitivityEntry],
+    path: str | Path,
+    style: HouseStyle | None = None,
+) -> Path:
+    """Tornado chart: contract price range as each driver moves alone."""
+    style = style or HouseStyle()
+    with figure_context(style):
+        fig, ax = plt.subplots(figsize=(style.figure_width_in, 3.2))
+        ordered = entries[::-1]  # widest bar on top
+        labels = [e.label for e in ordered]
+        for i, e in enumerate(ordered):
+            low = min(e.low_price_usd, e.high_price_usd)
+            high = max(e.low_price_usd, e.high_price_usd)
+            ax.barh(i, high - low, left=low, height=0.55,
+                    color=style.accent_color, alpha=0.85)
+        ax.axvline(base_price_usd, color=style.secondary_color, lw=1.6,
+                   label=f"base price ${base_price_usd:,.0f}")
+        ax.set_yticks(range(len(ordered)), labels)
+        ax.set_xlabel("Contract price (USD)")
+        ax.set_title("Price sensitivity (one driver moved at a time)")
+        ax.legend(loc="lower right", fontsize=8)
+        fig.tight_layout()
+        return save_figure(fig, path, style)

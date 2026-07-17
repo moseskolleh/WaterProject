@@ -14,6 +14,7 @@ from .common import (
     choose_input,
     offer_report_download,
     parse_upload,
+    save_upload,
     show_flags,
     workdir,
 )
@@ -82,3 +83,80 @@ def render() -> None:
                 app_config(),
             )
             offer_report_download(report_path, "Download water quality report (.docx)")
+
+    with st.expander("🔬 Compare several samples"):
+        st.caption(
+            "Upload several laboratory workbooks - different boreholes, or "
+            "the same point across seasons - for side by side verdicts, a "
+            "combined Piper diagram and a parameter comparison."
+        )
+        uploads = st.file_uploader(
+            "Laboratory results (several files)", type=["xlsx"],
+            accept_multiple_files=True, key="wq_multi",
+        )
+        parsed = []
+        for upload in uploads or []:
+            saved = save_upload(upload)
+            multi_sample = parse_upload(read_quality_workbook, saved)
+            if multi_sample is not None:
+                parsed.append(
+                    (upload.name, multi_sample, assess_sample(multi_sample))
+                )
+        if parsed:
+            st.dataframe(
+                [
+                    {
+                        "File": name,
+                        "Community": smp.site.community if smp.site else "",
+                        "Date": smp.sample_date
+                        or (smp.site.date if smp.site else ""),
+                        "Verdict": a.verdict,
+                        "Health exceedances": len(a.health_exceedances),
+                        "Aesthetic": len(a.aesthetic_exceedances),
+                    }
+                    for name, smp, a in parsed
+                ],
+                use_container_width=True,
+            )
+            with_ionic = [smp for _, smp, a in parsed if a.ionic is not None]
+            if len(with_ionic) >= 2:
+                multi_piper = workdir() / "piper_multi.png"
+                plot_piper(with_ionic, path=multi_piper)
+                st.image(str(multi_piper))
+
+            parameters: list[str] = []
+            for _, smp, _ in parsed:
+                for result in smp.results:
+                    if result.value is not None and result.parameter not in parameters:
+                        parameters.append(result.parameter)
+            if parameters:
+                if st.session_state.get("wq_trend_param") not in parameters:
+                    st.session_state.pop("wq_trend_param", None)
+                trend_pick = st.selectbox(
+                    "Parameter to compare across the samples",
+                    parameters, key="wq_trend_param",
+                )
+                trend_rows = []
+                for name, smp, _ in parsed:
+                    result = smp.get(trend_pick)
+                    if result is not None and result.value is not None:
+                        label = (
+                            smp.sample_date
+                            or (smp.site.date if smp.site else "")
+                            or name
+                        )
+                        trend_rows.append(
+                            {"Sample": label, "Value": float(result.value),
+                             "Unit": result.unit}
+                        )
+                if trend_rows:
+                    tc1, tc2 = st.columns([2, 3])
+                    tc1.dataframe(trend_rows, use_container_width=True)
+                    try:
+                        import pandas as pd
+
+                        tc2.bar_chart(
+                            pd.DataFrame(trend_rows).set_index("Sample")["Value"]
+                        )
+                    except Exception:
+                        pass  # chart is a nicety; the table stands alone

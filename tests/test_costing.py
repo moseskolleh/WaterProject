@@ -176,3 +176,18 @@ def test_report_is_reproducible(tmp_path: Path):
     a = build_cost_report(CostReportInputs(**kwargs), tmp_path / "a.docx")
     b = build_cost_report(CostReportInputs(**kwargs), tmp_path / "b.docx")
     assert a.read_bytes() == b.read_bytes()
+
+
+def test_price_sensitivity_orders_and_brackets():
+    from groundwater.costing import CostingInputs, price_sensitivity
+
+    base, entries = price_sensitivity(
+        CostingInputs(total_depth_m=60, mobilisation_distance_km=100)
+    )
+    assert base > 0 and entries
+    spans = [e.span_usd for e in entries]
+    assert spans == sorted(spans, reverse=True)
+    depth_entry = next(e for e in entries if e.label.startswith("Total depth"))
+    assert depth_entry.low_price_usd < base < depth_entry.high_price_usd
+    labels = {e.label for e in entries}
+    assert "Mobilisation distance ±50%" in labels

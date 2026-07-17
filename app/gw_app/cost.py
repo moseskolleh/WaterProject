@@ -14,6 +14,8 @@ from groundwater.costing import (
     inputs_from_design,
     plot_cost_breakdown,
     plot_programme_gantt,
+    plot_sensitivity_tornado,
+    price_sensitivity,
     write_boq_workbook,
 )
 from groundwater.reporting.costing import CostReportInputs, build_cost_report
@@ -309,6 +311,113 @@ def render() -> None:
             with st.expander("Assumptions applied"):
                 for assumption in estimate.assumptions:
                     st.markdown(f"- {assumption}")
+
+        with st.expander("🎯 Sensitivity: what moves the price?"):
+            st.caption(
+                "Each bar re-prices the borehole with one driver moved and "
+                "the others held: depth ±20%, mobilisation distance ±50%, "
+                "overburden ±50% (when stated), margin and overheads "
+                "±5 points. Derived quantities follow each variation "
+                "through the usual rules of thumb."
+            )
+            if st.button("Run sensitivity analysis", key="run_sensitivity"):
+                sens_inputs = CostingInputs(
+                    total_depth_m=depth,
+                    overburden_m=overburden or None,
+                    mobilisation_distance_km=distance,
+                    handpumps=int(handpumps),
+                    wq_samples=int(samples),
+                    development_hours=float(dev_hours),
+                    test_pumping_hours=float(test_hours),
+                )
+                base_price, entries = price_sensitivity(
+                    sens_inputs, rates,
+                    overheads_percent=overheads_pct,
+                    margin_percent=margin_pct,
+                    contingency_percent=contingency_pct,
+                    vat_percent=vat_pct,
+                    exchange_rate_sle_per_usd=fx,
+                )
+                tornado_path = workdir() / "sensitivity_tornado.png"
+                plot_sensitivity_tornado(
+                    base_price, entries, tornado_path, app_config().style
+                )
+                st.session_state["sensitivity_result"] = (
+                    base_price, entries, tornado_path
+                )
+            if "sensitivity_result" in st.session_state:
+                base_price, entries, tornado_path = st.session_state[
+                    "sensitivity_result"
+                ]
+                st.image(str(tornado_path))
+                st.table(
+                    [
+                        {
+                            "Driver": e.label,
+                            "Low (USD)": f"{min(e.low_price_usd, e.high_price_usd):,.0f}",
+                            "High (USD)": f"{max(e.low_price_usd, e.high_price_usd):,.0f}",
+                            "Swing (USD)": f"{e.span_usd:,.0f}",
+                        }
+                        for e in entries
+                    ]
+                )
+
+        with st.expander("⚖️ Bid comparison"):
+            st.caption(
+                "Enter the contractor quotes received; each is compared "
+                "with the estimate's contract price. The table is carried "
+                "in the project file."
+            )
+            _EMPTY_BID = {"Contractor": "", "Quoted price (USD)": None,
+                          "Notes": ""}
+            if "bids_base" not in st.session_state:
+                st.session_state["bids_base"] = (
+                    st.session_state.get("bids_rows") or [dict(_EMPTY_BID)]
+                )
+            edited_bids = st.data_editor(
+                st.session_state["bids_base"],
+                key="bids_editor",
+                num_rows="dynamic",
+                hide_index=True,
+                use_container_width=True,
+                column_config={
+                    "Contractor": st.column_config.TextColumn("Contractor"),
+                    "Quoted price (USD)": st.column_config.NumberColumn(
+                        "Quoted price (USD)", min_value=0.0, step=100.0),
+                    "Notes": st.column_config.TextColumn("Notes"),
+                },
+            )
+            st.session_state["bids_rows"] = [
+                {k: (v if v is not None else "") for k, v in row.items()}
+                for row in edited_bids
+                if any(str(v or "").strip() for v in row.values())
+            ]
+            quoted = []
+            for row in edited_bids:
+                try:
+                    price_quote = float(row.get("Quoted price (USD)") or 0.0)
+                except (TypeError, ValueError):
+                    continue
+                if price_quote > 0 and str(row.get("Contractor") or "").strip():
+                    quoted.append((str(row["Contractor"]).strip(), price_quote))
+            if quoted:
+                depth_for_rate = float(estimate.inputs.total_depth_m)
+                st.table(
+                    [
+                        {
+                            "Contractor": name,
+                            "Quote (USD)": f"{price_quote:,.0f}",
+                            "vs estimate": f"{(price_quote / estimate.price_usd - 1.0) * 100.0:+.0f}%",
+                            "USD per metre": f"{price_quote / depth_for_rate:,.0f}",
+                        }
+                        for name, price_quote in quoted
+                    ]
+                )
+                st.caption(
+                    "The RWSN procurement guide warns against quotes far "
+                    "below the estimate: they usually come back as claims "
+                    "or shortcuts."
+                )
 
         st.caption(
             "The report cover uses the site details from the sidebar."

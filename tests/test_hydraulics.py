@@ -83,3 +83,40 @@ def test_step_analysis_after_supplying_discharge(sample_data):
     assert len(analysis.step_test.steps) == 3
     # parse-time missing_discharge flag is cleared once values are supplied
     assert not any(f.code == "missing_discharge" for f in analysis.flags)
+
+
+def test_bourdet_derivative_recovers_theis_plateau():
+    """For a Theis drawdown curve the late-time log-derivative is flat
+    at Q/(4 pi T); the Bourdet estimate must land on it."""
+    import numpy as np
+    from scipy.special import exp1
+
+    from groundwater.hydraulics.plots import bourdet_derivative
+
+    T = 50.0  # m2/day
+    S = 1e-3
+    q_day = 120.0  # m3/day
+    r = 0.1
+    t_min = np.geomspace(1.0, 1000.0, 60)
+    t_day = t_min / 1440.0
+    u = r**2 * S / (4.0 * T * t_day)
+    s = q_day / (4.0 * np.pi * T) * exp1(u)
+
+    t_out, s_out, deriv = bourdet_derivative(t_min, s)
+    plateau = q_day / (4.0 * np.pi * T)
+    late = deriv[np.isfinite(deriv)][-10:]
+    assert np.allclose(late, plateau, rtol=0.05)
+
+
+def test_diagnostic_derivative_plot(tmp_path):
+    import numpy as np
+
+    from groundwater.hydraulics.plots import plot_diagnostic_derivative
+
+    t = np.geomspace(1.0, 600.0, 40)
+    s = 0.5 * np.log(t) + 1.0
+    out = tmp_path / "diag.png"
+    result = plot_diagnostic_derivative(t, s, path=out)
+    assert result is not None and out.exists()
+    # too few points: quietly declines
+    assert plot_diagnostic_derivative(t[:3], s[:3]) is None

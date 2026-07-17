@@ -29,7 +29,88 @@ __all__ = [
     "plot_theis",
     "plot_recovery",
     "plot_step_test",
+    "bourdet_derivative",
+    "plot_diagnostic_derivative",
 ]
+
+
+def bourdet_derivative(
+    time_min: np.ndarray,
+    drawdown_m: np.ndarray,
+    smoothing_decades: float = 0.2,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Log-time drawdown derivative ds/d(ln t), Bourdet weighted.
+
+    For each point the slope is taken to the nearest neighbours at
+    least ``smoothing_decades`` away in log time on each side, and the
+    two slopes are combined with the opposite interval as weight - the
+    standard smoothing that keeps field noise from swamping the
+    derivative. Returns (t, s, ds/dlnt) sorted by time; the derivative
+    is NaN where a side has no neighbour far enough away.
+    """
+    t = np.asarray(time_min, dtype=float)
+    s = np.asarray(drawdown_m, dtype=float)
+    keep = t > 0
+    t, s = t[keep], s[keep]
+    order = np.argsort(t)
+    t, s = t[order], s[order]
+    ln = np.log(t)
+    n = len(t)
+    deriv = np.full(n, np.nan)
+    window = smoothing_decades * np.log(10.0)
+    for i in range(1, n - 1):
+        j = i - 1
+        while j > 0 and ln[i] - ln[j] < window:
+            j -= 1
+        k = i + 1
+        while k < n - 1 and ln[k] - ln[i] < window:
+            k += 1
+        dl = ln[i] - ln[j]
+        dr = ln[k] - ln[i]
+        if dl <= 0 or dr <= 0:
+            continue
+        slope_left = (s[i] - s[j]) / dl
+        slope_right = (s[k] - s[i]) / dr
+        deriv[i] = (slope_left * dr + slope_right * dl) / (dl + dr)
+    return t, s, deriv
+
+
+def plot_diagnostic_derivative(
+    time_min: np.ndarray,
+    drawdown_m: np.ndarray,
+    path: str | Path | None = None,
+    style: HouseStyle | None = None,
+    title: str = "Diagnostic plot: drawdown and log-derivative",
+):
+    """Log-log drawdown with its Bourdet derivative.
+
+    The derivative's shape identifies the flow regime: a flat late-time
+    derivative marks infinite-acting radial flow (where the
+    Cooper-Jacob straight line is valid); a rising derivative suggests
+    a barrier boundary, a falling one recharge or a leaky aquifer.
+    Returns None when too few points allow a derivative.
+    """
+    style = style or HouseStyle()
+    t, s, deriv = bourdet_derivative(time_min, drawdown_m)
+    finite = np.isfinite(deriv) & (deriv > 0)
+    if finite.sum() < 3:
+        return None
+    with figure_context(style):
+        fig, ax = plt.subplots(figsize=(style.figure_width_in * 0.85, 3.4))
+        pos = s > 0
+        ax.loglog(t[pos], s[pos], "o", ms=4, mfc="white",
+                  mec=style.accent_color, mew=1.2, label="drawdown")
+        ax.loglog(t[finite], deriv[finite], "s", ms=4, mfc="white",
+                  mec=style.secondary_color, mew=1.2,
+                  label="derivative ds/d(ln t)")
+        ax.set_xlabel("Time (min)")
+        ax.set_ylabel("Drawdown and derivative (m)")
+        ax.set_title(title)
+        ax.legend(loc="best", fontsize=8)
+        fig.tight_layout()
+        if path is not None:
+            return save_figure(fig, path, style)
+        return fig
 
 
 def plot_test_overview(

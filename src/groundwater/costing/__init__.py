@@ -32,7 +32,12 @@ from .enterprise import (
     running_cost_rock_per_m,
 )
 from .programme import ProgrammeEstimate, estimate_programme_cost
-from .plots import plot_cost_breakdown, plot_programme_gantt
+from .plots import (
+    plot_cost_breakdown,
+    plot_programme_gantt,
+    plot_sensitivity_tornado,
+)
+from .sensitivity import SensitivityEntry, price_sensitivity
 from .export import write_boq_workbook
 
 __all__ = [
@@ -49,6 +54,9 @@ __all__ = [
     "load_rates",
     "plot_cost_breakdown",
     "plot_programme_gantt",
+    "plot_sensitivity_tornado",
+    "SensitivityEntry",
+    "price_sensitivity",
     "ProgrammeEstimate",
     "estimate_programme_cost",
     "write_boq_workbook",

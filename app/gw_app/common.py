@@ -239,6 +239,26 @@ _TRIGGER_KEYS = frozenset({
     "org_logo_remove",
 })
 
+# editable tables carried in the project file:
+# payload key -> (rows key, editor base key, editor widget key)
+_TABLE_STATE = {
+    "daily_log": ("daily_log_rows", "daily_log_base", "daily_log_editor"),
+    "bids": ("bids_rows", "bids_base", "bids_editor"),
+}
+
+
+def _scalar_rows(rows) -> list[dict]:
+    """Rows of scalars only, ready for YAML and the data editor."""
+    return [
+        {
+            str(k): v
+            for k, v in row.items()
+            if isinstance(v, (str, int, float, bool))
+        }
+        for row in rows
+        if isinstance(row, dict)
+    ]
+
 
 def project_file_bytes() -> bytes:
     """Serialize the widget state that makes up a project."""
@@ -252,17 +272,10 @@ def project_file_bytes() -> bytes:
     payload = {
         "groundwater_toolkit_project": groundwater.__version__,
         "rates_overrides": st.session_state.get("rates_overrides", {}),
-        "daily_log": [
-            {
-                str(k): v
-                for k, v in row.items()
-                if isinstance(v, (str, int, float, bool))
-            }
-            for row in st.session_state.get("daily_log_rows", [])
-            if isinstance(row, dict)
-        ],
         "state": state,
     }
+    for payload_key, (rows_key, _, _) in _TABLE_STATE.items():
+        payload[payload_key] = _scalar_rows(st.session_state.get(rows_key, []))
     return yaml.safe_dump(payload, sort_keys=True).encode("utf-8")
 
 
@@ -282,23 +295,16 @@ def apply_project_payload(payload) -> bool:
         st.session_state.rates_overrides = {
             str(code): float(rate) for code, rate in overrides.items()
         }
-    daily = payload.get("daily_log")
-    if isinstance(daily, list):
-        rows = [
-            {
-                str(k): v
-                for k, v in row.items()
-                if isinstance(v, (str, int, float, bool))
-            }
-            for row in daily
-            if isinstance(row, dict)
-        ]
-        st.session_state["daily_log_rows"] = rows
-        if rows:
-            st.session_state["daily_log_base"] = [dict(r) for r in rows]
-        else:
-            st.session_state.pop("daily_log_base", None)
-        st.session_state.pop("daily_log_editor", None)
+    for payload_key, (rows_key, base_key, editor_key) in _TABLE_STATE.items():
+        table = payload.get(payload_key)
+        if isinstance(table, list):
+            rows = _scalar_rows(table)
+            st.session_state[rows_key] = rows
+            if rows:
+                st.session_state[base_key] = [dict(r) for r in rows]
+            else:
+                st.session_state.pop(base_key, None)
+            st.session_state.pop(editor_key, None)
     # reset widgets that mirror loaded state so they show the new values
     st.session_state.pop("rates_editor", None)
     st.session_state.pop("meta_date_widget", None)
