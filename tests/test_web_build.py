@@ -26,6 +26,7 @@ def test_demo_build(tmp_path, sample_data):
     assert match, "FILES blob not found"
     files = json.loads(match.group(1))
     assert "streamlit_app.py" in files
+    assert "gw_app/common.py" in files
     assert "groundwater/__init__.py" in files
     assert "groundwater/data/who_guidelines.csv" in files
     for sample in builder.SAMPLE_FILES:

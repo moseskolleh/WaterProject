@@ -115,6 +115,13 @@ def collect_files() -> dict:
     app_source = (REPO / "app" / "streamlit_app.py").read_text(encoding="utf-8")
     files["streamlit_app.py"] = {"t": "text", "d": app_source}
 
+    app_pkg = REPO / "app" / "gw_app"
+    for path in sorted(app_pkg.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        mount_path = "gw_app/" + path.relative_to(app_pkg).as_posix()
+        files[mount_path] = {"t": "text", "d": path.read_text(encoding="utf-8")}
+
     package_root = REPO / "src" / "groundwater"
     for path in sorted(package_root.rglob("*")):
         if path.is_dir() or "__pycache__" in path.parts:
