@@ -366,6 +366,9 @@ def _load_project() -> None:
     st.session_state.project_loaded = True
     # protect restored inputs from the prefill-reset checks for one run
     st.session_state.project_just_loaded = True
+    # the wizard costing block only executes on its step, so it carries
+    # its own grace marker, consumed when that block first runs
+    st.session_state["_wiz_load_grace"] = True
 
 
 # ---------------------------------------------------------------------------
@@ -717,9 +720,14 @@ with tab_guide:
         prefill_sig = f"{default_depth:.1f}:{default_over:.1f}"
         if st.session_state.get("wiz_prefill_sig") != prefill_sig:
             st.session_state["wiz_prefill_sig"] = prefill_sig
-            if not st.session_state.get("project_just_loaded"):
+            # consume the load grace here, not at end of run: this block
+            # only executes on the costing step, which a loaded project
+            # may reach many runs after the load itself
+            if not st.session_state.pop("_wiz_load_grace", False):
                 st.session_state.pop("wiz_cost_depth", None)
                 st.session_state.pop("wiz_cost_over", None)
+        else:
+            st.session_state.pop("_wiz_load_grace", None)
         c1, c2, c3 = st.columns(3)
         wiz_depth = c1.number_input("Total depth (m)", 1.0, 300.0,
                                     default_depth or 60.0, 1.0,

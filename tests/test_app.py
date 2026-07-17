@@ -197,6 +197,30 @@ def test_wizard_unlocks_after_first_ves_run(sample_data):
     assert not getattr(next_button, "disabled", next_button.proto.disabled)
 
 
+def test_wizard_grace_survives_until_costing_step(sample_data):
+    """Regression: a project loaded on a step other than costing must
+    keep its restored wizard costing values when the costing step is
+    finally visited, even though the load rerun has long passed."""
+    at = AppTest.from_file(APP, default_timeout=600)
+    # state as the project loader would leave it: saved at the final
+    # step with a siting-derived signature that the fresh session
+    # cannot reproduce, plus the wizard grace marker
+    at.session_state["wiz_step"] = 3
+    at.session_state["wiz_cost_depth"] = 85.0
+    at.session_state["wiz_cost_over"] = 12.0
+    at.session_state["wiz_prefill_sig"] = "72.0:24.0"
+    at.session_state["_wiz_load_grace"] = True
+    at.run()  # the load rerun: costing block does not execute
+    assert not at.exception
+    at.session_state["wiz_step"] = 2  # user navigates back to costing
+    at.run()
+    assert not at.exception
+    assert at.session_state["wiz_cost_depth"] == 85.0
+    assert at.session_state["wiz_cost_over"] == 12.0
+    # grace is consumed: a genuine source change afterwards resets
+    assert "_wiz_load_grace" not in at.session_state
+
+
 def test_templates_tab(app):
     app.button(key="gen_templates").click()
     app.run()
