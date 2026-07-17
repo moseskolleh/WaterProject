@@ -77,6 +77,17 @@ parameter list. For results below the detection limit write `<` and
 the limit (for example `<0.01`) in the value column. Add extra
 parameters on new rows with their units.
 
+## 5a. Guided start (new projects)
+
+The first tab, **Guided start**, walks a new project through the core
+sequence in three steps: fill the site details (the wizard checks
+them off as the sidebar panel is completed), run the siting analysis
+on the VES workbook (the best ranked sounding sets the drilling
+depth, or a planned depth can be entered directly), and produce the
+first cost estimate from that depth. Every result carries over to
+the full tabs for fine tuning, and the final step lists what to do
+during and after drilling.
+
 ## 6. Running the analysis (web interface)
 
 1. Open the toolkit in the browser (the analyst provides the address,
