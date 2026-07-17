@@ -252,6 +252,15 @@ def project_file_bytes() -> bytes:
     payload = {
         "groundwater_toolkit_project": groundwater.__version__,
         "rates_overrides": st.session_state.get("rates_overrides", {}),
+        "daily_log": [
+            {
+                str(k): v
+                for k, v in row.items()
+                if isinstance(v, (str, int, float, bool))
+            }
+            for row in st.session_state.get("daily_log_rows", [])
+            if isinstance(row, dict)
+        ],
         "state": state,
     }
     return yaml.safe_dump(payload, sort_keys=True).encode("utf-8")
@@ -273,6 +282,23 @@ def apply_project_payload(payload) -> bool:
         st.session_state.rates_overrides = {
             str(code): float(rate) for code, rate in overrides.items()
         }
+    daily = payload.get("daily_log")
+    if isinstance(daily, list):
+        rows = [
+            {
+                str(k): v
+                for k, v in row.items()
+                if isinstance(v, (str, int, float, bool))
+            }
+            for row in daily
+            if isinstance(row, dict)
+        ]
+        st.session_state["daily_log_rows"] = rows
+        if rows:
+            st.session_state["daily_log_base"] = [dict(r) for r in rows]
+        else:
+            st.session_state.pop("daily_log_base", None)
+        st.session_state.pop("daily_log_editor", None)
     # reset widgets that mirror loaded state so they show the new values
     st.session_state.pop("rates_editor", None)
     st.session_state.pop("meta_date_widget", None)

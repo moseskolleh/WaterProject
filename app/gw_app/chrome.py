@@ -49,6 +49,20 @@ def setup_page() -> None:
           div[data-testid="stMetric"] label { color: #1F5C8B; }
           button[data-baseweb="tab"] { font-size: 0.95rem; }
           div[data-testid="stSidebarUserContent"] .stCaption p { line-height: 1.35; }
+          /* phones on site: tighter margins and finger-sized targets
+             for the supervision checklist radios */
+          @media (max-width: 640px) {
+            .block-container {
+              padding-left: 0.8rem;
+              padding-right: 0.8rem;
+            }
+            div[role="radiogroup"] label {
+              padding: 0.35rem 0.6rem;
+              border: 1px solid rgba(31, 92, 139, 0.25);
+              border-radius: 0.5rem;
+              margin-right: 0.25rem;
+            }
+          }
         </style>
         """,
         unsafe_allow_html=True,

@@ -316,6 +316,59 @@ def test_autosave_written_and_restorable(sample_data, tmp_path, monkeypatch):
     assert at2.session_state["meta_community"] == "Masiaka"
 
 
+def test_daily_log_totals_and_persistence(sample_data, tmp_path, monkeypatch):
+    import yaml
+
+    monkeypatch.setenv("GW_AUTOSAVE_DIR", str(tmp_path))
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["daily_log_rows"] = [
+        {"Date": "1 Jul", "From (m)": 0.0, "To (m)": 22.0,
+         "Rig hours": 9.0, "Remarks": ""},
+        {"Date": "2 Jul", "From (m)": 22.0, "To (m)": 41.0,
+         "Rig hours": 8.0, "Remarks": "hard rock"},
+    ]
+    at.session_state["meta_community"] = "Testtown"
+    at.run()
+    assert not at.exception
+
+    # the logged total feeds the drilled-metres reconciliation
+    at.button(key="daily_log_apply").click()
+    at.run()
+    assert not at.exception
+    assert at.session_state["fx_logged"] == 41.0
+
+    # the log travels in the (auto)saved project file
+    saved = yaml.safe_load((tmp_path / "testtown.yaml").read_text())
+    assert saved["daily_log"][0]["To (m)"] == 22.0
+
+    # and comes back on restore in a fresh session
+    at2 = AppTest.from_file(APP, default_timeout=600)
+    at2.run()
+    at2.selectbox(key="autosave_pick").select(str(tmp_path / "testtown.yaml"))
+    at2.run()
+    at2.button(key="autosave_restore").click()
+    at2.run()
+    assert not at2.exception
+    assert at2.session_state["daily_log_rows"][1]["Remarks"] == "hard rock"
+
+
+def test_supervision_resume_jump(app):
+    """The Resume button moves the stage picker to the first stage
+    with unanswered items."""
+    app.button(key="sup_jump").click()
+    app.run()
+    assert not app.exception
+    from groundwater.supervision import load_checklists
+
+    stages = []
+    for item in load_checklists():
+        if item.checklist not in stages:
+            stages.append(item.checklist)
+    # the first stage got one answer in test_supervision_flow but still
+    # has open items, so it is the first incomplete stage
+    assert app.session_state["sup_stage"] in stages
+
+
 def test_pdf_conversion_helper(tmp_path):
     """Graceful with and without LibreOffice on the machine."""
     import sys

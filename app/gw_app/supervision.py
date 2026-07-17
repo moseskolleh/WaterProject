@@ -56,21 +56,42 @@ def render() -> None:
         if item.checklist not in stage_keys:
             stage_keys.append(item.checklist)
     progress_by_stage = {s.stage: s for s in assessment.stages}
-    stage_pick = st.selectbox(
-        "Supervision stage",
-        stage_keys,
-        format_func=lambda k: (
-            f"{stage_title(k)}  "
-            f"({progress_by_stage[k].answered}/{progress_by_stage[k].total})"
-        ),
-        key="sup_stage",
-    )
+    incomplete = [
+        k for k in stage_keys
+        if progress_by_stage[k].answered < progress_by_stage[k].total
+    ]
+    sel_col, jump_col = st.columns([3, 1])
+    with sel_col:
+        stage_pick = st.selectbox(
+            "Supervision stage",
+            stage_keys,
+            format_func=lambda k: (
+                f"{stage_title(k)}  "
+                f"({progress_by_stage[k].answered}/{progress_by_stage[k].total})"
+            ),
+            key="sup_stage",
+        )
+    if incomplete:
+        jump_col.button(
+            "Resume →", key="sup_jump",
+            help="Jump to the first stage with unanswered items.",
+            on_click=lambda k=incomplete[0]: st.session_state.update(sup_stage=k),
+        )
+
+    stage_items = [i for i in checklist_items if i.checklist == stage_pick]
+    section_progress: dict[str, list[int]] = {}
+    for item in stage_items:
+        answered = responses[item.item_id].status != "pending"
+        totals = section_progress.setdefault(item.section, [0, 0])
+        totals[0] += int(answered)
+        totals[1] += 1
 
     current_section = None
-    for item in [i for i in checklist_items if i.checklist == stage_pick]:
+    for item in stage_items:
         if item.section != current_section:
             current_section = item.section
-            st.markdown(f"**{current_section}**")
+            done, total = section_progress[current_section]
+            st.markdown(f"**{current_section}**  ({done}/{total})")
         with st.container(border=True):
             label = item.text + (" 🔴 *critical*" if item.critical else "")
             st.markdown(label)
@@ -90,6 +111,69 @@ def render() -> None:
                 )
 
     st.divider()
+    with st.expander("🗒️ Daily drilling log"):
+        st.caption(
+            "One row per drilling day, entered on site. The totals feed "
+            "the drilled-metres reconciliation below and the log is "
+            "carried in the project file."
+        )
+        _EMPTY_DAY = {"Date": "", "From (m)": None, "To (m)": None,
+                      "Rig hours": None, "Remarks": ""}
+        if "daily_log_base" not in st.session_state:
+            st.session_state["daily_log_base"] = (
+                st.session_state.get("daily_log_rows") or [dict(_EMPTY_DAY)]
+            )
+        edited_days = st.data_editor(
+            st.session_state["daily_log_base"],
+            key="daily_log_editor",
+            num_rows="dynamic",
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "Date": st.column_config.TextColumn("Date"),
+                "From (m)": st.column_config.NumberColumn(
+                    "From (m)", min_value=0.0, step=0.5),
+                "To (m)": st.column_config.NumberColumn(
+                    "To (m)", min_value=0.0, step=0.5),
+                "Rig hours": st.column_config.NumberColumn(
+                    "Rig hours", min_value=0.0, step=0.5),
+                "Remarks": st.column_config.TextColumn("Remarks"),
+            },
+        )
+
+        def _day_number(row, key):
+            try:
+                value = float(row.get(key) or 0.0)
+            except (TypeError, ValueError):
+                return 0.0
+            return value
+
+        # keep a plain copy for the project file and the totals
+        st.session_state["daily_log_rows"] = [
+            {k: (v if v is not None else "") for k, v in row.items()}
+            for row in edited_days
+            if any(str(v or "").strip() for v in row.values())
+        ]
+        logged_metres = sum(
+            max(0.0, _day_number(r, "To (m)") - _day_number(r, "From (m)"))
+            for r in edited_days
+        )
+        logged_hours = sum(_day_number(r, "Rig hours") for r in edited_days)
+        days = len(st.session_state["daily_log_rows"])
+        if days:
+            st.caption(
+                f"{days} day(s) logged: {logged_metres:g} m drilled, "
+                f"{logged_hours:g} rig hours."
+            )
+            st.button(
+                f"Use the logged total ({logged_metres:g} m) in the "
+                "reconciliation",
+                key="daily_log_apply",
+                on_click=lambda m=logged_metres: st.session_state.update(
+                    fx_logged=float(m)
+                ),
+            )
+
     with st.expander("🧮 Field acceptance checks"):
         fc1, fc2 = st.columns(2)
         with fc1:
