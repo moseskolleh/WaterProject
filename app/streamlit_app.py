@@ -364,6 +364,8 @@ def _load_project() -> None:
     # reset the rate editor so it shows the loaded values
     st.session_state.pop("rates_editor", None)
     st.session_state.project_loaded = True
+    # protect restored inputs from the prefill-reset checks for one run
+    st.session_state.project_just_loaded = True
 
 
 # ---------------------------------------------------------------------------
@@ -709,12 +711,15 @@ with tab_guide:
         else:
             default_depth = float(st.session_state.get("wiz_manual_depth", 60.0))
             default_over = 0.0
-        # refresh the prefill when a new siting result arrives
-        prefill_sig = (round(default_depth, 1), round(default_over, 1))
+        # refresh the prefill when a new siting result arrives. The
+        # signature is a string so the project file carries it and a
+        # loaded project's adjusted values survive the first rerun.
+        prefill_sig = f"{default_depth:.1f}:{default_over:.1f}"
         if st.session_state.get("wiz_prefill_sig") != prefill_sig:
             st.session_state["wiz_prefill_sig"] = prefill_sig
-            st.session_state.pop("wiz_cost_depth", None)
-            st.session_state.pop("wiz_cost_over", None)
+            if not st.session_state.get("project_just_loaded"):
+                st.session_state.pop("wiz_cost_depth", None)
+                st.session_state.pop("wiz_cost_over", None)
         c1, c2, c3 = st.columns(3)
         wiz_depth = c1.number_input("Total depth (m)", 1.0, 300.0,
                                     default_depth or 60.0, 1.0,
@@ -1096,11 +1101,17 @@ with tab_cost:
         )
 
     # a keyed widget ignores a changed value= once it has state, so
-    # reset the field when the design source changes or is toggled
-    design_sig = (bool(use_design), float(design.total_depth_m) if design else 0.0)
+    # reset the field when the design source changes or is toggled.
+    # The signature is a string so the project file carries it and a
+    # loaded project's depth is not wiped by a false "source changed".
+    design_sig = (
+        f"{bool(use_design)}:"
+        f"{float(design.total_depth_m) if design else 0.0:.1f}"
+    )
     if st.session_state.get("cost_design_sig") != design_sig:
         st.session_state["cost_design_sig"] = design_sig
-        st.session_state.pop("cost_depth", None)
+        if not st.session_state.get("project_just_loaded"):
+            st.session_state.pop("cost_depth", None)
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -1765,3 +1776,7 @@ with tab_templates:
     if st.button("Generate templates", key="gen_templates"):
         for template in write_all_templates(template_dir):
             offer_download(template, f"Download {template.name}")
+
+# the post-load grace flag protects restored inputs for exactly one
+# full run; every tab has rendered by this point
+st.session_state.pop("project_just_loaded", None)
