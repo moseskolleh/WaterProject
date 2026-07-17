@@ -221,6 +221,29 @@ def test_wizard_grace_survives_until_costing_step(sample_data):
     assert "_wiz_load_grace" not in at.session_state
 
 
+def test_wizard_grace_cleared_by_siting_change(sample_data):
+    """Regression: a siting change made after loading a project must
+    invalidate the load grace, so costing follows the new depth
+    instead of the stale loaded values."""
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["wiz_step"] = 1
+    at.session_state["wiz_cost_depth"] = 85.0
+    at.session_state["wiz_cost_over"] = 12.0
+    at.session_state["wiz_prefill_sig"] = "72.0:24.0"
+    at.session_state["_wiz_load_grace"] = True
+    at.run()
+    assert not at.exception
+    # the user changes the planned depth on the siting step
+    at.number_input(key="wiz_manual_depth").set_value(95.0)
+    at.run()
+    assert "_wiz_load_grace" not in at.session_state
+    at.session_state["wiz_step"] = 2
+    at.run()
+    assert not at.exception
+    # costing adopted the new siting depth, not the stale loaded value
+    assert at.session_state["wiz_cost_depth"] == 95.0
+
+
 def test_templates_tab(app):
     app.button(key="gen_templates").click()
     app.run()

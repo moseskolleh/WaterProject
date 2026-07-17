@@ -569,6 +569,9 @@ if IN_BROWSER:
 
 def run_ves_inversion(soundings) -> None:
     """Invert and interpret the soundings, storing the shared results."""
+    # a fresh siting result is a genuine source change: the wizard
+    # costing prefill must follow it, not a previously loaded project
+    st.session_state.pop("_wiz_load_grace", None)
     results = []
     interps = []
     progress = st.progress(0.0)
@@ -689,6 +692,7 @@ with tab_guide:
             st.number_input(
                 "Planned drilling depth (m)", 0.0, 300.0, 0.0, 5.0,
                 key="wiz_manual_depth",
+                on_change=lambda: st.session_state.pop("_wiz_load_grace", None),
             )
         depth_known = (
             top_interp is not None
