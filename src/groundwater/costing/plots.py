@@ -1,7 +1,8 @@
-"""Cost breakdown figures in the house style."""
+"""Cost breakdown and programme figures in the house style."""
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -50,4 +51,55 @@ def plot_cost_breakdown(
             fontsize=11,
         )
         fig.tight_layout(rect=(0, 0, 1, 0.94))
+    return save_figure(fig, path, style)
+
+
+def plot_programme_gantt(
+    programme,
+    path: str | Path,
+    style: HouseStyle | None = None,
+) -> Path:
+    """Indicative programme of works for a borehole package.
+
+    Single rig schedule in the layout of the RWSN supervision guide's
+    example programme: mobilisation, siting, a drilling front moving
+    through the communities, then testing, platforms, pump
+    installation and demobilisation.
+    """
+    style = style or HouseStyle()
+    days_per_well = programme.well_estimate.inputs.crew_days or 6.0
+    drilling_weeks = max(1, math.ceil(programme.n_attempted * days_per_well / 6.0))
+    siting_weeks = max(1, math.ceil(programme.n_attempted / 10.0))
+    # (activity, start week, duration weeks) with week numbers from 1
+    drill_start = 1 + siting_weeks
+    rows = [
+        ("Mobilisation", 1, 1),
+        ("Borehole siting", 2, siting_weeks),
+        ("Drilling, lining and development", drill_start, drilling_weeks),
+        ("Pumping tests and water quality", drill_start + 1, drilling_weeks),
+        ("Platform casting", drill_start + 2, drilling_weeks),
+        ("Pump installation", drill_start + drilling_weeks, 2),
+        ("Demobilisation", drill_start + drilling_weeks + 1, 1),
+    ]
+    total_weeks = max(start + dur - 1 for _, start, dur in rows)
+    with figure_context(style):
+        fig, ax = plt.subplots(figsize=(style.figure_width_in, 2.9))
+        for i, (label, start, dur) in enumerate(rows):
+            ax.barh(
+                len(rows) - 1 - i, dur, left=start - 0.5, height=0.55,
+                color=style.accent_color if "Drilling" not in label
+                else style.secondary_color,
+                edgecolor="white",
+            )
+        ax.set_yticks(range(len(rows)))
+        ax.set_yticklabels([r[0] for r in rows[::-1]], fontsize=8)
+        ax.set_xticks(range(1, total_weeks + 1))
+        ax.set_xlim(0.5, total_weeks + 0.5)
+        ax.set_xlabel("Week")
+        ax.grid(axis="y", visible=False)
+        ax.set_title(
+            f"Indicative programme: {programme.n_attempted} borehole(s), "
+            f"one rig, about {total_weeks} weeks"
+        )
+        fig.tight_layout()
     return save_figure(fig, path, style)

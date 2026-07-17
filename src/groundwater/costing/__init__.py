@@ -31,7 +31,8 @@ from .enterprise import (
     running_cost_overburden_per_m,
     running_cost_rock_per_m,
 )
-from .plots import plot_cost_breakdown
+from .programme import ProgrammeEstimate, estimate_programme_cost
+from .plots import plot_cost_breakdown, plot_programme_gantt
 from .export import write_boq_workbook
 
 __all__ = [
@@ -47,6 +48,9 @@ __all__ = [
     "inputs_from_design",
     "load_rates",
     "plot_cost_breakdown",
+    "plot_programme_gantt",
+    "ProgrammeEstimate",
+    "estimate_programme_cost",
     "write_boq_workbook",
     "DRAG_BIT",
     "DRILL_STRING",

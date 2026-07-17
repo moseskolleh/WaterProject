@@ -26,10 +26,16 @@ water quality guidelines.
    price kept apart, stage and resource breakdowns)
 7. Drilling supervision checklists (procurement to post-construction)
    with field acceptance checks: sand content, verticality, screen
-   open area, disinfection dose, handpump corrosion risk
-8. Seven report types: geophysical survey, borehole completion,
-   pumping test, water quality, project handover, cost estimate and
-   supervision checklist record
+   open area, disinfection dose, handpump corrosion risk, drilled
+   metres reconciliation against the signed daily logs
+8. Multi-borehole programme estimates (shared mobilisation, expected
+   dry attempts, indicative programme of works)
+9. Location and geology maps: administrative map of the districts and
+   the site on a generalised (schematic) geology of Sierra Leone
+10. Seven report types: geophysical survey, borehole completion,
+    pumping test, water quality, project handover, cost estimate and
+    supervision checklist record; the web app saves and reloads the
+    whole working state as a project file
 
 ## Try it online
 

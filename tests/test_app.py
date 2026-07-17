@@ -111,6 +111,35 @@ def test_supervision_flow(app):
     assert not app.exception
 
 
+def test_programme_flow(app):
+    app.button(key="run_programme").click()
+    app.run()
+    assert not app.exception
+    programme, gantt_path = app.session_state["programme_estimate"]
+    assert programme.n_attempted >= programme.n_successful
+    assert gantt_path.exists()
+
+
+def test_handover_flow(app):
+    app.button(key="build_handover").click()
+    app.run()
+    assert not app.exception
+
+
+def test_maps_flow(app):
+    app.button(key="run_maps").click()
+    app.run()
+    assert not app.exception
+    paths = app.session_state["map_paths"]
+    assert len(paths) >= 2 and all(p.exists() for p in paths)
+
+
+def test_project_state_tracked(app):
+    """The state the project file persists is maintained by the app."""
+    assert "rates_overrides" in app.session_state
+    assert app.session_state["rates_overrides"], "working rates not tracked"
+
+
 def test_templates_tab(app):
     app.button(key="gen_templates").click()
     app.run()

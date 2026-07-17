@@ -190,6 +190,74 @@ def write_drilling_template(path: str | Path, n_rows: int = 20) -> Path:
     return Path(path)
 
 
+def write_daily_log_template(path: str | Path, n_rows: int = 14) -> Path:
+    """Driller's daily report template.
+
+    The daily record the supervision guidance expects: per interval
+    times, depths, formation, water strikes and airlift yield, plus
+    the day totals, standing time and the double signature (rig
+    operator and supervisor) that makes the log auditable against
+    invoiced metres.
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Daily Log"
+    _title(ws, "A1", "DRILLER'S DAILY REPORT", "A1:G1")
+    pairs = [
+        ("A2", "Community", "B2"), ("D2", "Borehole Ref. No.", "E2"),
+        ("A3", "Date", "B3"), ("D3", "Drill rig", "E3"),
+        ("A4", "Contractor", "B4"), ("D4", "Supervisor", "E4"),
+        ("A5", "Weather / site conditions", "B5"), ("D5", "Record taker", "E5"),
+    ]
+    for lab_cell, lab, val_cell in pairs:
+        _label(ws, lab_cell, lab)
+        _value(ws, val_cell)
+    _table_header(
+        ws,
+        7,
+        [
+            "Time from",
+            "Time to",
+            "Depth from (m)",
+            "Depth to (m)",
+            "Formation / activity",
+            "Water strike (m)",
+            "Airlift yield (L/s)",
+        ],
+    )
+    for r in range(8, 8 + n_rows):
+        for c in range(1, 8):
+            ws.cell(row=r, column=c).border = BORDER
+    totals_row = 9 + n_rows
+    for cell, label in (
+        (f"A{totals_row}", "Metres drilled today"),
+        (f"C{totals_row}", "Cumulative metres"),
+        (f"E{totals_row}", "Casing installed today (m)"),
+        (f"A{totals_row + 1}", "Standing / breakdown hours"),
+        (f"C{totals_row + 1}", "Reason"),
+    ):
+        _label(ws, cell, label)
+    for cell in (f"B{totals_row}", f"D{totals_row}", f"F{totals_row}",
+                 f"B{totals_row + 1}", f"D{totals_row + 1}"):
+        _value(ws, cell)
+    sign_row = totals_row + 3
+    for cell, label in (
+        (f"A{sign_row}", "Rig operator signature"),
+        (f"D{sign_row}", "Supervisor signature"),
+    ):
+        _label(ws, cell, label)
+        _value(ws, cell.replace("A", "B").replace("D", "E"))
+    ws.cell(row=sign_row + 2, column=1, value=(
+        "Notes: one row per drilled interval or activity (moving, standing, "
+        "casing). Both signatures are required every day; the office checks "
+        "invoiced metres against these logs."
+    )).font = Font(italic=True, size=9)
+    for col, width in zip("ABCDEFG", (12, 12, 14, 14, 40, 16, 16)):
+        ws.column_dimensions[col].width = width
+    wb.save(path)
+    return Path(path)
+
+
 STANDARD_PARAMETERS = [
     ("pH", "pH units"), ("Electrical conductivity", "uS/cm"), ("TDS", "mg/L"),
     ("Turbidity", "NTU"), ("Temperature", "deg C"), ("Total hardness", "mg/L as CaCO3"),
@@ -246,4 +314,5 @@ def write_all_templates(folder: str | Path) -> list[Path]:
         write_pumping_template(folder / "template_pumping_test.xlsx"),
         write_drilling_template(folder / "template_drilling_log.xlsx"),
         write_quality_template(folder / "template_water_quality.xlsx"),
+        write_daily_log_template(folder / "template_daily_drilling_report.xlsx"),
     ]

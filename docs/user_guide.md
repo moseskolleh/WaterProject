@@ -121,7 +121,36 @@ content, verticality, specific capacity) and the minimum separation
 distances from pollution sources. When a stage is complete, download
 the signed checklist record from "Checklist record and sign off".
 
-## 9. Scanned sheets
+## 9. Handover tab
+
+The closing report for the client and the community. Fill the site
+details in the sidebar once (they feed every tab), then answer the
+handover questions: the pump installed, the tariff agreed, the WASH
+committee members (add rows as needed), any extra works or
+recommendations, and the three signatories. Results already produced
+in the other tabs - the borehole design, the pumping test and the
+water quality verdict - attach to the report automatically; the tab
+shows what is attached before you build it.
+
+## 10. Maps tab
+
+Generates report-ready context maps from the sidebar site details:
+an administrative location map (districts, with yours highlighted)
+and the geological setting on a generalised geology of Sierra Leone,
+both nationally and zoomed to the site. Enter the UTM coordinates in
+the sidebar to place the site star. The geology layer is schematic
+and every figure says so; a survey grade GeoJSON can replace it
+without code changes.
+
+## 11. Saving your work
+
+Everything you enter (site details, checklist answers, costing
+inputs, edited unit rates) lives only in the browser session and is
+lost on refresh. Use the sidebar's "Project file" panel to save the
+whole working state as a small `.yaml` file, and load it back later
+or on another machine to continue where you stopped.
+
+## 12. Scanned sheets
 
 Photograph or scan the paper sheet squarely under good light and
 upload it in the Scanned sheets tab. The extractor transcribes the
@@ -129,7 +158,7 @@ header and the tables and highlights every value it is not sure about
 in amber in the review workbook. Check each highlighted cell against
 the paper before the data is used; nothing is accepted silently.
 
-## 10. Where results go
+## 13. Where results go
 
 Each project has one folder with a fixed layout: `raw` (your files,
 never modified), `processed` (parsed tables), `figures` and
