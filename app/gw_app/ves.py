@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import streamlit as st
 
 from groundwater.ingestion import check_all, read_ves_workbook
@@ -29,10 +31,23 @@ def render() -> None:
         "Upload the VES workbook, run the inversion and get sounding "
         "curves, water zones and a drilling preference table."
     )
-    path = choose_input(
-        "VES workbook (standard template)", "ves", ["xlsx"],
-        ["rokel/rokel_ves.xlsx"],
-    )
+    pending = st.session_state.get("ves_pending_path")
+    if pending and Path(pending).exists():
+        st.info(
+            "Using the extracted sheet from the Scanned sheets tab: "
+            f"{Path(pending).name}",
+            icon="📄",
+        )
+        st.button(
+            "Stop using the extracted sheet", key="ves_pending_clear",
+            on_click=lambda: st.session_state.pop("ves_pending_path", None),
+        )
+        path = Path(pending)
+    else:
+        path = choose_input(
+            "VES workbook (standard template)", "ves", ["xlsx"],
+            ["rokel/rokel_ves.xlsx"],
+        )
     if path is not None:
         soundings = parse_upload(read_ves_workbook, path)
         if soundings is None:

@@ -32,12 +32,17 @@ def _sync_date() -> None:
 
 
 def _autosave_label(path_str: str) -> str:
-    path = Path(path_str)
+    # label must be a pure function of the option string: anything
+    # time-dependent (the file's mtime) breaks widget-state replay
+    return Path(path_str).stem.replace("_", " ")
+
+
+def _autosave_stamp(path_str: str) -> str:
     try:
-        stamp = datetime.fromtimestamp(path.stat().st_mtime)
+        stamp = datetime.fromtimestamp(Path(path_str).stat().st_mtime)
     except OSError:
-        return path.stem.replace("_", " ")
-    return f"{path.stem.replace('_', ' ')} - {stamp:%d %b %Y %H:%M}"
+        return ""
+    return f"{stamp:%d %b %Y %H:%M}"
 
 
 def render() -> None:
@@ -227,6 +232,11 @@ def render() -> None:
                     key="autosave_pick",
                     format_func=_autosave_label,
                 )
+                picked = st.session_state.get("autosave_pick")
+                if picked:
+                    stamp = _autosave_stamp(picked)
+                    if stamp:
+                        st.caption(f"Saved {stamp}.")
                 st.button("Restore autosave", key="autosave_restore",
                           on_click=restore_autosave)
             if st.session_state.pop("project_loaded", False):

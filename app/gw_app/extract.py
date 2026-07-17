@@ -26,6 +26,12 @@ def render() -> None:
             "for text PDFs and [ai] for photographed sheets."
         )
     upload = st.file_uploader("Scan or PDF", type=["pdf", "png", "jpg", "jpeg"], key="scan")
+    if st.toggle("📷 Photograph the sheet with this device instead",
+                 key="scan_use_camera"):
+        camera_shot = st.camera_input("Photograph the field sheet",
+                                      key="scan_camera")
+        if camera_shot is not None:
+            upload = camera_shot
     use_ai = st.checkbox("Use AI assisted extraction (needs ANTHROPIC_API_KEY)")
     if not IN_BROWSER:
         st.caption(
@@ -63,3 +69,12 @@ def render() -> None:
                 template_path = workdir() / (path.stem + "_ves_template.xlsx")
                 fill_ves_template(document, template_path)
                 offer_download(template_path, "Download filled VES template (.xlsx)")
+                st.button(
+                    "Use in the VES survey tab", key="send_ves",
+                    help="The VES tab analyses this filled template "
+                    "directly - no download and re-upload needed. Check "
+                    "the review workbook for flagged values first.",
+                    on_click=lambda p=str(template_path): st.session_state.update(
+                        ves_pending_path=p
+                    ),
+                )

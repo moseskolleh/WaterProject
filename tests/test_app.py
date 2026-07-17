@@ -369,6 +369,36 @@ def test_supervision_resume_jump(app):
     assert app.session_state["sup_stage"] in stages
 
 
+def test_ves_pending_path_from_extraction(sample_data):
+    """The Scanned sheets handoff: a filled template path in session
+    state makes the VES tab analyse it directly."""
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.run()
+    template = (
+        Path(APP).resolve().parents[1]
+        / "examples" / "data" / "rokel" / "rokel_ves.xlsx"
+    )
+    at.session_state["ves_pending_path"] = str(template)
+    at.run()
+    assert not at.exception
+    successes = " ".join(str(s.value) for s in at.success)
+    assert "Parsed 2 sounding(s)" in successes
+
+    at.button(key="ves_pending_clear").click()
+    at.run()
+    assert not at.exception
+    assert "ves_pending_path" not in at.session_state
+
+
+def test_camera_toggle_renders(app):
+    app.toggle(key="scan_use_camera").set_value(True)
+    app.run()
+    assert not app.exception
+    app.toggle(key="scan_use_camera").set_value(False)
+    app.run()
+    assert not app.exception
+
+
 def test_pdf_conversion_helper(tmp_path):
     """Graceful with and without LibreOffice on the machine."""
     import sys
