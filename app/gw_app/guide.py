@@ -7,6 +7,7 @@ import streamlit as st
 from groundwater.costing import CostingInputs
 from groundwater.ingestion import read_ves_workbook
 
+from . import status
 from .common import (
     cached_rates,
     choose_input,
@@ -14,6 +15,7 @@ from .common import (
     parse_upload,
     run_ves_inversion,
     site_from_state,
+    top_interpretation,
 )
 
 _WIZ_STEPS = ("Site details", "Siting (VES)", "Costing", "Ready to drill")
@@ -21,6 +23,9 @@ _WIZ_STEPS = ("Site details", "Siting (VES)", "Costing", "Ready to drill")
 
 def render() -> None:
     wiz_step = int(st.session_state.get("wiz_step", 0))
+
+    with st.expander("📋 Project status", expanded=(wiz_step == 3)):
+        status.render_board()
 
     st.header("Guided project setup")
     st.caption(
@@ -37,17 +42,9 @@ def render() -> None:
     def _wiz_go(step: int) -> None:
         st.session_state.wiz_step = step
 
-    def _top_interp():
-        """Best ranked interpretation, read fresh from session state.
-
-        Called where needed rather than once per rerun, so the step
-        that has just run the inversion sees its own result.
-        """
-        if "ves_results" not in st.session_state:
-            return None
-        _, _, interps = st.session_state.ves_results
-        ranked = sorted(interps, key=lambda i: (i.rank or 99, -i.score))
-        return ranked[0] if ranked else None
+    # read fresh where needed, so the step that has just run the
+    # inversion sees its own result
+    _top_interp = top_interpretation
 
     site = site_from_state()
 

@@ -407,6 +407,19 @@ def checklist_responses(items) -> dict[str, ChecklistResponse]:
 # ---------------------------------------------------------------------------
 
 
+def top_interpretation():
+    """Best ranked VES interpretation, read fresh from session state.
+
+    Called where needed rather than once per rerun, so code that has
+    just run the inversion sees its own result.
+    """
+    if "ves_results" not in st.session_state:
+        return None
+    _, _, interps = st.session_state.ves_results
+    ranked = sorted(interps, key=lambda i: (i.rank or 99, -i.score))
+    return ranked[0] if ranked else None
+
+
 def run_ves_inversion(soundings) -> None:
     """Invert and interpret the soundings, storing the shared results."""
     # a fresh siting result is a genuine source change: the wizard

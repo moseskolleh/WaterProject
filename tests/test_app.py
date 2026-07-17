@@ -250,6 +250,23 @@ def test_templates_tab(app):
     assert not app.exception
 
 
+def test_status_board_and_consistency(app):
+    """The project status board renders and cross-tab depth
+    disagreements surface as warnings."""
+    labels = [m.label for m in app.metric]
+    for expected in ("Site", "Siting (VES)", "Cost estimate", "Reports built"):
+        assert expected in labels
+    # the earlier flows produced a siting result and a design; when the
+    # depths genuinely disagree the board must say so
+    _, _, interps = app.session_state["ves_results"]
+    ranked = sorted(interps, key=lambda i: (i.rank or 99, -i.score))
+    rec = float(ranked[0].max_drilling_depth_m)
+    design = app.session_state["borehole_design"]
+    warnings = " ".join(str(w.value) for w in app.warning)
+    if abs(rec - design.total_depth_m) > max(5.0, 0.1 * max(rec, design.total_depth_m)):
+        assert "siting result recommends" in warnings
+
+
 def test_date_picker_stores_iso(app):
     from datetime import date as _date
 

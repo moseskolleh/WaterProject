@@ -18,6 +18,7 @@ from groundwater.costing import (
 )
 from groundwater.reporting.costing import CostReportInputs, build_cost_report
 
+from . import status
 from .common import (
     app_config,
     cached_rates,
@@ -253,6 +254,8 @@ def render() -> None:
     estimate = st.session_state.get("cost_estimate")
     if estimate is not None:
         show_flags(estimate.flags)
+        for warning in status.consistency_warnings():
+            st.warning(warning, icon="⚠️")
         cols = st.columns(4)
         cols[0].metric("Direct works cost", f"${estimate.direct_cost_usd:,.0f}")
         cols[1].metric(
