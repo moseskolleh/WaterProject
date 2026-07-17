@@ -26,6 +26,7 @@ from ..ves.classify import classify_curve
 from ..ves.interpret import SiteInterpretation, drilling_preference_table
 from ..ves.inversion import InversionResult
 from ..ves.plots import plot_model_pseudosection, plot_sounding_curve
+from .context import context_map_figures
 from .docx_utils import ReportBuilder
 
 _DEFAULT_GEOLOGY = (
@@ -132,6 +133,25 @@ def build_geophysical_report(
     # ---- 2 background / geology ---------------------------------------------
     rb.heading("2. Background and Geology of the Project Area", 1)
     rb.paragraph(_geology_for(district, inputs.geology_text), align="justify")
+    context_maps = context_map_figures(site, inputs.figures_dir, config.style)
+    if context_maps:
+        rb.figure(
+            context_maps["admin"],
+            f"Location of {community}. Boundaries from geoBoundaries "
+            "(CC BY 4.0).",
+        )
+        rb.figure(
+            context_maps["hydrogeology"],
+            "Aquifer type and productivity around the site, from the BGS "
+            "Africa Groundwater Atlas country map (CC BY-SA 4.0).",
+        )
+        rb.figure(
+            context_maps["geology"],
+            "Geological setting around the site, from the USGS Geologic "
+            "Map of Africa (1:5,000,000). The Geology of Sierra Leone map "
+            "(Ministry of Water Resources/SALWACO, 2017) gives the "
+            "detailed local formations.",
+        )
 
     # ---- 3 field work -----------------------------------------------------------
     rb.heading("3. Field Work", 1)

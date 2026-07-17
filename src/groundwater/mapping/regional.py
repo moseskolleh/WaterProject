@@ -1,104 +1,185 @@
 """Regional context maps: geological setting and administrative location.
 
-Both maps draw in geographic coordinates (WGS84) from bundled
-schematic datasets: a generalised geology layer
-(``data/sl_geology_simplified.geojson``, digitised approximately from
-published small scale maps) and the approximate district extents
-(``data/sl_districts.csv``). They are context figures for reports -
-clearly marked schematic - and both accept a replacement GeoJSON when
-survey grade data is available.
+Both maps draw from real, freely licensed datasets bundled as package
+data (see ``web/build_geodata.py`` for the reproducible preparation):
+
+- ``data/sl_geology_usgs.geojson``: the USGS Geologic Map of Africa
+  (geo2_7g, Open-File Report 97-470A; public domain, 1:5,000,000
+  scale) clipped to the Sierra Leone window, keeping the dataset's
+  own unit codes, names, eras and colours.
+- ``data/sl_admin_geoboundaries.geojson``: national outline and
+  district polygons from geoBoundaries (CC BY 4.0). The release
+  predates the 2017 creation of Karene and Falaba districts.
+
+Every figure carries the attribution of its sources. Both loaders
+accept a replacement GeoJSON path, so newer or survey grade data can
+be dropped in without code changes.
 """
 
 from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
 
-import csv
-
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.patches import Polygon as MplPolygon
+from matplotlib.patches import PathPatch
+from matplotlib.path import Path as MplPath
 
 from ..config import HouseStyle
 from ..models import SiteMetadata
 from ..plotting import figure_context, save_figure
 
-_DISCLAIMER = "Schematic; boundaries approximate, not survey grade"
+GEOLOGY_CREDIT = "Geology: USGS Geologic Map of Africa (1:5M), public domain"
+HYDRO_CREDIT = (
+    "Hydrogeology: BGS Africa Groundwater Atlas (OR/21/063), CC BY-SA 4.0"
+)
+ADMIN_CREDIT = (
+    "Boundaries: geoBoundaries, CC BY 4.0 (predates the 2017 "
+    "Karene and Falaba districts)"
+)
+
+# Order for the geology legend, oldest last.
+_ERA_ORDER = ("Cenozoic", "Mesozoic", "Paleozoic", "Precambrian", "Non-geological")
 
 
 @dataclass
 class GeologyUnit:
-    unit: str
-    lithology: str
+    """One polygon of the geological map."""
+
+    glg: str  # USGS unit code, e.g. "pCm"
+    unit: str  # unit name from the dataset, e.g. "Precambrian"
+    era: str
     color: str
-    aquifer: str
-    rings: list[np.ndarray]  # one or more (n, 2) lon/lat arrays
+    ring: np.ndarray  # (n, 2) lon/lat outer ring
 
 
-def load_geology(path: str | Path | None = None) -> list[GeologyUnit]:
-    """Load the geology layer (bundled schematic unless a path is given)."""
+@dataclass
+class AdminArea:
+    level: str  # "ADM0" | "ADM2"
+    name: str
+    rings: list[np.ndarray] = field(default_factory=list)
+
+    @property
+    def label_point(self) -> tuple[float, float]:
+        """Centroid of the largest ring (shoelace)."""
+        best = max(self.rings, key=lambda r: abs(_ring_area(r)))
+        return _ring_centroid(best)
+
+
+def _ring_area(ring: np.ndarray) -> float:
+    x, y = ring[:, 0], ring[:, 1]
+    return 0.5 * float(np.sum(x[:-1] * y[1:] - x[1:] * y[:-1]))
+
+
+def _ring_centroid(ring: np.ndarray) -> tuple[float, float]:
+    x, y = ring[:, 0], ring[:, 1]
+    cross = x[:-1] * y[1:] - x[1:] * y[:-1]
+    area = np.sum(cross) / 2.0
+    if abs(area) < 1e-12:
+        return float(x.mean()), float(y.mean())
+    cx = np.sum((x[:-1] + x[1:]) * cross) / (6.0 * area)
+    cy = np.sum((y[:-1] + y[1:]) * cross) / (6.0 * area)
+    return float(cx), float(cy)
+
+
+def _read_geojson(name: str, path: str | Path | None) -> dict:
     if path is not None:
         text = Path(path).read_text(encoding="utf-8")
     else:
-        text = (
-            resources.files("groundwater") / "data" / "sl_geology_simplified.geojson"
-        ).read_text(encoding="utf-8")
-    data = json.loads(text)
+        text = (resources.files("groundwater") / "data" / name).read_text(
+            encoding="utf-8"
+        )
+    return json.loads(text)
+
+
+def load_geology(path: str | Path | None = None) -> list[GeologyUnit]:
+    """The USGS geology polygons for the Sierra Leone window."""
+    data = _read_geojson("sl_geology_usgs.geojson", path)
     units: list[GeologyUnit] = []
     for feature in data.get("features", []):
         props = feature.get("properties", {})
         geom = feature.get("geometry", {})
-        rings: list[np.ndarray] = []
-        if geom.get("type") == "Polygon":
-            rings.append(np.asarray(geom["coordinates"][0], dtype=float))
-        elif geom.get("type") == "MultiPolygon":
-            for poly in geom["coordinates"]:
-                rings.append(np.asarray(poly[0], dtype=float))
-        if not rings:
-            continue
-        units.append(
-            GeologyUnit(
-                unit=props.get("unit", "unit"),
-                lithology=props.get("lithology", ""),
-                color=props.get("color", "#CCCCCC"),
-                aquifer=props.get("aquifer", ""),
-                rings=rings,
-            )
+        polys = (
+            geom["coordinates"]
+            if geom.get("type") == "MultiPolygon"
+            else [geom.get("coordinates", [])]
         )
+        for poly in polys:
+            if not poly:
+                continue
+            units.append(
+                GeologyUnit(
+                    glg=props.get("glg", ""),
+                    unit=props.get("unit", props.get("glg", "unit")),
+                    era=props.get("era", ""),
+                    color=props.get("color", "#CCCCCC"),
+                    ring=np.asarray(poly[0], dtype=float),
+                )
+            )
     return units
 
 
-def _district_centres(path: str | Path | None = None) -> list[dict]:
-    if path is not None:
-        text = Path(path).read_text(encoding="utf-8")
-    else:
-        text = (
-            resources.files("groundwater") / "data" / "sl_districts.csv"
-        ).read_text(encoding="utf-8")
-    rows = []
-    for row in csv.DictReader(text.splitlines()):
-        rows.append(
-            {
-                "district": row["district"],
-                "province": row["province"],
-                "lon": (float(row["lon_min"]) + float(row["lon_max"])) / 2.0,
-                "lat": (float(row["lat_min"]) + float(row["lat_max"])) / 2.0,
-                "bounds": (
-                    float(row["lon_min"]), float(row["lon_max"]),
-                    float(row["lat_min"]), float(row["lat_max"]),
-                ),
-            }
+def load_hydrogeology(path: str | Path | None = None) -> list[GeologyUnit]:
+    """The BGS aquifer type and productivity polygons.
+
+    Returned as :class:`GeologyUnit` items: ``glg`` carries the BGS
+    combined code (for example ``B-L``), ``unit`` the readable label
+    and ``era`` the underlying geology class.
+    """
+    data = _read_geojson("sl_hydrogeology_bgs.geojson", path)
+    units: list[GeologyUnit] = []
+    for feature in data.get("features", []):
+        props = feature.get("properties", {})
+        geom = feature.get("geometry", {})
+        polys = (
+            geom["coordinates"]
+            if geom.get("type") == "MultiPolygon"
+            else [geom.get("coordinates", [])]
         )
-    return rows
+        for poly in polys:
+            if not poly:
+                continue
+            units.append(
+                GeologyUnit(
+                    glg=props.get("code", ""),
+                    unit=props.get("unit", "unit"),
+                    era=props.get("geology", ""),
+                    color=props.get("color", "#CCCCCC"),
+                    ring=np.asarray(poly[0], dtype=float),
+                )
+            )
+    return units
 
 
-def _outline(units: list[GeologyUnit]) -> np.ndarray | None:
-    """The national outline is the first (bottom) geology polygon."""
-    return units[0].rings[0] if units else None
+def load_admin(path: str | Path | None = None) -> tuple[AdminArea, list[AdminArea]]:
+    """The national outline and the district polygons."""
+    data = _read_geojson("sl_admin_geoboundaries.geojson", path)
+    outline: AdminArea | None = None
+    districts: list[AdminArea] = []
+    for feature in data.get("features", []):
+        props = feature.get("properties", {})
+        geom = feature.get("geometry", {})
+        polys = (
+            geom["coordinates"]
+            if geom.get("type") == "MultiPolygon"
+            else [geom.get("coordinates", [])]
+        )
+        area = AdminArea(
+            level=props.get("level", "ADM2"),
+            name=props.get("name", ""),
+            rings=[np.asarray(p[0], dtype=float) for p in polys if p],
+        )
+        if area.level == "ADM0":
+            outline = area
+        else:
+            districts.append(area)
+    if outline is None:
+        raise ValueError("admin dataset has no ADM0 outline feature")
+    return outline, districts
 
 
 def _site_lonlat(site: SiteMetadata) -> tuple[float, float] | None:
@@ -109,14 +190,49 @@ def _site_lonlat(site: SiteMetadata) -> tuple[float, float] | None:
     return lon, lat
 
 
-def _geo_axes_finish(ax, mean_lat: float, style: HouseStyle) -> None:
-    """Aspect, scale bar, north arrow and grid for a lon/lat map."""
+def _mask_outside_country(ax, outline: AdminArea, style: HouseStyle) -> None:
+    """White out everything beyond the national boundary.
+
+    A compound path (a large rectangle with the country rings as
+    holes, even-odd filled) hides the neighbouring countries' geology
+    without needing polygon clipping.
+    """
+    x0, x1 = ax.get_xlim()
+    y0, y1 = ax.get_ylim()
+    pad = 2.0
+    rect = np.array(
+        [
+            [x0 - pad, y0 - pad], [x1 + pad, y0 - pad],
+            [x1 + pad, y1 + pad], [x0 - pad, y1 + pad],
+            [x0 - pad, y0 - pad],
+        ]
+    )
+    vertices = [rect]  # counter-clockwise outer rectangle
+    codes = [
+        [MplPath.MOVETO] + [MplPath.LINETO] * (len(rect) - 2) + [MplPath.CLOSEPOLY]
+    ]
+    for ring in outline.rings:
+        # holes must wind opposite to the outer ring or they fill solid
+        hole = ring[::-1] if _ring_area(ring) > 0 else ring
+        vertices.append(hole)
+        codes.append(
+            [MplPath.MOVETO] + [MplPath.LINETO] * (len(hole) - 2) + [MplPath.CLOSEPOLY]
+        )
+    compound = MplPath(
+        np.concatenate(vertices), np.concatenate(codes).tolist()
+    )
+    ax.add_patch(
+        PathPatch(compound, facecolor=style.background, edgecolor="none", zorder=4)
+    )
+
+
+def _geo_axes_finish(ax, mean_lat: float, credit: str) -> None:
+    """Aspect, scale bar, north arrow, grid and attribution."""
     ax.set_aspect(1.0 / math.cos(math.radians(mean_lat)))
     ax.grid(True, color="#DDDDDD", lw=0.5)
     ax.tick_params(labelsize=7.5)
     ax.set_xlabel("Longitude", fontsize=8.5)
     ax.set_ylabel("Latitude", fontsize=8.5)
-    # scale bar sized to a round number near a quarter of the width
     x0, x1 = ax.get_xlim()
     y0, y1 = ax.get_ylim()
     km_per_deg = 111.32 * math.cos(math.radians(mean_lat))
@@ -136,7 +252,6 @@ def _geo_axes_finish(ax, mean_lat: float, style: HouseStyle) -> None:
             solid_capstyle="butt", zorder=9)
     ax.text(bx + bar_deg / 2, by + (y1 - y0) * 0.018, f"{nice:g} km",
             ha="center", fontsize=8, zorder=9)
-    # north arrow
     nx = x1 - (x1 - x0) * 0.07
     ny = y1 - (y1 - y0) * 0.16
     dy = (y1 - y0) * 0.09
@@ -144,8 +259,9 @@ def _geo_axes_finish(ax, mean_lat: float, style: HouseStyle) -> None:
                 arrowprops=dict(arrowstyle="-|>", color="#222222", lw=1.6))
     ax.text(nx, ny + dy * 1.15, "N", ha="center", fontsize=10,
             fontweight="bold")
-    ax.text(0.99, 0.005, _DISCLAIMER, transform=ax.transAxes, fontsize=6.5,
-            ha="right", va="bottom", color="#888888", style="italic")
+    ax.text(0.99, 0.005, credit, transform=ax.transAxes, fontsize=6.0,
+            ha="right", va="bottom", color="#888888", style="italic",
+            zorder=9)
 
 
 def _mark_site(ax, site: SiteMetadata, color: str) -> tuple[float, float] | None:
@@ -155,43 +271,47 @@ def _mark_site(ax, site: SiteMetadata, color: str) -> tuple[float, float] | None
     lon, lat = lonlat
     ax.plot(lon, lat, marker="*", ms=16, mfc=color, mec="white", mew=1.2,
             zorder=8)
-    label = site.community or "Site"
-    ax.annotate(label, xy=(lon, lat), xytext=(8, 8),
+    ax.annotate(site.community or "Site", xy=(lon, lat), xytext=(8, 8),
                 textcoords="offset points", fontsize=9, fontweight="bold",
                 color=color, zorder=8)
-    return lon, lat
+    return lonlat
 
 
-def plot_geological_map(
-    site: SiteMetadata | None = None,
-    path: str | Path | None = None,
-    style: HouseStyle | None = None,
-    radius_km: float | None = None,
-    geology_path: str | Path | None = None,
-    title: str | None = None,
+def _plot_units_map(
+    units: list[GeologyUnit],
+    credit: str,
+    legend_title: str,
+    scope_word: str,
+    site: SiteMetadata | None,
+    path: str | Path | None,
+    style: HouseStyle | None,
+    radius_km: float | None,
+    admin_path: str | Path | None,
+    title: str | None,
+    label_with_code: bool,
 ):
-    """Generalised geological map, national or zoomed around the site.
-
-    ``radius_km`` zooms the map to a window around the site (a local
-    geological setting figure); leave it ``None`` for the national map.
-    """
+    """Shared renderer for the unit-coloured maps (geology, hydrogeology)."""
     style = style or HouseStyle()
-    units = load_geology(geology_path)
-    outline = _outline(units)
+    outline, _ = load_admin(admin_path)
     with figure_context(style):
         fig, ax = plt.subplots(figsize=(style.figure_width_in, 5.6))
-        legend_handles: dict[str, MplPolygon] = {}
+        legend_handles: dict[str, PathPatch] = {}
+        legend_order: dict[str, tuple[int, str]] = {}
         for unit in units:
-            for ring in unit.rings:
-                patch = MplPolygon(
-                    ring, closed=True, facecolor=unit.color,
-                    edgecolor="#666666", lw=0.5, alpha=0.9,
-                )
-                ax.add_patch(patch)
-                legend_handles.setdefault(unit.unit, patch)
-        if outline is not None:
-            ax.plot(outline[:, 0], outline[:, 1], color="#333333", lw=1.2,
-                    zorder=7)
+            patch = plt.Polygon(
+                unit.ring, closed=True, facecolor=unit.color,
+                edgecolor="#666666", lw=0.4, zorder=2,
+            )
+            ax.add_patch(patch)
+            label = (
+                f"{unit.unit} ({unit.glg})" if label_with_code and unit.glg
+                else unit.unit
+            )
+            legend_handles.setdefault(label, patch)
+            era_rank = (
+                _ERA_ORDER.index(unit.era) if unit.era in _ERA_ORDER else 99
+            )
+            legend_order.setdefault(label, (era_rank, unit.glg))
 
         site_lonlat = _mark_site(ax, site, "#C1272D") if site else None
         if radius_km and site_lonlat is not None:
@@ -200,20 +320,29 @@ def plot_geological_map(
             dlon = radius_km / (111.32 * math.cos(math.radians(lat)))
             ax.set_xlim(lon - dlon, lon + dlon)
             ax.set_ylim(lat - dlat, lat + dlat)
-        elif outline is not None:
-            ax.set_xlim(outline[:, 0].min() - 0.15, outline[:, 0].max() + 0.15)
-            ax.set_ylim(outline[:, 1].min() - 0.12, outline[:, 1].max() + 0.12)
+        else:
+            all_pts = np.concatenate(outline.rings)
+            ax.set_xlim(all_pts[:, 0].min() - 0.15, all_pts[:, 0].max() + 0.15)
+            ax.set_ylim(all_pts[:, 1].min() - 0.12, all_pts[:, 1].max() + 0.12)
+
+        _mask_outside_country(ax, outline, style)
+        for ring in outline.rings:
+            ax.plot(ring[:, 0], ring[:, 1], color="#333333", lw=1.1, zorder=5)
 
         mean_lat = float(np.mean(ax.get_ylim()))
-        _geo_axes_finish(ax, mean_lat, style)
+        _geo_axes_finish(ax, mean_lat, f"{credit}. {ADMIN_CREDIT}")
+        ordered = sorted(legend_handles, key=lambda k: legend_order[k])
         ax.legend(
-            legend_handles.values(), legend_handles.keys(),
-            loc="upper left", fontsize=7, framealpha=0.95,
-            title="Generalised geology", title_fontsize=7.5,
+            [legend_handles[k] for k in ordered], ordered,
+            loc="upper left", fontsize=6.5, framealpha=0.95,
+            title=legend_title, title_fontsize=7.5,
         )
         if title is None:
             where = (site.community or "the site") if site else "Sierra Leone"
-            scope = "Local geological setting" if radius_km else "Geological map"
+            scope = (
+                f"Local {scope_word.lower()} setting" if radius_km
+                else f"{scope_word} map"
+            )
             title = f"{scope} - {where}" if site else f"{scope} of Sierra Leone"
         ax.set_title(title)
         fig.tight_layout()
@@ -222,62 +351,97 @@ def plot_geological_map(
         return fig
 
 
+def plot_geological_map(
+    site: SiteMetadata | None = None,
+    path: str | Path | None = None,
+    style: HouseStyle | None = None,
+    radius_km: float | None = None,
+    geology_path: str | Path | None = None,
+    admin_path: str | Path | None = None,
+    title: str | None = None,
+):
+    """Geological map from the USGS data, national or zoomed to the site.
+
+    ``radius_km`` zooms to a window around the site (local geological
+    setting); leave it ``None`` for the national map.
+    """
+    return _plot_units_map(
+        load_geology(geology_path),
+        GEOLOGY_CREDIT,
+        "Geological units (USGS)",
+        "Geological",
+        site, path, style, radius_km, admin_path, title,
+        label_with_code=True,
+    )
+
+
+def plot_hydrogeology_map(
+    site: SiteMetadata | None = None,
+    path: str | Path | None = None,
+    style: HouseStyle | None = None,
+    radius_km: float | None = None,
+    hydro_path: str | Path | None = None,
+    admin_path: str | Path | None = None,
+    title: str | None = None,
+):
+    """Aquifer type and productivity map from the BGS Atlas data."""
+    return _plot_units_map(
+        load_hydrogeology(hydro_path),
+        HYDRO_CREDIT,
+        "Aquifer type and productivity (BGS)",
+        "Hydrogeological",
+        site, path, style, radius_km, admin_path, title,
+        label_with_code=False,
+    )
+
+
 def plot_admin_map(
     site: SiteMetadata | None = None,
     path: str | Path | None = None,
     style: HouseStyle | None = None,
+    admin_path: str | Path | None = None,
     title: str | None = None,
 ):
-    """Administrative location map: districts, provinces and the site."""
+    """Administrative location map from the geoBoundaries polygons."""
     style = style or HouseStyle()
-    units = load_geology()
-    outline = _outline(units)
-    districts = _district_centres()
+    outline, districts = load_admin(admin_path)
     highlight = (site.district or "").strip().lower() if site else ""
     with figure_context(style):
         fig, ax = plt.subplots(figsize=(style.figure_width_in, 5.6))
-        if outline is not None:
-            ax.add_patch(
-                MplPolygon(outline, closed=True, facecolor="#F2F6FA",
-                           edgecolor="#333333", lw=1.2)
-            )
-        for row in districts:
-            is_home = row["district"].strip().lower() == highlight
-            if is_home:
-                lon_min, lon_max, lat_min, lat_max = row["bounds"]
+        for district in districts:
+            is_home = district.name.strip().lower() == highlight
+            for ring in district.rings:
                 ax.add_patch(
-                    MplPolygon(
-                        np.array([
-                            [lon_min, lat_min], [lon_max, lat_min],
-                            [lon_max, lat_max], [lon_min, lat_max],
-                        ]),
-                        closed=True, facecolor=style.accent_color, alpha=0.15,
-                        edgecolor=style.accent_color, lw=1.0, ls="--",
+                    plt.Polygon(
+                        ring, closed=True,
+                        facecolor=style.accent_color if is_home else "#F2F6FA",
+                        alpha=0.35 if is_home else 1.0,
+                        edgecolor="#8FA6B8", lw=0.7, zorder=2,
                     )
                 )
-            ax.plot(row["lon"], row["lat"], "o", ms=3,
-                    color=style.accent_color if is_home else "#888888")
+            lx, ly = district.label_point
             ax.annotate(
-                row["district"], xy=(row["lon"], row["lat"]), xytext=(0, 4),
-                textcoords="offset points", ha="center",
-                fontsize=6.5 if not is_home else 7.5,
+                district.name, xy=(lx, ly), ha="center", va="center",
+                fontsize=7.5 if is_home else 6.5,
                 fontweight="bold" if is_home else "normal",
                 color=style.accent_color if is_home else "#555555",
+                zorder=6,
             )
+        for ring in outline.rings:
+            ax.plot(ring[:, 0], ring[:, 1], color="#333333", lw=1.2, zorder=5)
         if site is not None:
             _mark_site(ax, site, "#C1272D")
-        # neighbours and sea for orientation
         ax.text(-11.2, 9.82, "GUINEA", fontsize=8, color="#999999",
                 fontweight="bold")
         ax.text(-10.95, 7.15, "LIBERIA", fontsize=8, color="#999999",
                 fontweight="bold")
         ax.text(-13.25, 7.45, "Atlantic\nOcean", fontsize=8, color="#7FA8C9",
                 style="italic", ha="center")
-        if outline is not None:
-            ax.set_xlim(outline[:, 0].min() - 0.2, outline[:, 0].max() + 0.15)
-            ax.set_ylim(outline[:, 1].min() - 0.15, outline[:, 1].max() + 0.12)
+        all_pts = np.concatenate(outline.rings)
+        ax.set_xlim(all_pts[:, 0].min() - 0.2, all_pts[:, 0].max() + 0.15)
+        ax.set_ylim(all_pts[:, 1].min() - 0.15, all_pts[:, 1].max() + 0.12)
         mean_lat = float(np.mean(ax.get_ylim()))
-        _geo_axes_finish(ax, mean_lat, style)
+        _geo_axes_finish(ax, mean_lat, ADMIN_CREDIT)
         if title is None:
             title = (
                 f"Location map - {site.community}"

@@ -135,12 +135,13 @@ shows what is attached before you build it.
 ## 10. Maps tab
 
 Generates report-ready context maps from the sidebar site details:
-an administrative location map (districts, with yours highlighted)
-and the geological setting on a generalised geology of Sierra Leone,
-both nationally and zoomed to the site. Enter the UTM coordinates in
-the sidebar to place the site star. The geology layer is schematic
-and every figure says so; a survey grade GeoJSON can replace it
-without code changes.
+an administrative location map (districts, with yours highlighted),
+the geological setting (USGS Geologic Map of Africa) and the aquifer
+type and productivity map (BGS Africa Groundwater Atlas), nationally
+or zoomed to the site. Enter the UTM coordinates in the sidebar to
+place the site star. Every figure carries its data attribution, and
+the same maps embed automatically into the geophysical survey and
+handover reports when the site has coordinates.
 
 ## 11. Saving your work
 

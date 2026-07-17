@@ -54,13 +54,22 @@ need real project inputs or decisions to finish calibrating it.
    the default exchange rate (23 SLE per USD) and whether GST (15
    percent) applies to the contracts in question.
 
-9. **The geology layer is schematic (added with the maps).** The
-   bundled `groundwater/data/sl_geology_simplified.geojson` is
-   digitised approximately from published small scale maps and is
-   clearly marked schematic on every figure. When a survey grade
-   dataset from the Geological Survey of Sierra Leone (or BGS) is
-   available, drop it in with the same properties (unit, lithology,
-   color) and the maps use it directly.
+9. **Map data notes (updated when real datasets were bundled).** The
+   maps now draw from real, freely licensed data: geology from the
+   USGS Geologic Map of Africa (public domain, 1:5,000,000), aquifer
+   type and productivity from the BGS Africa Groundwater Atlas
+   country map (CC BY-SA 4.0, source shapefile committed under
+   `WaterProjectFiles/SierraLeone_BGS_Hydrogeology/`), and boundaries
+   from geoBoundaries (CC BY 4.0). Two known limits: (a) the
+   geoBoundaries district set predates the 2017 creation of Karene
+   and Falaba (14 districts; the maps say so) - the OCHA COD-AB
+   dataset on HDX has the 16 district version if boundary accuracy
+   there matters; (b) the USGS geology is continental scale - the
+   detailed 28 formation Geology of Sierra Leone map (Ministry of
+   Water Resources/SALWACO 2017, PDF in `WaterProjectFiles/`) is the
+   reference for local formations, and if its GIS data can be
+   obtained from SALGRID it can replace the bundled layer via
+   `web/build_geodata.py`.
 
 10. **Supervision checklists may need project tailoring (added with
    the supervision module).** The stages and items in
