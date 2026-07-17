@@ -30,8 +30,10 @@ water quality guidelines.
    metres reconciliation against the signed daily logs
 8. Multi-borehole programme estimates (shared mobilisation, expected
    dry attempts, indicative programme of works)
-9. Location and geology maps: administrative map of the districts and
-   the site on a generalised (schematic) geology of Sierra Leone
+9. Location, geology and aquifer maps from real open datasets
+   (geoBoundaries districts CC BY 4.0, USGS Geologic Map of Africa,
+   BGS Africa Groundwater Atlas aquifer productivity CC BY-SA 4.0),
+   embedded automatically into the survey and handover reports
 10. Seven report types: geophysical survey, borehole completion,
     pumping test, water quality, project handover, cost estimate and
     supervision checklist record; the web app saves and reloads the
@@ -132,10 +134,14 @@ Pricing: a Guide for Water Well Drilling Enterprises", "Procurement
 and Contract Management of Drilled Well Construction", "Professional
 Water Well Drilling", "Supervising Water Well Drilling", the UNICEF
 "Borehole Drilling - Planning, Contracting and Management" toolkit
-and the WASH Funders infrastructure checklists. Checklist items,
-separation distances and unit rates live in editable CSVs under
-`src/groundwater/data/`, so field practice can be adapted without
-code changes.
+and the WASH Funders infrastructure checklists, plus the Geology of
+Sierra Leone map (Ministry of Water Resources/SALWACO 2017) and the
+BGS Africa Groundwater Atlas hydrogeology shapefile (CC BY-SA 4.0)
+that grounds the aquifer maps. Checklist items, separation distances
+and unit rates live in editable CSVs under `src/groundwater/data/`,
+so field practice can be adapted without code changes;
+`web/build_geodata.py` documents how the bundled map layers are
+derived from their sources.
 
 Key behaviours built in from the real field sheets:
 

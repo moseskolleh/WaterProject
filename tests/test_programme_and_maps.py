@@ -17,8 +17,16 @@ from groundwater.ingestion.templates import (
     write_all_templates,
     write_daily_log_template,
 )
-from groundwater.mapping import load_geology, plot_admin_map, plot_geological_map
+from groundwater.mapping import (
+    load_admin,
+    load_geology,
+    load_hydrogeology,
+    plot_admin_map,
+    plot_geological_map,
+    plot_hydrogeology_map,
+)
 from groundwater.models import SiteMetadata
+from groundwater.reporting.context import context_map_figures
 from groundwater.supervision import metres_reconciliation_check
 
 
@@ -81,19 +89,39 @@ def test_programme_gantt(tmp_path):
 # Regional maps
 # ---------------------------------------------------------------------------
 
-def test_geology_layer_loads_clean():
+def test_geology_layer_is_real_usgs_data():
     units = load_geology()
-    assert len(units) >= 6
-    names = {u.unit for u in units}
-    assert {"Basement Complex", "Bullom Group", "Rokel River Group"} <= names
+    assert len(units) >= 50
+    codes = {u.glg for u in units}
+    # the USGS units present in the Sierra Leone window
+    assert {"pCm", "Qe", "Mi"} <= codes
     for unit in units:
         assert unit.color.startswith("#")
-        for ring in unit.rings:
-            assert ring.shape[1] == 2
-            # rings are closed and inside the Sierra Leone bounding box
-            assert np.allclose(ring[0], ring[-1])
-            assert (-14.0 < ring[:, 0]).all() and (ring[:, 0] < -10.0).all()
-            assert (6.5 < ring[:, 1]).all() and (ring[:, 1] < 10.5).all()
+        ring = unit.ring
+        assert ring.shape[1] == 2
+        assert np.allclose(ring[0], ring[-1])  # closed
+        assert (-13.6 < ring[:, 0]).all() and (ring[:, 0] < -10.0).all()
+        assert (6.6 < ring[:, 1]).all() and (ring[:, 1] < 10.2).all()
+
+
+def test_hydrogeology_layer_is_bgs_data():
+    units = load_hydrogeology()
+    codes = {u.glg for u in units}
+    assert {"B-L", "U-M/H", "CSF-L/M", "I-L"} <= codes
+    labels = {u.unit for u in units}
+    assert any("productivity" in label for label in labels)
+
+
+def test_admin_layer_is_geoboundaries_data():
+    outline, districts = load_admin()
+    assert outline.level == "ADM0" and outline.rings
+    names = {d.name for d in districts}
+    assert {"Bombali", "Bo", "Kambia", "Kenema"} <= names
+    assert len(districts) == 14  # geoBoundaries release predates Karene/Falaba
+    # district label points fall inside the country's bounding box
+    for district in districts:
+        lon, lat = district.label_point
+        assert -13.6 < lon < -10.0 and 6.6 < lat < 10.1
 
 
 def test_maps_render(tmp_path):
@@ -105,6 +133,7 @@ def test_maps_render(tmp_path):
         ("national", plot_geological_map(site, path=tmp_path / "geo.png")),
         ("local", plot_geological_map(site, path=tmp_path / "geo_local.png",
                                       radius_km=40)),
+        ("hydro", plot_hydrogeology_map(site, path=tmp_path / "hydro.png")),
         ("admin", plot_admin_map(site, path=tmp_path / "admin.png")),
     ):
         assert fig_path.stat().st_size > 30_000, name
@@ -112,8 +141,36 @@ def test_maps_render(tmp_path):
 
 def test_maps_render_without_site(tmp_path):
     plot_geological_map(None, path=tmp_path / "geo.png")
+    plot_hydrogeology_map(None, path=tmp_path / "hydro.png")
     plot_admin_map(None, path=tmp_path / "admin.png")
-    assert (tmp_path / "geo.png").exists() and (tmp_path / "admin.png").exists()
+    for name in ("geo.png", "hydro.png", "admin.png"):
+        assert (tmp_path / name).exists()
+
+
+def test_context_maps_for_reports(tmp_path):
+    no_coords = SiteMetadata(community="X")
+    assert context_map_figures(no_coords, tmp_path) == {}
+    site = SiteMetadata(community="Kuntolo", district="Bombali",
+                        easting=178000, northing=1000000, utm_zone=29)
+    maps = context_map_figures(site, tmp_path)
+    assert set(maps) == {"admin", "geology", "hydrogeology"}
+    assert all(p.exists() for p in maps.values())
+
+
+def test_handover_report_embeds_location_map(tmp_path):
+    from groundwater.reporting.handover import (
+        HandoverReportInputs,
+        build_handover_report,
+    )
+
+    site = SiteMetadata(community="Kuntolo", district="Bombali",
+                        easting=178000, northing=1000000, utm_zone=29)
+    report = build_handover_report(
+        HandoverReportInputs(site=site, figures_dir=tmp_path),
+        tmp_path / "handover.docx",
+    )
+    assert (tmp_path / "admin_map.png").exists()
+    assert report.stat().st_size > 100_000  # maps embedded
 
 
 # ---------------------------------------------------------------------------

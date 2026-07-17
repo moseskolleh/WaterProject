@@ -19,6 +19,7 @@ from ..hydraulics.analysis import PumpingTestAnalysis
 from ..models import DrillingLog, SiteMetadata
 from ..quality.assess import WaterQualityAssessment
 from ..utils import fmt_num
+from .context import context_map_figures
 from .docx_utils import ReportBuilder
 
 _OM_GUIDANCE = [
@@ -126,6 +127,13 @@ def build_handover_report(
             ("Elevation", fmt_num(site.elevation_m) + " m" if site.elevation_m else ""),
         ]
     )
+    context_maps = context_map_figures(site, figures, config.style)
+    if context_maps:
+        rb.figure(
+            context_maps["admin"],
+            "Location of the water point. Boundaries from geoBoundaries "
+            "(CC BY 4.0).",
+        )
 
     # ---- 2 works completed ---------------------------------------------------------
     rb.heading("2. Works Completed", 1)
