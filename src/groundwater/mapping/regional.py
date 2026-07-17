@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import math
+import textwrap
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
@@ -182,6 +183,33 @@ def load_admin(path: str | Path | None = None) -> tuple[AdminArea, list[AdminAre
     return outline, districts
 
 
+def _point_in_ring(lon: float, lat: float, ring: np.ndarray) -> bool:
+    """Ray casting point-in-polygon test."""
+    inside = False
+    for (x1, y1), (x2, y2) in zip(ring[:-1], ring[1:]):
+        if (y1 > lat) != (y2 > lat):
+            x_cross = x1 + (lat - y1) * (x2 - x1) / (y2 - y1)
+            if lon < x_cross:
+                inside = not inside
+    return inside
+
+
+def district_of(
+    lat: float, lon: float, admin_path: str | Path | None = None
+) -> str:
+    """The district containing a point, from the boundary polygons.
+
+    Returns an empty string when the point falls outside every
+    district (offshore, across the border, or wrong coordinates).
+    """
+    _, districts = load_admin(admin_path)
+    for district in districts:
+        for ring in district.rings:
+            if _point_in_ring(lon, lat, ring):
+                return district.name
+    return ""
+
+
 def _site_lonlat(site: SiteMetadata) -> tuple[float, float] | None:
     latlon = site.latlon
     if latlon is None:
@@ -332,10 +360,14 @@ def _plot_units_map(
         mean_lat = float(np.mean(ax.get_ylim()))
         _geo_axes_finish(ax, mean_lat, f"{credit}. {ADMIN_CREDIT}")
         ordered = sorted(legend_handles, key=lambda k: legend_order[k])
+        # legend outside the axes so it never covers the map; the tight
+        # bounding box at save time grows the canvas around it
         ax.legend(
-            [legend_handles[k] for k in ordered], ordered,
-            loc="upper left", fontsize=6.5, framealpha=0.95,
-            title=legend_title, title_fontsize=7.5,
+            [legend_handles[k] for k in ordered],
+            [textwrap.fill(k, 24) for k in ordered],
+            loc="upper left", bbox_to_anchor=(1.02, 1.0),
+            fontsize=6.5, framealpha=0.95, borderaxespad=0.0,
+            title=textwrap.fill(legend_title, 24), title_fontsize=7.5,
         )
         if title is None:
             where = (site.community or "the site") if site else "Sierra Leone"

@@ -124,6 +124,15 @@ def test_admin_layer_is_geoboundaries_data():
         assert -13.6 < lon < -10.0 and 6.6 < lat < 10.1
 
 
+def test_district_detection_from_coordinates():
+    from groundwater.mapping import district_of
+
+    assert district_of(9.03, -11.93) == "Bombali"
+    assert district_of(8.47, -13.23) == "Western Area Urban"
+    assert district_of(7.9, -11.2) == "Kenema"
+    assert district_of(7.2, -13.4) == ""  # offshore
+
+
 def test_maps_render(tmp_path):
     site = SiteMetadata(
         community="Kuntolo", district="Bombali",
