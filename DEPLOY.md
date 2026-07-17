@@ -65,6 +65,12 @@ API key) the AI-assisted scan extraction. The app is deployed at
    installs this package via the `.` line) and starts the app at
    `https://<your-app-name>.streamlit.app`.
 
+PDF report downloads: the repository's `packages.txt` makes Streamlit
+Cloud install LibreOffice, which the app uses to convert the .docx
+reports to PDF. On a self-hosted server install it once with
+`apt install libreoffice-writer`; without it the app still runs and
+simply offers the .docx downloads only.
+
 Optional, for AI scan extraction: in the app's **Settings -> Secrets**
 add
 

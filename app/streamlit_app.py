@@ -40,6 +40,7 @@ import streamlit as st
 
 from gw_app import (
     chrome,
+    common,
     cost,
     design,
     extract,
@@ -117,3 +118,6 @@ with tab_templates:
 # the post-load grace flag protects restored inputs for exactly one
 # full run; every tab has rendered by this point
 st.session_state.pop("project_just_loaded", None)
+
+# autosave the project after the full run, so a refresh costs nothing
+common.autosave_project()

@@ -15,7 +15,7 @@ from groundwater.ves.plots import plot_sounding_curve
 from .common import (
     app_config,
     choose_input,
-    offer_download,
+    offer_report_download,
     parse_upload,
     run_ves_inversion,
     show_flags,
@@ -83,4 +83,4 @@ def render() -> None:
                 workdir() / "Geophysical_Survey_Report.docx",
                 app_config(),
             )
-            offer_download(report_path, "Download geophysical survey report (.docx)")
+            offer_report_download(report_path, "Download geophysical survey report (.docx)")

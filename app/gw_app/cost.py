@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import csv
+import io
+
 import streamlit as st
 
 from groundwater.costing import (
@@ -20,10 +23,39 @@ from .common import (
     cached_rates,
     compute_cost_estimate,
     offer_download,
+    offer_report_download,
     show_flags,
     site_from_state,
     workdir,
 )
+
+
+def _apply_rates_csv() -> None:
+    """Apply an uploaded rate catalogue CSV (button callback)."""
+    upload = st.session_state.get("rates_csv_upload")
+    if upload is None:
+        return
+    try:
+        rows = list(csv.DictReader(
+            io.StringIO(upload.getvalue().decode("utf-8-sig"))
+        ))
+        known = {r.code for r in cached_rates()}
+        applied = {}
+        for row in rows:
+            code = (row.get("code") or "").strip()
+            if code in known:
+                applied[code] = float(row["unit_cost_usd"])
+        if not applied:
+            raise ValueError("no known rate codes in the file")
+    except Exception:
+        st.session_state["rates_csv_error"] = True
+        return
+    overrides = dict(st.session_state.get("rates_overrides", {}))
+    overrides.update(applied)
+    st.session_state["rates_overrides"] = overrides
+    # reset the editor so it shows the applied values
+    st.session_state.pop("rates_editor", None)
+    st.session_state["rates_csv_applied"] = len(applied)
 
 
 def render() -> None:
@@ -156,6 +188,43 @@ def render() -> None:
             r.code: r.unit_cost_usd for r in rates
         }
 
+        # share the price book between projects: download the working
+        # rates, or apply a CSV another project exported
+        st.divider()
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["code", "stage", "category", "item", "unit",
+                        "quantity_basis", "unit_cost_usd", "note"])
+        for r in rates:
+            writer.writerow([r.code, r.stage, r.category, r.item, r.unit,
+                             r.quantity_basis, f"{r.unit_cost_usd:g}", r.note])
+        rc1, rc2 = st.columns(2)
+        rc1.download_button(
+            "Download rate catalogue (.csv)",
+            buf.getvalue().encode("utf-8"),
+            file_name="unit_rates.csv",
+            key="rates_csv_download",
+            help="The working rates including your edits - a price book "
+            "the team can share and reuse on other projects.",
+        )
+        with rc2:
+            st.file_uploader(
+                "Apply a shared rate catalogue",
+                type=["csv"], key="rates_csv_upload",
+                help="A CSV with 'code' and 'unit_cost_usd' columns; "
+                "unknown codes are ignored.",
+            )
+            st.button("Apply uploaded rates", key="rates_csv_apply",
+                      on_click=_apply_rates_csv)
+        applied = st.session_state.pop("rates_csv_applied", None)
+        if applied is not None:
+            st.success(f"Applied {applied} rate(s) from the uploaded catalogue.")
+        if st.session_state.pop("rates_csv_error", False):
+            st.error(
+                "Could not read that file as a rate catalogue "
+                "(needs 'code' and 'unit_cost_usd' columns)."
+            )
+
     if st.button("Estimate cost", key="run_cost", type="primary"):
         if use_design and design is not None:
             inputs = inputs_from_design(
@@ -255,7 +324,7 @@ def render() -> None:
                     workdir() / "Cost_Estimate_Report.docx",
                     app_config(),
                 )
-                offer_download(report_path, "Download cost estimate report (.docx)")
+                offer_report_download(report_path, "Download cost estimate report (.docx)")
 
     st.divider()
     with st.expander("📦 Programme: a package of boreholes"):

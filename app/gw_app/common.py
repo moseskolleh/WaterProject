@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import os
+import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -18,7 +22,11 @@ from groundwater.costing import (
     write_boq_workbook,
 )
 from groundwater.models import SiteMetadata
-from groundwater.supervision import load_checklists, load_separation_distances
+from groundwater.supervision import (
+    ChecklistResponse,
+    load_checklists,
+    load_separation_distances,
+)
 from groundwater.ves import interpret_model, invert_sounding
 
 CONFIG = Config()
@@ -138,6 +146,45 @@ def offer_download(path: Path, label: str) -> None:
         st.download_button(label, fh.read(), file_name=path.name)
 
 
+def _soffice() -> str | None:
+    return shutil.which("soffice") or shutil.which("libreoffice")
+
+
+def convert_report_to_pdf(docx_path: Path) -> Path | None:
+    """Convert a built .docx to PDF with headless LibreOffice, if present.
+
+    Streamlit Community Cloud installs LibreOffice through the
+    repository's ``packages.txt``; where the binary is missing (the
+    browser demo, minimal installs) this quietly returns None.
+    """
+    exe = _soffice()
+    if exe is None:
+        return None
+    pdf_path = docx_path.with_suffix(".pdf")
+    try:
+        subprocess.run(
+            [exe, "--headless", "--convert-to", "pdf",
+             "--outdir", str(docx_path.parent), str(docx_path)],
+            check=True, capture_output=True, timeout=180,
+        )
+    except Exception:
+        return None
+    return pdf_path if pdf_path.exists() else None
+
+
+def offer_report_download(path: Path, label: str) -> None:
+    """Report download: the .docx plus a PDF twin when convertible."""
+    offer_download(path, label)
+    pdf = convert_report_to_pdf(path)
+    if pdf is not None:
+        offer_download(pdf, label.replace("(.docx)", "(.pdf)"))
+    elif not IN_BROWSER:
+        st.caption(
+            "PDF export needs LibreOffice on the server "
+            "(packages.txt installs it on Streamlit Cloud; see DEPLOY.md)."
+        )
+
+
 def parse_upload(reader, path: Path):
     """Run a parser on an uploaded file, surfacing failures as errors.
 
@@ -185,6 +232,13 @@ _PERSIST_PREFIXES = (
     "org_", "meta_", "chk_", "rmk_", "cost_", "fx_", "ho_", "wiz_",
 )
 
+# button state also lives under these prefixes but must never be saved:
+# Streamlit forbids assigning trigger-widget values on load
+_TRIGGER_KEYS = frozenset({
+    "wiz_next", "wiz_back", "wiz_restart", "wiz_run_ves", "wiz_cost_run",
+    "org_logo_remove",
+})
+
 
 def project_file_bytes() -> bytes:
     """Serialize the widget state that makes up a project."""
@@ -192,6 +246,7 @@ def project_file_bytes() -> bytes:
         key: value
         for key, value in st.session_state.items()
         if key.startswith(_PERSIST_PREFIXES)
+        and key not in _TRIGGER_KEYS
         and isinstance(value, (str, int, float, bool))
     }
     payload = {
@@ -202,21 +257,15 @@ def project_file_bytes() -> bytes:
     return yaml.safe_dump(payload, sort_keys=True).encode("utf-8")
 
 
-def load_project_upload() -> None:
-    """Apply an uploaded project file (button callback, runs pre-render)."""
-    upload = st.session_state.get("project_upload")
-    if upload is None:
-        return
-    try:
-        payload = yaml.safe_load(upload.getvalue().decode("utf-8"))
-        assert isinstance(payload, dict)
-        assert isinstance(payload.get("state"), dict)
-    except Exception:
-        st.session_state.project_load_error = True
-        return
+def apply_project_payload(payload) -> bool:
+    """Apply a parsed project file to session state; False if malformed."""
+    if not (isinstance(payload, dict) and isinstance(payload.get("state"), dict)):
+        return False
     for key, value in payload["state"].items():
-        if key.startswith(_PERSIST_PREFIXES) and isinstance(
-            value, (str, int, float, bool)
+        if (
+            key.startswith(_PERSIST_PREFIXES)
+            and key not in _TRIGGER_KEYS  # old files may carry button state
+            and isinstance(value, (str, int, float, bool))
         ):
             st.session_state[key] = value
     overrides = payload.get("rates_overrides") or {}
@@ -224,14 +273,104 @@ def load_project_upload() -> None:
         st.session_state.rates_overrides = {
             str(code): float(rate) for code, rate in overrides.items()
         }
-    # reset the rate editor so it shows the loaded values
+    # reset widgets that mirror loaded state so they show the new values
     st.session_state.pop("rates_editor", None)
+    st.session_state.pop("meta_date_widget", None)
     st.session_state.project_loaded = True
     # protect restored inputs from the prefill-reset checks for one run
     st.session_state.project_just_loaded = True
     # the wizard costing block only executes on its step, so it carries
     # its own grace marker, consumed when that block first runs
     st.session_state["_wiz_load_grace"] = True
+    return True
+
+
+def load_project_upload() -> None:
+    """Apply an uploaded project file (button callback, runs pre-render)."""
+    upload = st.session_state.get("project_upload")
+    if upload is None:
+        return
+    try:
+        payload = yaml.safe_load(upload.getvalue().decode("utf-8"))
+    except Exception:
+        st.session_state.project_load_error = True
+        return
+    if not apply_project_payload(payload):
+        st.session_state.project_load_error = True
+
+
+# ---------------------------------------------------------------------------
+# Autosave: the project YAML written to disk after every change, so a
+# browser refresh or crash costs nothing (server installs only; the
+# browser demo's filesystem does not survive a reload)
+# ---------------------------------------------------------------------------
+
+
+def autosave_dir() -> Path:
+    override = os.environ.get("GW_AUTOSAVE_DIR")
+    if override:
+        return Path(override)
+    return Path.home() / ".groundwater_toolkit" / "autosaves"
+
+
+def _project_slug() -> str:
+    name = (
+        (st.session_state.get("meta_community") or "").strip()
+        or (st.session_state.get("meta_project") or "").strip()
+    )
+    slug = "".join(c if c.isalnum() else "_" for c in name).strip("_").lower()
+    return slug or "untitled"
+
+
+def project_state_digest(payload: bytes | None = None) -> str:
+    return hashlib.md5(payload or project_file_bytes()).hexdigest()
+
+
+def autosave_project() -> None:
+    """Write the project file when named and changed; end of each rerun."""
+    if IN_BROWSER:
+        return
+    if not (
+        (st.session_state.get("meta_community") or "").strip()
+        or (st.session_state.get("meta_project") or "").strip()
+    ):
+        return
+    payload = project_file_bytes()
+    digest = project_state_digest(payload)
+    if st.session_state.get("_autosave_hash") == digest:
+        return
+    try:
+        directory = autosave_dir()
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / f"{_project_slug()}.yaml").write_bytes(payload)
+    except OSError:
+        return  # read-only or full disk: autosave is best effort
+    st.session_state["_autosave_hash"] = digest
+
+
+def list_autosaves() -> list[Path]:
+    directory = autosave_dir()
+    if not directory.is_dir():
+        return []
+    return sorted(
+        directory.glob("*.yaml"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+
+
+def restore_autosave() -> None:
+    """Load the picked autosave file (button callback, runs pre-render)."""
+    pick = st.session_state.get("autosave_pick")
+    if not pick:
+        return
+    try:
+        payload = yaml.safe_load(Path(pick).read_text(encoding="utf-8"))
+    except Exception:
+        st.session_state.project_load_error = True
+        return
+    if not apply_project_payload(payload):
+        st.session_state.project_load_error = True
 
 
 def app_config() -> Config:
@@ -239,7 +378,28 @@ def app_config() -> Config:
     cfg = Config()
     cfg.style.organisation = st.session_state.get("org_name", "") or ""
     cfg.style.organisation_details = st.session_state.get("org_details", "") or ""
+    logo = st.session_state.get("org_logo_path", "") or ""
+    if logo and Path(logo).exists():
+        cfg.style.logo_path = logo
     return cfg
+
+
+def checklist_responses(items) -> dict[str, ChecklistResponse]:
+    """The supervision checklist answers currently in session state."""
+    responses: dict[str, ChecklistResponse] = {}
+    for item in items:
+        status = st.session_state.get(f"chk_{item.item_id}", "Pending")
+        mapped = {"Pending": "pending", "Yes": "yes", "No": "no",
+                  "N/A": "na"}.get(status, "pending")
+        # a remark typed while the item was No must not linger on a
+        # later Yes/N/A answer
+        remark = (
+            st.session_state.get(f"rmk_{item.item_id}", "")
+            if mapped == "no"
+            else ""
+        )
+        responses[item.item_id] = ChecklistResponse(item.item_id, mapped, remark)
+    return responses
 
 
 # ---------------------------------------------------------------------------

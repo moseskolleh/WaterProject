@@ -12,7 +12,7 @@ from groundwater.supervision import handpump_corrosion_check
 from .common import (
     app_config,
     choose_input,
-    offer_download,
+    offer_report_download,
     parse_upload,
     show_flags,
     workdir,
@@ -81,4 +81,4 @@ def render() -> None:
                 workdir() / "Water_Quality_Report.docx",
                 app_config(),
             )
-            offer_download(report_path, "Download water quality report (.docx)")
+            offer_report_download(report_path, "Download water quality report (.docx)")

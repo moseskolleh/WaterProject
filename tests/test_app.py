@@ -248,3 +248,72 @@ def test_templates_tab(app):
     app.button(key="gen_templates").click()
     app.run()
     assert not app.exception
+
+
+def test_date_picker_stores_iso(app):
+    from datetime import date as _date
+
+    app.date_input(key="meta_date_widget").set_value(_date(2026, 3, 14))
+    app.run()
+    assert not app.exception
+    assert app.session_state["meta_date"] == "2026-03-14"
+
+
+def test_reports_bundle(app):
+    """After the flow tests above, the session has several artifacts;
+    the bundle button must build the reports and zip them."""
+    app.button(key="build_all_reports").click()
+    app.run()
+    assert not app.exception
+    workdir = Path(app.session_state["workdir"])
+    bundles = list(workdir.glob("*_reports.zip"))
+    assert bundles, "no reports bundle written"
+    import zipfile
+
+    names = zipfile.ZipFile(bundles[0]).namelist()
+    assert "Geophysical_Survey_Report.docx" in names
+    assert "Cost_Estimate_Report.docx" in names
+    assert "Bill_of_Quantities.xlsx" in names
+
+
+def test_autosave_written_and_restorable(sample_data, tmp_path, monkeypatch):
+    autosave_dir = tmp_path / "saves"
+    monkeypatch.setenv("GW_AUTOSAVE_DIR", str(autosave_dir))
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.run()
+    at.text_input(key="meta_community").set_value("Masiaka")
+    at.run()
+    assert not at.exception
+    files = list(autosave_dir.glob("*.yaml"))
+    assert files, "autosave file not written"
+    assert files[0].stem == "masiaka"
+
+    # a fresh session offers the autosave and restores it
+    at2 = AppTest.from_file(APP, default_timeout=600)
+    at2.run()
+    at2.selectbox(key="autosave_pick").select(str(files[0]))
+    at2.run()
+    at2.button(key="autosave_restore").click()
+    at2.run()
+    assert not at2.exception
+    assert at2.session_state["meta_community"] == "Masiaka"
+
+
+def test_pdf_conversion_helper(tmp_path):
+    """Graceful with and without LibreOffice on the machine."""
+    import sys
+
+    sys.path.insert(0, str(Path(APP).parent))
+    from gw_app.common import convert_report_to_pdf
+
+    from docx import Document
+
+    docx_path = tmp_path / "report.docx"
+    doc = Document()
+    doc.add_paragraph("test report")
+    doc.save(docx_path)
+    result = convert_report_to_pdf(docx_path)
+    if result is None:
+        # the helper must stay silent where LibreOffice Writer is absent
+        pytest.skip("LibreOffice Writer not available on this machine")
+    assert result.exists() and result.suffix == ".pdf"

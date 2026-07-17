@@ -19,7 +19,7 @@ from .common import (
     CONFIG,
     app_config,
     choose_input,
-    offer_download,
+    offer_report_download,
     parse_upload,
     show_flags,
     workdir,
@@ -120,4 +120,4 @@ def render() -> None:
                 workdir() / "Pumping_Test_Report.docx",
                 app_config(),
             )
-            offer_download(report_path, "Download pumping test report (.docx)")
+            offer_report_download(report_path, "Download pumping test report (.docx)")

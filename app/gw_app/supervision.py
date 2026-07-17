@@ -9,7 +9,6 @@ from groundwater.reporting.supervision import (
     build_supervision_report,
 )
 from groundwater.supervision import (
-    ChecklistResponse,
     disinfection_dose,
     evaluate_checklist,
     metres_reconciliation_check,
@@ -23,7 +22,8 @@ from .common import (
     app_config,
     cached_checklists,
     cached_separation_distances,
-    offer_download,
+    checklist_responses,
+    offer_report_download,
     site_from_state,
     workdir,
 )
@@ -39,23 +39,7 @@ def render() -> None:
 
     checklist_items = cached_checklists()
 
-    def _responses() -> dict[str, ChecklistResponse]:
-        responses: dict[str, ChecklistResponse] = {}
-        for item in checklist_items:
-            status = st.session_state.get(f"chk_{item.item_id}", "Pending")
-            mapped = {"Pending": "pending", "Yes": "yes", "No": "no",
-                      "N/A": "na"}.get(status, "pending")
-            # a remark typed while the item was No must not linger on a
-            # later Yes/N/A answer
-            remark = (
-                st.session_state.get(f"rmk_{item.item_id}", "")
-                if mapped == "no"
-                else ""
-            )
-            responses[item.item_id] = ChecklistResponse(item.item_id, mapped, remark)
-        return responses
-
-    responses = _responses()
+    responses = checklist_responses(checklist_items)
     assessment = evaluate_checklist(checklist_items, responses)
     top1, top2, top3 = st.columns([1, 1, 2])
     top1.metric("Items answered", f"{assessment.answered}/{assessment.total}")
@@ -193,4 +177,4 @@ def render() -> None:
                 workdir() / "Supervision_Checklist_Report.docx",
                 app_config(),
             )
-            offer_download(report_path, "Download supervision report (.docx)")
+            offer_report_download(report_path, "Download supervision report (.docx)")

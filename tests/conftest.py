@@ -13,6 +13,12 @@ REPO = Path(__file__).resolve().parents[1]
 DATA = REPO / "examples" / "data"
 
 
+@pytest.fixture(autouse=True)
+def _autosave_tmp(tmp_path, monkeypatch):
+    """Keep app autosaves out of the real home directory during tests."""
+    monkeypatch.setenv("GW_AUTOSAVE_DIR", str(tmp_path / "autosaves"))
+
+
 @pytest.fixture(scope="session", autouse=True)
 def sample_data():
     """Build the example datasets once for the whole test session."""

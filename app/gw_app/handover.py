@@ -10,7 +10,7 @@ from groundwater.reporting.handover import (
     build_handover_report,
 )
 
-from .common import app_config, offer_download, site_from_state, workdir
+from .common import app_config, offer_report_download, site_from_state, workdir
 
 
 def render() -> None:
@@ -118,4 +118,4 @@ def render() -> None:
             workdir() / "Handover_Report.docx",
             app_config(),
         )
-        offer_download(report_path, "Download handover report (.docx)")
+        offer_report_download(report_path, "Download handover report (.docx)")

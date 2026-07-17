@@ -2,18 +2,42 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime
+from pathlib import Path
+
 import streamlit as st
 
 import groundwater
 from groundwater.geo import utm_to_geographic
 from groundwater.mapping import district_of
 
+from . import bundle
 from .common import (
+    IN_BROWSER,
     cached_districts,
+    list_autosaves,
     load_project_upload,
+    offer_download,
     project_file_bytes,
+    project_state_digest,
+    restore_autosave,
     site_from_state,
+    workdir,
 )
+
+
+def _sync_date() -> None:
+    picked = st.session_state.get("meta_date_widget")
+    st.session_state["meta_date"] = picked.isoformat() if picked else ""
+
+
+def _autosave_label(path_str: str) -> str:
+    path = Path(path_str)
+    try:
+        stamp = datetime.fromtimestamp(path.stat().st_mtime)
+    except OSError:
+        return path.stem.replace("_", " ")
+    return f"{path.stem.replace('_', ' ')} - {stamp:%d %b %Y %H:%M}"
 
 
 def render() -> None:
@@ -85,7 +109,20 @@ def render() -> None:
             st.text_input("Project", key="meta_project")
             st.text_input("Drilling contractor", key="meta_contractor")
             st.text_input("Supervisor", key="meta_supervisor")
-            st.text_input("Date", key="meta_date")
+            # the date is stored as an ISO string (project files, report
+            # covers); the picker widget mirrors it and old free-text
+            # dates from earlier project files are kept and shown below
+            raw_date = str(st.session_state.get("meta_date", "") or "")
+            if "meta_date_widget" not in st.session_state:
+                try:
+                    seed = date.fromisoformat(raw_date)
+                except ValueError:
+                    seed = None
+                st.session_state["meta_date_widget"] = seed
+            st.date_input("Date", key="meta_date_widget", on_change=_sync_date,
+                          format="DD/MM/YYYY")
+            if raw_date and st.session_state.get("meta_date_widget") is None:
+                st.caption(f"Recorded date: {raw_date}")
             col_e, col_n = st.columns(2)
             col_e.number_input("GPS East (UTM m)", min_value=0.0, step=100.0,
                                key="meta_easting", format="%.0f")
@@ -125,29 +162,89 @@ def render() -> None:
             )
             st.text_input("Organisation details", key="org_details",
                           help="Address or contact line under the name.")
+            logo_file = st.file_uploader(
+                "Logo (PNG or JPG, shown on report covers)",
+                type=["png", "jpg", "jpeg"], key="org_logo_upload",
+            )
+            if logo_file is not None:
+                suffix = Path(logo_file.name).suffix.lower() or ".png"
+                logo_path = workdir() / f"org_logo{suffix}"
+                logo_path.write_bytes(logo_file.getbuffer())
+                st.session_state["org_logo_path"] = str(logo_path)
+            _logo = st.session_state.get("org_logo_path", "")
+            if _logo and Path(_logo).exists():
+                st.image(_logo, width=140)
+                st.button(
+                    "Remove logo", key="org_logo_remove",
+                    on_click=lambda: st.session_state.pop("org_logo_path", None),
+                )
         with st.expander("💾 Project file"):
             st.caption(
                 "Save the whole working state (site details, checklist "
                 "answers, costing inputs and edited rates) and load it "
                 "back later or on another machine."
             )
-            st.download_button(
+            payload = project_file_bytes()
+            current_digest = project_state_digest(payload)
+            if st.download_button(
                 "Save project (.yaml)",
-                project_file_bytes(),
+                payload,
                 file_name=(
                     (st.session_state.get("meta_community") or "groundwater")
                     .replace(" ", "_") + "_project.yaml"
                 ),
                 key="project_download",
+            ):
+                st.session_state["_project_saved_hash"] = current_digest
+            named = bool(
+                (st.session_state.get("meta_community") or "").strip()
+                or (st.session_state.get("meta_project") or "").strip()
             )
+            if named and st.session_state.get("_project_saved_hash") != current_digest:
+                if IN_BROWSER:
+                    st.caption(
+                        "💾 Unsaved changes - this browser demo loses its "
+                        "state when the page reloads; save the project "
+                        "file to keep them."
+                    )
+                else:
+                    st.caption(
+                        "💾 Unsaved changes (autosaved on this computer; "
+                        "save the file to move them elsewhere)."
+                    )
             st.file_uploader("Project file", type=["yaml", "yml"],
                              key="project_upload")
             st.button("Load project", key="project_load",
                       on_click=load_project_upload)
+            autosaves = [] if IN_BROWSER else list_autosaves()
+            if autosaves:
+                autosave_options = [str(p) for p in autosaves]
+                if st.session_state.get("autosave_pick") not in autosave_options:
+                    st.session_state.pop("autosave_pick", None)
+                st.selectbox(
+                    "Autosaves on this computer",
+                    autosave_options,
+                    key="autosave_pick",
+                    format_func=_autosave_label,
+                )
+                st.button("Restore autosave", key="autosave_restore",
+                          on_click=restore_autosave)
             if st.session_state.pop("project_loaded", False):
                 st.success("Project loaded.")
             if st.session_state.pop("project_load_error", False):
                 st.error("That file is not a toolkit project file.")
+        with st.expander("🗂️ Reports bundle"):
+            st.caption(
+                "Build every report the session has inputs for and "
+                "download them as one zip, with the bill of quantities "
+                "and all generated figures."
+            )
+            if st.button("Build all available reports", key="build_all_reports"):
+                bundle_path = bundle.build_reports_bundle()
+                if bundle_path is None:
+                    st.info("Nothing to bundle yet - run an analysis in any tab first.")
+                else:
+                    offer_download(bundle_path, "Download reports bundle (.zip)")
         st.caption(
             "Methods follow RWSN/UNICEF professional drilling guidance "
             "and WHO water quality guidelines. "
