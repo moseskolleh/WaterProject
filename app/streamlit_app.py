@@ -302,7 +302,9 @@ def site_from_state() -> SiteMetadata:
 # Project file: save and restore the whole working state
 # ---------------------------------------------------------------------------
 
-_PERSIST_PREFIXES = ("org_", "meta_", "chk_", "rmk_", "cost_", "fx_", "ho_")
+_PERSIST_PREFIXES = (
+    "org_", "meta_", "chk_", "rmk_", "cost_", "fx_", "ho_", "wiz_",
+)
 
 
 def project_file_bytes() -> bytes:
@@ -590,12 +592,19 @@ with tab_guide:
     def _wiz_go(step: int) -> None:
         st.session_state.wiz_step = step
 
+    def _top_interp():
+        """Best ranked interpretation, read fresh from session state.
+
+        Called where needed rather than once per rerun, so the step
+        that has just run the inversion sees its own result.
+        """
+        if "ves_results" not in st.session_state:
+            return None
+        _, _, interps = st.session_state.ves_results
+        ranked = sorted(interps, key=lambda i: (i.rank or 99, -i.score))
+        return ranked[0] if ranked else None
+
     site = site_from_state()
-    top_interp = None
-    if "ves_results" in st.session_state:
-        _, _, _interps = st.session_state.ves_results
-        ranked = sorted(_interps, key=lambda i: (i.rank or 99, -i.score))
-        top_interp = ranked[0] if ranked else None
 
     if wiz_step == 0:
         st.subheader("1. Who and where")
@@ -645,6 +654,8 @@ with tab_guide:
                     run_ves_inversion(wiz_soundings)
             else:
                 st.error("No soundings found in the workbook.")
+        # read after the run button so a fresh result unlocks Next now
+        top_interp = _top_interp()
         if top_interp is not None:
             st.metric(
                 f"Recommended site: {top_interp.sounding_id}",
@@ -670,6 +681,7 @@ with tab_guide:
 
     elif wiz_step == 2:
         st.subheader("3. What it will cost")
+        top_interp = _top_interp()
         if top_interp is not None:
             default_depth = float(top_interp.max_drilling_depth_m)
             default_over = float(top_interp.depth_to_basement_m or 0.0)
@@ -722,6 +734,7 @@ with tab_guide:
 
     else:
         st.subheader("Ready to drill")
+        top_interp = _top_interp()
         est = st.session_state.get("cost_estimate")
         summary = [
             f"**Site**: {site.community or 'not set'}"

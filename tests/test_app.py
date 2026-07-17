@@ -158,6 +158,9 @@ def test_guided_wizard_flow(app):
     app.run()
     assert not app.exception
     assert "ves_results" in app.session_state
+    # the fresh result must unlock Next in the same rerun (review fix)
+    next_button = app.button(key="wiz_next")
+    assert not getattr(next_button, "disabled", next_button.proto.disabled)
     app.button(key="wiz_next").click()
     app.run()
     assert app.session_state["wiz_step"] == 2
@@ -170,6 +173,28 @@ def test_guided_wizard_flow(app):
     app.button(key="wiz_next").click()
     app.run()
     assert app.session_state["wiz_step"] == 3
+
+
+def test_wizard_unlocks_after_first_ves_run(sample_data):
+    """Regression: the first siting run must enable Next immediately.
+
+    Uses a fresh app instance (no prior VES results) to reproduce the
+    reported state: reaching step 1 cold and running the analysis once.
+    """
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.run()
+    at.text_input(key="meta_community").set_value("Kuntolo")
+    at.selectbox(key="meta_district").select("Bombali")
+    at.run()
+    at.button(key="wiz_next").click()
+    at.run()
+    at.selectbox(key="sample_wiz_ves").select("rokel/rokel_ves.xlsx")
+    at.run()
+    at.button(key="wiz_run_ves").click()
+    at.run()
+    assert not at.exception
+    next_button = at.button(key="wiz_next")
+    assert not getattr(next_button, "disabled", next_button.proto.disabled)
 
 
 def test_templates_tab(app):
