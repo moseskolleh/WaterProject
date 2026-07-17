@@ -178,8 +178,21 @@ def test_handover_report_embeds_location_map(tmp_path):
         HandoverReportInputs(site=site, figures_dir=tmp_path),
         tmp_path / "handover.docx",
     )
-    assert (tmp_path / "admin_map.png").exists()
+    assert list(tmp_path.glob("admin_map_*.png")), "location map not generated"
     assert report.stat().st_size > 100_000  # maps embedded
+
+
+def test_context_maps_not_reused_across_sites(tmp_path):
+    """Changing the coordinates must produce fresh maps, not reuse the
+    previous site's figures."""
+    site_a = SiteMetadata(community="A", easting=178000, northing=1000000,
+                          utm_zone=29)
+    site_b = SiteMetadata(community="B", easting=230000, northing=900000,
+                          utm_zone=28)
+    maps_a = context_map_figures(site_a, tmp_path)
+    maps_b = context_map_figures(site_b, tmp_path)
+    assert maps_a["admin"] != maps_b["admin"]
+    assert maps_a["admin"].exists() and maps_b["admin"].exists()
 
 
 # ---------------------------------------------------------------------------

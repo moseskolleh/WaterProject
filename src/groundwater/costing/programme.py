@@ -160,7 +160,8 @@ def estimate_programme_cost(
         assumptions.append(
             f"{n_attempted - n_boreholes} dry attempt(s) expected at "
             f"{success_rate_percent:g}% siting success; a dry attempt "
-            "pays for siting, set up and drilling only."
+            "pays for siting, set up and drilling only, costed at the "
+            "full crew time (a conservative allowance)."
         )
     return ProgrammeEstimate(
         n_successful=n_boreholes,

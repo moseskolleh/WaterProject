@@ -231,7 +231,8 @@ def draw_borehole_design(
         sump = [s for s in design.segments if s.kind == "sump"]
         if sump:
             annos.append(((sump[0].top_m + sump[0].bottom_m) / 2,
-                          f"sump {sump[0].top_m:g}-{sump[0].bottom_m:g} m",
+                          f"sump (sediment trap) "
+                          f"{sump[0].top_m:g}-{sump[0].bottom_m:g} m",
                           neutral))
         annos.append((depth - 0.3, "bottom plug", neutral))
         x_text = x_hole + w_hole + 0.06

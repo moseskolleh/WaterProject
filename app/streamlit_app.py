@@ -275,6 +275,22 @@ def offer_download(path: Path, label: str) -> None:
         st.download_button(label, fh.read(), file_name=path.name)
 
 
+def parse_upload(reader, path: Path):
+    """Run a parser on an uploaded file, surfacing failures as errors.
+
+    A malformed or mislabelled workbook should show a readable message
+    instead of crashing the tab.
+    """
+    try:
+        return reader(path)
+    except Exception as exc:
+        st.error(
+            f"Could not read {path.name}: {exc}. Check that the file "
+            "follows the standard template (Templates tab)."
+        )
+        return None
+
+
 def site_from_state() -> SiteMetadata:
     """Site metadata from the shared sidebar site details."""
     get = st.session_state.get
@@ -330,7 +346,8 @@ def _load_project() -> None:
         return
     try:
         payload = yaml.safe_load(upload.getvalue().decode("utf-8"))
-        assert isinstance(payload, dict) and "state" in payload
+        assert isinstance(payload, dict)
+        assert isinstance(payload.get("state"), dict)
     except Exception:
         st.session_state.project_load_error = True
         return
@@ -646,7 +663,7 @@ with tab_guide:
             ["rokel/rokel_ves.xlsx"],
         )
         if wiz_path is not None:
-            wiz_soundings = read_ves_workbook(wiz_path)
+            wiz_soundings = parse_upload(read_ves_workbook, wiz_path)
             if wiz_soundings:
                 st.success(f"Parsed {len(wiz_soundings)} sounding(s).")
                 if st.button("Run siting analysis", key="wiz_run_ves",
@@ -692,6 +709,12 @@ with tab_guide:
         else:
             default_depth = float(st.session_state.get("wiz_manual_depth", 60.0))
             default_over = 0.0
+        # refresh the prefill when a new siting result arrives
+        prefill_sig = (round(default_depth, 1), round(default_over, 1))
+        if st.session_state.get("wiz_prefill_sig") != prefill_sig:
+            st.session_state["wiz_prefill_sig"] = prefill_sig
+            st.session_state.pop("wiz_cost_depth", None)
+            st.session_state.pop("wiz_cost_over", None)
         c1, c2, c3 = st.columns(3)
         wiz_depth = c1.number_input("Total depth (m)", 1.0, 300.0,
                                     default_depth or 60.0, 1.0,
@@ -786,8 +809,10 @@ with tab_ves:
         ["rokel/rokel_ves.xlsx"],
     )
     if path is not None:
-        soundings = read_ves_workbook(path)
-        if not soundings:
+        soundings = parse_upload(read_ves_workbook, path)
+        if soundings is None:
+            pass
+        elif not soundings:
             st.error("No soundings found in the workbook.")
         else:
             st.success(f"Parsed {len(soundings)} sounding(s).")
@@ -849,9 +874,11 @@ with tab_pump:
         ["dr_timbo/dr_timbo_constant_test.xlsx", "kuntolo/kuntolo_step_test.xlsx"],
     )
     if path is not None:
-        test = (
-            read_pumping_docx(path) if path.suffix == ".docx" else read_pumping_workbook(path)
+        test = parse_upload(
+            read_pumping_docx if path.suffix == ".docx" else read_pumping_workbook,
+            path,
         )
+    if path is not None and test is not None:
         st.success(
             f"Parsed {test.test_type} test with {len(test.steps)} pumping series "
             f"and {'a' if test.recovery_time_min is not None else 'no'} recovery record."
@@ -945,8 +972,7 @@ with tab_quality:
         "Laboratory results (standard template)", "wq", ["xlsx"],
         ["dr_timbo/dr_timbo_water_quality.xlsx"],
     )
-    if path is not None:
-        sample = read_quality_workbook(path)
+    if path is not None and (sample := parse_upload(read_quality_workbook, path)) is not None:
         assessment = assess_sample(sample)
         st.session_state.wq_assessment = assessment
         show_flags(assessment.flags)
@@ -1014,8 +1040,7 @@ with tab_design:
         ["dr_timbo/dr_timbo_drilling_log.xlsx"],
     )
     swl_input = st.number_input("Static water level (m)", min_value=0.0, value=0.0, step=0.1)
-    if path is not None:
-        log = read_drilling_workbook(path)
+    if path is not None and (log := parse_upload(read_drilling_workbook, path)) is not None:
         show_flags(log.flags)
         design = design_borehole(
             log=log,
@@ -1069,6 +1094,13 @@ with tab_cost:
             value=True,
             key="cost_use_design",
         )
+
+    # a keyed widget ignores a changed value= once it has state, so
+    # reset the field when the design source changes or is toggled
+    design_sig = (bool(use_design), float(design.total_depth_m) if design else 0.0)
+    if st.session_state.get("cost_design_sig") != design_sig:
+        st.session_state["cost_design_sig"] = design_sig
+        st.session_state.pop("cost_depth", None)
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -1345,12 +1377,16 @@ with tab_supervision:
         responses: dict[str, ChecklistResponse] = {}
         for item in checklist_items:
             status = st.session_state.get(f"chk_{item.item_id}", "Pending")
-            remark = st.session_state.get(f"rmk_{item.item_id}", "")
-            responses[item.item_id] = ChecklistResponse(
-                item.item_id,
-                {"Pending": "pending", "Yes": "yes", "No": "no", "N/A": "na"}[status],
-                remark,
+            mapped = {"Pending": "pending", "Yes": "yes", "No": "no",
+                      "N/A": "na"}.get(status, "pending")
+            # a remark typed while the item was No must not linger on a
+            # later Yes/N/A answer
+            remark = (
+                st.session_state.get(f"rmk_{item.item_id}", "")
+                if mapped == "no"
+                else ""
             )
+            responses[item.item_id] = ChecklistResponse(item.item_id, mapped, remark)
         return responses
 
     responses = _responses()
