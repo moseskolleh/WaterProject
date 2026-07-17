@@ -569,19 +569,28 @@ if IN_BROWSER:
 
 def run_ves_inversion(soundings) -> None:
     """Invert and interpret the soundings, storing the shared results."""
-    # a fresh siting result is a genuine source change: the wizard
-    # costing prefill must follow it, not a previously loaded project
-    st.session_state.pop("_wiz_load_grace", None)
     results = []
     interps = []
     progress = st.progress(0.0)
-    for i, sounding in enumerate(soundings):
-        result = invert_sounding(sounding, CONFIG.ves)
-        interp = interpret_model(sounding, result.model, CONFIG.ves)
-        results.append(result)
-        interps.append(interp)
-        progress.progress((i + 1) / len(soundings))
+    try:
+        for i, sounding in enumerate(soundings):
+            result = invert_sounding(sounding, CONFIG.ves)
+            interp = interpret_model(sounding, result.model, CONFIG.ves)
+            results.append(result)
+            interps.append(interp)
+            progress.progress((i + 1) / len(soundings))
+    except Exception as exc:
+        failed = soundings[len(results)]
+        st.error(
+            f"Inversion failed for sounding "
+            f"{failed.sounding_id or len(results) + 1}: {exc}. Check the "
+            "readings in the workbook."
+        )
+        return
     st.session_state.ves_results = (soundings, results, interps)
+    # only a SUCCESSFUL fresh siting result is a genuine source change;
+    # a failed run must not consume a loaded project's grace
+    st.session_state.pop("_wiz_load_grace", None)
 
 
 def compute_cost_estimate(inputs: CostingInputs, rates, **kwargs) -> None:

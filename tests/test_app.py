@@ -244,6 +244,32 @@ def test_wizard_grace_cleared_by_siting_change(sample_data):
     assert at.session_state["wiz_cost_depth"] == 95.0
 
 
+def test_wizard_grace_survives_failed_inversion(sample_data, monkeypatch):
+    """Regression: a FAILED siting run must not consume the load grace
+    or crash the tab; only a successful result is a source change."""
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["wiz_step"] = 1
+    at.run()  # stabilizes the app's import path before patching
+    assert not at.exception
+
+    import groundwater.ves as ves_pkg
+
+    def boom(*args, **kwargs):
+        raise ValueError("synthetic inversion failure")
+
+    monkeypatch.setattr(ves_pkg, "invert_sounding", boom)
+    at.session_state["_wiz_load_grace"] = True
+    at.selectbox(key="sample_wiz_ves").select("rokel/rokel_ves.xlsx")
+    at.run()
+    at.button(key="wiz_run_ves").click()
+    at.run()
+    assert not at.exception  # surfaced as st.error, not a crash
+    errors = " ".join(str(e.value) for e in at.error)
+    assert "Inversion failed" in errors
+    assert "ves_results" not in at.session_state
+    assert at.session_state["_wiz_load_grace"] is True  # grace intact
+
+
 def test_templates_tab(app):
     app.button(key="gen_templates").click()
     app.run()
