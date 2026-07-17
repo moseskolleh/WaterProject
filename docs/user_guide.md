@@ -156,19 +156,44 @@ handover reports when the site has coordinates.
 
 ## 11. Saving your work
 
-Everything you enter (site details, checklist answers, costing
-inputs, edited unit rates) lives only in the browser session and is
-lost on refresh. Use the sidebar's "Project file" panel to save the
-whole working state as a small `.yaml` file, and load it back later
-or on another machine to continue where you stopped.
+Use the sidebar's "Project file" panel to save the whole working
+state (site details, checklist answers, the daily drilling log,
+costing inputs, bids and edited unit rates) as a small `.yaml` file,
+and load it back later or on another machine to continue where you
+stopped. On a server installation the app also autosaves after every
+change and lists the autosaves in the same panel for one-click
+restore; the sidebar shows an "unsaved changes" note whenever the
+downloaded file is behind. In the browser demo nothing survives a
+page reload, so download the project file before closing.
+
+The "Reports bundle" panel below it builds every report the session
+has inputs for and downloads them as one zip together with the bill
+of quantities and all figures. Where the server has LibreOffice
+(Streamlit Cloud installs it automatically), every report download
+also offers a PDF twin.
+
+## 11a. Registry tab
+
+The registry is the programme's memory: one CSV of all completed and
+attempted boreholes with depth, yield, quality verdict and price.
+Add the current project with one click when it closes, load the
+team's registry CSV in any session, and read the district table
+(median depth, price and yield) before siting the next borehole -
+the status board warns when a planned depth is far from the
+district's record. A server installation keeps the registry between
+sessions automatically; always download the CSV as the shared copy.
 
 ## 12. Scanned sheets
 
 Photograph or scan the paper sheet squarely under good light and
-upload it in the Scanned sheets tab. The extractor transcribes the
-header and the tables and highlights every value it is not sure about
-in amber in the review workbook. Check each highlighted cell against
-the paper before the data is used; nothing is accepted silently.
+upload it in the Scanned sheets tab - or switch on the camera option
+and photograph it with the phone directly. The extractor transcribes
+the header and the tables and highlights every value it is not sure
+about in amber in the review workbook. Check each highlighted cell
+against the paper before the data is used; nothing is accepted
+silently. For a VES sheet, "Use in the VES survey tab" sends the
+filled template straight to the analysis without a download and
+re-upload.
 
 ## 13. Where results go
 

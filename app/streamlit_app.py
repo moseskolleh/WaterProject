@@ -49,6 +49,7 @@ from gw_app import (
     maps,
     pump,
     quality,
+    registry,
     sidebar,
     supervision,
     templates,
@@ -71,6 +72,7 @@ chrome.render_header()
     tab_quality,
     tab_handover,
     tab_maps,
+    tab_registry,
     tab_extract,
     tab_templates,
 ) = st.tabs(
@@ -84,6 +86,7 @@ chrome.render_header()
         "🧪 Water quality",
         "🤝 Handover",
         "🗺️ Maps",
+        "📇 Registry",
         "📄 Scanned sheets",
         "📋 Templates",
     ]
@@ -110,6 +113,8 @@ with tab_handover:
     handover.render()
 with tab_maps:
     maps.render()
+with tab_registry:
+    registry.render()
 with tab_extract:
     extract.render()
 with tab_templates:

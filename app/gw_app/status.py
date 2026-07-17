@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from groundwater.registry import depth_prior_note
 from groundwater.supervision import evaluate_checklist
 
 from .common import (
@@ -67,6 +68,21 @@ def consistency_warnings() -> list[str]:
                 f"The recommended pump depth ({pump_depth:g} m) is below "
                 f"the designed borehole depth ({design.total_depth_m:g} m)."
             )
+
+    # the registry's district record as a prior on the planned depth
+    registry_rows = st.session_state.get("registry_records") or []
+    planned = None
+    if design is not None:
+        planned = float(design.total_depth_m)
+    elif estimate is not None:
+        planned = float(estimate.inputs.total_depth_m)
+    elif interp is not None:
+        planned = float(interp.max_drilling_depth_m)
+    district = st.session_state.get("meta_district", "")
+    if registry_rows and planned and district:
+        note = depth_prior_note(registry_rows, district, planned)
+        if note:
+            warnings.append(note)
     return warnings
 
 

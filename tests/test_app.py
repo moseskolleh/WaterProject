@@ -369,6 +369,24 @@ def test_supervision_resume_jump(app):
     assert app.session_state["sup_stage"] in stages
 
 
+def test_registry_add_and_summary(app):
+    """Adding the current project creates a registry row from the
+    session's artifacts, and the district summary renders."""
+    app.button(key="registry_add").click()
+    app.run()
+    assert not app.exception
+    rows = app.session_state["registry_records"]
+    assert rows, "no registry record added"
+    record = rows[-1]
+    assert record["total_depth_m"], "depth not carried into the registry"
+    assert record["price_usd"], "price not carried into the registry"
+    # the saved CSV is offered and parses back
+    from groundwater.registry import parse_registry_csv, registry_csv_bytes
+
+    back = parse_registry_csv(registry_csv_bytes(rows).decode("utf-8"))
+    assert len(back) == len(rows)
+
+
 def test_maps_gis_export(app):
     """With VES results in the session the Maps tab writes the GIS
     layer and offers it for download."""

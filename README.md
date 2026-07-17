@@ -37,7 +37,17 @@ water quality guidelines.
 10. Seven report types: geophysical survey, borehole completion,
     pumping test, water quality, project handover, cost estimate and
     supervision checklist record; the web app saves and reloads the
-    whole working state as a project file
+    whole working state as a project file, autosaves on servers, and
+    bundles every available report (with PDF twins where LibreOffice
+    is installed) into one download
+11. Decision support around the numbers: a project status board with
+    cross-tab consistency checks (sited vs designed vs costed depth),
+    a Bourdet derivative diagnostic on pumping tests, price
+    sensitivity tornado charts and bid comparison in the costing, a
+    daily drilling log feeding the drilled-metres reconciliation, and
+    a cross-project borehole registry with district statistics
+12. GIS export of the survey points (GeoJSON always, GeoPackage with
+    the [gis] extra) and an interactive site map in the app
 
 ## Try it online
 
