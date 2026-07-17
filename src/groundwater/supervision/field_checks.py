@@ -179,6 +179,40 @@ def annular_space_check(
     )
 
 
+def metres_reconciliation_check(
+    logged_m: float, claimed_m: float, tolerance_m: float = 3.0
+) -> FieldCheck:
+    """Compare invoiced metres against the signed daily drilling logs.
+
+    Paying per metre invites overstated depths; the daily logs (signed
+    by the rig operator and the supervisor) are the audit trail. The
+    3 m tolerance mirrors the casing reconciliation rule in the
+    supervision guidance.
+    """
+    difference = claimed_m - logged_m
+    passed = difference <= tolerance_m
+    if difference > tolerance_m:
+        message = (
+            f"Invoice claims {difference:g} m more than the signed daily "
+            "logs; withhold payment for the unsupported metres and "
+            "reconcile with the driller."
+        )
+    elif difference < -tolerance_m:
+        message = (
+            "Logs record more metres than invoiced; check that the invoice "
+            "covers all completed work."
+        )
+    else:
+        message = "Invoiced metres are supported by the daily logs."
+    return FieldCheck(
+        name="Drilled metres reconciliation",
+        passed=passed,
+        measured=f"logged {logged_m:g} m, invoiced {claimed_m:g} m",
+        limit=f"difference within {tolerance_m:g} m",
+        message=message,
+    )
+
+
 def handpump_corrosion_check(ph: float) -> FieldCheck:
     """Handpump corrosion risk rule (RWSN Stop the Rot).
 

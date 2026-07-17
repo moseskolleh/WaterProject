@@ -54,7 +54,15 @@ need real project inputs or decisions to finish calibrating it.
    the default exchange rate (23 SLE per USD) and whether GST (15
    percent) applies to the contracts in question.
 
-9. **Supervision checklists may need project tailoring (added with
+9. **The geology layer is schematic (added with the maps).** The
+   bundled `groundwater/data/sl_geology_simplified.geojson` is
+   digitised approximately from published small scale maps and is
+   clearly marked schematic on every figure. When a survey grade
+   dataset from the Geological Survey of Sierra Leone (or BGS) is
+   available, drop it in with the same properties (unit, lithology,
+   color) and the maps use it directly.
+
+10. **Supervision checklists may need project tailoring (added with
    the supervision module).** The stages and items in
    `groundwater/data/supervision_checklists.csv` follow the RWSN/
    UNICEF supervision guidance and the WASH funders checklists. Items

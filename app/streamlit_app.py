@@ -18,6 +18,7 @@ import tempfile
 from pathlib import Path
 
 import streamlit as st
+import yaml
 
 import groundwater
 from groundwater.config import Config
@@ -25,9 +26,11 @@ from groundwater.costing import (
     CostingInputs,
     RateItem,
     estimate_borehole_cost,
+    estimate_programme_cost,
     inputs_from_design,
     load_rates,
     plot_cost_breakdown,
+    plot_programme_gantt,
     write_boq_workbook,
 )
 from groundwater.design import design_borehole, draw_borehole_design
@@ -47,9 +50,15 @@ from groundwater.ingestion import (
     read_ves_workbook,
 )
 from groundwater.ingestion.templates import write_all_templates
+from groundwater.mapping import plot_admin_map, plot_geological_map
 from groundwater.models import SiteMetadata
 from groundwater.quality import assess_sample, plot_piper, plot_stiff
 from groundwater.reporting.costing import CostReportInputs, build_cost_report
+from groundwater.reporting.handover import (
+    CommitteeMember,
+    HandoverReportInputs,
+    build_handover_report,
+)
 from groundwater.reporting.geophysical import (
     GeophysicalReportInputs,
     build_geophysical_report,
@@ -68,6 +77,7 @@ from groundwater.supervision import (
     handpump_corrosion_check,
     load_checklists,
     load_separation_distances,
+    metres_reconciliation_check,
     sand_content_check,
     specific_capacity_check,
     stage_title,
@@ -231,16 +241,76 @@ def offer_download(path: Path, label: str) -> None:
         st.download_button(label, fh.read(), file_name=path.name)
 
 
-def site_from_state(prefix: str = "meta") -> SiteMetadata:
-    """Site metadata from the shared report details widgets."""
+def site_from_state() -> SiteMetadata:
+    """Site metadata from the shared sidebar site details."""
     get = st.session_state.get
+
+    def num(key):
+        value = get(key, 0.0)
+        return float(value) if value else None
+
     return SiteMetadata(
-        community=get(f"{prefix}_community", "") or "",
-        district=get(f"{prefix}_district", "") or "",
-        client=get(f"{prefix}_client", "") or "",
-        contractor=get(f"{prefix}_contractor", "") or "",
-        supervisor=get(f"{prefix}_supervisor", "") or "",
+        community=get("meta_community", "") or "",
+        chiefdom=get("meta_chiefdom", "") or "",
+        district=get("meta_district", "") or "",
+        client=get("meta_client", "") or "",
+        project=get("meta_project", "") or "",
+        contractor=get("meta_contractor", "") or "",
+        supervisor=get("meta_supervisor", "") or "",
+        date=get("meta_date", "") or "",
+        easting=num("meta_easting"),
+        northing=num("meta_northing"),
+        utm_zone=int(get("meta_zone", "29N").rstrip("N")),
     )
+
+
+# ---------------------------------------------------------------------------
+# Project file: save and restore the whole working state
+# ---------------------------------------------------------------------------
+
+_PERSIST_PREFIXES = ("org_", "meta_", "chk_", "rmk_", "cost_", "fx_", "ho_")
+
+
+def project_file_bytes() -> bytes:
+    """Serialize the widget state that makes up a project."""
+    state = {
+        key: value
+        for key, value in st.session_state.items()
+        if key.startswith(_PERSIST_PREFIXES)
+        and isinstance(value, (str, int, float, bool))
+    }
+    payload = {
+        "groundwater_toolkit_project": groundwater.__version__,
+        "rates_overrides": st.session_state.get("rates_overrides", {}),
+        "state": state,
+    }
+    return yaml.safe_dump(payload, sort_keys=True).encode("utf-8")
+
+
+def _load_project() -> None:
+    """Apply an uploaded project file (button callback, runs pre-render)."""
+    upload = st.session_state.get("project_upload")
+    if upload is None:
+        return
+    try:
+        payload = yaml.safe_load(upload.getvalue().decode("utf-8"))
+        assert isinstance(payload, dict) and "state" in payload
+    except Exception:
+        st.session_state.project_load_error = True
+        return
+    for key, value in payload["state"].items():
+        if key.startswith(_PERSIST_PREFIXES) and isinstance(
+            value, (str, int, float, bool)
+        ):
+            st.session_state[key] = value
+    overrides = payload.get("rates_overrides") or {}
+    if isinstance(overrides, dict):
+        st.session_state.rates_overrides = {
+            str(code): float(rate) for code, rate in overrides.items()
+        }
+    # reset the rate editor so it shows the loaded values
+    st.session_state.pop("rates_editor", None)
+    st.session_state.project_loaded = True
 
 
 # ---------------------------------------------------------------------------
@@ -264,6 +334,21 @@ with st.sidebar:
             "Every tab offers bundled sample data, so you can try "
             "each step without your own files."
         )
+    with st.expander("📍 Site details (used by all tabs)"):
+        st.text_input("Community", key="meta_community")
+        st.text_input("Chiefdom", key="meta_chiefdom")
+        st.text_input("District", key="meta_district")
+        st.text_input("Client", key="meta_client")
+        st.text_input("Project", key="meta_project")
+        st.text_input("Drilling contractor", key="meta_contractor")
+        st.text_input("Supervisor", key="meta_supervisor")
+        st.text_input("Date", key="meta_date")
+        col_e, col_n = st.columns(2)
+        col_e.number_input("GPS East (UTM m)", min_value=0.0, step=100.0,
+                           key="meta_easting", format="%.0f")
+        col_n.number_input("GPS North (UTM m)", min_value=0.0, step=100.0,
+                           key="meta_northing", format="%.0f")
+        st.selectbox("UTM zone", ["28N", "29N"], index=1, key="meta_zone")
     with st.expander("📄 Report branding"):
         st.text_input(
             "Organisation name",
@@ -272,6 +357,28 @@ with st.sidebar:
         )
         st.text_input("Organisation details", key="org_details",
                       help="Address or contact line under the name.")
+    with st.expander("💾 Project file"):
+        st.caption(
+            "Save the whole working state (site details, checklist "
+            "answers, costing inputs and edited rates) and load it "
+            "back later or on another machine."
+        )
+        st.download_button(
+            "Save project (.yaml)",
+            project_file_bytes(),
+            file_name=(
+                (st.session_state.get("meta_community") or "groundwater")
+                .replace(" ", "_") + "_project.yaml"
+            ),
+            key="project_download",
+        )
+        st.file_uploader("Project file", type=["yaml", "yml"],
+                         key="project_upload")
+        st.button("Load project", key="project_load", on_click=_load_project)
+        if st.session_state.pop("project_loaded", False):
+            st.success("Project loaded.")
+        if st.session_state.pop("project_load_error", False):
+            st.error("That file is not a toolkit project file.")
     st.caption(
         "Methods follow RWSN/UNICEF professional drilling guidance "
         "and WHO water quality guidelines. "
@@ -312,16 +419,20 @@ if IN_BROWSER:
     tab_design,
     tab_cost,
     tab_supervision,
+    tab_handover,
+    tab_maps,
     tab_extract,
     tab_templates,
 ) = st.tabs(
     [
-        "🗺️ VES survey",
+        "📈 VES survey",
         "⏱️ Pumping test",
         "🧪 Water quality",
         "🛠️ Borehole design",
         "💰 Costing",
         "✅ Supervision",
+        "🤝 Handover",
+        "🗺️ Maps",
         "📄 Scanned sheets",
         "📋 Templates",
     ]
@@ -512,6 +623,7 @@ with tab_quality:
     if path is not None:
         sample = read_quality_workbook(path)
         assessment = assess_sample(sample)
+        st.session_state.wq_assessment = assessment
         show_flags(assessment.flags)
         st.subheader("Verdict")
         if assessment.health_exceedances:
@@ -586,6 +698,7 @@ with tab_design:
             rules=CONFIG.design,
         )
         st.session_state.borehole_design = design
+        st.session_state.drilling_log = log
         col_table, col_draw = st.columns([2, 3])
         with col_table:
             st.table(design.summary_rows())
@@ -689,13 +802,14 @@ with tab_cost:
             "Rates are in USD."
         )
         base_rates = cached_rates()
+        overrides = st.session_state.get("rates_overrides", {})
         rate_rows = [
             {
                 "Code": r.code,
                 "Stage": r.stage,
                 "Item": r.item,
                 "Unit": r.unit,
-                "Rate (USD)": r.unit_cost_usd,
+                "Rate (USD)": float(overrides.get(r.code, r.unit_cost_usd)),
             }
             for r in base_rates
         ]
@@ -717,12 +831,18 @@ with tab_cost:
                 code=r.code, stage=r.stage, category=r.category, item=r.item,
                 unit=r.unit, quantity_basis=r.quantity_basis,
                 unit_cost_usd=float(
-                    edited_by_code.get(r.code, {}).get("Rate (USD)", r.unit_cost_usd)
+                    edited_by_code.get(r.code, {}).get(
+                        "Rate (USD)", overrides.get(r.code, r.unit_cost_usd)
+                    )
                 ),
                 note=r.note,
             )
             for r in base_rates
         ]
+        # remember the working rates so the project file carries them
+        st.session_state.rates_overrides = {
+            r.code: r.unit_cost_usd for r in rates
+        }
 
     if st.button("Estimate cost", key="run_cost", type="primary"):
         if use_design and design is not None:
@@ -813,10 +933,9 @@ with tab_cost:
                 for assumption in estimate.assumptions:
                     st.markdown(f"- {assumption}")
 
-        with st.expander("Report details"):
-            st.text_input("Community", key="meta_community")
-            st.text_input("District", key="meta_district")
-            st.text_input("Client", key="meta_client")
+        st.caption(
+            "The report cover uses the site details from the sidebar."
+        )
         dl1, dl2 = st.columns(2)
         with dl1:
             offer_download(boq_path, "Download bill of quantities (.xlsx)")
@@ -832,6 +951,64 @@ with tab_cost:
                     app_config(),
                 )
                 offer_download(report_path, "Download cost estimate report (.docx)")
+
+    st.divider()
+    with st.expander("📦 Programme: a package of boreholes"):
+        st.caption(
+            "Costs a multi-borehole contract with one mobilisation, moves "
+            "between nearby sites, and dry attempts carried by the "
+            "successful wells, following the procurement guide's contract "
+            "packaging rules. Uses the single borehole inputs and rates "
+            "above."
+        )
+        p1, p2, p3 = st.columns(3)
+        n_wells = p1.number_input("Successful boreholes required", 1, 500, 10,
+                                  key="cost_prog_n")
+        inter_km = p2.number_input("Average distance between sites (km)",
+                                   0.0, 200.0, 15.0, 1.0, key="cost_prog_km")
+        prog_success = p3.number_input("Siting success rate (%)", 1.0, 100.0,
+                                       80.0, 5.0, key="cost_prog_success")
+        if st.button("Estimate programme", key="run_programme"):
+            per_well = CostingInputs(
+                total_depth_m=depth,
+                overburden_m=overburden or None,
+                mobilisation_distance_km=distance,
+                handpumps=int(handpumps),
+                wq_samples=int(samples),
+                development_hours=float(dev_hours),
+                test_pumping_hours=float(test_hours),
+            )
+            programme = estimate_programme_cost(
+                per_well, int(n_wells), rates=rates,
+                inter_site_distance_km=inter_km,
+                success_rate_percent=prog_success,
+                overheads_percent=overheads_pct,
+                margin_percent=margin_pct,
+                contingency_percent=contingency_pct,
+                vat_percent=vat_pct,
+                exchange_rate_sle_per_usd=fx,
+            )
+            gantt_path = workdir() / "programme_gantt.png"
+            plot_programme_gantt(programme, gantt_path, app_config().style)
+            st.session_state.programme_estimate = (programme, gantt_path)
+        if "programme_estimate" in st.session_state:
+            programme, gantt_path = st.session_state.programme_estimate
+            g1, g2, g3 = st.columns(3)
+            g1.metric("Attempts planned", programme.n_attempted)
+            g2.metric("Contract price",
+                      f"${programme.price_with_vat_usd:,.0f}")
+            g3.metric("Per successful borehole",
+                      f"${programme.price_per_successful_well_usd:,.0f}")
+            st.table(
+                [
+                    {"Item": label, "USD": usd, "SLE": sle}
+                    for label, usd, sle in programme.summary_rows()
+                ]
+            )
+            st.image(str(gantt_path))
+            with st.expander("Programme assumptions"):
+                for assumption in programme.assumptions:
+                    st.markdown(f"- {assumption}")
 
 # ---------------------------------------------------------------------------
 # Supervision
@@ -948,6 +1125,19 @@ with tab_supervision:
             else:
                 (st.success if spc.passed else st.warning)(f"{spc.measured}: {spc.message}")
 
+            st.markdown("**Drilled metres reconciliation**")
+            r1, r2 = st.columns(2)
+            logged = r1.number_input("Metres in signed daily logs", 0.0,
+                                     2000.0, 60.0, 1.0, key="fx_logged")
+            claimed = r2.number_input("Metres invoiced", 0.0, 2000.0, 60.0,
+                                      1.0, key="fx_claimed")
+            recon = metres_reconciliation_check(logged, claimed)
+            (st.success if recon.passed else st.error)(recon.message)
+            st.caption(
+                "The daily report template for the driller is in the "
+                "Templates tab."
+            )
+
     with st.expander("📏 Minimum separation distances"):
         st.table(
             [
@@ -962,37 +1152,185 @@ with tab_supervision:
         st.caption("Adapted from FGN/NWRI 2010 via the RWSN supervision guide.")
 
     with st.expander("📝 Checklist record and sign off"):
-        m1, m2 = st.columns(2)
-        with m1:
-            st.text_input("Community", key="meta_community_sup")
-            st.text_input("District", key="meta_district_sup")
-            st.text_input("Client", key="meta_client_sup")
-        with m2:
-            st.text_input("Supervisor", key="meta_supervisor_sup")
-            st.text_input("Drilling contractor", key="meta_contractor_sup")
-            st.text_input("Community representative", key="meta_community_rep_sup")
+        st.caption(
+            "Community, client, contractor and supervisor come from the "
+            "site details in the sidebar."
+        )
+        st.text_input("Community representative (sign off)",
+                      key="meta_community_rep")
         if st.button("Build supervision checklist report", key="build_sup_report"):
-            site = SiteMetadata(
-                community=st.session_state.get("meta_community_sup", ""),
-                district=st.session_state.get("meta_district_sup", ""),
-                client=st.session_state.get("meta_client_sup", ""),
-                contractor=st.session_state.get("meta_contractor_sup", ""),
-                supervisor=st.session_state.get("meta_supervisor_sup", ""),
-            )
+            site = site_from_state()
             report_path = build_supervision_report(
                 SupervisionReportInputs(
                     site=site,
                     items=checklist_items,
                     responses=responses,
                     assessment=assessment,
-                    supervisor=st.session_state.get("meta_supervisor_sup", ""),
-                    driller=st.session_state.get("meta_contractor_sup", ""),
-                    community_rep=st.session_state.get("meta_community_rep_sup", ""),
+                    supervisor=site.supervisor,
+                    driller=site.contractor,
+                    community_rep=st.session_state.get("meta_community_rep", ""),
                 ),
                 workdir() / "Supervision_Checklist_Report.docx",
                 app_config(),
             )
             offer_download(report_path, "Download supervision report (.docx)")
+
+# ---------------------------------------------------------------------------
+# Handover
+# ---------------------------------------------------------------------------
+with tab_handover:
+    st.header("Project handover report")
+    st.caption(
+        "The closing deliverable for the client and the community. Answer "
+        "the questions below; results already produced in the other tabs "
+        "(design, pumping test, water quality) attach automatically."
+    )
+
+    design = st.session_state.get("borehole_design")
+    log = st.session_state.get("drilling_log")
+    pumping = st.session_state.get("pump_analysis")
+    quality = st.session_state.get("wq_assessment")
+    a1, a2, a3 = st.columns(3)
+    a1.metric("Borehole design", "attached" if design is not None else "not yet",
+              help="Produce it in the Borehole design tab and it attaches here.")
+    a2.metric("Pumping test", "attached" if pumping is not None else "not yet",
+              help="Analyse a test in the Pumping test tab.")
+    a3.metric("Water quality", "attached" if quality is not None else "not yet",
+              help="Assess a sample in the Water quality tab.")
+    st.caption(
+        "Community, district, client, contractor and supervisor come from "
+        "the site details in the sidebar."
+    )
+
+    st.subheader("1. The water point")
+    h1, h2 = st.columns(2)
+    pump_type = h1.text_input(
+        "Pump installed (type and model)", key="ho_pump_type",
+        placeholder="e.g. India Mark II handpump",
+    )
+    tariff = h2.text_input(
+        "Tariff arrangement agreed with the community", key="ho_tariff",
+        placeholder="e.g. 5 SLE per household per month",
+    )
+
+    st.subheader("2. WASH committee")
+    st.caption("Who is responsible for the water point? Add one row per member.")
+    committee_rows = st.data_editor(
+        st.session_state.get(
+            "ho_committee_rows",
+            [
+                {"Role": "Chair", "Name": "", "Phone": ""},
+                {"Role": "Secretary", "Name": "", "Phone": ""},
+                {"Role": "Treasurer", "Name": "", "Phone": ""},
+                {"Role": "Caretaker", "Name": "", "Phone": ""},
+            ],
+        ),
+        key="ho_committee",
+        num_rows="dynamic",
+        hide_index=True,
+        use_container_width=True,
+    )
+    committee_notes = st.text_input(
+        "Notes on the committee (training received, bank account, ...)",
+        key="ho_committee_notes",
+    )
+
+    st.subheader("3. Works and sign off")
+    works_text = st.text_area(
+        "Works completed (one per line; leave empty for the standard list "
+        "built from the attached results)",
+        key="ho_works",
+        height=100,
+    )
+    recs_text = st.text_area(
+        "Extra recommendations (one per line, optional)",
+        key="ho_recs",
+        height=80,
+    )
+    s1, s2, s3 = st.columns(3)
+    contractor_rep = s1.text_input("Contractor representative", key="ho_contractor_rep")
+    client_rep = s2.text_input("Client representative", key="ho_client_rep")
+    community_rep = s3.text_input("Community representative", key="ho_community_rep")
+
+    if st.button("Build handover report", key="build_handover", type="primary"):
+        committee = [
+            CommitteeMember(
+                role=str(row.get("Role") or "").strip(),
+                name=str(row.get("Name") or "").strip(),
+                phone=str(row.get("Phone") or "").strip(),
+            )
+            for row in committee_rows
+            if str(row.get("Role") or "").strip() or str(row.get("Name") or "").strip()
+        ]
+        report_path = build_handover_report(
+            HandoverReportInputs(
+                site=site_from_state(),
+                log=log,
+                design=design,
+                pumping=pumping,
+                quality=quality,
+                figures_dir=workdir(),
+                works_completed=[w.strip() for w in works_text.splitlines() if w.strip()],
+                committee=committee,
+                committee_notes=committee_notes,
+                tariff_note=tariff,
+                pump_type=pump_type,
+                extra_recommendations=[r.strip() for r in recs_text.splitlines() if r.strip()],
+                contractor_rep=contractor_rep,
+                client_rep=client_rep,
+                community_rep=community_rep,
+            ),
+            workdir() / "Handover_Report.docx",
+            app_config(),
+        )
+        offer_download(report_path, "Download handover report (.docx)")
+
+# ---------------------------------------------------------------------------
+# Maps
+# ---------------------------------------------------------------------------
+with tab_maps:
+    st.header("Location and geology maps")
+    st.caption(
+        "Report-ready context maps from the site details in the sidebar: "
+        "an administrative location map and the geological setting on a "
+        "generalised geology of Sierra Leone. The geology layer is "
+        "schematic; drop in a survey grade GeoJSON when you have one."
+    )
+    site = site_from_state()
+    if site.latlon is None:
+        st.info(
+            "Enter the GPS coordinates (UTM East, North and zone) in the "
+            "sidebar site details to place the site on the maps; without "
+            "them the national maps are drawn unmarked."
+        )
+    else:
+        lat, lon = site.latlon
+        st.caption(f"Site at {lat:.5f} N, {abs(lon):.5f} W "
+                   f"({site.community or 'unnamed site'}).")
+    radius = st.slider(
+        "Local geology window (km around the site)", 10, 150, 40, 5,
+        key="map_radius",
+        help="Used for the local geological setting map when coordinates "
+        "are entered.",
+    )
+    if st.button("Generate maps", key="run_maps", type="primary"):
+        marked = site if site.latlon is not None else None
+        admin_path = workdir() / "admin_map.png"
+        geo_path = workdir() / "geology_map.png"
+        plot_admin_map(marked, path=admin_path, style=app_config().style)
+        plot_geological_map(marked, path=geo_path, style=app_config().style)
+        paths = [admin_path, geo_path]
+        if marked is not None:
+            local_path = workdir() / "geology_local_map.png"
+            plot_geological_map(
+                marked, path=local_path, style=app_config().style,
+                radius_km=float(radius),
+            )
+            paths.append(local_path)
+        st.session_state.map_paths = paths
+    for map_path in st.session_state.get("map_paths", []):
+        st.image(str(map_path))
+        offer_download(map_path, f"Download {map_path.name}")
 
 # ---------------------------------------------------------------------------
 # Scanned sheets
@@ -1017,6 +1355,12 @@ with tab_extract:
         )
     upload = st.file_uploader("Scan or PDF", type=["pdf", "png", "jpg", "jpeg"], key="scan")
     use_ai = st.checkbox("Use AI assisted extraction (needs ANTHROPIC_API_KEY)")
+    if not IN_BROWSER:
+        st.caption(
+            "On Streamlit Community Cloud: open the app's Settings, choose "
+            "Secrets and add a line ANTHROPIC_API_KEY = \"sk-ant-...\" to "
+            "enable the AI assisted extraction."
+        )
     if upload is not None and st.button("Extract", key="run_extract"):
         path = save_upload(upload)
         try:
