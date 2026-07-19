@@ -25,6 +25,7 @@ from ..hydraulics.plots import (
     plot_theis,
 )
 from ..utils import fmt_num
+from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
 
 
@@ -317,6 +318,30 @@ def build_pumping_report(
                     "the level approaches the pump intake.",
                 ]
             )
+
+    # ---- limitations -----------------------------------------------------------
+    rb.heading("6. Limitations and Uncertainty", 1)
+    rb.bullets(
+        [
+            "The analysis assumes a homogeneous, isotropic aquifer of large "
+            "extent. A barrier or a recharge (stream or coast) boundary, if "
+            "present, changes the late-time drawdown slope and would bias the "
+            "transmissivity.",
+            "In a single pumped well the storativity trades off against the "
+            "effective well radius, so any storativity reported from this test "
+            "is indicative only.",
+            "The safe yield is projected to the design period from a short "
+            "test; it should be confirmed by monitoring the pumping water "
+            "level once the borehole is in service.",
+            "Yield varies with the season. A dry-season water-table decline is "
+            "reserved in the yield calculation and stated in the basis, but a "
+            "test run in the rains can still overstate the dry-season yield.",
+        ]
+    )
+
+    # ---- references and glossary -----------------------------------------------
+    rb.references(references_for("pumping"))
+    rb.glossary(GLOSSARY)
 
     rb.signature_block(
         name=inputs.analyst_name or site.supervisor,

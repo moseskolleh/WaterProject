@@ -21,6 +21,7 @@ from ..hydraulics.plots import plot_test_overview
 from ..models import DrillingLog
 from ..quality.assess import WaterQualityAssessment
 from ..utils import fmt_num
+from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
 
 
@@ -341,6 +342,10 @@ def build_completion_report(
             "at least once a year."
         )
     rb.bullets(bullets)
+
+    # ---- references and glossary -----------------------------------------------
+    rb.references(references_for("completion"))
+    rb.glossary(GLOSSARY)
 
     rb.signature_block(
         name=inputs.preparer_name or site.supervisor,

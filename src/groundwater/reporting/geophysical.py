@@ -29,6 +29,7 @@ from ..ves.classify import classify_curve
 from ..ves.interpret import SiteInterpretation, drilling_preference_table
 from ..ves.inversion import InversionResult
 from ..ves.plots import plot_model_pseudosection, plot_sounding_curve
+from .citations import GLOSSARY, references_for
 from .context import context_map_figures
 from .docx_utils import ReportBuilder
 
@@ -289,6 +290,10 @@ def build_geophysical_report(
     rb.paragraph("Recommendations:", bold=True)
     rb.bullets(_recommendations(inputs.interpretations))
 
+    # ---- 6 limitations and uncertainty -----------------------------------------
+    rb.heading("6. Limitations and Uncertainty", 1)
+    rb.bullets(_limitations(inputs.inversions))
+
     # ---- QA annex (optional) -----------------------------------------------------
     if inputs.include_qa_annex and inputs.flags:
         rb.heading("Annex A. Data Verification Notes", 1)
@@ -297,6 +302,10 @@ def build_geophysical_report(
             "processing and should be verified against the field notes."
         )
         rb.bullets([str(f) for f in inputs.flags])
+
+    # ---- references and glossary -----------------------------------------------
+    rb.references(references_for("geophysical"))
+    rb.glossary(GLOSSARY)
 
     # ---- signature ------------------------------------------------------------
     rb.signature_block(
@@ -307,6 +316,35 @@ def build_geophysical_report(
     )
 
     return rb.save(out_path)
+
+
+def _limitations(inversions: list[InversionResult]) -> list[str]:
+    """Honest, calibrated limitations for the VES interpretation."""
+    items = [
+        "Resistivity models are not unique: different layered models can fit "
+        "the same sounding curve almost equally well (the equivalence and "
+        "suppression problem), so the interpreted layer depths and "
+        "thicknesses carry an uncertainty of the order of plus or minus 20 "
+        "percent.",
+        "A low resistivity layer can represent either a saturated, water "
+        "bearing zone or a conductive clay; the interpretation is made from "
+        "the geological context and must be confirmed by drilling.",
+        "The depth of investigation is limited to roughly the maximum "
+        "electrode spacing, so any structure below the deepest reliable depth "
+        "is not resolved.",
+        "The survey indicates groundwater potential only. The actual yield and "
+        "water quality can be confirmed only by test drilling, test pumping "
+        "and laboratory analysis.",
+    ]
+    errs = [inv.fit_error_percent for inv in inversions if inv.fit_error_percent is not None]
+    if errs:
+        items.insert(
+            0,
+            f"The fitted models reproduce the measured apparent resistivities "
+            f"to within {max(errs):.1f} percent (ERR); a larger misfit means a "
+            "less certain model.",
+        )
+    return items
 
 
 def _sounding_block(
