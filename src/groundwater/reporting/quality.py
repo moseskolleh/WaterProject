@@ -196,6 +196,23 @@ def build_quality_report(
 
     rb.paragraph(assessment.verdict, bold=True, align="justify")
 
+    # headline aggregate scores for quick ranking of the source
+    wqi = assessment.wqi
+    if wqi is not None:
+        rb.paragraph(
+            f"Water Quality Index: {wqi.value:.0f} ({wqi.rating}), over "
+            f"{wqi.n_parameters} physico-chemical parameters.",
+            bold=True,
+        )
+    hr = assessment.health_risk
+    if hr is not None:
+        line = f"Health Hazard Index: {hr.hazard_index:.2f} ({hr.rating})."
+        if hr.cancer_risk is not None:
+            line += (
+                f" Estimated lifetime arsenic cancer risk {hr.cancer_risk:.1e}."
+            )
+        rb.paragraph(line, bold=True)
+
     # ---- 3 ionic balance ---------------------------------------------------------
     rb.heading("3. Ionic Balance Check", 1)
     ionic = assessment.ionic
