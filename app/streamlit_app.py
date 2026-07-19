@@ -72,6 +72,16 @@ from groundwater.mapping import (
     suitability_map,
 )
 from groundwater.portfolio import portfolio_points, portfolio_rows, portfolio_stats
+from groundwater.waterpoints import (
+    ASSESS_REHAB,
+    DEFAULT_SEARCH_RADIUS_M,
+    VERIFY_NEED,
+    WPDX_CREDIT,
+    WaterPointFetchError,
+    functionality_summary,
+    rehab_vs_drill,
+    water_points_near,
+)
 from groundwater.siting import assess_siting, suitability_map_points
 from groundwater.models import SiteMetadata
 from groundwater.project_io import (
@@ -692,6 +702,7 @@ if st.session_state.pop("_recompute_pending", False):
     tab_quality,
     tab_handover,
     tab_maps,
+    tab_waterpoints,
     tab_extract,
     tab_templates,
     tab_portfolio,
@@ -706,6 +717,7 @@ if st.session_state.pop("_recompute_pending", False):
         "🧪 Water quality",
         "🤝 Handover",
         "🗺️ Maps",
+        "🚱 Water points",
         "📄 Scanned sheets",
         "📋 Templates",
         "📁 Portfolio",
@@ -1909,6 +1921,85 @@ with tab_maps:
     for map_path in st.session_state.get("map_paths", []):
         st.image(str(map_path))
         offer_download(map_path, f"Download {map_path.name}")
+
+# ---------------------------------------------------------------------------
+# Existing water points (rehabilitate or drill?)
+# ---------------------------------------------------------------------------
+with tab_waterpoints:
+    st.header("Existing water points near the site")
+    st.caption(
+        "Before drilling, check what is already on the ground. A broken but "
+        "improved handpump nearby is usually far cheaper to rehabilitate than "
+        "a new borehole, and a working source inside the service radius may "
+        "mean the community is already served. Points come live from the "
+        "Water Point Data Exchange (WPdx+, CC BY 4.0), so this tab needs "
+        "internet access; coverage is not exhaustive, so always field-verify."
+    )
+    site = site_from_state()
+    if site.latlon is None:
+        st.info(
+            "Enter the GPS coordinates (UTM East, North and zone) in the "
+            "sidebar site details to look up water points around the site."
+        )
+    else:
+        lat, lon = site.latlon
+        st.caption(f"Site at {lat:.5f} N, {abs(lon):.5f} W "
+                   f"({site.community or 'unnamed site'}).")
+        radius = st.slider(
+            "Search radius (m around the site)", 250, 5000,
+            int(DEFAULT_SEARCH_RADIUS_M), 250, key="wp_radius",
+            help="Existing working sources inside 500 m are treated as "
+            "already serving the site.",
+        )
+        if st.button("Look up water points", key="run_waterpoints",
+                     type="primary"):
+            try:
+                with st.spinner("Querying the Water Point Data Exchange..."):
+                    points = water_points_near(lat, lon, float(radius))
+            except WaterPointFetchError as exc:
+                st.session_state.pop("wp_result", None)
+                st.error(
+                    f"{exc} Check the internet connection and try again; the "
+                    "rest of the toolkit works offline."
+                )
+            else:
+                decision = rehab_vs_drill(points, lat, lon,
+                                          search_radius_m=float(radius))
+                st.session_state["wp_result"] = {
+                    "decision": decision,
+                    "rows": [p.as_row() for p in points],
+                }
+        result = st.session_state.get("wp_result")
+        if result:
+            decision = result["decision"]
+            banner = {
+                VERIFY_NEED: st.warning,
+                ASSESS_REHAB: st.info,
+            }.get(decision["recommendation"], st.success)
+            banner(decision["headline"])
+            st.write(decision["rationale"])
+            summary = decision["summary"]
+            cols = st.columns(4)
+            cols[0].metric("Points nearby", summary["total"])
+            cols[1].metric("Functional", summary["functional"])
+            cols[2].metric("Non-functional", summary["non_functional"])
+            cols[3].metric(
+                "Functional rate",
+                f"{summary['functional_rate']:.0f}%"
+                if summary["functional_rate"] is not None else "n/a",
+            )
+            if decision["rehab_candidates"]:
+                st.subheader("Rehabilitation candidates")
+                st.dataframe(
+                    [{k: v for k, v in c.items() if not k.startswith("_")}
+                     for c in decision["rehab_candidates"]],
+                    use_container_width=True, hide_index=True,
+                )
+            if result["rows"]:
+                st.subheader("All water points in range")
+                st.dataframe(result["rows"], use_container_width=True,
+                             hide_index=True)
+            st.caption(WPDX_CREDIT)
 
 # ---------------------------------------------------------------------------
 # Scanned sheets
