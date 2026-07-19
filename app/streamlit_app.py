@@ -71,6 +71,11 @@ from groundwater.mapping import (
 )
 from groundwater.siting import assess_siting, suitability_map_points
 from groundwater.models import SiteMetadata
+from groundwater.project_io import (
+    committee_records,
+    deserialize_project,
+    serialize_project,
+)
 from groundwater.quality import assess_sample, plot_piper, plot_stiff
 from groundwater.reporting.costing import CostReportInputs, build_cost_report
 from groundwater.reporting.handover import (
@@ -356,25 +361,9 @@ def _apply_latlon() -> None:
 # Project file: save and restore the whole working state
 # ---------------------------------------------------------------------------
 
-_PERSIST_PREFIXES = (
-    "org_", "meta_", "chk_", "rmk_", "cost_", "fx_", "ho_", "wiz_",
-)
-
-
 def project_file_bytes() -> bytes:
     """Serialize the widget state that makes up a project."""
-    state = {
-        key: value
-        for key, value in st.session_state.items()
-        if key.startswith(_PERSIST_PREFIXES)
-        and isinstance(value, (str, int, float, bool))
-    }
-    payload = {
-        "groundwater_toolkit_project": groundwater.__version__,
-        "rates_overrides": st.session_state.get("rates_overrides", {}),
-        "state": state,
-    }
-    return yaml.safe_dump(payload, sort_keys=True).encode("utf-8")
+    return serialize_project(dict(st.session_state), groundwater.__version__)
 
 
 def _load_project() -> None:
@@ -383,22 +372,22 @@ def _load_project() -> None:
     if upload is None:
         return
     try:
-        payload = yaml.safe_load(upload.getvalue().decode("utf-8"))
-        assert isinstance(payload, dict)
-        assert isinstance(payload.get("state"), dict)
-    except Exception:
+        updates = deserialize_project(upload.getvalue())
+    except ValueError:
         st.session_state.project_load_error = True
         return
-    for key, value in payload["state"].items():
-        if key.startswith(_PERSIST_PREFIXES) and isinstance(
-            value, (str, int, float, bool)
-        ):
-            st.session_state[key] = value
-    overrides = payload.get("rates_overrides") or {}
+    overrides = updates.pop("rates_overrides", None)
+    committee = updates.pop("committee", None)
+    for key, value in updates.items():
+        st.session_state[key] = value
     if isinstance(overrides, dict):
-        st.session_state.rates_overrides = {
-            str(code): float(rate) for code, rate in overrides.items()
-        }
+        st.session_state.rates_overrides = overrides
+    # restore the WASH committee: set the data_editor base and clear its
+    # stale edit delta so the saved rows show cleanly after loading
+    if isinstance(committee, list) and committee:
+        st.session_state["ho_committee_rows"] = committee
+        st.session_state["ho_committee_data"] = committee
+        st.session_state.pop("ho_committee", None)
     # reset the rate editor so it shows the loaded values
     st.session_state.pop("rates_editor", None)
     st.session_state.project_loaded = True
@@ -538,9 +527,10 @@ with st.sidebar:
                       help="Address or contact line under the name.")
     with st.expander("💾 Project file"):
         st.caption(
-            "Save the whole working state (site details, checklist "
-            "answers, costing inputs and edited rates) and load it "
-            "back later or on another machine."
+            "Save your inputs (site details, checklist answers, costing "
+            "inputs, edited rates and the WASH committee) and load them back "
+            "later or on another machine. Re-upload your data files to "
+            "recompute the analyses and reports."
         )
         st.download_button(
             "Save project (.yaml)",
@@ -1701,6 +1691,10 @@ with tab_handover:
         hide_index=True,
         use_container_width=True,
     )
+    # keep a clean, serialisable copy of the committee so it survives reruns
+    # and is saved with the project (the data_editor key holds only an edit
+    # delta, which is not itself persistable)
+    st.session_state["ho_committee_data"] = committee_records(committee_rows)
     committee_notes = st.text_input(
         "Notes on the committee (training received, bank account, ...)",
         key="ho_committee_notes",
