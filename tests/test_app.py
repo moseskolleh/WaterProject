@@ -250,6 +250,24 @@ def test_templates_tab(app):
     assert not app.exception
 
 
+def test_waterpoints_tab_guarded(sample_data):
+    """The water points tab renders and, given coordinates, shows the lookup
+    control - without touching the network (no button click)."""
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.run()
+    assert not at.exception
+    # no coordinates yet: the tab shows its guidance, no lookup control
+    assert not any(b.key == "run_waterpoints" for b in at.button)
+    # with coordinates the radius slider and lookup button appear
+    at.session_state["meta_easting"] = 825127.0
+    at.session_state["meta_northing"] = 983069.0
+    at.session_state["meta_zone"] = "28N"
+    at.run()
+    assert not at.exception
+    assert at.slider(key="wp_radius") is not None
+    assert any(b.key == "run_waterpoints" for b in at.button)
+
+
 def test_recompute_on_project_load(sample_data):
     """Loading a project rebuilds the analyses from saved data sources."""
     at = AppTest.from_file(APP, default_timeout=600)

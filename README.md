@@ -38,6 +38,11 @@ water quality guidelines.
     pumping test, water quality, project handover, cost estimate and
     supervision checklist record; the web app saves and reloads the
     whole working state as a project file
+11. A rehabilitate-or-drill check: existing water points near the site
+    from the Water Point Data Exchange (WPdx+, CC BY 4.0), turned into a
+    recommendation - a broken improved source nearby is a rehabilitation
+    candidate, a working one inside the service radius may already serve
+    the community, otherwise new construction is justified
 
 ## Try it online
 
