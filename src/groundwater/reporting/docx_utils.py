@@ -194,6 +194,26 @@ class ReportBuilder:
             run._r.append(el)
         self.page_break()
 
+    def executive_summary(
+        self, paragraphs: list[str], key_findings: list[str] | None = None
+    ) -> None:
+        """A short verdict block placed at the very top of a report.
+
+        Composed from figures the report already computes, so a ministry
+        engineer or programme manager gets the yield, water safety and the
+        single next action before any detail. ``key_findings`` renders as a
+        tight bullet list under a bold label.
+        """
+        self.heading("Executive Summary", level=1, numbered=False)
+        for text in paragraphs:
+            if not text:
+                continue
+            self.paragraph(text, align="justify")
+        if key_findings:
+            self.paragraph("Key findings:", bold=True)
+            self.bullets([k for k in key_findings if k])
+        self.page_break()
+
     def heading(self, text: str, level: int = 1, numbered: bool = True) -> None:
         self.doc.add_heading(_clean(text), level=level)
 

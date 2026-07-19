@@ -61,13 +61,15 @@ from groundwater.ingestion import (
     read_ves_workbook,
 )
 from groundwater.ingestion.templates import write_all_templates
-from groundwater.geo import utm_to_geographic
+from groundwater.geo import geographic_to_utm, utm_to_geographic
 from groundwater.mapping import (
     district_of,
     plot_admin_map,
     plot_geological_map,
     plot_hydrogeology_map,
+    suitability_map,
 )
+from groundwater.siting import assess_siting, suitability_map_points
 from groundwater.models import SiteMetadata
 from groundwater.quality import assess_sample, plot_piper, plot_stiff
 from groundwater.reporting.costing import CostReportInputs, build_cost_report
@@ -314,6 +316,42 @@ def site_from_state() -> SiteMetadata:
     )
 
 
+def _apply_latlon() -> None:
+    """Convert the decimal lat/lon entry into the UTM site fields.
+
+    Runs as a widget callback (before the script reruns) so it can write
+    the meta_easting / meta_northing / meta_zone widget state safely. Field
+    crews read decimal degrees off a phone or handheld GPS; this removes the
+    UTM-typing friction and the wrong-zone errors it causes.
+    """
+    raw = (st.session_state.get("latlon_paste", "") or "").strip()
+    lat = st.session_state.get("latlon_lat", 0.0)
+    lon = st.session_state.get("latlon_lon", 0.0)
+    if raw:
+        parts = [
+            p for p in raw.replace(";", ",").replace(" ", ",").split(",")
+            if p and p.upper() not in ("N", "S", "E", "W")
+        ]
+        try:
+            lat, lon = float(parts[0]), float(parts[1])
+        except (ValueError, IndexError):
+            st.session_state["latlon_error"] = (
+                "Could not read those coordinates. Enter 'lat, lon' in decimal "
+                "degrees, for example 8.4657, -13.2317."
+            )
+            return
+    if not lat or not lon:
+        st.session_state["latlon_error"] = (
+            "Enter a latitude and longitude (or paste them) first."
+        )
+        return
+    utm = geographic_to_utm(lat, lon)
+    st.session_state["meta_easting"] = float(round(utm.easting))
+    st.session_state["meta_northing"] = float(round(utm.northing))
+    st.session_state["meta_zone"] = f"{28 if utm.zone <= 28 else 29}N"
+    st.session_state["latlon_error"] = ""
+
+
 # ---------------------------------------------------------------------------
 # Project file: save and restore the whole working state
 # ---------------------------------------------------------------------------
@@ -452,6 +490,21 @@ with st.sidebar:
         st.selectbox("UTM zone", ["28N", "29N"], index=1, key="meta_zone",
                      help="28N west of 12 degrees W (Freetown, Port Loko), "
                      "29N further east.")
+        st.caption(
+            "Phone or handheld GPS reads decimal degrees? Enter or paste "
+            "lat/lon and convert to the UTM fields above:"
+        )
+        _lat_col, _lon_col = st.columns(2)
+        _lat_col.number_input("Latitude (deg N)", key="latlon_lat",
+                              format="%.6f", step=0.0001)
+        _lon_col.number_input("Longitude (deg, W negative)", key="latlon_lon",
+                              format="%.6f", step=0.0001)
+        st.text_input("or paste 'lat, lon'", key="latlon_paste",
+                      placeholder="8.4657, -13.2317")
+        st.button("Convert to UTM", on_click=_apply_latlon,
+                  use_container_width=True)
+        if st.session_state.get("latlon_error"):
+            st.warning(st.session_state["latlon_error"])
         if detected_latlon is not None:
             lat, lon = detected_latlon
             if detected_district:
@@ -861,6 +914,47 @@ with tab_ves:
                 col_txt.write(interp.narrative)
         st.subheader("Drilling preference")
         st.table(drilling_preference_table(interps))
+
+        with st.expander("🎯 Drill-target suitability (prototype)", expanded=True):
+            st.caption(
+                "A transparent 0-100 suitability score per point, combining "
+                "aquifer thickness, resistivity fit, overburden and any "
+                "fracture at the basement contact. It answers 'where should I "
+                "drill?' and, as real drilling outcomes accumulate, the weights "
+                "can be replaced by a fitted model."
+            )
+            suitability = assess_siting(interps)
+            st.dataframe(
+                [
+                    {
+                        "Rank": s.rank,
+                        "Point": s.sounding_id,
+                        "Suitability": f"{s.suitability:.0f}/100",
+                        "Grade": s.grade,
+                        "Why": s.rationale,
+                    }
+                    for s in suitability
+                ],
+                hide_index=True,
+                use_container_width=True,
+            )
+            best = suitability[0]
+            st.success(
+                f"Recommended drill target: **{best.sounding_id}** "
+                f"({best.suitability:.0f}/100, {best.grade}).",
+                icon="🎯",
+            )
+            map_points = suitability_map_points(suitability)
+            if map_points:
+                zone = site_from_state().utm_zone or 29
+                smap = workdir() / "suitability_map.png"
+                suitability_map(map_points, zone, path=smap)
+                st.image(str(smap))
+            else:
+                st.info(
+                    "Add GPS coordinates to the VES points (sidebar site "
+                    "details) to draw the drill-target map."
+                )
 
         if st.button("Build geophysical survey report", key="build_geo_report"):
             report_path = build_geophysical_report(
