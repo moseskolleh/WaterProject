@@ -377,7 +377,18 @@ def recommend_yield(
     elif swl is not None and test.borehole_depth_m is not None:
         available = test.borehole_depth_m - swl - config.pump_submergence_min_m - 3.0
 
-    usable = available * config.available_drawdown_fraction if available else None
+    # Reserve the dry-season water-table decline before taking the usable
+    # fraction. A test run in the rains sits on a higher static level than
+    # the borehole will see at the end of the dry season, so the raw
+    # available drawdown would over-state the sustainable yield.
+    # seasonal_allowance_m is the expected wet-to-dry decline (configurable
+    # per district); it is already applied to the pump-setting depth below.
+    usable = (
+        max(available - config.seasonal_allowance_m, 0.0)
+        * config.available_drawdown_fraction
+        if available
+        else None
+    )
 
     if transmissivity is None or swl is None:
         reason = (
@@ -449,7 +460,9 @@ def recommend_yield(
         f"{config.available_drawdown_fraction:.0%} of the available drawdown"
         + (
             f" {available:.1f} m (static level to pump intake less "
-            f"{config.pump_submergence_min_m:.0f} m submergence)"
+            f"{config.pump_submergence_min_m:.0f} m submergence), after "
+            f"reserving a {config.seasonal_allowance_m:.0f} m dry-season "
+            "water-table decline"
             if available
             else ""
         )

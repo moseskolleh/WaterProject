@@ -23,7 +23,7 @@ from .docx_utils import ReportBuilder
 _STATUS_LABEL = {
     "within_limits": "Complies",
     "exceeds_health": "EXCEEDS HEALTH GUIDELINE",
-    "exceeds_national": "Exceeds national limit",
+    "exceeds_national": "Exceeds national/adopted limit",
     "exceeds_aesthetic": "Exceeds acceptability value",
     "below_detection": "Below detection",
     "no_guideline": "No guideline value",
@@ -107,8 +107,11 @@ def build_quality_report(
     rb.paragraph(
         "Results are compared against the WHO Guidelines for Drinking-water "
         "Quality (fourth edition with addenda) and the national standard "
-        "limits configured for this project. Values reported by the "
-        "laboratory as below the detection limit are shown as such.",
+        "limits configured for this project. Where a confirmed national "
+        "value is not available, the WHO or regional figure is adopted for "
+        "that parameter and the status column reads national/adopted limit. "
+        "Values reported by the laboratory as below the detection limit are "
+        "shown as such.",
         align="justify",
     )
 

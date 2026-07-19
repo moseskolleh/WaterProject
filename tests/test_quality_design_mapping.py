@@ -6,6 +6,7 @@ import pytest
 from groundwater.design import design_borehole
 from groundwater.ingestion import read_drilling_workbook, read_quality_workbook
 from groundwater.mapping import MapPoint, export_geojson, iso_resistivity_map
+from groundwater.models import SiteMetadata, WaterQualityResult, WaterQualitySample
 from groundwater.quality import assess_sample, ionic_balance
 from groundwater.quality.standards import Limit, load_standards, normalise_parameter
 
@@ -39,6 +40,31 @@ def test_assessment_flags_exceedances(sample_data):
     assert by_name["Chloride"].status == "within_limits"
     assert by_name["Arsenic"].status == "below_detection"
     assert "Manganese" in assessment.verdict
+
+
+def _sample_with(nitrate, nitrite):
+    return WaterQualitySample(
+        site=SiteMetadata(community="Test"),
+        results=[
+            WaterQualityResult(parameter="Nitrate (as NO3)", value=nitrate, unit="mg/L"),
+            WaterQualityResult(parameter="Nitrite (as NO2)", value=nitrite, unit="mg/L"),
+        ],
+    )
+
+
+def test_combined_nitrate_nitrite_rule_flags_false_pass():
+    # NO3=40 (<50) and NO2=2 (<3) each pass, but 40/50 + 2/3 = 1.47 > 1
+    assessment = assess_sample(_sample_with(40.0, 2.0))
+    combined = [r for r in assessment.rows if r.parameter.startswith("Nitrate + nitrite")]
+    assert combined and combined[0].status == "exceeds_health"
+    assert any(f.code == "nitrate_nitrite_combined" for f in assessment.flags)
+    assert assessment.health_exceedances  # verdict now treats it as unsafe
+
+
+def test_combined_nitrate_nitrite_rule_passes_when_low():
+    # 10/50 + 0.5/3 = 0.37 < 1, and neither individually exceeds
+    assessment = assess_sample(_sample_with(10.0, 0.5))
+    assert not any(r.parameter.startswith("Nitrate + nitrite") for r in assessment.rows)
 
 
 def test_ionic_balance(sample_data):

@@ -74,6 +74,22 @@ def test_pending_without_discharge(sample_data):
     assert yr.available_drawdown_m is not None and yr.available_drawdown_m > 30
 
 
+def test_seasonal_decline_reduces_safe_yield(sample_data):
+    from dataclasses import replace
+
+    from groundwater.config import PumpingConfig
+
+    test = read_pumping_workbook(sample_data / "dr_timbo" / "dr_timbo_constant_test.xlsx")
+    base = analyse_pumping_test(test, config=PumpingConfig(seasonal_allowance_m=0.0))
+    dry = analyse_pumping_test(test, config=PumpingConfig(seasonal_allowance_m=8.0))
+    yb = base.yield_recommendation.safe_yield_m3_per_h
+    yd = dry.yield_recommendation.safe_yield_m3_per_h
+    # a larger dry-season decline reserves more drawdown, so the sustainable
+    # yield must fall, and the basis must disclose the reserve
+    assert yb is not None and yd is not None and yd < yb
+    assert "dry-season" in dry.yield_recommendation.basis
+
+
 def test_step_analysis_after_supplying_discharge(sample_data):
     test = read_pumping_workbook(sample_data / "kuntolo" / "kuntolo_step_test.xlsx")
     for step, q in zip(test.steps, (1.5, 2.2, 3.0)):
