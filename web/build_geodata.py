@@ -18,6 +18,19 @@ Produces two package data files from real, freely licensed datasets:
     (gbOpen, CC BY 4.0), each tagged with its parent district. Used for
     chiefdom auto-detection from GPS and finer maps.
 
+``src/groundwater/data/sl_population_district.csv``
+    Resident population of the 16 current districts from the Statistics
+    Sierra Leone 2015 Population and Housing Census (sums to the official
+    national total of 7,092,113). Built from embedded published figures,
+    so no raw download is needed.
+
+``src/groundwater/data/sl_chiefdom_district.csv``
+    A chiefdom -> current-district crosswalk, so a point can be placed in
+    a current district (Karene/Falaba included) via the chiefdom polygons
+    even though the ADM2 boundaries predate 2017. Built from the census
+    chiefdom table ``SL_Doc.csv`` (Statistics Sierra Leone, via
+    github.com/timothy-horton/SL_Map) placed in the raw directory.
+
 The raw inputs are NOT committed (about 40 MB). To regenerate, first
 download them into a working directory:
 
@@ -39,6 +52,7 @@ Requires ``pyshp`` (pure Python) for the shapefile only.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 from pathlib import Path
 
@@ -401,6 +415,7 @@ def build_chiefdoms(raw: Path, tol: float = 0.004) -> Path:
                            "district": district_of(cx, cy)},
             "geometry": geom,
         })
+    features = split_koya_feature(features)
     payload = {
         "type": "FeatureCollection",
         "attribution": "Chiefdoms from geoBoundaries (gbOpen, CC BY 4.0)",
@@ -412,19 +427,179 @@ def build_chiefdoms(raw: Path, tol: float = 0.004) -> Path:
     return out
 
 
+# Statistics Sierra Leone, 2015 Population and Housing Census: resident
+# population of the 16 current districts. Published government statistics;
+# the values sum to the official national total of 7,092,113.
+DISTRICT_POPULATION_2015 = {
+    "Bo": 575478, "Bombali": 422960, "Bonthe": 200781, "Falaba": 205353,
+    "Kailahun": 526379, "Kambia": 345474, "Karene": 285546, "Kenema": 609891,
+    "Koinadugu": 204019, "Kono": 506100, "Moyamba": 318588, "Port Loko": 530865,
+    "Pujehun": 346461, "Tonkolili": 513984, "Western Area Rural": 444270,
+    "Western Area Urban": 1055964,
+}
+
+# geoBoundaries chiefdom -> current district where the automatic name match is
+# ambiguous or absent (each verified against the polygon centroid):
+#   TMS               = Thainkatopa/Makama/Safroko, centroid in Port Loko;
+#   Koya              = after split_koya_feature, only the eastern lobe (the
+#                       Kenema chiefdom, centroid 7.65N/11.29W); still needs an
+#                       override because "koya" collides with the Port Loko Koya
+#                       and the "Koya Rural" prefix in the census table;
+#   Koya (Port Loko)  = the western lobe split out below.
+CHIEFDOM_DISTRICT_OVERRIDES = {
+    "TMS": "Port Loko",
+    "Koya": "Kenema",
+    "Koya (Port Loko)": "Port Loko",
+}
+
+
+def split_koya_feature(features: list) -> list:
+    """Split the merged geoBoundaries "Koya" feature into its two chiefdoms.
+
+    geoBoundaries dissolves same-named ADM3 units, so the single "Koya" feature
+    merges two distinct chiefdoms in two districts: the eastern lobe is Koya in
+    Kenema (centroid ~11.29 W), the western lobe is Koya in Port Loko (centroid
+    ~12.87 W, about three times larger). One name -> district label cannot
+    represent that, so a water point in the larger western lobe would be
+    mis-counted. Split by longitude: rings west of 12 W become
+    "Koya (Port Loko)", the rest stay "Koya" (the Kenema chiefdom).
+    """
+    out: list = []
+    for feature in features:
+        if feature["properties"].get("name") != "Koya":
+            out.append(feature)
+            continue
+        geom = feature["geometry"]
+        polys = (geom["coordinates"] if geom["type"] == "MultiPolygon"
+                 else [geom["coordinates"]])
+        west, east = [], []
+        for poly in polys:
+            ring = poly[0]
+            centre_lon = sum(p[0] for p in ring) / len(ring)
+            (west if centre_lon < -12.0 else east).append(poly)
+        for name, district, group in (
+            ("Koya", "Kenema", east),
+            ("Koya (Port Loko)", "Port Loko", west),
+        ):
+            if not group:
+                continue
+            geometry = (
+                {"type": "Polygon", "coordinates": group[0]}
+                if len(group) == 1
+                else {"type": "MultiPolygon", "coordinates": group}
+            )
+            out.append({
+                "type": "Feature",
+                "properties": {"name": name, "district": district},
+                "geometry": geometry,
+            })
+    return out
+
+
+def build_population() -> Path:
+    """District population table (2015 census, 16 current districts).
+
+    Writes ``sl_population_district.csv`` from the published Statistics Sierra
+    Leone figures embedded above (they are the authoritative source, so no raw
+    download is needed).
+    """
+    assert sum(DISTRICT_POPULATION_2015.values()) == 7_092_113
+    out = OUT / "sl_population_district.csv"
+    lines = ["district,population"] + [
+        f"{d},{DISTRICT_POPULATION_2015[d]}"
+        for d in sorted(DISTRICT_POPULATION_2015)
+    ]
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"wrote {out} ({len(DISTRICT_POPULATION_2015)} districts)")
+    return out
+
+
+def _norm_name(name: str) -> str:
+    import re
+    import unicodedata
+
+    ascii_ = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode()
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", ascii_.lower())).strip()
+
+
+def build_chiefdom_district(raw: Path) -> Path:
+    """Chiefdom -> current-district crosswalk.
+
+    Matches the committed chiefdom polygons (geoBoundaries names, truncated to
+    15 chars) to the 2015 census chiefdom table ``SL_Doc.csv`` (columns REGION,
+    DISTRICT, CHIEFDOM, POPULATION - Statistics Sierra Leone, via
+    github.com/timothy-horton/SL_Map) by normalised name or prefix, mapping the
+    census 16-district labels to canonical names, with the small verified
+    override table above. Every chiefdom must resolve to exactly one district
+    that exists in the population table, or the build fails loudly. Writes
+    ``sl_chiefdom_district.csv``.
+    """
+    def to_current(label: str) -> str:
+        label = label.strip().title()
+        return {"Karena": "Karene", "Urban": "Western Area Urban",
+                "Rural": "Western Area Rural"}.get(label, label)
+
+    rows = list(csv.DictReader((raw / "SL_Doc.csv").read_text().splitlines()))
+    index: dict[str, set] = {}
+    for row in rows:
+        index.setdefault(_norm_name(row["CHIEFDOM"]), set()).add(
+            to_current(row["DISTRICT"])
+        )
+    chiefdoms = json.loads(
+        (OUT / "sl_chiefdoms_geoboundaries.geojson").read_text()
+    )
+    crosswalk: list[tuple[str, str]] = []
+    for feature in chiefdoms["features"]:
+        name = feature["properties"]["name"]
+        if name in CHIEFDOM_DISTRICT_OVERRIDES:
+            crosswalk.append((name, CHIEFDOM_DISTRICT_OVERRIDES[name]))
+            continue
+        norm = _norm_name(name)
+        if norm in index and len(index[norm]) == 1:
+            crosswalk.append((name, next(iter(index[norm]))))
+            continue
+        candidates: set = set()
+        for key, value in index.items():
+            if key.startswith(norm) or norm.startswith(key):
+                candidates |= value
+        if len(candidates) != 1:
+            raise ValueError(
+                f"unresolved chiefdom -> district for {name!r}: {sorted(candidates)}"
+            )
+        crosswalk.append((name, next(iter(candidates))))
+    unknown = sorted({d for _, d in crosswalk} - set(DISTRICT_POPULATION_2015))
+    if unknown:
+        raise ValueError(f"crosswalk districts not in population table: {unknown}")
+    if len(crosswalk) != len(chiefdoms["features"]):
+        raise ValueError(
+            f"crosswalk has {len(crosswalk)} rows for "
+            f"{len(chiefdoms['features'])} chiefdom features"
+        )
+    out = OUT / "sl_chiefdom_district.csv"
+    lines = ["chiefdom,district"] + [
+        f"{c},{d}" for c, d in sorted(crosswalk)
+    ]
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"wrote {out} ({len(crosswalk)} chiefdoms)")
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--raw", default=None,
                         help="directory holding the downloaded raw datasets "
-                        "(geology, admin and chiefdoms); omit to rebuild only "
-                        "the hydrogeology layer from the committed source")
+                        "(geology, admin, chiefdoms and the SL_Doc.csv census "
+                        "table); omit to rebuild only the layers with a "
+                        "committed source")
     args = parser.parse_args()
     if args.raw:
         raw = Path(args.raw)
         build_geology(raw)
         build_admin(raw)
         build_chiefdoms(raw)
+        build_chiefdom_district(raw)
     build_hydrogeology()
+    build_population()
 
 
 if __name__ == "__main__":

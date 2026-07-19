@@ -586,3 +586,96 @@ def plot_admin_map(
         if path is not None:
             return save_figure(fig, path, style)
         return fig
+
+
+def plot_coverage_choropleth(
+    district_values: dict[str, float],
+    chiefdom_district: dict[str, str],
+    path: str | Path | None = None,
+    style: HouseStyle | None = None,
+    chiefdom_path: str | Path | None = None,
+    admin_path: str | Path | None = None,
+    title: str = "Water coverage gap by district",
+    legend_label: str = "People per functional water point",
+    credit: str = ADMIN_CREDIT,
+):
+    """Choropleth of unmet water need, coloured by district value.
+
+    Each chiefdom polygon is filled by the value of its district (from
+    ``district_values``, keyed by district name; ``chiefdom_district`` maps
+    each chiefdom to its district). Warmer = worse. A district with no
+    functional source (an infinite value) is drawn in a distinct dark class;
+    a district with no data is grey.
+    """
+    from matplotlib.cm import ScalarMappable
+    from matplotlib.colors import LinearSegmentedColormap, Normalize
+
+    style = style or HouseStyle()
+    outline, _ = load_admin(admin_path)
+    areas = load_chiefdoms(chiefdom_path)
+    finite = [
+        v for v in district_values.values() if v is not None and math.isfinite(v)
+    ]
+    norm = Normalize(min(finite), max(finite)) if finite else Normalize(0.0, 1.0)
+    cmap = LinearSegmentedColormap.from_list(
+        "unmet_need", ["#FBF1E9", style.secondary_color]
+    )
+    no_data = "#E9E9E9"
+    no_source = "#5A1A12"  # dark laterite: no functional source mapped
+    with figure_context(style):
+        fig, ax = plt.subplots(figsize=(style.figure_width_in, 5.8))
+        label_pts: dict[str, list[tuple[float, float]]] = {}
+        for area in areas:
+            district = chiefdom_district.get(area.name)
+            value = district_values.get(district) if district else None
+            if value is None:
+                face = no_data
+            elif not math.isfinite(value):
+                face = no_source
+            else:
+                face = cmap(norm(value))
+            for ring in area.rings:
+                ax.add_patch(
+                    plt.Polygon(ring, closed=True, facecolor=face,
+                                edgecolor="#8FA6B8", lw=0.3, zorder=2)
+                )
+            if district:
+                label_pts.setdefault(district, []).append(area.label_point)
+        for ring in outline.rings:
+            ax.plot(ring[:, 0], ring[:, 1], color="#333333", lw=1.2, zorder=5)
+        for district, pts in label_pts.items():
+            lx = sum(p[0] for p in pts) / len(pts)
+            ly = sum(p[1] for p in pts) / len(pts)
+            ax.annotate(district, xy=(lx, ly), ha="center", va="center",
+                        fontsize=6.0, color="#222222", fontweight="bold",
+                        zorder=6)
+        ax.text(-11.2, 9.82, "GUINEA", fontsize=8, color="#999999",
+                fontweight="bold")
+        ax.text(-10.95, 7.15, "LIBERIA", fontsize=8, color="#999999",
+                fontweight="bold")
+        ax.text(-13.25, 7.45, "Atlantic\nOcean", fontsize=8, color="#7FA8C9",
+                style="italic", ha="center")
+        all_pts = np.concatenate(outline.rings)
+        ax.set_xlim(all_pts[:, 0].min() - 0.2, all_pts[:, 0].max() + 0.15)
+        ax.set_ylim(all_pts[:, 1].min() - 0.15, all_pts[:, 1].max() + 0.12)
+        _geo_axes_finish(ax, float(np.mean(ax.get_ylim())), credit)
+        mappable = ScalarMappable(norm=norm, cmap=cmap)
+        mappable.set_array([])
+        fig.colorbar(mappable, ax=ax, shrink=0.6, label=legend_label)
+        # legend keys for the two out-of-ramp classes, so a reader can tell the
+        # dark districts are the worst case (no source), not the ramp maximum
+        from matplotlib.patches import Patch
+
+        ax.legend(
+            handles=[
+                Patch(facecolor=no_source, edgecolor="#8FA6B8",
+                      label="No functional source"),
+                Patch(facecolor=no_data, edgecolor="#8FA6B8", label="No data"),
+            ],
+            loc="lower right", fontsize=7, framealpha=0.95,
+        )
+        ax.set_title(title)
+        fig.tight_layout()
+        if path is not None:
+            return save_figure(fig, path, style)
+        return fig

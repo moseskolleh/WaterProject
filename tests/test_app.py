@@ -286,6 +286,35 @@ def test_portfolio_drilldown_flow(sample_data):
                for b in at.download_button)
 
 
+def test_coverage_tab_csv_flow(sample_data):
+    """Upload a WPDx CSV export (offline path) and get the district ranking."""
+    csv_text = (
+        "lat_deg,lon_deg,status_clean,water_source_clean\n"
+        "7.8767,-11.1875,Functional,Borehole\n"      # Kenema
+        "8.8817,-12.0442,Functional,Borehole\n"      # Bombali
+        "8.8820,-12.0450,Non-Functional,Borehole\n"  # Bombali (broken)
+        "8.4657,-13.2317,Functional,Borehole\n"      # Western Area Urban
+        "8.0000,-14.0000,Functional,Borehole\n"      # offshore -> unassigned
+    )
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.run()
+    assert not at.exception
+    # default source is the CSV upload; feed the export
+    at.file_uploader(key="cov_csv").set_value(
+        [("wpdx.csv", csv_text.encode(), "text/csv")]
+    )
+    at.run()
+    assert not at.exception
+    # the district ranking rendered, covering all 16 districts
+    df = at.dataframe[-1].value
+    assert len(df) == 16
+    by_district = dict(zip(df["District"], df["Functional"]))
+    assert by_district["Bombali"] == 1  # one functional of the two Bombali points
+    assert by_district["Kenema"] == 1
+    # metrics computed
+    assert any(m.label == "Districts" for m in at.metric)
+
+
 def test_waterpoints_tab_guarded(sample_data):
     """The water points tab renders and, given coordinates, shows the lookup
     control - without touching the network (no button click)."""

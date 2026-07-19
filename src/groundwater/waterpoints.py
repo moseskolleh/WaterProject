@@ -29,6 +29,8 @@ tolerant fallbacks so a schema tweak does not silently drop every point.
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import math
 import re
@@ -383,7 +385,11 @@ def fetch_water_points(
         f"lat_deg between {lat - dlat} and {lat + dlat} "
         f"AND lon_deg between {lon - dlon} and {lon + dlon}"
     )
-    query = urllib.parse.urlencode({"$where": where, "$limit": int(limit)})
+    # $order by the Socrata row id makes a capped result deterministic across
+    # runs (a truncated slice is at least the same slice every time).
+    query = urllib.parse.urlencode(
+        {"$where": where, "$limit": int(limit), "$order": ":id"}
+    )
     url = f"https://{domain}/resource/{resource}.json?{query}"
     request = urllib.request.Request(
         url, headers={"User-Agent": "groundwater-toolkit/waterpoints"}
@@ -402,6 +408,18 @@ def fetch_water_points(
             "(expected a list of records)."
         )
     return data
+
+
+def parse_wpdx_csv(text: str) -> list[WaterPoint]:
+    """Parse a WPDx CSV export into :class:`WaterPoint` records.
+
+    A WPDx/Socrata CSV export uses the same column names as the JSON API
+    (``lat_deg``, ``lon_deg``, ``status_clean``, ``water_source_clean`` ...),
+    so the rows feed straight into :func:`parse_wpdx_records`. This is the
+    fully offline input path - a user downloads their country's export and
+    uploads it, no network required.
+    """
+    return parse_wpdx_records(csv.DictReader(io.StringIO(text)))
 
 
 def water_points_near(
