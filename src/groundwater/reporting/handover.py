@@ -19,6 +19,7 @@ from ..hydraulics.analysis import PumpingTestAnalysis
 from ..models import DrillingLog, SiteMetadata
 from ..quality.assess import WaterQualityAssessment
 from ..utils import fmt_num
+from .citations import GLOSSARY, references_for
 from .context import context_map_figures
 from .docx_utils import ReportBuilder
 
@@ -261,6 +262,10 @@ def build_handover_report(
         recs.insert(0, inputs.quality.corrosivity.materials_note)
     recs.extend(inputs.extra_recommendations)
     rb.bullets(recs)
+
+    # ---- references and glossary -----------------------------------------------
+    rb.references(references_for("handover"))
+    rb.glossary(GLOSSARY)
 
     # ---- signatures ----------------------------------------------------------------------
     rb.heading("8. Handover Signatures", 1)

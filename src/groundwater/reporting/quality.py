@@ -18,6 +18,7 @@ from ..config import Config
 from ..quality.assess import WaterQualityAssessment
 from ..quality.diagrams import plot_piper, plot_stiff
 from ..utils import fmt_num
+from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
 
 _STATUS_LABEL = {
@@ -300,6 +301,27 @@ def build_quality_report(
         "year, and after any flooding or repair work on the wellhead."
     )
     rb.bullets(advice)
+
+    # ---- 7 limitations ---------------------------------------------------------
+    rb.heading("7. Limitations and Uncertainty", 1)
+    rb.bullets(
+        [
+            "The results describe a single sample at one point in time. Water "
+            "quality varies with the season, rainfall and the condition of the "
+            "wellhead, so periodic re-testing is needed to confirm the "
+            "verdict.",
+            "Parameters reported below the laboratory detection limit are shown "
+            "as such; a non-detection does not prove complete absence.",
+            "The corrosivity and index calculations use the parameters "
+            "supplied. Missing pH, calcium or alkalinity limit what can be "
+            "assessed, and any assumptions made are stated where they are "
+            "used.",
+        ]
+    )
+
+    # ---- references and glossary -----------------------------------------------
+    rb.references(references_for("quality"))
+    rb.glossary(GLOSSARY)
 
     rb.signature_block(
         name=inputs.analyst_name,

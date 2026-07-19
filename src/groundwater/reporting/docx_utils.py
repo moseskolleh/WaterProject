@@ -233,6 +233,29 @@ class ReportBuilder:
         for item in items:
             self.doc.add_paragraph(_clean(item), style="List Bullet")
 
+    def references(self, entries: list[str]) -> None:
+        """A References section with hanging-indent bibliography entries."""
+        if not entries:
+            return
+        self.heading("References", level=1, numbered=False)
+        for entry in entries:
+            para = self.doc.add_paragraph(_clean(entry))
+            para.paragraph_format.left_indent = Cm(0.8)
+            para.paragraph_format.first_line_indent = Cm(-0.8)
+            para.paragraph_format.space_after = Pt(4)
+
+    def glossary(self, terms: list[tuple[str, str]]) -> None:
+        """A two-column glossary and abbreviations table."""
+        if not terms:
+            return
+        self.heading("Glossary and Abbreviations", level=1, numbered=False)
+        self.table(
+            [[term, meaning] for term, meaning in terms],
+            header=["Term", "Meaning"],
+            col_widths_cm=[3.5, 12.0],
+            font_size_pt=9.0,
+        )
+
     def figure(self, image_path: str | Path, caption: str, width_cm: float = 15.0) -> int:
         """Insert an image with an automatic 'Figure N.' caption.
 

@@ -122,17 +122,30 @@ def test_all_other_reports_build(sample_data, tmp_path):
         tmp_path / "quality.docx",
     )
     for path, must_contain in (
-        (pumping, "Cooper-Jacob"),
-        (completion, "Borehole Log Data"),
-        (handover, "Operation and Maintenance"),
-        (quality, "Ionic Balance"),
+        (pumping, ["Cooper-Jacob", "Limitations and Uncertainty",
+                   "References", "Glossary and Abbreviations"]),
+        (completion, ["Borehole Log Data", "References", "Glossary and Abbreviations"]),
+        (handover, ["Operation and Maintenance", "References",
+                    "Glossary and Abbreviations"]),
+        (quality, ["Ionic Balance", "Limitations and Uncertainty",
+                   "References", "Glossary and Abbreviations"]),
     ):
         text = _document_text(path)
-        assert must_contain in text
+        for token in must_contain:
+            assert token in text, f"{token} missing from {path.name}"
         assert "—" not in text
         assert not lint_text(text)
+    # a real citation appears, not just a named method
+    assert "Cooper, H.H. and Jacob" in _document_text(pumping)
     # traceability: the safety factor is stated explicitly
     assert "safety factor" in _document_text(pumping).lower()
+
+
+def test_geophysical_report_has_limitations_references_glossary(geophysical_report):
+    text = _document_text(geophysical_report[0])
+    for token in ("6. Limitations and Uncertainty", "equivalence and suppression",
+                  "References", "Glossary and Abbreviations", "geoBoundaries"):
+        assert token in text, f"{token} missing"
 
 
 def test_pending_pumping_report(sample_data, tmp_path):
