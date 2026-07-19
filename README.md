@@ -43,10 +43,12 @@ water quality guidelines.
     recommendation - a broken improved source nearby is a rehabilitation
     candidate, a working one inside the service radius may already serve
     the community, otherwise new construction is justified
-12. A district water coverage-gap view: the 16 districts ranked by
-    population per functional water point, joining the 2015 census
-    populations (Statistics Sierra Leone) with WPDx points, as a
-    choropleth and a ranked table to steer where to drill next
+12. A water coverage-gap view at district or chiefdom resolution: areas
+    ranked by population per functional water point, joining the 2015
+    census populations (Statistics Sierra Leone) with WPDx points, as a
+    choropleth and a ranked table to steer where to drill next. Chiefdom
+    populations aggregate the census onto the boundary polygons with
+    district totals conserved exactly and the reconciliation shown
 
 ## Try it online
 

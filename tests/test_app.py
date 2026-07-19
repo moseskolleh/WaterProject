@@ -305,14 +305,23 @@ def test_coverage_tab_csv_flow(sample_data):
     )
     at.run()
     assert not at.exception
-    # the district ranking rendered, covering all 16 districts
-    df = at.dataframe[-1].value
-    assert len(df) == 16
-    by_district = dict(zip(df["District"], df["Functional"]))
+    # District mode (default): ranking covers all 16 districts
+    ranking = next(t.value for t in at.dataframe if "District" in t.value.columns
+                   and "Rank" in t.value.columns)
+    assert len(ranking) == 16
+    by_district = dict(zip(ranking["District"], ranking["Functional"]))
     assert by_district["Bombali"] == 1  # one functional of the two Bombali points
     assert by_district["Kenema"] == 1
-    # metrics computed
     assert any(m.label == "Districts" for m in at.metric)
+
+    # Chiefdom mode: finer ranking with a Chiefdom column
+    at.radio(key="cov_resolution").set_value("Chiefdom")
+    at.run()
+    assert not at.exception
+    chief_ranking = next(t.value for t in at.dataframe
+                         if "Chiefdom" in t.value.columns and "Rank" in t.value.columns)
+    assert len(chief_ranking) == 166  # all chiefdom polygons ranked
+    assert any(m.label == "Chiefdoms" for m in at.metric)
 
 
 def test_waterpoints_tab_guarded(sample_data):

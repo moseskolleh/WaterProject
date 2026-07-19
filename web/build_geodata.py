@@ -31,6 +31,20 @@ Produces two package data files from real, freely licensed datasets:
     chiefdom table ``SL_Doc.csv`` (Statistics Sierra Leone, via
     github.com/timothy-horton/SL_Map) placed in the raw directory.
 
+``src/groundwater/data/sl_population_chiefdom.csv``
+    The 2015 census population of all 208 chiefdoms (Statistics Sierra
+    Leone, "Distribution of Total Population by Regions, Districts and
+    Chiefdoms"), extracted from the census PDF. A committed source file
+    (the 16 district subtotals reproduce the official district totals
+    exactly), not rebuilt here.
+
+``src/groundwater/data/sl_census_crosswalk.csv``
+    Each census chiefdom mapped to the geoBoundaries chiefdom polygon that
+    contains it (within the same current district), so census populations
+    can be aggregated onto the 166 pre-2017 polygons. Built by
+    ``build_census_crosswalk`` from the two files above; the build asserts
+    that the aggregation conserves every district total exactly.
+
 The raw inputs are NOT committed (about 40 MB). To regenerate, first
 download them into a working directory:
 
@@ -584,6 +598,94 @@ def build_chiefdom_district(raw: Path) -> Path:
     return out
 
 
+# census chiefdom -> geoBoundaries chiefdom polygon, where the automatic
+# fuzzy match is wrong (each keyed by the census (district, chiefdom)). TMS =
+# Thainkatopa/Makama/Safroko; its Port Loko lobe is these two census chiefdoms.
+CENSUS_CROSSWALK_OVERRIDES = {
+    ("Port Loko", "Thainkatopa"): "TMS",
+    ("Port Loko", "Makama"): "TMS",
+}
+
+
+def _census_norm(name: str) -> str:
+    import re
+    import unicodedata
+
+    roman = {"i": "1", "ii": "2", "iii": "3", "iv": "4", "v": "5"}
+    ascii_ = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode()
+    toks = [roman.get(t, t) for t in re.sub(r"[^a-z0-9]+", " ", ascii_.lower()).split()]
+    return " ".join(t for t in toks if t not in ("city", "town")).strip()
+
+
+def build_census_crosswalk() -> Path:
+    """Census chiefdom -> geoBoundaries chiefdom-polygon crosswalk.
+
+    Maps every row of the committed ``sl_population_chiefdom.csv`` (the 2015
+    census chiefdom table extracted from the Statistics Sierra Leone PDF) onto
+    one of the bundled chiefdom polygons, within the same current district
+    (from ``sl_chiefdom_district.csv``). Matching is exact-normalised, then by
+    shared name tokens, then fuzzy (``difflib``), with a small override table
+    for cases the fuzzy score gets wrong. Because every census chiefdom maps to
+    a polygon in its own district, aggregating the census populations by
+    polygon conserves each district's authoritative total exactly - the build
+    asserts this. Writes ``sl_census_crosswalk.csv``.
+    """
+    import difflib
+
+    census = list(csv.DictReader(
+        (OUT / "sl_population_chiefdom.csv").read_text().splitlines()))
+    gb_district = dict(csv.reader(
+        (OUT / "sl_chiefdom_district.csv").read_text().splitlines()[1:]))
+    by_district: dict[str, list] = {}
+    for chiefdom, district in gb_district.items():
+        by_district.setdefault(district, []).append(chiefdom)
+
+    def best(chiefdom: str, district: str) -> str:
+        if (district, chiefdom) in CENSUS_CROSSWALK_OVERRIDES:
+            return CENSUS_CROSSWALK_OVERRIDES[(district, chiefdom)]
+        norm = _census_norm(chiefdom)
+        tokens = set(norm.split())
+        scored = []
+        for candidate in by_district.get(district, []):
+            cnorm = _census_norm(candidate)
+            if cnorm == norm:
+                return candidate
+            shared = len(tokens & set(cnorm.split()))
+            ratio = difflib.SequenceMatcher(None, norm, cnorm).ratio()
+            prefix = 2 if (norm.startswith(cnorm) or cnorm.startswith(norm)) else 0
+            scored.append((shared * 10 + ratio + prefix, candidate))
+        scored.sort(reverse=True)
+        return scored[0][1]
+
+    rows = [(r["district"], r["chiefdom"], best(r["chiefdom"], r["district"]))
+            for r in census]
+
+    # conservation check: census populations aggregated by polygon must
+    # reproduce every authoritative district total exactly
+    pop = {r["district"] + "\0" + r["chiefdom"]: int(r["population"])
+           for r in census}
+    by_gb: dict[str, int] = {}
+    for district, chiefdom, gb in rows:
+        by_gb[gb] = by_gb.get(gb, 0) + pop[district + "\0" + chiefdom]
+    district_sum: dict[str, int] = {}
+    for gb, value in by_gb.items():
+        district_sum[gb_district[gb]] = district_sum.get(gb_district[gb], 0) + value
+    for district, total in DISTRICT_POPULATION_2015.items():
+        if district_sum.get(district, 0) != total:
+            raise ValueError(
+                f"census crosswalk does not conserve {district}: "
+                f"{district_sum.get(district, 0)} vs {total}"
+            )
+
+    out = OUT / "sl_census_crosswalk.csv"
+    lines = ["district,census_chiefdom,gb_chiefdom"] + [
+        f"{d},{c},{g}" for d, c, g in rows
+    ]
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"wrote {out} ({len(rows)} census chiefdoms)")
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--raw", default=None,
@@ -600,6 +702,7 @@ def main() -> None:
         build_chiefdom_district(raw)
     build_hydrogeology()
     build_population()
+    build_census_crosswalk()
 
 
 if __name__ == "__main__":
