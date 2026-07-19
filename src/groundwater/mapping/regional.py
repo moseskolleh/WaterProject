@@ -427,6 +427,62 @@ def plot_hydrogeology_map(
     )
 
 
+def plot_portfolio_map(
+    points: list[dict],
+    path: str | Path | None = None,
+    style: HouseStyle | None = None,
+    admin_path: str | Path | None = None,
+    title: str = "Borehole portfolio",
+):
+    """National map of all boreholes coloured by status.
+
+    ``points`` are dicts ``{label, lat, lon, status}`` as produced by
+    :func:`groundwater.portfolio.portfolio_points`.
+    """
+    from ..portfolio import STATUS_COLORS, STATUS_LABELS
+
+    style = style or HouseStyle()
+    outline, districts = load_admin(admin_path)
+    with figure_context(style):
+        fig, ax = plt.subplots(figsize=(style.figure_width_in, 5.8))
+        for district in districts:
+            for ring in district.rings:
+                ax.add_patch(
+                    plt.Polygon(ring, closed=True, facecolor="#F2F6FA",
+                                edgecolor="#8FA6B8", lw=0.7, zorder=2)
+                )
+        for ring in outline.rings:
+            ax.plot(ring[:, 0], ring[:, 1], color="#333333", lw=1.2, zorder=5)
+        handles: dict[str, object] = {}
+        for point in points:
+            status = point.get("status", "other")
+            colour = STATUS_COLORS.get(status, STATUS_COLORS["other"])
+            handle, = ax.plot(
+                point["lon"], point["lat"], "o", ms=8, mfc=colour,
+                mec="white", mew=1.0, zorder=7,
+            )
+            handles.setdefault(status, handle)
+        ax.text(-11.2, 9.82, "GUINEA", fontsize=8, color="#999999", fontweight="bold")
+        ax.text(-10.95, 7.15, "LIBERIA", fontsize=8, color="#999999", fontweight="bold")
+        ax.text(-13.25, 7.45, "Atlantic\nOcean", fontsize=8, color="#7FA8C9",
+                style="italic", ha="center")
+        all_pts = np.concatenate(outline.rings)
+        ax.set_xlim(all_pts[:, 0].min() - 0.2, all_pts[:, 0].max() + 0.15)
+        ax.set_ylim(all_pts[:, 1].min() - 0.15, all_pts[:, 1].max() + 0.12)
+        _geo_axes_finish(ax, float(np.mean(ax.get_ylim())), ADMIN_CREDIT)
+        if handles:
+            ax.legend(
+                list(handles.values()),
+                [STATUS_LABELS.get(s, s) for s in handles],
+                loc="lower right", fontsize=7, framealpha=0.95,
+            )
+        ax.set_title(title)
+        fig.tight_layout()
+        if path is not None:
+            return save_figure(fig, path, style)
+        return fig
+
+
 def plot_admin_map(
     site: SiteMetadata | None = None,
     path: str | Path | None = None,

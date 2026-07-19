@@ -21,6 +21,7 @@ from .regional import (
     plot_admin_map,
     plot_geological_map,
     plot_hydrogeology_map,
+    plot_portfolio_map,
 )
 from .export import export_geojson, export_gpkg
 
@@ -42,6 +43,7 @@ __all__ = [
     "plot_admin_map",
     "plot_geological_map",
     "plot_hydrogeology_map",
+    "plot_portfolio_map",
     "export_geojson",
     "export_gpkg",
 ]
