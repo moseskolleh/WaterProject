@@ -13,6 +13,11 @@ Produces two package data files from real, freely licensed datasets:
     Note: the geoBoundaries release predates the 2017 creation of
     Karene and Falaba districts (14 districts, not 16).
 
+``src/groundwater/data/sl_chiefdoms_geoboundaries.geojson``
+    Chiefdom polygons (ADM3, 165 chiefdoms) from geoBoundaries
+    (gbOpen, CC BY 4.0), each tagged with its parent district. Used for
+    chiefdom auto-detection from GPS and finer maps.
+
 The raw inputs are NOT committed (about 40 MB). To regenerate, first
 download them into a working directory:
 
@@ -324,17 +329,101 @@ def build_hydrogeology(tol: float = 0.002, min_area: float = 1e-4) -> Path:
     return out
 
 
+def _point_in_ring(lon: float, lat: float, ring: list) -> bool:
+    inside = False
+    for (x1, y1), (x2, y2) in zip(ring[:-1], ring[1:]):
+        if (y1 > lat) != (y2 > lat):
+            xc = x1 + (lat - y1) * (x2 - x1) / (y2 - y1)
+            if lon < xc:
+                inside = not inside
+    return inside
+
+
+def build_chiefdoms(raw: Path, tol: float = 0.004) -> Path:
+    """Chiefdom (ADM3) polygons with their parent district.
+
+    Reads ``geoBoundaries-SLE-ADM3_simplified.geojson`` and the ADM2
+    districts from ``raw`` (both from
+    https://github.com/wmgeolab/geoBoundaries, gbOpen, CC BY 4.0; the
+    real content lives on git-lfs / media.githubusercontent.com),
+    simplifies each ring and derives the parent district from the
+    chiefdom centroid. Writes ``sl_chiefdoms_geoboundaries.geojson``.
+    """
+    def rings_of(geom):
+        coords = geom.get("coordinates", [])
+        return coords if geom.get("type") == "MultiPolygon" else [coords]
+
+    adm2 = json.loads((raw / "geoBoundaries-SLE-ADM2_simplified.geojson").read_text())
+    districts = [
+        (f["properties"].get("shapeName"), poly[0])
+        for f in adm2["features"]
+        for poly in rings_of(f["geometry"]) if poly
+    ]
+
+    def district_of(lon, lat):
+        for name, ring in districts:
+            if _point_in_ring(lon, lat, ring):
+                return name
+        cx_cy = min(
+            districts,
+            key=lambda d: (sum(p[0] for p in d[1]) / len(d[1]) - lon) ** 2
+            + (sum(p[1] for p in d[1]) / len(d[1]) - lat) ** 2,
+        )
+        return cx_cy[0]
+
+    adm3 = json.loads((raw / "geoBoundaries-SLE-ADM3_simplified.geojson").read_text())
+    features = []
+    for f in adm3["features"]:
+        polys = rings_of(f["geometry"])
+        outer = [pt for poly in polys if poly for pt in poly[0]]
+        if not outer:
+            continue
+        cx = sum(p[0] for p in outer) / len(outer)
+        cy = sum(p[1] for p in outer) / len(outer)
+        new_polys = []
+        for poly in polys:
+            new_rings = [
+                [[round(x, 5), round(y, 5)]
+                 for x, y in simplify_ring([tuple(p) for p in ring], tol)]
+                for ring in poly
+                if len(simplify_ring([tuple(p) for p in ring], tol)) >= 4
+            ]
+            if new_rings:
+                new_polys.append(new_rings)
+        if not new_polys:
+            continue
+        geom = ({"type": "Polygon", "coordinates": new_polys[0]}
+                if len(new_polys) == 1
+                else {"type": "MultiPolygon", "coordinates": new_polys})
+        features.append({
+            "type": "Feature",
+            "properties": {"name": f["properties"].get("shapeName", ""),
+                           "district": district_of(cx, cy)},
+            "geometry": geom,
+        })
+    payload = {
+        "type": "FeatureCollection",
+        "attribution": "Chiefdoms from geoBoundaries (gbOpen, CC BY 4.0)",
+        "features": features,
+    }
+    out = OUT / "sl_chiefdoms_geoboundaries.geojson"
+    out.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+    print(f"wrote {out} ({out.stat().st_size} bytes, {len(features)} chiefdoms)")
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--raw", default=None,
                         help="directory holding the downloaded raw datasets "
-                        "(geology and admin); omit to rebuild only the "
-                        "hydrogeology layer from the committed source")
+                        "(geology, admin and chiefdoms); omit to rebuild only "
+                        "the hydrogeology layer from the committed source")
     args = parser.parse_args()
     if args.raw:
         raw = Path(args.raw)
         build_geology(raw)
         build_admin(raw)
+        build_chiefdoms(raw)
     build_hydrogeology()
 
 
