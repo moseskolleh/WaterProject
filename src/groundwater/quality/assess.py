@@ -141,9 +141,71 @@ def assess_sample(
             )
         )
 
+    # WHO combined nitrate + nitrite rule: the sum of the ratio of each to
+    # its own guideline value must not exceed 1. A sample can pass both
+    # single-parameter checks yet fail this combined limit, so it is applied
+    # only when neither ion is individually in exceedance (the individual
+    # exceedance is already reported on its own row).
+    combined = _nitrate_nitrite_index(sample, table)
+    if combined is not None:
+        ratio, no3, no2, gv3, gv2 = combined
+        if ratio > 1.0 and no3 <= gv3 and no2 <= gv2:
+            rows.append(
+                ParameterAssessment(
+                    parameter="Nitrate + nitrite (combined)",
+                    value=round(ratio, 2),
+                    unit="ratio",
+                    below_detection=False,
+                    who_health="<= 1",
+                    who_aesthetic="",
+                    sl_standard="",
+                    status="exceeds_health",
+                    remark=(
+                        f"The combined index ({no3:g}/{gv3:g} + {no2:g}/{gv2:g} "
+                        f"= {ratio:.2f}) exceeds 1; the WHO combined nitrate and "
+                        "nitrite limit is not met even though each is within its "
+                        "own guideline value."
+                    ),
+                )
+            )
+            flags.append(
+                DataFlag(
+                    "warning",
+                    "nitrate_nitrite_combined",
+                    "Combined nitrate + nitrite index exceeds 1 (WHO); treat as "
+                    "a health exceedance.",
+                )
+            )
+
     ionic = ionic_balance(sample)
     if ionic is not None and ionic.flag is not None:
         flags.append(ionic.flag)
 
     assessment = WaterQualityAssessment(sample=sample, rows=rows, ionic=ionic, flags=flags)
     return assessment
+
+
+def _nitrate_nitrite_index(sample, table):
+    """The WHO combined nitrate + nitrite index, if both are measured.
+
+    Returns ``(ratio, no3, no2, gv3, gv2)`` where ``ratio`` is
+    ``no3/gv3 + no2/gv2``, or ``None`` when either value or guideline is
+    missing.
+    """
+
+    def _value_and_gv(key):
+        entry = table.get(key)
+        gv = entry.who_health.maximum if entry and entry.who_health else None
+        for result in sample.results:
+            if (
+                normalise_parameter(result.parameter) == key
+                and result.value is not None
+            ):
+                return float(result.value), gv
+        return None, gv
+
+    no3, gv3 = _value_and_gv("nitrate (as no3)")
+    no2, gv2 = _value_and_gv("nitrite (as no2)")
+    if no3 is None or no2 is None or not gv3 or not gv2:
+        return None
+    return no3 / gv3 + no2 / gv2, no3, no2, gv3, gv2
