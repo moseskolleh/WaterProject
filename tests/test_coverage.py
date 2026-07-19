@@ -7,11 +7,17 @@ import numpy as np
 from groundwater.coverage import (
     ChiefdomPoly,
     CoverageRow,
+    chiefdom_coverage_rows,
+    chiefdom_of_point,
+    chiefdom_population,
+    count_points_by_chiefdom,
     count_points_by_district,
     coverage_rows,
     coverage_stats,
     choropleth_values,
     district_of_point,
+    expand_district_values,
+    load_census_crosswalk,
     load_chiefdom_district,
     load_chiefdom_polys,
     load_district_population,
@@ -82,11 +88,11 @@ def test_coverage_stats():
     rows = coverage_rows(_POP, {"Dist1": {"total": 2, "functional": 1},
                                 "Dist2": {"total": 1, "functional": 1}})
     stats = coverage_stats(rows)
-    assert stats["n_districts"] == 3
-    assert stats["worst_district"] == "Dist3"  # no source, ranked first
+    assert stats["n_areas"] == 3
+    assert stats["worst_area"] == "Dist3"  # no source, ranked first
     assert stats["n_no_source"] == 1
     # the "Highest need" KPI shows the worst *finite* ratio, not the no-source
-    assert stats["worst_served_district"] == "Dist2"
+    assert stats["worst_served_area"] == "Dist2"
     assert stats["worst_served_people_per_point"] == 2000.0
     # national = total population / total functional points = 3500 / 2
     assert stats["national_people_per_point"] == 1750.0
@@ -139,10 +145,79 @@ def test_real_points_assign_to_expected_districts():
     assert district_of_point(7.8767, -11.1875, polys, cross) == "Kenema"
 
 
-def test_coverage_choropleth_renders(tmp_path):
+def test_coverage_choropleth_renders_district_and_chiefdom(tmp_path):
     from groundwater.mapping import plot_coverage_choropleth
 
     cross = load_chiefdom_district()
-    values = {"Kenema": 5000.0, "Karene": math.inf, "Bo": 3000.0}  # +missing districts
-    out = plot_coverage_choropleth(values, cross, path=tmp_path / "coverage.png")
+    district_values = {"Kenema": 5000.0, "Karene": math.inf, "Bo": 3000.0}
+    out = plot_coverage_choropleth(
+        expand_district_values(district_values, cross),
+        path=tmp_path / "district.png", group_labels=cross,
+    )
     assert out.exists() and out.stat().st_size > 0
+    # chiefdom mode: values keyed by chiefdom, no group labels
+    chiefdom_values = {"Nongowa": 6000.0, "Kakua": math.inf}
+    out2 = plot_coverage_choropleth(chiefdom_values, path=tmp_path / "chiefdom.png")
+    assert out2.exists() and out2.stat().st_size > 0
+
+
+# --- chiefdom-level coverage ----------------------------------------------
+
+def test_bundled_chiefdom_population_conserves_districts():
+    population, members = chiefdom_population()
+    pop = load_district_population()
+    cross = load_chiefdom_district()
+    # every polygon has a population, national total is the census total
+    assert len(population) == 166
+    assert all(v > 0 for v in population.values())
+    assert round(sum(population.values())) == 7_092_113
+    # aggregating polygon populations by district reproduces each district total
+    by_district = {}
+    for chiefdom, value in population.items():
+        by_district[cross[chiefdom]] = by_district.get(cross[chiefdom], 0) + value
+    for district, total in pop.items():
+        assert round(by_district[district]) == round(total), district
+    # split chiefdoms fold into a parent (e.g. Gbanti + Kamaranka)
+    assert len(members["Gbanti Kamarank"]) >= 2
+
+
+def test_census_crosswalk_keys_by_district_and_chiefdom():
+    xwalk = load_census_crosswalk()
+    # duplicate names across districts are kept distinct
+    assert xwalk[("Kenema", "Koya")] != xwalk[("Port Loko", "Koya")]
+
+
+def test_hand_edited_crosswalk_tolerates_whitespace(tmp_path):
+    # the crosswalk is user-editable; a stray space in a hand edit must not
+    # break the (district, chiefdom) join.
+    from importlib import resources
+
+    src = (resources.files("groundwater") / "data"
+           / "sl_census_crosswalk.csv").read_text(encoding="utf-8")
+    edited = src.replace("Kenema,Koya,Koya", "Kenema, Koya , Koya")
+    path = tmp_path / "edited.csv"
+    path.write_text(edited)
+    population, _ = chiefdom_population(crosswalk_path=path)
+    assert len(population) == 166
+    assert round(sum(population.values())) == 7_092_113
+
+
+def test_chiefdom_point_counts_and_ranking():
+    # two chiefdoms, points placed by chiefdom
+    polys = [_square("Kakua", 0.0), _square("Nongowa", 1.0)]
+    cross = {"Kakua": "Bo", "Nongowa": "Kenema"}
+    pop = {"Kakua": 30000.0, "Nongowa": 10000.0}
+    points = [_wp(0.5, 0.5, True), _wp(0.5, 1.5, True), _wp(9, 9, True)]
+    counts, unassigned = count_points_by_chiefdom(points, polys)
+    assert counts["Kakua"] == {"total": 1, "functional": 1}
+    assert len(unassigned) == 1
+    rows = chiefdom_coverage_rows(pop, counts, cross)
+    # Kakua 30000/1 worse than Nongowa 10000/1
+    assert rows[0].chiefdom == "Kakua" and rows[0].district == "Bo"
+    assert rows[0].rank == 1
+
+
+def test_chiefdom_of_point_real_data():
+    polys = load_chiefdom_polys()
+    assert chiefdom_of_point(8.8817, -12.0442, polys) == "Makeni Town"
+    assert chiefdom_of_point(8.0, -14.0, polys) == ""  # offshore

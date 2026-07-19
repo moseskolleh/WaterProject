@@ -167,6 +167,10 @@ class CoverageRow:
     rank: int = 0  # 1 = worst (highest unmet need)
 
     @property
+    def name(self) -> str:
+        return self.district
+
+    @property
     def status(self) -> str:
         if self.functional_points == 0:
             return "No functional source mapped"
@@ -216,29 +220,173 @@ def choropleth_values(rows: Iterable[CoverageRow]) -> dict[str, float]:
     show them as a distinct "no source" class rather than a colour.
     """
     return {
-        row.district: (row.people_per_point
-                       if row.people_per_point is not None else math.inf)
+        row.name: (row.people_per_point
+                   if row.people_per_point is not None else math.inf)
         for row in rows
     }
 
 
-def coverage_stats(rows: list[CoverageRow]) -> dict:
-    """Headline figures for the KPI tiles.
+def expand_district_values(
+    district_values: dict[str, float], chiefdom_district: dict[str, str]
+) -> dict[str, float]:
+    """Spread district values onto every chiefdom, for the district choropleth."""
+    return {
+        chiefdom: district_values.get(district)
+        for chiefdom, district in chiefdom_district.items()
+    }
+
+
+# --- chiefdom-level coverage -----------------------------------------------
+
+@dataclass
+class ChiefdomRow:
+    """One chiefdom's water-coverage picture (finer than the district view)."""
+
+    chiefdom: str
+    district: str
+    population: float
+    water_points: int
+    functional_points: int
+    people_per_point: float | None
+    rank: int = 0
+
+    @property
+    def name(self) -> str:
+        return self.chiefdom
+
+    @property
+    def status(self) -> str:
+        if self.functional_points == 0:
+            return "No functional source mapped"
+        return f"{self.people_per_point:,.0f} people per functional point"
+
+
+def load_census_crosswalk(
+    path: str | Path | None = None,
+) -> dict[tuple[str, str], str]:
+    """(district, census chiefdom) -> geoBoundaries chiefdom polygon."""
+    text = _resource_text("sl_census_crosswalk.csv", path)
+    # strip like the sibling loaders: the crosswalk is user-editable, so a
+    # stray space in a hand edit must not break the (district, chiefdom) join.
+    return {
+        (row["district"].strip(), row["census_chiefdom"].strip()):
+            row["gb_chiefdom"].strip()
+        for row in csv.DictReader(io.StringIO(text))
+    }
+
+
+def chiefdom_population(
+    census_path: str | Path | None = None,
+    crosswalk_path: str | Path | None = None,
+) -> tuple[dict[str, float], dict[str, list[str]]]:
+    """Population per chiefdom polygon, aggregated from the census.
+
+    Returns ``(population, members)`` where ``population`` maps each
+    geoBoundaries chiefdom polygon to the sum of the 2015 census chiefdoms
+    assigned to it, and ``members`` lists those census chiefdoms (for the
+    reconciliation panel - it shows how post-2017 chiefdoms fold into the
+    pre-2017 polygons). District totals are conserved exactly by construction.
+    """
+    census_text = _resource_text("sl_population_chiefdom.csv", census_path)
+    crosswalk = load_census_crosswalk(crosswalk_path)
+    population: dict[str, float] = {}
+    members: dict[str, list[str]] = {}
+    missing: list[tuple[str, str]] = []
+    for row in csv.DictReader(io.StringIO(census_text)):
+        key = (row["district"].strip(), row["chiefdom"].strip())
+        gb = crosswalk.get(key)
+        if gb is None:  # a hand-edited crosswalk dropped or renamed this row
+            missing.append(key)
+            continue
+        population[gb] = population.get(gb, 0.0) + float(row["population"])
+        members.setdefault(gb, []).append(row["chiefdom"].strip())
+    if missing:
+        raise KeyError(
+            f"{len(missing)} census chiefdom(s) have no crosswalk row, e.g. "
+            f"{missing[0]}; check data/sl_census_crosswalk.csv"
+        )
+    return population, members
+
+
+def chiefdom_of_point(
+    lat: float, lon: float, polys: list[ChiefdomPoly]
+) -> str:
+    """Chiefdom polygon containing a point, or "" when outside every chiefdom."""
+    for poly in polys:
+        for ring, (x0, y0, x1, y1) in zip(poly.rings, poly.bboxes):
+            if x0 <= lon <= x1 and y0 <= lat <= y1 and _point_in_ring(lon, lat, ring):
+                return poly.name
+    return ""
+
+
+def count_points_by_chiefdom(
+    points: Iterable[WaterPoint], polys: list[ChiefdomPoly]
+) -> tuple[dict[str, dict[str, int]], list[WaterPoint]]:
+    """Total and functional water-point counts per chiefdom polygon."""
+    counts: dict[str, dict[str, int]] = {}
+    unassigned: list[WaterPoint] = []
+    for wp in points:
+        chiefdom = chiefdom_of_point(wp.lat, wp.lon, polys)
+        if not chiefdom:
+            unassigned.append(wp)
+            continue
+        bucket = counts.setdefault(chiefdom, {"total": 0, "functional": 0})
+        bucket["total"] += 1
+        if wp.functional is True:
+            bucket["functional"] += 1
+    return counts, unassigned
+
+
+def chiefdom_coverage_rows(
+    population: dict[str, float],
+    counts: dict[str, dict[str, int]],
+    chiefdom_district: dict[str, str],
+) -> list[ChiefdomRow]:
+    """Ranked :class:`ChiefdomRow` per chiefdom, worst (highest need) first."""
+    rows: list[ChiefdomRow] = []
+    for chiefdom, pop in population.items():
+        bucket = counts.get(chiefdom, {"total": 0, "functional": 0})
+        functional = bucket["functional"]
+        ppp = (pop / functional) if functional > 0 else None
+        rows.append(
+            ChiefdomRow(
+                chiefdom=chiefdom,
+                district=chiefdom_district.get(chiefdom, ""),
+                population=pop,
+                water_points=bucket["total"],
+                functional_points=functional,
+                people_per_point=ppp,
+            )
+        )
+    rows.sort(
+        key=lambda r: (
+            1 if r.people_per_point is not None else 0,
+            -(r.people_per_point or 0.0),
+            -r.population,
+        )
+    )
+    for rank, row in enumerate(rows, start=1):
+        row.rank = rank
+    return rows
+
+
+def coverage_stats(rows) -> dict:
+    """Headline figures for the KPI tiles (works for district or chiefdom rows).
 
     ``worst_served_*`` is the highest *finite* people-per-point, i.e. the worst
     measurable coverage; it is reported separately from the ranking because
-    districts with no functional source (an undefined ratio) sort to rank 1 and
-    are counted by ``n_no_source`` instead.
+    areas with no functional source (an undefined ratio) sort to rank 1 and are
+    counted by ``n_no_source`` instead.
     """
     served = [r for r in rows if r.people_per_point is not None]
     worst_served = max(served, key=lambda r: r.people_per_point, default=None)
     total_pop = sum(r.population for r in rows)
     total_functional = sum(r.functional_points for r in rows)
     return {
-        "n_districts": len(rows),
-        "worst_district": rows[0].district if rows else None,
+        "n_areas": len(rows),
+        "worst_area": rows[0].name if rows else None,
         "worst_people_per_point": rows[0].people_per_point if rows else None,
-        "worst_served_district": worst_served.district if worst_served else None,
+        "worst_served_area": worst_served.name if worst_served else None,
         "worst_served_people_per_point": (
             worst_served.people_per_point if worst_served else None
         ),

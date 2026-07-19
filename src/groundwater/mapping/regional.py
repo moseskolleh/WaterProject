@@ -589,8 +589,7 @@ def plot_admin_map(
 
 
 def plot_coverage_choropleth(
-    district_values: dict[str, float],
-    chiefdom_district: dict[str, str],
+    chiefdom_values: dict[str, float],
     path: str | Path | None = None,
     style: HouseStyle | None = None,
     chiefdom_path: str | Path | None = None,
@@ -598,14 +597,17 @@ def plot_coverage_choropleth(
     title: str = "Water coverage gap by district",
     legend_label: str = "People per functional water point",
     credit: str = ADMIN_CREDIT,
+    group_labels: dict[str, str] | None = None,
 ):
-    """Choropleth of unmet water need, coloured by district value.
+    """Choropleth of unmet water need, one colour per chiefdom polygon.
 
-    Each chiefdom polygon is filled by the value of its district (from
-    ``district_values``, keyed by district name; ``chiefdom_district`` maps
-    each chiefdom to its district). Warmer = worse. A district with no
-    functional source (an infinite value) is drawn in a distinct dark class;
-    a district with no data is grey.
+    Each chiefdom polygon is filled by ``chiefdom_values[name]``. Warmer =
+    worse; ``None`` is drawn grey (no data) and an infinite value dark (no
+    functional source). For the district view, pass district values expanded
+    onto every chiefdom (see ``coverage.expand_district_values``) with
+    ``group_labels`` mapping each chiefdom to its district, so the district
+    names are annotated once at their centroid; for the chiefdom view, omit
+    ``group_labels`` (166 labels would be unreadable).
     """
     from matplotlib.cm import ScalarMappable
     from matplotlib.colors import LinearSegmentedColormap, Normalize
@@ -614,7 +616,7 @@ def plot_coverage_choropleth(
     outline, _ = load_admin(admin_path)
     areas = load_chiefdoms(chiefdom_path)
     finite = [
-        v for v in district_values.values() if v is not None and math.isfinite(v)
+        v for v in chiefdom_values.values() if v is not None and math.isfinite(v)
     ]
     norm = Normalize(min(finite), max(finite)) if finite else Normalize(0.0, 1.0)
     cmap = LinearSegmentedColormap.from_list(
@@ -626,8 +628,7 @@ def plot_coverage_choropleth(
         fig, ax = plt.subplots(figsize=(style.figure_width_in, 5.8))
         label_pts: dict[str, list[tuple[float, float]]] = {}
         for area in areas:
-            district = chiefdom_district.get(area.name)
-            value = district_values.get(district) if district else None
+            value = chiefdom_values.get(area.name)
             if value is None:
                 face = no_data
             elif not math.isfinite(value):
@@ -639,8 +640,9 @@ def plot_coverage_choropleth(
                     plt.Polygon(ring, closed=True, facecolor=face,
                                 edgecolor="#8FA6B8", lw=0.3, zorder=2)
                 )
-            if district:
-                label_pts.setdefault(district, []).append(area.label_point)
+            group = group_labels.get(area.name) if group_labels else None
+            if group:
+                label_pts.setdefault(group, []).append(area.label_point)
         for ring in outline.rings:
             ax.plot(ring[:, 0], ring[:, 1], color="#333333", lw=1.2, zorder=5)
         for district, pts in label_pts.items():

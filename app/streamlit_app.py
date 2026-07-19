@@ -74,10 +74,14 @@ from groundwater.mapping import (
 )
 from groundwater.coverage import (
     POPULATION_CREDIT,
+    chiefdom_coverage_rows,
+    chiefdom_population,
+    count_points_by_chiefdom,
     count_points_by_district,
     coverage_rows,
     coverage_stats,
     choropleth_values,
+    expand_district_values,
     load_chiefdom_district,
     load_chiefdom_polys,
     load_district_population,
@@ -230,6 +234,12 @@ def cov_population():
 @st.cache_data
 def cov_crosswalk():
     return load_chiefdom_district()
+
+
+@st.cache_data
+def cov_chiefdom_population():
+    """(population per chiefdom polygon, census members) from the 2015 census."""
+    return chiefdom_population()
 
 
 @st.cache_resource
@@ -2101,45 +2111,81 @@ with tab_coverage:
                 )
             cov_points = parse_wpdx_records(raw)
 
+    resolution = st.radio(
+        "Resolution", ["District", "Chiefdom"], key="cov_resolution",
+        horizontal=True,
+        help="District population is exact; chiefdom aggregates the 2015 "
+        "census onto the chiefdom polygons (district totals conserved).",
+    )
     if cov_points is not None and not cov_points:
         st.warning("No water points found in that source.")
     elif cov_points:
-        counts, unassigned = count_points_by_district(
-            cov_points, cov_polys(), cov_crosswalk()
-        )
-        rows = coverage_rows(cov_population(), counts)
+        chiefdom = resolution == "Chiefdom"
+        members = None
+        rows = None
+        if chiefdom:
+            unit = "chiefdom"
+            try:
+                counts, unassigned = count_points_by_chiefdom(
+                    cov_points, cov_polys()
+                )
+                chief_pop, members = cov_chiefdom_population()
+                rows = chiefdom_coverage_rows(chief_pop, counts, cov_crosswalk())
+            except Exception as exc:  # e.g. a hand-edited crosswalk
+                st.error(
+                    f"Could not build the chiefdom view: {exc}. "
+                    "Fix data/sl_census_crosswalk.csv or use District resolution."
+                )
+        else:
+            unit = "district"
+            counts, unassigned = count_points_by_district(
+                cov_points, cov_polys(), cov_crosswalk()
+            )
+            rows = coverage_rows(cov_population(), counts)
+    if cov_points and rows is not None:
         stats = coverage_stats(rows)
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Districts", stats["n_districts"])
+        c1.metric(f"{unit.title()}s", stats["n_areas"])
         c2.metric(
             "Highest need",
             f"{stats['worst_served_people_per_point']:,.0f}/pt"
             if stats["worst_served_people_per_point"] is not None else "n/a",
-            help=f"worst measurable ratio, in {stats['worst_served_district']}"
-            if stats["worst_served_district"] else "no district has a "
-            "functional mapped source",
+            help=f"worst measurable ratio, in {stats['worst_served_area']}"
+            if stats["worst_served_area"] else f"no {unit} has a functional "
+            "mapped source",
         )
         c3.metric("No mapped source", stats["n_no_source"],
-                  help="districts with no functional point in WPDx")
+                  help=f"{unit}s with no functional point in WPDx")
         c4.metric(
             "National avg",
             f"{stats['national_people_per_point']:,.0f}/pt"
             if stats["national_people_per_point"] is not None else "n/a",
         )
         cov_map = workdir() / "coverage_map.png"
-        plot_coverage_choropleth(choropleth_values(rows), cov_crosswalk(),
-                                 path=cov_map, style=app_config().style)
+        if chiefdom:
+            plot_coverage_choropleth(
+                choropleth_values(rows), path=cov_map, style=app_config().style,
+                title="Water coverage gap by chiefdom",
+            )
+        else:
+            plot_coverage_choropleth(
+                expand_district_values(choropleth_values(rows), cov_crosswalk()),
+                path=cov_map, style=app_config().style,
+                group_labels=cov_crosswalk(),
+            )
         st.image(str(cov_map))
         offer_download(cov_map, "Download coverage map")
-        st.subheader("District ranking (highest unmet need first)")
+        st.subheader(f"{unit.title()} ranking (highest unmet need first)")
         st.dataframe(
-            [{"Rank": r.rank, "District": r.district,
-              "Population": int(r.population),
-              "Water points": r.water_points, "Functional": r.functional_points,
-              "People / functional point":
-                  round(r.people_per_point) if r.people_per_point is not None
-                  else None,
-              "Status": r.status} for r in rows],
+            [({"Rank": r.rank, unit.title(): r.name}
+              | ({"District": r.district} if chiefdom else {})
+              | {"Population": int(r.population),
+                 "Water points": r.water_points,
+                 "Functional": r.functional_points,
+                 "People / functional point":
+                     round(r.people_per_point) if r.people_per_point is not None
+                     else None,
+                 "Status": r.status}) for r in rows],
             hide_index=True, use_container_width=True,
         )
         if unassigned:
@@ -2148,6 +2194,25 @@ with tab_coverage:
                 "polygon (border, offshore or simplified geometry) and were "
                 "not counted."
             )
+        if chiefdom and members:
+            aggregated = {gb: names for gb, names in sorted(members.items())
+                          if len(names) > 1}
+            with st.expander(
+                f"How chiefdoms were reconciled ({len(aggregated)} polygons "
+                "aggregate 2+ census chiefdoms)"
+            ):
+                st.caption(
+                    "The boundary polygons predate the 2017 chiefdom split, so "
+                    "post-2017 census chiefdoms fold into their pre-2017 parent. "
+                    "District totals are exact; only which polygon a new "
+                    "chiefdom joins is best-effort. Edit "
+                    "data/sl_census_crosswalk.csv to correct any assignment."
+                )
+                st.dataframe(
+                    [{"Chiefdom polygon": gb, "Census chiefdoms": ", ".join(names)}
+                     for gb, names in aggregated.items()],
+                    hide_index=True, use_container_width=True,
+                )
         st.caption(f"{WPDX_CREDIT}. {POPULATION_CREDIT}.")
 
 # ---------------------------------------------------------------------------
