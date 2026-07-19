@@ -8,6 +8,12 @@ from typing import Optional
 
 from ..models import DataFlag, WaterQualitySample
 from .corrosivity import CorrosivityAssessment, assess_corrosivity
+from .indices import (
+    HealthRiskAssessment,
+    WaterQualityIndex,
+    assess_health_risk,
+    compute_wqi,
+)
 from .ionic import IonicBalanceResult, ionic_balance
 from .standards import StandardEntry, load_standards, normalise_parameter
 
@@ -42,6 +48,8 @@ class WaterQualityAssessment:
     rows: list[ParameterAssessment]
     ionic: Optional[IonicBalanceResult]
     corrosivity: Optional[CorrosivityAssessment] = None
+    wqi: Optional[WaterQualityIndex] = None
+    health_risk: Optional[HealthRiskAssessment] = None
     flags: list[DataFlag] = field(default_factory=list)
 
     @property
@@ -186,8 +194,19 @@ def assess_sample(
     corrosivity = assess_corrosivity(sample)
     flags.extend(corrosivity.flags)
 
+    wqi = compute_wqi(sample, standards_path)
+    health_risk = assess_health_risk(sample)
+    if health_risk is not None:
+        flags.extend(health_risk.flags)
+
     assessment = WaterQualityAssessment(
-        sample=sample, rows=rows, ionic=ionic, corrosivity=corrosivity, flags=flags
+        sample=sample,
+        rows=rows,
+        ionic=ionic,
+        corrosivity=corrosivity,
+        wqi=wqi,
+        health_risk=health_risk,
+        flags=flags,
     )
     return assessment
 
