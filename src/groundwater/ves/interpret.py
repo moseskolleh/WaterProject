@@ -58,6 +58,10 @@ class SiteInterpretation:
     max_drilling_depth_m: float
     investigation_depth_m: float
     score: float  # used for ranking between sites
+    # Dar-Zarrouk parameters over the resolved overburden
+    longitudinal_conductance_s: float = 0.0  # siemens, Sum(h/rho)
+    transverse_resistance_t: float = 0.0  # ohm m2, Sum(h*rho)
+    protective_capacity: str = ""  # from the longitudinal conductance
     narrative: str = ""
     rank: int | None = None
     site_easting: float | None = None
@@ -191,12 +195,45 @@ def interpret_model(
         investigation_depth_m=investigation,
         score=score,
     )
+    # ---- Dar-Zarrouk parameters and protective capacity ---------------------
+    s_cond, t_res = _dar_zarrouk(layers)
+    interp.longitudinal_conductance_s = s_cond
+    interp.transverse_resistance_t = t_res
+    interp.protective_capacity = _protective_capacity(s_cond)
+
     if sounding is not None and sounding.site is not None:
         interp.site_easting = sounding.site.easting
         interp.site_northing = sounding.site.northing
         interp.site_elevation_m = sounding.site.elevation_m
     interp.narrative = _narrative(interp)
     return interp
+
+
+def _dar_zarrouk(layers: list[LayerInterpretation]) -> tuple[float, float]:
+    """Longitudinal conductance S = Sum(h/rho) and transverse resistance
+    T = Sum(h*rho) over the finite (non-basement) layers."""
+    s_cond = 0.0
+    t_res = 0.0
+    for layer in layers:
+        if layer.thickness_m is None or layer.rho <= 0:
+            continue
+        s_cond += layer.thickness_m / layer.rho
+        t_res += layer.thickness_m * layer.rho
+    return s_cond, t_res
+
+
+def _protective_capacity(s_cond: float) -> str:
+    """Aquifer protective-capacity rating from the longitudinal conductance
+    (standard crystalline-basement classification, siemens)."""
+    if s_cond < 0.1:
+        return "poor"
+    if s_cond < 0.2:
+        return "weak"
+    if s_cond < 0.7:
+        return "moderate"
+    if s_cond < 5.0:
+        return "good"
+    return "very good"
 
 
 def _zone_rho(layers: list[LayerInterpretation], top: float, bottom: float) -> float:
@@ -247,6 +284,15 @@ def _narrative(interp: SiteInterpretation) -> str:
         parts.append(
             f"The depth to bedrock is estimated at about "
             f"{fmt_num(interp.depth_to_basement_m)} m."
+        )
+    if interp.longitudinal_conductance_s > 0:
+        parts.append(
+            "The Dar-Zarrouk parameters of the overburden are a longitudinal "
+            f"conductance of {fmt_num(interp.longitudinal_conductance_s, 3)} "
+            "siemens and a transverse resistance of "
+            f"{fmt_num(interp.transverse_resistance_t)} ohm m2, indicating a "
+            f"{interp.protective_capacity} protective capacity against surface "
+            "contamination."
         )
     return " ".join(parts)
 
