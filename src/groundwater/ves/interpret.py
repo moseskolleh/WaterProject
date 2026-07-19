@@ -59,9 +59,11 @@ class SiteInterpretation:
     investigation_depth_m: float
     score: float  # used for ranking between sites
     # Dar-Zarrouk parameters over the resolved overburden
-    longitudinal_conductance_s: float = 0.0  # siemens, Sum(h/rho)
-    transverse_resistance_t: float = 0.0  # ohm m2, Sum(h*rho)
-    protective_capacity: str = ""  # from the longitudinal conductance
+    longitudinal_conductance_s: float = 0.0  # siemens, Sum(h/rho), full section
+    transverse_resistance_t: float = 0.0  # ohm m2, Sum(h*rho), full section
+    # conductance of the cover overlying the aquifer, used for protection
+    protective_conductance_s: float = 0.0
+    protective_capacity: str = ""  # from the protective (cover) conductance
     narrative: str = ""
     rank: int | None = None
     site_easting: float | None = None
@@ -199,7 +201,11 @@ def interpret_model(
     s_cond, t_res = _dar_zarrouk(layers)
     interp.longitudinal_conductance_s = s_cond
     interp.transverse_resistance_t = t_res
-    interp.protective_capacity = _protective_capacity(s_cond)
+    # protective capacity uses only the cover above the aquifer, so a
+    # conductive water-bearing zone is not counted as its own protection
+    s_cover = _cover_conductance(layers, zones)
+    interp.protective_conductance_s = s_cover
+    interp.protective_capacity = _protective_capacity(s_cover)
 
     if sounding is not None and sounding.site is not None:
         interp.site_easting = sounding.site.easting
@@ -220,6 +226,27 @@ def _dar_zarrouk(layers: list[LayerInterpretation]) -> tuple[float, float]:
         s_cond += layer.thickness_m / layer.rho
         t_res += layer.thickness_m * layer.rho
     return s_cond, t_res
+
+
+def _cover_conductance(
+    layers: list[LayerInterpretation], water_zones: list[tuple[float, float]]
+) -> float:
+    """Longitudinal conductance of the cover overlying the aquifer.
+
+    Only the material above the shallowest water-bearing zone counts as
+    protective cover, so a thick or conductive aquifer is not credited as
+    its own contamination barrier. With no water zone the whole overburden
+    is the cover.
+    """
+    aquifer_top = min((t for t, _ in water_zones), default=float("inf"))
+    s_cover = 0.0
+    for layer in layers:
+        if layer.thickness_m is None or layer.rho <= 0:
+            continue
+        cover_thickness = max(0.0, min(layer.bottom_m, aquifer_top) - layer.top_m)
+        if cover_thickness > 0:
+            s_cover += cover_thickness / layer.rho
+    return s_cover
 
 
 def _protective_capacity(s_cond: float) -> str:
@@ -286,14 +313,25 @@ def _narrative(interp: SiteInterpretation) -> str:
             f"{fmt_num(interp.depth_to_basement_m)} m."
         )
     if interp.longitudinal_conductance_s > 0:
-        parts.append(
-            "The Dar-Zarrouk parameters of the overburden are a longitudinal "
-            f"conductance of {fmt_num(interp.longitudinal_conductance_s, 3)} "
-            "siemens and a transverse resistance of "
-            f"{fmt_num(interp.transverse_resistance_t)} ohm m2, indicating a "
-            f"{interp.protective_capacity} protective capacity against surface "
-            "contamination."
+        base = (
+            "The Dar-Zarrouk longitudinal conductance of the section is "
+            f"{fmt_num(interp.longitudinal_conductance_s, 3)} siemens and the "
+            "transverse resistance is "
+            f"{fmt_num(interp.transverse_resistance_t)} ohm m2."
         )
+        if interp.water_zones:
+            base += (
+                " The cover overlying the water bearing zone has a longitudinal "
+                f"conductance of {fmt_num(interp.protective_conductance_s, 3)} "
+                f"siemens, indicating a {interp.protective_capacity} protective "
+                "capacity against surface contamination."
+            )
+        else:
+            base += (
+                f" This gives a {interp.protective_capacity} protective capacity "
+                "against surface contamination."
+            )
+        parts.append(base)
     return " ".join(parts)
 
 
