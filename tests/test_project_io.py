@@ -68,6 +68,19 @@ def test_sources_round_trip():
     assert updates["design_swl"] == 9.44
 
 
+def test_summary_round_trip():
+    session = {
+        "meta_community": "Rokel",
+        "project_summary": {
+            "community": "Rokel", "district": "Port Loko",
+            "status": "Successful", "safe_yield_m3_per_h": 2.4,
+        },
+    }
+    updates = deserialize_project(serialize_project(session, "0.2.0"))
+    assert updates["summary"]["community"] == "Rokel"
+    assert updates["summary"]["safe_yield_m3_per_h"] == 2.4
+
+
 def test_bad_file_raises():
     with pytest.raises(ValueError):
         deserialize_project(b"not: [valid, project")

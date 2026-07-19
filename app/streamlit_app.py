@@ -67,8 +67,10 @@ from groundwater.mapping import (
     plot_admin_map,
     plot_geological_map,
     plot_hydrogeology_map,
+    plot_portfolio_map,
     suitability_map,
 )
+from groundwater.portfolio import portfolio_points, portfolio_rows, portfolio_stats
 from groundwater.siting import assess_siting, suitability_map_points
 from groundwater.models import SiteMetadata
 from groundwater.project_io import (
@@ -328,6 +330,38 @@ def site_from_state() -> SiteMetadata:
     )
 
 
+def _project_summary() -> dict:
+    """Headline summary of the current project, saved for the portfolio view."""
+    site = site_from_state()
+    summary = {
+        "community": site.community, "district": site.district,
+        "chiefdom": site.chiefdom, "easting": site.easting,
+        "northing": site.northing, "utm_zone": site.utm_zone,
+    }
+    log = st.session_state.get("drilling_log")
+    if log is not None:
+        if log.status:
+            summary["status"] = log.status
+        if log.total_depth_m:
+            summary["total_depth_m"] = log.total_depth_m
+    analysis = st.session_state.get("pump_analysis")
+    yr = analysis.yield_recommendation if analysis is not None else None
+    if yr is not None and yr.safe_yield_m3_per_h:
+        summary["safe_yield_m3_per_h"] = yr.safe_yield_m3_per_h
+    wq = st.session_state.get("wq_assessment")
+    if wq is not None:
+        summary["water_verdict"] = (
+            "fail" if wq.health_exceedances
+            else "aesthetic" if wq.aesthetic_exceedances else "pass"
+        )
+    cost = st.session_state.get("cost_estimate")
+    if cost is not None:
+        summary["cost_per_meter_usd"] = cost.cost_per_meter_usd
+    if "ves_results" in st.session_state and "status" not in summary:
+        summary["status"] = "sited"
+    return {k: v for k, v in summary.items() if v not in (None, "")}
+
+
 def _apply_latlon() -> None:
     """Convert the decimal lat/lon entry into the UTM site fields.
 
@@ -554,11 +588,13 @@ with st.sidebar:
                       help="Address or contact line under the name.")
     with st.expander("💾 Project file"):
         st.caption(
-            "Save your inputs (site details, checklist answers, costing "
-            "inputs, edited rates and the WASH committee) and load them back "
-            "later or on another machine. Re-upload your data files to "
-            "recompute the analyses and reports."
+            "Save the whole project - your inputs, the WASH committee and the "
+            "uploaded data files - and load it back later or on another "
+            "machine to restore the analyses and reports. Saved projects can "
+            "also be combined in the Portfolio tab."
         )
+        # capture a headline summary so the saved file feeds the portfolio view
+        st.session_state["project_summary"] = _project_summary()
         st.download_button(
             "Save project (.yaml)",
             project_file_bytes(),
@@ -652,6 +688,7 @@ if st.session_state.pop("_recompute_pending", False):
     tab_maps,
     tab_extract,
     tab_templates,
+    tab_portfolio,
 ) = st.tabs(
     [
         "🚀 Guided start",
@@ -665,6 +702,7 @@ if st.session_state.pop("_recompute_pending", False):
         "🗺️ Maps",
         "📄 Scanned sheets",
         "📋 Templates",
+        "📁 Portfolio",
     ]
 )
 
@@ -1936,6 +1974,66 @@ with tab_templates:
     if st.button("Generate templates", key="gen_templates"):
         for template in write_all_templates(template_dir):
             offer_download(template, f"Download {template.name}")
+
+# ---------------------------------------------------------------------------
+# Portfolio
+# ---------------------------------------------------------------------------
+with tab_portfolio:
+    st.header("Borehole portfolio")
+    st.caption(
+        "See many boreholes side by side. Save a project from the sidebar "
+        "(each file carries a short summary), then drop several of them here "
+        "for a status map, a comparison table and headline figures - the "
+        "programme view a water manager needs."
+    )
+    files = st.file_uploader(
+        "Saved project files (.yaml)", type=["yaml", "yml"],
+        accept_multiple_files=True, key="portfolio_upload",
+    )
+    summaries = []
+    skipped = 0
+    for uploaded in files or []:
+        try:
+            updates = deserialize_project(uploaded.getvalue())
+        except Exception:
+            skipped += 1
+            continue
+        summary = updates.get("summary")
+        if not isinstance(summary, dict) or not summary:
+            # an older project file without a summary: fall back to site inputs
+            summary = {
+                "community": updates.get("meta_community"),
+                "district": updates.get("meta_district"),
+                "easting": updates.get("meta_easting"),
+                "northing": updates.get("meta_northing"),
+                "utm_zone": int(str(updates.get("meta_zone") or "29N").rstrip("N")),
+            }
+        summaries.append(summary)
+    if skipped:
+        st.warning(f"{skipped} file(s) could not be read as a project and were skipped.")
+    if not summaries:
+        st.info("Upload two or more saved project files to build the portfolio.")
+    else:
+        stats = portfolio_stats(summaries)
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Projects", stats["n_projects"])
+        c2.metric("Successful", stats["n_successful"],
+                  help=f"of {stats['n_drilled']} drilled")
+        if stats["success_rate"] is not None:
+            c3.metric("Success rate", f"{stats['success_rate']:.0f}%")
+        if stats["mean_cost_per_meter_usd"] is not None:
+            c4.metric("Mean cost/m", f"${stats['mean_cost_per_meter_usd']:.0f}")
+        points = portfolio_points(summaries)
+        if points:
+            pmap = workdir() / "portfolio_map.png"
+            plot_portfolio_map(points, path=pmap, style=app_config().style)
+            st.image(str(pmap))
+        else:
+            st.info("Add GPS coordinates to the projects to place them on the map.")
+        st.subheader("Comparison")
+        st.dataframe(
+            portfolio_rows(summaries), hide_index=True, use_container_width=True
+        )
 
 # the post-load grace flag protects restored inputs for exactly one
 # full run; every tab has rendered by this point

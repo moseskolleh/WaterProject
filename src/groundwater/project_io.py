@@ -87,11 +87,15 @@ def serialize_project(session: dict, version: str) -> bytes:
             encoded = _encode_source(value)
             if encoded:
                 sources[key[len("src_"):]] = encoded
+    summary = session.get("project_summary")
     payload = {
         "groundwater_toolkit_project": version,
         "rates_overrides": session.get("rates_overrides", {}) or {},
         "committee": committee if isinstance(committee, list) else [],
         "sources": sources,
+        # a small headline summary so a portfolio can be built from many
+        # project files without recomputing each one
+        "summary": summary if isinstance(summary, dict) else {},
         "state": state,
     }
     return yaml.safe_dump(payload, sort_keys=True).encode("utf-8")
@@ -137,4 +141,8 @@ def deserialize_project(raw: bytes) -> dict:
                 decoded[str(key)] = source
         if decoded:
             updates["sources"] = decoded
+
+    summary = payload.get("summary")
+    if isinstance(summary, dict) and summary:
+        updates["summary"] = summary
     return updates
