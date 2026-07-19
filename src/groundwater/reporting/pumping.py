@@ -38,6 +38,44 @@ class PumpingReportInputs:
     include_qa_section: bool = True
 
 
+def _executive_summary(analysis: PumpingTestAnalysis) -> tuple[list[str], list[str]]:
+    """Compose the pumping-test executive summary from the analysis."""
+    test = analysis.test
+    community = test.site.community or "the site"
+    test_name = test.test_type.replace("+", " with ")
+    yr = analysis.yield_recommendation
+    t = analysis.transmissivity_m2_per_day
+    if yr is not None and yr.safe_yield_m3_per_h:
+        para = (
+            f"A {test_name} pumping test was carried out on the borehole at "
+            f"{community}. The recommended safe yield is "
+            f"{fmt_num(yr.safe_yield_m3_per_h)} m3/h (safety factor "
+            f"{yr.safety_factor:g} applied to the long term yield), with the "
+            f"pump intake set at {fmt_num(yr.pump_installation_depth_m)} m "
+            "below ground level."
+        )
+        key = [
+            f"Transmissivity: {fmt_num(t)} m2/day." if t else "",
+            f"Recommended safe yield: {fmt_num(yr.safe_yield_m3_per_h)} m3/h.",
+            f"Pump installation depth: {fmt_num(yr.pump_installation_depth_m)} m.",
+            "Operate within the recommended rate and monitor the pumping level.",
+        ]
+    else:
+        reason = (yr.pending_reason if yr and yr.pending_reason
+                  else "the discharge is not recorded")
+        para = (
+            f"A {test_name} pumping test was carried out on the borehole at "
+            f"{community}. The drawdown and recovery curves are valid, but the "
+            "transmissivity and safe yield are pending because " + reason + "."
+        )
+        key = [
+            f"Stabilised water level: {fmt_num(analysis.stabilised_level_m)} m."
+            if analysis.stabilised_level_m is not None else "",
+            f"Yield recommendation pending: {reason}.",
+        ]
+    return [para], key
+
+
 def build_pumping_report(
     inputs: PumpingReportInputs,
     out_path: str | Path,
@@ -64,6 +102,10 @@ def build_pumping_report(
             ("Conducted by", site.supervisor),
         ],
     )
+
+    # ---- executive summary ------------------------------------------------
+    exec_paras, exec_key = _executive_summary(analysis)
+    rb.executive_summary(exec_paras, exec_key)
 
     # ---- 1 test details ---------------------------------------------------
     rb.heading("1. Test Details", 1)

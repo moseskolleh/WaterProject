@@ -117,6 +117,11 @@ def build_geophysical_report(
     # ---- table of contents ---------------------------------------------------
     rb.table_of_contents()
 
+    # ---- executive summary ---------------------------------------------------
+    exec_paras, exec_key = _executive_summary(soundings, inputs.interpretations,
+                                              community, district)
+    rb.executive_summary(exec_paras, exec_key)
+
     # ---- 1 introduction --------------------------------------------------------
     rb.heading("1. Introduction", 1)
     rb.paragraph(
@@ -386,6 +391,54 @@ def _sounding_block(
     # interpretation paragraph
     rb.paragraph(interp.narrative, align="justify")
     rb.page_break()
+
+
+def _executive_summary(
+    soundings: list[VESSounding],
+    interpretations: list[SiteInterpretation],
+    community: str,
+    district: str,
+) -> tuple[list[str], list[str]]:
+    """Compose the geophysical executive summary from the ranked results."""
+    # Select the preferred point by the same key drilling_preference_table
+    # uses (highest score, then sounding id). This does not rely on .rank,
+    # which is only assigned later when that table is built, so the summary
+    # is deterministic however many times the report is regenerated.
+    best = min(interpretations, key=lambda i: (-i.score, i.sounding_id))
+    n = len(soundings)
+    zones = best.water_zones
+    if zones:
+        zone_txt = "; ".join(f"{int(t)} m to {int(b)} m" for t, b in zones)
+        zone_sentence = (
+            "The most promising water bearing zone at the preferred point "
+            f"lies between {zone_txt}."
+        )
+    else:
+        zone_txt = ""
+        zone_sentence = (
+            "No strongly water bearing zone was resolved at the preferred "
+            "point within the investigated depth, so the result should be "
+            "confirmed by test drilling."
+        )
+    para = (
+        f"A geophysical siting survey using {n} vertical electrical sounding "
+        f"point(s) was carried out at {community}"
+        + (f", {district}" if district else "")
+        + f". Point {best.sounding_id} is recommended as the preferred "
+        f"drilling location, to a depth of about {best.max_drilling_depth_m:.0f} m. "
+        + zone_sentence
+    )
+    key = [
+        f"Preferred drilling point: {best.sounding_id}.",
+        f"Recommended drilling depth: about {best.max_drilling_depth_m:.0f} m.",
+    ]
+    if zone_txt:
+        key.append(f"Target water zone(s): {zone_txt}.")
+    key.append(
+        "Yield and water quality can only be confirmed by test drilling and "
+        "test pumping."
+    )
+    return [para], key
 
 
 def _conclusions(

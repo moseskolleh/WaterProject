@@ -40,6 +40,63 @@ class CompletionReportInputs:
     preparer_phone: str = ""
 
 
+def _executive_summary(inputs: CompletionReportInputs) -> tuple[list[str], list[str]]:
+    """Compose the completion executive summary from the drilling and test data."""
+    log = inputs.log
+    community = log.site.community or "the site"
+    analysis = inputs.pumping
+    yr = analysis.yield_recommendation if analysis else None
+    quality = inputs.quality
+    status = (log.status or "").strip()
+
+    bits = [
+        "This report documents the drilling, construction and testing of the "
+        f"borehole at {community}."
+    ]
+    if log.total_depth_m:
+        s = f"The borehole was drilled to {fmt_num(log.total_depth_m)} m"
+        if log.drilling_method:
+            s += f" by {log.drilling_method}"
+        if status:
+            s += f" and is recorded as {status.lower()}"
+        bits.append(s + ".")
+    if yr is not None and yr.safe_yield_m3_per_h:
+        bits.append(
+            f"The recommended safe yield is {fmt_num(yr.safe_yield_m3_per_h)} m3/h "
+            f"at a pump setting of {fmt_num(yr.pump_installation_depth_m)} m."
+        )
+    elif analysis is not None and not analysis.test.has_discharge:
+        bits.append(
+            "The pumping test discharge is pending, so the yield figures are not "
+            "yet final."
+        )
+    if quality is not None:
+        bits.append(
+            "The water requires treatment before drinking."
+            if quality.health_exceedances
+            else "The water is suitable for drinking on the parameters tested."
+        )
+
+    key: list[str] = []
+    if log.total_depth_m:
+        key.append(
+            f"Borehole depth: {fmt_num(log.total_depth_m)} m"
+            + (f", {status}." if status else ".")
+        )
+    if yr is not None and yr.safe_yield_m3_per_h:
+        key.append(f"Safe yield: {fmt_num(yr.safe_yield_m3_per_h)} m3/h.")
+    if quality is not None:
+        key.append(
+            "Water safety: "
+            + (
+                "treatment required before drinking."
+                if quality.health_exceedances
+                else "suitable on the parameters tested."
+            )
+        )
+    return [" ".join(bits)], key
+
+
 def build_completion_report(
     inputs: CompletionReportInputs,
     out_path: str | Path,
@@ -66,6 +123,10 @@ def build_completion_report(
         ],
     )
     rb.table_of_contents()
+
+    # ---- executive summary ---------------------------------------------------
+    exec_paras, exec_key = _executive_summary(inputs)
+    rb.executive_summary(exec_paras, exec_key)
 
     # ---- introduction --------------------------------------------------------
     rb.heading("1. Introduction", 1)

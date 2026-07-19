@@ -66,6 +66,50 @@ class QualityReportInputs:
     include_diagrams: bool = True
 
 
+def _executive_summary(assessment: WaterQualityAssessment) -> tuple[list[str], list[str]]:
+    """Compose the water-quality executive summary from the assessment."""
+    community = assessment.sample.site.community or "the site"
+    health = assessment.health_exceedances
+    aesthetic = assessment.aesthetic_exceedances
+    if health:
+        names = ", ".join(r.parameter for r in health)
+        para = (
+            f"Laboratory results for the borehole water at {community} were "
+            "assessed against the WHO Guidelines for Drinking-water Quality and "
+            "the national/adopted limits. The water does not meet the health "
+            f"based guideline value(s) for {names}, so treatment or an "
+            "alternative source is required before it is used for drinking."
+        )
+        key = [
+            f"Health based exceedance(s): {names}.",
+            "Treatment or an alternative source is required before drinking.",
+        ]
+    elif aesthetic:
+        names = ", ".join(r.parameter for r in aesthetic)
+        para = (
+            f"Laboratory results for the borehole water at {community} meet all "
+            "health based guideline values. Acceptability (aesthetic) limits are "
+            f"exceeded for {names}; the water is usable for drinking, although "
+            "taste, odour or staining complaints may arise."
+        )
+        key = [
+            "All health based guideline values are met.",
+            f"Aesthetic exceedance(s): {names}.",
+        ]
+    else:
+        para = (
+            f"Laboratory results for the borehole water at {community} comply "
+            "with the WHO guideline values and the national/adopted limits "
+            "applied. The water is suitable for drinking on the basis of the "
+            "parameters tested."
+        )
+        key = [
+            "All measured parameters comply with the limits applied.",
+            "The water is suitable for drinking on the parameters tested.",
+        ]
+    return [para], key
+
+
 def build_quality_report(
     inputs: QualityReportInputs,
     out_path: str | Path,
@@ -93,6 +137,10 @@ def build_quality_report(
             ("Laboratory", sample.laboratory),
         ],
     )
+
+    # ---- executive summary ------------------------------------------------
+    exec_paras, exec_key = _executive_summary(assessment)
+    rb.executive_summary(exec_paras, exec_key)
 
     # ---- 1 sample details -------------------------------------------------
     rb.heading("1. Sample Details", 1)

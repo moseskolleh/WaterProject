@@ -112,6 +112,10 @@ def build_handover_report(
     )
     rb.table_of_contents()
 
+    # ---- executive summary ----------------------------------------------------
+    exec_paras, exec_key = _executive_summary(inputs)
+    rb.executive_summary(exec_paras, exec_key)
+
     # ---- 1 project summary ----------------------------------------------------
     rb.heading("1. Project Summary", 1)
     lat_lon = site.latlon
@@ -269,6 +273,60 @@ def build_handover_report(
         rb.paragraph("Date: ........................")
 
     return rb.save(out_path)
+
+
+def _executive_summary(inputs: HandoverReportInputs) -> tuple[list[str], list[str]]:
+    """Compose the handover executive summary from the assembled results."""
+    site = inputs.site
+    community = site.community or "the water point"
+    log = inputs.log
+    analysis = inputs.pumping
+    yr = analysis.yield_recommendation if analysis else None
+    quality = inputs.quality
+
+    bits = [
+        f"This report hands over the completed borehole water supply at "
+        f"{community}" + (f", {site.district} District" if site.district else "") + "."
+    ]
+    if log is not None and log.total_depth_m:
+        s = f"The borehole was drilled to {fmt_num(log.total_depth_m)} m"
+        if log.status:
+            s += f" and is recorded as {log.status.lower()}"
+        bits.append(s + ".")
+    if yr is not None and yr.safe_yield_m3_per_h:
+        bits.append(
+            f"The recommended safe yield is {fmt_num(yr.safe_yield_m3_per_h)} m3/h."
+        )
+    if quality is not None:
+        bits.append(
+            "The water requires treatment before drinking; see the water "
+            "quality section."
+            if quality.health_exceedances
+            else "The water is suitable for drinking on the parameters tested."
+        )
+
+    key: list[str] = []
+    if log is not None and log.total_depth_m:
+        key.append(
+            f"Borehole depth: {fmt_num(log.total_depth_m)} m"
+            + (f", {log.status}." if log.status else ".")
+        )
+    if yr is not None and yr.safe_yield_m3_per_h:
+        key.append(f"Safe yield: {fmt_num(yr.safe_yield_m3_per_h)} m3/h.")
+    if quality is not None:
+        key.append(
+            "Water safety: "
+            + (
+                "treatment required before drinking."
+                if quality.health_exceedances
+                else "suitable for drinking on the parameters tested."
+            )
+        )
+    key.append(
+        "Keep this report with the WASH committee records and maintain the "
+        "sanitary protection zone around the wellhead."
+    )
+    return [" ".join(bits)], key
 
 
 def _default_works(inputs: HandoverReportInputs) -> list[str]:
