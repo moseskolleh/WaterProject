@@ -91,6 +91,71 @@ def test_functional_from_needs_repair_and_abandoned():
     assert pts[1].functional is False
 
 
+def test_functional_from_does_not_match_functionality_word():
+    # "functionality" must not read as functional; status stays unknown
+    pts = parse_wpdx_records([
+        _wp("a", 10, "Unknown functionality", "", "Borehole"),
+        _wp("b", 10, "functionality not reported", "", "Borehole"),
+    ])
+    assert pts[0].functional is None
+    assert pts[1].functional is None
+
+
+def test_functional_from_status_id_fallback():
+    # no status text: fall back to the status_id "Yes"/"No" flag
+    pts = parse_wpdx_records([
+        _wp("a", 10, "", "Yes", "Borehole"),
+        _wp("b", 10, "", "No", "Borehole"),
+        _wp("c", 10, "", "Unknown", "Borehole"),
+    ])
+    assert [p.functional for p in pts] == [True, False, None]
+
+
+def test_protected_spring_is_improved_but_unprotected_is_not():
+    # "Protected Spring" contains "protected"; must not be mislabelled by the
+    # "unprotected"/surface keywords (regression: bug flipped verify->drill).
+    pts = parse_wpdx_records([
+        _wp("a", 10, "Functional", "Yes", "Protected Spring"),
+        _wp("b", 10, "Functional", "Yes", "Unprotected Spring"),
+        _wp("c", 10, "Functional", "Yes", "Surface Water"),
+    ])
+    assert pts[0].improved is True
+    assert pts[1].improved is False
+    assert pts[2].improved is False
+
+
+def test_working_protected_spring_in_service_radius_verifies_need():
+    spring = _wp("sp", 200, "Functional", "Yes", "Protected Spring")
+    near = points_within(parse_wpdx_records([spring]), BASE_LAT, BASE_LON, 1000.0)
+    decision = rehab_vs_drill(near, BASE_LAT, BASE_LON)
+    assert decision["recommendation"] == VERIFY_NEED
+
+
+def test_drill_new_note_correct_for_unimproved_source_within_radius():
+    # a functional but unimproved source 100 m away: DRILL_NEW, and the note
+    # must not falsely claim it is "beyond the service radius".
+    surface = _wp("sw", 100, "Functional", "Yes", "Surface Water")
+    near = points_within(parse_wpdx_records([surface]), BASE_LAT, BASE_LON, 1000.0)
+    decision = rehab_vs_drill(near, BASE_LAT, BASE_LON)
+    assert decision["recommendation"] == DRILL_NEW
+    assert "beyond" not in decision["headline"]
+    assert "not an improved source" in decision["headline"]
+
+
+def test_radius_boundaries_are_inclusive():
+    # a point exactly at the radius counts as within it (the code uses <=).
+    # use the point's own computed distance as the radius, so the boundary is
+    # exact regardless of coordinate rounding.
+    parsed = parse_wpdx_records([_wp("svc", 480, "Functional", "Yes", "Borehole")])
+    d = points_within(parsed, BASE_LAT, BASE_LON, 10000.0)[0].distance_m
+    assert len(points_within(parsed, BASE_LAT, BASE_LON, d)) == 1  # search <= is inclusive
+    # a working improved source exactly at the service radius counts as serving
+    near = points_within(parsed, BASE_LAT, BASE_LON, 10000.0)
+    decision = rehab_vs_drill(near, BASE_LAT, BASE_LON, search_radius_m=10000.0,
+                              service_radius_m=d)
+    assert decision["recommendation"] == VERIFY_NEED
+
+
 def test_points_within_filters_and_sorts():
     near = points_within(parse_wpdx_records(FULL), BASE_LAT, BASE_LON, 1000.0)
     ids = [p.row_id for p in near]

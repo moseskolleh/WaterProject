@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -84,17 +85,21 @@ class WaterPoint:
     def improved(self) -> bool:
         """Whether the source is an improved type worth rehabilitating.
 
-        A borehole, tubewell, protected well or piped supply is an improved
-        source; an open/unprotected well or surface water is not, so it is
-        not a rehabilitation alternative to a new borehole.
+        A borehole, tubewell, protected well or spring, or a piped supply is
+        an improved source; an unprotected well/spring or surface water is
+        not, so it is not a rehabilitation alternative to a new borehole.
+
+        The unimproved check runs first because "unprotected" contains
+        "protected": a "Protected Spring" is improved, an "Unprotected
+        Spring" is not, and both must resolve correctly.
         """
         text = f"{self.source} {self.technology}".lower()
-        improved = ("borehole", "tubewell", "tube well", "protected",
-                    "piped", "hand pump", "handpump", "mechani")
-        unimproved = ("unprotected", "open well", "surface", "spring",
-                      "river", "rainwater")
+        unimproved = ("unprotected", "unimproved", "open well", "open dug",
+                      "surface", "river", "stream", "pond", "rainwater")
         if any(word in text for word in unimproved):
             return False
+        improved = ("borehole", "tubewell", "tube well", "protected",
+                    "piped", "hand pump", "handpump", "mechani")
         return any(word in text for word in improved)
 
     def as_row(self) -> dict:
@@ -158,7 +163,9 @@ def _functional_from(status_text: str, status_id) -> bool | None:
     if text:
         if "non" in text or "not functional" in text or "abandoned" in text:
             return False
-        if "functional" in text:
+        # match "functional" as a whole word, so "functionality" (used in
+        # "unknown functionality") does not read as functional.
+        if "functional" in re.findall(r"[a-z]+", text):
             return True
     sid = str(status_id or "").strip().lower()
     if sid in ("yes", "y", "true", "1"):
@@ -321,10 +328,19 @@ def rehab_vs_drill(
 
     note = ""
     if functional:
-        note = (
-            f" The nearest working source is {round(functional[0].distance_m)} m "
-            f"away, beyond the {round(service_radius_m)} m service radius."
-        )
+        distance = functional[0].distance_m
+        if distance > service_radius_m:
+            note = (
+                f" The nearest working source is {round(distance)} m away, "
+                f"beyond the {round(service_radius_m)} m service radius."
+            )
+        else:
+            # inside the service radius but not an improved source, so it is
+            # not a rehabilitation alternative to a borehole.
+            note = (
+                f" The nearest working source is {round(distance)} m away but "
+                "is not an improved source suitable for rehabilitation."
+            )
     return {
         **common,
         "recommendation": DRILL_NEW,
