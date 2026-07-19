@@ -42,6 +42,11 @@ class InversionResult:
     converged: bool
     trials: list = field(default_factory=list)  # (n_layers, err) for auto search
     shifts: list = field(default_factory=list)  # splice diagnostics
+    # linearised 1-sigma multiplicative uncertainty per parameter, so a
+    # resistivity rho is constrained to rho x/ factor. Larger factors mark
+    # the equivalence/suppression that makes resistivity models non-unique.
+    rho_uncertainty_factor: np.ndarray | None = None
+    h_uncertainty_factor: np.ndarray | None = None
 
 
 def _forward(rho, h, ab2, array_type: str):
@@ -256,6 +261,9 @@ def invert_sounding(
 
     model, calc, err, iterations, converged = chosen
     model.sounding_id = sounding.sounding_id
+    rho_factor, h_factor = _parameter_uncertainty(
+        ab2, rho_app, model, sounding.array_type
+    )
     return InversionResult(
         model=model,
         ab2=ab2,
@@ -266,4 +274,50 @@ def invert_sounding(
         converged=converged,
         trials=trials,
         shifts=shifts,
+        rho_uncertainty_factor=rho_factor,
+        h_uncertainty_factor=h_factor,
     )
+
+
+def _parameter_uncertainty(ab2, rho_app, model, array_type):
+    """Linearised 1-sigma multiplicative uncertainty per model parameter.
+
+    Reuses the log-space Jacobian the inversion is built on: the model
+    covariance is sigma^2 (J'J)^-1 with sigma^2 the variance of the log
+    residuals, and because the parameters are logarithms, exp(sigma_i)
+    gives the multiplicative factor on each resistivity and thickness.
+    Returns ``(rho_factor, h_factor)``; factors near 1 are well resolved,
+    large factors mark equivalence.
+    """
+    rho = np.asarray(model.resistivities, float)
+    h = np.asarray(model.thicknesses, float)
+    n_layers = len(rho)
+    theta = _pack(rho, h)
+    log_obs = np.log(rho_app)
+
+    def residuals(t):
+        r, hh = _unpack(t, n_layers)
+        calc = np.maximum(_forward(r, hh, ab2, array_type), 1e-9)
+        return np.log(calc) - log_obs
+
+    res = residuals(theta)
+    m, p = len(ab2), len(theta)
+    J = np.empty((m, p))
+    step = 1e-4
+    for j in range(p):
+        tp = theta.copy()
+        tp[j] += step
+        J[:, j] = (residuals(tp) - res) / step
+
+    dof = max(m - p, 1)
+    sigma2 = float(res @ res) / dof
+    JtJ = J.T @ J
+    try:
+        cov = sigma2 * np.linalg.inv(JtJ)
+    except np.linalg.LinAlgError:
+        cov = sigma2 * np.linalg.pinv(JtJ)
+    std = np.sqrt(np.clip(np.diag(cov), 0.0, None))
+    # cap the reported factor so a wildly unconstrained parameter does not
+    # print an absurd number; anything above ~10x is "not resolved"
+    factors = np.minimum(np.exp(std), 10.0)
+    return factors[:n_layers], factors[n_layers:]

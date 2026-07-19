@@ -396,14 +396,25 @@ def _sounding_block(
         )
     rb.figure(curve_path, f"Schlumberger array VES curve and model at point {sid}.")
 
-    # model table (IPI2Win layout)
+    # model table (IPI2Win layout) with linearised uncertainty factors
+    rho_fac = inversion.rho_uncertainty_factor
+    h_fac = inversion.h_uncertainty_factor
     model_rows = []
-    for row in inversion.model.as_table():
+    for i, row in enumerate(inversion.model.as_table()):
+        rho_cell = fmt_num(row["rho_ohm_m"], 4)
+        if rho_fac is not None and i < len(rho_fac):
+            rho_cell += f" (x/ {rho_fac[i]:.1f})"
+        if row["h_m"] is not None:
+            h_cell = fmt_num(row["h_m"])
+            if h_fac is not None and i < len(h_fac):
+                h_cell += f" (x/ {h_fac[i]:.1f})"
+        else:
+            h_cell = ""
         model_rows.append(
             [
                 row["N"],
-                fmt_num(row["rho_ohm_m"], 4),
-                fmt_num(row["h_m"]) if row["h_m"] is not None else "",
+                rho_cell,
+                h_cell,
                 "0/0" if row["z_m"] == "0/0" else fmt_num(row["z_m"]),
             ]
         )
@@ -413,9 +424,11 @@ def _sounding_block(
         header=["N", "rho (ohm-m)", "h (m)", "z (m)"],
         caption=(
             f"Layered earth model at point {sid} "
-            f"(curve type {classify_curve(inversion.model)}, ERR = {err:.1f}%)."
+            f"(curve type {classify_curve(inversion.model)}, ERR = {err:.1f}%). "
+            "The (x/ factor) is the linearised 1-sigma uncertainty; a factor "
+            "near 1 is well resolved and a large factor marks equivalence."
         ),
-        col_widths_cm=[1.5, 4.0, 3.0, 3.0],
+        col_widths_cm=[1.2, 4.6, 3.4, 2.8],
     )
 
     # pseudo-section figure
