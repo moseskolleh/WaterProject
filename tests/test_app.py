@@ -248,3 +248,24 @@ def test_templates_tab(app):
     app.button(key="gen_templates").click()
     app.run()
     assert not app.exception
+
+
+def test_recompute_on_project_load(sample_data):
+    """Loading a project rebuilds the analyses from saved data sources."""
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.run()
+    assert not at.exception
+    # simulate a loaded project: saved data files + the recompute flag
+    at.session_state["src_ves"] = {"sample": "rokel/rokel_ves.xlsx"}
+    at.session_state["src_wq"] = {"sample": "dr_timbo/dr_timbo_water_quality.xlsx"}
+    at.session_state["src_log"] = {"sample": "dr_timbo/dr_timbo_drilling_log.xlsx"}
+    at.session_state["src_pump"] = {"sample": "dr_timbo/dr_timbo_constant_test.xlsx"}
+    at.session_state["design_swl"] = 9.44
+    at.session_state["_recompute_pending"] = True
+    at.run()
+    assert not at.exception
+    for key in ("ves_results", "wq_assessment", "borehole_design",
+                "drilling_log", "pump_analysis"):
+        assert key in at.session_state, f"{key} not rebuilt on load"
+    # the recompute flag is consumed, so it does not run again
+    assert "_recompute_pending" not in at.session_state

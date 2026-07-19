@@ -51,6 +51,23 @@ def test_committee_records_normalises_and_strips():
     assert recs[1] == {"Role": "", "Name": "", "Phone": ""}
 
 
+def test_sources_round_trip():
+    session = {
+        "meta_community": "Rokel",
+        "src_ves": {"sample": "rokel/rokel_ves.xlsx"},
+        "src_pump": {"name": "test.xlsx", "bytes": b"\x00\x01binary\xff"},
+        "q_1": 2.5,          # a pumping discharge, now persisted
+        "design_swl": 9.44,  # borehole design static water level
+    }
+    updates = deserialize_project(serialize_project(session, "0.2.0"))
+    assert updates["sources"]["ves"] == {"sample": "rokel/rokel_ves.xlsx"}
+    assert updates["sources"]["pump"]["bytes"] == b"\x00\x01binary\xff"
+    assert updates["sources"]["pump"]["name"] == "test.xlsx"
+    # the extra inputs the recompute needs survive as scalars
+    assert updates["q_1"] == 2.5
+    assert updates["design_swl"] == 9.44
+
+
 def test_bad_file_raises():
     with pytest.raises(ValueError):
         deserialize_project(b"not: [valid, project")
