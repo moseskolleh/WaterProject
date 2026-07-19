@@ -71,7 +71,14 @@ from groundwater.mapping import (
     plot_portfolio_map,
     suitability_map,
 )
-from groundwater.portfolio import portfolio_points, portfolio_rows, portfolio_stats
+from groundwater.portfolio import (
+    portfolio_points,
+    portfolio_rows,
+    portfolio_stats,
+    site_detail,
+    site_label,
+    site_one_pager,
+)
 from groundwater.waterpoints import (
     ASSESS_REHAB,
     DEFAULT_SEARCH_RADIUS_M,
@@ -2130,6 +2137,25 @@ with tab_portfolio:
         st.subheader("Comparison")
         st.dataframe(
             portfolio_rows(summaries), hide_index=True, use_container_width=True
+        )
+
+        st.subheader("Site detail")
+        st.caption("Drill into one site for its full record and a one-page brief.")
+        choice = st.selectbox(
+            "Select a site", list(range(len(summaries))),
+            format_func=lambda i: site_label(summaries[i], i),
+            key="portfolio_site",
+        )
+        chosen = summaries[choice]
+        st.table(
+            [{"Field": field, "Value": value}
+             for field, value in site_detail(chosen)]
+        )
+        _brief_name = (chosen.get("community") or "site").strip().replace(" ", "_")
+        st.download_button(
+            "Download site brief (.txt)", site_one_pager(chosen),
+            file_name=f"{_brief_name}_brief.txt", mime="text/plain",
+            key="portfolio_onepager",
         )
 
 # the post-load grace flag protects restored inputs for exactly one

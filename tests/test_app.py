@@ -250,6 +250,42 @@ def test_templates_tab(app):
     assert not app.exception
 
 
+def test_portfolio_drilldown_flow(sample_data):
+    """Upload saved projects, then drill into one site for its detail and
+    the one-page brief."""
+    from groundwater.project_io import serialize_project
+
+    rokel = serialize_project({"project_summary": {
+        "community": "Rokel", "district": "Port Loko",
+        "easting": 694667.0, "northing": 936225.0, "utm_zone": 28,
+        "status": "Successful", "total_depth_m": 50.0,
+        "safe_yield_m3_per_h": 2.4, "water_verdict": "pass",
+        "cost_per_meter_usd": 130.0,
+    }}, "0.2.0")
+    kuntolo = serialize_project({"project_summary": {
+        "community": "Kuntolo", "district": "Tonkolili",
+        "easting": 800000.0, "northing": 950000.0, "utm_zone": 28,
+        "status": "Dry hole", "total_depth_m": 45.0,
+    }}, "0.2.0")
+
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.run()
+    at.file_uploader(key="portfolio_upload").set_value([
+        ("rokel.yaml", rokel, "application/x-yaml"),
+        ("kuntolo.yaml", kuntolo, "application/x-yaml"),
+    ])
+    at.run()
+    assert not at.exception
+    # drilling into the second site shows its record and a brief to download
+    at.selectbox(key="portfolio_site").select(1)
+    at.run()
+    assert not at.exception
+    detail = str(at.table[-1].value)
+    assert "Kuntolo" in detail and "Dry / failed" in detail
+    assert any(b.label.startswith("Download site brief")
+               for b in at.download_button)
+
+
 def test_waterpoints_tab_guarded(sample_data):
     """The water points tab renders and, given coordinates, shows the lookup
     control - without touching the network (no button click)."""

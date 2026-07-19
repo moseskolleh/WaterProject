@@ -6,6 +6,9 @@ from groundwater.portfolio import (
     portfolio_points,
     portfolio_rows,
     portfolio_stats,
+    site_detail,
+    site_label,
+    site_one_pager,
 )
 
 _SUMMARIES = [
@@ -72,3 +75,42 @@ def test_portfolio_map_renders(tmp_path):
 
 def test_points_without_coordinates_are_dropped():
     assert portfolio_points([{"community": "No GPS", "status": "sited"}]) == []
+
+
+def test_site_label():
+    assert site_label(_SUMMARIES[0]) == "Rokel (Port Loko)"
+    assert site_label({"community": "Foo"}) == "Foo"
+    assert site_label({}) == "(unnamed site)"
+    # an index prefix keeps otherwise-identical labels unambiguous
+    assert site_label(_SUMMARIES[0], index=2) == "3. Rokel (Port Loko)"
+
+
+def test_site_detail_present_fields_only():
+    detail = dict(site_detail(_SUMMARIES[0]))
+    assert detail["Community"] == "Rokel"
+    assert detail["District"] == "Port Loko"
+    assert detail["Status"] == "Successful"
+    assert detail["Total depth"] == "50.0 m"
+    assert detail["Safe yield"] == "2.40 m3/h"
+    assert detail["Water quality"] == "Safe to drink"
+    assert detail["Cost per metre"] == "$130"
+    assert "N," in detail["Location"] and "W" in detail["Location"]
+    # a sparse site omits absent fields rather than showing blanks
+    sparse = dict(site_detail({"community": "No GPS", "status": "sited"}))
+    assert set(sparse) == {"Community", "Status"}
+    assert "Location" not in sparse
+
+
+def test_site_detail_shows_location_from_utm():
+    # a UTM-only summary still gets a Location, shown as converted lat/lon
+    detail = dict(site_detail({"community": "X", "easting": 700000.0,
+                               "northing": 950000.0, "utm_zone": 28}))
+    assert "N," in detail["Location"] and detail["Location"].endswith("W")
+
+
+def test_site_one_pager_contains_key_facts():
+    text = site_one_pager(_SUMMARIES[0])
+    assert text.startswith("SITE BRIEF - Rokel (Port Loko)")
+    assert "Safe yield:" in text
+    assert "2.40 m3/h" in text
+    assert "Cost per metre:" in text
