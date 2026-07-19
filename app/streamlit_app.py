@@ -63,6 +63,7 @@ from groundwater.ingestion import (
 from groundwater.ingestion.templates import write_all_templates
 from groundwater.geo import geographic_to_utm, utm_to_geographic
 from groundwater.mapping import (
+    chiefdom_of,
     district_of,
     plot_admin_map,
     plot_geological_map,
@@ -489,6 +490,11 @@ with st.sidebar:
             st.session_state["meta_province"] = dict(district_rows)[
                 detected_district
             ]
+        # auto-fill the chiefdom from the GPS as well, when not already set
+        if not st.session_state.get("meta_chiefdom"):
+            _chiefdom, _chief_district = chiefdom_of(_lat, _lon)
+            if _chiefdom:
+                st.session_state["meta_chiefdom"] = _chiefdom
 
     _probe = site_from_state()
     if _probe.community and _probe.latlon is not None:

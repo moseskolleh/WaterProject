@@ -60,9 +60,10 @@ class GeologyUnit:
 
 @dataclass
 class AdminArea:
-    level: str  # "ADM0" | "ADM2"
+    level: str  # "ADM0" | "ADM2" | "ADM3"
     name: str
     rings: list[np.ndarray] = field(default_factory=list)
+    district: str = ""  # parent district, for ADM3 chiefdoms
 
     @property
     def label_point(self) -> tuple[float, float]:
@@ -208,6 +209,49 @@ def district_of(
             if _point_in_ring(lon, lat, ring):
                 return district.name
     return ""
+
+
+def load_chiefdoms(path: str | Path | None = None) -> list[AdminArea]:
+    """The chiefdom (ADM3) polygons, each carrying its parent district.
+
+    From geoBoundaries (gbOpen, CC BY 4.0), simplified for bundling.
+    """
+    data = _read_geojson("sl_chiefdoms_geoboundaries.geojson", path)
+    areas: list[AdminArea] = []
+    for feature in data.get("features", []):
+        props = feature.get("properties", {})
+        geom = feature.get("geometry", {})
+        polys = (
+            geom["coordinates"]
+            if geom.get("type") == "MultiPolygon"
+            else [geom.get("coordinates", [])]
+        )
+        rings = [np.asarray(p[0], dtype=float) for p in polys if p]
+        if rings:
+            areas.append(
+                AdminArea(
+                    level="ADM3",
+                    name=props.get("name", ""),
+                    rings=rings,
+                    district=props.get("district", ""),
+                )
+            )
+    return areas
+
+
+def chiefdom_of(
+    lat: float, lon: float, path: str | Path | None = None
+) -> tuple[str, str]:
+    """The chiefdom and its district containing a point.
+
+    Returns ``(chiefdom, district)`` or ``("", "")`` when the point falls
+    outside every chiefdom.
+    """
+    for area in load_chiefdoms(path):
+        for ring in area.rings:
+            if _point_in_ring(lon, lat, ring):
+                return area.name, area.district
+    return "", ""
 
 
 def _site_lonlat(site: SiteMetadata) -> tuple[float, float] | None:
