@@ -66,10 +66,21 @@ from groundwater.mapping import (
     chiefdom_of,
     district_of,
     plot_admin_map,
+    plot_coverage_choropleth,
     plot_geological_map,
     plot_hydrogeology_map,
     plot_portfolio_map,
     suitability_map,
+)
+from groundwater.coverage import (
+    POPULATION_CREDIT,
+    count_points_by_district,
+    coverage_rows,
+    coverage_stats,
+    choropleth_values,
+    load_chiefdom_district,
+    load_chiefdom_polys,
+    load_district_population,
 )
 from groundwater.portfolio import (
     portfolio_points,
@@ -85,7 +96,10 @@ from groundwater.waterpoints import (
     VERIFY_NEED,
     WPDX_CREDIT,
     WaterPointFetchError,
+    fetch_water_points,
     functionality_summary,
+    parse_wpdx_csv,
+    parse_wpdx_records,
     rehab_vs_drill,
     water_points_near,
 )
@@ -206,6 +220,23 @@ def cached_checklists():
 @st.cache_data
 def cached_separation_distances():
     return load_separation_distances()
+
+
+@st.cache_data
+def cov_population():
+    return load_district_population()
+
+
+@st.cache_data
+def cov_crosswalk():
+    return load_chiefdom_district()
+
+
+@st.cache_resource
+def cov_polys():
+    """Chiefdom polygons for coverage point-in-polygon (numpy-heavy, cached by
+    reference)."""
+    return load_chiefdom_polys()
 
 
 @st.cache_data
@@ -710,6 +741,7 @@ if st.session_state.pop("_recompute_pending", False):
     tab_handover,
     tab_maps,
     tab_waterpoints,
+    tab_coverage,
     tab_extract,
     tab_templates,
     tab_portfolio,
@@ -725,6 +757,7 @@ if st.session_state.pop("_recompute_pending", False):
         "🤝 Handover",
         "🗺️ Maps",
         "🚱 Water points",
+        "📊 Coverage gap",
         "📄 Scanned sheets",
         "📋 Templates",
         "📁 Portfolio",
@@ -2007,6 +2040,115 @@ with tab_waterpoints:
                 st.dataframe(result["rows"], use_container_width=True,
                              hide_index=True)
             st.caption(WPDX_CREDIT)
+
+# ---------------------------------------------------------------------------
+# Coverage gap (population per functional water point, by district)
+# ---------------------------------------------------------------------------
+with tab_coverage:
+    st.header("Water coverage gap by district")
+    st.caption(
+        "Where are the underserved people? This ranks Sierra Leone's 16 "
+        "districts by population per functional water point, joining the 2015 "
+        "census district populations (Statistics Sierra Leone) with mapped "
+        "water points from the Water Point Data Exchange (WPdx+, CC BY 4.0). "
+        "Higher = more people per working source = higher priority. WPDx "
+        "coverage is not exhaustive, so treat it as a planning signal, not a "
+        "census of points."
+    )
+    cov_input = st.radio(
+        "Water points source",
+        ["Upload WPDx CSV export", "Live WPDx (national)"],
+        key="cov_source", horizontal=True,
+        help="Download your country's export from waterpointdata.org for a "
+        "fully offline analysis, or fetch live (needs internet).",
+    )
+    cov_points = None
+    if cov_input == "Upload WPDx CSV export":
+        up = st.file_uploader("WPDx CSV export (.csv)", type=["csv"], key="cov_csv")
+        if up is not None:
+            try:
+                cov_points = parse_wpdx_csv(
+                    up.getvalue().decode("utf-8", "replace")
+                )
+            except Exception as exc:  # surfaced to the operator
+                st.error(f"Could not read that CSV: {exc}")
+    else:
+        cov_limit = 200000
+        if st.button("Fetch national water points", key="cov_fetch",
+                     type="primary"):
+            try:
+                with st.spinner("Querying the Water Point Data Exchange..."):
+                    # a bounding box around the country's centre; a high limit
+                    # because a national pull (plus the box's Guinea/Liberia
+                    # fringe, which the chiefdom join later discards) is tens of
+                    # thousands of points
+                    st.session_state["cov_points_raw"] = fetch_water_points(
+                        8.46, -11.79, 300000.0, limit=cov_limit
+                    )
+            except WaterPointFetchError as exc:
+                st.session_state.pop("cov_points_raw", None)
+                st.error(
+                    f"{exc} Try the CSV upload option instead - the rest of "
+                    "the toolkit works offline."
+                )
+        raw = st.session_state.get("cov_points_raw")
+        if raw is not None:
+            if len(raw) >= cov_limit:
+                st.warning(
+                    f"The national pull hit the {cov_limit:,}-row cap, so the "
+                    "ranking may be partial. Prefer a filtered WPDx CSV export "
+                    "for a complete, reproducible analysis."
+                )
+            cov_points = parse_wpdx_records(raw)
+
+    if cov_points is not None and not cov_points:
+        st.warning("No water points found in that source.")
+    elif cov_points:
+        counts, unassigned = count_points_by_district(
+            cov_points, cov_polys(), cov_crosswalk()
+        )
+        rows = coverage_rows(cov_population(), counts)
+        stats = coverage_stats(rows)
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Districts", stats["n_districts"])
+        c2.metric(
+            "Highest need",
+            f"{stats['worst_served_people_per_point']:,.0f}/pt"
+            if stats["worst_served_people_per_point"] is not None else "n/a",
+            help=f"worst measurable ratio, in {stats['worst_served_district']}"
+            if stats["worst_served_district"] else "no district has a "
+            "functional mapped source",
+        )
+        c3.metric("No mapped source", stats["n_no_source"],
+                  help="districts with no functional point in WPDx")
+        c4.metric(
+            "National avg",
+            f"{stats['national_people_per_point']:,.0f}/pt"
+            if stats["national_people_per_point"] is not None else "n/a",
+        )
+        cov_map = workdir() / "coverage_map.png"
+        plot_coverage_choropleth(choropleth_values(rows), cov_crosswalk(),
+                                 path=cov_map, style=app_config().style)
+        st.image(str(cov_map))
+        offer_download(cov_map, "Download coverage map")
+        st.subheader("District ranking (highest unmet need first)")
+        st.dataframe(
+            [{"Rank": r.rank, "District": r.district,
+              "Population": int(r.population),
+              "Water points": r.water_points, "Functional": r.functional_points,
+              "People / functional point":
+                  round(r.people_per_point) if r.people_per_point is not None
+                  else None,
+              "Status": r.status} for r in rows],
+            hide_index=True, use_container_width=True,
+        )
+        if unassigned:
+            st.caption(
+                f"{len(unassigned)} water point(s) fell outside every chiefdom "
+                "polygon (border, offshore or simplified geometry) and were "
+                "not counted."
+            )
+        st.caption(f"{WPDX_CREDIT}. {POPULATION_CREDIT}.")
 
 # ---------------------------------------------------------------------------
 # Scanned sheets

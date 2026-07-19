@@ -11,7 +11,9 @@ _DISTRICTS = {
 
 def test_chiefdom_layer_loads_with_parentage():
     areas = load_chiefdoms()
-    assert len(areas) == 165
+    # 165 geoBoundaries chiefdoms, with the merged two-district "Koya" feature
+    # split back into its Kenema and Port Loko lobes
+    assert len(areas) == 166
     # every chiefdom carries a valid parent district and a name and geometry
     for area in areas:
         assert area.name
