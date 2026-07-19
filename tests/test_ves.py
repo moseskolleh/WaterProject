@@ -96,6 +96,27 @@ def test_inversion_recovers_synthetic_model():
     assert abs(result.model.thicknesses[0] - 6.0) / 6.0 < 0.2
 
 
+def test_inversion_reports_parameter_uncertainty():
+    truth = (np.array([800.0, 60.0]), np.array([6.0]))
+    ab2 = np.geomspace(1, 80, 15)
+    sounding = VESSounding(
+        site=SiteMetadata(), sounding_id="SYN",
+        ab2=ab2, mn=np.full_like(ab2, np.nan),
+        rho_app=forward_schlumberger(truth, ab2),
+    )
+    result = invert_sounding(sounding)
+    rf = result.rho_uncertainty_factor
+    hf = result.h_uncertainty_factor
+    assert rf is not None and hf is not None
+    assert rf.shape == (2,) and hf.shape == (1,)
+    # multiplicative 1-sigma factors are >= 1, finite, and capped at 10
+    assert np.all(np.isfinite(rf)) and np.all(np.isfinite(hf))
+    assert np.all(rf >= 1.0) and np.all(hf >= 1.0)
+    assert np.all(rf <= 10.0) and np.all(hf <= 10.0)
+    # a clean two-layer synthetic resolves the first-layer resistivity well
+    assert rf[0] < 1.5
+
+
 def test_inversion_rokel_beats_report_fit(rokel_ves_a):
     result = invert_sounding(rokel_ves_a)
     # the report's IPI2Win model shows ERR = 21.5; ours should be comparable
