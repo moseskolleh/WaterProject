@@ -3,16 +3,56 @@
 Pure functions with no Streamlit dependency, so the project-file format is
 unit-testable. The saved file captures the manual inputs that make up a
 project (site details, costing assumptions and rate overrides, checklist
-responses and remarks, and the WASH committee). Analysis results are
-recomputed from the re-uploaded data files rather than stored.
+responses and remarks, and the WASH committee), the raw uploaded data files
+(base64) or a bundled-sample reference under ``sources``, and the extra
+recompute inputs (``q_*`` step discharges and ``design_swl``). On load the
+analyses are rebuilt from the stored sources by ``groundwater.recompute``,
+so results are restored without re-uploading.
 """
 
 from __future__ import annotations
 
+import base64
+
 import yaml
 
-# session-state key prefixes that hold saveable manual inputs
-PERSIST_PREFIXES = ("org_", "meta_", "chk_", "rmk_", "cost_", "fx_", "ho_", "wiz_")
+# session-state key prefixes that hold saveable manual inputs. "q_" holds
+# pumping-test step discharges and "design_" the borehole-design static water
+# level, both needed to recompute the analyses from the saved data files.
+PERSIST_PREFIXES = (
+    "org_", "meta_", "chk_", "rmk_", "cost_", "fx_", "ho_", "wiz_", "q_", "design_",
+)
+
+
+def _encode_source(source: dict) -> dict:
+    """Encode an uploaded-file or bundled-sample source for the project file."""
+    if not isinstance(source, dict):
+        return {}
+    if source.get("bytes") is not None:
+        return {
+            "name": str(source.get("name") or "data"),
+            "b64": base64.b64encode(bytes(source["bytes"])).decode("ascii"),
+        }
+    if source.get("sample"):
+        return {"sample": str(source["sample"])}
+    return {}
+
+
+def _decode_source(stored: dict) -> dict | None:
+    """Decode a stored source back to bytes or a bundled-sample reference."""
+    if not isinstance(stored, dict):
+        return None
+    if stored.get("b64"):
+        try:
+            return {
+                "name": str(stored.get("name") or "data"),
+                "bytes": base64.b64decode(stored["b64"]),
+            }
+        except Exception:  # noqa: BLE001 - a corrupt blob is simply dropped
+            return None
+    if stored.get("sample"):
+        return {"sample": str(stored["sample"])}
+    return None
 
 
 def committee_records(data) -> list[dict]:
@@ -41,10 +81,17 @@ def serialize_project(session: dict, version: str) -> bytes:
         and isinstance(value, (str, int, float, bool))
     }
     committee = session.get("ho_committee_data")
+    sources = {}
+    for key, value in session.items():
+        if key.startswith("src_") and isinstance(value, dict):
+            encoded = _encode_source(value)
+            if encoded:
+                sources[key[len("src_"):]] = encoded
     payload = {
         "groundwater_toolkit_project": version,
         "rates_overrides": session.get("rates_overrides", {}) or {},
         "committee": committee if isinstance(committee, list) else [],
+        "sources": sources,
         "state": state,
     }
     return yaml.safe_dump(payload, sort_keys=True).encode("utf-8")
@@ -80,4 +127,14 @@ def deserialize_project(raw: bytes) -> dict:
     committee = payload.get("committee")
     if isinstance(committee, list) and committee:
         updates["committee"] = committee_records(committee)
+
+    sources = payload.get("sources")
+    if isinstance(sources, dict):
+        decoded = {}
+        for key, stored in sources.items():
+            source = _decode_source(stored)
+            if source is not None:
+                decoded[str(key)] = source
+        if decoded:
+            updates["sources"] = decoded
     return updates

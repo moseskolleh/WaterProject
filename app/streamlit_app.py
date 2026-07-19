@@ -76,6 +76,7 @@ from groundwater.project_io import (
     deserialize_project,
     serialize_project,
 )
+from groundwater.recompute import recompute_results
 from groundwater.quality import assess_sample, plot_piper, plot_stiff
 from groundwater.reporting.costing import CostReportInputs, build_cost_report
 from groundwater.reporting.handover import (
@@ -236,6 +237,11 @@ def choose_input(label: str, key: str, types: list[str], samples: list[str]) -> 
     """
     upload = st.file_uploader(label, type=types, key=f"upload_{key}")
     if upload is not None:
+        # remember the raw upload so it can be saved with the project and the
+        # analysis recomputed on load without re-uploading
+        st.session_state[f"src_{key}"] = {
+            "name": upload.name, "bytes": bytes(upload.getvalue())
+        }
         return save_upload(upload)
     root = sample_data_dir()
     if root is not None:
@@ -246,6 +252,7 @@ def choose_input(label: str, key: str, types: list[str], samples: list[str]) -> 
                 "No file uploaded yet", [none_option] + available, key=f"sample_{key}"
             )
             if pick != none_option:
+                st.session_state[f"src_{key}"] = {"sample": pick}
                 return root / pick
     return None
 
@@ -376,12 +383,32 @@ def _load_project() -> None:
     except ValueError:
         st.session_state.project_load_error = True
         return
+    # a loaded project fully replaces the working state: drop the previous
+    # data sources, recompute inputs and computed results first, so a stale
+    # dataset from earlier in the session cannot bleed into the loaded project
+    for stale in [
+        k for k in list(st.session_state)
+        if k.startswith(("src_", "q_")) or k == "design_swl"
+    ]:
+        st.session_state.pop(stale, None)
+    for result_key in (
+        "ves_results", "pump_analysis", "wq_assessment", "borehole_design",
+        "drilling_log", "cost_estimate", "cost_artifacts",
+    ):
+        st.session_state.pop(result_key, None)
     overrides = updates.pop("rates_overrides", None)
     committee = updates.pop("committee", None)
+    sources = updates.pop("sources", None)
     for key, value in updates.items():
         st.session_state[key] = value
     if isinstance(overrides, dict):
         st.session_state.rates_overrides = overrides
+    # restore the saved data files and flag a recompute so the analyses and
+    # reports are rebuilt without re-uploading
+    if isinstance(sources, dict) and sources:
+        for skey, src in sources.items():
+            st.session_state[f"src_{skey}"] = src
+        st.session_state["_recompute_pending"] = True
     # restore the WASH committee: set the data_editor base and clear its
     # stale edit delta so the saved rows show cleanly after loading
     if isinstance(committee, list) and committee:
@@ -580,6 +607,38 @@ if IN_BROWSER:
         "here than in the full installation. Every tab has bundled sample "
         "data so you can try it without your own files."
     )
+
+# After loading a project, rebuild the analysis objects from the saved data
+# files so the tabs and reports are populated without re-uploading.
+if st.session_state.pop("_recompute_pending", False):
+    _sources = {
+        key[len("src_"):]: value
+        for key, value in st.session_state.items()
+        if key.startswith("src_") and isinstance(value, dict)
+    }
+    _discharges = {
+        key[len("q_"):]: value
+        for key, value in st.session_state.items()
+        if key.startswith("q_") and isinstance(value, (int, float)) and value
+    }
+    if _sources:
+        try:
+            with st.spinner("Rebuilding the analyses from the loaded project..."):
+                st.session_state.update(
+                    recompute_results(
+                        _sources,
+                        discharges=_discharges,
+                        design_swl=st.session_state.get("design_swl"),
+                        config=CONFIG,
+                        sample_root=sample_data_dir(),
+                        tmp_dir=workdir(),
+                    )
+                )
+        except Exception:
+            st.warning(
+                "Some analyses could not be rebuilt from the loaded project. "
+                "Re-upload the data files on the affected tabs if needed."
+            )
 
 (
     tab_guide,
@@ -1140,7 +1199,8 @@ with tab_design:
         "Drilling log (standard template)", "log", ["xlsx"],
         ["dr_timbo/dr_timbo_drilling_log.xlsx"],
     )
-    swl_input = st.number_input("Static water level (m)", min_value=0.0, value=0.0, step=0.1)
+    swl_input = st.number_input("Static water level (m)", min_value=0.0, step=0.1,
+                                key="design_swl")
     if path is not None and (log := parse_upload(read_drilling_workbook, path)) is not None:
         show_flags(log.flags)
         design = design_borehole(
