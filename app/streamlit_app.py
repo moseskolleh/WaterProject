@@ -67,7 +67,9 @@ from groundwater.mapping import (
     plot_admin_map,
     plot_geological_map,
     plot_hydrogeology_map,
+    suitability_map,
 )
+from groundwater.siting import assess_siting, suitability_map_points
 from groundwater.models import SiteMetadata
 from groundwater.quality import assess_sample, plot_piper, plot_stiff
 from groundwater.reporting.costing import CostReportInputs, build_cost_report
@@ -912,6 +914,47 @@ with tab_ves:
                 col_txt.write(interp.narrative)
         st.subheader("Drilling preference")
         st.table(drilling_preference_table(interps))
+
+        with st.expander("🎯 Drill-target suitability (prototype)", expanded=True):
+            st.caption(
+                "A transparent 0-100 suitability score per point, combining "
+                "aquifer thickness, resistivity fit, overburden and any "
+                "fracture at the basement contact. It answers 'where should I "
+                "drill?' and, as real drilling outcomes accumulate, the weights "
+                "can be replaced by a fitted model."
+            )
+            suitability = assess_siting(interps)
+            st.dataframe(
+                [
+                    {
+                        "Rank": s.rank,
+                        "Point": s.sounding_id,
+                        "Suitability": f"{s.suitability:.0f}/100",
+                        "Grade": s.grade,
+                        "Why": s.rationale,
+                    }
+                    for s in suitability
+                ],
+                hide_index=True,
+                use_container_width=True,
+            )
+            best = suitability[0]
+            st.success(
+                f"Recommended drill target: **{best.sounding_id}** "
+                f"({best.suitability:.0f}/100, {best.grade}).",
+                icon="🎯",
+            )
+            map_points = suitability_map_points(suitability)
+            if map_points:
+                zone = site_from_state().utm_zone or 29
+                smap = workdir() / "suitability_map.png"
+                suitability_map(map_points, zone, path=smap)
+                st.image(str(smap))
+            else:
+                st.info(
+                    "Add GPS coordinates to the VES points (sidebar site "
+                    "details) to draw the drill-target map."
+                )
 
         if st.button("Build geophysical survey report", key="build_geo_report"):
             report_path = build_geophysical_report(

@@ -5,6 +5,7 @@ from .maps import (
     site_location_map,
     iso_resistivity_map,
     overburden_thickness_map,
+    suitability_map,
     MapPoint,
 )
 from .regional import (
@@ -27,6 +28,7 @@ __all__ = [
     "site_location_map",
     "iso_resistivity_map",
     "overburden_thickness_map",
+    "suitability_map",
     "MapPoint",
     "ADMIN_CREDIT",
     "GEOLOGY_CREDIT",

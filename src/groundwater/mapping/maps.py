@@ -224,6 +224,77 @@ def _interpolated_map(
         return fig
 
 
+def suitability_map(
+    points: list[MapPoint],
+    zone: int,
+    path: str | Path | None = None,
+    style: HouseStyle | None = None,
+    title: str = "Drill-target suitability",
+):
+    """Drill-target suitability map from scored VES points.
+
+    Each point carries its 0-100 suitability as ``value`` and its grade as
+    ``kind``. Points are coloured red (poor) to green (good). With three or
+    more points a suitability surface is interpolated, but it is masked to
+    the convex hull of the surveyed points so it never extrapolates a
+    drill-target confidence beyond where data actually exists.
+    """
+    style = style or HouseStyle()
+    valued = [p for p in points if p.value is not None]
+    if not points:
+        raise ValueError("suitability_map needs at least one point")
+    cmap = plt.get_cmap("RdYlGn")
+    with figure_context(style):
+        fig, ax = plt.subplots(figsize=(style.figure_width_in, 5.4))
+        _pad_limits(ax, points)
+        if len(valued) >= 3:
+            e = np.array([p.easting for p in valued])
+            n = np.array([p.northing for p in valued])
+            v = np.array([p.value for p in valued], dtype=float)
+            x0, x1 = ax.get_xlim()
+            y0, y1 = ax.get_ylim()
+            gx, gy = np.meshgrid(np.linspace(x0, x1, 200), np.linspace(y0, y1, 200))
+            grid_lin = griddata((e, n), v, (gx, gy), method="linear")
+            grid_near = griddata((e, n), v, (gx, gy), method="nearest")
+            grid = np.where(np.isnan(grid_lin), grid_near, grid_lin)
+            try:
+                from matplotlib.path import Path as MplPath
+                from scipy.spatial import ConvexHull
+
+                hull = ConvexHull(np.column_stack([e, n]))
+                poly = np.column_stack([e, n])[hull.vertices]
+                inside = MplPath(poly).contains_points(
+                    np.column_stack([gx.ravel(), gy.ravel()])
+                ).reshape(gx.shape)
+                grid = np.where(inside, grid, np.nan)
+            except Exception:
+                pass  # collinear points: show the unmasked surface
+            cs = ax.contourf(
+                gx, gy, grid, levels=np.linspace(0, 100, 11),
+                cmap=cmap, alpha=0.75, vmin=0, vmax=100,
+            )
+            cbar = fig.colorbar(cs, ax=ax, pad=0.02, shrink=0.85)
+            cbar.set_label("Drilling suitability (0-100)")
+        for p in points:
+            colour = cmap(p.value / 100.0) if p.value is not None else "#888888"
+            ax.plot(p.easting, p.northing, "o", ms=12, mfc=colour,
+                    mec="#222222", mew=1.3, zorder=6)
+            label = p.label + (f"\n{p.value:.0f} - {p.kind}" if p.value is not None else "")
+            ax.annotate(
+                label, xy=(p.easting, p.northing), xytext=(9, 6),
+                textcoords="offset points", fontsize=8.5, fontweight="bold",
+                color="#222222", zorder=7,
+            )
+        _format_grid(ax, zone)
+        _scale_bar(ax, style)
+        _north_arrow(ax)
+        ax.set_title(title)
+        fig.tight_layout()
+        if path is not None:
+            return save_figure(fig, path, style)
+        return fig
+
+
 def iso_resistivity_map(
     points: list[MapPoint],
     zone: int,
