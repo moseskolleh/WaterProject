@@ -223,9 +223,36 @@ def build_quality_report(
             align="justify",
         )
 
-    # ---- 4 diagrams ----------------------------------------------------------------
+    # ---- 4 corrosivity and materials ---------------------------------------------
+    rb.heading("4. Corrosivity and Materials", 1)
+    corr = assessment.corrosivity
+    if corr is None or corr.classification == "Insufficient data":
+        rb.paragraph(
+            corr.verdict if corr is not None else
+            "Corrosivity was not assessed; pH, calcium and alkalinity are "
+            "required to compute the saturation indices."
+        )
+    else:
+        rb.paragraph(corr.verdict, align="justify")
+        idx_rows: list[list[str]] = []
+        if corr.lsi is not None:
+            idx_rows.append(["Langelier Saturation Index (LSI)", f"{corr.lsi:+.2f}"])
+        if corr.rsi is not None:
+            idx_rows.append(["Ryznar Stability Index (RSI)", f"{corr.rsi:.2f}"])
+        if corr.aggressive_index is not None:
+            idx_rows.append(["Aggressive Index (AI)", f"{corr.aggressive_index:.2f}"])
+        if corr.larson_skold is not None:
+            idx_rows.append(["Larson-Skold ratio", f"{corr.larson_skold:.2f}"])
+        idx_rows.append(["Classification", corr.classification])
+        rb.table(idx_rows, header=["Index", "Value"],
+                 caption="Corrosivity and scaling indices.")
+        rb.paragraph(corr.materials_note, align="justify", bold=corr.is_aggressive)
+        if corr.assumptions:
+            rb.paragraph("Assumptions: " + " ".join(corr.assumptions))
+
+    # ---- 5 diagrams ----------------------------------------------------------------
     if inputs.include_diagrams and ionic is not None:
-        rb.heading("4. Hydrochemical Facies", 1)
+        rb.heading("5. Hydrochemical Facies", 1)
         piper_path = figures / "piper.png"
         stiff_path = figures / "stiff.png"
         if not piper_path.exists():
@@ -235,9 +262,11 @@ def build_quality_report(
         rb.figure(piper_path, "Piper diagram.", width_cm=13.0)
         rb.figure(stiff_path, "Stiff diagram.", width_cm=11.0)
 
-    # ---- 5 recommendations -----------------------------------------------------------
-    rb.heading("5. Recommendations", 1)
+    # ---- 6 recommendations -----------------------------------------------------------
+    rb.heading("6. Recommendations", 1)
     advice = []
+    if corr is not None and corr.is_aggressive:
+        advice.append(corr.materials_note)
     for r in assessment.health_exceedances + assessment.aesthetic_exceedances:
         key = r.parameter.strip().lower()
         for match, text in _TREATMENT_ADVICE.items():

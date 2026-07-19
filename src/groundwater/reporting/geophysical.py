@@ -20,7 +20,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..config import Config
+from ..geo import infer_zone_for_sierra_leone
+from ..mapping import suitability_map
 from ..models import DataFlag, VESSounding
+from ..siting import assess_siting, suitability_map_points
 from ..utils import fmt_num
 from ..ves.classify import classify_curve
 from ..ves.interpret import SiteInterpretation, drilling_preference_table
@@ -275,6 +278,9 @@ def build_geophysical_report(
         font_size_pt=8.5,
     )
 
+    # ---- drill-target suitability --------------------------------------------
+    _suitability_block(rb, inputs, site)
+
     # ---- 5 conclusions and recommendations -------------------------------------
     rb.heading("5. Conclusions and Recommendations", 1)
     rb.paragraph("Conclusions:", bold=True)
@@ -391,6 +397,48 @@ def _sounding_block(
     # interpretation paragraph
     rb.paragraph(interp.narrative, align="justify")
     rb.page_break()
+
+
+def _suitability_block(rb: ReportBuilder, inputs, site) -> None:
+    """Ranked drill-target suitability scorecard, map and recommendation."""
+    suit = assess_siting(inputs.interpretations)
+    if not suit:
+        return
+    rb.heading("Drill-target suitability", 2)
+    rb.paragraph(
+        "Each surveyed point is given a transparent suitability score from 0 "
+        "to 100. The score combines the interpreted water-bearing thickness, "
+        "how well the resistivity of the water zone sits within the productive "
+        "fractured or weathered window, the overburden profile, and the "
+        "presence of a fractured zone at the basement contact. The scores "
+        "rank the points as drilling targets.",
+        align="justify",
+    )
+    rb.table(
+        [[s.rank, s.sounding_id, f"{s.suitability:.0f}", s.grade] for s in suit],
+        header=["Rank", "VES point", "Suitability (0 to 100)", "Grade"],
+        caption="Drill-target suitability of the surveyed points.",
+        col_widths_cm=[1.8, 4.0, 4.5, 3.7],
+    )
+    best = suit[0]
+    rb.paragraph(
+        f"Point {best.sounding_id} has the highest suitability "
+        f"({best.suitability:.0f} out of 100, {best.grade.lower()}) and is the "
+        f"recommended drilling target. {best.rationale}",
+        align="justify",
+    )
+    map_points = suitability_map_points(suit)
+    if map_points:
+        zone = site.utm_zone or infer_zone_for_sierra_leone(map_points[0].easting)
+        smap = Path(inputs.figures_dir) / "suitability_map.png"
+        if not smap.exists():
+            suitability_map(map_points, zone, path=smap)
+        rb.figure(
+            smap,
+            "Drill-target suitability of the surveyed points; greener is more "
+            "suitable, and any interpolated surface is limited to the area "
+            "actually covered by the survey.",
+        )
 
 
 def _executive_summary(

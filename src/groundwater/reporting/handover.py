@@ -253,6 +253,12 @@ def build_handover_report(
             "Implement the treatment measures in the water quality report "
             "before the water is used for drinking.",
         )
+    if (
+        inputs.quality is not None
+        and inputs.quality.corrosivity is not None
+        and inputs.quality.corrosivity.is_aggressive
+    ):
+        recs.insert(0, inputs.quality.corrosivity.materials_note)
     recs.extend(inputs.extra_recommendations)
     rb.bullets(recs)
 

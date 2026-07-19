@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..models import DataFlag, WaterQualitySample
+from .corrosivity import CorrosivityAssessment, assess_corrosivity
 from .ionic import IonicBalanceResult, ionic_balance
 from .standards import StandardEntry, load_standards, normalise_parameter
 
@@ -40,6 +41,7 @@ class WaterQualityAssessment:
     sample: WaterQualitySample
     rows: list[ParameterAssessment]
     ionic: Optional[IonicBalanceResult]
+    corrosivity: Optional[CorrosivityAssessment] = None
     flags: list[DataFlag] = field(default_factory=list)
 
     @property
@@ -181,7 +183,12 @@ def assess_sample(
     if ionic is not None and ionic.flag is not None:
         flags.append(ionic.flag)
 
-    assessment = WaterQualityAssessment(sample=sample, rows=rows, ionic=ionic, flags=flags)
+    corrosivity = assess_corrosivity(sample)
+    flags.extend(corrosivity.flags)
+
+    assessment = WaterQualityAssessment(
+        sample=sample, rows=rows, ionic=ionic, corrosivity=corrosivity, flags=flags
+    )
     return assessment
 
 
