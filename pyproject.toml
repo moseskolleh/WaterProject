@@ -11,7 +11,9 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "GeomentAqua" }]
 dependencies = [
-    "numpy>=1.24",
+    # numpy is capped <3 to match the deployment pin in requirements.txt
+    # (the browser build ships numpy 2.x; a future 3.0 is untested here).
+    "numpy>=1.24,<3",
     "scipy>=1.10",
     "matplotlib>=3.7",
     "openpyxl>=3.1",
@@ -21,7 +23,10 @@ dependencies = [
 
 [project.optional-dependencies]
 gis = ["geopandas>=0.14", "pyproj>=3.6"]
-app = ["streamlit>=1.30"]
+# The committed .streamlit/config.toml uses theme keys (baseRadius,
+# borderColor, [theme.sidebar]) introduced in Streamlit ~1.57, so pin the
+# floor accordingly and mirror the deployment cap in requirements.txt.
+app = ["streamlit>=1.57,<2"]
 extract = ["pdfplumber>=0.10"]
 ai = ["anthropic>=0.40"]
 dev = ["pytest>=7.4"]

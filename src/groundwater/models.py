@@ -75,10 +75,17 @@ class SiteMetadata:
         return utm_to_geographic(utm.easting, utm.northing, utm.zone)
 
     def merged_with(self, other: "SiteMetadata") -> "SiteMetadata":
-        """Fill blank fields from another metadata record."""
+        """Fill blank fields from another metadata record.
+
+        A field is "blank" only when it is None or an empty string. A genuine
+        numeric zero - a sea-level elevation, or a zero UTM ordinate - counts
+        as present and is never overwritten, so merging two records does not
+        lose a real 0.0 datum.
+        """
         merged = SiteMetadata(**self.__dict__)
         for key, value in other.__dict__.items():
-            if not getattr(merged, key) and value:
+            current = getattr(merged, key)
+            if (current is None or current == "") and value not in (None, ""):
                 setattr(merged, key, value)
         return merged
 
@@ -120,23 +127,27 @@ class VESSounding:
         return self.sounding_id or "VES"
 
     def segments(self) -> list[np.ndarray]:
-        """Indices of readings grouped by MN spacing, in field order."""
-        groups: list[np.ndarray] = []
-        mn_vals: list[float] = []
-        for mn in self.mn:
-            if not mn_vals or mn != mn_vals[-1]:
-                mn_vals.append(mn)
-                groups.append(np.array([], dtype=int))
-        idx = 0
-        gi = -1
-        last_mn = None
+        """Indices of readings grouped by MN spacing, in field order.
+
+        A new segment starts at each change of MN spacing. A blank/NaN MN is
+        treated as a continuation of the current segment (its spacing is
+        unknown, carried forward from the last real value) rather than
+        starting a new one, so a single missing MN cell does not inject a
+        spurious one-point segment and an absent MN column does not split
+        every reading into its own segment.
+        """
         out: list[list[int]] = []
+        last_mn: float | None = None
         for idx, mn in enumerate(self.mn):
-            if last_mn is None or mn != last_mn:
+            is_nan = mn != mn  # NaN is the only value not equal to itself
+            new_segment = not out or (
+                not is_nan and last_mn is not None and mn != last_mn
+            )
+            if new_segment:
                 out.append([])
-                gi += 1
+            out[-1].append(idx)
+            if not is_nan:
                 last_mn = mn
-            out[gi].append(idx)
         return [np.array(g, dtype=int) for g in out]
 
 

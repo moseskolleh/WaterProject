@@ -123,9 +123,26 @@ def assess_sample(
             )
         else:
             value = float(result.value)
+            is_micro = (entry.category or "").strip().lower() == "microbiological"
             if entry.who_health and entry.who_health.exceeded_by(value):
                 status = "exceeds_health"
                 remark = f"exceeds the WHO health based guideline ({entry.who_health})"
+            elif is_micro and (
+                (entry.sl_standard and entry.sl_standard.exceeded_by(value))
+                or (entry.who_aesthetic and entry.who_aesthetic.exceeded_by(value))
+            ):
+                # A microbiological indicator (E. coli, total coliforms) is a
+                # health concern, never an aesthetic one, even when its limit
+                # happens to be carried in the national/acceptability column
+                # rather than the WHO-health column. Treat any detection above
+                # the limit as a health exceedance so the verdict never calls
+                # faecally-indicated water "usable for drinking".
+                status = "exceeds_health"
+                limit = entry.sl_standard or entry.who_aesthetic
+                remark = (
+                    f"microbiological indicator detected above the limit ({limit}); "
+                    "a health (faecal contamination) concern, not aesthetic"
+                )
             elif entry.sl_standard and entry.sl_standard.exceeded_by(value):
                 status = "exceeds_national"
                 remark = f"exceeds the national standard limit ({entry.sl_standard})"

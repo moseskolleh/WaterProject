@@ -6,3 +6,20 @@ dist/
 .pytest_cache/
 .ipynb_checkpoints/
 ~$*
+
+# Secrets - never commit an API key. Streamlit reads local secrets from
+# .streamlit/secrets.toml, which sits beside the tracked config.toml.
+.streamlit/secrets.toml
+.env
+*.env
+secrets.toml
+
+# Virtualenvs, coverage and editor/OS cruft
+.venv/
+venv/
+env/
+.coverage
+htmlcov/
+.DS_Store
+.vscode/
+.idea/

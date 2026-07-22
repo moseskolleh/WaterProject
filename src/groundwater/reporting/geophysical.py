@@ -472,12 +472,34 @@ def _suitability_block(rb: ReportBuilder, inputs, site) -> None:
         col_widths_cm=[1.8, 4.0, 4.5, 3.7],
     )
     best = suit[0]
-    rb.paragraph(
-        f"Point {best.sounding_id} has the highest suitability "
-        f"({best.suitability:.0f} out of 100, {best.grade.lower()}) and is the "
-        f"recommended drilling target. {best.rationale}",
-        align="justify",
-    )
+    # The rest of the report (executive summary, conclusions, recommendations,
+    # drilling-preference table) selects the preferred point by interpretation
+    # score. Anchor the recommendation here to that same point so the document
+    # never recommends one point in the summary and a different one here; where
+    # the suitability scorecard's top differs, surface it as a note rather than
+    # a competing recommendation.
+    preferred_id = min(
+        inputs.interpretations, key=lambda i: (-i.score, i.sounding_id)
+    ).sounding_id
+    preferred = next((s for s in suit if s.sounding_id == preferred_id), best)
+    if preferred.sounding_id == best.sounding_id:
+        rb.paragraph(
+            f"Point {best.sounding_id} has the highest suitability "
+            f"({best.suitability:.0f} out of 100, {best.grade.lower()}) and is the "
+            f"recommended drilling target. {best.rationale}",
+            align="justify",
+        )
+    else:
+        rb.paragraph(
+            f"The recommended drilling target is point {preferred.sounding_id} "
+            f"(suitability {preferred.suitability:.0f} out of 100, "
+            f"{preferred.grade.lower()}), consistent with the ranked results "
+            f"elsewhere in this report. Point {best.sounding_id} scores highest "
+            f"on the suitability scorecard ({best.suitability:.0f}); where the two "
+            "measures differ, confirm the choice against the site conditions. "
+            f"{preferred.rationale}",
+            align="justify",
+        )
     map_points = suitability_map_points(suit)
     if map_points:
         zone = site.utm_zone or infer_zone_for_sierra_leone(map_points[0].easting)

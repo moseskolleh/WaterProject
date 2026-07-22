@@ -62,6 +62,7 @@ def _sounding_from_grid(
     flags: list[DataFlag] = []
     mn_is_half = "mn" not in cols and "mn_half" in cols
     mn_col = cols.get("mn", cols.get("mn_half"))
+    blank_run = 0
     for row in grid[header_row + 1 :]:
         a = parse_number(row[cols["ab2"]]) if cols["ab2"] < len(row) else None
         r = parse_number(row[cols["rho"]]) if cols["rho"] < len(row) else None
@@ -71,14 +72,19 @@ def _sounding_from_grid(
             else None
         )
         if a is None and r is None:
-            # allow a single blank row inside the table, stop on two
-            if ab2 and all(
-                v is None or clean_text(v) == "" for v in row
-            ):
-                break
+            fully_blank = all(v is None or clean_text(v) == "" for v in row)
+            if ab2 and fully_blank:
+                # Tolerate an isolated blank spacer row inside the table -
+                # field sheets routinely leave one at a Schlumberger MN segment
+                # change. Only two consecutive fully-blank rows mark the true
+                # end of the table, so the deep branch after a spacer is kept.
+                blank_run += 1
+                if blank_run >= 2:
+                    break
             continue
         if a is None or r is None:
             continue
+        blank_run = 0
         if m is not None and mn_is_half:
             m = 2.0 * m
         ab2.append(a)

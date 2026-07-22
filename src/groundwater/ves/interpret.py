@@ -168,8 +168,11 @@ def interpret_model(
     else:
         deepest = investigation
     step = config.round_drilling_depth_to_m
-    max_depth = min(deepest, investigation)
-    max_depth = math.ceil(max_depth / step) * step
+    # Round up to the nearest step, then re-apply the investigated-depth cap:
+    # rounding after the min() could push the recommendation past the depth the
+    # sounding actually resolved, defeating the cap.
+    max_depth = math.ceil(min(deepest, investigation) / step) * step
+    max_depth = min(max_depth, investigation)
 
     # ---- suitability score for ranking --------------------------------------
     score = 0.0

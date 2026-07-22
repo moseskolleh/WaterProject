@@ -27,6 +27,17 @@ _BUFFER_DEG = 0.05  # about 5.5 km; boundary points are not flagged
 _SL_BOUNDS = (-13.6, -10.0, 6.7, 10.2)  # lon_min, lon_max, lat_min, lat_max
 
 
+def _fmt_latlon(lat: float, lon: float) -> str:
+    """Human-readable coordinates with correct hemisphere letters.
+
+    Sierra Leone is in the western hemisphere, so longitudes are negative and
+    must read 'W', not 'E'.
+    """
+    ns = "N" if lat >= 0 else "S"
+    ew = "E" if lon >= 0 else "W"
+    return f"{abs(lat):.4f} {ns}, {abs(lon):.4f} {ew}"
+
+
 def _load_districts() -> dict[str, dict]:
     with resources.files("groundwater.data").joinpath("sl_districts.csv").open(
         "r", encoding="utf-8"
@@ -114,7 +125,7 @@ def check_site_consistency(site: SiteMetadata, context: str = "") -> list[DataFl
             DataFlag(
                 "error",
                 "coordinates_outside_country",
-                f"Coordinates convert to {lat:.4f} N, {lon:.4f} E which is outside "
+                f"Coordinates convert to {_fmt_latlon(lat, lon)} which is outside "
                 "Sierra Leone; check easting/northing and the UTM zone.",
                 ctx,
             )
@@ -146,7 +157,7 @@ def check_site_consistency(site: SiteMetadata, context: str = "") -> list[DataFl
                     "warning",
                     "district_coordinate_conflict",
                     f"Stated district '{site.district}' does not contain the "
-                    f"coordinates ({lat:.4f} N, {lon:.4f} E).{hint} District "
+                    f"coordinates ({_fmt_latlon(lat, lon)}).{hint} District "
                     "extents are approximate; verify against the field notes.",
                     ctx,
                 )

@@ -156,7 +156,7 @@ def _starting_models(ab2: np.ndarray, rho: np.ndarray, n_layers: int) -> list:
     Thicknesses grow logarithmically over the depth range covered by
     the spacings (depth of investigation taken as AB/2 / 2); starting
     resistivities are read off the smoothed curve at the corresponding
-    spacings. Three variants bracket the depth scale.
+    spacings. Two depth-scale variants bracket the depth of investigation.
     """
     log_rho = np.log(rho)
     starts = []
@@ -236,10 +236,18 @@ def invert_sounding(
             trials.append((n, best_for_n[2]))
             if n_layers is None:
                 # stop adding layers once the target is comfortably reached
-                # or when the extra layer no longer helps materially
+                # or when the extra layer no longer helps materially - but the
+                # diminishing-returns test only applies once an adequate fit is
+                # already in hand, so a small n-1 -> n gain (equivalence /
+                # suppression) cannot abandon the search while the fit is still
+                # far above target.
                 if best_for_n[2] <= config.target_fit_percent / 2:
                     break
-                if len(trials) >= 2 and trials[-1][1] > 0.9 * trials[-2][1]:
+                if (
+                    len(trials) >= 2
+                    and trials[-1][1] > 0.9 * trials[-2][1]
+                    and best_for_n[2] <= config.target_fit_percent
+                ):
                     break
 
     # Parsimony: the simplest model reaching the target; otherwise the

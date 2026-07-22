@@ -105,7 +105,13 @@ def loan_schedule(
     within 5 years even when the rig lasts 10, because longer loans
     are hard to find in sub-Saharan Africa and interest mounts.
     """
+    if principal_usd < 0:
+        raise ValueError("principal_usd must not be negative")
     months = int(round(years * 12))
+    if months <= 0:
+        raise ValueError(
+            "years must be at least half a month (loan term rounds to 0 months)"
+        )
     rate = annual_rate_percent / 100.0 / 12.0
     if rate == 0:
         payment = principal_usd / months

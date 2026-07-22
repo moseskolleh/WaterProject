@@ -17,7 +17,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11"]
+        # 3.10/3.11 are the floor; 3.12/3.13 are what the Streamlit Cloud and
+        # browser (stlite/Pyodide + numpy 2.x) builds actually ship on.
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
     env:
       # headless matplotlib for figure generation in reports/maps
       MPLBACKEND: Agg

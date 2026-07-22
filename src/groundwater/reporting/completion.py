@@ -20,7 +20,7 @@ from ..hydraulics.analysis import PumpingTestAnalysis
 from ..hydraulics.plots import plot_test_overview
 from ..models import DrillingLog
 from ..quality.assess import WaterQualityAssessment
-from ..utils import fmt_num
+from ..utils import fmt_num, safe_slug
 from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
 
@@ -39,6 +39,22 @@ class CompletionReportInputs:
     preparer_name: str = ""
     preparer_role: str = "Technical Manager"
     preparer_phone: str = ""
+
+
+def _breached_limit(r) -> str:
+    """The limit the parameter actually breached, matching its status.
+
+    Avoids the fixed who_health-first precedence that could display a limit the
+    parameter did not exceed (e.g. a WHO health value that was not breached)
+    while the remark names the national or aesthetic limit that was.
+    """
+    if r.status == "exceeds_national":
+        return r.sl_standard or r.who_health or r.who_aesthetic
+    if r.status == "exceeds_aesthetic":
+        return r.who_aesthetic or r.sl_standard or r.who_health
+    # exceeds_health (or anything else): prefer the health value, then fall
+    # back so microbiological rows whose limit sits in another column still show
+    return r.who_health or r.sl_standard or r.who_aesthetic
 
 
 def _executive_summary(inputs: CompletionReportInputs) -> tuple[list[str], list[str]]:
@@ -108,6 +124,10 @@ def build_completion_report(
     site = log.site
     figures = Path(inputs.figures_dir)
     figures.mkdir(parents=True, exist_ok=True)
+    # Qualify figure filenames with the borehole so several reports written
+    # into one figures directory cannot silently reuse each other's PNGs (the
+    # generation is guarded by an existence check).
+    slug = safe_slug(log.borehole_ref or site.community, "bh")
 
     rb = ReportBuilder(
         config.style, title=f"Borehole Completion Report - {site.community}"
@@ -207,7 +227,7 @@ def build_completion_report(
     # ---- construction / design ---------------------------------------------------
     if inputs.design is not None:
         rb.heading("5. Borehole Construction", 1)
-        design_fig = figures / "borehole_design.png"
+        design_fig = figures / f"borehole_design_{slug}.png"
         if not design_fig.exists():
             draw_borehole_design(
                 inputs.design, log, path=design_fig, style=config.style,
@@ -246,7 +266,7 @@ def build_completion_report(
         analysis = inputs.pumping
         test = analysis.test
         rb.heading(f"{section}. Pumping Test", 1)
-        overview = figures / "test_overview.png"
+        overview = figures / f"test_overview_{slug}.png"
         if not overview.exists():
             plot_test_overview(test, path=overview, style=config.style)
         rb.figure(overview, "Constant discharge test and recovery record.")
@@ -297,7 +317,7 @@ def build_completion_report(
         exceed = inputs.quality.health_exceedances + inputs.quality.aesthetic_exceedances
         if exceed:
             rb.table(
-                [[r.parameter, fmt_num(r.value), r.unit, r.who_health or r.who_aesthetic or r.sl_standard, r.remark]
+                [[r.parameter, fmt_num(r.value), r.unit, _breached_limit(r), r.remark]
                  for r in exceed],
                 header=["Parameter", "Value", "Unit", "Limit", "Remark"],
                 caption="Parameters above guideline or standard limits.",
