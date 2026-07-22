@@ -132,6 +132,8 @@ def site_location_map(
     boundary_geojson: str | Path | None = None,
 ):
     """Survey point location map on a UTM grid."""
+    if not points:
+        raise ValueError("site_location_map needs at least one survey point")
     style = style or HouseStyle()
     with figure_context(style):
         fig, ax = plt.subplots(figsize=(style.figure_width_in, 5.4))

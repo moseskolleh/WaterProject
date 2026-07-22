@@ -52,6 +52,17 @@ _RFD = {
 # oral cancer slope factors, (mg/kg/day)^-1
 _CANCER_SLOPE = {"arsenic": 1.5}
 
+# The EPA IRIS reference doses for nitrate (1.6) and nitrite (0.1) are
+# expressed as nitrogen (NO3-N / NO2-N), but the toolkit records nitrate and
+# nitrite as the whole ion (as NO3 / as NO2). Convert the measured "as ion"
+# concentration to a nitrogen basis before dividing by the RfD, else the
+# hazard quotient is overstated by the mass ratio (NO3/N = 62/14 = 4.43,
+# NO2/N = 46/14 = 3.29).
+_AS_NITROGEN_FACTOR = {
+    "nitrate (as no3)": 62.004 / 14.007,
+    "nitrite (as no2)": 46.005 / 14.007,
+}
+
 
 @dataclass
 class WaterQualityIndex:
@@ -112,6 +123,14 @@ def compute_wqi(sample: WaterQualitySample, standards_path=None) -> Optional[Wat
         entry = table.get(key)
         if entry is None or entry.category == "microbiological":
             continue
+        if key in _RFD:
+            # Health-based trace toxicants (arsenic, lead, fluoride, nitrate,
+            # ...) have tiny standards, so 1/s weighting and the value/s
+            # sub-index let a single one dominate and drown out the general
+            # chemistry this index is meant to summarise. They are reported
+            # through the separate Hazard Index instead; excluding them keeps
+            # the WQI a physico-chemical/acceptability measure as documented.
+            continue
         limit = _wqi_limit(entry)
         if limit is None or not limit.maximum or limit.maximum <= 0:
             continue
@@ -149,7 +168,11 @@ def assess_health_risk(sample: WaterQualitySample) -> Optional[HealthRiskAssessm
     intake_factor = _INTAKE_L_PER_DAY / _BODY_WEIGHT_KG
     for key, rfd in _RFD.items():
         if key in values and rfd > 0:
-            cdi = values[key] * intake_factor  # mg/kg/day
+            conc = values[key]
+            factor = _AS_NITROGEN_FACTOR.get(key)
+            if factor:
+                conc = conc / factor  # the RfD is expressed as nitrogen
+            cdi = conc * intake_factor  # mg/kg/day
             hq[key] = cdi / rfd
     if not hq:
         return None

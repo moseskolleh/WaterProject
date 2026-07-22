@@ -126,3 +126,14 @@ def clean_text(value) -> str:
     if value is None:
         return ""
     return re.sub(r"\s+", " ", str(value)).strip()
+
+
+def safe_slug(value, default: str = "item") -> str:
+    """A filesystem-safe slug for building figure filenames.
+
+    Keeps only ``[A-Za-z0-9_-]`` so an identifier such as a borehole ref or
+    community name cannot introduce path separators or collide across sites
+    when several reports share one figures directory.
+    """
+    slug = re.sub(r"[^A-Za-z0-9_-]+", "_", str(value or "")).strip("_")
+    return slug or default

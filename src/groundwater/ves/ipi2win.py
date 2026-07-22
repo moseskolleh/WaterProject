@@ -19,12 +19,17 @@ Expected layout (one worksheet per sounding, or one CSV per sounding):
 from __future__ import annotations
 
 import csv
+import re
 from pathlib import Path
 
 import numpy as np
 
 from ..models import LayeredModel
 from ..utils import clean_text, parse_number
+
+# "ERR" / "Error" as a whole word, so it does not fire on unrelated words that
+# merely contain the letters e-r-r (Terrain, Errol, ...).
+_ERR_RE = re.compile(r"\berr(?:or)?\b", re.IGNORECASE)
 
 __all__ = ["read_ipi2win_models", "model_from_rows"]
 
@@ -52,10 +57,15 @@ def _find_err(grid: list[list]) -> float | None:
     for row in grid:
         for cell in row:
             text = clean_text(cell)
-            if "err" in text.lower():
-                value = parse_number(text.split("=")[-1] if "=" in text else text)
-                if value is not None:
-                    return value
+            if not text or not _ERR_RE.search(text):
+                continue
+            # Prefer the value after a '=' or ':' delimiter ("ERR = 3.5%"); a
+            # label cell that merely mentions error but has no number is
+            # skipped rather than yielding a bogus fit error.
+            tail = re.split(r"[=:]", text)[-1] if re.search(r"[=:]", text) else text
+            value = parse_number(tail)
+            if value is not None:
+                return value
     return None
 
 

@@ -76,7 +76,7 @@ and add a line `anthropic` to `requirements.txt`.
 
 ## What was verified
 
-- Full test suite (64 tests: parsers, numerics, reports, and
+- The full test suite (parsers, numerics, reports, and
   Streamlit UI flows driven through AppTest) passes in a clean venv
   installed exactly the way Streamlit Cloud installs it.
 - The same suite passes against the exact package versions the

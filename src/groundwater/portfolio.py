@@ -154,9 +154,11 @@ def site_one_pager(summary: dict) -> str:
 def portfolio_stats(summaries: list[dict]) -> dict:
     """Headline portfolio statistics for the KPI tiles."""
     n = len(summaries)
-    statuses = [classify_status(s) for s in summaries]
     drilled = [s for s in summaries if s.get("total_depth_m")]
-    n_successful = statuses.count("successful")
+    # Count successes over the same population the rate divides by (drilled
+    # holes), so success_rate can never exceed 100% - a summary classified
+    # "successful" but carrying no depth is not a drilled hole.
+    n_successful = sum(1 for s in drilled if classify_status(s) == "successful")
     yields = [float(s["safe_yield_m3_per_h"]) for s in summaries
               if s.get("safe_yield_m3_per_h")]
     costs = [float(s["cost_per_meter_usd"]) for s in summaries

@@ -21,11 +21,20 @@ so they can be adjusted per client without touching code:
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass, field
 
 from ..config import DesignRules
 from ..models import DataFlag, DrillingLog
 from ..ves.interpret import SiteInterpretation
+
+# Lithology phrases that mark an interval as a screening target, and phrases
+# that negate it. Matching is on whole words/phrases so a description like
+# "dry, no water struck" is not screened just because it contains "water".
+_AQUIFER_WORDS = {"fracture", "fractured", "fractures", "aquifer"}
+_AQUIFER_PHRASES = ("water-bearing", "water bearing", "waterbearing",
+                    "water strike", "water struck", "water inflow")
+_NEGATION_PHRASES = ("no water", "not reached", "without water", "water table not")
 
 
 @dataclass
@@ -117,7 +126,10 @@ def _target_zones(
     if log is not None:
         for interval in log.intervals:
             text = interval.description.lower()
-            if any(word in text for word in ("fracture", "fractured", "water")):
+            if any(neg in text for neg in _NEGATION_PHRASES):
+                continue  # e.g. "dry, no water struck" is not an aquifer
+            words = set(re.findall(r"[a-z]+", text))
+            if (words & _AQUIFER_WORDS) or any(p in text for p in _AQUIFER_PHRASES):
                 zones.append((interval.top_m, interval.bottom_m))
     if not zones and interpretation is not None and interpretation.water_zones:
         zones = [(t, b) for t, b in interpretation.water_zones]
@@ -175,10 +187,28 @@ def design_borehole(
     if not screens:
         # fall back: screen the bottom third of the hole below the SWL margin
         floor = (swl or 0.0) + rules.min_screen_below_swl_m
+        sump_top = max(total_depth_m - rules.sump_length_m, 0.0)
+        bottom = sump_top
         top = max(total_depth_m * 2.0 / 3.0, floor)
-        bottom = total_depth_m - rules.sump_length_m
         if bottom - top < 3.0:
             top = max(bottom - rules.screen_length_default_m, floor)
+        if bottom - top < 1.0:
+            # The static water level margin plus the sump leave no room for a
+            # valid screen: the hole is too shallow for this SWL. Clamp to a
+            # positive interval just above the sump so the geometry stays valid
+            # (no negative-length screen, no casing past the hole bottom) and
+            # flag it loudly for manual review rather than emitting garbage.
+            top = max(min(bottom - rules.screen_length_default_m, bottom - 1.0), 0.0)
+            flags.append(
+                DataFlag(
+                    "error",
+                    "hole_too_shallow",
+                    f"Static water level plus the {rules.min_screen_below_swl_m:g} m "
+                    f"minimum screen depth leaves no room for a screen above the sump "
+                    f"in this {total_depth_m:g} m hole. Screen placement is a best "
+                    "effort only - deepen the hole or revise the design manually.",
+                )
+            )
         screens = [(top, bottom)]
         basis.append(
             "no aquifer intervals identified from the data; screens default to "

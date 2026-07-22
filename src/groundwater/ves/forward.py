@@ -15,7 +15,7 @@ a Hankel transform:
 
 * Wenner::
 
-      rho_a(a) = 2 a * [F_hat(a) - F_hat(2a)],  F_hat(r) = r F(r) / 1
+      rho_a(a) = 2 a * [F(a) - F(2a)]
 
 The integrals are evaluated by direct quadrature on a hybrid
 logarithmic + linear abscissa after subtracting the half space

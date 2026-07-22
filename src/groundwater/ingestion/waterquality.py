@@ -56,8 +56,13 @@ def read_quality_workbook(path: str | Path) -> WaterQualitySample:
         below_detection = text_value.startswith("<")
         value = parse_number(raw_value)
         dl = parse_number(cell("dl"))
-        if below_detection and dl is None:
-            dl = value
+        if below_detection:
+            # A "<X" marker means the true concentration is unknown, bounded
+            # above by X. The measured value must be cleared so downstream
+            # assessment treats the row as below-detection and never grades it
+            # as a real concentration equal to the limit. Keep an explicit
+            # detection-limit column when the lab filled one; otherwise use X.
+            dl = dl if dl is not None else value
             value = None
         results.append(
             WaterQualityResult(

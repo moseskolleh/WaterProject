@@ -125,11 +125,12 @@ def build_handover_report(
             ("Community", site.community), ("Chiefdom", site.chiefdom),
             ("District", site.district), ("Client", site.client),
             ("Contractor", site.contractor), ("Project reference", site.project_ref),
-            ("GPS East", fmt_num(site.easting, 7) if site.easting else ""),
-            ("GPS North", fmt_num(site.northing, 7) if site.northing else ""),
+            ("GPS East", fmt_num(site.easting, 7) if site.easting is not None else ""),
+            ("GPS North", fmt_num(site.northing, 7) if site.northing is not None else ""),
             ("Latitude / Longitude",
              f"{lat_lon[0]:.5f} N, {abs(lat_lon[1]):.5f} W" if lat_lon else ""),
-            ("Elevation", fmt_num(site.elevation_m) + " m" if site.elevation_m else ""),
+            ("Elevation",
+             fmt_num(site.elevation_m) + " m" if site.elevation_m is not None else ""),
         ]
     )
     context_maps = context_map_figures(site, figures, config.style)

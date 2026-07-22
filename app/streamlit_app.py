@@ -273,7 +273,10 @@ def workdir() -> Path:
 
 
 def save_upload(uploaded) -> Path:
-    path = workdir() / uploaded.name
+    # Use only the basename of the browser-supplied name so a crafted filename
+    # (e.g. "../../x") cannot write outside the per-session working directory.
+    safe_name = Path(uploaded.name).name or "upload"
+    path = workdir() / safe_name
     path.write_bytes(uploaded.getbuffer())
     return path
 
@@ -385,7 +388,7 @@ def site_from_state() -> SiteMetadata:
         date=get("meta_date", "") or "",
         easting=num("meta_easting"),
         northing=num("meta_northing"),
-        utm_zone=int(get("meta_zone", "29N").rstrip("N")),
+        utm_zone=int(str(get("meta_zone", "29N")).rstrip("N") or "29"),
     )
 
 
@@ -601,6 +604,13 @@ with st.sidebar:
                            key="meta_easting", format="%.0f")
         col_n.number_input("GPS North (UTM m)", min_value=0.0, step=100.0,
                            key="meta_northing", format="%.0f")
+        # A loaded project may carry meta_zone as a bare int/str (e.g. 29);
+        # coerce it to the "NN N" option and drop anything unrecognised so the
+        # selectbox never raises on a value outside its options.
+        _zone_val = st.session_state.get("meta_zone")
+        if _zone_val is not None and _zone_val not in ("28N", "29N"):
+            _z = str(_zone_val).upper().rstrip("N").strip()
+            st.session_state["meta_zone"] = f"{_z}N" if _z in ("28", "29") else "29N"
         st.selectbox("UTM zone", ["28N", "29N"], index=1, key="meta_zone",
                      help="28N west of 12 degrees W (Freetown, Port Loko), "
                      "29N further east.")

@@ -150,6 +150,12 @@ def assess_corrosivity(sample: WaterQualitySample) -> CorrosivityAssessment:
         aggressive = True
     if assessment.aggressive_index is not None and assessment.aggressive_index < 10:
         aggressive = True
+    # Keep the class label consistent with the flag and verdict: when the
+    # LSI/AI corroboration promotes borderline water to aggressive, the RSI
+    # class ("Balanced", "Scale-forming") must not still say otherwise, else
+    # a report shows a "Balanced" label beside an "aggressive" verdict.
+    if aggressive and classification not in ("Corrosive", "Strongly corrosive"):
+        classification = "Corrosive"
     assessment.classification = classification
     assessment.is_aggressive = aggressive
 
