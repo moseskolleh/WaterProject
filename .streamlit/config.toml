@@ -1,15 +1,15 @@
 [theme]
 base = "light"
-primaryColor = "#1F5C8B"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F2F6FA"
-textColor = "#1A2733"
-linkColor = "#1F5C8B"
-borderColor = "#D8E2EC"
+primaryColor = "#2B6850"
+backgroundColor = "#F6F5F1"
+secondaryBackgroundColor = "#EFEEE8"
+textColor = "#152220"
+linkColor = "#1B5A43"
+borderColor = "#DAD8D0"
 baseRadius = "0.6rem"
 
 [theme.sidebar]
-backgroundColor = "#EDF3F8"
+backgroundColor = "#ECEEE7"
 secondaryBackgroundColor = "#FFFFFF"
 
 [browser]

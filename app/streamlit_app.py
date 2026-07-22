@@ -13,6 +13,7 @@ Run from the repository root:
 
 from __future__ import annotations
 
+import html as _html
 import sys
 import tempfile
 from pathlib import Path
@@ -87,6 +88,8 @@ from groundwater.coverage import (
     load_district_population,
 )
 from groundwater.portfolio import (
+    STATUS_LABELS,
+    classify_status,
     portfolio_points,
     portfolio_rows,
     portfolio_stats,
@@ -180,19 +183,232 @@ st.set_page_config(
     },
 )
 
+# Design language (from the "Groundwater Toolkit Redesign" study, direction
+# 1b "Project Workspace"): warm paper canvas, white result cards, deep
+# green-teal accents, Space Grotesk display over IBM Plex Sans/Mono.
+_INK = "#152220"
+_GREEN = "#2B6850"        # oklch(0.47 0.075 165)
+_GREEN_DARK = "#184735"   # oklch(0.36 0.06 165)
+_GREEN_MID = "#1B5A43"    # oklch(0.42 0.075 165)
+_SUCCESS = "#5BBE62"      # oklch(0.72 0.16 145)
+_SUCCESS_TEXT = "#006925"
+_AMBER = "#E48E26"
+_AMBER_TEXT = "#994A00"
+_FIELD_RED = "#B14E49"    # measured field data accent
+
 st.markdown(
     """
     <style>
-      .block-container { padding-top: 2.4rem; }
-      div[data-testid="stMetric"] {
-        background: var(--secondary-background-color, #F2F6FA);
-        border: 1px solid rgba(31, 92, 139, 0.18);
-        border-radius: 0.6rem;
-        padding: 0.65rem 0.9rem;
+      @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+      html, body, [data-testid="stAppViewContainer"], .stMarkdown,
+      button, input, textarea, select {
+        font-family: 'IBM Plex Sans', system-ui, sans-serif;
       }
-      div[data-testid="stMetric"] label { color: #1F5C8B; }
-      button[data-baseweb="tab"] { font-size: 0.95rem; }
+      h1, h2, h3, h4,
+      [data-testid="stMetricValue"] {
+        font-family: 'Space Grotesk', 'IBM Plex Sans', sans-serif !important;
+        letter-spacing: -0.01em;
+        color: #152220;
+      }
+      code, pre, kbd { font-family: 'IBM Plex Mono', monospace; }
+
+      .block-container { padding-top: 2.4rem; }
+      [data-testid="stAppViewContainer"] h1 {
+        font-size: 1.7rem; font-weight: 600; margin-bottom: 0.1rem;
+      }
+      [data-testid="stAppViewContainer"] h2 {
+        font-size: 1.3rem; font-weight: 600;
+      }
+      [data-testid="stAppViewContainer"] h3 {
+        font-size: 1.05rem; font-weight: 600;
+      }
+
+      /* Result cards: white on the warm paper canvas */
+      div[data-testid="stMetric"] {
+        background: #FFFFFF;
+        border: 1px solid rgba(0, 0, 0, 0.09);
+        border-radius: 11px;
+        padding: 0.65rem 0.9rem;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+      }
+      div[data-testid="stMetric"] label p {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.66rem; font-weight: 600;
+        text-transform: uppercase; letter-spacing: 0.09em;
+        color: rgba(0, 0, 0, 0.45);
+      }
       div[data-testid="stSidebarUserContent"] .stCaption p { line-height: 1.35; }
+
+      /* Sidebar: brand, active-project card and grouped navigation */
+      section[data-testid="stSidebar"] div[data-testid="stSidebarUserContent"] {
+        padding-top: 1.1rem;
+      }
+      /* Group label above each navigation radio */
+      section[data-testid="stSidebar"] .stRadio
+        [data-testid="stWidgetLabel"] p {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.62rem; font-weight: 600;
+        text-transform: uppercase; letter-spacing: 0.11em;
+        color: rgba(0, 0, 0, 0.38);
+      }
+      /* Navigation items. Two selector sets: react-aria markup
+         (stRadioOption, Streamlit >= 1.59) and baseweb markup
+         (label[data-baseweb=radio], Streamlit <= 1.58 / stlite).
+         The baseweb active-state rules use :has() and are kept in
+         separate rules so a browser without :has() only loses that
+         branch, not the react-aria one. */
+      section[data-testid="stSidebar"] label[data-testid="stRadioOption"],
+      section[data-testid="stSidebar"] div[role="radiogroup"]
+        label[data-baseweb="radio"] {
+        display: flex; align-items: center;
+        width: 100%; margin: 0 0 2px; padding: 6px 10px;
+        border-radius: 7px; cursor: pointer;
+      }
+      section[data-testid="stSidebar"] label[data-testid="stRadioOption"]
+        > div > div > div:first-child,
+      section[data-testid="stSidebar"] div[role="radiogroup"]
+        label[data-baseweb="radio"] > div:first-of-type {
+        width: 5px; height: 5px; min-width: 5px; min-height: 5px;
+        margin-right: 9px; border-width: 0; border-radius: 50%;
+        background: rgba(0, 0, 0, 0.18);
+      }
+      section[data-testid="stSidebar"] label[data-testid="stRadioOption"]
+        > div > div > div:first-child > div,
+      section[data-testid="stSidebar"] div[role="radiogroup"]
+        label[data-baseweb="radio"] > div:first-of-type > div {
+        display: none;
+      }
+      section[data-testid="stSidebar"] label[data-testid="stRadioOption"] p,
+      section[data-testid="stSidebar"] div[role="radiogroup"]
+        label[data-baseweb="radio"] div[data-testid="stMarkdownContainer"] p {
+        font-size: 0.83rem; font-weight: 500; color: rgba(0, 0, 0, 0.66);
+      }
+      section[data-testid="stSidebar"]
+        label[data-testid="stRadioOption"][data-selected="true"] {
+        background: rgba(43, 104, 80, 0.13);
+      }
+      section[data-testid="stSidebar"]
+        label[data-testid="stRadioOption"][data-selected="true"]
+        > div > div > div:first-child {
+        background: #2B6850;
+      }
+      section[data-testid="stSidebar"]
+        label[data-testid="stRadioOption"][data-selected="true"] p {
+        font-weight: 600; color: #184735;
+      }
+      section[data-testid="stSidebar"] div[role="radiogroup"]
+        label[data-baseweb="radio"]:has(input:checked) {
+        background: rgba(43, 104, 80, 0.13);
+      }
+      section[data-testid="stSidebar"] div[role="radiogroup"]
+        label[data-baseweb="radio"]:has(input:checked) > div:first-of-type {
+        background: #2B6850;
+      }
+      section[data-testid="stSidebar"] div[role="radiogroup"]
+        label[data-baseweb="radio"]:has(input:checked)
+        div[data-testid="stMarkdownContainer"] p {
+        font-weight: 600; color: #184735;
+      }
+      section[data-testid="stSidebar"] .stRadio { margin-bottom: 0.35rem; }
+
+      /* Shared design pieces (overview dashboard, callouts, chips) */
+      .gw-brand { display: flex; align-items: center; gap: 10px; }
+      .gw-brand-mark {
+        width: 28px; height: 28px; border-radius: 7px; background: #2B6850;
+        display: flex; align-items: center; justify-content: center;
+        color: #fff; font: 700 14px 'Space Grotesk', sans-serif;
+      }
+      .gw-brand-name {
+        font: 600 14px 'Space Grotesk', sans-serif; color: #152220;
+        line-height: 1.15;
+      }
+      .gw-brand-sub {
+        font: 400 9.5px 'IBM Plex Mono', monospace;
+        color: rgba(0, 0, 0, 0.45); letter-spacing: 0.05em;
+      }
+      .gw-project-card {
+        background: #fff; border: 1px solid rgba(0, 0, 0, 0.1);
+        border-radius: 9px; padding: 9px 11px; margin: 4px 0 6px;
+      }
+      .gw-cap {
+        font: 600 10px 'IBM Plex Mono', monospace;
+        text-transform: uppercase; letter-spacing: 0.09em;
+        color: rgba(0, 0, 0, 0.45);
+      }
+      .gw-chip {
+        display: inline-block; font: 600 10px 'IBM Plex Mono', monospace;
+        text-transform: uppercase; letter-spacing: 0.06em;
+        border-radius: 20px; padding: 3px 10px; vertical-align: middle;
+      }
+      .gw-chip-green { color: #184735; background: rgba(43, 104, 80, 0.14); }
+      .gw-chip-amber { color: #994A00; background: rgba(228, 142, 38, 0.18); }
+      .gw-chip-red { color: #8C2F2B; background: rgba(177, 78, 73, 0.15); }
+      .gw-chip-grey { color: rgba(0, 0, 0, 0.55); background: rgba(0, 0, 0, 0.07); }
+      .gw-card {
+        background: #fff; border: 1px solid rgba(0, 0, 0, 0.09);
+        border-radius: 11px; padding: 14px 15px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+        margin-bottom: 14px;
+      }
+      .gw-card .gw-cap { display: block; margin-bottom: 8px; }
+      .gw-big {
+        font: 600 26px 'Space Grotesk', sans-serif; color: #152220;
+        line-height: 1.1;
+      }
+      .gw-big small {
+        font: 500 12px 'IBM Plex Mono', monospace; color: rgba(0, 0, 0, 0.5);
+      }
+      .gw-row {
+        display: flex; justify-content: space-between; gap: 10px;
+        font-size: 0.78rem; color: rgba(0, 0, 0, 0.65); padding: 2.5px 0;
+      }
+      .gw-row b { color: #152220; font-weight: 500;
+        font-family: 'IBM Plex Mono', monospace; }
+      .gw-callout {
+        background: #2B6850; border-radius: 11px; padding: 14px 16px;
+        color: #fff; margin: 4px 0 12px;
+      }
+      .gw-callout .gw-cap { color: rgba(255, 255, 255, 0.7); }
+      .gw-callout .gw-big { color: #fff; }
+      .gw-callout .gw-big small { color: rgba(255, 255, 255, 0.65); }
+      .gw-callout p {
+        margin: 4px 0 0; font-size: 0.75rem; line-height: 1.4;
+        color: rgba(255, 255, 255, 0.82);
+      }
+      .gw-steps { display: flex; align-items: flex-start; margin: 6px 0 4px; }
+      .gw-step { display: flex; flex-direction: column; align-items: center;
+        gap: 5px; flex: none; min-width: 58px; }
+      .gw-step-dot {
+        width: 26px; height: 26px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        font: 700 12px sans-serif;
+      }
+      .gw-step-done .gw-step-dot { background: #2B6850; color: #fff; }
+      .gw-step-todo .gw-step-dot {
+        background: #fff; border: 2px dashed rgba(43, 104, 80, 0.6);
+        color: #2B6850; font-size: 11px;
+      }
+      .gw-step-label { font-size: 0.68rem; font-weight: 600; color: #152220; }
+      .gw-step-todo .gw-step-label { color: rgba(0, 0, 0, 0.5); }
+      .gw-step-line { flex: 1; height: 2px; background: #2B6850;
+        margin: 12px 6px 0; }
+      .gw-step-line-todo {
+        background: repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.2) 0 4px,
+          transparent 4px 8px);
+      }
+      .gw-bar { display: flex; height: 9px; border-radius: 5px;
+        overflow: hidden; margin: 8px 0; }
+      .gw-legend { display: flex; flex-wrap: wrap; gap: 3px 12px;
+        font-size: 0.66rem; color: rgba(0, 0, 0, 0.6); }
+      .gw-legend i { display: inline-block; width: 8px; height: 8px;
+        border-radius: 2px; margin-right: 4px; }
+      .gw-report-row {
+        display: flex; justify-content: space-between; align-items: center;
+        font-size: 0.78rem; color: rgba(0, 0, 0, 0.72); padding: 4px 0;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+      }
+      .gw-report-row:last-child { border-bottom: none; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -357,14 +573,14 @@ def parse_upload(reader, path: Path):
     """Run a parser on an uploaded file, surfacing failures as errors.
 
     A malformed or mislabelled workbook should show a readable message
-    instead of crashing the tab.
+    instead of crashing the page.
     """
     try:
         return reader(path)
     except Exception as exc:
         st.error(
             f"Could not read {path.name}: {exc}. Check that the file "
-            "follows the standard template (Templates tab)."
+            "follows the standard template (Templates page)."
         )
         return None
 
@@ -490,6 +706,7 @@ def _load_project() -> None:
     for result_key in (
         "ves_results", "pump_analysis", "wq_assessment", "borehole_design",
         "drilling_log", "cost_estimate", "cost_artifacts",
+        "wp_result", "handover_built",
     ):
         st.session_state.pop(result_key, None)
     overrides = updates.pop("rates_overrides", None)
@@ -522,11 +739,122 @@ def _load_project() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Navigation: one workspace, pages grouped by lifecycle stage
+# ---------------------------------------------------------------------------
+
+NAV_GROUPS: list[tuple[str, list[str]]] = [
+    ("Project", ["Overview", "Guided start", "Site maps"]),
+    ("Investigation", ["Geophysics (VES)", "Borehole design", "Scanned sheets"]),
+    ("Testing", ["Pumping test", "Water quality"]),
+    ("Delivery", ["Costing & BoQ", "Supervision", "Handover", "Templates"]),
+    ("Area analysis", ["Water points", "Coverage gap", "Portfolio"]),
+]
+_ALL_PAGES = [p for _, pages in NAV_GROUPS for p in pages]
+DEFAULT_PAGE = "Overview"
+
+
+def _page_key(name: str) -> str:
+    return "page_" + "".join(c if c.isalnum() else "_" for c in name.lower())
+
+
+def _group_key(group: str) -> str:
+    return "nav_" + "".join(c if c.isalnum() else "_" for c in group.lower())
+
+
+def _nav_changed(group_key: str) -> None:
+    """A page picked in one sidebar group becomes the single active page."""
+    choice = st.session_state.get(group_key)
+    if choice:
+        st.session_state["nav"] = choice
+
+
+def _goto(page: str) -> None:
+    st.session_state["nav"] = page
+
+
+def _page(name: str):
+    """Keyed container for one workspace page.
+
+    Every page renders on every run - matching the previous flat-tab
+    behaviour, so cross-page state (and the app tests) keep working -
+    while the sidebar navigation controls which page is visible through
+    a per-key CSS rule.
+    """
+    return st.container(key=_page_key(name))
+
+
+def _status_chip() -> tuple[str, str]:
+    """(label, css class) for the current project's lifecycle status."""
+    summary = _project_summary()
+    if "status" not in summary:
+        return "New", "gw-chip-grey"
+    status = classify_status(summary)
+    label = {
+        "successful": "Successful",
+        "dry": "Dry / failed",
+        "sited": "Sited",
+    }.get(status) or STATUS_LABELS.get(
+        status, str(summary.get("status", "")).title()
+    )
+    css = {
+        "successful": "gw-chip-green",
+        "dry": "gw-chip-red",
+        "sited": "gw-chip-amber",
+    }.get(status, "gw-chip-grey")
+    return label, css
+
+
+# After loading a project, rebuild the analysis objects from the saved data
+# files so the pages and reports are populated without re-uploading. Runs
+# before the sidebar so the active-project status reflects the loaded state
+# on the same run.
+if st.session_state.pop("_recompute_pending", False):
+    _sources = {
+        key[len("src_"):]: value
+        for key, value in st.session_state.items()
+        if key.startswith("src_") and isinstance(value, dict)
+    }
+    _discharges = {
+        key[len("q_"):]: value
+        for key, value in st.session_state.items()
+        if key.startswith("q_") and isinstance(value, (int, float)) and value
+    }
+    if _sources:
+        try:
+            with st.spinner("Rebuilding the analyses from the loaded project..."):
+                st.session_state.update(
+                    recompute_results(
+                        _sources,
+                        discharges=_discharges,
+                        design_swl=st.session_state.get("design_swl"),
+                        config=CONFIG,
+                        sample_root=sample_data_dir(),
+                        tmp_dir=workdir(),
+                    )
+                )
+        except Exception:
+            st.warning(
+                "Some analyses could not be rebuilt from the loaded project. "
+                "Re-upload the data files on the affected pages if needed."
+            )
+
+# ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
-    st.markdown("### 💧 Groundwater Toolkit")
+    st.markdown(
+        """
+        <div class="gw-brand">
+          <div class="gw-brand-mark">G</div>
+          <div>
+            <div class="gw-brand-name">Groundwater Toolkit</div>
+            <div class="gw-brand-sub">FIELD DATA → REPORTS</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.caption(
         "Field data in, client-ready reports out - for rural water "
         "supply borehole projects in Sierra Leone."
@@ -558,20 +886,52 @@ with st.sidebar:
                 st.session_state["meta_chiefdom"] = _chiefdom
 
     _probe = site_from_state()
-    if _probe.community and _probe.latlon is not None:
-        st.success(
-            f"Site: {_probe.community}"
-            + (f", {_probe.district} District" if _probe.district else ""),
-            icon="📍",
-        )
+    _chip_label, _chip_css = _status_chip()
+    if _probe.community:
+        _proj_name = _html.escape(_probe.community)
+        if _probe.district:
+            _proj_name += f" — {_html.escape(_probe.district)}"
     else:
-        st.warning(
-            "Set the site details below - community, area and GPS - or "
-            "load a saved project file. Every tab, map and report uses "
-            "them.",
-            icon="📍",
+        _proj_name = "New project"
+    st.markdown(
+        f"""
+        <div class="gw-project-card">
+          <div class="gw-cap">Active project</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px">
+            <span style="font-weight:600;font-size:0.82rem">{_proj_name}</span>
+            <span class="gw-chip {_chip_css}">{_chip_label}</span>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if not (_probe.community and _probe.latlon is not None):
+        st.caption(
+            "📍 Set the site details below - community, area and GPS - "
+            "or load a saved project file. Every page, map and report "
+            "uses them."
         )
-    with st.expander("📍 Site details (used by all tabs)", expanded=True):
+
+    # Grouped navigation: one radio per lifecycle group, kept consistent
+    # with the single active page before the widgets render.
+    _nav_current = st.session_state.setdefault("nav", DEFAULT_PAGE)
+    if _nav_current not in _ALL_PAGES:
+        _nav_current = st.session_state["nav"] = DEFAULT_PAGE
+    for _group, _pages in NAV_GROUPS:
+        _gkey = _group_key(_group)
+        st.session_state[_gkey] = _nav_current if _nav_current in _pages else None
+        st.radio(
+            _group,
+            _pages,
+            index=None,
+            key=_gkey,
+            on_change=_nav_changed,
+            args=(_gkey,),
+        )
+    st.divider()
+
+    with st.expander("📍 Site details (used by all pages)",
+                     expanded=not _probe.community):
         st.text_input("Community / town", key="meta_community")
         province_options = [""] + provinces
         if st.session_state.get("meta_province") not in province_options:
@@ -643,13 +1003,13 @@ with st.sidebar:
                 )
     with st.expander("🧭 Suggested workflow", expanded=False):
         st.markdown(
-            "1. **VES survey** - siting and drilling depth\n"
-            "2. **Costing** - budget and bill of quantities\n"
+            "1. **Geophysics (VES)** - siting and drilling depth\n"
+            "2. **Costing & BoQ** - budget and bill of quantities\n"
             "3. **Supervision** - checklists while drilling\n"
             "4. **Borehole design** - from the drilling log\n"
             "5. **Pumping test** - safe yield and pump depth\n"
             "6. **Water quality** - WHO/national verdict\n\n"
-            "Every tab offers bundled sample data, so you can try "
+            "Every page offers bundled sample data, so you can try "
             "each step without your own files."
         )
     with st.expander("📄 Report branding"):
@@ -665,7 +1025,7 @@ with st.sidebar:
             "Save the whole project - your inputs, the WASH committee and the "
             "uploaded data files - and load it back later or on another "
             "machine to restore the analyses and reports. Saved projects can "
-            "also be combined in the Portfolio tab."
+            "also be combined on the Portfolio page."
         )
         # capture a headline summary so the saved file feeds the portfolio view
         st.session_state["project_summary"] = _project_summary()
@@ -714,74 +1074,39 @@ if IN_BROWSER:
     st.info(
         "This demo runs entirely in your browser; nothing is uploaded to any "
         "server. Heavy steps such as the VES inversion take noticeably longer "
-        "here than in the full installation. Every tab has bundled sample "
+        "here than in the full installation. Every page has bundled sample "
         "data so you can try it without your own files."
     )
 
-# After loading a project, rebuild the analysis objects from the saved data
-# files so the tabs and reports are populated without re-uploading.
-if st.session_state.pop("_recompute_pending", False):
-    _sources = {
-        key[len("src_"):]: value
-        for key, value in st.session_state.items()
-        if key.startswith("src_") and isinstance(value, dict)
-    }
-    _discharges = {
-        key[len("q_"):]: value
-        for key, value in st.session_state.items()
-        if key.startswith("q_") and isinstance(value, (int, float)) and value
-    }
-    if _sources:
-        try:
-            with st.spinner("Rebuilding the analyses from the loaded project..."):
-                st.session_state.update(
-                    recompute_results(
-                        _sources,
-                        discharges=_discharges,
-                        design_swl=st.session_state.get("design_swl"),
-                        config=CONFIG,
-                        sample_root=sample_data_dir(),
-                        tmp_dir=workdir(),
-                    )
-                )
-        except Exception:
-            st.warning(
-                "Some analyses could not be rebuilt from the loaded project. "
-                "Re-upload the data files on the affected tabs if needed."
-            )
+# Workspace pages. Each is a keyed container that renders on every run
+# (like the flat tabs this replaces); the active page from the sidebar
+# navigation stays visible and the rest are hidden by the rule below.
+tab_overview = _page("Overview")
+tab_guide = _page("Guided start")
+tab_ves = _page("Geophysics (VES)")
+tab_cost = _page("Costing & BoQ")
+tab_supervision = _page("Supervision")
+tab_design = _page("Borehole design")
+tab_pump = _page("Pumping test")
+tab_quality = _page("Water quality")
+tab_handover = _page("Handover")
+tab_maps = _page("Site maps")
+tab_waterpoints = _page("Water points")
+tab_coverage = _page("Coverage gap")
+tab_extract = _page("Scanned sheets")
+tab_templates = _page("Templates")
+tab_portfolio = _page("Portfolio")
 
-(
-    tab_guide,
-    tab_ves,
-    tab_cost,
-    tab_supervision,
-    tab_design,
-    tab_pump,
-    tab_quality,
-    tab_handover,
-    tab_maps,
-    tab_waterpoints,
-    tab_coverage,
-    tab_extract,
-    tab_templates,
-    tab_portfolio,
-) = st.tabs(
-    [
-        "🚀 Guided start",
-        "📈 VES survey",
-        "💰 Costing",
-        "✅ Supervision",
-        "🛠️ Borehole design",
-        "⏱️ Pumping test",
-        "🧪 Water quality",
-        "🤝 Handover",
-        "🗺️ Maps",
-        "🚱 Water points",
-        "📊 Coverage gap",
-        "📄 Scanned sheets",
-        "📋 Templates",
-        "📁 Portfolio",
-    ]
+_active_page = st.session_state.get("nav", DEFAULT_PAGE)
+st.markdown(
+    "<style>"
+    + "".join(
+        f".st-key-{_page_key(name)}{{display:none}}"
+        for name in _ALL_PAGES
+        if name != _active_page
+    )
+    + "</style>",
+    unsafe_allow_html=True,
 )
 
 
@@ -814,6 +1139,320 @@ def compute_cost_estimate(inputs: CostingInputs, rates, **kwargs) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Overview - the project dashboard (design direction 1b, Project Workspace)
+# ---------------------------------------------------------------------------
+
+def _rows_html(rows: list[tuple[str, str]]) -> str:
+    return "".join(
+        f"<div class='gw-row'><span>{_html.escape(str(k))}</span>"
+        f"<b>{_html.escape(str(v))}</b></div>"
+        for k, v in rows
+    )
+
+
+def _stepper_html(steps: list[tuple[str, bool]]) -> str:
+    parts = ["<div class='gw-steps'>"]
+    for i, (label, done) in enumerate(steps):
+        if i:
+            joined = steps[i - 1][1] and done
+            parts.append(
+                "<div class='gw-step-line"
+                + ("" if joined else " gw-step-line-todo")
+                + "'></div>"
+            )
+        cls = "gw-step-done" if done else "gw-step-todo"
+        dot = "✓" if done else str(i + 1)
+        parts.append(
+            f"<div class='gw-step {cls}'><span class='gw-step-dot'>{dot}</span>"
+            f"<span class='gw-step-label'>{_html.escape(label)}</span></div>"
+        )
+    parts.append("</div>")
+    return "".join(parts)
+
+
+with tab_overview:
+    _ov_site = site_from_state()
+    _ov_ves = st.session_state.get("ves_results")
+    _ov_log = st.session_state.get("drilling_log")
+    _ov_pump = st.session_state.get("pump_analysis")
+    _ov_wq = st.session_state.get("wq_assessment")
+    _ov_design = st.session_state.get("borehole_design")
+    _ov_cost = st.session_state.get("cost_estimate")
+
+    _chip_label, _chip_css = _status_chip()
+    _ov_title = _html.escape(_ov_site.community or "New project")
+    if _ov_site.district:
+        _ov_title += f" — {_html.escape(_ov_site.district)} District"
+    _head_l, _head_r = st.columns([3, 1])
+    with _head_l:
+        st.markdown(
+            f"<h2 style='margin:0 0 2px'>{_ov_title} "
+            f"<span class='gw-chip {_chip_css}'>{_chip_label}</span></h2>",
+            unsafe_allow_html=True,
+        )
+        _sub = []
+        if _ov_site.latlon is not None:
+            _lat, _lon = _ov_site.latlon
+            _sub.append(f"{_lat:.4f}° N, {abs(_lon):.4f}° W")
+        if _ov_site.chiefdom:
+            _sub.append(f"{_ov_site.chiefdom} Chiefdom")
+        if _ov_site.client:
+            _sub.append(_ov_site.client)
+        st.caption(" · ".join(_sub) or
+                   "The whole borehole lifecycle in one workspace.")
+    with _head_r:
+        st.button("Generate handover →", key="ov_go_handover",
+                  type="primary", use_container_width=True,
+                  on_click=_goto, args=("Handover",))
+
+    # Lifecycle state, derived from what has actually been produced
+    st.markdown(
+        _stepper_html([
+            ("Sited", _ov_ves is not None),
+            ("Drilled", _ov_log is not None),
+            ("Tested", _ov_pump is not None),
+            ("Assessed", _ov_wq is not None),
+            ("Handover", bool(st.session_state.get("handover_built"))),
+        ]),
+        unsafe_allow_html=True,
+    )
+
+    _has_results = any(x is not None for x in (
+        _ov_ves, _ov_log, _ov_pump, _ov_wq, _ov_cost,
+    ))
+    if not _has_results:
+        st.markdown(
+            "<div class='gw-card'><span class='gw-cap'>Getting started</span>"
+            "<div style='font-size:0.86rem;color:rgba(0,0,0,.7);line-height:1.5'>"
+            "Nothing has been analysed yet. Work through the guided start, "
+            "or open any page from the sidebar - every page offers bundled "
+            "sample data (Rokel, Dr Timbo, Kuntolo) so you can try the whole "
+            "lifecycle without your own files. Loading a saved project file "
+            "from the sidebar restores a previous session, analyses and "
+            "all.</div></div>",
+            unsafe_allow_html=True,
+        )
+        _cta1, _cta2, _cta3 = st.columns(3)
+        _cta1.button("🚀 Open guided start", key="ov_go_guide",
+                     use_container_width=True,
+                     on_click=_goto, args=("Guided start",))
+        _cta2.button("📈 Run a VES analysis", key="ov_go_ves",
+                     use_container_width=True,
+                     on_click=_goto, args=("Geophysics (VES)",))
+        _cta3.button("💰 Estimate a borehole", key="ov_go_cost",
+                     use_container_width=True,
+                     on_click=_goto, args=("Costing & BoQ",))
+    else:
+        _col1, _col2, _col3 = st.columns(3)
+
+        with _col1:
+            # Site card
+            _site_rows: list[tuple[str, str]] = []
+            if _ov_site.district:
+                _site_rows.append(("District", _ov_site.district))
+            if _ov_site.chiefdom:
+                _site_rows.append(("Chiefdom", _ov_site.chiefdom))
+            if _ov_site.easting and _ov_site.northing:
+                _site_rows.append((
+                    "UTM",
+                    f"{_ov_site.easting:.0f} E · {_ov_site.northing:.0f} N "
+                    f"({_ov_site.utm_zone}N)",
+                ))
+            _wp = st.session_state.get("wp_result")
+            if _wp and _wp.get("decision"):
+                _wp_sum = _wp["decision"].get("summary", {})
+                if _wp_sum.get("total") is not None:
+                    _site_rows.append((
+                        "Water points nearby",
+                        f"{_wp_sum['total']} "
+                        f"({_wp_sum.get('functional', 0)} functional)",
+                    ))
+            st.markdown(
+                "<div class='gw-card'><span class='gw-cap'>Site</span>"
+                + (_rows_html(_site_rows) or
+                   "<div class='gw-row'><span>No site details yet - set "
+                   "them in the sidebar.</span></div>")
+                + "</div>",
+                unsafe_allow_html=True,
+            )
+
+            # Siting / geophysics card
+            if _ov_ves is not None:
+                _soundings, _results, _interps = _ov_ves
+                _best = min(
+                    _interps, key=lambda i: i.rank if i.rank else 99,
+                ) if _interps else None
+                _ves_rows = [("Soundings analysed", str(len(_results)))]
+                if _best is not None:
+                    _ves_rows.append(("Preferred site", _best.sounding_id))
+                    if _best.depth_to_basement_m:
+                        _ves_rows.append((
+                            "Depth to basement",
+                            f"{_best.depth_to_basement_m:.1f} m",
+                        ))
+                    if _best.max_drilling_depth_m:
+                        _ves_rows.append((
+                            "Recommended drilling depth",
+                            f"{_best.max_drilling_depth_m:.0f} m",
+                        ))
+                st.markdown(
+                    "<div class='gw-card'><span class='gw-cap'>Geophysics"
+                    "</span>" + _rows_html(_ves_rows) + "</div>",
+                    unsafe_allow_html=True,
+                )
+
+        with _col2:
+            # Borehole card (design first, else the drilling log)
+            if _ov_design is not None:
+                st.markdown(
+                    "<div class='gw-card'><span class='gw-cap'>Borehole"
+                    "</span>" + _rows_html(_ov_design.summary_rows()[:6])
+                    + "</div>",
+                    unsafe_allow_html=True,
+                )
+            elif _ov_log is not None:
+                # total_depth_m is optional: a partially filled log template
+                # parses with no depth
+                _log_rows = [(
+                    "Drilled depth",
+                    f"{_ov_log.total_depth_m:.0f} m"
+                    if _ov_log.total_depth_m else "pending",
+                )]
+                if _ov_log.status:
+                    _log_rows.append(("Outcome", _ov_log.status))
+                if _ov_log.water_strikes_m:
+                    _log_rows.append((
+                        "Water strikes",
+                        ", ".join(f"{w:g} m" for w in _ov_log.water_strikes_m),
+                    ))
+                st.markdown(
+                    "<div class='gw-card'><span class='gw-cap'>Borehole"
+                    "</span>" + _rows_html(_log_rows) + "</div>",
+                    unsafe_allow_html=True,
+                )
+
+            # Pumping test card
+            if _ov_pump is not None:
+                _yr = _ov_pump.yield_recommendation
+                if _yr is not None and _yr.safe_yield_m3_per_h:
+                    _pump_head = (
+                        f"<div class='gw-big'>{_yr.safe_yield_m3_per_h:.2f} "
+                        "<small>m³/h safe yield</small></div>"
+                    )
+                else:
+                    _reason = (_yr.pending_reason if _yr is not None else
+                               "discharge pending")
+                    _pump_head = (
+                        "<span class='gw-chip gw-chip-amber'>Pending</span>"
+                        f"<div style='font-size:0.75rem;color:rgba(0,0,0,.55);"
+                        f"margin-top:6px'>{_html.escape(_reason)}</div>"
+                    )
+                _pump_rows = []
+                _t = _ov_pump.transmissivity_m2_per_day
+                if _t:
+                    _pump_rows.append(("Transmissivity", f"{_t:.1f} m²/day"))
+                if _ov_pump.max_drawdown_m:
+                    _pump_rows.append(
+                        ("Max drawdown", f"{_ov_pump.max_drawdown_m:.2f} m"))
+                if _yr is not None and _yr.pump_installation_depth_m:
+                    _pump_rows.append((
+                        "Pump setting",
+                        f"{_yr.pump_installation_depth_m:.0f} m",
+                    ))
+                st.markdown(
+                    "<div class='gw-card'><span class='gw-cap'>Pumping test"
+                    "</span>" + _pump_head + _rows_html(_pump_rows) + "</div>",
+                    unsafe_allow_html=True,
+                )
+
+        with _col3:
+            # Water quality card
+            if _ov_wq is not None:
+                if _ov_wq.health_exceedances:
+                    _wq_chip = ("gw-chip-red", "Treat before use")
+                    _wq_note = ", ".join(
+                        r.parameter for r in _ov_wq.health_exceedances[:4])
+                elif _ov_wq.aesthetic_exceedances:
+                    _wq_chip = ("gw-chip-amber", "Aesthetic only")
+                    _wq_note = ", ".join(
+                        r.parameter for r in _ov_wq.aesthetic_exceedances[:4])
+                else:
+                    _wq_chip = ("gw-chip-green", "Potable")
+                    _wq_note = "All measured parameters within guideline"
+                st.markdown(
+                    "<div class='gw-card'><span class='gw-cap'>Water quality"
+                    " — WHO</span>"
+                    f"<span class='gw-chip {_wq_chip[0]}'>{_wq_chip[1]}</span>"
+                    f"<div style='font-size:0.75rem;color:rgba(0,0,0,.55);"
+                    f"margin-top:6px'>{_html.escape(_wq_note)}</div>"
+                    + _rows_html([
+                        ("Parameters assessed", str(len(_ov_wq.rows))),
+                    ])
+                    + "</div>",
+                    unsafe_allow_html=True,
+                )
+
+            # Cost card with the by-stage breakdown bar
+            if _ov_cost is not None:
+                _stages = [(s, v) for s, v in _ov_cost.by_stage() if v > 0]
+                _total = sum(v for _, v in _stages) or 1.0
+                _bar_colors = ["#2B6850", "#4C8A6F", "#6FAC90",
+                               "#B0A365", "#C98A4B", "#8C8C7A"]
+                _bar = "".join(
+                    f"<div style='width:{100 * v / _total:.1f}%;"
+                    f"background:{_bar_colors[i % len(_bar_colors)]}'></div>"
+                    for i, (_, v) in enumerate(_stages)
+                )
+                _legend = "".join(
+                    f"<span><i style='background:"
+                    f"{_bar_colors[i % len(_bar_colors)]}'></i>"
+                    f"{_html.escape(s)}</span>"
+                    for i, (s, _) in enumerate(_stages)
+                )
+                st.markdown(
+                    "<div class='gw-card'><span class='gw-cap'>Cost estimate"
+                    "</span>"
+                    f"<div class='gw-big'>US$ {_ov_cost.price_usd:,.0f} "
+                    "<small>price</small></div>"
+                    f"<div style='font:400 10px \"IBM Plex Mono\",monospace;"
+                    f"color:rgba(0,0,0,.45)'>RWSN model · "
+                    f"US$ {_ov_cost.cost_per_meter_usd:,.0f}/m</div>"
+                    f"<div class='gw-bar'>{_bar}</div>"
+                    f"<div class='gw-legend'>{_legend}</div></div>",
+                    unsafe_allow_html=True,
+                )
+
+            # Report readiness card
+            _chk_done = any(
+                str(v) in ("Yes", "No", "N/A")
+                for k, v in st.session_state.items() if k.startswith("chk_")
+            )
+            _report_state = [
+                ("Geophysical survey", _ov_ves is not None),
+                ("Borehole completion", _ov_log is not None),
+                ("Pumping test", _ov_pump is not None),
+                ("Water quality", _ov_wq is not None),
+                ("Cost estimate", _ov_cost is not None),
+                ("Supervision record", _chk_done),
+                ("Handover", bool(st.session_state.get("handover_built"))),
+            ]
+            _n_ready = sum(1 for _, ready in _report_state if ready)
+            _report_rows = "".join(
+                "<div class='gw-report-row'><span>" + _html.escape(name)
+                + "</span><span class='gw-chip "
+                + ("gw-chip-green'>Ready" if ready else "gw-chip-grey'>—")
+                + "</span></div>"
+                for name, ready in _report_state
+            )
+            st.markdown(
+                "<div class='gw-card'><span class='gw-cap'>Reports — "
+                f"{_n_ready} / {len(_report_state)} ready</span>"
+                + _report_rows + "</div>",
+                unsafe_allow_html=True,
+            )
+
+
+# ---------------------------------------------------------------------------
 # Guided start
 # ---------------------------------------------------------------------------
 with tab_guide:
@@ -823,7 +1462,7 @@ with tab_guide:
     st.header("Guided project setup")
     st.caption(
         "Three short steps to a sited, costed borehole project. Every "
-        "result carries over to the full tabs, where you can fine tune."
+        "result carries over to the full pages, where you can fine tune."
     )
     st.progress(
         wiz_step / (len(_WIZ_STEPS) - 1),
@@ -903,7 +1542,7 @@ with tab_guide:
             st.metric(
                 f"Recommended site: {top_interp.sounding_id}",
                 f"drill to {top_interp.max_drilling_depth_m:g} m",
-                help="Best ranked sounding; see the VES survey tab for "
+                help="Best ranked sounding; see the Geophysics (VES) page for "
                 "curves, water zones and the full preference table.",
             )
         with st.expander("No VES data? Enter the planned depth directly"):
@@ -980,7 +1619,7 @@ with tab_guide:
             m3.metric("Per metre", f"${wiz_est.cost_per_meter_usd:,.0f}/m")
             st.caption(
                 "Using the bundled indicative rates and default "
-                "percentages; open the Costing tab to edit unit rates, "
+                "percentages; open the Costing & BoQ page to edit unit rates, "
                 "margins, VAT and the bill of quantities."
             )
         col_b, col_n = st.columns([1, 3])
@@ -1011,16 +1650,16 @@ with tab_guide:
         st.success("\n\n".join(summary))
         st.markdown(
             "**What happens next**\n"
-            "1. **Supervision** tab: work the checklists from procurement "
+            "1. **Supervision** page: work the checklists from procurement "
             "through drilling to handover; critical items gate acceptance.\n"
-            "2. **Borehole design** tab: once the drilling log exists, "
+            "2. **Borehole design** page: once the drilling log exists, "
             "generate the as-built design (it feeds the costing and the "
             "reports).\n"
-            "3. **Pumping test** and **Water quality** tabs: safe yield "
+            "3. **Pumping test** and **Water quality** pages: safe yield "
             "and the WHO/national verdict.\n"
-            "4. **Handover** tab: the closing report with the committee "
+            "4. **Handover** page: the closing report with the committee "
             "and sign off.\n"
-            "5. **Maps** tab: location, geology and aquifer maps for the "
+            "5. **Site maps** page: location, geology and aquifer maps for the "
             "reports.\n\n"
             "Save your work with **Project file** in the sidebar - it "
             "carries everything you have entered."
@@ -1079,6 +1718,26 @@ with tab_ves:
                 col_txt.write(interp.narrative)
         st.subheader("Drilling preference")
         st.table(drilling_preference_table(interps))
+
+        # The headline the client actually asks for, promoted first-class
+        _best_interp = min(
+            interps, key=lambda i: i.rank if i.rank else 99,
+        ) if interps else None
+        if _best_interp is not None and _best_interp.max_drilling_depth_m:
+            _zones = ", ".join(
+                f"{int(t)}-{int(b)} m" for t, b in _best_interp.water_zones
+            )
+            st.markdown(
+                "<div class='gw-callout'>"
+                "<span class='gw-cap'>Recommended drilling depth — "
+                f"{_html.escape(_best_interp.sounding_id)}</span>"
+                f"<div class='gw-big'>{_best_interp.max_drilling_depth_m:.0f} "
+                "<small>m</small></div>"
+                + (f"<p>Water bearing zones at {_html.escape(_zones)}.</p>"
+                   if _zones else "")
+                + "</div>",
+                unsafe_allow_html=True,
+            )
 
         with st.expander("🎯 Drill-target suitability (prototype)", expanded=True):
             st.caption(
@@ -1203,6 +1862,23 @@ with tab_pump:
 
         st.subheader("Results")
         yr = analysis.yield_recommendation
+        if yr is not None and yr.safe_yield_m3_per_h:
+            st.markdown(
+                "<div class='gw-callout' style='display:flex;gap:26px;"
+                "align-items:center'>"
+                "<div><span class='gw-cap'>Recommended safe yield</span>"
+                f"<div class='gw-big'>{fmt_num(yr.safe_yield_m3_per_h)} "
+                "<small>m³/h</small></div></div>"
+                + (
+                    "<div><span class='gw-cap'>Pump setting depth</span>"
+                    f"<div class='gw-big'>"
+                    f"{fmt_num(yr.pump_installation_depth_m)} "
+                    "<small>m</small></div></div>"
+                    if yr.pump_installation_depth_m else ""
+                )
+                + "</div>",
+                unsafe_allow_html=True,
+            )
         cols = st.columns(4)
         cols[0].metric(
             "Transmissivity",
@@ -1347,7 +2023,7 @@ with tab_design:
             st.image(str(drawing))
             offer_download(drawing, "Download design drawing (.png)")
         st.info(
-            "The Costing tab can price this design: casing, screen and "
+            "The Costing & BoQ page can price this design: casing, screen and "
             "gravel quantities carry over automatically."
         )
 
@@ -1366,7 +2042,7 @@ with tab_cost:
     use_design = False
     if design is not None:
         use_design = st.toggle(
-            f"Use the design from the Borehole design tab "
+            f"Use the design from the Borehole design page "
             f"({design.total_depth_m:g} m, {design.casing_diameter_in:g} inch casing)",
             value=True,
             key="cost_use_design",
@@ -1772,7 +2448,7 @@ with tab_supervision:
             (st.success if recon.passed else st.error)(recon.message)
             st.caption(
                 "The daily report template for the driller is in the "
-                "Templates tab."
+                "Templates page."
             )
 
     with st.expander("📏 Minimum separation distances"):
@@ -1819,7 +2495,7 @@ with tab_handover:
     st.header("Project handover report")
     st.caption(
         "The closing deliverable for the client and the community. Answer "
-        "the questions below; results already produced in the other tabs "
+        "the questions below; results already produced in the other pages "
         "(design, pumping test, water quality) attach automatically."
     )
 
@@ -1829,11 +2505,11 @@ with tab_handover:
     quality = st.session_state.get("wq_assessment")
     a1, a2, a3 = st.columns(3)
     a1.metric("Borehole design", "attached" if design is not None else "not yet",
-              help="Produce it in the Borehole design tab and it attaches here.")
+              help="Produce it in the Borehole design page and it attaches here.")
     a2.metric("Pumping test", "attached" if pumping is not None else "not yet",
-              help="Analyse a test in the Pumping test tab.")
+              help="Analyse a test in the Pumping test page.")
     a3.metric("Water quality", "attached" if quality is not None else "not yet",
-              help="Assess a sample in the Water quality tab.")
+              help="Assess a sample in the Water quality page.")
     st.caption(
         "Community, district, client, contractor and supervisor come from "
         "the site details in the sidebar."
@@ -1924,6 +2600,8 @@ with tab_handover:
             workdir() / "Handover_Report.docx",
             app_config(),
         )
+        # feeds the lifecycle stepper on the Overview page
+        st.session_state["handover_built"] = True
         offer_download(report_path, "Download handover report (.docx)")
 
 # ---------------------------------------------------------------------------
@@ -1992,7 +2670,7 @@ with tab_waterpoints:
         "improved handpump nearby is usually far cheaper to rehabilitate than "
         "a new borehole, and a working source inside the service radius may "
         "mean the community is already served. Points come live from the "
-        "Water Point Data Exchange (WPdx+, CC BY 4.0), so this tab needs "
+        "Water Point Data Exchange (WPdx+, CC BY 4.0), so this page needs "
         "internet access; coverage is not exhaustive, so always field-verify."
     )
     site = site_from_state()
@@ -2376,5 +3054,5 @@ with tab_portfolio:
         )
 
 # the post-load grace flag protects restored inputs for exactly one
-# full run; every tab has rendered by this point
+# full run; every page has rendered by this point
 st.session_state.pop("project_just_loaded", None)

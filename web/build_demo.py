@@ -6,7 +6,9 @@ compiled to WebAssembly with Pyodide). No server is involved; uploads
 never leave the browser. The page inlines the whole ``groundwater``
 package, the app script and the bundled sample datasets, so the only
 external fetches are the stlite runtime and the Pyodide/scientific
-wheels from the jsDelivr CDN.
+wheels from the jsDelivr CDN, plus the app's display fonts from
+Google Fonts (optional: system fallbacks are used when that fetch
+fails, e.g. offline).
 
 Run from the repository root:
 
@@ -90,13 +92,15 @@ mount(
 __PYODIDE_LINE__
     streamlitConfig: {
       "theme.base": "light",
-      "theme.primaryColor": "#1F5C8B",
-      "theme.backgroundColor": "#FFFFFF",
-      "theme.secondaryBackgroundColor": "#F2F6FA",
-      "theme.textColor": "#1A2733",
-      "theme.linkColor": "#1F5C8B",
-      "theme.borderColor": "#D8E2EC",
+      "theme.primaryColor": "#2B6850",
+      "theme.backgroundColor": "#F6F5F1",
+      "theme.secondaryBackgroundColor": "#EFEEE8",
+      "theme.textColor": "#152220",
+      "theme.linkColor": "#1B5A43",
+      "theme.borderColor": "#DAD8D0",
       "theme.baseRadius": "0.6rem",
+      "theme.sidebar.backgroundColor": "#ECEEE7",
+      "theme.sidebar.secondaryBackgroundColor": "#FFFFFF",
       "client.toolbarMode": "viewer",
     },
   },
