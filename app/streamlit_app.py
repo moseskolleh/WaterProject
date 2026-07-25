@@ -986,7 +986,7 @@ with st.sidebar:
         st.text_input("or paste 'lat, lon'", key="latlon_paste",
                       placeholder="8.4657, -13.2317")
         st.button("Convert to UTM", on_click=_apply_latlon,
-                  use_container_width=True)
+                  width="stretch")
         if st.session_state.get("latlon_error"):
             st.warning(st.session_state["latlon_error"])
         if detected_latlon is not None:
@@ -1202,7 +1202,7 @@ with tab_overview:
                    "The whole borehole lifecycle in one workspace.")
     with _head_r:
         st.button("Generate handover →", key="ov_go_handover",
-                  type="primary", use_container_width=True,
+                  type="primary", width="stretch",
                   on_click=_goto, args=("Handover",))
 
     # Lifecycle state, derived from what has actually been produced
@@ -1234,13 +1234,13 @@ with tab_overview:
         )
         _cta1, _cta2, _cta3 = st.columns(3)
         _cta1.button("🚀 Open guided start", key="ov_go_guide",
-                     use_container_width=True,
+                     width="stretch",
                      on_click=_goto, args=("Guided start",))
         _cta2.button("📈 Run a VES analysis", key="ov_go_ves",
-                     use_container_width=True,
+                     width="stretch",
                      on_click=_goto, args=("Geophysics (VES)",))
         _cta3.button("💰 Estimate a borehole", key="ov_go_cost",
-                     use_container_width=True,
+                     width="stretch",
                      on_click=_goto, args=("Costing & BoQ",))
     else:
         _col1, _col2, _col3 = st.columns(3)
@@ -1760,7 +1760,7 @@ with tab_ves:
                     for s in suitability
                 ],
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
             best = suitability[0]
             st.success(
@@ -1943,10 +1943,18 @@ with tab_quality:
                 st.warning(f"Handpump corrosion risk ({corrosion.measured}): "
                            f"{corrosion.message}")
 
+        def _wq_value(r) -> str:
+            """One text column: mixing floats with "< DL" breaks Arrow."""
+            if r.value is None:
+                return "< DL" if r.below_detection else ""
+            # 10 significant figures: lossless for laboratory values while
+            # keeping binary-float artefacts (0.30000000000000004) out
+            return f"{r.value:.10g}"
+
         rows = [
             {
                 "Parameter": r.parameter,
-                "Value": "< DL" if (r.below_detection and r.value is None) else r.value,
+                "Value": _wq_value(r),
                 "Unit": r.unit,
                 "WHO health": r.who_health,
                 "National": r.sl_standard,
@@ -1954,7 +1962,7 @@ with tab_quality:
             }
             for r in assessment.rows
         ]
-        st.dataframe(rows, use_container_width=True)
+        st.dataframe(rows, width="stretch")
 
         if assessment.ionic is not None:
             st.write(
@@ -2135,11 +2143,11 @@ with tab_cost:
                 key="rates_editor",
                 hide_index=True,
                 disabled=["Code", "Stage", "Item", "Unit"],
-                use_container_width=True,
+                width="stretch",
             )
         except Exception:
             # very old or limited runtimes: show read-only rates instead
-            st.dataframe(rate_rows, use_container_width=True)
+            st.dataframe(rate_rows, width="stretch")
             edited = rate_rows
         edited_by_code = {row["Code"]: row for row in edited}
         rates = [
@@ -2228,7 +2236,7 @@ with tab_cost:
         col_boq, col_sum = st.columns([3, 2])
         with col_boq:
             st.subheader("Bill of quantities")
-            st.dataframe(estimate.boq_rows(), use_container_width=True)
+            st.dataframe(estimate.boq_rows(), width="stretch")
         with col_sum:
             st.subheader("Summary")
             st.table(
@@ -2541,7 +2549,7 @@ with tab_handover:
         key="ho_committee",
         num_rows="dynamic",
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
     )
     # keep a clean, serialisable copy of the committee so it survives reruns
     # and is saved with the project (the data_editor key holds only an edit
@@ -2731,11 +2739,11 @@ with tab_waterpoints:
                 st.dataframe(
                     [{k: v for k, v in c.items() if not k.startswith("_")}
                      for c in decision["rehab_candidates"]],
-                    use_container_width=True, hide_index=True,
+                    width="stretch", hide_index=True,
                 )
             if result["rows"]:
                 st.subheader("All water points in range")
-                st.dataframe(result["rows"], use_container_width=True,
+                st.dataframe(result["rows"], width="stretch",
                              hide_index=True)
             st.caption(WPDX_CREDIT)
 
@@ -2874,7 +2882,7 @@ with tab_coverage:
                      round(r.people_per_point) if r.people_per_point is not None
                      else None,
                  "Status": r.status}) for r in rows],
-            hide_index=True, use_container_width=True,
+            hide_index=True, width="stretch",
         )
         if unassigned:
             st.caption(
@@ -2899,7 +2907,7 @@ with tab_coverage:
                 st.dataframe(
                     [{"Chiefdom polygon": gb, "Census chiefdoms": ", ".join(names)}
                      for gb, names in aggregated.items()],
-                    hide_index=True, use_container_width=True,
+                    hide_index=True, width="stretch",
                 )
         st.caption(f"{WPDX_CREDIT}. {POPULATION_CREDIT}.")
 
@@ -3031,7 +3039,7 @@ with tab_portfolio:
             st.info("Add GPS coordinates to the projects to place them on the map.")
         st.subheader("Comparison")
         st.dataframe(
-            portfolio_rows(summaries), hide_index=True, use_container_width=True
+            portfolio_rows(summaries), hide_index=True, width="stretch"
         )
 
         st.subheader("Site detail")

@@ -13,6 +13,7 @@ so results are restored without re-uploading.
 from __future__ import annotations
 
 import base64
+import math
 
 import yaml
 
@@ -124,9 +125,18 @@ def deserialize_project(raw: bytes) -> dict:
 
     overrides = payload.get("rates_overrides") or {}
     if isinstance(overrides, dict):
-        updates["rates_overrides"] = {
-            str(code): float(rate) for code, rate in overrides.items()
-        }
+        # a hand-edited file can carry nulls, lists or words where a rate
+        # belongs; skip those rather than raise, so one bad rate does not
+        # cost the user the whole project file
+        clean: dict[str, float] = {}
+        for code, rate in overrides.items():
+            try:
+                value = float(rate)
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(value):
+                clean[str(code)] = value
+        updates["rates_overrides"] = clean
 
     committee = payload.get("committee")
     if isinstance(committee, list) and committee:

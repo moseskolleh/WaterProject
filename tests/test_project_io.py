@@ -44,6 +44,25 @@ def test_rates_overrides_round_trip():
     assert updates["rates_overrides"] == {"DRILL": 130.5}
 
 
+@pytest.mark.parametrize(
+    "bad", ["null", "[1, 2]", "abc", "'.nan'", ".inf"]
+)
+def test_unusable_rate_overrides_are_skipped_not_raised(bad):
+    """A hand-edited rate must not cost the user the whole project file.
+
+    ``float(None)`` raises TypeError, which the app's load handler does not
+    catch - the user got a red traceback instead of the analyses.
+    """
+    raw = (
+        b"groundwater_toolkit_project: '0.2.0'\n"
+        b"state: {meta_community: Rokel}\n"
+        b"rates_overrides:\n  DRILL: 130.5\n  BAD: " + bad.encode() + b"\n"
+    )
+    updates = deserialize_project(raw)
+    assert updates["rates_overrides"] == {"DRILL": 130.5}
+    assert updates["meta_community"] == "Rokel"
+
+
 def test_committee_records_normalises_and_strips():
     rows = [{"Role": " Chair ", "Name": "A", "Phone": None}, {"Role": "", "Name": ""}]
     recs = committee_records(rows)
