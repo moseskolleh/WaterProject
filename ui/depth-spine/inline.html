@@ -10,10 +10,16 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="./assets/index-BLS3_ihh.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-DCsCDlsg.css">
   </head>
   <body>
+    <!--
+      The payload, baked in at render time by groundwater.depth_spine.inline.
+      A JSON script block rather than a JS assignment, so the placeholder is
+      never evaluated as code and an unrendered template fails visibly rather
+      than throwing a ReferenceError.
+    -->
+    <script type="application/json" id="spine-data">__SPINE_VIEW__</script>
     <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

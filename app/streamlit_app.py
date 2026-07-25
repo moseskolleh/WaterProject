@@ -30,6 +30,7 @@ if _SRC.is_dir() and str(_SRC) not in sys.path:
         del sys.modules[_mod]
 
 import streamlit as st
+import streamlit.components.v1 as components
 import yaml
 
 import groundwater
@@ -158,17 +159,26 @@ from groundwater.ves.interpret import (
 )
 from groundwater.ves.plots import plot_sounding_curve
 
-# The Depth Spine workspace is a Streamlit custom component. It cannot work in
-# the WebAssembly demo - a component serves its frontend from disk over HTTP -
-# and web/build_demo.py leaves the package out of that build, so import it
-# defensively and let the page explain itself when it is missing.
+# The Depth Spine workspace renders two ways. The custom component is
+# interactive but needs a server to serve its frontend, so the in-browser
+# (WebAssembly) demo gets the static build through st.components.v1.html
+# instead - same workspace, screens edited with ordinary inputs. Import
+# defensively so a deployment with neither still runs every other page.
 try:
-    from groundwater.depth_spine import build_view as build_spine_view, depth_spine
+    from groundwater.depth_spine import (
+        build_view as build_spine_view,
+        component_available,
+        depth_spine,
+        render_static,
+        static_build_available,
+    )
     from groundwater.depth_spine.view import SpineInputs
 
     SPINE_ERROR = ""
 except Exception as _spine_exc:  # pragma: no cover - depends on the deployment
     build_spine_view = depth_spine = SpineInputs = None
+    component_available = static_build_available = lambda: False
+    render_static = None
     SPINE_ERROR = str(_spine_exc)
 
 # ---------------------------------------------------------------------------
@@ -830,6 +840,80 @@ def _next_step(label: str, page: str, note: str = "", key: str = "") -> None:
     col_a.caption(note or f"Next: {page}")
     col_b.button(label, key=key or f"next_{_page_key(page)}", width="stretch",
                  on_click=_goto, args=(page,))
+
+
+def _spine_iframe(html: str, height: int) -> None:
+    """Put the static workspace in an iframe, whichever API this runtime has.
+
+    ``st.components.v1.html`` is deprecated in favour of ``st.iframe``, but the
+    in-browser demo pins an older Streamlit that has only the former, and the
+    project supports streamlit>=1.57. Use whichever exists.
+    """
+    if hasattr(st, "iframe"):
+        st.iframe(html, height=height)
+    else:  # pragma: no cover - older runtimes, including the browser demo
+        components.html(html, height=height, scrolling=True)
+
+
+def _spine_frame_height(view: dict) -> int:
+    """Tall enough for the workspace without a scrollbar in the common case.
+
+    The section is a fixed-height track; what varies is how far the rail runs,
+    and the water-quality stage is the longest of the three. Erring tall costs
+    whitespace, erring short costs a nested scrollbar, so err tall.
+    """
+    base = 780
+    if view.get("quality"):
+        base = 1180
+    return base
+
+
+def _spine_screen_editor(view: dict, state_key: str, placed) -> None:
+    """Edit the screened intervals without the drag handles.
+
+    The static workspace cannot hand anything back, so the same edit is offered
+    as numbers. It goes through design_borehole exactly as a dragged interval
+    does - this is a different gesture, not a different calculation.
+    """
+    screens = view["design"]["screens"]
+    limits = view["section"]["screenLimits"]
+    with st.expander("Edit the screened intervals", expanded=False):
+        st.caption(
+            "Dragging needs the full application; here the same intervals are "
+            "typed. They are re-derived through the same design rules, and "
+            "anything that does not fit is clipped or dropped with a flag."
+        )
+        edited: list[tuple[float, float]] = []
+        for index, screen in enumerate(screens):
+            col_top, col_base = st.columns(2)
+            top = col_top.number_input(
+                f"Screen {index + 1} top (m)",
+                min_value=float(limits["top"]),
+                max_value=float(limits["base"]),
+                value=float(screen["top"]),
+                step=0.5,
+                key=f"{state_key}_top_{index}",
+            )
+            base = col_base.number_input(
+                f"Screen {index + 1} base (m)",
+                min_value=float(limits["top"]),
+                max_value=float(limits["base"]),
+                value=float(screen["base"]),
+                step=0.5,
+                key=f"{state_key}_base_{index}",
+            )
+            edited.append((float(top), float(base)))
+
+        apply_col, reset_col = st.columns([1, 1])
+        if apply_col.button("Apply to the design", key=f"{state_key}_apply"):
+            if edited != placed:
+                st.session_state[state_key] = edited
+                st.rerun()
+        if placed and reset_col.button(
+            "Back to the generated design", key=f"{state_key}_reset_editor"
+        ):
+            del st.session_state[state_key]
+            st.rerun()
 
 
 def _band(value, bands: list[tuple[float, str]], above: str) -> str:
@@ -2224,16 +2308,14 @@ with tab_spine:
 
     spine_log = st.session_state.get("drilling_log")
 
-    if depth_spine is None:
+    if build_spine_view is None:
         st.info(
-            "The Depth Spine workspace needs the Streamlit custom component, "
-            "which this deployment does not provide. The browser (WebAssembly) "
-            "demo cannot serve a component frontend; use the hosted app, or run "
-            "the toolkit locally. Every figure it would show is on the Borehole "
-            "design, Pumping test, Water quality and Costing pages."
+            "The Depth Spine workspace is not available in this deployment. "
+            "Every figure it would show is on the Borehole design, Pumping "
+            "test, Water quality and Costing pages."
         )
         if SPINE_ERROR:
-            st.caption(f"Component unavailable: {SPINE_ERROR}")
+            st.caption(f"Workspace unavailable: {SPINE_ERROR}")
     elif spine_log is None:
         st.info(
             "Load a drilling log on the Borehole design page first — the spine "
@@ -2275,16 +2357,34 @@ with tab_spine:
                 + " to fill in the remaining stages."
             )
 
-        result = depth_spine(spine_view, key="spine_workspace")
+        interactive = component_available()
+        result = None
 
-        # The component reports the intervals it moved; re-deriving them is
-        # this script's job, not the browser's.
-        if result and "screens" in result:
-            incoming = result.get("screens")
-            moved = [(float(a), float(b)) for a, b in incoming] if incoming else None
-            if moved != placed:
-                st.session_state[spine_key] = moved
-                st.rerun()
+        if interactive:
+            result = depth_spine(spine_view, key="spine_workspace")
+
+            # The component reports the intervals it moved; re-deriving them is
+            # this script's job, not the browser's.
+            if result and "screens" in result:
+                incoming = result.get("screens")
+                moved = (
+                    [(float(a), float(b)) for a, b in incoming] if incoming else None
+                )
+                if moved != placed:
+                    st.session_state[spine_key] = moved
+                    st.rerun()
+        elif static_build_available():
+            # No server to serve a component from - the browser demo. The same
+            # workspace goes into an iframe with the payload baked in, and the
+            # screens are edited below instead of by dragging. Every figure is
+            # still computed by the toolkit; only the gesture changes.
+            _spine_iframe(render_static(spine_view), _spine_frame_height(spine_view))
+            _spine_screen_editor(spine_view, spine_key, placed)
+        else:
+            st.warning(
+                "The workspace needs either the component build or the static "
+                "build. Run `npm install && npm run build:all` in ui/depth-spine/."
+            )
 
         # An analyst-placed design is the project's design: the drawing, the
         # bill of quantities and the completion report all follow from the same

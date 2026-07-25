@@ -146,3 +146,52 @@ def test_generated_design_is_unchanged_when_no_override_is_given(sample_data):
         (45.0, 50.0),
         (55.0, 60.0),
     ]
+
+
+def test_static_render_bakes_the_payload_in():
+    """The demo path: one page, payload inside, nothing to fetch."""
+    from groundwater.depth_spine.inline import render_static
+
+    html = render_static(
+        {"project": "x"},
+        template="<html><script id='spine-data'>__SPINE_VIEW__</script></html>",
+    )
+    assert "__SPINE_VIEW__" not in html
+    assert '"project": "x"' in html
+    # Static by default: the handles have nowhere to send an interval.
+    assert '"interactive": false' in html
+
+
+def test_static_render_cannot_be_broken_by_a_closing_script_tag():
+    """A determinand remark containing </script> must not end the block."""
+    from groundwater.depth_spine.inline import render_static
+
+    html = render_static(
+        {"note": "see </script><script>alert(1)</script>"},
+        template="<html><script id='spine-data'>__SPINE_VIEW__</script></html>",
+    )
+    assert "</script><script>alert(1)" not in html
+    assert "<\\/script>" in html
+
+
+def test_static_workspace_ships_with_the_package():
+    """The demo mounts the package alone, so the build has to travel with it."""
+    from groundwater.depth_spine import STATIC_BUILD, static_build_available
+
+    assert static_build_available(), (
+        f"{STATIC_BUILD} is missing; run `npm run build:inline` in ui/depth-spine/"
+    )
+    assert STATIC_BUILD.parent.parent.name == "depth_spine"
+    markup = STATIC_BUILD.read_text(encoding="utf-8")
+    assert "__SPINE_VIEW__" in markup
+    # Self-contained: no separate script or stylesheet to fetch.
+    assert 'src="./assets' not in markup and 'href="./assets' not in markup
+
+
+def test_real_view_survives_the_static_render(dr_timbo):
+    """The full payload has to serialise cleanly into the page."""
+    from groundwater.depth_spine import render_static
+
+    html = render_static(build_view(dr_timbo))
+    assert "Dr. Timbo" in html
+    assert "__SPINE_VIEW__" not in html

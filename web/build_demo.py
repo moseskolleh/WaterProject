@@ -119,17 +119,16 @@ def collect_files() -> dict:
     app_source = (REPO / "app" / "streamlit_app.py").read_text(encoding="utf-8")
     files["streamlit_app.py"] = {"t": "text", "d": app_source}
 
+    # The whole package ships, including depth_spine: importing it no longer
+    # needs the component build, and it carries a self-contained static
+    # workspace (.html) that st.components.v1.html can show here, where a
+    # custom component cannot run.
     package_root = REPO / "src" / "groundwater"
     for path in sorted(package_root.rglob("*")):
         if path.is_dir() or "__pycache__" in path.parts:
             continue
-        # The Depth Spine workspace is a Streamlit custom component: it serves a
-        # built frontend from disk over HTTP, which the in-browser runtime has no
-        # way to do. Shipping it here would only add weight that cannot run.
-        if "depth_spine" in path.parts:
-            continue
         mount_path = "groundwater/" + path.relative_to(package_root).as_posix()
-        if path.suffix in (".py", ".csv", ".yaml", ".txt", ".md"):
+        if path.suffix in (".py", ".csv", ".yaml", ".txt", ".md", ".html"):
             files[mount_path] = {"t": "text", "d": path.read_text(encoding="utf-8")}
         else:
             files[mount_path] = {

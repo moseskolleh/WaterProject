@@ -19,6 +19,7 @@ interface Props {
   onReset: () => void;
   edited: boolean;
   busy: boolean;
+  readOnly?: boolean;
   decision: DecisionRecord | null;
   onDecide: (record: DecisionRecord | null) => void;
 }
@@ -31,6 +32,7 @@ export function DesignStage({
   onReset,
   edited,
   busy,
+  readOnly = false,
   decision,
   onDecide,
 }: Props) {
@@ -114,6 +116,7 @@ export function DesignStage({
             section={section}
             screens={screens}
             dragging={dragging}
+            readOnly={readOnly}
             onHandleDown={start}
             onHandleKey={keyDown}
           />
@@ -196,18 +199,25 @@ export function DesignStage({
         <FlagsList flags={design.flags} empty="No flags raised on the design or the test." />
 
         <div className="hint">
-          <div className="hint-title">Moving a screen</div>
+          <div className="hint-title">
+            {readOnly ? 'Moving a screen' : 'Moving a screen'}
+          </div>
           <div className="hint-body">
-            Drag a handle, or focus one and use the arrow keys — 0.1 m a press,
-            1 m with Shift. On release the toolkit re-runs the design: the casing
-            string, the annulus, the flags and the bill of quantities all come
-            back from Python, so nothing here is a second opinion.
+            {readOnly
+              ? 'Screens are set from the page below in this build. Every figure ' +
+                'here is still computed by the toolkit — the section, the flags ' +
+                'and the bill of quantities all come from the same design.'
+              : 'Drag a handle, or focus one and use the arrow keys — 0.1 m a ' +
+                'press, 1 m with Shift. On release the toolkit re-runs the ' +
+                'design: the casing string, the annulus, the flags and the bill ' +
+                'of quantities all come back from Python, so nothing here is a ' +
+                'second opinion.'}
           </div>
         </div>
 
         <div className="spacer" />
 
-        {edited && (
+        {edited && !readOnly && (
           <button type="button" className="reset-link" onClick={onReset}>
             Back to the generated design
           </button>
@@ -215,6 +225,7 @@ export function DesignStage({
 
         <SignOff
           stage="design"
+          readOnly={readOnly}
           recommended={recommended}
           acceptLabel="the design"
           writesTo="accepting writes to the completion and pumping-test reports"

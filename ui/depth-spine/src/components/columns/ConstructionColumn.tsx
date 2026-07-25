@@ -8,6 +8,8 @@ interface Props {
   /** The intervals currently drawn — the live drag preview, not the payload. */
   screens: Interval[];
   dragging: DragState | null;
+  /** Draw the screens, but do not offer to move them. */
+  readOnly?: boolean;
   onHandleDown: (index: number, edge: Edge) => (e: React.PointerEvent) => void;
   onHandleKey: (
     index: number,
@@ -34,6 +36,7 @@ export function ConstructionColumn({
   section,
   screens,
   dragging,
+  readOnly = false,
   onHandleDown,
   onHandleKey,
 }: Props) {
@@ -93,14 +96,15 @@ export function ConstructionColumn({
             <div key={i}>
               <div
                 className={`screen${active ? ' is-dragging' : ''}`}
-                style={{ top, height, cursor: 'grab' }}
-                onPointerDown={onHandleDown(i, 'body')}
+                style={{ top, height, cursor: readOnly ? 'default' : 'grab' }}
+                onPointerDown={readOnly ? undefined : onHandleDown(i, 'body')}
               >
                 {slots(height).map((t) => (
                   <div key={t} className="slot" style={{ top: t }} />
                 ))}
               </div>
 
+              {!readOnly && (
               <button
                 type="button"
                 role="slider"
@@ -114,6 +118,8 @@ export function ConstructionColumn({
                 onPointerDown={onHandleDown(i, 'top')}
                 onKeyDown={onHandleKey(i, 'top')}
               />
+              )}
+              {!readOnly && (
               <button
                 type="button"
                 role="slider"
@@ -127,6 +133,7 @@ export function ConstructionColumn({
                 onPointerDown={onHandleDown(i, 'base')}
                 onKeyDown={onHandleKey(i, 'base')}
               />
+              )}
 
               <div className="handle-value" style={{ top }}>
                 {s.top.toFixed(1)}

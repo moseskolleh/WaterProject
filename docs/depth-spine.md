@@ -21,6 +21,28 @@ an empty tab. Screens placed on the section are written back to
 page and the completion report all follow from the same object — a screen moved
 here is a screen moved everywhere.
 
+## Two renderings, one workspace
+
+The workspace draws two ways, because two deployments support different things:
+
+| | Streamlit app | Browser demo (WebAssembly) |
+| --- | --- | --- |
+| Rendered by | the custom component | `st.iframe` / `st.components.v1.html` |
+| Screens edited by | dragging the handles | typing the intervals |
+| Everything else | identical | identical |
+
+A custom component serves its frontend from disk over HTTP, which the
+in-browser runtime has no way to do. So `npm run build:inline` produces a
+second, self-contained build — all CSS and JS inlined, the payload baked in —
+which the demo puts in an iframe. It carries no handles, because there is no
+Python on the other end to re-derive an interval, and the page offers the same
+edit as numbers instead. The figures are the same figures: both renderings draw
+the payload `build_view` produced.
+
+The static build ships **inside the package**, at
+`groundwater/depth_spine/static/workspace.html`, because the demo mounts the
+package into a filesystem where `ui/` does not exist.
+
 ## The rule this is built on
 
 **The browser computes no hydrogeology.** Every figure the workspace shows —
@@ -102,11 +124,10 @@ Three, all small and additive:
    flag** rather than silently moved. The generated path is unchanged, and a
    test asserts it.
 
-2. **`web/build_demo.py`** skips this package when inlining the browser demo. A
-   Streamlit custom component serves a built frontend from disk over HTTP, which
-   the in-browser runtime cannot do, so shipping it there would only add weight
-   that cannot run. The page itself imports the component defensively and
-   explains itself when it is absent, so the demo still runs every other page.
+2. **`web/build_demo.py`** inlines `.html` files from the package, so the static
+   workspace travels into the demo bundle (about 250 KB). Importing the package
+   no longer requires either build — the component is declared on first use —
+   so the demo can import it and use the static path.
 
 3. **`_next_step` in `app/streamlit_app.py`** takes an optional `key`. It
    derived the widget key from the destination page alone, so two pages routing
@@ -131,14 +152,20 @@ section for and it declines to offer them.
 ## Rebuilding the frontend
 
 ```bash
-cd ui/depth-spine && npm install && npm run build     # writes ui/depth-spine/dist
+cd ui/depth-spine && npm install
+npm run build         # the component  -> ui/depth-spine/dist
+npm run build:inline  # the static page -> src/groundwater/depth_spine/static/
+npm run build:all     # both — run this before committing a UI change
+python web/build_demo.py   # then refresh the demo bundle
+
 DEPTH_SPINE_DEV=1 streamlit run app/streamlit_app.py  # against the Vite dev server
 ```
 
+Both builds are committed, for the same reason: neither Streamlit Community
+Cloud nor GitHub Pages can run npm.
+
 `ui/depth-spine/dist` is committed on purpose, and its `.gitignore` negates the
-repository-root `dist/` rule: Streamlit Community Cloud has no npm, so the
-component serves that directory as-is. Rebuild and commit it whenever the UI
-changes.
+repository-root `dist/` rule.
 
 ## Not built
 

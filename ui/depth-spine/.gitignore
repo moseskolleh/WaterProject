@@ -27,3 +27,8 @@ dist-ssr
 # the repository-root `dist/` rule.
 !dist/
 !dist/**
+
+# The inline build's real home is inside the Python package
+# (src/groundwater/depth_spine/static/), placed there by scripts/place-static.mjs.
+# Committing this intermediate too would ship the same 250 KB twice.
+dist-inline
