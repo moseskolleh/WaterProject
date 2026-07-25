@@ -123,6 +123,11 @@ def collect_files() -> dict:
     for path in sorted(package_root.rglob("*")):
         if path.is_dir() or "__pycache__" in path.parts:
             continue
+        # The Depth Spine workspace is a Streamlit custom component: it serves a
+        # built frontend from disk over HTTP, which the in-browser runtime has no
+        # way to do. Shipping it here would only add weight that cannot run.
+        if "depth_spine" in path.parts:
+            continue
         mount_path = "groundwater/" + path.relative_to(package_root).as_posix()
         if path.suffix in (".py", ".csv", ".yaml", ".txt", ".md"):
             files[mount_path] = {"t": "text", "d": path.read_text(encoding="utf-8")}

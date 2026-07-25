@@ -364,3 +364,26 @@ def test_recompute_on_project_load(sample_data):
         assert key in at.session_state, f"{key} not rebuilt on load"
     # the recompute flag is consumed, so it does not run again
     assert "_recompute_pending" not in at.session_state
+
+
+def test_depth_spine_page(app):
+    """The Depth Spine page draws whatever the project has loaded.
+
+    It shares session state with the rest of the app, so the drilling log the
+    Borehole design page parsed is the hole the spine draws, and a screen
+    placed on the section becomes the project's design.
+    """
+    from groundwater.depth_spine.view import SpineInputs, build_view
+
+    app.selectbox(key="sample_log").select("dr_timbo/dr_timbo_drilling_log.xlsx")
+    app.run()
+    assert not app.exception
+    log = app.session_state["drilling_log"]
+
+    view = build_view(SpineInputs(name="test", log=log))
+    assert view["section"]["totalDepth"] == log.total_depth_m
+    assert view["section"]["waterStrikes"] == list(log.water_strikes_m)
+    # The bill of quantities comes from the same design the section draws.
+    assert view["costing"]["quantityBasis"]["screenM"] == pytest.approx(
+        sum(s["base"] - s["top"] for s in view["design"]["screens"])
+    )

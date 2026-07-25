@@ -158,6 +158,19 @@ from groundwater.ves.interpret import (
 )
 from groundwater.ves.plots import plot_sounding_curve
 
+# The Depth Spine workspace is a Streamlit custom component. It cannot work in
+# the WebAssembly demo - a component serves its frontend from disk over HTTP -
+# and web/build_demo.py leaves the package out of that build, so import it
+# defensively and let the page explain itself when it is missing.
+try:
+    from groundwater.depth_spine import build_view as build_spine_view, depth_spine
+    from groundwater.depth_spine.view import SpineInputs
+
+    SPINE_ERROR = ""
+except Exception as _spine_exc:  # pragma: no cover - depends on the deployment
+    build_spine_view = depth_spine = SpineInputs = None
+    SPINE_ERROR = str(_spine_exc)
+
 # ---------------------------------------------------------------------------
 # Page setup and branding
 # ---------------------------------------------------------------------------
@@ -773,7 +786,8 @@ def _load_project() -> None:
 
 NAV_GROUPS: list[tuple[str, list[str]]] = [
     ("Project", ["Overview", "Guided start", "Site maps"]),
-    ("Investigation", ["Geophysics (VES)", "Borehole design", "Scanned sheets"]),
+    ("Investigation", ["Geophysics (VES)", "Borehole design", "Depth Spine",
+                       "Scanned sheets"]),
     ("Testing", ["Pumping test", "Water quality"]),
     ("Delivery", ["Costing & BoQ", "Supervision", "Handover", "Templates"]),
     ("Area analysis", ["Water points", "Coverage gap", "Portfolio"]),
@@ -801,17 +815,20 @@ def _goto(page: str) -> None:
     st.session_state["nav"] = page
 
 
-def _next_step(label: str, page: str, note: str = "") -> None:
+def _next_step(label: str, page: str, note: str = "", key: str = "") -> None:
     """Bottom-of-page route to the next lifecycle step.
 
     Every page except the Overview used to dead-end: having read the
     recommended drilling depth there was no way on to Costing except hunting
     through the sidebar.
+
+    ``key`` disambiguates when two pages route to the same destination - the
+    key is otherwise derived from the destination alone, which would collide.
     """
     st.divider()
     col_a, col_b = st.columns([3, 1])
     col_a.caption(note or f"Next: {page}")
-    col_b.button(label, key=f"next_{_page_key(page)}", width="stretch",
+    col_b.button(label, key=key or f"next_{_page_key(page)}", width="stretch",
                  on_click=_goto, args=(page,))
 
 
@@ -1125,6 +1142,7 @@ tab_ves = _page("Geophysics (VES)")
 tab_cost = _page("Costing & BoQ")
 tab_supervision = _page("Supervision")
 tab_design = _page("Borehole design")
+tab_spine = _page("Depth Spine")
 tab_pump = _page("Pumping test")
 tab_quality = _page("Water quality")
 tab_handover = _page("Handover")
@@ -2191,6 +2209,142 @@ with tab_design:
             "The Costing & BoQ page can price this design: casing, screen and "
             "gravel quantities carry over automatically."
         )
+
+# ---------------------------------------------------------------------------
+# Depth Spine
+# ---------------------------------------------------------------------------
+with tab_spine:
+    st.header("Depth Spine")
+    st.caption(
+        "The whole borehole on one depth axis: the cuttings log, the casing "
+        "string and the water levels registered against the same ruler, with "
+        "the screened intervals editable. Everything shown is computed here, "
+        "by the same functions that write the reports."
+    )
+
+    spine_log = st.session_state.get("drilling_log")
+
+    if depth_spine is None:
+        st.info(
+            "The Depth Spine workspace needs the Streamlit custom component, "
+            "which this deployment does not provide. The browser (WebAssembly) "
+            "demo cannot serve a component frontend; use the hosted app, or run "
+            "the toolkit locally. Every figure it would show is on the Borehole "
+            "design, Pumping test, Water quality and Costing pages."
+        )
+        if SPINE_ERROR:
+            st.caption(f"Component unavailable: {SPINE_ERROR}")
+    elif spine_log is None:
+        st.info(
+            "Load a drilling log on the Borehole design page first — the spine "
+            "is drawn from the logged hole."
+        )
+        st.button(
+            "Go to Borehole design", key="spine_goto_design",
+            on_click=_goto, args=("Borehole design",),
+        )
+    else:
+        analysis = st.session_state.get("pump_analysis")
+        assessment = st.session_state.get("wq_assessment")
+
+        # The screens the analyst has placed on the section, if any. Keyed by
+        # the borehole so one hole's screens never land on another's.
+        spine_key = f"spine_screens_{spine_log.borehole_ref or 'bh'}"
+        placed = st.session_state.get(spine_key)
+
+        spine_view = build_spine_view(
+            SpineInputs(
+                name=spine_log.site.community or "Borehole",
+                log=spine_log,
+                analysis=analysis,
+                assessment=assessment,
+                config=CONFIG,
+            ),
+            screens_m=placed,
+        )
+
+        missing = []
+        if analysis is None:
+            missing.append("a pumping test")
+        if assessment is None:
+            missing.append("a water quality analysis")
+        if missing:
+            st.caption(
+                "Showing the section and the bill of quantities. Load "
+                + " and ".join(missing)
+                + " to fill in the remaining stages."
+            )
+
+        result = depth_spine(spine_view, key="spine_workspace")
+
+        # The component reports the intervals it moved; re-deriving them is
+        # this script's job, not the browser's.
+        if result and "screens" in result:
+            incoming = result.get("screens")
+            moved = [(float(a), float(b)) for a, b in incoming] if incoming else None
+            if moved != placed:
+                st.session_state[spine_key] = moved
+                st.rerun()
+
+        # An analyst-placed design is the project's design: the drawing, the
+        # bill of quantities and the completion report all follow from the same
+        # object, so a screen moved here is a screen moved everywhere.
+        if placed:
+            st.session_state.borehole_design = design_borehole(
+                log=spine_log,
+                static_water_level_m=(
+                    analysis.test.static_water_level_m if analysis else None
+                ),
+                pump_intake_m=(
+                    analysis.yield_recommendation.pump_installation_depth_m
+                    if analysis and analysis.yield_recommendation
+                    else None
+                ),
+                rules=CONFIG.design,
+                screens_m=placed,
+            )
+            col_note, col_reset = st.columns([4, 1])
+            col_note.success(
+                "Screens placed on the section. The Borehole design drawing, the "
+                "Costing & BoQ page and the completion report now use this design."
+            )
+            if col_reset.button("Reset", key="spine_reset"):
+                del st.session_state[spine_key]
+                st.rerun()
+
+        ledger = (result or {}).get("ledger") or {}
+        if ledger:
+            st.subheader("Decisions signed here")
+            labels = {
+                "design": "Design",
+                "quality": "Water quality",
+                "costing": "Costing & BoQ",
+            }
+            for stage_id, record in ledger.items():
+                overridden = record["status"] == "overridden"
+                with st.container(border=True):
+                    head, meta = st.columns([3, 2])
+                    head.markdown(
+                        f"**{labels.get(stage_id, stage_id)}** — {record['value']}"
+                        + (
+                            "  ·  :orange[overridden]"
+                            if overridden
+                            else "  ·  :green[accepted]"
+                        )
+                    )
+                    meta.caption(f"{record['signatory']} · {record['at']}")
+                    if overridden:
+                        st.caption(
+                            f"Toolkit recommended **{record['recommended']}**. "
+                            f"Reason given: {record['reason']}"
+                        )
+                    if not record["clean"]:
+                        st.caption(":orange[Signed with a flag still open.]")
+            st.session_state.spine_ledger = ledger
+
+    _next_step("Price this design →", "Costing & BoQ",
+               "Next: price the design on the section.",
+               key="next_spine_costing")
 
 # ---------------------------------------------------------------------------
 # Costing
