@@ -57,6 +57,32 @@ def test_programme_attempts_and_rollup():
     )
 
 
+@pytest.mark.parametrize(
+    "required,success,attempts",
+    [
+        (21, 35.0, 60),   # 60.000000000000007 in binary floating point
+        (7, 5.6, 125),
+        (14, 2.8, 500),
+        (20, 35.0, 58),   # a genuine fraction still rounds up
+        (10, 70.0, 15),
+        (10, 100.0, 10),
+    ],
+)
+def test_exact_attempt_counts_do_not_gain_a_phantom_dry_hole(
+    required, success, attempts
+):
+    """21 wells at a 35 percent siting success rate is exactly 60 attempts.
+
+    The division lands just above 60 in binary floating point, and ceil()
+    then budgeted a 61st attempt - a whole dry borehole's drilling cost
+    added to the programme.
+    """
+    programme = estimate_programme_cost(
+        _per_well(), required, success_rate_percent=success
+    )
+    assert programme.n_attempted == attempts
+
+
 def test_programme_transport_charged_once():
     """The package shares one mobilisation instead of one per well."""
     single = estimate_borehole_cost(_per_well())

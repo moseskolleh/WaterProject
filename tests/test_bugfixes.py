@@ -471,6 +471,37 @@ def test_interpret_model_handles_a_bare_half_space():
     assert interp.max_drilling_depth_m == 0.0
 
 
+def test_discharges_do_not_carry_over_to_another_borehole():
+    """The discharge boxes are keyed by step number, so they outlived the
+    sheet they were typed for. A second borehole whose sheet also lacks
+    discharges silently inherited the first one's rates - and transmissivity,
+    safe yield and pump setting depth are all proportional to them."""
+    from pathlib import Path
+
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+
+    app_path = str(Path(__file__).resolve().parents[1] / "app" / "streamlit_app.py")
+    at = AppTest.from_file(app_path, default_timeout=600)
+    at.session_state["nav"] = "Pumping test"
+    # rates left behind by a previously open sheet
+    for step in (1, 2, 3):
+        at.session_state[f"q_{step}"] = 9.9
+    at.run()
+    at.selectbox(key="sample_pump").select("kuntolo/kuntolo_step_test.xlsx")
+    at.run()
+    assert not at.exception
+    analysis = at.session_state["pump_analysis"]
+    assert [s.discharge_m3_per_h for s in analysis.test.steps] == [None, None, None]
+
+    # a rate typed for this sheet is still used
+    for step, value in ((1, 2.5), (2, 3.5), (3, 4.5)):
+        at.number_input(key=f"q_{step}").set_value(value)
+        at.run()
+    analysis = at.session_state["pump_analysis"]
+    assert [s.discharge_m3_per_h for s in analysis.test.steps] == [2.5, 3.5, 4.5]
+
+
 # --- robustness one-liners --------------------------------------------------
 
 def test_loan_schedule_rejects_zero_term():

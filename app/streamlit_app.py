@@ -1150,6 +1150,20 @@ def _clamp(value: float, low: float, high: float) -> float:
     return min(max(float(value), low), high)
 
 
+def _source_signature(source) -> tuple:
+    """A cheap identity for an uploaded file or bundled sample.
+
+    Used to notice that a page is now looking at a different borehole's
+    sheet, so inputs typed for the previous one are not carried over.
+    """
+    if not isinstance(source, dict):
+        return ()
+    if source.get("sample"):
+        return ("sample", str(source["sample"]))
+    blob = source.get("bytes") or b""
+    return ("upload", str(source.get("name") or ""), len(blob))
+
+
 def _rows_html(rows: list[tuple[str, str]]) -> str:
     return "".join(
         f"<div class='gw-row'><span>{_html.escape(str(k))}</span>"
@@ -1841,6 +1855,20 @@ with tab_pump:
             f"and {'a' if test.recovery_time_min is not None else 'no'} recovery record."
         )
         show_flags(test.flags)
+
+        # The discharge boxes are keyed by step number, so they outlive the
+        # sheet they were typed for: opening a second borehole whose sheet
+        # also lacks discharges silently reused the first one's rates, and
+        # transmissivity, safe yield and pump depth are all proportional to
+        # them. Clear them when the source changes - but not on the run a
+        # saved project is restored, which brings back both together.
+        pump_sig = repr(_source_signature(st.session_state.get("src_pump")))
+        if st.session_state.get("pump_source_sig") != pump_sig:
+            st.session_state["pump_source_sig"] = pump_sig
+            if not st.session_state.get("project_just_loaded"):
+                for stale_q in [k for k in list(st.session_state)
+                                if k.startswith("q_")]:
+                    st.session_state.pop(stale_q, None)
 
         missing = [s for s in test.steps if s.discharge_m3_per_h is None]
         if missing:
