@@ -502,6 +502,46 @@ def test_discharges_do_not_carry_over_to_another_borehole():
     assert [s.discharge_m3_per_h for s in analysis.test.steps] == [2.5, 3.5, 4.5]
 
 
+def test_excel_date_in_the_depth_column_is_rejected_and_reported(tmp_path):
+    """Excel turns "5-10" typed into a General cell into 10 May.
+
+    openpyxl hands that back as a datetime, and reading it as text gave a
+    lithology interval of 5 to 2026 metres - which then placed screens and
+    priced casing against a two-kilometre hole.
+    """
+    import datetime
+    import shutil
+    from pathlib import Path
+
+    from openpyxl import load_workbook
+
+    from groundwater.ingestion import read_drilling_workbook
+    from groundwater.utils import parse_depth_interval
+
+    assert parse_depth_interval(datetime.datetime(2026, 5, 10)) is None
+    assert parse_depth_interval(datetime.date(2026, 1, 5)) is None
+    assert parse_depth_interval("5-10") == (5.0, 10.0)  # still parses
+
+    src = (Path(__file__).resolve().parents[1] / "examples" / "data" /
+           "dr_timbo" / "dr_timbo_drilling_log.xlsx")
+    dst = tmp_path / "date_interval.xlsx"
+    shutil.copy(src, dst)
+    book = load_workbook(dst)
+    sheet = book.active
+    converted = 0
+    for row in sheet.iter_rows():
+        for cell in row:
+            if isinstance(cell.value, str) and cell.value.strip() == "5-10":
+                cell.value = datetime.datetime(2026, 5, 10)
+                converted += 1
+    assert converted, "sample log has no 5-10 interval to convert"
+    book.save(dst)
+
+    log = read_drilling_workbook(dst)
+    assert max(i.bottom_m for i in log.intervals) < 200  # no 2026 m interval
+    assert any(f.code == "interval_read_as_date" for f in log.flags)
+
+
 # --- robustness one-liners --------------------------------------------------
 
 def test_loan_schedule_rejects_zero_term():

@@ -8,6 +8,7 @@ consistently across figures, tables and reports.
 
 from __future__ import annotations
 
+import datetime
 import math
 import re
 from typing import Iterable
@@ -60,8 +61,17 @@ def parse_depth_interval(value) -> tuple[float, float] | None:
 
     Depths are unsigned; the hyphen is the range separator, never a
     minus sign. Returns ``(top, bottom)`` in metres or ``None``.
+
+    A date is never an interval. Excel silently turns ``5-10`` typed into a
+    General cell into 10 May, and openpyxl hands that back as a datetime;
+    read as text it yielded a 5 to 2026 m interval, which then placed
+    screens and priced casing against a two-kilometre hole.
+
+    >>> import datetime
+    >>> parse_depth_interval(datetime.datetime(2026, 5, 10)) is None
+    True
     """
-    if value is None:
+    if value is None or isinstance(value, (datetime.date, datetime.datetime)):
         return None
     match = _INTERVAL_RE.search(str(value))
     if match is None:

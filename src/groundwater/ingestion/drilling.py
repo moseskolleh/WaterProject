@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 from pathlib import Path
 
 from ..models import DataFlag, DrillingLog, LithologyInterval
@@ -60,6 +61,21 @@ def drilling_from_grid(grid: list[list], source: str = "") -> DrillingLog:
 
             raw_interval = cell("interval")
             if clean_text(raw_interval).lower().startswith("note"):
+                continue
+            if isinstance(raw_interval, (datetime.date, datetime.datetime)):
+                # Excel turns "5-10" typed into a General cell into 10 May.
+                # Losing the row is better than a 5 to 2026 m interval, but
+                # the crew has to know a row went missing.
+                flags.append(
+                    DataFlag(
+                        "warning",
+                        "interval_read_as_date",
+                        f"Depth interval cell holds the date "
+                        f"{raw_interval:%d %b %Y} - Excel converts entries like "
+                        '"5-10" into dates. Format the depth column as Text '
+                        "and retype the interval; this row was skipped.",
+                    )
+                )
                 continue
             interval = parse_depth_interval(raw_interval)
             if interval is None:
