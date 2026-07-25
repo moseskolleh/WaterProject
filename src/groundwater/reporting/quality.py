@@ -17,7 +17,7 @@ from docx.shared import Pt, RGBColor
 from ..config import Config
 from ..quality.assess import WaterQualityAssessment
 from ..quality.diagrams import plot_piper, plot_stiff
-from ..utils import fmt_num
+from ..utils import fmt_num, safe_slug
 from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
 
@@ -122,6 +122,11 @@ def build_quality_report(
     site = sample.site
     figures = Path(inputs.figures_dir)
     figures.mkdir(parents=True, exist_ok=True)
+    # Qualify figure filenames with the site: several reports share one
+    # figures directory in an app session and generation is guarded by an
+    # existence check, so fixed names made the second report silently reuse
+    # the first site's figures.
+    slug = safe_slug(sample.borehole_ref or site.community, "site")
 
     rb = ReportBuilder(config.style, title=f"Water Quality Report - {site.community}")
     rb.cover(
@@ -271,8 +276,8 @@ def build_quality_report(
     # ---- 5 diagrams ----------------------------------------------------------------
     if inputs.include_diagrams and ionic is not None:
         rb.heading("5. Hydrochemical Facies", 1)
-        piper_path = figures / "piper.png"
-        stiff_path = figures / "stiff.png"
+        piper_path = figures / f"piper_{slug}.png"
+        stiff_path = figures / f"stiff_{slug}.png"
         if not piper_path.exists():
             plot_piper([sample], path=piper_path, style=config.style)
         if not stiff_path.exists():

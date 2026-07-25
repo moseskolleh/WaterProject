@@ -542,6 +542,47 @@ def test_excel_date_in_the_depth_column_is_rejected_and_reported(tmp_path):
     assert any(f.code == "interval_read_as_date" for f in log.flags)
 
 
+def test_two_boreholes_do_not_share_report_figures(tmp_path):
+    """Report figures were written under fixed filenames and regenerated only
+    when absent. The app gives every report in a session the same figures
+    directory, so the second borehole's client report embedded the first
+    borehole's water-level record.
+    """
+    import hashlib
+    from pathlib import Path
+
+    from groundwater.config import Config
+    from groundwater.hydraulics import analyse_pumping_test
+    from groundwater.ingestion import read_pumping_workbook
+    from groundwater.reporting.pumping import (
+        PumpingReportInputs,
+        build_pumping_report,
+    )
+
+    data = Path(__file__).resolve().parents[1] / "examples" / "data"
+    config = Config()
+
+    first = read_pumping_workbook(data / "dr_timbo" / "dr_timbo_constant_test.xlsx")
+    build_pumping_report(
+        PumpingReportInputs(analysis=analyse_pumping_test(first, config.pumping),
+                            figures_dir=tmp_path),
+        out_path=tmp_path / "first.docx", config=config,
+    )
+    second = read_pumping_workbook(data / "kuntolo" / "kuntolo_step_test.xlsx")
+    for step in second.steps:
+        step.discharge_m3_per_h = 2.5
+    build_pumping_report(
+        PumpingReportInputs(analysis=analyse_pumping_test(second, config.pumping),
+                            figures_dir=tmp_path),
+        out_path=tmp_path / "second.docx", config=config,
+    )
+
+    overviews = sorted(tmp_path.glob("test_overview*.png"))
+    assert len(overviews) == 2, "both boreholes must get their own figure"
+    digests = {hashlib.sha256(p.read_bytes()).hexdigest() for p in overviews}
+    assert len(digests) == 2, "the second report reused the first one's figure"
+
+
 # --- robustness one-liners --------------------------------------------------
 
 def test_loan_schedule_rejects_zero_term():

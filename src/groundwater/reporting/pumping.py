@@ -24,7 +24,7 @@ from ..hydraulics.plots import (
     plot_test_overview,
     plot_theis,
 )
-from ..utils import fmt_num
+from ..utils import fmt_num, safe_slug
 from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
 
@@ -87,6 +87,11 @@ def build_pumping_report(
     test = analysis.test
     site = test.site
     figures = Path(inputs.figures_dir)
+    # Qualify figure filenames with the borehole: several reports share one
+    # figures directory in an app session, and generation is guarded by an
+    # existence check, so fixed names made the second report silently embed
+    # the first borehole's curves.
+    slug = safe_slug(test.borehole_ref or test.site.community, "bh")
     figures.mkdir(parents=True, exist_ok=True)
 
     rb = ReportBuilder(config.style, title=f"Pumping Test Report - {site.community}")
@@ -144,7 +149,7 @@ def build_pumping_report(
         "recorded.",
         align="justify",
     )
-    overview_path = figures / "test_overview.png"
+    overview_path = figures / f"test_overview_{slug}.png"
     if not overview_path.exists():
         plot_test_overview(test, path=overview_path, style=config.style)
     fig_no = rb.figure(overview_path, "Water level record for the full test including recovery.")
@@ -174,7 +179,7 @@ def build_pumping_report(
         step = test.steps[0]
         t = step.time_min
         s = step.water_level_m - swl
-        cj_path = figures / "cooper_jacob.png"
+        cj_path = figures / f"cooper_jacob_{slug}.png"
         if not cj_path.exists():
             plot_cooper_jacob(t, s, cj, path=cj_path, style=config.style)
         rb.figure(cj_path, "Drawdown against log time with the fitted straight line.")
@@ -197,7 +202,7 @@ def build_pumping_report(
         th = analysis.theis
         rb.heading(f"3.{section} Theis type curve fit", 2)
         step = test.steps[0]
-        theis_path = figures / "theis_fit.png"
+        theis_path = figures / f"theis_fit_{slug}.png"
         if not theis_path.exists():
             plot_theis(step.time_min, step.water_level_m - swl, th, path=theis_path, style=config.style)
         rb.figure(theis_path, "Log-log drawdown with the fitted Theis curve.")
@@ -216,7 +221,7 @@ def build_pumping_report(
         section += 1
         rec = analysis.recovery
         rb.heading(f"3.{section} Theis recovery method", 2)
-        rec_path = figures / "recovery.png"
+        rec_path = figures / f"recovery_{slug}.png"
         if not rec_path.exists():
             plot_recovery(
                 test.recovery_time_min, test.residual_drawdown(),
@@ -238,7 +243,7 @@ def build_pumping_report(
         section += 1
         st = analysis.step_test
         rb.heading(f"3.{section} Step drawdown analysis (Hantush-Bierschenk)", 2)
-        st_path = figures / "step_test.png"
+        st_path = figures / f"step_test_{slug}.png"
         if not st_path.exists():
             plot_step_test(test, st, path=st_path, style=config.style)
         rb.figure(st_path, "Step drawdown data and the specific drawdown fit.")
@@ -262,7 +267,7 @@ def build_pumping_report(
     elif test.test_type.startswith("step") and not test.has_discharge:
         section += 1
         rb.heading(f"3.{section} Step drawdown analysis", 2)
-        step_path = figures / "step_test.png"
+        step_path = figures / f"step_test_{slug}.png"
         if not step_path.exists():
             plot_step_test(test, None, path=step_path, style=config.style)
         rb.figure(step_path, "Step drawdown curves (discharge pending).")
