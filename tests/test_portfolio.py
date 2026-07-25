@@ -40,6 +40,40 @@ def test_classify_status():
     assert classify_status({}) == "other"
 
 
+def test_a_completed_dry_hole_is_not_a_success():
+    """"Completed" describes the works, not the outcome, and "unsuccessful"
+    contains "success". Matching the positive words first reported failed
+    boreholes as successful and inflated the programme success rate."""
+    for status in (
+        "Completed - dry",
+        "Complete (abandoned)",
+        "Drilling complete, no water struck",
+        "Unsuccessful",
+        "Not successful",
+    ):
+        assert classify_status({"status": status}) == "dry", status
+    # genuinely successful wording still classifies as such
+    for status in ("Successful", "Completed and equipped", "Productive borehole"):
+        assert classify_status({"status": status}) == "successful", status
+
+
+def test_missing_utm_zone_infers_the_zone_consistently():
+    """A hard-coded fallback zone put the site 6 degrees (~660 km) out.
+
+    SiteMetadata assumed 28 and the portfolio assumed 29, so the same
+    zone-less project resolved to two different continents' worth of
+    longitude and dropped off the portfolio map.
+    """
+    from groundwater.models import SiteMetadata
+    from groundwater.portfolio import _latlon
+
+    for easting, northing in [(694667.0, 936225.0), (300000.0, 950000.0)]:
+        site = SiteMetadata(community="X", easting=easting, northing=northing)
+        assert site.latlon == _latlon({"easting": easting, "northing": northing})
+        lat, lon = site.latlon
+        assert 6.5 < lat < 10.5 and -13.5 < lon < -10.0
+
+
 def test_portfolio_rows():
     rows = portfolio_rows(_SUMMARIES)
     assert len(rows) == 3

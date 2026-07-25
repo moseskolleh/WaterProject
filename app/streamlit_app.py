@@ -116,6 +116,7 @@ from groundwater.project_io import (
     committee_records,
     deserialize_project,
     serialize_project,
+    stale_on_load,
 )
 from groundwater.recompute import recompute_results
 from groundwater.quality import assess_sample, plot_piper, plot_stiff
@@ -698,10 +699,7 @@ def _load_project() -> None:
     # a loaded project fully replaces the working state: drop the previous
     # data sources, recompute inputs and computed results first, so a stale
     # dataset from earlier in the session cannot bleed into the loaded project
-    for stale in [
-        k for k in list(st.session_state)
-        if k.startswith(("src_", "q_", "chk_", "rmk_")) or k == "design_swl"
-    ]:
+    for stale in stale_on_load(st.session_state):
         st.session_state.pop(stale, None)
     for result_key in (
         "ves_results", "pump_analysis", "wq_assessment", "borehole_design",
@@ -730,13 +728,6 @@ def _load_project() -> None:
         st.session_state.pop("ho_committee", None)
     # reset the rate editor so it shows the loaded values
     st.session_state.pop("rates_editor", None)
-    # drop the supervision widget state so the loaded chk_/rmk_ answers,
-    # not the outgoing project's, seed the radios on the next render
-    for widget_key in [
-        k for k in list(st.session_state)
-        if k.startswith(("chkw_", "rmkw_"))
-    ]:
-        st.session_state.pop(widget_key, None)
     st.session_state.project_loaded = True
     # protect restored inputs from the prefill-reset checks for one run
     st.session_state.project_just_loaded = True

@@ -6,6 +6,7 @@ from groundwater.project_io import (
     committee_records,
     deserialize_project,
     serialize_project,
+    stale_on_load,
 )
 
 
@@ -98,6 +99,39 @@ def test_summary_round_trip():
     updates = deserialize_project(serialize_project(session, "0.2.0"))
     assert updates["summary"]["community"] == "Rokel"
     assert updates["summary"]["safe_yield_m3_per_h"] == 2.4
+
+
+def test_loading_clears_the_outgoing_project_including_the_uploaders():
+    """A file left in a file_uploader outlives the src_ entry it produced.
+
+    choose_input reads the uploader on the very next render and rewrites
+    src_*, so the previous borehole's workbook silently replaced the loaded
+    project's data - and then went into its reports and its next save.
+    """
+    session = {
+        # the outgoing project
+        "src_pump": {"sample": "dr_timbo/dr_timbo_constant_test.xlsx"},
+        "upload_pump": object(),   # the widget behind it
+        "sample_ves": "rokel/rokel_ves.xlsx",
+        "q_1": 2.5,
+        "design_swl": 9.44,
+        "chk_procurement-01": "Yes",
+        "chkw_procurement-01": "Yes",
+        "rmk_procurement-01": "late",
+        "rmkw_procurement-01": "late",
+        # settings that belong to the user, not the project
+        "org_name": "GeomentAqua",
+        "meta_community": "Rokel",
+        "nav": "Supervision",
+    }
+    stale = set(stale_on_load(session))
+    assert "upload_pump" in stale and "sample_ves" in stale
+    assert {"src_pump", "q_1", "design_swl"} <= stale
+    assert {"chk_procurement-01", "chkw_procurement-01"} <= stale
+    assert {"rmk_procurement-01", "rmkw_procurement-01"} <= stale
+    # the loaded file supplies these itself; the branding and nav are not the
+    # project's to clear
+    assert not ({"org_name", "nav"} & stale)
 
 
 def test_bad_file_raises():

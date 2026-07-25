@@ -14,7 +14,7 @@ from typing import Optional
 
 import numpy as np
 
-from .geo import UTMCoordinate, utm_to_geographic
+from .geo import UTMCoordinate, infer_zone_for_sierra_leone, utm_to_geographic
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +64,10 @@ class SiteMetadata:
     def utm(self) -> Optional[UTMCoordinate]:
         if self.easting is None or self.northing is None:
             return None
-        zone = self.utm_zone or 28
+        # A fixed fallback puts half the country in the Atlantic: the two
+        # zones are 6 degrees (about 660 km) apart. The easting alone
+        # identifies the zone in Sierra Leone, so infer it rather than guess.
+        zone = self.utm_zone or infer_zone_for_sierra_leone(self.easting)
         return UTMCoordinate(self.easting, self.northing, zone)
 
     @property

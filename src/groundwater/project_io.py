@@ -24,6 +24,31 @@ PERSIST_PREFIXES = (
     "org_", "meta_", "chk_", "rmk_", "cost_", "fx_", "ho_", "wiz_", "q_", "design_",
 )
 
+# Loading a project replaces the working state, so everything belonging to the
+# outgoing project has to go first - not just the values the file restores.
+# Missing one is silent and expensive: a file left in a file_uploader outlives
+# the src_* entry it produced and is read again on the next render, putting the
+# previous borehole's readings into the loaded project's reports.
+RESET_ON_LOAD_PREFIXES = (
+    "src_",      # stored data sources, replaced by the file's own
+    "q_",        # pumping-test step discharges
+    "chk_",      # supervision answers
+    "rmk_",      # supervision remarks
+    "chkw_",     # ...and the radios that display them
+    "rmkw_",
+    "upload_",   # file_uploader widgets, which outlive their src_ entry
+    "sample_",   # bundled-sample pickers, likewise
+)
+RESET_ON_LOAD_KEYS = ("design_swl",)
+
+
+def stale_on_load(session) -> list[str]:
+    """Session keys belonging to the outgoing project, to drop before a load."""
+    return [
+        key for key in list(session)
+        if str(key).startswith(RESET_ON_LOAD_PREFIXES) or key in RESET_ON_LOAD_KEYS
+    ]
+
 
 def _encode_source(source: dict) -> dict:
     """Encode an uploaded-file or bundled-sample source for the project file."""
