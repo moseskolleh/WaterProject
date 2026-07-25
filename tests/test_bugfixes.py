@@ -699,6 +699,29 @@ def test_wpdx_export_with_a_byte_order_mark_still_parses():
     assert len(parse_wpdx_csv("﻿" + body)) == 2
 
 
+def test_completion_report_quotes_one_step_not_two(sample_data=None):
+    """The Borehole Characteristics block read the dynamic water level from
+    the last step and the flow rate from the first. On the bundled three-step
+    test that printed 2.5 m3/h beside 59 m of drawdown - a pair the client
+    reads as the borehole's yield against its drawdown."""
+    from pathlib import Path
+
+    from groundwater.hydraulics import analyse_pumping_test
+    from groundwater.ingestion import read_pumping_workbook
+
+    data = Path(__file__).resolve().parents[1] / "examples" / "data"
+    test = read_pumping_workbook(data / "kuntolo" / "kuntolo_step_test.xlsx")
+    for step, rate in zip(test.steps, (2.5, 3.5, 4.5)):
+        step.discharge_m3_per_h = rate
+    assert len(test.steps) == 3
+    analysis = analyse_pumping_test(test)
+
+    # the level and the rate the report pairs must come from the same step
+    last = analysis.test.steps[-1]
+    assert last.discharge_m3_per_h == 4.5
+    assert last.water_level_m[-1] == max(s.water_level_m[-1] for s in test.steps)
+
+
 # --- robustness one-liners --------------------------------------------------
 
 def test_loan_schedule_rejects_zero_term():
