@@ -419,6 +419,58 @@ def test_blank_test_type_cell_keeps_the_steps(tmp_path):
     assert any(f.code == "test_type_inferred" for f in test.flags)
 
 
+# --- hydraulics: a zero discharge is a blank, not a rate --------------------
+
+def test_zero_discharge_is_treated_as_not_measured():
+    """A 0 typed into the discharge row divided by zero deep inside the
+    Cooper-Jacob fit. Transmissivity is proportional to Q, so a zero rate is
+    a blank the crew wrote a number into - it belongs on the same handled
+    "pending" path as a missing value, not in a traceback."""
+    from groundwater.config import Config
+    from groundwater.hydraulics import analyse_pumping_test
+    from groundwater.hydraulics.analysis import cooper_jacob
+    from groundwater.models import PumpingStep, PumpingTest
+
+    time_min = np.array([1.0, 2, 3, 5, 8, 12, 20, 30, 45, 60])
+    level = 10 + 1.5 * np.log10(time_min)
+
+    for bad in (0.0, -2.0, float("nan")):
+        test = PumpingTest(
+            site=SiteMetadata(community="Z"), test_type="constant",
+            steps=[PumpingStep(step_number=1, time_min=time_min,
+                               water_level_m=level, discharge_m3_per_h=bad)],
+            static_water_level_m=10.0, borehole_depth_m=50.0,
+        )
+        analysis = analyse_pumping_test(test, Config().pumping)
+        assert analysis.transmissivity_m2_per_day is None
+        assert any(f.code == "invalid_discharge" for f in analysis.flags)
+
+    # a real rate still analyses
+    test = PumpingTest(
+        site=SiteMetadata(community="Z"), test_type="constant",
+        steps=[PumpingStep(step_number=1, time_min=time_min,
+                           water_level_m=level, discharge_m3_per_h=2.93)],
+        static_water_level_m=10.0, borehole_depth_m=50.0,
+    )
+    assert analyse_pumping_test(test, Config().pumping).transmissivity_m2_per_day > 0
+
+    # and calling a fit directly gives a clear error, not ZeroDivisionError
+    with pytest.raises(ValueError, match="greater than zero"):
+        cooper_jacob(time_min, level - 10, 0.0)
+
+
+def test_interpret_model_handles_a_bare_half_space():
+    """A single-layer model has no finite layer bottom; the investigated
+    depth fell back to bottoms[-2] and raised IndexError."""
+    from groundwater.ves import interpret_model
+
+    model = LayeredModel(resistivities=np.array([250.0]), thicknesses=np.array([]))
+    interp = interpret_model(None, model)
+    assert len(interp.layers) == 1
+    # nothing was resolved, so nothing is recommended
+    assert interp.max_drilling_depth_m == 0.0
+
+
 # --- robustness one-liners --------------------------------------------------
 
 def test_loan_schedule_rejects_zero_term():

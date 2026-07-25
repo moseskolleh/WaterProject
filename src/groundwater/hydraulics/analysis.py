@@ -143,6 +143,23 @@ def _line_fit(x: np.ndarray, y: np.ndarray) -> tuple[float, float, float]:
     return slope, intercept, r2
 
 
+def _require_discharge(discharge_m3_per_h) -> float:
+    """A rate of zero is not a measurement, and T is proportional to Q.
+
+    A blank left as 0 on the sheet used to divide by zero deep inside the
+    fit; raising here puts it on the same handled path as a missing value.
+    """
+    if discharge_m3_per_h is None:
+        raise ValueError("No discharge recorded, so transmissivity cannot be fitted")
+    q = float(discharge_m3_per_h)
+    if not math.isfinite(q) or q <= 0:
+        raise ValueError(
+            f"Discharge must be greater than zero to fit an aquifer parameter "
+            f"(got {q:g} m3/h); check the discharge row on the field sheet"
+        )
+    return q
+
+
 def cooper_jacob(
     time_min: np.ndarray,
     drawdown_m: np.ndarray,
@@ -160,6 +177,7 @@ def cooper_jacob(
     the fitted T (and an assumed S for the pumped well) and reported.
     """
     config = config or PumpingConfig()
+    _require_discharge(discharge_m3_per_h)
     t = np.asarray(time_min, dtype=float)
     s = np.asarray(drawdown_m, dtype=float)
     keep = (t > 0) & np.isfinite(s)
@@ -233,6 +251,7 @@ def theis_fit(
     ``s = Q / (4 pi T) W(u)``, ``u = r^2 S / (4 T t)``. Fitting is done
     in log parameter space to keep T and S positive.
     """
+    _require_discharge(discharge_m3_per_h)
     t = np.asarray(time_min, dtype=float) / MIN_PER_DAY
     s = np.asarray(drawdown_m, dtype=float)
     keep = (t > 0) & (s > 0)
@@ -276,6 +295,7 @@ def theis_recovery(
     ``s' = 2.303 Q / (4 pi T) log10(t/t')`` with t measured since
     pumping started and t' since it stopped.
     """
+    _require_discharge(discharge_m3_per_h)
     tp = np.asarray(recovery_time_min, dtype=float)  # t'
     sp = np.asarray(residual_drawdown_m, dtype=float)
     keep = (tp > 0) & np.isfinite(sp)
@@ -514,6 +534,24 @@ def analyse_pumping_test(
             and all(s.discharge_m3_per_h is not None for s in test.steps)
         )
     ]
+    # A zero or negative rate is a blank the crew wrote a 0 into, not a
+    # measurement. Treat it as missing so the pending narrative and the
+    # step-test guards below are right, rather than carrying it into a fit.
+    for step in test.steps:
+        q = step.discharge_m3_per_h
+        if q is not None and not (float(q) > 0 and math.isfinite(float(q))):
+            step.discharge_m3_per_h = None
+            flags.append(
+                DataFlag(
+                    "warning",
+                    "invalid_discharge",
+                    f"Discharge recorded as {float(q):g} m3/h, which cannot be "
+                    "a pumping rate; treated as not measured. Enter the "
+                    "bucket-and-stopwatch value to get transmissivity and yield.",
+                    context=step.label or f"step {step.step_number}",
+                )
+            )
+
     swl = test.static_water_level_m
 
     if test.steps and swl is not None:

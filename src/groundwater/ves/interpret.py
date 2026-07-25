@@ -110,9 +110,16 @@ def interpret_model(
     bottoms = model.depths_bottom
     n = model.n_layers
 
-    investigation = (
-        float(np.max(sounding.ab2)) if sounding is not None else float(bottoms[-2] * 2 + 20)
-    )
+    if sounding is not None:
+        investigation = float(np.max(sounding.ab2))
+    elif n > 1:
+        investigation = float(bottoms[-2] * 2 + 20)
+    else:
+        # A bare half-space with no sounding carries no depth scale at all -
+        # bottoms is just [inf], and bottoms[-2] used to raise IndexError.
+        # Zero is the honest answer: nothing was resolved, so nothing is
+        # recommended.
+        investigation = 0.0
 
     layers: list[LayerInterpretation] = []
     for i in range(n):
