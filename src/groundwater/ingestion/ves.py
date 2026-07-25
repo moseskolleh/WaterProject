@@ -13,6 +13,7 @@ changes; both readings are kept.
 from __future__ import annotations
 
 import csv
+import re
 from pathlib import Path
 
 import numpy as np
@@ -20,6 +21,9 @@ import numpy as np
 from ..models import DataFlag, VESSounding
 from ..utils import clean_text, parse_number
 from . import common
+
+# "MN/2", "MN / 2", "MN /2 (m)" - a typed header keeps its spaces
+_MN_HALF_RE = re.compile(r"mn\s*/\s*2")
 
 
 def _find_data_header(grid: list[list]) -> tuple[int, dict] | None:
@@ -35,10 +39,13 @@ def _find_data_header(grid: list[list]) -> tuple[int, dict] | None:
                 continue
             if "ab/2" in t or t == "ab2" or "ab / 2" in t:
                 cols["ab2"] = c
-            elif t.startswith("mn") and "/2" not in t:
-                cols["mn"] = c
-            elif t.startswith("mn/2") or "mn / 2" in t:
+            # half-MN first, and tolerant of the spaces a typed header carries:
+            # "MN / 2 (m)" does not contain the literal "/2", so it used to fall
+            # through to the full-MN branch and halve every potential spacing
+            elif t.startswith("mn") and _MN_HALF_RE.search(t):
                 cols["mn_half"] = c
+            elif t.startswith("mn"):
+                cols["mn"] = c
             elif "resistivity" in t or t.startswith("rho") or "ohm" in t:
                 cols["rho"] = c
             elif t in ("no.", "no", "reading", "n"):

@@ -419,7 +419,11 @@ def parse_wpdx_csv(text: str) -> list[WaterPoint]:
     fully offline input path - a user downloads their country's export and
     uploads it, no network required.
     """
-    return parse_wpdx_records(csv.DictReader(io.StringIO(text)))
+    # Excel's "CSV UTF-8" writes a byte order mark, which csv.DictReader keeps
+    # on the first field name. When that field is lat_deg every row loses its
+    # coordinates and the file parses to zero points - reported to the user as
+    # "no water points near this site", the opposite of what the export says.
+    return parse_wpdx_records(csv.DictReader(io.StringIO(text.lstrip("﻿"))))
 
 
 def water_points_near(

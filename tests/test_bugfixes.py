@@ -648,6 +648,57 @@ def test_saving_right_after_an_analysis_captures_it():
     assert best.score == max(i.score for i in interps)
 
 
+def test_negative_aquifer_loss_never_reaches_the_report():
+    """s_w/Q against Q can regress to a negative intercept on a noisy step
+    test. A negative aquifer-loss B made 100 B Q / (B Q + C Q^2) negative, and
+    the report printed a borehole efficiency of -50 percent. Only the well
+    loss C was guarded."""
+    from groundwater.hydraulics.analysis import hantush_bierschenk
+
+    result = hantush_bierschenk([2.0, 4.0, 6.0], [0.5, 2.5, 6.0])
+    assert result.aquifer_loss_B >= 0 and result.well_loss_C >= 0
+    assert all(0 <= s["efficiency_percent"] <= 100 for s in result.steps)
+
+    # a normal step test is untouched
+    normal = hantush_bierschenk([2.0, 4.0, 6.0], [1.0, 3.2, 7.2])
+    assert normal.aquifer_loss_B > 0 and normal.well_loss_C > 0
+    assert all(0 < s["efficiency_percent"] < 100 for s in normal.steps)
+
+
+def test_half_mn_column_header_with_spaces_is_recognised():
+    """"MN / 2 (m)" does not contain the literal "/2", so it fell through to
+    the full-MN branch. Every potential-electrode spacing was then half what
+    the sheet recorded, which feeds the geometric factor and the segment
+    splicing."""
+    from groundwater.ingestion.ves import _find_data_header
+
+    for header, expected in [
+        ("MN (m)", "mn"), ("MN", "mn"),
+        ("MN/2 (m)", "mn_half"), ("MN / 2 (m)", "mn_half"),
+        ("MN /2", "mn_half"), ("MN/ 2 (m)", "mn_half"),
+    ]:
+        grid = [["No.", "AB/2 (m)", header, "Apparent Resistivity (ohm-m)"],
+                [1, 1.0, 0.4, 100.0]]
+        _, cols = _find_data_header(grid)
+        assert expected in cols, f"{header!r} -> {sorted(cols)}"
+
+
+def test_wpdx_export_with_a_byte_order_mark_still_parses():
+    """Excel's "CSV UTF-8" writes a BOM, which csv.DictReader keeps on the
+    first field name. With lat_deg first that silently produced zero water
+    points - reported as "no water points near this site", the opposite of
+    what the export says, and the rehabilitate-or-drill advice with it."""
+    from groundwater.waterpoints import parse_wpdx_csv
+
+    body = (
+        "lat_deg,lon_deg,status_id,water_source_clean,water_tech_clean,row_id\n"
+        "8.4,-13.2,Yes,Borehole,Hand Pump,1\n"
+        "8.5,-13.1,No,Borehole,Hand Pump,2\n"
+    )
+    assert len(parse_wpdx_csv(body)) == 2
+    assert len(parse_wpdx_csv("﻿" + body)) == 2
+
+
 # --- robustness one-liners --------------------------------------------------
 
 def test_loan_schedule_rejects_zero_term():

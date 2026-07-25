@@ -72,6 +72,9 @@ class RecoveryResult:
     r_squared: float
     discharge_m3_per_h: float
     residual_at_end_m: float
+    # theory puts the line through the origin at t/t' = 1; the fitted line
+    # generally does not, and the figure has to draw the line that was fitted
+    intercept_m: float = 0.0
 
 
 @dataclass
@@ -190,7 +193,10 @@ def cooper_jacob(
         t_start = max(t_end / 10.0, t.min())
         window = (t >= t_start)
         if window.sum() < 6:
-            window = np.argsort(t) >= max(len(t) - 6, 0)
+            # the six latest readings. argsort gives sorting indices, not
+            # ranks, so comparing it against a rank picked an arbitrary six
+            # whenever the sheet's times were not already in order
+            window = t >= np.sort(t)[-min(6, len(t))]
         fit_window_min = (float(t[window].min()), float(t[window].max()))
     else:
         window = (t >= fit_window_min[0]) & (t <= fit_window_min[1])
@@ -303,7 +309,7 @@ def theis_recovery(
     if len(tp) < 4:
         raise ValueError("Not enough recovery readings")
     ratio = (pumping_duration_min + tp) / tp
-    slope, _, r2 = _line_fit(np.log10(ratio), sp)
+    slope, intercept, r2 = _line_fit(np.log10(ratio), sp)
     if slope <= 0:
         raise ValueError("Residual drawdown does not decrease; check the data")
     q_day = discharge_m3_per_h * 24.0
@@ -315,6 +321,7 @@ def theis_recovery(
         r_squared=r2,
         discharge_m3_per_h=discharge_m3_per_h,
         residual_at_end_m=float(sp[-1]),
+        intercept_m=float(intercept),
     )
 
 
@@ -339,6 +346,16 @@ def hantush_bierschenk(
         # aquifer loss
         C = 0.0
         B = float(np.mean(sq))
+    if B < 0:
+        # Neither has a negative aquifer loss: it made the reported well
+        # efficiency negative (100 B Q / (B Q + C Q^2) with B < 0), which went
+        # into the report as the borehole's efficiency. Refit through the
+        # origin as pure well loss - least squares of s/Q = C Q with B = 0.
+        B = 0.0
+        C = float(np.sum(s) / np.sum(q**2))
+        fitted = C * q
+        ss_tot = float(np.sum((sq - sq.mean()) ** 2))
+        r2 = 1.0 - float(np.sum((sq - fitted) ** 2)) / ss_tot if ss_tot > 0 else 1.0
     steps = []
     for i, (qi, si) in enumerate(zip(q, s), start=1):
         eff = 100.0 * B * qi / (B * qi + C * qi**2) if (B * qi + C * qi**2) > 0 else 100.0
@@ -411,11 +428,19 @@ def recommend_yield(
     )
 
     if transmissivity is None or swl is None:
-        reason = (
-            "discharge is missing on the field sheet"
-            if transmissivity is None
-            else "static water level is missing"
-        )
+        # name what is actually missing: blaming the discharge when it was
+        # recorded and the fit simply failed sends the crew back to the field
+        # for a number that is already on the sheet
+        missing = []
+        if swl is None:
+            missing.append("static water level is missing")
+        if transmissivity is None:
+            missing.append(
+                "discharge is missing on the field sheet"
+                if not any(s.discharge_m3_per_h for s in test.steps)
+                else "transmissivity could not be fitted from the readings"
+            )
+        reason = " and ".join(missing)
         return YieldRecommendation(
             specific_capacity_m3hr_per_m=specific_capacity,
             available_drawdown_m=available,
