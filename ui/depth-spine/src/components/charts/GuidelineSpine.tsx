@@ -1,30 +1,44 @@
-import type { DeterminandResult } from '../../domain/quality';
+import type { QualityRow } from '../../domain/view';
 
 /**
  * The guideline spine.
  *
  * Same idea as the depth spine: put everything on one shared axis so the
- * judgement is a line crossed rather than a pair of numbers compared. Here the
- * axis is the guideline value itself — every determinand is drawn as a multiple
- * of its own limit, so a single vertical line separates compliant from not.
+ * judgement is a line crossed rather than two numbers compared. Here the axis
+ * is the guideline itself — each determinand is drawn as a multiple of its own
+ * binding limit, computed in Python from the standards table, so one vertical
+ * line separates compliant from not.
  */
 
 const MIN = 0.005;
-const MAX = 3;
+const MAX = 5;
 const SPAN = Math.log10(MAX) - Math.log10(MIN);
+const TICKS = [0.01, 0.1, 1];
 
-/** Ratio -> fraction across the plot, log scale. */
 function pos(ratio: number): number {
   const clamped = Math.max(MIN, Math.min(MAX, ratio));
   return (Math.log10(clamped) - Math.log10(MIN)) / SPAN;
 }
 
-const TICKS = [0.01, 0.1, 1];
+const BASIS: Record<string, string> = {
+  exceeds_health: 'health',
+  exceeds_national: 'national',
+  exceeds_aesthetic: 'acceptability',
+};
 
-export function GuidelineSpine({ results }: { results: DeterminandResult[] }) {
-  const rows = results
-    .filter((r) => r.status !== 'none' && r.whoMin === undefined)
-    .sort((a, b) => (b.ratio ?? 0) - (a.ratio ?? 0));
+function barClass(row: QualityRow): string {
+  if (row.status === 'exceeds_health') return 'is-error';
+  if (row.status === 'exceeds_national' || row.status === 'exceeds_aesthetic')
+    return 'is-warn';
+  return 'is-ok';
+}
+
+export function GuidelineSpine({ rows }: { rows: QualityRow[] }) {
+  // Determinands with no guideline are not judged, so they are not plotted;
+  // they stay in the table, where they belong.
+  const plotted = rows
+    .filter((r) => r.status !== 'no_guideline')
+    .sort((a, b) => (b.ratio ?? -1) - (a.ratio ?? -1));
 
   return (
     <div className="gspine">
@@ -37,7 +51,7 @@ export function GuidelineSpine({ results }: { results: DeterminandResult[] }) {
               className={`gspine-tick${t === 1 ? ' is-guideline' : ''}`}
               style={{ left: `${pos(t) * 100}%` }}
             >
-              {t === 1 ? 'guideline' : `${t}×`}
+              {t === 1 ? 'limit' : `${t}×`}
             </span>
           ))}
         </div>
@@ -45,13 +59,15 @@ export function GuidelineSpine({ results }: { results: DeterminandResult[] }) {
       </div>
 
       <div className="gspine-rows">
-        {rows.map((r) => {
-          const nil = r.who === 0;
+        {plotted.map((r) => {
+          const exceeds = r.status.startsWith('exceeds');
           return (
-            <div className="gspine-row" key={r.id}>
+            <div className="gspine-row" key={r.parameter} title={r.remark}>
               <span className="gspine-label">
-                {r.label}
-                <em>{r.basis === 'health' ? 'health' : r.basis === 'microbiological' ? 'micro' : 'aesthetic'}</em>
+                {r.parameter}
+                <em>
+                  {exceeds ? BASIS[r.status] : r.limitName || (r.belowDetection ? 'nd' : '')}
+                </em>
               </span>
               <div className="gspine-plot">
                 {TICKS.map((t) => (
@@ -61,17 +77,21 @@ export function GuidelineSpine({ results }: { results: DeterminandResult[] }) {
                     style={{ left: `${pos(t) * 100}%` }}
                   />
                 ))}
-                {nil ? (
-                  <span className="gspine-nil">not detected</span>
+                {r.belowDetection ? (
+                  <span className="gspine-nil">below detection</span>
+                ) : r.ratio === null ? (
+                  <span className={`gspine-nil${exceeds ? ' is-warn' : ''}`}>
+                    {exceeds ? 'detected — limit is nil' : 'not detected'}
+                  </span>
                 ) : (
                   <span
-                    className={`gspine-bar is-${r.status}`}
-                    style={{ width: `${pos(r.ratio ?? MIN) * 100}%` }}
+                    className={`gspine-bar ${barClass(r)}`}
+                    style={{ width: `${pos(r.ratio) * 100}%` }}
                   />
                 )}
               </div>
-              <span className={`gspine-value${r.status === 'warn' ? ' is-warn' : ''}`}>
-                {r.value} <em>{r.unit}</em>
+              <span className={`gspine-value${exceeds ? ' is-warn' : ''}`}>
+                {r.value ?? '—'} <em>{r.unit}</em>
               </span>
             </div>
           );

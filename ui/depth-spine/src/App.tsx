@@ -1,8 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Workspace, type Ledger } from './components/Workspace';
-import { drTimboBh01 } from './domain/sample';
-import { drTimboSample, type WaterSample } from './domain/quality';
-import type { Borehole } from './domain/types';
+import type { SpineView } from './domain/view';
 import {
   componentReady,
   isEmbedded,
@@ -11,25 +9,30 @@ import {
   setFrameHeight,
 } from './streamlit/bridge';
 
+/**
+ * The component is a view. It receives a payload derived by the Python
+ * package and sends back what the analyst did — the screen intervals they
+ * moved, and the decisions they signed. It computes no hydrogeology.
+ */
 export default function App() {
-  const [borehole, setBorehole] = useState<Borehole>(drTimboBh01);
-  const [sample, setSample] = useState<WaterSample>(drTimboSample);
+  const [view, setView] = useState<SpineView | null>(null);
+  const [busy, setBusy] = useState(false);
+  const ledger = useRef<Ledger>({});
   const root = useRef<HTMLDivElement>(null);
 
-  // Streamlit hands the borehole and the analysis in as component args;
-  // standalone falls back to the sample project.
   useEffect(() => {
-    if (!isEmbedded()) return;
     const off = onRender((args) => {
-      if (args.borehole) setBorehole(args.borehole as Borehole);
-      if (args.sample) setSample(args.sample as WaterSample);
+      if (args.view) {
+        setView(args.view as SpineView);
+        // Whatever we asked for has come back derived.
+        setBusy(false);
+      }
     });
     document.body.classList.add('embedded');
     componentReady();
     return off;
   }, []);
 
-  // Keep the Streamlit iframe exactly as tall as the workspace.
   useLayoutEffect(() => {
     if (!isEmbedded() || !root.current) return;
     const el = root.current;
@@ -38,14 +41,33 @@ export default function App() {
     const ro = new ResizeObserver(report);
     ro.observe(el);
     return () => ro.disconnect();
+  }, [view]);
+
+  const sendScreens = useCallback((screens: [number, number][] | null) => {
+    setBusy(true);
+    setComponentValue({ screens, ledger: ledger.current });
   }, []);
+
+  const sendLedger = useCallback((next: Ledger) => {
+    ledger.current = next;
+    setComponentValue({ ledger: next });
+  }, []);
+
+  if (!view) {
+    return (
+      <div className="page" ref={root}>
+        <div className="loading">Waiting for the analysis…</div>
+      </div>
+    );
+  }
 
   return (
     <div className="page" ref={root}>
       <Workspace
-        borehole={borehole}
-        sample={sample}
-        onLedgerChange={(ledger: Ledger) => setComponentValue(ledger)}
+        view={view}
+        busy={busy}
+        onScreens={sendScreens}
+        onLedgerChange={sendLedger}
       />
     </div>
   );

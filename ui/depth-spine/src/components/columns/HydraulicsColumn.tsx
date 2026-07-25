@@ -1,58 +1,69 @@
-import { TRACK_H, y } from '../../domain/scale';
-import type { Derived } from '../../domain/derive';
-import { RULES } from '../../domain/derive';
-import type { Borehole } from '../../domain/types';
+import type { Scale } from '../../domain/scale';
+import type { Section } from '../../domain/view';
 
-interface Props {
-  bh: Borehole;
-  d: Derived;
-}
-
-/** Rest level, pumping level, drawdown and the pump intake — all on the spine. */
-export function HydraulicsColumn({ bh, d }: Props) {
-  const { restLevel, pumpingLevel } = bh.hydraulics;
-  const restPx = y(restLevel);
-  const pumpingPx = y(pumpingLevel);
-  const intakePx = y(d.pumpSetting);
-  const shallow = d.submergence < RULES.minSubmergence;
+/** Rest level, the level the test reached, and the pump intake — on the spine. */
+export function HydraulicsColumn({ scale, section }: { scale: Scale; section: Section }) {
+  const { restLevel, pumpingLevel, pumpIntake, stabilised, maxDrawdown } = section.levels;
 
   return (
     <div className="col-hydraulics">
       <div className="col-head">Hydraulics</div>
-      <div className="track" style={{ height: TRACK_H }}>
-        <div className="saturated" style={{ top: restPx }} />
-        <div className="rest-level" style={{ top: restPx }} />
-        <div className="level-label is-rest" style={{ top: restPx - 20 }}>
-          SWL {restLevel.toFixed(1)} m
-        </div>
+      <div className="track" style={{ height: scale.height }}>
+        {restLevel !== undefined && (
+          <>
+            <div className="saturated" style={{ top: scale.y(restLevel) }} />
+            <div className="rest-level" style={{ top: scale.y(restLevel) }} />
+            <div className="level-label is-rest" style={{ top: scale.y(restLevel) - 20 }}>
+              SWL {restLevel.toFixed(2)} m
+            </div>
+          </>
+        )}
 
-        <div className="pumping-level" style={{ top: pumpingPx }} />
-        <div className="level-label is-pumping" style={{ top: pumpingPx + 6 }}>
-          pumping level {pumpingLevel.toFixed(1)} m
-        </div>
+        {pumpingLevel !== undefined && (
+          <>
+            <div className="pumping-level" style={{ top: scale.y(pumpingLevel) }} />
+            <div
+              className="level-label is-pumping"
+              style={{ top: scale.y(pumpingLevel) + 6 }}
+            >
+              {stabilised ? 'pumping level' : 'deepest level'} {pumpingLevel.toFixed(2)} m
+            </div>
+          </>
+        )}
 
-        <div
-          className="drawdown-bar"
-          style={{ top: restPx, height: pumpingPx - restPx }}
-        />
-        <div className="drawdown-label" style={{ top: (restPx + pumpingPx) / 2 }}>
-          s = {d.drawdown.toFixed(1)} m
-        </div>
+        {restLevel !== undefined && pumpingLevel !== undefined && (
+          <>
+            <div
+              className="drawdown-bar"
+              style={{
+                top: scale.y(restLevel),
+                height: scale.h(restLevel, pumpingLevel),
+              }}
+            />
+            <div
+              className="drawdown-label"
+              style={{ top: (scale.y(restLevel) + scale.y(pumpingLevel)) / 2 }}
+            >
+              s = {(maxDrawdown ?? pumpingLevel - restLevel).toFixed(2)} m
+            </div>
+          </>
+        )}
 
-        <div className="intake" style={{ top: intakePx }}>
-          <span className="intake-badge">PMP</span>
-          <span className="intake-label">intake {d.pumpSetting.toFixed(1)} m</span>
-        </div>
+        {pumpIntake !== undefined && (
+          <>
+            <div className="intake" style={{ top: scale.y(pumpIntake) }}>
+              <span className="intake-badge">PMP</span>
+              <span className="intake-label">intake {pumpIntake.toFixed(0)} m</span>
+            </div>
+          </>
+        )}
 
-        <div
-          className={`submergence-note${shallow ? ' is-warn' : ''}`}
-          style={{ top: intakePx + 18 }}
-        >
-          {shallow
-            ? `Only ${d.submergence.toFixed(1)} m of water above the intake at design yield — ` +
-              `raise the screen or accept a shallower setting.`
-            : `${d.submergence.toFixed(1)} m submergence above intake at design yield — within handpump limits.`}
-        </div>
+        {stabilised === false && (
+          <div className="submergence-note is-warn" style={{ bottom: 4 }}>
+            The water level had not stabilised when the test ended, so the line
+            above is the deepest level reached, not a settled pumping level.
+          </div>
+        )}
       </div>
     </div>
   );

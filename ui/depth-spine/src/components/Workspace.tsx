@@ -1,46 +1,31 @@
-import { useCallback, useMemo, useState } from 'react';
-import {
-  STAGES,
-  type DecisionRecord,
-  type StageId,
-} from '../domain/decision';
-import { DEFAULT_MARKUP, defaultRates, type Markup } from '../domain/costing';
-import type { WaterSample } from '../domain/quality';
-import type { Borehole, ScreenInterval } from '../domain/types';
-import { DesignStage, type SectionView } from './stages/DesignStage';
+import { useCallback, useState } from 'react';
+import { STAGES, type DecisionRecord, type StageId } from '../domain/decision';
+import type { SpineView } from '../domain/view';
+import { DesignStage } from './stages/DesignStage';
 import { WaterQualityStage } from './stages/WaterQualityStage';
 import { CostingStage } from './stages/CostingStage';
+import type { Interval } from './useScreenDrag';
 
 export type Ledger = Partial<Record<StageId, DecisionRecord>>;
 
 interface Props {
-  borehole: Borehole;
-  sample: WaterSample;
-  /** Fires whenever the ledger changes, so the host can record the sign-offs. */
-  onLedgerChange?: (ledger: Ledger) => void;
+  view: SpineView;
+  /** True while Python is re-deriving after a screen move. */
+  busy: boolean;
+  onScreens: (screens: [number, number][] | null) => void;
+  onLedgerChange: (ledger: Ledger) => void;
 }
 
 /**
  * One shell for the whole borehole.
  *
  * Stages are the lifecycle, not a tab list: each carries the state of its own
- * decision, so "where are we?" is answered by the header rather than by opening
- * things. The sign-off layer lives on each stage's rail — no second application.
+ * decision, so "where are we?" is answered by the header. The sign-off layer
+ * lives on each stage's rail — no second application.
  */
-export function Workspace({ borehole: bh, sample, onLedgerChange }: Props) {
-  const baseline = useMemo<ScreenInterval>(
-    () => ({
-      screenTop: bh.construction.screenTop,
-      screenBase: bh.construction.screenBase,
-    }),
-    [bh],
-  );
-
+export function Workspace({ view, busy, onScreens, onLedgerChange }: Props) {
   const [stage, setStage] = useState<StageId>('design');
-  const [view, setView] = useState<SectionView>('section');
-  const [screen, setScreen] = useState<ScreenInterval>(baseline);
-  const [rates, setRates] = useState<Record<string, number>>(defaultRates);
-  const [markup, setMarkup] = useState<Markup>(DEFAULT_MARKUP);
+  const [preview, setPreview] = useState<Interval[] | null>(null);
   const [ledger, setLedger] = useState<Ledger>({});
 
   const decide = useCallback(
@@ -49,41 +34,38 @@ export function Workspace({ borehole: bh, sample, onLedgerChange }: Props) {
         const next = { ...prev };
         if (record) next[id] = record;
         else delete next[id];
-        onLedgerChange?.(next);
+        onLedgerChange(next);
         return next;
       });
     },
     [onLedgerChange],
   );
 
-  // Editing the design after signing it off reopens that decision — a signature
+  // Moving a screen invalidates the design and costing sign-offs: a signature
   // has to belong to the numbers that were in front of the person at the time.
-  const changeScreen = useCallback(
-    (next: ScreenInterval) => {
-      setScreen(next);
+  const commit = useCallback(
+    (screens: Interval[]) => {
+      onScreens(screens.map((s) => [s.top, s.base] as [number, number]));
       setLedger((prev) => {
         if (!prev.design && !prev.costing) return prev;
-        const out = { ...prev };
-        delete out.design;
-        delete out.costing;
-        onLedgerChange?.(out);
-        return out;
+        const next = { ...prev };
+        delete next.design;
+        delete next.costing;
+        onLedgerChange(next);
+        return next;
       });
     },
-    [onLedgerChange],
+    [onLedgerChange, onScreens],
   );
 
-  const changeRate = useCallback((id: string, rate: number) => {
-    setRates((prev) => ({ ...prev, [id]: Number.isFinite(rate) ? rate : 0 }));
-    setLedger((prev) => {
-      if (!prev.costing) return prev;
-      const out = { ...prev };
-      delete out.costing;
-      return out;
-    });
-  }, []);
+  const reset = useCallback(() => {
+    setPreview(null);
+    onScreens(null);
+  }, [onScreens]);
 
-  const signed = STAGES.filter((s) => ledger[s.id]).length;
+  const stages = STAGES.filter((s) => s.id !== 'quality' || view.quality);
+  const signed = stages.filter((s) => ledger[s.id]).length;
+  const site = view.site;
 
   return (
     <div className="workspace">
@@ -93,13 +75,16 @@ export function Workspace({ borehole: bh, sample, onLedgerChange }: Props) {
           <span className="brand">Geomentaqua</span>
         </div>
         <div className="vrule" />
-        <span className="bh-name">{bh.name}</span>
+        <span className="bh-name">
+          {site.community}
+          {site.boreholeRef && ` · ${site.boreholeRef}`}
+        </span>
         <span className="bh-meta">
-          {bh.locality} · {bh.terrain}
+          {[site.district, view.section.drillingMethod].filter(Boolean).join(' · ')}
         </span>
 
         <nav className="stage-nav" aria-label="Stage">
-          {STAGES.map((s) => {
+          {stages.map((s) => {
             const record = ledger[s.id];
             return (
               <button
@@ -109,9 +94,7 @@ export function Workspace({ borehole: bh, sample, onLedgerChange }: Props) {
                 className={stage === s.id ? 'is-current' : undefined}
                 onClick={() => setStage(s.id)}
               >
-                <span
-                  className={`stage-dot is-${record ? record.status : 'pending'}`}
-                />
+                <span className={`stage-dot is-${record ? record.status : 'pending'}`} />
                 {s.label}
               </button>
             );
@@ -119,24 +102,10 @@ export function Workspace({ borehole: bh, sample, onLedgerChange }: Props) {
         </nav>
 
         <div className="spacer" />
+        {view.edited && <span className="edited-badge">design edited</span>}
         <span className="ledger-count">
-          {signed}/{STAGES.length} signed
+          {signed}/{stages.length} signed
         </span>
-
-        {stage === 'design' && (
-          <div className="segmented" role="group" aria-label="View">
-            {(['section', 'plan', 'tables'] as SectionView[]).map((v) => (
-              <button
-                key={v}
-                type="button"
-                aria-pressed={view === v}
-                onClick={() => setView(v)}
-              >
-                {v[0].toUpperCase() + v.slice(1)}
-              </button>
-            ))}
-          </div>
-        )}
         <button type="button" className="ghost-btn">
           {stage === 'costing' ? 'Export BoQ ↓' : 'Drawing sheet ↓'}
         </button>
@@ -144,30 +113,27 @@ export function Workspace({ borehole: bh, sample, onLedgerChange }: Props) {
 
       {stage === 'design' && (
         <DesignStage
-          bh={bh}
-          screen={screen}
-          baseline={baseline}
-          onScreenChange={changeScreen}
           view={view}
+          preview={preview}
+          onPreview={setPreview}
+          onCommit={commit}
+          onReset={reset}
+          edited={view.edited}
+          busy={busy}
           decision={ledger.design ?? null}
           onDecide={decide('design')}
         />
       )}
-      {stage === 'quality' && (
+      {stage === 'quality' && view.quality && (
         <WaterQualityStage
-          sample={sample}
+          quality={view.quality}
           decision={ledger.quality ?? null}
           onDecide={decide('quality')}
         />
       )}
       {stage === 'costing' && (
         <CostingStage
-          bh={bh}
-          screen={screen}
-          rates={rates}
-          onRateChange={changeRate}
-          markup={markup}
-          onMarkupChange={setMarkup}
+          view={view}
           decision={ledger.costing ?? null}
           onDecide={decide('costing')}
         />

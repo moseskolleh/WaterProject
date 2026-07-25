@@ -164,8 +164,16 @@ def design_borehole(
     pump_intake_m: float | None = None,
     rules: DesignRules | None = None,
     total_depth_m: float | None = None,
+    screens_m: list[tuple[float, float]] | None = None,
 ) -> BoreholeDesign:
-    """Produce a construction design from the drilling log and/or VES model."""
+    """Produce a construction design from the drilling log and/or VES model.
+
+    ``screens_m`` overrides the automatic screen placement with intervals the
+    analyst has chosen. The rest of the string - plain casing, sump, gravel
+    pack, backfill and seal - is still assembled by the same rules, and the
+    same checks still run, so an analyst-placed screen is validated exactly
+    like a generated one rather than being taken on trust.
+    """
     rules = rules or DesignRules()
     flags: list[DataFlag] = []
 
@@ -178,6 +186,20 @@ def design_borehole(
             raise ValueError("total depth is needed (drilling log or VES interpretation)")
 
     swl = static_water_level_m
+
+    if screens_m:
+        screens, basis = _analyst_screens(screens_m, total_depth_m, rules, flags)
+        return _assemble(
+            screens=screens,
+            basis=basis,
+            flags=flags,
+            total_depth_m=total_depth_m,
+            swl=swl,
+            pump_intake_m=pump_intake_m,
+            rules=rules,
+            log=log,
+        )
+
     zones, basis = _target_zones(log, interpretation, swl, total_depth_m, rules)
 
     # screens: cover the zones, at least the default screen length overall
@@ -248,7 +270,84 @@ def design_borehole(
             )
         )
 
-    # assemble the casing string from surface down
+    return _assemble(
+        screens=screens,
+        basis=basis,
+        flags=flags,
+        total_depth_m=total_depth_m,
+        swl=swl,
+        pump_intake_m=pump_intake_m,
+        rules=rules,
+        log=log,
+    )
+
+
+def _analyst_screens(
+    screens_m: list[tuple[float, float]],
+    total_depth_m: float,
+    rules: DesignRules,
+    flags: list[DataFlag],
+) -> tuple[list[tuple[float, float]], list[str]]:
+    """Clean up analyst-supplied screen intervals without silently moving them.
+
+    Intervals are ordered, clipped to the hole above the sump and merged where
+    they touch. Anything the clipping actually changed is flagged rather than
+    absorbed, because a screen that has quietly moved is worse than one that
+    was refused.
+    """
+    sump_top = total_depth_m - rules.sump_length_m
+    cleaned: list[tuple[float, float]] = []
+    for top, bottom in sorted((float(t), float(b)) for t, b in screens_m):
+        clipped_top = max(0.0, min(top, sump_top))
+        clipped_bottom = max(clipped_top, min(bottom, sump_top))
+        if clipped_bottom - clipped_top < 0.5:
+            flags.append(
+                DataFlag(
+                    "warning",
+                    "screen_dropped",
+                    f"A screen interval at {top:g}-{bottom:g} m does not fit above "
+                    f"the {rules.sump_length_m:g} m sump and was dropped.",
+                )
+            )
+            continue
+        if (clipped_top, clipped_bottom) != (top, bottom):
+            flags.append(
+                DataFlag(
+                    "info",
+                    "screen_clipped",
+                    f"Screen {top:g}-{bottom:g} m was clipped to "
+                    f"{clipped_top:g}-{clipped_bottom:g} m to stay inside the hole "
+                    "and above the sump.",
+                )
+            )
+        if cleaned and clipped_top <= cleaned[-1][1]:
+            cleaned[-1] = (cleaned[-1][0], max(cleaned[-1][1], clipped_bottom))
+        else:
+            cleaned.append((clipped_top, clipped_bottom))
+
+    if not cleaned:
+        raise ValueError("no usable screen interval was supplied")
+
+    basis = [
+        "screen intervals set by the analyst on the borehole section ("
+        + ", ".join(f"{t:g}-{b:g} m" for t, b in cleaned)
+        + ")"
+    ]
+    return cleaned, basis
+
+
+def _assemble(
+    *,
+    screens: list[tuple[float, float]],
+    basis: list[str],
+    flags: list[DataFlag],
+    total_depth_m: float,
+    swl: float | None,
+    pump_intake_m: float | None,
+    rules: DesignRules,
+    log: DrillingLog | None,
+) -> BoreholeDesign:
+    """Build the casing string and annulus around a set of screen intervals."""
     segments: list[CasingSegment] = []
     cursor = 0.0
     sump_top = total_depth_m - rules.sump_length_m

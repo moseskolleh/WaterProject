@@ -1,58 +1,87 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { PX_PER_M } from '../domain/scale';
-import type { ScreenInterval } from '../domain/types';
+import type { Scale } from '../domain/scale';
+import type { ScreenLimits } from '../domain/view';
 
-export type HandleId = 'top' | 'base';
-
-/** Depth is committed at 0.1 m — one pixel at the spine's scale. */
-const STEP = 0.1;
-const round = (n: number) => Math.round(n * 10) / 10;
-
-interface Options {
-  screen: ScreenInterval;
-  onChange: (next: ScreenInterval) => void;
+export interface Interval {
+  top: number;
+  base: number;
 }
 
+export type Edge = 'top' | 'base' | 'body';
+
+export interface DragState {
+  index: number;
+  edge: Edge;
+}
+
+interface Options {
+  screens: Interval[];
+  limits: ScreenLimits;
+  scale: Scale;
+  /** Local, per-frame: moves the drawing only. */
+  onPreview: (screens: Interval[]) => void;
+  /** On release: hands the intervals to Python to re-derive everything. */
+  onCommit: (screens: Interval[]) => void;
+}
+
+const round = (n: number) => Math.round(n * 10) / 10;
+
 /**
- * Direct manipulation of the screened interval.
+ * Direct manipulation of the screened intervals.
  *
- * Pointer drag moves one edge; dragging the body of the screen moves both and
- * keeps the length. Arrow keys do the same thing from the keyboard, because a
- * design decision this consequential should not be mouse-only.
+ * Dragging moves the drawing locally, because a pointer has to feel attached to
+ * what it is dragging. Releasing hands the intervals to Python, which re-runs
+ * design_borehole and everything downstream of it. No hydrogeological rule is
+ * applied here — the clamping below is only enough to keep the drawing sane
+ * while the pointer is down; the real validation is the designer's.
  */
-export function useScreenDrag({ screen, onChange }: Options) {
-  const [dragging, setDragging] = useState<HandleId | 'body' | null>(null);
-  const origin = useRef({ y: 0, top: 0, base: 0 });
+export function useScreenDrag({ screens, limits, scale, onPreview, onCommit }: Options) {
+  const [dragging, setDragging] = useState<DragState | null>(null);
+  const origin = useRef({ y: 0, screens: [] as Interval[] });
+  const latest = useRef<Interval[]>(screens);
+
+  const clamp = useCallback(
+    (list: Interval[]): Interval[] =>
+      list.map((s) => {
+        const top = Math.max(limits.top, Math.min(s.top, limits.base - limits.minLength));
+        const base = Math.max(top + limits.minLength, Math.min(s.base, limits.base));
+        return { top: round(top), base: round(base) };
+      }),
+    [limits],
+  );
 
   const start = useCallback(
-    (which: HandleId | 'body') => (e: React.PointerEvent) => {
+    (index: number, edge: Edge) => (e: React.PointerEvent) => {
       e.preventDefault();
+      e.stopPropagation();
       (e.target as Element).setPointerCapture?.(e.pointerId);
-      origin.current = {
-        y: e.clientY,
-        top: screen.screenTop,
-        base: screen.screenBase,
-      };
-      setDragging(which);
+      origin.current = { y: e.clientY, screens: screens.map((s) => ({ ...s })) };
+      latest.current = screens;
+      setDragging({ index, edge });
     },
-    [screen.screenTop, screen.screenBase],
+    [screens],
   );
 
   useEffect(() => {
     if (!dragging) return;
 
     const move = (e: PointerEvent) => {
-      const dm = round((e.clientY - origin.current.y) / PX_PER_M);
-      const { top, base } = origin.current;
-      if (dragging === 'top') {
-        onChange({ screenTop: round(top + dm), screenBase: base });
-      } else if (dragging === 'base') {
-        onChange({ screenTop: top, screenBase: round(base + dm) });
-      } else {
-        onChange({ screenTop: round(top + dm), screenBase: round(base + dm) });
-      }
+      const dm = round(scale.depthAt(e.clientY - origin.current.y));
+      const next = origin.current.screens.map((s, i) => {
+        if (i !== dragging.index) return { ...s };
+        if (dragging.edge === 'top') return { top: round(s.top + dm), base: s.base };
+        if (dragging.edge === 'base') return { top: s.top, base: round(s.base + dm) };
+        return { top: round(s.top + dm), base: round(s.base + dm) };
+      });
+      const clamped = clamp(next);
+      latest.current = clamped;
+      onPreview(clamped);
     };
-    const end = () => setDragging(null);
+
+    const end = () => {
+      setDragging(null);
+      onCommit(latest.current);
+    };
 
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', end);
@@ -62,23 +91,29 @@ export function useScreenDrag({ screen, onChange }: Options) {
       window.removeEventListener('pointerup', end);
       window.removeEventListener('pointercancel', end);
     };
-  }, [dragging, onChange]);
+  }, [dragging, scale, clamp, onPreview, onCommit]);
 
   const keyDown = useCallback(
-    (which: HandleId) => (e: React.KeyboardEvent) => {
-      const coarse = e.shiftKey ? 10 : 1;
+    (index: number, edge: Exclude<Edge, 'body'>) => (e: React.KeyboardEvent) => {
+      const step = e.shiftKey ? 1 : 0.1;
       let dm = 0;
-      if (e.key === 'ArrowUp') dm = -STEP * coarse;
-      else if (e.key === 'ArrowDown') dm = STEP * coarse;
+      if (e.key === 'ArrowUp') dm = -step;
+      else if (e.key === 'ArrowDown') dm = step;
       else return;
       e.preventDefault();
-      onChange(
-        which === 'top'
-          ? { screenTop: round(screen.screenTop + dm), screenBase: screen.screenBase }
-          : { screenTop: screen.screenTop, screenBase: round(screen.screenBase + dm) },
+      const next = clamp(
+        screens.map((s, i) =>
+          i !== index
+            ? { ...s }
+            : edge === 'top'
+              ? { top: round(s.top + dm), base: s.base }
+              : { top: s.top, base: round(s.base + dm) },
+        ),
       );
+      onPreview(next);
+      onCommit(next);
     },
-    [onChange, screen.screenTop, screen.screenBase],
+    [clamp, onCommit, onPreview, screens],
   );
 
   return { dragging, start, keyDown };

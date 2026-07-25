@@ -1,29 +1,32 @@
-import { useMemo } from 'react';
 import type { DecisionRecord } from '../../domain/decision';
-import { deriveQuality, type WaterSample } from '../../domain/quality';
-import { ChecksList } from '../ChecksList';
+import type { QualityBlock } from '../../domain/view';
+import { FlagsList } from '../FlagsList';
 import { SignOff } from '../SignOff';
 import { GuidelineSpine } from '../charts/GuidelineSpine';
 import { PiperDiagram } from '../charts/PiperDiagram';
 import { StiffDiagram } from '../charts/StiffDiagram';
 
 interface Props {
-  sample: WaterSample;
+  quality: QualityBlock;
   decision: DecisionRecord | null;
   onDecide: (record: DecisionRecord | null) => void;
 }
 
-const VERDICT_LABEL = {
-  potable: 'Potable',
-  'potable-with-caveat': 'Potable — aesthetic exceedance',
-  'not-potable': 'Not potable without treatment',
-} as const;
+function headline(q: QualityBlock): { label: string; tone: 'ok' | 'warn' | 'error' } {
+  if (q.healthExceedances.length) return { label: 'Not suitable for drinking', tone: 'error' };
+  if (q.nationalExceedances.length)
+    return { label: 'Fails the national standard', tone: 'warn' };
+  if (q.aestheticExceedances.length)
+    return { label: 'Potable — acceptability exceeded', tone: 'warn' };
+  return { label: 'Complies', tone: 'ok' };
+}
 
-export function WaterQualityStage({ sample, decision, onDecide }: Props) {
-  const q = useMemo(() => deriveQuality(sample), [sample]);
-  const clean = q.checks.every((c) => c.status === 'ok');
-  const ph = q.results.find((r) => r.id === 'ph');
-  const ec = q.results.find((r) => r.id === 'ec');
+export function WaterQualityStage({ quality: q, decision, onDecide }: Props) {
+  const verdict = headline(q);
+  const judged = q.rows.filter((r) => r.status !== 'no_guideline');
+  const within = judged.filter((r) => !r.status.startsWith('exceeds'));
+  const clean = verdict.tone === 'ok';
+  const c = q.corrosivity;
 
   return (
     <div className="ws-body">
@@ -32,196 +35,199 @@ export function WaterQualityStage({ sample, decision, onDecide }: Props) {
           <div className="metric-row">
             <div>
               <div className="metric-label">Sampled</div>
-              <div className="metric-value is-small">{sample.sampledOn}</div>
+              <div className="metric-value is-small">{q.sampleDate || '—'}</div>
             </div>
             <div>
-              <div className="metric-label">Within guideline</div>
+              <div className="metric-label">Within limits</div>
               <div className="metric-value">
-                {q.withinCount} / {q.judgedCount}
+                {within.length} / {judged.length}
               </div>
             </div>
             <div>
-              <div className="metric-label">pH</div>
-              <div className={`metric-value${ph?.status === 'warn' ? ' is-warn' : ''}`}>
-                {ph?.value}
+              <div className="metric-label">Health exceedances</div>
+              <div
+                className={`metric-value${q.healthExceedances.length ? ' is-error' : ''}`}
+              >
+                {q.healthExceedances.length || 'none'}
               </div>
             </div>
-            <div>
-              <div className="metric-label">Conductivity</div>
-              <div className="metric-value">{ec?.value} µS/cm</div>
-            </div>
-            <div>
-              <div className="metric-label">Water type</div>
-              <div className="metric-value is-aquifer">{q.waterType}</div>
-            </div>
-          </div>
-          <div className="legend">
-            <span>
-              <span className="sw-block" />
-              within guideline
-            </span>
-            <span>
-              <span className="sw-block" style={{ background: 'oklch(0.75 0.15 65)' }} />
-              exceeds
-            </span>
+            {q.ionic && (
+              <div>
+                <div className="metric-label">Ionic balance</div>
+                <div className="metric-value">{q.ionic.errorPercent} %</div>
+              </div>
+            )}
+            {c && (
+              <div>
+                <div className="metric-label">Corrosivity</div>
+                <div className={`metric-value is-small${c.isAggressive ? ' is-warn' : ''}`}>
+                  {c.classification}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         <div className="quality-body">
           <div className="quality-main">
             <div className="panel-head">
-              WHO guideline value — every determinand as a multiple of its own limit
+              Every determinand as a multiple of its own binding limit
             </div>
-            <GuidelineSpine results={q.results} />
+            <GuidelineSpine rows={q.rows} />
             <div className="panel-foot">
-              WHO Guidelines for Drinking-water Quality, 4th edition incorporating
-              the 1st and 2nd addenda. Sierra Leone national standards adopt these
-              values for the determinands shown. Analysis by {sample.laboratory}.
+              Limits from the toolkit's standards table — WHO health-based guideline
+              values, WHO acceptability values and the national standard column,
+              whichever binds. {q.laboratory && `Analysis by ${q.laboratory}.`}
             </div>
 
             <div className="quality-row">
-              <div className="panel">
-                <div className="panel-head">Ionic balance</div>
-                <div className="balance">
-                  <div className="balance-side">
-                    <span className="balance-label">Σ cations</span>
-                    <span className="balance-value">{q.meq.cations.toFixed(2)}</span>
+              {q.ionic && (
+                <div className="panel">
+                  <div className="panel-head">Ionic balance</div>
+                  <div className="balance">
+                    <div className="balance-side">
+                      <span className="balance-label">Σ cations</span>
+                      <span className="balance-value">{q.ionic.cationsMeq}</span>
+                    </div>
+                    <div className="balance-bar">
+                      <span
+                        className={`balance-fill${Math.abs(q.ionic.errorPercent) > 5 ? ' is-warn' : ''}`}
+                        style={{
+                          width: `${Math.min(Math.abs(q.ionic.errorPercent) * 8, 50)}%`,
+                          left: q.ionic.errorPercent < 0 ? 'auto' : '50%',
+                          right: q.ionic.errorPercent < 0 ? '50%' : 'auto',
+                        }}
+                      />
+                    </div>
+                    <div className="balance-side is-right">
+                      <span className="balance-label">Σ anions</span>
+                      <span className="balance-value">{q.ionic.anionsMeq}</span>
+                    </div>
                   </div>
-                  <div className="balance-bar">
-                    <span
-                      className={`balance-fill${Math.abs(q.balanceError) > 5 ? ' is-warn' : ''}`}
-                      style={{
-                        width: `${Math.min(Math.abs(q.balanceError) * 8, 50)}%`,
-                        left: q.balanceError < 0 ? 'auto' : '50%',
-                        right: q.balanceError < 0 ? '50%' : 'auto',
-                      }}
-                    />
-                  </div>
-                  <div className="balance-side is-right">
-                    <span className="balance-label">Σ anions</span>
-                    <span className="balance-value">{q.meq.anions.toFixed(2)}</span>
+                  <div className="panel-foot">
+                    Error {q.ionic.errorPercent > 0 ? '+' : ''}
+                    {q.ionic.errorPercent} % against a ±5 % acceptance limit
+                    {Math.abs(q.ionic.errorPercent) <= 5
+                      ? ' — the analysis is internally consistent, so the rest of this page can be relied on.'
+                      : ' — the analysis does not balance; treat every figure here with caution.'}
+                    {q.ionic.usedAlkalinity && ' Bicarbonate inferred from alkalinity.'}
                   </div>
                 </div>
-                <div className="panel-foot">
-                  Error {q.balanceError > 0 ? '+' : ''}
-                  {q.balanceError.toFixed(1)} % against a ±5 % acceptance limit — the
-                  analysis is internally consistent, so the rest of this page can be
-                  relied on.
-                </div>
-              </div>
+              )}
 
-              <div className="panel">
-                <div className="panel-head">Provenance of this analysis</div>
-                <div className="provenance">
-                  <div className="mini-row">
-                    <span>Sampled</span>
-                    <span>{sample.sampledOn} · after 20 min purge</span>
+              {c && (
+                <div className="panel">
+                  <div className="panel-head">Corrosivity indices</div>
+                  <div className="provenance">
+                    <div className="mini-row">
+                      <span>Langelier (LSI)</span>
+                      <span>{c.lsi ?? '—'}</span>
+                    </div>
+                    <div className="mini-row">
+                      <span>Ryznar (RSI)</span>
+                      <span>{c.rsi ?? '—'}</span>
+                    </div>
+                    <div className="mini-row">
+                      <span>Aggressive index</span>
+                      <span>{c.aggressiveIndex ?? '—'}</span>
+                    </div>
+                    <div className="mini-row">
+                      <span>Larson-Skold</span>
+                      <span>{c.larsonSkold ?? '—'}</span>
+                    </div>
+                    <div className="mini-row is-total">
+                      <span>Classification</span>
+                      <span>{c.classification}</span>
+                    </div>
                   </div>
-                  <div className="mini-row">
-                    <span>Preservation</span>
-                    <span>
-                      {sample.preserved ? 'filtered 0.45 µm, acidified' : 'unpreserved'}
-                    </span>
-                  </div>
-                  <div className="mini-row">
-                    <span>Transit to laboratory</span>
-                    <span>{sample.transitHours} h, chilled</span>
-                  </div>
-                  <div className="mini-row">
-                    <span>Laboratory</span>
-                    <span>{sample.laboratory}</span>
-                  </div>
-                  <div className="mini-row">
-                    <span>Field temperature</span>
-                    <span>{sample.temperatureC} °C</span>
-                  </div>
+                  <div className="panel-foot">{c.verdict}</div>
                 </div>
-                <div className="panel-foot">
-                  Every determinand above traces to this one signed chain of
-                  custody — the ionic balance is what proves it held.
-                </div>
-              </div>
+              )}
             </div>
           </div>
 
-          <div className="quality-side">
-            <div className="panel">
-              <div className="panel-head">Piper — hydrochemical facies</div>
-              <PiperDiagram p={q.pct} />
-              <div className="panel-foot">
-                {q.waterType} · fresh, recently recharged water typical of a
-                weathered-basement aquifer.
+          {q.piper && (
+            <div className="quality-side">
+              <div className="panel">
+                <div className="panel-head">Piper — hydrochemical facies</div>
+                <PiperDiagram data={q.piper} />
+              </div>
+              <div className="panel">
+                <div className="panel-head">Stiff — ionic shape</div>
+                <StiffDiagram data={q.piper} />
               </div>
             </div>
-            <div className="panel">
-              <div className="panel-head">Stiff — ionic shape</div>
-              <StiffDiagram m={q.meq} />
-            </div>
-          </div>
+          )}
         </div>
       </div>
 
       <aside className="rail">
         <div className="rail-head">Derived decisions</div>
 
-        <div
-          className={`yield-card${q.potability === 'not-potable' ? ' is-warn' : ''}`}
-        >
-          <div className="eyebrow">Potability verdict</div>
-          <div className="yield-value is-text">{VERDICT_LABEL[q.potability]}</div>
-          <div className="yield-method">{q.verdict.detail}</div>
-          <div className="chip-row">
-            <span className="chip">balance {q.balanceError.toFixed(1)} %</span>
-            <span className="chip">{q.waterType}</span>
-          </div>
-        </div>
-
-        <div className="tile-row">
-          <div className="tile">
-            <div className="tile-label">Corrosion risk</div>
-            <div className={`tile-value${q.corrosion.level !== 'low' ? ' is-warn' : ''}`}>
-              {q.corrosion.level[0].toUpperCase() + q.corrosion.level.slice(1)}
+        <div className={`yield-card is-${verdict.tone}`}>
+          <div className="eyebrow">Suitability</div>
+          <div className="yield-value is-text">{verdict.label}</div>
+          <div className="yield-method">{q.verdict}</div>
+          {q.wqi && (
+            <div className="chip-row">
+              <span className="chip">WQI {q.wqi.value}</span>
+              <span className="chip">{q.wqi.rating}</span>
             </div>
-            <div className="tile-sub">LSI {q.lsi.toFixed(1)}</div>
-          </div>
-          <div className="tile">
-            <div className="tile-label">Hardness</div>
-            <div className="tile-value">
-              {(50 * (q.meq.ca + q.meq.mg)).toFixed(0)}
+          )}
+        </div>
+
+        {c && (
+          <div className={`verdict is-${c.isAggressive ? 'warn' : 'ok'}`}>
+            <span className={`badge is-${c.isAggressive ? 'warning' : 'ok'}`}>
+              {c.isAggressive ? '!' : '✓'}
+            </span>
+            <div>
+              <div className="verdict-title">Handpump materials</div>
+              <div className="verdict-detail">
+                {c.materialsNote || c.verdict}
+              </div>
             </div>
-            <div className="tile-sub">mg/L as CaCO₃ · soft</div>
           </div>
+        )}
+
+        <div className="rail-head">Exceedances</div>
+        <div className="checks">
+          {[
+            ['Health-based', q.healthExceedances, 'error'],
+            ['National standard', q.nationalExceedances, 'warning'],
+            ['Acceptability', q.aestheticExceedances, 'warning'],
+          ].map(([label, list, level]) => {
+            const names = list as string[];
+            return (
+              <div className="check" key={label as string}>
+                <span className={`badge is-${names.length ? (level as string) : 'ok'}`}>
+                  {names.length ? '!' : '✓'}
+                </span>
+                <span className="check-label">{label as string}</span>
+                <span className={`check-value${names.length ? ' is-warn' : ''}`}>
+                  {names.length ? names.join(', ') : 'none'}
+                </span>
+              </div>
+            );
+          })}
         </div>
 
-        <div className={`verdict is-${q.corrosion.level === 'low' ? 'ok' : 'warn'}`}>
-          <span className={`badge is-${q.corrosion.level === 'low' ? 'ok' : 'warn'}`}>
-            {q.corrosion.level === 'low' ? '✓' : '!'}
-          </span>
-          <div>
-            <div className="verdict-title">Handpump material specification</div>
-            <div className="verdict-detail">{q.corrosion.advice}</div>
-          </div>
-        </div>
+        <div className="rail-head">Flags on this analysis</div>
+        <FlagsList flags={q.flags} empty="No flags raised on the sample." />
 
-        <div className="rail-head">Checks against WHO &amp; the analysis</div>
-        <ChecksList checks={q.checks} />
-
-        <div className="hint">
-          <div className="hint-title">Iron at 0.40 mg/L</div>
-          <div className="hint-body">
-            Aesthetic, not health-based — but it stains laundry and gives a
-            metallic taste, and communities abandon sources over it. Aeration and
-            filtration at the wellhead, or accept and monitor. The corrosion
-            finding above will make it worse if galvanised components are used.
+        {c && c.assumptions.length > 0 && (
+          <div className="hint">
+            <div className="hint-title">Assumptions behind the indices</div>
+            <div className="hint-body">{c.assumptions.join(' ')}</div>
           </div>
-        </div>
+        )}
 
         <div className="spacer" />
 
         <SignOff
           stage="quality"
-          recommended={VERDICT_LABEL[q.potability]}
-          acceptLabel="verdict"
+          recommended={verdict.label}
+          acceptLabel="the verdict"
           writesTo="accepting writes to the water-quality and handover reports"
           decision={decision}
           clean={clean}
@@ -230,12 +236,13 @@ export function WaterQualityStage({ sample, decision, onDecide }: Props) {
             kind: 'choice',
             label: 'Certified verdict',
             options: [
-              'Potable',
-              'Potable — aesthetic exceedance',
+              'Complies',
+              'Potable — acceptability exceeded',
               'Potable after treatment',
-              'Not potable without treatment',
+              'Fails the national standard',
+              'Not suitable for drinking',
             ],
-            start: VERDICT_LABEL[q.potability],
+            start: verdict.label,
           }}
         />
       </aside>

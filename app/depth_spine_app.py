@@ -1,11 +1,14 @@
-"""Depth Spine — the redesigned borehole workspace, as a preview app.
+"""Depth Spine — the borehole workspace, on one shared depth axis.
 
-One shared depth axis for the whole borehole: evidence on the left, derived
-decisions on the right, and the screened interval directly manipulable so the
-design, the acceptance checks and the bill of quantities move together.
+Evidence on the left, derived decisions on the right, and the screened
+intervals directly manipulable. Nothing is computed in the browser: the
+component draws a payload built by ``groundwater.depth_spine.view`` from the
+same functions that produce the reports, and hands back the screens the
+analyst moved so the design, the flags and the bill of quantities are
+re-derived here.
 
-Runs alongside the main toolkit rather than replacing it. Start it from the
-repository root:
+Runs alongside the main toolkit rather than replacing it. From the repository
+root:
 
     streamlit run app/depth_spine_app.py
 
@@ -29,10 +32,11 @@ if _SRC.is_dir() and str(_SRC) not in sys.path:
     for _mod in [m for m in list(sys.modules) if m.split(".")[0] == "groundwater"]:
         del sys.modules[_mod]
 
-from groundwater.depth_spine import depth_spine, samples  # noqa: E402
+from groundwater.config import Config  # noqa: E402
+from groundwater.depth_spine import available, build_view, depth_spine, load  # noqa: E402
 
 st.set_page_config(
-    page_title="Depth Spine — Geomentaqua Groundwater Toolkit",
+    page_title="Depth Spine — Groundwater Investigation Toolkit",
     page_icon="💧",
     layout="wide",
 )
@@ -46,104 +50,136 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
+@st.cache_resource(show_spinner=False)
+def _load(key: str):
+    """Parse and analyse a sample project once per session."""
+    return load(key)
+
+
 st.title("Depth Spine")
 st.caption(
-    "Design · Water quality · Costing & BoQ, on one shared depth axis. Drag "
-    "either green handle on the screened interval — or focus it and use the "
-    "arrow keys — and watch the derived decisions, the live checks and the "
-    "bill of quantities recompute."
+    "Design · Water quality · Costing & BoQ for one borehole, on one depth axis. "
+    "Drag a screen handle — or focus it and use the arrow keys — and the toolkit "
+    "re-runs design_borehole and everything downstream of it."
 )
 
-bh = samples.borehole()
-analysis = samples.analysis()
+projects = available()
+if not projects:
+    st.error(
+        "No sample project with a drilling log was found under examples/data. "
+        "The workspace needs a logged borehole to draw a section for."
+    )
+    st.stop()
 
 with st.sidebar:
-    st.header("Field inputs")
-    st.caption("Change what came off the rig and the whole workspace re-derives.")
-
-    hyd = bh["hydraulics"]
-    hyd["restLevel"] = st.number_input(
-        "Static water level (m)", 0.0, 40.0, float(hyd["restLevel"]), 0.1
+    st.header("Project")
+    chosen = st.selectbox(
+        "Sample project",
+        projects,
+        format_func=lambda p: p.name,
+        help="Parsed through the normal ingestion chain, flags and all.",
     )
-    hyd["pumpingLevel"] = st.number_input(
-        "Stabilised pumping level (m)", 0.0, 45.0, float(hyd["pumpingLevel"]), 0.1
-    )
-    hyd["testRate"] = st.number_input(
-        "Constant-rate discharge Q (L/s)", 0.05, 10.0, float(hyd["testRate"]), 0.01
-    )
-    hyd["safetyFactor"] = st.slider(
-        "Safety factor on the test rate", 0.4, 1.0, float(hyd["safetyFactor"]), 0.05
-    )
-    hyd["drawdownPerLogCycle"] = st.number_input(
-        "Δs per log cycle (m)", 0.1, 10.0, float(hyd["drawdownPerLogCycle"]), 0.01
-    )
+    st.caption(chosen.note)
 
     st.divider()
-    st.subheader("Construction")
-    con = bh["construction"]
-    con["sanitarySealBase"] = st.number_input(
-        "Sanitary seal base (m)", 0.0, 20.0, float(con["sanitarySealBase"]), 0.5
+    st.header("Design rules")
+    st.caption(
+        "The defaults in config.py, which a project's config.yaml overrides. "
+        "Changing one re-runs the design."
     )
-    con["screen"]["slotWidth"] = st.select_slider(
-        "Slot aperture (mm)",
-        [0.5, 0.75, 1.0, 1.5, 2.0],
-        float(con["screen"]["slotWidth"]),
+    rules = Config()
+    rules.design.sump_length_m = st.number_input(
+        "Sump length (m)", 0.0, 10.0, float(rules.design.sump_length_m), 0.5
     )
-    strikes = st.text_input(
-        "Water strikes (m, comma separated)",
-        ", ".join(str(s) for s in bh["waterStrikes"]),
+    rules.design.gravel_pack_above_top_screen_m = st.number_input(
+        "Gravel pack above top screen (m)",
+        0.0,
+        20.0,
+        float(rules.design.gravel_pack_above_top_screen_m),
+        0.5,
     )
-    try:
-        bh["waterStrikes"] = [float(s.strip()) for s in strikes.split(",") if s.strip()]
-    except ValueError:
-        st.warning("Could not read the strike depths — using the sample values.")
+    rules.design.sanitary_seal_depth_m = st.number_input(
+        "Sanitary seal depth (m)", 0.0, 30.0, float(rules.design.sanitary_seal_depth_m), 0.5
+    )
+    rules.design.screen_slot_mm = st.select_slider(
+        "Screen slot (mm)", [0.5, 0.75, 1.0, 1.5, 2.0], float(rules.design.screen_slot_mm)
+    )
 
-    st.divider()
-    st.subheader("Water quality")
-    st.caption("Push a determinand over its guideline and watch the verdict turn.")
-    for det_id, label, lo, hi, step in [
-        ("iron", "Iron (mg/L) · WHO 0.3", 0.0, 3.0, 0.05),
-        ("ph", "pH · operational 6.5–8.5", 4.0, 9.5, 0.1),
-        ("nitrate", "Nitrate as NO₃ (mg/L) · WHO 50", 0.0, 120.0, 1.0),
-        ("arsenic", "Arsenic (mg/L) · WHO 0.01", 0.0, 0.05, 0.001),
-    ]:
-        current = next(d for d in analysis["determinands"] if d["id"] == det_id)["value"]
-        samples.set_determinand(
-            analysis, det_id, st.slider(label, lo, hi, float(current), step)
-        )
+# The screens the analyst has placed, if any. Kept per project so switching
+# projects does not carry one borehole's screens onto another.
+state_key = f"screens::{chosen.key}"
+screens = st.session_state.get(state_key)
 
-ledger = depth_spine(bh, analysis, key="workspace")
+inputs = _load(chosen.key)
+inputs.config = rules
+view = build_view(inputs, screens_m=screens)
+
+result = depth_spine(view, key=f"spine::{chosen.key}")
+
+# The component reports the intervals it moved; re-deriving them is this
+# script's job, not the browser's.
+if result and "screens" in result:
+    incoming = result["screens"]
+    normalised = (
+        [(float(a), float(b)) for a, b in incoming] if incoming else None
+    )
+    if normalised != screens:
+        st.session_state[state_key] = normalised
+        st.rerun()
 
 st.divider()
 
-STAGE_LABEL = {
-    "design": "Design",
-    "quality": "Water quality",
-    "costing": "Costing & BoQ",
-}
+ledger = (result or {}).get("ledger") or {}
+STAGE_LABEL = {"design": "Design", "quality": "Water quality", "costing": "Costing & BoQ"}
 
-if ledger:
-    st.subheader(f"Decision ledger — {len(ledger)} of 3 signed")
-    for stage_id, record in ledger.items():
-        overridden = record["status"] == "overridden"
-        with st.container(border=True):
-            head, meta = st.columns([3, 2])
-            head.markdown(
-                f"**{STAGE_LABEL.get(stage_id, stage_id)}** — {record['value']}"
-                + ("  ·  :orange[overridden]" if overridden else "  ·  :green[accepted]")
-            )
-            meta.caption(f"{record['signatory']} · {record['at']}")
-            if overridden:
-                st.caption(
-                    f"Toolkit recommended **{record['recommended']}**. "
-                    f"Reason given: {record['reason']}"
+left, right = st.columns([3, 2])
+
+with left:
+    if ledger:
+        st.subheader(f"Decision ledger — {len(ledger)} signed")
+        for stage_id, record in ledger.items():
+            overridden = record["status"] == "overridden"
+            with st.container(border=True):
+                head, meta = st.columns([3, 2])
+                head.markdown(
+                    f"**{STAGE_LABEL.get(stage_id, stage_id)}** — {record['value']}"
+                    + (
+                        "  ·  :orange[overridden]"
+                        if overridden
+                        else "  ·  :green[accepted]"
+                    )
                 )
-            if not record["clean"]:
-                st.caption(":orange[Signed with a check still flagged.]")
-    st.json(ledger, expanded=False)
-else:
-    st.info(
-        "Nothing signed yet. Work through the stages in the workspace and press "
-        "**Accept** — or **Override…** with a reason — to write a decision back "
-        "to Python."
+                meta.caption(f"{record['signatory']} · {record['at']}")
+                if overridden:
+                    st.caption(
+                        f"Toolkit recommended **{record['recommended']}**. "
+                        f"Reason given: {record['reason']}"
+                    )
+                if not record["clean"]:
+                    st.caption(":orange[Signed with a flag still open.]")
+    else:
+        st.info(
+            "Nothing signed yet. Work through the stages and press **Accept** — or "
+            "**Override…** with a reason — to write a decision back to Python."
+        )
+
+with right:
+    st.subheader("This design")
+    design_screens = view["design"]["screens"]
+    st.write(
+        "Screens: "
+        + ", ".join(f"{s['top']:g}–{s['base']:g} m" for s in design_screens)
     )
+    if screens:
+        st.caption(
+            "Placed by the analyst on the section. The casing string, annulus, "
+            "flags and bill of quantities were re-derived from them."
+        )
+        if st.button("Back to the generated design"):
+            del st.session_state[state_key]
+            st.rerun()
+    else:
+        st.caption("Generated by design_borehole from the drilling log.")
+    st.metric("Price to client", f"US$ {view['costing']['price']:,.0f}")
+    st.metric("Safe yield", view["design"]["yield"].get("rangeText", "pending"))

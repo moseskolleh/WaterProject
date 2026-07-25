@@ -1698,3 +1698,237 @@ button.chip:hover {
 .quality-main > .panel-head {
   margin-bottom: 14px;
 }
+
+/* ------------------------------------------------- payload-driven extras -- */
+
+.loading {
+  padding: 60px;
+  font: 400 12px var(--mono);
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.columns.is-busy {
+  opacity: 0.72;
+  transition: opacity 120ms ease;
+}
+
+.rail-busy {
+  float: right;
+  color: var(--accent);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.edited-badge {
+  font: 600 9.5px var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #0b1214;
+  background: var(--accent);
+  border-radius: 20px;
+  padding: 3px 9px;
+}
+
+.unit-note {
+  font: 400 10px var(--mono);
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.metric-value.is-error {
+  color: oklch(0.72 0.17 25);
+}
+
+/* The safe yield is a band, never a bare number. */
+.yield-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 600 10px var(--mono);
+  color: rgba(0, 0, 0, 0.55);
+  margin: 0 0 8px;
+}
+
+.yield-range-bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.18);
+  position: relative;
+}
+
+.yield-range-bar i {
+  position: absolute;
+  left: 30%;
+  right: 30%;
+  top: -2px;
+  bottom: -2px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.yield-card.is-pending {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.yield-card.is-pending .eyebrow,
+.yield-card.is-pending .yield-method {
+  color: rgba(255, 255, 255, 0.55);
+  opacity: 1;
+}
+
+.yield-card.is-error {
+  background: oklch(0.62 0.17 25);
+  color: #fff;
+}
+
+.yield-card.is-warn {
+  background: var(--warn);
+  color: #1a1000;
+}
+
+.methods {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px;
+  padding: 11px 12px;
+  margin-bottom: 14px;
+}
+
+.methods .tile-label {
+  margin-bottom: 6px;
+}
+
+.basis-list {
+  margin: 0 0 16px;
+  padding-left: 16px;
+  font: 400 10.5px/1.55 var(--sans);
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.basis-list li {
+  margin-bottom: 4px;
+}
+
+.check.is-stacked {
+  align-items: flex-start;
+}
+
+.check-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.check-code {
+  font: 400 9px var(--mono);
+  color: rgba(255, 255, 255, 0.3);
+  margin-top: 2px;
+}
+
+.badge.is-warning {
+  background: var(--warn);
+  color: #1a1000;
+}
+
+.badge.is-error {
+  background: oklch(0.65 0.19 25);
+  color: #fff;
+}
+
+.badge.is-info {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.gspine-bar.is-error {
+  background: linear-gradient(90deg, oklch(0.65 0.19 25 / 0.4), oklch(0.68 0.2 25));
+}
+
+.gspine-bar.is-ok {
+  background: linear-gradient(
+    90deg,
+    oklch(0.72 0.13 190 / 0.35),
+    oklch(0.72 0.13 190 / 0.85)
+  );
+}
+
+.gspine-nil.is-warn {
+  color: oklch(0.85 0.13 65);
+  background: oklch(0.75 0.15 65 / 0.15);
+  border-color: oklch(0.75 0.15 65 / 0.4);
+}
+
+.boq-rate.is-static {
+  font: 400 11px var(--mono);
+  color: rgba(255, 255, 255, 0.6);
+  padding-right: 8px;
+}
+
+.boq-note.is-assumptions ul {
+  margin: 6px 0 0;
+  padding-left: 16px;
+}
+
+.boq-note code {
+  font: 500 10px var(--mono);
+  color: var(--accent-text);
+}
+
+.reset-link {
+  background: none;
+  border: none;
+  padding: 0 0 12px;
+  text-align: left;
+  font: 500 10.5px var(--mono);
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* The section fits the frame rather than forcing a horizontal scrollbar. */
+.workspace {
+  width: 100%;
+  max-width: 1360px;
+  min-width: 1120px;
+}
+
+.col-construction {
+  width: 232px;
+}
+
+.screen-caption {
+  left: 134px;
+  width: 92px;
+}
+
+.leader {
+  position: absolute;
+  left: 46px;
+  overflow: visible;
+}
+
+.litho-label {
+  max-width: 176px;
+}
+
+.litho-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+
+.submergence-note {
+  top: auto;
+}
+
+.col-litho {
+  width: 252px;
+}
+
+.litho-label {
+  max-width: 192px;
+}
