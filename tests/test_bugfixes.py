@@ -372,6 +372,53 @@ def test_supervision_answers_survive_a_stage_change():
     assert not at.exception
 
 
+# --- ingestion: a blank test-type cell must not turn a step test constant ---
+
+def test_blank_test_type_cell_keeps_the_steps(tmp_path):
+    """The template's own title says "(STEP / CONSTANT DISCHARGE)".
+
+    The banner scan read that as an answer, so a step test whose test-type
+    cell was left blank came back as a constant-rate test with its three
+    steps concatenated into one series - no well efficiency, no well-loss
+    coefficients, and a transmissivity fitted to a discontinuous curve.
+    """
+    import shutil
+    from pathlib import Path
+
+    from openpyxl import load_workbook
+
+    from groundwater.ingestion import read_pumping_workbook
+    from groundwater.ingestion.pumping import _sheet_test_type
+
+    # pre-printed form text is not an answer
+    assert _sheet_test_type(
+        [["PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)"]]
+    ) == ""
+    assert _sheet_test_type([["Constant discharge 61-120 min"]]) == ""
+    # a genuine banner still is
+    assert _sheet_test_type([["CONSTANT DISCHARGE TEST"]]) == "constant"
+    assert _sheet_test_type([["STEP TEST"]]) == "step"
+
+    src = (Path(__file__).resolve().parents[1] / "examples" / "data" /
+           "kuntolo" / "kuntolo_step_test.xlsx")
+    dst = tmp_path / "blank_type.xlsx"
+    shutil.copy(src, dst)
+    book = load_workbook(dst)
+    sheet = book.active
+    for row in range(1, 15):
+        for col in range(1, 10):
+            value = sheet.cell(row, col).value
+            if isinstance(value, str) and "test type" in value.lower():
+                sheet.cell(row, col + 1).value = None
+    book.save(dst)
+
+    test = read_pumping_workbook(dst)
+    assert test.test_type.startswith("step")
+    assert len(test.steps) == 3
+    # and the guess is surfaced rather than made silently
+    assert any(f.code == "test_type_inferred" for f in test.flags)
+
+
 # --- robustness one-liners --------------------------------------------------
 
 def test_loan_schedule_rejects_zero_term():
