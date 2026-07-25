@@ -6,11 +6,20 @@ left, derived decisions on the right, and the screened intervals directly
 manipulable. The **2b sign-off layer** sits on each stage's rail rather than
 being a second application.
 
-It runs alongside the existing toolkit, not in place of it:
+It is a page in the main app — **Investigation → Depth Spine** — sharing the
+project's session state with every other page:
 
 ```bash
-streamlit run app/depth_spine_app.py     # app/streamlit_app.py is untouched
+streamlit run app/streamlit_app.py
 ```
+
+The drilling log the Borehole design page parsed is the hole the spine draws;
+the pumping test and the water quality analysis fill in the other two stages as
+they are loaded, and the page says which are still missing rather than showing
+an empty tab. Screens placed on the section are written back to
+``st.session_state.borehole_design``, so the design drawing, the Costing & BoQ
+page and the completion report all follow from the same object — a screen moved
+here is a screen moved everywhere.
 
 ## The rule this is built on
 
@@ -40,7 +49,7 @@ src/groundwater/depth_spine/
   projects.py                       loads the bundled samples via normal ingestion
   __init__.py                       the component wrapper
 
-app/depth_spine_app.py              the preview app and the round-trip
+app/streamlit_app.py                the Depth Spine page and the round-trip
 tests/test_depth_spine.py           payload, override and clipping behaviour
 ```
 
@@ -84,7 +93,7 @@ belong to the numbers that were in front of the person when they gave it.
 
 ## Changes to existing code
 
-Two, both small and additive:
+Three, all small and additive:
 
 1. **`design/designer.py`** takes an optional `screens_m`, the analyst's screen
    placement. The rest of the string is assembled by the same rules and the same
@@ -96,23 +105,34 @@ Two, both small and additive:
 2. **`web/build_demo.py`** skips this package when inlining the browser demo. A
    Streamlit custom component serves a built frontend from disk over HTTP, which
    the in-browser runtime cannot do, so shipping it there would only add weight
-   that cannot run.
+   that cannot run. The page itself imports the component defensively and
+   explains itself when it is absent, so the demo still runs every other page.
+
+3. **`_next_step` in `app/streamlit_app.py`** takes an optional `key`. It
+   derived the widget key from the destination page alone, so two pages routing
+   to the same next page collided; the Depth Spine and Borehole design pages both
+   lead to Costing & BoQ.
 
 ## Data
 
-The workspace reads the bundled sample projects through the normal ingestion
-chain — no fixtures. Dr. Timbo's Residence, BH-1: 70 m in Western Area Rural,
-strikes at 12 and 30 m, four generated screens, safe yield 0.97 m³/h (0.28 to
-1.2), and water that is **not** suitable for drinking on manganese and total
-coliforms, in water the toolkit classes as strongly corrosive. Kuntolo and Rokel
-carry a step test and a VES survey respectively, so they have no section to draw
-and are not offered.
+The workspace reads whatever the project has loaded — an uploaded workbook, a
+bundled sample, or a reloaded project file — through the app's normal ingestion.
+Nothing is fixture data. With the bundled Dr. Timbo's Residence sample loaded,
+BH-1 is 70 m in Western Area Rural, strikes at 12 and 30 m, four generated
+screens, safe yield 0.97 m³/h (0.28 to 1.2), and water that is **not** suitable
+for drinking on manganese and total coliforms, in water the toolkit classes as
+strongly corrosive.
+
+`depth_spine/projects.py` loads the bundled samples through the same ingestion
+chain without the app, for scripts and for the tests. Kuntolo and Rokel carry a
+step test and a VES survey respectively, so they have no logged hole to draw a
+section for and it declines to offer them.
 
 ## Rebuilding the frontend
 
 ```bash
 cd ui/depth-spine && npm install && npm run build     # writes ui/depth-spine/dist
-DEPTH_SPINE_DEV=1 streamlit run app/depth_spine_app.py   # against the Vite dev server
+DEPTH_SPINE_DEV=1 streamlit run app/streamlit_app.py  # against the Vite dev server
 ```
 
 `ui/depth-spine/dist` is committed on purpose, and its `.gitignore` negates the

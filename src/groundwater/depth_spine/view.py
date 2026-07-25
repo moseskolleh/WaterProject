@@ -51,7 +51,12 @@ class SpineInputs:
     name: str
     log: DrillingLog
     analysis: Optional[PumpingTestAnalysis] = None
+    #: A raw sample, assessed here.
     quality: Optional[WaterQualitySample] = None
+    #: An assessment the caller already ran - preferred over ``quality``, so
+    #: the workspace shows the same object the Water quality page does rather
+    #: than a second run of the same computation.
+    assessment: Optional[WaterQualityAssessment] = None
     config: Optional[Config] = None
     mobilisation_distance_km: float = 0.0
 
@@ -479,7 +484,10 @@ def build_view(
         "edited": screens_m is not None,
     }
 
-    if inputs.quality is not None:
-        payload["quality"] = _quality(assess_sample(inputs.quality))
+    assessment = inputs.assessment
+    if assessment is None and inputs.quality is not None:
+        assessment = assess_sample(inputs.quality)
+    if assessment is not None:
+        payload["quality"] = _quality(assessment)
 
     return payload
