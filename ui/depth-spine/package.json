@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:inline": "tsc -b && vite build --mode inline && node scripts/place-static.mjs",
+    "build:all": "npm run build && npm run build:inline"
   },
   "dependencies": {
     "react": "^19.2.7",
@@ -20,7 +22,8 @@
     "@vitejs/plugin-react": "^6.0.3",
     "oxlint": "^1.71.0",
     "typescript": "~6.0.2",
-    "vite": "^8.1.1"
+    "vite": "^8.1.1",
+    "vite-plugin-singlefile": "^2.3.3"
   },
-  "description": "Depth Spine borehole workspace — Geomentaqua Groundwater Investigation Toolkit"
+  "description": "Depth Spine borehole workspace \u2014 Geomentaqua Groundwater Investigation Toolkit"
 }

@@ -12,6 +12,8 @@ interface Props {
   view: SpineView;
   /** True while Python is re-deriving after a screen move. */
   busy: boolean;
+  /** No Python on the other end: draw everything, edit nothing. */
+  readOnly?: boolean;
   onScreens: (screens: [number, number][] | null) => void;
   onLedgerChange: (ledger: Ledger) => void;
 }
@@ -23,7 +25,13 @@ interface Props {
  * decision, so "where are we?" is answered by the header. The sign-off layer
  * lives on each stage's rail — no second application.
  */
-export function Workspace({ view, busy, onScreens, onLedgerChange }: Props) {
+export function Workspace({
+  view,
+  busy,
+  readOnly = false,
+  onScreens,
+  onLedgerChange,
+}: Props) {
   const [stage, setStage] = useState<StageId>('design');
   const [preview, setPreview] = useState<Interval[] | null>(null);
   const [ledger, setLedger] = useState<Ledger>({});
@@ -120,6 +128,7 @@ export function Workspace({ view, busy, onScreens, onLedgerChange }: Props) {
           onReset={reset}
           edited={view.edited}
           busy={busy}
+          readOnly={readOnly}
           decision={ledger.design ?? null}
           onDecide={decide('design')}
         />
@@ -128,6 +137,7 @@ export function Workspace({ view, busy, onScreens, onLedgerChange }: Props) {
         <WaterQualityStage
           quality={view.quality}
           decision={ledger.quality ?? null}
+          readOnly={readOnly}
           onDecide={decide('quality')}
         />
       )}
@@ -135,6 +145,7 @@ export function Workspace({ view, busy, onScreens, onLedgerChange }: Props) {
         <CostingStage
           view={view}
           decision={ledger.costing ?? null}
+          readOnly={readOnly}
           onDecide={decide('costing')}
         />
       )}

@@ -9,6 +9,7 @@ import { StiffDiagram } from '../charts/StiffDiagram';
 interface Props {
   quality: QualityBlock;
   decision: DecisionRecord | null;
+  readOnly?: boolean;
   onDecide: (record: DecisionRecord | null) => void;
 }
 
@@ -21,7 +22,12 @@ function headline(q: QualityBlock): { label: string; tone: 'ok' | 'warn' | 'erro
   return { label: 'Complies', tone: 'ok' };
 }
 
-export function WaterQualityStage({ quality: q, decision, onDecide }: Props) {
+export function WaterQualityStage({
+  quality: q,
+  decision,
+  readOnly = false,
+  onDecide,
+}: Props) {
   const verdict = headline(q);
   const judged = q.rows.filter((r) => r.status !== 'no_guideline');
   const within = judged.filter((r) => !r.status.startsWith('exceeds'));
@@ -226,6 +232,7 @@ export function WaterQualityStage({ quality: q, decision, onDecide }: Props) {
 
         <SignOff
           stage="quality"
+          readOnly={readOnly}
           recommended={verdict.label}
           acceptLabel="the verdict"
           writesTo="accepting writes to the water-quality and handover reports"

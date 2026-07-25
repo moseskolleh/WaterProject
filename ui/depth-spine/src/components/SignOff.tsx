@@ -31,6 +31,8 @@ interface Props {
   /** False when a check is still flagged — accepting anyway is recorded. */
   clean: boolean;
   override: OverrideSpec;
+  /** Nothing can receive a decision here, so do not offer to take one. */
+  readOnly?: boolean;
   onDecide: (record: DecisionRecord | null) => void;
   /** Design stage only: discard edits to the screen. */
   revert?: { enabled: boolean; onRevert: () => void };
@@ -50,6 +52,7 @@ export function SignOff({
   decision,
   clean,
   override,
+  readOnly = false,
   onDecide,
   revert,
 }: Props) {
@@ -91,6 +94,18 @@ export function SignOff({
     setOpen(false);
     setReason('');
   };
+
+  if (readOnly) {
+    return (
+      <div className="signoff">
+        <div className="signoff-note">
+          Toolkit recommends <b>{recommended}</b>. {writesTo}. Signing off needs
+          the full application — this build can show the decision but not record
+          it.
+        </div>
+      </div>
+    );
+  }
 
   if (decision) {
     return (

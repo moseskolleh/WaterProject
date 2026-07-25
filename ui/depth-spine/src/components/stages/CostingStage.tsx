@@ -6,6 +6,7 @@ import { SignOff } from '../SignOff';
 interface Props {
   view: SpineView;
   decision: DecisionRecord | null;
+  readOnly?: boolean;
   onDecide: (record: DecisionRecord | null) => void;
 }
 
@@ -28,7 +29,7 @@ const STAGE_COLOURS = [
   'oklch(0.7 0.1 300)',
 ];
 
-export function CostingStage({ view, decision, onDecide }: Props) {
+export function CostingStage({ view, decision, readOnly = false, onDecide }: Props) {
   const c: CostingBlock = view.costing;
   const stages = [...new Set(c.items.map((i) => i.stage))];
   const colourFor = (stage: string) =>
@@ -215,6 +216,7 @@ export function CostingStage({ view, decision, onDecide }: Props) {
 
         <SignOff
           stage="costing"
+          readOnly={readOnly}
           recommended={`US$ ${usd(c.price)}`}
           writesTo="accepting writes to the cost estimate and the bill of quantities"
           decision={decision}
