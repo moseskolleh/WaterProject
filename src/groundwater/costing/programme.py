@@ -127,7 +127,12 @@ def estimate_programme_cost(
     if not 0 < success_rate_percent <= 100:
         raise ValueError("success rate must be in (0, 100]")
     rates = rates if rates is not None else load_rates()
-    n_attempted = math.ceil(n_boreholes / (success_rate_percent / 100.0))
+    # Round before the ceiling: 21 wells at 35 percent is exactly 60 attempts,
+    # but the division lands on 60.000000000000007 and ceil() then budgeted a
+    # 61st - a whole phantom dry borehole in the programme cost.
+    n_attempted = math.ceil(
+        round(n_boreholes / (success_rate_percent / 100.0), 9)
+    )
 
     # one successful well, without base transport (charged at package level)
     well_inputs = CostingInputs(**{**per_well.__dict__, "mobilisation_distance_km": 0.0})

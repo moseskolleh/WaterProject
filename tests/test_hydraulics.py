@@ -63,6 +63,32 @@ def test_full_analysis_with_discharge(sample_data):
     assert yr.pump_installation_depth_m <= test.borehole_depth_m - 3
 
 
+def test_safe_yield_carries_an_uncertainty_band(sample_data):
+    """The safe yield is not measured: it rests on an assumed storativity, an
+    assumed effective radius and a regional dry-season allowance. Printing one
+    number to two significant figures reads as a measurement, so the
+    recommendation now carries the range those assumptions span."""
+    test = read_pumping_workbook(sample_data / "dr_timbo" / "dr_timbo_constant_test.xlsx")
+    yr = analyse_pumping_test(test).yield_recommendation
+
+    low, high = yr.safe_yield_low_m3_per_h, yr.safe_yield_high_m3_per_h
+    assert low is not None and high is not None
+    assert low <= yr.safe_yield_m3_per_h <= high
+    assert low < high, "an envelope of assumptions must produce a range"
+    assert "storativity" in yr.envelope_basis
+    # the text the reports and the app print
+    assert "to" in yr.yield_range_text and "m3/h" in yr.yield_range_text
+
+
+def test_pending_yield_has_no_band(sample_data):
+    """Nothing to bracket when the yield could not be computed at all."""
+    test = read_pumping_workbook(sample_data / "kuntolo" / "kuntolo_step_test.xlsx")
+    yr = analyse_pumping_test(test).yield_recommendation
+    assert yr.safe_yield_m3_per_h is None
+    assert yr.safe_yield_low_m3_per_h is None
+    assert yr.yield_range_text == "pending"
+
+
 def test_pending_without_discharge(sample_data):
     test = read_pumping_workbook(sample_data / "kuntolo" / "kuntolo_step_test.xlsx")
     analysis = analyse_pumping_test(test)

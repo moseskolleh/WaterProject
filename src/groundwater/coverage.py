@@ -54,6 +54,10 @@ class ChiefdomPoly:
     # per-ring (min_lon, min_lat, max_lon, max_lat) bounding boxes for a fast
     # reject before the ray-casting test (national pulls have many points).
     bboxes: list[tuple[float, float, float, float]] = field(default_factory=list)
+    # interior rings per part, aligned with ``rings``. Nongowa encloses Kenema
+    # Town; dropping its hole credited a city of 200,000 people's water points
+    # to the rural chiefdom around it, and left the town looking unserved.
+    holes: list[list[np.ndarray]] = field(default_factory=list)
 
 
 def _resource_text(name: str, path: str | Path | None) -> str:
@@ -73,6 +77,21 @@ def _point_in_ring(lon: float, lat: float, ring: np.ndarray) -> bool:
             if lon < x_cross:
                 inside = not inside
     return inside
+
+
+
+def _poly_contains(poly: "ChiefdomPoly", lon: float, lat: float) -> bool:
+    """Point in a chiefdom, honouring enclaves cut out of it."""
+    for i, (ring, (x0, y0, x1, y1)) in enumerate(zip(poly.rings, poly.bboxes)):
+        if not (x0 <= lon <= x1 and y0 <= lat <= y1):
+            continue
+        if not _point_in_ring(lon, lat, ring):
+            continue
+        inner = poly.holes[i] if i < len(poly.holes) else []
+        if any(_point_in_ring(lon, lat, hole) for hole in inner):
+            continue  # inside an enclave: it belongs to the chiefdom there
+        return True
+    return False
 
 
 def load_district_population(path: str | Path | None = None) -> dict[str, float]:
@@ -106,13 +125,18 @@ def load_chiefdom_polys(path: str | Path | None = None) -> list[ChiefdomPoly]:
             else [geom.get("coordinates", [])]
         )
         rings = [np.asarray(p[0], dtype=float) for p in parts if p]
+        holes = [
+            [np.asarray(r, dtype=float) for r in p[1:]] for p in parts if p
+        ]
         if not rings:
             continue
         bboxes = [
             (r[:, 0].min(), r[:, 1].min(), r[:, 0].max(), r[:, 1].max())
             for r in rings
         ]
-        polys.append(ChiefdomPoly(name=name, rings=rings, bboxes=bboxes))
+        polys.append(
+            ChiefdomPoly(name=name, rings=rings, bboxes=bboxes, holes=holes)
+        )
     return polys
 
 
@@ -125,9 +149,8 @@ def district_of_point(
     or a bad coordinate).
     """
     for poly in polys:
-        for ring, (x0, y0, x1, y1) in zip(poly.rings, poly.bboxes):
-            if x0 <= lon <= x1 and y0 <= lat <= y1 and _point_in_ring(lon, lat, ring):
-                return chiefdom_district.get(poly.name, "")
+        if _poly_contains(poly, lon, lat):
+            return chiefdom_district.get(poly.name, "")
     return ""
 
 
@@ -313,9 +336,8 @@ def chiefdom_of_point(
 ) -> str:
     """Chiefdom polygon containing a point, or "" when outside every chiefdom."""
     for poly in polys:
-        for ring, (x0, y0, x1, y1) in zip(poly.rings, poly.bboxes):
-            if x0 <= lon <= x1 and y0 <= lat <= y1 and _point_in_ring(lon, lat, ring):
-                return poly.name
+        if _poly_contains(poly, lon, lat):
+            return poly.name
     return ""
 
 

@@ -18,7 +18,7 @@ from ..design.drawing import draw_borehole_design
 from ..hydraulics.analysis import PumpingTestAnalysis
 from ..models import DrillingLog, SiteMetadata
 from ..quality.assess import WaterQualityAssessment
-from ..utils import fmt_num
+from ..utils import fmt_num, safe_slug
 from .citations import GLOSSARY, references_for
 from .context import context_map_figures
 from .docx_utils import ReportBuilder
@@ -96,6 +96,11 @@ def build_handover_report(
     site = inputs.site
     figures = Path(inputs.figures_dir)
     figures.mkdir(parents=True, exist_ok=True)
+    # Qualify figure filenames with the site: several reports share one
+    # figures directory in an app session and generation is guarded by an
+    # existence check, so fixed names made the second report silently reuse
+    # the first site's figures.
+    slug = safe_slug(site.community, "site")
 
     rb = ReportBuilder(config.style, title=f"Handover Report - {site.community}")
     rb.cover(
@@ -170,7 +175,7 @@ def build_handover_report(
             if yr.safe_yield_m3_per_h:
                 rows.append([
                     f"Safe yield (safety factor {yr.safety_factor:g})",
-                    fmt_num(yr.safe_yield_m3_per_h) + " m3/h",
+                    yr.yield_range_text,
                 ])
             if yr.pump_installation_depth_m:
                 rows.append(["Pump installation depth", fmt_num(yr.pump_installation_depth_m) + " m"])
@@ -179,7 +184,7 @@ def build_handover_report(
     rb.table(rows, header=["Item", "Value"], caption="Key borehole data.")
 
     if inputs.design is not None:
-        design_fig = figures / "borehole_design.png"
+        design_fig = figures / f"borehole_design_{slug}.png"
         if not design_fig.exists():
             draw_borehole_design(
                 inputs.design, log, path=design_fig, style=config.style,

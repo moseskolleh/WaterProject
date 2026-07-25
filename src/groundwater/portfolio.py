@@ -9,7 +9,7 @@ statistics. Pure and map-library-free, so it is unit-testable.
 
 from __future__ import annotations
 
-from .geo import utm_to_geographic
+from .geo import infer_zone_for_sierra_leone, utm_to_geographic
 
 # status classes and their map colours (red = problem, green = good)
 STATUS_COLORS = {
@@ -33,10 +33,21 @@ def classify_status(summary: dict) -> str:
         return "sited" if summary.get("safe_yield_m3_per_h") or summary.get(
             "total_depth_m"
         ) else "other"
+    # Failure wins over completion. "Completed - dry" describes the works,
+    # not the outcome, and "unsuccessful" contains "success" - matching the
+    # positive terms first reported failed boreholes as successful ones and
+    # inflated the portfolio success rate.
+    if (
+        "dry" in raw
+        or "fail" in raw
+        or "abandon" in raw
+        or "unsuccess" in raw
+        or "not success" in raw
+        or "no water" in raw
+    ):
+        return "dry"
     if "success" in raw or "complete" in raw or "productive" in raw:
         return "successful"
-    if "dry" in raw or "fail" in raw or "abandon" in raw or "unsuccess" in raw:
-        return "dry"
     if "sit" in raw:  # "sited", "siting"
         return "sited"
     return "other"
@@ -47,7 +58,11 @@ def _latlon(summary: dict):
     northing = summary.get("northing")
     if not easting or not northing:
         return None
-    zone = int(summary.get("utm_zone") or 29)
+    # same fallback as SiteMetadata.utm: a hard-coded zone dropped every
+    # zone-less project 6 degrees off, into the Atlantic and off the map
+    zone = int(summary.get("utm_zone") or 0) or infer_zone_for_sierra_leone(
+        float(easting)
+    )
     try:
         return utm_to_geographic(float(easting), float(northing), zone)
     except Exception:  # noqa: BLE001 - a bad coordinate simply drops the point

@@ -270,11 +270,14 @@ def build_completion_report(
         if not overview.exists():
             plot_test_overview(test, path=overview, style=config.style)
         rb.figure(overview, "Constant discharge test and recovery record.")
-        q = test.steps[0].discharge_m3_per_h if test.steps else None
+        # the maximum drawdown below is measured at the end of the last step,
+        # so the rate quoted beside it has to be that step's, not step 1's
+        q = test.steps[-1].discharge_m3_per_h if test.steps else None
+        q_label = "Discharge (final step)" if len(test.steps) > 1 else "Discharge"
         rows = [
             ["Test type", test.test_type],
             ["Duration", fmt_num(test.pumping_duration_min) + " min" if test.pumping_duration_min else ""],
-            ["Discharge", fmt_num(q) + " m3/h" if q else "pending"],
+            [q_label, fmt_num(q) + " m3/h" if q else "pending"],
             ["Static water level", fmt_num(test.static_water_level_m) + " m"],
             ["Maximum drawdown", fmt_num(analysis.max_drawdown_m) + " m" if analysis.max_drawdown_m else ""],
         ]
@@ -294,7 +297,11 @@ def build_completion_report(
         dwl = float(inputs.pumping.test.steps[-1].water_level_m[-1])
     q = None
     if inputs.pumping and inputs.pumping.test.steps:
-        q = inputs.pumping.test.steps[0].discharge_m3_per_h
+        # the same step the dynamic level above came from. Taking the rate
+        # from the first step and the level from the last paired step 1's
+        # 2.5 m3/h with step 3's 59 m of drawdown - read by the client as the
+        # borehole's yield against its drawdown.
+        q = inputs.pumping.test.steps[-1].discharge_m3_per_h
     yr = inputs.pumping.yield_recommendation if inputs.pumping else None
     pairs = [
         ("Borehole depth", fmt_num(log.total_depth_m) + " m"),

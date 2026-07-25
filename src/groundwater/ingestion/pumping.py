@@ -139,16 +139,37 @@ def _discharge_candidates_from_text(grid: list[list]) -> list[float]:
     return found
 
 
+# Pre-printed text that names a test kind without recording which test was
+# run: the template's own title mentions both, and its constant-discharge
+# column labels ("Constant discharge 61-120 min") sit on every sheet whatever
+# was pumped. Reading either as an answer turned step tests into constant ones.
+_CONSTANT_COLUMN_LABEL_RE = re.compile(r"constant\s+discharge\s*\d")
+
+
 def _sheet_test_type(grid: list[list]) -> str:
-    """Look for 'STEP TEST' or 'CONSTANT DISCHARGE' banners in the sheet."""
+    """Look for 'STEP TEST' or 'CONSTANT DISCHARGE' banners in the sheet.
+
+    Only decisive text counts. A cell naming both kinds is a form title
+    ("PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)"), and a
+    constant-discharge column label is a heading for one of the hourly
+    groups - neither says which test the crew actually ran.
+    """
     for row in grid:
         for cell in row:
             text = clean_text(cell).lower()
             if not text:
                 continue
-            if "step test" in text or "step drawdown" in text:
+            step_words = "step test" in text or "step drawdown" in text
+            constant_words = (
+                "constant discharge" in text or "constant rate" in text
+            )
+            # "(STEP / CONSTANT DISCHARGE)" offers both; any mention of a step
+            # alongside constant wording makes the cell a title, not an answer
+            if constant_words and "step" in text:
+                continue
+            if step_words:
                 return "step"
-            if "constant discharge" in text or "constant rate" in text:
+            if constant_words and not _CONSTANT_COLUMN_LABEL_RE.search(text):
                 return "constant"
     return ""
 
@@ -177,10 +198,23 @@ def _assemble(grid: list[list], source: str) -> PumpingTest:
     recovery_series = [(t, wl) for t, wl in recovery_series if len(t)]
 
     test_type = str(fields.get("test_type", "")).strip().lower()
+    stated = bool(test_type)
     if not test_type:
         test_type = _sheet_test_type(grid)
+    inferred_from_shape = not test_type
     if not test_type:
         test_type = "step" if len(pumping_series) > 1 else "constant"
+    if inferred_from_shape and not stated and len(pumping_series) > 1:
+        flags.append(
+            DataFlag(
+                "info",
+                "test_type_inferred",
+                f"The test type cell is blank; the {len(pumping_series)} filled "
+                "column groups have been read as the steps of a step test. If "
+                'this was a constant discharge test, write "constant" in the '
+                "test type cell so the readings are analysed as one series.",
+            )
+        )
 
     if test_type.startswith("constant") and len(pumping_series) > 1:
         # hourly column groups are one continuous series on constant tests

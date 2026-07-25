@@ -14,7 +14,7 @@ from typing import Optional
 
 import numpy as np
 
-from .geo import UTMCoordinate, utm_to_geographic
+from .geo import UTMCoordinate, infer_zone_for_sierra_leone, utm_to_geographic
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +64,10 @@ class SiteMetadata:
     def utm(self) -> Optional[UTMCoordinate]:
         if self.easting is None or self.northing is None:
             return None
-        zone = self.utm_zone or 28
+        # A fixed fallback puts half the country in the Atlantic: the two
+        # zones are 6 degrees (about 660 km) apart. The easting alone
+        # identifies the zone in Sierra Leone, so infer it rather than guess.
+        zone = self.utm_zone or infer_zone_for_sierra_leone(self.easting)
         return UTMCoordinate(self.easting, self.northing, zone)
 
     @property
@@ -117,6 +120,12 @@ class VESSounding:
         self.ab2 = np.asarray(self.ab2, dtype=float)
         self.mn = np.asarray(self.mn, dtype=float)
         self.rho_app = np.asarray(self.rho_app, dtype=float)
+        # The array type decides which forward model is used, and the
+        # inversion and forward code match it with a bare startswith().
+        # "Wenner" from a hand-built sounding or a scanned sheet would
+        # otherwise be inverted as Schlumberger - silently wrong by tens
+        # of percent - so normalise it once, here.
+        self.array_type = str(self.array_type or "schlumberger").strip().lower()
 
     @property
     def n_readings(self) -> int:

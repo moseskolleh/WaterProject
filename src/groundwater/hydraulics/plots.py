@@ -174,7 +174,12 @@ def plot_recovery(
                     mec=style.accent_color, mew=1.2, label="residual drawdown")
         if result is not None:
             r_line = np.geomspace(1.001, ratio.max() * 1.2, 50)
-            s_line = result.slope_m_per_log_cycle * np.log10(r_line)
+            # the line that was actually fitted, intercept included: forcing
+            # it through the origin drew a line beside the data it claims to fit
+            s_line = (
+                result.slope_m_per_log_cycle * np.log10(r_line)
+                + result.intercept_m
+            )
             ax.semilogx(r_line, s_line, "-", color=style.secondary_color, lw=1.8,
                         label=(
                             f"fit: {result.slope_m_per_log_cycle:.2f} m/log cycle, "

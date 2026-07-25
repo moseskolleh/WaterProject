@@ -32,6 +32,7 @@ __all__ = [
     "SiteInterpretation",
     "interpret_model",
     "drilling_preference_table",
+    "rank_interpretations",
 ]
 
 
@@ -110,9 +111,16 @@ def interpret_model(
     bottoms = model.depths_bottom
     n = model.n_layers
 
-    investigation = (
-        float(np.max(sounding.ab2)) if sounding is not None else float(bottoms[-2] * 2 + 20)
-    )
+    if sounding is not None:
+        investigation = float(np.max(sounding.ab2))
+    elif n > 1:
+        investigation = float(bottoms[-2] * 2 + 20)
+    else:
+        # A bare half-space with no sounding carries no depth scale at all -
+        # bottoms is just [inf], and bottoms[-2] used to raise IndexError.
+        # Zero is the honest answer: nothing was resolved, so nothing is
+        # recommended.
+        investigation = 0.0
 
     layers: list[LayerInterpretation] = []
     for i in range(n):
@@ -206,7 +214,7 @@ def interpret_model(
     interp.transverse_resistance_t = t_res
     # protective capacity uses only the cover above the aquifer, so a
     # conductive water-bearing zone is not counted as its own protection
-    s_cover = _cover_conductance(layers, zones)
+    s_cover = _cover_conductance(layers)
     interp.protective_conductance_s = s_cover
     interp.protective_capacity = _protective_capacity(s_cover)
 
@@ -231,17 +239,24 @@ def _dar_zarrouk(layers: list[LayerInterpretation]) -> tuple[float, float]:
     return s_cond, t_res
 
 
-def _cover_conductance(
-    layers: list[LayerInterpretation], water_zones: list[tuple[float, float]]
-) -> float:
+def _cover_conductance(layers: list[LayerInterpretation]) -> float:
     """Longitudinal conductance of the cover overlying the aquifer.
 
-    Only the material above the shallowest water-bearing zone counts as
+    Only the material above the shallowest water-bearing layer counts as
     protective cover, so a thick or conductive aquifer is not credited as
-    its own contamination barrier. With no water zone the whole overburden
-    is the cover.
+    its own contamination barrier. With no water-bearing layer the whole
+    overburden is the cover.
+
+    The top is taken from the layers, not from the reported water zones:
+    those are floored at 3 m by the vadose rule and rounded for display, so
+    a weathered aquifer reaching close to the surface had its own top 3 m -
+    conductive, and therefore a large contribution - credited as its
+    barrier, rating a poorly protected aquifer as moderately protected.
     """
-    aquifer_top = min((t for t, _ in water_zones), default=float("inf"))
+    aquifer_top = min(
+        (layer.top_m for layer in layers if layer.water_bearing),
+        default=float("inf"),
+    )
     s_cover = 0.0
     for layer in layers:
         if layer.thickness_m is None or layer.rho <= 0:
@@ -338,6 +353,32 @@ def _narrative(interp: SiteInterpretation) -> str:
     return " ".join(parts)
 
 
+
+def rank_interpretations(
+    interpretations: list[SiteInterpretation],
+    preferred_order: list[str] | None = None,
+) -> list[SiteInterpretation]:
+    """Assign ``rank`` (1 = most preferred) in place; return them ranked.
+
+    Kept separate from the preference table so callers that only need the
+    ranking - the dashboard, a reloaded project - get it without building the
+    table. Every caller reading ``rank`` must have ranked first: an unranked
+    set leaves every rank None, and "best" then falls back to whichever
+    sounding happened to be parsed first.
+    """
+    if preferred_order:
+        position = {sid: i for i, sid in enumerate(preferred_order)}
+        ranked = sorted(
+            interpretations,
+            key=lambda i: (position.get(i.sounding_id, len(position)), -i.score),
+        )
+    else:
+        ranked = sorted(interpretations, key=lambda i: (-i.score, i.sounding_id))
+    for rank, interp in enumerate(ranked, start=1):
+        interp.rank = rank
+    return ranked
+
+
 def drilling_preference_table(
     interpretations: list[SiteInterpretation],
     preferred_order: list[str] | None = None,
@@ -352,16 +393,7 @@ def drilling_preference_table(
     sounding ids, most preferred first) lets the analyst set the
     ranking explicitly; unlisted sites follow after, by score.
     """
-    if preferred_order:
-        position = {sid: i for i, sid in enumerate(preferred_order)}
-        ranked = sorted(
-            interpretations,
-            key=lambda i: (position.get(i.sounding_id, len(position)), -i.score),
-        )
-    else:
-        ranked = sorted(interpretations, key=lambda i: (-i.score, i.sounding_id))
-    for rank, interp in enumerate(ranked, start=1):
-        interp.rank = rank
+    rank_interpretations(interpretations, preferred_order)
     rows = []
     for i, interp in enumerate(interpretations, start=1):
         layer_numbers = "\n".join(str(l.number) for l in interp.layers)

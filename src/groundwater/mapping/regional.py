@@ -64,6 +64,10 @@ class AdminArea:
     name: str
     rings: list[np.ndarray] = field(default_factory=list)
     district: str = ""  # parent district, for ADM3 chiefdoms
+    # interior rings per part, aligned with ``rings``. Only the point tests
+    # use them: Nongowa encloses Kenema Town, and ignoring the hole labelled
+    # every site in the town with the rural chiefdom around it.
+    holes: list[list[np.ndarray]] = field(default_factory=list)
 
     @property
     def label_point(self) -> tuple[float, float]:
@@ -227,6 +231,9 @@ def load_chiefdoms(path: str | Path | None = None) -> list[AdminArea]:
             else [geom.get("coordinates", [])]
         )
         rings = [np.asarray(p[0], dtype=float) for p in polys if p]
+        holes = [
+            [np.asarray(r, dtype=float) for r in p[1:]] for p in polys if p
+        ]
         if rings:
             areas.append(
                 AdminArea(
@@ -234,6 +241,7 @@ def load_chiefdoms(path: str | Path | None = None) -> list[AdminArea]:
                     name=props.get("name", ""),
                     rings=rings,
                     district=props.get("district", ""),
+                    holes=holes,
                 )
             )
     return areas
@@ -248,9 +256,13 @@ def chiefdom_of(
     outside every chiefdom.
     """
     for area in load_chiefdoms(path):
-        for ring in area.rings:
-            if _point_in_ring(lon, lat, ring):
-                return area.name, area.district
+        for i, ring in enumerate(area.rings):
+            if not _point_in_ring(lon, lat, ring):
+                continue
+            inner = area.holes[i] if i < len(area.holes) else []
+            if any(_point_in_ring(lon, lat, hole) for hole in inner):
+                continue  # inside an enclave: it belongs to the chiefdom there
+            return area.name, area.district
     return "", ""
 
 

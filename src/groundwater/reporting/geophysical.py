@@ -24,7 +24,7 @@ from ..geo import infer_zone_for_sierra_leone
 from ..mapping import suitability_map
 from ..models import DataFlag, VESSounding
 from ..siting import assess_siting, suitability_map_points
-from ..utils import fmt_num
+from ..utils import fmt_num, safe_slug
 from ..ves.classify import classify_curve
 from ..ves.interpret import SiteInterpretation, drilling_preference_table
 from ..ves.inversion import InversionResult
@@ -347,6 +347,12 @@ def _limitations(inversions: list[InversionResult]) -> list[str]:
     return items
 
 
+
+def _site_slug(site) -> str:
+    """Filename fragment identifying the survey site."""
+    return safe_slug(getattr(site, "community", "") or "site", "site")
+
+
 def _sounding_block(
     rb: ReportBuilder,
     sounding: VESSounding,
@@ -357,7 +363,10 @@ def _sounding_block(
     """One data analysis block per sounding: tables, figures, narrative."""
     site = sounding.site
     sid = sounding.sounding_id
-    safe_id = sid.replace(" ", "_").replace("(", "").replace(")", "")
+    # site as well as sounding id: two surveys both with a sounding "A"
+    # share one figures directory in an app session, and generation is
+    # guarded by an existence check, so the second reused the first's curve.
+    safe_id = f"{_site_slug(site)}_{safe_slug(sid, 'ves')}"
 
     # data table with the field sheet header block
     table_no = rb.next_table_number
@@ -503,7 +512,7 @@ def _suitability_block(rb: ReportBuilder, inputs, site) -> None:
     map_points = suitability_map_points(suit)
     if map_points:
         zone = site.utm_zone or infer_zone_for_sierra_leone(map_points[0].easting)
-        smap = Path(inputs.figures_dir) / "suitability_map.png"
+        smap = Path(inputs.figures_dir) / f"suitability_map_{_site_slug(site)}.png"
         if not smap.exists():
             suitability_map(map_points, zone, path=smap)
         rb.figure(

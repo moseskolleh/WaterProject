@@ -24,7 +24,7 @@ Methods
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Optional
 
 import numpy as np
@@ -72,6 +72,9 @@ class RecoveryResult:
     r_squared: float
     discharge_m3_per_h: float
     residual_at_end_m: float
+    # theory puts the line through the origin at t/t' = 1; the fitted line
+    # generally does not, and the figure has to draw the line that was fitted
+    intercept_m: float = 0.0
 
 
 @dataclass
@@ -104,6 +107,27 @@ class YieldRecommendation:
     pump_installation_depth_m: Optional[float]
     basis: str  # narrative of how the recommendation was derived
     pending_reason: str = ""  # non-empty when discharge or SWL is missing
+    # plausible range of the safe yield over the assumptions it rests on
+    # (transmissivity, storativity, effective radius, seasonal allowance)
+    safe_yield_low_m3_per_h: Optional[float] = None
+    safe_yield_high_m3_per_h: Optional[float] = None
+    envelope_basis: str = ""
+
+    @property
+    def yield_range_text(self) -> str:
+        """"2.4 m3/h (1.8 to 3.1)" - never a bare number for an assumed one."""
+        if self.safe_yield_m3_per_h is None:
+            return "pending"
+        text = f"{self.safe_yield_m3_per_h:.2g} m3/h"
+        if (
+            self.safe_yield_low_m3_per_h is not None
+            and self.safe_yield_high_m3_per_h is not None
+        ):
+            text += (
+                f" ({self.safe_yield_low_m3_per_h:.2g} to "
+                f"{self.safe_yield_high_m3_per_h:.2g})"
+            )
+        return text
 
 
 @dataclass
@@ -143,6 +167,23 @@ def _line_fit(x: np.ndarray, y: np.ndarray) -> tuple[float, float, float]:
     return slope, intercept, r2
 
 
+def _require_discharge(discharge_m3_per_h) -> float:
+    """A rate of zero is not a measurement, and T is proportional to Q.
+
+    A blank left as 0 on the sheet used to divide by zero deep inside the
+    fit; raising here puts it on the same handled path as a missing value.
+    """
+    if discharge_m3_per_h is None:
+        raise ValueError("No discharge recorded, so transmissivity cannot be fitted")
+    q = float(discharge_m3_per_h)
+    if not math.isfinite(q) or q <= 0:
+        raise ValueError(
+            f"Discharge must be greater than zero to fit an aquifer parameter "
+            f"(got {q:g} m3/h); check the discharge row on the field sheet"
+        )
+    return q
+
+
 def cooper_jacob(
     time_min: np.ndarray,
     drawdown_m: np.ndarray,
@@ -160,6 +201,7 @@ def cooper_jacob(
     the fitted T (and an assumed S for the pumped well) and reported.
     """
     config = config or PumpingConfig()
+    _require_discharge(discharge_m3_per_h)
     t = np.asarray(time_min, dtype=float)
     s = np.asarray(drawdown_m, dtype=float)
     keep = (t > 0) & np.isfinite(s)
@@ -172,7 +214,10 @@ def cooper_jacob(
         t_start = max(t_end / 10.0, t.min())
         window = (t >= t_start)
         if window.sum() < 6:
-            window = np.argsort(t) >= max(len(t) - 6, 0)
+            # the six latest readings. argsort gives sorting indices, not
+            # ranks, so comparing it against a rank picked an arbitrary six
+            # whenever the sheet's times were not already in order
+            window = t >= np.sort(t)[-min(6, len(t))]
         fit_window_min = (float(t[window].min()), float(t[window].max()))
     else:
         window = (t >= fit_window_min[0]) & (t <= fit_window_min[1])
@@ -233,6 +278,7 @@ def theis_fit(
     ``s = Q / (4 pi T) W(u)``, ``u = r^2 S / (4 T t)``. Fitting is done
     in log parameter space to keep T and S positive.
     """
+    _require_discharge(discharge_m3_per_h)
     t = np.asarray(time_min, dtype=float) / MIN_PER_DAY
     s = np.asarray(drawdown_m, dtype=float)
     keep = (t > 0) & (s > 0)
@@ -276,6 +322,7 @@ def theis_recovery(
     ``s' = 2.303 Q / (4 pi T) log10(t/t')`` with t measured since
     pumping started and t' since it stopped.
     """
+    _require_discharge(discharge_m3_per_h)
     tp = np.asarray(recovery_time_min, dtype=float)  # t'
     sp = np.asarray(residual_drawdown_m, dtype=float)
     keep = (tp > 0) & np.isfinite(sp)
@@ -283,7 +330,7 @@ def theis_recovery(
     if len(tp) < 4:
         raise ValueError("Not enough recovery readings")
     ratio = (pumping_duration_min + tp) / tp
-    slope, _, r2 = _line_fit(np.log10(ratio), sp)
+    slope, intercept, r2 = _line_fit(np.log10(ratio), sp)
     if slope <= 0:
         raise ValueError("Residual drawdown does not decrease; check the data")
     q_day = discharge_m3_per_h * 24.0
@@ -295,6 +342,7 @@ def theis_recovery(
         r_squared=r2,
         discharge_m3_per_h=discharge_m3_per_h,
         residual_at_end_m=float(sp[-1]),
+        intercept_m=float(intercept),
     )
 
 
@@ -319,6 +367,16 @@ def hantush_bierschenk(
         # aquifer loss
         C = 0.0
         B = float(np.mean(sq))
+    if B < 0:
+        # Neither has a negative aquifer loss: it made the reported well
+        # efficiency negative (100 B Q / (B Q + C Q^2) with B < 0), which went
+        # into the report as the borehole's efficiency. Refit through the
+        # origin as pure well loss - least squares of s/Q = C Q with B = 0.
+        B = 0.0
+        C = float(np.sum(s) / np.sum(q**2))
+        fitted = C * q
+        ss_tot = float(np.sum((sq - sq.mean()) ** 2))
+        r2 = 1.0 - float(np.sum((sq - fitted) ** 2)) / ss_tot if ss_tot > 0 else 1.0
     steps = []
     for i, (qi, si) in enumerate(zip(q, s), start=1):
         eff = 100.0 * B * qi / (B * qi + C * qi**2) if (B * qi + C * qi**2) > 0 else 100.0
@@ -391,11 +449,19 @@ def recommend_yield(
     )
 
     if transmissivity is None or swl is None:
-        reason = (
-            "discharge is missing on the field sheet"
-            if transmissivity is None
-            else "static water level is missing"
-        )
+        # name what is actually missing: blaming the discharge when it was
+        # recorded and the fit simply failed sends the crew back to the field
+        # for a number that is already on the sheet
+        missing = []
+        if swl is None:
+            missing.append("static water level is missing")
+        if transmissivity is None:
+            missing.append(
+                "discharge is missing on the field sheet"
+                if not any(s.discharge_m3_per_h for s in test.steps)
+                else "transmissivity could not be fitted from the readings"
+            )
+        reason = " and ".join(missing)
         return YieldRecommendation(
             specific_capacity_m3hr_per_m=specific_capacity,
             available_drawdown_m=available,
@@ -492,6 +558,77 @@ def recommend_yield(
 # Orchestration
 # ---------------------------------------------------------------------------
 
+
+# storativity is never resolvable from a single pumped well, the effective
+# radius depends on the gravel pack and development, and the wet-to-dry
+# decline is a regional rule of thumb. The safe yield is proportional to
+# none of them individually but sensitive to all of them, so the honest
+# output is a band. Ranges follow common basement-aquifer practice.
+_ENVELOPE_STORATIVITY = (1e-4, 1e-2)
+_ENVELOPE_RADIUS_M = (0.075, 0.15)
+_ENVELOPE_SEASONAL_M = (1.0, 4.0)
+
+
+def attach_yield_envelope(
+    analysis: "PumpingTestAnalysis", config: PumpingConfig | None = None
+) -> None:
+    """Fill the safe-yield band on ``analysis.yield_recommendation``.
+
+    Re-runs the same recommendation over the corners of the assumption
+    envelope - transmissivity across whichever methods actually fitted,
+    storativity, effective well radius and the seasonal allowance - and keeps
+    the lowest and highest safe yields. Reported as "2.4 m3/h (1.8 to 3.1)",
+    so nobody reads an assumed number as a measured one.
+    """
+    config = config or PumpingConfig()
+    recommendation = analysis.yield_recommendation
+    if recommendation is None or recommendation.safe_yield_m3_per_h is None:
+        return
+
+    fitted = [
+        r.transmissivity_m2_per_day
+        for r in (analysis.recovery, analysis.cooper_jacob, analysis.theis)
+        if r is not None and r.transmissivity_m2_per_day
+    ]
+    if not fitted:
+        return
+    # when only one method fitted there is no spread to measure, so allow the
+    # factor of two that separates methods on a typical basement borehole
+    t_range = (min(fitted), max(fitted)) if len(fitted) > 1 else (
+        fitted[0] / 1.5, fitted[0] * 1.5
+    )
+
+    yields = []
+    for transmissivity in t_range:
+        for storativity in _ENVELOPE_STORATIVITY:
+            for radius in _ENVELOPE_RADIUS_M:
+                for seasonal in _ENVELOPE_SEASONAL_M:
+                    variant = replace(config, seasonal_allowance_m=seasonal)
+                    trial = recommend_yield(
+                        analysis.test,
+                        transmissivity,
+                        analysis.step_test,
+                        variant,
+                        assumed_storativity=storativity,
+                        effective_radius_m=radius,
+                    )
+                    if trial.safe_yield_m3_per_h:
+                        yields.append(trial.safe_yield_m3_per_h)
+    if not yields:
+        return
+    recommendation.safe_yield_low_m3_per_h = min(yields)
+    recommendation.safe_yield_high_m3_per_h = max(yields)
+    recommendation.envelope_basis = (
+        f"Range over transmissivity {t_range[0]:.1f}-{t_range[1]:.1f} m2/day"
+        f"{' (spread between the fitted methods)' if len(fitted) > 1 else ''}, "
+        f"storativity {_ENVELOPE_STORATIVITY[0]:g}-{_ENVELOPE_STORATIVITY[1]:g}, "
+        f"effective radius {_ENVELOPE_RADIUS_M[0]}-{_ENVELOPE_RADIUS_M[1]} m and "
+        f"a dry-season decline of {_ENVELOPE_SEASONAL_M[0]:.0f}-"
+        f"{_ENVELOPE_SEASONAL_M[1]:.0f} m. Design to the lower figure where the "
+        "supply must not fail in a dry year."
+    )
+
+
 def analyse_pumping_test(
     test: PumpingTest,
     config: PumpingConfig | None = None,
@@ -514,6 +651,24 @@ def analyse_pumping_test(
             and all(s.discharge_m3_per_h is not None for s in test.steps)
         )
     ]
+    # A zero or negative rate is a blank the crew wrote a 0 into, not a
+    # measurement. Treat it as missing so the pending narrative and the
+    # step-test guards below are right, rather than carrying it into a fit.
+    for step in test.steps:
+        q = step.discharge_m3_per_h
+        if q is not None and not (float(q) > 0 and math.isfinite(float(q))):
+            step.discharge_m3_per_h = None
+            flags.append(
+                DataFlag(
+                    "warning",
+                    "invalid_discharge",
+                    f"Discharge recorded as {float(q):g} m3/h, which cannot be "
+                    "a pumping rate; treated as not measured. Enter the "
+                    "bucket-and-stopwatch value to get transmissivity and yield.",
+                    context=step.label or f"step {step.step_number}",
+                )
+            )
+
     swl = test.static_water_level_m
 
     if test.steps and swl is not None:
@@ -593,6 +748,7 @@ def analyse_pumping_test(
         analysis.step_test,
         config,
     )
+    attach_yield_envelope(analysis, config)
 
     analysis.flags = flags
     return analysis

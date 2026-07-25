@@ -103,9 +103,12 @@ def test_supervision_flow(app):
     from groundwater.supervision import load_checklists
 
     first = load_checklists()[0]
-    app.radio(key=f"chk_{first.item_id}").set_value("Yes")
+    # the radio is keyed chkw_ and writes through to the chk_ answer store,
+    # so an answer survives a stage the run does not draw
+    app.radio(key=f"chkw_{first.item_id}").set_value("Yes")
     app.run()
     assert not app.exception
+    assert app.session_state[f"chk_{first.item_id}"] == "Yes"
     app.button(key="build_sup_report").click()
     app.run()
     assert not app.exception

@@ -26,6 +26,27 @@ def test_dar_zarrouk_values_and_protective_capacity():
     assert "Dar-Zarrouk" in interp.narrative
 
 
+def test_aquifer_is_not_credited_as_its_own_protective_cover():
+    """The reported water zones start at 3 m (the vadose rule) and are
+    rounded for display. Reading the aquifer top out of them credited the
+    top 3 m of a shallow, conductive weathered aquifer as its own
+    contamination barrier - and a conductive layer contributes a lot of
+    conductance, so a poorly protected aquifer was rated better than it is.
+    """
+    model = LayeredModel(
+        resistivities=np.array([120.0, 45.0, 2500.0]),
+        thicknesses=np.array([1.0, 25.0]),  # the aquifer starts at 1 m
+        sounding_id="VES-4",
+    )
+    interp = interpret_model(None, model)
+    aquifer = [layer for layer in interp.layers if layer.water_bearing]
+    assert aquifer and aquifer[0].top_m == 1.0
+    assert interp.water_zones[0][0] == 3  # display value, floored at the vadose depth
+    # only the 1 m of real cover counts: 1/120 = 0.0083 S, well under 0.1
+    assert abs(interp.protective_conductance_s - 1.0 / 120.0) < 1e-9
+    assert interp.protective_capacity == "poor"
+
+
 def test_protective_capacity_bands():
     # a thick conductive clay cap gives a high longitudinal conductance
     model = LayeredModel(

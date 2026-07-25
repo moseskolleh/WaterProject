@@ -287,6 +287,441 @@ def test_app_survives_integer_meta_zone():
     assert not at.exception
 
 
+# --- app: a deep sounding must not brick the guided start -------------------
+
+def test_guided_start_survives_depth_beyond_the_widget_range():
+    """A sounding that resolves no water zone recommends its investigated
+    depth (max AB/2), which on a deep survey exceeds the guided start's
+    300 m field. Streamlit raises on an out-of-range prefill, so the costing
+    step took the whole page down with a red traceback."""
+    from pathlib import Path
+
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+
+    from groundwater.config import Config
+    from groundwater.ves import interpret_model, invert_sounding
+    from groundwater.ves.forward import forward_schlumberger
+
+    cfg = Config()
+    ab2 = np.array([1, 2, 3, 5, 7, 10, 15, 20, 30, 40, 60, 80, 100, 150,
+                    200, 300, 400.0])
+    # thin cover on fresh basement: nothing water bearing is resolved
+    rho = forward_schlumberger((np.array([800.0, 4000.0]), np.array([4.0])), ab2)
+    sounding = VESSounding(
+        site=SiteMetadata(community="Dry", district="Bo"), sounding_id="D1",
+        ab2=ab2, mn=ab2 / 3, rho_app=rho,
+    )
+    result = invert_sounding(sounding, cfg.ves)
+    interp = interpret_model(sounding, result.model, cfg.ves)
+    assert interp.max_drilling_depth_m > 300.0  # the precondition for the crash
+
+    app_path = str(Path(__file__).resolve().parents[1] / "app" / "streamlit_app.py")
+    at = AppTest.from_file(app_path, default_timeout=600)
+    at.session_state["ves_results"] = ([sounding], [result], [interp])
+    at.session_state["nav"] = "Guided start"
+    at.session_state["wiz_step"] = 2  # the costing step
+    at.run()
+    assert not at.exception
+    assert at.number_input(key="wiz_cost_depth").value <= 300.0
+
+
+# --- app: checklist answers must survive moving between stages --------------
+
+def test_supervision_answers_survive_a_stage_change():
+    """Only the picked stage's widgets are drawn, and Streamlit discards the
+    state of widgets a run does not draw. A supervisor who answered
+    Procurement, moved to Drilling and came back found every answer reset to
+    Pending - and the project file saved only the stage on screen."""
+    from pathlib import Path
+
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+
+    from groundwater.supervision import load_checklists
+
+    stages: list[str] = []
+    for item in load_checklists():
+        if item.checklist not in stages:
+            stages.append(item.checklist)
+    assert len(stages) > 1
+
+    app_path = str(Path(__file__).resolve().parents[1] / "app" / "streamlit_app.py")
+    at = AppTest.from_file(app_path, default_timeout=600)
+    at.session_state["nav"] = "Supervision"
+    at.run()
+
+    radios = [r for r in at.radio if r.key and r.key.startswith("chkw_")]
+    assert radios, "no checklist items rendered"
+    first, second = radios[0].key, radios[1].key
+    item_id = first[len("chkw_"):]
+    at.radio(key=first).set_value("Yes")
+    at.run()
+    at.radio(key=second).set_value("No")
+    at.run()
+
+    at.session_state["sup_stage"] = stages[-1]  # work a later stage
+    at.run()
+    # the answer lives in plain state, not in the widget that is no longer drawn
+    assert at.session_state[f"chk_{item_id}"] == "Yes"
+
+    at.session_state["sup_stage"] = stages[0]  # come back
+    at.run()
+    assert at.radio(key=first).value == "Yes"
+    assert at.radio(key=second).value == "No"
+    assert not at.exception
+
+
+# --- ingestion: a blank test-type cell must not turn a step test constant ---
+
+def test_blank_test_type_cell_keeps_the_steps(tmp_path):
+    """The template's own title says "(STEP / CONSTANT DISCHARGE)".
+
+    The banner scan read that as an answer, so a step test whose test-type
+    cell was left blank came back as a constant-rate test with its three
+    steps concatenated into one series - no well efficiency, no well-loss
+    coefficients, and a transmissivity fitted to a discontinuous curve.
+    """
+    import shutil
+    from pathlib import Path
+
+    from openpyxl import load_workbook
+
+    from groundwater.ingestion import read_pumping_workbook
+    from groundwater.ingestion.pumping import _sheet_test_type
+
+    # pre-printed form text is not an answer
+    assert _sheet_test_type(
+        [["PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)"]]
+    ) == ""
+    assert _sheet_test_type([["Constant discharge 61-120 min"]]) == ""
+    # a genuine banner still is
+    assert _sheet_test_type([["CONSTANT DISCHARGE TEST"]]) == "constant"
+    assert _sheet_test_type([["STEP TEST"]]) == "step"
+
+    src = (Path(__file__).resolve().parents[1] / "examples" / "data" /
+           "kuntolo" / "kuntolo_step_test.xlsx")
+    dst = tmp_path / "blank_type.xlsx"
+    shutil.copy(src, dst)
+    book = load_workbook(dst)
+    sheet = book.active
+    for row in range(1, 15):
+        for col in range(1, 10):
+            value = sheet.cell(row, col).value
+            if isinstance(value, str) and "test type" in value.lower():
+                sheet.cell(row, col + 1).value = None
+    book.save(dst)
+
+    test = read_pumping_workbook(dst)
+    assert test.test_type.startswith("step")
+    assert len(test.steps) == 3
+    # and the guess is surfaced rather than made silently
+    assert any(f.code == "test_type_inferred" for f in test.flags)
+
+
+# --- hydraulics: a zero discharge is a blank, not a rate --------------------
+
+def test_zero_discharge_is_treated_as_not_measured():
+    """A 0 typed into the discharge row divided by zero deep inside the
+    Cooper-Jacob fit. Transmissivity is proportional to Q, so a zero rate is
+    a blank the crew wrote a number into - it belongs on the same handled
+    "pending" path as a missing value, not in a traceback."""
+    from groundwater.config import Config
+    from groundwater.hydraulics import analyse_pumping_test
+    from groundwater.hydraulics.analysis import cooper_jacob
+    from groundwater.models import PumpingStep, PumpingTest
+
+    time_min = np.array([1.0, 2, 3, 5, 8, 12, 20, 30, 45, 60])
+    level = 10 + 1.5 * np.log10(time_min)
+
+    for bad in (0.0, -2.0, float("nan")):
+        test = PumpingTest(
+            site=SiteMetadata(community="Z"), test_type="constant",
+            steps=[PumpingStep(step_number=1, time_min=time_min,
+                               water_level_m=level, discharge_m3_per_h=bad)],
+            static_water_level_m=10.0, borehole_depth_m=50.0,
+        )
+        analysis = analyse_pumping_test(test, Config().pumping)
+        assert analysis.transmissivity_m2_per_day is None
+        assert any(f.code == "invalid_discharge" for f in analysis.flags)
+
+    # a real rate still analyses
+    test = PumpingTest(
+        site=SiteMetadata(community="Z"), test_type="constant",
+        steps=[PumpingStep(step_number=1, time_min=time_min,
+                           water_level_m=level, discharge_m3_per_h=2.93)],
+        static_water_level_m=10.0, borehole_depth_m=50.0,
+    )
+    assert analyse_pumping_test(test, Config().pumping).transmissivity_m2_per_day > 0
+
+    # and calling a fit directly gives a clear error, not ZeroDivisionError
+    with pytest.raises(ValueError, match="greater than zero"):
+        cooper_jacob(time_min, level - 10, 0.0)
+
+
+def test_interpret_model_handles_a_bare_half_space():
+    """A single-layer model has no finite layer bottom; the investigated
+    depth fell back to bottoms[-2] and raised IndexError."""
+    from groundwater.ves import interpret_model
+
+    model = LayeredModel(resistivities=np.array([250.0]), thicknesses=np.array([]))
+    interp = interpret_model(None, model)
+    assert len(interp.layers) == 1
+    # nothing was resolved, so nothing is recommended
+    assert interp.max_drilling_depth_m == 0.0
+
+
+def test_discharges_do_not_carry_over_to_another_borehole():
+    """The discharge boxes are keyed by step number, so they outlived the
+    sheet they were typed for. A second borehole whose sheet also lacks
+    discharges silently inherited the first one's rates - and transmissivity,
+    safe yield and pump setting depth are all proportional to them."""
+    from pathlib import Path
+
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+
+    app_path = str(Path(__file__).resolve().parents[1] / "app" / "streamlit_app.py")
+    at = AppTest.from_file(app_path, default_timeout=600)
+    at.session_state["nav"] = "Pumping test"
+    # rates left behind by a previously open sheet
+    for step in (1, 2, 3):
+        at.session_state[f"q_{step}"] = 9.9
+    at.run()
+    at.selectbox(key="sample_pump").select("kuntolo/kuntolo_step_test.xlsx")
+    at.run()
+    assert not at.exception
+    analysis = at.session_state["pump_analysis"]
+    assert [s.discharge_m3_per_h for s in analysis.test.steps] == [None, None, None]
+
+    # a rate typed for this sheet is still used
+    for step, value in ((1, 2.5), (2, 3.5), (3, 4.5)):
+        at.number_input(key=f"q_{step}").set_value(value)
+        at.run()
+    analysis = at.session_state["pump_analysis"]
+    assert [s.discharge_m3_per_h for s in analysis.test.steps] == [2.5, 3.5, 4.5]
+
+
+def test_excel_date_in_the_depth_column_is_rejected_and_reported(tmp_path):
+    """Excel turns "5-10" typed into a General cell into 10 May.
+
+    openpyxl hands that back as a datetime, and reading it as text gave a
+    lithology interval of 5 to 2026 metres - which then placed screens and
+    priced casing against a two-kilometre hole.
+    """
+    import datetime
+    import shutil
+    from pathlib import Path
+
+    from openpyxl import load_workbook
+
+    from groundwater.ingestion import read_drilling_workbook
+    from groundwater.utils import parse_depth_interval
+
+    assert parse_depth_interval(datetime.datetime(2026, 5, 10)) is None
+    assert parse_depth_interval(datetime.date(2026, 1, 5)) is None
+    assert parse_depth_interval("5-10") == (5.0, 10.0)  # still parses
+
+    src = (Path(__file__).resolve().parents[1] / "examples" / "data" /
+           "dr_timbo" / "dr_timbo_drilling_log.xlsx")
+    dst = tmp_path / "date_interval.xlsx"
+    shutil.copy(src, dst)
+    book = load_workbook(dst)
+    sheet = book.active
+    converted = 0
+    for row in sheet.iter_rows():
+        for cell in row:
+            if isinstance(cell.value, str) and cell.value.strip() == "5-10":
+                cell.value = datetime.datetime(2026, 5, 10)
+                converted += 1
+    assert converted, "sample log has no 5-10 interval to convert"
+    book.save(dst)
+
+    log = read_drilling_workbook(dst)
+    assert max(i.bottom_m for i in log.intervals) < 200  # no 2026 m interval
+    assert any(f.code == "interval_read_as_date" for f in log.flags)
+
+
+def test_two_boreholes_do_not_share_report_figures(tmp_path):
+    """Report figures were written under fixed filenames and regenerated only
+    when absent. The app gives every report in a session the same figures
+    directory, so the second borehole's client report embedded the first
+    borehole's water-level record.
+    """
+    import hashlib
+    from pathlib import Path
+
+    from groundwater.config import Config
+    from groundwater.hydraulics import analyse_pumping_test
+    from groundwater.ingestion import read_pumping_workbook
+    from groundwater.reporting.pumping import (
+        PumpingReportInputs,
+        build_pumping_report,
+    )
+
+    data = Path(__file__).resolve().parents[1] / "examples" / "data"
+    config = Config()
+
+    first = read_pumping_workbook(data / "dr_timbo" / "dr_timbo_constant_test.xlsx")
+    build_pumping_report(
+        PumpingReportInputs(analysis=analyse_pumping_test(first, config.pumping),
+                            figures_dir=tmp_path),
+        out_path=tmp_path / "first.docx", config=config,
+    )
+    second = read_pumping_workbook(data / "kuntolo" / "kuntolo_step_test.xlsx")
+    for step in second.steps:
+        step.discharge_m3_per_h = 2.5
+    build_pumping_report(
+        PumpingReportInputs(analysis=analyse_pumping_test(second, config.pumping),
+                            figures_dir=tmp_path),
+        out_path=tmp_path / "second.docx", config=config,
+    )
+
+    overviews = sorted(tmp_path.glob("test_overview*.png"))
+    assert len(overviews) == 2, "both boreholes must get their own figure"
+    digests = {hashlib.sha256(p.read_bytes()).hexdigest() for p in overviews}
+    assert len(digests) == 2, "the second report reused the first one's figure"
+
+
+def test_a_national_standard_failure_is_not_reported_as_a_taste_problem():
+    """A national limit can be stricter than the WHO health guideline.
+
+    Exceeding it was folded into the aesthetic bucket, and the report then
+    said the water "is usable for drinking" and only warned about taste -
+    for a supply that fails the national standard. QUESTIONS.md asks the
+    user to replace the national column with the real Standards Bureau
+    values, so this is the column most likely to tighten.
+    """
+    # Aluminium: WHO health 0.9 mg/L, national 0.2 mg/L
+    strict = assess_sample(_quality_sample(
+        WaterQualityResult("pH", 7.2),
+        WaterQualityResult("Aluminium", 0.5),
+    ))
+    assert [r.parameter for r in strict.national_exceedances] == ["Aluminium"]
+    assert not strict.health_exceedances
+    assert "does not comply with the national standard" in strict.verdict
+    assert "usable for drinking" not in strict.verdict
+
+    # Iron has no WHO health value at all, so its limit is an acceptability
+    # one and the friendly wording is right
+    taste = assess_sample(_quality_sample(
+        WaterQualityResult("pH", 7.2),
+        WaterQualityResult("Iron", 0.5),
+    ))
+    assert not taste.national_exceedances
+    assert "usable for drinking" in taste.verdict
+
+
+def test_saving_right_after_an_analysis_captures_it():
+    """The sidebar renders before every page body, so a "Save project"
+    button built there carried the state as it was *before* this run's
+    analyses. Saving straight after running the siting wrote a file with no
+    results in it, and the Portfolio page then showed the site as unstarted.
+    The panel is filled at the end of the script instead.
+
+    The same ordering left interp.rank unset when the Overview read it - only
+    the VES page ranked, and it renders later - so the dashboard named
+    whichever sounding was parsed first as the preferred drill target.
+    """
+    from pathlib import Path
+
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+
+    app_path = str(Path(__file__).resolve().parents[1] / "app" / "streamlit_app.py")
+    at = AppTest.from_file(app_path, default_timeout=600)
+    at.run()
+    at.text_input(key="meta_community").set_value("Rokel")
+    at.run()
+    at.selectbox(key="sample_ves").select("rokel/rokel_ves.xlsx")
+    at.run()
+    at.button(key="run_ves").click()
+    at.run()  # the run that produces the results
+    assert not at.exception
+
+    summary = at.session_state["project_summary"]
+    assert summary["status"], "the saved project must carry the analysis just run"
+
+    _, _, interps = at.session_state["ves_results"]
+    assert all(i.rank for i in interps), "ranks must be set where interps are built"
+    best = min(interps, key=lambda i: (i.rank or 99, -i.score))
+    assert best.score == max(i.score for i in interps)
+
+
+def test_negative_aquifer_loss_never_reaches_the_report():
+    """s_w/Q against Q can regress to a negative intercept on a noisy step
+    test. A negative aquifer-loss B made 100 B Q / (B Q + C Q^2) negative, and
+    the report printed a borehole efficiency of -50 percent. Only the well
+    loss C was guarded."""
+    from groundwater.hydraulics.analysis import hantush_bierschenk
+
+    result = hantush_bierschenk([2.0, 4.0, 6.0], [0.5, 2.5, 6.0])
+    assert result.aquifer_loss_B >= 0 and result.well_loss_C >= 0
+    assert all(0 <= s["efficiency_percent"] <= 100 for s in result.steps)
+
+    # a normal step test is untouched
+    normal = hantush_bierschenk([2.0, 4.0, 6.0], [1.0, 3.2, 7.2])
+    assert normal.aquifer_loss_B > 0 and normal.well_loss_C > 0
+    assert all(0 < s["efficiency_percent"] < 100 for s in normal.steps)
+
+
+def test_half_mn_column_header_with_spaces_is_recognised():
+    """"MN / 2 (m)" does not contain the literal "/2", so it fell through to
+    the full-MN branch. Every potential-electrode spacing was then half what
+    the sheet recorded, which feeds the geometric factor and the segment
+    splicing."""
+    from groundwater.ingestion.ves import _find_data_header
+
+    for header, expected in [
+        ("MN (m)", "mn"), ("MN", "mn"),
+        ("MN/2 (m)", "mn_half"), ("MN / 2 (m)", "mn_half"),
+        ("MN /2", "mn_half"), ("MN/ 2 (m)", "mn_half"),
+    ]:
+        grid = [["No.", "AB/2 (m)", header, "Apparent Resistivity (ohm-m)"],
+                [1, 1.0, 0.4, 100.0]]
+        _, cols = _find_data_header(grid)
+        assert expected in cols, f"{header!r} -> {sorted(cols)}"
+
+
+def test_wpdx_export_with_a_byte_order_mark_still_parses():
+    """Excel's "CSV UTF-8" writes a BOM, which csv.DictReader keeps on the
+    first field name. With lat_deg first that silently produced zero water
+    points - reported as "no water points near this site", the opposite of
+    what the export says, and the rehabilitate-or-drill advice with it."""
+    from groundwater.waterpoints import parse_wpdx_csv
+
+    body = (
+        "lat_deg,lon_deg,status_id,water_source_clean,water_tech_clean,row_id\n"
+        "8.4,-13.2,Yes,Borehole,Hand Pump,1\n"
+        "8.5,-13.1,No,Borehole,Hand Pump,2\n"
+    )
+    assert len(parse_wpdx_csv(body)) == 2
+    assert len(parse_wpdx_csv("﻿" + body)) == 2
+
+
+def test_completion_report_quotes_one_step_not_two(sample_data=None):
+    """The Borehole Characteristics block read the dynamic water level from
+    the last step and the flow rate from the first. On the bundled three-step
+    test that printed 2.5 m3/h beside 59 m of drawdown - a pair the client
+    reads as the borehole's yield against its drawdown."""
+    from pathlib import Path
+
+    from groundwater.hydraulics import analyse_pumping_test
+    from groundwater.ingestion import read_pumping_workbook
+
+    data = Path(__file__).resolve().parents[1] / "examples" / "data"
+    test = read_pumping_workbook(data / "kuntolo" / "kuntolo_step_test.xlsx")
+    for step, rate in zip(test.steps, (2.5, 3.5, 4.5)):
+        step.discharge_m3_per_h = rate
+    assert len(test.steps) == 3
+    analysis = analyse_pumping_test(test)
+
+    # the level and the rate the report pairs must come from the same step
+    last = analysis.test.steps[-1]
+    assert last.discharge_m3_per_h == 4.5
+    assert last.water_level_m[-1] == max(s.water_level_m[-1] for s in test.steps)
+
+
 # --- robustness one-liners --------------------------------------------------
 
 def test_loan_schedule_rejects_zero_term():

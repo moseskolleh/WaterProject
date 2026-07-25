@@ -116,6 +116,7 @@ from groundwater.project_io import (
     committee_records,
     deserialize_project,
     serialize_project,
+    stale_on_load,
 )
 from groundwater.recompute import recompute_results
 from groundwater.quality import assess_sample, plot_piper, plot_stiff
@@ -151,7 +152,10 @@ from groundwater.supervision import (
 )
 from groundwater.utils import fmt_num
 from groundwater.ves import interpret_model, invert_sounding
-from groundwater.ves.interpret import drilling_preference_table
+from groundwater.ves.interpret import (
+    drilling_preference_table,
+    rank_interpretations,
+)
 from groundwater.ves.plots import plot_sounding_curve
 
 # ---------------------------------------------------------------------------
@@ -199,7 +203,10 @@ _FIELD_RED = "#B14E49"    # measured field data accent
 st.markdown(
     """
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+      /* No webfont @import here. A CSS @import is render-blocking, so on a
+         slow or captive-portal link the whole app waited on
+         fonts.googleapis.com - and everything else in the toolkit works
+         offline. The stacks below fall back to the platform UI font. */
 
       html, body, [data-testid="stAppViewContainer"], .stMarkdown,
       button, input, textarea, select {
@@ -564,9 +571,34 @@ def show_flags(flags, collapse_after: int = 4) -> None:
         _render(flags)
 
 
-def offer_download(path: Path, label: str) -> None:
+def offer_download(path: Path, label: str, keep: bool = True) -> None:
+    """Download button for a produced file, and remember it as a deliverable.
+
+    Build buttons are true for exactly one rerun, so a report's download
+    button used to vanish the moment the user touched anything else and the
+    report had to be rebuilt. Remembering it keeps it available from the
+    Deliverables panel for the rest of the session.
+    """
+    if keep:
+        st.session_state.setdefault("artifacts", {})[label] = str(path)
     with open(path, "rb") as fh:
-        st.download_button(label, fh.read(), file_name=path.name)
+        st.download_button(label, fh.read(), file_name=path.name,
+                           key=f"dl_{_html.escape(label)}_{path.name}")
+
+
+def _deliverables() -> list[tuple[str, Path]]:
+    """Everything built this session that still exists on disk."""
+    out = []
+    for label, raw in (st.session_state.get("artifacts") or {}).items():
+        path = Path(raw)
+        if path.exists():
+            out.append((label, path))
+    return out
+
+
+def _working(message: str):
+    """Status block for a slow operation, so the app never looks frozen."""
+    return st.status(message, expanded=False)
 
 
 def parse_upload(reader, path: Path):
@@ -698,10 +730,7 @@ def _load_project() -> None:
     # a loaded project fully replaces the working state: drop the previous
     # data sources, recompute inputs and computed results first, so a stale
     # dataset from earlier in the session cannot bleed into the loaded project
-    for stale in [
-        k for k in list(st.session_state)
-        if k.startswith(("src_", "q_")) or k == "design_swl"
-    ]:
+    for stale in stale_on_load(st.session_state):
         st.session_state.pop(stale, None)
     for result_key in (
         "ves_results", "pump_analysis", "wq_assessment", "borehole_design",
@@ -770,6 +799,34 @@ def _nav_changed(group_key: str) -> None:
 
 def _goto(page: str) -> None:
     st.session_state["nav"] = page
+
+
+def _next_step(label: str, page: str, note: str = "") -> None:
+    """Bottom-of-page route to the next lifecycle step.
+
+    Every page except the Overview used to dead-end: having read the
+    recommended drilling depth there was no way on to Costing except hunting
+    through the sidebar.
+    """
+    st.divider()
+    col_a, col_b = st.columns([3, 1])
+    col_a.caption(note or f"Next: {page}")
+    col_b.button(label, key=f"next_{_page_key(page)}", width="stretch",
+                 on_click=_goto, args=(page,))
+
+
+def _band(value, bands: list[tuple[float, str]], above: str) -> str:
+    """First label whose upper bound the value falls under, else ``above``.
+
+    A number with no interpretation is not useful to a drilling supervisor:
+    12 percent model fit or 4 m2/day transmissivity mean nothing on their own.
+    """
+    if value is None:
+        return ""
+    for limit, label in bands:
+        if float(value) < limit:
+            return label
+    return above
 
 
 def _page(name: str):
@@ -986,7 +1043,7 @@ with st.sidebar:
         st.text_input("or paste 'lat, lon'", key="latlon_paste",
                       placeholder="8.4657, -13.2317")
         st.button("Convert to UTM", on_click=_apply_latlon,
-                  use_container_width=True)
+                  width="stretch")
         if st.session_state.get("latlon_error"):
             st.warning(st.session_state["latlon_error"])
         if detected_latlon is not None:
@@ -1020,31 +1077,12 @@ with st.sidebar:
         )
         st.text_input("Organisation details", key="org_details",
                       help="Address or contact line under the name.")
-    with st.expander("💾 Project file"):
-        st.caption(
-            "Save the whole project - your inputs, the WASH committee and the "
-            "uploaded data files - and load it back later or on another "
-            "machine to restore the analyses and reports. Saved projects can "
-            "also be combined on the Portfolio page."
-        )
-        # capture a headline summary so the saved file feeds the portfolio view
-        st.session_state["project_summary"] = _project_summary()
-        st.download_button(
-            "Save project (.yaml)",
-            project_file_bytes(),
-            file_name=(
-                (st.session_state.get("meta_community") or "groundwater")
-                .replace(" ", "_") + "_project.yaml"
-            ),
-            key="project_download",
-        )
-        st.file_uploader("Project file", type=["yaml", "yml"],
-                         key="project_upload")
-        st.button("Load project", key="project_load", on_click=_load_project)
-        if st.session_state.pop("project_loaded", False):
-            st.success("Project loaded.")
-        if st.session_state.pop("project_load_error", False):
-            st.error("That file is not a toolkit project file.")
+    # The sidebar runs before every page body, so a download button built here
+    # would carry the state as it was *before* this run's analyses. Reserve the
+    # slot now and fill it at the end of the script, once the pages have run:
+    # otherwise "Save project" straight after an analysis wrote a file with no
+    # results in it, and the Portfolio page then showed the site as unstarted.
+    _project_panel = st.expander("💾 Project file")
     st.caption(
         "Methods follow RWSN/UNICEF professional drilling guidance "
         "and WHO water quality guidelines. "
@@ -1124,6 +1162,10 @@ def run_ves_inversion(soundings) -> None:
         results.append(result)
         interps.append(interp)
         progress.progress((i + 1) / len(soundings))
+    # rank before anything reads interp.rank: the Overview renders earlier in
+    # the run than the VES page that used to be the only thing ranking them,
+    # so it named whichever sounding was parsed first as the drill target
+    rank_interpretations(interps)
     st.session_state.ves_results = (soundings, results, interps)
 
 
@@ -1141,6 +1183,30 @@ def compute_cost_estimate(inputs: CostingInputs, rates, **kwargs) -> None:
 # ---------------------------------------------------------------------------
 # Overview - the project dashboard (design direction 1b, Project Workspace)
 # ---------------------------------------------------------------------------
+
+# Upper bound of the guided start's depth fields. Streamlit raises on a
+# prefilled value outside a number_input's range, so anything derived from a
+# survey result has to be clamped into it before it is passed in.
+WIZ_MAX_DEPTH_M = 300.0
+
+
+def _clamp(value: float, low: float, high: float) -> float:
+    return min(max(float(value), low), high)
+
+
+def _source_signature(source) -> tuple:
+    """A cheap identity for an uploaded file or bundled sample.
+
+    Used to notice that a page is now looking at a different borehole's
+    sheet, so inputs typed for the previous one are not carried over.
+    """
+    if not isinstance(source, dict):
+        return ()
+    if source.get("sample"):
+        return ("sample", str(source["sample"]))
+    blob = source.get("bytes") or b""
+    return ("upload", str(source.get("name") or ""), len(blob))
+
 
 def _rows_html(rows: list[tuple[str, str]]) -> str:
     return "".join(
@@ -1202,7 +1268,7 @@ with tab_overview:
                    "The whole borehole lifecycle in one workspace.")
     with _head_r:
         st.button("Generate handover →", key="ov_go_handover",
-                  type="primary", use_container_width=True,
+                  type="primary", width="stretch",
                   on_click=_goto, args=("Handover",))
 
     # Lifecycle state, derived from what has actually been produced
@@ -1234,13 +1300,13 @@ with tab_overview:
         )
         _cta1, _cta2, _cta3 = st.columns(3)
         _cta1.button("🚀 Open guided start", key="ov_go_guide",
-                     use_container_width=True,
+                     width="stretch",
                      on_click=_goto, args=("Guided start",))
         _cta2.button("📈 Run a VES analysis", key="ov_go_ves",
-                     use_container_width=True,
+                     width="stretch",
                      on_click=_goto, args=("Geophysics (VES)",))
         _cta3.button("💰 Estimate a borehole", key="ov_go_cost",
-                     use_container_width=True,
+                     width="stretch",
                      on_click=_goto, args=("Costing & BoQ",))
     else:
         _col1, _col2, _col3 = st.columns(3)
@@ -1280,7 +1346,7 @@ with tab_overview:
             if _ov_ves is not None:
                 _soundings, _results, _interps = _ov_ves
                 _best = min(
-                    _interps, key=lambda i: i.rank if i.rank else 99,
+                    _interps, key=lambda i: (i.rank or 99, -i.score),
                 ) if _interps else None
                 _ves_rows = [("Soundings analysed", str(len(_results)))]
                 if _best is not None:
@@ -1451,6 +1517,13 @@ with tab_overview:
                 unsafe_allow_html=True,
             )
 
+    # Everything built this session, in one place. A build button is true for
+    # a single rerun, so its download button used to disappear as soon as the
+    # user touched anything else and the report had to be rebuilt to get it.
+    # Filled at the end of the script: the Overview renders before the pages
+    # that produce the files, so reading the list here would lag a run behind.
+    _deliverables_slot = st.container()
+
 
 # ---------------------------------------------------------------------------
 # Guided start
@@ -1590,14 +1663,28 @@ with tab_guide:
         else:
             st.session_state.pop("_wiz_load_grace", None)
         c1, c2, c3 = st.columns(3)
-        wiz_depth = c1.number_input("Total depth (m)", 1.0, 300.0,
-                                    default_depth or 60.0, 1.0,
+        # A sounding that resolved nothing water bearing falls back to its
+        # investigated depth (max AB/2), which on a deep survey can exceed
+        # these bounds. Streamlit raises on a value outside them, so clamp:
+        # an unusable prefill must not take the whole page down.
+        wiz_depth = c1.number_input("Total depth (m)", 1.0, WIZ_MAX_DEPTH_M,
+                                    _clamp(default_depth or 60.0,
+                                           1.0, WIZ_MAX_DEPTH_M), 1.0,
                                     key="wiz_cost_depth")
         wiz_over = c2.number_input(
-            "Overburden (m)", 0.0, 300.0, default_over, 1.0,
+            "Overburden (m)", 0.0, WIZ_MAX_DEPTH_M,
+            _clamp(default_over, 0.0, WIZ_MAX_DEPTH_M), 1.0,
             key="wiz_cost_over",
             help="0 applies the rule of thumb (half the depth, up to 30 m).",
         )
+        if default_depth > WIZ_MAX_DEPTH_M:
+            st.warning(
+                f"The siting result recommends {default_depth:.0f} m, beyond "
+                f"the {WIZ_MAX_DEPTH_M:.0f} m this step accepts - it is the "
+                "depth the sounding investigated, not a target zone. Check "
+                "the interpretation on the Geophysics page, or cost the "
+                "planned depth on the Costing & BoQ page, which is unbounded."
+            )
         wiz_dist = c3.number_input(
             "Distance from contractor base, one way (km)", 0.0, 1000.0,
             100.0, 10.0, key="wiz_cost_dist",
@@ -1709,7 +1796,22 @@ with tab_ves:
                     sounding, result.model, result.rho_calc, result.ab2, path=fig_path
                 )
                 col_fig.image(str(fig_path))
-                col_txt.metric("Model fit (ERR)", f"{result.fit_error_percent:.1f}%")
+                col_txt.metric(
+                    "Model fit (ERR)", f"{result.fit_error_percent:.1f}%",
+                    help="Root-mean-square difference between the measured "
+                    "curve and the layered model. Under 5% is an excellent "
+                    "fit; 5-10% is acceptable; above 10% treat the layer "
+                    "depths as indicative and weight the drilling decision "
+                    "on the curve shape and local knowledge.",
+                )
+                col_txt.caption(
+                    "Fit: " + _band(
+                        result.fit_error_percent,
+                        [(5.0, "excellent - depths well constrained"),
+                         (10.0, "acceptable for siting")],
+                        "poor - treat the layer depths as indicative only",
+                    )
+                )
                 col_txt.metric(
                     "Water bearing zones",
                     ", ".join(f"{int(t)}-{int(b)} m" for t, b in interp.water_zones)
@@ -1721,7 +1823,7 @@ with tab_ves:
 
         # The headline the client actually asks for, promoted first-class
         _best_interp = min(
-            interps, key=lambda i: i.rank if i.rank else 99,
+            interps, key=lambda i: (i.rank or 99, -i.score),
         ) if interps else None
         if _best_interp is not None and _best_interp.max_drilling_depth_m:
             _zones = ", ".join(
@@ -1760,7 +1862,7 @@ with tab_ves:
                     for s in suitability
                 ],
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
             best = suitability[0]
             st.success(
@@ -1781,6 +1883,7 @@ with tab_ves:
                 )
 
         if st.button("Build geophysical survey report", key="build_geo_report"):
+          with _working("Building the geophysical survey report - drawing the context maps and writing the document..."):
             report_path = build_geophysical_report(
                 GeophysicalReportInputs(
                     soundings=soundings,
@@ -1793,7 +1896,10 @@ with tab_ves:
                 workdir() / "Geophysical_Survey_Report.docx",
                 app_config(),
             )
-            offer_download(report_path, "Download geophysical survey report (.docx)")
+          offer_download(report_path, "Download geophysical survey report (.docx)")
+
+    _next_step("Cost this borehole →", "Costing & BoQ",
+               "Siting done. Price the borehole at the recommended depth.")
 
 # ---------------------------------------------------------------------------
 # Pumping test
@@ -1819,6 +1925,20 @@ with tab_pump:
             f"and {'a' if test.recovery_time_min is not None else 'no'} recovery record."
         )
         show_flags(test.flags)
+
+        # The discharge boxes are keyed by step number, so they outlive the
+        # sheet they were typed for: opening a second borehole whose sheet
+        # also lacks discharges silently reused the first one's rates, and
+        # transmissivity, safe yield and pump depth are all proportional to
+        # them. Clear them when the source changes - but not on the run a
+        # saved project is restored, which brings back both together.
+        pump_sig = repr(_source_signature(st.session_state.get("src_pump")))
+        if st.session_state.get("pump_source_sig") != pump_sig:
+            st.session_state["pump_source_sig"] = pump_sig
+            if not st.session_state.get("project_just_loaded"):
+                for stale_q in [k for k in list(st.session_state)
+                                if k.startswith("q_")]:
+                    st.session_state.pop(stale_q, None)
 
         missing = [s for s in test.steps if s.discharge_m3_per_h is None]
         if missing:
@@ -1879,13 +1999,32 @@ with tab_pump:
                 + "</div>",
                 unsafe_allow_html=True,
             )
+        if yr is not None and yr.safe_yield_low_m3_per_h is not None:
+            st.caption(
+                f"Plausible range **{yr.safe_yield_low_m3_per_h:.2g} to "
+                f"{yr.safe_yield_high_m3_per_h:.2g} m³/h**. "
+                + yr.envelope_basis
+            )
         cols = st.columns(4)
         cols[0].metric(
             "Transmissivity",
             f"{analysis.transmissivity_m2_per_day:.1f} m2/day"
             if analysis.transmissivity_m2_per_day
             else "pending",
+            help="Aquifer productivity class (BGS Africa Groundwater Atlas "
+            "bands for basement aquifers). A handpump serving a village "
+            "typically needs about 1 m3/h.",
         )
+        if analysis.transmissivity_m2_per_day:
+            cols[0].caption(
+                _band(
+                    analysis.transmissivity_m2_per_day,
+                    [(1.0, "very low - handpump only, if at all"),
+                     (10.0, "low to moderate - ample for a handpump"),
+                     (100.0, "moderate to high - could support a small scheme")],
+                    "high - motorised supply feasible",
+                )
+            )
         if yr is not None:
             cols[1].metric(
                 "Available drawdown",
@@ -1894,7 +2033,20 @@ with tab_pump:
             cols[2].metric(
                 "Safe yield",
                 f"{fmt_num(yr.safe_yield_m3_per_h)} m3/h" if yr.safe_yield_m3_per_h else "pending",
+                help="Rate the borehole can be pumped at continuously over "
+                "the design period, with the safety factor applied. It rests "
+                "on assumed storativity and well radius, so design to the "
+                "lower end of the range where the supply must not fail.",
             )
+            if yr.safe_yield_m3_per_h:
+                cols[2].caption(
+                    _band(
+                        yr.safe_yield_m3_per_h,
+                        [(0.5, "below a handpump's working rate"),
+                         (1.0, "marginal for a village handpump")],
+                        "comfortable for a handpump supply",
+                    )
+                )
             cols[3].metric(
                 "Pump depth",
                 f"{fmt_num(yr.pump_installation_depth_m)} m"
@@ -1904,12 +2056,16 @@ with tab_pump:
             st.caption(yr.basis)
 
         if st.button("Build pumping test report", key="build_pump_report"):
+          with _working("Building the pumping test report..."):
             report_path = build_pumping_report(
                 PumpingReportInputs(analysis=analysis, figures_dir=workdir()),
                 workdir() / "Pumping_Test_Report.docx",
                 app_config(),
             )
-            offer_download(report_path, "Download pumping test report (.docx)")
+          offer_download(report_path, "Download pumping test report (.docx)")
+
+    _next_step("Assess water quality →", "Water quality",
+               "Yield established. Check the water is safe to drink.")
 
 # ---------------------------------------------------------------------------
 # Water quality
@@ -1943,10 +2099,18 @@ with tab_quality:
                 st.warning(f"Handpump corrosion risk ({corrosion.measured}): "
                            f"{corrosion.message}")
 
+        def _wq_value(r) -> str:
+            """One text column: mixing floats with "< DL" breaks Arrow."""
+            if r.value is None:
+                return "< DL" if r.below_detection else ""
+            # 10 significant figures: lossless for laboratory values while
+            # keeping binary-float artefacts (0.30000000000000004) out
+            return f"{r.value:.10g}"
+
         rows = [
             {
                 "Parameter": r.parameter,
-                "Value": "< DL" if (r.below_detection and r.value is None) else r.value,
+                "Value": _wq_value(r),
                 "Unit": r.unit,
                 "WHO health": r.who_health,
                 "National": r.sl_standard,
@@ -1954,7 +2118,7 @@ with tab_quality:
             }
             for r in assessment.rows
         ]
-        st.dataframe(rows, use_container_width=True)
+        st.dataframe(rows, width="stretch")
 
         if assessment.ionic is not None:
             st.write(
@@ -1971,12 +2135,13 @@ with tab_quality:
             col2.image(str(stiff))
 
         if st.button("Build water quality report", key="build_wq_report"):
+          with _working("Building the water quality report - drawing the Piper and Stiff diagrams..."):
             report_path = build_quality_report(
                 QualityReportInputs(assessment=assessment, figures_dir=workdir()),
                 workdir() / "Water_Quality_Report.docx",
                 app_config(),
             )
-            offer_download(report_path, "Download water quality report (.docx)")
+          offer_download(report_path, "Download water quality report (.docx)")
 
 # ---------------------------------------------------------------------------
 # Borehole design
@@ -2135,11 +2300,11 @@ with tab_cost:
                 key="rates_editor",
                 hide_index=True,
                 disabled=["Code", "Stage", "Item", "Unit"],
-                use_container_width=True,
+                width="stretch",
             )
         except Exception:
             # very old or limited runtimes: show read-only rates instead
-            st.dataframe(rate_rows, use_container_width=True)
+            st.dataframe(rate_rows, width="stretch")
             edited = rate_rows
         edited_by_code = {row["Code"]: row for row in edited}
         rates = [
@@ -2228,7 +2393,7 @@ with tab_cost:
         col_boq, col_sum = st.columns([3, 2])
         with col_boq:
             st.subheader("Bill of quantities")
-            st.dataframe(estimate.boq_rows(), use_container_width=True)
+            st.dataframe(estimate.boq_rows(), width="stretch")
         with col_sum:
             st.subheader("Summary")
             st.table(
@@ -2319,6 +2484,9 @@ with tab_cost:
                 for assumption in programme.assumptions:
                     st.markdown(f"- {assumption}")
 
+    _next_step("Start supervision →", "Supervision",
+               "Budget agreed. Work the checklists as the rig arrives.")
+
 # ---------------------------------------------------------------------------
 # Supervision
 # ---------------------------------------------------------------------------
@@ -2331,6 +2499,20 @@ with tab_supervision:
     )
 
     checklist_items = cached_checklists()
+
+    # Only the picked stage's widgets are rendered, and Streamlit discards the
+    # state of a widget that a run does not draw. Answering a stage and moving
+    # on therefore wiped the answers behind you. The widgets are keyed
+    # "chkw_"/"rmkw_" and write through, on change, to the "chk_"/"rmk_" keys
+    # that hold the answers and go into the project file; those are plain
+    # state, so they survive a stage the run never drew.
+    CHK_OPTIONS = ["Pending", "Yes", "No", "N/A"]
+
+    def _store_answer(item_id: str) -> None:
+        st.session_state[f"chk_{item_id}"] = st.session_state[f"chkw_{item_id}"]
+
+    def _store_remark(item_id: str) -> None:
+        st.session_state[f"rmk_{item_id}"] = st.session_state[f"rmkw_{item_id}"]
 
     def _responses() -> dict[str, ChecklistResponse]:
         responses: dict[str, ChecklistResponse] = {}
@@ -2385,16 +2567,22 @@ with tab_supervision:
             st.markdown(label)
             if item.guidance:
                 st.caption(item.guidance)
+            saved = st.session_state.get(f"chk_{item.item_id}", "Pending")
             st.radio(
                 "Status",
-                ["Pending", "Yes", "No", "N/A"],
+                CHK_OPTIONS,
+                index=CHK_OPTIONS.index(saved) if saved in CHK_OPTIONS else 0,
                 horizontal=True,
-                key=f"chk_{item.item_id}",
+                key=f"chkw_{item.item_id}",
+                on_change=_store_answer,
+                args=(item.item_id,),
                 label_visibility="collapsed",
             )
             if st.session_state.get(f"chk_{item.item_id}") == "No":
                 st.text_input(
-                    "Remark / action", key=f"rmk_{item.item_id}",
+                    "Remark / action", key=f"rmkw_{item.item_id}",
+                    value=st.session_state.get(f"rmk_{item.item_id}", ""),
+                    on_change=_store_remark, args=(item.item_id,),
                     placeholder="What failed and what happens next",
                 )
 
@@ -2488,6 +2676,9 @@ with tab_supervision:
             )
             offer_download(report_path, "Download supervision report (.docx)")
 
+    _next_step("Build the handover →", "Handover",
+               "Quality assessed. Close the project out with the community.")
+
 # ---------------------------------------------------------------------------
 # Handover
 # ---------------------------------------------------------------------------
@@ -2541,7 +2732,7 @@ with tab_handover:
         key="ho_committee",
         num_rows="dynamic",
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
     )
     # keep a clean, serialisable copy of the committee so it survives reruns
     # and is saved with the project (the data_editor key holds only an edit
@@ -2731,11 +2922,11 @@ with tab_waterpoints:
                 st.dataframe(
                     [{k: v for k, v in c.items() if not k.startswith("_")}
                      for c in decision["rehab_candidates"]],
-                    use_container_width=True, hide_index=True,
+                    width="stretch", hide_index=True,
                 )
             if result["rows"]:
                 st.subheader("All water points in range")
-                st.dataframe(result["rows"], use_container_width=True,
+                st.dataframe(result["rows"], width="stretch",
                              hide_index=True)
             st.caption(WPDX_CREDIT)
 
@@ -2874,7 +3065,7 @@ with tab_coverage:
                      round(r.people_per_point) if r.people_per_point is not None
                      else None,
                  "Status": r.status}) for r in rows],
-            hide_index=True, use_container_width=True,
+            hide_index=True, width="stretch",
         )
         if unassigned:
             st.caption(
@@ -2899,7 +3090,7 @@ with tab_coverage:
                 st.dataframe(
                     [{"Chiefdom polygon": gb, "Census chiefdoms": ", ".join(names)}
                      for gb, names in aggregated.items()],
-                    hide_index=True, use_container_width=True,
+                    hide_index=True, width="stretch",
                 )
         st.caption(f"{WPDX_CREDIT}. {POPULATION_CREDIT}.")
 
@@ -3031,7 +3222,7 @@ with tab_portfolio:
             st.info("Add GPS coordinates to the projects to place them on the map.")
         st.subheader("Comparison")
         st.dataframe(
-            portfolio_rows(summaries), hide_index=True, use_container_width=True
+            portfolio_rows(summaries), hide_index=True, width="stretch"
         )
 
         st.subheader("Site detail")
@@ -3052,6 +3243,60 @@ with tab_portfolio:
             file_name=f"{_brief_name}_brief.txt", mime="text/plain",
             key="portfolio_onepager",
         )
+
+# ---------------------------------------------------------------------------
+# Deliverables, filled last for the same reason: the Overview renders before
+# the pages that build the files.
+# ---------------------------------------------------------------------------
+_built = _deliverables()
+if _built:
+    with _deliverables_slot:
+        st.divider()
+        st.subheader("📦 Deliverables")
+        st.caption(
+            f"{len(_built)} file(s) built this session. They live only in this "
+            "session - download what you need before closing the tab, or save "
+            "the project file and rebuild them later."
+        )
+        for _i, (_label, _path) in enumerate(_built):
+            _c1, _c2 = st.columns([3, 1])
+            _c1.write(f"**{_path.name}**  \n{_label}")
+            with open(_path, "rb") as _fh:
+                _c2.download_button(
+                    "Download", _fh.read(), file_name=_path.name,
+                    key=f"deliverable_{_i}", width="stretch",
+                )
+
+
+# ---------------------------------------------------------------------------
+# Sidebar project file panel, filled last so the saved file carries the
+# results this run produced rather than the state the sidebar started with.
+# ---------------------------------------------------------------------------
+with _project_panel:
+    st.caption(
+        "Save the whole project - your inputs, the WASH committee and the "
+        "uploaded data files - and load it back later or on another "
+        "machine to restore the analyses and reports. Saved projects can "
+        "also be combined on the Portfolio page."
+    )
+    # capture a headline summary so the saved file feeds the portfolio view
+    st.session_state["project_summary"] = _project_summary()
+    st.download_button(
+        "Save project (.yaml)",
+        project_file_bytes(),
+        file_name=(
+            (st.session_state.get("meta_community") or "groundwater")
+            .replace(" ", "_") + "_project.yaml"
+        ),
+        key="project_download",
+    )
+    st.file_uploader("Project file", type=["yaml", "yml"],
+                     key="project_upload")
+    st.button("Load project", key="project_load", on_click=_load_project)
+    if st.session_state.pop("project_loaded", False):
+        st.success("Project loaded.")
+    if st.session_state.pop("project_load_error", False):
+        st.error("That file is not a toolkit project file.")
 
 # the post-load grace flag protects restored inputs for exactly one
 # full run; every page has rendered by this point
