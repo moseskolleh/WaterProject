@@ -57,7 +57,7 @@ def _executive_summary(analysis: PumpingTestAnalysis) -> tuple[list[str], list[s
         )
         key = [
             f"Transmissivity: {fmt_num(t)} m2/day." if t else "",
-            f"Recommended safe yield: {fmt_num(yr.safe_yield_m3_per_h)} m3/h.",
+            f"Recommended safe yield: {yr.yield_range_text}.",
             f"Pump installation depth: {fmt_num(yr.pump_installation_depth_m)} m.",
             "Operate within the recommended rate and monitor the pumping level.",
         ]
@@ -302,7 +302,7 @@ def build_pumping_report(
             ["Long term yield", fmt_num(yr.long_term_yield_m3_per_h) + " m3/h"
              if yr.long_term_yield_m3_per_h else "pending"],
             [f"Recommended safe yield (safety factor {yr.safety_factor:g})",
-             fmt_num(yr.safe_yield_m3_per_h) + " m3/h" if yr.safe_yield_m3_per_h else "pending"],
+             yr.yield_range_text],
             ["Recommended pump installation depth",
              fmt_num(yr.pump_installation_depth_m) + " m" if yr.pump_installation_depth_m else "pending"],
         ]
@@ -312,6 +312,8 @@ def build_pumping_report(
     rb.heading("5. Yield Recommendation", 1)
     if yr is not None:
         rb.paragraph(yr.basis, align="justify")
+        if yr.envelope_basis:
+            rb.paragraph(yr.envelope_basis, align="justify")
         if yr.safe_yield_m3_per_h:
             rb.bullets(
                 [

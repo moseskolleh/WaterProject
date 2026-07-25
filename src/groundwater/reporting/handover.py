@@ -175,7 +175,7 @@ def build_handover_report(
             if yr.safe_yield_m3_per_h:
                 rows.append([
                     f"Safe yield (safety factor {yr.safety_factor:g})",
-                    fmt_num(yr.safe_yield_m3_per_h) + " m3/h",
+                    yr.yield_range_text,
                 ])
             if yr.pump_installation_depth_m:
                 rows.append(["Pump installation depth", fmt_num(yr.pump_installation_depth_m) + " m"])

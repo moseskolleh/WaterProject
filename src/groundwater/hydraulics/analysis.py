@@ -24,7 +24,7 @@ Methods
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Optional
 
 import numpy as np
@@ -107,6 +107,27 @@ class YieldRecommendation:
     pump_installation_depth_m: Optional[float]
     basis: str  # narrative of how the recommendation was derived
     pending_reason: str = ""  # non-empty when discharge or SWL is missing
+    # plausible range of the safe yield over the assumptions it rests on
+    # (transmissivity, storativity, effective radius, seasonal allowance)
+    safe_yield_low_m3_per_h: Optional[float] = None
+    safe_yield_high_m3_per_h: Optional[float] = None
+    envelope_basis: str = ""
+
+    @property
+    def yield_range_text(self) -> str:
+        """"2.4 m3/h (1.8 to 3.1)" - never a bare number for an assumed one."""
+        if self.safe_yield_m3_per_h is None:
+            return "pending"
+        text = f"{self.safe_yield_m3_per_h:.2g} m3/h"
+        if (
+            self.safe_yield_low_m3_per_h is not None
+            and self.safe_yield_high_m3_per_h is not None
+        ):
+            text += (
+                f" ({self.safe_yield_low_m3_per_h:.2g} to "
+                f"{self.safe_yield_high_m3_per_h:.2g})"
+            )
+        return text
 
 
 @dataclass
@@ -537,6 +558,77 @@ def recommend_yield(
 # Orchestration
 # ---------------------------------------------------------------------------
 
+
+# storativity is never resolvable from a single pumped well, the effective
+# radius depends on the gravel pack and development, and the wet-to-dry
+# decline is a regional rule of thumb. The safe yield is proportional to
+# none of them individually but sensitive to all of them, so the honest
+# output is a band. Ranges follow common basement-aquifer practice.
+_ENVELOPE_STORATIVITY = (1e-4, 1e-2)
+_ENVELOPE_RADIUS_M = (0.075, 0.15)
+_ENVELOPE_SEASONAL_M = (1.0, 4.0)
+
+
+def attach_yield_envelope(
+    analysis: "PumpingTestAnalysis", config: PumpingConfig | None = None
+) -> None:
+    """Fill the safe-yield band on ``analysis.yield_recommendation``.
+
+    Re-runs the same recommendation over the corners of the assumption
+    envelope - transmissivity across whichever methods actually fitted,
+    storativity, effective well radius and the seasonal allowance - and keeps
+    the lowest and highest safe yields. Reported as "2.4 m3/h (1.8 to 3.1)",
+    so nobody reads an assumed number as a measured one.
+    """
+    config = config or PumpingConfig()
+    recommendation = analysis.yield_recommendation
+    if recommendation is None or recommendation.safe_yield_m3_per_h is None:
+        return
+
+    fitted = [
+        r.transmissivity_m2_per_day
+        for r in (analysis.recovery, analysis.cooper_jacob, analysis.theis)
+        if r is not None and r.transmissivity_m2_per_day
+    ]
+    if not fitted:
+        return
+    # when only one method fitted there is no spread to measure, so allow the
+    # factor of two that separates methods on a typical basement borehole
+    t_range = (min(fitted), max(fitted)) if len(fitted) > 1 else (
+        fitted[0] / 1.5, fitted[0] * 1.5
+    )
+
+    yields = []
+    for transmissivity in t_range:
+        for storativity in _ENVELOPE_STORATIVITY:
+            for radius in _ENVELOPE_RADIUS_M:
+                for seasonal in _ENVELOPE_SEASONAL_M:
+                    variant = replace(config, seasonal_allowance_m=seasonal)
+                    trial = recommend_yield(
+                        analysis.test,
+                        transmissivity,
+                        analysis.step_test,
+                        variant,
+                        assumed_storativity=storativity,
+                        effective_radius_m=radius,
+                    )
+                    if trial.safe_yield_m3_per_h:
+                        yields.append(trial.safe_yield_m3_per_h)
+    if not yields:
+        return
+    recommendation.safe_yield_low_m3_per_h = min(yields)
+    recommendation.safe_yield_high_m3_per_h = max(yields)
+    recommendation.envelope_basis = (
+        f"Range over transmissivity {t_range[0]:.1f}-{t_range[1]:.1f} m2/day"
+        f"{' (spread between the fitted methods)' if len(fitted) > 1 else ''}, "
+        f"storativity {_ENVELOPE_STORATIVITY[0]:g}-{_ENVELOPE_STORATIVITY[1]:g}, "
+        f"effective radius {_ENVELOPE_RADIUS_M[0]}-{_ENVELOPE_RADIUS_M[1]} m and "
+        f"a dry-season decline of {_ENVELOPE_SEASONAL_M[0]:.0f}-"
+        f"{_ENVELOPE_SEASONAL_M[1]:.0f} m. Design to the lower figure where the "
+        "supply must not fail in a dry year."
+    )
+
+
 def analyse_pumping_test(
     test: PumpingTest,
     config: PumpingConfig | None = None,
@@ -656,6 +748,7 @@ def analyse_pumping_test(
         analysis.step_test,
         config,
     )
+    attach_yield_envelope(analysis, config)
 
     analysis.flags = flags
     return analysis

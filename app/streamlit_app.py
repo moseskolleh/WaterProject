@@ -203,7 +203,10 @@ _FIELD_RED = "#B14E49"    # measured field data accent
 st.markdown(
     """
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+      /* No webfont @import here. A CSS @import is render-blocking, so on a
+         slow or captive-portal link the whole app waited on
+         fonts.googleapis.com - and everything else in the toolkit works
+         offline. The stacks below fall back to the platform UI font. */
 
       html, body, [data-testid="stAppViewContainer"], .stMarkdown,
       button, input, textarea, select {
@@ -568,9 +571,34 @@ def show_flags(flags, collapse_after: int = 4) -> None:
         _render(flags)
 
 
-def offer_download(path: Path, label: str) -> None:
+def offer_download(path: Path, label: str, keep: bool = True) -> None:
+    """Download button for a produced file, and remember it as a deliverable.
+
+    Build buttons are true for exactly one rerun, so a report's download
+    button used to vanish the moment the user touched anything else and the
+    report had to be rebuilt. Remembering it keeps it available from the
+    Deliverables panel for the rest of the session.
+    """
+    if keep:
+        st.session_state.setdefault("artifacts", {})[label] = str(path)
     with open(path, "rb") as fh:
-        st.download_button(label, fh.read(), file_name=path.name)
+        st.download_button(label, fh.read(), file_name=path.name,
+                           key=f"dl_{_html.escape(label)}_{path.name}")
+
+
+def _deliverables() -> list[tuple[str, Path]]:
+    """Everything built this session that still exists on disk."""
+    out = []
+    for label, raw in (st.session_state.get("artifacts") or {}).items():
+        path = Path(raw)
+        if path.exists():
+            out.append((label, path))
+    return out
+
+
+def _working(message: str):
+    """Status block for a slow operation, so the app never looks frozen."""
+    return st.status(message, expanded=False)
 
 
 def parse_upload(reader, path: Path):
@@ -771,6 +799,34 @@ def _nav_changed(group_key: str) -> None:
 
 def _goto(page: str) -> None:
     st.session_state["nav"] = page
+
+
+def _next_step(label: str, page: str, note: str = "") -> None:
+    """Bottom-of-page route to the next lifecycle step.
+
+    Every page except the Overview used to dead-end: having read the
+    recommended drilling depth there was no way on to Costing except hunting
+    through the sidebar.
+    """
+    st.divider()
+    col_a, col_b = st.columns([3, 1])
+    col_a.caption(note or f"Next: {page}")
+    col_b.button(label, key=f"next_{_page_key(page)}", width="stretch",
+                 on_click=_goto, args=(page,))
+
+
+def _band(value, bands: list[tuple[float, str]], above: str) -> str:
+    """First label whose upper bound the value falls under, else ``above``.
+
+    A number with no interpretation is not useful to a drilling supervisor:
+    12 percent model fit or 4 m2/day transmissivity mean nothing on their own.
+    """
+    if value is None:
+        return ""
+    for limit, label in bands:
+        if float(value) < limit:
+            return label
+    return above
 
 
 def _page(name: str):
@@ -1461,6 +1517,13 @@ with tab_overview:
                 unsafe_allow_html=True,
             )
 
+    # Everything built this session, in one place. A build button is true for
+    # a single rerun, so its download button used to disappear as soon as the
+    # user touched anything else and the report had to be rebuilt to get it.
+    # Filled at the end of the script: the Overview renders before the pages
+    # that produce the files, so reading the list here would lag a run behind.
+    _deliverables_slot = st.container()
+
 
 # ---------------------------------------------------------------------------
 # Guided start
@@ -1733,7 +1796,22 @@ with tab_ves:
                     sounding, result.model, result.rho_calc, result.ab2, path=fig_path
                 )
                 col_fig.image(str(fig_path))
-                col_txt.metric("Model fit (ERR)", f"{result.fit_error_percent:.1f}%")
+                col_txt.metric(
+                    "Model fit (ERR)", f"{result.fit_error_percent:.1f}%",
+                    help="Root-mean-square difference between the measured "
+                    "curve and the layered model. Under 5% is an excellent "
+                    "fit; 5-10% is acceptable; above 10% treat the layer "
+                    "depths as indicative and weight the drilling decision "
+                    "on the curve shape and local knowledge.",
+                )
+                col_txt.caption(
+                    "Fit: " + _band(
+                        result.fit_error_percent,
+                        [(5.0, "excellent - depths well constrained"),
+                         (10.0, "acceptable for siting")],
+                        "poor - treat the layer depths as indicative only",
+                    )
+                )
                 col_txt.metric(
                     "Water bearing zones",
                     ", ".join(f"{int(t)}-{int(b)} m" for t, b in interp.water_zones)
@@ -1805,6 +1883,7 @@ with tab_ves:
                 )
 
         if st.button("Build geophysical survey report", key="build_geo_report"):
+          with _working("Building the geophysical survey report - drawing the context maps and writing the document..."):
             report_path = build_geophysical_report(
                 GeophysicalReportInputs(
                     soundings=soundings,
@@ -1817,7 +1896,10 @@ with tab_ves:
                 workdir() / "Geophysical_Survey_Report.docx",
                 app_config(),
             )
-            offer_download(report_path, "Download geophysical survey report (.docx)")
+          offer_download(report_path, "Download geophysical survey report (.docx)")
+
+    _next_step("Cost this borehole →", "Costing & BoQ",
+               "Siting done. Price the borehole at the recommended depth.")
 
 # ---------------------------------------------------------------------------
 # Pumping test
@@ -1917,13 +1999,32 @@ with tab_pump:
                 + "</div>",
                 unsafe_allow_html=True,
             )
+        if yr is not None and yr.safe_yield_low_m3_per_h is not None:
+            st.caption(
+                f"Plausible range **{yr.safe_yield_low_m3_per_h:.2g} to "
+                f"{yr.safe_yield_high_m3_per_h:.2g} m³/h**. "
+                + yr.envelope_basis
+            )
         cols = st.columns(4)
         cols[0].metric(
             "Transmissivity",
             f"{analysis.transmissivity_m2_per_day:.1f} m2/day"
             if analysis.transmissivity_m2_per_day
             else "pending",
+            help="Aquifer productivity class (BGS Africa Groundwater Atlas "
+            "bands for basement aquifers). A handpump serving a village "
+            "typically needs about 1 m3/h.",
         )
+        if analysis.transmissivity_m2_per_day:
+            cols[0].caption(
+                _band(
+                    analysis.transmissivity_m2_per_day,
+                    [(1.0, "very low - handpump only, if at all"),
+                     (10.0, "low to moderate - ample for a handpump"),
+                     (100.0, "moderate to high - could support a small scheme")],
+                    "high - motorised supply feasible",
+                )
+            )
         if yr is not None:
             cols[1].metric(
                 "Available drawdown",
@@ -1932,7 +2033,20 @@ with tab_pump:
             cols[2].metric(
                 "Safe yield",
                 f"{fmt_num(yr.safe_yield_m3_per_h)} m3/h" if yr.safe_yield_m3_per_h else "pending",
+                help="Rate the borehole can be pumped at continuously over "
+                "the design period, with the safety factor applied. It rests "
+                "on assumed storativity and well radius, so design to the "
+                "lower end of the range where the supply must not fail.",
             )
+            if yr.safe_yield_m3_per_h:
+                cols[2].caption(
+                    _band(
+                        yr.safe_yield_m3_per_h,
+                        [(0.5, "below a handpump's working rate"),
+                         (1.0, "marginal for a village handpump")],
+                        "comfortable for a handpump supply",
+                    )
+                )
             cols[3].metric(
                 "Pump depth",
                 f"{fmt_num(yr.pump_installation_depth_m)} m"
@@ -1942,12 +2056,16 @@ with tab_pump:
             st.caption(yr.basis)
 
         if st.button("Build pumping test report", key="build_pump_report"):
+          with _working("Building the pumping test report..."):
             report_path = build_pumping_report(
                 PumpingReportInputs(analysis=analysis, figures_dir=workdir()),
                 workdir() / "Pumping_Test_Report.docx",
                 app_config(),
             )
-            offer_download(report_path, "Download pumping test report (.docx)")
+          offer_download(report_path, "Download pumping test report (.docx)")
+
+    _next_step("Assess water quality →", "Water quality",
+               "Yield established. Check the water is safe to drink.")
 
 # ---------------------------------------------------------------------------
 # Water quality
@@ -2017,12 +2135,13 @@ with tab_quality:
             col2.image(str(stiff))
 
         if st.button("Build water quality report", key="build_wq_report"):
+          with _working("Building the water quality report - drawing the Piper and Stiff diagrams..."):
             report_path = build_quality_report(
                 QualityReportInputs(assessment=assessment, figures_dir=workdir()),
                 workdir() / "Water_Quality_Report.docx",
                 app_config(),
             )
-            offer_download(report_path, "Download water quality report (.docx)")
+          offer_download(report_path, "Download water quality report (.docx)")
 
 # ---------------------------------------------------------------------------
 # Borehole design
@@ -2365,6 +2484,9 @@ with tab_cost:
                 for assumption in programme.assumptions:
                     st.markdown(f"- {assumption}")
 
+    _next_step("Start supervision →", "Supervision",
+               "Budget agreed. Work the checklists as the rig arrives.")
+
 # ---------------------------------------------------------------------------
 # Supervision
 # ---------------------------------------------------------------------------
@@ -2553,6 +2675,9 @@ with tab_supervision:
                 app_config(),
             )
             offer_download(report_path, "Download supervision report (.docx)")
+
+    _next_step("Build the handover →", "Handover",
+               "Quality assessed. Close the project out with the community.")
 
 # ---------------------------------------------------------------------------
 # Handover
@@ -3118,6 +3243,30 @@ with tab_portfolio:
             file_name=f"{_brief_name}_brief.txt", mime="text/plain",
             key="portfolio_onepager",
         )
+
+# ---------------------------------------------------------------------------
+# Deliverables, filled last for the same reason: the Overview renders before
+# the pages that build the files.
+# ---------------------------------------------------------------------------
+_built = _deliverables()
+if _built:
+    with _deliverables_slot:
+        st.divider()
+        st.subheader("📦 Deliverables")
+        st.caption(
+            f"{len(_built)} file(s) built this session. They live only in this "
+            "session - download what you need before closing the tab, or save "
+            "the project file and rebuild them later."
+        )
+        for _i, (_label, _path) in enumerate(_built):
+            _c1, _c2 = st.columns([3, 1])
+            _c1.write(f"**{_path.name}**  \n{_label}")
+            with open(_path, "rb") as _fh:
+                _c2.download_button(
+                    "Download", _fh.read(), file_name=_path.name,
+                    key=f"deliverable_{_i}", width="stretch",
+                )
+
 
 # ---------------------------------------------------------------------------
 # Sidebar project file panel, filled last so the saved file carries the
