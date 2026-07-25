@@ -32,6 +32,7 @@ __all__ = [
     "SiteInterpretation",
     "interpret_model",
     "drilling_preference_table",
+    "rank_interpretations",
 ]
 
 
@@ -352,6 +353,32 @@ def _narrative(interp: SiteInterpretation) -> str:
     return " ".join(parts)
 
 
+
+def rank_interpretations(
+    interpretations: list[SiteInterpretation],
+    preferred_order: list[str] | None = None,
+) -> list[SiteInterpretation]:
+    """Assign ``rank`` (1 = most preferred) in place; return them ranked.
+
+    Kept separate from the preference table so callers that only need the
+    ranking - the dashboard, a reloaded project - get it without building the
+    table. Every caller reading ``rank`` must have ranked first: an unranked
+    set leaves every rank None, and "best" then falls back to whichever
+    sounding happened to be parsed first.
+    """
+    if preferred_order:
+        position = {sid: i for i, sid in enumerate(preferred_order)}
+        ranked = sorted(
+            interpretations,
+            key=lambda i: (position.get(i.sounding_id, len(position)), -i.score),
+        )
+    else:
+        ranked = sorted(interpretations, key=lambda i: (-i.score, i.sounding_id))
+    for rank, interp in enumerate(ranked, start=1):
+        interp.rank = rank
+    return ranked
+
+
 def drilling_preference_table(
     interpretations: list[SiteInterpretation],
     preferred_order: list[str] | None = None,
@@ -366,16 +393,7 @@ def drilling_preference_table(
     sounding ids, most preferred first) lets the analyst set the
     ranking explicitly; unlisted sites follow after, by score.
     """
-    if preferred_order:
-        position = {sid: i for i, sid in enumerate(preferred_order)}
-        ranked = sorted(
-            interpretations,
-            key=lambda i: (position.get(i.sounding_id, len(position)), -i.score),
-        )
-    else:
-        ranked = sorted(interpretations, key=lambda i: (-i.score, i.sounding_id))
-    for rank, interp in enumerate(ranked, start=1):
-        interp.rank = rank
+    rank_interpretations(interpretations, preferred_order)
     rows = []
     for i, interp in enumerate(interpretations, start=1):
         layer_numbers = "\n".join(str(l.number) for l in interp.layers)

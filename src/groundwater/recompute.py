@@ -26,6 +26,7 @@ from .ingestion import (
 )
 from .quality import assess_sample
 from .ves import interpret_model, invert_sounding
+from .ves.interpret import rank_interpretations
 
 
 def _materialize(source, sample_root, tmp_dir) -> Path | None:
@@ -89,6 +90,9 @@ def recompute_results(
                 interpret_model(s, r.model, config.ves)
                 for s, r in zip(soundings, results)
             ]
+            # rank now: the dashboard reads interp.rank, and an unranked set
+            # leaves every rank None so "best" silently becomes "first parsed"
+            rank_interpretations(interps)
             out["ves_results"] = (soundings, results, interps)
         except Exception:  # noqa: BLE001 - a bad source just skips its result
             pass

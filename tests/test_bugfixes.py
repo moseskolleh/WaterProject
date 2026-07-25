@@ -612,6 +612,42 @@ def test_a_national_standard_failure_is_not_reported_as_a_taste_problem():
     assert "usable for drinking" in taste.verdict
 
 
+def test_saving_right_after_an_analysis_captures_it():
+    """The sidebar renders before every page body, so a "Save project"
+    button built there carried the state as it was *before* this run's
+    analyses. Saving straight after running the siting wrote a file with no
+    results in it, and the Portfolio page then showed the site as unstarted.
+    The panel is filled at the end of the script instead.
+
+    The same ordering left interp.rank unset when the Overview read it - only
+    the VES page ranked, and it renders later - so the dashboard named
+    whichever sounding was parsed first as the preferred drill target.
+    """
+    from pathlib import Path
+
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+
+    app_path = str(Path(__file__).resolve().parents[1] / "app" / "streamlit_app.py")
+    at = AppTest.from_file(app_path, default_timeout=600)
+    at.run()
+    at.text_input(key="meta_community").set_value("Rokel")
+    at.run()
+    at.selectbox(key="sample_ves").select("rokel/rokel_ves.xlsx")
+    at.run()
+    at.button(key="run_ves").click()
+    at.run()  # the run that produces the results
+    assert not at.exception
+
+    summary = at.session_state["project_summary"]
+    assert summary["status"], "the saved project must carry the analysis just run"
+
+    _, _, interps = at.session_state["ves_results"]
+    assert all(i.rank for i in interps), "ranks must be set where interps are built"
+    best = min(interps, key=lambda i: (i.rank or 99, -i.score))
+    assert best.score == max(i.score for i in interps)
+
+
 # --- robustness one-liners --------------------------------------------------
 
 def test_loan_schedule_rejects_zero_term():

@@ -152,7 +152,10 @@ from groundwater.supervision import (
 )
 from groundwater.utils import fmt_num
 from groundwater.ves import interpret_model, invert_sounding
-from groundwater.ves.interpret import drilling_preference_table
+from groundwater.ves.interpret import (
+    drilling_preference_table,
+    rank_interpretations,
+)
 from groundwater.ves.plots import plot_sounding_curve
 
 # ---------------------------------------------------------------------------
@@ -1018,31 +1021,12 @@ with st.sidebar:
         )
         st.text_input("Organisation details", key="org_details",
                       help="Address or contact line under the name.")
-    with st.expander("💾 Project file"):
-        st.caption(
-            "Save the whole project - your inputs, the WASH committee and the "
-            "uploaded data files - and load it back later or on another "
-            "machine to restore the analyses and reports. Saved projects can "
-            "also be combined on the Portfolio page."
-        )
-        # capture a headline summary so the saved file feeds the portfolio view
-        st.session_state["project_summary"] = _project_summary()
-        st.download_button(
-            "Save project (.yaml)",
-            project_file_bytes(),
-            file_name=(
-                (st.session_state.get("meta_community") or "groundwater")
-                .replace(" ", "_") + "_project.yaml"
-            ),
-            key="project_download",
-        )
-        st.file_uploader("Project file", type=["yaml", "yml"],
-                         key="project_upload")
-        st.button("Load project", key="project_load", on_click=_load_project)
-        if st.session_state.pop("project_loaded", False):
-            st.success("Project loaded.")
-        if st.session_state.pop("project_load_error", False):
-            st.error("That file is not a toolkit project file.")
+    # The sidebar runs before every page body, so a download button built here
+    # would carry the state as it was *before* this run's analyses. Reserve the
+    # slot now and fill it at the end of the script, once the pages have run:
+    # otherwise "Save project" straight after an analysis wrote a file with no
+    # results in it, and the Portfolio page then showed the site as unstarted.
+    _project_panel = st.expander("💾 Project file")
     st.caption(
         "Methods follow RWSN/UNICEF professional drilling guidance "
         "and WHO water quality guidelines. "
@@ -1122,6 +1106,10 @@ def run_ves_inversion(soundings) -> None:
         results.append(result)
         interps.append(interp)
         progress.progress((i + 1) / len(soundings))
+    # rank before anything reads interp.rank: the Overview renders earlier in
+    # the run than the VES page that used to be the only thing ranking them,
+    # so it named whichever sounding was parsed first as the drill target
+    rank_interpretations(interps)
     st.session_state.ves_results = (soundings, results, interps)
 
 
@@ -1302,7 +1290,7 @@ with tab_overview:
             if _ov_ves is not None:
                 _soundings, _results, _interps = _ov_ves
                 _best = min(
-                    _interps, key=lambda i: i.rank if i.rank else 99,
+                    _interps, key=lambda i: (i.rank or 99, -i.score),
                 ) if _interps else None
                 _ves_rows = [("Soundings analysed", str(len(_results)))]
                 if _best is not None:
@@ -1757,7 +1745,7 @@ with tab_ves:
 
         # The headline the client actually asks for, promoted first-class
         _best_interp = min(
-            interps, key=lambda i: i.rank if i.rank else 99,
+            interps, key=lambda i: (i.rank or 99, -i.score),
         ) if interps else None
         if _best_interp is not None and _best_interp.max_drilling_depth_m:
             _zones = ", ".join(
@@ -3130,6 +3118,36 @@ with tab_portfolio:
             file_name=f"{_brief_name}_brief.txt", mime="text/plain",
             key="portfolio_onepager",
         )
+
+# ---------------------------------------------------------------------------
+# Sidebar project file panel, filled last so the saved file carries the
+# results this run produced rather than the state the sidebar started with.
+# ---------------------------------------------------------------------------
+with _project_panel:
+    st.caption(
+        "Save the whole project - your inputs, the WASH committee and the "
+        "uploaded data files - and load it back later or on another "
+        "machine to restore the analyses and reports. Saved projects can "
+        "also be combined on the Portfolio page."
+    )
+    # capture a headline summary so the saved file feeds the portfolio view
+    st.session_state["project_summary"] = _project_summary()
+    st.download_button(
+        "Save project (.yaml)",
+        project_file_bytes(),
+        file_name=(
+            (st.session_state.get("meta_community") or "groundwater")
+            .replace(" ", "_") + "_project.yaml"
+        ),
+        key="project_download",
+    )
+    st.file_uploader("Project file", type=["yaml", "yml"],
+                     key="project_upload")
+    st.button("Load project", key="project_load", on_click=_load_project)
+    if st.session_state.pop("project_loaded", False):
+        st.success("Project loaded.")
+    if st.session_state.pop("project_load_error", False):
+        st.error("That file is not a toolkit project file.")
 
 # the post-load grace flag protects restored inputs for exactly one
 # full run; every page has rendered by this point

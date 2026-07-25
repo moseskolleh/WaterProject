@@ -41,6 +41,12 @@ class VESConfig:
     max_layers: int = 4
     min_layers: int = 2
     target_fit_percent: float = 10.0  # accept the simplest model under this
+    # ...but only while no richer model more than halves its misfit. A
+    # two-layer model can sit just under the target while a three-layer one
+    # fits the same curve an order of magnitude better and puts basement at
+    # 65 m instead of 4 m - the difference between drilling into the aquifer
+    # and stopping in the regolith.
+    parsimony_max_error_ratio: float = 2.0
     damping: float = 0.02
     max_iterations: int = 60
     # hydrogeological interpretation thresholds (ohm-m), crystalline basement

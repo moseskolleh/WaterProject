@@ -163,11 +163,22 @@ def _starting_models(ab2: np.ndarray, rho: np.ndarray, n_layers: int) -> list:
     for depth_factor in (0.35, 0.7):
         z_top = max(ab2[0] * depth_factor, 0.5)
         z_bot = max(ab2[-1] * depth_factor, z_top * 4)
-        bounds = np.geomspace(z_top, z_bot, n_layers)
-        h0 = np.diff(np.concatenate([[0.0], bounds[:-1]]))
-        h0 = np.maximum(h0, 0.3)
+        # An n-layer model has n-1 interfaces, and they must span the whole
+        # investigated range. Spacing n points and then dropping the last
+        # put the deepest starting interface at the second geomspace point:
+        # 6 m for a sounding that reaches 56 m, so the search began with
+        # basement far too shallow and had to climb out of it.
+        interfaces = np.geomspace(z_top, z_bot, max(n_layers - 1, 1))
+        h0 = np.maximum(np.diff(np.concatenate([[0.0], interfaces])), 0.3)
+        # one starting resistivity per layer, read off the smoothed curve at
+        # the spacing that senses each layer's mid-depth
+        tops = np.concatenate([[0.0], interfaces])
+        mids = np.concatenate([
+            0.5 * (tops[:-1] + tops[1:]),      # the finite layers
+            [interfaces[-1] * 1.5],            # the half space below
+        ])
         rho0 = []
-        for z in bounds:
+        for z in mids[:n_layers]:
             L = np.clip(2.0 * z, ab2[0], ab2[-1])
             rho0.append(np.exp(np.interp(np.log(L), np.log(ab2), log_rho)))
         starts.append((np.array(rho0), h0))
@@ -253,13 +264,23 @@ def invert_sounding(
     # Parsimony: the simplest model reaching the target; otherwise the
     # simplest model whose fit is within 15 percent of the best fit
     # (extra layers must earn their keep), otherwise the overall best.
+    #
+    # "Reaching the target" is not enough on its own. A two-layer model can
+    # sit just under the target while a three-layer one fits the same curve
+    # an order of magnitude better and puts basement at 65 m instead of 4 m -
+    # the difference between drilling into the aquifer and stopping in the
+    # regolith. So a simple model is only accepted while no available model
+    # more than halves its misfit.
+    best_err = min(c[2] for c in candidates)
     chosen = None
     for cand in candidates:
-        if cand[2] <= config.target_fit_percent:
+        if cand[2] <= config.target_fit_percent and (
+            cand[2] <= config.parsimony_max_error_ratio * max(best_err, 1e-9)
+            or cand[2] <= config.target_fit_percent / 10.0
+        ):
             chosen = cand
             break
     if chosen is None:
-        best_err = min(c[2] for c in candidates)
         for cand in candidates:
             if cand[2] <= 1.15 * best_err:
                 chosen = cand

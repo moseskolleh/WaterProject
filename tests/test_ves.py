@@ -141,6 +141,51 @@ def test_inversion_recovers_synthetic_model():
     assert abs(result.model.thicknesses[0] - 6.0) / 6.0 < 0.2
 
 
+@pytest.mark.parametrize(
+    "rho,thicknesses",
+    [
+        ([300.0, 55.0, 4000.0], [5.0, 60.0]),            # deep basement
+        ([250.0, 900.0, 45.0, 3000.0], [2.0, 6.0, 35.0]),  # thick regolith
+        ([200.0, 1500.0, 60.0, 4000.0], [1.5, 5.0, 25.0]),  # KH curve
+    ],
+)
+def test_a_simple_model_never_hides_a_far_better_one(rho, thicknesses):
+    """Parsimony accepted the simplest model under the 10 percent target.
+
+    A two-layer model can sit at 8.8 percent while a three-layer one fits the
+    same curve to 0.0 percent - and puts basement at 65 m instead of 4 m.
+    Drilling depth comes straight off that, so the simple model has to be
+    rejected when a richer one more than halves the misfit.
+    """
+    ab2 = np.geomspace(1, 100, 20)
+    rho_app = forward_schlumberger(
+        (np.array(rho, float), np.array(thicknesses, float)), ab2
+    )
+    sounding = VESSounding(
+        site=SiteMetadata(community="S", district="Bo"), sounding_id="X",
+        ab2=ab2, mn=ab2 / 5, rho_app=rho_app,
+    )
+    result = invert_sounding(sounding)
+    recovered = float(np.sum(result.model.thicknesses))
+    assert result.fit_error_percent < 1.0
+    assert abs(recovered - sum(thicknesses)) / sum(thicknesses) < 0.25
+
+
+def test_starting_interfaces_span_the_investigated_depth():
+    """An n-layer model has n-1 interfaces. Spacing n depths and dropping the
+    last left the deepest starting interface at the second point - 6 m for a
+    sounding reaching 56 m - so every search began with basement far too
+    shallow."""
+    from groundwater.ves.inversion import _starting_models
+
+    ab2 = np.array([1.0, 2, 3, 5, 10, 20, 40, 80])
+    for n_layers in (3, 4, 5):
+        for _, h0 in _starting_models(ab2, np.full_like(ab2, 100.0), n_layers):
+            assert len(h0) == n_layers - 1
+            # the deepest interface reaches the investigated depth scale
+            assert np.sum(h0) >= 0.3 * ab2[-1]
+
+
 def test_inversion_reports_parameter_uncertainty():
     truth = (np.array([800.0, 60.0]), np.array([6.0]))
     ab2 = np.geomspace(1, 80, 15)
