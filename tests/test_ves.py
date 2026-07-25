@@ -5,6 +5,7 @@ from groundwater.models import LayeredModel, SiteMetadata, VESSounding
 from groundwater.ves import classify_curve, interpret_model, invert_sounding
 from groundwater.ves.arrays import geometric_factor
 from groundwater.ves.forward import (
+    forward_for_sounding,
     forward_schlumberger,
     forward_schlumberger_finite_mn,
     forward_wenner,
@@ -70,6 +71,26 @@ def test_forward_wenner_vs_series():
         )
         numeric = forward_wenner((np.array([rho1, rho2]), np.array([h])), np.array([a]))[0]
         assert abs(numeric - expected) / expected < 5e-3
+
+
+@pytest.mark.parametrize("label", ["Wenner", " WENNER ", "Wenner alpha"])
+def test_array_type_is_matched_regardless_of_case(label):
+    """A capitalised "Wenner" must not be inverted as Schlumberger.
+
+    forward_for_sounding and the inversion match the array with a bare
+    startswith("wenner"), so an un-normalised label silently selected the
+    wrong forward model - apparent resistivities out by tens of percent
+    with no warning.
+    """
+    model = (np.array([300.0, 60.0, 2000.0]), np.array([2.0, 15.0]))
+    a = np.array([1.0, 3.0, 10.0, 30.0, 60.0])
+    sounding = VESSounding(
+        site=SiteMetadata(community="T", district="Bo"), sounding_id="S1",
+        ab2=a, mn=a / 3, rho_app=np.full_like(a, 100.0), array_type=label,
+    )
+    assert sounding.array_type == label.strip().lower()
+    assert np.allclose(forward_for_sounding(model, sounding),
+                       forward_wenner(model, a))
 
 
 def test_splice_modes(rokel_ves_a):

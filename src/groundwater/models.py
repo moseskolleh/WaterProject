@@ -117,6 +117,12 @@ class VESSounding:
         self.ab2 = np.asarray(self.ab2, dtype=float)
         self.mn = np.asarray(self.mn, dtype=float)
         self.rho_app = np.asarray(self.rho_app, dtype=float)
+        # The array type decides which forward model is used, and the
+        # inversion and forward code match it with a bare startswith().
+        # "Wenner" from a hand-built sounding or a scanned sheet would
+        # otherwise be inverted as Schlumberger - silently wrong by tens
+        # of percent - so normalise it once, here.
+        self.array_type = str(self.array_type or "schlumberger").strip().lower()
 
     @property
     def n_readings(self) -> int:

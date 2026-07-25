@@ -287,6 +287,91 @@ def test_app_survives_integer_meta_zone():
     assert not at.exception
 
 
+# --- app: a deep sounding must not brick the guided start -------------------
+
+def test_guided_start_survives_depth_beyond_the_widget_range():
+    """A sounding that resolves no water zone recommends its investigated
+    depth (max AB/2), which on a deep survey exceeds the guided start's
+    300 m field. Streamlit raises on an out-of-range prefill, so the costing
+    step took the whole page down with a red traceback."""
+    from pathlib import Path
+
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+
+    from groundwater.config import Config
+    from groundwater.ves import interpret_model, invert_sounding
+    from groundwater.ves.forward import forward_schlumberger
+
+    cfg = Config()
+    ab2 = np.array([1, 2, 3, 5, 7, 10, 15, 20, 30, 40, 60, 80, 100, 150,
+                    200, 300, 400.0])
+    # thin cover on fresh basement: nothing water bearing is resolved
+    rho = forward_schlumberger((np.array([800.0, 4000.0]), np.array([4.0])), ab2)
+    sounding = VESSounding(
+        site=SiteMetadata(community="Dry", district="Bo"), sounding_id="D1",
+        ab2=ab2, mn=ab2 / 3, rho_app=rho,
+    )
+    result = invert_sounding(sounding, cfg.ves)
+    interp = interpret_model(sounding, result.model, cfg.ves)
+    assert interp.max_drilling_depth_m > 300.0  # the precondition for the crash
+
+    app_path = str(Path(__file__).resolve().parents[1] / "app" / "streamlit_app.py")
+    at = AppTest.from_file(app_path, default_timeout=600)
+    at.session_state["ves_results"] = ([sounding], [result], [interp])
+    at.session_state["nav"] = "Guided start"
+    at.session_state["wiz_step"] = 2  # the costing step
+    at.run()
+    assert not at.exception
+    assert at.number_input(key="wiz_cost_depth").value <= 300.0
+
+
+# --- app: checklist answers must survive moving between stages --------------
+
+def test_supervision_answers_survive_a_stage_change():
+    """Only the picked stage's widgets are drawn, and Streamlit discards the
+    state of widgets a run does not draw. A supervisor who answered
+    Procurement, moved to Drilling and came back found every answer reset to
+    Pending - and the project file saved only the stage on screen."""
+    from pathlib import Path
+
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+
+    from groundwater.supervision import load_checklists
+
+    stages: list[str] = []
+    for item in load_checklists():
+        if item.checklist not in stages:
+            stages.append(item.checklist)
+    assert len(stages) > 1
+
+    app_path = str(Path(__file__).resolve().parents[1] / "app" / "streamlit_app.py")
+    at = AppTest.from_file(app_path, default_timeout=600)
+    at.session_state["nav"] = "Supervision"
+    at.run()
+
+    radios = [r for r in at.radio if r.key and r.key.startswith("chkw_")]
+    assert radios, "no checklist items rendered"
+    first, second = radios[0].key, radios[1].key
+    item_id = first[len("chkw_"):]
+    at.radio(key=first).set_value("Yes")
+    at.run()
+    at.radio(key=second).set_value("No")
+    at.run()
+
+    at.session_state["sup_stage"] = stages[-1]  # work a later stage
+    at.run()
+    # the answer lives in plain state, not in the widget that is no longer drawn
+    assert at.session_state[f"chk_{item_id}"] == "Yes"
+
+    at.session_state["sup_stage"] = stages[0]  # come back
+    at.run()
+    assert at.radio(key=first).value == "Yes"
+    assert at.radio(key=second).value == "No"
+    assert not at.exception
+
+
 # --- robustness one-liners --------------------------------------------------
 
 def test_loan_schedule_rejects_zero_term():

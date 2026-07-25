@@ -700,7 +700,7 @@ def _load_project() -> None:
     # dataset from earlier in the session cannot bleed into the loaded project
     for stale in [
         k for k in list(st.session_state)
-        if k.startswith(("src_", "q_")) or k == "design_swl"
+        if k.startswith(("src_", "q_", "chk_", "rmk_")) or k == "design_swl"
     ]:
         st.session_state.pop(stale, None)
     for result_key in (
@@ -730,6 +730,13 @@ def _load_project() -> None:
         st.session_state.pop("ho_committee", None)
     # reset the rate editor so it shows the loaded values
     st.session_state.pop("rates_editor", None)
+    # drop the supervision widget state so the loaded chk_/rmk_ answers,
+    # not the outgoing project's, seed the radios on the next render
+    for widget_key in [
+        k for k in list(st.session_state)
+        if k.startswith(("chkw_", "rmkw_"))
+    ]:
+        st.session_state.pop(widget_key, None)
     st.session_state.project_loaded = True
     # protect restored inputs from the prefill-reset checks for one run
     st.session_state.project_just_loaded = True
@@ -1141,6 +1148,16 @@ def compute_cost_estimate(inputs: CostingInputs, rates, **kwargs) -> None:
 # ---------------------------------------------------------------------------
 # Overview - the project dashboard (design direction 1b, Project Workspace)
 # ---------------------------------------------------------------------------
+
+# Upper bound of the guided start's depth fields. Streamlit raises on a
+# prefilled value outside a number_input's range, so anything derived from a
+# survey result has to be clamped into it before it is passed in.
+WIZ_MAX_DEPTH_M = 300.0
+
+
+def _clamp(value: float, low: float, high: float) -> float:
+    return min(max(float(value), low), high)
+
 
 def _rows_html(rows: list[tuple[str, str]]) -> str:
     return "".join(
@@ -1590,14 +1607,28 @@ with tab_guide:
         else:
             st.session_state.pop("_wiz_load_grace", None)
         c1, c2, c3 = st.columns(3)
-        wiz_depth = c1.number_input("Total depth (m)", 1.0, 300.0,
-                                    default_depth or 60.0, 1.0,
+        # A sounding that resolved nothing water bearing falls back to its
+        # investigated depth (max AB/2), which on a deep survey can exceed
+        # these bounds. Streamlit raises on a value outside them, so clamp:
+        # an unusable prefill must not take the whole page down.
+        wiz_depth = c1.number_input("Total depth (m)", 1.0, WIZ_MAX_DEPTH_M,
+                                    _clamp(default_depth or 60.0,
+                                           1.0, WIZ_MAX_DEPTH_M), 1.0,
                                     key="wiz_cost_depth")
         wiz_over = c2.number_input(
-            "Overburden (m)", 0.0, 300.0, default_over, 1.0,
+            "Overburden (m)", 0.0, WIZ_MAX_DEPTH_M,
+            _clamp(default_over, 0.0, WIZ_MAX_DEPTH_M), 1.0,
             key="wiz_cost_over",
             help="0 applies the rule of thumb (half the depth, up to 30 m).",
         )
+        if default_depth > WIZ_MAX_DEPTH_M:
+            st.warning(
+                f"The siting result recommends {default_depth:.0f} m, beyond "
+                f"the {WIZ_MAX_DEPTH_M:.0f} m this step accepts - it is the "
+                "depth the sounding investigated, not a target zone. Check "
+                "the interpretation on the Geophysics page, or cost the "
+                "planned depth on the Costing & BoQ page, which is unbounded."
+            )
         wiz_dist = c3.number_input(
             "Distance from contractor base, one way (km)", 0.0, 1000.0,
             100.0, 10.0, key="wiz_cost_dist",
@@ -2340,6 +2371,20 @@ with tab_supervision:
 
     checklist_items = cached_checklists()
 
+    # Only the picked stage's widgets are rendered, and Streamlit discards the
+    # state of a widget that a run does not draw. Answering a stage and moving
+    # on therefore wiped the answers behind you. The widgets are keyed
+    # "chkw_"/"rmkw_" and write through, on change, to the "chk_"/"rmk_" keys
+    # that hold the answers and go into the project file; those are plain
+    # state, so they survive a stage the run never drew.
+    CHK_OPTIONS = ["Pending", "Yes", "No", "N/A"]
+
+    def _store_answer(item_id: str) -> None:
+        st.session_state[f"chk_{item_id}"] = st.session_state[f"chkw_{item_id}"]
+
+    def _store_remark(item_id: str) -> None:
+        st.session_state[f"rmk_{item_id}"] = st.session_state[f"rmkw_{item_id}"]
+
     def _responses() -> dict[str, ChecklistResponse]:
         responses: dict[str, ChecklistResponse] = {}
         for item in checklist_items:
@@ -2393,16 +2438,22 @@ with tab_supervision:
             st.markdown(label)
             if item.guidance:
                 st.caption(item.guidance)
+            saved = st.session_state.get(f"chk_{item.item_id}", "Pending")
             st.radio(
                 "Status",
-                ["Pending", "Yes", "No", "N/A"],
+                CHK_OPTIONS,
+                index=CHK_OPTIONS.index(saved) if saved in CHK_OPTIONS else 0,
                 horizontal=True,
-                key=f"chk_{item.item_id}",
+                key=f"chkw_{item.item_id}",
+                on_change=_store_answer,
+                args=(item.item_id,),
                 label_visibility="collapsed",
             )
             if st.session_state.get(f"chk_{item.item_id}") == "No":
                 st.text_input(
-                    "Remark / action", key=f"rmk_{item.item_id}",
+                    "Remark / action", key=f"rmkw_{item.item_id}",
+                    value=st.session_state.get(f"rmk_{item.item_id}", ""),
+                    on_change=_store_remark, args=(item.item_id,),
                     placeholder="What failed and what happens next",
                 )
 
