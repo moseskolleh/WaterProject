@@ -43,6 +43,30 @@ def test_forward_two_layer_vs_image_series(rho1, rho2, h):
     assert np.max(np.abs(numeric - analytic) / analytic) < 5e-3
 
 
+@pytest.mark.parametrize(
+    "rho1,rho2,h,ab2_max",
+    [(300, 30, 0.5, 1000), (1000, 10, 0.2, 1000), (100, 20, 0.05, 1000)],
+)
+def test_forward_stays_exact_when_the_spacing_dwarfs_the_layer(
+    rho1, rho2, h, ab2_max
+):
+    """The quadrature runs out to the largest tabulated Bessel zero.
+
+    A sounding needs panels out to 9 * (AB/2) / h_min, so the fixed 1200-zero
+    table covered spacings only up to about 419 times the thinnest layer.
+    Past that the integral was truncated part-way through an oscillation of
+    J1, leaving a large spurious residue: 574 ohm-m instead of 30 at
+    AB/2 = 1000 m over a 0.5 m layer. The inversion explores thin layers, so
+    it can walk into that regime and fit against nonsense.
+    """
+    ab2 = np.array([1.0, 10.0, 100.0, 400.0, float(ab2_max)])
+    numeric = forward_schlumberger(
+        (np.array([rho1, rho2], float), np.array([h], float)), ab2
+    )
+    analytic = two_layer_schlumberger_series(rho1, rho2, h, ab2, n_terms=400000)
+    assert np.max(np.abs(numeric - analytic) / analytic) < 5e-3
+
+
 def test_forward_finite_mn_vs_image_series():
     rho1, rho2, h = 300.0, 30.0, 5.0
     k = (rho2 - rho1) / (rho2 + rho1)

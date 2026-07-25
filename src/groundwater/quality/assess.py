@@ -61,10 +61,16 @@ class WaterQualityAssessment:
         return [r for r in self.rows if r.status in ("exceeds_aesthetic", "exceeds_national")]
 
     @property
+    def national_exceedances(self) -> list[ParameterAssessment]:
+        """Parameters over the national standard but inside the WHO health GV."""
+        return [r for r in self.rows if r.status == "exceeds_national"]
+
+    @property
     def verdict(self) -> str:
         """One line suitability statement for reports."""
         health = self.health_exceedances
-        aesthetic = self.aesthetic_exceedances
+        national = self.national_exceedances
+        acceptability = [r for r in self.rows if r.status == "exceeds_aesthetic"]
         if health:
             names = ", ".join(r.parameter for r in health)
             return (
@@ -72,8 +78,27 @@ class WaterQualityAssessment:
                 f"for: {names}. Treatment or an alternative source is required "
                 "before the water is used for drinking."
             )
-        if aesthetic:
-            names = ", ".join(r.parameter for r in aesthetic)
+        if national:
+            # A national limit can be stricter than, or exist without, a WHO
+            # health value - it is a legal compliance failure, not a matter of
+            # taste, so it must not be reported as merely aesthetic.
+            names = ", ".join(r.parameter for r in national)
+            extra = (
+                " Acceptability limits are also exceeded for: "
+                + ", ".join(r.parameter for r in acceptability)
+                + "."
+                if acceptability
+                else ""
+            )
+            return (
+                "The water meets the WHO health based guideline values, but "
+                f"does not comply with the national standard limit(s) for: "
+                f"{names}.{extra} Treatment is required before the supply can "
+                "be accepted against the national standard; check whether the "
+                "limit exceeded is a health or an acceptability limit."
+            )
+        if acceptability:
+            names = ", ".join(r.parameter for r in acceptability)
             return (
                 "The water meets all health based guideline values. "
                 f"Acceptability (aesthetic) limits are exceeded for: {names}. "
@@ -144,8 +169,25 @@ def assess_sample(
                     "a health (faecal contamination) concern, not aesthetic"
                 )
             elif entry.sl_standard and entry.sl_standard.exceeded_by(value):
-                status = "exceeds_national"
-                remark = f"exceeds the national standard limit ({entry.sl_standard})"
+                if entry.who_health:
+                    # WHO sets a health value and the national limit is
+                    # stricter: failing it is a compliance failure, not a
+                    # matter of taste, and must not be reported as aesthetic.
+                    status = "exceeds_national"
+                    remark = (
+                        f"exceeds the national standard limit "
+                        f"({entry.sl_standard}), which is stricter than the "
+                        f"WHO health based guideline ({entry.who_health})"
+                    )
+                else:
+                    # No WHO health value exists for this parameter, so the
+                    # national limit is an acceptability one (iron staining,
+                    # chloride taste, turbidity).
+                    status = "exceeds_aesthetic"
+                    remark = (
+                        f"exceeds the national acceptability limit "
+                        f"({entry.sl_standard})"
+                    )
             elif entry.who_aesthetic and entry.who_aesthetic.exceeded_by(value):
                 status = "exceeds_aesthetic"
                 remark = f"exceeds the WHO acceptability value ({entry.who_aesthetic})"

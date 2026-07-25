@@ -27,6 +27,8 @@ series in the test suite (agreement better than 0.2 percent).
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 from numpy.polynomial.legendre import leggauss
 from scipy.special import j0, j1, jn_zeros
@@ -83,9 +85,25 @@ def resistivity_transform(
 
 _N_ZEROS = 1200
 
+# The quadrature runs out to the largest tabulated Bessel zero. A sounding
+# needs panels out to 9 * (AB/2) / h_min, so 1200 zeros (largest abscissa
+# 3770.7) covers spacings up to about 419 times the thinnest layer. Beyond
+# that the table is grown on demand: truncating the integral part-way
+# through an oscillation of J1 leaves a large spurious residue - at AB/2 =
+# 1000 m over a 0.5 m layer the model returned 574 ohm-m instead of 30.
+# The inversion explores thin layers, so it can walk into that regime.
+# Growth ceiling. 60000 zeros reach x = 188495, covering spacings up to about
+# 20900 times the thinnest layer - far past anything a real sounding sees, and
+# bounded so the browser build cannot be made to allocate without limit.
+_MAX_ZEROS = 60_000
 
-def _build_tables(order: int):
-    zeros = jn_zeros(order, _N_ZEROS)
+# Floor on the layer thickness used to size the decay scale. The inversion
+# bounds thicknesses at 0.2 m; this only guards a hand-built degenerate model.
+_MIN_DECAY_H = 0.02
+
+
+def _build_tables(order: int, n_zeros: int = _N_ZEROS):
+    zeros = jn_zeros(order, n_zeros)
     bessel = j0 if order == 0 else j1
 
     # section 1: 14 log-spaced panels from 1e-6 to the first zero, GL-8
@@ -113,19 +131,37 @@ def _build_tables(order: int):
         "s1_wb": np.concatenate(s1_wb),
         "s2_nodes": np.concatenate(s2_nodes),
         "s2_wb": np.concatenate(s2_wb),
-        "panel_ends": jn_zeros(order, _N_ZEROS)[1:],
+        "panel_ends": zeros[1:],
     }
 
 
 _TABLES = {0: _build_tables(0), 1: _build_tables(1)}
 
 
+def _table_for(order: int, x_stop: float) -> dict:
+    """Quadrature table for ``order`` reaching at least ``x_stop``.
+
+    Grows (and caches) the table rather than truncating the integral, which
+    silently returned resistivities an order of magnitude wrong.
+    """
+    table = _TABLES[order]
+    if table["panel_ends"][-1] >= x_stop or len(table["panel_ends"]) + 1 >= _MAX_ZEROS:
+        return table
+    # zeros of J are spaced about pi apart, so this is the count that reaches
+    # x_stop, with headroom so a sweep of spacings does not rebuild each time
+    needed = min(int(x_stop / math.pi) + 32, _MAX_ZEROS)
+    needed = min(max(needed, 2 * (len(table["panel_ends"]) + 1)), _MAX_ZEROS)
+    table = _build_tables(order, needed)
+    _TABLES[order] = table
+    return table
+
+
 def _hankel_integral(g, order: int, x_decay: float) -> float:
     """Int_0^inf g(x) J_order(x) dx for smooth g decaying like
     exp(-x / x_decay) at large x."""
-    t = _TABLES[order]
-    acc = float(np.dot(g(t["s1_nodes"]), t["s1_wb"]))
     x_stop = 18.0 * max(x_decay, 1.0)
+    t = _table_for(order, x_stop)
+    acc = float(np.dot(g(t["s1_nodes"]), t["s1_wb"]))
     n_panels = int(np.searchsorted(t["panel_ends"], x_stop)) + 1
     n_panels = min(max(n_panels, 8), len(t["panel_ends"]))
     k = n_panels * 10
@@ -148,7 +184,7 @@ def forward_schlumberger(
             return (resistivity_transform(x / L, rho, h) - rho[0]) * x
 
         # (T - rho1) decays like exp(-2 lambda h_min) = exp(-x / (L / (2 h_min)))
-        out[i] = rho[0] + _hankel_integral(g, 1, L / (2.0 * max(h_min, 0.1)))
+        out[i] = rho[0] + _hankel_integral(g, 1, L / (2.0 * max(h_min, _MIN_DECAY_H)))
     return out
 
 
@@ -158,7 +194,7 @@ def _potential_integral(rho, h, r: float, h_min: float) -> float:
     def g(x, r=r):
         return resistivity_transform(x / r, rho, h) - rho[0]
 
-    return (rho[0] + _hankel_integral(g, 0, r / (2.0 * max(h_min, 0.1)))) / r
+    return (rho[0] + _hankel_integral(g, 0, r / (2.0 * max(h_min, _MIN_DECAY_H)))) / r
 
 
 def forward_schlumberger_finite_mn(

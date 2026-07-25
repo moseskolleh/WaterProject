@@ -583,6 +583,35 @@ def test_two_boreholes_do_not_share_report_figures(tmp_path):
     assert len(digests) == 2, "the second report reused the first one's figure"
 
 
+def test_a_national_standard_failure_is_not_reported_as_a_taste_problem():
+    """A national limit can be stricter than the WHO health guideline.
+
+    Exceeding it was folded into the aesthetic bucket, and the report then
+    said the water "is usable for drinking" and only warned about taste -
+    for a supply that fails the national standard. QUESTIONS.md asks the
+    user to replace the national column with the real Standards Bureau
+    values, so this is the column most likely to tighten.
+    """
+    # Aluminium: WHO health 0.9 mg/L, national 0.2 mg/L
+    strict = assess_sample(_quality_sample(
+        WaterQualityResult("pH", 7.2),
+        WaterQualityResult("Aluminium", 0.5),
+    ))
+    assert [r.parameter for r in strict.national_exceedances] == ["Aluminium"]
+    assert not strict.health_exceedances
+    assert "does not comply with the national standard" in strict.verdict
+    assert "usable for drinking" not in strict.verdict
+
+    # Iron has no WHO health value at all, so its limit is an acceptability
+    # one and the friendly wording is right
+    taste = assess_sample(_quality_sample(
+        WaterQualityResult("pH", 7.2),
+        WaterQualityResult("Iron", 0.5),
+    ))
+    assert not taste.national_exceedances
+    assert "usable for drinking" in taste.verdict
+
+
 # --- robustness one-liners --------------------------------------------------
 
 def test_loan_schedule_rejects_zero_term():

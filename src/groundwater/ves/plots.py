@@ -15,7 +15,7 @@ from ..config import HouseStyle
 from ..models import LayeredModel, VESSounding
 from ..plotting import figure_context, save_figure
 from ..utils import fmt_num
-from .forward import forward_schlumberger
+from .forward import forward_schlumberger, forward_wenner
 from .splice import splice_segments
 
 __all__ = [
@@ -91,7 +91,14 @@ def plot_sounding_curve(
         if model is not None:
             if rho_calc is None or ab2_calc is None:
                 ab2_calc = np.geomspace(sounding.ab2.min(), sounding.ab2.max(), 60)
-                rho_calc = forward_schlumberger(model, ab2_calc)
+                # the array decides the kernel: drawing a Schlumberger
+                # response over Wenner readings shows a model that misses
+                # its own data by tens of percent
+                rho_calc = (
+                    forward_wenner(model, ab2_calc)
+                    if sounding.array_type.startswith("wenner")
+                    else forward_schlumberger(model, ab2_calc)
+                )
             ax.loglog(
                 ab2_calc, rho_calc, "-", color=style.secondary_color, lw=1.8,
                 label="model response",

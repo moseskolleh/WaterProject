@@ -213,7 +213,7 @@ def interpret_model(
     interp.transverse_resistance_t = t_res
     # protective capacity uses only the cover above the aquifer, so a
     # conductive water-bearing zone is not counted as its own protection
-    s_cover = _cover_conductance(layers, zones)
+    s_cover = _cover_conductance(layers)
     interp.protective_conductance_s = s_cover
     interp.protective_capacity = _protective_capacity(s_cover)
 
@@ -238,17 +238,24 @@ def _dar_zarrouk(layers: list[LayerInterpretation]) -> tuple[float, float]:
     return s_cond, t_res
 
 
-def _cover_conductance(
-    layers: list[LayerInterpretation], water_zones: list[tuple[float, float]]
-) -> float:
+def _cover_conductance(layers: list[LayerInterpretation]) -> float:
     """Longitudinal conductance of the cover overlying the aquifer.
 
-    Only the material above the shallowest water-bearing zone counts as
+    Only the material above the shallowest water-bearing layer counts as
     protective cover, so a thick or conductive aquifer is not credited as
-    its own contamination barrier. With no water zone the whole overburden
-    is the cover.
+    its own contamination barrier. With no water-bearing layer the whole
+    overburden is the cover.
+
+    The top is taken from the layers, not from the reported water zones:
+    those are floored at 3 m by the vadose rule and rounded for display, so
+    a weathered aquifer reaching close to the surface had its own top 3 m -
+    conductive, and therefore a large contribution - credited as its
+    barrier, rating a poorly protected aquifer as moderately protected.
     """
-    aquifer_top = min((t for t, _ in water_zones), default=float("inf"))
+    aquifer_top = min(
+        (layer.top_m for layer in layers if layer.water_bearing),
+        default=float("inf"),
+    )
     s_cover = 0.0
     for layer in layers:
         if layer.thickness_m is None or layer.rho <= 0:
