@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Groundwater Toolkit</title>
+<!--
+  The published site lives in docs/. GitHub Pages can be pointed either at the
+  repository root or at /docs, and this file makes the same URL work for both:
+
+  - root:  this page redirects to docs/
+  - /docs: this file is never published; docs/index.html is served directly
+
+  Without it, a root-served site has no index and Jekyll renders README.md
+  instead, so the advertised link shows the readme rather than the app.
+-->
+<link rel="canonical" href="docs/" />
+<meta http-equiv="refresh" content="0; url=docs/" />
+<style>
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center;
+    justify-content: center; background: #F6F5F1; color: #152220;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    text-align: center; padding: 1.5rem;
+  }
+  a { color: #1B5A43; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #12191A; color: #E8EDEB; }
+    a { color: #7ED0AC; }
+  }
+</style>
+</head>
+<body>
+  <p>
+    The Groundwater Toolkit is at <a href="docs/">docs/</a>.
+    <br />
+    If your browser does not take you there, follow the link.
+  </p>
+  <script>location.replace('docs/' + location.hash);</script>
+</body>
+</html>

@@ -38,6 +38,15 @@ Enable Pages once:
    and the WebAssembly build at
    `https://moseskolleh.github.io/WaterProject/wasm/`.
 
+**If the folder is set to `/` (root) instead**, that same URL still
+reaches the app: the root-level `index.html` redirects to `docs/`. It
+exists precisely because a root-served site otherwise has no index, and
+Pages then renders `README.md` as the home page — which looks like the
+readme has replaced the application. The WebAssembly build is at
+`.../WaterProject/docs/wasm/` under that setting. Pointing the folder at
+`/docs` is tidier, because then every path is one level shorter and the
+Python sources are not published alongside the site.
+
 ### Rebuilding what `docs/` contains
 
 The standalone app is hand-written source, not generated — edit

@@ -56,8 +56,15 @@ water quality guidelines.
   <https://moseskolleh.github.io/WaterProject/>
 - **Full app (Streamlit Community Cloud):**
   <https://waterproject.streamlit.app/>
-- **WebAssembly build of the Streamlit app:**
-  <https://moseskolleh.github.io/WaterProject/wasm/>
+- **WebAssembly build of the Streamlit app:** linked from the standalone
+  app's *About & method* page (it sits beside it, under `wasm/`).
+
+The published site is the `docs/` folder. GitHub Pages can be pointed
+either at the repository root or at `/docs`, and the link above works
+either way: a root-level `index.html` redirects to `docs/` when the
+site is served from the root, and is simply not published when it is
+served from `/docs`. Without that redirect a root-served site has no
+index at all and renders this readme instead of the app.
 
 The **standalone web app** is the toolkit rewritten to run entirely in
 the browser as plain HTML, CSS and JavaScript. It starts instantly,
