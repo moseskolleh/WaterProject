@@ -23,3 +23,6 @@ htmlcov/
 .DS_Store
 .vscode/
 .idea/
+
+# Node test tooling (Playwright is installed globally in CI)
+node_modules/

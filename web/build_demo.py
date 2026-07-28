@@ -1,6 +1,6 @@
-"""Build the browser-only demo site (GitHub Pages) with stlite.
+"""Build the WebAssembly demo site (GitHub Pages) with stlite.
 
-Generates ``docs/index.html``: a self-contained page that runs the
+Generates ``docs/wasm/index.html``: a self-contained page that runs the
 Streamlit app entirely in the visitor's browser via stlite (Streamlit
 compiled to WebAssembly with Pyodide). No server is involved; uploads
 never leave the browser. The page inlines the whole ``groundwater``
@@ -10,9 +10,16 @@ wheels from the jsDelivr CDN, plus the app's display fonts from
 Google Fonts (optional: system fallbacks are used when that fetch
 fails, e.g. offline).
 
+This is the *second* thing published to Pages. The site root is the
+standalone JavaScript app (``docs/index.html``), which needs no Python
+runtime and starts instantly; this build is kept beside it for anyone
+who wants the real Python package running in the browser, at the cost
+of a 60 MB first load. See ``web/build_webapp_data.py`` for the
+standalone app's bundled data.
+
 Run from the repository root:
 
-    python web/build_demo.py                # production build into docs/
+    python web/build_demo.py                # production build into docs/wasm
     python web/build_demo.py --stlite-base ./vendor/stlite/build \
         --pyodide-url ./vendor/pyodide/pyodide.mjs --out docs_local
                                             # self-hosted assets (testing)
@@ -183,7 +190,8 @@ def build(out_dir: Path, stlite_base: str, pyodide_url: str | None) -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", default=str(REPO / "docs"), help="output directory")
+    parser.add_argument("--out", default=str(REPO / "docs" / "wasm"),
+                        help="output directory")
     parser.add_argument("--stlite-base", default=DEFAULT_STLITE_BASE,
                         help="base URL of the stlite build directory")
     parser.add_argument("--pyodide-url", default=None,

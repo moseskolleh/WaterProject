@@ -5,15 +5,24 @@ about two minutes with no accounts beyond GitHub. Option B runs the
 full server version on Streamlit Community Cloud (free, needs one
 login).
 
-## Option A: GitHub Pages (browser-only demo)
+## Option A: GitHub Pages (no server, nothing to install)
 
-The repository contains a pre-built browser version of the app in
-`docs/` (`docs/index.html`). It runs the complete toolkit inside the
-visitor's browser through WebAssembly (stlite/Pyodide): no server, and
-uploaded files never leave the visitor's machine. All bundled sample
-datasets are included, so anyone can try every tab with one click.
+`docs/` is the published site. It holds two things:
 
-Enable it once:
+- **`docs/index.html` — the standalone web app.** Plain HTML, CSS and
+  JavaScript: no Python runtime, no build step, no dependencies fetched
+  at visit time. It starts in well under a second, works offline once
+  loaded, and does the whole job — reading the field workbooks,
+  inverting the soundings, analysing the pumping tests, assessing the
+  water quality, designing the borehole, costing the works, running the
+  supervision checklists and writing the .docx reports — entirely in
+  the visitor's browser.
+- **`docs/wasm/index.html` — the WebAssembly build.** The real Python
+  package running through stlite/Pyodide, for anyone who wants the
+  server app's exact behaviour in a browser. It costs a 60 MB first
+  load; the standalone app is linked from its own About page.
+
+Enable Pages once:
 
 1. Open the repository on GitHub: `https://github.com/moseskolleh/WaterProject`
 2. Go to **Settings -> Pages** (left sidebar, "Code and automation").
@@ -26,24 +35,48 @@ Enable it once:
 
    `https://moseskolleh.github.io/WaterProject/`
 
+   and the WebAssembly build at
+   `https://moseskolleh.github.io/WaterProject/wasm/`.
+
+### Rebuilding what `docs/` contains
+
+The standalone app is hand-written source, not generated — edit
+`docs/index.html`, `docs/css/gwt.css` and `docs/js/*.js` directly. Two
+parts of it are generated and must be regenerated when their sources
+change:
+
+```bash
+python web/build_webapp_data.py   # docs/js/gwt-data.js: the guideline
+                                  # table, rate catalogue, checklists,
+                                  # map layers and sample workbooks
+python web/build_demo.py          # docs/wasm/index.html: the stlite build
+```
+
+CI fails if `docs/js/gwt-data.js` is out of date with the CSVs it is
+built from, so the two can never drift apart.
+
+### Checking it before you publish
+
+```bash
+npm install --no-save playwright && npx playwright install chromium
+python tests/webapp/make_reference.py   # reference values from the Python package
+node tests/webapp/parity.mjs            # browser engine vs those values
+node tests/webapp/smoke.mjs             # every page, every report, in Chromium
+```
+
+`parity.mjs` runs the real sample workbooks through the browser
+readers and analyses and compares the result against the Python
+toolkit's own output, so the port cannot drift from the package it
+came from. `smoke.mjs` loads each sample, visits every page, builds
+every report and fails on any console error.
+
 Notes:
 
-- First visit downloads the Python runtime and scientific libraries
-  (about 60 MB, from the jsDelivr CDN); the browser caches them, so
-  later visits start quickly.
-- Heavy steps (the VES inversion) take roughly 5 to 10 times longer
-  than the server version. A note in the app tells visitors this.
-- The AI scan extraction is not available in the browser build; the
-  tab explains that. Everything else works: parsing, checks, VES
-  inversion, pumping tests, water quality, borehole design, and
-  downloading the .docx reports.
-- The demo is rebuilt with `python web/build_demo.py` (commit the
-  regenerated `docs/index.html` afterwards). Rebuild whenever the app,
-  the package or the sample data changes.
-
-If the repository is private: GitHub Pages on private repositories
-requires GitHub Pro/Team; either make the repository public or use
-Option B.
+- If the repository is private, GitHub Pages needs GitHub Pro/Team;
+  either make the repository public or use Option B.
+- No analytics, no CDN, no external fetches: everything the standalone
+  app needs is served from `docs/`, which is also why it keeps working
+  on a field laptop that has lost its connection.
 
 ## Option B: Streamlit Community Cloud (full version)
 
@@ -76,6 +109,18 @@ and add a line `anthropic` to `requirements.txt`.
 
 ## What was verified
 
+- The standalone web app's engine is checked against the Python
+  package on the bundled sample workbooks: the XLSX reader, all four
+  field-sheet parsers, the VES forward model and inversion, the
+  Cooper-Jacob/Theis/recovery/step analyses, the yield recommendation,
+  the water quality assessment and the borehole design all agree, and
+  the generated report prose matches character for character.
+- The six .docx reports the app writes were opened with `python-docx`
+  (a strict OOXML reader): headings, tables and embedded figures all
+  parse, and the BoQ workbook reads back through `openpyxl`.
+- Every page of the standalone app was driven in headless Chromium
+  with an empty project and with each sample loaded, with no console
+  errors.
 - The full test suite (parsers, numerics, reports, and
   Streamlit UI flows driven through AppTest) passes in a clean venv
   installed exactly the way Streamlit Cloud installs it.
@@ -83,7 +128,7 @@ and add a line `anthropic` to `requirements.txt`.
   browser build ships (Python 3.13; numpy 2.2.5, scipy 1.14.1,
   matplotlib 3.8.4, pandas 2.3.3, streamlit 1.57.0 from the pinned
   stlite 1.8.1 / Pyodide 0.29.3 runtime).
-- The built `docs/index.html` was booted in a real Chromium browser:
+- The built `docs/wasm/index.html` was booted in a real Chromium browser:
   the stlite runtime loads, the Python (WASM) interpreter starts and
   all 59 inlined files (package, app, sample data) mount correctly.
   The scientific wheels come from the public CDN at visit time, which

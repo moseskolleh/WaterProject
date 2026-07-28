@@ -1,0 +1,1410 @@
+/* gwt-docx.js - the seven house-styled .docx reports, written in the browser.
+ *
+ * A .docx is a ZIP of OOXML parts, so with a ZIP writer (support.js) the whole
+ * report can be assembled client-side: no server, no library, and the file the
+ * field team downloads never leaves their machine.
+ *
+ * The layout follows groundwater/reporting/docx_utils.py: A4 with 2.5 cm
+ * margins, Calibri 11, accent-coloured headings, a shaded table header row,
+ * numbered figure and table captions, page numbers in the footer and a
+ * refreshable table of contents.
+ */
+(function (global) {
+  'use strict';
+
+  var GWT = global.GWT || (global.GWT = {});
+  var S = GWT.support;
+  var C = GWT.core;
+
+  var EMU_PER_CM = 360000;
+  var XML_HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n';
+  var W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"' +
+    ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"' +
+    ' xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"' +
+    ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"' +
+    ' xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"';
+
+  function esc(text) { return S.escapeXml(text); }
+
+  /* The reports are written from generated prose, so a stray control character
+   * or a doubled space from string concatenation must not reach Word. */
+  function clean(text) {
+    return String(text === null || text === undefined ? '' : text)
+      .replace(/\s+/g, ' ').trim();
+  }
+
+  /* ---------------------------------------------------------------- builder */
+
+  function ReportBuilder(options) {
+    var opts = options || {};
+    var style = opts.style || C.defaultConfig().style;
+    this.style = style;
+    this.title = opts.title || 'Report';
+    this.body = [];
+    this.images = [];
+    this.figureNo = 0;
+    this.tableNo = 0;
+    this.accent = String(style.accent_color || '#1F5C8B').replace('#', '');
+    this.font = style.font_name || 'Calibri';
+    this.baseSize = style.base_font_size_pt || 11;
+  }
+
+  ReportBuilder.prototype.run = function (text, attrs) {
+    var a = attrs || {};
+    var props = '';
+    if (a.bold) props += '<w:b/>';
+    if (a.italic) props += '<w:i/>';
+    if (a.size) props += '<w:sz w:val="' + Math.round(a.size * 2) + '"/>';
+    if (a.color) props += '<w:color w:val="' + a.color.replace('#', '') + '"/>';
+    if (a.font) props += '<w:rFonts w:ascii="' + esc(a.font) + '" w:hAnsi="' + esc(a.font) + '"/>';
+    var rPr = props ? '<w:rPr>' + props + '</w:rPr>' : '';
+    /* Cell values may carry newlines for stacked layer entries. */
+    var parts = String(text === null || text === undefined ? '' : text).split('\n');
+    var body = parts.map(function (part, i) {
+      return (i ? '<w:br/>' : '') + '<w:t xml:space="preserve">' + esc(part) + '</w:t>';
+    }).join('');
+    return '<w:r>' + rPr + body + '</w:r>';
+  };
+
+  ReportBuilder.prototype.paragraph = function (text, attrs) {
+    var a = attrs || {};
+    var pPr = '';
+    if (a.style) pPr += '<w:pStyle w:val="' + a.style + '"/>';
+    if (a.align) {
+      pPr += '<w:jc w:val="' + (a.align === 'justify' ? 'both' : a.align) + '"/>';
+    }
+    if (a.indentCm !== undefined) {
+      pPr += '<w:ind w:left="' + Math.round(a.indentCm * 567) + '"' +
+        (a.hangingCm ? ' w:hanging="' + Math.round(a.hangingCm * 567) + '"' : '') + '/>';
+    }
+    if (a.spaceAfter !== undefined) {
+      pPr += '<w:spacing w:after="' + Math.round(a.spaceAfter * 20) + '"/>';
+    }
+    if (a.keepNext) pPr += '<w:keepNext/>';
+    var body = a.raw !== undefined ? a.raw : this.run(clean(text), a);
+    this.body.push('<w:p>' + (pPr ? '<w:pPr>' + pPr + '</w:pPr>' : '') + body + '</w:p>');
+    return this;
+  };
+
+  ReportBuilder.prototype.heading = function (text, level) {
+    var lvl = Math.min(Math.max(level || 1, 1), 3);
+    this.paragraph(text, { style: 'Heading' + lvl, keepNext: true });
+    return this;
+  };
+
+  ReportBuilder.prototype.bullets = function (items) {
+    var self = this;
+    (items || []).filter(Boolean).forEach(function (item) {
+      self.paragraph(item, { style: 'ListBullet' });
+    });
+    return this;
+  };
+
+  ReportBuilder.prototype.spacer = function () {
+    this.body.push('<w:p/>');
+    return this;
+  };
+
+  ReportBuilder.prototype.pageBreak = function () {
+    this.body.push('<w:p><w:r><w:br w:type="page"/></w:r></w:p>');
+    return this;
+  };
+
+  /* Word fills this in on "Update Field"; the placeholder tells the reader so. */
+  ReportBuilder.prototype.tableOfContents = function () {
+    this.heading('Table of Contents', 1);
+    this.body.push('<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
+      '<w:r><w:instrText xml:space="preserve"> TOC \\o "1-3" \\h \\z \\u </w:instrText></w:r>' +
+      '<w:r><w:fldChar w:fldCharType="separate"/></w:r>' +
+      '<w:r><w:t xml:space="preserve">Right-click and choose Update Field to fill ' +
+      'the table of contents.</w:t></w:r>' +
+      '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>');
+    this.pageBreak();
+    return this;
+  };
+
+  ReportBuilder.prototype.cover = function (titleLines, subtitleLines, details) {
+    var self = this;
+    if (this.style.organisation) {
+      this.paragraph(this.style.organisation,
+        { bold: true, size: 13, align: 'center', color: this.accent });
+    }
+    if (this.style.organisation_details) {
+      this.paragraph(this.style.organisation_details, { size: 9, align: 'center' });
+    }
+    this.spacer(); this.spacer();
+    (titleLines || []).forEach(function (line, i) {
+      self.paragraph(line, {
+        bold: true, size: i === 0 ? 20 : 15, align: 'center',
+        color: i === 0 ? self.accent : null,
+      });
+    });
+    (subtitleLines || []).forEach(function (line) {
+      self.paragraph(line, { size: 12, align: 'center' });
+    });
+    this.spacer();
+    if (details && details.length) {
+      this.keyValueTable(details);
+    }
+    this.pageBreak();
+    return this;
+  };
+
+  ReportBuilder.prototype.executiveSummary = function (paragraphs, keyFindings) {
+    var self = this;
+    this.heading('Executive Summary', 1);
+    (paragraphs || []).filter(Boolean).forEach(function (text) {
+      self.paragraph(text, { align: 'justify' });
+    });
+    if (keyFindings && keyFindings.filter(Boolean).length) {
+      this.paragraph('Key findings:', { bold: true });
+      this.bullets(keyFindings);
+    }
+    this.pageBreak();
+    return this;
+  };
+
+  /* --- tables --------------------------------------------------------------- */
+
+  ReportBuilder.prototype.table = function (rows, options) {
+    var self = this;
+    var opts = options || {};
+    var header = opts.header || null;
+    var fontSize = opts.fontSize || 9.5;
+    var nCols = header ? header.length
+      : rows.reduce(function (a, r) { return Math.max(a, r.length); }, 1);
+
+    this.tableNo += 1;
+    if (opts.caption) {
+      this.paragraph('Table ' + this.tableNo + '. ' + clean(opts.caption),
+        { bold: true, size: 9, keepNext: true });
+    }
+
+    var widths = opts.colWidthsCm;
+    var grid = '<w:tblGrid>';
+    for (var g = 0; g < nCols; g++) {
+      var w = widths && widths[g] ? Math.round(widths[g] * 567) : Math.round(16000 / nCols);
+      grid += '<w:gridCol w:w="' + w + '"/>';
+    }
+    grid += '</w:tblGrid>';
+
+    var borders = '<w:tblBorders>' +
+      ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(function (side) {
+        return '<w:' + side + ' w:val="single" w:sz="4" w:space="0" w:color="BFBFBF"/>';
+      }).join('') + '</w:tblBorders>';
+
+    var xml = '<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/>' +
+      '<w:tblW w:w="0" w:type="auto"/><w:jc w:val="center"/>' + borders +
+      '</w:tblPr>' + grid;
+
+    function cell(text, cellOpts) {
+      var co = cellOpts || {};
+      var props = '<w:tcPr>';
+      if (co.widthCm) props += '<w:tcW w:w="' + Math.round(co.widthCm * 567) + '" w:type="dxa"/>';
+      if (co.fill) props += '<w:shd w:val="clear" w:color="auto" w:fill="' + co.fill + '"/>';
+      props += '</w:tcPr>';
+      var pPr = '<w:pPr><w:spacing w:after="20"/>' +
+        (co.align ? '<w:jc w:val="' + co.align + '"/>' : '') + '</w:pPr>';
+      return '<w:tc>' + props + '<w:p>' + pPr +
+        self.run(text === null || text === undefined ? '' : String(text), {
+          bold: co.bold, size: co.size || fontSize, color: co.color,
+        }) + '</w:p></w:tc>';
+    }
+
+    if (header) {
+      xml += '<w:tr><w:trPr><w:tblHeader/></w:trPr>' +
+        header.map(function (text, i) {
+          return cell(text, {
+            bold: true, fill: self.accent, color: 'FFFFFF',
+            widthCm: widths && widths[i],
+          });
+        }).join('') + '</w:tr>';
+    }
+    rows.forEach(function (row) {
+      xml += '<w:tr>';
+      for (var i = 0; i < nCols; i++) {
+        xml += cell(row[i], {
+          widthCm: widths && widths[i],
+          align: opts.align && opts.align[i] ? opts.align[i] : null,
+          bold: opts.boldRows && opts.boldRows(row),
+        });
+      }
+      xml += '</w:tr>';
+    });
+    xml += '</w:tbl>';
+    this.body.push(xml);
+    this.spacer();
+    return this.tableNo;
+  };
+
+  /* Two label/value pairs per row, like the field sheet headers. */
+  ReportBuilder.prototype.keyValueTable = function (pairs, options) {
+    var rows = [];
+    for (var i = 0; i < pairs.length; i += 2) {
+      var a = pairs[i], b = pairs[i + 1] || ['', ''];
+      rows.push([a[0], a[1], b[0], b[1]]);
+    }
+    var before = this.tableNo;
+    this.table(rows, Object.assign({
+      colWidthsCm: [3.6, 4.4, 3.6, 4.4], fontSize: 9.5,
+    }, options || {}));
+    /* a header block is not a numbered table in the report's sequence */
+    this.tableNo = before;
+    return this;
+  };
+
+  /* --- figures -------------------------------------------------------------- */
+
+  /* image: {dataUrl, mime} - PNG bytes are extracted and added as a media part. */
+  ReportBuilder.prototype.figure = function (image, caption, widthCm) {
+    if (!image || !image.dataUrl) return null;
+    this.figureNo += 1;
+    var index = this.images.length + 1;
+    var mime = image.mime || 'image/png';
+    var extension = /jpe?g/i.test(mime) ? 'jpeg' : 'png';
+    this.images.push({
+      name: 'image' + index + '.' + extension,
+      bytes: S.base64ToBytes(image.dataUrl),
+      mime: mime,
+    });
+    var rid = 'rIdImg' + index;
+    var cm = widthCm || 15.0;
+    var aspect = (image.height && image.width) ? image.height / image.width : 0.58;
+    var cx = Math.round(cm * EMU_PER_CM);
+    var cy = Math.round(cx * aspect);
+    var drawing = '<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">' +
+      '<wp:extent cx="' + cx + '" cy="' + cy + '"/>' +
+      '<wp:docPr id="' + index + '" name="Figure ' + this.figureNo + '" descr="' +
+      esc(clean(caption)) + '"/>' +
+      '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
+      '<pic:pic><pic:nvPicPr><pic:cNvPr id="' + index + '" name="' +
+      esc('Figure ' + this.figureNo) + '"/><pic:cNvPicPr/></pic:nvPicPr>' +
+      '<pic:blipFill><a:blip r:embed="' + rid + '"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>' +
+      '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + cx + '" cy="' + cy + '"/></a:xfrm>' +
+      '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>' +
+      '</a:graphicData></a:graphic></wp:inline></w:drawing>';
+    this.paragraph('', { align: 'center', raw: '<w:r>' + drawing + '</w:r>' });
+    this.paragraph('Figure ' + this.figureNo + '. ' + clean(caption),
+      { bold: true, size: 9, align: 'center' });
+    return this.figureNo;
+  };
+
+  ReportBuilder.prototype.references = function (entries) {
+    var self = this;
+    if (!entries || !entries.length) return this;
+    this.heading('References', 1);
+    entries.forEach(function (entry) {
+      self.paragraph(entry, { indentCm: 0.8, hangingCm: 0.8, spaceAfter: 4 });
+    });
+    return this;
+  };
+
+  ReportBuilder.prototype.glossary = function (terms) {
+    if (!terms || !terms.length) return this;
+    this.heading('Glossary and Abbreviations', 1);
+    this.table(terms, {
+      header: ['Term', 'Meaning'], colWidthsCm: [3.5, 12.0], fontSize: 9.0,
+    });
+    return this;
+  };
+
+  ReportBuilder.prototype.signatures = function (roles) {
+    var self = this;
+    this.spacer();
+    var rows = (roles || []).map(function (role) {
+      return [role, '', ''];
+    });
+    this.table(rows, {
+      header: ['Role', 'Name and signature', 'Date'],
+      colWidthsCm: [4.5, 7.5, 3.5], fontSize: 9.5,
+    });
+    /* the signature block is not part of the numbered table sequence */
+    self.tableNo -= 1;
+    return this;
+  };
+
+  /* --- packaging ------------------------------------------------------------ */
+
+  ReportBuilder.prototype.documentXml = function () {
+    var sectPr = '<w:sectPr>' +
+      '<w:footerReference w:type="default" r:id="rIdFooter"/>' +
+      '<w:pgSz w:w="11906" w:h="16838"/>' +
+      '<w:pgMar w:top="1418" w:right="1418" w:bottom="1418" w:left="1418" ' +
+      'w:header="708" w:footer="708" w:gutter="0"/>' +
+      '</w:sectPr>';
+    return XML_HEAD + '<w:document ' + W_NS + '><w:body>' +
+      this.body.join('') + sectPr + '</w:body></w:document>';
+  };
+
+  ReportBuilder.prototype.stylesXml = function () {
+    var self = this;
+    var half = Math.round(this.baseSize * 2);
+    function heading(level, sizePt, spaceBefore) {
+      return '<w:style w:type="paragraph" w:styleId="Heading' + level + '">' +
+        '<w:name w:val="heading ' + level + '"/><w:basedOn w:val="Normal"/>' +
+        '<w:next w:val="Normal"/><w:qFormat/>' +
+        '<w:pPr><w:keepNext/><w:outlineLvl w:val="' + (level - 1) + '"/>' +
+        '<w:spacing w:before="' + spaceBefore * 20 + '" w:after="120"/></w:pPr>' +
+        '<w:rPr><w:rFonts w:ascii="' + esc(self.font) + '" w:hAnsi="' + esc(self.font) + '"/>' +
+        '<w:b/><w:color w:val="' + self.accent + '"/>' +
+        '<w:sz w:val="' + Math.round(sizePt * 2) + '"/></w:rPr></w:style>';
+    }
+    return XML_HEAD + '<w:styles ' + W_NS + '>' +
+      '<w:docDefaults><w:rPrDefault><w:rPr>' +
+      '<w:rFonts w:ascii="' + esc(this.font) + '" w:hAnsi="' + esc(this.font) +
+      '" w:cs="' + esc(this.font) + '"/><w:sz w:val="' + half + '"/>' +
+      '</w:rPr></w:rPrDefault>' +
+      '<w:pPrDefault><w:pPr><w:spacing w:after="120" w:line="276" w:lineRule="auto"/>' +
+      '</w:pPr></w:pPrDefault></w:docDefaults>' +
+      '<w:style w:type="paragraph" w:default="1" w:styleId="Normal">' +
+      '<w:name w:val="Normal"/><w:qFormat/></w:style>' +
+      heading(1, 14, 12) + heading(2, 12, 8) + heading(3, 11, 8) +
+      '<w:style w:type="paragraph" w:styleId="ListBullet">' +
+      '<w:name w:val="List Bullet"/><w:basedOn w:val="Normal"/>' +
+      '<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>' +
+      '<w:spacing w:after="60"/><w:ind w:left="720" w:hanging="360"/></w:pPr></w:style>' +
+      '<w:style w:type="table" w:styleId="TableGrid"><w:name w:val="Table Grid"/>' +
+      '<w:tblPr><w:tblCellMar><w:top w:w="60" w:type="dxa"/>' +
+      '<w:left w:w="90" w:type="dxa"/><w:bottom w:w="60" w:type="dxa"/>' +
+      '<w:right w:w="90" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style>' +
+      '</w:styles>';
+  };
+
+  function numberingXml() {
+    return XML_HEAD + '<w:numbering ' + W_NS + '>' +
+      '<w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="hybridMultilevel"/>' +
+      '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/>' +
+      '<w:lvlText w:val="•"/><w:lvlJc w:val="left"/>' +
+      '<w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr>' +
+      '<w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol" w:hint="default"/></w:rPr>' +
+      '</w:lvl></w:abstractNum>' +
+      '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>';
+  }
+
+  function footerXml() {
+    return XML_HEAD + '<w:ftr ' + W_NS + '><w:p><w:pPr><w:jc w:val="center"/></w:pPr>' +
+      '<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r>' +
+      '<w:r><w:rPr><w:sz w:val="18"/></w:rPr>' +
+      '<w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>' +
+      '<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:fldChar w:fldCharType="separate"/></w:r>' +
+      '<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t>1</w:t></w:r>' +
+      '<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:fldChar w:fldCharType="end"/></w:r>' +
+      '</w:p></w:ftr>';
+  }
+
+  ReportBuilder.prototype.build = function () {
+    var self = this;
+    var imageTypes = {};
+    this.images.forEach(function (img) {
+      imageTypes[/jpe?g/i.test(img.mime) ? 'jpeg' : 'png'] = img.mime;
+    });
+
+    var contentTypes = XML_HEAD +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      Object.keys(imageTypes).map(function (ext) {
+        return '<Default Extension="' + ext + '" ContentType="' + imageTypes[ext] + '"/>';
+      }).join('') +
+      '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+      '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
+      '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>' +
+      '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>' +
+      '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
+      '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>' +
+      '</Types>';
+
+    var rootRels = XML_HEAD +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>' +
+      '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>' +
+      '</Relationships>';
+
+    var docRels = XML_HEAD +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+      '<Relationship Id="rIdNumbering" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>' +
+      '<Relationship Id="rIdFooter" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>' +
+      this.images.map(function (img, i) {
+        return '<Relationship Id="rIdImg' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/' +
+          img.name + '"/>';
+      }).join('') + '</Relationships>';
+
+    var core = XML_HEAD +
+      '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"' +
+      ' xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/"' +
+      ' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">' +
+      '<dc:title>' + esc(this.title) + '</dc:title>' +
+      '<dc:creator>' + esc(this.style.organisation || 'Groundwater Toolkit') + '</dc:creator>' +
+      '<cp:lastModifiedBy>' + esc(this.style.organisation || 'Groundwater Toolkit') + '</cp:lastModifiedBy>' +
+      '</cp:coreProperties>';
+
+    var app = XML_HEAD +
+      '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"' +
+      ' xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">' +
+      '<Application>Groundwater Toolkit</Application></Properties>';
+
+    var entries = [
+      { name: '[Content_Types].xml', data: contentTypes, store: true },
+      { name: '_rels/.rels', data: rootRels },
+      { name: 'docProps/core.xml', data: core },
+      { name: 'docProps/app.xml', data: app },
+      { name: 'word/document.xml', data: this.documentXml() },
+      { name: 'word/_rels/document.xml.rels', data: docRels },
+      { name: 'word/styles.xml', data: this.stylesXml() },
+      { name: 'word/numbering.xml', data: numberingXml() },
+      { name: 'word/footer1.xml', data: footerXml() },
+    ].concat(this.images.map(function (img) {
+      return { name: 'word/media/' + img.name, data: img.bytes, store: true };
+    }));
+
+    return S.zip(entries);
+  };
+
+  ReportBuilder.prototype.save = async function (filename) {
+    var bytes = await this.build();
+    S.download(filename, new Blob([bytes], {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    }));
+    return bytes;
+  };
+
+  /* ============================================================== references */
+
+  var REFERENCES = {
+    rwsn_cost: 'Danert, K. (2015). Cost-Effective Boreholes: RWSN Borehole Costing ' +
+      'Model and Guidance Notes. Rural Water Supply Network, St Gallen.',
+    rwsn_pricing: 'Carter, R. C. (2014). Costing and Pricing: a Guide for Water Well ' +
+      'Drilling Enterprises. RWSN/Skat, St Gallen.',
+    rwsn_supervision: 'Adekile, D. (2014). Supervising Water Well Drilling: a Guide ' +
+      'for Supervisors. RWSN/Skat, St Gallen.',
+    rwsn_professional: 'Danert, K., Adekile, D. and Canuto, J. (2020). Professional ' +
+      'Water Well Drilling: a UNICEF Guidance Note. UNICEF/Skat, New York.',
+    unicef_toolkit: 'UNICEF (2016). Borehole Drilling: Planning, Contracting and ' +
+      'Management. UNICEF WASH, New York.',
+    who: 'World Health Organization (2022). Guidelines for Drinking-water Quality, ' +
+      'fourth edition incorporating the first and second addenda. WHO, Geneva.',
+    geology: 'Ministry of Water Resources and SALWACO (2017). Geology of Sierra ' +
+      'Leone. Government of Sierra Leone, Freetown.',
+    bgs: 'British Geological Survey (2019). Africa Groundwater Atlas: Hydrogeology ' +
+      'of Sierra Leone. BGS, Keyworth (CC BY-SA 4.0).',
+    stop_the_rot: 'RWSN (2021). Stop the Rot: Handpump Corrosion and Premature ' +
+      'Failure in Sub-Saharan Africa. Rural Water Supply Network, St Gallen.',
+  };
+
+  var GLOSSARY = [
+    ['AB/2', 'Half the distance between the current electrodes in a Schlumberger sounding.'],
+    ['Apparent resistivity', 'The resistivity a uniform earth would need to give the measured reading, in ohm-metres.'],
+    ['Cooper-Jacob', 'A straight-line approximation to the Theis solution, valid at late pumping time.'],
+    ['Drawdown', 'The fall of the water level below its static (pre-pumping) level.'],
+    ['Overburden', 'The weathered and unconsolidated material above fresh bedrock.'],
+    ['Safe yield', 'The rate the borehole can sustain over the design period after a safety factor.'],
+    ['Saprolite', 'Chemically weathered rock that has kept its original structure.'],
+    ['Specific capacity', 'Discharge divided by drawdown, in m³/h per metre.'],
+    ['Static water level (SWL)', 'The rest water level in the borehole before pumping.'],
+    ['Transmissivity (T)', 'The rate water moves through the full aquifer thickness, in m²/day.'],
+    ['VES', 'Vertical Electrical Sounding, a one-dimensional resistivity depth probe.'],
+  ];
+
+  /* ============================================================ report bodies
+   * The section structure mirrors groundwater/reporting/*.py so a report built
+   * in the browser and one built by the Python package read the same way.
+   */
+
+  function siteDetails(site, extra) {
+    var pairs = [
+      ['Client', site.client || '—'],
+      ['Community', site.community || '—'],
+      ['Chiefdom', site.chiefdom || '—'],
+      ['District', site.district || '—'],
+      ['Project', site.project || '—'],
+      ['Project reference', site.project_ref || '—'],
+    ];
+    if (site.easting !== null && site.easting !== undefined) {
+      pairs.push(['GPS easting', C.fmtNum(site.easting, 7)]);
+      pairs.push(['GPS northing', C.fmtNum(site.northing, 7)]);
+    }
+    if (site.elevation_m !== null && site.elevation_m !== undefined) {
+      pairs.push(['Elevation', C.fmtNum(site.elevation_m) + ' m']);
+    }
+    if (site.supervisor) pairs.push(['Field supervisor', site.supervisor]);
+    if (site.contractor) pairs.push(['Contractor', site.contractor]);
+    if (site.date) pairs.push(['Date', site.date]);
+    return pairs.concat(extra || []);
+  }
+
+  function limitationsParagraphs(kind) {
+    var shared = 'The findings rest on the data recorded on the field sheets and ' +
+      'on the standard interpretation methods named in this report. Field data ' +
+      'carry measurement error, and the methods carry assumptions that are ' +
+      'stated where they are used.';
+    if (kind === 'ves') {
+      return [shared, 'Resistivity models are not unique: different layer ' +
+        'combinations can fit the same sounding curve almost equally well ' +
+        '(the equivalence and suppression problem), and the depth of ' +
+        'investigation is limited by the maximum electrode spacing used. The ' +
+        'interpretation is a guide to drilling, not a guarantee of water. Only ' +
+        'drilling confirms the section.'];
+    }
+    if (kind === 'pumping') {
+      return [shared, 'Storativity cannot be resolved from a single pumped ' +
+        'well: it trades off against the effective well radius, so the value ' +
+        'reported here is an assumption, not a measurement. The safe yield is ' +
+        'therefore given as a range over the assumptions it rests on. Design ' +
+        'to the lower figure where the supply must not fail in a dry year.'];
+    }
+    if (kind === 'quality') {
+      return [shared, 'The assessment covers only the parameters analysed. A ' +
+        'single sample describes the water at one moment; microbiological ' +
+        'quality in particular varies with season and with the state of the ' +
+        'headworks, so it should be re-tested after commissioning and ' +
+        'periodically thereafter.'];
+    }
+    return [shared];
+  }
+
+  /* --- 1. geophysical survey ------------------------------------------------- */
+
+  async function geophysicalReport(context) {
+    var b = new ReportBuilder({ style: context.style, title: 'Geophysical Survey Report' });
+    var site = context.site || {};
+    var interpretations = context.interpretations || [];
+    var figures = context.figures || [];
+
+    b.cover(['Geophysical Survey Report',
+      site.community ? site.community + (site.district ? ', ' + site.district : '') : ''],
+      ['Vertical electrical sounding for borehole siting'],
+      siteDetails(site));
+    b.tableOfContents();
+
+    var best = interpretations.slice().sort(function (a, c) {
+      return (a.rank || 99) - (c.rank || 99);
+    })[0];
+    b.executiveSummary([
+      'A vertical electrical sounding survey was carried out at ' +
+        (site.community || 'the site') + ' to select a drilling target. ' +
+        interpretations.length + ' ' + S.plural(interpretations.length, 'sounding') +
+        ' were made and interpreted as layered earth models.',
+      best ? 'The recommended drilling point is ' + best.sounding_id + ', where ' +
+        (best.water_zones.length
+          ? 'possible water bearing zones are resolved between ' +
+            best.water_zones.map(function (z) {
+              return Math.trunc(z[0]) + ' m and ' + Math.trunc(z[1]) + ' m'; }).join(', ')
+          : 'no clear water bearing zone was resolved') +
+        '. A maximum drilling depth of ' + best.max_drilling_depth_m.toFixed(0) +
+        ' m is recommended.' : '',
+    ], best ? [
+      'Recommended VES point: ' + best.sounding_id,
+      'Depth to bedrock: ' + (best.depth_to_basement_m !== null
+        ? C.fmtNum(best.depth_to_basement_m) + ' m' : 'not resolved'),
+      'Total interpreted aquifer thickness: ' + C.fmtNum(best.aquifer_thickness_m) + ' m',
+      'Aquifer protective capacity: ' + best.protective_capacity,
+      'Recommended maximum drilling depth: ' + best.max_drilling_depth_m.toFixed(0) + ' m',
+    ] : []);
+
+    b.heading('1. Introduction', 1);
+    b.paragraph('This report presents the results of a geophysical survey ' +
+      'carried out at ' + (site.community || 'the project site') +
+      (site.chiefdom ? ', ' + site.chiefdom + ' chiefdom' : '') +
+      (site.district ? ', ' + site.district + ' district' : '') +
+      '. The purpose of the survey was to locate a drilling point with the best ' +
+      'prospect of a productive borehole, and to recommend a drilling depth.',
+      { align: 'justify' });
+
+    b.heading('2. Background and Geology of the Project Area', 1);
+    b.paragraph(context.geologyNote || 'The area lies within the crystalline ' +
+      'basement complex of Sierra Leone. Groundwater in this terrain occurs in ' +
+      'the weathered overburden (saprolite and saprock) and in the fractured ' +
+      'zone at the top of fresh bedrock. Yields depend on the thickness of the ' +
+      'weathered zone and on the degree of fracturing, both of which vary over ' +
+      'short distances, which is why a geophysical survey precedes drilling.',
+      { align: 'justify' });
+
+    b.heading('3. Field Work', 1);
+    b.heading('3.1 Reconnaissance Survey', 2);
+    b.paragraph('The site was walked with the community to identify candidate ' +
+      'points clear of latrines, graveyards, refuse pits and flood paths, and ' +
+      'accessible to a drilling rig.', { align: 'justify' });
+    b.heading('3.2 Geophysical Survey', 2);
+    b.heading('3.2.1 Resistivity Profiling', 3);
+    b.paragraph('Resistivity measurements were made with a Schlumberger array. ' +
+      'Apparent resistivity is computed from the measured resistance and the ' +
+      'array geometric factor.', { align: 'justify' });
+    b.heading('3.2.2 Selection of VES Points', 3);
+    b.paragraph('Sounding points were placed on the candidate positions agreed ' +
+      'with the community.', { align: 'justify' });
+    b.heading('3.2.3 Vertical Electrical Sounding (VES)', 3);
+    b.paragraph('Each sounding was expanded to a maximum AB/2 of ' +
+      (interpretations.length
+        ? C.fmtNum(Math.max.apply(null, interpretations.map(function (i) {
+            return i.investigation_depth_m; })))
+        : '—') + ' m, which sets the depth of investigation.', { align: 'justify' });
+
+    b.heading('4. Data Analysis and Interpretation', 1);
+    b.paragraph('The sounding curves were inverted to layered earth models by ' +
+      'damped least squares. The fit error quoted for each model is the root ' +
+      'mean square relative difference between the measured and modelled ' +
+      'apparent resistivities.', { align: 'justify' });
+
+    for (var i = 0; i < interpretations.length; i++) {
+      var interp = interpretations[i];
+      b.heading(interp.sounding_id, 2);
+      b.paragraph(interp.narrative, { align: 'justify' });
+      b.table(interp.layers.map(function (layer) {
+        return [
+          String(layer.number),
+          C.fmtNum(layer.rho, 4),
+          layer.thickness_m !== null ? C.fmtNum(layer.thickness_m) : '—',
+          C.fmtNum(layer.top_m),
+          isFinite(layer.bottom_m) ? C.fmtNum(layer.bottom_m) : '—',
+          layer.unit,
+        ];
+      }), {
+        header: ['Layer', 'Resistivity (Ω·m)', 'Thickness (m)', 'Top (m)',
+          'Bottom (m)', 'Interpretation'],
+        caption: 'Layered model for ' + interp.sounding_id,
+        colWidthsCm: [1.4, 2.6, 2.2, 1.8, 1.8, 6.2],
+      });
+      var fig = figures.filter(function (f) { return f.soundingId === interp.sounding_id; });
+      for (var k = 0; k < fig.length; k++) {
+        b.figure(fig[k].image, fig[k].caption, fig[k].widthCm || 15);
+      }
+    }
+
+    if (interpretations.length) {
+      b.heading('Drill-target suitability', 2);
+      b.table(C.drillingPreferenceTable(interpretations, context.preferredOrder)
+        .map(function (row) {
+          return [row['No.'], row['VES Point'], row.Layer, row['Thickness (m)'],
+            row['Depth (m)'], row['Apparent Resistivity (Ohm-m)'],
+            row['Possible Water Zones (m)'], row['Max Drilling Depth (m)'], row.Ranking];
+        }), {
+        header: ['No.', 'VES Point', 'Layer', 'Thickness (m)', 'Depth (m)',
+          'Resistivity (Ω·m)', 'Possible water zones (m)', 'Max depth', 'Ranking'],
+        caption: 'Ranked drilling preference',
+        fontSize: 8.5,
+      });
+    }
+
+    b.heading('5. Conclusions and Recommendations', 1);
+    if (best) {
+      b.bullets([
+        'Drill at ' + best.sounding_id + ' (ranked ' + C.ordinal(best.rank || 1) + ').',
+        'Recommended maximum drilling depth: ' + best.max_drilling_depth_m.toFixed(0) + ' m.',
+        best.water_zones.length
+          ? 'Target the interpreted water bearing zone(s) at ' +
+            best.water_zones.map(function (z) {
+              return Math.trunc(z[0]) + '–' + Math.trunc(z[1]) + ' m'; }).join(', ') + '.'
+          : 'No clear water bearing zone was resolved; treat the hole as exploratory.',
+        'Case and screen against the zones confirmed by the drill cuttings, not ' +
+          'against this model alone.',
+      ]);
+    }
+    (context.recommendations || []).length && b.bullets(context.recommendations);
+
+    b.heading('6. Limitations and Uncertainty', 1);
+    limitationsParagraphs('ves').forEach(function (text) {
+      b.paragraph(text, { align: 'justify' });
+    });
+
+    if (context.verificationNotes && context.verificationNotes.length) {
+      b.heading('Annex A. Data Verification Notes', 1);
+      b.bullets(context.verificationNotes);
+    }
+
+    b.references([REFERENCES.rwsn_professional, REFERENCES.geology, REFERENCES.bgs]);
+    b.glossary(GLOSSARY);
+    return b;
+  }
+
+  /* --- 2. borehole completion ------------------------------------------------ */
+
+  async function completionReport(context) {
+    var b = new ReportBuilder({ style: context.style, title: 'Borehole Completion Report' });
+    var site = context.site || {}, log = context.log || {}, design = context.design;
+    var figures = context.figures || [];
+
+    b.cover(['Borehole Completion Report',
+      (log.borehole_ref ? log.borehole_ref + ' — ' : '') + (site.community || '')],
+      [], siteDetails(site, [
+        ['Borehole reference', log.borehole_ref || '—'],
+        ['Total depth', log.total_depth_m ? C.fmtNum(log.total_depth_m) + ' m' : '—'],
+        ['Drilling method', log.drilling_method || '—'],
+        ['Status', log.status || '—'],
+      ]));
+    b.tableOfContents();
+
+    b.executiveSummary([
+      'A borehole was drilled at ' + (site.community || 'the site') + ' to ' +
+        (log.total_depth_m ? C.fmtNum(log.total_depth_m) + ' m' : 'the depth recorded below') +
+        (log.water_strikes_m && log.water_strikes_m.length
+          ? ', with water struck at ' + log.water_strikes_m.map(function (w) {
+              return C.fmtNum(w) + ' m'; }).join(' and ')
+          : '') + '.',
+      design ? 'The borehole was completed with ' + C.fmtNum(design.total_screen_length_m) +
+        ' m of screen in ' + design.screens.length + ' ' +
+        S.plural(design.screens.length, 'section') + ', gravel packed from ' +
+        design.gravel_pack[0].toFixed(0) + ' m to the bottom and sealed with cement ' +
+        'grout from surface to ' + design.sanitary_seal[1].toFixed(0) + ' m.' : '',
+    ], [
+      log.status ? 'Outcome: ' + log.status : null,
+      log.total_depth_m ? 'Total depth: ' + C.fmtNum(log.total_depth_m) + ' m' : null,
+      design ? 'Screened interval(s): ' + design.screens.map(function (s) {
+        return s.top_m.toFixed(1) + '–' + s.bottom_m.toFixed(1) + ' m'; }).join(', ') : null,
+    ]);
+
+    b.heading('1. Introduction', 1);
+    b.paragraph('This report records the drilling and construction of borehole ' +
+      (log.borehole_ref || '') + ' at ' + (site.community || 'the project site') +
+      '. It presents the drilling log, the construction details and the ' +
+      'as-built design.', { align: 'justify' });
+
+    b.heading('2. Methodology', 1);
+    b.paragraph('The borehole was drilled by ' + (log.drilling_method ||
+      'rotary and down-the-hole hammer') + '. Cuttings were collected at each ' +
+      'metre and logged by the supervising hydrogeologist; water strikes were ' +
+      'recorded as they occurred.', { align: 'justify' });
+
+    b.heading('3. Drilling', 1);
+    var drillPairs = [
+      ['Start date', log.start_date || '—'],
+      ['Completion date', log.completion_date || '—'],
+      ['Total depth', log.total_depth_m ? C.fmtNum(log.total_depth_m) + ' m' : '—'],
+      ['Water strikes', (log.water_strikes_m || []).length
+        ? log.water_strikes_m.map(function (w) { return C.fmtNum(w) + ' m'; }).join(', ') : 'none'],
+      ['Grouting depth', log.grouting_depth_m ? C.fmtNum(log.grouting_depth_m) + ' m' : '—'],
+      ['Status', log.status || '—'],
+    ];
+    b.keyValueTable(drillPairs);
+
+    b.heading('4. Borehole Log Data', 1);
+    b.table((log.intervals || []).map(function (interval) {
+      return [
+        C.fmtNum(interval.top_m) + '–' + C.fmtNum(interval.bottom_m),
+        C.fmtNum(interval.bottom_m - interval.top_m),
+        interval.description || '—',
+        interval.bit_diameter_in ? C.fmtNum(interval.bit_diameter_in) + '"' : '—',
+      ];
+    }), {
+      header: ['Depth (m)', 'Thickness (m)', 'Lithology', 'Bit'],
+      caption: 'Drilling log', colWidthsCm: [2.6, 2.4, 8.6, 2.0],
+    });
+
+    b.heading('5. Borehole Construction', 1);
+    if (design) {
+      b.table(C.designSummaryRows(design), {
+        header: ['Item', 'Detail'], caption: 'As-built construction summary',
+        colWidthsCm: [5.0, 10.6],
+      });
+      b.bullets(design.design_basis);
+    }
+    figures.forEach(function (f) { b.figure(f.image, f.caption, f.widthCm || 13); });
+
+    b.references([REFERENCES.rwsn_professional, REFERENCES.rwsn_supervision]);
+    b.glossary(GLOSSARY);
+    return b;
+  }
+
+  /* --- 3. pumping test ------------------------------------------------------- */
+
+  async function pumpingReport(context) {
+    var b = new ReportBuilder({ style: context.style, title: 'Pumping Test Report' });
+    var analysis = context.analysis, test = analysis.test, site = test.site || {};
+    var rec = analysis.yield_recommendation;
+    var figures = context.figures || [];
+
+    b.cover(['Pumping Test Report',
+      (test.borehole_ref ? test.borehole_ref + ' — ' : '') + (site.community || '')],
+      [], siteDetails(site, [
+        ['Borehole reference', test.borehole_ref || '—'],
+        ['Test type', test.test_type || '—'],
+        ['Static water level', test.static_water_level_m !== null
+          ? test.static_water_level_m.toFixed(2) + ' m' : '—'],
+        ['Borehole depth', test.borehole_depth_m ? C.fmtNum(test.borehole_depth_m) + ' m' : '—'],
+      ]));
+    b.tableOfContents();
+
+    b.executiveSummary([
+      'A ' + (test.test_type || 'pumping') + ' test was carried out on borehole ' +
+        (test.borehole_ref || '') + ' at ' + (site.community || 'the site') + '.',
+      analysis.transmissivity_m2_per_day
+        ? 'The transmissivity of the aquifer is about ' +
+          S.sig(analysis.transmissivity_m2_per_day, 3) + ' m²/day. The recommended ' +
+          'safe yield is ' + C.yieldRangeText(rec) + ', with the pump set at ' +
+          (rec.pump_installation_depth_m !== null
+            ? rec.pump_installation_depth_m.toFixed(0) + ' m' : 'a depth to be confirmed') + '.'
+        : 'Yield results are pending: ' + (rec.pending_reason || 'inputs are missing') + '.',
+    ], [
+      analysis.transmissivity_m2_per_day
+        ? 'Transmissivity: ' + S.sig(analysis.transmissivity_m2_per_day, 3) + ' m²/day' : null,
+      rec.specific_capacity_m3hr_per_m
+        ? 'Specific capacity: ' + rec.specific_capacity_m3hr_per_m.toFixed(2) + ' m³/h per m' : null,
+      rec.safe_yield_m3_per_h ? 'Safe yield: ' + C.yieldRangeText(rec) : null,
+      rec.pump_installation_depth_m !== null
+        ? 'Recommended pump setting: ' + rec.pump_installation_depth_m.toFixed(0) + ' m' : null,
+    ]);
+
+    b.heading('1. Test Details', 1);
+    b.keyValueTable([
+      ['Borehole', test.borehole_ref || '—'],
+      ['Test type', test.test_type || '—'],
+      ['Static water level', test.static_water_level_m !== null
+        ? test.static_water_level_m.toFixed(2) + ' m' : '—'],
+      ['Pump setting during test', test.pump_setting_m ? C.fmtNum(test.pump_setting_m) + ' m' : '—'],
+      ['Pumping duration', test.pumping_duration_min
+        ? C.fmtNum(test.pumping_duration_min) + ' min' : '—'],
+      ['Step length', test.step_length_min ? C.fmtNum(test.step_length_min) + ' min' : '—'],
+    ]);
+
+    b.heading('2. Field Data', 1);
+    b.paragraph('Water levels were measured with a dip meter against a fixed ' +
+      'datum. Drawdown is computed as the water level minus the static water ' +
+      'level; the incremental drawdown column on the field sheet is not used.',
+      { align: 'justify' });
+    (test.steps || []).forEach(function (step) {
+      b.table(step.time_min.map(function (t, i) {
+        return [C.fmtNum(t), step.water_level_m[i].toFixed(2),
+          test.static_water_level_m !== null
+            ? (step.water_level_m[i] - test.static_water_level_m).toFixed(2) : '—'];
+      }), {
+        header: ['Time (min)', 'Water level (m)', 'Drawdown (m)'],
+        caption: step.label + (step.discharge_m3_per_h
+          ? ' at ' + S.sig(step.discharge_m3_per_h, 3) + ' m³/h'
+          : ' (discharge not recorded)'),
+        colWidthsCm: [3.4, 4.0, 4.0], fontSize: 9,
+      });
+    });
+
+    b.heading('3. Analysis', 1);
+    if (analysis.cooper_jacob) {
+      b.heading('Cooper-Jacob straight line', 2);
+      b.paragraph('The straight line fitted to drawdown against the logarithm ' +
+        'of time over ' + analysis.cooper_jacob.fit_window_min[0].toFixed(0) + ' to ' +
+        analysis.cooper_jacob.fit_window_min[1].toFixed(0) + ' minutes has a slope ' +
+        'of ' + analysis.cooper_jacob.slope_m_per_log_cycle.toFixed(3) + ' m per log ' +
+        'cycle, giving a transmissivity of ' +
+        S.sig(analysis.cooper_jacob.transmissivity_m2_per_day, 3) + ' m²/day. ' +
+        analysis.cooper_jacob.u_check + '.', { align: 'justify' });
+    }
+    if (analysis.recovery) {
+      b.heading('Theis recovery', 2);
+      b.paragraph('Residual drawdown against log(t/t\') gives a transmissivity ' +
+        'of ' + S.sig(analysis.recovery.transmissivity_m2_per_day, 3) + ' m²/day ' +
+        '(r² = ' + analysis.recovery.r_squared.toFixed(3) + '). Recovery is the ' +
+        'least affected by well losses and is the preferred estimate.',
+        { align: 'justify' });
+    }
+    if (analysis.theis) {
+      b.heading('Theis type curve', 2);
+      b.paragraph('A least squares fit of the Theis well function gives a ' +
+        'transmissivity of ' + S.sig(analysis.theis.transmissivity_m2_per_day, 3) +
+        ' m²/day with a storativity of ' + S.sig(analysis.theis.storativity, 2) +
+        (analysis.theis.storativity_reliable ? '.'
+          : '. Storativity is not resolvable from a single pumped well and is ' +
+            'reported for completeness only.'), { align: 'justify' });
+    }
+    if (analysis.step_test) {
+      b.heading('Step drawdown analysis', 2);
+      b.paragraph('The Hantush-Bierschenk analysis separates aquifer loss from ' +
+        'well loss: B = ' + S.sig(analysis.step_test.aquifer_loss_B, 3) +
+        ' day/m² and C = ' + S.sig(analysis.step_test.well_loss_C, 3) + ' day²/m⁵.',
+        { align: 'justify' });
+      b.table(analysis.step_test.steps.map(function (s) {
+        return [String(s.step), S.sig(s.discharge_m3_per_h, 3),
+          s.drawdown_end_m.toFixed(2), S.sig(s.sw_over_q_day_per_m2, 3),
+          s.efficiency_percent.toFixed(0) + '%'];
+      }), {
+        header: ['Step', 'Q (m³/h)', 'Drawdown (m)', 's/Q (day/m²)', 'Well efficiency'],
+        caption: 'Step test results',
+      });
+    }
+    figures.forEach(function (f) { b.figure(f.image, f.caption, f.widthCm || 15); });
+
+    b.heading('4. Results Summary', 1);
+    b.table([
+      ['Transmissivity (preferred)', analysis.transmissivity_m2_per_day
+        ? S.sig(analysis.transmissivity_m2_per_day, 3) + ' m²/day' : 'pending'],
+      ['Cooper-Jacob T', analysis.cooper_jacob
+        ? S.sig(analysis.cooper_jacob.transmissivity_m2_per_day, 3) + ' m²/day' : '—'],
+      ['Recovery T', analysis.recovery
+        ? S.sig(analysis.recovery.transmissivity_m2_per_day, 3) + ' m²/day' : '—'],
+      ['Theis T', analysis.theis
+        ? S.sig(analysis.theis.transmissivity_m2_per_day, 3) + ' m²/day' : '—'],
+      ['Maximum drawdown', analysis.max_drawdown_m !== null
+        ? analysis.max_drawdown_m.toFixed(2) + ' m' : '—'],
+      ['Specific capacity', rec.specific_capacity_m3hr_per_m
+        ? rec.specific_capacity_m3hr_per_m.toFixed(2) + ' m³/h per m' : '—'],
+    ], { header: ['Quantity', 'Value'], caption: 'Analysis results',
+      colWidthsCm: [7.0, 8.6] });
+
+    b.heading('5. Yield Recommendation', 1);
+    b.paragraph(rec.basis, { align: 'justify' });
+    if (rec.safe_yield_m3_per_h) {
+      b.table([
+        ['Available drawdown', rec.available_drawdown_m !== null
+          ? rec.available_drawdown_m.toFixed(2) + ' m' : '—'],
+        ['Usable drawdown', rec.usable_drawdown_m !== null
+          ? rec.usable_drawdown_m.toFixed(2) + ' m' : '—'],
+        ['Long term yield', rec.long_term_yield_m3_per_h.toFixed(2) + ' m³/h'],
+        ['Safe yield (with safety factor ' + rec.safety_factor + ')',
+          C.yieldRangeText(rec) ],
+        ['Recommended pump setting', rec.pump_installation_depth_m !== null
+          ? rec.pump_installation_depth_m.toFixed(0) + ' m' : '—'],
+      ], { header: ['Quantity', 'Value'], caption: 'Yield recommendation',
+        colWidthsCm: [7.0, 8.6] });
+      if (rec.envelope_basis) b.paragraph(rec.envelope_basis, { align: 'justify' });
+    } else {
+      b.paragraph('The yield recommendation is pending: ' +
+        (rec.pending_reason || 'required inputs are missing') + '.', { bold: true });
+    }
+
+    b.heading('6. Limitations and Uncertainty', 1);
+    limitationsParagraphs('pumping').forEach(function (text) {
+      b.paragraph(text, { align: 'justify' });
+    });
+    b.references([REFERENCES.rwsn_professional, REFERENCES.rwsn_supervision]);
+    b.glossary(GLOSSARY);
+    return b;
+  }
+
+  /* --- 4. water quality ------------------------------------------------------ */
+
+  async function qualityReport(context) {
+    var b = new ReportBuilder({ style: context.style, title: 'Water Quality Report' });
+    var assessment = context.assessment, sample = assessment.sample;
+    var site = sample.site || {};
+    var figures = context.figures || [];
+
+    b.cover(['Water Quality Report',
+      (sample.sample_id ? sample.sample_id + ' — ' : '') + (site.community || '')],
+      [], siteDetails(site, [
+        ['Sample ID', sample.sample_id || '—'],
+        ['Borehole reference', sample.borehole_ref || '—'],
+        ['Sample date', sample.sample_date || '—'],
+        ['Laboratory', sample.laboratory || '—'],
+      ]));
+    b.tableOfContents();
+
+    b.executiveSummary([assessment.verdict,
+      assessment.corrosivity && assessment.corrosivity.verdict
+        ? assessment.corrosivity.verdict : ''],
+      [
+        assessment.wqi ? 'Water Quality Index: ' + assessment.wqi.value +
+          ' (' + assessment.wqi.rating + ')' : null,
+        assessment.health_risk ? 'Hazard Index: ' +
+          assessment.health_risk.hazard_index + ' — ' + assessment.health_risk.rating : null,
+        assessment.ionic ? 'Ionic balance error: ' +
+          assessment.ionic.error_percent.toFixed(1) + '%' : null,
+        assessment.corrosivity ? 'Corrosivity: ' + assessment.corrosivity.classification : null,
+      ]);
+
+    b.heading('1. Sample Details', 1);
+    b.keyValueTable([
+      ['Sample ID', sample.sample_id || '—'],
+      ['Borehole', sample.borehole_ref || '—'],
+      ['Sample date', sample.sample_date || '—'],
+      ['Laboratory', sample.laboratory || '—'],
+      ['Community', site.community || '—'],
+      ['District', site.district || '—'],
+    ]);
+
+    b.heading('2. Results Against Guideline Values', 1);
+    b.table(assessment.rows.map(function (row) {
+      return [row.parameter,
+        row.value === null ? (row.below_detection ? '< DL' : '—') : C.fmtNum(row.value, 4),
+        row.unit || '', row.who_health || '—', row.sl_standard || '—',
+        statusLabel(row.status), row.remark || ''];
+    }), {
+      header: ['Parameter', 'Result', 'Unit', 'WHO health', 'National', 'Status', 'Remark'],
+      caption: 'Laboratory results against WHO and national standards',
+      fontSize: 8.5, colWidthsCm: [3.0, 1.6, 1.4, 1.8, 1.8, 1.9, 4.1],
+    });
+
+    b.heading('3. Ionic Balance Check', 1);
+    if (assessment.ionic) {
+      b.paragraph('The charge balance error is ' +
+        assessment.ionic.error_percent.toFixed(1) + '% (' +
+        assessment.ionic.sum_cations_meq.toFixed(2) + ' meq/L cations against ' +
+        assessment.ionic.sum_anions_meq.toFixed(2) + ' meq/L anions). Errors within ' +
+        '5% are normal laboratory practice; 5 to 10% warrants review and more ' +
+        'than 10% indicates an unreliable analysis or a missing major ion.' +
+        (assessment.ionic.used_alkalinity_for_bicarbonate
+          ? ' Bicarbonate was derived from the reported alkalinity.' : ''),
+        { align: 'justify' });
+    } else {
+      b.paragraph('The major ions needed for a charge balance (calcium, ' +
+        'magnesium, sodium, chloride and bicarbonate or alkalinity) were not all ' +
+        'reported, so the balance could not be computed.', { align: 'justify' });
+    }
+
+    b.heading('4. Corrosivity and Materials', 1);
+    if (assessment.corrosivity) {
+      var cor = assessment.corrosivity;
+      b.paragraph(cor.verdict, { align: 'justify' });
+      if (cor.lsi !== null) {
+        b.table([
+          ['Langelier Saturation Index (LSI)', String(cor.lsi)],
+          ['Ryznar Stability Index (RSI)', String(cor.rsi)],
+          ['Aggressive Index (AI)', String(cor.aggressive_index)],
+          ['Larson-Skold ratio', cor.larson_skold === null ? '—' : String(cor.larson_skold)],
+          ['Classification', cor.classification],
+        ], { header: ['Index', 'Value'], caption: 'Corrosivity indices',
+          colWidthsCm: [8.0, 7.6] });
+      }
+      b.paragraph(cor.materials_note, { align: 'justify' });
+      if (cor.assumptions && cor.assumptions.length) b.bullets(cor.assumptions);
+    }
+
+    b.heading('5. Hydrochemical Facies', 1);
+    figures.forEach(function (f) { b.figure(f.image, f.caption, f.widthCm || 14); });
+
+    b.heading('6. Recommendations', 1);
+    var recommendations = [];
+    if (assessment.health_exceedances.length) {
+      recommendations.push('Treat or replace the source before it is used for ' +
+        'drinking: ' + assessment.health_exceedances.map(function (r) {
+          return r.parameter; }).join(', ') + ' exceed health based limits.');
+    }
+    if (assessment.corrosivity && assessment.corrosivity.is_aggressive) {
+      recommendations.push('Specify uPVC or stainless steel rising main and pump ' +
+        'components; avoid galvanised iron.');
+    }
+    recommendations.push('Disinfect the borehole after any maintenance and ' +
+      're-test microbiological quality before the source is returned to use.');
+    recommendations.push('Repeat the analysis at least annually, and after any ' +
+      'change in taste, colour or odour.');
+    b.bullets(recommendations.concat(context.recommendations || []));
+
+    b.heading('7. Limitations and Uncertainty', 1);
+    limitationsParagraphs('quality').forEach(function (text) {
+      b.paragraph(text, { align: 'justify' });
+    });
+    b.references([REFERENCES.who, REFERENCES.stop_the_rot]);
+    b.glossary(GLOSSARY);
+    return b;
+  }
+
+  function statusLabel(status) {
+    return {
+      exceeds_health: 'Exceeds health', exceeds_national: 'Exceeds national',
+      exceeds_aesthetic: 'Exceeds acceptability', within_limits: 'Within limits',
+      below_detection: 'Below detection', no_guideline: 'No guideline',
+      not_measured: 'Not measured',
+    }[status] || status;
+  }
+
+  /* --- 5. cost estimate ------------------------------------------------------ */
+
+  async function costingReport(context) {
+    var b = new ReportBuilder({ style: context.style, title: 'Borehole Cost Estimate' });
+    var estimate = context.estimate, site = context.site || {};
+    var figures = context.figures || [];
+
+    b.cover(['Borehole Cost Estimate', site.community || ''], [],
+      siteDetails(site, [
+        ['Total depth', C.fmtNum(estimate.inputs.total_depth_m) + ' m'],
+        ['Estimated total cost', S.money(estimate.total_cost_usd, 0)],
+        ['Contract price', S.money(estimate.price_usd, 0)],
+      ]));
+    b.tableOfContents();
+
+    b.executiveSummary([
+      'The estimated cost of one ' + C.fmtNum(estimate.inputs.total_depth_m) +
+        ' m borehole at ' + (site.community || 'the site') + ' is ' +
+        S.money(estimate.total_cost_usd, 0) + ', which is ' +
+        S.money(estimate.cost_per_meter_usd, 0) + ' per drilled metre. Adding a ' +
+        estimate.margin_percent + '% margin gives a contract price of ' +
+        S.money(estimate.price_usd, 0) + '.',
+      'The estimate follows the RWSN Borehole Costing Model, which keeps the ' +
+        "contractor's cost and the client's price distinct so neither is hidden " +
+        'inside the other.',
+    ], [
+      'Direct works cost: ' + S.money(estimate.direct_cost_usd, 0),
+      'Total cost including ' + estimate.overheads_percent + '% overheads: ' +
+        S.money(estimate.total_cost_usd, 0),
+      'Contract price: ' + S.money(estimate.price_usd, 0),
+      'Planning budget with ' + estimate.contingency_percent + '% contingency: ' +
+        S.money(estimate.budget_usd, 0),
+    ]);
+
+    b.heading('1. Method', 1);
+    b.paragraph('The estimate follows the RWSN Borehole Costing Model. Every ' +
+      'line item carries a construction stage and a resource category, so the ' +
+      'same quantities roll up along both axes. Direct works cost is the sum of ' +
+      'the priced quantities; overheads are added to give the total cost; the ' +
+      'margin on top of that gives a sustainable contract price. The contingency ' +
+      'is a client-side planning allowance and is shown separately so the ' +
+      'contract price stays honest.', { align: 'justify' });
+
+    b.heading('2. Basis of the Estimate', 1);
+    b.table([
+      ['Total depth', C.fmtNum(estimate.inputs.total_depth_m) + ' m'],
+      ['Overburden drilled', C.fmtNum(estimate.inputs.overburden_m) + ' m'],
+      ['Bedrock drilled', C.fmtNum(estimate.inputs.bedrock_m) + ' m'],
+      ['Plain casing', C.fmtNum(estimate.inputs.casing_m) + ' m'],
+      ['Screen', C.fmtNum(estimate.inputs.screen_m) + ' m'],
+      ['Gravel pack', C.fmtNum(estimate.inputs.gravel_pack_m3, 3) + ' m³'],
+      ['Cement', C.fmtNum(estimate.inputs.cement_bags) + ' bags'],
+      ['Crew time', C.fmtNum(estimate.inputs.crew_days) + ' days'],
+      ['Mobilisation distance', C.fmtNum(estimate.inputs.mobilisation_distance_km) +
+        ' km one way'],
+    ], { header: ['Quantity', 'Value'], caption: 'Quantities driving the estimate',
+      colWidthsCm: [7.0, 8.6] });
+    if (estimate.assumptions.length) {
+      b.paragraph('Assumptions where a figure was not supplied:', { bold: true });
+      b.bullets(estimate.assumptions);
+    }
+
+    b.heading('3. Bill of Quantities', 1);
+    b.table(estimate.boq_rows().map(function (row) {
+      return [row.Code, row.Stage, row.Item, row.Unit,
+        S.thousands(row.Quantity, 2), S.thousands(row['Rate (USD)'], 2),
+        S.thousands(row['Amount (USD)'], 2)];
+    }).concat([['', '', 'Direct works cost', '', '', '',
+      S.thousands(estimate.direct_cost_usd, 2)]]), {
+      header: ['Code', 'Stage', 'Item', 'Unit', 'Qty', 'Rate (US$)', 'Amount (US$)'],
+      caption: 'Bill of quantities', fontSize: 8.5,
+      colWidthsCm: [1.3, 1.9, 5.6, 1.5, 1.5, 1.9, 1.9],
+    });
+
+    b.heading('4. Cost Summary', 1);
+    b.table([
+      ['Direct works cost', S.money(estimate.direct_cost_usd, 0),
+        S.thousands(estimate.in_local(estimate.direct_cost_usd), 0)],
+      ['Overheads (' + estimate.overheads_percent + '%)',
+        S.money(estimate.overheads_usd, 0),
+        S.thousands(estimate.in_local(estimate.overheads_usd), 0)],
+      ['Total cost', S.money(estimate.total_cost_usd, 0),
+        S.thousands(estimate.in_local(estimate.total_cost_usd), 0)],
+      ['Cost per metre drilled', S.money(estimate.cost_per_meter_usd, 0),
+        S.thousands(estimate.in_local(estimate.cost_per_meter_usd), 0)],
+      ['Margin (' + estimate.margin_percent + '%)', S.money(estimate.margin_usd, 0),
+        S.thousands(estimate.in_local(estimate.margin_usd), 0)],
+      ['Contract price', S.money(estimate.price_usd, 0),
+        S.thousands(estimate.in_local(estimate.price_usd), 0)],
+      ['Contingency (' + estimate.contingency_percent + '%)',
+        S.money(estimate.contingency_usd, 0),
+        S.thousands(estimate.in_local(estimate.contingency_usd), 0)],
+      ['Planning budget', S.money(estimate.budget_usd, 0),
+        S.thousands(estimate.in_local(estimate.budget_usd), 0)],
+    ], {
+      header: ['Item', 'US$', 'SLE'], caption: 'Cost and price summary',
+      colWidthsCm: [7.0, 4.3, 4.3],
+    });
+    figures.forEach(function (f) { b.figure(f.image, f.caption, f.widthCm || 15); });
+
+    b.heading('5. Notes and Exclusions', 1);
+    b.bullets([
+      'Unit rates are indicative and must be confirmed against current local ' +
+        'prices before the estimate is used in a tender.',
+      'The exchange rate used for the local currency column is ' +
+        estimate.exchange_rate_sle_per_usd + ' SLE per US dollar.',
+      'The estimate excludes the client\'s own supervision, land acquisition, ' +
+        'community mobilisation and value added tax unless stated.',
+      'A dry hole is not costed here; use the programme estimate to carry the ' +
+        'expected dry attempts across a package of boreholes.',
+    ].concat(context.notes || []));
+
+    b.references([REFERENCES.rwsn_cost, REFERENCES.rwsn_pricing, REFERENCES.unicef_toolkit]);
+    return b;
+  }
+
+  /* --- 6. supervision record ------------------------------------------------- */
+
+  async function supervisionReport(context) {
+    var b = new ReportBuilder({ style: context.style, title: 'Supervision Checklist Record' });
+    var evaluation = context.evaluation, items = context.items || [];
+    var responses = context.responses || {};
+    var site = context.site || {};
+
+    b.cover(['Drilling Supervision Record', site.community || ''], [],
+      siteDetails(site, [
+        ['Borehole reference', context.boreholeRef || '—'],
+        ['Items answered', evaluation.answered + ' of ' + evaluation.total],
+        ['Critical failures', String(evaluation.critical_failures)],
+      ]));
+
+    b.heading('1. Summary', 1);
+    b.paragraph(evaluation.verdict, { bold: true });
+    b.table(evaluation.stages.map(function (stage) {
+      return [stage.title, String(stage.total), String(stage.answered),
+        String(stage.passed), String(stage.failed), String(stage.critical_failed),
+        stage.percent.toFixed(0) + '%'];
+    }), {
+      header: ['Stage', 'Items', 'Answered', 'Satisfied', 'Failed', 'Critical failed',
+        'Progress'],
+      caption: 'Checklist progress by stage', fontSize: 9,
+    });
+
+    b.heading('2. Checklist Record', 1);
+    evaluation.stages.forEach(function (stage) {
+      var stageItems = items.filter(function (i) { return i.checklist === stage.stage; });
+      if (!stageItems.length) return;
+      b.heading(stage.title, 2);
+      b.table(stageItems.map(function (item) {
+        var response = responses[item.item_id] || {};
+        return [item.section, item.text, item.critical ? 'Yes' : '',
+          (response.status || 'pending').toUpperCase(), response.remark || ''];
+      }), {
+        header: ['Section', 'Requirement', 'Critical', 'Answer', 'Remark'],
+        fontSize: 8.5, colWidthsCm: [2.6, 6.6, 1.4, 1.7, 3.3],
+      });
+    });
+
+    b.heading('3. Site Notes and Instructions', 1);
+    if ((context.notes || []).length) b.bullets(context.notes);
+    else b.paragraph('No additional site instructions were recorded.');
+
+    if (context.fieldChecks && context.fieldChecks.length) {
+      b.table(context.fieldChecks.map(function (check) {
+        return [check.name, check.measured, check.limit,
+          check.status.toUpperCase(), check.message];
+      }), {
+        header: ['Check', 'Measured', 'Acceptance limit', 'Result', 'Note'],
+        caption: 'Field acceptance checks', fontSize: 8.5,
+        colWidthsCm: [3.0, 2.8, 3.4, 1.6, 4.8],
+      });
+    }
+
+    b.heading('4. Sign Off', 1);
+    b.signatures(['Supervisor', 'Drilling contractor', 'Client representative']);
+    b.references([REFERENCES.rwsn_supervision, REFERENCES.unicef_toolkit]);
+    return b;
+  }
+
+  /* --- 7. project handover --------------------------------------------------- */
+
+  async function handoverReport(context) {
+    var b = new ReportBuilder({ style: context.style, title: 'Project Handover Report' });
+    var site = context.site || {}, log = context.log || {}, design = context.design;
+    var analysis = context.analysis, assessment = context.assessment;
+    var figures = context.figures || [];
+    var rec = analysis ? analysis.yield_recommendation : null;
+
+    b.cover(['Project Handover Report', site.community || ''], [],
+      siteDetails(site, [
+        ['Borehole reference', log.borehole_ref || context.boreholeRef || '—'],
+        ['Handover date', context.handoverDate || ''],
+      ]));
+    b.tableOfContents();
+
+    b.executiveSummary([
+      'A borehole has been completed and equipped at ' + (site.community || 'the site') +
+        ' and is handed over to the community for operation and maintenance.',
+      rec && rec.safe_yield_m3_per_h
+        ? 'The source is rated at a safe yield of ' + C.yieldRangeText(rec) +
+          ', which is sufficient for about ' +
+          Math.round(rec.safe_yield_m3_per_h * 1000 * 8 / 20) +
+          ' people at 20 litres per person per day over an eight hour pumping day.'
+        : '',
+      assessment ? assessment.verdict : '',
+    ], [
+      log.total_depth_m ? 'Depth: ' + C.fmtNum(log.total_depth_m) + ' m' : null,
+      rec && rec.safe_yield_m3_per_h ? 'Safe yield: ' + C.yieldRangeText(rec) : null,
+      rec && rec.pump_installation_depth_m !== null
+        ? 'Pump setting: ' + rec.pump_installation_depth_m.toFixed(0) + ' m' : null,
+      assessment && assessment.health_exceedances.length
+        ? 'Water quality: treatment required'
+        : (assessment ? 'Water quality: meets health based guideline values' : null),
+    ]);
+
+    b.heading('1. Project Summary', 1);
+    b.keyValueTable(siteDetails(site));
+
+    b.heading('2. Works Completed', 1);
+    b.bullets([
+      log.total_depth_m ? 'Borehole drilled to ' + C.fmtNum(log.total_depth_m) + ' m.' : null,
+      design ? 'Cased and screened with ' + C.fmtNum(design.total_screen_length_m) +
+        ' m of screen; gravel packed and grout sealed.' : null,
+      'Borehole developed and test pumped.',
+      assessment ? 'Water quality sampled and analysed.' : null,
+      'Headworks constructed with an apron, drainage channel and soakaway.',
+      'Handpump installed and commissioned.',
+    ].filter(Boolean).concat(context.worksNotes || []));
+
+    b.heading('3. Borehole Data Sheet', 1);
+    var dataRows = [
+      ['Borehole reference', log.borehole_ref || context.boreholeRef || '—'],
+      ['Total depth', log.total_depth_m ? C.fmtNum(log.total_depth_m) + ' m' : '—'],
+      ['Static water level', analysis && analysis.test.static_water_level_m !== null
+        ? analysis.test.static_water_level_m.toFixed(2) + ' m' : '—'],
+      ['Safe yield', rec ? C.yieldRangeText(rec) : '—'],
+      ['Pump setting', rec && rec.pump_installation_depth_m !== null
+        ? rec.pump_installation_depth_m.toFixed(0) + ' m' : '—'],
+      ['Screened intervals', design ? design.screens.map(function (s) {
+        return s.top_m.toFixed(1) + '–' + s.bottom_m.toFixed(1) + ' m'; }).join(', ') : '—'],
+      ['Casing', design ? design.casing_diameter_in + '" ' + design.casing_material : '—'],
+    ];
+    b.table(dataRows, { header: ['Item', 'Value'],
+      caption: 'Borehole data sheet', colWidthsCm: [6.0, 9.6] });
+    figures.forEach(function (f) { b.figure(f.image, f.caption, f.widthCm || 14); });
+
+    b.heading('4. Water Quality', 1);
+    if (assessment) {
+      b.paragraph(assessment.verdict, { align: 'justify' });
+      if (assessment.corrosivity) {
+        b.paragraph(assessment.corrosivity.materials_note, { align: 'justify' });
+      }
+    } else {
+      b.paragraph('No water quality analysis was available at handover. Sample ' +
+        'the source and have it analysed before the supply is used for drinking.',
+        { align: 'justify' });
+    }
+
+    b.heading('5. Operation and Maintenance Guidance', 1);
+    b.bullets([
+      'Keep the apron, drainage channel and soakaway clean and in good repair; ' +
+        'standing water beside the headworks is the commonest route for ' +
+        'contamination to reach the borehole.',
+      'Keep animals and latrines at least 30 m from the borehole, and never ' +
+        'site a new latrine upgradient of it.',
+      'Pump gently and steadily. Do not exceed the recommended pump setting ' +
+        'depth or the safe yield.',
+      'Inspect the rising main and pump rods for corrosion at each service.',
+      'Report any change in taste, smell, colour or yield to the district water ' +
+        'office immediately.',
+      'Keep a record of every repair, with the date, the part replaced and the cost.',
+    ].concat(context.omNotes || []));
+
+    b.heading('6. Community / WASH Committee', 1);
+    if ((context.committee || []).length) {
+      b.table(context.committee.map(function (member) {
+        return [member.name || '', member.role || '', member.contact || ''];
+      }), { header: ['Name', 'Role', 'Contact'],
+        caption: 'Water and sanitation committee', colWidthsCm: [5.5, 5.0, 5.1] });
+    } else {
+      b.paragraph('The water and sanitation committee members are to be recorded ' +
+        'at handover.', { align: 'justify' });
+    }
+
+    b.heading('7. Recommendations', 1);
+    b.bullets((context.recommendations || []).length ? context.recommendations : [
+      'Re-test the water quality within three months of commissioning and at ' +
+        'least annually thereafter.',
+      'Agree and collect a tariff sufficient to cover routine maintenance and ' +
+        'an eventual pump replacement.',
+      'Register the source with the district water office so it appears in the ' +
+        'national inventory.',
+    ]);
+
+    b.heading('8. Handover Signatures', 1);
+    b.signatures(['Client representative', 'Community / committee chair',
+      'Contractor', 'District water office']);
+    b.references([REFERENCES.rwsn_professional, REFERENCES.who, REFERENCES.unicef_toolkit]);
+    b.glossary(GLOSSARY);
+    return b;
+  }
+
+  GWT.docx = {
+    ReportBuilder: ReportBuilder,
+    geophysicalReport: geophysicalReport,
+    completionReport: completionReport,
+    pumpingReport: pumpingReport,
+    qualityReport: qualityReport,
+    costingReport: costingReport,
+    supervisionReport: supervisionReport,
+    handoverReport: handoverReport,
+    REFERENCES: REFERENCES, GLOSSARY: GLOSSARY, statusLabel: statusLabel,
+  };
+}(typeof window !== 'undefined' ? window : globalThis));

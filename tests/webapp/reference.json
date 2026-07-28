@@ -1,0 +1,651 @@
+{
+ "ves": [
+  {
+   "id": "A (1)",
+   "array": "schlumberger",
+   "ab2": [
+    1.0,
+    2.0,
+    3.0,
+    3.0,
+    4.0,
+    5.0,
+    7.0,
+    10.0,
+    10.0,
+    15.0,
+    20.0,
+    30.0,
+    40.0,
+    40.0,
+    50.0,
+    70.0,
+    70.0,
+    80.0
+   ],
+   "mn": [
+    0.4,
+    0.4,
+    0.4,
+    0.8,
+    0.8,
+    0.8,
+    0.8,
+    0.8,
+    1.5,
+    1.5,
+    1.5,
+    1.5,
+    1.5,
+    7.6,
+    7.6,
+    7.6,
+    14.0,
+    14.0
+   ],
+   "rho": [
+    1165.0,
+    1193.0,
+    1303.0,
+    1317.0,
+    1502.0,
+    1500.0,
+    1432.0,
+    1392.0,
+    961.0,
+    715.5,
+    732.0,
+    162.0,
+    156.1,
+    78.7,
+    52.1,
+    55.8,
+    53.2,
+    47.9
+   ],
+   "site": {
+    "client": "Living Water International",
+    "project": "Geophysical Survey",
+    "community": "Rokel",
+    "chiefdom": "",
+    "district": "Western Area",
+    "project_ref": "",
+    "easting": 708958.0,
+    "northing": 926355.0,
+    "elevation_m": 71.0,
+    "supervisor": "",
+    "contractor": ""
+   },
+   "flags": [
+    [
+     "info",
+     "segment_overlap",
+     "4 AB/2 value(s) repeated with different MN (segment changes); both readings kept."
+    ]
+   ]
+  },
+  {
+   "id": "B (2)",
+   "array": "schlumberger",
+   "ab2": [
+    1.0,
+    2.0,
+    3.0,
+    3.0,
+    4.0,
+    5.0,
+    7.0,
+    10.0,
+    10.0,
+    15.0,
+    20.0,
+    30.0,
+    40.0,
+    40.0,
+    50.0,
+    70.0,
+    70.0,
+    80.0
+   ],
+   "mn": [
+    0.4,
+    0.4,
+    0.4,
+    0.8,
+    0.8,
+    0.8,
+    0.8,
+    0.8,
+    1.5,
+    1.5,
+    1.5,
+    1.5,
+    1.5,
+    7.6,
+    7.6,
+    7.6,
+    14.0,
+    14.0
+   ],
+   "rho": [
+    995.7,
+    984.2,
+    965.4,
+    1081.0,
+    1298.0,
+    1366.0,
+    1209.0,
+    1307.0,
+    891.8,
+    739.6,
+    329.1,
+    140.1,
+    147.9,
+    96.3,
+    34.1,
+    90.3,
+    55.2,
+    51.4
+   ],
+   "site": {
+    "client": "Living Water International",
+    "project": "Geophysical Survey",
+    "community": "Rokel",
+    "chiefdom": "",
+    "district": "Port Loko",
+    "project_ref": "",
+    "easting": 727012.0,
+    "northing": 916125.0,
+    "elevation_m": 68.0,
+    "supervisor": "",
+    "contractor": ""
+   },
+   "flags": [
+    [
+     "info",
+     "segment_overlap",
+     "4 AB/2 value(s) repeated with different MN (segment changes); both readings kept."
+    ]
+   ]
+  }
+ ],
+ "drilling": {
+  "ref": "BH-1",
+  "total": 70.0,
+  "strikes": [
+   12.0,
+   30.0
+  ],
+  "intervals": [
+   [
+    0.0,
+    5.0,
+    "Reddish brown lateritic topsoil"
+   ],
+   [
+    5.0,
+    10.0,
+    "Light yellow clayey laterites"
+   ],
+   [
+    10.0,
+    15.0,
+    "Light yellow clayey laterites, wet from 12 m"
+   ],
+   [
+    15.0,
+    20.0,
+    "Clayey saprolite with weathered granite fragments"
+   ],
+   [
+    20.0,
+    25.0,
+    "Saprolite, decreasing clay content"
+   ],
+   [
+    25.0,
+    30.0,
+    "Weathered light colour granite, fractured"
+   ],
+   [
+    30.0,
+    35.0,
+    "Light colour granite, slightly weathered, fractured"
+   ],
+   [
+    35.0,
+    40.0,
+    "Light colour granite, slightly weathered"
+   ],
+   [
+    40.0,
+    45.0,
+    "Light colour granite"
+   ],
+   [
+    45.0,
+    50.0,
+    "Light colour granite, fracture zone 49-52 m"
+   ],
+   [
+    50.0,
+    55.0,
+    "Light colour granite"
+   ],
+   [
+    55.0,
+    60.0,
+    "Light colour granite, fracture zone 60-62 m"
+   ],
+   [
+    60.0,
+    65.0,
+    "Light colour granite"
+   ],
+   [
+    65.0,
+    70.0,
+    "Light colour granite, fresh"
+   ]
+  ],
+  "site": {
+   "client": "Dr. Timbo",
+   "project": "",
+   "community": "Dr. Timbo's Residence",
+   "chiefdom": "",
+   "district": "Western Area Rural",
+   "project_ref": "",
+   "easting": null,
+   "northing": null,
+   "elevation_m": null,
+   "supervisor": "",
+   "contractor": "WiNGiN Heavy Duty Machines Co. Ltd"
+  },
+  "flags": []
+ },
+ "quality": {
+  "id": "WQ-BH1-01",
+  "ref": "BH-1",
+  "lab": "Example Laboratory, Freetown",
+  "results": [
+   [
+    "pH",
+    5.9,
+    "pH units",
+    false,
+    null
+   ],
+   [
+    "Electrical conductivity",
+    185.0,
+    "uS/cm",
+    false,
+    null
+   ],
+   [
+    "TDS",
+    120.0,
+    "mg/L",
+    false,
+    null
+   ],
+   [
+    "Turbidity",
+    3.2,
+    "NTU",
+    false,
+    null
+   ],
+   [
+    "Temperature",
+    27.4,
+    "deg C",
+    false,
+    null
+   ],
+   [
+    "Total hardness",
+    58.0,
+    "mg/L as CaCO3",
+    false,
+    null
+   ],
+   [
+    "Alkalinity",
+    46.0,
+    "mg/L as CaCO3",
+    false,
+    null
+   ],
+   [
+    "Calcium",
+    14.2,
+    "mg/L",
+    false,
+    null
+   ],
+   [
+    "Magnesium",
+    5.5,
+    "mg/L",
+    false,
+    null
+   ],
+   [
+    "Sodium",
+    12.6,
+    "mg/L",
+    false,
+    null
+   ],
+   [
+    "Potassium",
+    2.1,
+    "mg/L",
+    false,
+    null
+   ],
+   [
+    "Bicarbonate",
+    56.0,
+    "mg/L",
+    false,
+    null
+   ],
+   [
+    "Chloride",
+    18.4,
+    "mg/L",
+    false,
+    null
+   ],
+   [
+    "Sulfate",
+    6.8,
+    "mg/L",
+    false,
+    null
+   ],
+   [
+    "Nitrate (as NO3)",
+    8.2,
+    "mg/L",
+    false,
+    null
+   ],
+   [
+    "Nitrite (as NO2)",
+    null,
+    "mg/L",
+    true,
+    0.01
+   ],
+   [
+    "Ammonia (as N)",
+    0.12,
+    "mg/L",
+    false,
+    null
+   ],
+   [
+    "Fluoride",
+    0.22,
+    "mg/L",
+    false,
+    null
+   ],
+   [
+    "Iron",
+    0.85,
+    "mg/L",
+    false,
+    null
+   ],
+   [
+    "Manganese",
+    0.12,
+    "mg/L",
+    false,
+    null
+   ],
+   [
+    "Arsenic",
+    null,
+    "mg/L",
+    true,
+    0.001
+   ],
+   [
+    "Lead",
+    null,
+    "mg/L",
+    true,
+    0.005
+   ],
+   [
+    "Copper",
+    0.02,
+    "mg/L",
+    false,
+    null
+   ],
+   [
+    "Zinc",
+    0.11,
+    "mg/L",
+    false,
+    null
+   ],
+   [
+    "Chromium (total)",
+    null,
+    "mg/L",
+    true,
+    0.01
+   ],
+   [
+    "Cadmium",
+    null,
+    "mg/L",
+    true,
+    0.0005
+   ],
+   [
+    "E. coli",
+    0.0,
+    "CFU/100 mL",
+    false,
+    null
+   ],
+   [
+    "Total coliforms",
+    4.0,
+    "CFU/100 mL",
+    false,
+    null
+   ]
+  ],
+  "flags": []
+ },
+ "pumping": {
+  "type": "constant+recovery",
+  "swl": 9.44,
+  "depth": 70.0,
+  "pump": 67.0,
+  "steps": [
+   {
+    "n": 1,
+    "q": 2.93,
+    "t": [
+     0.0,
+     1.0,
+     2.0,
+     3.0,
+     4.0,
+     5.0,
+     10.0,
+     15.0,
+     20.0,
+     25.0,
+     30.0
+    ],
+    "wl": [
+     9.44,
+     13.1,
+     15.5,
+     17.41,
+     18.37,
+     19.34,
+     27.34,
+     30.76,
+     33.34,
+     37.77,
+     42.26
+    ],
+    "label": "Pumping phase"
+   }
+  ],
+  "rec_t": [
+   0.0,
+   1.0,
+   2.0,
+   3.0,
+   4.0,
+   5.0,
+   10.0,
+   15.0,
+   20.0,
+   25.0,
+   30.0,
+   35.0,
+   40.0,
+   45.0,
+   50.0,
+   55.0,
+   60.0
+  ],
+  "rec_wl": [
+   42.26,
+   42.2,
+   41.78,
+   41.39,
+   41.14,
+   39.67,
+   38.38,
+   37.26,
+   35.26,
+   35.18,
+   34.58,
+   33.85,
+   33.18,
+   32.55,
+   31.95,
+   31.05,
+   30.38
+  ],
+  "duration": 30.0,
+  "flags": []
+ },
+ "step": {
+  "type": "step+recovery",
+  "swl": 19.28,
+  "nsteps": 3,
+  "steps": [
+   {
+    "n": 1,
+    "q": null,
+    "npoints": 34,
+    "tmax": 60.0
+   },
+   {
+    "n": 2,
+    "q": null,
+    "npoints": 34,
+    "tmax": 120.0
+   },
+   {
+    "n": 3,
+    "q": null,
+    "npoints": 24,
+    "tmax": 158.0
+   }
+  ],
+  "flags": [
+   [
+    "warning",
+    "missing_discharge",
+    "Discharge not recorded for step(s) 1, 2, 3. Drawdown and recovery curves are produced, but transmissivity and yield results are pending until discharge values are supplied."
+   ],
+   [
+    "warning",
+    "water_level_above_static",
+    "Some pumping water levels are above the stated static water level, giving negative drawdown. Check the static level and the measuring datum on the sheet."
+   ],
+   [
+    "warning",
+    "level_below_borehole",
+    "Recorded water level 78.45 m exceeds the stated borehole depth 70 m; check the sheet."
+   ]
+  ]
+ },
+ "analysis": {
+  "T": 1.4021310045105808,
+  "cj": 0.5358830353611498,
+  "rec": 1.4021310045105808,
+  "theis": 0.4690417877974611,
+  "safe": 0.9699565312279003,
+  "low": 0.28477100688409884,
+  "high": 1.187620160960069,
+  "pump_depth": 39,
+  "range_text": "0.97 m3/h (0.28 to 1.2)",
+  "flags": []
+ },
+ "assessed": {
+  "verdict": "The water does not meet the health based guideline value(s) for: Manganese, Total coliforms. Treatment or an alternative source is required before the water is used for drinking.",
+  "health": [
+   "Manganese",
+   "Total coliforms"
+  ],
+  "wqi": 224.1,
+  "corros": "Strongly corrosive",
+  "ionic": 2.147849978872537
+ },
+ "design": {
+  "depth": 70.0,
+  "screens": [
+   [
+    14.5,
+    17.0
+   ],
+   [
+    25.0,
+    35.0
+   ],
+   [
+    45.0,
+    50.0
+   ],
+   [
+    55.0,
+    60.0
+   ]
+  ],
+  "gravel": [
+   12.5,
+   70.0
+  ],
+  "screen_len": 22.5
+ },
+ "inversion": {
+  "rho": [
+   1105.510777898404,
+   1637.760390980798,
+   47.279765638473506
+  ],
+  "h": [
+   1.0213171161456631,
+   7.079876538241113
+  ],
+  "err": 13.34685059254818
+ }
+}
