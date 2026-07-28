@@ -52,19 +52,34 @@ water quality guidelines.
 
 ## Try it online
 
+- **Standalone web app (GitHub Pages, no server, no install):**
+  <https://moseskolleh.github.io/WaterProject/>
 - **Full app (Streamlit Community Cloud):**
   <https://waterproject.streamlit.app/>
-- **Browser demo (GitHub Pages, no server):**
-  <https://moseskolleh.github.io/WaterProject/>
+- **WebAssembly build of the Streamlit app:**
+  <https://moseskolleh.github.io/WaterProject/wasm/>
 
-The Streamlit app is the complete server version. The GitHub Pages
-demo runs the toolkit inside the visitor's browser via WebAssembly:
-uploaded files never leave the machine, the first visit downloads the
-Python runtime (about 60 MB, cached afterwards), and the AI scan
-extraction tab is not available there. Both bundle every sample
-dataset, so every tab works with one click. Hosting setup lives in
-`DEPLOY.md`; the Pages demo goes live after the one-time Pages setting
-described there (Source: deploy from a branch, `main`, folder `/docs`).
+The **standalone web app** is the toolkit rewritten to run entirely in
+the browser as plain HTML, CSS and JavaScript. It starts instantly,
+needs no Python runtime and no network after the first load, and does
+the whole job: reading the field workbooks, inverting the soundings,
+analysing the pumping tests, assessing the water quality, designing the
+borehole, costing the works, running the supervision checklists and
+writing the seven .docx reports. Uploaded sheets are parsed in the page
+and never leave the machine. Its engine is held to the Python
+package's own numbers by a parity check in CI, on the real sample
+workbooks. Source lives in `docs/`.
+
+The Streamlit app is the complete server version, and adds the
+AI-assisted extraction from scanned field sheets. The WebAssembly build
+is that same Python app compiled to run in the browser through
+stlite/Pyodide — behaviourally identical to the server version, at the
+cost of a 60 MB first load.
+
+All three bundle every sample dataset, so every page works with one
+click. Hosting setup lives in `DEPLOY.md`; the Pages site goes live
+after the one-time Pages setting described there (Source: deploy from a
+branch, `main`, folder `/docs`).
 
 ## Installation
 
@@ -152,7 +167,9 @@ that grounds the aquifer maps. Checklist items, separation distances
 and unit rates live in editable CSVs under `src/groundwater/data/`,
 so field practice can be adapted without code changes;
 `web/build_geodata.py` documents how the bundled map layers are
-derived from their sources.
+derived from their sources, and `web/build_webapp_data.py` re-emits
+those same tables into the standalone web app so the two can never
+disagree.
 
 Key behaviours built in from the real field sheets:
 
@@ -180,6 +197,12 @@ is an editable CSV (`groundwater/data/who_guidelines.csv`).
 
 ```bash
 python -m pytest             # parsers, numerics, reports
+
+# the standalone web app, in a real browser
+npm install --no-save playwright && npx playwright install chromium
+python tests/webapp/make_reference.py   # reference values from this package
+node tests/webapp/parity.mjs            # browser engine vs those values
+node tests/webapp/smoke.mjs             # every page and every report
 ```
 
 The VES forward model is validated against analytic two-layer image
