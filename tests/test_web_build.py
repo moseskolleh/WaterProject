@@ -126,3 +126,27 @@ def test_webapp_scripts_are_wired_up():
         assert (REPO / "docs" / src).exists(), f"{src} is referenced but missing"
     for href in re.findall(r'<link rel="stylesheet" href="([^"]+)"', html):
         assert (REPO / "docs" / href).exists(), f"{href} is referenced but missing"
+
+
+def test_root_redirect_points_at_the_site():
+    """The repo-root index.html must send visitors to docs/.
+
+    GitHub Pages can be pointed at the repository root or at /docs. Served
+    from the root there is otherwise no index, so Pages renders README.md and
+    the advertised link shows the readme instead of the application. This file
+    is what makes one URL work under both settings; served from /docs it is
+    never published.
+    """
+    root = REPO / "index.html"
+    assert root.exists(), "index.html at the repository root is missing"
+    html = root.read_text(encoding="utf-8")
+    # both paths matter: the meta refresh covers a browser with JavaScript
+    # disabled, the script covers the rest and preserves any fragment
+    assert re.search(r'http-equiv="refresh"[^>]*url=docs/', html), \
+        "the meta refresh does not point at docs/"
+    assert "location.replace('docs/'" in html, \
+        "the scripted redirect does not point at docs/"
+    assert '<a href="docs/">' in html, \
+        "no visible fallback link for a browser that honours neither"
+    # and the target has to exist, or the redirect is a loop into a 404
+    assert (REPO / "docs" / "index.html").exists()
