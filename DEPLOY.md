@@ -59,16 +59,25 @@ built from, so the two can never drift apart.
 
 ```bash
 npm install --no-save playwright && npx playwright install chromium
-python tests/webapp/make_reference.py   # reference values from the Python package
-node tests/webapp/parity.mjs            # browser engine vs those values
-node tests/webapp/smoke.mjs             # every page, every report, in Chromium
+node tests/webapp/parity.mjs                     # browser engine vs the package
+node tests/webapp/smoke.mjs                      # every page and report, in Chromium
+python tests/webapp/make_reference.py --check    # the reference values are current
 ```
 
 `parity.mjs` runs the real sample workbooks through the browser
-readers and analyses and compares the result against the Python
-toolkit's own output, so the port cannot drift from the package it
-came from. `smoke.mjs` loads each sample, visits every page, builds
-every report and fails on any console error.
+readers and analyses and compares the result against
+`tests/webapp/reference.json`, which holds the Python toolkit's own
+output, so the port cannot drift from the package it came from.
+`smoke.mjs` loads each sample, visits every page, builds every report
+and fails on any console error.
+
+`reference.json` is committed so `parity.mjs` runs without a Python
+environment. `--check` regenerates it in memory and compares, within a
+tolerance rather than byte for byte: the inversion and the Theis fit go
+through LAPACK, which is not bit reproducible across BLAS builds, so the
+last digit of a fitted transmissivity legitimately differs between
+machines. Regenerate the file with `python tests/webapp/make_reference.py`
+when a change to the toolkit is meant to move the numbers.
 
 Notes:
 

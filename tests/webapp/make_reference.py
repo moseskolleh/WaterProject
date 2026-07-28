@@ -6,14 +6,29 @@ same inputs through the JavaScript engine in headless Chromium and
 compares the two, so the standalone web app cannot silently drift away
 from the package it was ported from.
 
-    python tests/webapp/make_reference.py
+    python tests/webapp/make_reference.py            # regenerate the file
+    python tests/webapp/make_reference.py --check    # verify it, don't rewrite
     node tests/webapp/parity.mjs
+
+The committed file is checked in so ``parity.mjs`` runs without a Python
+environment, and ``--check`` is what CI uses to keep it honest.
+
+``--check`` compares within a tolerance rather than byte for byte. The
+inversion and the Theis fit go through LAPACK, which is not bit
+reproducible across BLAS builds: the same input gives 1.4021310045105808
+on one machine and 1.4021310045105801 on another. Those last digits carry
+no information about the toolkit, so requiring them to match would make CI
+fail on a runner upgrade while a genuine change of a millimetre in a
+screen depth slipped through. The tolerance is tight enough that any real
+change in behaviour still fails.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -161,6 +176,67 @@ def build() -> dict:
     return out
 
 
+# Loose enough to absorb a different BLAS build, tight enough that a real
+# change in any reported quantity fails: 1e-6 relative is a millionth of a
+# metre on a screen depth and a millionth of a percent on a fit error.
+CHECK_RTOL = 1e-6
+
+
+def drifted(fresh, committed, path=""):
+    """Yield ``(path, fresh, committed)`` for every value that really differs."""
+    if isinstance(fresh, dict) and isinstance(committed, dict):
+        for key in sorted(set(fresh) | set(committed)):
+            if key not in fresh or key not in committed:
+                yield (f"{path}.{key}", fresh.get(key, "<missing>"),
+                       committed.get(key, "<missing>"))
+                continue
+            yield from drifted(fresh[key], committed[key], f"{path}.{key}")
+    elif isinstance(fresh, list) and isinstance(committed, list):
+        if len(fresh) != len(committed):
+            yield (f"{path}[]", f"{len(fresh)} items", f"{len(committed)} items")
+            return
+        for i, (a, b) in enumerate(zip(fresh, committed)):
+            yield from drifted(a, b, f"{path}[{i}]")
+    elif isinstance(fresh, (int, float)) and isinstance(committed, (int, float)):
+        if isinstance(fresh, bool) or isinstance(committed, bool):
+            if fresh != committed:
+                yield (path, fresh, committed)
+        elif not math.isclose(fresh, committed, rel_tol=CHECK_RTOL, abs_tol=1e-12):
+            yield (path, fresh, committed)
+    elif fresh != committed:
+        yield (path, fresh, committed)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--check", action="store_true",
+        help="compare the committed file against a fresh run instead of "
+             "rewriting it; exit non-zero if anything really moved",
+    )
+    args = parser.parse_args()
+    fresh = build()
+
+    if not args.check:
+        OUT.write_text(json.dumps(fresh, indent=1) + "\n", encoding="utf-8")
+        print(f"wrote {OUT}")
+        return 0
+
+    if not OUT.exists():
+        print(f"{OUT} is missing; run this without --check to create it")
+        return 1
+    committed = json.loads(OUT.read_text(encoding="utf-8"))
+    differences = list(drifted(fresh, committed))
+    if not differences:
+        print(f"{OUT} agrees with this toolkit to {CHECK_RTOL:g} relative")
+        return 0
+    print(f"{OUT} disagrees with this toolkit in {len(differences)} place(s):")
+    for path, a, b in differences[:20]:
+        print(f"  {path.lstrip('.')}: fresh {a!r} vs committed {b!r}")
+    print("\nIf the change is intended, regenerate with:\n"
+          "  python tests/webapp/make_reference.py")
+    return 1
+
+
 if __name__ == "__main__":
-    OUT.write_text(json.dumps(build(), indent=1), encoding="utf-8")
-    print(f"wrote {OUT}")
+    sys.exit(main())
