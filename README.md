@@ -200,9 +200,9 @@ python -m pytest             # parsers, numerics, reports
 
 # the standalone web app, in a real browser
 npm install --no-save playwright && npx playwright install chromium
-python tests/webapp/make_reference.py   # reference values from this package
-node tests/webapp/parity.mjs            # browser engine vs those values
-node tests/webapp/smoke.mjs             # every page and every report
+node tests/webapp/parity.mjs                    # browser engine vs this package
+node tests/webapp/smoke.mjs                     # every page and every report
+python tests/webapp/make_reference.py --check   # the reference values are current
 ```
 
 The VES forward model is validated against analytic two-layer image

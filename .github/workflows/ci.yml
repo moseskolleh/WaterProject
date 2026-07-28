@@ -76,11 +76,13 @@ jobs:
           git diff --exit-code docs/js/gwt-data.js
 
       # The browser engine is a port of the Python package, so it is held to
-      # the package's own numbers on the real sample workbooks.
+      # the package's own numbers on the real sample workbooks. --check
+      # compares within a tolerance rather than byte for byte: LAPACK is not
+      # bit reproducible across BLAS builds, so the last digit of a fitted
+      # transmissivity legitimately differs between machines.
       - name: Numerical parity with the Python toolkit
         run: |
-          python tests/webapp/make_reference.py
-          git diff --exit-code tests/webapp/reference.json
+          python tests/webapp/make_reference.py --check
           node tests/webapp/parity.mjs
 
       - name: Drive the app end to end
