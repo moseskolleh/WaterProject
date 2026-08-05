@@ -79,21 +79,28 @@ never leave the machine. Its engine is held to the Python package's own
 numbers by a parity check in CI, on the real sample workbooks. Source
 lives in `docs/`.
 
-Every page the Streamlit app has, the standalone app has. Two of them
-work differently rather than less:
-
-- the PDF text-layer reader works from the layout of the words on the
-  page, where the server version uses pdfplumber and finds a table from
-  the rules drawn around it;
-- the AI-assisted reading of a photographed sheet needs an Anthropic
-  API key, which the server holds in its secrets and the browser asks
-  the operator for on the Settings page. It is kept out of saved
-  project files, so sharing a project never shares the key.
+Every page the Streamlit app has, the standalone app has. One works
+differently rather than less: the AI-assisted reading of a photographed
+sheet needs an Anthropic API key, which the server holds in its secrets
+and the browser asks the operator for on the Settings page. It is kept
+out of saved project files, so sharing a project never shares the key.
 
 Two features reach the network, and both are a button rather than
 something a page does on its own: the live Water Point Data Exchange
 lookup (which always has an offline CSV path beside it) and the AI
 extraction. Everything else works with the cable pulled out.
+
+That is meant literally. The standalone app registers a service worker
+that keeps the whole app — page, stylesheet, engine, sample projects
+and data tables — on the device after one visit, and ships a web app
+manifest, so it installs from the browser and opens full screen with no
+network at all. The Water Point Data Exchange and the Anthropic API are
+never intercepted and never cached: a water point inventory read back
+off disk would be indistinguishable from a live one, and a request
+carrying an API key does not belong in a cache. Both apps are also
+honest about when the local copy stops being written: if the browser's
+storage fills up, autosave says so and asks for a project file rather
+than failing quietly.
 
 The Streamlit app is the complete server version. The WebAssembly build
 is that same Python app compiled to run in the browser through
@@ -193,7 +200,9 @@ so field practice can be adapted without code changes;
 `web/build_geodata.py` documents how the bundled map layers are
 derived from their sources, and `web/build_webapp_data.py` re-emits
 those same tables into the standalone web app so the two can never
-disagree.
+disagree. `web/build_icons.mjs` rasterises `docs/icon.svg` into the
+sizes the web app manifest needs, using the same headless Chromium the
+browser tests run in.
 
 Key behaviours built in from the real field sheets:
 
@@ -216,6 +225,17 @@ thresholds, pumping test safety factors and borehole design rules live
 in `groundwater/config.py` and can be overridden per project by a
 `config.yaml` in the project folder. The WHO/national standards table
 is an editable CSV (`groundwater/data/who_guidelines.csv`).
+
+Its `sl_source` column records where each national value came from.
+Every one of them currently reads `provisional`: they are WHO guideline
+figures carried across, or limits taken from regional practice, and
+have not been checked against the Sierra Leone Standards Bureau
+drinking water specification. Both apps and the water quality report
+say so wherever a national verdict is shown, because failing an
+unconfirmed limit is a prompt to check the specification, not a
+compliance finding to put in front of a regulator. Confirm a figure,
+set `sl_source` to the issuing specification, and the warning drops
+away for that parameter — no code change needed.
 
 ## Tests and docs
 

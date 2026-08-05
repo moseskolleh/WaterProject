@@ -116,6 +116,26 @@ await withPage(async (page, base, consoleErrors) => {
   const vesSvgs = await page.evaluate(() => document.querySelectorAll('#page-host svg').length);
   check('ves page draws curves', vesSvgs >= 2, `found ${vesSvgs}`);
 
+  // The visible text of a .docx, in reading order. A report that is a valid
+  // ZIP with all the right OOXML parts can still be empty of the numbers it
+  // was built to carry, so the checks below read what a client would read.
+  await page.evaluate(() => {
+    window.__docText = async function (bytes) {
+      const files = await window.GWT.support.unzip(bytes);
+      const parts = ['word/document.xml', 'word/footer1.xml']
+        .filter((n) => files[n]);
+      return parts.map((name) => {
+        const xml = new DOMParser().parseFromString(
+          new TextDecoder().decode(files[name]), 'application/xml');
+        /* w:t carries the run text; w:tab and paragraph ends become spaces so
+         * adjacent cells never run two words together */
+        return Array.from(xml.getElementsByTagName('w:p')).map((p) =>
+          Array.from(p.getElementsByTagName('w:t'))
+            .map((t) => t.textContent).join('')).join('\n');
+      }).join('\n');
+    };
+  });
+
   // build every report from the dr_timbo project
   await page.evaluate(() => window.GWT.app.goto('overview'));
   await page.evaluate(() => {
@@ -173,6 +193,60 @@ await withPage(async (page, base, consoleErrors) => {
       check(`report: ${kind} zip complete`,
         required.every((r) => parts.names.includes(r)) && parts.docLen > 1000,
         parts.names.join(', '));
+
+      // and the headline figures actually reached the page. Structure alone
+      // proves nothing: a report can be a perfect ZIP full of dashes.
+      const content = await page.evaluate(async (k) => {
+        const text = await window.__docText(window.__lastDocx);
+        const d = window.GWT.app.derived, C = window.GWT.core;
+        const site = window.GWT.app.store.get('site');
+        const has = (s) => (s !== null && s !== undefined && s !== '')
+          && text.includes(String(s));
+        /* [description, expected value] - each is read back out of the same
+         * derived result the page shows, so the report cannot drift from it */
+        const wants = { completion: [], pumping: [], quality: [], costing: [],
+          supervision: [], handover: [] };
+
+        wants.completion = [
+          ['community', has(site.community)],
+          ['borehole reference', has(d.log.borehole_ref)],
+          ['total depth', has(C.fmtNum(d.design.total_depth_m))],
+          ['screen length', has(C.fmtNum(d.design.total_screen_length_m))],
+        ];
+        wants.pumping = [
+          ['transmissivity', has(window.GWT.support.sig(
+            d.analysis.transmissivity_m2_per_day, 3))],
+          ['safe yield', has(C.fmtNum(
+            d.analysis.yield_recommendation.safe_yield_m3_per_h))],
+          ['test type', has(d.analysis.test_type || d.test.test_type)],
+        ];
+        wants.quality = [
+          ['the verdict', has(d.assessment.verdict)],
+          ['a determinand name', has(d.assessment.rows[0].parameter)],
+          ['the sample identifier',
+            has(d.sample.sample_id) || has(d.sample.borehole_ref)],
+        ];
+        wants.costing = [
+          ['a bill line', has(d.estimate.items[0].item)],
+          ['the total cost', has(window.GWT.support.money(
+            d.estimate.total_cost_usd, 0).replace(/^\$/, ''))],
+        ];
+        wants.supervision = [
+          ['a checklist item', has(C.loadChecklists()[0].text)],
+          ['the section name', has(C.loadChecklists()[0].section)],
+        ];
+        wants.handover = [
+          ['community', has(site.community)],
+          ['total depth', has(C.fmtNum(d.design.total_depth_m))],
+          ['the water quality verdict', has(d.assessment.verdict)],
+        ];
+        return { len: text.length, wants: wants[k] };
+      }, kind);
+      const missing = (content.wants || []).filter(([, ok]) => !ok)
+        .map(([what]) => what);
+      check(`report: ${kind} carries its headline figures`,
+        content.wants.length > 0 && missing.length === 0,
+        `missing: ${missing.join(', ')} (${content.len} chars of text)`);
     }
   }
 
@@ -593,6 +667,157 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify(docxTest.points[0]) === JSON.stringify(docxTest.points[1]) &&
     JSON.stringify(docxTest.levels[0]) === JSON.stringify(docxTest.levels[1]),
     JSON.stringify(docxTest.points));
+
+  // --- provisional national standards -------------------------------------
+  // The national column is carried WHO/regional figures, not a confirmed
+  // Sierra Leone Standards Bureau specification. A national exceedance that
+  // did not say so would read as a compliance finding.
+  const provisional = await page.evaluate(() => {
+    const params = window.GWT.core.provisionalNationalParameters();
+    const table = window.GWT.core.loadStandards();
+    return {
+      count: params.length,
+      arsenic: table.arsenic && table.arsenic.sl_provisional,
+      hasNote: (window.GWT.core.PROVISIONAL_NATIONAL_NOTE || '').length > 100,
+      /* an entry with no national value at all is not "provisional" */
+      noNationalIsNotProvisional: Object.keys(table)
+        .filter((k) => !table[k].sl_standard)
+        .every((k) => table[k].sl_provisional === false),
+    };
+  });
+  check('standards: the national column is flagged provisional',
+    provisional.count > 0 && provisional.arsenic === true && provisional.hasNote,
+    JSON.stringify(provisional));
+  check('standards: a missing national value is not called provisional',
+    provisional.noNationalIsNotProvisional === true);
+
+  await page.evaluate(() => window.GWT.app.goto('quality'));
+  await page.waitForTimeout(120);
+  const qualityNote = await page.evaluate(() => {
+    const text = document.querySelector('#page-host').textContent;
+    return {
+      onPage: text.includes('National limits are provisional'),
+      lists: /Unconfirmed: .*Arsenic/.test(text),
+    };
+  });
+  check('standards: the quality page says the national limits are unconfirmed',
+    qualityNote.onPage && qualityNote.lists, JSON.stringify(qualityNote));
+
+  const qualityDoc = await page.evaluate(async () => {
+    const docx = window.GWT.docx, d = window.GWT.app.derived;
+    const builder = await docx.qualityReport({
+      site: window.GWT.app.store.get('site'),
+      assessment: d.assessment, figures: [],
+    });
+    const text = await window.__docText(await builder.build());
+    return {
+      len: text.length,
+      saysProvisional: text.includes('The national column in the standards ' +
+        'table is provisional'),
+    };
+  });
+  check('standards: the quality report says the national column is provisional',
+    qualityDoc.len > 1000 && qualityDoc.saysProvisional, JSON.stringify(qualityDoc));
+
+  // --- autosave failure is announced --------------------------------------
+  // localStorage quota is finite and photographs are large. Autosave dropping
+  // out silently is the worst thing this app can do to a day of fieldwork.
+  const autosave = await page.evaluate(async () => {
+    const store = window.GWT.app.store;
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function () {
+      const err = new Error('quota');
+      err.name = 'QuotaExceededError';
+      throw err;
+    };
+    const okDuringFailure = store.persist();
+    const failingState = store.autosaveOk();
+    const bannerShown = !!document.querySelector('#autosave-banner .callout-bad');
+    Storage.prototype.setItem = original;
+    const okAfterRecovery = store.persist();
+    return {
+      okDuringFailure, failingState, bannerShown, okAfterRecovery,
+      recovered: store.autosaveOk(),
+      bannerCleared: !document.querySelector('#autosave-banner .callout-bad'),
+      bannerText: document.querySelector('#autosave-banner')?.textContent || '',
+    };
+  });
+  check('autosave: a failed mirror write is reported, not swallowed',
+    autosave.okDuringFailure === false && autosave.failingState === false &&
+    autosave.bannerShown === true, JSON.stringify(autosave));
+  check('autosave: the warning clears once writing works again',
+    autosave.okAfterRecovery === true && autosave.recovered === true &&
+    autosave.bannerCleared === true, JSON.stringify(autosave));
+
+  // --- offline: the app installs itself ------------------------------------
+  // 127.0.0.1 is a secure context, so the real worker registers here.
+  const worker = await page.evaluate(async () => {
+    const reg = await navigator.serviceWorker.ready;
+    return { scope: reg.scope, controlled: !!navigator.serviceWorker.controller };
+  }).catch((e) => ({ error: String(e) }));
+  check('offline: the service worker registers and takes control',
+    !!worker.scope && worker.controlled === true, JSON.stringify(worker));
+
+  const cached = await page.evaluate(async () => {
+    const names = await caches.keys();
+    const cache = await caches.open(names.find((n) => n.startsWith('gwt-v')));
+    const keys = await cache.keys();
+    const paths = keys.map((r) => new URL(r.url).pathname).sort();
+    return {
+      names,
+      paths,
+      /* the app itself is on disk ... */
+      hasShell: paths.some((p) => p.endsWith('/index.html')),
+      hasEngine: paths.some((p) => p.endsWith('/js/gwt-core.js')),
+      hasData: paths.some((p) => p.endsWith('/js/gwt-data.js')),
+      hasManifest: paths.some((p) => p.endsWith('/manifest.webmanifest')),
+      /* ... and nothing that belongs to somebody else's server is */
+      noForeign: keys.every((r) => new URL(r.url).origin === location.origin),
+      noWasm: !paths.some((p) => p.includes('/wasm/')),
+    };
+  });
+  check('offline: the whole app shell is precached',
+    cached.hasShell && cached.hasEngine && cached.hasData && cached.hasManifest,
+    JSON.stringify(cached.paths));
+  check('offline: nothing cross-origin is cached',
+    cached.noForeign === true && cached.noWasm === true,
+    JSON.stringify(cached.paths));
+
+  // The WPdx and Anthropic endpoints must never be answered from disk: a
+  // stale water point inventory read back from cache is indistinguishable
+  // from a live one, and an API key does not belong in a cache.
+  const passthrough = await page.evaluate(async () => {
+    const names = await caches.keys();
+    const cache = await caches.open(names.find((n) => n.startsWith('gwt-v')));
+    const probes = ['https://data.waterpointdata.org/resource/eqje-vguj.json?x=1',
+      'https://api.anthropic.com/v1/messages'];
+    const hits = [];
+    for (const url of probes) {
+      hits.push(!!(await cache.match(url, { ignoreSearch: true })));
+    }
+    return hits;
+  });
+  check('offline: external APIs are never served from the cache',
+    passthrough.every((hit) => hit === false), JSON.stringify(passthrough));
+
+  // With the network gone the app still opens: this is the whole point.
+  const offlineLoad = await page.evaluate(async () => {
+    const reg = await navigator.serviceWorker.ready;
+    if (!reg.active) return { error: 'no active worker' };
+    return { ok: true };
+  });
+  if (offlineLoad.ok) {
+    await page.context().setOffline(true);
+    await page.goto(base + '/index.html', { waitUntil: 'load' });
+    const bootedOffline = await page.evaluate(() =>
+      !!(window.GWT && window.GWT.app && window.GWT.data &&
+         Object.keys(window.GWT.data.samples || {}).length > 0));
+    await page.context().setOffline(false);
+    check('offline: the app boots with the network switched off', bootedOffline);
+  } else {
+    check('offline: the app boots with the network switched off', false,
+      JSON.stringify(offlineLoad));
+  }
 
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));

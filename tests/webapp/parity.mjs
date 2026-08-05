@@ -334,6 +334,35 @@ await withPage(async (page, base, consoleErrors) => {
       p[3] === R.portfolio.points[i][3]),
     `js ${JSON.stringify(parsed.portfolio.points)}\n     py ${JSON.stringify(R.portfolio.points)}`);
 
+  // --- The unruled PDF field sheet ---
+  // Both readers find this table from word positions rather than from ruling
+  // lines, which is the case where the two implementations could most easily
+  // drift apart. They read the same bytes, carried in the reference file.
+  const pdf = await page.evaluate(async (b64) => {
+    try {
+      const doc = await GWT.core.extractPdfText(
+        GWT.support.base64ToBytes(b64), 'ves_sheet.pdf');
+      return {
+        kind: doc.document_kind,
+        header: doc.header.map((f) => [f.name, f.value]),
+        tables: doc.tables.map((t) => ({ columns: t.columns, rows: t.rows })),
+        uncertain: doc.uncertain_cells.length,
+      };
+    } catch (e) { return { error: e.message }; }
+  }, R.pdf_sheet.b64);
+
+  check('pdf sheet: the same document kind',
+    pdf.kind === R.pdf_sheet.kind, `js ${pdf.kind || pdf.error} py ${R.pdf_sheet.kind}`);
+  check('pdf sheet: the same header fields',
+    JSON.stringify(pdf.header) === JSON.stringify(R.pdf_sheet.header),
+    `js ${JSON.stringify(pdf.header)}\n     py ${JSON.stringify(R.pdf_sheet.header)}`);
+  check('pdf sheet: the same table, found without ruling lines',
+    JSON.stringify(pdf.tables) === JSON.stringify(R.pdf_sheet.tables),
+    `js ${JSON.stringify(pdf.tables)}\n     py ${JSON.stringify(R.pdf_sheet.tables)}`);
+  check('pdf sheet: the same cells held back for review',
+    pdf.uncertain === R.pdf_sheet.uncertain,
+    `js ${pdf.uncertain} py ${R.pdf_sheet.uncertain}`);
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, {});
 

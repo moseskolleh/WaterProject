@@ -7,6 +7,11 @@
 <meta name="description" content="Analysis and reporting for rural water supply boreholes: VES siting, borehole design, pumping tests, water quality, costing, supervision and client-ready Word reports — entirely in the browser." />
 <meta name="color-scheme" content="light dark" />
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJnIiB4MT0iMCIgeTE9IjAiIHgyPSIwIiB5Mj0iMSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjNEM5QkQ2Ii8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMUY1QzhCIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHBhdGggZmlsbD0idXJsKCNnKSIgZD0iTTMyIDQgQzI4IDE2IDEyIDI2IDEyIDQxIEMxMiA1Mi4wNSAyMC45NSA2MSAzMiA2MSBDNDMuMDUgNjEgNTIgNTIuMDUgNTIgNDEgQzUyIDI2IDM2IDE2IDMyIDQgWiIvPjxwYXRoIGZpbGw9Im5vbmUiIHN0cm9rZT0iI0ZGRkZGRiIgc3Ryb2tlLXdpZHRoPSIzLjYiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgZD0iTTE3LjUgNDIuNSBDMjEgMzguNSAyNSAzOC41IDI4LjUgNDIuNSBDMzIgNDYuNSAzNiA0Ni41IDM5LjUgNDIuNSBDNDIgMzkuNyA0NC41IDM5LjIgNDYuNSA0MSIvPjwvc3ZnPg==" />
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#1F5C8B" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Groundwater" />
+<link rel="apple-touch-icon" href="icon-192.png" />
 <link rel="stylesheet" href="css/gwt.css" />
 </head>
 <body>
@@ -34,6 +39,9 @@
   <nav class="app-nav" id="app-nav" aria-label="Sections"></nav>
 
   <main class="app-main" id="main" tabindex="-1">
+    <!-- filled in only when the browser stops mirroring the session to
+         localStorage; see autosave handling in gwt-app.js -->
+    <div id="autosave-banner" role="status" aria-live="polite"></div>
     <noscript>
       <div class="callout callout-warn">
         <p><strong>This application needs JavaScript.</strong> Everything runs in

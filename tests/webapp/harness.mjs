@@ -15,6 +15,7 @@ const ROOT = fileURLToPath(new URL('../../docs/', import.meta.url));
 const TYPES = {
   '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
   '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png',
+  '.webmanifest': 'application/manifest+json',
   '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   '.md': 'text/markdown',
 };

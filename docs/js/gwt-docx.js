@@ -308,6 +308,44 @@
     return this;
   };
 
+  /* The professional decision behind a figure, as recorded on the Depth Spine.
+   *
+   * The toolkit recommends; a named person accepts or overrides. An override
+   * is the thing that ends up in front of the client under someone's name, so
+   * it carries its reason and the figure it replaced - a report that printed
+   * only the accepted number would hide the judgement that produced it. */
+  ReportBuilder.prototype.signOff = function (records) {
+    var self = this;
+    var list = (records || []).filter(Boolean);
+    if (!list.length) return this;
+    this.heading('Professional Sign-off', 1);
+    this.paragraph('Each figure below was reviewed against the toolkit\'s ' +
+      'recommendation before this report was issued.');
+    this.table(list.map(function (record) {
+      return [
+        record.label,
+        record.status === 'accepted' ? 'Accepted' : 'Overridden',
+        record.value,
+        record.signatory + '\n' + record.at,
+      ];
+    }), {
+      header: ['Stage', 'Decision', 'Certified value', 'Signed'],
+      colWidthsCm: [3.6, 2.6, 4.4, 5.0], fontSize: 9.5,
+      caption: 'Decisions recorded against this borehole',
+    });
+    list.forEach(function (record) {
+      if (record.status === 'overridden') {
+        self.paragraph(record.label + ': the toolkit recommended ' +
+          record.recommended + '. ' + (record.reason || 'No reason recorded.'));
+      }
+      if (!record.clean) {
+        self.paragraph(record.label + ': signed with a data check still open. ' +
+          'The flags on that stage are listed above.');
+      }
+    });
+    return this;
+  };
+
   ReportBuilder.prototype.signatures = function (roles) {
     var self = this;
     this.spacer();
@@ -801,6 +839,7 @@
     }
     figures.forEach(function (f) { b.figure(f.image, f.caption, f.widthCm || 13); });
 
+    b.signOff(context.signOff);
     b.references([REFERENCES.rwsn_professional, REFERENCES.rwsn_supervision]);
     b.glossary(GLOSSARY);
     return b;
@@ -963,6 +1002,7 @@
     limitationsParagraphs('pumping').forEach(function (text) {
       b.paragraph(text, { align: 'justify' });
     });
+    b.signOff(context.signOff);
     b.references([REFERENCES.rwsn_professional, REFERENCES.rwsn_supervision]);
     b.glossary(GLOSSARY);
     return b;
@@ -1020,6 +1060,12 @@
       caption: 'Laboratory results against WHO and national standards',
       fontSize: 8.5, colWidthsCm: [3.0, 1.6, 1.4, 1.8, 1.8, 1.9, 4.1],
     });
+
+    /* A national exceedance reads as a compliance failure, so the report has
+     * to say plainly when the limit it was judged against is not confirmed. */
+    if (C.provisionalNationalParameters().length) {
+      b.paragraph(C.PROVISIONAL_NATIONAL_NOTE, { align: 'justify' });
+    }
 
     b.heading('3. Ionic Balance Check', 1);
     if (assessment.ionic) {
@@ -1080,6 +1126,7 @@
     limitationsParagraphs('quality').forEach(function (text) {
       b.paragraph(text, { align: 'justify' });
     });
+    b.signOff(context.signOff);
     b.references([REFERENCES.who, REFERENCES.stop_the_rot]);
     b.glossary(GLOSSARY);
     return b;
@@ -1206,6 +1253,7 @@
         'expected dry attempts across a package of boreholes.',
     ].concat(context.notes || []));
 
+    b.signOff(context.signOff);
     b.references([REFERENCES.rwsn_cost, REFERENCES.rwsn_pricing, REFERENCES.unicef_toolkit]);
     return b;
   }
@@ -1391,6 +1439,7 @@
     b.heading('8. Handover Signatures', 1);
     b.signatures(['Client representative', 'Community / committee chair',
       'Contractor', 'District water office']);
+    b.signOff(context.signOff);
     b.references([REFERENCES.rwsn_professional, REFERENCES.who, REFERENCES.unicef_toolkit]);
     b.glossary(GLOSSARY);
     return b;

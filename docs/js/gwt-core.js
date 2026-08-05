@@ -2229,13 +2229,37 @@
         who_health: parseLimit(row.who_health_gv),
         who_aesthetic: parseLimit(row.who_aesthetic),
         sl_standard: parseLimit(row.sl_standard),
+        /* where the national value came from: "provisional" means it has not
+         * been checked against the Sierra Leone Standards Bureau
+         * specification - a WHO figure carried across, or one adopted from
+         * regional practice */
+        sl_source: (row.sl_source || '').trim(),
         category: row.category || '',
         note: row.note || '',
       };
+      entry.sl_provisional = !!entry.sl_standard && entry.sl_source === 'provisional';
       table[normaliseParameter(entry.parameter)] = entry;
     });
     if (!rows) _standardsCache = table;
     return table;
+  }
+
+  /* Said wherever a national verdict is shown, while any national value is
+   * still provisional. A compliance failure against an unconfirmed limit is a
+   * prompt to check the specification, not a finding to put to a regulator. */
+  var PROVISIONAL_NATIONAL_NOTE = 'The national column in the standards table ' +
+    'is provisional: its values are WHO guideline figures carried across, or ' +
+    'limits adopted from regional practice, and have not been confirmed ' +
+    'against the Sierra Leone Standards Bureau drinking water specification. ' +
+    'Confirm the figures before treating a national exceedance as a ' +
+    'compliance finding.';
+
+  function provisionalNationalParameters(table) {
+    var entries = table || loadStandards();
+    return Object.keys(entries).map(function (key) { return entries[key]; })
+      .filter(function (entry) { return entry.sl_provisional; })
+      .map(function (entry) { return entry.parameter; })
+      .sort();
   }
 
   /* --- ionic balance -------------------------------------------------------
@@ -2865,6 +2889,8 @@
   Object.assign(C, {
     parseLimit: parseLimit, limitExceededBy: limitExceededBy, limitText: limitText,
     normaliseParameter: normaliseParameter, loadStandards: loadStandards,
+    PROVISIONAL_NATIONAL_NOTE: PROVISIONAL_NATIONAL_NOTE,
+    provisionalNationalParameters: provisionalNationalParameters,
     sampleValue: sampleValue, ionicBalance: ionicBalance,
     computeWqi: computeWqi, assessHealthRisk: assessHealthRisk,
     assessCorrosivity: assessCorrosivity, assessSample: assessSample,

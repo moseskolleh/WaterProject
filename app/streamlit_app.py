@@ -120,7 +120,13 @@ from groundwater.project_io import (
     stale_on_load,
 )
 from groundwater.recompute import recompute_results
-from groundwater.quality import assess_sample, plot_piper, plot_stiff
+from groundwater.quality import (
+    PROVISIONAL_NATIONAL_NOTE,
+    assess_sample,
+    plot_piper,
+    plot_stiff,
+    provisional_national_parameters,
+)
 from groundwater.reporting.costing import CostReportInputs, build_cost_report
 from groundwater.reporting.handover import (
     CommitteeMember,
@@ -2223,6 +2229,14 @@ with tab_quality:
             for r in assessment.rows
         ]
         st.dataframe(rows, width="stretch")
+
+        # A national exceedance reads as a compliance failure, so say plainly
+        # when the limit it was judged against is not yet confirmed.
+        if provisional := provisional_national_parameters():
+            st.warning(
+                f"{PROVISIONAL_NATIONAL_NOTE}\n\n"
+                f"Unconfirmed: {', '.join(provisional)}."
+            )
 
         if assessment.ionic is not None:
             st.write(

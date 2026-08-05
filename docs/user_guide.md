@@ -78,6 +78,18 @@ parameter list. For results below the detection limit write `<` and
 the limit (for example `<0.01`) in the value column. Add extra
 parameters on new rows with their units.
 
+Results are judged against two columns: the WHO guideline value and a
+national one. **The national column is provisional.** Its values are
+WHO figures carried across or limits taken from regional practice, and
+have not been confirmed against the Sierra Leone Standards Bureau
+drinking water specification. The apps and the water quality report say
+so wherever a national verdict appears. Treat a national exceedance as
+a reason to check the specification, not as a compliance finding to put
+in front of a regulator. The table is an editable CSV
+(`groundwater/data/who_guidelines.csv`): confirm a figure, put the
+issuing specification in its `sl_source` column, and the warning drops
+away for that parameter.
+
 ## 5a. Finding your way around
 
 The web interface is one workspace with a sidebar. The sidebar holds
@@ -97,6 +109,20 @@ The same pages are in the standalone browser app, which needs no
 install and no Python; it keeps the project in the browser and saves it
 as a `.gwt.json` file rather than a `.yaml` one. Either app can read
 the other's saved projects on the Portfolio page.
+
+The browser app installs. Open it once with a connection and it keeps
+itself on the device; the Overview page then offers an **Install**
+button, after which it opens full screen like any other application and
+works with no network at all. Only the live water point lookup and the
+AI-assisted scan reading need a connection - everything else, including
+every sample project and the standards tables, is already on the
+device.
+
+The browser app also keeps a running copy of the session in the
+browser's own storage, so a refresh never loses fieldwork. That storage
+is finite and photographs are large. If a write fails, the app says so
+across the top of the page and asks for a project file: from that point
+the file you save is the only record, so save one.
 
 **Overview** opens first and is the project dashboard: the lifecycle
 strip across the top shows how far the borehole has got (Sited →
