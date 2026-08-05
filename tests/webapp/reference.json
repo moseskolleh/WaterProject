@@ -1129,6 +1129,363 @@
    "zone": 29
   }
  ],
+ "distance": [
+  {
+   "a": [
+    8.5,
+    -12.01
+   ],
+   "b": [
+    8.5,
+    -11.99
+   ],
+   "metres": 2202.0958864909685
+  },
+  {
+   "a": [
+    8.4657,
+    -13.2317
+   ],
+   "b": [
+    7.9647,
+    -11.7383
+   ],
+   "metres": 173627.76073556134
+  },
+  {
+   "a": [
+    8.0,
+    -12.0
+   ],
+   "b": [
+    8.0,
+    -12.0
+   ],
+   "metres": 0.0
+  }
+ ],
+ "statuses": {
+  "Successful": "successful",
+  "Completed - dry": "dry",
+  "incomplete": "in_progress",
+  "not completed": "in_progress",
+  "unproductive": "dry",
+  "non-productive": "dry",
+  "low productivity": "dry",
+  "in progress": "in_progress",
+  "Sited": "sited",
+  "visited": "other",
+  "qwerty": "other"
+ },
+ "units": [
+  {
+   "value": 5.0,
+   "from": "ug/L",
+   "to": "mg/L",
+   "result": 0.005
+  },
+  {
+   "value": 5.0,
+   "from": "ppb",
+   "to": "mg/L",
+   "result": 0.005
+  },
+  {
+   "value": 0.5,
+   "from": "g/L",
+   "to": "mg/L",
+   "result": 500.0
+  },
+  {
+   "value": 0.185,
+   "from": "mS/cm",
+   "to": "uS/cm",
+   "result": 185.0
+  },
+  {
+   "value": 2.0,
+   "from": "CFU/mL",
+   "to": "CFU/100 mL",
+   "result": 200.0
+  },
+  {
+   "value": 2.0,
+   "from": "L/s",
+   "to": "m3/h",
+   "result": 7.2
+  },
+  {
+   "value": 120.0,
+   "from": "L/min",
+   "to": "m3/h",
+   "result": 7.199999999999999
+  },
+  {
+   "value": 2.0,
+   "from": "h",
+   "to": "min",
+   "result": 120.0
+  },
+  {
+   "value": 5.0,
+   "from": "gpm",
+   "to": "m3/h",
+   "result": null
+  },
+  {
+   "value": 5.0,
+   "from": "squiggles",
+   "to": "mg/L",
+   "result": null
+  },
+  {
+   "value": 5.0,
+   "from": "mg/L",
+   "to": "NTU",
+   "result": null
+  }
+ ],
+ "verdicts": {
+  "empty": {
+   "state": "indeterminate",
+   "statuses": [],
+   "reasons": [],
+   "converted": [],
+   "uncertainties": [
+    "the sample carries no laboratory results",
+    "the health panel is incomplete: no evaluable result for E. coli, Arsenic, Fluoride, Nitrate (as NO3)"
+   ],
+   "missing_essential": [
+    "E. coli",
+    "Arsenic",
+    "Fluoride",
+    "Nitrate (as NO3)"
+   ],
+   "verdict": "The water cannot be declared suitable for drinking on these results: the sample carries no laboratory results; the health panel is incomplete: no evaluable result for E. coli, Arsenic, Fluoride, Nitrate (as NO3). Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off."
+  },
+  "pass": {
+   "state": "pass",
+   "statuses": [
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "within_limits"
+   ],
+   "reasons": [
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   "converted": [
+    0.0,
+    0.001,
+    0.3,
+    5.0,
+    7.2
+   ],
+   "uncertainties": [],
+   "missing_essential": [],
+   "verdict": "All measured parameters comply with the WHO guideline values and the national standard limits applied. The water is suitable for drinking on the basis of the parameters tested."
+  },
+  "aesthetic": {
+   "state": "aesthetic",
+   "statuses": [
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "exceeds_aesthetic"
+   ],
+   "reasons": [
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   "converted": [
+    0.0,
+    0.001,
+    0.3,
+    5.0,
+    0.5
+   ],
+   "uncertainties": [],
+   "missing_essential": [],
+   "verdict": "The water meets all health based guideline values. Acceptability (aesthetic) limits are exceeded for: Iron. The water is usable for drinking, although taste, odour or staining complaints may arise; simple treatment is advisable."
+  },
+  "national_fail": {
+   "state": "national_fail",
+   "statuses": [
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "exceeds_national"
+   ],
+   "reasons": [
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   "converted": [
+    0.0,
+    0.001,
+    0.3,
+    5.0,
+    0.5
+   ],
+   "uncertainties": [],
+   "missing_essential": [],
+   "verdict": "The water meets the WHO health based guideline values, but does not comply with the national standard limit(s) for: Aluminium. Treatment is required before the supply can be accepted against the national standard; check whether the limit exceeded is a health or an acceptability limit."
+  },
+  "health_fail": {
+   "state": "health_fail",
+   "statuses": [
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "exceeds_health"
+   ],
+   "reasons": [
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   "converted": [
+    0.0,
+    0.001,
+    0.3,
+    5.0,
+    0.5
+   ],
+   "uncertainties": [],
+   "missing_essential": [],
+   "verdict": "The water does not meet the health based guideline value(s) for: Arsenic. Treatment or an alternative source is required before the water is used for drinking."
+  },
+  "micrograms": {
+   "state": "pass",
+   "statuses": [
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "within_limits"
+   ],
+   "reasons": [
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   "converted": [
+    0.0,
+    0.001,
+    0.3,
+    5.0,
+    0.005
+   ],
+   "uncertainties": [],
+   "missing_essential": [],
+   "verdict": "All measured parameters comply with the WHO guideline values and the national standard limits applied. The water is suitable for drinking on the basis of the parameters tested."
+  },
+  "bad_unit": {
+   "state": "indeterminate",
+   "statuses": [
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "indeterminate"
+   ],
+   "reasons": [
+    "",
+    "",
+    "",
+    "",
+    "unit_unreadable"
+   ],
+   "converted": [
+    0.0,
+    0.001,
+    0.3,
+    5.0,
+    null
+   ],
+   "uncertainties": [
+    "Iron could not be assessed: the reported unit could not be read"
+   ],
+   "missing_essential": [],
+   "verdict": "The water cannot be declared suitable for drinking on these results: Iron could not be assessed: the reported unit could not be read. Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off."
+  },
+  "shallow_dl": {
+   "state": "indeterminate",
+   "statuses": [
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "indeterminate"
+   ],
+   "reasons": [
+    "",
+    "",
+    "",
+    "",
+    "detection_limit_above_guideline"
+   ],
+   "converted": [
+    0.0,
+    0.001,
+    0.3,
+    5.0,
+    null
+   ],
+   "uncertainties": [
+    "Cadmium could not be assessed: the detection limit is above the limit being checked"
+   ],
+   "missing_essential": [],
+   "verdict": "The water cannot be declared suitable for drinking on these results: Cadmium could not be assessed: the detection limit is above the limit being checked. Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off."
+  },
+  "unknown_parameter": {
+   "state": "indeterminate",
+   "statuses": [
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "no_guideline"
+   ],
+   "reasons": [
+    "",
+    "",
+    "",
+    "",
+    "unknown_parameter"
+   ],
+   "converted": [
+    0.0,
+    0.001,
+    0.3,
+    5.0,
+    null
+   ],
+   "uncertainties": [
+    "Glyphosate has no entry in the standards table, so it was not checked against any limit"
+   ],
+   "missing_essential": [],
+   "verdict": "The water cannot be declared suitable for drinking on these results: Glyphosate has no entry in the standards table, so it was not checked against any limit. Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off."
+  }
+ },
  "portfolio": {
   "rows": [
    {
@@ -1155,7 +1512,7 @@
     "Status": "Dry / failed",
     "Depth (m)": 52.0,
     "Safe yield (m3/h)": null,
-    "Water": "Aesthetic only",
+    "Water": "Not proven safe*",
     "Cost/m (USD)": 151.0
    }
   ],
@@ -1177,10 +1534,22 @@
    "n_projects": 3,
    "n_drilled": 2,
    "n_successful": 1,
+   "n_status_unrecognised": 0,
    "success_rate": 50.0,
    "mean_safe_yield_m3_per_h": 2.34,
    "mean_cost_per_meter_usd": 142.0,
-   "wq_pass_rate": 100.0
+   "n_wq_assessed": 2,
+   "wq_counts": {
+    "health_fail": 0,
+    "national_fail": 0,
+    "indeterminate": 1,
+    "aesthetic": 0,
+    "pass": 1,
+    "unknown": 0
+   },
+   "wq_compliant_rate": 50.0,
+   "wq_fail_rate": 0.0,
+   "wq_unproven_rate": 50.0
   },
   "detail": [
    [

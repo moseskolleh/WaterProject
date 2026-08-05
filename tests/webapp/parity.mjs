@@ -160,7 +160,7 @@ await withPage(async (page, base, consoleErrors) => {
         easting: 778000.0, northing: 946000.0, utm_zone: 28,
         status: 'Completed - successful', total_depth_m: 45.0,
         safe_yield_m3_per_h: 2.34, water_verdict: 'pass',
-        cost_per_meter_usd: 133.0 },
+        verdict_schema: 2, cost_per_meter_usd: 133.0 },
       { community: 'Kuntoloh', district: 'Western Area Rural',
         status: 'Completed - dry', total_depth_m: 52.0,
         water_verdict: 'aesthetic', cost_per_meter_usd: 151.0 },
@@ -181,6 +181,65 @@ await withPage(async (page, base, consoleErrors) => {
         const utm = C.geographicToUtm(lat, lon);
         return { lat, lon, easting: utm.easting, northing: utm.northing, zone: utm.zone };
       });
+
+    out.distance = [
+      [[8.50, -12.01], [8.50, -11.99]],
+      [[8.4657, -13.2317], [7.9647, -11.7383]],
+      [[8.0, -12.0], [8.0, -12.0]],
+    ].map(([a, b]) => ({
+      a, b, metres: C.geodesicDistanceM(a[0], a[1], b[0], b[1]),
+    }));
+
+    out.statuses = {};
+    ['Successful', 'Completed - dry', 'incomplete', 'not completed',
+      'unproductive', 'non-productive', 'low productivity', 'in progress',
+      'Sited', 'visited', 'qwerty'].forEach((raw) => {
+      out.statuses[raw] = C.classifyStatus({ status: raw });
+    });
+
+    out.units = [
+      [5.0, 'ug/L', 'mg/L'], [5.0, 'ppb', 'mg/L'], [0.5, 'g/L', 'mg/L'],
+      [0.185, 'mS/cm', 'uS/cm'], [2.0, 'CFU/mL', 'CFU/100 mL'],
+      [2.0, 'L/s', 'm3/h'], [120.0, 'L/min', 'm3/h'], [2.0, 'h', 'min'],
+      [5.0, 'gpm', 'm3/h'], [5.0, 'squiggles', 'mg/L'], [5.0, 'mg/L', 'NTU'],
+    ].map(([value, from, to]) => ({
+      value, from, to, result: C.convertUnit(value, from, to),
+    }));
+
+    const panel = [
+      { parameter: 'E. coli', value: 0.0, unit: 'CFU/100 mL' },
+      { parameter: 'Arsenic', value: 0.001, unit: 'mg/L' },
+      { parameter: 'Fluoride', value: 0.3, unit: 'mg/L' },
+      { parameter: 'Nitrate (as NO3)', value: 5.0, unit: 'mg/L' },
+    ];
+    const wq = (...results) => ({ site: { community: 'Ref' }, results, flags: [] });
+    const verdictCases = {
+      empty: wq(),
+      pass: wq(...panel, { parameter: 'pH', value: 7.2, unit: 'pH units' }),
+      aesthetic: wq(...panel, { parameter: 'Iron', value: 0.5, unit: 'mg/L' }),
+      national_fail: wq(...panel,
+        { parameter: 'Aluminium', value: 0.5, unit: 'mg/L' }),
+      health_fail: wq(...panel, { parameter: 'Arsenic', value: 0.5, unit: 'mg/L' }),
+      micrograms: wq(...panel, { parameter: 'Lead', value: 5.0, unit: 'ug/L' }),
+      bad_unit: wq(...panel, { parameter: 'Iron', value: 0.1, unit: 'wibbles' }),
+      shallow_dl: wq(...panel, { parameter: 'Cadmium', value: null, unit: 'mg/L',
+        detection_limit: 0.05, below_detection: true }),
+      unknown_parameter: wq(...panel,
+        { parameter: 'Glyphosate', value: 0.4, unit: 'mg/L' }),
+    };
+    out.verdicts = {};
+    Object.keys(verdictCases).forEach((name) => {
+      const a = C.assessSample(verdictCases[name]);
+      out.verdicts[name] = {
+        state: a.verdict_state,
+        statuses: a.rows.map((r) => r.status),
+        reasons: a.rows.map((r) => r.reason),
+        converted: a.rows.map((r) => r.value_in_guideline_unit),
+        uncertainties: a.uncertainties,
+        missing_essential: a.missing_essential,
+        verdict: a.verdict,
+      };
+    });
 
     out.portfolio = {
       rows: C.portfolioRows(summaries),
@@ -318,6 +377,46 @@ await withPage(async (page, base, consoleErrors) => {
       close(g.northing, R.geo[i].northing, 1e-9) && g.zone === R.geo[i].zone,
       `js ${g.easting}, ${g.northing}, ${g.zone} vs py ${R.geo[i].easting}, ` +
       `${R.geo[i].northing}, ${R.geo[i].zone}`);
+  });
+
+  // --- Ground distance ---
+  // Both engines have to agree on the same ellipsoidal answer, not merely on
+  // a close one: a haversine port against a Vincenty Python would be 2.6 m
+  // out on the zone-crossing pair and 89 m out over Freetown to Bo.
+  parsed.distance.forEach((d, i) => {
+    check(`distance[${i}]: metres`, close(d.metres, R.distance[i].metres, 1e-9),
+      `js ${d.metres} vs py ${R.distance[i].metres}`);
+  });
+
+  // --- Free-text borehole status ---
+  check('statuses', JSON.stringify(parsed.statuses) === JSON.stringify(R.statuses),
+    `js ${JSON.stringify(parsed.statuses)}\n     py ${JSON.stringify(R.statuses)}`);
+
+  // --- Unit conversion ---
+  parsed.units.forEach((u, i) => {
+    const py = R.units[i].result;
+    const same = (u.result === null || py === null)
+      ? u.result === py : close(u.result, py, 1e-9);
+    check(`units[${i}] ${u.value} ${u.from} -> ${u.to}`, same,
+      `js ${u.result} vs py ${py}`);
+  });
+
+  // --- Water quality verdict ---
+  Object.keys(R.verdicts).forEach((name) => {
+    const js = parsed.verdicts[name], py = R.verdicts[name];
+    check(`verdict ${name}: state`, js.state === py.state,
+      `js ${js.state} vs py ${py.state}`);
+    for (const key of ['statuses', 'reasons', 'uncertainties',
+      'missing_essential', 'verdict']) {
+      check(`verdict ${name}: ${key}`,
+        JSON.stringify(js[key]) === JSON.stringify(py[key]),
+        `js ${JSON.stringify(js[key])}\n     py ${JSON.stringify(py[key])}`);
+    }
+    check(`verdict ${name}: converted`,
+      js.converted.length === py.converted.length &&
+      js.converted.every((v, i) => (v === null || py.converted[i] === null)
+        ? v === py.converted[i] : close(v, py.converted[i], 1e-9)),
+      `js ${JSON.stringify(js.converted)}\n     py ${JSON.stringify(py.converted)}`);
   });
 
   // --- Portfolio ---

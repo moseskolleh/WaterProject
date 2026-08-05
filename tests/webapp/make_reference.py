@@ -45,15 +45,22 @@ from groundwater.ingestion import (
     read_quality_workbook,
     read_ves_workbook,
 )
+from groundwater.models import (
+    SiteMetadata,
+    WaterQualityResult,
+    WaterQualitySample,
+)
 from groundwater.portfolio import (
+    classify_status,
     portfolio_points,
     portfolio_rows,
     portfolio_stats,
     site_detail,
     site_one_pager,
 )
-from groundwater.geo import geographic_to_utm
+from groundwater.geo import geodesic_distance_m, geographic_to_utm
 from groundwater.quality import assess_sample
+from groundwater.units import convert as unit_convert
 from groundwater.siting import assess_siting
 from groundwater.ves.interpret import interpret_model
 from groundwater.ves.inversion import invert_sounding
@@ -274,6 +281,78 @@ def build() -> dict:
         for lat, lon in ((8.4657, -13.2317), (8.7043, -11.4084), (7.9560, -11.7400))
     ]
 
+    # Ground distance. Subtracting raw eastings across the 28N/29N boundary
+    # put two sites 2.2 km apart 659 km apart, so both engines have to agree
+    # on the same ellipsoidal answer, not merely on a close one.
+    out["distance"] = [
+        {"a": [8.50, -12.01], "b": [8.50, -11.99],
+         "metres": clean(geodesic_distance_m(8.50, -12.01, 8.50, -11.99))},
+        {"a": [8.4657, -13.2317], "b": [7.9647, -11.7383],
+         "metres": clean(geodesic_distance_m(8.4657, -13.2317, 7.9647, -11.7383))},
+        {"a": [8.0, -12.0], "b": [8.0, -12.0],
+         "metres": clean(geodesic_distance_m(8.0, -12.0, 8.0, -12.0))},
+    ]
+
+    # Free-text borehole statuses, including the ones substring matching read
+    # as successes ("incomplete" contains "complete").
+    out["statuses"] = {
+        raw: classify_status({"status": raw})
+        for raw in ("Successful", "Completed - dry", "incomplete",
+                    "not completed", "unproductive", "non-productive",
+                    "low productivity", "in progress", "Sited", "visited",
+                    "qwerty")
+    }
+
+    # Unit conversion, the layer both engines put every value through before
+    # it is compared against a limit.
+    out["units"] = [
+        {"value": v, "from": f, "to": t, "result": clean(unit_convert(v, f, t))}
+        for v, f, t in (
+            (5.0, "ug/L", "mg/L"), (5.0, "ppb", "mg/L"), (0.5, "g/L", "mg/L"),
+            (0.185, "mS/cm", "uS/cm"), (2.0, "CFU/mL", "CFU/100 mL"),
+            (2.0, "L/s", "m3/h"), (120.0, "L/min", "m3/h"), (2.0, "h", "min"),
+            (5.0, "gpm", "m3/h"), (5.0, "squiggles", "mg/L"),
+            (5.0, "mg/L", "NTU"),
+        )
+    ]
+
+    # The verdict, over samples chosen to reach every state.
+    def _wq(*results):
+        return WaterQualitySample(site=SiteMetadata(community="Ref"),
+                                  results=list(results))
+
+    _panel = [
+        WaterQualityResult("E. coli", 0.0, "CFU/100 mL"),
+        WaterQualityResult("Arsenic", 0.001, "mg/L"),
+        WaterQualityResult("Fluoride", 0.3, "mg/L"),
+        WaterQualityResult("Nitrate (as NO3)", 5.0, "mg/L"),
+    ]
+    _cases = {
+        "empty": _wq(),
+        "pass": _wq(*_panel, WaterQualityResult("pH", 7.2, "pH units")),
+        "aesthetic": _wq(*_panel, WaterQualityResult("Iron", 0.5, "mg/L")),
+        "national_fail": _wq(*_panel, WaterQualityResult("Aluminium", 0.5, "mg/L")),
+        "health_fail": _wq(*_panel, WaterQualityResult("Arsenic", 0.5, "mg/L")),
+        "micrograms": _wq(*_panel, WaterQualityResult("Lead", 5.0, "ug/L")),
+        "bad_unit": _wq(*_panel, WaterQualityResult("Iron", 0.1, "wibbles")),
+        "shallow_dl": _wq(*_panel, WaterQualityResult(
+            "Cadmium", None, "mg/L", detection_limit=0.05, below_detection=True)),
+        "unknown_parameter": _wq(
+            *_panel, WaterQualityResult("Glyphosate", 0.4, "mg/L")),
+    }
+    out["verdicts"] = {}
+    for name, sample in _cases.items():
+        a = assess_sample(sample)
+        out["verdicts"][name] = {
+            "state": a.verdict_state,
+            "statuses": [r.status for r in a.rows],
+            "reasons": [r.reason for r in a.rows],
+            "converted": [clean(r.value_in_guideline_unit) for r in a.rows],
+            "uncertainties": list(a.uncertainties),
+            "missing_essential": list(a.missing_essential),
+            "verdict": a.verdict,
+        }
+
     # The portfolio view, over summaries chosen to exercise every status class
     # and the zone-inference fallback.
     summaries = [
@@ -283,7 +362,7 @@ def build() -> dict:
          "easting": 778000.0, "northing": 946000.0, "utm_zone": 28,
          "status": "Completed - successful", "total_depth_m": 45.0,
          "safe_yield_m3_per_h": 2.34, "water_verdict": "pass",
-         "cost_per_meter_usd": 133.0},
+         "verdict_schema": 2, "cost_per_meter_usd": 133.0},
         {"community": "Kuntoloh", "district": "Western Area Rural",
          "status": "Completed - dry", "total_depth_m": 52.0,
          "water_verdict": "aesthetic", "cost_per_meter_usd": 151.0},

@@ -6486,8 +6486,11 @@
      * inside the aesthetic bucket, so a portfolio breaching the national
      * standard everywhere still showed 100% passing. Three rates replace it,
      * reported separately so nobody can read one of them as all three. */
-    var counts = { unknown: 0 };
+    /* worst first, then the unreadable bucket - the same key order the
+     * Python side emits, so the two serialise identically */
+    var counts = {};
     VERDICT_ORDER.forEach(function (state) { counts[state] = 0; });
+    counts.unknown = 0;
     var assessed = 0;
     list.forEach(function (s) {
       if (!s.water_verdict) return;
