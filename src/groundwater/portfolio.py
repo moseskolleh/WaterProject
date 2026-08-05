@@ -53,19 +53,27 @@ _LEGACY_VERDICTS = {
 def classify_status(summary: dict) -> str:
     """Normalise a project's free-text status into a portfolio class.
 
-    An unrecognised status becomes :attr:`SiteStatus.OTHER` rather than
-    anything positive. Substring matching used to read "incomplete" and
-    "unproductive" as successes, which inflated every programme's reported
-    success rate and painted failed holes green on the national map.
+    Returns the plain wire string (``"successful"``, ``"dry"``, ...), not the
+    :class:`SiteStatus` member. It compares equal to the member either way,
+    and a plain string is what a saved project file, a map layer and a YAML
+    dump can all carry - an enum member cannot be safe-dumped, and a caller
+    who put one in a summary would only find that out at save time.
+
+    An unrecognised status becomes ``"other"`` rather than anything positive.
+    Substring matching used to read "incomplete" and "unproductive" as
+    successes, which inflated every programme's reported success rate and
+    painted failed holes green on the national map.
     """
     raw = str(summary.get("status") or "").strip()
     if not raw:
-        return (
+        found = (
             SiteStatus.SITED
             if summary.get("safe_yield_m3_per_h") or summary.get("total_depth_m")
             else SiteStatus.OTHER
         )
-    return classify_text(raw) or SiteStatus.OTHER
+    else:
+        found = classify_text(raw) or SiteStatus.OTHER
+    return found.value
 
 
 def verdict_state(summary: dict) -> tuple[str | None, bool]:
@@ -144,9 +152,7 @@ def portfolio_points(summaries: list[dict]) -> list[dict]:
                 "label": s.get("community") or "site",
                 "lat": latlon[0],
                 "lon": latlon[1],
-                # the plain wire value, so a saved project and the map layer
-                # serialise identically whatever the enum is called
-                "status": classify_status(s).value,
+                "status": classify_status(s),
             }
         )
     return points

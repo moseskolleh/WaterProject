@@ -34,6 +34,16 @@ _SUMMARIES = [
 ]
 
 
+def test_classify_status_returns_a_plain_serialisable_string():
+    """Not an enum member: a project file, a map layer and a YAML dump all
+    have to be able to carry it, and safe_dump cannot represent an enum."""
+    import yaml
+
+    status = classify_status({"status": "Successful"})
+    assert type(status) is str
+    assert yaml.safe_dump({"status": status})
+
+
 def test_classify_status():
     assert classify_status({"status": "Successful"}) == "successful"
     assert classify_status({"status": "Dry hole"}) == "dry"
