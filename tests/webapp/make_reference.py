@@ -13,6 +13,11 @@ from the package it was ported from.
 The committed file is checked in so ``parity.mjs`` runs without a Python
 environment, and ``--check`` is what CI uses to keep it honest.
 
+Producing the file needs the ``extract`` extra (``pip install -e
+'.[dev,extract]'``): one of the reference values is what the Python PDF
+reader makes of an unruled field sheet, and that reader is pdfplumber
+backed. Reading the file needs nothing.
+
 ``--check`` compares within a tolerance rather than byte for byte. The
 inversion and the Theis fit go through LAPACK, which is not bit
 reproducible across BLAS builds: the same input gives 1.4021310045105808
