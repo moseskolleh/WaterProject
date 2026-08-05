@@ -111,6 +111,11 @@ def _normalise(text: str) -> str:
     s = re.sub(r"\bdegrees?\b|\bdeg\b", "deg ", s)
     s = re.sub(r"\bcelsius\b|\bcentigrade\b", "c", s)
     s = s.replace(".", "")
+    # "-", "n/a" and friends are how a sheet writes "no unit here", not a
+    # unit. Reading "-" as pH units made every non-pH row carrying the
+    # ordinary blank marker unevaluable.
+    if s in ("-", "--", "n/a", "na", "none", "nil", "?"):
+        return ""
     # collapse whitespace, and drop it around a solidus so "mg / l" == "mg/l"
     s = re.sub(r"\s+", " ", s).strip()
     s = re.sub(r"\s*/\s*", "/", s)
@@ -167,7 +172,7 @@ _register("CFU/mL", "microbial", 100.0, ["cfu/ml", "mpn/ml", "count/ml"])
 _register("CFU/L", "microbial", 0.1, ["cfu/l", "mpn/l", "count/l"])
 
 # --- pH ---------------------------------------------------------------------
-_register("pH units", "ph", 1.0, ["ph units", "ph unit", "ph", "-", "su",
+_register("pH units", "ph", 1.0, ["ph units", "ph unit", "ph", "su",
                                   "standard units"])
 
 # --- temperature, base deg C ------------------------------------------------
@@ -346,11 +351,19 @@ def unit_from_label(text: str, *, dimension: str) -> tuple[str, Optional[Unit]]:
     return first_written, None
 
 
+# A unit beside a number is a short token: "L/s", "m3/h", "min". Anything
+# longer, or with a space inside, or with no letter in it, is a field
+# annotation - "5 (pump off)", "12 pump stopped", "5*" - and reading one as a
+# unit refused the reading and, for a time column, dropped the whole series.
+_CELL_UNIT_RE = re.compile(r"^[a-z0-9/\u00b3\u00b2^-]{1,12}$")
+
+
 def _unit_in_cell(cell) -> str:
     """Any unit written next to the number inside a value cell itself.
 
     A crew that types "0.81 L/s" into a column headed m3/h means L/s, so the
-    cell outranks its header.
+    cell outranks its header. A note written beside the reading is not a
+    unit and is ignored, so the header still speaks for the column.
     """
     if cell is None or isinstance(cell, (int, float)):
         return ""
@@ -360,6 +373,13 @@ def _unit_in_cell(cell) -> str:
         return ""
     tail = (text[: match.start()] + " " + text[match.end():]).strip()
     tail = tail.strip("()[]:= \t")
+    if not tail:
+        return ""
+    normalised = _normalise(tail)
+    if not normalised or not _CELL_UNIT_RE.match(normalised):
+        return ""
+    if not any(ch.isalpha() for ch in normalised):
+        return ""
     return tail
 
 

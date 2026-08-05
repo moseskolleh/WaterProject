@@ -43,7 +43,7 @@ from pathlib import Path
 import numpy as np
 
 from ..models import DataFlag, PumpingStep, PumpingTest
-from ..units import Quantity, convert, read_quantity
+from ..units import Quantity, convert, read_quantity, unit_from_label
 from ..utils import clean_text, parse_number
 from . import common
 
@@ -118,19 +118,32 @@ def _find_groups(grid: list[list]) -> tuple[int, list[dict]] | None:
 
 def _read_series(
     grid: list[list], header_row: int, group: dict
-) -> tuple[np.ndarray, np.ndarray, str]:
+) -> tuple[np.ndarray, np.ndarray, str, list[str]]:
     """Read one Time / Water Level pair, with the times put into minutes.
 
-    Returns ``(times_min, levels, time_unit)``. ``time_unit`` is the unit the
-    column declared; it is empty when nothing was declared (minutes assumed)
-    and ``"?<text>"`` when a unit was declared that could not be read - in
-    which case the caller must drop the group rather than treat unknown
-    units as minutes. Unlike discharge, there is no "pending" state for time:
-    every consumer would silently produce wrong transmissivities.
+    Returns ``(times_min, levels, time_unit, skipped)``. ``time_unit`` is the
+    unit the column declared; it is empty when nothing was declared (minutes
+    assumed) and ``"?<text>"`` when the *header* declared one that could not
+    be read - in which case the caller must drop the group rather than treat
+    unknown units as minutes. Unlike discharge, there is no "pending" state
+    for time: every consumer would silently produce wrong transmissivities.
+
+    ``skipped`` lists individual cells whose own text could not be read; they
+    cost one reading each rather than the column, and the caller reports
+    them.
     """
     header = group.get("time_header", "")
-    times, levels = [], []
-    unit_text = ""
+    # A unit the header declares applies to the whole column, so an
+    # unreadable one there costs the group. A unit written into one cell
+    # applies to that cell, so an unreadable one there costs one reading -
+    # otherwise a single annotated entry ("5 (approx)") threw away the test.
+    declared, header_unit = unit_from_label(header, dimension="time")
+    if declared and header_unit is None:
+        return (np.array([], dtype=float), np.array([], dtype=float),
+                f"?{declared}", [])
+
+    times, levels, skipped = [], [], []
+    unit_text = declared
     for row in grid[header_row + 1 :]:
         cell = row[group["time"]] if group["time"] < len(row) else None
         wl = parse_number(row[group["level"]]) if group["level"] < len(row) else None
@@ -138,16 +151,15 @@ def _read_series(
         if quantity.status == "absent" or wl is None:
             continue
         if quantity.status == "unknown":
-            return (
-                np.array([], dtype=float),
-                np.array([], dtype=float),
-                f"?{quantity.unit_text}",
-            )
+            # one unreadable reading, not a broken column - but never silent
+            skipped.append(str(cell))
+            continue
         if quantity.unit_text:
             unit_text = quantity.unit_text
         times.append(quantity.value)
         levels.append(wl)
-    return np.array(times, dtype=float), np.array(levels, dtype=float), unit_text
+    return (np.array(times, dtype=float), np.array(levels, dtype=float),
+            unit_text, skipped)
 
 
 _STEP_LABEL_RE = re.compile(r"^\s*step\s*\d*\s*q\b", re.IGNORECASE)
@@ -287,7 +299,7 @@ def _assemble(grid: list[list], source: str) -> PumpingTest:
         for group in groups:
             if group["kind"] != kind:
                 continue
-            t, wl, unit_text = _read_series(grid, header_row, group)
+            t, wl, unit_text, skipped = _read_series(grid, header_row, group)
             if unit_text.startswith("?"):
                 flags.append(
                     DataFlag(
@@ -309,6 +321,17 @@ def _assemble(grid: list[list], source: str) -> PumpingTest:
                         "time_unit_converted",
                         f"The {kind} times are recorded in '{unit_text}' and "
                         "have been converted to minutes for the analysis.",
+                    )
+                )
+            if skipped:
+                flags.append(
+                    DataFlag(
+                        "warning",
+                        "time_reading_unreadable",
+                        f"{len(skipped)} {kind} reading(s) carried text this "
+                        "toolkit could not read as a time and were left out ("
+                        + ", ".join(repr(x) for x in skipped[:3])
+                        + "). Put notes outside the reading columns.",
                     )
                 )
             if len(t):

@@ -297,3 +297,38 @@ def test_the_sample_sheets_still_read_exactly_as_before(sample_data):
     assert test.steps[0].discharge_m3_per_h == pytest.approx(2.93)
     assert list(test.steps[0].time_min[:4]) == [0.0, 1.0, 2.0, 3.0]
     assert not [f for f in test.flags if "unit" in f.code]
+
+
+def test_a_note_beside_a_reading_is_not_a_unit():
+    """A field annotation in a value cell used to be read as a unit.
+
+    "5 (pump off)" made the cell unreadable, and because an unreadable time
+    unit drops its column, one annotated entry threw away the whole test.
+    """
+    for cell in ("5 (pump off)", "12 pump stopped", "5*", "5 ?", "3 -"):
+        q = read_quantity(cell, "Time (min)", dimension="time")
+        assert q.status == "ok", (cell, q)
+        assert q.value == pytest.approx(float(str(cell).split()[0].rstrip("*? -")))
+    # a real unit in a cell is still read, and a real wrong one still refused
+    assert read_quantity("0.81 L/s", "Q (m3/h)", dimension="flow").status == "converted"
+    assert read_quantity("45 wibbles", "Q (m3/h)", dimension="flow").status == "unknown"
+
+
+def test_the_blank_marker_is_not_a_ph_unit():
+    """A dash is how a sheet writes "no unit", and it used to parse as pH -
+    which made every non-pH row carrying one unevaluable."""
+    for marker in ("-", "--", "n/a", "N/A", "nil", "?"):
+        assert parse_unit(marker) is None, marker
+    a = assess_sample(_sample(WaterQualityResult("Iron", 0.1, "-")))
+    assert a.rows[0].status == "within_limits"
+    assert a.rows[0].reason == "unit_assumed"
+
+
+def test_one_unreadable_reading_costs_one_reading_not_the_column(tmp_path,
+                                                                 constant_test):
+    from groundwater.ingestion import read_pumping_workbook
+
+    path = _pumping_copy(tmp_path, constant_test, {"A14": "3 (furlongs)"})
+    test = read_pumping_workbook(path)
+    assert len(test.steps[0].time_min) >= 8      # the rest of the column survives
+    assert any(f.code == "time_reading_unreadable" for f in test.flags)

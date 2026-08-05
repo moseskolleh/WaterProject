@@ -162,6 +162,12 @@ def to_standard_unit(
     reported = str(reported_unit or "").strip()
     guideline = str(entry.unit or "").strip()
 
+    # "-", "n/a" and friends normalise away to nothing: they are how a sheet
+    # writes "no unit here", so they take the no-unit path rather than the
+    # unreadable one.
+    if reported and not normalise_unit_text(reported):
+        reported = ""
+
     if not reported:
         # No unit on the sheet. The guideline's own unit is the only reading
         # under which the number means anything; the assumption is recorded

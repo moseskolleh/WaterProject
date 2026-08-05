@@ -2197,6 +2197,10 @@
     s = s.replace(/\bdegrees?\b|\bdeg\b/g, 'deg ');
     s = s.replace(/\bcelsius\b|\bcentigrade\b/g, 'c');
     s = s.replace(/\./g, '');
+    /* "-", "n/a" and friends are how a sheet writes "no unit here", not a
+     * unit. Reading "-" as pH units made every non-pH row carrying the
+     * ordinary blank marker unevaluable. */
+    if (['-', '--', 'n/a', 'na', 'none', 'nil', '?'].indexOf(s) >= 0) return '';
     s = s.replace(/\s+/g, ' ').trim().replace(/\s*\/\s*/g, '/');
     return s;
   }
@@ -2244,7 +2248,7 @@
   registerUnit('CFU/mL', 'microbial', 100.0, ['cfu/ml', 'mpn/ml', 'count/ml']);
   registerUnit('CFU/L', 'microbial', 0.1, ['cfu/l', 'mpn/l', 'count/l']);
   registerUnit('pH units', 'ph', 1.0,
-    ['ph units', 'ph unit', 'ph', '-', 'su', 'standard units']);
+    ['ph units', 'ph unit', 'ph', 'su', 'standard units']);
   registerUnit('deg C', 'temperature', 1.0, ['deg c', 'c', '°c', 'degc',
     'celsius']);
   registerUnit('deg F', 'temperature', 5.0 / 9.0, ['deg f', 'f', '°f',
@@ -2266,7 +2270,7 @@
   registerUnit('cm', 'length', 0.01, ['cm']);
   registerUnit('mm', 'length', 1e-3, ['mm']);
   registerUnit('ft', 'length', 0.3048, ['ft', 'feet', 'foot']);
-  registerUnit('in', 'length', 0.0254, ['in', 'inch', 'inches']);
+  registerUnit('in', 'length', 0.0254, ['in', 'inch', 'inches', '"']);
 
   /* A unit string alone cannot tell metres from minutes; the caller says
    * which family it is reading, so "m" in a depth column is length and "m"
@@ -2343,6 +2347,12 @@
     return { written: firstWritten, unit: null };
   }
 
+  /* A unit beside a number is a short token: "L/s", "m3/h", "min". Anything
+   * longer, or with a space inside, or with no letter in it, is a field
+   * annotation - "5 (pump off)", "12 pump stopped", "5*" - and reading one as
+   * a unit refused the reading. */
+  var CELL_UNIT_RE = /^[a-z0-9/\u00b3\u00b2^-]{1,12}$/;
+
   function unitInCell(cell) {
     if (cell === null || cell === undefined || typeof cell === 'number') return '';
     var text = String(cell).trim().replace(/,/g, '');
@@ -2350,7 +2360,12 @@
     if (!match) return '';
     var tail = (text.slice(0, match.index) + ' ' +
       text.slice(match.index + match[0].length)).trim();
-    return tail.replace(/^[()[\]:=\s]+|[()[\]:=\s]+$/g, '');
+    tail = tail.replace(/^[()[\]:=\s]+|[()[\]:=\s]+$/g, '');
+    if (!tail) return '';
+    var normalised = normaliseUnit(tail);
+    if (!normalised || !CELL_UNIT_RE.test(normalised)) return '';
+    if (!/[a-z]/.test(normalised)) return '';
+    return tail;
   }
 
   /* Read a value off a sheet and put it in the canonical unit. The unit is
@@ -2994,6 +3009,11 @@
   function toGuidelineUnit(value, reportedUnit, entry) {
     var reported = String(reportedUnit || '').trim();
     var guideline = String(entry.unit || '').trim();
+
+    /* "-", "n/a" and friends normalise away to nothing: they are how a sheet
+     * writes "no unit here", so they take the no-unit path rather than the
+     * unreadable one. */
+    if (reported && !normaliseUnit(reported)) reported = '';
 
     if (!reported) return { value: Number(value), reason: 'unit_assumed' };
     if (!guideline) return { value: Number(value), reason: '' };
@@ -5148,7 +5168,16 @@
    * could not be read, in which case the caller drops the group. */
   function readSeries(grid, headerRow, group) {
     var header = group.time_header || '';
-    var times = [], levels = [], unitText = '';
+    /* A unit the header declares applies to the whole column, so an
+     * unreadable one there costs the group. A unit written into one cell
+     * applies to that cell, so an unreadable one there costs one reading -
+     * otherwise a single annotated entry threw away the test. */
+    var declared = unitFromLabel(header, 'time');
+    if (declared.written && !declared.unit) {
+      return { times: [], levels: [], unitText: '?' + declared.written,
+        skipped: [] };
+    }
+    var times = [], levels = [], skipped = [], unitText = declared.written;
     for (var r = headerRow + 1; r < grid.length; r++) {
       var row = grid[r] || [];
       var cell = group.time < row.length ? row[group.time] : null;
@@ -5156,12 +5185,13 @@
       var quantity = readQuantity(cell, [header], 'time');
       if (quantity.status === 'absent' || wl === null) continue;
       if (quantity.status === 'unknown') {
-        return { times: [], levels: [], unitText: '?' + quantity.unit_text };
+        skipped.push(String(cell));   // never silent
+        continue;
       }
       if (quantity.unit_text) unitText = quantity.unit_text;
       times.push(quantity.value); levels.push(wl);
     }
-    return { times: times, levels: levels, unitText: unitText };
+    return { times: times, levels: levels, unitText: unitText, skipped: skipped };
   }
 
   /* The row's own leading label, e.g. "Discharge per step (m3/h)". */
@@ -5281,6 +5311,16 @@
             message: 'The ' + kind + " times are recorded in '" +
               series.unitText + "' and have been converted to minutes for the " +
               'analysis.',
+          });
+        }
+        if ((series.skipped || []).length) {
+          flags.push({
+            level: 'warning', code: 'time_reading_unreadable',
+            message: series.skipped.length + ' ' + kind + ' reading(s) carried ' +
+              'text this toolkit could not read as a time and were left out (' +
+              series.skipped.slice(0, 3).map(function (x) {
+                return "'" + x + "'";
+              }).join(', ') + '). Put notes outside the reading columns.',
           });
         }
         if (series.times.length) out.push(series);
