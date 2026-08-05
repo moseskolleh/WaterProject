@@ -254,3 +254,22 @@ series solutions (agreement better than 0.5 percent); the pumping test
 methods recover synthetic aquifer parameters exactly. See
 `docs/user_guide.md` for the field team guide and
 `QUESTIONS.md` for open items that need project data or decisions.
+
+## Licence and attribution
+
+The toolkit's source code is MIT licensed — see [`LICENSE`](LICENSE).
+
+The bundled data is not all MIT, and one dataset is copyleft: the BGS Africa
+Groundwater Atlas hydrogeology layer is CC BY-SA 4.0, and ShareAlike
+propagates into `docs/js/gwt-data.js` and `docs/wasm/index.html`, which embed
+it. [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) lists every dataset and
+document with its source, its licence and the attribution that licence
+requires; [`data_provenance.yaml`](data_provenance.yaml) is the same record in
+machine-readable form, with a SHA-256 per file so a silent substitution is
+detectable.
+
+Where a licence could not be evidenced from the material itself, both files
+say **unverified — needs confirmation** rather than assuming a permissive one.
+That applies to the reference documents under `WaterProjectFiles/`: they are
+the sources the methods are grounded in, which is provenance, not permission
+to republish.

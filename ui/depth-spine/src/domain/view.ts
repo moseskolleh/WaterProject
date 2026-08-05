@@ -177,9 +177,12 @@ export interface QualityBlock {
   laboratory: string;
   rows: QualityRow[];
   verdict: string;
+  verdictState: 'health_fail' | 'national_fail' | 'indeterminate' | 'aesthetic' | 'pass';
+  uncertainties: string[];
   healthExceedances: string[];
   nationalExceedances: string[];
   aestheticExceedances: string[];
+  indeterminate: string[];
   ionic: IonicBalance | null;
   piper: PiperData | null;
   corrosivity: Corrosivity | null;

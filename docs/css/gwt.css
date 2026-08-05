@@ -423,6 +423,7 @@ table.data tbody tr:hover { background: var(--bg-sunken); }
 table.data.editable td { padding: 0.12rem 0.25rem; }
 table.data tr.row-bad td { background: var(--bad-bg); }
 table.data tr.row-warn td { background: var(--warn-bg); }
+table.data tr.row-info td { background: var(--info-bg); }
 table.data tr.row-ok td { background: var(--ok-bg); }
 table.data tr.row-total td { font-weight: 660; border-top: 2px solid var(--line-strong); }
 .table-foot { display: flex; gap: 0.5rem; padding-top: 0.3rem; }
@@ -488,6 +489,8 @@ table.data tr.row-total td { font-weight: 660; border-top: 2px solid var(--line-
 .callout-warn { border-left-color: var(--warn); background: var(--warn-bg); }
 .callout-ok { border-left-color: var(--ok); background: var(--ok-bg); }
 .callout-bad { border-left-color: var(--bad); background: var(--bad-bg); }
+/* Neither a pass nor a failure: the toolkit saying it cannot tell yet. */
+.callout-info { border-left-color: var(--info); background: var(--info-bg); }
 .callout p:last-child { margin-bottom: 0; }
 
 /* --------------------------------------------------------------- figures */

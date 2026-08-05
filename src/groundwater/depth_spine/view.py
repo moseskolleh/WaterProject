@@ -311,11 +311,14 @@ def _quality(assessment: WaterQualityAssessment) -> dict:
         "laboratory": assessment.sample.laboratory,
         "rows": rows,
         "verdict": assessment.verdict,
+        "verdictState": assessment.verdict_state,
+        "uncertainties": list(assessment.uncertainties),
         "healthExceedances": [r.parameter for r in assessment.health_exceedances],
         "nationalExceedances": [r.parameter for r in assessment.national_exceedances],
         "aestheticExceedances": [
-            r.parameter for r in assessment.rows if r.status == "exceeds_aesthetic"
+            r.parameter for r in assessment.aesthetic_exceedances
         ],
+        "indeterminate": [r.parameter for r in assessment.indeterminate_rows],
         "ionic": ionic,
         "piper": piper,
         "corrosivity": corrosivity,

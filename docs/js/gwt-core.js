@@ -2151,6 +2151,252 @@
     analysePumpingTest: analysePumpingTest,
   });
 
+  /* =============================================================== units
+   * groundwater/units.py. Every number read off a sheet arrives beside a
+   * unit written by hand, and until now those units were decoration: a
+   * laboratory result was compared against a guideline whatever unit each
+   * carried, and a discharge was taken as m3/h whatever the sheet said.
+   * Both are silent, order-of-magnitude errors - 5 ug/L of arsenic is a
+   * fifth of the guideline, read as mg/L it is five hundred times over it.
+   * So units are parsed, not assumed, and an unreadable one is refused.
+   *
+   * Bases: concentration mg/L, conductivity uS/cm, turbidity NTU, microbial
+   * CFU/100 mL, flow m3/h, time min, length m.
+   */
+
+  var CANONICAL_UNITS = {
+    concentration: 'mg/L', conductivity: 'uS/cm', turbidity: 'NTU',
+    microbial: 'CFU/100 mL', ph: 'pH units', temperature: 'deg C',
+    flow: 'm3/h', time: 'min', length: 'm',
+  };
+
+  /* Spellings that name a real quantity without pinning it down. Guessing at
+   * one of these is exactly the failure this section exists to prevent. */
+  var AMBIGUOUS_UNITS = {
+    gpm: 1, gph: 1, 'gal/min': 1, 'gal/h': 1, ppt: 1, jtu: 1,
+  };
+
+  var UNIT_CHAR_FIXES = [
+    [/µ/g, 'u'], [/μ/g, 'u'], [/³/g, '3'], [/²/g, '2'],
+    [/°/g, 'deg '], [/⁄/g, '/'], [/’/g, ''],
+  ];
+
+  function normaliseUnit(text) {
+    var s = String(text === null || text === undefined ? '' : text);
+    UNIT_CHAR_FIXES.forEach(function (pair) { s = s.replace(pair[0], pair[1]); });
+    s = s.toLowerCase().trim().replace(/[–—]/g, '-');
+    s = s.replace(/\bper\b/g, '/');
+    s = s.replace(/\bmilli\s*lit(re|er)s?\b|\bmillilit(re|er)s?\b/g, 'ml');
+    s = s.replace(/\blit(re|er)s?\b/g, 'l');
+    s = s.replace(/\bmet(re|er)s?\b/g, 'm');
+    s = s.replace(/\bcubic\s*m\b/g, 'm3');
+    s = s.replace(/\bminutes?\b|\bmins\b/g, 'min');
+    s = s.replace(/\bseconds?\b|\bsecs\b/g, 's');
+    s = s.replace(/\bhours?\b|\bhrs\b/g, 'h');
+    s = s.replace(/\bdays?\b/g, 'd');
+    s = s.replace(/\bdegrees?\b|\bdeg\b/g, 'deg ');
+    s = s.replace(/\bcelsius\b|\bcentigrade\b/g, 'c');
+    s = s.replace(/\./g, '');
+    s = s.replace(/\s+/g, ' ').trim().replace(/\s*\/\s*/g, '/');
+    return s;
+  }
+
+  var UNIT_BASIS_RE = /\bas\s+([a-z0-9().-]+)\s*$/;
+
+  function splitUnitBasis(text) {
+    var m = UNIT_BASIS_RE.exec(text);
+    if (!m) return [text, ''];
+    return [text.slice(0, m.index).trim(), m[1].replace(/\s+/g, '')];
+  }
+
+  var UNIT_TABLE = {};
+
+  function registerUnit(canonical, dimension, factor, spellings, offset) {
+    spellings.forEach(function (spelling) {
+      UNIT_TABLE[normaliseUnit(spelling)] = {
+        canonical: canonical, dimension: dimension, factor: factor,
+        offset: offset || 0.0,
+      };
+    });
+  }
+
+  registerUnit('mg/L', 'concentration', 1.0,
+    ['mg/l', 'milligrams/l', 'mg per l', 'mg/dm3', 'ppm', 'parts per million',
+      'g/m3']);
+  registerUnit('ug/L', 'concentration', 1e-3,
+    ['ug/l', 'µg/l', 'μg/l', 'mcg/l', 'ppb', 'parts per billion',
+      'mg/m3']);
+  registerUnit('ng/L', 'concentration', 1e-6, ['ng/l']);
+  registerUnit('g/L', 'concentration', 1e3, ['g/l', 'g/dm3', 'kg/m3']);
+  registerUnit('mg/mL', 'concentration', 1e3, ['mg/ml']);
+  registerUnit('uS/cm', 'conductivity', 1.0,
+    ['us/cm', 'µs/cm', 'μs/cm', 'umho/cm', 'umhos/cm',
+      'micro siemens/cm']);
+  registerUnit('mS/cm', 'conductivity', 1e3, ['ms/cm', 'mmho/cm', 'mmhos/cm']);
+  registerUnit('mS/m', 'conductivity', 10.0, ['ms/m']);
+  registerUnit('S/m', 'conductivity', 1e4, ['s/m']);
+  /* NTU, FNU and FTU are numerically interchangeable by convention; JTU is
+   * not, and is refused above rather than converted. */
+  registerUnit('NTU', 'turbidity', 1.0, ['ntu', 'fnu', 'ftu', 'nephelometric']);
+  registerUnit('CFU/100 mL', 'microbial', 1.0,
+    ['cfu/100ml', 'cfu/100 ml', 'mpn/100ml', 'mpn/100 ml', '/100ml',
+      'count/100ml', 'counts/100ml', 'no/100ml', 'cfu/100cm3']);
+  registerUnit('CFU/mL', 'microbial', 100.0, ['cfu/ml', 'mpn/ml', 'count/ml']);
+  registerUnit('CFU/L', 'microbial', 0.1, ['cfu/l', 'mpn/l', 'count/l']);
+  registerUnit('pH units', 'ph', 1.0,
+    ['ph units', 'ph unit', 'ph', '-', 'su', 'standard units']);
+  registerUnit('deg C', 'temperature', 1.0, ['deg c', 'c', '°c', 'degc',
+    'celsius']);
+  registerUnit('deg F', 'temperature', 5.0 / 9.0, ['deg f', 'f', '°f',
+    'degf'], -32.0 * 5.0 / 9.0);
+  registerUnit('m3/h', 'flow', 1.0,
+    ['m3/h', 'm3/hr', 'm³/h', 'cum/h', 'cubic m/h', 'm3 h-1']);
+  registerUnit('m3/d', 'flow', 1.0 / 24.0, ['m3/d', 'm3/day', 'cum/d']);
+  registerUnit('m3/min', 'flow', 60.0, ['m3/min']);
+  registerUnit('m3/s', 'flow', 3600.0, ['m3/s']);
+  registerUnit('L/s', 'flow', 3.6, ['l/s', 'lps', 'l s-1']);
+  registerUnit('L/min', 'flow', 0.06, ['l/min', 'lpm', 'l/m']);
+  registerUnit('L/h', 'flow', 1e-3, ['l/h', 'lph']);
+  registerUnit('L/d', 'flow', 1e-3 / 24.0, ['l/d', 'l/day']);
+  registerUnit('min', 'time', 1.0, ['min', 'mins', 'minute']);
+  registerUnit('s', 'time', 1.0 / 60.0, ['s', 'sec']);
+  registerUnit('h', 'time', 60.0, ['h', 'hr']);
+  registerUnit('d', 'time', 1440.0, ['d', 'day']);
+  registerUnit('m', 'length', 1.0, ['m', 'metre']);
+  registerUnit('cm', 'length', 0.01, ['cm']);
+  registerUnit('mm', 'length', 1e-3, ['mm']);
+  registerUnit('ft', 'length', 0.3048, ['ft', 'feet', 'foot']);
+  registerUnit('in', 'length', 0.0254, ['in', 'inch', 'inches']);
+
+  /* A unit string alone cannot tell metres from minutes; the caller says
+   * which family it is reading, so "m" in a depth column is length and "m"
+   * in a time column is minutes. */
+  var UNIT_DIMENSION_OVERRIDES = {
+    'time|m': { canonical: 'min', dimension: 'time', factor: 1.0, offset: 0.0 },
+    'time|min': { canonical: 'min', dimension: 'time', factor: 1.0, offset: 0.0 },
+    'length|m': { canonical: 'm', dimension: 'length', factor: 1.0, offset: 0.0 },
+  };
+
+  function parseUnit(text, dimension) {
+    var normalised = normaliseUnit(text);
+    if (!normalised) return null;
+    var parts = splitUnitBasis(normalised);
+    var body = parts[0], basis = parts[1];
+    if (AMBIGUOUS_UNITS[body] || AMBIGUOUS_UNITS[normalised]) return null;
+    if (dimension) {
+      var override = UNIT_DIMENSION_OVERRIDES[dimension + '|' + body];
+      if (override) return Object.assign({}, override, { basis: basis });
+    }
+    var entry = UNIT_TABLE[body];
+    if (!entry) return null;
+    if (dimension && entry.dimension !== dimension) return null;
+    return Object.assign({}, entry, { basis: basis });
+  }
+
+  /* A basis stated on one side only is accepted - a laboratory writing plain
+   * "mg/L" for hardness against a "mg/L as CaCO3" guideline means the same
+   * thing. Two *different* stated bases are refused. */
+  function unitsComparable(a, b) {
+    if (!a || !b) return false;
+    if (a.dimension !== b.dimension) return false;
+    if (a.basis && b.basis && a.basis !== b.basis) return false;
+    return true;
+  }
+
+  /* null means "do not use this number against that limit". It never means
+   * zero and must never be treated as a pass. */
+  function convertUnit(value, fromUnit, toUnit, dimension) {
+    var source = parseUnit(fromUnit, dimension);
+    var target = parseUnit(toUnit, dimension);
+    if (!unitsComparable(source, target)) return null;
+    var base = Number(value) * source.factor + source.offset;
+    return (base - target.offset) / target.factor;
+  }
+
+  function canonicalUnit(text, dimension) {
+    var unit = parseUnit(text, dimension);
+    return unit ? unit.canonical
+      : String(text === null || text === undefined ? '' : text).trim();
+  }
+
+  /* A unit written on a field sheet appears in brackets: "Time (min)",
+   * "Discharge per step (m3/h)". Only bracketed text counts as a declared
+   * unit, so an ordinary word in a label is never mistaken for one. */
+  var BRACKETED_UNIT_RE = /[(\[]([^)\]]{1,20})[)\]]/g;
+  var UNIT_NUMBER_RE = /[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?/;
+
+  function unitFromLabel(text, dimension) {
+    var raw = String(text === null || text === undefined ? '' : text);
+    var firstWritten = '';
+    var re = new RegExp(BRACKETED_UNIT_RE.source, 'g');
+    var match;
+    while ((match = re.exec(raw)) !== null) {
+      var candidate = match[1].trim();
+      if (!candidate) continue;
+      /* "(0-60 min)" and "(step or constant)" are prose, not units */
+      if (candidate.split(/\s+/).length > 2) continue;
+      if (new RegExp('^' + UNIT_NUMBER_RE.source + '$').test(candidate)) continue;
+      var unit = parseUnit(candidate, dimension);
+      if (unit) return { written: candidate, unit: unit };
+      if (!firstWritten) firstWritten = candidate;
+    }
+    return { written: firstWritten, unit: null };
+  }
+
+  function unitInCell(cell) {
+    if (cell === null || cell === undefined || typeof cell === 'number') return '';
+    var text = String(cell).trim().replace(/,/g, '');
+    var match = UNIT_NUMBER_RE.exec(text);
+    if (!match) return '';
+    var tail = (text.slice(0, match.index) + ' ' +
+      text.slice(match.index + match[0].length)).trim();
+    return tail.replace(/^[()[\]:=\s]+|[()[\]:=\s]+$/g, '');
+  }
+
+  /* Read a value off a sheet and put it in the canonical unit. The unit is
+   * taken from the cell's own text first - a crew that types "0.81 L/s" into
+   * a column headed m3/h means L/s - then from each hint in turn. Status is
+   * "absent" | "ok" | "converted" | "assumed" | "unknown"; on "unknown" the
+   * value is null and the caller must refuse it rather than default. */
+  function readQuantity(cell, hints, dimension) {
+    var canonical = CANONICAL_UNITS[dimension];
+    var raw = parseNumber(cell);
+    if (raw === null || raw === undefined) {
+      return { value: null, raw_value: null, unit_text: '', status: 'absent',
+        dimension: dimension };
+    }
+    function resolve(written) {
+      var unit = parseUnit(written, dimension);
+      if (!unit) {
+        return { value: null, raw_value: raw, unit_text: written,
+          status: 'unknown', dimension: dimension };
+      }
+      return {
+        value: convertUnit(raw, written, canonical, dimension),
+        raw_value: raw, unit_text: written,
+        status: unit.canonical === canonical ? 'ok' : 'converted',
+        dimension: dimension,
+      };
+    }
+    var inCell = unitInCell(cell);
+    if (inCell) return resolve(inCell);
+    var list = hints || [];
+    for (var i = 0; i < list.length; i++) {
+      var found = unitFromLabel(list[i], dimension);
+      if (!found.written) continue;
+      return resolve(found.written);
+    }
+    return { value: Number(raw), raw_value: raw, unit_text: '',
+      status: 'assumed', dimension: dimension };
+  }
+
+  Object.assign(C, {
+    normaliseUnit: normaliseUnit, parseUnit: parseUnit,
+    convertUnit: convertUnit, unitsComparable: unitsComparable,
+    canonicalUnit: canonicalUnit, unitFromLabel: unitFromLabel,
+    readQuantity: readQuantity, CANONICAL_UNITS: CANONICAL_UNITS,
+  });
+
   /* ======================================================== water quality
    * groundwater/quality/*. The standards table itself is bundled data
    * (data/who_guidelines.csv, embedded by the build as GWT.data.whoGuidelines),
@@ -2621,20 +2867,319 @@
     return assessment;
   }
 
-  /* --- full sample assessment ---------------------------------------------- */
+  /* --- full sample assessment ----------------------------------------------
+   * groundwater/quality/assess.py. Fail-closed: a drinking water verdict is
+   * something a village acts on, so "suitable" is said only when the work
+   * can be shown. Values are converted onto the guideline's own unit before
+   * comparison, a "below detection" result proves compliance only when the
+   * detection limit is under the limit, an unrecognised determinand is an
+   * open question rather than a clean bill, and a sample with nothing
+   * evaluable in it is indeterminate. Silence is not a pass.
+   */
 
   var STATUS_ORDER = ['exceeds_health', 'exceeds_national', 'exceeds_aesthetic',
-    'within_limits', 'below_detection', 'no_guideline', 'not_measured'];
+    'indeterminate', 'within_limits', 'below_detection', 'no_guideline',
+    'not_measured'];
 
-  function nitrateNitriteIndex(sample, table) {
+  var WQ_STATUS_LABELS = {
+    within_limits: 'Complies',
+    exceeds_health: 'EXCEEDS HEALTH GUIDELINE',
+    exceeds_national: 'Exceeds national/adopted limit',
+    exceeds_aesthetic: 'Exceeds acceptability value',
+    indeterminate: 'NOT EVALUABLE',
+    below_detection: 'Below detection',
+    no_guideline: 'No guideline value',
+    not_measured: 'Not measured',
+  };
+
+  /* Worst first. indeterminate sits above aesthetic because "usable for
+   * drinking" is a claim and an open question defeats a claim; it sits below
+   * the two failures because a demonstrated exceedance is a finding, and
+   * uncertainty elsewhere does not soften it. */
+  var VERDICT_ORDER = ['health_fail', 'national_fail', 'indeterminate',
+    'aesthetic', 'pass'];
+
+  var VERDICT_SHORT = {
+    health_fail: 'Treat before use',
+    national_fail: 'Fails national limit',
+    indeterminate: 'Not proven safe',
+    aesthetic: 'Aesthetic only',
+    pass: 'Safe',
+  };
+  var VERDICT_LONG = {
+    health_fail: 'Treat before use',
+    national_fail: 'Fails the national standard',
+    indeterminate: 'Not proven safe - incomplete or unevaluable results',
+    aesthetic: 'Aesthetic issues only',
+    pass: 'Safe to drink',
+  };
+  var VERDICT_TONE = {
+    health_fail: 'bad', national_fail: 'bad', indeterminate: 'info',
+    aesthetic: 'warn', pass: 'ok',
+  };
+
+  /* The health panel a "suitable for drinking" verdict requires. E. coli is
+   * the direct indicator of faecal contamination; arsenic and fluoride are
+   * the geogenic risks that make otherwise clear, pleasant groundwater unsafe
+   * over years; nitrate is the latrine and agricultural one. */
+  var ESSENTIAL_HEALTH_PARAMETERS = ['e. coli', 'arsenic', 'fluoride',
+    'nitrate (as no3)'];
+
+  var INDETERMINATE_REASONS = {
+    unit_unreadable: 'the reported unit could not be read',
+    unit_mismatch: 'the reported unit measures something other than the guideline',
+    detection_limit_above_guideline:
+      'the detection limit is above the limit being checked',
+    detection_limit_unknown: 'the detection limit was not reported',
+    unknown_parameter: 'the parameter is not in the standards table',
+  };
+
+  var GRADED_STATUSES = ['exceeds_health', 'exceeds_national',
+    'exceeds_aesthetic', 'within_limits', 'below_detection'];
+
+  function isGraded(row) {
+    return row.evaluable && GRADED_STATUSES.indexOf(row.status) >= 0;
+  }
+
+  function limitMaximums(entry) {
+    var out = [];
+    [entry.who_health, entry.sl_standard, entry.who_aesthetic].forEach(
+      function (limit) {
+        if (limit && limit.maximum !== null && limit.maximum !== undefined) {
+          out.push(limit.maximum);
+        }
+      });
+    return out;
+  }
+
+  /* Put a reported value on the guideline's scale. Returns
+   * {value, reason}; value null means the number must NOT be compared. */
+  function toGuidelineUnit(value, reportedUnit, entry) {
+    var reported = String(reportedUnit || '').trim();
+    var guideline = String(entry.unit || '').trim();
+
+    if (!reported) return { value: Number(value), reason: 'unit_assumed' };
+    if (!guideline) return { value: Number(value), reason: '' };
+    if (normaliseUnit(reported) === normaliseUnit(guideline)) {
+      /* Written the same way: same scale, whether or not this engine has
+       * ever heard of the unit. Keeps a newly added guideline unit from
+       * making every sample indeterminate. */
+      return { value: Number(value), reason: '' };
+    }
+
+    var source = parseUnit(reported);
+    var target = parseUnit(guideline);
+
+    if (target && target.dimension === 'ph') {
+      /* pH is the one absolute scale here with no rival, so a sheet carrying
+       * "mg/L" beside a pH of 7.2 is a template artefact. */
+      if (!source || source.dimension !== 'ph') {
+        return { value: Number(value), reason: 'unit_assumed' };
+      }
+      return { value: Number(value), reason: '' };
+    }
+
+    if (!source || !target) return { value: null, reason: 'unit_unreadable' };
+    if (!unitsComparable(source, target)) {
+      return { value: null, reason: 'unit_mismatch' };
+    }
+    var converted = convertUnit(value, reported, guideline);
+    if (converted === null) return { value: null, reason: 'unit_mismatch' };
+    if (!source.basis !== !target.basis) {
+      /* One side names a chemical reference the other does not - "mg/L"
+       * against "mg/L as CaCO3". Taken, but worth an analyst's eye. */
+      return { value: converted, reason: 'unit_basis_assumed' };
+    }
+    return { value: converted, reason: '' };
+  }
+
+  function gradeRow(row, entry, value, unitNote) {
+    var isMicro = String(entry.category || '').trim().toLowerCase() === 'microbiological';
+    if (entry.who_health && limitExceededBy(entry.who_health, value)) {
+      row.status = 'exceeds_health';
+      row.remark = 'exceeds the WHO health based guideline (' +
+        limitText(entry.who_health) + ')' + unitNote;
+    } else if (isMicro && (
+        (entry.sl_standard && limitExceededBy(entry.sl_standard, value)) ||
+        (entry.who_aesthetic && limitExceededBy(entry.who_aesthetic, value)))) {
+      /* A microbiological indicator is a health concern, never an aesthetic
+       * one, even when its limit sits in the national column. Otherwise the
+       * verdict calls faecally-indicated water "usable for drinking". */
+      row.status = 'exceeds_health';
+      var micro = entry.sl_standard || entry.who_aesthetic;
+      row.remark = 'microbiological indicator detected above the limit (' +
+        limitText(micro) + '); a health (faecal contamination) concern, ' +
+        'not aesthetic' + unitNote;
+    } else if (entry.sl_standard && limitExceededBy(entry.sl_standard, value)) {
+      if (entry.who_health) {
+        /* A national limit stricter than the WHO health value is a
+         * compliance failure, not a matter of taste. */
+        row.status = 'exceeds_national';
+        row.remark = 'exceeds the national standard limit (' +
+          limitText(entry.sl_standard) + '), which is stricter than the ' +
+          'WHO health based guideline (' + limitText(entry.who_health) + ')' +
+          unitNote;
+      } else {
+        row.status = 'exceeds_aesthetic';
+        row.remark = 'exceeds the national acceptability limit (' +
+          limitText(entry.sl_standard) + ')' + unitNote;
+      }
+    } else if (entry.who_aesthetic && limitExceededBy(entry.who_aesthetic, value)) {
+      row.status = 'exceeds_aesthetic';
+      row.remark = 'exceeds the WHO acceptability value (' +
+        limitText(entry.who_aesthetic) + ')' + unitNote;
+    } else if (!(entry.who_health || entry.who_aesthetic || entry.sl_standard)) {
+      row.status = 'no_guideline';
+      row.remark = entry.note || 'no guideline value';
+    } else {
+      row.status = 'within_limits';
+      row.remark = unitNote.trim();
+    }
+  }
+
+  /* A "< X" result proves compliance only when X is under the limit. */
+  function assessBelowDetection(row, result, entry, limits) {
+    var dlText = (result.detection_limit === null ||
+      result.detection_limit === undefined) ? null : Number(result.detection_limit);
+    if (!limits.length) {
+      row.status = 'below_detection';
+      row.remark = dlText === null ? 'below detection limit'
+        : 'below detection limit (' + formatG(dlText) + ')';
+      return row;
+    }
+    var strictest = Math.min.apply(null, limits);
+    if (dlText === null) {
+      row.status = 'indeterminate';
+      row.evaluable = false;
+      row.reason = 'detection_limit_unknown';
+      row.remark = 'reported below the detection limit, but the limit itself ' +
+        'was not reported, so compliance with ' + formatG(strictest) + ' ' +
+        entry.unit + ' cannot be shown. Ask the laboratory for the detection limit.';
+      return row;
+    }
+    var converted = toGuidelineUnit(dlText, result.unit, entry);
+    if (converted.value === null) {
+      row.status = 'indeterminate';
+      row.evaluable = false;
+      row.reason = converted.reason;
+      row.remark = 'reported below a detection limit of ' + formatG(dlText) +
+        " '" + (result.unit || '') + "', which cannot be compared with the " +
+        "guideline in '" + entry.unit + "': " +
+        INDETERMINATE_REASONS[converted.reason] + '.';
+      return row;
+    }
+    if (converted.value > strictest) {
+      row.status = 'indeterminate';
+      row.evaluable = false;
+      row.reason = 'detection_limit_above_guideline';
+      row.remark = 'below a detection limit of ' + formatG(converted.value) +
+        ' ' + entry.unit + ', which is above the limit of ' +
+        formatG(strictest) + ' ' + entry.unit + '. The method cannot see the ' +
+        'guideline value, so the result does not show compliance; re-test ' +
+        'with a more sensitive method.';
+      return row;
+    }
+    row.status = 'below_detection';
+    row.remark = 'below detection limit (' + formatG(converted.value) + ' ' +
+      entry.unit + '), which is at or under the limit of ' +
+      formatG(strictest) + ' ' + entry.unit;
+    return row;
+  }
+
+  function assessResult(result, entry) {
+    var guidelineUnit = entry ? (entry.unit || '') : '';
+    var row = {
+      parameter: result.parameter,
+      value: (result.value === null || result.value === undefined)
+        ? null : Number(result.value),
+      unit: result.unit || guidelineUnit,
+      below_detection: !!result.below_detection,
+      who_health: entry && entry.who_health ? limitText(entry.who_health) : '',
+      who_aesthetic: entry && entry.who_aesthetic ? limitText(entry.who_aesthetic) : '',
+      sl_standard: entry && entry.sl_standard ? limitText(entry.sl_standard) : '',
+      status: 'not_measured',
+      remark: 'no value reported',
+      guideline_unit: guidelineUnit,
+      value_in_guideline_unit: null,
+      detection_limit: (result.detection_limit === null ||
+        result.detection_limit === undefined) ? null : Number(result.detection_limit),
+      evaluable: true,
+      reason: '',
+    };
+
+    var missing = result.value === null || result.value === undefined;
+    if (missing && !result.below_detection) return row;
+
+    if (!entry) {
+      /* An unrecognised determinand is an open question, not a clean bill. */
+      row.status = 'no_guideline';
+      row.reason = 'unknown_parameter';
+      row.evaluable = false;
+      row.remark = 'parameter not in the standards table, so it was not ' +
+        'checked against any limit';
+      return row;
+    }
+
+    var limits = limitMaximums(entry);
+    if (result.below_detection && missing) {
+      return assessBelowDetection(row, result, entry, limits);
+    }
+
+    var converted = toGuidelineUnit(Number(result.value), result.unit, entry);
+    if (converted.value === null) {
+      row.status = 'indeterminate';
+      row.evaluable = false;
+      row.reason = converted.reason;
+      row.remark = "reported in '" + (result.unit || '') + "' but the " +
+        "guideline is in '" + guidelineUnit + "': " +
+        INDETERMINATE_REASONS[converted.reason] + '. The value was not ' +
+        'compared against any limit.';
+      return row;
+    }
+
+    row.value_in_guideline_unit = converted.value;
+    row.reason = converted.reason;
+    var unitNote;
+    if (converted.reason === 'unit_assumed') {
+      unitNote = result.unit
+        ? ' (read as ' + guidelineUnit + "; the reported unit was '" +
+          result.unit + "')"
+        : ' (read as ' + guidelineUnit + '; no unit was reported)';
+    } else if (converted.value !== Number(result.value)) {
+      unitNote = ' (' + formatG(Number(result.value)) + ' ' + result.unit +
+        ' = ' + formatG(converted.value) + ' ' + guidelineUnit + ')';
+    } else {
+      unitNote = '';
+    }
+    gradeRow(row, entry, converted.value, unitNote);
+    return row;
+  }
+
+  function missingEssential(rows, table) {
+    var graded = {};
+    rows.forEach(function (row) {
+      if (isGraded(row)) graded[normaliseParameter(row.parameter)] = true;
+    });
+    var missing = [];
+    ESSENTIAL_HEALTH_PARAMETERS.forEach(function (key) {
+      if (graded[key]) return;
+      var entry = table[key];
+      missing.push(entry ? entry.parameter : key);
+    });
+    return missing;
+  }
+
+  /* The combined index uses the unit-converted concentrations, so a result
+   * reported in ug/L is not silently added as though it were mg/L. */
+  function nitrateNitriteIndex(rows, table) {
     function valueAndGv(key) {
       var entry = table[key];
       var gv = entry && entry.who_health ? entry.who_health.maximum : null;
-      var results = sample.results || [];
-      for (var i = 0; i < results.length; i++) {
-        if (normaliseParameter(results[i].parameter) === key &&
-            results[i].value !== null && results[i].value !== undefined) {
-          return [Number(results[i].value), gv];
+      for (var i = 0; i < rows.length; i++) {
+        if (normaliseParameter(rows[i].parameter) === key &&
+            rows[i].value_in_guideline_unit !== null &&
+            rows[i].value_in_guideline_unit !== undefined) {
+          return [Number(rows[i].value_in_guideline_unit), gv];
         }
       }
       return [null, gv];
@@ -2649,84 +3194,48 @@
     var rows = [], flags = (sample.flags || []).slice();
 
     (sample.results || []).forEach(function (result) {
-      var key = normaliseParameter(result.parameter);
-      var entry = table[key] || null;
-      var status, remark;
+      var entry = table[normaliseParameter(result.parameter)] || null;
+      var row = assessResult(result, entry);
+      rows.push(row);
 
-      if ((result.value === null || result.value === undefined) && !result.below_detection) {
-        status = 'not_measured'; remark = 'no value reported';
-      } else if (result.below_detection &&
-                 (result.value === null || result.value === undefined)) {
-        status = 'below_detection';
-        remark = (result.detection_limit !== null && result.detection_limit !== undefined)
-          ? 'below detection limit (' + formatG(result.detection_limit) + ')'
-          : 'below detection limit';
-      } else if (!entry) {
-        status = 'no_guideline'; remark = 'parameter not in the standards table';
+      if (row.reason === 'unknown_parameter') {
         flags.push({
-          level: 'info', code: 'unknown_parameter',
-          message: "No guideline entry for '" + result.parameter + "'; add it " +
-            'to the standards CSV if a limit applies.',
+          level: 'warning', code: 'unknown_parameter',
+          message: "No guideline entry for '" + result.parameter + "'; it was " +
+            'not checked against any limit and keeps the sample out of a ' +
+            "'suitable for drinking' verdict. Add it to the standards CSV if " +
+            'a limit applies.',
         });
-      } else {
-        var value = Number(result.value);
-        var isMicro = String(entry.category || '').trim().toLowerCase() === 'microbiological';
-        if (entry.who_health && limitExceededBy(entry.who_health, value)) {
-          status = 'exceeds_health';
-          remark = 'exceeds the WHO health based guideline (' +
-            limitText(entry.who_health) + ')';
-        } else if (isMicro && (
-            (entry.sl_standard && limitExceededBy(entry.sl_standard, value)) ||
-            (entry.who_aesthetic && limitExceededBy(entry.who_aesthetic, value)))) {
-          /* A microbiological indicator is a health concern, never an aesthetic
-           * one, even when its limit sits in the national column. Otherwise the
-           * verdict calls faecally-indicated water "usable for drinking". */
-          status = 'exceeds_health';
-          var micro = entry.sl_standard || entry.who_aesthetic;
-          remark = 'microbiological indicator detected above the limit (' +
-            limitText(micro) + '); a health (faecal contamination) concern, ' +
-            'not aesthetic';
-        } else if (entry.sl_standard && limitExceededBy(entry.sl_standard, value)) {
-          if (entry.who_health) {
-            /* A national limit stricter than the WHO health value is a
-             * compliance failure, not a matter of taste. */
-            status = 'exceeds_national';
-            remark = 'exceeds the national standard limit (' +
-              limitText(entry.sl_standard) + '), which is stricter than the ' +
-              'WHO health based guideline (' + limitText(entry.who_health) + ')';
-          } else {
-            status = 'exceeds_aesthetic';
-            remark = 'exceeds the national acceptability limit (' +
-              limitText(entry.sl_standard) + ')';
-          }
-        } else if (entry.who_aesthetic && limitExceededBy(entry.who_aesthetic, value)) {
-          status = 'exceeds_aesthetic';
-          remark = 'exceeds the WHO acceptability value (' +
-            limitText(entry.who_aesthetic) + ')';
-        } else if (!(entry.who_health || entry.who_aesthetic || entry.sl_standard)) {
-          status = 'no_guideline'; remark = entry.note || 'no guideline value';
-        } else {
-          status = 'within_limits'; remark = '';
-        }
+      } else if (row.reason === 'unit_assumed') {
+        flags.push({
+          level: 'info', code: 'unit_not_reported',
+          message: "'" + result.parameter + "' carries no usable unit" +
+            (result.unit ? " ('" + result.unit + "')" : '') +
+            '; it was read as ' + row.guideline_unit +
+            '. Confirm against the laboratory certificate.',
+        });
+      } else if (row.reason === 'unit_basis_assumed') {
+        flags.push({
+          level: 'warning', code: 'unit_basis_assumed',
+          message: "'" + result.parameter + "' is reported in '" +
+            (result.unit || '') + "' but the guideline is written in '" +
+            row.guideline_unit + "'. The values were taken as the same basis; " +
+            'confirm with the laboratory, since an "as CaCO3" figure is about ' +
+            '2.5 times the same concentration expressed as the element.',
+        });
+      } else if (row.status === 'indeterminate') {
+        flags.push({
+          level: 'error', code: 'indeterminate_' + row.reason,
+          message: "'" + result.parameter + "' could not be assessed: " + row.remark,
+        });
       }
-
-      rows.push({
-        parameter: result.parameter,
-        value: (result.value === null || result.value === undefined) ? null : Number(result.value),
-        unit: result.unit || (entry ? entry.unit : ''),
-        below_detection: !!result.below_detection,
-        who_health: entry && entry.who_health ? limitText(entry.who_health) : '',
-        who_aesthetic: entry && entry.who_aesthetic ? limitText(entry.who_aesthetic) : '',
-        sl_standard: entry && entry.sl_standard ? limitText(entry.sl_standard) : '',
-        status: status, remark: remark,
-      });
     });
 
     /* WHO combined nitrate + nitrite rule: the sum of the ratio of each to its
      * own guideline value must not exceed 1. A sample can pass both individual
      * checks yet fail this, so it is applied only when neither is individually
      * in exceedance. */
-    var combined = nitrateNitriteIndex(sample, table);
+    var combined = nitrateNitriteIndex(rows, table);
     if (combined && combined.ratio > 1.0 &&
         combined.no3 <= combined.gv3 && combined.no2 <= combined.gv2) {
       rows.push({
@@ -2739,11 +3248,34 @@
           formatG(combined.gv2) + ' = ' + combined.ratio.toFixed(2) + ') exceeds ' +
           '1; the WHO combined nitrate and nitrite limit is not met even though ' +
           'each is within its own guideline value.',
+        guideline_unit: 'ratio',
+        value_in_guideline_unit: pyRound(combined.ratio, 2),
+        detection_limit: null, evaluable: true, reason: '',
       });
       flags.push({
         level: 'warning', code: 'nitrate_nitrite_combined',
         message: 'Combined nitrate + nitrite index exceeds 1 (WHO); treat as a ' +
           'health exceedance.',
+      });
+    }
+
+    var missing = missingEssential(rows, table);
+    if (missing.length) {
+      flags.push({
+        level: 'warning', code: 'incomplete_health_panel',
+        message: 'No evaluable result for ' + missing.join(', ') + '. The ' +
+          'sample cannot show the water is safe to drink until the health ' +
+          'panel is complete.',
+      });
+    }
+    var anyEvaluable = rows.some(function (r) {
+      return r.evaluable && r.status !== 'not_measured';
+    });
+    if (!anyEvaluable) {
+      flags.push({
+        level: 'error', code: 'nothing_evaluable',
+        message: 'No result in this sample could be graded against a guideline ' +
+          'value, so no suitability verdict can be given.',
       });
     }
 
@@ -2758,6 +3290,7 @@
     var assessment = {
       sample: sample, rows: rows, ionic: ionic, corrosivity: corrosivity,
       wqi: wqi, health_risk: healthRisk, flags: flags,
+      missing_essential: missing,
     };
     assessment.health_exceedances = rows.filter(function (r) {
       return r.status === 'exceeds_health';
@@ -2765,45 +3298,103 @@
     assessment.national_exceedances = rows.filter(function (r) {
       return r.status === 'exceeds_national';
     });
+    /* National exceedances are deliberately NOT included here. A national
+     * limit is law; folding it in reported a compliance failure as a matter
+     * of taste and let a breached supply show a 100% pass rate. */
     assessment.aesthetic_exceedances = rows.filter(function (r) {
-      return r.status === 'exceeds_aesthetic' || r.status === 'exceeds_national';
+      return r.status === 'exceeds_aesthetic';
     });
+    assessment.all_exceedances = assessment.health_exceedances
+      .concat(assessment.national_exceedances)
+      .concat(assessment.aesthetic_exceedances);
+    assessment.indeterminate_rows = rows.filter(function (r) {
+      return r.status === 'indeterminate';
+    });
+    assessment.unknown_parameters = rows.filter(function (r) {
+      return r.reason === 'unknown_parameter';
+    });
+    assessment.evaluated_rows = rows.filter(isGraded);
+    assessment.uncertainties = qualityUncertainties(assessment);
+    assessment.verdict_state = qualityVerdictState(assessment);
+    assessment.is_potable = assessment.verdict_state === 'health_fail' ||
+      assessment.verdict_state === 'national_fail' ? false
+      : (assessment.verdict_state === 'indeterminate' ? null : true);
     assessment.verdict = qualityVerdict(assessment);
     return assessment;
   }
 
+  /* Every reason this sample cannot support a "suitable" verdict. Empty means
+   * nothing is unresolved. */
+  function qualityUncertainties(assessment) {
+    var reasons = [];
+    if (!assessment.rows.length) {
+      reasons.push('the sample carries no laboratory results');
+    } else if (!assessment.evaluated_rows.length) {
+      reasons.push('no result in the sample could be graded against a ' +
+        'guideline value');
+    }
+    assessment.indeterminate_rows.forEach(function (row) {
+      var why = INDETERMINATE_REASONS[row.reason] || 'it could not be evaluated';
+      reasons.push(row.parameter + ' could not be assessed: ' + why);
+    });
+    assessment.unknown_parameters.forEach(function (row) {
+      reasons.push(row.parameter + ' has no entry in the standards table, so ' +
+        'it was not checked against any limit');
+    });
+    if ((assessment.missing_essential || []).length) {
+      reasons.push('the health panel is incomplete: no evaluable result for ' +
+        assessment.missing_essential.join(', '));
+    }
+    return reasons;
+  }
+
+  function qualityVerdictState(assessment) {
+    if (assessment.health_exceedances.length) return 'health_fail';
+    if (assessment.national_exceedances.length) return 'national_fail';
+    if (assessment.uncertainties.length) return 'indeterminate';
+    if (assessment.aesthetic_exceedances.length) return 'aesthetic';
+    return 'pass';
+  }
+
   /* One-line suitability statement for the reports. */
   function qualityVerdict(assessment) {
+    var state = assessment.verdict_state || qualityVerdictState(assessment);
     var health = assessment.health_exceedances;
     var national = assessment.national_exceedances;
-    var acceptability = assessment.rows.filter(function (r) {
-      return r.status === 'exceeds_aesthetic';
-    });
-    var names;
-    if (health.length) {
-      names = health.map(function (r) { return r.parameter; }).join(', ');
-      return 'The water does not meet the health based guideline value(s) for: ' +
-        names + '. Treatment or an alternative source is required before the ' +
-        'water is used for drinking.';
+    var acceptability = assessment.aesthetic_exceedances;
+    function names(list) {
+      return list.map(function (r) { return r.parameter; }).join(', ');
     }
-    if (national.length) {
-      names = national.map(function (r) { return r.parameter; }).join(', ');
+    if (state === 'health_fail') {
+      return 'The water does not meet the health based guideline value(s) for: ' +
+        names(health) + '. Treatment or an alternative source is required before ' +
+        'the water is used for drinking.';
+    }
+    if (state === 'national_fail') {
       var extra = acceptability.length
         ? ' Acceptability limits are also exceeded for: ' +
-          acceptability.map(function (r) { return r.parameter; }).join(', ') + '.'
+          names(acceptability) + '.'
         : '';
       return 'The water meets the WHO health based guideline values, but does ' +
-        'not comply with the national standard limit(s) for: ' + names + '.' +
-        extra + ' Treatment is required before the supply can be accepted ' +
+        'not comply with the national standard limit(s) for: ' + names(national) +
+        '.' + extra + ' Treatment is required before the supply can be accepted ' +
         'against the national standard; check whether the limit exceeded is a ' +
         'health or an acceptability limit.';
     }
-    if (acceptability.length) {
-      names = acceptability.map(function (r) { return r.parameter; }).join(', ');
+    if (state === 'indeterminate') {
+      var also = acceptability.length
+        ? ' Acceptability limits are exceeded for: ' + names(acceptability) + '.'
+        : '';
+      return 'The water cannot be declared suitable for drinking on these ' +
+        'results: ' + (assessment.uncertainties || []).join('; ') + '.' + also +
+        ' Resolve the outstanding parameters - re-sample, or ask the laboratory ' +
+        'for the units and detection limits used - before the supply is signed off.';
+    }
+    if (state === 'aesthetic') {
       return 'The water meets all health based guideline values. Acceptability ' +
-        '(aesthetic) limits are exceeded for: ' + names + '. The water is usable ' +
-        'for drinking, although taste, odour or staining complaints may arise; ' +
-        'simple treatment is advisable.';
+        '(aesthetic) limits are exceeded for: ' + names(acceptability) + '. The ' +
+        'water is usable for drinking, although taste, odour or staining ' +
+        'complaints may arise; simple treatment is advisable.';
     }
     return 'All measured parameters comply with the WHO guideline values and ' +
       'the national standard limits applied. The water is suitable for drinking ' +
@@ -2895,6 +3486,12 @@
     computeWqi: computeWqi, assessHealthRisk: assessHealthRisk,
     assessCorrosivity: assessCorrosivity, assessSample: assessSample,
     qualityVerdict: qualityVerdict, STATUS_ORDER: STATUS_ORDER,
+    qualityVerdictState: qualityVerdictState,
+    qualityUncertainties: qualityUncertainties,
+    WQ_STATUS_LABELS: WQ_STATUS_LABELS, VERDICT_ORDER: VERDICT_ORDER,
+    VERDICT_SHORT: VERDICT_SHORT, VERDICT_LONG: VERDICT_LONG,
+    VERDICT_TONE: VERDICT_TONE,
+    ESSENTIAL_HEALTH_PARAMETERS: ESSENTIAL_HEALTH_PARAMETERS,
     ternaryXy: ternaryXy, piperPoints: piperPoints, piperFacies: piperFacies,
     stiffRows: stiffRows,
   });
@@ -4404,7 +5001,16 @@
    * level are read and true drawdown is always recomputed.
    */
 
-  var DISCHARGE_TEXT_RE = /discharge\s*(?:of|0f)?\s*[:=]?\s*(\d+(?:\.\d+)?)\s*m3?\s*\/?\s*h/ig;
+  /* Units are read, not assumed. The sheet's own headings say what the numbers
+   * mean - "Time (min)", "Discharge per step (m3/h)" - and a crew that heads
+   * the column L/s or records the times in hours means exactly that. A unit
+   * this engine cannot read is refused rather than guessed at: a discharge in
+   * an unreadable unit leaves the step pending, and a time column in one is
+   * dropped, because there is no pending state for time and every consumer
+   * would otherwise fit a curve to the wrong axis. */
+  var DISCHARGE_TEXT_RE = /discharge\s*(?:of|0f)?\s*[:=]?\s*(\d+(?:\.\d+)?)\s*([a-zµμ]{1,3}\s*3?\s*\/\s*[a-z]{1,4}|lps|lpm|lph)/ig;
+
+  var STEP_LABEL_RE = /^\s*step\s*\d*\s*q\b/i;
 
   function findGroups(grid) {
     var best = null;
@@ -4430,19 +5036,27 @@
           }
         }
         if (levelCol === null && recoCol === null) continue;
+        /* The header text travels with the group so the time unit it declares
+         * is read rather than assumed. */
+        var header = texts[start];
         if (recoCol !== null && levelCol !== null) {
           if (recoCol - start <= 2) {
             /* Kuntolo style triplet: Time, Water Level, Recovery increment */
-            groups.push({ time: start, level: levelCol, kind: 'recovery' });
+            groups.push({ time: start, level: levelCol, kind: 'recovery',
+              time_header: header });
           } else {
             /* Dr Timbo style: shared time column; recovery column holds levels */
-            groups.push({ time: start, level: levelCol, kind: 'pumping' });
-            groups.push({ time: start, level: recoCol, kind: 'recovery' });
+            groups.push({ time: start, level: levelCol, kind: 'pumping',
+              time_header: header });
+            groups.push({ time: start, level: recoCol, kind: 'recovery',
+              time_header: header });
           }
         } else if (recoCol !== null) {
-          groups.push({ time: start, level: recoCol, kind: 'recovery' });
+          groups.push({ time: start, level: recoCol, kind: 'recovery',
+            time_header: header });
         } else {
-          groups.push({ time: start, level: levelCol, kind: 'pumping' });
+          groups.push({ time: start, level: levelCol, kind: 'pumping',
+            time_header: header });
         }
       }
       if (groups.length && (best === null || groups.length > best.groups.length)) {
@@ -4452,50 +5066,84 @@
     return best;
   }
 
+  /* Returns {times, levels, unitText}. unitText is '' when nothing was
+   * declared (minutes assumed) and '?<text>' when a unit was declared that
+   * could not be read, in which case the caller drops the group. */
   function readSeries(grid, headerRow, group) {
-    var times = [], levels = [];
+    var header = group.time_header || '';
+    var times = [], levels = [], unitText = '';
     for (var r = headerRow + 1; r < grid.length; r++) {
       var row = grid[r] || [];
-      var t = group.time < row.length ? parseNumber(row[group.time]) : null;
+      var cell = group.time < row.length ? row[group.time] : null;
       var wl = group.level < row.length ? parseNumber(row[group.level]) : null;
-      if (t === null || wl === null) continue;
-      times.push(t); levels.push(wl);
+      var quantity = readQuantity(cell, [header], 'time');
+      if (quantity.status === 'absent' || wl === null) continue;
+      if (quantity.status === 'unknown') {
+        return { times: [], levels: [], unitText: '?' + quantity.unit_text };
+      }
+      if (quantity.unit_text) unitText = quantity.unit_text;
+      times.push(quantity.value); levels.push(wl);
     }
-    return { times: times, levels: levels };
+    return { times: times, levels: levels, unitText: unitText };
   }
 
+  /* The row's own leading label, e.g. "Discharge per step (m3/h)". */
+  function rowUnitHint(row) {
+    for (var i = 0; i < (row || []).length; i++) {
+      var text = cleanText(row[i]);
+      if (text && text.toLowerCase().indexOf('discharge') >= 0) return text;
+    }
+    return '';
+  }
+
+  /* Two hazards on a real sheet, both handled here: the rate is written in
+   * whatever unit the crew used, and the neighbouring cell may be the NEXT
+   * step's label rather than a value - scanning it blindly read
+   * "Step 2 Q (m3/h)" as a discharge of 2 m3/h whenever the first step's box
+   * was left empty, and fitted a transmissivity to it. */
   function findStepDischarges(grid) {
     var discharges = {};
     grid.forEach(function (row) {
+      var hint = rowUnitHint(row);
       (row || []).forEach(function (cell, c) {
-        var text = cleanText(cell).toLowerCase();
-        if (text.indexOf('step') === 0 && text.indexOf('q') >= 0) {
-          var num = parseNumber(text.split('q')[0]);
-          if (num === null) return;
-          for (var cc = c + 1; cc < Math.min(c + 3, row.length); cc++) {
-            var val = parseNumber(row[cc]);
-            if (val !== null) { discharges[Math.trunc(num)] = val; break; }
-          }
+        var label = cleanText(cell);
+        if (!STEP_LABEL_RE.test(label)) return;
+        var num = parseNumber(label.toLowerCase().split('q')[0]);
+        if (num === null) return;
+        for (var cc = c + 1; cc < Math.min(c + 3, row.length); cc++) {
+          if (STEP_LABEL_RE.test(cleanText(row[cc]))) break;
+          var quantity = readQuantity(row[cc], [label, hint], 'flow');
+          if (quantity.status === 'absent') continue;
+          discharges[Math.trunc(num)] = quantity;
+          break;
         }
       });
     });
     return discharges;
   }
 
+  /* Returns {values, unreadable}: a note whose unit cannot be read is
+   * reported rather than converted, so it is raised as a flag instead of
+   * quietly becoming a number in m3/h. */
   function dischargeCandidatesFromText(grid) {
-    var found = [];
+    var found = [], unreadable = [];
     grid.forEach(function (row) {
       (row || []).forEach(function (cell) {
         if (cell === null || cell === undefined || typeof cell === 'number') return;
         var text = String(cell), m;
         DISCHARGE_TEXT_RE.lastIndex = 0;
         while ((m = DISCHARGE_TEXT_RE.exec(text)) !== null) {
-          var value = parseFloat(m[1]);
+          var written = m[2].trim();
+          var value = convertUnit(parseFloat(m[1]), written, 'm3/h', 'flow');
+          if (value === null) {
+            if (unreadable.indexOf(written) < 0) unreadable.push(written);
+            continue;
+          }
           if (found.indexOf(value) < 0) found.push(value);
         }
       });
     });
-    return found;
+    return { values: found, unreadable: unreadable };
   }
 
   /* Pre-printed text that names a test kind without recording which test was
@@ -4530,12 +5178,41 @@
       throw new Error('No Time/Water Level column groups found in ' + (source || 'the sheet'));
     }
 
-    var pumpingSeries = located.groups.filter(function (g) { return g.kind === 'pumping'; })
-      .map(function (g) { return readSeries(grid, located.row, g); })
-      .filter(function (s) { return s.times.length; });
-    var recoverySeries = located.groups.filter(function (g) { return g.kind === 'recovery'; })
-      .map(function (g) { return readSeries(grid, located.row, g); })
-      .filter(function (s) { return s.times.length; });
+    /* A time column whose unit cannot be read is dropped rather than taken as
+     * minutes: reading hours as minutes would rescale every drawdown curve
+     * and every transmissivity fitted to it, silently. */
+    function seriesOfKind(kind) {
+      var out = [];
+      located.groups.forEach(function (g) {
+        if (g.kind !== kind) return;
+        var series = readSeries(grid, located.row, g);
+        if (series.unitText.indexOf('?') === 0) {
+          flags.push({
+            level: 'error', code: 'time_unit_unknown',
+            message: 'The ' + kind + " time column is headed '" +
+              (g.time_header || '') + "' and its unit '" +
+              series.unitText.slice(1) + "' could not be read, so the readings " +
+              'were not used. Head the column in minutes, hours or seconds.',
+          });
+          return;
+        }
+        if (series.unitText &&
+            ['min', 'mins', 'minute', 'minutes'].indexOf(
+              series.unitText.toLowerCase()) < 0) {
+          flags.push({
+            level: 'info', code: 'time_unit_converted',
+            message: 'The ' + kind + " times are recorded in '" +
+              series.unitText + "' and have been converted to minutes for the " +
+              'analysis.',
+          });
+        }
+        if (series.times.length) out.push(series);
+      });
+      return out;
+    }
+
+    var pumpingSeries = seriesOfKind('pumping');
+    var recoverySeries = seriesOfKind('recovery');
 
     var testType = String(fields.test_type || '').trim().toLowerCase();
     var stated = !!testType;
@@ -4568,16 +5245,48 @@
 
     var discharges = findStepDischarges(grid);
     var steps = pumpingSeries.map(function (s, i) {
+      var quantity = discharges[i + 1];
+      /* A refused unit leaves this null, which is the existing "results
+       * pending until discharge is supplied" path - the right answer, and far
+       * better than a number in the wrong unit. */
       return {
         step_number: i + 1, time_min: s.times, water_level_m: s.levels,
-        discharge_m3_per_h: discharges[i + 1] === undefined ? null : discharges[i + 1],
+        discharge_m3_per_h: quantity === undefined ? null : quantity.value,
         label: pumpingSeries.length > 1 ? ('Step ' + (i + 1)) : 'Pumping phase',
       };
     });
+    steps.forEach(function (step, i) {
+      var quantity = discharges[i + 1];
+      if (quantity === undefined) return;
+      if (quantity.status === 'unknown') {
+        flags.push({ level: 'warning', code: 'discharge_unit_unknown',
+          message: 'Step ' + (i + 1) + ' discharge is written as ' +
+            formatG(quantity.raw_value) + " '" + quantity.unit_text +
+            "', a unit this toolkit does not recognise, so it was not used. " +
+            'Record the rate in m3/h, L/s or L/min.' });
+      } else if (quantity.status === 'converted') {
+        flags.push({ level: 'info', code: 'discharge_unit_converted',
+          message: 'Step ' + (i + 1) + ' discharge ' +
+            formatG(quantity.raw_value) + ' ' + quantity.unit_text +
+            ' read as ' + formatG(quantity.value, 3) + ' m3/h.' });
+      } else if (quantity.status === 'assumed') {
+        flags.push({ level: 'info', code: 'discharge_unit_assumed',
+          message: 'Step ' + (i + 1) + ' discharge ' +
+            formatG(quantity.raw_value) + ' carries no unit on the sheet and ' +
+            'was read as m3/h. Head the discharge row with its unit to remove ' +
+            'the assumption.' });
+      }
+    });
 
     /* Free-text discharge: use it only when unambiguous. */
-    var candidates = dischargeCandidatesFromText(grid);
+    var fromText = dischargeCandidatesFromText(grid);
+    var candidates = fromText.values;
     var missing = steps.filter(function (s) { return s.discharge_m3_per_h === null; });
+    fromText.unreadable.forEach(function (written) {
+      flags.push({ level: 'warning', code: 'discharge_unit_unknown',
+        message: "A discharge note on the sheet is written in '" + written +
+          "', a unit this toolkit does not recognise, so it was not used." });
+    });
     if (candidates.length && missing.length) {
       if (candidates.length === 1 && steps.length === 1) {
         steps[0].discharge_m3_per_h = candidates[0];
@@ -5324,10 +6033,84 @@
     return isFinite(out.lat) && isFinite(out.lon) ? out : null;
   }
 
+  /* Distance in metres between two WGS84 points, along the ellipsoid.
+   * Vincenty's inverse formula - the same one groundwater/geo.py uses, so the
+   * two engines report the same separation rather than two that happen to be
+   * close. Vincenty does not converge for near-antipodal points; nothing in a
+   * country survey is antipodal, but the spherical value is returned rather
+   * than failing if it ever happens. */
+  function geodesicDistanceM(lat1, lon1, lat2, lon2) {
+    if (lat1 === lat2 && lon1 === lon2) return 0.0;
+    var b = GEO_A * (1 - GEO_F);
+    var phi1 = lat1 * Math.PI / 180, phi2 = lat2 * Math.PI / 180;
+    var lDiff = (lon2 - lon1) * Math.PI / 180;
+    var u1 = Math.atan((1 - GEO_F) * Math.tan(phi1));
+    var u2 = Math.atan((1 - GEO_F) * Math.tan(phi2));
+    var sinU1 = Math.sin(u1), cosU1 = Math.cos(u1);
+    var sinU2 = Math.sin(u2), cosU2 = Math.cos(u2);
+
+    var lam = lDiff, sinSigma = 0, cosSigma = 0, sigma = 0;
+    var cosSqAlpha = 0, cos2SigmaM = 0, converged = false;
+    for (var i = 0; i < 200; i++) {
+      var sinLam = Math.sin(lam), cosLam = Math.cos(lam);
+      sinSigma = Math.hypot(cosU2 * sinLam,
+        cosU1 * sinU2 - sinU1 * cosU2 * cosLam);
+      if (sinSigma === 0) return 0.0;   // coincident points
+      cosSigma = sinU1 * sinU2 + cosU1 * cosU2 * cosLam;
+      sigma = Math.atan2(sinSigma, cosSigma);
+      var sinAlpha = cosU1 * cosU2 * sinLam / sinSigma;
+      cosSqAlpha = 1 - sinAlpha * sinAlpha;
+      cos2SigmaM = cosSqAlpha !== 0
+        ? cosSigma - 2 * sinU1 * sinU2 / cosSqAlpha
+        : 0.0;                          // equatorial line
+      var c = GEO_F / 16 * cosSqAlpha * (4 + GEO_F * (4 - 3 * cosSqAlpha));
+      var lamPrev = lam;
+      lam = lDiff + (1 - c) * GEO_F * sinAlpha * (sigma + c * sinSigma *
+        (cos2SigmaM + c * cosSigma * (-1 + 2 * cos2SigmaM * cos2SigmaM)));
+      if (Math.abs(lam - lamPrev) < 1e-12) { converged = true; break; }
+    }
+    if (!converged) return geodesicHaversineM(lat1, lon1, lat2, lon2);
+
+    var uSq = cosSqAlpha * (GEO_A * GEO_A - b * b) / (b * b);
+    var bigA = 1 + uSq / 16384 * (4096 + uSq * (-768 + uSq * (320 - 175 * uSq)));
+    var bigB = uSq / 1024 * (256 + uSq * (-128 + uSq * (74 - 47 * uSq)));
+    var deltaSigma = bigB * sinSigma * (cos2SigmaM + bigB / 4 * (
+      cosSigma * (-1 + 2 * cos2SigmaM * cos2SigmaM) -
+      bigB / 6 * cos2SigmaM * (-3 + 4 * sinSigma * sinSigma) *
+        (-3 + 4 * cos2SigmaM * cos2SigmaM)));
+    return b * bigA * (sigma - deltaSigma);
+  }
+
+  /* Non-convergence fallback only. Deliberately not the exported haversineM
+   * used for water points: that one mirrors waterpoints.py and uses a
+   * different earth radius. */
+  function geodesicHaversineM(lat1, lon1, lat2, lon2) {
+    var radius = 6371008.8;
+    var phi1 = lat1 * Math.PI / 180, phi2 = lat2 * Math.PI / 180;
+    var dPhi = phi2 - phi1;
+    var dLam = (lon2 - lon1) * Math.PI / 180;
+    var a = Math.sin(dPhi / 2) * Math.sin(dPhi / 2) +
+      Math.cos(phi1) * Math.cos(phi2) * Math.sin(dLam / 2) * Math.sin(dLam / 2);
+    return 2 * radius * Math.asin(Math.min(1.0, Math.sqrt(a)));
+  }
+
+  /* Ground distance between two UTM points, each read in its own zone.
+   * Subtracting eastings from different zones is meaningless: the false
+   * easting restarts at every central meridian, so two sites a couple of
+   * kilometres apart either side of the 12 degrees W boundary between zones
+   * 28N and 29N differ by hundreds of thousands of metres on paper. */
+  function utmDistanceM(a, b) {
+    var p = utmToGeographic(a.easting, a.northing, a.zone, a.hemisphere);
+    var q = utmToGeographic(b.easting, b.northing, b.zone, b.hemisphere);
+    if (!p || !q) return null;
+    return geodesicDistanceM(p.lat, p.lon, q.lat, q.lon);
+  }
+
   Object.assign(C, {
     inferZoneForSierraLeone: inferZoneForSierraLeone,
     utmToGeographic: utmToGeographic, geographicToUtm: geographicToUtm,
     utmZoneFromLon: utmZoneFromLon,
+    geodesicDistanceM: geodesicDistanceM, utmDistanceM: utmDistanceM,
   });
 
   /* ================================================================== siting
@@ -5481,32 +6264,85 @@
    * by status, and programme statistics.
    */
 
+  /* groundwater/site_status.py. Field sheets carry the status as free text,
+   * and substring matching cannot read it: "complete" is inside "incomplete",
+   * "productive" is inside "unproductive", "sit" is inside "visited". Every
+   * one of those read as a producing borehole, so a run of dry holes reported
+   * as successes and painted green on the national map. Known phrasings are
+   * listed; the rest are matched by word-boundary rules ordered so a negation
+   * is always seen before the word it negates; anything still unrecognised
+   * lands in "other" rather than being guessed at. */
+
   var STATUS_COLORS = {
-    successful: '#2E7D5B', dry: '#B23A2E', sited: '#17527E', other: '#C1772A',
+    successful: '#2E7D5B', dry: '#B23A2E', sited: '#17527E',
+    in_progress: '#C1772A', other: '#6B7785',
   };
   var STATUS_LABELS = {
     successful: 'Successful', dry: 'Dry / failed',
-    sited: 'Sited (not drilled)', other: 'Other / in progress',
+    sited: 'Sited (not drilled)', in_progress: 'In progress',
+    other: 'Status not recognised',
   };
 
-  /* Failure wins over completion. "Completed - dry" describes the works, not
-   * the outcome, and "unsuccessful" contains "success" - matching the positive
-   * terms first reported failed boreholes as successful ones and inflated the
-   * portfolio success rate. */
+  var LEGACY_STATUS_MAP = {
+    successful: 'successful', success: 'successful', completed: 'successful',
+    complete: 'successful', productive: 'successful', equipped: 'successful',
+    commissioned: 'successful', 'handed over': 'successful',
+    dry: 'dry', 'dry hole': 'dry', failed: 'dry', failure: 'dry',
+    unsuccessful: 'dry', 'not successful': 'dry', unproductive: 'dry',
+    'non productive': 'dry', abandoned: 'dry', 'no water': 'dry',
+    'completed dry': 'dry',
+    sited: 'sited', siting: 'sited', surveyed: 'sited', 'not drilled': 'sited',
+    incomplete: 'in_progress', 'not completed': 'in_progress',
+    uncompleted: 'in_progress', 'in progress': 'in_progress',
+    ongoing: 'in_progress', drilling: 'in_progress', pending: 'in_progress',
+    'on hold': 'in_progress',
+  };
+
+  /* Ordered, first match wins. The order is load-bearing: every rule that
+   * recognises a negation must be tried before the word being negated. */
+  var STATUS_RULES = [
+    [/\b(dry|no\s+water|water\s+not\s+struck|failed|failure|unsuccessful|not\s+successful|abandon\w*|collapsed|backfilled|plugged|caved)\b/, 'dry'],
+    [/\b(un|non|not)[\s-]*(productive|producing)\b|\b(low|poor|insufficient|inadequate|marginal|nil)\s+(yield|productivity|production)\b|\bproductivity\s+(low|poor)\b/, 'dry'],
+    [/\b(in|un)complet\w*\b|\bnot\s+complet\w*\b|\b(partially|part|partly)\s+complet\w*\b/, 'in_progress'],
+    [/\b(in\s+progress|ongoing|under\s+(construction|way|test\w*)|drilling|pending|awaiting|suspended|on\s+hold|deferred|standing\s+by|rework)\b/, 'in_progress'],
+    [/\bsit(e|ed|ing)\b|\b(surveyed|survey\s+complete|geophysics\s+complete|recommended\s+for\s+drilling|to\s+be\s+drilled|not\s+drilled)\b/, 'sited'],
+    [/\bsuccess(ful)?\b|\bcomplet(e|ed)\b|\bproductive\b|\b(equipped|commissioned|handed\s+over|operational|functional)\b/, 'successful'],
+  ];
+
+  function normaliseStatus(raw) {
+    var text = String(raw === null || raw === undefined ? '' : raw)
+      .toLowerCase().replace(/[_/\\|,;()[\].–—-]+/g, ' ');
+    return text.replace(/\s+/g, ' ').trim();
+  }
+
+  function statusLabel(value) {
+    return STATUS_LABELS[value] || STATUS_LABELS.other;
+  }
+
+  function statusColor(value) {
+    return STATUS_COLORS[value] || STATUS_COLORS.other;
+  }
+
+  /* Classify free text, or null when it is not recognised. */
+  function classifyStatusText(raw) {
+    var key = normaliseStatus(raw);
+    if (!key) return null;
+    if (LEGACY_STATUS_MAP[key]) return LEGACY_STATUS_MAP[key];
+    /* "not sited" is a negation, not a siting */
+    if (/\bnot\s+sited\b/.test(key)) return null;
+    for (var i = 0; i < STATUS_RULES.length; i++) {
+      if (STATUS_RULES[i][0].test(key)) return STATUS_RULES[i][1];
+    }
+    return null;
+  }
+
   function classifyStatus(summary) {
-    var raw = String((summary && summary.status) || '').trim().toLowerCase();
+    var raw = String((summary && summary.status) || '').trim();
     if (!raw) {
       return (summary && (summary.safe_yield_m3_per_h || summary.total_depth_m))
         ? 'sited' : 'other';
     }
-    var negative = ['dry', 'fail', 'abandon', 'unsuccess', 'not success', 'no water'];
-    for (var i = 0; i < negative.length; i++) {
-      if (raw.indexOf(negative[i]) >= 0) return 'dry';
-    }
-    if (raw.indexOf('success') >= 0 || raw.indexOf('complete') >= 0 ||
-        raw.indexOf('productive') >= 0) return 'successful';
-    if (raw.indexOf('sit') >= 0) return 'sited';
-    return 'other';
+    return classifyStatusText(raw) || 'other';
   }
 
   function summaryLatLon(summary) {
@@ -5520,26 +6356,45 @@
     } catch (e) { return null; }
   }
 
-  var WATER_VERDICT_SHORT = {
-    fail: 'Treat before use', aesthetic: 'Aesthetic only', pass: 'Safe',
+  /* The verdict vocabulary written by the current code. An older project file
+   * carries the three-value one and is translated on read. */
+  var VERDICT_SCHEMA = 2;
+
+  /* "fail" was unambiguously a health exceedance. "aesthetic" was written by
+   * code whose aesthetic bucket also held national-standard exceedances, so
+   * it may be a concealed compliance failure and must not be shown as merely
+   * a matter of taste - it is read as unproven, which is fail-closed. */
+  var LEGACY_VERDICTS = {
+    fail: 'health_fail', aesthetic: 'indeterminate', pass: 'pass',
   };
-  var WATER_VERDICT_LONG = {
-    fail: 'Treat before use', aesthetic: 'Aesthetic issues only',
-    pass: 'Safe to drink',
-  };
+
+  /* Returns [state, fromLegacyFile]; state is null when the project carries
+   * no water quality result at all. */
+  function summaryVerdictState(summary) {
+    var raw = String((summary && summary.water_verdict) || '').trim().toLowerCase();
+    if (!raw) return [null, false];
+    var schema = Number((summary && summary.verdict_schema) || 0) || 0;
+    if (schema >= VERDICT_SCHEMA) {
+      return [VERDICT_SHORT[raw] ? raw : null, false];
+    }
+    return [LEGACY_VERDICTS[raw] || null, true];
+  }
 
   function portfolioRows(summaries) {
     return (summaries || []).map(function (s) {
-      var status = classifyStatus(s);
-      var verdict = String(s.water_verdict || '').toLowerCase();
+      var read = summaryVerdictState(s);
+      var water = read[0] ? (VERDICT_SHORT[read[0]] || '') : '';
+      /* An asterisk rather than a silent reinterpretation: the value was
+       * translated from an older file and the reader should know. */
+      if (water && read[1]) water += '*';
       return {
         Community: s.community || '(unnamed)',
         District: s.district || '',
-        Status: STATUS_LABELS[status],
+        Status: statusLabel(classifyStatus(s)),
         'Depth (m)': s.total_depth_m ? pyRound(Number(s.total_depth_m), 1) : null,
         'Safe yield (m3/h)': s.safe_yield_m3_per_h
           ? pyRound(Number(s.safe_yield_m3_per_h), 2) : null,
-        Water: WATER_VERDICT_SHORT[verdict] || '',
+        Water: water,
         'Cost/m (USD)': s.cost_per_meter_usd
           ? pyRound(Number(s.cost_per_meter_usd), 0) : null,
       };
@@ -5577,7 +6432,7 @@
     add('Community', summary.community);
     add('District', summary.district);
     add('Chiefdom', summary.chiefdom);
-    add('Status', STATUS_LABELS[classifyStatus(summary)]);
+    add('Status', statusLabel(classifyStatus(summary)));
     var latlon = summaryLatLon(summary);
     if (latlon) {
       add('Location', latlon.lat.toFixed(5) + ' N, ' +
@@ -5587,8 +6442,11 @@
       ? Number(summary.total_depth_m).toFixed(1) + ' m' : null);
     add('Safe yield', summary.safe_yield_m3_per_h
       ? Number(summary.safe_yield_m3_per_h).toFixed(2) + ' m3/h' : null);
-    add('Water quality',
-      WATER_VERDICT_LONG[String(summary.water_verdict || '').toLowerCase()] || null);
+    var verdictRead = summaryVerdictState(summary);
+    add('Water quality', verdictRead[0]
+      ? VERDICT_LONG[verdictRead[0]] +
+        (verdictRead[1] ? ' (read from an older project file)' : '')
+      : null);
     add('Cost per metre', summary.cost_per_meter_usd
       ? '$' + Number(summary.cost_per_meter_usd).toFixed(0) : null);
     return rows;
@@ -5620,11 +6478,26 @@
       .map(function (s) { return Number(s.safe_yield_m3_per_h); });
     var costs = list.filter(function (s) { return s.cost_per_meter_usd; })
       .map(function (s) { return Number(s.cost_per_meter_usd); });
-    var verdicts = list.filter(function (s) { return s.water_verdict; })
-      .map(function (s) { return String(s.water_verdict).toLowerCase(); });
-    var safe = verdicts.filter(function (v) {
-      return v === 'pass' || v === 'aesthetic';
+    var unrecognised = list.filter(function (s) {
+      return s.status && classifyStatus(s) === 'other';
     }).length;
+    /* There is deliberately no single "water pass rate". The old one counted
+     * an aesthetic exceedance as safe AND carried national-standard failures
+     * inside the aesthetic bucket, so a portfolio breaching the national
+     * standard everywhere still showed 100% passing. Three rates replace it,
+     * reported separately so nobody can read one of them as all three. */
+    var counts = { unknown: 0 };
+    VERDICT_ORDER.forEach(function (state) { counts[state] = 0; });
+    var assessed = 0;
+    list.forEach(function (s) {
+      if (!s.water_verdict) return;
+      assessed += 1;
+      var state = summaryVerdictState(s)[0];
+      counts[state && counts[state] !== undefined ? state : 'unknown'] += 1;
+    });
+    function rate(total) {
+      return assessed ? total / assessed * 100.0 : null;
+    }
     function mean(values) {
       return values.length
         ? values.reduce(function (a, b) { return a + b; }, 0) / values.length : null;
@@ -5633,15 +6506,24 @@
       n_projects: list.length,
       n_drilled: drilled.length,
       n_successful: successful,
+      n_status_unrecognised: unrecognised,
       success_rate: drilled.length ? successful / drilled.length * 100.0 : null,
       mean_safe_yield_m3_per_h: mean(yields),
       mean_cost_per_meter_usd: mean(costs),
-      wq_pass_rate: verdicts.length ? safe / verdicts.length * 100.0 : null,
+      n_wq_assessed: assessed,
+      wq_counts: counts,
+      /* meets every health AND national limit; aesthetic reservations only */
+      wq_compliant_rate: rate(counts.pass + counts.aesthetic),
+      wq_fail_rate: rate(counts.health_fail + counts.national_fail),
+      wq_unproven_rate: rate(counts.indeterminate + counts.unknown),
     };
   }
 
   Object.assign(C, {
     STATUS_COLORS: STATUS_COLORS, STATUS_LABELS: STATUS_LABELS,
+    statusLabel: statusLabel, statusColor: statusColor,
+    classifyStatusText: classifyStatusText, normaliseStatus: normaliseStatus,
+    summaryVerdictState: summaryVerdictState, VERDICT_SCHEMA: VERDICT_SCHEMA,
     classifyStatus: classifyStatus, summaryLatLon: summaryLatLon,
     portfolioRows: portfolioRows, portfolioPoints: portfolioPoints,
     portfolioSiteLabel: portfolioSiteLabel,
@@ -5927,12 +6809,15 @@
       laboratory: assessment.sample ? assessment.sample.laboratory : '',
       rows: rows,
       verdict: assessment.verdict,
+      verdictState: assessment.verdict_state,
+      uncertainties: (assessment.uncertainties || []).slice(),
       healthExceedances: (assessment.health_exceedances || [])
         .map(function (r) { return r.parameter; }),
       nationalExceedances: (assessment.national_exceedances || [])
         .map(function (r) { return r.parameter; }),
-      aestheticExceedances: (assessment.rows || [])
-        .filter(function (r) { return r.status === 'exceeds_aesthetic'; })
+      aestheticExceedances: (assessment.aesthetic_exceedances || [])
+        .map(function (r) { return r.parameter; }),
+      indeterminate: (assessment.indeterminate_rows || [])
         .map(function (r) { return r.parameter; }),
       ionic: ionic,
       piper: spinePiper(assessment),

@@ -153,7 +153,7 @@ section for and it declines to offer them.
 
 ```bash
 cd ui/depth-spine && npm install
-npm run build         # the component  -> ui/depth-spine/dist
+npm run build         # the component  -> src/groundwater/depth_spine/frontend/
 npm run build:inline  # the static page -> src/groundwater/depth_spine/static/
 npm run build:all     # both — run this before committing a UI change
 python web/build_demo.py   # then refresh the demo bundle
@@ -161,11 +161,14 @@ python web/build_demo.py   # then refresh the demo bundle
 DEPTH_SPINE_DEV=1 streamlit run app/streamlit_app.py  # against the Vite dev server
 ```
 
-Both builds are committed, for the same reason: neither Streamlit Community
-Cloud nor GitHub Pages can run npm.
-
-`ui/depth-spine/dist` is committed on purpose, and its `.gitignore` negates the
-repository-root `dist/` rule.
+Both builds land inside the Python package and both are committed, for the
+same two reasons: neither Streamlit Community Cloud nor GitHub Pages can run
+npm, and a built wheel has to carry them. The component used to be written to
+`ui/depth-spine/dist`, which is outside the package — so `pip install` shipped
+a Depth Spine page that could only tell the user to run npm. `frontend_dir()`
+resolves the packaged copy through `importlib.resources`, falling back to a
+checkout's `ui/depth-spine/dist` so a `npm run build` during development is
+picked up without reinstalling.
 
 ## Not built
 

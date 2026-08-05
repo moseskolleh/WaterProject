@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from ..models import DataFlag, WaterQualitySample
-from .standards import normalise_parameter
+from .standards import canonical_values, normalise_parameter
 
 # milli-equivalents per mg for the Larson-Skold ratio
 _MEQ = {
@@ -52,8 +52,22 @@ class CorrosivityAssessment:
 
 
 def _value(sample: WaterQualitySample, key: str) -> Optional[float]:
+    """One parameter on the standards table's scale.
+
+    The Langelier and Ryznar indices take log10 of concentrations in mg/L, so
+    a value on another scale does not shift the index - it invalidates it. A
+    conductivity given in mS/cm produced a TDS estimate of 0 mg/L and an
+    index pair computed from it.
+    """
+    canonical = canonical_values(sample)
+    if key in canonical:
+        return canonical[key]
     for result in sample.results:
         if normalise_parameter(result.parameter) == key:
+            if result.value is not None:
+                # present but not convertible: refuse it rather than use the
+                # raw number on an unknown scale
+                return None
             if result.value is not None:
                 return float(result.value)
             return 0.0 if result.below_detection else None

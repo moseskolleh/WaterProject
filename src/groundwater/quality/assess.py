@@ -37,8 +37,6 @@ from pathlib import Path
 from typing import Optional
 
 from ..models import DataFlag, WaterQualitySample
-from ..units import _normalise as _normalise_unit_text
-from ..units import comparable, convert, parse_unit
 from .corrosivity import CorrosivityAssessment, assess_corrosivity
 from .indices import (
     HealthRiskAssessment,
@@ -47,7 +45,12 @@ from .indices import (
     compute_wqi,
 )
 from .ionic import IonicBalanceResult, ionic_balance
-from .standards import StandardEntry, load_standards, normalise_parameter
+from .standards import (
+    StandardEntry,
+    load_standards,
+    normalise_parameter,
+    to_standard_unit,
+)
 
 # status codes, ordered by severity for the summary
 STATUS_ORDER = [
@@ -375,59 +378,9 @@ def _limit_maximums(entry: StandardEntry) -> list[float]:
     return out
 
 
-def _convert_to_guideline_unit(
-    value: float, reported_unit: str, entry: StandardEntry
-) -> tuple[Optional[float], str]:
-    """Put a reported value on the guideline's scale.
-
-    Returns ``(converted, reason)``. ``reason`` is "" on a clean conversion,
-    ``"unit_assumed"`` when the laboratory reported no unit at all, or an
-    :data:`INDETERMINATE_REASONS` code when the value must not be compared.
-    """
-    reported = str(reported_unit or "").strip()
-    guideline = str(entry.unit or "").strip()
-
-    if not reported:
-        # No unit on the sheet. The guideline's own unit is the only reading
-        # under which the number means anything; the assumption is recorded
-        # rather than hidden.
-        return float(value), "unit_assumed"
-    if not guideline:
-        # The standards table itself names no unit, so there is no scale to
-        # convert onto and nothing to disagree about.
-        return float(value), ""
-    if _normalise_unit_text(reported) == _normalise_unit_text(guideline):
-        # Written the same way: same scale, whether or not this module has
-        # ever heard of the unit. Keeps a newly added guideline unit from
-        # making every sample indeterminate.
-        return float(value), ""
-
-    source = parse_unit(reported)
-    target = parse_unit(guideline)
-
-    if target is not None and target.dimension == "ph":
-        # pH is the one absolute scale here with no rival: there is no such
-        # thing as pH in another unit, so a sheet carrying "mg/L" beside a pH
-        # of 7.2 is a template artefact, not a different measurement. Read the
-        # number as pH and record the oddity.
-        if source is None or source.dimension != "ph":
-            return float(value), "unit_assumed"
-        return float(value), ""
-
-    if source is None or target is None:
-        return None, "unit_unreadable"
-    if not comparable(source, target):
-        return None, "unit_mismatch"
-    converted = convert(value, reported, guideline)
-    if converted is None:  # pragma: no cover - comparable() already checked
-        return None, "unit_mismatch"
-    if bool(source.basis) != bool(target.basis):
-        # One side names a chemical reference the other does not - "mg/L"
-        # against "mg/L as CaCO3". The parameter name usually carries the
-        # basis, so the reading is taken, but it is worth an analyst's eye:
-        # calcium as Ca and calcium as CaCO3 differ by a factor of 2.5.
-        return converted, "unit_basis_assumed"
-    return converted, ""
+#: Shared with the aggregate indices, so one conversion rule serves the row
+#: comparison, the WQI, the hazard index, the ionic balance and corrosivity.
+_convert_to_guideline_unit = to_standard_unit
 
 
 def _assess_result(result, entry: Optional[StandardEntry]) -> ParameterAssessment:

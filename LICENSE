@@ -1,0 +1,44 @@
+MIT License
+
+Copyright (c) 2026 GeomentAqua
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+--------------------------------------------------------------------------
+
+SCOPE
+
+The MIT licence above covers the source code of this project. It does NOT
+cover the third-party datasets and documents distributed alongside it, which
+keep their own licences and in one case a different one entirely:
+
+  * src/groundwater/data/sl_hydrogeology_bgs.geojson is derived from the BGS
+    Africa Groundwater Atlas country hydrogeology map and is licensed
+    CC BY-SA 4.0, not MIT. ShareAlike propagates, so every artefact that
+    embeds it - docs/js/gwt-data.js and docs/wasm/index.html, both published
+    from GitHub Pages - carries the same obligation.
+
+  * The reference documents under WaterProjectFiles/ are third-party
+    publications. No redistribution grant for them has been established; see
+    THIRD_PARTY_NOTICES.md.
+
+THIRD_PARTY_NOTICES.md lists every bundled dataset and document with its
+source, its licence, the attribution that licence requires, and - where the
+terms could not be evidenced from the material itself - says so plainly
+rather than assuming.

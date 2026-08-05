@@ -137,10 +137,12 @@ _RULES: list[tuple[re.Pattern, SiteStatus]] = [
         SiteStatus.IN_PROGRESS,
     ),
     # 5. Sited but not drilled. Word-anchored, so "visited" and "deposit" no
-    #    longer count as a siting, and "not sited" is not a siting either.
+    #    longer count as a siting. ("not sited" is refused before the rules
+    #    run - written as a plain check rather than a lookbehind so the same
+    #    expression compiles in both this engine and the browser one.)
     (
         re.compile(
-            r"(?<!not\s)\bsit(e|ed|ing)\b"
+            r"\bsit(e|ed|ing)\b"
             r"|\b(surveyed|survey\s+complete|geophysics\s+complete|"
             r"recommended\s+for\s+drilling|to\s+be\s+drilled|not\s+drilled)\b"
         ),
@@ -197,6 +199,8 @@ def classify_text(raw: str) -> SiteStatus | None:
     exact = LEGACY_STATUS_MAP.get(key)
     if exact is not None:
         return exact
+    if re.search(r"\bnot\s+sited\b", key):
+        return None  # a negation, not a siting
     for pattern, status in _RULES:
         if pattern.search(key):
             return status

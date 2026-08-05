@@ -783,6 +783,9 @@ def _load_project() -> None:
         "ves_results", "pump_analysis", "wq_assessment", "borehole_design",
         "drilling_log", "cost_estimate", "cost_artifacts",
         "wp_result", "handover_built",
+        # cleared too, so a project with no sources at all cannot inherit the
+        # previous project's rebuild banner
+        "recompute_diagnostics",
     ):
         st.session_state.pop(result_key, None)
     overrides = updates.pop("rates_overrides", None)
@@ -1014,11 +1017,33 @@ if st.session_state.pop("_recompute_pending", False):
                         tmp_dir=workdir(),
                     )
                 )
-        except Exception:
-            st.warning(
-                "Some analyses could not be rebuilt from the loaded project. "
-                "Re-upload the data files on the affected pages if needed."
-            )
+        except Exception as exc:  # noqa: BLE001 - last resort, still reported
+            # recompute_results contains its own failures, so reaching here
+            # means something outside them broke. One render path speaks for
+            # every failure mode, so write a diagnostic rather than only
+            # warning: a dropped result otherwise reads as "never sampled".
+            st.session_state["recompute_diagnostics"] = {
+                "ok": [],
+                "issues": [{
+                    "source": "", "result": "", "label": "Saved project",
+                    "level": "error", "code": "recompute_crashed",
+                    "message": "The saved analyses could not be rebuilt. "
+                               "Re-upload the data files on the affected pages.",
+                    "context": "", "detail": f"{type(exc).__name__}: {exc}"[:300],
+                }],
+            }
+
+# A source that failed to rebuild leaves its page looking untouched, and an
+# untouched water-quality page is indistinguishable from a borehole nobody
+# sampled. Say which file failed, every run, until the project is reloaded.
+_diagnostics = st.session_state.get("recompute_diagnostics") or {}
+for _issue in _diagnostics.get("issues", []):
+    _text = f"**{_issue['label']}** - {_issue['message']}"
+    if _issue.get("context"):
+        _text += f"  \n_File: {_issue['context']}_"
+    if _issue.get("detail"):
+        _text += f"  \n`{_issue['detail']}`"
+    (st.error if _issue.get("level") == "error" else st.warning)(_text)
 
 # ---------------------------------------------------------------------------
 # Sidebar
@@ -2429,7 +2454,10 @@ with tab_spine:
         else:
             st.warning(
                 "The workspace needs either the component build or the static "
-                "build. Run `npm install && npm run build:all` in ui/depth-spine/."
+                "build. Both ship inside the package, so reinstall with "
+                "`pip install --force-reinstall groundwater-toolkit`; in a "
+                "source checkout run `npm install && npm run build:all` in "
+                "ui/depth-spine/."
             )
 
         # An analyst-placed design is the project's design: the drawing, the
