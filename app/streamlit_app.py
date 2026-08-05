@@ -1035,9 +1035,13 @@ if st.session_state.pop("_recompute_pending", False):
 
 # A source that failed to rebuild leaves its page looking untouched, and an
 # untouched water-quality page is indistinguishable from a borehole nobody
-# sampled. Say which file failed, every run, until the project is reloaded.
+# sampled. Say which file failed, on every run, until the missing result is
+# supplied by hand or another project is loaded - an issue whose result is
+# now in session state has been resolved and stops being reported.
 _diagnostics = st.session_state.get("recompute_diagnostics") or {}
 for _issue in _diagnostics.get("issues", []):
+    if _issue.get("result") and st.session_state.get(_issue["result"]) is not None:
+        continue
     _text = f"**{_issue['label']}** - {_issue['message']}"
     if _issue.get("context"):
         _text += f"  \n_File: {_issue['context']}_"

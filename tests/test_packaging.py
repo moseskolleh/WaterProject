@@ -14,6 +14,7 @@ test says so rather than passing quietly.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -28,6 +29,11 @@ REPO = Path(__file__).resolve().parents[1]
 @pytest.fixture(scope="module")
 def wheel(tmp_path_factory) -> zipfile.ZipFile:
     out = tmp_path_factory.mktemp("wheel")
+    # setuptools stages into ./build and only refreshes files it thinks are
+    # newer, so a stale staging tree can put a file in the wheel that no
+    # longer exists in the source. Start clean, or this test can pass on
+    # yesterday's package data.
+    shutil.rmtree(REPO / "build", ignore_errors=True)
     result = subprocess.run(
         [sys.executable, "-m", "pip", "wheel", "--no-deps", "--no-build-isolation",
          "-w", str(out), str(REPO)],
