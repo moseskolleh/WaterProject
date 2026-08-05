@@ -323,7 +323,7 @@ await withPage(async (page, base, consoleErrors) => {
     const real = window.fetch;
     let requested = null;
     window.fetch = async (u) => {
-      requested = String(u);
+      if (requested === null) requested = String(u);   // the site lookup
       return new Response(JSON.stringify([
         { row_id: '1', lat_deg: '8.4660', lon_deg: '-13.2318',
           status_clean: 'Non-Functional', water_source_clean: 'Borehole',
@@ -331,14 +331,20 @@ await withPage(async (page, base, consoleErrors) => {
         { row_id: '2', lat_deg: '8.4690', lon_deg: '-13.2350',
           status_clean: 'Functional', water_source_clean: 'Unprotected Spring',
           water_tech_clean: '' },
-        { row_id: '3', lat_deg: '9.9', lon_deg: '-13.9',
+        // inside the query's bounding box, outside the 1000 m circle: the
+        // corner case the distance filter exists for
+        { row_id: '3', lat_deg: '8.4741', lon_deg: '-13.2398',
           status_clean: 'Functional', water_source_clean: 'Borehole',
           water_tech_clean: 'Hand Pump' },
       ]), { status: 200, headers: { 'content-type': 'application/json' } });
     };
-    let points, failure = null;
+    let points, raw, national, failure = null;
     try {
+      raw = await C.fetchWaterPoints(8.4657, -13.2317, 1000);
+      // the site lookup clips to the circle; the national pull must not, or
+      // the coverage join loses everything outside a 300 km radius
       points = await C.waterPointsNear(8.4657, -13.2317, 1000);
+      national = C.parseWpdxRecords(await C.fetchWaterPoints(8.46, -11.79, 300000)).length;
     } finally { window.fetch = real; }
 
     // and the failure path, which must stay a message rather than a crash
@@ -349,9 +355,9 @@ await withPage(async (page, base, consoleErrors) => {
 
     const decision = C.rehabVsDrill(points, 8.4657, -13.2317, { searchRadiusM: 1000 });
     return {
-      url, requested, n: points.length,
-      improved: points.map((p) => p.improved),
-      functional: points.map((p) => p.functional),
+      url, requested, n: points.length, rawCount: raw.length, national,
+      improved: C.parseWpdxRecords(raw).map((p) => p.improved),
+      functional: C.parseWpdxRecords(raw).map((p) => p.functional),
       nearby: decision.nearby.length,
       recommendation: decision.recommendation,
       candidates: decision.rehab_candidates.length,
@@ -364,21 +370,53 @@ await withPage(async (page, base, consoleErrors) => {
     waterPoints.url.includes('lon_deg%20between') &&
     waterPoints.url.includes('$order=%3Aid') &&
     waterPoints.requested === waterPoints.url, waterPoints.url);
-  check('water points: the lookup parses the response', waterPoints.n === 3,
-    `${waterPoints.n} points`);
+  check('water points: the lookup parses the response', waterPoints.rawCount === 3,
+    `${waterPoints.rawCount} rows`);
   check('water points: an unprotected spring is not an improved source',
     JSON.stringify(waterPoints.improved) === JSON.stringify([true, false, true]),
     JSON.stringify(waterPoints.improved));
   check('water points: status maps to functionality',
     JSON.stringify(waterPoints.functional) === JSON.stringify([false, true, true]),
     JSON.stringify(waterPoints.functional));
+  check('water points: the corner of the bounding box is not in the circle',
+    waterPoints.n === 2 && waterPoints.rawCount === 3,
+    `${waterPoints.n} kept of ${waterPoints.rawCount} returned`);
   check('water points: only the ones in range are judged',
     waterPoints.nearby === 2, `${waterPoints.nearby} within 1000 m`);
+  check('water points: the national pull is not distance-filtered',
+    waterPoints.national === 3, `${waterPoints.national} of 3 kept`);
   check('water points: a broken borehole nearby is a rehabilitation candidate',
     waterPoints.recommendation === 'assess_rehab' && waterPoints.candidates === 1,
     `${waterPoints.recommendation}, ${waterPoints.candidates} candidates`);
   check('water points: being offline is a message, not a crash',
     /^WaterPointFetchError: /.test(waterPoints.failure || ''), waterPoints.failure);
+
+  // --- Pasted GPS coordinates ---
+  // Every longitude in Sierra Leone is west, and a handheld GPS writes that
+  // as a letter rather than a minus sign. Reading "13.2317 W" as +13.2317
+  // puts the site on the far side of the continent, silently.
+  const coords = await page.evaluate(() => {
+    const parse = window.GWT.app.parseLatLon;
+    return [
+      '8.4657, -13.2317', '8.4657 N, 13.2317 W', '8.4657N 13.2317W',
+      'N 8.4657, W 13.2317', '13.2317 W, 8.4657 N', '8.4657;-13.2317',
+      '8.4657 S, 13.2317 W', '-13.2317 E, 8.4657', '8.4657', '200, 5', 'rubbish', '',
+    ].map((text) => [text, parse(text)]);
+  });
+  const expectedCoords = [
+    ['8.4657, -13.2317', { lat: 8.4657, lon: -13.2317 }],
+    ['8.4657 N, 13.2317 W', { lat: 8.4657, lon: -13.2317 }],
+    ['8.4657N 13.2317W', { lat: 8.4657, lon: -13.2317 }],
+    ['N 8.4657, W 13.2317', { lat: 8.4657, lon: -13.2317 }],
+    ['13.2317 W, 8.4657 N', { lat: 8.4657, lon: -13.2317 }],
+    ['8.4657;-13.2317', { lat: 8.4657, lon: -13.2317 }],
+    ['8.4657 S, 13.2317 W', { lat: -8.4657, lon: -13.2317 }],
+    ['-13.2317 E, 8.4657', null], ['8.4657', null], ['200, 5', null],
+    ['rubbish', null], ['', null],
+  ];
+  check('coordinates: hemisphere letters are read as signs',
+    JSON.stringify(coords) === JSON.stringify(expectedCoords),
+    JSON.stringify(coords));
 
   // --- Scanned sheets: a text PDF, read in the page ---
   // The fixture is written here rather than committed as a binary: a typed
@@ -426,13 +464,16 @@ await withPage(async (page, base, consoleErrors) => {
         '/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
       null,
       '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+      String(compressed.length),   // object 6: the indirect /Length
     ];
     const offsets = [];
     bodies.forEach((body, i) => {
       offsets.push(parts.length);
       push(`${i + 1} 0 obj\n`);
       if (body === null) {
-        push(`<< /Length ${compressed.length} /Filter /FlateDecode >>\nstream\n`);
+        // /Length as an indirect reference — the shape that made a greedy
+        // \d+ backtrack to "1" and truncate the stream to a single byte
+        push('<< /Length 6 0 R /Filter /FlateDecode >>\nstream\n');
         compressed.forEach((b) => parts.push(b));
         push('\nendstream');
       } else {

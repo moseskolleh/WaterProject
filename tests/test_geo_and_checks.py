@@ -56,3 +56,45 @@ def test_group_consistency():
     flags = check_group_consistency([("VES 1", a), ("VES 2", b)])
     assert any(f.code == "inconsistent_district" for f in flags)
     assert not any(f.code == "inconsistent_client" for f in flags)
+
+
+def test_parse_latlon_reads_hemisphere_letters_as_signs():
+    """A handheld GPS writes west as a W, not a minus sign.
+
+    Dropping the letter and taking the number at face value put every Sierra
+    Leone site 26 degrees east of where it is - silently, on the wrong side
+    of the continent.
+    """
+    from groundwater.geo import parse_latlon
+
+    freetown = (8.4657, -13.2317)
+    assert parse_latlon("8.4657, -13.2317") == freetown
+    assert parse_latlon("8.4657 N, 13.2317 W") == freetown
+    assert parse_latlon("8.4657N 13.2317W") == freetown
+    assert parse_latlon("N 8.4657, W 13.2317") == freetown
+    assert parse_latlon("8.4657;-13.2317") == freetown
+    # an explicit E/W on the first value means it was written longitude first
+    assert parse_latlon("13.2317 W, 8.4657 N") == freetown
+    # southern hemisphere still works
+    assert parse_latlon("8.4657 S, 13.2317 W") == (-8.4657, -13.2317)
+
+
+def test_parse_latlon_refuses_what_it_cannot_read():
+    from groundwater.geo import parse_latlon
+
+    assert parse_latlon("") is None
+    assert parse_latlon("rubbish") is None
+    assert parse_latlon("8.4657") is None            # only one value
+    assert parse_latlon("200, 5") is None            # out of range
+    assert parse_latlon("-13.2317 E, 8.4657") is None  # sign contradicts letter
+
+
+def test_parse_latlon_round_trips_through_utm():
+    """The pasted pair must land on the same metre as the typed one."""
+    from groundwater.geo import geographic_to_utm, parse_latlon, utm_to_geographic
+
+    lat, lon = parse_latlon("8.4657 N, 13.2317 W")
+    utm = geographic_to_utm(lat, lon)
+    back = utm_to_geographic(utm.easting, utm.northing, utm.zone)
+    assert abs(back[0] - lat) < 1e-9
+    assert abs(back[1] - lon) < 1e-9

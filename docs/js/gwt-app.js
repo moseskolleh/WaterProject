@@ -792,12 +792,80 @@
   /* --- site & maps ---------------------------------------------------------- */
 
   /* Held outside the render so the field keeps what was typed while the page
-   * redraws around it. */
+   * redraws around it. Cleared when the page is drawn fresh, so a stale
+   * value cannot be converted after the input has visibly reset. */
   var latLonEntry = { text: '' };
+
+  /* "lat, lon" as a field crew writes it.
+   *
+   * Every longitude in Sierra Leone is west, and a handheld GPS writes that
+   * as a W rather than a minus sign. Dropping the letter and taking the
+   * number at face value puts the site 26 degrees east of where it is —
+   * silently, on the wrong side of the continent — so the hemisphere letter
+   * is a sign, and a letter that contradicts an explicit sign is rejected
+   * rather than guessed at. */
+  function parseLatLon(text) {
+    var raw = String(text === null || text === undefined ? '' : text).trim();
+    if (!raw) return null;
+    /* split on commas, semicolons and whitespace, but keep a letter attached
+     * to the number it qualifies ("13.2317W" is one token) */
+    var tokens = raw.replace(/[;]/g, ',').split(/[,\s]+/).filter(Boolean);
+    var values = [];
+    var pending = null;                 /* a leading N/S/E/W awaiting its number */
+    for (var i = 0; i < tokens.length; i++) {
+      var token = tokens[i];
+      var bare = /^[NSEWnsew]$/.test(token);
+      if (bare) {
+        var letter = token.toUpperCase();
+        if (values.length && values[values.length - 1].letter === null) {
+          values[values.length - 1].letter = letter;   /* trailing "8.4657 N" */
+        } else {
+          pending = letter;                            /* leading "N 8.4657" */
+        }
+        continue;
+      }
+      var match = /^([+-]?\d*\.?\d+)\s*([NSEWnsew])?$/.exec(token);
+      if (!match) return null;
+      values.push({
+        value: Number(match[1]),
+        letter: match[2] ? match[2].toUpperCase() : pending,
+      });
+      pending = null;
+    }
+    if (values.length !== 2) return null;
+
+    function signed(entry) {
+      if (!isFinite(entry.value)) return null;
+      if (!entry.letter) return entry.value;
+      var negative = entry.letter === 'S' || entry.letter === 'W';
+      /* "-13.2317 W" is contradictory: the sign and the letter disagree
+       * about magnitude, so refuse rather than pick one */
+      if (entry.value < 0 && !negative) return null;
+      if (entry.value < 0 && negative) return entry.value;
+      return negative ? -entry.value : entry.value;
+    }
+
+    /* the pair is normally lat then lon; an explicit E/W on the first token
+     * says otherwise */
+    var first = values[0], second = values[1];
+    if (first.letter === 'E' || first.letter === 'W' ||
+        second.letter === 'N' || second.letter === 'S') {
+      var swap = first; first = second; second = swap;
+    }
+    var lat = signed(first), lon = signed(second);
+    if (lat === null || lon === null) return null;
+    if (!isFinite(lat) || !isFinite(lon)) return null;
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+    return { lat: lat, lon: lon };
+  }
 
   PAGES.site = function () {
     var site = store.get('site');
     var mapRadius = store.get('site.mapRadiusKm', 40);
+    /* the input below is rendered empty every time, so the buffer behind it
+     * must be too — otherwise Convert acts on text the operator can no
+     * longer see */
+    latLonEntry.text = '';
     function bind(key) {
       return function (value) { store.set('site.' + key, value); renderChrome(); };
     }
@@ -873,18 +941,14 @@
             S.textInput('', function (value) { latLonEntry.text = value; },
               { placeholder: '8.4657, -13.2317' }),
             button('Convert to UTM', function () {
-              var parts = String(latLonEntry.text || '')
-                .replace(/[;\s]+/g, ',').split(',')
-                .filter(function (part) {
-                  return part && ['N', 'S', 'E', 'W'].indexOf(part.toUpperCase()) < 0;
-                });
-              var lat = Number(parts[0]), lon = Number(parts[1]);
-              if (!isFinite(lat) || !isFinite(lon) ||
-                  Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+              var pair = parseLatLon(latLonEntry.text);
+              if (!pair) {
                 S.toast('Could not read those coordinates. Enter "lat, lon" in ' +
-                  'decimal degrees, for example 8.4657, -13.2317.', 'error');
+                  'decimal degrees — 8.4657, -13.2317 or 8.4657 N, 13.2317 W.',
+                'error');
                 return;
               }
+              var lat = pair.lat, lon = pair.lon;
               var utm = C.geographicToUtm(lat, lon);
               store.set('site.easting', S.round(utm.easting, 1));
               store.set('site.northing', S.round(utm.northing, 1));
@@ -1144,7 +1208,7 @@
     var located = suitability.filter(function (s) {
       return s.easting && s.northing;
     });
-    nodes.push(card('Drill-target suitability', [
+    if (best) nodes.push(card('Drill-target suitability', [
       el('p.muted', 'A transparent 0-100 score per point, combining the ' +
         'interpreted aquifer thickness, how central the water-zone resistivity ' +
         'sits in the productive window, the weathered profile and any fracture ' +
@@ -1482,8 +1546,12 @@
       var latest = origin;
       var scale = svg.spineScale;
       /* the SVG is scaled to its box, so client pixels become user units
-       * through the rendered height before they become metres */
-      var factor = svg.viewBox.baseVal.height / svg.getBoundingClientRect().height;
+       * through the rendered height before they become metres. A zero-height
+       * box (hidden tab, mid-layout) would make that ratio infinite and send
+       * the screen to the bottom of the hole on the first move. */
+      var rendered = svg.getBoundingClientRect().height;
+      if (!(rendered > 0)) return;
+      var factor = svg.viewBox.baseVal.height / rendered;
 
       function move(e) {
         var dm = round(scale.depthAt((e.clientY - startY) * factor));
@@ -2806,16 +2874,28 @@
   /* The lookup is the only thing in the application that leaves the machine,
    * so it is always a button the operator presses, never something the page
    * does on its own. Failure is expected in the field and is not an error
-   * state: the CSV path below does the whole job offline. */
-  async function fetchWaterPoints(node, spec) {
+   * state: the CSV path below does the whole job offline.
+   *
+   * ``spec.clip`` decides what the returned inventory means. A site lookup
+   * clips to the circle the operator asked for, so the functionality totals
+   * describe that radius and nothing else. The national pull does not: its
+   * bounding box deliberately overhangs into Guinea and Liberia, and the
+   * chiefdom join — not a distance — is what discards the fringe. */
+  async function lookUpWaterPoints(node, spec) {
     try {
       await S.withBusy(node.closest('.card') || $('#page-host'),
         'Querying the Water Point Data Exchange…', async function () {
-          var points = await C.waterPointsNear(
-            spec.lat, spec.lon, spec.radiusM, { limit: spec.limit });
+          var raw = await C.fetchWaterPoints(spec.lat, spec.lon, spec.radiusM,
+            { limit: spec.limit });
+          /* the cap is on rows returned by the query, so it has to be judged
+           * before any of them are filtered out */
+          derived.waterPointsCapped = !!(spec.limit && raw.length >= spec.limit);
+          var points = C.parseWpdxRecords(raw);
+          if (spec.clip) {
+            points = C.pointsWithin(points, spec.lat, spec.lon, spec.radiusM);
+          }
           derived.waterPoints = points;
           derived.waterPointsSource = spec.label;
-          derived.waterPointsCapped = spec.limit && points.length >= spec.limit;
           S.toast(points.length
             ? S.thousands(points.length) + ' water points read from WPdx+.'
             : 'WPdx+ has no mapped water point in that area.',
@@ -2865,8 +2945,9 @@
               S.toast('Enter the site GPS position on the Site page first.', 'warn');
               return;
             }
-            fetchWaterPoints(event.target, {
+            lookUpWaterPoints(event.target, {
               lat: latlon.lat, lon: latlon.lon, radiusM: radius, limit: 5000,
+              clip: true,
               label: 'live WPdx+, ' + Math.round(radius) + ' m around the site',
             });
           }, { disabled: !latlon,
@@ -3023,8 +3104,9 @@
              * because a national pull - plus the box's Guinea and Liberia
              * fringe, which the chiefdom join discards - is tens of thousands
              * of points */
-            fetchWaterPoints(event.target, {
+            lookUpWaterPoints(event.target, {
               lat: 8.46, lon: -11.79, radiusM: 300000.0, limit: COVERAGE_LIMIT,
+              clip: false,
               label: 'live WPdx+, national',
             });
           }),
@@ -3755,7 +3837,7 @@
     projectPayload: projectPayload, projectSummary: projectSummary,
     summaryFromProjectFile: summaryFromProjectFile,
     commitSpineScreens: commitSpineScreens, spineDecide: spineDecide,
-    fetchWaterPoints: fetchWaterPoints,
+    lookUpWaterPoints: lookUpWaterPoints, parseLatLon: parseLatLon,
   };
 
   if (typeof document !== 'undefined') {
