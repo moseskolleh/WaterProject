@@ -23,7 +23,7 @@ from .models import (
     UncertainCell,
 )
 
-_MODEL = "claude-opus-4-8"
+_MODEL = "claude-opus-5"
 
 _SCHEMA = {
     "type": "object",
@@ -166,7 +166,15 @@ class ClaudeExtractor:
                 "The extraction request was declined by the model; check the "
                 "document content."
             )
-        text = next(b.text for b in response.content if b.type == "text")
+        # A refusal leaves content empty, and hitting the output cap can leave
+        # only thinking blocks; either way there is no transcription to parse,
+        # and a bare StopIteration would say nothing about why.
+        text = next((b.text for b in response.content if b.type == "text"), None)
+        if text is None:
+            raise RuntimeError(
+                "The model returned no transcription "
+                f"(stop reason: {response.stop_reason}). Try a clearer scan."
+            )
         payload = json.loads(text)
         return self._to_document(payload, str(path))
 

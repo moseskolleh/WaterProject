@@ -5050,9 +5050,17 @@
     return data;
   }
 
-  /* Fetch and parse in one step, the shape the pages actually want. */
+  /* Fetch, parse and distance-filter in one call.
+   *
+   * The query is a bounding box, so it returns the corners of the square as
+   * well as the circle the operator asked for. Without this last step a point
+   * 1.4 km away lands in a 1 km search: the rehabilitate-or-drill decision
+   * re-filters and would ignore it, but the functionality totals and anything
+   * built on the stored inventory would silently count it. */
   async function waterPointsNear(lat, lon, radiusM, options) {
-    return parseWpdxRecords(await fetchWaterPoints(lat, lon, radiusM, options));
+    var radius = radiusM || DEFAULT_SEARCH_RADIUS_M;
+    var raw = await fetchWaterPoints(lat, lon, radius, options);
+    return pointsWithin(parseWpdxRecords(raw), lat, lon, radius);
   }
 
   function pointsWithin(points, lat, lon, radiusM) {
@@ -6136,12 +6144,6 @@
     return out;
   }
 
-  function pdfDictValue(dict, key) {
-    var re = new RegExp('/' + key + '\\s*(<<|\\[|/[^\\s/<>\\[\\]()]+|\\d+\\s+\\d+\\s+R|[-+.\\d]+)');
-    var m = re.exec(dict);
-    return m ? m[1] : null;
-  }
-
   /* /Contents 4 0 R, or /Contents [4 0 R 5 0 R] - both are common. */
   function pdfRefs(dict, key) {
     var re = new RegExp('/' + key + '\\s*(\\[[^\\]]*\\]|\\d+\\s+\\d+\\s+R)');
@@ -6191,8 +6193,14 @@
         /* /Length is authoritative when it is a direct number. Without it the
          * end-of-line before `endstream` would be handed to the decompressor
          * as trailing garbage, which is a hard error rather than something it
-         * ignores, so trim it. */
-        var declared = /\/Length\s+(\d+)(?!\s+\d+\s+R)/.exec(dict);
+         * ignores, so trim it.
+         *
+         * The number must be the whole value: the lookahead requires the next
+         * thing to be another key, the end of the dictionary, or nothing. A
+         * mere "not an indirect reference" test lets the engine backtrack —
+         * "/Length 12 0 R" then matches with (\d+) = "1", and a 435-byte
+         * stream is cut to one byte. */
+        var declared = /\/Length[ \t\r\n]+(\d+)[ \t\r\n]*(?=\/|>>|$)/.exec(dict);
         if (declared && Number(declared[1]) <= dataEnd - dataStart) {
           dataEnd = dataStart + Number(declared[1]);
         } else {
@@ -6556,12 +6564,16 @@
     }
 
     var header = [], tables = [], uncertain = [], allText = [];
-    var seen = {};
+    /* null-prototype: the keys are canonical field names, and a bare object
+     * would report "constructor" as already seen */
+    var seen = Object.create(null);
 
     for (var p = 0; p < pages.length; p++) {
       var page = pages[p];
-      /* fonts declared for this page, so a ToUnicode CMap can be applied */
-      var fonts = {};
+      /* fonts declared for this page, so a ToUnicode CMap can be applied.
+       * null-prototype: the names come from the document, and a font called
+       * /constructor would otherwise resolve to Object.prototype's. */
+      var fonts = Object.create(null);
       var resourceMatch = /\/Font\s*<<([\s\S]*?)>>/.exec(page.dict);
       if (!resourceMatch) {
         var resourceRefs = pdfRefs(page.dict, 'Resources');
@@ -6672,7 +6684,11 @@
     });
 
     (document.tables || []).forEach(function (table, index) {
-      var rows = [[table.title], table.columns.slice()];
+      /* the title row is bolded by writeXlsx (row 0); the column headings are
+       * row 1 and have to ask, as they do in the openpyxl workbook */
+      var rows = [[table.title], table.columns.map(function (column) {
+        return { v: column, bold: true };
+      })];
       table.rows.forEach(function (row, rowIndex) {
         var lowConfidence = confidenceForRow(table, rowIndex) < REVIEW_THRESHOLD;
         rows.push(row.map(function (cell, columnIndex) {
@@ -6779,7 +6795,7 @@
    * clearly labelled - alongside the rest of the local session.
    */
 
-  var EXTRACTION_MODEL = 'claude-opus-4-8';
+  var EXTRACTION_MODEL = 'claude-opus-5';
 
   var EXTRACTION_SCHEMA = {
     type: 'object',
@@ -6937,10 +6953,15 @@
       throw new Error('The extraction request was declined by the model; ' +
         'check the document content.');
     }
+    /* a refusal leaves content empty, and hitting the output cap can leave
+     * only thinking blocks; either way there is nothing to parse */
     var textBlock = (message.content || []).filter(function (b) {
       return b.type === 'text';
     })[0];
-    if (!textBlock) throw new Error('The model returned no transcription.');
+    if (!textBlock) {
+      throw new Error('The model returned no transcription (stop reason: ' +
+        (message.stop_reason || 'unknown') + '). Try a clearer scan.');
+    }
     return extractionDocumentFrom(JSON.parse(textBlock.text), opts.source || 'scan');
   }
 
@@ -6971,6 +6992,26 @@
       return out;
     }
 
+    /* This table's own rows and each row's own cells - walking the element
+     * children rather than getElementsByTagName, so a nested table's rows do
+     * not appear as extra rows of the table that contains it. */
+    function gridOf(table) {
+      var grid = [];
+      for (var r = 0; r < table.childNodes.length; r++) {
+        var row = table.childNodes[r];
+        if (row.nodeType !== 1 || row.localName !== 'tr') continue;
+        var cells = [];
+        for (var c = 0; c < row.childNodes.length; c++) {
+          var cell = row.childNodes[c];
+          if (cell.nodeType === 1 && cell.localName === 'tc') {
+            cells.push(textOf(cell).trim());
+          }
+        }
+        grid.push(cells);
+      }
+      return grid;
+    }
+
     var body = doc.getElementsByTagNameNS(W, 'body')[0];
     if (!body) throw new Error('That .docx has no document body.');
 
@@ -6988,21 +7029,7 @@
           return part.trim();
         }));
       } else if (node.localName === 'tbl') {
-        var grid = [];
-        var rows = node.getElementsByTagNameNS(W, 'tr');
-        for (var r = 0; r < rows.length; r++) {
-          /* only this row's own cells: a nested table would otherwise fold
-           * its cells into the parent row */
-          var cells = [];
-          for (var c = 0; c < rows[r].childNodes.length; c++) {
-            var cell = rows[r].childNodes[c];
-            if (cell.nodeType === 1 && cell.localName === 'tc') {
-              cells.push(textOf(cell).trim());
-            }
-          }
-          grid.push(cells);
-        }
-        tables.push(grid);
+        tables.push(gridOf(node));
       }
     }
 

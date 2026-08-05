@@ -1800,6 +1800,8 @@
    * are selected by bounding-box overlap with the window: a polygon that only
    * touches the edge still belongs on the map, because what surrounds the site
    * is the point of the figure. */
+  var clipSeq = 0;
+
   function thematicMap(spec) {
     var p = palette();
     var width = spec.width || 620, height = spec.height || 520;
@@ -1852,8 +1854,11 @@
     });
     svg.appendChild(svgEl('rect', { width: width, height: height, fill: p.surface }));
 
-    var clipId = 'gwt-clip-' + Math.abs(width * 7919 + height * 104729 +
-      String(spec.title || '').length);
+    /* A counter, not a hash of the spec: two maps on one page can legitimately
+     * share dimensions and title length, and a collision would clip one of
+     * them to the other's window. */
+    clipSeq += 1;
+    var clipId = 'gwt-clip-' + clipSeq;
     if (clip) {
       var corner0 = project(clip[0], clip[3]), corner1 = project(clip[2], clip[1]);
       var defs = svgEl('defs');

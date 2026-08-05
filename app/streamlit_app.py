@@ -63,7 +63,7 @@ from groundwater.ingestion import (
     read_ves_workbook,
 )
 from groundwater.ingestion.templates import write_all_templates
-from groundwater.geo import geographic_to_utm, utm_to_geographic
+from groundwater.geo import geographic_to_utm, parse_latlon, utm_to_geographic
 from groundwater.mapping import (
     chiefdom_of,
     district_of,
@@ -707,18 +707,17 @@ def _apply_latlon() -> None:
     lat = st.session_state.get("latlon_lat", 0.0)
     lon = st.session_state.get("latlon_lon", 0.0)
     if raw:
-        parts = [
-            p for p in raw.replace(";", ",").replace(" ", ",").split(",")
-            if p and p.upper() not in ("N", "S", "E", "W")
-        ]
-        try:
-            lat, lon = float(parts[0]), float(parts[1])
-        except (ValueError, IndexError):
+        # parse_latlon reads N/S/E/W as signs. Discarding them and taking the
+        # number at face value put every W longitude 26 degrees east of the
+        # site, silently and on the wrong side of the continent.
+        parsed = parse_latlon(raw)
+        if parsed is None:
             st.session_state["latlon_error"] = (
                 "Could not read those coordinates. Enter 'lat, lon' in decimal "
-                "degrees, for example 8.4657, -13.2317."
+                "degrees - 8.4657, -13.2317 or 8.4657 N, 13.2317 W."
             )
             return
+        lat, lon = parsed
     if not lat or not lon:
         st.session_state["latlon_error"] = (
             "Enter a latitude and longitude (or paste them) first."
@@ -1142,7 +1141,10 @@ with st.sidebar:
         _lon_col.number_input("Longitude (deg, W negative)", key="latlon_lon",
                               format="%.6f", step=0.0001)
         st.text_input("or paste 'lat, lon'", key="latlon_paste",
-                      placeholder="8.4657, -13.2317")
+                      placeholder="8.4657, -13.2317",
+                      help="Signed decimals or hemisphere letters both work: "
+                      "8.4657, -13.2317 and 8.4657 N, 13.2317 W are the same "
+                      "point.")
         st.button("Convert to UTM", on_click=_apply_latlon,
                   width="stretch")
         if st.session_state.get("latlon_error"):

@@ -15,6 +15,7 @@ central meridian 9 degrees W.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 
 # WGS84 ellipsoid
@@ -152,3 +153,73 @@ def infer_zone_for_sierra_leone(easting: float) -> int:
     the zone.
     """
     return 28 if easting > 550000 else 29
+
+
+_LATLON_TOKEN = re.compile(r"^([+-]?\d*\.?\d+)\s*([NSEWnsew])?$")
+
+
+def parse_latlon(text: str) -> tuple[float, float] | None:
+    """Parse "lat, lon" as a field crew writes it, or None if unreadable.
+
+    Accepts a signed decimal pair (``8.4657, -13.2317``), hemisphere letters
+    trailing (``8.4657 N, 13.2317 W``) or attached (``13.2317W``), letters
+    leading (``N 8.4657, W 13.2317``), and comma, semicolon or whitespace
+    separators.
+
+    Every longitude in Sierra Leone is west, and a handheld GPS writes that
+    as a W rather than a minus sign. Discarding the letter and taking the
+    number at face value puts the site 26 degrees east of where it is -
+    silently, on the wrong side of the continent - so the letter is read as
+    a sign. A letter that contradicts an explicit sign (``-13.2317 E``) is
+    refused rather than guessed at, and an explicit E/W on the first value
+    means the pair was written longitude first.
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    tokens = [t for t in re.split(r"[,;\s]+", raw) if t]
+
+    values: list[dict] = []
+    pending: str | None = None          # a leading N/S/E/W awaiting its number
+    for token in tokens:
+        if len(token) == 1 and token.upper() in ("N", "S", "E", "W"):
+            letter = token.upper()
+            if values and values[-1]["letter"] is None:
+                values[-1]["letter"] = letter      # trailing "8.4657 N"
+            else:
+                pending = letter                   # leading "N 8.4657"
+            continue
+        match = _LATLON_TOKEN.match(token)
+        if match is None:
+            return None
+        values.append({
+            "value": float(match.group(1)),
+            "letter": match.group(2).upper() if match.group(2) else pending,
+        })
+        pending = None
+
+    if len(values) != 2:
+        return None
+
+    def signed(entry: dict) -> float | None:
+        value, letter = entry["value"], entry["letter"]
+        if not math.isfinite(value):
+            return None
+        if letter is None:
+            return value
+        negative = letter in ("S", "W")
+        if value < 0 and not negative:
+            return None                 # "-13.2317 E" contradicts itself
+        if value < 0:
+            return value
+        return -value if negative else value
+
+    first, second = values
+    if first["letter"] in ("E", "W") or second["letter"] in ("N", "S"):
+        first, second = second, first
+    lat, lon = signed(first), signed(second)
+    if lat is None or lon is None:
+        return None
+    if abs(lat) > 90 or abs(lon) > 180:
+        return None
+    return lat, lon
