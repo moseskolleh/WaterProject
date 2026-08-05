@@ -14,10 +14,10 @@ test says so rather than passing quietly.
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import sys
-import tomllib
 import zipfile
 from pathlib import Path
 
@@ -78,6 +78,26 @@ def test_the_wheel_carries_the_bundled_data_tables(wheel):
         assert expected in names
 
 
+def _optional_dependencies() -> dict[str, list[str]]:
+    """The [project.optional-dependencies] table.
+
+    Read without tomllib, which arrived in 3.11 while this package supports
+    3.10 - and the CI matrix runs the floor, so importing it here would take
+    the whole file down on the oldest version the project claims to support.
+    """
+    text = (REPO / "pyproject.toml").read_text(encoding="utf-8")
+    section = re.search(
+        r"^\[project\.optional-dependencies\]\s*$(.*?)(?=^\[)",
+        text, re.MULTILINE | re.DOTALL,
+    )
+    assert section, "pyproject.toml has no [project.optional-dependencies]"
+    extras: dict[str, list[str]] = {}
+    for name, body in re.findall(r"^(\w+)\s*=\s*\[(.*?)\]", section.group(1),
+                                 re.MULTILINE | re.DOTALL):
+        extras[name] = re.findall(r'"([^"]+)"', body)
+    return extras
+
+
 def test_the_deployment_requirements_cover_the_declared_extras():
     """requirements.txt is what the hosted app installs.
 
@@ -85,10 +105,10 @@ def test_the_deployment_requirements_cover_the_declared_extras():
     works locally and is missing in production - which is how the AI
     extraction path shipped without the anthropic client.
     """
-    pyproject = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
-    extras = pyproject["project"]["optional-dependencies"]
+    extras = _optional_dependencies()
     requirements = (REPO / "requirements.txt").read_text(encoding="utf-8").lower()
     for extra in ("app", "extract", "ai"):
+        assert extras.get(extra), f"the '{extra}' extra was not found"
         for spec in extras[extra]:
             package = spec.split(">=")[0].split("<")[0].split("[")[0].strip().lower()
             assert package in requirements, (
