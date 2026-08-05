@@ -63,7 +63,10 @@ jobs:
       - name: Install the toolkit (for the reference values)
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          # extract brings pdfplumber: one of the reference values is what the
+          # Python PDF reader makes of an unruled field sheet, which the
+          # browser reader is then held to on the same bytes.
+          pip install -e ".[dev,extract]"
 
       - name: Install Playwright and its browser
         run: |
