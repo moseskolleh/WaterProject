@@ -2535,12 +2535,43 @@
 
   /* A result below the detection limit counts as zero; a result with no value
    * at all counts as not measured. */
+  /* Every measured result on the standards table's scale, keyed by
+   * normalised parameter name. groundwater/quality/standards.py
+   * canonical_values(). A result whose unit cannot be reconciled with its
+   * guideline is LEFT OUT rather than passed through raw: the aggregate
+   * indices built on these numbers - the quality index, the hazard index,
+   * the ionic balance, the corrosivity indices - all assume mg/L, and a
+   * sample reported in ug/L quietly produced a hazard index a thousand
+   * times too high and an "unsuitable for drinking" rating for clean water. */
+  function canonicalValues(sample, standardsRows) {
+    var table = loadStandards(standardsRows);
+    var values = {};
+    (sample.results || []).forEach(function (result) {
+      if (result.value === null || result.value === undefined) return;
+      var key = normaliseParameter(result.parameter);
+      var entry = table[key];
+      if (!entry) {
+        /* No guideline entry, so no declared scale to convert onto, and
+         * nothing downstream has a limit for it either. */
+        values[key] = Number(result.value);
+        return;
+      }
+      var converted = toGuidelineUnit(Number(result.value), result.unit, entry);
+      if (converted.value !== null) values[key] = converted.value;
+    });
+    return values;
+  }
+
   function sampleValue(sample, key) {
+    var canonical = canonicalValues(sample);
+    if (Object.prototype.hasOwnProperty.call(canonical, key)) return canonical[key];
     var results = sample.results || [];
     for (var i = 0; i < results.length; i++) {
       if (normaliseParameter(results[i].parameter) === key) {
         if (results[i].value !== null && results[i].value !== undefined) {
-          return Number(results[i].value);
+          /* present but not convertible: refuse it rather than use the raw
+           * number on an unknown scale */
+          return null;
         }
         return results[i].below_detection ? 0.0 : null;
       }
@@ -2621,14 +2652,10 @@
     'nitrite (as no2)': 46.005 / 14.007,
   };
 
-  function measuredValues(sample) {
-    var values = {};
-    (sample.results || []).forEach(function (r) {
-      if (r.value !== null && r.value !== undefined) {
-        values[normaliseParameter(r.parameter)] = Number(r.value);
-      }
-    });
-    return values;
+  /* The reference doses and index weights below are all mg/L figures, so
+   * the values have to be on that scale before they are used. */
+  function measuredValues(sample, standardsRows) {
+    return canonicalValues(sample, standardsRows);
   }
 
   function wqiRating(value) {
@@ -2641,7 +2668,7 @@
 
   function computeWqi(sample, standardsRows) {
     var table = loadStandards(standardsRows);
-    var values = measuredValues(sample);
+    var values = measuredValues(sample, standardsRows);
     var weightSum = 0, weightedQ = 0, contributors = [], n = 0;
     Object.keys(values).forEach(function (key) {
       var entry = table[key];
@@ -3482,7 +3509,8 @@
     normaliseParameter: normaliseParameter, loadStandards: loadStandards,
     PROVISIONAL_NATIONAL_NOTE: PROVISIONAL_NATIONAL_NOTE,
     provisionalNationalParameters: provisionalNationalParameters,
-    sampleValue: sampleValue, ionicBalance: ionicBalance,
+    sampleValue: sampleValue, canonicalValues: canonicalValues,
+    ionicBalance: ionicBalance,
     computeWqi: computeWqi, assessHealthRisk: assessHealthRisk,
     assessCorrosivity: assessCorrosivity, assessSample: assessSample,
     qualityVerdict: qualityVerdict, STATUS_ORDER: STATUS_ORDER,
