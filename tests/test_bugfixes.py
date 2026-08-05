@@ -30,6 +30,20 @@ def _quality_sample(*results: WaterQualityResult) -> WaterQualitySample:
     return WaterQualitySample(site=SiteMetadata(community="Test"), results=list(results))
 
 
+def _health_panel() -> list[WaterQualityResult]:
+    """Clean results for the panel a "suitable for drinking" verdict requires.
+
+    Without them the assessment is indeterminate by design, so any test that
+    wants to reach a pass or aesthetic verdict has to supply them.
+    """
+    return [
+        WaterQualityResult("E. coli", 0.0, unit="CFU/100 mL"),
+        WaterQualityResult("Arsenic", 0.001, unit="mg/L"),
+        WaterQualityResult("Fluoride", 0.3, unit="mg/L"),
+        WaterQualityResult("Nitrate (as NO3)", 5.0, unit="mg/L"),
+    ]
+
+
 # --- water quality: microbiological classification --------------------------
 
 def test_total_coliform_is_a_health_exceedance_not_aesthetic():
@@ -607,8 +621,10 @@ def test_a_national_standard_failure_is_not_reported_as_a_taste_problem():
     taste = assess_sample(_quality_sample(
         WaterQualityResult("pH", 7.2),
         WaterQualityResult("Iron", 0.5),
+        *_health_panel(),
     ))
     assert not taste.national_exceedances
+    assert taste.verdict_state == "aesthetic"
     assert "usable for drinking" in taste.verdict
 
 

@@ -90,6 +90,7 @@ from groundwater.coverage import (
 )
 from groundwater.portfolio import (
     STATUS_LABELS,
+    VERDICT_SCHEMA,
     classify_status,
     portfolio_points,
     portfolio_rows,
@@ -122,11 +123,25 @@ from groundwater.project_io import (
 from groundwater.recompute import recompute_results
 from groundwater.quality import (
     PROVISIONAL_NATIONAL_NOTE,
+    STATUS_LABELS as WQ_STATUS_LABELS,
+    VERDICT_LONG,
+    VERDICT_SHORT,
     assess_sample,
     plot_piper,
     plot_stiff,
     provisional_national_parameters,
 )
+
+#: Chip colour per verdict state. Both failures are red - neither supply may
+#: be accepted - and the label carries the difference between them. An
+#: unproven result is blue: it is a question, not a finding.
+_VERDICT_CHIP = {
+    "health_fail": "gw-chip-red",
+    "national_fail": "gw-chip-red",
+    "indeterminate": "gw-chip-blue",
+    "aesthetic": "gw-chip-amber",
+    "pass": "gw-chip-green",
+}
 from groundwater.reporting.costing import CostReportInputs, build_cost_report
 from groundwater.reporting.handover import (
     CommitteeMember,
@@ -381,6 +396,7 @@ st.markdown(
       .gw-chip-amber { color: #994A00; background: rgba(228, 142, 38, 0.18); }
       .gw-chip-red { color: #8C2F2B; background: rgba(177, 78, 73, 0.15); }
       .gw-chip-grey { color: rgba(0, 0, 0, 0.55); background: rgba(0, 0, 0, 0.07); }
+      .gw-chip-blue { color: #1F5C8B; background: rgba(31, 92, 139, 0.14); }
       .gw-card {
         background: #fff; border: 1px solid rgba(0, 0, 0, 0.09);
         border-radius: 11px; padding: 14px 15px;
@@ -689,10 +705,13 @@ def _project_summary() -> dict:
         summary["safe_yield_m3_per_h"] = yr.safe_yield_m3_per_h
     wq = st.session_state.get("wq_assessment")
     if wq is not None:
-        summary["water_verdict"] = (
-            "fail" if wq.health_exceedances
-            else "aesthetic" if wq.aesthetic_exceedances else "pass"
-        )
+        # The full five-state verdict. The old three states folded a national
+        # standard failure into "aesthetic" and had no way to say "we cannot
+        # tell", so a breached or unevaluable supply read as merely a matter
+        # of taste. The schema marker lets a reader tell a new file from an
+        # old one and translate the old vocabulary safely.
+        summary["water_verdict"] = wq.verdict_state
+        summary["verdict_schema"] = VERDICT_SCHEMA
     cost = st.session_state.get("cost_estimate")
     if cost is not None:
         summary["cost_per_meter_usd"] = cost.cost_per_meter_usd
@@ -1544,16 +1563,20 @@ with tab_overview:
         with _col3:
             # Water quality card
             if _ov_wq is not None:
-                if _ov_wq.health_exceedances:
-                    _wq_chip = ("gw-chip-red", "Treat before use")
+                _wq_state = _ov_wq.verdict_state
+                _wq_chip = (_VERDICT_CHIP[_wq_state], VERDICT_SHORT[_wq_state])
+                if _wq_state == "health_fail":
                     _wq_note = ", ".join(
                         r.parameter for r in _ov_wq.health_exceedances[:4])
-                elif _ov_wq.aesthetic_exceedances:
-                    _wq_chip = ("gw-chip-amber", "Aesthetic only")
+                elif _wq_state == "national_fail":
+                    _wq_note = ", ".join(
+                        r.parameter for r in _ov_wq.national_exceedances[:4])
+                elif _wq_state == "indeterminate":
+                    _wq_note = "; ".join(_ov_wq.uncertainties[:2])
+                elif _wq_state == "aesthetic":
                     _wq_note = ", ".join(
                         r.parameter for r in _ov_wq.aesthetic_exceedances[:4])
                 else:
-                    _wq_chip = ("gw-chip-green", "Potable")
                     _wq_note = "All measured parameters within guideline"
                 st.markdown(
                     "<div class='gw-card'><span class='gw-cap'>Water quality"
@@ -2195,9 +2218,16 @@ with tab_quality:
         st.session_state.wq_assessment = assessment
         show_flags(assessment.flags)
         st.subheader("Verdict")
-        if assessment.health_exceedances:
+        _state = assessment.verdict_state
+        st.markdown(f"**{VERDICT_LONG[_state]}**")
+        if _state in ("health_fail", "national_fail"):
             st.error(assessment.verdict)
-        elif assessment.aesthetic_exceedances:
+        elif _state == "indeterminate":
+            # Not a warning and never a success: the toolkit is saying it
+            # cannot tell, and the operator has to resolve that before the
+            # supply is signed off.
+            st.info(assessment.verdict)
+        elif _state == "aesthetic":
             st.warning(assessment.verdict)
         else:
             st.success(assessment.verdict)
@@ -2224,7 +2254,7 @@ with tab_quality:
                 "Unit": r.unit,
                 "WHO health": r.who_health,
                 "National": r.sl_standard,
-                "Status": r.status,
+                "Status": WQ_STATUS_LABELS.get(r.status, r.status),
             }
             for r in assessment.rows
         ]
@@ -3483,6 +3513,29 @@ with tab_portfolio:
             c3.metric("Success rate", f"{stats['success_rate']:.0f}%")
         if stats["mean_cost_per_meter_usd"] is not None:
             c4.metric("Mean cost/m", f"${stats['mean_cost_per_meter_usd']:.0f}")
+        if stats["n_status_unrecognised"]:
+            st.warning(
+                f"{stats['n_status_unrecognised']} project(s) carry a status "
+                "this toolkit does not recognise; they are counted as neither "
+                "successful nor dry. Correct the status on the drilling log."
+            )
+        if stats["n_wq_assessed"]:
+            # Three rates, not one. A single "pass rate" counted an aesthetic
+            # exceedance as safe and hid national-standard failures inside it.
+            w1, w2, w3 = st.columns(3)
+            w1.metric(
+                "Water: compliant", f"{stats['wq_compliant_rate']:.0f}%",
+                help="Meets every health and national limit "
+                     f"({stats['n_wq_assessed']} sampled)",
+            )
+            w2.metric(
+                "Water: failing", f"{stats['wq_fail_rate']:.0f}%",
+                help="Exceeds a health guideline or a national standard limit",
+            )
+            w3.metric(
+                "Water: unproven", f"{stats['wq_unproven_rate']:.0f}%",
+                help="Results incomplete or not evaluable - safety not established",
+            )
         points = portfolio_points(summaries)
         if points:
             pmap = workdir() / "portfolio_map.png"

@@ -9,6 +9,7 @@ from groundwater.portfolio import (
     site_detail,
     site_label,
     site_one_pager,
+    verdict_state,
 )
 
 _SUMMARIES = [
@@ -17,6 +18,7 @@ _SUMMARIES = [
         "easting": 694667.0, "northing": 936225.0, "utm_zone": 28,
         "status": "Successful", "total_depth_m": 50.0,
         "safe_yield_m3_per_h": 2.4, "water_verdict": "pass",
+        "verdict_schema": 2,
         "cost_per_meter_usd": 130.0,
     },
     {
@@ -98,8 +100,60 @@ def test_portfolio_stats():
     assert stats["n_drilled"] == 2  # Rokel + Kuntolo have a depth
     assert stats["n_successful"] == 1
     assert stats["success_rate"] == 50.0  # 1 of 2 drilled
-    assert stats["wq_pass_rate"] == 100.0  # the one tested source is safe
+    assert stats["n_wq_assessed"] == 1
+    assert stats["wq_compliant_rate"] == 100.0  # the one tested source is safe
+    assert stats["wq_fail_rate"] == 0.0
+    assert stats["wq_unproven_rate"] == 0.0
+    assert stats["wq_counts"]["pass"] == 1
     assert abs(stats["mean_cost_per_meter_usd"] - 130.0) < 1e-6
+
+
+def test_a_national_failure_is_never_counted_as_a_passing_supply():
+    """The old single pass rate counted "aesthetic" as safe, and the
+    aesthetic bucket held national-standard failures. A portfolio breaching
+    the national standard at every site reported 100% passing."""
+    summaries = [
+        {"community": "A", "water_verdict": "national_fail", "verdict_schema": 2},
+        {"community": "B", "water_verdict": "indeterminate", "verdict_schema": 2},
+        {"community": "C", "water_verdict": "aesthetic", "verdict_schema": 2},
+        {"community": "D", "water_verdict": "health_fail", "verdict_schema": 2},
+    ]
+    stats = portfolio_stats(summaries)
+    assert stats["n_wq_assessed"] == 4
+    assert stats["wq_fail_rate"] == 50.0        # national + health
+    assert stats["wq_unproven_rate"] == 25.0
+    assert stats["wq_compliant_rate"] == 25.0   # the aesthetic one only
+    assert "wq_pass_rate" not in stats          # deliberately removed
+
+
+def test_a_legacy_aesthetic_verdict_is_read_as_unproven():
+    """A pre-schema "aesthetic" was written by code whose aesthetic bucket
+    also held national exceedances, so it may hide a compliance failure and
+    must not be shown as merely a matter of taste."""
+    assert verdict_state({"water_verdict": "aesthetic"}) == ("indeterminate", True)
+    assert verdict_state({"water_verdict": "fail"}) == ("health_fail", True)
+    assert verdict_state({"water_verdict": "pass"}) == ("pass", True)
+    assert verdict_state({}) == (None, False)
+    # a current file is taken at face value
+    assert verdict_state(
+        {"water_verdict": "aesthetic", "verdict_schema": 2}
+    ) == ("aesthetic", False)
+
+
+def test_an_unfinished_or_unproductive_hole_is_not_a_success():
+    """Substring matching read "incomplete" and "unproductive" as successes,
+    inflating every programme's reported success rate."""
+    for status in ("incomplete", "Incomplete - rig broke down", "not completed",
+                   "Uncompleted", "partially complete"):
+        assert classify_status({"status": status}) == "in_progress", status
+    for status in ("unproductive", "Unproductive", "non-productive",
+                   "low productivity"):
+        assert classify_status({"status": status}) == "dry", status
+    # a status nobody can read is never anything positive
+    assert classify_status({"status": "qwerty"}) == "other"
+    # a bare "sit" substring no longer counts as a siting
+    for status in ("visited", "deposit sampled", "in transit"):
+        assert classify_status({"status": status}) == "other", status
 
 
 def test_portfolio_map_renders(tmp_path):

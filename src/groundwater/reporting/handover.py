@@ -17,7 +17,11 @@ from ..design.designer import BoreholeDesign
 from ..design.drawing import draw_borehole_design
 from ..hydraulics.analysis import PumpingTestAnalysis
 from ..models import DrillingLog, SiteMetadata
-from ..quality.assess import WaterQualityAssessment
+from ..quality.assess import (
+    SUITABILITY_PHRASE,
+    SUITABILITY_SENTENCE,
+    WaterQualityAssessment,
+)
 from ..utils import fmt_num, safe_slug
 from .citations import GLOSSARY, references_for
 from .context import context_map_figures
@@ -196,7 +200,9 @@ def build_handover_report(
     rb.heading("4. Water Quality", 1)
     if inputs.quality is not None:
         rb.paragraph(inputs.quality.verdict, align="justify")
-        exceed = inputs.quality.health_exceedances + inputs.quality.aesthetic_exceedances
+        # every exceedance, national ones included: a national breach is a
+        # compliance failure and must appear in the table, not be dropped
+        exceed = inputs.quality.all_exceedances
         if exceed:
             rb.table(
                 [[r.parameter, fmt_num(r.value), r.unit, r.remark] for r in exceed],
@@ -254,11 +260,20 @@ def build_handover_report(
         "Report persistent taste, odour or discolouration to the district "
         "water office and arrange a water quality test.",
     ]
-    if inputs.quality is not None and inputs.quality.health_exceedances:
+    state = inputs.quality.verdict_state if inputs.quality is not None else None
+    if state in ("health_fail", "national_fail"):
         recs.insert(
             0,
             "Implement the treatment measures in the water quality report "
             "before the water is used for drinking.",
+        )
+    elif state == "indeterminate":
+        recs.insert(
+            0,
+            "Do not describe this supply as safe to drink until the water "
+            "quality results are complete: "
+            + "; ".join(inputs.quality.uncertainties)
+            + ".",
         )
     if (
         inputs.quality is not None
@@ -315,12 +330,12 @@ def _executive_summary(inputs: HandoverReportInputs) -> tuple[list[str], list[st
             f"The recommended safe yield is {fmt_num(yr.safe_yield_m3_per_h)} m3/h."
         )
     if quality is not None:
-        bits.append(
-            "The water requires treatment before drinking; see the water "
-            "quality section."
-            if quality.health_exceedances
-            else "The water is suitable for drinking on the parameters tested."
-        )
+        # Chosen on the full verdict state, not the health exceedances alone:
+        # a national breach or an unevaluable panel used to read as suitable.
+        sentence = SUITABILITY_SENTENCE[quality.verdict_state]
+        if quality.verdict_state in ("health_fail", "national_fail"):
+            sentence = sentence.rstrip(".") + "; see the water quality section."
+        bits.append(sentence)
 
     key: list[str] = []
     if log is not None and log.total_depth_m:
@@ -331,14 +346,7 @@ def _executive_summary(inputs: HandoverReportInputs) -> tuple[list[str], list[st
     if yr is not None and yr.safe_yield_m3_per_h:
         key.append(f"Safe yield: {fmt_num(yr.safe_yield_m3_per_h)} m3/h.")
     if quality is not None:
-        key.append(
-            "Water safety: "
-            + (
-                "treatment required before drinking."
-                if quality.health_exceedances
-                else "suitable for drinking on the parameters tested."
-            )
-        )
+        key.append("Water safety: " + SUITABILITY_PHRASE[quality.verdict_state])
     key.append(
         "Keep this report with the WASH committee records and maintain the "
         "sanitary protection zone around the wellhead."

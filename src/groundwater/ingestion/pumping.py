@@ -12,6 +12,14 @@ drive the parsing:
 * Discharge is often missing. The test still parses and produces water
   level and drawdown series, but a ``missing_discharge`` flag marks all
   transmissivity and yield results as pending.
+* Units are read, not assumed. The sheet's own headings say what the
+  numbers mean - "Time (min)", "Discharge per step (m3/h)" - and a crew
+  that heads the column L/s or records the times in hours means exactly
+  that. Both are converted to the canonical m3/h and minutes. A unit the
+  toolkit cannot read is refused rather than guessed at: a discharge in an
+  unreadable unit leaves the step pending, and a time column in one is
+  dropped, because there is no pending state for time and every consumer
+  would otherwise fit a curve to the wrong axis.
 
 Times within each group are irregular (1, 2, 3 and 5 minute spacing);
 nothing assumes uniform sampling.
@@ -35,11 +43,17 @@ from pathlib import Path
 import numpy as np
 
 from ..models import DataFlag, PumpingStep, PumpingTest
+from ..units import Quantity, convert, read_quantity
 from ..utils import clean_text, parse_number
 from . import common
 
+# Free-text discharge notes: "Constant Discharge of 2.93m3/h", "Q = 0.81 L/s".
+# The unit is captured rather than assumed - the old pattern only matched an
+# m3/h tail, so a rate written in L/s was silently dropped instead of read.
 _DISCHARGE_TEXT_RE = re.compile(
-    r"discharge\s*(?:of|0f)?\s*[:=]?\s*(\d+(?:\.\d+)?)\s*m3?\s*/?\s*h", re.IGNORECASE
+    r"discharge\s*(?:of|0f)?\s*[:=]?\s*(\d+(?:\.\d+)?)\s*"
+    r"([a-zµμ]{1,3}\s*3?\s*/\s*[a-z]{1,4}|lps|lpm|lph)",
+    re.IGNORECASE,
 )
 
 
@@ -77,66 +91,140 @@ def _find_groups(grid: list[list]) -> tuple[int, list[dict]] | None:
                     reco_col = cc
             if level_col is None and reco_col is None:
                 continue
+            # The header text travels with the group so the time unit it
+            # declares - "Time (min)", "Time (h)" - is read rather than assumed.
+            header = texts[c]
             if reco_col is not None and level_col is not None:
                 if reco_col - c <= 2:
                     # Kuntolo style triplet: Time, Water Level, Recovery increment
-                    groups.append({"time": c, "level": level_col, "kind": "recovery"})
+                    groups.append({"time": c, "level": level_col,
+                                   "kind": "recovery", "time_header": header})
                 else:
                     # Dr. Timbo style: shared time column; recovery column holds levels
-                    groups.append({"time": c, "level": level_col, "kind": "pumping"})
-                    groups.append({"time": c, "level": reco_col, "kind": "recovery"})
+                    groups.append({"time": c, "level": level_col,
+                                   "kind": "pumping", "time_header": header})
+                    groups.append({"time": c, "level": reco_col,
+                                   "kind": "recovery", "time_header": header})
             elif reco_col is not None:
-                groups.append({"time": c, "level": reco_col, "kind": "recovery"})
+                groups.append({"time": c, "level": reco_col,
+                               "kind": "recovery", "time_header": header})
             else:
-                groups.append({"time": c, "level": level_col, "kind": "pumping"})
+                groups.append({"time": c, "level": level_col,
+                               "kind": "pumping", "time_header": header})
         if groups and (best is None or len(groups) > len(best[1])):
             best = (r, groups)
     return best
 
 
-def _read_series(grid: list[list], header_row: int, group: dict) -> tuple[np.ndarray, np.ndarray]:
+def _read_series(
+    grid: list[list], header_row: int, group: dict
+) -> tuple[np.ndarray, np.ndarray, str]:
+    """Read one Time / Water Level pair, with the times put into minutes.
+
+    Returns ``(times_min, levels, time_unit)``. ``time_unit`` is the unit the
+    column declared; it is empty when nothing was declared (minutes assumed)
+    and ``"?<text>"`` when a unit was declared that could not be read - in
+    which case the caller must drop the group rather than treat unknown
+    units as minutes. Unlike discharge, there is no "pending" state for time:
+    every consumer would silently produce wrong transmissivities.
+    """
+    header = group.get("time_header", "")
     times, levels = [], []
+    unit_text = ""
     for row in grid[header_row + 1 :]:
-        t = parse_number(row[group["time"]]) if group["time"] < len(row) else None
+        cell = row[group["time"]] if group["time"] < len(row) else None
         wl = parse_number(row[group["level"]]) if group["level"] < len(row) else None
-        if t is None or wl is None:
+        quantity = read_quantity(cell, header, dimension="time")
+        if quantity.status == "absent" or wl is None:
             continue
-        times.append(t)
+        if quantity.status == "unknown":
+            return (
+                np.array([], dtype=float),
+                np.array([], dtype=float),
+                f"?{quantity.unit_text}",
+            )
+        if quantity.unit_text:
+            unit_text = quantity.unit_text
+        times.append(quantity.value)
         levels.append(wl)
-    return np.array(times, dtype=float), np.array(levels, dtype=float)
+    return np.array(times, dtype=float), np.array(levels, dtype=float), unit_text
 
 
-def _find_step_discharges(grid: list[list]) -> dict[int, float]:
-    """Read per step discharge from 'Step n Q' labelled cells."""
-    discharges: dict[int, float] = {}
+_STEP_LABEL_RE = re.compile(r"^\s*step\s*\d*\s*q\b", re.IGNORECASE)
+
+
+def _row_unit_hint(row: list) -> str:
+    """The row's own leading label, e.g. 'Discharge per step (m3/h)'."""
+    for cell in row:
+        text = clean_text(cell)
+        if text and "discharge" in text.lower():
+            return text
+    return ""
+
+
+def _find_step_discharges(grid: list[list]) -> dict[int, "Quantity"]:
+    """Read per step discharge from 'Step n Q' labelled cells.
+
+    Two hazards on a real sheet, both handled here:
+
+    * The rate is written in whatever unit the crew used. The unit is taken
+      from the value cell, then the label, then the row's discharge caption,
+      and the value is converted to m3/h. A unit that cannot be read is
+      refused, which routes the step into the existing "discharge missing,
+      results pending" path rather than producing a wrong transmissivity.
+    * The neighbouring cell may be the *next* step's label rather than a
+      value. Scanning it blindly read "Step 2 Q (m3/h)" as a discharge of
+      2 m3/h whenever the first step's box was left empty, and fitted a
+      transmissivity to it. Label-shaped cells are skipped.
+    """
+    discharges: dict[int, Quantity] = {}
     for row in grid:
+        row_hint = _row_unit_hint(row)
         for c, cell in enumerate(row):
-            text = clean_text(cell).lower()
-            if text.startswith("step") and "q" in text:
-                num = parse_number(text.split("q")[0])
-                if num is None:
+            label = clean_text(cell)
+            if not _STEP_LABEL_RE.match(label):
+                continue
+            num = parse_number(label.lower().split("q")[0])
+            if num is None:
+                continue
+            for cc in range(c + 1, min(c + 3, len(row))):
+                neighbour = row[cc]
+                if _STEP_LABEL_RE.match(clean_text(neighbour)):
+                    break  # the next step's label, not this step's value
+                quantity = read_quantity(
+                    neighbour, label, row_hint, dimension="flow"
+                )
+                if quantity.status == "absent":
                     continue
-                for cc in range(c + 1, min(c + 3, len(row))):
-                    val = parse_number(row[cc])
-                    if val is not None:
-                        discharges[int(num)] = val
-                        break
+                discharges[int(num)] = quantity
+                break
     return discharges
 
 
-def _discharge_candidates_from_text(grid: list[list]) -> list[float]:
+def _discharge_candidates_from_text(grid: list[list]) -> tuple[list[float], list[str]]:
     """Discharge values mentioned in free text such as
-    'Constant Discharge of 2.93m3/h'."""
+    'Constant Discharge of 2.93m3/h'.
+
+    Returns ``(values_in_m3_per_h, unreadable_unit_texts)``. A note whose
+    unit cannot be read is reported rather than converted, so it can be
+    raised as a flag instead of quietly becoming a number in m3/h.
+    """
     found: list[float] = []
+    unreadable: list[str] = []
     for row in grid:
         for cell in row:
             if cell is None or isinstance(cell, (int, float)):
                 continue
             for m in _DISCHARGE_TEXT_RE.finditer(str(cell)):
-                value = float(m.group(1))
+                written = m.group(2).strip()
+                value = convert(float(m.group(1)), written, "m3/h", dimension="flow")
+                if value is None:
+                    if written not in unreadable:
+                        unreadable.append(written)
+                    continue
                 if value not in found:
                     found.append(value)
-    return found
+    return found, unreadable
 
 
 # Pre-printed text that names a test kind without recording which test was
@@ -188,14 +276,47 @@ def _assemble(grid: list[list], source: str) -> PumpingTest:
         raise ValueError(f"No Time/Water Level column groups found in {source}")
     header_row, groups = located
 
-    pumping_series = [
-        _read_series(grid, header_row, g) for g in groups if g["kind"] == "pumping"
-    ]
-    pumping_series = [(t, wl) for t, wl in pumping_series if len(t)]
-    recovery_series = [
-        _read_series(grid, header_row, g) for g in groups if g["kind"] == "recovery"
-    ]
-    recovery_series = [(t, wl) for t, wl in recovery_series if len(t)]
+    def _series(kind: str) -> list[tuple[np.ndarray, np.ndarray]]:
+        """Read every column group of one kind, dropping unreadable-unit ones.
+
+        A time column whose unit cannot be read is dropped rather than taken
+        as minutes: reading hours as minutes would rescale every drawdown
+        curve and every transmissivity fitted to it, silently.
+        """
+        out = []
+        for group in groups:
+            if group["kind"] != kind:
+                continue
+            t, wl, unit_text = _read_series(grid, header_row, group)
+            if unit_text.startswith("?"):
+                flags.append(
+                    DataFlag(
+                        "error",
+                        "time_unit_unknown",
+                        f"The {kind} time column is headed "
+                        f"'{group.get('time_header', '')}' and its unit "
+                        f"'{unit_text[1:]}' could not be read, so the readings "
+                        "were not used. Head the column in minutes, hours or "
+                        "seconds.",
+                    )
+                )
+                continue
+            if unit_text and unit_text.lower() not in ("min", "mins", "minute",
+                                                       "minutes"):
+                flags.append(
+                    DataFlag(
+                        "info",
+                        "time_unit_converted",
+                        f"The {kind} times are recorded in '{unit_text}' and "
+                        "have been converted to minutes for the analysis.",
+                    )
+                )
+            if len(t):
+                out.append((t, wl))
+        return out
+
+    pumping_series = _series("pumping")
+    recovery_series = _series("recovery")
 
     test_type = str(fields.get("test_type", "")).strip().lower()
     stated = bool(test_type)
@@ -228,19 +349,64 @@ def _assemble(grid: list[list], source: str) -> PumpingTest:
 
     steps: list[PumpingStep] = []
     for i, (t, wl) in enumerate(pumping_series, start=1):
+        quantity = discharges.get(i)
         steps.append(
             PumpingStep(
                 step_number=i,
                 time_min=t,
                 water_level_m=wl,
-                discharge_m3_per_h=discharges.get(i),
+                # A refused unit leaves this None, which is the existing
+                # "results pending until discharge is supplied" path - the
+                # right answer, and far better than a number in the wrong unit.
+                discharge_m3_per_h=quantity.value if quantity is not None else None,
                 label=f"Step {i}" if len(pumping_series) > 1 else "Pumping phase",
             )
         )
+        if quantity is None:
+            continue
+        if quantity.status == "unknown":
+            flags.append(
+                DataFlag(
+                    "warning",
+                    "discharge_unit_unknown",
+                    f"Step {i} discharge is written as "
+                    f"{quantity.raw_value:g} '{quantity.unit_text}', a unit "
+                    "this toolkit does not recognise, so it was not used. "
+                    "Record the rate in m3/h, L/s or L/min.",
+                )
+            )
+        elif quantity.status == "converted":
+            flags.append(
+                DataFlag(
+                    "info",
+                    "discharge_unit_converted",
+                    f"Step {i} discharge {quantity.raw_value:g} "
+                    f"{quantity.unit_text} read as {quantity.value:.3g} m3/h.",
+                )
+            )
+        elif quantity.status == "assumed":
+            flags.append(
+                DataFlag(
+                    "info",
+                    "discharge_unit_assumed",
+                    f"Step {i} discharge {quantity.raw_value:g} carries no "
+                    "unit on the sheet and was read as m3/h. Head the "
+                    "discharge row with its unit to remove the assumption.",
+                )
+            )
 
     # Free-text discharge: use it only when unambiguous (one candidate, one step)
-    candidates = _discharge_candidates_from_text(grid)
+    candidates, unreadable_units = _discharge_candidates_from_text(grid)
     missing = [s for s in steps if s.discharge_m3_per_h is None]
+    for written in unreadable_units:
+        flags.append(
+            DataFlag(
+                "warning",
+                "discharge_unit_unknown",
+                f"A discharge note on the sheet is written in '{written}', a "
+                "unit this toolkit does not recognise, so it was not used.",
+            )
+        )
     if candidates and missing:
         if len(candidates) == 1 and len(steps) == 1:
             steps[0].discharge_m3_per_h = candidates[0]
@@ -248,8 +414,8 @@ def _assemble(grid: list[list], source: str) -> PumpingTest:
                 DataFlag(
                     "info",
                     "discharge_from_text",
-                    f"Discharge {candidates[0]} m3/h taken from a text note on the "
-                    "sheet; confirm against the measured value.",
+                    f"Discharge {candidates[0]:g} m3/h taken from a text note on "
+                    "the sheet; confirm against the measured value.",
                 )
             )
         else:
@@ -258,7 +424,7 @@ def _assemble(grid: list[list], source: str) -> PumpingTest:
                     "warning",
                     "discharge_ambiguous",
                     "Discharge mentioned in sheet text ("
-                    + ", ".join(f"{c} m3/h" for c in candidates)
+                    + ", ".join(f"{c:g} m3/h" for c in candidates)
                     + ") but not assigned per step; enter values in the template.",
                 )
             )

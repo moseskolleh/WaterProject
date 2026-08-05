@@ -19,7 +19,11 @@ from ..design.drawing import draw_borehole_design
 from ..hydraulics.analysis import PumpingTestAnalysis
 from ..hydraulics.plots import plot_test_overview
 from ..models import DrillingLog
-from ..quality.assess import WaterQualityAssessment
+from ..quality.assess import (
+    SUITABILITY_PHRASE,
+    SUITABILITY_SENTENCE,
+    WaterQualityAssessment,
+)
 from ..utils import fmt_num, safe_slug
 from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
@@ -88,11 +92,9 @@ def _executive_summary(inputs: CompletionReportInputs) -> tuple[list[str], list[
             "yet final."
         )
     if quality is not None:
-        bits.append(
-            "The water requires treatment before drinking."
-            if quality.health_exceedances
-            else "The water is suitable for drinking on the parameters tested."
-        )
+        # Chosen on the full verdict state, not the health exceedances alone:
+        # a national breach or an unevaluable panel used to read as suitable.
+        bits.append(SUITABILITY_SENTENCE[quality.verdict_state])
 
     key: list[str] = []
     if log.total_depth_m:
@@ -103,14 +105,7 @@ def _executive_summary(inputs: CompletionReportInputs) -> tuple[list[str], list[
     if yr is not None and yr.safe_yield_m3_per_h:
         key.append(f"Safe yield: {fmt_num(yr.safe_yield_m3_per_h)} m3/h.")
     if quality is not None:
-        key.append(
-            "Water safety: "
-            + (
-                "treatment required before drinking."
-                if quality.health_exceedances
-                else "suitable on the parameters tested."
-            )
-        )
+        key.append("Water safety: " + SUITABILITY_PHRASE[quality.verdict_state])
     return [" ".join(bits)], key
 
 
@@ -321,7 +316,9 @@ def build_completion_report(
     if inputs.quality is not None:
         rb.heading(f"{section}. Water Quality Summary", 1)
         rb.paragraph(inputs.quality.verdict, align="justify")
-        exceed = inputs.quality.health_exceedances + inputs.quality.aesthetic_exceedances
+        # every exceedance, national ones included: a national breach is a
+        # compliance failure and must appear in the table, not be dropped
+        exceed = inputs.quality.all_exceedances
         if exceed:
             rb.table(
                 [[r.parameter, fmt_num(r.value), r.unit, _breached_limit(r), r.remark]
@@ -358,10 +355,18 @@ def build_completion_report(
             "The pumping test discharge must be supplied so the yield "
             "recommendation can be completed; abstraction figures remain pending."
         )
-    if inputs.quality is not None and inputs.quality.health_exceedances:
+    state = inputs.quality.verdict_state if inputs.quality is not None else None
+    if state in ("health_fail", "national_fail"):
         bullets.append(
             "Water treatment is required before drinking; see the water "
             "quality assessment."
+        )
+    elif state == "indeterminate":
+        bullets.append(
+            "The water quality results do not yet establish that the supply is "
+            "safe to drink: "
+            + "; ".join(inputs.quality.uncertainties)
+            + ". Resolve these before the borehole is handed over."
         )
     else:
         bullets.append(

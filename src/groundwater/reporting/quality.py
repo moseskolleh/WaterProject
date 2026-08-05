@@ -15,7 +15,7 @@ from pathlib import Path
 from docx.shared import Pt, RGBColor
 
 from ..config import Config
-from ..quality.assess import WaterQualityAssessment
+from ..quality.assess import STATUS_LABELS, WaterQualityAssessment
 from ..quality.diagrams import plot_piper, plot_stiff
 from ..quality.standards import (
     PROVISIONAL_NATIONAL_NOTE,
@@ -25,15 +25,9 @@ from ..utils import fmt_num, safe_slug
 from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
 
-_STATUS_LABEL = {
-    "within_limits": "Complies",
-    "exceeds_health": "EXCEEDS HEALTH GUIDELINE",
-    "exceeds_national": "Exceeds national/adopted limit",
-    "exceeds_aesthetic": "Exceeds acceptability value",
-    "below_detection": "Below detection",
-    "no_guideline": "No guideline value",
-    "not_measured": "Not measured",
-}
+#: The wording lives with the assessment so every surface prints the same
+#: label and a new status can never leak out as a raw code.
+_STATUS_LABEL = STATUS_LABELS
 
 _TREATMENT_ADVICE = {
     "iron": "Iron above the acceptability value causes staining and metallic "
@@ -75,8 +69,34 @@ def _executive_summary(assessment: WaterQualityAssessment) -> tuple[list[str], l
     """Compose the water-quality executive summary from the assessment."""
     community = assessment.sample.site.community or "the site"
     health = assessment.health_exceedances
+    national = assessment.national_exceedances
     aesthetic = assessment.aesthetic_exceedances
-    if health:
+    state = assessment.verdict_state
+    if state == "national_fail":
+        names = ", ".join(r.parameter for r in national)
+        para = (
+            f"Laboratory results for the borehole water at {community} meet the "
+            "WHO health based guideline values but do not comply with the "
+            f"national standard limit(s) for {names}. A national limit is a "
+            "legal requirement, not a matter of taste: treatment is required "
+            "before the supply can be accepted."
+        )
+        key = [
+            "All WHO health based guideline values are met.",
+            f"National standard exceedance(s): {names}.",
+            "Treatment is required before the supply is accepted.",
+        ]
+    elif state == "indeterminate":
+        para = (
+            f"Laboratory results for the borehole water at {community} do not "
+            "establish that the water is suitable for drinking. "
+            + "; ".join(assessment.uncertainties).capitalize()
+            + ". No suitability verdict can be given until these are resolved."
+        )
+        key = [
+            "The water has NOT been shown to be safe to drink.",
+        ] + [u.capitalize() + "." for u in assessment.uncertainties]
+    elif health:
         names = ", ".join(r.parameter for r in health)
         para = (
             f"Laboratory results for the borehole water at {community} were "
@@ -298,7 +318,7 @@ def build_quality_report(
     advice = []
     if corr is not None and corr.is_aggressive:
         advice.append(corr.materials_note)
-    for r in assessment.health_exceedances + assessment.aesthetic_exceedances:
+    for r in assessment.all_exceedances:
         key = r.parameter.strip().lower()
         for match, text in _TREATMENT_ADVICE.items():
             if match in key:

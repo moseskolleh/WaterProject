@@ -6,7 +6,18 @@ from .standards import (
     load_standards,
     provisional_national_parameters,
 )
-from .assess import assess_sample, WaterQualityAssessment, ParameterAssessment
+from .assess import (
+    ESSENTIAL_HEALTH_PARAMETERS,
+    STATUS_LABELS,
+    SUITABILITY_PHRASE,
+    SUITABILITY_SENTENCE,
+    VERDICT_LONG,
+    VERDICT_ORDER,
+    VERDICT_SHORT,
+    ParameterAssessment,
+    WaterQualityAssessment,
+    assess_sample,
+)
 from .ionic import ionic_balance, IonicBalanceResult
 from .corrosivity import assess_corrosivity, CorrosivityAssessment
 from .indices import (
@@ -18,6 +29,13 @@ from .indices import (
 from .diagrams import plot_piper, plot_stiff
 
 __all__ = [
+    "ESSENTIAL_HEALTH_PARAMETERS",
+    "STATUS_LABELS",
+    "SUITABILITY_PHRASE",
+    "SUITABILITY_SENTENCE",
+    "VERDICT_LONG",
+    "VERDICT_ORDER",
+    "VERDICT_SHORT",
     "load_standards",
     "provisional_national_parameters",
     "PROVISIONAL_NATIONAL_NOTE",

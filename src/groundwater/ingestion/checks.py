@@ -18,7 +18,7 @@ import csv
 from importlib import resources
 from typing import Iterable
 
-from ..geo import infer_zone_for_sierra_leone, utm_to_geographic
+from ..geo import infer_zone_for_sierra_leone, utm_distance_m, utm_to_geographic
 from ..models import DataFlag, SiteMetadata
 
 _BUFFER_DEG = 0.05  # about 5.5 km; boundary points are not flagged
@@ -197,16 +197,26 @@ def check_group_consistency(
                 )
             )
 
-    # pairwise separation
+    # Pairwise separation, measured on the ground rather than by subtracting
+    # raw eastings. Sierra Leone straddles UTM zones 28N and 29N, and each
+    # zone restarts its easting at its own central meridian: two sites 2 km
+    # apart either side of the 12 degrees W boundary differ by about 659 km
+    # on paper. Every point is converted through its own zone first.
     points = []
     for label, site in records:
-        if site.easting is not None and site.northing is not None:
-            points.append((label, site.easting, site.northing))
+        utm = site.utm  # resolves the zone, inferring it when unrecorded
+        if utm is not None:
+            points.append((label, utm))
     for i in range(len(points)):
         for j in range(i + 1, len(points)):
-            li, ei, ni = points[i]
-            lj, ej, nj = points[j]
-            dist_km = ((ei - ej) ** 2 + (ni - nj) ** 2) ** 0.5 / 1000.0
+            li, ui = points[i]
+            lj, uj = points[j]
+            try:
+                dist_km = utm_distance_m(ui, uj) / 1000.0
+            except (ValueError, ZeroDivisionError, OverflowError):
+                # An unconvertible coordinate is already reported per site by
+                # check_site_consistency; it must not sink the whole check.
+                continue
             if dist_km > max_separation_km:
                 flags.append(
                     DataFlag(
