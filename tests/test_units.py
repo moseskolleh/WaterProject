@@ -96,8 +96,21 @@ def test_only_bracketed_text_counts_as_a_declared_unit():
     # prose in brackets is not a unit
     assert unit_from_label("Constant discharge (0-60 min)", dimension="time")[1] is None
     # a declared unit that cannot be read is reported as declared, not absent
-    written, unit = unit_from_label("Time (furlongs)", dimension="time")
-    assert written == "furlongs" and unit is None
+    written, unit = unit_from_label("Time (fur/s)", dimension="time")
+    assert written == "fur/s" and unit is None
+
+
+def test_a_word_describing_the_column_is_not_a_unit():
+    """"Time (elapsed)" declares no unit, and treating it as an unreadable
+    one threw away every reading in the column."""
+    for header in ("Time (elapsed)", "Time (cumulative)", "Time (recovery)",
+                   "Time (since start)", "Time (mm:ss)", "Time (0-60 min)"):
+        assert unit_from_label(header, dimension="time") == ("", None), header
+    # anything actually shaped like a unit is still declared, and refused
+    for header in ("Time (fur/s)", "Q (gpm)", "Q (m9/h)"):
+        written, unit = unit_from_label(
+            header, dimension="time" if "Time" in header else "flow")
+        assert written and unit is None, header
 
 
 def test_the_cell_outranks_its_header():
@@ -261,14 +274,14 @@ def test_an_unreadable_time_unit_drops_the_column(tmp_path, constant_test):
     from groundwater.hydraulics import analyse_pumping_test
     from groundwater.ingestion import read_pumping_workbook
 
-    edits = {f"{col}11": "Time (furlongs)" for col in ("A", "D", "G", "J", "M")}
+    edits = {f"{col}11": "Time (fur/s)" for col in ("A", "D", "G", "J", "M")}
     path = _pumping_copy(tmp_path, constant_test, edits)
     test = read_pumping_workbook(path)
     assert test.steps == []
     assert test.recovery_time_min is None
     errors = [f for f in test.flags if f.code == "time_unit_unknown"]
     assert errors and all(f.level == "error" for f in errors)
-    assert "furlongs" in errors[0].message
+    assert "fur/s" in errors[0].message
     # and the analysis carries the reason forward rather than inventing a
     # transmissivity from nothing
     analysis = analyse_pumping_test(test)
@@ -328,7 +341,7 @@ def test_one_unreadable_reading_costs_one_reading_not_the_column(tmp_path,
                                                                  constant_test):
     from groundwater.ingestion import read_pumping_workbook
 
-    path = _pumping_copy(tmp_path, constant_test, {"A14": "3 (furlongs)"})
+    path = _pumping_copy(tmp_path, constant_test, {"A14": "3 (fur/s)"})
     test = read_pumping_workbook(path)
     assert len(test.steps[0].time_min) >= 8      # the rest of the column survives
     assert any(f.code == "time_reading_unreadable" for f in test.flags)

@@ -124,6 +124,25 @@ def test_a_missing_bundled_sample_says_so(sample_data, tmp_path):
     issues = out["recompute_diagnostics"]["issues"]
     assert [i["code"] for i in issues] == ["missing_sample"]
     assert issues[0]["context"] == "nowhere/gone.xlsx"
+    # the result key is named even though the file never opened, so the app
+    # can retire the banner once the analyst supplies the sheet by hand
+    assert issues[0]["result"] == "wq_assessment"
+
+
+def test_every_issue_names_the_result_it_is_about(sample_data, tmp_path):
+    """A banner that cannot say which result is missing can never clear."""
+    out = recompute_results(
+        {
+            "wq": {"sample": "nowhere/gone.xlsx"},
+            "pump": {"name": "p.xlsx", "bytes": b"junk"},
+            "log": {"name": "l.xlsx", "bytes": "not bytes"},
+        },
+        sample_root=sample_data, tmp_dir=tmp_path,
+    )
+    issues = out["recompute_diagnostics"]["issues"]
+    assert issues and all(i["result"] for i in issues), issues
+    assert {i["result"] for i in issues} == {
+        "wq_assessment", "pump_analysis", "drilling_log"}
 
 
 def test_a_hand_edited_payload_does_not_abort_the_whole_load(sample_data, tmp_path):

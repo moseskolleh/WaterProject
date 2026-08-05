@@ -24,6 +24,7 @@ from __future__ import annotations
 import atexit
 import os
 from contextlib import ExitStack
+from functools import lru_cache
 from importlib import resources
 from pathlib import Path
 from typing import Any
@@ -55,12 +56,22 @@ _FILES = ExitStack()
 atexit.register(_FILES.close)
 
 
+@lru_cache(maxsize=1)
 def _packaged_frontend() -> Path | None:
-    """The component build carried inside the installed package."""
+    """The component build carried inside the installed package.
+
+    Cached: ``as_file`` pushes onto the process-lifetime ExitStack, and
+    component_available() is called on every Streamlit rerun, so resolving it
+    afresh each time accumulated a context per rerun for the life of the
+    server.
+    """
     try:
         resource = resources.files("groundwater.depth_spine") / "frontend"
+    except (ModuleNotFoundError, TypeError):
+        return None
+    try:
         path = _FILES.enter_context(resources.as_file(resource))
-    except (ModuleNotFoundError, FileNotFoundError, NotADirectoryError, TypeError):
+    except (FileNotFoundError, NotADirectoryError):
         return None
     # Probe the entry point, not the directory: an empty frontend/ left behind
     # by a failed build must not read as available.

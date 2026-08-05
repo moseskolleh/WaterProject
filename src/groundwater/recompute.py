@@ -45,6 +45,18 @@ from .ves.interpret import rank_interpretations
 
 _log = logging.getLogger(__name__)
 
+#: The session key each upload key produces. An issue names it even when the
+#: file could not be opened at all: the key really is absent, and a banner
+#: that cannot say which result is missing can never be cleared when the
+#: analyst supplies it by hand.
+SOURCE_RESULTS = {
+    "ves": "ves_results",
+    "wiz_ves": "ves_results",
+    "pump": "pump_analysis",
+    "wq": "wq_assessment",
+    "log": "drilling_log",
+}
+
 #: What each upload key is called in front of a user.
 SOURCE_LABELS = {
     "ves": "Geophysics (VES)",
@@ -175,7 +187,7 @@ def recompute_results(
         path, code = _materialize(source, sample_root, tmp_dir)
         if path is None:
             issues.append(_issue(
-                key, "", code,
+                key, SOURCE_RESULTS.get(key, ""), code,
                 f"{SOURCE_LABELS.get(key, key)}: the saved file could not be "
                 f"opened because {ISSUE_CODES[code]}. Upload it again.",
                 context=_source_name(source),

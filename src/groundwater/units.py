@@ -291,6 +291,7 @@ CANONICAL_UNITS = {
 # declared unit, so an ordinary word in a label ("Discharge per step") is
 # never mistaken for one and never reported as unreadable.
 _BRACKETED_RE = re.compile(r"[(\[]([^)\]]{1,20})[)\]]")
+_RANGE_IN_LABEL_RE = re.compile(r"\d\s*-\s*\d")
 _NUMBER_RE = re.compile(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?")
 
 
@@ -326,13 +327,34 @@ class Quantity:
         return self.value is not None
 
 
+def _is_unit_shaped(text: str) -> bool:
+    """Whether a bracketed group is shaped like a unit rather than a word.
+
+    Every unit a field sheet writes is short, or carries a solidus, or
+    carries a digit: "min", "hrs", "L/s", "m3/h", "uS/cm". A longer bare
+    word is a description of the column - "Time (elapsed)", "(cumulative)",
+    "(recovery)" - and treating one as an unreadable unit threw away every
+    reading in the column, which is a far worse answer than reading the
+    times in the minutes the sheet's own template uses.
+    """
+    normalised = _normalise(text)
+    if not normalised or not any(ch.isalpha() for ch in normalised):
+        return False
+    # "0-60 min" is a range of readings and "mm:ss" is a clock format; both
+    # describe the column rather than scaling it.
+    if _RANGE_IN_LABEL_RE.search(normalised) or ":" in normalised:
+        return False
+    return ("/" in normalised or any(ch.isdigit() for ch in normalised)
+            or len(normalised) <= 5)
+
+
 def unit_from_label(text: str, *, dimension: str) -> tuple[str, Optional[Unit]]:
     """The unit a column header or row label declares, if any.
 
     Returns ``(written, parsed)``. ``("", None)`` means nothing was declared;
-    ``("L/s", Unit(...))`` means it was declared and read; ``("furlongs",
-    None)`` means it was declared and could not be read, which the caller
-    must treat as a refusal rather than a default.
+    ``("L/s", Unit(...))`` means it was declared and read; ``("fur/s",
+    None)`` means a unit was declared and could not be read, which the
+    caller must treat as a refusal rather than a default.
     """
     raw = str(text or "")
     first_written = ""
@@ -346,7 +368,7 @@ def unit_from_label(text: str, *, dimension: str) -> tuple[str, Optional[Unit]]:
         unit = parse_unit(candidate, dimension=dimension)
         if unit is not None:
             return candidate, unit
-        if not first_written:
+        if not first_written and _is_unit_shaped(candidate):
             first_written = candidate
     return first_written, None
 

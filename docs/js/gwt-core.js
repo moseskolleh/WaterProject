@@ -19,6 +19,15 @@
   var GWT = global.GWT || (global.GWT = {});
   var C = GWT.core = {};
 
+  /* Own-key lookup. Several tables here are indexed with free text off a
+   * field sheet, and a plain `map[key]` finds Object.prototype: a borehole
+   * status of "constructor" returned a function where a status class was
+   * expected. Python's dicts have no such inherited keys, so this is also
+   * what keeps the two engines agreeing. */
+  function own(map, key) {
+    return Object.prototype.hasOwnProperty.call(map, key);
+  }
+
   /* ================================================================== config
    * groundwater/config.py. Every value is overridable per project, which is
    * what the Settings page edits.
@@ -1298,18 +1307,52 @@
   /* Python's round(): half goes to even, not away from zero. It governs the
    * water-zone bounds and every fmt_num, so the two implementations disagree
    * on exact halves unless this is used. */
+  /* Python's "%.Nf": correctly rounded with half-to-even on the exact binary
+   * value. Number.prototype.toFixed rounds a tie away from zero instead, so
+   * a cost of exactly $150.5/m printed as $151 here and $150 in the package,
+   * and the difference reached the downloadable site brief. */
+  function pyFixed(x, digits) {
+    var d = digits || 0;
+    return pyRound(Number(x), d).toFixed(d);
+  }
+
   function pyRound(x, digits) {
-    var f = Math.pow(10, digits || 0);
-    var v = x * f;
-    var r = Math.abs(v - Math.trunc(v)) === 0.5
-      ? 2 * Math.round(v / 2)
-      : Math.round(v);
-    return r / f;
+    var d = digits || 0;
+    if (!isFinite(x)) return x;
+    /* The tie test has to run on the real value, not on x * 10^d: 14.05 is
+     * stored as 14.05000000000000071, which Python rounds up, but 14.05 * 10
+     * is exactly 140.5 in binary and looked like a tie, so banker's rounding
+     * turned it into 14.0. toPrecision(17) round-trips the double exactly,
+     * so the decimal digits below the cut say whether it is really a tie. */
+    var f = Math.pow(10, d);
+    var text = Math.abs(x).toPrecision(17);
+    var r;
+    if (text.indexOf('e') < 0) {
+      /* Work entirely in the decimal expansion so the cut and the tie test
+       * agree: seventeen significant digits identify a double uniquely, and
+       * a genuine tie terminates in a 5 followed by zeros. */
+      var dot = text.indexOf('.');
+      var whole = dot < 0 ? text : text.slice(0, dot);
+      var fraction = dot < 0 ? '' : text.slice(dot + 1);
+      while (fraction.length < d) fraction += '0';
+      var head = Number(whole + fraction.slice(0, d));
+      var tail = fraction.slice(d);
+      if (/^50*$/.test(tail)) {
+        r = (head % 2 === 0) ? head : head + 1;      // half to even
+      } else {
+        r = (tail && tail.charAt(0) >= '5') ? head + 1 : head;
+      }
+    } else {
+      var v = Math.abs(x) * f;
+      r = Math.abs(v - Math.trunc(v)) === 0.5 ? 2 * Math.round(v / 2) : Math.round(v);
+    }
+    return (x < 0 ? -r : r) / f;
   }
 
   function roundSig(value, sig) {
     if (value === 0 || !isFinite(value)) return value;
-    var ndigits = (sig || 3) - 1 - Math.floor(Math.log(Math.abs(value)) / Math.LN10);
+    var exp = Number(Math.abs(value).toExponential().split('e')[1]);
+    var ndigits = (sig || 3) - 1 - exp;
     var factor = Math.pow(10, ndigits);
     return Math.round(value * factor) / factor;
   }
@@ -1320,7 +1363,11 @@
     var p = precision || 6;
     if (value === 0) return '0';
     var rounded = roundSig(value, p);
-    var exp = Math.floor(Math.log(Math.abs(rounded)) / Math.LN10);
+    /* Not Math.log10: in V8 Math.log(1e6)/Math.LN10 is 5.999999999999999, so
+     * the exponent came out one too low at exact powers of ten and %g chose
+     * the fixed form where Python chooses the exponential one. The decimal
+     * string carries the exponent exactly. */
+    var exp = Number(Math.abs(rounded).toExponential().split('e')[1]);
     if (exp < -4 || exp >= p) {
       var mant = rounded / Math.pow(10, exp);
       var mstr = mant.toFixed(p - 1).replace(/0+$/, '').replace(/\.$/, '');
@@ -1485,7 +1532,8 @@
     interpretModel: interpretModel, rankInterpretations: rankInterpretations,
     drillingPreferenceTable: drillingPreferenceTable,
     fmtNum: fmtNum, fmtRange: fmtRange, formatG: formatG,
-    roundSig: roundSig, pyRound: pyRound, expo: expo, ordinal: ordinal,
+    roundSig: roundSig, pyRound: pyRound, pyFixed: pyFixed, expo: expo,
+    ordinal: ordinal,
   });
 
   /* ============================================================= hydraulics
@@ -2329,6 +2377,22 @@
   var BRACKETED_UNIT_RE = /[(\[]([^)\]]{1,20})[)\]]/g;
   var UNIT_NUMBER_RE = /[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?/;
 
+  var RANGE_IN_LABEL_RE = /\d\s*-\s*\d/;
+
+  /* Every unit a field sheet writes is short, or carries a solidus, or
+   * carries a digit: "min", "hrs", "L/s", "m3/h". A longer bare word
+   * describes the column - "Time (elapsed)", "(recovery)" - and treating one
+   * as an unreadable unit threw away every reading in that column. */
+  function isUnitShaped(text) {
+    var normalised = normaliseUnit(text);
+    if (!normalised || !/[a-z]/.test(normalised)) return false;
+    if (RANGE_IN_LABEL_RE.test(normalised) || normalised.indexOf(':') >= 0) {
+      return false;
+    }
+    return normalised.indexOf('/') >= 0 || /\d/.test(normalised) ||
+      normalised.length <= 5;
+  }
+
   function unitFromLabel(text, dimension) {
     var raw = String(text === null || text === undefined ? '' : text);
     var firstWritten = '';
@@ -2337,12 +2401,12 @@
     while ((match = re.exec(raw)) !== null) {
       var candidate = match[1].trim();
       if (!candidate) continue;
-      /* "(0-60 min)" and "(step or constant)" are prose, not units */
+      /* "(step or constant)" is prose, not a unit */
       if (candidate.split(/\s+/).length > 2) continue;
       if (new RegExp('^' + UNIT_NUMBER_RE.source + '$').test(candidate)) continue;
       var unit = parseUnit(candidate, dimension);
       if (unit) return { written: candidate, unit: unit };
-      if (!firstWritten) firstWritten = candidate;
+      if (!firstWritten && isUnitShaped(candidate)) firstWritten = candidate;
     }
     return { written: firstWritten, unit: null };
   }
@@ -6444,7 +6508,7 @@
   function classifyStatusText(raw) {
     var key = normaliseStatus(raw);
     if (!key) return null;
-    if (LEGACY_STATUS_MAP[key]) return LEGACY_STATUS_MAP[key];
+    if (own(LEGACY_STATUS_MAP, key)) return LEGACY_STATUS_MAP[key];
     /* "not sited" is a negation, not a siting */
     if (/\bnot\s+sited\b/.test(key)) return null;
     for (var i = 0; i < STATUS_RULES.length; i++) {
@@ -6492,9 +6556,9 @@
     if (!raw) return [null, false];
     var schema = Number((summary && summary.verdict_schema) || 0) || 0;
     if (schema >= VERDICT_SCHEMA) {
-      return [VERDICT_SHORT[raw] ? raw : null, false];
+      return [own(VERDICT_SHORT, raw) ? raw : null, false];
     }
-    return [LEGACY_VERDICTS[raw] || null, true];
+    return [own(LEGACY_VERDICTS, raw) ? LEGACY_VERDICTS[raw] : null, true];
   }
 
   function portfolioRows(summaries) {
@@ -6556,16 +6620,16 @@
         Math.abs(latlon.lon).toFixed(5) + ' W');
     }
     add('Total depth', summary.total_depth_m
-      ? Number(summary.total_depth_m).toFixed(1) + ' m' : null);
+      ? pyFixed(summary.total_depth_m, 1) + ' m' : null);
     add('Safe yield', summary.safe_yield_m3_per_h
-      ? Number(summary.safe_yield_m3_per_h).toFixed(2) + ' m3/h' : null);
+      ? pyFixed(summary.safe_yield_m3_per_h, 2) + ' m3/h' : null);
     var verdictRead = summaryVerdictState(summary);
     add('Water quality', verdictRead[0]
       ? VERDICT_LONG[verdictRead[0]] +
         (verdictRead[1] ? ' (read from an older project file)' : '')
       : null);
     add('Cost per metre', summary.cost_per_meter_usd
-      ? '$' + Number(summary.cost_per_meter_usd).toFixed(0) : null);
+      ? '$' + pyFixed(summary.cost_per_meter_usd, 0) : null);
     return rows;
   }
 
@@ -6613,7 +6677,7 @@
       if (!s.water_verdict) return;
       assessed += 1;
       var state = summaryVerdictState(s)[0];
-      counts[state && counts[state] !== undefined ? state : 'unknown'] += 1;
+      counts[state && own(counts, state) ? state : 'unknown'] += 1;
     });
     function rate(total) {
       return assessed ? total / assessed * 100.0 : null;
@@ -6876,12 +6940,20 @@
       var ratio = null, kind = 'none';
       if (limit) {
         kind = (limit.minimum !== null && limit.minimum !== undefined) ? 'range' : 'max';
-        if (r.value !== null && r.value !== undefined && limit.maximum) {
-          ratio = Number(r.value) / Number(limit.maximum);
+        /* The limit is written in the guideline's unit, so the value has to
+         * be on that scale too. Dividing the raw reported number by it drew
+         * a compliant ug/L result a thousand times past its line. */
+        if (r.value_in_guideline_unit !== null &&
+            r.value_in_guideline_unit !== undefined && limit.maximum) {
+          ratio = Number(r.value_in_guideline_unit) / Number(limit.maximum);
         }
       }
       return {
         parameter: r.parameter, value: spineRound(r.value, 4), unit: r.unit,
+        valueInGuidelineUnit: spineRound(r.value_in_guideline_unit, 4),
+        guidelineUnit: r.guideline_unit || '',
+        evaluable: r.evaluable !== false,
+        reason: r.reason || '',
         belowDetection: !!r.below_detection,
         whoHealth: r.who_health, whoAesthetic: r.who_aesthetic,
         national: r.sl_standard, status: r.status, remark: r.remark,
@@ -7059,6 +7131,7 @@
 
   Object.assign(C, {
     buildSpineView: buildSpineView, bindingLimit: bindingLimit,
+    spineQuality: spineQuality,
     looksLikeAquifer: looksLikeAquifer,
   });
 

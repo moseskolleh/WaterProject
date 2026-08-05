@@ -353,6 +353,46 @@ def build() -> dict:
             "verdict": a.verdict,
         }
 
+    # The Depth Spine's guideline chart over units that are NOT the
+    # guideline's own. The bundled sample reports everything in the guideline
+    # unit, so a ratio computed from the raw value agrees there and the break
+    # only shows on a converted one.
+    from groundwater.depth_spine.view import _quality as _spine_quality
+
+    out["spine_quality"] = [
+        {
+            "parameter": row["parameter"],
+            "value": row["value"],
+            "unit": row["unit"],
+            "valueInGuidelineUnit": row["valueInGuidelineUnit"],
+            "guidelineUnit": row["guidelineUnit"],
+            "status": row["status"],
+            "evaluable": row["evaluable"],
+            "limitMax": row["limitMax"],
+            "ratio": row["ratio"],
+        }
+        for row in _spine_quality(assess_sample(_wq(
+            WaterQualityResult("Arsenic", 5.0, "ug/L"),
+            WaterQualityResult("Electrical conductivity", 3.0, "mS/cm"),
+            WaterQualityResult("Nitrate (as NO3)", 0.1, "g/L"),
+            WaterQualityResult("Iron", 0.1, "wibbles"),
+            WaterQualityResult("E. coli", 0.0, "CFU/100 mL"),
+        )))["rows"]
+    ]
+
+    # Rounding and %g, which the two languages get wrong in different ways.
+    out["rounding"] = [
+        {"value": v, "digits": d, "rounded": clean(round(v, d))}
+        for v, d in ((0.15, 1), (14.05, 1), (2.675, 2), (0.5, 0), (1.5, 0),
+                     (2.5, 0), (-0.15, 1), (2.34, 2), (2.345, 2), (0.125, 2),
+                     (-2.5, 0), (45.05, 1), (150.5, 0))
+    ]
+    out["formatting"] = [
+        {"value": v, "text": "%g" % v}
+        for v in (1e6, 1e15, 999999.6, 1e5, 1e7, 1234567, 0.0001, 0.00001,
+                  2.93, 0.0, 0.005, 1e-7)
+    ]
+
     # The portfolio view, over summaries chosen to exercise every status class
     # and the zone-inference fallback.
     summaries = [

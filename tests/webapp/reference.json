@@ -1486,6 +1486,180 @@
    "verdict": "The water cannot be declared suitable for drinking on these results: Glyphosate has no entry in the standards table, so it was not checked against any limit. Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off."
   }
  },
+ "spine_quality": [
+  {
+   "parameter": "Arsenic",
+   "value": 5.0,
+   "unit": "ug/L",
+   "valueInGuidelineUnit": 0.005,
+   "guidelineUnit": "mg/L",
+   "status": "within_limits",
+   "evaluable": true,
+   "limitMax": 0.01,
+   "ratio": 0.5
+  },
+  {
+   "parameter": "Electrical conductivity",
+   "value": 3.0,
+   "unit": "mS/cm",
+   "valueInGuidelineUnit": 3000.0,
+   "guidelineUnit": "uS/cm",
+   "status": "exceeds_aesthetic",
+   "evaluable": true,
+   "limitMax": 2500.0,
+   "ratio": 1.2
+  },
+  {
+   "parameter": "Nitrate (as NO3)",
+   "value": 0.1,
+   "unit": "g/L",
+   "valueInGuidelineUnit": 100.0,
+   "guidelineUnit": "mg/L",
+   "status": "exceeds_health",
+   "evaluable": true,
+   "limitMax": 50.0,
+   "ratio": 2.0
+  },
+  {
+   "parameter": "Iron",
+   "value": 0.1,
+   "unit": "wibbles",
+   "valueInGuidelineUnit": null,
+   "guidelineUnit": "mg/L",
+   "status": "indeterminate",
+   "evaluable": false,
+   "limitMax": 0.3,
+   "ratio": null
+  },
+  {
+   "parameter": "E. coli",
+   "value": 0.0,
+   "unit": "CFU/100 mL",
+   "valueInGuidelineUnit": 0.0,
+   "guidelineUnit": "CFU/100 mL",
+   "status": "within_limits",
+   "evaluable": true,
+   "limitMax": 0.0,
+   "ratio": null
+  }
+ ],
+ "rounding": [
+  {
+   "value": 0.15,
+   "digits": 1,
+   "rounded": 0.1
+  },
+  {
+   "value": 14.05,
+   "digits": 1,
+   "rounded": 14.1
+  },
+  {
+   "value": 2.675,
+   "digits": 2,
+   "rounded": 2.67
+  },
+  {
+   "value": 0.5,
+   "digits": 0,
+   "rounded": 0.0
+  },
+  {
+   "value": 1.5,
+   "digits": 0,
+   "rounded": 2.0
+  },
+  {
+   "value": 2.5,
+   "digits": 0,
+   "rounded": 2.0
+  },
+  {
+   "value": -0.15,
+   "digits": 1,
+   "rounded": -0.1
+  },
+  {
+   "value": 2.34,
+   "digits": 2,
+   "rounded": 2.34
+  },
+  {
+   "value": 2.345,
+   "digits": 2,
+   "rounded": 2.35
+  },
+  {
+   "value": 0.125,
+   "digits": 2,
+   "rounded": 0.12
+  },
+  {
+   "value": -2.5,
+   "digits": 0,
+   "rounded": -2.0
+  },
+  {
+   "value": 45.05,
+   "digits": 1,
+   "rounded": 45.0
+  },
+  {
+   "value": 150.5,
+   "digits": 0,
+   "rounded": 150.0
+  }
+ ],
+ "formatting": [
+  {
+   "value": 1000000.0,
+   "text": "1e+06"
+  },
+  {
+   "value": 1000000000000000.0,
+   "text": "1e+15"
+  },
+  {
+   "value": 999999.6,
+   "text": "1e+06"
+  },
+  {
+   "value": 100000.0,
+   "text": "100000"
+  },
+  {
+   "value": 10000000.0,
+   "text": "1e+07"
+  },
+  {
+   "value": 1234567,
+   "text": "1.23457e+06"
+  },
+  {
+   "value": 0.0001,
+   "text": "0.0001"
+  },
+  {
+   "value": 1e-05,
+   "text": "1e-05"
+  },
+  {
+   "value": 2.93,
+   "text": "2.93"
+  },
+  {
+   "value": 0.0,
+   "text": "0"
+  },
+  {
+   "value": 0.005,
+   "text": "0.005"
+  },
+  {
+   "value": 1e-07,
+   "text": "1e-07"
+  }
+ ],
  "portfolio": {
   "rows": [
    {

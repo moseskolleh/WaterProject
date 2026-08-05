@@ -241,6 +241,26 @@ await withPage(async (page, base, consoleErrors) => {
       };
     });
 
+    out.spine_quality = C.spineQuality(C.assessSample(wq(
+      { parameter: 'Arsenic', value: 5.0, unit: 'ug/L' },
+      { parameter: 'Electrical conductivity', value: 3.0, unit: 'mS/cm' },
+      { parameter: 'Nitrate (as NO3)', value: 0.1, unit: 'g/L' },
+      { parameter: 'Iron', value: 0.1, unit: 'wibbles' },
+      { parameter: 'E. coli', value: 0.0, unit: 'CFU/100 mL' },
+    ))).rows.map((row) => ({
+      parameter: row.parameter, value: row.value, unit: row.unit,
+      valueInGuidelineUnit: row.valueInGuidelineUnit,
+      guidelineUnit: row.guidelineUnit, status: row.status,
+      evaluable: row.evaluable, limitMax: row.limitMax, ratio: row.ratio,
+    }));
+
+    out.rounding = [[0.15, 1], [14.05, 1], [2.675, 2], [0.5, 0], [1.5, 0],
+      [2.5, 0], [-0.15, 1], [2.34, 2], [2.345, 2], [0.125, 2], [-2.5, 0],
+      [45.05, 1], [150.5, 0]]
+      .map(([value, digits]) => ({ value, digits, rounded: C.pyRound(value, digits) }));
+    out.formatting = [1e6, 1e15, 999999.6, 1e5, 1e7, 1234567, 0.0001, 0.00001,
+      2.93, 0.0, 0.005, 1e-7].map((value) => ({ value, text: C.formatG(value) }));
+
     out.portfolio = {
       rows: C.portfolioRows(summaries),
       points: C.portfolioPoints(summaries).map((p) => [p.label, p.lat, p.lon, p.status]),
@@ -417,6 +437,33 @@ await withPage(async (page, base, consoleErrors) => {
       js.converted.every((v, i) => (v === null || py.converted[i] === null)
         ? v === py.converted[i] : close(v, py.converted[i], 1e-9)),
       `js ${JSON.stringify(js.converted)}\n     py ${JSON.stringify(py.converted)}`);
+  });
+
+  // --- The Depth Spine's guideline chart, on non-guideline units ---
+  // The limit is in the guideline's unit, so the value has to be too. The
+  // bundled sample reports everything in the guideline unit, which is why
+  // this needed its own case.
+  parsed.spine_quality.forEach((row, i) => {
+    const py = R.spine_quality[i];
+    check(`spine_quality[${i}] ${row.parameter}: status/evaluable`,
+      row.status === py.status && row.evaluable === py.evaluable,
+      `js ${row.status}/${row.evaluable} vs py ${py.status}/${py.evaluable}`);
+    check(`spine_quality[${i}] ${row.parameter}: converted value and ratio`,
+      close(row.valueInGuidelineUnit, py.valueInGuidelineUnit, 1e-9) &&
+      close(row.ratio, py.ratio, 1e-9) &&
+      row.guidelineUnit === py.guidelineUnit,
+      `js ${row.valueInGuidelineUnit} ${row.guidelineUnit} ratio ${row.ratio}` +
+      ` vs py ${py.valueInGuidelineUnit} ${py.guidelineUnit} ratio ${py.ratio}`);
+  });
+
+  // --- round() and %g, which the two languages get wrong differently ---
+  parsed.rounding.forEach((r, i) => {
+    check(`round(${r.value}, ${r.digits})`, close(r.rounded, R.rounding[i].rounded, 1e-12),
+      `js ${r.rounded} vs py ${R.rounding[i].rounded}`);
+  });
+  parsed.formatting.forEach((f, i) => {
+    check(`%g of ${f.value}`, f.text === R.formatting[i].text,
+      `js ${f.text} vs py ${R.formatting[i].text}`);
   });
 
   // --- Portfolio ---
