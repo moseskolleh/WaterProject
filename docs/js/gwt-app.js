@@ -1839,8 +1839,14 @@
   function spineQualityStage(view) {
     var q = view.quality;
     var judged = q.rows.filter(function (r) { return r.status !== 'no_guideline'; });
+    /* Only rows the toolkit actually graded and found compliant. Counting
+     * every non-"exceeds" status as within limits put the unevaluable and
+     * the unmeasured in the compliant column. */
     var within = judged.filter(function (r) {
-      return String(r.status).slice(0, 7) !== 'exceeds';
+      return r.status === 'within_limits' || r.status === 'below_detection';
+    });
+    var ungraded = judged.filter(function (r) {
+      return r.status === 'indeterminate' || r.status === 'not_measured';
     });
     /* Driven by the verdict state, so an unevaluable panel can never be
      * signed off as "Complies". */
@@ -1859,7 +1865,8 @@
       card('The sample', [
         S.statRow([
           S.stat('Sampled', q.sampleDate || '—', q.laboratory || ''),
-          S.stat('Within limits', within.length + ' / ' + judged.length),
+          S.stat('Within limits', within.length + ' / ' + judged.length,
+            ungraded.length ? ungraded.length + ' could not be graded' : ''),
           S.stat('Health exceedances',
             q.healthExceedances.length ? String(q.healthExceedances.length) : 'none'),
           q.ionic ? S.stat('Ionic balance', q.ionic.errorPercent + ' %',

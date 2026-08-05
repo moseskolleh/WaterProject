@@ -2959,6 +2959,8 @@
       'the detection limit is above the limit being checked',
     detection_limit_unknown: 'the detection limit was not reported',
     unknown_parameter: 'the parameter is not in the standards table',
+    unit_basis_conflict:
+      'the unit names a different chemical basis from the parameter',
   };
 
   var GRADED_STATUSES = ['exceeds_health', 'exceeds_national',
@@ -2966,6 +2968,14 @@
 
   function isGraded(row) {
     return row.evaluable && GRADED_STATUSES.indexOf(row.status) >= 0;
+  }
+
+  var PARAMETER_BASIS_RE = /\(\s*as\s+([^)]+?)\s*\)/;
+
+  /* "Nitrate (as NO3)" -> "no3" */
+  function parameterBasis(parameter) {
+    var m = PARAMETER_BASIS_RE.exec(String(parameter || ''));
+    return m ? m[1].toLowerCase().replace(/\s+/g, '') : '';
   }
 
   function limitMaximums(entry) {
@@ -3012,9 +3022,17 @@
     }
     var converted = convertUnit(value, reported, guideline);
     if (converted === null) return { value: null, reason: 'unit_mismatch' };
-    if (!source.basis !== !target.basis) {
-      /* One side names a chemical reference the other does not - "mg/L"
-       * against "mg/L as CaCO3". Taken, but worth an analyst's eye. */
+    if (source.basis && !target.basis) {
+      /* The unit names a chemical reference the guideline's unit does not.
+       * The parameter name often carries it instead: "Nitrate (as NO3)"
+       * reported in "mg/L as N" is a different number by a factor of 4.4,
+       * and grading it at face value passed a sample the guideline fails. */
+      var named = parameterBasis(entry.parameter);
+      if (named && named !== source.basis) {
+        return { value: null, reason: 'unit_basis_conflict' };
+      }
+      if (!named) return { value: converted, reason: 'unit_basis_assumed' };
+    } else if (target.basis && !source.basis) {
       return { value: converted, reason: 'unit_basis_assumed' };
     }
     return { value: converted, reason: '' };
@@ -3198,22 +3216,35 @@
 
   /* The combined index uses the unit-converted concentrations, so a result
    * reported in ug/L is not silently added as though it were mg/L. */
+  /* A component reported below detection is taken at its detection limit,
+   * and `bounded` says so. That reading is deliberately the pessimistic one:
+   * "< 3 mg/L nitrite" beside 49 mg/L nitrate cannot rule out a combined
+   * index of 1.98, and treating the unknown as zero turned a sample that
+   * might fail the rule into one that passed it silently. */
   function nitrateNitriteIndex(rows, table) {
     function valueAndGv(key) {
       var entry = table[key];
       var gv = entry && entry.who_health ? entry.who_health.maximum : null;
       for (var i = 0; i < rows.length; i++) {
-        if (normaliseParameter(rows[i].parameter) === key &&
-            rows[i].value_in_guideline_unit !== null &&
-            rows[i].value_in_guideline_unit !== undefined) {
-          return [Number(rows[i].value_in_guideline_unit), gv];
+        var row = rows[i];
+        if (normaliseParameter(row.parameter) !== key) continue;
+        if (row.value_in_guideline_unit !== null &&
+            row.value_in_guideline_unit !== undefined) {
+          return [Number(row.value_in_guideline_unit), gv, false];
         }
+        if (row.below_detection && entry &&
+            row.detection_limit !== null && row.detection_limit !== undefined) {
+          var dl = toGuidelineUnit(Number(row.detection_limit), row.unit, entry);
+          if (dl.value !== null) return [Number(dl.value), gv, true];
+        }
+        return [null, gv, false];
       }
-      return [null, gv];
+      return [null, gv, false];
     }
     var a = valueAndGv('nitrate (as no3)'), b = valueAndGv('nitrite (as no2)');
     if (a[0] === null || b[0] === null || !a[1] || !b[1]) return null;
-    return { ratio: a[0] / a[1] + b[0] / b[1], no3: a[0], no2: b[0], gv3: a[1], gv2: b[1] };
+    return { ratio: a[0] / a[1] + b[0] / b[1], no3: a[0], no2: b[0],
+      gv3: a[1], gv2: b[1], bounded: a[2] || b[2] };
   }
 
   function assessSample(sample, standardsRows) {
@@ -3265,24 +3296,42 @@
     var combined = nitrateNitriteIndex(rows, table);
     if (combined && combined.ratio > 1.0 &&
         combined.no3 <= combined.gv3 && combined.no2 <= combined.gv2) {
+      /* A bounded index is an upper bound, not a measurement: it says the
+       * rule MAY be breached, which is a question rather than a finding. */
+      var bounded = !!combined.bounded;
       rows.push({
         parameter: 'Nitrate + nitrite (combined)',
         value: pyRound(combined.ratio, 2), unit: 'ratio', below_detection: false,
         who_health: '<= 1', who_aesthetic: '', sl_standard: '',
-        status: 'exceeds_health',
-        remark: 'The combined index (' + formatG(combined.no3) + '/' +
-          formatG(combined.gv3) + ' + ' + formatG(combined.no2) + '/' +
-          formatG(combined.gv2) + ' = ' + combined.ratio.toFixed(2) + ') exceeds ' +
-          '1; the WHO combined nitrate and nitrite limit is not met even though ' +
-          'each is within its own guideline value.',
+        status: bounded ? 'indeterminate' : 'exceeds_health',
+        remark: bounded
+          ? 'An upper bound on the combined index (' + formatG(combined.no3) +
+            '/' + formatG(combined.gv3) + ' + ' + formatG(combined.no2) + '/' +
+            formatG(combined.gv2) + ' = ' + combined.ratio.toFixed(2) +
+            ') exceeds 1, taking the below-detection component at its ' +
+            'detection limit. The WHO combined nitrate and nitrite limit ' +
+            'cannot be shown to be met; ask the laboratory for a lower ' +
+            'detection limit.'
+          : 'The combined index (' + formatG(combined.no3) + '/' +
+            formatG(combined.gv3) + ' + ' + formatG(combined.no2) + '/' +
+            formatG(combined.gv2) + ' = ' + combined.ratio.toFixed(2) +
+            ') exceeds 1; the WHO combined nitrate and nitrite limit is not ' +
+            'met even though each is within its own guideline value.',
         guideline_unit: 'ratio',
-        value_in_guideline_unit: pyRound(combined.ratio, 2),
-        detection_limit: null, evaluable: true, reason: '',
+        value_in_guideline_unit: bounded ? null : pyRound(combined.ratio, 2),
+        detection_limit: null, evaluable: !bounded,
+        reason: bounded ? 'detection_limit_above_guideline' : '',
       });
       flags.push({
-        level: 'warning', code: 'nitrate_nitrite_combined',
-        message: 'Combined nitrate + nitrite index exceeds 1 (WHO); treat as a ' +
-          'health exceedance.',
+        level: 'warning',
+        code: bounded ? 'nitrate_nitrite_combined_unproven'
+          : 'nitrate_nitrite_combined',
+        message: bounded
+          ? 'The combined nitrate + nitrite index cannot be shown to meet the ' +
+            'WHO limit: one component is below detection and its detection ' +
+            'limit is high enough that the sum may exceed 1.'
+          : 'Combined nitrate + nitrite index exceeds 1 (WHO); treat as a ' +
+            'health exceedance.',
       });
     }
 

@@ -153,6 +153,9 @@ INDETERMINATE_REASONS = {
     ),
     "detection_limit_unknown": "the detection limit was not reported",
     "unknown_parameter": "the parameter is not in the standards table",
+    "unit_basis_conflict": (
+        "the unit names a different chemical basis from the parameter"
+    ),
 }
 
 
@@ -661,8 +664,12 @@ def assess_sample(
     # exceedance is already reported on its own row).
     combined = _nitrate_nitrite_index(rows, table)
     if combined is not None:
-        ratio, no3, no2, gv3, gv2 = combined
+        ratio, no3, no2, gv3, gv2, bounded = combined
         if ratio > 1.0 and no3 <= gv3 and no2 <= gv2:
+            # A bounded index is an upper bound, not a measurement: it says
+            # the rule *may* be breached, which is a question rather than a
+            # finding, so it is reported as indeterminate rather than as a
+            # health exceedance the laboratory never demonstrated.
             rows.append(
                 ParameterAssessment(
                     parameter="Nitrate + nitrite (combined)",
@@ -672,21 +679,36 @@ def assess_sample(
                     who_health="<= 1",
                     who_aesthetic="",
                     sl_standard="",
-                    status="exceeds_health",
+                    status="indeterminate" if bounded else "exceeds_health",
                     remark=(
+                        f"An upper bound on the combined index "
+                        f"({no3:g}/{gv3:g} + {no2:g}/{gv2:g} = {ratio:.2f}) "
+                        "exceeds 1, taking the below-detection component at "
+                        "its detection limit. The WHO combined nitrate and "
+                        "nitrite limit cannot be shown to be met; ask the "
+                        "laboratory for a lower detection limit."
+                        if bounded else
                         f"The combined index ({no3:g}/{gv3:g} + {no2:g}/{gv2:g} "
                         f"= {ratio:.2f}) exceeds 1; the WHO combined nitrate and "
                         "nitrite limit is not met even though each is within its "
                         "own guideline value."
                     ),
                     guideline_unit="ratio",
-                    value_in_guideline_unit=round(ratio, 2),
+                    value_in_guideline_unit=None if bounded else round(ratio, 2),
+                    evaluable=not bounded,
+                    reason="detection_limit_above_guideline" if bounded else "",
                 )
             )
             flags.append(
                 DataFlag(
-                    "warning",
-                    "nitrate_nitrite_combined",
+                    "warning" if bounded else "warning",
+                    "nitrate_nitrite_combined_unproven" if bounded
+                    else "nitrate_nitrite_combined",
+                    "The combined nitrate + nitrite index cannot be shown to "
+                    "meet the WHO limit: one component is below detection and "
+                    "its detection limit is high enough that the sum may "
+                    "exceed 1."
+                    if bounded else
                     "Combined nitrate + nitrite index exceeds 1 (WHO); treat as "
                     "a health exceedance.",
                 )
@@ -738,27 +760,39 @@ def assess_sample(
 
 
 def _nitrate_nitrite_index(rows: list[ParameterAssessment], table):
-    """The WHO combined nitrate + nitrite index, if both are measured.
+    """The WHO combined nitrate + nitrite index.
 
-    Returns ``(ratio, no3, no2, gv3, gv2)`` where ``ratio`` is
-    ``no3/gv3 + no2/gv2``, or ``None`` when either value or guideline is
-    missing. Both concentrations are the unit-converted ones, so a result
+    Returns ``(ratio, no3, no2, gv3, gv2, bounded)`` where ``ratio`` is
+    ``no3/gv3 + no2/gv2``, or ``None`` when a value or guideline is missing
+    altogether. Both concentrations are the unit-converted ones, so a result
     reported in ug/L is not silently added as though it were mg/L.
+
+    A component reported below detection is taken at its detection limit,
+    and ``bounded`` says so. That reading is deliberately the pessimistic
+    one: "< 3 mg/L nitrite" beside 49 mg/L nitrate cannot rule out a
+    combined index of 1.98, and treating the unknown as zero turned a
+    sample that might fail the rule into one that passed it silently.
     """
 
     def _value_and_gv(key):
         entry = table.get(key)
         gv = entry.who_health.maximum if entry and entry.who_health else None
         for row in rows:
-            if (
-                normalise_parameter(row.parameter) == key
-                and row.value_in_guideline_unit is not None
-            ):
-                return float(row.value_in_guideline_unit), gv
-        return None, gv
+            if normalise_parameter(row.parameter) != key:
+                continue
+            if row.value_in_guideline_unit is not None:
+                return float(row.value_in_guideline_unit), gv, False
+            if row.below_detection and entry is not None:
+                dl, reason = to_standard_unit(
+                    float(row.detection_limit), row.unit, entry
+                ) if row.detection_limit is not None else (None, "")
+                if dl is not None:
+                    return float(dl), gv, True
+                return None, gv, False
+        return None, gv, False
 
-    no3, gv3 = _value_and_gv("nitrate (as no3)")
-    no2, gv2 = _value_and_gv("nitrite (as no2)")
+    no3, gv3, b3 = _value_and_gv("nitrate (as no3)")
+    no2, gv2, b2 = _value_and_gv("nitrite (as no2)")
     if no3 is None or no2 is None or not gv3 or not gv2:
         return None
-    return no3 / gv3 + no2 / gv2, no3, no2, gv3, gv2
+    return no3 / gv3 + no2 / gv2, no3, no2, gv3, gv2, (b3 or b2)

@@ -224,3 +224,110 @@ def test_every_state_has_every_label(state):
     for table in (VERDICT_SHORT, VERDICT_LONG, SUITABILITY_SENTENCE,
                   SUITABILITY_PHRASE):
         assert table[state]
+
+
+def test_a_below_detection_nitrite_cannot_hide_a_combined_rule_breach():
+    """The WHO rule is nitrate/50 + nitrite/3 <= 1.
+
+    Taking an unknown component as zero passed a sample whose upper bound is
+    1.98 - "< 3 mg/L nitrite" beside 49 mg/L nitrate cannot rule the rule
+    out, so the honest answer is that it has not been shown to be met.
+    """
+    a = assess_sample(_sample(
+        WaterQualityResult("E. coli", 0.0, "CFU/100 mL"),
+        WaterQualityResult("Arsenic", 0.001, "mg/L"),
+        WaterQualityResult("Fluoride", 0.3, "mg/L"),
+        WaterQualityResult("Nitrate (as NO3)", 49.0, "mg/L"),
+        WaterQualityResult("Nitrite (as NO2)", None, "mg/L",
+                           detection_limit=3.0, below_detection=True),
+    ))
+    combined = [r for r in a.rows if "combined" in r.parameter]
+    assert combined and combined[0].status == "indeterminate"
+    assert "upper bound" in combined[0].remark
+    assert a.verdict_state == "indeterminate"
+    assert any(f.code == "nitrate_nitrite_combined_unproven" for f in a.flags)
+
+
+def test_a_low_detection_limit_still_lets_the_sample_pass():
+    """Fail-closed must not mean fail-always: 49/50 + 0.01/3 is under 1."""
+    a = assess_sample(_sample(
+        *_health_panel()[:3],
+        WaterQualityResult("Nitrate (as NO3)", 49.0, "mg/L"),
+        WaterQualityResult("Nitrite (as NO2)", None, "mg/L",
+                           detection_limit=0.01, below_detection=True),
+    ))
+    assert a.verdict_state == "pass"
+
+
+def test_a_measured_pair_still_reports_a_real_combined_exceedance():
+    a = assess_sample(_sample(
+        *_health_panel()[:3],
+        WaterQualityResult("Nitrate (as NO3)", 45.0, "mg/L"),
+        WaterQualityResult("Nitrite (as NO2)", 1.0, "mg/L"),
+    ))
+    combined = [r for r in a.rows if "combined" in r.parameter]
+    assert combined and combined[0].status == "exceeds_health"
+    assert a.verdict_state == "health_fail"
+
+
+def test_nitrate_reported_as_nitrogen_is_refused_not_graded_at_face_value():
+    """10 mg/L as N is 44 mg/L as NO3 - a different water against a 50 limit.
+
+    The unit names one basis and the parameter names another, so there is no
+    reading under which the number can be compared.
+    """
+    a = assess_sample(_sample(
+        WaterQualityResult("Nitrate (as NO3)", 10.0, "mg/L as N")))
+    assert a.rows[0].status == "indeterminate"
+    assert a.rows[0].reason == "unit_basis_conflict"
+    # the matching basis converts normally
+    ok = assess_sample(_sample(
+        WaterQualityResult("Nitrate (as NO3)", 10.0, "mg/L as NO3")))
+    assert ok.rows[0].value_in_guideline_unit == 10.0
+    # and a parameter whose name states no basis still accepts one, with a flag
+    hardness = assess_sample(_sample(
+        WaterQualityResult("Total hardness", 58.0, "mg/L")))
+    assert hardness.rows[0].reason == "unit_basis_assumed"
+
+
+def test_the_report_does_not_clear_an_indeterminate_supply():
+    """"No treatment is required" is a clearance the results did not give."""
+    from groundwater.reporting.quality import _executive_summary
+
+    a = assess_sample(_sample(WaterQualityResult("Iron", 0.1, "wibbles")))
+    paragraphs, key = _executive_summary(a)
+    assert "NOT been shown to be safe" in " ".join(key)
+    assert "suitable for drinking" not in paragraphs[0].replace(
+        "do not establish that the water is suitable for drinking", "")
+
+
+def test_a_parameter_name_survives_the_report_sentence():
+    """str.capitalize() lower-cased everything after the first character."""
+    from groundwater.reporting.quality import _executive_summary
+
+    a = assess_sample(_sample(
+        WaterQualityResult("Total petroleum hydrocarbons", 900.0, "mg/L"),
+        WaterQualityResult("E. coli", 3.0, "wibbles"),
+    ))
+    paragraph = _executive_summary(a)[0][0]
+    text = " ".join(_executive_summary(a)[1])
+    # both appear after the first character of a joined sentence, which is
+    # exactly where capitalize() used to lower-case them
+    assert "Total petroleum hydrocarbons" in text and "E. coli" in text
+    assert "E. coli" in paragraph
+
+
+def test_the_spine_plots_the_converted_value_against_its_limit():
+    """The limit is in the guideline unit, so the value has to be too."""
+    from groundwater.depth_spine.view import _quality
+
+    micro = _quality(assess_sample(_sample(
+        WaterQualityResult("Arsenic", 5.0, "ug/L"))))
+    row = micro["rows"][0]
+    assert row["valueInGuidelineUnit"] == 0.005
+    assert row["ratio"] == 0.5          # 0.005 of a 0.01 mg/L guideline
+    # an ungraded row has no ratio at all rather than a misleading one
+    bad = _quality(assess_sample(_sample(
+        WaterQualityResult("Arsenic", 5.0, "wibbles"))))
+    assert bad["rows"][0]["ratio"] is None
+    assert bad["rows"][0]["evaluable"] is False

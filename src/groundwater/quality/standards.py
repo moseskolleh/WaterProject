@@ -135,6 +135,15 @@ def normalise_parameter(name: str) -> str:
     return _ALIASES.get(key, key)
 
 
+_PARAMETER_BASIS_RE = re.compile(r"\(\s*as\s+([^)]+?)\s*\)")
+
+
+def _parameter_basis(parameter: str) -> str:
+    """The chemical basis a parameter name states: "Nitrate (as NO3)" -> "no3"."""
+    match = _PARAMETER_BASIS_RE.search(str(parameter or ""))
+    return match.group(1).lower().replace(" ", "") if match else ""
+
+
 def to_standard_unit(
     value: float, reported_unit: str, entry: StandardEntry
 ) -> tuple[Optional[float], str]:
@@ -186,11 +195,21 @@ def to_standard_unit(
     converted = convert(value, reported, guideline)
     if converted is None:  # pragma: no cover - comparable() already checked
         return None, "unit_mismatch"
-    if bool(source.basis) != bool(target.basis):
-        # One side names a chemical reference the other does not - "mg/L"
-        # against "mg/L as CaCO3". The parameter name usually carries the
-        # basis, so the reading is taken, but it is worth an analyst's eye:
-        # calcium as Ca and calcium as CaCO3 differ by a factor of 2.5.
+    if source.basis and not target.basis:
+        # The unit names a chemical reference the guideline's unit does not.
+        # The parameter name often carries it instead, so look there before
+        # deciding: "Nitrate (as NO3)" reported in "mg/L as N" is a different
+        # number by a factor of 4.4, and grading it at face value passed a
+        # sample at 44 mg/L as NO3 that the guideline puts over its limit.
+        named = _parameter_basis(entry.parameter)
+        if named and named != source.basis:
+            return None, "unit_basis_conflict"
+        if not named:
+            # Nothing states the guideline's basis, so the reading is taken
+            # but it is worth an analyst's eye: calcium as Ca and calcium as
+            # CaCO3 differ by a factor of 2.5.
+            return converted, "unit_basis_assumed"
+    elif target.basis and not source.basis:
         return converted, "unit_basis_assumed"
     return converted, ""
 

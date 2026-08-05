@@ -1502,10 +1502,19 @@
         x: left - 8, y: y + 10, 'text-anchor': 'end', 'font-size': 9.5, fill: p.ink,
         text: String(row.parameter).slice(0, 26),
       }));
-      var over = row.ratio > 1;
+      /* Coloured by status, not by the ratio alone: a national limit is law
+       * rather than taste, and a row the toolkit could not grade is neither a
+       * pass nor a failure - drawing it in the "good" colour would be the same
+       * fail-open the verdict used to have. */
+      var status = String(row.status || '');
+      var bad = status === 'exceeds_health' || status === 'exceeds_national';
+      var warn = status === 'exceeds_aesthetic';
+      var ungraded = status === 'indeterminate' || status === 'not_measured' ||
+        row.evaluable === false;
+      var fill = bad ? p.critical : (warn ? p.warning : (ungraded ? p.muted : p.good));
       svg.appendChild(svgEl('rect', {
         x: left, y: y + 3, width: Math.max(1, fx(row.ratio) - left), height: 12,
-        rx: 2, fill: over ? p.critical : p.good, opacity: over ? 0.9 : 0.75,
+        rx: 2, fill: fill, opacity: (bad || warn) ? 0.9 : 0.75,
       }));
       svg.appendChild(svgEl('text', {
         x: Math.min(fx(row.ratio) + 5, right + 4), y: y + 13, 'font-size': 9,

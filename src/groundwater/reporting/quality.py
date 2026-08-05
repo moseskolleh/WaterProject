@@ -29,6 +29,16 @@ from .docx_utils import ReportBuilder
 #: label and a new status can never leak out as a raw code.
 _STATUS_LABEL = STATUS_LABELS
 
+def _sentence(text: str) -> str:
+    """Upper-case the first letter only.
+
+    str.capitalize() lower-cases everything after it, which turns "E. coli"
+    into "e. coli" and "Total petroleum hydrocarbons" into a lower-case
+    determinand halfway through a client-facing sentence.
+    """
+    return text[:1].upper() + text[1:] if text else text
+
+
 _TREATMENT_ADVICE = {
     "iron": "Iron above the acceptability value causes staining and metallic "
     "taste; aeration followed by sand filtration or a simple oxidation "
@@ -90,12 +100,12 @@ def _executive_summary(assessment: WaterQualityAssessment) -> tuple[list[str], l
         para = (
             f"Laboratory results for the borehole water at {community} do not "
             "establish that the water is suitable for drinking. "
-            + "; ".join(assessment.uncertainties).capitalize()
+            + _sentence("; ".join(assessment.uncertainties))
             + ". No suitability verdict can be given until these are resolved."
         )
         key = [
             "The water has NOT been shown to be safe to drink.",
-        ] + [u.capitalize() + "." for u in assessment.uncertainties]
+        ] + [_sentence(u) + "." for u in assessment.uncertainties]
     elif health:
         names = ", ".join(r.parameter for r in health)
         para = (
@@ -324,7 +334,16 @@ def build_quality_report(
             if match in key:
                 advice.append(text)
                 break
-    if not advice:
+    if assessment.verdict_state == "indeterminate":
+        # "No treatment is required" is a clearance, and this report has not
+        # established one. Say what is outstanding instead.
+        advice.append(
+            "Do not treat this supply as safe to drink on these results. "
+            + _sentence("; ".join(assessment.uncertainties))
+            + ". Resolve these and re-issue the assessment before any "
+            "treatment decision is taken."
+        )
+    elif not advice:
         advice.append(
             "No treatment is required on the basis of the parameters tested. "
             "Maintain the sanitary seal and apron in good condition."
