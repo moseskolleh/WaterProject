@@ -24,12 +24,19 @@ const BASIS: Record<string, string> = {
   exceeds_health: 'health',
   exceeds_national: 'national',
   exceeds_aesthetic: 'acceptability',
+  indeterminate: 'not evaluable',
+  not_measured: 'not measured',
 };
 
 function barClass(row: QualityRow): string {
-  if (row.status === 'exceeds_health') return 'is-error';
-  if (row.status === 'exceeds_national' || row.status === 'exceeds_aesthetic')
-    return 'is-warn';
+  // A national limit is law, not taste, so it reads as badly as a health
+  // exceedance. Anything the toolkit could not grade is neither: drawing an
+  // unevaluable row green was the same fail-open the verdict used to have.
+  if (row.status === 'exceeds_health' || row.status === 'exceeds_national')
+    return 'is-error';
+  if (row.status === 'exceeds_aesthetic') return 'is-warn';
+  if (row.status === 'indeterminate' || row.status === 'not_measured')
+    return 'is-unknown';
   return 'is-ok';
 }
 
@@ -37,7 +44,7 @@ export function GuidelineSpine({ rows }: { rows: QualityRow[] }) {
   // Determinands with no guideline are not judged, so they are not plotted;
   // they stay in the table, where they belong.
   const plotted = rows
-    .filter((r) => r.status !== 'no_guideline')
+    .filter((r) => r.status !== 'no_guideline' && r.status !== 'not_measured')
     .sort((a, b) => (b.ratio ?? -1) - (a.ratio ?? -1));
 
   return (
