@@ -4662,6 +4662,11 @@
   var SERVICE_RADIUS_M = 500.0;
   var DRILL_NEW = 'drill_new', ASSESS_REHAB = 'assess_rehab', VERIFY_NEED = 'verify_need';
 
+  /* WPdx+ is served from a Socrata endpoint; the resource id is documented but
+   * kept overridable so a future dataset id needs no code change. */
+  var WPDX_DOMAIN = 'data.waterpointdata.org';
+  var WPDX_RESOURCE = 'eqje-vguj';
+
   var WPDX_CREDIT = 'Water point data: Water Point Data Exchange (WPdx+), ' +
     'CC BY 4.0. Downloaded from wpdx.org.';
   var POPULATION_CREDIT = 'Population: 2015 Population and Housing Census, ' +
@@ -4910,32 +4915,144 @@
     return null;
   }
 
-  var IMPROVED_SOURCES = /borehole|tubewell|protected|piped|tap|handpump|hand pump|kiosk/i;
+  /* An improved source is worth rehabilitating; an unprotected well or spring
+   * or surface water is not, so it is no alternative to a new borehole.
+   *
+   * The unimproved test runs first because "unprotected" contains "protected":
+   * a Protected Spring is improved, an Unprotected Spring is not, and both
+   * have to resolve correctly. Source and technology are read together, since
+   * WPDx records "Well" in one column and "Hand Pump" in the other. */
+  var UNIMPROVED_WORDS = ['unprotected', 'unimproved', 'open well', 'open dug',
+    'surface', 'river', 'stream', 'pond', 'rainwater'];
+  var IMPROVED_WORDS = ['borehole', 'tubewell', 'tube well', 'protected',
+    'piped', 'hand pump', 'handpump', 'mechani'];
+
+  function improvedSource(source, technology) {
+    var text = (String(source || '') + ' ' + String(technology || '')).toLowerCase();
+    var i;
+    for (i = 0; i < UNIMPROVED_WORDS.length; i++) {
+      if (text.indexOf(UNIMPROVED_WORDS[i]) >= 0) return false;
+    }
+    for (i = 0; i < IMPROVED_WORDS.length; i++) {
+      if (text.indexOf(IMPROVED_WORDS[i]) >= 0) return true;
+    }
+    return false;
+  }
 
   function parseWpdxRecords(records) {
     var out = [];
     (records || []).forEach(function (record) {
+      if (!record || typeof record !== 'object') return;
       var lat = Number(wpFirst(record, ['lat_deg', 'latitude', 'lat']));
       var lon = Number(wpFirst(record, ['lon_deg', 'longitude', 'lon']));
       if (!isFinite(lat) || !isFinite(lon)) return;
       var source = String(wpFirst(record, ['water_source_clean', 'water_source',
-        'source', 'water_tech_clean', 'water_tech']) || '');
+        'source']) || '');
+      var technology = String(wpFirst(record, ['water_tech_clean', 'water_tech',
+        'technology']) || '');
       var statusText = String(wpFirst(record, ['status_clean', 'status']) || '');
-      var statusId = wpFirst(record, ['status_id']);
+      var statusId = wpFirst(record, ['status_id', 'status']);
+      var year = Number(wpFirst(record, ['install_year', 'installation_year']));
       out.push({
+        row_id: String(wpFirst(record, ['row_id', 'wpdx_id', 'objectid']) || ''),
         lat: lat, lon: lon,
-        source: source,
-        technology: String(wpFirst(record, ['water_tech_clean', 'water_tech']) || ''),
+        /* the technology stands in when the source column is blank, so a row
+         * that only says "Hand Pump" still reads as a point rather than a
+         * nameless dot */
+        source: source || technology,
+        technology: technology,
         status_text: statusText,
         functional: functionalFrom(statusText, statusId),
-        improved: IMPROVED_SOURCES.test(source),
-        installed: wpFirst(record, ['install_year', 'installation_year']),
+        improved: improvedSource(source, technology),
+        installed: isFinite(year) && year ? Math.round(year) : null,
+        adm2: String(wpFirst(record, ['clean_adm2', 'adm2']) || ''),
         name: String(wpFirst(record, ['water_source_description', 'source_name',
           'clean_adm4', 'clean_adm3']) || ''),
         distance_m: null,
       });
     });
     return out;
+  }
+
+  /* --- the live Water Point Data Exchange query ------------------------------
+   *
+   * groundwater/waterpoints.py fetch_water_points, in the browser. A bounding
+   * box on the standard lat_deg/lon_deg columns (rather than a Socrata
+   * within_circle on a geo column) so the request does not depend on a
+   * particular geometry field name; the true radius is applied client side by
+   * pointsWithin, exactly as the Python does.
+   *
+   * The whole call is optional. It is the only thing in this application that
+   * touches the network, and it fails soft: offline, blocked by a browser
+   * extension or refused by the CDN, the page says so and the CSV upload path
+   * still does the whole job. */
+  function wpdxUrl(lat, lon, radiusM, options) {
+    var opts = options || {};
+    var limit = opts.limit || 5000;
+    var dlat = radiusM / 111320.0;
+    var dlon = radiusM / (111320.0 * Math.max(Math.cos(lat * Math.PI / 180), 1e-6));
+    var where = 'lat_deg between ' + (lat - dlat) + ' and ' + (lat + dlat) +
+      ' AND lon_deg between ' + (lon - dlon) + ' and ' + (lon + dlon);
+    var query = '$where=' + encodeURIComponent(where) +
+      '&$limit=' + Math.round(limit) +
+      /* $order by the Socrata row id makes a capped result deterministic
+       * across runs: a truncated slice is at least the same slice. */
+      '&$order=' + encodeURIComponent(':id');
+    return 'https://' + (opts.domain || WPDX_DOMAIN) + '/resource/' +
+      (opts.resource || WPDX_RESOURCE) + '.json?' + query;
+  }
+
+  function WaterPointFetchError(message) {
+    var error = new Error(message);
+    error.name = 'WaterPointFetchError';
+    return error;
+  }
+
+  async function fetchWaterPoints(lat, lon, radiusM, options) {
+    var opts = options || {};
+    var url = wpdxUrl(lat, lon, radiusM || DEFAULT_SEARCH_RADIUS_M, opts);
+    var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timer = controller
+      ? setTimeout(function () { controller.abort(); }, (opts.timeoutS || 30) * 1000)
+      : null;
+    var response;
+    try {
+      response = await fetch(url, {
+        headers: { Accept: 'application/json' },
+        signal: controller ? controller.signal : undefined,
+      });
+    } catch (e) {
+      throw WaterPointFetchError(
+        'Could not reach the Water Point Data Exchange (' +
+        (e && e.name === 'AbortError' ? 'the request timed out'
+          : 'no network route, or the browser blocked the cross-origin request') +
+        ').');
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    if (!response.ok) {
+      throw WaterPointFetchError(
+        'The Water Point Data Exchange answered ' + response.status + ' ' +
+        (response.statusText || '') + '.');
+    }
+    var data;
+    try {
+      data = await response.json();
+    } catch (e) {
+      throw WaterPointFetchError(
+        'The Water Point Data Exchange sent something that is not JSON.');
+    }
+    if (!Array.isArray(data)) {
+      throw WaterPointFetchError(
+        'Unexpected response from the Water Point Data Exchange ' +
+        '(expected a list of records).');
+    }
+    return data;
+  }
+
+  /* Fetch and parse in one step, the shape the pages actually want. */
+  async function waterPointsNear(lat, lon, radiusM, options) {
+    return parseWpdxRecords(await fetchWaterPoints(lat, lon, radiusM, options));
   }
 
   function pointsWithin(points, lat, lon, radiusM) {
@@ -5009,18 +5126,33 @@
           '- before deciding.',
       });
     }
+    if (!nearby.length) {
+      return Object.assign(common, {
+        recommendation: DRILL_NEW,
+        headline: 'No mapped water point within ' + Math.round(searchRadius) + ' m.',
+        rationale: 'No existing water point is mapped near the site, so new ' +
+          'construction is likely justified. Field-verify, since the water ' +
+          'point inventory is not exhaustive.',
+      });
+    }
+    /* Something is nearby but none of it is a rehabilitation alternative.
+     * Which of the two reasons applies matters to the reader, so say the
+     * right one rather than assuming distance every time. */
     var nearestWorking = functional[0];
+    var note = '';
+    if (nearestWorking) {
+      note = nearestWorking.distance_m > serviceRadius
+        ? ' The nearest working source is ' + Math.round(nearestWorking.distance_m) +
+          ' m away, beyond the ' + Math.round(serviceRadius) + ' m service radius.'
+        : ' The nearest working source is ' + Math.round(nearestWorking.distance_m) +
+          ' m away but is not an improved source suitable for rehabilitation.';
+    }
     return Object.assign(common, {
       recommendation: DRILL_NEW,
-      headline: nearby.length
-        ? 'No working improved source within ' + Math.round(serviceRadius) + ' m.'
-        : 'No mapped water point within ' + Math.round(searchRadius) + ' m.',
-      rationale: 'New construction is justified.' + (nearestWorking
-        ? ' The nearest working source is ' + Math.round(nearestWorking.distance_m) +
-          ' m away, beyond the service radius.'
-        : ' No functional source is mapped nearby.') +
-        ' Note that the water point inventory is incomplete in places, so ' +
-        'confirm on the ground.',
+      headline: 'No rehabilitation candidate nearby.' + note,
+      rationale: 'Nearby points are either working but beyond the service ' +
+        'radius or not improved sources, so there is no cheaper rehabilitation ' +
+        'alternative. New construction is reasonable.' + note,
     });
   }
 
@@ -5042,6 +5174,1864 @@
     parseWpdxRecords: parseWpdxRecords, pointsWithin: pointsWithin,
     functionalitySummary: functionalitySummary, rehabVsDrill: rehabVsDrill,
     functionalFrom: functionalFrom,
+    improvedSource: improvedSource,
+    WPDX_DOMAIN: WPDX_DOMAIN, WPDX_RESOURCE: WPDX_RESOURCE,
+    wpdxUrl: wpdxUrl, fetchWaterPoints: fetchWaterPoints,
+    waterPointsNear: waterPointsNear,
+  });
+
+  /* ================================================================== geodesy
+   * groundwater/geo.py. Sierra Leone straddles UTM zones 28N and 29N; the
+   * easting alone identifies the zone, because in-country the valid ranges
+   * cannot overlap (zone 28N runs about 620000-800000, zone 29N 200000-500000).
+   */
+
+  function inferZoneForSierraLeone(easting) {
+    return Number(easting) > 550000 ? 28 : 29;
+  }
+
+  function utmZoneFromLon(lon) {
+    return Math.floor((lon + 180) / 6) + 1;
+  }
+
+  /* WGS84 geographic -> UTM, the Krueger series (Karney 2011, terms to n^4)
+   * the package uses, so a pasted position lands on the same metre. */
+  var GEO_A = 6378137.0;
+  var GEO_F = 1 / 298.257223563;
+  var GEO_E = Math.sqrt(GEO_F * (2 - GEO_F));
+  var GEO_N = GEO_F / (2 - GEO_F);
+  var GEO_K0 = 0.9996;
+  var GEO_FALSE_EASTING = 500000.0;
+  var GEO_A1 = GEO_A / (1 + GEO_N) *
+    (1 + Math.pow(GEO_N, 2) / 4 + Math.pow(GEO_N, 4) / 64);
+  var GEO_ALPHA = [
+    GEO_N / 2 - 2 * Math.pow(GEO_N, 2) / 3 + 5 * Math.pow(GEO_N, 3) / 16 +
+      41 * Math.pow(GEO_N, 4) / 180,
+    13 * Math.pow(GEO_N, 2) / 48 - 3 * Math.pow(GEO_N, 3) / 5 +
+      557 * Math.pow(GEO_N, 4) / 1440,
+    61 * Math.pow(GEO_N, 3) / 240 - 103 * Math.pow(GEO_N, 4) / 140,
+    49561 * Math.pow(GEO_N, 4) / 161280,
+  ];
+
+  function geographicToUtm(lat, lon, zone) {
+    var band = zone || utmZoneFromLon(lon);
+    var lam0 = (-183.0 + 6.0 * band) * Math.PI / 180;
+    var phi = lat * Math.PI / 180;
+    var lam = lon * Math.PI / 180 - lam0;
+
+    var t = Math.tan(phi);
+    var sigma = Math.sinh(GEO_E * Math.atanh(GEO_E * t / Math.sqrt(1 + t * t)));
+    var tauP = t * Math.sqrt(1 + sigma * sigma) - sigma * Math.sqrt(1 + t * t);
+
+    var xiP = Math.atan2(tauP, Math.cos(lam));
+    var etaP = Math.asinh(Math.sin(lam) / Math.hypot(tauP, Math.cos(lam)));
+
+    var xi = xiP, eta = etaP;
+    GEO_ALPHA.forEach(function (alpha, index) {
+      var j = index + 1;
+      xi += alpha * Math.sin(2 * j * xiP) * Math.cosh(2 * j * etaP);
+      eta += alpha * Math.cos(2 * j * xiP) * Math.sinh(2 * j * etaP);
+    });
+
+    var northing = GEO_K0 * GEO_A1 * xi;
+    var hemisphere = 'N';
+    if (lat < 0) { northing += 10000000.0; hemisphere = 'S'; }
+    return {
+      easting: GEO_FALSE_EASTING + GEO_K0 * GEO_A1 * eta,
+      northing: northing, zone: band, hemisphere: hemisphere,
+    };
+  }
+
+  var GEO_E2 = GEO_F * (2 - GEO_F);
+  var GEO_BETA = [
+    GEO_N / 2 - 2 * Math.pow(GEO_N, 2) / 3 + 37 * Math.pow(GEO_N, 3) / 96 -
+      Math.pow(GEO_N, 4) / 360,
+    Math.pow(GEO_N, 2) / 48 + Math.pow(GEO_N, 3) / 15 -
+      437 * Math.pow(GEO_N, 4) / 1440,
+    17 * Math.pow(GEO_N, 3) / 480 - 37 * Math.pow(GEO_N, 4) / 840,
+    4397 * Math.pow(GEO_N, 4) / 161280,
+  ];
+
+  /* WGS84 UTM -> geographic, the same Krueger inverse the package uses, so a
+   * position converted here and a position converted there are the same
+   * position rather than two that happen to be close. */
+  function utmToGeographic(easting, northing, zone, hemisphere) {
+    var y = northing;
+    if (String(hemisphere || 'N').toUpperCase().charAt(0) === 'S') y -= 10000000.0;
+    var xi = y / (GEO_K0 * GEO_A1);
+    var eta = (easting - GEO_FALSE_EASTING) / (GEO_K0 * GEO_A1);
+
+    var xiP = xi, etaP = eta;
+    GEO_BETA.forEach(function (beta, index) {
+      var j = index + 1;
+      xiP -= beta * Math.sin(2 * j * xi) * Math.cosh(2 * j * eta);
+      etaP -= beta * Math.cos(2 * j * xi) * Math.sinh(2 * j * eta);
+    });
+
+    var tauP = Math.sin(xiP) / Math.hypot(Math.sinh(etaP), Math.cos(xiP));
+    var lam = Math.atan2(Math.sinh(etaP), Math.cos(xiP));
+
+    /* invert tau'(tau) by Newton iteration (Karney 2011) */
+    var tau = tauP / Math.sqrt(1 - GEO_E2);
+    for (var i = 0; i < 10; i++) {
+      var sigma = Math.sinh(GEO_E * Math.atanh(GEO_E * tau / Math.sqrt(1 + tau * tau)));
+      var fTau = tau * Math.sqrt(1 + sigma * sigma) - sigma * Math.sqrt(1 + tau * tau);
+      var dTau = (Math.sqrt((1 + sigma * sigma) * (1 + tau * tau)) - sigma * tau) *
+        (1 - GEO_E2) * Math.sqrt(1 + tau * tau) / (1 + (1 - GEO_E2) * tau * tau);
+      var delta = (tauP - fTau) / dTau;
+      tau += delta;
+      if (Math.abs(delta) < 1e-14) break;
+    }
+
+    var out = {
+      lat: Math.atan(tau) * 180 / Math.PI,
+      lon: lam * 180 / Math.PI + (-183.0 + 6.0 * zone),
+    };
+    return isFinite(out.lat) && isFinite(out.lon) ? out : null;
+  }
+
+  Object.assign(C, {
+    inferZoneForSierraLeone: inferZoneForSierraLeone,
+    utmToGeographic: utmToGeographic, geographicToUtm: geographicToUtm,
+    utmZoneFromLon: utmZoneFromLon,
+  });
+
+  /* ================================================================== siting
+   * groundwater/siting/suitability.py. A transparent drill-target scorecard.
+   *
+   * Each candidate VES point is scored 0-100 from four components a siting
+   * hydrogeologist weighs in crystalline basement terrain: interpreted aquifer
+   * thickness, how central the water-zone resistivity sits in the productive
+   * window, the weathered profile, and whether a fracture sits at the basement
+   * contact. The weights are explicit and a defensible default, not a
+   * calibrated model; the upgrade path is to fit them against real drilling
+   * outcomes as a programme accumulates them.
+   */
+
+  var SUITABILITY_WEIGHTS = {
+    aquifer_thickness: 0.35, resistivity_fit: 0.25,
+    overburden: 0.20, basal_fracture: 0.20,
+  };
+  var THICKNESS_TARGET_M = 25.0;
+
+  function suitabilityGrade(score) {
+    if (score >= 75) return 'Very good';
+    if (score >= 55) return 'Good';
+    if (score >= 35) return 'Moderate';
+    return 'Poor';
+  }
+
+  /* Thickness-weighted geometric mean resistivity across the water zones. */
+  function zoneGeomeanRho(interp) {
+    var acc = 0.0, total = 0.0;
+    interp.water_zones.forEach(function (zone) {
+      var top = zone[0], bottom = zone[1];
+      interp.layers.forEach(function (layer) {
+        var lo = Math.max(layer.top_m, top);
+        var hi = Math.min(isFinite(layer.bottom_m) ? layer.bottom_m : bottom, bottom);
+        if (hi > lo) {
+          acc += Math.log(layer.rho) * (hi - lo);
+          total += hi - lo;
+        }
+      });
+    });
+    return total > 0 ? Math.exp(acc / total) : null;
+  }
+
+  function resistivityFitScore(interp, vesConfig) {
+    var mid = zoneGeomeanRho(interp);
+    if (mid === null) return 0.0;
+    var centre = Math.sqrt(vesConfig.fractured_zone_rho[0] *
+      vesConfig.fractured_zone_rho[1]);
+    return 1.0 / (1.0 + Math.abs(Math.log(Math.max(mid, 1e-3) / centre)));
+  }
+
+  function overburdenScore(interp) {
+    var dtb = interp.depth_to_basement_m;
+    if (dtb === null || dtb === undefined) return 0.5;   /* unknown: neutral */
+    if (dtb < 5) return 0.15;                    /* too thin to store much */
+    if (dtb <= 35) return 1.0;                   /* favourable weathering */
+    /* deep overburden is still drillable, but the target sits deeper */
+    return Math.max(0.4, 1.0 - (dtb - 35) / 60.0);
+  }
+
+  function basalFractureScore(interp) {
+    var zones = interp.water_zones;
+    if (!zones.length) return 0.0;
+    var dtb = interp.depth_to_basement_m;
+    if (dtb !== null && dtb !== undefined) {
+      for (var i = 0; i < zones.length; i++) {
+        /* a zone straddling or just above the fresh-basement contact is the
+         * highest-yield basement target */
+        if ((zones[i][0] <= dtb && dtb <= zones[i][1]) ||
+            Math.abs(zones[i][1] - dtb) <= 5.0) {
+          return 1.0;
+        }
+      }
+    }
+    return 0.5;
+  }
+
+  function suitabilityRationale(interp, comp) {
+    if (!interp.water_zones.length) {
+      return 'No water-bearing zone was resolved within the investigated ' +
+        'depth, so the drilling prospect here is weak.';
+    }
+    var parts = [];
+    parts.push('about ' + interp.aquifer_thickness_m.toFixed(0) +
+      ' m of interpreted water-bearing thickness' +
+      (comp.aquifer_thickness >= 0.7 ? ' (thick)'
+        : comp.aquifer_thickness >= 0.4 ? ' (modest)' : ' (thin)'));
+    if (comp.resistivity_fit >= 0.6) {
+      parts.push('resistivities well within the productive fracture window');
+    } else if (comp.resistivity_fit >= 0.35) {
+      parts.push('resistivities near the edge of the productive window');
+    } else {
+      parts.push('resistivities outside the ideal productive window');
+    }
+    if (comp.basal_fracture >= 1.0) {
+      parts.push('a fractured zone at the basement contact');
+    }
+    if (interp.depth_to_basement_m !== null && interp.depth_to_basement_m !== undefined &&
+        comp.overburden < 0.4) {
+      parts.push('overburden of about ' + interp.depth_to_basement_m.toFixed(0) +
+        ' m that limits the target');
+    }
+    return 'Driven by ' + parts.join('; ') + '.';
+  }
+
+  /* Score and rank candidate VES points, most suitable first (rank 1 = best),
+   * so the head of the list is the recommended drilling target. */
+  function assessSiting(interpretations, vesConfig) {
+    var cfg = vesConfig || defaultConfig().ves;
+    var results = (interpretations || []).map(function (interp) {
+      var comp = {
+        aquifer_thickness: Math.min(interp.aquifer_thickness_m / THICKNESS_TARGET_M, 1.0),
+        resistivity_fit: resistivityFitScore(interp, cfg),
+        overburden: overburdenScore(interp),
+        basal_fracture: basalFractureScore(interp),
+      };
+      var score = 100.0 * (
+        SUITABILITY_WEIGHTS.aquifer_thickness * comp.aquifer_thickness +
+        SUITABILITY_WEIGHTS.resistivity_fit * comp.resistivity_fit +
+        SUITABILITY_WEIGHTS.overburden * comp.overburden +
+        SUITABILITY_WEIGHTS.basal_fracture * comp.basal_fracture);
+      return {
+        sounding_id: interp.sounding_id,
+        suitability: pyRound(score, 1),
+        grade: suitabilityGrade(score),
+        components: comp,
+        rationale: suitabilityRationale(interp, comp),
+        easting: interp.site_easting, northing: interp.site_northing,
+        rank: null,
+      };
+    });
+    /* highest suitability first, ties broken by sounding id for stability */
+    var ranked = results.slice().sort(function (a, b) {
+      return b.suitability - a.suitability ||
+        (a.sounding_id < b.sounding_id ? -1 : a.sounding_id > b.sounding_id ? 1 : 0);
+    });
+    ranked.forEach(function (result, i) { result.rank = i + 1; });
+    return ranked;
+  }
+
+  Object.assign(C, {
+    SUITABILITY_WEIGHTS: SUITABILITY_WEIGHTS, assessSiting: assessSiting,
+    suitabilityGrade: suitabilityGrade, zoneGeomeanRho: zoneGeomeanRho,
+  });
+
+  /* ================================================================ portfolio
+   * groundwater/portfolio.py. A water manager oversees many boreholes, not
+   * one. Each saved project file carries a small headline summary; this turns
+   * a list of those summaries into a comparison table, mapped points coloured
+   * by status, and programme statistics.
+   */
+
+  var STATUS_COLORS = {
+    successful: '#2E7D5B', dry: '#B23A2E', sited: '#17527E', other: '#C1772A',
+  };
+  var STATUS_LABELS = {
+    successful: 'Successful', dry: 'Dry / failed',
+    sited: 'Sited (not drilled)', other: 'Other / in progress',
+  };
+
+  /* Failure wins over completion. "Completed - dry" describes the works, not
+   * the outcome, and "unsuccessful" contains "success" - matching the positive
+   * terms first reported failed boreholes as successful ones and inflated the
+   * portfolio success rate. */
+  function classifyStatus(summary) {
+    var raw = String((summary && summary.status) || '').trim().toLowerCase();
+    if (!raw) {
+      return (summary && (summary.safe_yield_m3_per_h || summary.total_depth_m))
+        ? 'sited' : 'other';
+    }
+    var negative = ['dry', 'fail', 'abandon', 'unsuccess', 'not success', 'no water'];
+    for (var i = 0; i < negative.length; i++) {
+      if (raw.indexOf(negative[i]) >= 0) return 'dry';
+    }
+    if (raw.indexOf('success') >= 0 || raw.indexOf('complete') >= 0 ||
+        raw.indexOf('productive') >= 0) return 'successful';
+    if (raw.indexOf('sit') >= 0) return 'sited';
+    return 'other';
+  }
+
+  function summaryLatLon(summary) {
+    var easting = summary && summary.easting, northing = summary && summary.northing;
+    if (!easting || !northing) return null;
+    /* the same fallback SiteMetadata.utm uses: a hard-coded zone dropped every
+     * zone-less project six degrees off, into the Atlantic and off the map */
+    var zone = Number(summary.utm_zone) || inferZoneForSierraLeone(Number(easting));
+    try {
+      return utmToGeographic(Number(easting), Number(northing), zone);
+    } catch (e) { return null; }
+  }
+
+  var WATER_VERDICT_SHORT = {
+    fail: 'Treat before use', aesthetic: 'Aesthetic only', pass: 'Safe',
+  };
+  var WATER_VERDICT_LONG = {
+    fail: 'Treat before use', aesthetic: 'Aesthetic issues only',
+    pass: 'Safe to drink',
+  };
+
+  function portfolioRows(summaries) {
+    return (summaries || []).map(function (s) {
+      var status = classifyStatus(s);
+      var verdict = String(s.water_verdict || '').toLowerCase();
+      return {
+        Community: s.community || '(unnamed)',
+        District: s.district || '',
+        Status: STATUS_LABELS[status],
+        'Depth (m)': s.total_depth_m ? pyRound(Number(s.total_depth_m), 1) : null,
+        'Safe yield (m3/h)': s.safe_yield_m3_per_h
+          ? pyRound(Number(s.safe_yield_m3_per_h), 2) : null,
+        Water: WATER_VERDICT_SHORT[verdict] || '',
+        'Cost/m (USD)': s.cost_per_meter_usd
+          ? pyRound(Number(s.cost_per_meter_usd), 0) : null,
+      };
+    });
+  }
+
+  function portfolioPoints(summaries) {
+    var points = [];
+    (summaries || []).forEach(function (s) {
+      var latlon = summaryLatLon(s);
+      if (!latlon) return;
+      points.push({
+        label: s.community || 'site', lat: latlon.lat, lon: latlon.lon,
+        status: classifyStatus(s),
+      });
+    });
+    return points;
+  }
+
+  /* "1. Rokel (Port Loko)" - the index keeps a selector unambiguous when two
+   * sites share a community name. */
+  function portfolioSiteLabel(summary, index) {
+    var community = (summary && summary.community) || '(unnamed site)';
+    var district = summary && summary.district;
+    var label = district ? community + ' (' + district + ')' : community;
+    return index === undefined || index === null
+      ? label : (index + 1) + '. ' + label;
+  }
+
+  function portfolioSiteDetail(summary) {
+    var rows = [];
+    function add(label, value) {
+      if (value !== null && value !== undefined && value !== '') rows.push([label, value]);
+    }
+    add('Community', summary.community);
+    add('District', summary.district);
+    add('Chiefdom', summary.chiefdom);
+    add('Status', STATUS_LABELS[classifyStatus(summary)]);
+    var latlon = summaryLatLon(summary);
+    if (latlon) {
+      add('Location', latlon.lat.toFixed(5) + ' N, ' +
+        Math.abs(latlon.lon).toFixed(5) + ' W');
+    }
+    add('Total depth', summary.total_depth_m
+      ? Number(summary.total_depth_m).toFixed(1) + ' m' : null);
+    add('Safe yield', summary.safe_yield_m3_per_h
+      ? Number(summary.safe_yield_m3_per_h).toFixed(2) + ' m3/h' : null);
+    add('Water quality',
+      WATER_VERDICT_LONG[String(summary.water_verdict || '').toLowerCase()] || null);
+    add('Cost per metre', summary.cost_per_meter_usd
+      ? '$' + Number(summary.cost_per_meter_usd).toFixed(0) : null);
+    return rows;
+  }
+
+  function portfolioOnePager(summary) {
+    var title = portfolioSiteLabel(summary);
+    var header = 'SITE BRIEF - ' + title;
+    var lines = [header, new Array(header.length + 1).join('='), ''];
+    portfolioSiteDetail(summary).forEach(function (row) {
+      var label = row[0] + ':';
+      while (label.length < 16) label += ' ';
+      lines.push(label + row[1]);
+    });
+    lines.push('', 'Generated by the Groundwater Investigation Toolkit.');
+    return lines.join('\n');
+  }
+
+  function portfolioStats(summaries) {
+    var list = summaries || [];
+    var drilled = list.filter(function (s) { return s.total_depth_m; });
+    /* successes are counted over the same population the rate divides by, so
+     * the rate can never exceed 100%: a summary classified "successful" but
+     * carrying no depth is not a drilled hole */
+    var successful = drilled.filter(function (s) {
+      return classifyStatus(s) === 'successful';
+    }).length;
+    var yields = list.filter(function (s) { return s.safe_yield_m3_per_h; })
+      .map(function (s) { return Number(s.safe_yield_m3_per_h); });
+    var costs = list.filter(function (s) { return s.cost_per_meter_usd; })
+      .map(function (s) { return Number(s.cost_per_meter_usd); });
+    var verdicts = list.filter(function (s) { return s.water_verdict; })
+      .map(function (s) { return String(s.water_verdict).toLowerCase(); });
+    var safe = verdicts.filter(function (v) {
+      return v === 'pass' || v === 'aesthetic';
+    }).length;
+    function mean(values) {
+      return values.length
+        ? values.reduce(function (a, b) { return a + b; }, 0) / values.length : null;
+    }
+    return {
+      n_projects: list.length,
+      n_drilled: drilled.length,
+      n_successful: successful,
+      success_rate: drilled.length ? successful / drilled.length * 100.0 : null,
+      mean_safe_yield_m3_per_h: mean(yields),
+      mean_cost_per_meter_usd: mean(costs),
+      wq_pass_rate: verdicts.length ? safe / verdicts.length * 100.0 : null,
+    };
+  }
+
+  Object.assign(C, {
+    STATUS_COLORS: STATUS_COLORS, STATUS_LABELS: STATUS_LABELS,
+    classifyStatus: classifyStatus, summaryLatLon: summaryLatLon,
+    portfolioRows: portfolioRows, portfolioPoints: portfolioPoints,
+    portfolioSiteLabel: portfolioSiteLabel,
+    portfolioSiteDetail: portfolioSiteDetail,
+    portfolioOnePager: portfolioOnePager, portfolioStats: portfolioStats,
+  });
+
+  /* =============================================================== depth spine
+   * groundwater/depth_spine/view.py. The whole borehole on one depth axis.
+   *
+   * This module decides; the page draws. Every number the workspace shows is
+   * computed here by the same functions the reports use, so the section, the
+   * rail and the bill of quantities cannot drift from the .docx. The page owns
+   * only the depth-to-pixel mapping and the pointer.
+   */
+
+  function spineFlag(flag) {
+    return {
+      level: flag.level, code: flag.code || '',
+      message: flag.message || '', context: flag.context || '',
+    };
+  }
+
+  function spineRound(value, places) {
+    if (value === null || value === undefined || !isFinite(value)) return null;
+    return pyRound(Number(value), places === undefined ? 2 : places);
+  }
+
+  var AQUIFER_HINTS = ['fracture', 'water', 'aquifer'];
+  var NOT_AQUIFER = ['no water', 'not reached', 'without water'];
+
+  /* Only for shading the log - screen placement uses targetZones. */
+  function looksLikeAquifer(description) {
+    var text = String(description || '').toLowerCase();
+    var i;
+    for (i = 0; i < NOT_AQUIFER.length; i++) {
+      if (text.indexOf(NOT_AQUIFER[i]) >= 0) return false;
+    }
+    for (i = 0; i < AQUIFER_HINTS.length; i++) {
+      if (text.indexOf(AQUIFER_HINTS[i]) >= 0) return true;
+    }
+    return false;
+  }
+
+  function spineSection(log, design, analysis, config) {
+    var totalDepth = design.total_depth_m;
+    /* a little air below the hole so the total-depth line is not on the edge */
+    var domain = totalDepth * 1.06;
+
+    var levels = {};
+    var swl = design.static_water_level_m;
+    if (swl !== null && swl !== undefined) levels.restLevel = spineRound(swl);
+    if (analysis) {
+      /* The toolkit only calls a level "stabilised" when the last readings
+       * agree within 5 cm. When they do not, the honest line to draw is the
+       * deepest level reached, labelled as still falling - drawing it as a
+       * stabilised pumping level would overstate what the test showed. */
+      levels.stabilised = analysis.stabilised_level_m !== null &&
+        analysis.stabilised_level_m !== undefined;
+      levels.maxDrawdown = spineRound(analysis.max_drawdown_m);
+      if (levels.stabilised) {
+        levels.pumpingLevel = spineRound(analysis.stabilised_level_m);
+      } else if (swl !== null && swl !== undefined &&
+                 analysis.max_drawdown_m !== null &&
+                 analysis.max_drawdown_m !== undefined) {
+        levels.pumpingLevel = spineRound(swl + analysis.max_drawdown_m);
+      }
+    }
+    if (design.pump_intake_m !== null && design.pump_intake_m !== undefined) {
+      levels.pumpIntake = spineRound(design.pump_intake_m, 1);
+    }
+
+    return {
+      totalDepth: totalDepth,
+      domain: domain,
+      lithology: ((log && log.intervals) || []).map(function (iv) {
+        return {
+          top: iv.top_m, base: iv.bottom_m, description: iv.description,
+          aquifer: looksLikeAquifer(iv.description),
+        };
+      }),
+      waterStrikes: (design.water_strikes_m || []).slice(),
+      segments: (design.segments || []).map(function (s) {
+        return { kind: s.kind, top: s.top_m, base: s.bottom_m };
+      }),
+      gravelPack: (design.gravel_pack || []).slice(),
+      backfill: (design.backfill || []).slice(),
+      sanitarySeal: (design.sanitary_seal || []).slice(),
+      levels: levels,
+      boreDiameterIn: design.borehole_diameter_in,
+      casingDiameterIn: design.casing_diameter_in,
+      casingMaterial: design.casing_material,
+      slotMm: design.screen_slot_mm,
+      stickupM: design.stickup_m,
+      drillingMethod: (log && log.drilling_method) || '',
+      /* the handles may not move a screen outside this band */
+      screenLimits: {
+        top: 0.0,
+        base: totalDepth - config.design.sump_length_m,
+        minLength: 0.5,
+      },
+    };
+  }
+
+  /* Cross-method transmissivity, so agreement is visible rather than claimed. */
+  function spineMethods(analysis) {
+    var out = [];
+    [['Cooper-Jacob', analysis.cooper_jacob], ['Theis', analysis.theis],
+      ['Recovery', analysis.recovery]].forEach(function (pair) {
+      if (!pair[1]) return;
+      out.push({
+        label: pair[0],
+        transmissivity: spineRound(pair[1].transmissivity_m2_per_day),
+      });
+    });
+    return out;
+  }
+
+  function spineDesignDecisions(design, analysis, config) {
+    var rules = config.design;
+    var yieldBlock = { pending: 'No pumping test loaded for this borehole.' };
+
+    if (analysis && analysis.yield_recommendation) {
+      var rec = analysis.yield_recommendation;
+      yieldBlock = {
+        pending: rec.pending_reason || '',
+        safeYieldM3PerH: spineRound(rec.safe_yield_m3_per_h),
+        lowM3PerH: spineRound(rec.safe_yield_low_m3_per_h),
+        highM3PerH: spineRound(rec.safe_yield_high_m3_per_h),
+        rangeText: rec.yield_range_text || yieldRangeText(rec),
+        longTermM3PerH: spineRound(rec.long_term_yield_m3_per_h),
+        specificCapacity: spineRound(rec.specific_capacity_m3hr_per_m),
+        availableDrawdownM: spineRound(rec.available_drawdown_m),
+        usableDrawdownM: spineRound(rec.usable_drawdown_m),
+        pumpDepthM: spineRound(rec.pump_installation_depth_m, 1),
+        safetyFactor: rec.safety_factor,
+        designPeriodDays: rec.design_period_days,
+        basis: rec.basis,
+        envelopeBasis: rec.envelope_basis,
+        transmissivity: spineRound(analysis.transmissivity_m2_per_day),
+        methods: spineMethods(analysis),
+      };
+    }
+
+    return {
+      yield: yieldBlock,
+      screens: (design.screens || []).map(function (s) {
+        return { top: s.top_m, base: s.bottom_m };
+      }),
+      totalScreenM: spineRound(design.total_screen_length_m, 1),
+      screenShare: spineRound(
+        design.total_screen_length_m / design.total_depth_m * 100, 1),
+      slotMm: design.screen_slot_mm,
+      rules: {
+        sumpLengthM: rules.sump_length_m,
+        gravelAboveTopScreenM: rules.gravel_pack_above_top_screen_m,
+        sanitarySealDepthM: rules.sanitary_seal_depth_m,
+        minScreenBelowSwlM: rules.min_screen_below_swl_m,
+        submergenceMinM: config.pumping.pump_submergence_min_m,
+        seasonalAllowanceM: config.pumping.seasonal_allowance_m,
+      },
+      basis: (design.design_basis || []).slice(),
+      flags: (design.flags || []).map(spineFlag)
+        .concat(analysis ? (analysis.flags || []).map(spineFlag) : []),
+    };
+  }
+
+  /* The limit a row is judged against, and what kind of limit it is.
+   *
+   * The strictest applicable maximum binds. Which one it was matters in the
+   * report - a national limit exceeded is a compliance failure, an
+   * acceptability limit exceeded is a taste complaint - so the name travels
+   * with the number. */
+  function bindingLimit(row) {
+    var candidates = [
+      ['WHO health', parseLimit(row.who_health)],
+      ['WHO acceptability', parseLimit(row.who_aesthetic)],
+      ['national', parseLimit(row.sl_standard)],
+    ];
+    var best = [null, ''];
+    for (var i = 0; i < candidates.length; i++) {
+      var name = candidates[i][0], limit = candidates[i][1];
+      if (!limit) continue;
+      if (limit.minimum !== null && limit.minimum !== undefined) return [limit, name];
+      if (limit.maximum === null || limit.maximum === undefined) continue;
+      if (!best[0] || limit.maximum < best[0].maximum) best = [limit, name];
+    }
+    return best;
+  }
+
+  /* Cation and anion percentages for the Piper and Stiff plots. Reuses the
+   * milliequivalents the ionic balance already worked out, so the diagrams and
+   * the balance check can never disagree. */
+  function spinePiper(assessment) {
+    if (!assessment.ionic) return null;
+    var cations = assessment.ionic.cations_meq || {};
+    var anions = assessment.ionic.anions_meq || {};
+    function total(map) {
+      return Object.keys(map).reduce(function (a, k) { return a + (map[k] || 0); }, 0);
+    }
+    var totalC = total(cations), totalA = total(anions);
+    if (totalC <= 0 || totalA <= 0) return null;
+    function c(key) { return cations[key] || 0.0; }
+    function a(key) { return anions[key] || 0.0; }
+    var naK = c('sodium') + c('potassium');
+    return {
+      meq: {
+        ca: spineRound(c('calcium'), 4), mg: spineRound(c('magnesium'), 4),
+        naK: spineRound(naK, 4), hco3: spineRound(a('bicarbonate'), 4),
+        cl: spineRound(a('chloride'), 4), so4: spineRound(a('sulfate'), 4),
+      },
+      percent: {
+        ca: spineRound(c('calcium') / totalC, 4),
+        mg: spineRound(c('magnesium') / totalC, 4),
+        naK: spineRound(naK / totalC, 4),
+        hco3: spineRound(a('bicarbonate') / totalA, 4),
+        cl: spineRound(a('chloride') / totalA, 4),
+        so4: spineRound(a('sulfate') / totalA, 4),
+      },
+    };
+  }
+
+  function spineQuality(assessment) {
+    var rows = (assessment.rows || []).map(function (r) {
+      var pair = bindingLimit(r);
+      var limit = pair[0], limitName = pair[1];
+      /* the chart plots every determinand as a multiple of its own limit, so
+       * the ratio is computed here rather than by parsing limit strings in
+       * the page */
+      var ratio = null, kind = 'none';
+      if (limit) {
+        kind = (limit.minimum !== null && limit.minimum !== undefined) ? 'range' : 'max';
+        if (r.value !== null && r.value !== undefined && limit.maximum) {
+          ratio = Number(r.value) / Number(limit.maximum);
+        }
+      }
+      return {
+        parameter: r.parameter, value: spineRound(r.value, 4), unit: r.unit,
+        belowDetection: !!r.below_detection,
+        whoHealth: r.who_health, whoAesthetic: r.who_aesthetic,
+        national: r.sl_standard, status: r.status, remark: r.remark,
+        limitKind: kind, limitName: limitName,
+        limitMax: limit ? spineRound(limit.maximum, 4) : null,
+        limitMin: limit ? spineRound(limit.minimum, 4) : null,
+        ratio: spineRound(ratio, 4),
+      };
+    });
+
+    function roundMap(map) {
+      var out = {};
+      Object.keys(map || {}).forEach(function (k) { out[k] = spineRound(map[k], 4); });
+      return out;
+    }
+
+    var ionic = null;
+    if (assessment.ionic) {
+      var i = assessment.ionic;
+      ionic = {
+        cationsMeq: spineRound(i.sum_cations_meq, 3),
+        anionsMeq: spineRound(i.sum_anions_meq, 3),
+        errorPercent: spineRound(i.error_percent, 2),
+        cations: roundMap(i.cations_meq), anions: roundMap(i.anions_meq),
+        usedAlkalinity: !!i.used_alkalinity_for_bicarbonate,
+      };
+    }
+
+    var corrosivity = null;
+    if (assessment.corrosivity) {
+      var cor = assessment.corrosivity;
+      corrosivity = {
+        lsi: spineRound(cor.lsi), rsi: spineRound(cor.rsi),
+        aggressiveIndex: spineRound(cor.aggressive_index),
+        larsonSkold: spineRound(cor.larson_skold),
+        classification: cor.classification, isAggressive: !!cor.is_aggressive,
+        verdict: cor.verdict, materialsNote: cor.materials_note,
+        assumptions: (cor.assumptions || []).slice(),
+      };
+    }
+
+    return {
+      sampleId: assessment.sample ? assessment.sample.sample_id : '',
+      sampleDate: assessment.sample ? assessment.sample.sample_date : '',
+      laboratory: assessment.sample ? assessment.sample.laboratory : '',
+      rows: rows,
+      verdict: assessment.verdict,
+      healthExceedances: (assessment.health_exceedances || [])
+        .map(function (r) { return r.parameter; }),
+      nationalExceedances: (assessment.national_exceedances || [])
+        .map(function (r) { return r.parameter; }),
+      aestheticExceedances: (assessment.rows || [])
+        .filter(function (r) { return r.status === 'exceeds_aesthetic'; })
+        .map(function (r) { return r.parameter; }),
+      ionic: ionic,
+      piper: spinePiper(assessment),
+      corrosivity: corrosivity,
+      wqi: assessment.wqi
+        ? { value: spineRound(assessment.wqi.value, 1), rating: assessment.wqi.rating }
+        : null,
+      flags: (assessment.flags || []).map(spineFlag),
+    };
+  }
+
+  function spineCosting(estimate) {
+    var items = (estimate.items || []).map(function (i) {
+      return {
+        code: i.code, stage: i.stage, category: i.category, item: i.item,
+        unit: i.unit, quantity: spineRound(i.quantity, 3),
+        unitCost: spineRound(i.unit_cost_usd), amount: spineRound(i.amount_usd),
+        note: i.note || '',
+      };
+    });
+
+    function group(key) {
+      var totals = {}, order = [];
+      (estimate.items || []).forEach(function (i) {
+        if (!(i[key] in totals)) { totals[i[key]] = 0.0; order.push(i[key]); }
+        totals[i[key]] += i.amount_usd;
+      });
+      var direct = estimate.direct_cost_usd || 1.0;
+      return order.map(function (label) {
+        return {
+          label: label, amount: spineRound(totals[label]),
+          share: spineRound(totals[label] / direct * 100, 1),
+        };
+      }).sort(function (a, b) { return b.amount - a.amount; });
+    }
+
+    return {
+      items: items, byStage: group('stage'), byCategory: group('category'),
+      directCost: spineRound(estimate.direct_cost_usd),
+      overheads: spineRound(estimate.overheads_usd),
+      totalCost: spineRound(estimate.total_cost_usd),
+      margin: spineRound(estimate.margin_usd),
+      price: spineRound(estimate.price_usd),
+      vat: spineRound(estimate.vat_usd),
+      costPerMetre: spineRound(estimate.cost_per_meter_usd),
+      overheadsPercent: estimate.overheads_percent,
+      marginPercent: estimate.margin_percent,
+      contingencyPercent: estimate.contingency_percent,
+      vatPercent: estimate.vat_percent,
+      exchangeRate: estimate.exchange_rate_sle_per_usd,
+      assumptions: (estimate.assumptions || []).slice(),
+      flags: (estimate.flags || []).map(spineFlag),
+      quantityBasis: {
+        totalDepthM: estimate.inputs.total_depth_m,
+        casingM: spineRound(estimate.inputs.casing_m, 1),
+        screenM: spineRound(estimate.inputs.screen_m, 1),
+        gravelIntervalM: spineRound(estimate.inputs.gravel_interval_m, 1),
+        overburdenM: spineRound(estimate.inputs.overburden_m, 1),
+      },
+    };
+  }
+
+  /* Derive the whole workspace from the analysis objects.
+   *
+   * ``screensM`` is the analyst's screen placement from the section. Passing it
+   * re-runs the design and everything downstream of it - the annulus, the
+   * checks and the bill of quantities - so the drawing and the BoQ are always
+   * the same design. */
+  function buildSpineView(inputs, screensM) {
+    var config = inputs.config || defaultConfig();
+    var analysis = inputs.analysis || null;
+    var log = inputs.log;
+    if (!log) throw new Error('the Depth Spine needs a drilling log');
+    var swl = null, pumpIntake = null;
+    if (analysis) {
+      swl = analysis.test ? analysis.test.static_water_level_m : null;
+      if (analysis.yield_recommendation) {
+        pumpIntake = analysis.yield_recommendation.pump_installation_depth_m;
+      }
+    }
+
+    var design = designBorehole({
+      log: log, staticWaterLevelM: swl, pumpIntakeM: pumpIntake,
+      rules: config.design,
+      screensM: screensM && screensM.length ? screensM : null,
+    });
+
+    var estimate = estimateBoreholeCost(inputsFromDesign(design, {
+      mobilisationDistanceKm: inputs.mobilisationDistanceKm || 0.0,
+    }));
+
+    var site = log.site || {};
+    var latlon = null;
+    if (site.easting && site.northing) {
+      var zone = Number(site.utm_zone) || inferZoneForSierraLeone(Number(site.easting));
+      var ll = utmToGeographic(Number(site.easting), Number(site.northing), zone);
+      if (ll) latlon = [ll.lat, ll.lon];
+    }
+
+    var payload = {
+      project: inputs.name || site.community || 'Borehole',
+      site: {
+        community: site.community || '', district: site.district || '',
+        chiefdom: site.chiefdom || '', client: site.client || '',
+        boreholeRef: log.borehole_ref || '', latlon: latlon,
+      },
+      section: spineSection(log, design, analysis, config),
+      design: spineDesignDecisions(design, analysis, config),
+      costing: spineCosting(estimate),
+      quality: null,
+      edited: !!(screensM && screensM.length),
+    };
+
+    var assessment = inputs.assessment || null;
+    if (!assessment && inputs.quality) assessment = assessSample(inputs.quality);
+    if (assessment) payload.quality = spineQuality(assessment);
+    return payload;
+  }
+
+  Object.assign(C, {
+    buildSpineView: buildSpineView, bindingLimit: bindingLimit,
+    looksLikeAquifer: looksLikeAquifer,
+  });
+
+  /* =============================================================== extraction
+   * groundwater/extraction/*. Getting a field sheet that arrived as a scan or
+   * a PDF into the same records an uploaded template produces.
+   *
+   * Whatever the source, the result is header fields plus data tables, each
+   * value carrying a confidence in [0, 1]. Values below the review threshold
+   * are flagged and highlighted amber in the review workbook rather than
+   * silently accepted: an extractor that quietly guesses a digit is worse than
+   * no extractor at all.
+   *
+   * Two paths, as on the server. A PDF that carries a text layer is read
+   * directly here - the whole reader is below, because the page must not fetch
+   * a PDF library from a CDN. A photographed or image-only sheet has no text
+   * to read and goes to the Claude API, which needs a key the operator
+   * supplies on the Settings page.
+   */
+
+  var REVIEW_THRESHOLD = 0.85;
+
+  var KIND_MARKERS = {
+    ves: ['ves', 'schlumberger', 'apparent resistivity', 'sounding'],
+    pumping_test: ['pumping test', 'step test', 'constant discharge', 'drawdown'],
+    drilling_log: ['drilling', 'borehole log', 'penetration'],
+    water_quality: ['water quality', 'laboratory', 'parameter', 'guideline'],
+  };
+
+  function guessDocumentKind(text) {
+    var lower = String(text || '').toLowerCase();
+    var best = 'unknown', bestScore = 0;
+    Object.keys(KIND_MARKERS).forEach(function (kind) {
+      var score = KIND_MARKERS[kind].filter(function (marker) {
+        return lower.indexOf(marker) >= 0;
+      }).length;
+      if (score > bestScore) { bestScore = score; best = kind; }
+    });
+    return bestScore > 0 ? best : 'unknown';
+  }
+
+  function extractedField(name, value, confidence) {
+    var conf = confidence === undefined ? 1.0 : Number(confidence);
+    return {
+      name: name, value: value, confidence: conf,
+      needs_review: conf < REVIEW_THRESHOLD,
+    };
+  }
+
+  function confidenceForRow(table, index) {
+    var list = table.row_confidence || [];
+    return index < list.length ? list[index] : 1.0;
+  }
+
+  /* Everything a human still has to look at, in the words the review sheet
+   * uses. Mirrors ExtractedDocument.review_items. */
+  function reviewItems(document) {
+    var items = (document.header || []).filter(function (f) { return f.needs_review; })
+      .map(function (f) {
+        return "header field '" + f.name + "' = '" + f.value + "' (confidence " +
+          f.confidence.toFixed(2) + ')';
+      });
+    (document.uncertain_cells || []).forEach(function (cell) {
+      var table = (document.tables || [])[cell.table_index];
+      if (!table) return;
+      var value = '';
+      var row = table.rows[cell.row];
+      if (row && cell.column < row.length) value = row[cell.column];
+      var column = cell.column < table.columns.length
+        ? table.columns[cell.column] : String(cell.column + 1);
+      items.push("table '" + table.title + "' row " + (cell.row + 1) +
+        ", column '" + column + "' = '" + value + "'" +
+        (cell.reason ? ' (' + cell.reason + ')' : ''));
+    });
+    return items;
+  }
+
+  /* --- the PDF text layer ---------------------------------------------------
+   *
+   * A deliberately small reader: enough of the PDF grammar to pull the text
+   * that a generated field sheet carries, and no more. Objects are found by
+   * scanning rather than through the cross-reference table, because a sheet
+   * that has been through a scanner-printer often has a broken xref while its
+   * objects are perfectly readable.
+   */
+
+  /* A /FlateDecode stream is zlib-wrapped, but a few writers emit the raw
+   * deflate stream without the two-byte header, so try both rather than
+   * failing the whole document. Kept local so this module stays free of the
+   * DOM support layer. */
+  async function inflateStream(bytes) {
+    if (typeof DecompressionStream === 'undefined') {
+      throw new Error('This browser cannot decompress PDF streams.');
+    }
+    var formats = ['deflate', 'deflate-raw'];
+    for (var i = 0; i < formats.length; i++) {
+      try {
+        var stream = new Blob([bytes]).stream()
+          .pipeThrough(new DecompressionStream(formats[i]));
+        return new Uint8Array(await new Response(stream).arrayBuffer());
+      } catch (e) {
+        if (i === formats.length - 1) throw e;
+      }
+    }
+    return bytes;
+  }
+
+  function latin1(bytes) {
+    var out = '', chunk = 0x8000;
+    for (var i = 0; i < bytes.length; i += chunk) {
+      out += String.fromCharCode.apply(
+        null, bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+    }
+    return out;
+  }
+
+  function pdfDictValue(dict, key) {
+    var re = new RegExp('/' + key + '\\s*(<<|\\[|/[^\\s/<>\\[\\]()]+|\\d+\\s+\\d+\\s+R|[-+.\\d]+)');
+    var m = re.exec(dict);
+    return m ? m[1] : null;
+  }
+
+  /* /Contents 4 0 R, or /Contents [4 0 R 5 0 R] - both are common. */
+  function pdfRefs(dict, key) {
+    var re = new RegExp('/' + key + '\\s*(\\[[^\\]]*\\]|\\d+\\s+\\d+\\s+R)');
+    var m = re.exec(dict);
+    if (!m) return [];
+    var refs = [];
+    var each = /(\d+)\s+(\d+)\s+R/g, hit;
+    while ((hit = each.exec(m[1])) !== null) refs.push(Number(hit[1]));
+    return refs;
+  }
+
+  /* Balanced << >> starting at `from`, so a nested dictionary is not cut in
+   * half by the first >> that happens to come along. */
+  function pdfDictAt(text, from) {
+    var depth = 0, i = from;
+    while (i < text.length) {
+      if (text.substr(i, 2) === '<<') { depth += 1; i += 2; continue; }
+      if (text.substr(i, 2) === '>>') {
+        depth -= 1; i += 2;
+        if (depth === 0) return text.slice(from, i);
+        continue;
+      }
+      i += 1;
+    }
+    return text.slice(from);
+  }
+
+  async function pdfObjects(bytes) {
+    var text = latin1(bytes);
+    var objects = {};
+    var re = /(\d+)\s+(\d+)\s+obj\b/g, match;
+    while ((match = re.exec(text)) !== null) {
+      var number = Number(match[1]);
+      var bodyStart = match.index + match[0].length;
+      var endIndex = text.indexOf('endobj', bodyStart);
+      var body = text.slice(bodyStart, endIndex < 0 ? text.length : endIndex);
+      var dictStart = body.indexOf('<<');
+      var dict = dictStart >= 0 ? pdfDictAt(body, dictStart) : '';
+      var entry = { num: number, dict: dict, body: body, stream: null };
+      var streamAt = body.indexOf('stream', dict ? dictStart + dict.length : 0);
+      if (streamAt >= 0) {
+        var dataStart = streamAt + 'stream'.length;
+        if (body.charCodeAt(dataStart) === 13) dataStart += 1;
+        if (body.charCodeAt(dataStart) === 10) dataStart += 1;
+        var dataEnd = body.indexOf('endstream', dataStart);
+        if (dataEnd < 0) dataEnd = body.length;
+        /* /Length is authoritative when it is a direct number. Without it the
+         * end-of-line before `endstream` would be handed to the decompressor
+         * as trailing garbage, which is a hard error rather than something it
+         * ignores, so trim it. */
+        var declared = /\/Length\s+(\d+)(?!\s+\d+\s+R)/.exec(dict);
+        if (declared && Number(declared[1]) <= dataEnd - dataStart) {
+          dataEnd = dataStart + Number(declared[1]);
+        } else {
+          while (dataEnd > dataStart &&
+                 (body.charCodeAt(dataEnd - 1) === 10 ||
+                  body.charCodeAt(dataEnd - 1) === 13)) {
+            dataEnd -= 1;
+          }
+        }
+        entry.rawStream = bytes.subarray(
+          bodyStart + dataStart, bodyStart + dataEnd);
+      }
+      objects[number] = entry;
+    }
+    return objects;
+  }
+
+  async function pdfStreamText(entry) {
+    if (!entry || !entry.rawStream) return '';
+    if (entry.stream !== null) return entry.stream;
+    var data = entry.rawStream;
+    var filter = entry.dict.indexOf('/FlateDecode') >= 0;
+    if (filter) {
+      try {
+        data = await inflateStream(data);
+      } catch (e) {
+        entry.stream = '';
+        return '';
+      }
+    } else if (/\/(LZW|RunLength|DCT|CCITTFax|JBIG2|JPX)Decode/.test(entry.dict)) {
+      /* an image or a filter this reader does not implement: no text in it */
+      entry.stream = '';
+      return '';
+    }
+    entry.stream = latin1(data);
+    return entry.stream;
+  }
+
+  /* A ToUnicode CMap, reduced to the code -> string map the text needs. */
+  function parseToUnicode(cmap) {
+    var map = {};
+    function decodeHex(hex) {
+      var out = '';
+      for (var i = 0; i + 3 < hex.length + 1; i += 4) {
+        out += String.fromCharCode(parseInt(hex.substr(i, 4), 16));
+      }
+      return out;
+    }
+    var charRe = /beginbfchar([\s\S]*?)endbfchar/g, block;
+    while ((block = charRe.exec(cmap)) !== null) {
+      var pair = /<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g, hit;
+      while ((hit = pair.exec(block[1])) !== null) {
+        map[parseInt(hit[1], 16)] = decodeHex(hit[2]);
+      }
+    }
+    var rangeRe = /beginbfrange([\s\S]*?)endbfrange/g;
+    while ((block = rangeRe.exec(cmap)) !== null) {
+      var simple = /<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g, span;
+      while ((span = simple.exec(block[1])) !== null) {
+        var lo = parseInt(span[1], 16), hi = parseInt(span[2], 16);
+        var base = parseInt(span[3], 16);
+        for (var code = lo; code <= hi && code - lo < 65536; code++) {
+          map[code] = String.fromCharCode(base + (code - lo));
+        }
+      }
+    }
+    return map;
+  }
+
+  /* A PDF string literal: (text) with escapes, or <hex>. */
+  function pdfStringBytes(token) {
+    var out = [];
+    if (token.charAt(0) === '<') {
+      var hex = token.slice(1, -1).replace(/[^0-9A-Fa-f]/g, '');
+      if (hex.length % 2) hex += '0';
+      for (var h = 0; h < hex.length; h += 2) out.push(parseInt(hex.substr(h, 2), 16));
+      return out;
+    }
+    var body = token.slice(1, -1);
+    for (var i = 0; i < body.length; i++) {
+      var ch = body.charAt(i);
+      if (ch !== '\\') { out.push(body.charCodeAt(i)); continue; }
+      var next = body.charAt(i + 1);
+      var escapes = { n: 10, r: 13, t: 9, b: 8, f: 12, '(': 40, ')': 41, '\\': 92 };
+      if (next in escapes) { out.push(escapes[next]); i += 1; continue; }
+      if (/[0-7]/.test(next)) {
+        var oct = '';
+        while (oct.length < 3 && /[0-7]/.test(body.charAt(i + 1))) {
+          oct += body.charAt(i + 1); i += 1;
+        }
+        out.push(parseInt(oct, 8));
+        continue;
+      }
+      if (next === '\n') { i += 1; continue; }   /* line continuation */
+      out.push(body.charCodeAt(i + 1)); i += 1;
+    }
+    return out;
+  }
+
+  function decodeWithFont(bytes, font) {
+    var text = '', i;
+    if (font && font.twoByte) {
+      for (i = 0; i + 1 < bytes.length; i += 2) {
+        var code = (bytes[i] << 8) | bytes[i + 1];
+        text += font.map && code in font.map ? font.map[code]
+          : String.fromCharCode(code);
+      }
+      return text;
+    }
+    for (i = 0; i < bytes.length; i++) {
+      text += font && font.map && bytes[i] in font.map
+        ? font.map[bytes[i]] : String.fromCharCode(bytes[i]);
+    }
+    return text;
+  }
+
+  /* Run one page's content stream and collect placed text.
+   *
+   * Only the text-positioning subset of the operator set is interpreted: the
+   * text matrix, the line matrix, the showing operators and the font. That is
+   * enough to know where each run of characters landed, which is what turns a
+   * stream of glyphs back into lines and columns. */
+  function runContentStream(content, fonts) {
+    var placed = [];
+    var tm = null, tlm = null, font = null, leading = 0, fontSize = 1;
+    var stack = [];
+    var token = /\/([^\s/<>\[\]()]+)|(\((?:\\.|[^\\()])*\))|(<[0-9A-Fa-f\s]*>)|(\[)|(\])|(-?[\d.]+)|([A-Za-z'"*]+)/g;
+    var hit, operands = [], inArray = false, arrayItems = [];
+
+    function place(bytes) {
+      if (!tm) return;
+      var text = decodeWithFont(bytes, font);
+      if (!text) return;
+      placed.push({ x: tm[4], y: tm[5], size: fontSize * Math.abs(tm[3] || 1), text: text });
+      /* advance crudely: enough to keep separate runs apart, not a metrics
+       * engine - the gap test below only needs relative positions */
+      tm[4] += text.length * fontSize * 0.5;
+    }
+    function setMatrix(values) {
+      tm = values.slice(); tlm = values.slice();
+    }
+    function nextLine(tx, ty) {
+      if (!tlm) tlm = [1, 0, 0, 1, 0, 0];
+      tlm[4] += tx; tlm[5] += ty;
+      tm = tlm.slice();
+    }
+
+    while ((hit = token.exec(content)) !== null) {
+      if (hit[1] !== undefined) {                      /* /Name */
+        operands.push({ name: hit[1] });
+        continue;
+      }
+      if (hit[2] !== undefined || hit[3] !== undefined) {    /* string */
+        var value = { str: pdfStringBytes(hit[2] !== undefined ? hit[2] : hit[3]) };
+        if (inArray) arrayItems.push(value); else operands.push(value);
+        continue;
+      }
+      if (hit[4] !== undefined) { inArray = true; arrayItems = []; continue; }
+      if (hit[5] !== undefined) {
+        inArray = false; operands.push({ array: arrayItems }); continue;
+      }
+      if (hit[6] !== undefined) {
+        var num = Number(hit[6]);
+        if (inArray) arrayItems.push({ num: num }); else operands.push({ num: num });
+        continue;
+      }
+      var op = hit[7];
+      var nums = operands.filter(function (o) { return 'num' in o; })
+        .map(function (o) { return o.num; });
+      switch (op) {
+        case 'BT': setMatrix([1, 0, 0, 1, 0, 0]); break;
+        case 'ET': tm = null; break;
+        case 'q': stack.push({ font: font, size: fontSize }); break;
+        case 'Q':
+          var saved = stack.pop();
+          if (saved) { font = saved.font; fontSize = saved.size; }
+          break;
+        case 'Tf':
+          var named = operands.filter(function (o) { return 'name' in o; });
+          if (named.length) font = fonts[named[named.length - 1].name] || null;
+          if (nums.length) fontSize = nums[nums.length - 1];
+          break;
+        case 'TL': if (nums.length) leading = nums[nums.length - 1]; break;
+        case 'Td': if (nums.length >= 2) nextLine(nums[0], nums[1]); break;
+        case 'TD':
+          if (nums.length >= 2) { leading = -nums[1]; nextLine(nums[0], nums[1]); }
+          break;
+        case 'Tm': if (nums.length >= 6) setMatrix(nums.slice(0, 6)); break;
+        case 'T*': nextLine(0, -leading); break;
+        case 'Tj': case '\'': case '"':
+          if (op !== 'Tj') nextLine(0, -leading);
+          var strings = operands.filter(function (o) { return 'str' in o; });
+          if (strings.length) place(strings[strings.length - 1].str);
+          break;
+        case 'TJ':
+          var arrays = operands.filter(function (o) { return 'array' in o; });
+          if (arrays.length) {
+            arrays[arrays.length - 1].array.forEach(function (piece) {
+              if ('str' in piece) place(piece.str);
+              /* a large negative kern is how PDF writers space words */
+              else if ('num' in piece && tm && piece.num < -120) {
+                tm[4] += -piece.num / 1000 * fontSize;
+                placed.push({ x: tm[4], y: tm[5], size: fontSize, text: ' ' });
+              }
+            });
+          }
+          break;
+        default: break;
+      }
+      operands = [];
+    }
+    return placed;
+  }
+
+  /* Glyph runs -> lines of words. Runs land in drawing order, not reading
+   * order, so they are grouped by baseline and sorted across the page. */
+  function placedToLines(placed) {
+    var lines = [];
+    placed.forEach(function (run) {
+      if (!run.text.trim() && run.text !== ' ') return;
+      var tolerance = Math.max(run.size * 0.5, 2);
+      var line = null;
+      for (var i = 0; i < lines.length; i++) {
+        if (Math.abs(lines[i].y - run.y) <= tolerance) { line = lines[i]; break; }
+      }
+      if (!line) { line = { y: run.y, runs: [] }; lines.push(line); }
+      line.runs.push(run);
+    });
+    lines.sort(function (a, b) { return b.y - a.y; });
+    return lines.map(function (line) {
+      line.runs.sort(function (a, b) { return a.x - b.x; });
+      var words = [], current = null;
+      line.runs.forEach(function (run) {
+        var gap = current === null ? 0 : run.x - current.end;
+        if (current && gap > current.size * 0.28) {
+          words.push(current); current = null;
+        }
+        if (!current) {
+          current = { x: run.x, end: run.x, size: run.size || 10, text: '' };
+        }
+        current.text += run.text;
+        current.end = run.x + run.text.length * (run.size || 10) * 0.5;
+        current.size = run.size || current.size;
+      });
+      if (current) words.push(current);
+      words = words.map(function (w) {
+        return { x: w.x, end: w.end, text: w.text.replace(/\s+/g, ' ').trim() };
+      }).filter(function (w) { return w.text; });
+      return { y: line.y, words: words };
+    }).filter(function (line) { return line.words.length; });
+  }
+
+  function lineText(line) {
+    var out = '';
+    line.words.forEach(function (word, i) {
+      if (i === 0) { out += word.text; return; }
+      /* three spaces mark a column break, which is what _split_line looks for */
+      var gap = word.x - line.words[i - 1].end;
+      out += gap > 14 ? '   ' + word.text : ' ' + word.text;
+    });
+    return out;
+  }
+
+  /* Tables, from the layout rather than from ruling lines.
+   *
+   * pdfplumber finds a table by its drawn rules; that needs the graphics
+   * operators and the page's line art. Here the same job is done from word
+   * positions: a run of consecutive lines that share a column structure is a
+   * table. It finds the tables on a generated field sheet, and it is honest
+   * about what it is - the page says so, and every numeric cell that does not
+   * parse is flagged for review either way. */
+  function tablesFromLines(lines, isHeaderLine) {
+    var tables = [];
+    var run = [];
+
+    function flush() {
+      if (run.length >= 3) {
+        var columns = columnPositions(run);
+        if (columns.length >= 2) {
+          var grid = run.map(function (line) { return toCells(line, columns); });
+          var header = grid.shift();
+          if (grid.length) tables.push({ columns: header, rows: grid });
+        }
+      }
+      run = [];
+    }
+
+    lines.forEach(function (line) {
+      /* the header block is a two-column layout too, but its lines are
+       * label/value pairs that have already been read as header fields;
+       * folding them into the reading table would put "Community: Rokel"
+       * where an AB/2 spacing belongs */
+      if (line.words.length >= 2 && !(isHeaderLine && isHeaderLine(line))) {
+        run.push(line);
+      } else {
+        flush();
+      }
+    });
+    flush();
+    return tables;
+  }
+
+  /* Column edges: word start positions that recur down the block. */
+  function columnPositions(lines) {
+    var starts = [];
+    lines.forEach(function (line) {
+      line.words.forEach(function (word) { starts.push(word.x); });
+    });
+    starts.sort(function (a, b) { return a - b; });
+    var clusters = [];
+    starts.forEach(function (x) {
+      var last = clusters[clusters.length - 1];
+      if (last && x - last.at <= 8) { last.n += 1; last.at = (last.at + x) / 2; return; }
+      clusters.push({ at: x, n: 1 });
+    });
+    return clusters.filter(function (cluster) {
+      return cluster.n >= Math.max(2, Math.floor(lines.length * 0.5));
+    }).map(function (cluster) { return cluster.at; });
+  }
+
+  function toCells(line, columns) {
+    var cells = columns.map(function () { return ''; });
+    line.words.forEach(function (word) {
+      var index = 0;
+      for (var i = 0; i < columns.length; i++) {
+        if (word.x >= columns[i] - 8) index = i;
+      }
+      cells[index] = cells[index] ? cells[index] + ' ' + word.text : word.text;
+    });
+    return cells;
+  }
+
+  var NUMERIC_COLUMN_MARKERS = ['(m)', 'm)', 'ohm', 'rate', 'level', 'depth',
+    'time', 'value', 'ab/2', 'mn'];
+
+  /* Numeric columns should parse as numbers; an empty cell in a numeric column
+   * and non-numeric junk are both review items. */
+  function cellConfidence(cell, column) {
+    var lower = String(column || '').toLowerCase();
+    var numeric = NUMERIC_COLUMN_MARKERS.some(function (marker) {
+      return lower.indexOf(marker) >= 0;
+    });
+    if (!numeric) return [1.0, ''];
+    if (cell === '') return [0.6, 'empty cell in a numeric column'];
+    if (parseNumber(cell) === null) return [0.4, 'does not parse as a number'];
+    return [1.0, ''];
+  }
+
+  function splitHeaderLine(line) {
+    return line.split(/\t+|\s{3,}/).filter(function (part) { return part.trim(); });
+  }
+
+  async function extractPdfText(bytes, sourceName) {
+    var objects = await pdfObjects(bytes);
+    var numbers = Object.keys(objects).map(Number).sort(function (a, b) { return a - b; });
+    var pages = numbers.map(function (n) { return objects[n]; })
+      .filter(function (o) { return /\/Type\s*\/Page\b/.test(o.dict); });
+    if (!pages.length) {
+      throw new Error('No pages found in that PDF. If it is a photograph or a ' +
+        'scan with no text layer, use the AI assisted extraction instead.');
+    }
+
+    var header = [], tables = [], uncertain = [], allText = [];
+    var seen = {};
+
+    for (var p = 0; p < pages.length; p++) {
+      var page = pages[p];
+      /* fonts declared for this page, so a ToUnicode CMap can be applied */
+      var fonts = {};
+      var resourceMatch = /\/Font\s*<<([\s\S]*?)>>/.exec(page.dict);
+      if (!resourceMatch) {
+        var resourceRefs = pdfRefs(page.dict, 'Resources');
+        if (resourceRefs.length && objects[resourceRefs[0]]) {
+          resourceMatch = /\/Font\s*<<([\s\S]*?)>>/.exec(objects[resourceRefs[0]].dict);
+        }
+      }
+      if (resourceMatch) {
+        var fontRe = /\/([^\s/]+)\s+(\d+)\s+\d+\s+R/g, fontHit;
+        while ((fontHit = fontRe.exec(resourceMatch[1])) !== null) {
+          var fontObject = objects[Number(fontHit[2])];
+          if (!fontObject) continue;
+          var spec = { twoByte: /\/Type0\b/.test(fontObject.dict), map: null };
+          var toUnicode = pdfRefs(fontObject.dict, 'ToUnicode');
+          if (toUnicode.length && objects[toUnicode[0]]) {
+            spec.map = parseToUnicode(await pdfStreamText(objects[toUnicode[0]]));
+          }
+          fonts[fontHit[1]] = spec;
+        }
+      }
+
+      var content = '';
+      var contentRefs = pdfRefs(page.dict, 'Contents');
+      for (var r = 0; r < contentRefs.length; r++) {
+        content += await pdfStreamText(objects[contentRefs[r]]) + '\n';
+      }
+      if (!content.trim()) continue;
+
+      var lines = placedToLines(runContentStream(content, fonts));
+      allText.push(lines.map(lineText).join('\n'));
+
+      /* header labels from text lines ("Community: Rokel   Date: ...") */
+      var headerLines = [];
+      lines.forEach(function (line) {
+        var matched = false;
+        splitHeaderLine(lineText(line)).forEach(function (part) {
+          var split = splitInlineValue(part);
+          var key = matchLabel(split[0]);
+          if (!key || !split[1]) return;
+          matched = true;
+          if (key in seen) return;
+          seen[key] = true;
+          header.push(extractedField(key, cleanText(split[1]), 0.95));
+        });
+        if (matched) headerLines.push(line);
+      });
+
+      tablesFromLines(lines, function (line) {
+        return headerLines.indexOf(line) >= 0;
+      }).forEach(function (table) {
+        var index = tables.length;
+        var confidences = [];
+        table.rows.forEach(function (row, rowIndex) {
+          var rowConfidence = 1.0;
+          row.forEach(function (cell, columnIndex) {
+            var judged = cellConfidence(
+              cell, columnIndex < table.columns.length ? table.columns[columnIndex] : '');
+            if (judged[0] < 1.0) {
+              uncertain.push({
+                table_index: index, row: rowIndex, column: columnIndex,
+                reason: judged[1],
+              });
+              rowConfidence = Math.min(rowConfidence, judged[0]);
+            }
+          });
+          confidences.push(rowConfidence);
+        });
+        tables.push({
+          title: 'Table ' + (index + 1), columns: table.columns,
+          rows: table.rows, row_confidence: confidences,
+        });
+      });
+    }
+
+    var blob = allText.join('\n');
+    if (!blob.trim()) {
+      throw new Error('That PDF carries no text layer - it is an image of a ' +
+        'sheet rather than a typed one. Use the AI assisted extraction instead.');
+    }
+    return {
+      source: sourceName || 'document.pdf',
+      document_kind: guessDocumentKind(blob),
+      header: header, tables: tables, uncertain_cells: uncertain,
+      notes: 'Rule based extraction from the PDF text layer, read in the browser.',
+      extractor: 'pdf-text',
+      text: blob,
+    };
+  }
+
+  /* --- the review workbook --------------------------------------------------- */
+
+  function reviewWorkbookSheets(document) {
+    var sheets = [];
+    var headerRows = [['Field', 'Value', 'Confidence']];
+    (document.header || []).forEach(function (field) {
+      var flag = field.needs_review;
+      headerRows.push([
+        { v: field.name, flag: flag },
+        { v: field.value, flag: flag },
+        { v: pyRound(field.confidence, 2), flag: flag },
+      ]);
+    });
+    sheets.push({ name: 'Header', rows: headerRows, widths: [28, 32, 12] });
+
+    var flagged = {};
+    (document.uncertain_cells || []).forEach(function (cell) {
+      flagged[cell.table_index + ':' + cell.row + ':' + cell.column] = cell.reason;
+    });
+
+    (document.tables || []).forEach(function (table, index) {
+      var rows = [[table.title], table.columns.slice()];
+      table.rows.forEach(function (row, rowIndex) {
+        var lowConfidence = confidenceForRow(table, rowIndex) < REVIEW_THRESHOLD;
+        rows.push(row.map(function (cell, columnIndex) {
+          var key = index + ':' + rowIndex + ':' + columnIndex;
+          return { v: cell, flag: lowConfidence || (key in flagged) };
+        }));
+      });
+      sheets.push({ name: ('Table ' + (index + 1)).slice(0, 31), rows: rows });
+    });
+
+    var items = reviewItems(document);
+    var reviewRows = [['Items needing manual review']];
+    if (items.length) {
+      items.forEach(function (item) { reviewRows.push([{ v: item, flag: true }]); });
+    } else {
+      reviewRows.push(['None: all values extracted with high confidence.']);
+    }
+    reviewRows.push([]);
+    reviewRows.push(['Source: ' + document.source]);
+    reviewRows.push(['Extractor: ' + document.extractor]);
+    reviewRows.push(['Document kind: ' + document.document_kind]);
+    if (document.notes) reviewRows.push(['Notes: ' + document.notes]);
+    sheets.push({ name: 'Review', rows: reviewRows, widths: [100] });
+    return sheets;
+  }
+
+  /* The standard VES template, filled from an extracted VES sheet. Header
+   * fields go through the same label patterns the parsers use, so the filled
+   * workbook reads back through the normal reader after review. */
+  function fillVesTemplateSheets(document, blankRows) {
+    if (document.document_kind !== 'ves') {
+      throw new Error("Filling the VES template needs a document of kind 'ves'.");
+    }
+    if (!(document.tables || []).length) {
+      throw new Error('No data table was extracted from that sheet.');
+    }
+    var table = document.tables[0];
+    var rows = blankRows.map(function (row) { return (row || []).slice(); });
+
+    /* canonical key -> [row, column] in the template, 0-based */
+    var cellMap = {
+      client: [1, 1], community: [1, 3],
+      project: [2, 1], sounding_id: [2, 3],
+      district: [3, 1], chiefdom: [3, 3],
+      easting: [4, 1], northing: [4, 3],
+      elevation_m: [5, 1], date: [5, 3],
+      supervisor: [6, 1], instrument: [6, 3],
+    };
+    (document.header || []).forEach(function (field) {
+      /* The AI path names a field the way the sheet does ("Sounding Number"),
+       * which the label patterns resolve. The text-layer path has already
+       * resolved it, so its name is the canonical key itself - and a canonical
+       * key does not match its own pattern ("sounding_id" is not "sounding
+       * number"). Accept both, or the field silently fails to land. */
+      var key = field.name in cellMap ? field.name : matchLabel(field.name);
+      var target = cellMap[key];
+      if (!target) return;
+      while (rows.length <= target[0]) rows.push([]);
+      rows[target[0]][target[1]] = { v: field.value, flag: field.needs_review };
+    });
+
+    var flagged = {};
+    (document.uncertain_cells || []).forEach(function (cell) {
+      if (cell.table_index === 0) flagged[cell.row + ':' + cell.column] = true;
+    });
+
+    function findColumn() {
+      var needles = Array.prototype.slice.call(arguments);
+      for (var i = 0; i < table.columns.length; i++) {
+        var low = String(table.columns[i]).toLowerCase();
+        for (var n = 0; n < needles.length; n++) {
+          if (low.indexOf(needles[n]) >= 0) return i;
+        }
+      }
+      return null;
+    }
+    var colAb2 = findColumn('ab/2', 'ab2');
+    var colMn = findColumn('mn');
+    var colRho = findColumn('resist', 'ohm', 'rho');
+
+    /* the blank template's reading grid starts on the row after the column
+     * headings; everything below it is replaced by the extracted readings */
+    var firstReading = 9;
+    for (var i = 0; i < rows.length; i++) {
+      if ((rows[i] || [])[0] === 'No.') { firstReading = i + 1; break; }
+    }
+    rows.length = firstReading;
+    table.rows.forEach(function (row, index) {
+      var out = [index + 1, '', '', ''];
+      [[colAb2, 1], [colMn, 2], [colRho, 3]].forEach(function (pair) {
+        if (pair[0] === null || pair[0] >= row.length) return;
+        out[pair[1]] = { v: row[pair[0]], flag: (index + ':' + pair[0]) in flagged };
+      });
+      rows.push(out);
+    });
+    return rows;
+  }
+
+  /* --- AI assisted extraction ------------------------------------------------
+   *
+   * The same request the Python ClaudeExtractor makes, sent straight from the
+   * page. The key never leaves the browser: there is no server here to hold
+   * one, so the operator supplies it on the Settings page and it is stored -
+   * clearly labelled - alongside the rest of the local session.
+   */
+
+  var EXTRACTION_MODEL = 'claude-opus-4-8';
+
+  var EXTRACTION_SCHEMA = {
+    type: 'object',
+    properties: {
+      document_kind: {
+        type: 'string',
+        enum: ['ves', 'pumping_test', 'drilling_log', 'water_quality', 'unknown'],
+      },
+      header: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            value: { type: 'string' },
+            confidence: {
+              type: 'number',
+              description: '0 to 1; below 0.85 means needs manual review',
+            },
+          },
+          required: ['name', 'value', 'confidence'],
+          additionalProperties: false,
+        },
+      },
+      tables: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            title: { type: 'string' },
+            columns: { type: 'array', items: { type: 'string' } },
+            rows: { type: 'array', items: { type: 'array', items: { type: 'string' } } },
+          },
+          required: ['title', 'columns', 'rows'],
+          additionalProperties: false,
+        },
+      },
+      uncertain_cells: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            table_index: { type: 'integer' },
+            row: { type: 'integer' },
+            column: { type: 'integer' },
+            reason: { type: 'string' },
+          },
+          required: ['table_index', 'row', 'column', 'reason'],
+          additionalProperties: false,
+        },
+      },
+      notes: { type: 'string' },
+    },
+    required: ['document_kind', 'header', 'tables', 'uncertain_cells', 'notes'],
+    additionalProperties: false,
+  };
+
+  var EXTRACTION_PROMPT = [
+    'You are transcribing a groundwater field data sheet from Sierra Leone',
+    '(vertical electrical sounding, pumping test, drilling log or water quality',
+    'laboratory sheet).',
+    '',
+    'Extract:',
+    '1. document_kind: which sheet type this is.',
+    '2. header: every label/value pair from the header block (community, client,',
+    '   district, date, borehole reference, static water level, GPS coordinates,',
+    '   elevation, supervisor and so on). Use the label wording from the sheet.',
+    '3. tables: every data table, with its column headings and every row, in',
+    '   order. Transcribe numbers exactly as written, including leading zeros',
+    '   (for example 078.7). Do not invent values for illegible cells; write an',
+    '   empty string and flag the cell.',
+    '4. uncertain_cells: every table cell you are not fully certain about',
+    '   (handwriting hard to read, smudges, ambiguous digits), with a short',
+    '   reason. Indices are zero based; row counts data rows only.',
+    '5. Give each header field a confidence between 0 and 1. Use values below',
+    '   0.85 whenever a reasonable person could read the handwriting differently.',
+    '',
+    'Accuracy matters more than completeness: flag anything doubtful rather than',
+    'guessing silently.',
+  ].join('\n');
+
+  function extractionDocumentFrom(payload, source) {
+    return {
+      source: source,
+      document_kind: payload.document_kind || 'unknown',
+      header: (payload.header || []).map(function (f) {
+        return extractedField(f.name || '', f.value || '',
+          f.confidence === undefined ? 0.5 : Number(f.confidence));
+      }),
+      tables: (payload.tables || []).map(function (t, i) {
+        return {
+          title: t.title || ('Table ' + (i + 1)),
+          columns: (t.columns || []).map(String),
+          rows: (t.rows || []).map(function (row) { return (row || []).map(String); }),
+          row_confidence: [],
+        };
+      }),
+      uncertain_cells: (payload.uncertain_cells || []).map(function (c) {
+        return {
+          table_index: Number(c.table_index || 0), row: Number(c.row || 0),
+          column: Number(c.column || 0), reason: c.reason || '',
+        };
+      }),
+      notes: payload.notes || '',
+      extractor: 'claude',
+    };
+  }
+
+  async function extractWithClaude(options) {
+    var opts = options || {};
+    if (!opts.apiKey) {
+      throw new Error('No Anthropic API key is set. Add one on the Settings ' +
+        'page to use the AI assisted extraction.');
+    }
+    var isPdf = opts.mediaType === 'application/pdf';
+    var block = isPdf
+      ? { type: 'document',
+        source: { type: 'base64', media_type: 'application/pdf', data: opts.base64 } }
+      : { type: 'image',
+        source: { type: 'base64', media_type: opts.mediaType, data: opts.base64 } };
+
+    var response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': opts.apiKey,
+        'anthropic-version': '2023-06-01',
+        /* the documented opt-in for calling the API from a page; without it
+         * the browser request is refused outright */
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: opts.model || EXTRACTION_MODEL,
+        max_tokens: 16000,
+        thinking: { type: 'adaptive' },
+        output_config: { format: { type: 'json_schema', schema: EXTRACTION_SCHEMA } },
+        messages: [{
+          role: 'user',
+          content: [block, { type: 'text', text: EXTRACTION_PROMPT }],
+        }],
+      }),
+    });
+
+    if (!response.ok) {
+      var detail = '';
+      try {
+        var body = await response.json();
+        detail = (body.error && body.error.message) || '';
+      } catch (e) { detail = ''; }
+      throw new Error('The Claude API answered ' + response.status +
+        (detail ? ': ' + detail : '.'));
+    }
+    var message = await response.json();
+    if (message.stop_reason === 'refusal') {
+      throw new Error('The extraction request was declined by the model; ' +
+        'check the document content.');
+    }
+    var textBlock = (message.content || []).filter(function (b) {
+      return b.type === 'text';
+    })[0];
+    if (!textBlock) throw new Error('The model returned no transcription.');
+    return extractionDocumentFrom(JSON.parse(textBlock.text), opts.source || 'scan');
+  }
+
+  /* --- a pumping test written on a Word field sheet -------------------------
+   *
+   * groundwater/ingestion/pumping.py read_pumping_docx. Some crews are handed
+   * a .docx sheet rather than the workbook, and refusing it means the readings
+   * get retyped - which is where transcription errors come from. A .docx is a
+   * ZIP holding one XML document, so the whole reader is a parse and two
+   * walks: paragraphs give the header block, and the table carrying the most
+   * Time/Water Level column groups gives the readings.
+   */
+  async function readPumpingDocx(bytes, source) {
+    var files = await GWT.support.unzip(bytes);
+    var xml = files['word/document.xml'];
+    if (!xml) {
+      throw new Error('That .docx has no word/document.xml; it is not a Word ' +
+        'document this reader can open.');
+    }
+    var doc = new DOMParser().parseFromString(
+      new TextDecoder().decode(xml), 'application/xml');
+    var W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+
+    function textOf(node) {
+      var runs = node.getElementsByTagNameNS(W, 't');
+      var out = '';
+      for (var i = 0; i < runs.length; i++) out += runs[i].textContent;
+      return out;
+    }
+
+    var body = doc.getElementsByTagNameNS(W, 'body')[0];
+    if (!body) throw new Error('That .docx has no document body.');
+
+    /* paragraphs at the top level only: a paragraph inside a table cell is
+     * part of that cell, not of the header block */
+    var headerGrid = [];
+    var tables = [];
+    for (var i = 0; i < body.childNodes.length; i++) {
+      var node = body.childNodes[i];
+      if (node.nodeType !== 1) continue;
+      if (node.localName === 'p') {
+        var text = textOf(node).trim();
+        if (!text) continue;
+        headerGrid.push(text.split(/\t+|\s{3,}/).filter(function (part) {
+          return part.trim();
+        }));
+      } else if (node.localName === 'tbl') {
+        var grid = [];
+        var rows = node.getElementsByTagNameNS(W, 'tr');
+        for (var r = 0; r < rows.length; r++) {
+          /* only this row's own cells: a nested table would otherwise fold
+           * its cells into the parent row */
+          var cells = [];
+          for (var c = 0; c < rows[r].childNodes.length; c++) {
+            var cell = rows[r].childNodes[c];
+            if (cell.nodeType === 1 && cell.localName === 'tc') {
+              cells.push(textOf(cell).trim());
+            }
+          }
+          grid.push(cells);
+        }
+        tables.push(grid);
+      }
+    }
+
+    var best = null, bestCount = 0;
+    tables.forEach(function (grid) {
+      var located = findGroups(grid);
+      if (located && located.groups.length > bestCount) {
+        best = grid; bestCount = located.groups.length;
+      }
+    });
+    if (!best) {
+      throw new Error('No pumping test table was found in ' + (source || 'that .docx') +
+        '. The reader looks for a table with Time and Water Level columns.');
+    }
+    return pumpingFromGrid(headerGrid.concat(best), source || 'field sheet.docx');
+  }
+
+  Object.assign(C, {
+    readPumpingDocx: readPumpingDocx,
+    REVIEW_THRESHOLD: REVIEW_THRESHOLD,
+    guessDocumentKind: guessDocumentKind, extractedField: extractedField,
+    reviewItems: reviewItems, confidenceForRow: confidenceForRow,
+    extractPdfText: extractPdfText, cellConfidence: cellConfidence,
+    reviewWorkbookSheets: reviewWorkbookSheets,
+    fillVesTemplateSheets: fillVesTemplateSheets,
+    extractWithClaude: extractWithClaude,
+    extractionDocumentFrom: extractionDocumentFrom,
+    EXTRACTION_MODEL: EXTRACTION_MODEL, EXTRACTION_SCHEMA: EXTRACTION_SCHEMA,
+    EXTRACTION_PROMPT: EXTRACTION_PROMPT,
   });
 
   /* __SECTION_MARK__ */

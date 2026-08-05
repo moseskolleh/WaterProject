@@ -1186,6 +1186,340 @@
 
   /* ========================================================= costing figures */
 
+  /* ------------------------------------------------------------ depth spine
+   *
+   * The whole borehole on one depth axis: the cuttings log, the casing string
+   * and the water levels registered against the same ruler.
+   *
+   * There is one depth-to-pixel mapping and every column calls it, which is
+   * what makes the alignment true rather than drawn - a screen that misses a
+   * water strike cannot be rendered as though it hits one. The screened
+   * intervals carry drag handles; everything else is evidence.
+   */
+  function depthSpine(view, options) {
+    var opts = options || {};
+    var p = palette();
+    var section = view.section;
+    var width = opts.width || 720;
+    var height = opts.height || 620;
+    var top = 64, bottom = height - 34;
+    var domain = section.domain || section.totalDepth * 1.06;
+    function fy(d) { return top + (d / domain) * (bottom - top); }
+    function fh(a, b) { return Math.max(1, (b - a) / domain * (bottom - top)); }
+    /* pixels back to metres, for the pointer */
+    var perMetre = (bottom - top) / domain;
+
+    var svg = svgEl('svg', {
+      viewBox: '0 0 ' + width + ' ' + height, width: '100%', xmlns: NS,
+      'font-family': FONT, role: 'img',
+      'aria-label': 'The borehole on one depth axis',
+      style: 'touch-action:none',
+    });
+    svg.appendChild(svgEl('rect', { width: width, height: height, fill: p.surface }));
+    svg.appendChild(svgEl('text', {
+      x: 16, y: 24, 'font-size': 13, 'font-weight': 600, fill: p.ink,
+      text: opts.title || 'Depth spine',
+    }));
+
+    var rulerX = 46;
+    var lithX = 66, lithW = 150;
+    var holeCx = 320, holeHalf = 46, casingHalf = 22;
+    var hydroX = 402;
+
+    function columnHead(x, label, anchor) {
+      svg.appendChild(svgEl('text', {
+        x: x, y: top - 12, 'font-size': 10, fill: p.muted,
+        'text-anchor': anchor || 'middle', text: label,
+      }));
+    }
+
+    /* --- the shared ruler --------------------------------------------- */
+    svg.appendChild(svgEl('line', {
+      x1: rulerX, y1: top, x2: rulerX, y2: bottom, stroke: p.axis, 'stroke-width': 1,
+    }));
+    var step = domain > 160 ? 25 : (domain > 80 ? 10 : (domain > 30 ? 5 : 2));
+    for (var d = 0; d <= domain; d += step) {
+      var ty = fy(d);
+      svg.appendChild(svgEl('line', {
+        x1: rulerX - 5, y1: ty, x2: width - 12, y2: ty,
+        stroke: p.grid, 'stroke-width': 0.6,
+      }));
+      svg.appendChild(svgEl('text', {
+        x: rulerX - 8, y: ty + 3.5, 'text-anchor': 'end', 'font-size': 9.5,
+        fill: p.muted, text: String(Math.round(d)),
+      }));
+    }
+    columnHead(rulerX - 8, 'm', 'end');
+
+    /* --- lithology, from the driller's own words ---------------------- */
+    columnHead(lithX + lithW / 2, 'Lithology — cuttings');
+    (section.lithology || []).forEach(function (unit) {
+      var y0 = fy(unit.top), h = fh(unit.top, unit.base);
+      var colour = unit.aquifer ? p.accentSoft : lithologyColour(unit.description);
+      var block = svgEl('rect', {
+        x: lithX, y: y0, width: lithW, height: h,
+        fill: colour, stroke: p.surface, 'stroke-width': 1,
+      });
+      block.appendChild(svgEl('title', {
+        text: unit.top + '–' + unit.base + ' m · ' + unit.description,
+      }));
+      svg.appendChild(block);
+      if (h > 12) {
+        svg.appendChild(svgEl('text', {
+          x: lithX + 6, y: y0 + h / 2 + 3.5, 'font-size': 9,
+          fill: unit.aquifer ? p.ink : '#FFFFFF',
+          text: String(unit.description || '').split(/[,;]/)[0].slice(0, 26),
+        }));
+      }
+    });
+    if (!(section.lithology || []).length) {
+      svg.appendChild(svgEl('rect', {
+        x: lithX, y: top, width: lithW, height: bottom - top,
+        fill: '#D8D4CB', stroke: p.axis, 'stroke-width': 1,
+      }));
+    }
+    (section.waterStrikes || []).forEach(function (strike) {
+      var y = fy(strike);
+      svg.appendChild(svgEl('line', {
+        x1: lithX, y1: y, x2: lithX + lithW, y2: y,
+        stroke: p.accent, 'stroke-width': 2, 'stroke-dasharray': '5 3',
+      }));
+      svg.appendChild(svgEl('text', {
+        x: lithX + lithW - 4, y: y - 3, 'text-anchor': 'end', 'font-size': 9,
+        fill: p.accent, text: 'strike ' + Number(strike).toFixed(1),
+      }));
+    });
+
+    /* --- construction: the only editable thing on the section --------- */
+    columnHead(holeCx, 'Construction');
+    function annulus(band, fill) {
+      if (!band || band.length < 2 || band[1] <= band[0]) return;
+      [-1, 1].forEach(function (side) {
+        svg.appendChild(svgEl('rect', {
+          x: side < 0 ? holeCx - holeHalf : holeCx + casingHalf,
+          y: fy(band[0]), width: holeHalf - casingHalf, height: fh(band[0], band[1]),
+          fill: fill, stroke: p.axis, 'stroke-width': 0.6,
+        }));
+      });
+    }
+    annulus(section.backfill, '#C9C4B6');
+    annulus(section.gravelPack, '#D9C89A');
+    annulus(section.sanitarySeal, '#9BA3A8');
+
+    [-1, 1].forEach(function (side) {
+      svg.appendChild(svgEl('line', {
+        x1: holeCx + side * holeHalf, y1: fy(0),
+        x2: holeCx + side * holeHalf, y2: fy(section.totalDepth),
+        stroke: p.neutral, 'stroke-width': 1.3,
+      }));
+    });
+
+    (section.segments || []).filter(function (s) { return s.kind !== 'screen'; })
+      .forEach(function (seg) {
+        svg.appendChild(svgEl('rect', {
+          x: holeCx - casingHalf, y: fy(seg.top),
+          width: casingHalf * 2, height: fh(seg.top, seg.base),
+          fill: seg.kind === 'sump' ? '#7E8B92' : '#E8E6E0',
+          stroke: p.neutral, 'stroke-width': 0.8,
+        }));
+      });
+
+    /* the live intervals, so the drawing keeps up with the pointer */
+    var screens = opts.screens || (view.design.screens || []).map(function (s) {
+      return { top: s.top, base: s.base };
+    });
+    screens.forEach(function (screen, index) {
+      var y0 = fy(screen.top), h = fh(screen.top, screen.base);
+      svg.appendChild(svgEl('rect', {
+        x: holeCx - casingHalf, y: y0, width: casingHalf * 2, height: h,
+        fill: p.accent, stroke: p.neutral, 'stroke-width': 0.8,
+        'data-screen': index, 'data-edge': 'body',
+        style: opts.readOnly ? '' : 'cursor:grab',
+      }));
+      for (var slot = y0 + 4; slot < y0 + h - 2; slot += 6) {
+        svg.appendChild(svgEl('line', {
+          x1: holeCx - casingHalf + 3, y1: slot, x2: holeCx + casingHalf - 3, y2: slot,
+          stroke: p.surface, 'stroke-width': 1, 'pointer-events': 'none',
+        }));
+      }
+      if (h > 22) {
+        svg.appendChild(svgEl('text', {
+          x: holeCx, y: y0 + h / 2 + 3.5, 'text-anchor': 'middle', 'font-size': 9,
+          fill: '#FFFFFF', 'pointer-events': 'none',
+          text: 'screen ' + (index + 1) + ' · ' +
+            (screen.base - screen.top).toFixed(1) + ' m',
+        }));
+      }
+      [['top', screen.top, y0], ['base', screen.base, y0 + h]].forEach(function (edge) {
+        if (!opts.readOnly) {
+          svg.appendChild(svgEl('rect', {
+            x: holeCx - casingHalf - 8, y: edge[2] - 4,
+            width: casingHalf * 2 + 16, height: 8,
+            fill: p.secondary, opacity: 0.9, rx: 3,
+            'data-screen': index, 'data-edge': edge[0],
+            tabindex: 0, role: 'slider',
+            'aria-label': edge[0] === 'top'
+              ? 'Top of screen ' + (index + 1) + ', metres below ground level'
+              : 'Base of screen ' + (index + 1) + ', metres below ground level',
+            'aria-valuenow': edge[1], 'aria-valuemin': section.screenLimits.top,
+            'aria-valuemax': section.screenLimits.base,
+            'aria-valuetext': edge[1].toFixed(1) + ' metres',
+            style: 'cursor:ns-resize',
+          }));
+        }
+        svg.appendChild(svgEl('text', {
+          x: holeCx + casingHalf + 14, y: edge[2] + 3.5, 'font-size': 9,
+          fill: p.secondary, 'pointer-events': 'none', text: edge[1].toFixed(1),
+        }));
+      });
+    });
+
+    svg.appendChild(svgEl('line', {
+      x1: holeCx - holeHalf - 6, y1: fy(section.totalDepth),
+      x2: holeCx + holeHalf + 6, y2: fy(section.totalDepth),
+      stroke: p.neutral, 'stroke-width': 1.6,
+    }));
+    svg.appendChild(svgEl('text', {
+      x: holeCx - holeHalf - 6, y: fy(section.totalDepth) + 12, 'font-size': 9,
+      fill: p.inkSoft, text: 'TD ' + section.totalDepth.toFixed(1) + ' m',
+    }));
+
+    /* --- hydraulics: rest level, the level the test reached, the intake -- */
+    columnHead(hydroX + 70, 'Hydraulics');
+    var levels = section.levels || {};
+    if (levels.restLevel !== undefined) {
+      svg.appendChild(svgEl('rect', {
+        x: hydroX, y: fy(levels.restLevel), width: 150,
+        height: Math.max(1, fy(section.totalDepth) - fy(levels.restLevel)),
+        fill: p.accentSoft, opacity: 0.22,
+      }));
+      svg.appendChild(svgEl('line', {
+        x1: hydroX, y1: fy(levels.restLevel), x2: hydroX + 150, y2: fy(levels.restLevel),
+        stroke: p.accent, 'stroke-width': 1.6,
+      }));
+      svg.appendChild(svgEl('text', {
+        x: hydroX + 2, y: fy(levels.restLevel) - 4, 'font-size': 9, fill: p.accent,
+        text: 'SWL ' + levels.restLevel.toFixed(2) + ' m',
+      }));
+    }
+    if (levels.pumpingLevel !== undefined) {
+      svg.appendChild(svgEl('line', {
+        x1: hydroX, y1: fy(levels.pumpingLevel),
+        x2: hydroX + 150, y2: fy(levels.pumpingLevel),
+        stroke: p.secondary, 'stroke-width': 1.6,
+        'stroke-dasharray': levels.stabilised ? '' : '5 3',
+      }));
+      svg.appendChild(svgEl('text', {
+        x: hydroX + 2, y: fy(levels.pumpingLevel) + 12, 'font-size': 9,
+        fill: p.secondary,
+        text: (levels.stabilised ? 'pumping level ' : 'deepest level ') +
+          levels.pumpingLevel.toFixed(2) + ' m',
+      }));
+      if (levels.restLevel !== undefined) {
+        var mid = (fy(levels.restLevel) + fy(levels.pumpingLevel)) / 2;
+        svg.appendChild(svgEl('line', {
+          x1: hydroX + 130, y1: fy(levels.restLevel),
+          x2: hydroX + 130, y2: fy(levels.pumpingLevel),
+          stroke: p.secondary, 'stroke-width': 1,
+        }));
+        svg.appendChild(svgEl('text', {
+          x: hydroX + 126, y: mid + 3.5, 'text-anchor': 'end', 'font-size': 9,
+          fill: p.secondary,
+          text: 's = ' + (levels.maxDrawdown !== null && levels.maxDrawdown !== undefined
+            ? levels.maxDrawdown : levels.pumpingLevel - levels.restLevel).toFixed(2) + ' m',
+        }));
+      }
+    }
+    if (levels.pumpIntake !== undefined) {
+      svg.appendChild(svgEl('line', {
+        x1: hydroX, y1: fy(levels.pumpIntake), x2: hydroX + 96,
+        y2: fy(levels.pumpIntake), stroke: p.ink, 'stroke-width': 1.2,
+        'stroke-dasharray': '2 2',
+      }));
+      svg.appendChild(svgEl('text', {
+        x: hydroX + 2, y: fy(levels.pumpIntake) - 4, 'font-size': 9, fill: p.ink,
+        text: 'pump intake ' + levels.pumpIntake.toFixed(0) + ' m',
+      }));
+    }
+    if (levels.stabilised === false) {
+      svg.appendChild(svgEl('text', {
+        x: hydroX, y: bottom + 14, 'font-size': 8.5, fill: p.muted,
+        text: 'The level had not stabilised when the test ended.',
+      }));
+    }
+
+    svg.spineScale = {
+      metresPerPixel: 1 / perMetre, depthAt: function (px) { return px / perMetre; },
+    };
+    return svg;
+  }
+
+  /* Every determinand as a multiple of its own binding limit, so one chart
+   * carries determinands whose limits differ by four orders of magnitude. */
+  function guidelineSpine(rows, options) {
+    var opts = options || {};
+    var p = palette();
+    var judged = (rows || []).filter(function (r) {
+      return r.ratio !== null && r.ratio !== undefined && isFinite(r.ratio);
+    }).sort(function (a, b) { return b.ratio - a.ratio; });
+    if (!judged.length) return null;
+
+    var rowH = 20;
+    var width = opts.width || 720;
+    var height = 54 + judged.length * rowH;
+    var left = 172, right = width - 58;
+    var maxRatio = Math.max(2, Math.min(
+      8, judged[0].ratio * 1.15));
+    function fx(ratio) {
+      return left + Math.min(ratio, maxRatio) / maxRatio * (right - left);
+    }
+
+    var svg = svgEl('svg', {
+      viewBox: '0 0 ' + width + ' ' + height, width: '100%', xmlns: NS,
+      'font-family': FONT, role: 'img',
+      'aria-label': 'Every determinand as a multiple of its binding limit',
+    });
+    svg.appendChild(svgEl('rect', { width: width, height: height, fill: p.surface }));
+
+    [0.5, 1, 2].concat(maxRatio > 4 ? [4] : []).forEach(function (tick) {
+      if (tick > maxRatio) return;
+      svg.appendChild(svgEl('line', {
+        x1: fx(tick), y1: 32, x2: fx(tick), y2: height - 16,
+        stroke: tick === 1 ? p.critical : p.grid,
+        'stroke-width': tick === 1 ? 1.2 : 0.6,
+        'stroke-dasharray': tick === 1 ? '' : '3 3',
+      }));
+      svg.appendChild(svgEl('text', {
+        x: fx(tick), y: 26, 'text-anchor': 'middle', 'font-size': 9,
+        fill: tick === 1 ? p.critical : p.muted,
+        text: tick === 1 ? 'limit' : '×' + tick,
+      }));
+    });
+
+    judged.forEach(function (row, i) {
+      var y = 38 + i * rowH;
+      svg.appendChild(svgEl('text', {
+        x: left - 8, y: y + 10, 'text-anchor': 'end', 'font-size': 9.5, fill: p.ink,
+        text: String(row.parameter).slice(0, 26),
+      }));
+      var over = row.ratio > 1;
+      svg.appendChild(svgEl('rect', {
+        x: left, y: y + 3, width: Math.max(1, fx(row.ratio) - left), height: 12,
+        rx: 2, fill: over ? p.critical : p.good, opacity: over ? 0.9 : 0.75,
+      }));
+      svg.appendChild(svgEl('text', {
+        x: Math.min(fx(row.ratio) + 5, right + 4), y: y + 13, 'font-size': 9,
+        fill: p.inkSoft,
+        text: (row.value === null ? '—' : row.value) + ' ' + (row.unit || ''),
+      }));
+    });
+    svg.appendChild(svgEl('text', {
+      x: 12, y: height - 4, 'font-size': 8.5, fill: p.muted,
+      text: 'Bars past the limit line exceed the strictest applicable value.',
+    }));
+    return svg;
+  }
+
   function costBreakdown(estimate, options) {
     var opts = options || {};
     var mode = opts.mode || 'stage';
@@ -1458,6 +1792,135 @@
   }
 
   /* A site map: boundaries as context, survey points as the data. */
+  /* A categorical polygon layer - geology or aquifer productivity - clipped
+   * to a window around the site when there is one.
+   *
+   * The layers carry their own published colours, so the map reads the same
+   * way as the source sheet does rather than being recoloured here. Features
+   * are selected by bounding-box overlap with the window: a polygon that only
+   * touches the edge still belongs on the map, because what surrounds the site
+   * is the point of the figure. */
+  function thematicMap(spec) {
+    var p = palette();
+    var width = spec.width || 620, height = spec.height || 520;
+    var key = spec.key || 'unit';
+    var all = spec.features || [];
+    var window_ = spec.window || null;      /* {lat, lon, radiusKm} */
+
+    function bbox(feature) {
+      var lonMin = Infinity, lonMax = -Infinity, latMin = Infinity, latMax = -Infinity;
+      function scan(coords) {
+        if (typeof coords[0] === 'number') {
+          lonMin = Math.min(lonMin, coords[0]); lonMax = Math.max(lonMax, coords[0]);
+          latMin = Math.min(latMin, coords[1]); latMax = Math.max(latMax, coords[1]);
+          return;
+        }
+        coords.forEach(scan);
+      }
+      if (feature.geometry && feature.geometry.coordinates) scan(feature.geometry.coordinates);
+      return [lonMin, latMin, lonMax, latMax];
+    }
+
+    var features = all, clip = null;
+    if (window_) {
+      var dLat = window_.radiusKm / 110.574;
+      var dLon = window_.radiusKm /
+        (111.320 * Math.max(Math.cos(window_.lat * Math.PI / 180), 1e-6));
+      clip = [window_.lon - dLon, window_.lat - dLat,
+        window_.lon + dLon, window_.lat + dLat];
+      features = all.filter(function (feature) {
+        var b = bbox(feature);
+        return isFinite(b[0]) && b[0] <= clip[2] && b[2] >= clip[0] &&
+          b[1] <= clip[3] && b[3] >= clip[1];
+      });
+      if (!features.length) features = all;
+    }
+
+    /* the window itself sets the extent, so a 40 km map is a 40 km map even
+     * when the polygon covering it runs the length of the country */
+    var extent = clip
+      ? [{ geometry: { type: 'Polygon', coordinates: [[
+        [clip[0], clip[1]], [clip[2], clip[1]], [clip[2], clip[3]], [clip[0], clip[3]],
+      ]] } }]
+      : features;
+    var legendRows = spec.legendItems || [];
+    var project = mapProjection(extent, width, height - 24 - legendRows.length * 15, 18);
+
+    var svg = svgEl('svg', {
+      viewBox: '0 0 ' + width + ' ' + height, width: '100%', xmlns: NS,
+      'font-family': FONT, role: 'img', 'aria-label': spec.title || 'thematic map',
+    });
+    svg.appendChild(svgEl('rect', { width: width, height: height, fill: p.surface }));
+
+    var clipId = 'gwt-clip-' + Math.abs(width * 7919 + height * 104729 +
+      String(spec.title || '').length);
+    if (clip) {
+      var corner0 = project(clip[0], clip[3]), corner1 = project(clip[2], clip[1]);
+      var defs = svgEl('defs');
+      defs.appendChild(svgEl('clipPath', { id: clipId }, [svgEl('rect', {
+        x: corner0[0], y: corner0[1],
+        width: Math.max(1, corner1[0] - corner0[0]),
+        height: Math.max(1, corner1[1] - corner0[1]),
+      })]));
+      svg.appendChild(defs);
+    }
+
+    var group = svgEl('g', clip ? { 'clip-path': 'url(#' + clipId + ')' } : {});
+    var seen = [];
+    features.forEach(function (feature) {
+      var props = feature.properties || {};
+      var label = props[key] || 'unclassified';
+      var colour = props.color || p.neutral;
+      group.appendChild(svgEl('path', {
+        d: geometryPath(feature.geometry, project),
+        fill: colour, 'fill-opacity': 0.82, stroke: p.surface, 'stroke-width': 0.5,
+      }, [svgEl('title', { text: String(label) })]));
+      if (!seen.some(function (s) { return s.label === label; })) {
+        seen.push({ label: String(label), colour: colour });
+      }
+    });
+    svg.appendChild(group);
+
+    (spec.context || []).forEach(function (feature) {
+      svg.appendChild(svgEl('path', {
+        d: geometryPath(feature.geometry, project), fill: 'none',
+        stroke: p.axis, 'stroke-width': 0.8,
+      }));
+    });
+
+    (spec.points || []).forEach(function (point) {
+      var pt = project(point.lon, point.lat);
+      svg.appendChild(marker(pt[0], pt[1], point.kind || 'diamond',
+        point.colour || p.secondary, p.surface, point.size || 7));
+      if (point.label) {
+        svg.appendChild(svgEl('text', {
+          x: pt[0] + 10, y: pt[1] + 3.5, 'font-size': 10.5, fill: p.ink,
+          stroke: p.surface, 'stroke-width': 3, 'paint-order': 'stroke',
+          text: point.label,
+        }));
+      }
+    });
+
+    if (spec.title) {
+      svg.appendChild(svgEl('text', {
+        x: 14, y: 20, 'font-size': 13, 'font-weight': 600, fill: p.ink,
+        text: spec.title,
+      }));
+    }
+    seen.slice(0, 8).forEach(function (item, i) {
+      var y = height - 12 - (Math.min(seen.length, 8) - 1 - i) * 15;
+      svg.appendChild(svgEl('rect', {
+        x: 16, y: y - 8, width: 11, height: 11, rx: 2,
+        fill: item.colour, stroke: p.axis, 'stroke-width': 0.5,
+      }));
+      svg.appendChild(svgEl('text', {
+        x: 33, y: y, 'font-size': 10.5, fill: p.inkSoft,
+        text: item.label.length > 62 ? item.label.slice(0, 60) + '…' : item.label,
+      }));
+    });
+    return svg;
+  }
+
   function siteMap(spec) {
     var p = palette();
     var width = spec.width || 620, height = spec.height || 520;
@@ -1594,8 +2057,10 @@
     recovery: recoveryPlot, stepTest: stepTestPlot,
     piper: piper, stiff: stiff, boreholeDesign: boreholeDesign,
     lithologyColour: lithologyColour,
+    depthSpine: depthSpine, guidelineSpine: guidelineSpine,
     costBreakdown: costBreakdown, programmeGantt: programmeGantt,
-    choropleth: choropleth, siteMap: siteMap, mapProjection: mapProjection,
+    choropleth: choropleth, siteMap: siteMap, thematicMap: thematicMap,
+    mapProjection: mapProjection,
     geometryPath: geometryPath, quantileBreaks: quantileBreaks,
     toPng: toPng, downloadSvg: download, figure: figure,
   };

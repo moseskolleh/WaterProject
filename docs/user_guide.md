@@ -88,10 +88,15 @@ and loading, and the page list grouped by where you are in the job:
 | Group | Pages |
 |---|---|
 | Project | Overview, Guided start, Site maps |
-| Investigation | Geophysics (VES), Borehole design, Scanned sheets |
+| Investigation | Geophysics (VES), Borehole design, Depth Spine, Scanned sheets |
 | Testing | Pumping test, Water quality |
 | Delivery | Costing & BoQ, Supervision, Handover, Templates |
 | Area analysis | Water points, Coverage gap, Portfolio |
+
+The same pages are in the standalone browser app, which needs no
+install and no Python; it keeps the project in the browser and saves it
+as a `.gwt.json` file rather than a `.yaml` one. Either app can read
+the other's saved projects on the Portfolio page.
 
 **Overview** opens first and is the project dashboard: the lifecycle
 strip across the top shows how far the borehole has got (Sited →
@@ -155,6 +160,29 @@ content, verticality, specific capacity) and the minimum separation
 distances from pollution sources. When a stage is complete, download
 the signed checklist record from "Checklist record and sign off".
 
+## 8a. Depth Spine
+
+The whole borehole on one depth axis: the cuttings log, the casing
+string and the water levels drawn against the same ruler, so the
+alignment between them is true rather than eyeballed. It opens once a
+drilling log is loaded.
+
+The screened intervals are the only editable thing on the section.
+Drag a screen or one of its handles - or focus a handle and use the
+arrow keys, 0.1 m a press and 1 m with Shift - and the toolkit re-runs
+the design around it: the casing string, the annulus, the acceptance
+checks and the bill of quantities all come back recomputed. A screen
+moved here is a screen moved everywhere, including on the Borehole
+design page and in the completion report.
+
+Three stages carry one professional opinion each - the design, the
+water quality verdict and the price to the client. Accepting is one
+press; overriding costs a value and a written reason, because the
+override is what ends up in front of the client with a name on it.
+Moving a screen clears the design and costing signatures, since a
+signature has to belong to the numbers that were in front of the
+person at the time.
+
 ## 9. Handover
 
 The closing report for the client and the community. Fill the site
@@ -183,14 +211,16 @@ Three pages answer the questions that come *before* a borehole is
 sited, using open national datasets rather than your own files.
 
 **Water points** - before drilling at a site, check what is already
-there. Set the GPS in the sidebar, choose a search radius, and the page
-queries the Water Point Data Exchange (WPdx+) for mapped sources around
-the site. It returns one of three recommendations: a broken improved
-source nearby is a **rehabilitation candidate** (usually far cheaper
-than a new borehole), a working source inside the service radius means
-the community **may already be served** and the need should be
-verified, and otherwise **new construction is justified**. This page
-needs an internet connection; every other page works offline.
+there. Set the GPS, choose a search radius, and press *Look up water
+points*: the page queries the Water Point Data Exchange (WPdx+) for
+mapped sources around the site. It returns one of three
+recommendations: a broken improved source nearby is a **rehabilitation
+candidate** (usually far cheaper than a new borehole), a working source
+inside the service radius means the community **may already be served**
+and the need should be verified, and otherwise **new construction is
+justified**. The lookup needs a connection; if there is none, download
+your country's WPdx export once and upload the CSV instead - the
+analysis is identical and runs offline.
 
 **Coverage gap** - where are the underserved people? Ranks districts,
 or chiefdoms for finer targeting, by population per functional water
@@ -198,10 +228,11 @@ point (2015 census populations joined to WPDx points), as a choropleth
 map and a ranked table. Higher means more people per working source
 means higher priority.
 
-**Portfolio** - upload several saved project files (`.yaml`) at once
-for the programme view: a status map, headline figures (success rate,
-mean cost per metre), a comparison table and a one-page brief for any
-single site.
+**Portfolio** - upload several saved project files at once for the
+programme view: a status map, headline figures (success rate, mean cost
+per metre), a comparison table and a one-page brief for any single
+site. Files saved by either app are accepted, so a programme run across
+both still pools into one view.
 
 ## 11. Saving your work
 
@@ -213,11 +244,25 @@ or on another machine to continue where you stopped.
 
 ## 12. Scanned sheets
 
-Photograph or scan the paper sheet squarely under good light and
-upload it on the Scanned sheets page. The extractor transcribes the
-header and the tables and highlights every value it is not sure about
-in amber in the review workbook. Check each highlighted cell against
-the paper before the data is used; nothing is accepted silently.
+There are two paths, and which one you need depends on the file.
+
+A **PDF that was typed** - printed from a computer rather than
+photographed - carries a text layer, and *Read a text PDF* pulls the
+header and the reading table straight out of it. Nothing is uploaded
+anywhere.
+
+A **photograph or an image-only scan** has no text to read, and goes
+to the AI extractor instead. Photograph or scan the paper sheet
+squarely under good light. In the browser app this needs an Anthropic
+API key, set once on the Settings page; in the Streamlit app the
+analyst configures it in the app's secrets.
+
+Either way the extractor transcribes the header and the tables and
+highlights every value it is not sure about in amber in the review
+workbook. Check each highlighted cell against the paper before the
+data is used; nothing is accepted silently, and extraction never
+writes into the project on its own - correct the workbook, then upload
+the corrected sheet on the page that needs it.
 
 ## 13. Where results go
 

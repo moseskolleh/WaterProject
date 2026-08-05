@@ -647,5 +647,575 @@
    7.079876538241113
   ],
   "err": 13.34685059254818
+ },
+ "spine": {
+  "total_depth": 70.0,
+  "domain": 74.2,
+  "lithology": [
+   [
+    0.0,
+    5.0,
+    false
+   ],
+   [
+    5.0,
+    10.0,
+    false
+   ],
+   [
+    10.0,
+    15.0,
+    false
+   ],
+   [
+    15.0,
+    20.0,
+    false
+   ],
+   [
+    20.0,
+    25.0,
+    false
+   ],
+   [
+    25.0,
+    30.0,
+    true
+   ],
+   [
+    30.0,
+    35.0,
+    true
+   ],
+   [
+    35.0,
+    40.0,
+    false
+   ],
+   [
+    40.0,
+    45.0,
+    false
+   ],
+   [
+    45.0,
+    50.0,
+    true
+   ],
+   [
+    50.0,
+    55.0,
+    false
+   ],
+   [
+    55.0,
+    60.0,
+    true
+   ],
+   [
+    60.0,
+    65.0,
+    false
+   ],
+   [
+    65.0,
+    70.0,
+    false
+   ]
+  ],
+  "strikes": [
+   12.0,
+   30.0
+  ],
+  "segments": [
+   [
+    "plain",
+    0.0,
+    14.5
+   ],
+   [
+    "screen",
+    14.5,
+    17.0
+   ],
+   [
+    "plain",
+    17.0,
+    25.0
+   ],
+   [
+    "screen",
+    25.0,
+    35.0
+   ],
+   [
+    "plain",
+    35.0,
+    45.0
+   ],
+   [
+    "screen",
+    45.0,
+    50.0
+   ],
+   [
+    "plain",
+    50.0,
+    55.0
+   ],
+   [
+    "screen",
+    55.0,
+    60.0
+   ],
+   [
+    "plain",
+    60.0,
+    68.0
+   ],
+   [
+    "sump",
+    68.0,
+    70.0
+   ]
+  ],
+  "levels": {
+   "restLevel": 9.44,
+   "stabilised": false,
+   "maxDrawdown": 32.82,
+   "pumpingLevel": 42.26,
+   "pumpIntake": 39.0
+  },
+  "screen_limits": {
+   "top": 0.0,
+   "base": 68.0,
+   "minLength": 0.5
+  },
+  "screens": [
+   [
+    14.5,
+    17.0
+   ],
+   [
+    25.0,
+    35.0
+   ],
+   [
+    45.0,
+    50.0
+   ],
+   [
+    55.0,
+    60.0
+   ]
+  ],
+  "total_screen_m": 22.5,
+  "screen_share": 32.1,
+  "yield_safe": 0.97,
+  "yield_range": "0.97 m3/h (0.28 to 1.2)",
+  "yield_pump_depth": 39.0,
+  "methods": [
+   [
+    "Cooper-Jacob",
+    0.54
+   ],
+   [
+    "Theis",
+    0.47
+   ],
+   [
+    "Recovery",
+    1.4
+   ]
+  ],
+  "design_flags": [],
+  "cost_direct": 6359.67,
+  "cost_total": 7313.62,
+  "cost_price": 8776.34,
+  "cost_per_metre": 104.48,
+  "by_stage": [
+   [
+    "Mobilisation",
+    1550.0,
+    24.4
+   ],
+   [
+    "Wellhead",
+    1330.0,
+    20.9
+   ],
+   [
+    "Drilling",
+    1160.0,
+    18.2
+   ],
+   [
+    "Casing",
+    1150.67,
+    18.1
+   ],
+   [
+    "Test pumping",
+    480.0,
+    7.5
+   ],
+   [
+    "Siting",
+    400.0,
+    6.3
+   ],
+   [
+    "Water quality",
+    145.0,
+    2.3
+   ],
+   [
+    "Development",
+    144.0,
+    2.3
+   ]
+  ],
+  "quantity_basis": {
+   "totalDepthM": 70.0,
+   "casingM": 48.0,
+   "screenM": 22.5,
+   "gravelIntervalM": 57.5,
+   "overburdenM": 30.0
+  },
+  "quality_verdict": "The water does not meet the health based guideline value(s) for: Manganese, Total coliforms. Treatment or an alternative source is required before the water is used for drinking.",
+  "quality_health": [
+   "Manganese",
+   "Total coliforms"
+  ],
+  "quality_aesthetic": [
+   "pH",
+   "Iron"
+  ],
+  "quality_ratios": [
+   [
+    "pH",
+    0.6941,
+    "WHO acceptability",
+    "range"
+   ],
+   [
+    "Electrical conductivity",
+    0.074,
+    "national",
+    "max"
+   ],
+   [
+    "TDS",
+    0.12,
+    "WHO acceptability",
+    "max"
+   ],
+   [
+    "Turbidity",
+    0.64,
+    "WHO acceptability",
+    "max"
+   ],
+   [
+    "Temperature",
+    null,
+    "",
+    "none"
+   ],
+   [
+    "Total hardness",
+    0.116,
+    "WHO acceptability",
+    "max"
+   ],
+   [
+    "Alkalinity",
+    null,
+    "",
+    "none"
+   ],
+   [
+    "Calcium",
+    null,
+    "",
+    "none"
+   ],
+   [
+    "Magnesium",
+    null,
+    "",
+    "none"
+   ],
+   [
+    "Sodium",
+    0.063,
+    "WHO acceptability",
+    "max"
+   ],
+   [
+    "Potassium",
+    null,
+    "",
+    "none"
+   ],
+   [
+    "Bicarbonate",
+    null,
+    "",
+    "none"
+   ],
+   [
+    "Chloride",
+    0.0736,
+    "WHO acceptability",
+    "max"
+   ],
+   [
+    "Sulfate",
+    0.0272,
+    "WHO acceptability",
+    "max"
+   ],
+   [
+    "Nitrate (as NO3)",
+    0.164,
+    "WHO health",
+    "max"
+   ],
+   [
+    "Nitrite (as NO2)",
+    null,
+    "WHO health",
+    "max"
+   ],
+   [
+    "Ammonia (as N)",
+    0.08,
+    "WHO acceptability",
+    "max"
+   ],
+   [
+    "Fluoride",
+    0.1467,
+    "WHO health",
+    "max"
+   ],
+   [
+    "Iron",
+    2.8333,
+    "WHO acceptability",
+    "max"
+   ],
+   [
+    "Manganese",
+    1.5,
+    "WHO health",
+    "max"
+   ],
+   [
+    "Arsenic",
+    null,
+    "WHO health",
+    "max"
+   ],
+   [
+    "Lead",
+    null,
+    "WHO health",
+    "max"
+   ],
+   [
+    "Copper",
+    0.02,
+    "WHO acceptability",
+    "max"
+   ],
+   [
+    "Zinc",
+    0.0367,
+    "WHO acceptability",
+    "max"
+   ],
+   [
+    "Chromium (total)",
+    null,
+    "WHO health",
+    "max"
+   ],
+   [
+    "Cadmium",
+    null,
+    "WHO health",
+    "max"
+   ],
+   [
+    "E. coli",
+    null,
+    "WHO health",
+    "max"
+   ],
+   [
+    "Total coliforms",
+    null,
+    "WHO acceptability",
+    "max"
+   ]
+  ],
+  "piper_percent": {
+   "ca": 0.3942,
+   "mg": 0.2517,
+   "naK": 0.3347,
+   "hco3": 0.5329,
+   "cl": 0.3014,
+   "so4": 0.0822
+  },
+  "edited_screens": [
+   [
+    18.0,
+    30.0
+   ]
+  ],
+  "edited_cost_direct": 6273.68,
+  "edited": true
+ },
+ "siting": [
+  {
+   "id": "B (2)",
+   "rank": 1,
+   "suitability": 68.0,
+   "grade": "Good",
+   "components": {
+    "aquifer_thickness": 1.0,
+    "resistivity_fit": 0.5217968948080853,
+    "overburden": 0.5,
+    "basal_fracture": 0.5
+   },
+   "rationale": "Driven by about 72 m of interpreted water-bearing thickness (thick); resistivities near the edge of the productive window."
+  },
+  {
+   "id": "A (1)",
+   "rank": 2,
+   "suitability": 67.6,
+   "grade": "Good",
+   "components": {
+    "aquifer_thickness": 1.0,
+    "resistivity_fit": 0.5052783399518986,
+    "overburden": 0.5,
+    "basal_fracture": 0.5
+   },
+   "rationale": "Driven by about 72 m of interpreted water-bearing thickness (thick); resistivities near the edge of the productive window."
+  }
+ ],
+ "geo": [
+  {
+   "lat": 8.4657,
+   "lon": -13.2317,
+   "easting": 694667.4576609271,
+   "northing": 936224.6398208446,
+   "zone": 28
+  },
+  {
+   "lat": 8.7043,
+   "lon": -11.4084,
+   "easting": 234996.7127298619,
+   "northing": 963003.9227327222,
+   "zone": 29
+  },
+  {
+   "lat": 7.956,
+   "lon": -11.74,
+   "easting": 197910.44341368147,
+   "northing": 880433.9527570334,
+   "zone": 29
+  }
+ ],
+ "portfolio": {
+  "rows": [
+   {
+    "Community": "Rokel",
+    "District": "Port Loko",
+    "Status": "Sited (not drilled)",
+    "Depth (m)": null,
+    "Safe yield (m3/h)": null,
+    "Water": "",
+    "Cost/m (USD)": null
+   },
+   {
+    "Community": "Dr. Timbo",
+    "District": "Western Area Rural",
+    "Status": "Successful",
+    "Depth (m)": 45.0,
+    "Safe yield (m3/h)": 2.34,
+    "Water": "Safe",
+    "Cost/m (USD)": 133.0
+   },
+   {
+    "Community": "Kuntoloh",
+    "District": "Western Area Rural",
+    "Status": "Dry / failed",
+    "Depth (m)": 52.0,
+    "Safe yield (m3/h)": null,
+    "Water": "Aesthetic only",
+    "Cost/m (USD)": 151.0
+   }
+  ],
+  "points": [
+   [
+    "Rokel",
+    8.7042647386028,
+    -11.408369915999975,
+    "sited"
+   ],
+   [
+    "Dr. Timbo",
+    8.54987945206853,
+    -12.474582023456987,
+    "successful"
+   ]
+  ],
+  "stats": {
+   "n_projects": 3,
+   "n_drilled": 2,
+   "n_successful": 1,
+   "success_rate": 50.0,
+   "mean_safe_yield_m3_per_h": 2.34,
+   "mean_cost_per_meter_usd": 142.0,
+   "wq_pass_rate": 100.0
+  },
+  "detail": [
+   [
+    "Community",
+    "Dr. Timbo"
+   ],
+   [
+    "District",
+    "Western Area Rural"
+   ],
+   [
+    "Status",
+    "Successful"
+   ],
+   [
+    "Location",
+    "8.54988 N, 12.47458 W"
+   ],
+   [
+    "Total depth",
+    "45.0 m"
+   ],
+   [
+    "Safe yield",
+    "2.34 m3/h"
+   ],
+   [
+    "Water quality",
+    "Safe to drink"
+   ],
+   [
+    "Cost per metre",
+    "$133"
+   ]
+  ],
+  "one_pager": "SITE BRIEF - Dr. Timbo (Western Area Rural)\n===========================================\n\nCommunity:      Dr. Timbo\nDistrict:       Western Area Rural\nStatus:         Successful\nLocation:       8.54988 N, 12.47458 W\nTotal depth:    45.0 m\nSafe yield:     2.34 m3/h\nWater quality:  Safe to drink\nCost per metre: $133\n\nGenerated by the Groundwater Investigation Toolkit."
  }
 }
