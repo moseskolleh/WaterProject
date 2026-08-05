@@ -1,6 +1,11 @@
 """Water quality assessment against WHO and Sierra Leone standards."""
 
-from .standards import load_standards, StandardEntry
+from .standards import (
+    PROVISIONAL_NATIONAL_NOTE,
+    StandardEntry,
+    load_standards,
+    provisional_national_parameters,
+)
 from .assess import assess_sample, WaterQualityAssessment, ParameterAssessment
 from .ionic import ionic_balance, IonicBalanceResult
 from .corrosivity import assess_corrosivity, CorrosivityAssessment
@@ -14,6 +19,8 @@ from .diagrams import plot_piper, plot_stiff
 
 __all__ = [
     "load_standards",
+    "provisional_national_parameters",
+    "PROVISIONAL_NATIONAL_NOTE",
     "StandardEntry",
     "assess_sample",
     "WaterQualityAssessment",

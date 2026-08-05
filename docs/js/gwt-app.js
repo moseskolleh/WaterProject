@@ -81,7 +81,37 @@
     };
   }
 
-  var store = S.createStore(blankState(), { persistKey: STORE_KEY });
+  /* Autosave is a mirror of the session into localStorage, and it is the only
+   * thing standing between a browser refresh and a lost day of fieldwork. It
+   * fails silently by design - quota is finite and photos are large - so the
+   * failure has to be said out loud, and it has to keep being said until the
+   * user has a project file on disk. */
+  function renderAutosaveBanner(broken) {
+    var host = document.getElementById('autosave-banner');
+    if (!host) return;
+    S.clear(host);
+    if (!broken) return;
+    S.append(host, el('div.callout.callout-bad', [
+      el('p', el('strong', 'Autosave has stopped')),
+      el('p', 'This browser will not keep a copy of the session any more — ' +
+        'usually because its storage is full, often from photographs. If you ' +
+        'refresh or close this tab, unsaved work is gone. Save a project file ' +
+        'now; it is the only record from here on.'),
+      button('Save project', saveProject),
+    ]));
+  }
+
+  var store = S.createStore(blankState(), {
+    persistKey: STORE_KEY,
+    onPersistError: function () {
+      renderAutosaveBanner(true);
+      S.toast('Autosave has stopped — save a project file now.', 'error', 12000);
+    },
+    onPersistRecovered: function () {
+      renderAutosaveBanner(false);
+      S.toast('Autosave is working again.', 'ok');
+    },
+  });
 
   /* Derived results are recomputed rather than persisted: they are large,
    * they are cheap to rebuild, and a stale analysis beside fresh data is the
@@ -202,6 +232,20 @@
       crumb ? el('div.crumb', crumb) : null,
       el('h1', title),
       lead ? el('p.lead', lead) : null,
+    ]);
+  }
+
+  /* Shown wherever a national verdict is put in front of the user, for as long
+   * as any national value in the standards table is still unconfirmed. Failing
+   * an unconfirmed limit is a prompt to check the specification, not a
+   * compliance finding - and the difference matters to whoever signs. */
+  function provisionalStandardsNote() {
+    var params = C.provisionalNationalParameters();
+    if (!params.length) return null;
+    return el('div.callout.callout-warn', [
+      el('p', el('strong', 'National limits are provisional')),
+      el('p', C.PROVISIONAL_NATIONAL_NOTE),
+      el('p.muted', 'Unconfirmed: ' + params.join(', ') + '.'),
     ]);
   }
 
@@ -716,9 +760,11 @@
           'each of these.'),
       ]),
 
+      installCard(),
+
       nextStep('New to the toolkit? The guided start walks through one borehole ' +
         'from field sheet to signed report.', 'Guided start', 'guided'),
-    ];
+    ].filter(Boolean);
   };
 
   /* --- guided start --------------------------------------------------------- */
@@ -1816,7 +1862,8 @@
         el('p', q.verdict),
         q.wqi ? el('p.muted', 'Water quality index ' + q.wqi.value +
           ' — ' + q.wqi.rating + '.') : null,
-      ]),
+        q.nationalExceedances.length ? provisionalStandardsNote() : null,
+      ].filter(Boolean)),
 
       card('Flags on this analysis', [
         flagList(q.flags, 'No flags raised on the sample.'),
@@ -2137,7 +2184,8 @@
           } },
         { key: 'remark', label: 'Remark' },
       ], a.rows, { rowClass: function (row) { return toneFor[row.status] || ''; } }),
-    ]));
+      provisionalStandardsNote(),
+    ].filter(Boolean)));
 
     if (a.ionic) {
       nodes.push(card('Ionic balance', [
@@ -3619,6 +3667,30 @@
     ], { note: 'Photos stay on this machine and travel inside the project file.' });
   }
 
+  /* Which Depth Spine decisions belong in which report.
+   *
+   * The sign-off card tells the analyst what accepting writes to; this is the
+   * other half of that promise. A design decision certifies the yield and the
+   * construction, so it belongs in the completion and pumping-test reports; a
+   * quality decision certifies the verdict the handover carries; a costing
+   * decision certifies the price. */
+  var SIGN_OFF_REPORTS = {
+    completion: [['design', 'Design and safe yield']],
+    pumping: [['design', 'Design and safe yield']],
+    quality: [['quality', 'Water quality verdict']],
+    handover: [['design', 'Design and safe yield'],
+      ['quality', 'Water quality verdict']],
+    costing: [['costing', 'Price to client']],
+  };
+
+  function signOffFor(kind) {
+    var ledger = spineLedger();
+    return (SIGN_OFF_REPORTS[kind] || []).map(function (pair) {
+      var record = ledger[pair[0]];
+      return record ? Object.assign({ label: pair[1] }, record) : null;
+    }).filter(Boolean);
+  }
+
   /* Build and download a report, rasterising the on-screen figures so the
    * document carries exactly the figures the page shows. */
   function reportCard(title, kind, description, extra) {
@@ -3637,7 +3709,10 @@
     try {
       await S.withBusy(host, 'Building the report…', async function () {
         var cfg = config();
-        var context = { style: cfg.style, site: store.get('site') };
+        var context = {
+          style: cfg.style, site: store.get('site'),
+          signOff: signOffFor(kind),
+        };
         var builder;
         var figures = [];
 
@@ -3802,6 +3877,95 @@
     renderNav();
   }
 
+  /* ----------------------------------------------------------- offline / PWA */
+
+  /* Whether the browser has been asked to keep the app on disk. The toolkit is
+   * used where the network is a luxury, so this is not a nicety: once the
+   * worker is installed the app opens on a drilling site with no signal at
+   * all. Registration is best-effort - file:// pages, private windows and
+   * browsers without service worker support all fall through silently, and
+   * the app works exactly as before in every one of them. */
+  function registerServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost'
+      && location.hostname !== '127.0.0.1') return;
+    navigator.serviceWorker.register('sw.js').then(function (reg) {
+      /* Once it controls the page the app is on disk; say so where the user
+       * is deciding whether to trust it in the field. */
+      navigator.serviceWorker.ready.then(refreshInstallCard);
+      reg.addEventListener('updatefound', function () {
+        var incoming = reg.installing;
+        if (!incoming) return;
+        incoming.addEventListener('statechange', function () {
+          /* "installed" with a controller already present means this is an
+           * update, not a first install - say so rather than reloading, which
+           * would throw away anything typed and not yet recomputed. */
+          if (incoming.state === 'installed' && navigator.serviceWorker.controller) {
+            S.toast('A newer version has been downloaded. It will be used the ' +
+              'next time you open the app.', 'ok', 9000);
+          }
+        });
+      });
+    }).catch(function (e) {
+      console.warn('Offline support unavailable:', e && e.message);
+    });
+  }
+
+  /* Chromium hands over its install prompt exactly once and only if the page
+   * refuses the default one, so it is stashed here and spent from the
+   * Overview page's button. */
+  var installPrompt = null;
+
+  /* The card lives on the Overview page, and these events arrive whenever the
+   * browser feels like it - including while a form is being filled in
+   * elsewhere. Redraw only the page that shows the card, so nothing a user
+   * has half-typed is thrown away to announce something they can see later. */
+  function refreshInstallCard() {
+    if (store.get('nav', 'overview') === 'overview') render();
+  }
+
+  function watchInstallPrompt() {
+    global.addEventListener('beforeinstallprompt', function (event) {
+      event.preventDefault();
+      installPrompt = event;
+      refreshInstallCard();
+    });
+    global.addEventListener('appinstalled', function () {
+      installPrompt = null;
+      S.toast('Installed. The toolkit now opens without a network.', 'ok');
+      refreshInstallCard();
+    });
+  }
+
+  function offlineReady() {
+    return typeof navigator !== 'undefined' && 'serviceWorker' in navigator
+      && !!navigator.serviceWorker.controller;
+  }
+
+  function installCard() {
+    var ready = offlineReady();
+    if (!installPrompt && !ready) return null;
+    return card('Field use without a network', [
+      ready ? el('div.callout.callout-ok', [
+        el('p', el('strong', 'This app is saved on the device')),
+        el('p', 'It will open and work with no network at all. Sample ' +
+          'projects, the standards tables and every calculation are already ' +
+          'here; only the live water point lookup needs a connection.'),
+      ]) : null,
+      installPrompt ? el('p', 'Install the toolkit on this device and it opens ' +
+        'like any other application — full screen, no address bar. Everything ' +
+        'still runs on the device; nothing is uploaded.') : null,
+      installPrompt ? button('Install', function () {
+        var prompt = installPrompt;
+        installPrompt = null;
+        prompt.prompt();
+        prompt.userChoice.then(function (choice) {
+          if (choice && choice.outcome !== 'accepted') refreshInstallCard();
+        });
+      }) : null,
+    ].filter(Boolean));
+  }
+
   /* -------------------------------------------------------------------- boot */
 
   async function init() {
@@ -3813,6 +3977,8 @@
     applyTheme();
     renderChrome();
     render();
+    registerServiceWorker();
+    watchInstallPrompt();
 
     $('#nav-toggle').addEventListener('click', function () {
       $('#app-nav').classList.toggle('open');
@@ -3838,6 +4004,8 @@
     summaryFromProjectFile: summaryFromProjectFile,
     commitSpineScreens: commitSpineScreens, spineDecide: spineDecide,
     lookUpWaterPoints: lookUpWaterPoints, parseLatLon: parseLatLon,
+    signOffFor: signOffFor, offlineReady: offlineReady,
+    renderAutosaveBanner: renderAutosaveBanner,
   };
 
   if (typeof document !== 'undefined') {

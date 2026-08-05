@@ -260,3 +260,118 @@ def test_pdf_kind_guess():
     assert _guess_kind("Schlumberger array VES data, apparent resistivity") == "ves"
     assert _guess_kind("constant discharge pumping test, drawdown") == "pumping_test"
     assert _guess_kind("nothing recognisable") == "unknown"
+
+
+def _typed_field_sheet(path):
+    """A VES field sheet as a real PDF: Helvetica text placed with Tm/Tj.
+
+    Written here rather than committed as a binary so the fixture says out
+    loud what it is - and, crucially, what it is *not*: there is not one
+    ruling line on the page. The columns are held by whitespace, exactly as
+    they are on a sheet typed in a word processor, which is the case
+    ``extract_tables()`` cannot see.
+    """
+    import zlib
+
+    rows = [[1, 1.5, 0.5, 210.4], [2, 2, 0.5, 233.1], [3, 3, 0.5, 268.0],
+            [4, 4, 0.5, 291.7], [5, 6, 0.5, 302.5], [6, 8, 0.5, 288.2],
+            [7, 10, 0.5, 264.9], [8, 15, 0.5, 198.3]]
+    placed = [
+        (60, 760, "SCHLUMBERGER ARRAY VES FIELD DATA"),
+        (60, 735, "Community: Rokel"),
+        (300, 735, "Client: Living Water International"),
+        (60, 715, "District: Port Loko"),
+        (300, 715, "Sounding Number: VES A-1"),
+        (60, 695, "Date: 2023-05-14"),
+        (300, 695, "Field Supervisor: M. Kolleh"),
+        (60, 650, "No."), (110, 650, "AB/2 (m)"), (200, 650, "MN (m)"),
+        (280, 650, "Apparent Resistivity (ohm-m)"),
+    ]
+    for i, row in enumerate(rows):
+        y = 630 - i * 18
+        for x, value in zip((60, 110, 200, 280), row):
+            placed.append((x, y, str(value)))
+
+    ops = ["BT", "/F1 10 Tf"]
+    for x, y, text in placed:
+        escaped = str(text).replace("\\", "\\\\").replace("(", r"\(").replace(")", r"\)")
+        ops.append(f"1 0 0 1 {x} {y} Tm ({escaped}) Tj")
+    ops.append("ET")
+    content = zlib.compress("\n".join(ops).encode("latin-1"))
+
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+        b"/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+        b"<< /Length 6 0 R /Filter /FlateDecode >>\nstream\n" + content + b"\nendstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        str(len(content)).encode(),
+    ]
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{number} 0 obj\n".encode() + body + b"\nendobj\n"
+    xref = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
+    for offset in offsets:
+        out += f"{offset:010d} 00000 n \n".encode()
+    out += (f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
+            f"startxref\n{xref}\n%%EOF\n").encode()
+    path.write_bytes(bytes(out))
+    return path
+
+
+def test_pdf_extraction_reads_an_unruled_field_sheet(tmp_path):
+    """The common case: a typed sheet with no ruling lines around its table.
+
+    ``extract_text()`` collapses the gap between the two header columns, so a
+    reader working from it gets "Rokel Client: Living Water International" as
+    the community; ``extract_tables()`` needs ruling lines, so it returns
+    nothing at all. Both are read from word positions instead.
+    """
+    pytest.importorskip("pdfplumber")
+    from groundwater.extraction.pdf_text import extract_pdf_text
+
+    document = extract_pdf_text(_typed_field_sheet(tmp_path / "ves_sheet.pdf"))
+
+    assert document.document_kind == "ves"
+    fields = {f.name: f.value for f in document.header}
+    # each side of the page is its own field, not one glued to the next
+    assert fields["community"] == "Rokel"
+    assert fields["client"] == "Living Water International"
+    assert fields["district"] == "Port Loko"
+    assert fields["sounding_id"] == "VES A-1"
+    assert fields["supervisor"] == "M. Kolleh"
+
+    assert len(document.tables) == 1
+    table = document.tables[0]
+    assert table.columns == ["No.", "AB/2 (m)", "MN (m)", "Apparent Resistivity (ohm-m)"]
+    assert len(table.rows) == 8
+    assert table.rows[0] == ["1", "1.5", "0.5", "210.4"]
+    assert table.rows[-1] == ["8", "15", "0.5", "198.3"]
+    # every cell parsed, so nothing is held back for review
+    assert document.uncertain_cells == []
+    # and the header block above it was not swept into the reading table
+    assert not any("Community" in cell for row in table.rows for cell in row)
+
+
+def test_pdf_extraction_feeds_the_ves_template(tmp_path):
+    """End to end: an unruled PDF becomes a workbook the normal reader takes."""
+    pytest.importorskip("pdfplumber")
+    from groundwater.extraction import fill_ves_template
+    from groundwater.extraction.pdf_text import extract_pdf_text
+    from groundwater.ingestion import read_ves_workbook
+
+    document = extract_pdf_text(_typed_field_sheet(tmp_path / "ves_sheet.pdf"))
+    template = fill_ves_template(document, tmp_path / "ves.xlsx")
+    sounding = read_ves_workbook(template)[0]
+
+    assert sounding.sounding_id == "VES A-1"
+    assert sounding.site.community == "Rokel"
+    assert len(sounding.ab2) == 8
+    assert sounding.ab2[0] == pytest.approx(1.5)
+    assert sounding.rho_app[0] == pytest.approx(210.4)
+    assert sounding.ab2[-1] == pytest.approx(15.0)
+    assert sounding.rho_app[-1] == pytest.approx(198.3)

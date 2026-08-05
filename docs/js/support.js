@@ -1110,16 +1110,36 @@
       }
     }
 
+    /* Whether the last mirror write went through. A day of fieldwork typed
+     * into a browser that has quietly stopped autosaving is the worst thing
+     * this app can do to someone, so the transition is reported rather than
+     * swallowed. */
+    var persistOk = true;
+
     function persist() {
-      if (!opts.persistKey) return;
+      if (!opts.persistKey) return true;
       try {
         localStorage.setItem(opts.persistKey, JSON.stringify(state));
+        if (!persistOk) {
+          persistOk = true;
+          if (opts.onPersistRecovered) opts.onPersistRecovered();
+        }
+        return true;
       } catch (e) {
         /* Quota is finite and photos are large; drop the mirror rather than
-         * interrupting the user, the project file remains the real record. */
+         * interrupting the user - but the project file is now the only record,
+         * and the user is the only one who can write it. */
         try { localStorage.removeItem(opts.persistKey); } catch (e2) { /* ignore */ }
+        if (persistOk) {
+          persistOk = false;
+          if (opts.onPersistError) opts.onPersistError(e);
+        }
+        return false;
       }
     }
+
+    /* False once a mirror write has failed and not yet succeeded again. */
+    function autosaveOk() { return persistOk; }
 
     function restore() {
       if (!opts.persistKey) return false;
@@ -1142,7 +1162,7 @@
     return {
       get: get, set: set, patch: patch, remove: remove, replace: replace,
       subscribe: subscribe, persist: persist, restore: restore, forget: forget,
-      emit: emit,
+      emit: emit, autosaveOk: autosaveOk,
       get state() { return state; },
     };
   }

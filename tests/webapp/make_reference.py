@@ -26,9 +26,12 @@ change in behaviour still fails.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import math
 import sys
+import tempfile
+import zlib
 from pathlib import Path
 
 import numpy as np
@@ -293,7 +296,87 @@ def build() -> dict:
         "detail": [list(row) for row in site_detail(summaries[1])],
         "one_pager": site_one_pager(summaries[1]),
     }
+
+    out["pdf_sheet"] = pdf_sheet_reference()
     return out
+
+
+# ------------------------------------------------- the unruled PDF field sheet
+
+#: A typed VES sheet, placed with Tm/Tj and with no ruling line anywhere on
+#: the page. Both readers find its table from word positions, so this is the
+#: one fixture where the two have to agree byte for byte on the same input -
+#: the bytes travel in the reference file and are decoded in the browser.
+_PDF_ROWS = [[1, 1.5, 0.5, 210.4], [2, 2, 0.5, 233.1], [3, 3, 0.5, 268.0],
+             [4, 4, 0.5, 291.7], [5, 6, 0.5, 302.5], [6, 8, 0.5, 288.2],
+             [7, 10, 0.5, 264.9], [8, 15, 0.5, 198.3]]
+
+_PDF_HEADER = [
+    (60, 760, "SCHLUMBERGER ARRAY VES FIELD DATA"),
+    (60, 735, "Community: Rokel"), (300, 735, "Client: Living Water International"),
+    (60, 715, "District: Port Loko"), (300, 715, "Sounding Number: VES A-1"),
+    (60, 695, "Date: 2023-05-14"), (300, 695, "Field Supervisor: M. Kolleh"),
+    (60, 650, "No."), (110, 650, "AB/2 (m)"), (200, 650, "MN (m)"),
+    (280, 650, "Apparent Resistivity (ohm-m)"),
+]
+
+
+def _typed_field_sheet_pdf() -> bytes:
+    placed = list(_PDF_HEADER)
+    for i, row in enumerate(_PDF_ROWS):
+        y = 630 - i * 18
+        for x, value in zip((60, 110, 200, 280), row):
+            placed.append((x, y, str(value)))
+
+    ops = ["BT", "/F1 10 Tf"]
+    for x, y, text in placed:
+        escaped = str(text).replace("\\", "\\\\").replace("(", r"\(").replace(")", r"\)")
+        ops.append(f"1 0 0 1 {x} {y} Tm ({escaped}) Tj")
+    ops.append("ET")
+    # level 9 and no timestamp, so the same table always gives the same bytes
+    content = zlib.compress("\n".join(ops).encode("latin-1"), 9)
+
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+        b"/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+        b"<< /Length 6 0 R /Filter /FlateDecode >>\nstream\n" + content + b"\nendstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        str(len(content)).encode(),
+    ]
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{number} 0 obj\n".encode() + body + b"\nendobj\n"
+    xref = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
+    for offset in offsets:
+        out += f"{offset:010d} 00000 n \n".encode()
+    out += (f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
+            f"startxref\n{xref}\n%%EOF\n").encode()
+    return bytes(out)
+
+
+def pdf_sheet_reference() -> dict:
+    """What the Python reader makes of the sheet, plus the sheet itself."""
+    from groundwater.extraction.pdf_text import extract_pdf_text
+
+    pdf = _typed_field_sheet_pdf()
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "ves_sheet.pdf"
+        path.write_bytes(pdf)
+        document = extract_pdf_text(path)
+
+    return {
+        "b64": base64.b64encode(pdf).decode("ascii"),
+        "kind": document.document_kind,
+        "header": [[f.name, f.value] for f in document.header],
+        "tables": [{"columns": list(t.columns), "rows": [list(r) for r in t.rows]}
+                   for t in document.tables],
+        "uncertain": len(document.uncertain_cells),
+    }
 
 
 # Loose enough to absorb a different BLAS build, tight enough that a real

@@ -68,6 +68,37 @@ class StandardEntry:
     sl_standard: Optional[Limit]
     category: str
     note: str
+    #: Where the national value came from. ``"provisional"`` means it has not
+    #: been checked against the Sierra Leone Standards Bureau specification -
+    #: it is a WHO figure carried across, or one adopted from regional
+    #: practice. Set it to the issuing specification once confirmed.
+    sl_source: str = ""
+
+    @property
+    def sl_provisional(self) -> bool:
+        """Whether the national value is unconfirmed against the SLSB spec."""
+        return self.sl_standard is not None and self.sl_source == "provisional"
+
+
+#: Said wherever a national verdict is shown, while any national value is
+#: still provisional. A compliance failure against an unconfirmed limit is a
+#: prompt to check the specification, not a finding to put in front of a
+#: regulator.
+PROVISIONAL_NATIONAL_NOTE = (
+    "The national column in the standards table is provisional: its values "
+    "are WHO guideline figures carried across, or limits adopted from "
+    "regional practice, and have not been confirmed against the Sierra Leone "
+    "Standards Bureau drinking water specification. Confirm the figures "
+    "before treating a national exceedance as a compliance finding."
+)
+
+
+def provisional_national_parameters(
+    table: dict[str, "StandardEntry"] | None = None,
+) -> list[str]:
+    """Parameters whose national limit is still unconfirmed."""
+    entries = (table or load_standards()).values()
+    return sorted(e.parameter for e in entries if e.sl_provisional)
 
 
 _ALIASES = {
@@ -120,6 +151,7 @@ def load_standards(path: str | Path | None = None) -> dict[str, StandardEntry]:
             sl_standard=Limit.parse(row.get("sl_standard", "")),
             category=row.get("category", ""),
             note=row.get("note", ""),
+            sl_source=(row.get("sl_source") or "").strip(),
         )
         table[normalise_parameter(entry.parameter)] = entry
     return table

@@ -17,6 +17,10 @@ from docx.shared import Pt, RGBColor
 from ..config import Config
 from ..quality.assess import WaterQualityAssessment
 from ..quality.diagrams import plot_piper, plot_stiff
+from ..quality.standards import (
+    PROVISIONAL_NATIONAL_NOTE,
+    provisional_national_parameters,
+)
 from ..utils import fmt_num, safe_slug
 from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
@@ -168,6 +172,10 @@ def build_quality_report(
         "shown as such.",
         align="justify",
     )
+    # A national exceedance reads as a compliance failure, so the report must
+    # say plainly when the limit it was judged against is not yet confirmed.
+    if provisional_national_parameters():
+        rb.paragraph(PROVISIONAL_NATIONAL_NOTE, align="justify")
 
     # ---- 2 results table ------------------------------------------------------
     rb.heading("2. Results Against Guideline Values", 1)
