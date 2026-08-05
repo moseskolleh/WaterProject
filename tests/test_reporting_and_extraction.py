@@ -207,6 +207,53 @@ def test_extraction_review_workbook(tmp_path):
     assert len(soundings) == 1 and soundings[0].n_readings == 2
 
 
+def test_fill_ves_template_accepts_already_canonical_field_names(tmp_path):
+    """The text-layer extractor resolves labels before it stores them.
+
+    Its header fields are therefore named by the canonical key, and a
+    canonical key does not match its own label pattern ("sounding_id" is not
+    "sounding number"). Feeding those names back through match_label alone
+    dropped every one of them on the floor, silently.
+    """
+    from openpyxl import load_workbook
+
+    from groundwater.extraction import (
+        ExtractedDocument,
+        ExtractedField,
+        ExtractedTable,
+        fill_ves_template,
+    )
+
+    document = ExtractedDocument(
+        source="sheet.pdf",
+        document_kind="ves",
+        header=[
+            ExtractedField("community", "Rokel", 0.95),
+            ExtractedField("sounding_id", "VES A-1", 0.95),
+            ExtractedField("client", "Living Water International", 0.95),
+        ],
+        tables=[
+            ExtractedTable(
+                title="Table 1",
+                columns=["No.", "AB/2 (m)", "MN (m)", "Apparent Resistivity (ohm-m)"],
+                rows=[["1", "1.5", "0.5", "210.4"], ["2", "2", "0.5", "233.1"]],
+            )
+        ],
+        extractor="pdf-text",
+    )
+    template = fill_ves_template(document, tmp_path / "ves.xlsx")
+    ws = load_workbook(template).active
+    assert ws["D2"].value == "Rokel"
+    assert ws["D3"].value == "VES A-1"
+    assert ws["B2"].value == "Living Water International"
+
+    from groundwater.ingestion import read_ves_workbook
+
+    sounding = read_ves_workbook(template)[0]
+    assert sounding.sounding_id == "VES A-1"
+    assert sounding.site.community == "Rokel"
+
+
 def test_pdf_kind_guess():
     from groundwater.extraction.pdf_text import _guess_kind
 

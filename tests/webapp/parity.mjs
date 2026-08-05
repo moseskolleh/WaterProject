@@ -111,6 +111,84 @@ await withPage(async (page, base, consoleErrors) => {
       rho: inverted.model.resistivities, h: inverted.model.thicknesses,
       err: inverted.fit_error_percent,
     };
+
+    // the Depth Spine payload: the workspace draws, this decides
+    const spine = C.buildSpineView({
+      name: 'Dr Timbo', log, analysis, assessment: assessed,
+    });
+    const spineEdited = C.buildSpineView({
+      name: 'Dr Timbo', log, analysis, assessment: assessed,
+    }, [[18.0, 30.0]]);
+    out.spine = {
+      total_depth: spine.section.totalDepth,
+      domain: spine.section.domain,
+      lithology: spine.section.lithology.map((u) => [u.top, u.base, u.aquifer]),
+      strikes: spine.section.waterStrikes,
+      segments: spine.section.segments.map((s) => [s.kind, s.top, s.base]),
+      levels: spine.section.levels,
+      screen_limits: spine.section.screenLimits,
+      screens: spine.design.screens.map((s) => [s.top, s.base]),
+      total_screen_m: spine.design.totalScreenM,
+      screen_share: spine.design.screenShare,
+      yield_safe: spine.design.yield.safeYieldM3PerH ?? null,
+      yield_range: spine.design.yield.rangeText ?? null,
+      yield_pump_depth: spine.design.yield.pumpDepthM ?? null,
+      methods: (spine.design.yield.methods || []).map((m) => [m.label, m.transmissivity]),
+      design_flags: spine.design.flags.map((f) => [f.level, f.code]),
+      cost_direct: spine.costing.directCost,
+      cost_total: spine.costing.totalCost,
+      cost_price: spine.costing.price,
+      cost_per_metre: spine.costing.costPerMetre,
+      by_stage: spine.costing.byStage.map((r) => [r.label, r.amount, r.share]),
+      quantity_basis: spine.costing.quantityBasis,
+      quality_verdict: spine.quality.verdict,
+      quality_health: spine.quality.healthExceedances,
+      quality_aesthetic: spine.quality.aestheticExceedances,
+      quality_ratios: spine.quality.rows.map(
+        (r) => [r.parameter, r.ratio, r.limitName, r.limitKind]),
+      piper_percent: spine.quality.piper.percent,
+      edited_screens: spineEdited.design.screens.map((s) => [s.top, s.base]),
+      edited_cost_direct: spineEdited.costing.directCost,
+      edited: spineEdited.edited,
+    };
+
+    // the portfolio view, over the same summaries the reference uses
+    const summaries = [
+      { community: 'Rokel', district: 'Port Loko', easting: 235000.0,
+        northing: 963000.0, status: 'sited' },
+      { community: 'Dr. Timbo', district: 'Western Area Rural',
+        easting: 778000.0, northing: 946000.0, utm_zone: 28,
+        status: 'Completed - successful', total_depth_m: 45.0,
+        safe_yield_m3_per_h: 2.34, water_verdict: 'pass',
+        cost_per_meter_usd: 133.0 },
+      { community: 'Kuntoloh', district: 'Western Area Rural',
+        status: 'Completed - dry', total_depth_m: 52.0,
+        water_verdict: 'aesthetic', cost_per_meter_usd: 151.0 },
+    ];
+    // the drill-target scorecard, over the real Rokel soundings
+    const rokelSoundings = C.readVesSheets(vesSheets, 'rokel_ves.xlsx');
+    const rokelInterps = rokelSoundings.map((s) => {
+      const inv = C.invertSounding(s);
+      return C.interpretModel(s, inv.model);
+    });
+    out.siting = C.assessSiting(rokelInterps).map((r) => ({
+      id: r.sounding_id, rank: r.rank, suitability: r.suitability,
+      grade: r.grade, components: r.components, rationale: r.rationale,
+    }));
+
+    out.geo = [[8.4657, -13.2317], [8.7043, -11.4084], [7.9560, -11.7400]]
+      .map(([lat, lon]) => {
+        const utm = C.geographicToUtm(lat, lon);
+        return { lat, lon, easting: utm.easting, northing: utm.northing, zone: utm.zone };
+      });
+
+    out.portfolio = {
+      rows: C.portfolioRows(summaries),
+      points: C.portfolioPoints(summaries).map((p) => [p.label, p.lat, p.lon, p.status]),
+      stats: C.portfolioStats(summaries),
+      detail: C.portfolioSiteDetail(summaries[1]),
+      one_pager: C.portfolioOnePager(summaries[1]),
+    };
     return out;
   });
 
@@ -195,6 +273,66 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify(parsed.inversion.h) + '\n     vs ' + JSON.stringify(R.inversion.h));
   check('inversion: fit error', close(parsed.inversion.err, R.inversion.err, 1e-4),
     `js ${parsed.inversion.err} vs py ${R.inversion.err}`);
+
+  // --- Depth Spine ---
+  const spineExact = ['lithology', 'strikes', 'segments', 'screen_limits',
+    'screens', 'methods', 'design_flags', 'by_stage', 'quantity_basis',
+    'quality_verdict', 'quality_health', 'quality_aesthetic', 'quality_ratios',
+    'piper_percent', 'yield_range', 'edited_screens', 'edited', 'levels'];
+  for (const key of spineExact) {
+    check(`spine: ${key}`,
+      JSON.stringify(parsed.spine[key]) === JSON.stringify(R.spine[key]),
+      `js ${JSON.stringify(parsed.spine[key])}\n     py ${JSON.stringify(R.spine[key])}`);
+  }
+  for (const key of ['total_depth', 'domain', 'total_screen_m', 'screen_share',
+    'yield_safe', 'yield_pump_depth', 'cost_direct', 'cost_total', 'cost_price',
+    'cost_per_metre', 'edited_cost_direct']) {
+    check(`spine: ${key}`, close(parsed.spine[key], R.spine[key], 1e-4),
+      `js ${parsed.spine[key]} vs py ${R.spine[key]}`);
+  }
+
+  // --- Drill-target suitability ---
+  check('siting: same points ranked the same way',
+    JSON.stringify(parsed.siting.map((s) => [s.id, s.rank, s.grade])) ===
+    JSON.stringify(R.siting.map((s) => [s.id, s.rank, s.grade])),
+    JSON.stringify(parsed.siting.map((s) => [s.id, s.rank, s.grade])));
+  parsed.siting.forEach((s, i) => {
+    check(`siting[${i}] ${s.id}: suitability`,
+      close(s.suitability, R.siting[i].suitability, 1e-6),
+      `js ${s.suitability} vs py ${R.siting[i].suitability}`);
+    // the resistivity-fit component is a geometric mean over the inverted
+    // model, so it carries the same BLAS-dependent last digits the inversion
+    // does; 1e-6 relative is the tolerance the reference file itself uses
+    check(`siting[${i}] ${s.id}: components`,
+      Object.keys(s.components).every(
+        (k) => close(s.components[k], R.siting[i].components[k], 1e-6)),
+      `${JSON.stringify(s.components)}\n     ${JSON.stringify(R.siting[i].components)}`);
+    check(`siting[${i}] ${s.id}: rationale`, s.rationale === R.siting[i].rationale,
+      `js ${s.rationale}\n     py ${R.siting[i].rationale}`);
+  });
+
+  // --- Geographic -> UTM ---
+  parsed.geo.forEach((g, i) => {
+    check(`geo[${i}]: easting/northing/zone`,
+      close(g.easting, R.geo[i].easting, 1e-9) &&
+      close(g.northing, R.geo[i].northing, 1e-9) && g.zone === R.geo[i].zone,
+      `js ${g.easting}, ${g.northing}, ${g.zone} vs py ${R.geo[i].easting}, ` +
+      `${R.geo[i].northing}, ${R.geo[i].zone}`);
+  });
+
+  // --- Portfolio ---
+  for (const key of ['rows', 'stats', 'detail', 'one_pager']) {
+    check(`portfolio: ${key}`,
+      JSON.stringify(parsed.portfolio[key]) === JSON.stringify(R.portfolio[key]),
+      `js ${JSON.stringify(parsed.portfolio[key])}\n     py ${JSON.stringify(R.portfolio[key])}`);
+  }
+  check('portfolio: points',
+    parsed.portfolio.points.length === R.portfolio.points.length &&
+    parsed.portfolio.points.every((p, i) => p[0] === R.portfolio.points[i][0] &&
+      close(p[1], R.portfolio.points[i][1], 1e-9) &&
+      close(p[2], R.portfolio.points[i][2], 1e-9) &&
+      p[3] === R.portfolio.points[i][3]),
+    `js ${JSON.stringify(parsed.portfolio.points)}\n     py ${JSON.stringify(R.portfolio.points)}`);
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, {});

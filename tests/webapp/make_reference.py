@@ -33,6 +33,7 @@ from pathlib import Path
 
 import numpy as np
 
+from groundwater.depth_spine.view import SpineInputs, build_view
 from groundwater.design import design_borehole
 from groundwater.hydraulics import analyse_pumping_test
 from groundwater.ingestion import (
@@ -41,7 +42,17 @@ from groundwater.ingestion import (
     read_quality_workbook,
     read_ves_workbook,
 )
+from groundwater.portfolio import (
+    portfolio_points,
+    portfolio_rows,
+    portfolio_stats,
+    site_detail,
+    site_one_pager,
+)
+from groundwater.geo import geographic_to_utm
 from groundwater.quality import assess_sample
+from groundwater.siting import assess_siting
+from groundwater.ves.interpret import interpret_model
 from groundwater.ves.inversion import invert_sounding
 
 REPO = Path(__file__).resolve().parents[2]
@@ -51,6 +62,10 @@ OUT = Path(__file__).resolve().parent / "reference.json"
 
 def clean(value):
     """JSON-safe: NaN becomes null, numpy scalars become plain floats."""
+    # bool before the numeric branches: bool is a subclass of int, and a
+    # stabilised flag written out as 0 compares unequal to the browser's false.
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
     if isinstance(value, (np.floating, float)):
         f = float(value)
         return None if math.isnan(f) else f
@@ -172,6 +187,111 @@ def build() -> dict:
         "rho": clean(inverted.model.resistivities),
         "h": clean(inverted.model.thicknesses),
         "err": clean(inverted.fit_error_percent),
+    }
+
+    # The Depth Spine payload: the workspace decides nothing on its own, so
+    # every figure it draws has to come back identical in the browser.
+    spine = build_view(SpineInputs(
+        name="Dr Timbo", log=log, analysis=analysis, assessment=assessed,
+    ))
+    spine_edited = build_view(
+        SpineInputs(name="Dr Timbo", log=log, analysis=analysis,
+                    assessment=assessed),
+        screens_m=[(18.0, 30.0)],
+    )
+    out["spine"] = {
+        "total_depth": clean(spine["section"]["totalDepth"]),
+        "domain": clean(spine["section"]["domain"]),
+        "lithology": [[clean(u["top"]), clean(u["base"]), u["aquifer"]]
+                      for u in spine["section"]["lithology"]],
+        "strikes": clean(spine["section"]["waterStrikes"]),
+        "segments": [[s["kind"], clean(s["top"]), clean(s["base"])]
+                     for s in spine["section"]["segments"]],
+        "levels": {k: clean(v) for k, v in spine["section"]["levels"].items()},
+        "screen_limits": {k: clean(v)
+                          for k, v in spine["section"]["screenLimits"].items()},
+        "screens": [[clean(s["top"]), clean(s["base"])]
+                    for s in spine["design"]["screens"]],
+        "total_screen_m": clean(spine["design"]["totalScreenM"]),
+        "screen_share": clean(spine["design"]["screenShare"]),
+        "yield_safe": clean(spine["design"]["yield"].get("safeYieldM3PerH")),
+        "yield_range": spine["design"]["yield"].get("rangeText"),
+        "yield_pump_depth": clean(spine["design"]["yield"].get("pumpDepthM")),
+        "methods": [[m["label"], clean(m["transmissivity"])]
+                    for m in spine["design"]["yield"].get("methods", [])],
+        "design_flags": [[f["level"], f["code"]] for f in spine["design"]["flags"]],
+        "cost_direct": clean(spine["costing"]["directCost"]),
+        "cost_total": clean(spine["costing"]["totalCost"]),
+        "cost_price": clean(spine["costing"]["price"]),
+        "cost_per_metre": clean(spine["costing"]["costPerMetre"]),
+        "by_stage": [[r["label"], clean(r["amount"]), clean(r["share"])]
+                     for r in spine["costing"]["byStage"]],
+        "quantity_basis": {k: clean(v)
+                           for k, v in spine["costing"]["quantityBasis"].items()},
+        "quality_verdict": spine["quality"]["verdict"],
+        "quality_health": spine["quality"]["healthExceedances"],
+        "quality_aesthetic": spine["quality"]["aestheticExceedances"],
+        "quality_ratios": [[r["parameter"], clean(r["ratio"]), r["limitName"],
+                            r["limitKind"]] for r in spine["quality"]["rows"]],
+        "piper_percent": {k: clean(v)
+                          for k, v in spine["quality"]["piper"]["percent"].items()},
+        "edited_screens": [[clean(s["top"]), clean(s["base"])]
+                           for s in spine_edited["design"]["screens"]],
+        "edited_cost_direct": clean(spine_edited["costing"]["directCost"]),
+        "edited": spine_edited["edited"],
+    }
+
+    # The drill-target scorecard, over the real Rokel soundings.
+    rokel_inversions = [invert_sounding(s) for s in soundings]
+    rokel_interps = [
+        interpret_model(s, inv.model)
+        for s, inv in zip(soundings, rokel_inversions)
+    ]
+    out["siting"] = [
+        {
+            "id": r.sounding_id, "rank": r.rank,
+            "suitability": clean(r.suitability), "grade": r.grade,
+            "components": {
+                "aquifer_thickness": clean(r.components.aquifer_thickness),
+                "resistivity_fit": clean(r.components.resistivity_fit),
+                "overburden": clean(r.components.overburden),
+                "basal_fracture": clean(r.components.basal_fracture),
+            },
+            "rationale": r.rationale,
+        }
+        for r in assess_siting(rokel_interps)
+    ]
+
+    # Geographic -> UTM, the direction a pasted phone position takes.
+    out["geo"] = [
+        {"lat": lat, "lon": lon,
+         "easting": clean(geographic_to_utm(lat, lon).easting),
+         "northing": clean(geographic_to_utm(lat, lon).northing),
+         "zone": geographic_to_utm(lat, lon).zone}
+        for lat, lon in ((8.4657, -13.2317), (8.7043, -11.4084), (7.9560, -11.7400))
+    ]
+
+    # The portfolio view, over summaries chosen to exercise every status class
+    # and the zone-inference fallback.
+    summaries = [
+        {"community": "Rokel", "district": "Port Loko", "easting": 235000.0,
+         "northing": 963000.0, "status": "sited"},
+        {"community": "Dr. Timbo", "district": "Western Area Rural",
+         "easting": 778000.0, "northing": 946000.0, "utm_zone": 28,
+         "status": "Completed - successful", "total_depth_m": 45.0,
+         "safe_yield_m3_per_h": 2.34, "water_verdict": "pass",
+         "cost_per_meter_usd": 133.0},
+        {"community": "Kuntoloh", "district": "Western Area Rural",
+         "status": "Completed - dry", "total_depth_m": 52.0,
+         "water_verdict": "aesthetic", "cost_per_meter_usd": 151.0},
+    ]
+    out["portfolio"] = {
+        "rows": clean(portfolio_rows(summaries)),
+        "points": [[p["label"], clean(p["lat"]), clean(p["lon"]), p["status"]]
+                   for p in portfolio_points(summaries)],
+        "stats": clean(portfolio_stats(summaries)),
+        "detail": [list(row) for row in site_detail(summaries[1])],
+        "one_pager": site_one_pager(summaries[1]),
     }
     return out
 

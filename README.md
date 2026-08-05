@@ -68,17 +68,34 @@ index at all and renders this readme instead of the app.
 
 The **standalone web app** is the toolkit rewritten to run entirely in
 the browser as plain HTML, CSS and JavaScript. It starts instantly,
-needs no Python runtime and no network after the first load, and does
-the whole job: reading the field workbooks, inverting the soundings,
-analysing the pumping tests, assessing the water quality, designing the
-borehole, costing the works, running the supervision checklists and
-writing the seven .docx reports. Uploaded sheets are parsed in the page
-and never leave the machine. Its engine is held to the Python
-package's own numbers by a parity check in CI, on the real sample
-workbooks. Source lives in `docs/`.
+needs no Python runtime and does the whole job: reading the field
+workbooks (and a pumping test written on a Word field sheet), inverting
+the soundings, scoring the drill targets, analysing the pumping tests,
+assessing the water quality, designing the borehole on the Depth Spine,
+costing the works, running the supervision checklists, comparing a
+whole portfolio of boreholes, reading a scanned field sheet and writing
+the seven .docx reports. Uploaded sheets are parsed in the page and
+never leave the machine. Its engine is held to the Python package's own
+numbers by a parity check in CI, on the real sample workbooks. Source
+lives in `docs/`.
 
-The Streamlit app is the complete server version, and adds the
-AI-assisted extraction from scanned field sheets. The WebAssembly build
+Every page the Streamlit app has, the standalone app has. Two of them
+work differently rather than less:
+
+- the PDF text-layer reader works from the layout of the words on the
+  page, where the server version uses pdfplumber and finds a table from
+  the rules drawn around it;
+- the AI-assisted reading of a photographed sheet needs an Anthropic
+  API key, which the server holds in its secrets and the browser asks
+  the operator for on the Settings page. It is kept out of saved
+  project files, so sharing a project never shares the key.
+
+Two features reach the network, and both are a button rather than
+something a page does on its own: the live Water Point Data Exchange
+lookup (which always has an offline CSV path beside it) and the AI
+extraction. Everything else works with the cable pulled out.
+
+The Streamlit app is the complete server version. The WebAssembly build
 is that same Python app compiled to run in the browser through
 stlite/Pyodide — behaviourally identical to the server version, at the
 cost of a 60 MB first load.

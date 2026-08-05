@@ -114,7 +114,13 @@ def fill_ves_template(document: ExtractedDocument, path: str | Path) -> Path:
         "array_type": "B8", "instrument": "D8",
     }
     for field in document.header:
-        key = match_label(field.name)
+        # The AI extractor names a field the way the sheet does ("Sounding
+        # Number"), which the label patterns resolve. The text-layer extractor
+        # has already resolved it, so its name is the canonical key itself -
+        # and a canonical key does not match its own pattern ("sounding_id" is
+        # not "sounding number"). Accept either, or the field silently fails
+        # to land in the template.
+        key = field.name if field.name in cell_map else match_label(field.name)
         target = cell_map.get(key or "")
         if target:
             ws[target] = field.value

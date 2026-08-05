@@ -27,6 +27,8 @@
     ['Investigation', [
       ['ves', 'Geophysics (VES)'],
       ['design', 'Borehole design'],
+      ['spine', 'Depth Spine'],
+      ['extract', 'Scanned sheets'],
     ]],
     ['Testing', [
       ['pumping', 'Pumping test'],
@@ -41,6 +43,7 @@
     ['Area analysis', [
       ['waterpoints', 'Water points'],
       ['coverage', 'Coverage gap'],
+      ['portfolio', 'Portfolio'],
     ]],
     ['', [
       ['settings', 'Settings'],
@@ -71,6 +74,9 @@
       handover: { committee: [], notes: [], date: '' },
       photos: {},
       coverage: { level: 'district' },
+      waterpoints: { radius: 1000 },
+      spine: { stage: 'design', ledger: {}, signatory: '' },
+      extraction: { apiKey: '', model: '' },
       theme: 'auto',
     };
   }
@@ -84,6 +90,10 @@
     soundings: null, inversions: null, interpretations: null,
     log: null, test: null, analysis: null, sample: null, assessment: null,
     design: null, estimate: null, programme: null,
+    /* brought in by hand rather than computed from the sources: an area
+     * inventory, other projects' summaries, an extracted scan */
+    waterPoints: null, waterPointsSource: null, waterPointsCapped: false,
+    portfolio: null, extraction: null,
   };
 
   /* ------------------------------------------------------------------ chrome */
@@ -244,8 +254,16 @@
     derived.test = null; derived.analysis = null;
     if (sources.pumping) {
       try {
-        var psheets = await S.readXlsx(S.base64ToBytes(sources.pumping.b64));
-        derived.test = C.pumpingFromGrid(psheets[0].rows, sources.pumping.name);
+        var pbytes = S.base64ToBytes(sources.pumping.b64);
+        /* the crew is handed a Word field sheet as often as the workbook;
+         * refusing it is how readings get retyped, and retyping is where the
+         * transcription errors come from */
+        if (/\.docx$/i.test(sources.pumping.name || '')) {
+          derived.test = await C.readPumpingDocx(pbytes, sources.pumping.name);
+        } else {
+          var psheets = await S.readXlsx(pbytes);
+          derived.test = C.pumpingFromGrid(psheets[0].rows, sources.pumping.name);
+        }
         applyManualDischarges(derived.test);
         derived.analysis = C.analysePumpingTest(derived.test, cfg);
       } catch (e3) {
@@ -400,12 +418,52 @@
 
   /* --------------------------------------------------------------- project IO */
 
+  /* A headline summary of the project, saved beside the state so a portfolio
+   * can be built from many project files without recomputing each one. The
+   * same keys the Streamlit app writes, so the two file formats meet on the
+   * Portfolio page. */
+  function projectSummary() {
+    var site = store.get('site') || {};
+    var summary = {
+      community: site.community, district: site.district,
+      chiefdom: site.chiefdom, easting: site.easting,
+      northing: site.northing, utm_zone: site.utm_zone,
+    };
+    if (derived.log) {
+      if (derived.log.status) summary.status = derived.log.status;
+      if (derived.log.total_depth_m) summary.total_depth_m = derived.log.total_depth_m;
+    }
+    var rec = derived.analysis ? derived.analysis.yield_recommendation : null;
+    if (rec && rec.safe_yield_m3_per_h) {
+      summary.safe_yield_m3_per_h = rec.safe_yield_m3_per_h;
+    }
+    if (derived.assessment) {
+      summary.water_verdict = derived.assessment.health_exceedances.length ? 'fail'
+        : (derived.assessment.aesthetic_exceedances.length ? 'aesthetic' : 'pass');
+    }
+    if (derived.estimate) summary.cost_per_meter_usd = derived.estimate.cost_per_meter_usd;
+    if (derived.interpretations && derived.interpretations.length && !summary.status) {
+      summary.status = 'sited';
+    }
+    Object.keys(summary).forEach(function (key) {
+      var value = summary[key];
+      if (value === null || value === undefined || value === '') delete summary[key];
+    });
+    return summary;
+  }
+
   function projectPayload() {
+    /* A project file is meant to be mailed to a colleague, so the API key
+     * never goes in it: a credential that travels with the fieldwork is a
+     * credential that leaks. It stays in this browser and nowhere else. */
+    var state = Object.assign({}, store.state);
+    state.extraction = Object.assign({}, state.extraction || {}, { apiKey: '' });
     return {
       format: 'groundwater-toolkit-project',
       version: 1,
       saved: new Date().toISOString(),
-      state: store.state,
+      summary: projectSummary(),
+      state: state,
     };
   }
 
@@ -422,7 +480,11 @@
       var payload = JSON.parse(await S.readFile(file, 'text'));
       var state = payload.state || payload;
       if (!state || typeof state !== 'object') throw new Error('not a project file');
+      /* the key belongs to this browser, not to the file; loading someone
+       * else's project must not clear the one already set here */
+      var key = store.get('extraction.apiKey') || '';
       store.replace(Object.assign(blankState(), state));
+      if (key) store.set('extraction.apiKey', key);
       applyTheme();
       await recompute();
       await runInversions({ quiet: true });
@@ -643,8 +705,9 @@
             'One worksheet per sounding, AB/2 · MN · apparent resistivity'),
           uploadZone('drilling', 'Drilling log (.xlsx)',
             'Depth intervals with lithology and water strikes'),
-          uploadZone('pumping', 'Pumping test (.xlsx)',
-            'Step or constant discharge with recovery'),
+          uploadZone('pumping', 'Pumping test (.xlsx or .docx)',
+            'Step or constant discharge with recovery',
+            '.xlsx,.xls,.docx'),
           uploadZone('quality', 'Water quality results (.xlsx)',
             'Parameter · value · unit from the laboratory'),
         ]),
@@ -728,8 +791,13 @@
 
   /* --- site & maps ---------------------------------------------------------- */
 
+  /* Held outside the render so the field keeps what was typed while the page
+   * redraws around it. */
+  var latLonEntry = { text: '' };
+
   PAGES.site = function () {
     var site = store.get('site');
+    var mapRadius = store.get('site.mapRadiusKm', 40);
     function bind(key) {
       return function (value) { store.set('site.' + key, value); renderChrome(); };
     }
@@ -790,13 +858,55 @@
             'or a longitude in degrees'),
           field('GPS northing (UTM)', S.numberInput(site.northing, bindNum('northing')),
             'or a latitude in degrees'),
+          field('UTM zone', S.selectInput(site.utm_zone || '',
+            [{ value: '', label: 'infer from the easting' },
+              { value: '28', label: '28N' }, { value: '29', label: '29N' }],
+            function (v) { store.set('site.utm_zone', v ? Number(v) : null); render(); })),
           field('Elevation (m)', S.numberInput(site.elevation_m, bindNum('elevation_m'))),
           field('Date', S.textInput(site.date, bind('date'))),
         ]),
+        /* Field crews read decimal degrees off a phone or a handheld GPS.
+         * Typing them straight in removes the UTM-conversion friction and the
+         * wrong-zone errors that come with it. */
+        field('or paste "lat, lon" from a phone or handheld GPS',
+          el('div.btn-row', [
+            S.textInput('', function (value) { latLonEntry.text = value; },
+              { placeholder: '8.4657, -13.2317' }),
+            button('Convert to UTM', function () {
+              var parts = String(latLonEntry.text || '')
+                .replace(/[;\s]+/g, ',').split(',')
+                .filter(function (part) {
+                  return part && ['N', 'S', 'E', 'W'].indexOf(part.toUpperCase()) < 0;
+                });
+              var lat = Number(parts[0]), lon = Number(parts[1]);
+              if (!isFinite(lat) || !isFinite(lon) ||
+                  Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+                S.toast('Could not read those coordinates. Enter "lat, lon" in ' +
+                  'decimal degrees, for example 8.4657, -13.2317.', 'error');
+                return;
+              }
+              var utm = C.geographicToUtm(lat, lon);
+              store.set('site.easting', S.round(utm.easting, 1));
+              store.set('site.northing', S.round(utm.northing, 1));
+              store.set('site.utm_zone', utm.zone);
+              S.toast('Converted to UTM zone ' + utm.zone + 'N.', 'ok');
+              render();
+            }, { variant: 'ghost' }),
+          ])),
         latlon ? el('p.muted', 'Interpreted position: ' + latlon.lat.toFixed(5) +
           '°N, ' + latlon.lon.toFixed(5) + '°E' +
           (latlon.fromUtm ? ' (converted from UTM zone ' + latlon.zone + ')' : '') +
-          (latlon.chiefdom ? ' — inside ' + latlon.chiefdom + ' chiefdom' : '')) : null,
+          (latlon.chiefdom ? ' — inside ' + latlon.chiefdom + ' chiefdom' +
+            (districtOf(latlon.chiefdom) ? ', ' + districtOf(latlon.chiefdom) +
+              ' district' : '') : '')) : null,
+        /* the commonest copy-over error on a field sheet is a district that
+         * does not contain the recorded position, so say so where it is seen */
+        latlon && latlon.chiefdom && site.district &&
+          districtOf(latlon.chiefdom) && districtOf(latlon.chiefdom) !== site.district
+          ? el('div.callout.callout-warn', el('p',
+            'The recorded district (' + site.district + ') does not contain ' +
+            'these coordinates, which fall in ' + districtOf(latlon.chiefdom) +
+            '. Check the sheet before the reports carry it.')) : null,
       ]),
 
       mapNode ? card('Where the site sits', [
@@ -804,6 +914,42 @@
           { filename: 'site_location' }),
         el('p.muted', C.POPULATION_CREDIT),
       ]) : null,
+
+      card('Geology and aquifers', [
+        el('p.muted', 'Report-ready context from freely licensed datasets: ' +
+          'geology from the USGS Geologic Map of Africa, and aquifer type and ' +
+          'productivity from the BGS Africa Groundwater Atlas. These are the ' +
+          'same layers the geophysical survey and handover reports carry.'),
+        latlon ? field('Local map window (km around the site)',
+          S.numberInput(mapRadius, function (value) {
+            store.set('site.mapRadiusKm', S.clamp(Number(value) || 40, 5, 400));
+            render();
+          }, { min: 5, max: 400, step: 5 })) : el('p.muted',
+          'Without site coordinates the national maps are drawn unmarked; ' +
+          'enter a position above for the local window.'),
+        el('div.grid.grid-2', [
+          charts.figure(charts.thematicMap({
+            features: (GWT.data.geo.hydrogeology || {}).features || [],
+            context: (GWT.data.geo.adminBoundaries || {}).features || [],
+            key: 'unit',
+            window: latlon ? { lat: latlon.lat, lon: latlon.lon, radiusKm: mapRadius } : null,
+            points: latlon ? [{ lon: latlon.lon, lat: latlon.lat, label: siteLabel() }] : [],
+            title: latlon ? 'Aquifer productivity around the site'
+              : 'Aquifer productivity, Sierra Leone',
+            width: 560, height: 520,
+          }), 'Aquifer type and productivity (BGS Africa Groundwater Atlas, CC BY-SA 4.0)',
+          { filename: 'aquifer_map' }),
+          charts.figure(charts.thematicMap({
+            features: (GWT.data.geo.geology || {}).features || [],
+            context: (GWT.data.geo.adminBoundaries || {}).features || [],
+            key: 'unit',
+            window: latlon ? { lat: latlon.lat, lon: latlon.lon, radiusKm: mapRadius } : null,
+            points: latlon ? [{ lon: latlon.lon, lat: latlon.lat, label: siteLabel() }] : [],
+            title: latlon ? 'Geology around the site' : 'Geology, Sierra Leone',
+            width: 560, height: 520,
+          }), 'Geology (USGS Geologic Map of Africa)', { filename: 'geology_map' }),
+        ]),
+      ]),
 
       nextStep('With the site recorded, upload the geophysical survey to choose ' +
         'the drilling point.', 'Geophysics', 'ves'),
@@ -820,12 +966,17 @@
     if (Math.abs(e) <= 180 && Math.abs(n) <= 90) {
       return { lon: e, lat: n, fromUtm: false, chiefdom: chiefdomAt(n, e) };
     }
-    var zone = site.utm_zone || (e > 500000 ? 28 : 29);
+    var zone = site.utm_zone || C.inferZoneForSierraLeone(e);
     var ll = utmToLatLon(e, n, zone);
     if (!ll) return null;
     ll.fromUtm = true; ll.zone = zone;
     ll.chiefdom = chiefdomAt(ll.lat, ll.lon);
     return ll;
+  }
+
+  function districtOf(chiefdom) {
+    if (!chiefdom) return '';
+    return (C.loadChiefdomDistrict() || {})[chiefdom] || '';
   }
 
   function chiefdomAt(lat, lon) {
@@ -841,32 +992,11 @@
   }
 
   /* WGS84 inverse transverse Mercator, northern hemisphere. */
+  /* One implementation of the projection, in the engine, so the map, the
+   * report and the coverage join can never place the same borehole in two
+   * places. */
   function utmToLatLon(easting, northing, zone) {
-    var a = 6378137.0, f = 1 / 298.257223563;
-    var e2 = f * (2 - f);
-    var e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
-    var x = easting - 500000.0, y = northing;
-    var k0 = 0.9996;
-    var m = y / k0;
-    var mu = m / (a * (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 * e2 * e2 / 256));
-    var phi1 = mu + (3 * e1 / 2 - 27 * Math.pow(e1, 3) / 32) * Math.sin(2 * mu) +
-      (21 * e1 * e1 / 16 - 55 * Math.pow(e1, 4) / 32) * Math.sin(4 * mu) +
-      (151 * Math.pow(e1, 3) / 96) * Math.sin(6 * mu);
-    var ep2 = e2 / (1 - e2);
-    var c1 = ep2 * Math.pow(Math.cos(phi1), 2);
-    var t1 = Math.pow(Math.tan(phi1), 2);
-    var n1 = a / Math.sqrt(1 - e2 * Math.pow(Math.sin(phi1), 2));
-    var r1 = a * (1 - e2) / Math.pow(1 - e2 * Math.pow(Math.sin(phi1), 2), 1.5);
-    var d = x / (n1 * k0);
-    var lat = phi1 - (n1 * Math.tan(phi1) / r1) *
-      (d * d / 2 - (5 + 3 * t1 + 10 * c1 - 4 * c1 * c1 - 9 * ep2) * Math.pow(d, 4) / 24 +
-       (61 + 90 * t1 + 298 * c1 + 45 * t1 * t1 - 252 * ep2 - 3 * c1 * c1) * Math.pow(d, 6) / 720);
-    var lon = (d - (1 + 2 * t1 + c1) * Math.pow(d, 3) / 6 +
-      (5 - 2 * c1 + 28 * t1 - 3 * c1 * c1 + 8 * ep2 + 24 * t1 * t1) * Math.pow(d, 5) / 120) /
-      Math.cos(phi1);
-    var lon0 = (zone - 1) * 6 - 180 + 3;
-    var out = { lat: lat * 180 / Math.PI, lon: lon0 + lon * 180 / Math.PI };
-    return isFinite(out.lat) && isFinite(out.lon) ? out : null;
+    return C.utmToGeographic(easting, northing, zone);
   }
 
   /* --- geophysics ----------------------------------------------------------- */
@@ -1009,6 +1139,61 @@
           })),
     ]));
 
+    var suitability = C.assessSiting(derived.interpretations, config().ves);
+    var best = suitability[0];
+    var located = suitability.filter(function (s) {
+      return s.easting && s.northing;
+    });
+    nodes.push(card('Drill-target suitability', [
+      el('p.muted', 'A transparent 0-100 score per point, combining the ' +
+        'interpreted aquifer thickness, how central the water-zone resistivity ' +
+        'sits in the productive window, the weathered profile and any fracture ' +
+        'at the basement contact. The weights are a defensible default, not a ' +
+        'calibrated model: as real drilling outcomes accumulate they can be ' +
+        'replaced by a fitted one.'),
+      el('div.callout.callout-ok', [
+        el('p', el('strong', 'Recommended drill target: ' + best.sounding_id +
+          ' (' + best.suitability.toFixed(0) + '/100, ' + best.grade + ')')),
+        el('p', best.rationale),
+      ]),
+      S.table([
+        { key: 'rank', label: 'Rank', align: 'right' },
+        { key: 'sounding_id', label: 'Point' },
+        { key: 'suitability', label: 'Suitability', align: 'right',
+          format: function (v) { return v.toFixed(0) + '/100'; } },
+        { key: 'grade', label: 'Grade' },
+        { key: 'rationale', label: 'Why' },
+      ], suitability, {
+        rowClass: function (row) { return row.rank === 1 ? 'row-ok' : ''; },
+      }),
+      located.length ? charts.figure(charts.siteMap({
+        context: (GWT.data.geo.chiefdomBoundaries || {}).features || [],
+        points: located.map(function (s) {
+          var ll = utmToLatLon(s.easting, s.northing,
+            store.get('site.utm_zone') || C.inferZoneForSierraLeone(s.easting));
+          if (!ll) return null;
+          return {
+            lon: ll.lon, lat: ll.lat, label: s.sounding_id,
+            size: 4 + s.suitability / 25,
+            colour: s.suitability >= 75 ? charts.palette().good
+              : (s.suitability >= 55 ? charts.palette().cat[2]
+                : (s.suitability >= 35 ? charts.palette().warning
+                  : charts.palette().critical)),
+          };
+        }).filter(Boolean),
+        title: 'Drill-target suitability',
+        legendItems: [
+          { label: 'Very good', colour: charts.palette().good },
+          { label: 'Good', colour: charts.palette().cat[2] },
+          { label: 'Moderate', colour: charts.palette().warning },
+          { label: 'Poor', colour: charts.palette().critical },
+        ],
+        width: 640, height: 520,
+      }), 'Candidate points scored for drilling', { filename: 'suitability_map' })
+        : el('p.muted', 'Add GPS coordinates to the VES points to draw the ' +
+          'drill-target map.'),
+    ]));
+
     nodes.push(reportCard('Geophysical survey report', 'geophysical',
       'Introduction, geology, field work, per-sounding interpretation, the ranked ' +
       'preference table, conclusions and the limitations of the method.'));
@@ -1125,6 +1310,571 @@
     return nodes;
   };
 
+  /* --- depth spine ---------------------------------------------------------- */
+
+  /* The sign-off layer, as a layer rather than a second application.
+   *
+   * Every stage produces one professional opinion. The toolkit recommends it,
+   * a named person accepts or overrides it, and an override carries a reason
+   * that travels into the report. The ledger lives in the project state, so it
+   * is saved with the project and survives a refresh - a signature that
+   * evaporated on reload would be worth nothing. */
+  var SPINE_STAGES = [
+    ['design', 'Design'], ['quality', 'Water quality'], ['costing', 'Costing & BoQ'],
+  ];
+
+  function spineLedger() { return store.get('spine.ledger') || {}; }
+
+  function spineSignatory() {
+    return store.get('spine.signatory') ||
+      store.get('site.supervisor') || 'unsigned';
+  }
+
+  function spineDecide(stage, record) {
+    var ledger = Object.assign({}, spineLedger());
+    if (record) ledger[stage] = record; else delete ledger[stage];
+    store.set('spine.ledger', ledger);
+    render();
+  }
+
+  function spineStamp() {
+    return new Date().toISOString().slice(0, 16).replace('T', ' ');
+  }
+
+  /* Accepting is one press. Overriding costs a value and a reason, because the
+   * override is the thing that ends up in front of the client with a name on
+   * it. */
+  function signOffCard(spec) {
+    var record = spineLedger()[spec.stage] || null;
+    if (record) {
+      return card('Signed off', [
+        el('div.callout' + (record.status === 'accepted' ? '.callout-ok' : '.callout-warn'), [
+          el('p', el('strong',
+            (record.status === 'accepted' ? 'Accepted' : 'Overridden') +
+            ' — ' + record.value)),
+          el('p.muted', record.signatory + ' · ' + record.at +
+            (record.clean ? '' : ' · signed over an open flag')),
+          record.status === 'overridden' ? el('p', [
+            el('span.muted', 'The toolkit recommended ' + record.recommended + '. '),
+            record.reason,
+          ]) : null,
+        ]),
+        button('Reopen decision', function () { spineDecide(spec.stage, null); },
+          { variant: 'ghost' }),
+      ]);
+    }
+    var overrideValue = { value: spec.overrideStart, reason: '' };
+    var open = store.get('spine.overriding') === spec.stage;
+    return card('Sign off', [
+      el('p.muted', spec.writesTo +
+        (spec.clean ? '.' : ' · one check is still flagged.')),
+      field('Signatory', S.textInput(spineSignatory(), function (value) {
+        store.set('spine.signatory', value);
+      }), 'Named on the decision, and in the report.'),
+      open ? el('div.section', [
+        spec.overrideChoices
+          ? field(spec.overrideLabel, S.selectInput(spec.overrideStart,
+            spec.overrideChoices, function (value) { overrideValue.value = value; }))
+          : field(spec.overrideLabel + ' (' + spec.overrideUnit + ')',
+            S.numberInput(spec.overrideStart, function (value) {
+              overrideValue.value = value;
+            }, { step: spec.overrideStep || 0.01 })),
+        field('Reason — required, and it goes in the report',
+          S.textInput('', function (value) { overrideValue.reason = value; })),
+        el('div.btn-row', [
+          button('Record override', function () {
+            if (!String(overrideValue.reason).trim()) {
+              S.toast('An override needs a reason.', 'warn');
+              return;
+            }
+            store.set('spine.overriding', null);
+            spineDecide(spec.stage, {
+              stage: spec.stage, status: 'overridden',
+              value: spec.formatOverride
+                ? spec.formatOverride(overrideValue.value) : String(overrideValue.value),
+              recommended: spec.recommended,
+              reason: String(overrideValue.reason).trim(),
+              signatory: spineSignatory(), at: spineStamp(), clean: spec.clean,
+            });
+          }),
+          button('Cancel', function () {
+            store.set('spine.overriding', null); render();
+          }, { variant: 'ghost' }),
+        ]),
+      ]) : null,
+      el('div.btn-row', [
+        button('Accept ' + (spec.acceptLabel || spec.recommended), function () {
+          spineDecide(spec.stage, {
+            stage: spec.stage, status: 'accepted', value: spec.recommended,
+            recommended: spec.recommended, signatory: spineSignatory(),
+            at: spineStamp(), clean: spec.clean,
+          });
+        }),
+        open ? null : button('Override…', function () {
+          store.set('spine.overriding', spec.stage); render();
+        }, { variant: 'ghost' }),
+      ]),
+    ]);
+  }
+
+  function flagList(flags, empty) {
+    if (!flags || !flags.length) {
+      return el('div.callout.callout-ok', el('p', empty));
+    }
+    return S.checkList(flags.map(function (f) {
+      return {
+        level: f.level, message: f.message,
+        detail: f.code + (f.context ? ' · ' + f.context : ''),
+      };
+    }));
+  }
+
+  /* Moving a screen re-runs the design and everything downstream of it, and
+   * invalidates the design and costing signatures: a signature has to belong
+   * to the numbers that were in front of the person at the time. */
+  function commitSpineScreens(screens) {
+    store.set('design.screens', screens && screens.length
+      ? screens.map(function (s) { return [s.top, s.base]; }) : null);
+    var ledger = Object.assign({}, spineLedger());
+    delete ledger.design; delete ledger.costing;
+    store.set('spine.ledger', ledger);
+    rebuildDesign(); rebuildCosting();
+    render();
+  }
+
+  /* Direct manipulation of the screened intervals. Dragging moves the drawing
+   * locally, because a pointer has to feel attached to what it is dragging;
+   * releasing hands the intervals back to the engine, which re-runs
+   * designBorehole and everything downstream. No hydrogeological rule is
+   * applied here - the clamping is only enough to keep the drawing sane while
+   * the pointer is down; the real validation is the designer's. */
+  function attachScreenDrag(svg, view, redraw) {
+    var limits = view.section.screenLimits;
+    var base = (view.design.screens || []).map(function (s) {
+      return { top: s.top, base: s.base };
+    });
+
+    function round(n) { return Math.round(n * 10) / 10; }
+    function clamp(list) {
+      return list.map(function (s) {
+        var top = Math.max(limits.top, Math.min(s.top, limits.base - limits.minLength));
+        var bottom = Math.max(top + limits.minLength, Math.min(s.base, limits.base));
+        return { top: round(top), base: round(bottom) };
+      });
+    }
+    function moved(origin, index, edge, dm) {
+      return clamp(origin.map(function (s, i) {
+        if (i !== index) return { top: s.top, base: s.base };
+        if (edge === 'top') return { top: round(s.top + dm), base: s.base };
+        if (edge === 'base') return { top: s.top, base: round(s.base + dm) };
+        return { top: round(s.top + dm), base: round(s.base + dm) };
+      }));
+    }
+
+    svg.addEventListener('pointerdown', function (event) {
+      var target = event.target;
+      var index = target.getAttribute && target.getAttribute('data-screen');
+      if (index === null || index === undefined) return;
+      event.preventDefault();
+      var edge = target.getAttribute('data-edge');
+      var startY = event.clientY;
+      var origin = base.map(function (s) { return { top: s.top, base: s.base }; });
+      var latest = origin;
+      var scale = svg.spineScale;
+      /* the SVG is scaled to its box, so client pixels become user units
+       * through the rendered height before they become metres */
+      var factor = svg.viewBox.baseVal.height / svg.getBoundingClientRect().height;
+
+      function move(e) {
+        var dm = round(scale.depthAt((e.clientY - startY) * factor));
+        latest = moved(origin, Number(index), edge, dm);
+        redraw(latest);
+      }
+      function end() {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', end);
+        window.removeEventListener('pointercancel', end);
+        commitSpineScreens(latest);
+      }
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', end);
+      window.addEventListener('pointercancel', end);
+    });
+
+    svg.addEventListener('keydown', function (event) {
+      var target = event.target;
+      var index = target.getAttribute && target.getAttribute('data-screen');
+      if (index === null || index === undefined) return;
+      var edge = target.getAttribute('data-edge');
+      if (edge === 'body') return;
+      var step = event.shiftKey ? 1 : 0.1;
+      var dm = event.key === 'ArrowUp' ? -step : (event.key === 'ArrowDown' ? step : 0);
+      if (!dm) return;
+      event.preventDefault();
+      commitSpineScreens(moved(base, Number(index), edge, dm));
+    });
+  }
+
+  PAGES.spine = function () {
+    var head = pageHead('Depth Spine', 'The whole borehole on one depth axis: ' +
+      'the cuttings log, the casing string and the water levels registered ' +
+      'against the same ruler, with the screened intervals editable. ' +
+      'Everything shown is computed here, by the same functions that write ' +
+      'the reports.');
+
+    if (!derived.log) {
+      return [head, S.empty('Load a drilling log first — the spine is drawn ' +
+        'from the logged hole.',
+      el('div.btn-row', [
+        button('Borehole design', function () { goto('design'); }),
+        button('Overview', function () { goto('overview'); }, { variant: 'ghost' }),
+      ]))];
+    }
+
+    var view;
+    try {
+      view = C.buildSpineView({
+        name: store.get('site.community') || 'Borehole',
+        log: derived.log, analysis: derived.analysis,
+        assessment: derived.assessment, config: config(),
+        mobilisationDistanceKm: store.get('costing.mobilisation_km') || 0,
+      }, store.get('design.screens'));
+    } catch (e) {
+      return [head, el('div.callout.callout-bad', [
+        el('p', el('strong', 'The spine could not be built.')),
+        el('p', e.message),
+      ])];
+    }
+
+    var stage = store.get('spine.stage', 'design');
+    var stages = SPINE_STAGES.filter(function (s) {
+      return s[0] !== 'quality' || view.quality;
+    });
+    if (!stages.some(function (s) { return s[0] === stage; })) stage = 'design';
+    var ledger = spineLedger();
+    var signed = stages.filter(function (s) { return ledger[s[0]]; }).length;
+
+    var nodes = [head, card('Stage', [
+      el('div.chips', stages.map(function (s) {
+        var record = ledger[s[0]];
+        return el('button.chip' + (stage === s[0] ? '.active' : ''), {
+          type: 'button',
+          onclick: function () { store.set('spine.stage', s[0]); render(); },
+        }, [s[1], record ? ' ' : null,
+          record ? S.badge(record.status === 'accepted' ? '✓' : '↺',
+            record.status === 'accepted' ? 'ok' : 'warn') : null]);
+      })),
+      el('p.muted', signed + ' of ' + stages.length + ' stages signed. ' +
+        (view.edited ? 'The design on this section is the analyst\'s, not the ' +
+          'automatic placement.' : 'Screens are the automatic placement.')),
+    ])];
+
+    if (stage === 'design') nodes = nodes.concat(spineDesignStage(view));
+    else if (stage === 'quality') nodes = nodes.concat(spineQualityStage(view));
+    else nodes = nodes.concat(spineCostingStage(view));
+
+    nodes.push(nextStep('Price the design on the section.', 'Costing & BoQ', 'costing'));
+    return nodes;
+  };
+
+  function spineDesignStage(view) {
+    var section = view.section, design = view.design, y = design.yield;
+    var errors = design.flags.filter(function (f) { return f.level === 'error'; });
+    var clean = !errors.length &&
+      design.flags.every(function (f) { return f.level === 'info'; });
+
+    /* one holder redrawn in place, so a drag does not re-render the page */
+    var holder = el('div');
+    function draw(screens) {
+      S.clear(holder);
+      var svg = charts.depthSpine(view, { screens: screens, width: 720, height: 640 });
+      attachScreenDrag(svg, view, draw);
+      holder.appendChild(svg);
+    }
+    draw(null);
+
+    return [
+      card('The hole', [
+        S.statRow([
+          S.stat('Drilled', section.totalDepth.toFixed(1) + ' m'),
+          S.stat('Water strikes', section.waterStrikes.length
+            ? section.waterStrikes.map(function (s) { return s.toFixed(0); }).join(', ') + ' m'
+            : 'none'),
+          S.stat('Screened', design.totalScreenM + ' m',
+            design.screenShare + '% of the hole'),
+          S.stat('Casing', section.casingDiameterIn + '″ ' + section.casingMaterial,
+            'slot ' + section.slotMm + ' mm'),
+        ]),
+        holder,
+        el('p.muted', 'Drag a screen or one of its handles, or focus a handle ' +
+          'and use the arrow keys — 0.1 m a press, 1 m with Shift. On release ' +
+          'the toolkit re-runs the design: the casing string, the annulus, the ' +
+          'checks and the bill of quantities all come back from the engine, so ' +
+          'nothing here is a second opinion. The Borehole design page and the ' +
+          'completion report follow the same screens.'),
+        view.edited ? button('Back to the generated design', function () {
+          commitSpineScreens(null);
+        }, { variant: 'ghost' }) : null,
+      ]),
+
+      card('Recommended safe yield', y.pending ? [
+        el('div.callout.callout-warn', [
+          el('p', el('strong', 'Pending')),
+          el('p', y.pending),
+        ]),
+      ] : [
+        S.statRow([
+          S.stat('Safe yield', y.rangeText || (y.safeYieldM3PerH + ' m³/h'),
+            'projected to ' + y.designPeriodDays + ' days, safety factor ' +
+            y.safetyFactor),
+          S.stat('Transmissivity', y.transmissivity + ' m²/day', 'preferred method'),
+          S.stat('Pump setting', y.pumpDepthM + ' m', 'below ground level'),
+          S.stat('Specific capacity', y.specificCapacity + ' m³/h per m'),
+        ]),
+        y.methods && y.methods.length ? S.table([
+          { key: 'label', label: 'Method' },
+          { key: 'transmissivity', label: 'T (m²/day)', align: 'right' },
+        ], y.methods.concat([
+          { label: 'Preferred', transmissivity: y.transmissivity },
+        ])) : null,
+        el('p.muted', y.basis + (y.envelopeBasis ? ' ' + y.envelopeBasis : '')),
+      ]),
+
+      card('Design basis', [
+        design.basis.length
+          ? el('ul', design.basis.map(function (b) { return el('li', b); }))
+          : el('p.muted', 'No basis recorded.'),
+      ]),
+
+      card('Flags on this design', [
+        flagList(design.flags, 'No flags raised on the design or the test.'),
+      ]),
+
+      signOffCard({
+        stage: 'design', clean: clean,
+        recommended: y.pending ? 'a pending yield' : (y.rangeText || 'the design'),
+        acceptLabel: 'the design',
+        writesTo: 'Accepting writes to the completion and pumping-test reports',
+        overrideLabel: 'Certified safe yield', overrideUnit: 'm³/h',
+        overrideStart: y.safeYieldM3PerH || 0, overrideStep: 0.01,
+        formatOverride: function (n) { return n + ' m³/h'; },
+      }),
+    ];
+  }
+
+  function spineQualityStage(view) {
+    var q = view.quality;
+    var judged = q.rows.filter(function (r) { return r.status !== 'no_guideline'; });
+    var within = judged.filter(function (r) {
+      return String(r.status).slice(0, 7) !== 'exceeds';
+    });
+    var headline = q.healthExceedances.length ? 'Not suitable for drinking'
+      : (q.nationalExceedances.length ? 'Fails the national standard'
+        : (q.aestheticExceedances.length ? 'Potable — acceptability exceeded'
+          : 'Complies'));
+    var clean = headline === 'Complies';
+    var cor = q.corrosivity;
+    var spine = charts.guidelineSpine(q.rows);
+
+    return [
+      card('The sample', [
+        S.statRow([
+          S.stat('Sampled', q.sampleDate || '—', q.laboratory || ''),
+          S.stat('Within limits', within.length + ' / ' + judged.length),
+          S.stat('Health exceedances',
+            q.healthExceedances.length ? String(q.healthExceedances.length) : 'none'),
+          q.ionic ? S.stat('Ionic balance', q.ionic.errorPercent + ' %',
+            'against a ±5 % acceptance limit') : null,
+          cor ? S.stat('Corrosivity', cor.classification) : null,
+        ].filter(Boolean)),
+        spine ? charts.figure(spine,
+          'Every determinand as a multiple of its own binding limit',
+          { filename: 'guideline_spine' }) : null,
+        el('p.muted', 'Limits come from the toolkit\'s standards table — the ' +
+          'WHO health-based guideline value, the WHO acceptability value and ' +
+          'the national standard, whichever binds.'),
+      ]),
+
+      q.ionic ? card('Ionic balance', [
+        S.statRow([
+          S.stat('Σ cations', q.ionic.cationsMeq + ' meq/L'),
+          S.stat('Σ anions', q.ionic.anionsMeq + ' meq/L'),
+          S.stat('Error', (q.ionic.errorPercent > 0 ? '+' : '') +
+            q.ionic.errorPercent + ' %'),
+        ]),
+        el('p.muted', Math.abs(q.ionic.errorPercent) <= 5
+          ? 'The analysis is internally consistent, so the rest of this page ' +
+            'can be relied on.'
+          : 'The analysis does not balance; treat every figure here with caution.'),
+        q.ionic.usedAlkalinity
+          ? el('p.muted', 'Bicarbonate was inferred from alkalinity.') : null,
+      ]) : null,
+
+      cor ? card('Corrosivity indices', [
+        S.table([
+          { key: '0', label: 'Index' }, { key: '1', label: 'Value' },
+        ], [
+          ['Langelier (LSI)', cor.lsi], ['Ryznar (RSI)', cor.rsi],
+          ['Aggressive index', cor.aggressiveIndex],
+          ['Larson-Skold', cor.larsonSkold],
+          ['Classification', cor.classification],
+        ]),
+        el('div.callout' + (cor.isAggressive ? '.callout-warn' : '.callout-ok'), [
+          el('p', el('strong', 'Handpump materials')),
+          el('p', cor.materialsNote || cor.verdict),
+        ]),
+        cor.assumptions.length
+          ? el('p.muted', cor.assumptions.join(' ')) : null,
+      ]) : null,
+
+      q.piper ? card('Hydrochemical facies', [
+        el('div.grid.grid-2', [
+          charts.figure(charts.piper([derived.sample]), 'Piper diagram',
+            { filename: 'piper' }),
+          charts.figure(charts.stiff(derived.sample), 'Stiff diagram',
+            { filename: 'stiff' }),
+        ]),
+      ]) : null,
+
+      card('Exceedances', [
+        S.table([
+          { key: '0', label: 'Against' },
+          { key: '1', label: 'Parameters' },
+        ], [
+          ['Health-based', q.healthExceedances.join(', ') || 'none'],
+          ['National standard', q.nationalExceedances.join(', ') || 'none'],
+          ['Acceptability', q.aestheticExceedances.join(', ') || 'none'],
+        ]),
+        el('p', q.verdict),
+        q.wqi ? el('p.muted', 'Water quality index ' + q.wqi.value +
+          ' — ' + q.wqi.rating + '.') : null,
+      ]),
+
+      card('Flags on this analysis', [
+        flagList(q.flags, 'No flags raised on the sample.'),
+      ]),
+
+      signOffCard({
+        stage: 'quality', clean: clean, recommended: headline,
+        acceptLabel: 'the verdict',
+        writesTo: 'Accepting writes to the water-quality and handover reports',
+        overrideLabel: 'Certified verdict', overrideUnit: '',
+        overrideStart: headline,
+        overrideChoices: ['Complies', 'Potable — acceptability exceeded',
+          'Potable after treatment', 'Fails the national standard',
+          'Not suitable for drinking'],
+      }),
+    ].filter(Boolean);
+  }
+
+  function spineCostingStage(view) {
+    var c = view.costing;
+    var stages = [];
+    c.items.forEach(function (i) {
+      if (stages.indexOf(i.stage) < 0) stages.push(i.stage);
+    });
+
+    /* the lines the design drives, so the analyst can see what moved with it */
+    var designDriven = /casing|screen|gravel|grout|seal|drill/i;
+    var boqRows = [];
+    stages.forEach(function (stageName) {
+      var lines = c.items.filter(function (i) { return i.stage === stageName; });
+      var subtotal = lines.reduce(function (a, l) { return a + l.amount; }, 0);
+      boqRows.push({ item: stageName, subtotal: true, amount: subtotal });
+      lines.forEach(function (line) {
+        boqRows.push({
+          item: line.item, unit: line.unit, quantity: line.quantity,
+          unitCost: line.unitCost, amount: line.amount,
+          derived: designDriven.test(line.item), note: line.note,
+        });
+      });
+    });
+
+    return [
+      card('What it costs', [
+        S.statRow([
+          S.stat('Direct cost', S.money(c.directCost, 0)),
+          S.stat('Cost to build', S.money(c.totalCost, 0),
+            'direct + ' + c.overheadsPercent + '% overheads'),
+          S.stat('Price to client', S.money(c.price, 0),
+            'cost + ' + c.marginPercent + '% margin'),
+          S.stat('Per metre', S.money(c.costPerMetre, 0), 'cost basis'),
+        ]),
+        el('p.muted', 'RWSN Cost-Effective Boreholes: quantities come from the ' +
+          'design on the section, and the contractor\'s cost is kept apart ' +
+          'from the client\'s price.' +
+          (c.contingencyPercent > 0 ? ' A ' + c.contingencyPercent +
+            '% client-side contingency is shown separately on the Costing ' +
+            'page, so the contract price stays honest.' : '')),
+      ]),
+
+      card('Bill of quantities', [
+        S.table([
+          { key: 'item', label: 'Item' },
+          { key: 'unit', label: 'Unit' },
+          { key: 'quantity', label: 'Quantity', align: 'right' },
+          { key: 'unitCost', label: 'Unit cost (US$)', align: 'right',
+            format: function (v) { return v === undefined ? '' : S.money(v, 2); } },
+          { key: 'amount', label: 'Amount (US$)', align: 'right',
+            format: function (v) { return S.money(v, 0); } },
+        ], boqRows, {
+          rowClass: function (row) { return row.subtotal ? 'row-warn' : ''; },
+        }),
+        el('p.muted', 'Quantities on the casing, screen, gravel pack, grout and ' +
+          'drilling lines move with the screens on the section: both come from ' +
+          'the same design object.'),
+        c.assumptions.length ? el('div.section', [
+          el('h4.section-title', 'Assumptions filled in where the design is silent'),
+          el('ul', c.assumptions.map(function (a) { return el('li', a); })),
+        ]) : null,
+      ]),
+
+      card('Where the money goes', [
+        el('div.grid.grid-2', [
+          S.section('By stage', S.table([
+            { key: 'label', label: 'Stage' },
+            { key: 'amount', label: 'US$', align: 'right',
+              format: function (v) { return S.money(v, 0); } },
+            { key: 'share', label: 'Share', align: 'right',
+              format: function (v) { return v + '%'; } },
+          ], c.byStage)),
+          S.section('By resource category', S.table([
+            { key: 'label', label: 'Category' },
+            { key: 'amount', label: 'US$', align: 'right',
+              format: function (v) { return S.money(v, 0); } },
+            { key: 'share', label: 'Share', align: 'right',
+              format: function (v) { return v + '%'; } },
+          ], c.byCategory)),
+        ]),
+        S.section('Quantities from the design', S.table([
+          { key: '0', label: 'Quantity' }, { key: '1', label: 'Value' },
+        ], [
+          ['Total depth', c.quantityBasis.totalDepthM + ' m'],
+          ['Plain casing', c.quantityBasis.casingM + ' m'],
+          ['Screen', c.quantityBasis.screenM + ' m'],
+          ['Gravel pack interval', c.quantityBasis.gravelIntervalM + ' m'],
+          ['Overburden', (c.quantityBasis.overburdenM === null
+            ? '—' : c.quantityBasis.overburdenM + ' m')],
+        ])),
+      ]),
+
+      card('Flags on this estimate', [
+        flagList(c.flags, 'No flags raised on the estimate.'),
+      ]),
+
+      signOffCard({
+        stage: 'costing',
+        clean: c.flags.every(function (f) { return f.level === 'info'; }),
+        recommended: S.money(c.price, 0),
+        acceptLabel: 'the price',
+        writesTo: 'Accepting writes to the cost estimate and the bill of quantities',
+        overrideLabel: 'Price to client', overrideUnit: 'US$',
+        overrideStart: Math.round(c.price), overrideStep: 50,
+        formatOverride: function (n) { return S.money(n, 0); },
+      }),
+    ];
+  }
+
   /* --- pumping test --------------------------------------------------------- */
 
   PAGES.pumping = function () {
@@ -1133,8 +1883,10 @@
         'readings, a step drawdown analysis where the test has steps, and a safe ' +
         'yield reported as a range over the assumptions it rests on.'),
       card('Test data', [
-        uploadZone('pumping', 'Pumping test sheet (.xlsx)',
-          'Step or constant discharge, with the recovery block'),
+        uploadZone('pumping', 'Pumping test sheet (.xlsx or .docx)',
+          'The standard workbook, or a Word field sheet: step or constant ' +
+          'discharge, with the recovery block',
+          '.xlsx,.xls,.docx'),
       ]),
     ];
 
@@ -1890,39 +2642,262 @@
     ];
   };
 
+  /* --- scanned sheets ------------------------------------------------------- */
+
+  var SCAN_MIME = {
+    pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg',
+    jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif',
+  };
+
+  async function buildReviewWorkbook(document) {
+    var bytes = await S.writeXlsx(C.reviewWorkbookSheets(document));
+    var stem = String(document.source).replace(/\.[^.]+$/, '') || 'scan';
+    S.download(stem + '_review.xlsx', new Blob([bytes]));
+  }
+
+  async function buildFilledVesTemplate(document) {
+    var blank = TEMPLATE_SPECS.ves.sheets()[0];
+    var rows = C.fillVesTemplateSheets(document, blank.rows);
+    var bytes = await S.writeXlsx([{ name: 'VES 1', rows: rows }]);
+    var stem = String(document.source).replace(/\.[^.]+$/, '') || 'scan';
+    S.download(stem + '_ves_template.xlsx', new Blob([bytes]));
+  }
+
+  PAGES.extract = function () {
+    var doc = derived.extraction;
+    var apiKey = store.get('extraction.apiKey') || '';
+    var nodes = [
+      pageHead('Scanned sheets', 'A sheet that arrived as a PDF or a photograph, ' +
+        'turned into the same records an uploaded template produces. A PDF with ' +
+        'a text layer is read here in the page; a photograph has no text to ' +
+        'read and goes to Claude. Uncertain values are highlighted in the ' +
+        'review workbook, never silently accepted.'),
+      card('Read a sheet', [
+        el('p.muted', 'PDF, PNG, JPEG or WebP. Nothing is uploaded for the ' +
+          'text-layer path — the whole PDF reader runs in this page.'),
+        el('div.btn-row', [
+          button('Read a text PDF', async function (event) {
+            var file = await S.pickFile('.pdf,application/pdf');
+            if (!file) return;
+            var host = event.target.closest('.card');
+            try {
+              await S.withBusy(host, 'Reading the PDF…', async function () {
+                var bytes = new Uint8Array(await S.readFile(file, 'arrayBuffer'));
+                derived.extraction = await C.extractPdfText(bytes, file.name);
+              });
+              S.toast('Read a ' + derived.extraction.document_kind + ' sheet.', 'ok');
+            } catch (e) {
+              S.toast(e.message, 'error');
+            }
+            render();
+          }),
+          button('AI assisted extraction', async function (event) {
+            if (!apiKey) {
+              S.toast('Set an Anthropic API key on the Settings page first.', 'warn');
+              goto('settings');
+              return;
+            }
+            var file = await S.pickFile('.pdf,.png,.jpg,.jpeg,.webp');
+            if (!file) return;
+            var host = event.target.closest('.card');
+            try {
+              await S.withBusy(host, 'Transcribing the sheet with Claude…',
+                async function () {
+                  var bytes = new Uint8Array(await S.readFile(file, 'arrayBuffer'));
+                  var extension = (file.name.split('.').pop() || '').toLowerCase();
+                  derived.extraction = await C.extractWithClaude({
+                    apiKey: apiKey,
+                    model: store.get('extraction.model') || undefined,
+                    base64: S.bytesToBase64(bytes),
+                    mediaType: file.type || SCAN_MIME[extension] || 'application/pdf',
+                    source: file.name,
+                  });
+                });
+              S.toast('Transcribed a ' + derived.extraction.document_kind + ' sheet.', 'ok');
+            } catch (e) {
+              S.toast(e.message, 'error');
+            }
+            render();
+          }, { variant: 'ghost' }),
+          doc ? button('Clear', function () {
+            derived.extraction = null; render();
+          }, { variant: 'ghost' }) : null,
+        ]),
+        !apiKey ? el('p.muted', 'The AI path needs an Anthropic API key, set on ' +
+          'the Settings page. It is the only feature here that sends anything ' +
+          'anywhere, and it sends the sheet to Anthropic.') : null,
+      ]),
+    ];
+
+    if (!doc) {
+      nodes.push(S.empty('Nothing read yet. A field sheet printed from the ' +
+        'templates carries a text layer and reads straight through; a photo of ' +
+        'a handwritten sheet needs the AI path.'));
+      return nodes;
+    }
+
+    var items = C.reviewItems(doc);
+    nodes.push(card('What was read', [
+      S.statRow([
+        S.stat('Sheet type', doc.document_kind.replace(/_/g, ' ')),
+        S.stat('Header fields', String(doc.header.length)),
+        S.stat('Tables', String(doc.tables.length)),
+        S.stat('To review', String(items.length),
+          items.length ? 'checked by hand before use' : 'nothing flagged'),
+      ]),
+      el('p.muted', doc.notes + ' Extractor: ' + doc.extractor + '.'),
+      el('div.btn-row', [
+        button('Download review workbook (.xlsx)', function () {
+          buildReviewWorkbook(doc);
+        }),
+        doc.document_kind === 'ves' && doc.tables.length
+          ? button('Download filled VES template (.xlsx)', function () {
+            try {
+              buildFilledVesTemplate(doc);
+            } catch (e) { S.toast(e.message, 'error'); }
+          }, { variant: 'ghost' }) : null,
+      ]),
+    ]));
+
+    if (doc.header.length) {
+      nodes.push(card('Header fields', [
+        S.table([
+          { key: 'name', label: 'Field' },
+          { key: 'value', label: 'Value' },
+          { key: 'confidence', label: 'Confidence', align: 'right',
+            format: function (v) { return v.toFixed(2); } },
+        ], doc.header, {
+          rowClass: function (row) { return row.needs_review ? 'row-warn' : ''; },
+        }),
+      ]));
+    }
+
+    doc.tables.forEach(function (table, index) {
+      nodes.push(card(table.title, [
+        S.table(table.columns.map(function (column, i) {
+          return { key: String(i), label: column || ('Column ' + (i + 1)) };
+        }), table.rows, {
+          rowClass: function (row, i) {
+            return C.confidenceForRow(table, i) < C.REVIEW_THRESHOLD ? 'row-warn' : '';
+          },
+        }),
+        el('p.muted', table.rows.length + ' ' + S.plural(table.rows.length, 'row') +
+          ' read from table ' + (index + 1) + '.'),
+      ]));
+    });
+
+    nodes.push(card('Needs a human', [
+      items.length
+        ? el('ul', items.map(function (item) { return el('li', item); }))
+        : el('div.callout.callout-ok', el('p',
+          'Nothing flagged: every value was read with high confidence. Spot ' +
+          'check it anyway before it becomes a report.')),
+      el('p.muted', 'Correct the flagged values in the review workbook, then ' +
+        'upload the corrected sheet on the page that needs it. Extraction ' +
+        'never writes into the project on its own.'),
+    ]));
+    nodes.push(nextStep('Blank templates for the field team are on the ' +
+      'Templates page.', 'Templates', 'templates'));
+    return nodes;
+  };
+
   /* --- water points --------------------------------------------------------- */
+
+  /* The lookup is the only thing in the application that leaves the machine,
+   * so it is always a button the operator presses, never something the page
+   * does on its own. Failure is expected in the field and is not an error
+   * state: the CSV path below does the whole job offline. */
+  async function fetchWaterPoints(node, spec) {
+    try {
+      await S.withBusy(node.closest('.card') || $('#page-host'),
+        'Querying the Water Point Data Exchange…', async function () {
+          var points = await C.waterPointsNear(
+            spec.lat, spec.lon, spec.radiusM, { limit: spec.limit });
+          derived.waterPoints = points;
+          derived.waterPointsSource = spec.label;
+          derived.waterPointsCapped = spec.limit && points.length >= spec.limit;
+          S.toast(points.length
+            ? S.thousands(points.length) + ' water points read from WPdx+.'
+            : 'WPdx+ has no mapped water point in that area.',
+          points.length ? 'ok' : 'warn');
+        });
+    } catch (e) {
+      S.toast(e.message + ' The CSV upload works offline.', 'error');
+    }
+    render();
+  }
+
+  function waterPointSourceNote() {
+    var points = derived.waterPoints || [];
+    if (!points.length) return null;
+    return el('p.muted', [
+      S.thousands(points.length) + ' water points loaded' +
+      (derived.waterPointsSource ? ' (' + derived.waterPointsSource + ')' : '') +
+      '. ' + C.WPDX_CREDIT,
+    ]);
+  }
 
   PAGES.waterpoints = function () {
     var latlon = siteLatLon();
     var points = derived.waterPoints || [];
+    var radius = store.get('waterpoints.radius', C.DEFAULT_SEARCH_RADIUS_M);
     var nodes = [
       pageHead('Water points', 'Before drilling a new borehole, check what is ' +
         'already there. A broken improved source nearby is usually cheaper to ' +
         'rehabilitate; a working one inside the service radius may already serve ' +
         'the community.'),
       card('Water point inventory', [
-        el('p.muted', 'Upload a Water Point Data Exchange (WPdx+) export for the ' +
-          'district as CSV. The app never contacts a remote service on its own, ' +
-          'so the data you analyse is the data you brought.'),
+        el('p.muted', 'Look the area up live in the Water Point Data Exchange ' +
+          '(WPdx+), or upload an export as CSV. The lookup is the only request ' +
+          'this application ever makes; everything else runs offline, and a ' +
+          'CSV brought in the field needs no connection at all.'),
+        field('Search radius around the site (m)',
+          S.numberInput(radius, function (value) {
+            store.set('waterpoints.radius',
+              S.clamp(Number(value) || C.DEFAULT_SEARCH_RADIUS_M, 100, 25000));
+            render();
+          }, { min: 100, max: 25000, step: 250 }),
+          'Existing working sources inside ' + Math.round(C.SERVICE_RADIUS_M) +
+          ' m are treated as already serving the site.'),
         el('div.btn-row', [
+          button('Look up water points', function (event) {
+            if (!latlon) {
+              S.toast('Enter the site GPS position on the Site page first.', 'warn');
+              return;
+            }
+            fetchWaterPoints(event.target, {
+              lat: latlon.lat, lon: latlon.lon, radiusM: radius, limit: 5000,
+              label: 'live WPdx+, ' + Math.round(radius) + ' m around the site',
+            });
+          }, { disabled: !latlon,
+            title: latlon ? 'Query WPdx+ for this site'
+              : 'Needs the site GPS position' }),
           button('Upload WPdx CSV', async function () {
             var file = await S.pickFile('.csv,text/csv');
             if (!file) return;
             try {
               var text = await S.readFile(file, 'text');
               derived.waterPoints = C.parseWpdxRecords(S.parseCsv(text));
+              derived.waterPointsSource = file.name;
+              derived.waterPointsCapped = false;
               S.toast(derived.waterPoints.length + ' water points read.', 'ok');
               render();
             } catch (e) {
               S.toast('Could not read that CSV: ' + e.message, 'error');
             }
-          }),
+          }, { variant: 'ghost' }),
           points.length ? button('Clear', function () {
-            derived.waterPoints = null; render();
+            derived.waterPoints = null; derived.waterPointsSource = null;
+            derived.waterPointsCapped = false; render();
           }, { variant: 'ghost' }) : null,
         ]),
-        points.length ? el('p.muted', points.length + ' water points loaded. ' +
-          C.WPDX_CREDIT) : null,
+        !latlon ? el('p.muted', 'The live lookup needs the site GPS position; ' +
+          'set it on the Site page. A CSV export can be analysed without one.') : null,
+        derived.waterPointsCapped ? el('div.callout.callout-warn', el('p',
+          'The lookup hit its row cap, so this is a partial slice of the area. ' +
+          'Narrow the radius, or use a filtered CSV export for a complete, ' +
+          'reproducible analysis.')) : null,
+        waterPointSourceNote(),
       ]),
     ];
 
@@ -1941,27 +2916,30 @@
     ]));
 
     if (latlon) {
-      var decision = C.rehabVsDrill(points, latlon.lat, latlon.lon);
+      var decision = C.rehabVsDrill(points, latlon.lat, latlon.lon,
+        { searchRadiusM: radius });
       var tone = decision.recommendation === C.DRILL_NEW ? '.callout-ok'
         : (decision.recommendation === C.ASSESS_REHAB ? '.callout-warn' : '.callout');
+      var pointColumns = [
+        { key: 'distance_m', label: 'Distance (m)', align: 'right',
+          format: function (v) { return Math.round(v); } },
+        { key: 'source', label: 'Source' },
+        { key: 'technology', label: 'Technology' },
+        { key: 'status_text', label: 'Status' },
+        { key: 'functional', label: 'Functional',
+          format: function (v) {
+            return S.badge(v === true ? 'yes' : (v === false ? 'no' : 'unknown'),
+              v === true ? 'ok' : (v === false ? 'bad' : null));
+          } },
+        { key: 'improved', label: 'Improved',
+          format: function (v) { return v ? 'yes' : 'no'; } },
+        { key: 'installed', label: 'Installed', align: 'right' },
+      ];
       nodes.push(card('Rehabilitate or drill?', [
         el('div.callout' + tone, [
           el('p', el('strong', decision.headline)),
           el('p', decision.rationale),
         ]),
-        decision.nearby.length ? S.table([
-          { key: 'distance_m', label: 'Distance (m)', align: 'right',
-            format: function (v) { return Math.round(v); } },
-          { key: 'source', label: 'Source' },
-          { key: 'status_text', label: 'Status' },
-          { key: 'functional', label: 'Functional',
-            format: function (v) {
-              return S.badge(v === true ? 'yes' : (v === false ? 'no' : 'unknown'),
-                v === true ? 'ok' : (v === false ? 'bad' : null));
-            } },
-          { key: 'improved', label: 'Improved',
-            format: function (v) { return v ? 'yes' : 'no'; } },
-        ], decision.nearby.slice(0, 30)) : null,
         charts.figure(charts.siteMap({
           context: (GWT.data.geo.chiefdomBoundaries || {}).features || [],
           points: decision.nearby.slice(0, 200).map(function (p) {
@@ -1987,15 +2965,38 @@
         }), 'Mapped water points around the proposed site',
           { filename: 'water_points' }),
       ]));
+
+      if (decision.rehab_candidates.length) {
+        nodes.push(card('Rehabilitation candidates', [
+          el('p.muted', 'Broken improved sources inside the search radius, ' +
+            'nearest first. Assess why each failed before committing to a new ' +
+            'borehole: a failed pump is usually worth rehabilitating, a dry or ' +
+            'collapsed hole is not.'),
+          S.table(pointColumns, decision.rehab_candidates.slice(0, 30)),
+        ]));
+      }
+
+      nodes.push(card('All water points in range', [
+        decision.nearby.length
+          ? S.table(pointColumns, decision.nearby.slice(0, 100))
+          : S.empty('Nothing mapped within ' + Math.round(radius) + ' m of the site.'),
+        decision.nearby.length > 100
+          ? el('p.muted', 'Showing the nearest 100 of ' +
+            S.thousands(decision.nearby.length) + '.') : null,
+      ]));
     } else {
       nodes.push(S.empty('Enter the site GPS position on the Site page to get a ' +
         'rehabilitate-or-drill recommendation.',
         button('Site & maps', function () { goto('site'); }, { variant: 'ghost' })));
     }
+    nodes.push(nextStep('The same inventory ranks whole districts by people ' +
+      'per functional water point.', 'Coverage gap', 'coverage'));
     return nodes;
   };
 
   /* --- coverage gap --------------------------------------------------------- */
+
+  var COVERAGE_LIMIT = 200000;
 
   PAGES.coverage = function () {
     var level = store.get('coverage.level', 'district');
@@ -2013,10 +3014,31 @@
             type: 'button', onclick: function () { store.set('coverage.level', 'chiefdom'); render(); },
           }, 'Chiefdom'),
         ]),
-        el('p.muted', points.length
-          ? points.length + ' water points loaded from the Water points page.'
-          : 'Load a WPdx export on the Water points page to compute coverage.'),
-        !points.length ? button('Water points', function () { goto('waterpoints'); }) : null,
+        waterPointSourceNote() || el('p.muted',
+          'Coverage needs a national or regional water point inventory. Fetch ' +
+          'one from WPdx+, or upload a CSV export on the Water points page.'),
+        el('div.btn-row', [
+          button('Fetch national water points', function (event) {
+            /* a bounding box around the country's centre; the cap is high
+             * because a national pull - plus the box's Guinea and Liberia
+             * fringe, which the chiefdom join discards - is tens of thousands
+             * of points */
+            fetchWaterPoints(event.target, {
+              lat: 8.46, lon: -11.79, radiusM: 300000.0, limit: COVERAGE_LIMIT,
+              label: 'live WPdx+, national',
+            });
+          }),
+          button('Water points page', function () { goto('waterpoints'); },
+            { variant: 'ghost' }),
+          points.length ? button('Clear', function () {
+            derived.waterPoints = null; derived.waterPointsSource = null;
+            derived.waterPointsCapped = false; render();
+          }, { variant: 'ghost' }) : null,
+        ]),
+        derived.waterPointsCapped ? el('div.callout.callout-warn', el('p',
+          'The national pull hit the ' + S.thousands(COVERAGE_LIMIT) +
+          '-row cap, so the ranking may be partial. Prefer a filtered WPdx CSV ' +
+          'export for a complete, reproducible analysis.')) : null,
       ]),
     ];
     if (!points.length) return nodes;
@@ -2098,6 +3120,172 @@
     return nodes;
   };
 
+  /* --- portfolio ------------------------------------------------------------ */
+
+  /* A saved project, whichever of the two applications wrote it.
+   *
+   * The browser app saves JSON and the Streamlit app saves YAML, but both
+   * carry the same headline ``summary`` block, so a programme can pool files
+   * from both. An older file without a summary falls back to its site inputs,
+   * which is all the map and the status column need. */
+  function summaryFromProjectFile(name, text) {
+    var payload;
+    if (/\.ya?ml$/i.test(name)) {
+      payload = S.parseYaml(text);
+    } else {
+      payload = JSON.parse(text);
+    }
+    if (!payload || typeof payload !== 'object') throw new Error('not a project file');
+    var summary = payload.summary;
+    if (summary && typeof summary === 'object' && Object.keys(summary).length) {
+      return summary;
+    }
+    var state = payload.state;
+    if (!state || typeof state !== 'object') throw new Error('not a project file');
+    if (state.site) {                                   /* browser project file */
+      return {
+        community: state.site.community, district: state.site.district,
+        chiefdom: state.site.chiefdom, easting: state.site.easting,
+        northing: state.site.northing, utm_zone: state.site.utm_zone,
+      };
+    }
+    return {                                          /* Streamlit project file */
+      community: state.meta_community, district: state.meta_district,
+      chiefdom: state.meta_chiefdom, easting: state.meta_easting,
+      northing: state.meta_northing,
+      utm_zone: Number(String(state.meta_zone || '29N').replace(/N$/i, '')) || 29,
+    };
+  }
+
+  PAGES.portfolio = function () {
+    var summaries = derived.portfolio || [];
+    var chosenIndex = Math.min(store.get('portfolio.site', 0), Math.max(summaries.length - 1, 0));
+
+    var nodes = [
+      pageHead('Portfolio', 'Many boreholes side by side. Save a project from ' +
+        'any page — each file carries a short summary — then drop several of ' +
+        'them here for a status map, a comparison table and the headline ' +
+        'figures a water manager needs.'),
+      card('Saved projects', [
+        el('p.muted', 'Project files from this app (.gwt.json) and from the ' +
+          'Streamlit app (.yaml) both work, so a programme run across the two ' +
+          'still pools into one view.'),
+        el('div.btn-row', [
+          button('Add project files', async function () {
+            var list = await S.pickFile('.json,.gwt,.yaml,.yml', true);
+            if (!list || !list.length) return;
+            var loaded = derived.portfolio ? derived.portfolio.slice() : [];
+            var skipped = 0;
+            for (var i = 0; i < list.length; i++) {
+              try {
+                var text = await S.readFile(list[i], 'text');
+                loaded.push(summaryFromProjectFile(list[i].name, text));
+              } catch (e) { skipped += 1; }
+            }
+            derived.portfolio = loaded;
+            S.toast(loaded.length + ' ' + S.plural(loaded.length, 'project') +
+              ' loaded' + (skipped ? ', ' + skipped + ' skipped' : '') + '.',
+            skipped ? 'warn' : 'ok');
+            render();
+          }),
+          summaries.length ? button('Add this project', function () {
+            derived.portfolio = (derived.portfolio || []).concat([projectSummary()]);
+            render();
+          }, { variant: 'ghost' }) : null,
+          summaries.length ? button('Clear', function () {
+            derived.portfolio = null; render();
+          }, { variant: 'ghost' }) : null,
+        ]),
+        !summaries.length ? el('p.muted', 'Nothing loaded yet. You can also ' +
+          'start with the project open in this window:') : null,
+        !summaries.length ? button('Start from the open project', function () {
+          derived.portfolio = [projectSummary()];
+          render();
+        }, { variant: 'ghost' }) : null,
+      ]),
+    ];
+
+    if (!summaries.length) {
+      nodes.push(S.empty('Load two or more saved project files to build the ' +
+        'portfolio: a status map, a comparison table and the programme figures.'));
+      return nodes;
+    }
+
+    var stats = C.portfolioStats(summaries);
+    nodes.push(card('Programme', [
+      S.statRow([
+        S.stat('Projects', String(stats.n_projects)),
+        S.stat('Successful', String(stats.n_successful),
+          'of ' + stats.n_drilled + ' drilled'),
+        S.stat('Success rate', stats.success_rate !== null
+          ? stats.success_rate.toFixed(0) + '%' : '—', 'over drilled holes'),
+        S.stat('Mean safe yield', stats.mean_safe_yield_m3_per_h !== null
+          ? stats.mean_safe_yield_m3_per_h.toFixed(2) + ' m³/h' : '—'),
+        S.stat('Mean cost/m', stats.mean_cost_per_meter_usd !== null
+          ? S.money(stats.mean_cost_per_meter_usd, 0) : '—'),
+        S.stat('Water safe to drink', stats.wq_pass_rate !== null
+          ? stats.wq_pass_rate.toFixed(0) + '%' : '—', 'of sampled boreholes'),
+      ]),
+    ]));
+
+    var points = C.portfolioPoints(summaries);
+    nodes.push(card('Where they are', [
+      points.length ? charts.figure(charts.siteMap({
+        context: (GWT.data.geo.adminBoundaries || {}).features || [],
+        points: points.map(function (p) {
+          return {
+            lon: p.lon, lat: p.lat, label: p.label, size: 5.5,
+            colour: C.STATUS_COLORS[p.status],
+          };
+        }),
+        title: 'Borehole portfolio',
+        legendItems: Object.keys(C.STATUS_LABELS).map(function (key) {
+          return { label: C.STATUS_LABELS[key], colour: C.STATUS_COLORS[key] };
+        }),
+        width: 640, height: 560,
+      }), 'Project status by location', { filename: 'portfolio_map' })
+        : S.empty('Add GPS coordinates to the projects to place them on the map.'),
+    ]));
+
+    nodes.push(card('Comparison', [
+      S.table([
+        { key: 'Community', label: 'Community' },
+        { key: 'District', label: 'District' },
+        { key: 'Status', label: 'Status' },
+        { key: 'Depth (m)', label: 'Depth (m)', align: 'right' },
+        { key: 'Safe yield (m3/h)', label: 'Safe yield (m³/h)', align: 'right' },
+        { key: 'Water', label: 'Water' },
+        { key: 'Cost/m (USD)', label: 'Cost/m (USD)', align: 'right' },
+      ], C.portfolioRows(summaries), {
+        rowClass: function (row, i) {
+          return C.classifyStatus(summaries[i]) === 'dry' ? 'row-bad' : '';
+        },
+      }),
+    ]));
+
+    var chosen = summaries[chosenIndex];
+    nodes.push(card('Site detail', [
+      el('p.muted', 'Drill into one site for its full record and a one-page brief.'),
+      field('Site', S.selectInput(String(chosenIndex),
+        summaries.map(function (s, i) {
+          return { value: String(i), label: C.portfolioSiteLabel(s, i) };
+        }), function (value) {
+          store.set('portfolio.site', Number(value)); render();
+        })),
+      S.table([
+        { key: '0', label: 'Field' },
+        { key: '1', label: 'Value' },
+      ], C.portfolioSiteDetail(chosen)),
+      el('div.btn-row', [
+        button('Download site brief (.txt)', function () {
+          var name = String(chosen.community || 'site').trim().replace(/\s+/g, '_');
+          S.download(name + '_brief.txt', C.portfolioOnePager(chosen), 'text/plain');
+        }),
+      ]),
+    ]));
+    return nodes;
+  };
+
   /* --- settings ------------------------------------------------------------- */
 
   PAGES.settings = function () {
@@ -2175,6 +3363,39 @@
         ])),
       ]),
 
+      card('AI assisted extraction', [
+        el('p.muted', 'Reading a photographed field sheet needs a model, and ' +
+          'there is no server here to hold a key on your behalf. Paste an ' +
+          'Anthropic API key to enable it on the Scanned sheets page.'),
+        field('Anthropic API key',
+          S.textInput(store.get('extraction.apiKey') || '', function (value) {
+            store.set('extraction.apiKey', String(value).trim());
+            render();
+          }, { type: 'password', autocomplete: 'off', spellcheck: 'false',
+            placeholder: 'sk-ant-…' }),
+          'Kept in this browser only, alongside the rest of the session.'),
+        field('Model',
+          S.textInput(store.get('extraction.model') || '', function (value) {
+            store.set('extraction.model', String(value).trim());
+          }, { placeholder: C.EXTRACTION_MODEL }),
+          'Leave blank for ' + C.EXTRACTION_MODEL + '.'),
+        el('div.callout.callout-warn', el('p', [
+          el('strong', 'A key in a browser is a key you have exposed. '),
+          'It is stored unencrypted in this browser\'s local storage and ' +
+          'anything else running in this browser can read it. It is kept out ' +
+          'of saved project files deliberately, so sharing a project never ' +
+          'shares the key — but use one scoped to this work and revoke it when ' +
+          'the job is done. Every other page works without one.',
+        ])),
+        store.get('extraction.apiKey') ? el('div.btn-row', [
+          button('Forget the key', function () {
+            store.set('extraction.apiKey', '');
+            S.toast('The key was removed from this browser.', 'ok');
+            render();
+          }, { variant: 'ghost' }),
+        ]) : null,
+      ]),
+
       card('Project data', [
         el('div.btn-row', [
           button('Save project file', saveProject),
@@ -2220,6 +3441,12 @@
           'parsed in the page, the analyses run in the page, and the reports are ' +
           'assembled in the page. No data is sent to any server, which is what ' +
           'makes it usable on a field laptop with an intermittent connection.'),
+        el('p', 'Two features are the exception, and both are a button you ' +
+          'press rather than something the page does on its own: looking up ' +
+          'existing water points asks the Water Point Data Exchange, and the ' +
+          'AI-assisted reading of a photographed field sheet sends that sheet ' +
+          'to Anthropic under a key you supply. Everything else works with the ' +
+          'network cable pulled out, including the CSV path for water points.'),
       ]),
       card('Methods', [
         el('h4', 'Geophysics'),
@@ -2281,10 +3508,18 @@
         ]),
       ]),
       card('Also available', [
-        el('p', ['The full server version of the toolkit runs on Streamlit and ' +
-          'adds AI-assisted extraction from scanned field sheets. A WebAssembly ' +
-          'build of that same app is also published here — it runs the real ' +
-          'Python package in the browser, at the cost of a 60 MB first load.']),
+        el('p', ['This app carries every page the Streamlit version has — ' +
+          'including the Depth Spine, the Portfolio and the scanned-sheet ' +
+          'reader — and its engine is held to the Python package\'s own ' +
+          'numbers by a parity check that runs on the real sample workbooks.']),
+        el('p', ['Two things read differently rather than less. The PDF ' +
+          'text-layer reader here works from the layout of the words on the ' +
+          'page; the server version uses pdfplumber, which finds a table from ' +
+          'the rules drawn around it. And the sign-off ledger on the Depth ' +
+          'Spine is kept in the project file rather than in a session.']),
+        el('p', ['A WebAssembly build of the Streamlit app is published ' +
+          'beside this one — it runs the real Python package in the browser, ' +
+          'at the cost of a 60 MB first load.']),
         el('p', el('a', { href: 'wasm/', target: '_blank', rel: 'noopener' },
           'Open the WebAssembly build →')),
       ]),
@@ -2517,6 +3752,10 @@
     siteLatLon: siteLatLon, utmToLatLon: utmToLatLon,
     templates: TEMPLATE_SPECS, recomputeState: recomputeState,
     loadSample: loadSample, uploadZone: uploadZone,
+    projectPayload: projectPayload, projectSummary: projectSummary,
+    summaryFromProjectFile: summaryFromProjectFile,
+    commitSpineScreens: commitSpineScreens, spineDecide: spineDecide,
+    fetchWaterPoints: fetchWaterPoints,
   };
 
   if (typeof document !== 'undefined') {

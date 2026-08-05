@@ -401,14 +401,29 @@
     }
   }
 
-  async function inflateRaw(bytes) {
+  async function decompress(bytes, format) {
     if (typeof DecompressionStream === 'undefined') {
       throw new Error('This browser cannot decompress .xlsx files. ' +
         'Use a current version of Chrome, Edge, Firefox or Safari.');
     }
     var stream = new Blob([bytes]).stream()
-      .pipeThrough(new DecompressionStream('deflate-raw'));
+      .pipeThrough(new DecompressionStream(format));
     return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+
+  async function inflateRaw(bytes) {
+    return decompress(bytes, 'deflate-raw');
+  }
+
+  /* zlib-wrapped deflate: what a PDF /FlateDecode stream carries. A few
+   * writers emit the raw stream without the two-byte zlib header, so fall
+   * back rather than failing the whole document. */
+  async function inflate(bytes) {
+    try {
+      return await decompress(bytes, 'deflate');
+    } catch (e) {
+      return inflateRaw(bytes);
+    }
   }
 
   /* ----------------------------------------------------------- ZIP read */
@@ -672,22 +687,48 @@
       }
       return s;
     }
+    /* A cell is a bare value, or {v, bold, flag} when it needs a style. The
+     * flag style is the amber fill the review workbook uses to mark a value a
+     * human still has to check - the same signal openpyxl paints server side. */
+    var STYLE_INDEX = { plain: 0, bold: 1, flag: 2, boldflag: 3 };
+    function styleFor(cell, rowIndex) {
+      var bold = rowIndex === 0, flag = false;
+      if (cell && typeof cell === 'object' && !(cell instanceof Date)) {
+        if (cell.bold !== undefined) bold = !!cell.bold;
+        flag = !!cell.flag;
+      }
+      var key = (bold ? 'bold' : '') + (flag ? 'flag' : '');
+      return STYLE_INDEX[key || 'plain'];
+    }
     var sheetXml = sheets.map(function (sheet) {
       var body = (sheet.rows || []).map(function (row, r) {
         var cells = (row || []).map(function (cell, c) {
-          if (cell === null || cell === undefined || cell === '') return '';
+          var value = cell && typeof cell === 'object' && !(cell instanceof Date)
+            ? cell.v : cell;
+          var index = styleFor(cell, r);
+          if (value === null || value === undefined || value === '') {
+            /* an empty but flagged cell still has to carry its colour: a blank
+             * where a number belongs is exactly the thing to review */
+            if (!index) return '';
+            return '<c r="' + colName(c) + (r + 1) + '" s="' + index + '"/>';
+          }
           var ref = colName(c) + (r + 1);
-          var style = r === 0 ? ' s="1"' : '';
-          if (typeof cell === 'number' && isFinite(cell)) {
-            return '<c r="' + ref + '"' + style + '><v>' + cell + '</v></c>';
+          var style = index ? ' s="' + index + '"' : '';
+          if (typeof value === 'number' && isFinite(value)) {
+            return '<c r="' + ref + '"' + style + '><v>' + value + '</v></c>';
           }
           return '<c r="' + ref + '"' + style + ' t="s"><v>' +
-            sharedIndex(String(cell)) + '</v></c>';
+            sharedIndex(String(value)) + '</v></c>';
         }).join('');
         return cells ? '<row r="' + (r + 1) + '">' + cells + '</row>' : '';
       }).join('');
+      var widths = (sheet.widths || []).map(function (w, i) {
+        return w ? '<col min="' + (i + 1) + '" max="' + (i + 1) +
+          '" width="' + w + '" customWidth="1"/>' : '';
+      }).join('');
       return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+        (widths ? '<cols>' + widths + '</cols>' : '') +
         '<sheetData>' + body + '</sheetData></worksheet>';
     });
 
@@ -743,11 +784,16 @@
         '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
         '<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font>' +
         '<font><b/><sz val="11"/><name val="Calibri"/></font></fonts>' +
-        '<fills count="2"><fill><patternFill patternType="none"/></fill>' +
-        '<fill><patternFill patternType="gray125"/></fill></fills>' +
+        '<fills count="3"><fill><patternFill patternType="none"/></fill>' +
+        '<fill><patternFill patternType="gray125"/></fill>' +
+        '<fill><patternFill patternType="solid"><fgColor rgb="FFFFE08A"/>' +
+        '<bgColor indexed="64"/></patternFill></fill></fills>' +
         '<borders count="1"><border/></borders>' +
         '<cellStyleXfs count="1"><xf/></cellStyleXfs>' +
-        '<cellXfs count="2"><xf xfId="0"/><xf fontId="1" applyFont="1" xfId="0"/></cellXfs>' +
+        '<cellXfs count="4"><xf xfId="0"/>' +
+        '<xf fontId="1" applyFont="1" xfId="0"/>' +
+        '<xf fillId="2" applyFill="1" xfId="0"/>' +
+        '<xf fontId="1" fillId="2" applyFont="1" applyFill="1" xfId="0"/></cellXfs>' +
         '</styleSheet>' },
       { name: 'xl/sharedStrings.xml', data: sst },
     ].concat(sheetXml.map(function (xml, i) {
@@ -789,6 +835,128 @@
       header.forEach(function (h, j) { obj[h.trim()] = r[j] === undefined ? '' : r[j]; });
       return obj;
     });
+  }
+
+  /* ---------------------------------------------------------------- YAML
+   *
+   * Enough of YAML to read a project file the Streamlit app saved: block
+   * mappings, block sequences, quoted and plain scalars, and the line folding
+   * PyYAML applies to long plain scalars. Flow style, anchors, tags, multiple
+   * documents and block scalars are not supported and raise, because a reader
+   * that half-understands a file is worse than one that says it cannot read it
+   * - the caller reports the file as skipped rather than importing nonsense.
+   */
+  function parseYaml(text) {
+    var lines = String(text).replace(/\r\n?/g, '\n').split('\n');
+    var clean = [];
+    lines.forEach(function (raw) {
+      if (/^\s*#/.test(raw) || !raw.trim()) return;
+      if (/^(---|\.\.\.)\s*$/.test(raw)) return;
+      clean.push(raw);
+    });
+    var at = 0;
+
+    function indentOf(line) { return /^ */.exec(line)[0].length; }
+
+    function scalar(token) {
+      var s = String(token).trim();
+      if (s === '' || s === '~' || s === 'null' || s === 'Null' || s === 'NULL') return null;
+      if (s === 'true' || s === 'True') return true;
+      if (s === 'false' || s === 'False') return false;
+      if (s.charAt(0) === '"' && s.charAt(s.length - 1) === '"' && s.length > 1) {
+        return s.slice(1, -1)
+          .replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"')
+          .replace(/\\\\/g, '\\');
+      }
+      if (s.charAt(0) === "'" && s.charAt(s.length - 1) === "'" && s.length > 1) {
+        return s.slice(1, -1).replace(/''/g, "'");
+      }
+      if (s.charAt(0) === '[' || s.charAt(0) === '{' || s.charAt(0) === '&' ||
+          s.charAt(0) === '*' || s.charAt(0) === '!' || s.charAt(0) === '|' ||
+          s.charAt(0) === '>') {
+        throw new Error('unsupported YAML construct: ' + s.slice(0, 12));
+      }
+      if (/^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(s)) return Number(s);
+      return s;
+    }
+
+    /* PyYAML folds a long plain scalar across lines. Once a key has a value on
+     * its own line, anything indented deeper belongs to that value and joins
+     * with a single space - there is nothing else a deeper line could be. */
+    function foldedScalar(first, indent) {
+      var parts = [first];
+      while (at < clean.length && indentOf(clean[at]) > indent) {
+        parts.push(clean[at].trim());
+        at += 1;
+      }
+      return parts.join(' ');
+    }
+
+    function parseBlock(indent) {
+      var line = clean[at];
+      if (/^\s*-\s*/.test(line)) return parseSequence(indent);
+      return parseMapping(indent);
+    }
+
+    function parseSequence(indent) {
+      var out = [];
+      while (at < clean.length) {
+        var line = clean[at];
+        var here = indentOf(line);
+        if (here < indent || !/^\s*-(\s|$)/.test(line)) break;
+        if (here > indent) throw new Error('inconsistent YAML indentation');
+        var rest = line.slice(here + 1).replace(/^ /, '');
+        at += 1;
+        if (!rest.trim()) {
+          out.push(at < clean.length && indentOf(clean[at]) > here
+            ? parseBlock(indentOf(clean[at])) : null);
+          continue;
+        }
+        if (/^[^:]+:(\s|$)/.test(rest)) {
+          /* "- key: value" starts a mapping whose keys align after the dash */
+          clean[at - 1] = new Array(here + 3).join(' ') + rest;
+          at -= 1;
+          out.push(parseMapping(here + 2));
+          continue;
+        }
+        out.push(scalar(foldedScalar(rest, here)));
+      }
+      return out;
+    }
+
+    function parseMapping(indent) {
+      var out = {};
+      while (at < clean.length) {
+        var line = clean[at];
+        var here = indentOf(line);
+        if (here < indent) break;
+        if (here > indent) throw new Error('inconsistent YAML indentation');
+        var body = line.slice(here);
+        var split = /^((?:"[^"]*")|(?:'[^']*')|(?:[^:]+)):(?:\s+(.*))?$/.exec(body);
+        if (!split) throw new Error('unreadable YAML line: ' + body.slice(0, 40));
+        var key = String(scalar(split[1]));
+        var rest = split[2] === undefined ? '' : split[2];
+        at += 1;
+        if (rest.trim() === '') {
+          if (at < clean.length && indentOf(clean[at]) > here) {
+            out[key] = parseBlock(indentOf(clean[at]));
+          } else if (at < clean.length && indentOf(clean[at]) === here &&
+                     /^\s*-(\s|$)/.test(clean[at])) {
+            out[key] = parseSequence(here);
+          } else {
+            out[key] = null;
+          }
+          continue;
+        }
+        out[key] = scalar(foldedScalar(rest, here));
+      }
+      return out;
+    }
+
+    if (!clean.length) return null;
+    var value = parseBlock(indentOf(clean[0]));
+    if (at < clean.length) throw new Error('trailing YAML content');
+    return value;
   }
 
   function toCsv(rows, header) {
@@ -1254,7 +1422,9 @@
     plural: plural, joinList: joinList, normaliseKey: normaliseKey,
     utf8: utf8, concatBytes: concatBytes, bytesToBase64: bytesToBase64,
     base64ToBytes: base64ToBytes, crc32: crc32, zip: zip, unzip: unzip,
+    inflate: inflate, inflateRaw: inflateRaw,
     readXlsx: readXlsx, writeXlsx: writeXlsx, parseCsv: parseCsv, toCsv: toCsv,
+    parseYaml: parseYaml,
     download: download, readFile: readFile, pickFile: pickFile,
     createStore: createStore,
     card: card, field: field, numberInput: numberInput, textInput: textInput,
