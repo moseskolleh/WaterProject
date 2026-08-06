@@ -90,6 +90,14 @@ def clean(value):
         return [clean(v) for v in value.tolist()]
     if isinstance(value, (list, tuple)):
         return [clean(v) for v in value]
+    # Dicts have to recurse too. Without this a mapping passed through here
+    # came back untouched, so a tuple inside one stayed a tuple - identical
+    # in the written JSON, but --check compares the fresh value against the
+    # parsed file, and ("a", "b") != ["a", "b"]. That reads as 107 places
+    # where the browser disagrees with the toolkit when nothing disagrees
+    # at all, and a numpy scalar in the same position would survive too.
+    if isinstance(value, dict):
+        return {key: clean(v) for key, v in value.items()}
     return value
 
 
@@ -524,8 +532,9 @@ def build() -> dict:
         name: _registry.asset_state(asset, _today).as_dict()
         for name, asset in _assets.items()
     }
-    out["asset_placard"] = _registry.placard_lines(
-        _assets["commissioned"], _registry.asset_state(_assets["commissioned"], _today))
+    out["asset_placard"] = clean(_registry.placard_lines(
+        _assets["commissioned"],
+        _registry.asset_state(_assets["commissioned"], _today)))
     out["asset_qr_payload"] = _registry.qr_payload(_assets["commissioned"])
     out["registry_rows"] = _registry.registry_rows(list(_assets.values()), _today)
     out["registry_stats"] = clean(
