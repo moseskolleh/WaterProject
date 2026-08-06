@@ -13,13 +13,19 @@ interface Props {
   onDecide: (record: DecisionRecord | null) => void;
 }
 
+// Driven by the verdict state, so a panel that could not be evaluated can
+// never be signed off as "Complies". A national failure is a compliance
+// failure, not a taste problem, so it reads as badly as a health one.
+const HEADLINES: Record<QualityBlock['verdictState'], { label: string; tone: 'ok' | 'warn' | 'error' }> = {
+  health_fail: { label: 'Not suitable for drinking', tone: 'error' },
+  national_fail: { label: 'Fails the national standard', tone: 'error' },
+  indeterminate: { label: 'Not proven safe — results incomplete', tone: 'warn' },
+  aesthetic: { label: 'Potable — acceptability exceeded', tone: 'warn' },
+  pass: { label: 'Complies', tone: 'ok' },
+};
+
 function headline(q: QualityBlock): { label: string; tone: 'ok' | 'warn' | 'error' } {
-  if (q.healthExceedances.length) return { label: 'Not suitable for drinking', tone: 'error' };
-  if (q.nationalExceedances.length)
-    return { label: 'Fails the national standard', tone: 'warn' };
-  if (q.aestheticExceedances.length)
-    return { label: 'Potable — acceptability exceeded', tone: 'warn' };
-  return { label: 'Complies', tone: 'ok' };
+  return HEADLINES[q.verdictState] ?? HEADLINES.indeterminate;
 }
 
 export function WaterQualityStage({
@@ -31,7 +37,7 @@ export function WaterQualityStage({
   const verdict = headline(q);
   const judged = q.rows.filter((r) => r.status !== 'no_guideline');
   const within = judged.filter((r) => !r.status.startsWith('exceeds'));
-  const clean = verdict.tone === 'ok';
+  const clean = q.verdictState === 'pass';
   const c = q.corrosivity;
 
   return (
@@ -202,6 +208,7 @@ export function WaterQualityStage({
             ['Health-based', q.healthExceedances, 'error'],
             ['National standard', q.nationalExceedances, 'warning'],
             ['Acceptability', q.aestheticExceedances, 'warning'],
+            ['Not evaluable', q.indeterminate, 'warning'],
           ].map(([label, list, level]) => {
             const names = list as string[];
             return (
@@ -246,6 +253,7 @@ export function WaterQualityStage({
               'Complies',
               'Potable — acceptability exceeded',
               'Potable after treatment',
+              'Not proven safe — results incomplete',
               'Fails the national standard',
               'Not suitable for drinking',
             ],

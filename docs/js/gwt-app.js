@@ -76,7 +76,7 @@
       coverage: { level: 'district' },
       waterpoints: { radius: 1000 },
       spine: { stage: 'design', ledger: {}, signatory: '' },
-      extraction: { apiKey: '', model: '' },
+      extraction: { model: '' },
       theme: 'auto',
     };
   }
@@ -112,6 +112,59 @@
       S.toast('Autosave is working again.', 'ok');
     },
   });
+
+  /* The API key is deliberately NOT part of the persisted state.
+   *
+   * It used to be, and the store mirrors the whole state into localStorage on
+   * every change - so the key sat unencrypted on disk, survived closing the
+   * tab, closing the browser and handing the laptop to the next person, and
+   * was readable by anything with script access to this origin. It now lives
+   * here, in memory for this tab, and reaches storage only if the user asks
+   * for it and then only sessionStorage, which the browser drops when the tab
+   * closes. That removes durability at rest and cross-restart exposure; it is
+   * not, and is not claimed to be, a defence against script running in this
+   * page. */
+  var CREDENTIAL_KEY = 'gwt.credential.v1';
+  var credential = { key: '', remember: false };
+
+  function getApiKey() {
+    return credential.key;
+  }
+
+  function setApiKey(value, remember) {
+    credential.key = String(value || '').trim();
+    credential.remember = !!remember;
+    try {
+      if (credential.remember && credential.key) {
+        sessionStorage.setItem(CREDENTIAL_KEY, credential.key);
+      } else {
+        sessionStorage.removeItem(CREDENTIAL_KEY);
+      }
+    } catch (e) { /* private modes throw; the key simply stays in memory */ }
+  }
+
+  function forgetApiKey() {
+    credential = { key: '', remember: false };
+    try { sessionStorage.removeItem(CREDENTIAL_KEY); } catch (e) { /* ignore */ }
+    /* sweep any copy left in long-term storage by an earlier build */
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (raw) {
+        var saved = JSON.parse(raw);
+        if (saved && saved.extraction && saved.extraction.apiKey) {
+          delete saved.extraction.apiKey;
+          localStorage.setItem(STORE_KEY, JSON.stringify(saved));
+        }
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  function restoreApiKey() {
+    try {
+      var value = sessionStorage.getItem(CREDENTIAL_KEY);
+      if (value) credential = { key: value, remember: true };
+    } catch (e) { /* ignore */ }
+  }
 
   /* Derived results are recomputed rather than persisted: they are large,
    * they are cheap to rebuild, and a stale analysis beside fresh data is the
@@ -482,8 +535,13 @@
       summary.safe_yield_m3_per_h = rec.safe_yield_m3_per_h;
     }
     if (derived.assessment) {
-      summary.water_verdict = derived.assessment.health_exceedances.length ? 'fail'
-        : (derived.assessment.aesthetic_exceedances.length ? 'aesthetic' : 'pass');
+      /* The full five-state verdict. The old three states folded a national
+       * standard failure into "aesthetic" and had no way to say "we cannot
+       * tell", so a breached or unevaluable supply read as merely a matter of
+       * taste. The schema marker lets a reader tell a new file from an old
+       * one and translate the old vocabulary safely. */
+      summary.water_verdict = derived.assessment.verdict_state;
+      summary.verdict_schema = C.VERDICT_SCHEMA;
     }
     if (derived.estimate) summary.cost_per_meter_usd = derived.estimate.cost_per_meter_usd;
     if (derived.interpretations && derived.interpretations.length && !summary.status) {
@@ -499,9 +557,11 @@
   function projectPayload() {
     /* A project file is meant to be mailed to a colleague, so the API key
      * never goes in it: a credential that travels with the fieldwork is a
-     * credential that leaks. It stays in this browser and nowhere else. */
+     * credential that leaks. It is not in the store at all any more, and this
+     * scrub stays as a second line of defence against a stale field. */
     var state = Object.assign({}, store.state);
-    state.extraction = Object.assign({}, state.extraction || {}, { apiKey: '' });
+    state.extraction = Object.assign({}, state.extraction || {});
+    delete state.extraction.apiKey;
     return {
       format: 'groundwater-toolkit-project',
       version: 1,
@@ -524,11 +584,11 @@
       var payload = JSON.parse(await S.readFile(file, 'text'));
       var state = payload.state || payload;
       if (!state || typeof state !== 'object') throw new Error('not a project file');
-      /* the key belongs to this browser, not to the file; loading someone
-       * else's project must not clear the one already set here */
-      var key = store.get('extraction.apiKey') || '';
+      /* A hand-edited or old-build project file can carry a key; it must
+       * never be adopted into this session's storage. The key held for this
+       * tab is untouched - it belongs to this browser, not to the file. */
+      if (state.extraction) delete state.extraction.apiKey;
       store.replace(Object.assign(blankState(), state));
-      if (key) store.set('extraction.apiKey', key);
       applyTheme();
       await recompute();
       await runInversions({ quiet: true });
@@ -677,7 +737,7 @@
         derived.assessment
           ? (derived.assessment.health_exceedances.length
             ? derived.assessment.health_exceedances.length + ' health exceedance(s)'
-            : 'Meets health based guidelines')
+            : C.VERDICT_LONG[derived.assessment.verdict_state])
           : 'No analysis loaded'],
       ['Cost', 'costing', pageDone('costing'),
         derived.estimate ? S.money(derived.estimate.total_cost_usd, 0) + ' total cost'
@@ -1779,14 +1839,25 @@
   function spineQualityStage(view) {
     var q = view.quality;
     var judged = q.rows.filter(function (r) { return r.status !== 'no_guideline'; });
+    /* Only rows the toolkit actually graded and found compliant. Counting
+     * every non-"exceeds" status as within limits put the unevaluable and
+     * the unmeasured in the compliant column. */
     var within = judged.filter(function (r) {
-      return String(r.status).slice(0, 7) !== 'exceeds';
+      return r.status === 'within_limits' || r.status === 'below_detection';
     });
-    var headline = q.healthExceedances.length ? 'Not suitable for drinking'
-      : (q.nationalExceedances.length ? 'Fails the national standard'
-        : (q.aestheticExceedances.length ? 'Potable — acceptability exceeded'
-          : 'Complies'));
-    var clean = headline === 'Complies';
+    var ungraded = judged.filter(function (r) {
+      return r.status === 'indeterminate' || r.status === 'not_measured';
+    });
+    /* Driven by the verdict state, so an unevaluable panel can never be
+     * signed off as "Complies". */
+    var headline = {
+      health_fail: 'Not suitable for drinking',
+      national_fail: 'Fails the national standard',
+      indeterminate: 'Not proven safe — results incomplete',
+      aesthetic: 'Potable — acceptability exceeded',
+      pass: 'Complies',
+    }[q.verdictState] || 'Not proven safe — results incomplete';
+    var clean = q.verdictState === 'pass';
     var cor = q.corrosivity;
     var spine = charts.guidelineSpine(q.rows);
 
@@ -1794,7 +1865,8 @@
       card('The sample', [
         S.statRow([
           S.stat('Sampled', q.sampleDate || '—', q.laboratory || ''),
-          S.stat('Within limits', within.length + ' / ' + judged.length),
+          S.stat('Within limits', within.length + ' / ' + judged.length,
+            ungraded.length ? ungraded.length + ' could not be graded' : ''),
           S.stat('Health exceedances',
             q.healthExceedances.length ? String(q.healthExceedances.length) : 'none'),
           q.ionic ? S.stat('Ionic balance', q.ionic.errorPercent + ' %',
@@ -1876,8 +1948,8 @@
         overrideLabel: 'Certified verdict', overrideUnit: '',
         overrideStart: headline,
         overrideChoices: ['Complies', 'Potable — acceptability exceeded',
-          'Potable after treatment', 'Fails the national standard',
-          'Not suitable for drinking'],
+          'Potable after treatment', 'Not proven safe — results incomplete',
+          'Fails the national standard', 'Not suitable for drinking'],
       }),
     ].filter(Boolean);
   }
@@ -2141,14 +2213,19 @@
 
     var a = derived.assessment;
     var toneFor = {
-      exceeds_health: 'row-bad', exceeds_national: 'row-warn',
-      exceeds_aesthetic: 'row-warn', within_limits: '',
+      /* A national exceedance is a compliance failure, not a taste problem,
+       * so it reads as badly as a health one. A row that could not be graded
+       * is its own thing: a question, not a finding. */
+      exceeds_health: 'row-bad', exceeds_national: 'row-bad',
+      exceeds_aesthetic: 'row-warn', indeterminate: 'row-info',
+      within_limits: '',
     };
 
     nodes.push(card('Verdict', [
-      el('div.callout' + (a.health_exceedances.length ? '.callout-bad'
-        : (a.aesthetic_exceedances.length ? '.callout-warn' : '.callout-ok')),
-        el('p', a.verdict)),
+      el('div.callout.callout-' + C.VERDICT_TONE[a.verdict_state], [
+        el('p', el('strong', C.VERDICT_LONG[a.verdict_state])),
+        el('p', a.verdict),
+      ]),
       S.statRow([
         a.wqi ? S.stat('Water quality index', String(a.wqi.value), a.wqi.rating) : null,
         a.health_risk ? S.stat('Hazard index', String(a.health_risk.hazard_index),
@@ -2177,9 +2254,10 @@
         { key: 'sl_standard', label: 'National' },
         { key: 'status', label: 'Status',
           format: function (v) {
-            var tone = v === 'exceeds_health' ? 'bad'
+            var tone = (v === 'exceeds_health' || v === 'exceeds_national') ? 'bad'
               : (v === 'within_limits' ? 'ok'
-                : (v.indexOf('exceeds') === 0 ? 'warn' : null));
+                : (v === 'exceeds_aesthetic' ? 'warn'
+                  : (v === 'indeterminate' ? 'info' : null)));
             return S.badge(docx.statusLabel(v), tone);
           } },
         { key: 'remark', label: 'Remark' },
@@ -2781,7 +2859,7 @@
 
   PAGES.extract = function () {
     var doc = derived.extraction;
-    var apiKey = store.get('extraction.apiKey') || '';
+    var apiKey = getApiKey();
     var nodes = [
       pageHead('Scanned sheets', 'A sheet that arrived as a PDF or a photograph, ' +
         'turned into the same records an uploaded template produces. A PDF with ' +
@@ -3353,10 +3431,29 @@
           ? stats.mean_safe_yield_m3_per_h.toFixed(2) + ' m³/h' : '—'),
         S.stat('Mean cost/m', stats.mean_cost_per_meter_usd !== null
           ? S.money(stats.mean_cost_per_meter_usd, 0) : '—'),
-        S.stat('Water safe to drink', stats.wq_pass_rate !== null
-          ? stats.wq_pass_rate.toFixed(0) + '%' : '—', 'of sampled boreholes'),
       ]),
-    ]));
+      /* Three rates, not one. A single "safe to drink" tile counted an
+       * aesthetic exceedance as safe and hid national-standard failures
+       * inside it, so a breached programme showed 100%. */
+      S.statRow([
+        S.stat('Water compliant', stats.wq_compliant_rate !== null
+          ? stats.wq_compliant_rate.toFixed(0) + '%' : '—',
+          'of ' + stats.n_wq_assessed + ' sampled: meets every health and ' +
+          'national limit'),
+        S.stat('Water failing', stats.wq_fail_rate !== null
+          ? stats.wq_fail_rate.toFixed(0) + '%' : '—',
+          'exceeds a health guideline or a national limit'),
+        S.stat('Water unproven', stats.wq_unproven_rate !== null
+          ? stats.wq_unproven_rate.toFixed(0) + '%' : '—',
+          'results incomplete or not evaluable'),
+      ]),
+      stats.n_status_unrecognised
+        ? el('div.callout.callout-warn', el('p', stats.n_status_unrecognised +
+          ' project(s) carry a status this toolkit does not recognise; they ' +
+          'are counted as neither successful nor dry. Correct the status on ' +
+          'the drilling log.'))
+        : null,
+    ].filter(Boolean)));
 
     var points = C.portfolioPoints(summaries);
     nodes.push(card('Where they are', [
@@ -3498,12 +3595,20 @@
           'there is no server here to hold a key on your behalf. Paste an ' +
           'Anthropic API key to enable it on the Scanned sheets page.'),
         field('Anthropic API key',
-          S.textInput(store.get('extraction.apiKey') || '', function (value) {
-            store.set('extraction.apiKey', String(value).trim());
+          S.textInput(getApiKey(), function (value) {
+            setApiKey(value, credential.remember);
             render();
           }, { type: 'password', autocomplete: 'off', spellcheck: 'false',
             placeholder: 'sk-ant-…' }),
-          'Kept in this browser only, alongside the rest of the session.'),
+          'Held for this tab only. It is never saved with your project and ' +
+          'never written to this browser\'s long-term storage.'),
+        S.checkboxInput(credential.remember,
+          'Keep it for this tab (cleared when the tab closes). Leave ' +
+          'unticked to hold it in memory only, so a page reload asks again.',
+          function (checked) {
+            setApiKey(getApiKey(), checked);
+            render();
+          }),
         field('Model',
           S.textInput(store.get('extraction.model') || '', function (value) {
             store.set('extraction.model', String(value).trim());
@@ -3511,15 +3616,18 @@
           'Leave blank for ' + C.EXTRACTION_MODEL + '.'),
         el('div.callout.callout-warn', el('p', [
           el('strong', 'A key in a browser is a key you have exposed. '),
-          'It is stored unencrypted in this browser\'s local storage and ' +
-          'anything else running in this browser can read it. It is kept out ' +
-          'of saved project files deliberately, so sharing a project never ' +
-          'shares the key — but use one scoped to this work and revoke it when ' +
-          'the job is done. Every other page works without one.',
+          'The request goes from this page straight to api.anthropic.com, so ' +
+          'the key is visible to anything running in this page. It is held ' +
+          'for this tab only — never in long-term storage, never in a saved ' +
+          'project file, never cached by the offline worker — but that ' +
+          'removes durability, not exposure. Use a key scoped to this work ' +
+          'and revoke it when the job is done. Every other page works ' +
+          'without one. If you need this at scale, put the call behind your ' +
+          'own server and keep the key there.',
         ])),
-        store.get('extraction.apiKey') ? el('div.btn-row', [
+        getApiKey() ? el('div.btn-row', [
           button('Forget the key', function () {
-            store.set('extraction.apiKey', '');
+            forgetApiKey();
             S.toast('The key was removed from this browser.', 'ok');
             render();
           }, { variant: 'ghost' }),
@@ -3537,6 +3645,7 @@
               'want to keep it.'), [
               button('Reset', function () {
                 store.forget();
+                forgetApiKey();
                 store.replace(blankState());
                 Object.keys(derived).forEach(function (k) { derived[k] = null; });
                 applyTheme(); renderChrome(); render();
@@ -3969,14 +4078,30 @@
   /* -------------------------------------------------------------------- boot */
 
   async function init() {
+    restoreApiKey();
+    var strandedKey = '';
     if (store.restore()) {
       /* a mirrored session may predate a field being added */
       var merged = Object.assign(blankState(), store.state);
+      /* An earlier build wrote the key into localStorage with the rest of the
+       * session. Without this sweep it would be re-hydrated forever. */
+      if (merged.extraction && merged.extraction.apiKey) {
+        strandedKey = merged.extraction.apiKey;
+        delete merged.extraction.apiKey;
+      }
       store.replace(merged);
+      if (strandedKey) store.persist();
     }
     applyTheme();
     renderChrome();
     render();
+    if (strandedKey) {
+      /* It sat unencrypted on disk, so removing it is not enough: it has to
+       * be treated as disclosed and rotated. */
+      S.toast('An API key was found in this browser\'s long-term storage and ' +
+        'has been removed. Enter it again if you need it, and rotate it at ' +
+        'console.anthropic.com — it was stored unencrypted.', 'warn', 20000);
+    }
     registerServiceWorker();
     watchInstallPrompt();
 
@@ -4005,6 +4130,7 @@
     commitSpineScreens: commitSpineScreens, spineDecide: spineDecide,
     lookUpWaterPoints: lookUpWaterPoints, parseLatLon: parseLatLon,
     signOffFor: signOffFor, offlineReady: offlineReady,
+    getApiKey: getApiKey, setApiKey: setApiKey, forgetApiKey: forgetApiKey,
     renderAutosaveBanner: renderAutosaveBanner,
   };
 

@@ -1,0 +1,237 @@
+# Where every bundled dataset came from, and under what terms.
+#
+# The prose version is THIRD_PARTY_NOTICES.md; this is the same information in
+# a form a check can read. The sha256 of each committed file is recorded so a
+# silent substitution - a dataset quietly replaced with a different vintage,
+# or an edit that never made it back to the build script - shows up as a
+# mismatch rather than as numbers that changed for no reason.
+#
+# `licence_evidence` is the point of this file. It says where the licence
+# claim comes from, and `unverified` means exactly that: nobody has checked,
+# and it must not be read as permission.
+#
+# Regenerate the checksums with:
+#     python -c "import hashlib,pathlib,sys; \
+#       [print(f, hashlib.sha256(pathlib.Path(f).read_bytes()).hexdigest()) \
+#        for f in sys.argv[1:]]" <paths>
+
+version: 1
+updated: "2026-08-05"
+
+datasets:
+  - id: bgs_hydrogeology
+    name: BGS Africa Groundwater Atlas - Sierra Leone hydrogeology
+    source: Africa Groundwater Atlas country hydrogeology maps
+    reference: "O Dochartaigh, B. 2021. BGS Open Report OR/21/063"
+    url: https://www2.bgs.ac.uk/africagroundwateratlas/index.cfm
+    version: "v1.2 user guide; map release 2019/2021"
+    retrieved: unrecorded
+    licence: CC-BY-SA-4.0
+    licence_evidence: >-
+      Licence text committed at
+      WaterProjectFiles/SierraLeone_BGS_Hydrogeology/AfricaGroundwaterAtlasCountryMap-LicenceInformation_V1.2.txt
+    attribution: >-
+      British Geological Survey. 2019/2021. Africa Groundwater Atlas Country
+      Hydrogeology Maps. Africa Groundwater Atlas
+      (https://www2.bgs.ac.uk/africagroundwateratlas/index.cfm)
+    share_alike: true
+    changes_made: >-
+      Converted to GeoJSON, clipped to the Sierra Leone window,
+      line-simplified and reclassified by web/build_geodata.py.
+    files:
+      - path: WaterProjectFiles/SierraLeone_BGS_Hydrogeology/SierraLeone_HG.shp
+        bytes: 50844
+        sha256: 3db88331868ec11d84b243f698731c41c2c7694f19d198c40fb67c0e2cdd49cf
+      - path: src/groundwater/data/sl_hydrogeology_bgs.geojson
+        bytes: 31996
+        sha256: fe7fde426f2e2f397f0d71f7d865dd47d27ffd98feb747658d3b14cd5bcc6809
+        derived: true
+    embedded_in:
+      - docs/js/gwt-data.js
+      - docs/wasm/index.html
+
+  - id: geoboundaries_admin
+    name: geoBoundaries - Sierra Leone ADM0 and ADM2
+    source: geoBoundaries gbOpen
+    reference: "Runfola, D. et al. (2020). PLoS ONE 15(4): e0231866"
+    url: https://github.com/wmgeolab/geoBoundaries
+    version: unrecorded - needs confirmation
+    retrieved: unrecorded
+    licence: CC-BY-4.0
+    licence_evidence: >-
+      Asserted in the file's own description field and at
+      web/build_geodata.py; not checked against a specific release.
+    attribution: >-
+      Runfola, D. et al. (2020). geoBoundaries: A global database of political
+      administrative boundaries. PLoS ONE 15(4): e0231866. CC BY 4.0
+    share_alike: false
+    changes_made: >-
+      Clipped and line-simplified. The release predates the 2017 creation of
+      Karene and Falaba, so it carries 14 districts.
+    files:
+      - path: src/groundwater/data/sl_admin_geoboundaries.geojson
+        bytes: 82505
+        sha256: a5dc27992f5c02587b99caba7e912d0c3b731a48f9f33d6572abecd8aa067a98
+        derived: true
+
+  - id: geoboundaries_chiefdoms
+    name: geoBoundaries - Sierra Leone ADM3 chiefdoms
+    source: geoBoundaries gbOpen
+    reference: "Runfola, D. et al. (2020). PLoS ONE 15(4): e0231866"
+    url: https://github.com/wmgeolab/geoBoundaries
+    version: unrecorded - needs confirmation
+    retrieved: unrecorded
+    licence: CC-BY-4.0
+    licence_evidence: >-
+      Asserted in the file's own attribution key and at web/build_geodata.py.
+    attribution: >-
+      Runfola, D. et al. (2020). geoBoundaries: A global database of political
+      administrative boundaries. PLoS ONE 15(4): e0231866. CC BY 4.0
+    share_alike: false
+    changes_made: >-
+      Each chiefdom tagged with its parent district; the merged "Koya" feature
+      split by longitude into two chiefdoms (split_koya_feature).
+    files:
+      - path: src/groundwater/data/sl_chiefdoms_geoboundaries.geojson
+        bytes: 155398
+        sha256: 81ce1355ddacbaf1de1c668c971e27324e4cbde6d19382f75ab11652c2559443
+        derived: true
+
+  - id: usgs_geology
+    name: USGS Geologic Map of Africa
+    source: "geo2_7g, USGS Open-File Report 97-470A, 1:5,000,000"
+    reference: "United States Geological Survey (1997). Open-File Report 97-470A"
+    url: https://github.com/Heed725/Africa_Geology_Data_Shapefile
+    version: "OFR 97-470A"
+    retrieved: unrecorded
+    licence: public-domain-usgov
+    licence_evidence: >-
+      Asserted at web/build_geodata.py as a work of the US Government. The
+      GitHub mirror's own terms are UNVERIFIED; prefer re-retrieval from
+      pubs.usgs.gov.
+    attribution: >-
+      United States Geological Survey (1997). Geologic Map of Africa,
+      Open-File Report 97-470A.
+    share_alike: false
+    changes_made: Clipped to the Sierra Leone window and line-simplified.
+    files:
+      - path: src/groundwater/data/sl_geology_usgs.geojson
+        bytes: 38563
+        sha256: 926ac0f88214bb5ad60a82cea614ec5f926d2adf2686b72233cd05c04857cd53
+        derived: true
+
+  - id: statssl_census_2015
+    name: Statistics Sierra Leone - 2015 Population and Housing Census
+    source: >-
+      2015 PHC, Distribution of Total Population by Regions, Districts and
+      Chiefdoms; chiefdom table via the github.com/timothy-horton/SL_Map mirror
+    reference: "Statistics Sierra Leone (2015). Population and Housing Census."
+    url: https://www.statistics.sl/
+    version: "2015 census"
+    retrieved: unrecorded
+    licence: unverified
+    licence_evidence: >-
+      NONE. No licence statement was found in this repository or asserted
+      upstream, and the intermediary mirror's terms are separately unverified.
+      Confirm with Statistics Sierra Leone before redistributing.
+    attribution: "Statistics Sierra Leone (2015). Population and Housing Census."
+    share_alike: null
+    changes_made: >-
+      Aggregated to district totals and crosswalked onto the geoBoundaries
+      chiefdom polygons; the build asserts the aggregation conserves every
+      district total.
+    files:
+      - path: src/groundwater/data/sl_population_district.csv
+        bytes: 277
+        sha256: b4da4625bc34c7be11b5837d7c903ca3c963203924043f5f687956f770b97f12
+      - path: src/groundwater/data/sl_population_chiefdom.csv
+        bytes: 4950
+        sha256: 6e2763072909a2c480c3f234f8bc63d655900762c7f02aab5d5ef83c5f269d7d
+      - path: src/groundwater/data/sl_chiefdom_district.csv
+        bytes: 2951
+        sha256: 1898f1de8f027d6ada245ac2ecdffd654a6abd5732c8eec88287ef7be5adf695
+        derived: true
+      - path: src/groundwater/data/sl_census_crosswalk.csv
+        bytes: 5813
+        sha256: cb36f68e14be4cb8e5c407a8f40e891f75622364a7dd7133f7e531982273bed4
+        derived: true
+
+  - id: who_guidelines
+    name: WHO Guidelines for Drinking-water Quality
+    source: 4th edition incorporating the 1st and 2nd addenda
+    reference: >-
+      World Health Organization. Guidelines for Drinking-water Quality,
+      4th edition.
+    url: https://www.who.int/publications/i/item/9789241549950
+    version: "4th ed. + addenda"
+    retrieved: unrecorded
+    licence: values-transcribed
+    licence_evidence: >-
+      The table holds guideline VALUES transcribed as short factual figures,
+      not WHO prose. The publication itself is CC BY-NC-SA 3.0 IGO; confirm
+      before redistributing any WHO text.
+    attribution: >-
+      World Health Organization. Guidelines for Drinking-water Quality,
+      4th edition.
+    share_alike: false
+    changes_made: >-
+      Transcribed into a CSV with a separate national column. Every national
+      value marked sl_source=provisional is a WHO figure carried across or a
+      regional-practice limit, NOT a confirmed Sierra Leone Standards Bureau
+      value.
+    files:
+      - path: src/groundwater/data/who_guidelines.csv
+        bytes: 3099
+        sha256: 9e8833bdb09fb46e402aba1044fa7ad2c57319bb8d6791e3279d1ffd1dc740f7
+
+  - id: wpdx
+    name: Water Point Data Exchange (WPdx+)
+    source: WPdx+ dataset, fetched at runtime
+    reference: Water Point Data Exchange
+    url: https://www.waterpointdata.org
+    version: live
+    retrieved: n/a
+    licence: CC-BY-4.0
+    licence_evidence: >-
+      Asserted at src/groundwater/waterpoints.py; not independently verified
+      against wpdx.org's terms.
+    attribution: >-
+      Water Point Data Exchange (WPdx+), CC BY 4.0,
+      https://www.waterpointdata.org
+    share_alike: false
+    changes_made: none - nothing is committed
+    files: []
+
+# Third-party publications under WaterProjectFiles/. None of these carries a
+# redistribution grant that has been established. Being the source of a method
+# is provenance, not permission - see THIRD_PARTY_NOTICES.md for the options.
+documents:
+  - path: WaterProjectFiles/Borehole Drilling – Planning, Contracting & Management- Introduction  .pdf
+    publisher: RWSN / Skat
+    licence: unverified
+  - path: WaterProjectFiles/Professional Water Well Drilling .pdf
+    publisher: RWSN / Skat
+    licence: unverified
+  - path: WaterProjectFiles/Supervising Water Well Drilling A guide for supervisors.pdf
+    publisher: RWSN / Skat
+    licence: unverified
+  - path: WaterProjectFiles/Procurement and Contract Management of Drilled Well Construction A Guide for Supervisors and Project Managers.pdf
+    publisher: UNICEF / RWSN
+    licence: unverified
+  - path: WaterProjectFiles/Costing and Pricing A Guide for Water Well Drilling Enterprises.pdf
+    publisher: RWSN / Skat
+    licence: unverified
+  - path: WaterProjectFiles/Borehole Costing Model V2.8 BETA & Quick Start Guide.pdf
+    publisher: RWSN / Skat
+    licence: unverified
+  - path: WaterProjectFiles/WASH Funders Infrastructure Checklists- Boreholes and Handpumps.pdf
+    publisher: unattributed in file
+    licence: unverified
+  - path: WaterProjectFiles/Geology of Sierra Leone (MoWR-SALWACO 2017).pdf
+    publisher: Government of Sierra Leone (MoWR / SALWACO)
+    licence: unverified
+  - path: WaterProjectFiles/SierraLeone_BGS_Hydrogeology/AfricaGroundwaterAtlasCountryMapsUserGuide_OR21063.pdf
+    publisher: British Geological Survey
+    licence: CC-BY-SA-4.0
+    licence_evidence: >-
+      Licence text committed beside it in the same directory.

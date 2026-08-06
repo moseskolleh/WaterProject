@@ -24,7 +24,13 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from ..models import DataFlag, WaterQualitySample
-from .standards import Limit, StandardEntry, load_standards, normalise_parameter
+from .standards import (
+    Limit,
+    StandardEntry,
+    canonical_values,
+    load_standards,
+    normalise_parameter,
+)
 
 # adult chronic exposure (WHO/EPA default)
 _INTAKE_L_PER_DAY = 2.0
@@ -82,11 +88,15 @@ class HealthRiskAssessment:
 
 
 def _measured(sample: WaterQualitySample) -> dict[str, float]:
-    values: dict[str, float] = {}
-    for result in sample.results:
-        if result.value is not None:
-            values[normalise_parameter(result.parameter)] = float(result.value)
-    return values
+    """Every measured value, converted onto the standards table's scale.
+
+    The reference doses and the index weights below are all mg/L figures, so
+    a laboratory reporting in ug/L used to produce a hazard index a thousand
+    times too high - "High" risk and a 0.4 lifetime cancer risk for water
+    that is well inside every guideline. A value whose unit cannot be
+    reconciled is left out rather than used raw.
+    """
+    return canonical_values(sample)
 
 
 def _wqi_limit(entry: StandardEntry) -> Optional[Limit]:

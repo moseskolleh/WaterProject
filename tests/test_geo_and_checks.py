@@ -1,8 +1,10 @@
 import math
 
 from groundwater.geo import (
+    geodesic_distance_m,
     geographic_to_utm,
     infer_zone_for_sierra_leone,
+    utm_distance_m,
     utm_to_geographic,
     utm_zone_from_lon,
 )
@@ -56,6 +58,56 @@ def test_group_consistency():
     flags = check_group_consistency([("VES 1", a), ("VES 2", b)])
     assert any(f.code == "inconsistent_district" for f in flags)
     assert not any(f.code == "inconsistent_client" for f in flags)
+
+
+def test_geodesic_distance_matches_known_separations():
+    """Vincenty on WGS84, checked against independently computed values."""
+    # Freetown to Bo, about 174 km
+    d = geodesic_distance_m(8.4657, -13.2317, 7.9647, -11.7383)
+    assert abs(d - 173628.0) < 50.0
+    # one degree of latitude on the meridian near the equator
+    assert abs(geodesic_distance_m(8.0, -12.0, 9.0, -12.0) - 110598.0) < 50.0
+    assert geodesic_distance_m(8.0, -12.0, 8.0, -12.0) == 0.0
+
+
+def test_utm_distance_crosses_the_zone_boundary():
+    """Raw eastings from different zones are not comparable.
+
+    Sierra Leone straddles UTM 28N and 29N and each zone restarts its easting
+    at its own central meridian, so subtracting one from the other put two
+    sites 2.2 km apart 659 km apart - a QA warning on every survey that
+    happens to straddle 12 degrees W.
+    """
+    west = geographic_to_utm(8.50, -12.01)   # zone 28N
+    east = geographic_to_utm(8.50, -11.99)   # zone 29N
+    assert west.zone == 28 and east.zone == 29
+    naive_km = math.hypot(west.easting - east.easting,
+                          west.northing - east.northing) / 1000.0
+    assert naive_km > 600.0                  # what the old check computed
+    assert abs(utm_distance_m(west, east) / 1000.0 - 2.20) < 0.05
+
+
+def test_group_consistency_does_not_flag_neighbours_across_zones():
+    west = geographic_to_utm(8.50, -12.01)
+    east = geographic_to_utm(8.50, -11.99)
+    a = SiteMetadata(community="Rokel", easting=west.easting,
+                     northing=west.northing, utm_zone=west.zone)
+    b = SiteMetadata(community="Rokel", easting=east.easting,
+                     northing=east.northing, utm_zone=east.zone)
+    flags = check_group_consistency([("VES 1", a), ("VES 2", b)])
+    assert not any(f.code == "points_far_apart" for f in flags)
+
+
+def test_group_consistency_still_flags_genuinely_distant_points():
+    freetown = geographic_to_utm(8.4657, -13.2317)
+    bo = geographic_to_utm(7.9647, -11.7383)
+    a = SiteMetadata(community="Rokel", easting=freetown.easting,
+                     northing=freetown.northing, utm_zone=freetown.zone)
+    b = SiteMetadata(community="Rokel", easting=bo.easting,
+                     northing=bo.northing, utm_zone=bo.zone)
+    flags = check_group_consistency([("VES 1", a), ("VES 2", b)])
+    far = [f for f in flags if f.code == "points_far_apart"]
+    assert far and "173." in far[0].message
 
 
 def test_parse_latlon_reads_hemisphere_letters_as_signs():

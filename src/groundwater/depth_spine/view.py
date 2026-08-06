@@ -249,13 +249,20 @@ def _quality(assessment: WaterQualityAssessment) -> dict:
         kind = "none"
         if limit is not None:
             kind = "range" if limit.minimum is not None else "max"
-            if r.value is not None and limit.maximum:
-                ratio = float(r.value) / float(limit.maximum)
+            # The limit is written in the guideline's unit, so the value has
+            # to be on that scale too. Dividing the raw reported number by it
+            # plotted a compliant ug/L result a thousand times over its line.
+            if r.value_in_guideline_unit is not None and limit.maximum:
+                ratio = float(r.value_in_guideline_unit) / float(limit.maximum)
         rows.append(
             {
                 "parameter": r.parameter,
                 "value": _round(r.value, 4),
                 "unit": r.unit,
+                "valueInGuidelineUnit": _round(r.value_in_guideline_unit, 4),
+                "guidelineUnit": r.guideline_unit,
+                "evaluable": r.evaluable,
+                "reason": r.reason,
                 "belowDetection": r.below_detection,
                 "whoHealth": r.who_health,
                 "whoAesthetic": r.who_aesthetic,
@@ -311,11 +318,14 @@ def _quality(assessment: WaterQualityAssessment) -> dict:
         "laboratory": assessment.sample.laboratory,
         "rows": rows,
         "verdict": assessment.verdict,
+        "verdictState": assessment.verdict_state,
+        "uncertainties": list(assessment.uncertainties),
         "healthExceedances": [r.parameter for r in assessment.health_exceedances],
         "nationalExceedances": [r.parameter for r in assessment.national_exceedances],
         "aestheticExceedances": [
-            r.parameter for r in assessment.rows if r.status == "exceeds_aesthetic"
+            r.parameter for r in assessment.aesthetic_exceedances
         ],
+        "indeterminate": [r.parameter for r in assessment.indeterminate_rows],
         "ionic": ionic,
         "piper": piper,
         "corrosivity": corrosivity,

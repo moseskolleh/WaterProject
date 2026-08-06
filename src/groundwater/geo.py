@@ -143,6 +143,113 @@ def utm_to_geographic(
     return lat, lon
 
 
+def geodesic_distance_m(
+    lat1: float, lon1: float, lat2: float, lon2: float
+) -> float:
+    """Distance in metres between two WGS84 points, along the ellipsoid.
+
+    Vincenty's inverse formula, which is accurate to well under a millimetre
+    at the distances this toolkit deals with. Vincenty does not converge for
+    near-antipodal points; nothing in a country survey is antipodal, but the
+    spherical (haversine) value is returned rather than raising if it ever
+    happens.
+    """
+    if lat1 == lat2 and lon1 == lon2:
+        return 0.0
+
+    b = _A * (1 - _F)
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    l_diff = math.radians(lon2 - lon1)
+    u1 = math.atan((1 - _F) * math.tan(phi1))
+    u2 = math.atan((1 - _F) * math.tan(phi2))
+    sin_u1, cos_u1 = math.sin(u1), math.cos(u1)
+    sin_u2, cos_u2 = math.sin(u2), math.cos(u2)
+
+    lam = l_diff
+    sin_sigma = cos_sigma = sigma = cos_sq_alpha = cos_2sigma_m = 0.0
+    for _ in range(200):
+        sin_lam, cos_lam = math.sin(lam), math.cos(lam)
+        sin_sigma = math.hypot(
+            cos_u2 * sin_lam,
+            cos_u1 * sin_u2 - sin_u1 * cos_u2 * cos_lam,
+        )
+        if sin_sigma == 0:
+            return 0.0  # coincident points
+        cos_sigma = sin_u1 * sin_u2 + cos_u1 * cos_u2 * cos_lam
+        sigma = math.atan2(sin_sigma, cos_sigma)
+        sin_alpha = cos_u1 * cos_u2 * sin_lam / sin_sigma
+        cos_sq_alpha = 1 - sin_alpha * sin_alpha
+        cos_2sigma_m = (
+            cos_sigma - 2 * sin_u1 * sin_u2 / cos_sq_alpha
+            if cos_sq_alpha != 0
+            else 0.0  # equatorial line
+        )
+        c = _F / 16 * cos_sq_alpha * (4 + _F * (4 - 3 * cos_sq_alpha))
+        lam_prev = lam
+        lam = l_diff + (1 - c) * _F * sin_alpha * (
+            sigma
+            + c
+            * sin_sigma
+            * (cos_2sigma_m + c * cos_sigma * (-1 + 2 * cos_2sigma_m**2))
+        )
+        if abs(lam - lam_prev) < 1e-12:
+            break
+    else:
+        return _haversine_distance_m(lat1, lon1, lat2, lon2)
+
+    u_sq = cos_sq_alpha * (_A * _A - b * b) / (b * b)
+    big_a = 1 + u_sq / 16384 * (4096 + u_sq * (-768 + u_sq * (320 - 175 * u_sq)))
+    big_b = u_sq / 1024 * (256 + u_sq * (-128 + u_sq * (74 - 47 * u_sq)))
+    delta_sigma = (
+        big_b
+        * sin_sigma
+        * (
+            cos_2sigma_m
+            + big_b
+            / 4
+            * (
+                cos_sigma * (-1 + 2 * cos_2sigma_m**2)
+                - big_b
+                / 6
+                * cos_2sigma_m
+                * (-3 + 4 * sin_sigma**2)
+                * (-3 + 4 * cos_2sigma_m**2)
+            )
+        )
+    )
+    return b * big_a * (sigma - delta_sigma)
+
+
+def _haversine_distance_m(
+    lat1: float, lon1: float, lat2: float, lon2: float
+) -> float:
+    """Great-circle distance on a sphere of the WGS84 mean radius."""
+    radius = 6371008.8
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    d_phi = phi2 - phi1
+    d_lam = math.radians(lon2 - lon1)
+    a = (
+        math.sin(d_phi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(d_lam / 2) ** 2
+    )
+    return 2 * radius * math.asin(min(1.0, math.sqrt(a)))
+
+
+def utm_distance_m(a: UTMCoordinate, b: UTMCoordinate) -> float:
+    """Ground distance between two UTM points, each read in its own zone.
+
+    Subtracting eastings from different zones is meaningless: the false
+    easting restarts at every central meridian, so two sites a couple of
+    kilometres apart either side of the 12 degrees W boundary between zones
+    28N and 29N differ by hundreds of thousands of metres on paper. Each
+    point is converted with its own zone first, then measured on the
+    ellipsoid.
+    """
+    lat1, lon1 = utm_to_geographic(a.easting, a.northing, a.zone, a.hemisphere)
+    lat2, lon2 = utm_to_geographic(b.easting, b.northing, b.zone, b.hemisphere)
+    return geodesic_distance_m(lat1, lon1, lat2, lon2)
+
+
 def infer_zone_for_sierra_leone(easting: float) -> int:
     """Best guess of the UTM zone for a Sierra Leone easting.
 

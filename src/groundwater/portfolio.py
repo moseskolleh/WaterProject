@@ -10,47 +10,91 @@ statistics. Pure and map-library-free, so it is unit-testable.
 from __future__ import annotations
 
 from .geo import infer_zone_for_sierra_leone, utm_to_geographic
+from .quality.assess import VERDICT_LONG, VERDICT_ORDER, VERDICT_SHORT
+from .site_status import (
+    STATUS_COLORS,
+    STATUS_LABELS,
+    SiteStatus,
+    classify_text,
+    status_label,
+)
 
-# status classes and their map colours (red = problem, green = good)
-STATUS_COLORS = {
-    "successful": "#2E7D5B",
-    "dry": "#B23A2E",
-    "sited": "#17527E",
-    "other": "#C1772A",
-}
-STATUS_LABELS = {
-    "successful": "Successful",
-    "dry": "Dry / failed",
-    "sited": "Sited (not drilled)",
-    "other": "Other / in progress",
+__all__ = [
+    "STATUS_COLORS",
+    "STATUS_LABELS",
+    "SiteStatus",
+    "classify_status",
+    "portfolio_rows",
+    "portfolio_points",
+    "portfolio_stats",
+    "site_detail",
+    "site_label",
+    "site_one_pager",
+    "verdict_state",
+]
+
+#: Verdict wire values written by the current code. Older project files
+#: carry the three-value vocabulary and are translated on read; see
+#: :func:`verdict_state`.
+VERDICT_SCHEMA = 2
+
+#: How a pre-schema project file's verdict is read now. "fail" was
+#: unambiguously a health exceedance. "aesthetic" was written by code whose
+#: aesthetic bucket also held national-standard exceedances, so it may be a
+#: concealed compliance failure and must not be shown as merely a matter of
+#: taste - it is read as unproven, which is the fail-closed reading.
+_LEGACY_VERDICTS = {
+    "fail": "health_fail",
+    "aesthetic": "indeterminate",
+    "pass": "pass",
 }
 
 
 def classify_status(summary: dict) -> str:
-    """Normalise a project's free-text status into a portfolio class."""
-    raw = str(summary.get("status") or "").strip().lower()
+    """Normalise a project's free-text status into a portfolio class.
+
+    Returns the plain wire string (``"successful"``, ``"dry"``, ...), not the
+    :class:`SiteStatus` member. It compares equal to the member either way,
+    and a plain string is what a saved project file, a map layer and a YAML
+    dump can all carry - an enum member cannot be safe-dumped, and a caller
+    who put one in a summary would only find that out at save time.
+
+    An unrecognised status becomes ``"other"`` rather than anything positive.
+    Substring matching used to read "incomplete" and "unproductive" as
+    successes, which inflated every programme's reported success rate and
+    painted failed holes green on the national map.
+    """
+    raw = str(summary.get("status") or "").strip()
     if not raw:
-        return "sited" if summary.get("safe_yield_m3_per_h") or summary.get(
-            "total_depth_m"
-        ) else "other"
-    # Failure wins over completion. "Completed - dry" describes the works,
-    # not the outcome, and "unsuccessful" contains "success" - matching the
-    # positive terms first reported failed boreholes as successful ones and
-    # inflated the portfolio success rate.
-    if (
-        "dry" in raw
-        or "fail" in raw
-        or "abandon" in raw
-        or "unsuccess" in raw
-        or "not success" in raw
-        or "no water" in raw
-    ):
-        return "dry"
-    if "success" in raw or "complete" in raw or "productive" in raw:
-        return "successful"
-    if "sit" in raw:  # "sited", "siting"
-        return "sited"
-    return "other"
+        found = (
+            SiteStatus.SITED
+            if summary.get("safe_yield_m3_per_h") or summary.get("total_depth_m")
+            else SiteStatus.OTHER
+        )
+    else:
+        found = classify_text(raw) or SiteStatus.OTHER
+    return found.value
+
+
+def verdict_state(summary: dict) -> tuple[str | None, bool]:
+    """The water verdict held in a saved summary.
+
+    Returns ``(state, from_legacy_file)``. ``state`` is ``None`` when the
+    project carries no water quality result at all. ``from_legacy_file`` is
+    True when the value had to be translated from the old three-value
+    vocabulary, so the caller can say the reading is approximate.
+    """
+    raw = str(summary.get("water_verdict") or "").strip().lower()
+    if not raw:
+        return None, False
+    schema = summary.get("verdict_schema")
+    try:
+        schema = int(schema or 0)
+    except (TypeError, ValueError):
+        schema = 0
+    if schema >= VERDICT_SCHEMA:
+        return (raw if raw in VERDICT_SHORT else None), False
+    return _LEGACY_VERDICTS.get(raw), True
 
 
 def _latlon(summary: dict):
@@ -73,20 +117,23 @@ def portfolio_rows(summaries: list[dict]) -> list[dict]:
     """Formatted comparison rows, one per project."""
     rows = []
     for s in summaries:
-        status = classify_status(s)
         yield_ = s.get("safe_yield_m3_per_h")
         cost = s.get("cost_per_meter_usd")
-        verdict = str(s.get("water_verdict") or "").lower()
+        state, legacy = verdict_state(s)
+        water = VERDICT_SHORT.get(state, "") if state else ""
+        if water and legacy:
+            # An asterisk rather than a silent reinterpretation: the value was
+            # translated from an older file and the reader should know.
+            water += "*"
         rows.append(
             {
                 "Community": s.get("community") or "(unnamed)",
                 "District": s.get("district") or "",
-                "Status": STATUS_LABELS[status],
+                "Status": status_label(classify_status(s)),
                 "Depth (m)": round(float(s["total_depth_m"]), 1)
                 if s.get("total_depth_m") else None,
                 "Safe yield (m3/h)": round(float(yield_), 2) if yield_ else None,
-                "Water": {"fail": "Treat before use", "aesthetic": "Aesthetic only",
-                          "pass": "Safe"}.get(verdict, ""),
+                "Water": water,
                 "Cost/m (USD)": round(float(cost), 0) if cost else None,
             }
         )
@@ -138,7 +185,7 @@ def site_detail(summary: dict) -> list[tuple[str, str]]:
     add("Community", summary.get("community"))
     add("District", summary.get("district"))
     add("Chiefdom", summary.get("chiefdom"))
-    add("Status", STATUS_LABELS[classify_status(summary)])
+    add("Status", status_label(classify_status(summary)))
     latlon = _latlon(summary)
     if latlon is not None:
         add("Location", f"{latlon[0]:.5f} N, {abs(latlon[1]):.5f} W")
@@ -146,10 +193,13 @@ def site_detail(summary: dict) -> list[tuple[str, str]]:
     add("Total depth", f"{float(depth):.1f} m" if depth else None)
     yield_ = summary.get("safe_yield_m3_per_h")
     add("Safe yield", f"{float(yield_):.2f} m3/h" if yield_ else None)
-    verdict = str(summary.get("water_verdict") or "").lower()
-    add("Water quality", {"fail": "Treat before use",
-                          "aesthetic": "Aesthetic issues only",
-                          "pass": "Safe to drink"}.get(verdict))
+    state, legacy = verdict_state(summary)
+    if state is not None:
+        add(
+            "Water quality",
+            VERDICT_LONG[state]
+            + (" (read from an older project file)" if legacy else ""),
+        )
     cost = summary.get("cost_per_meter_usd")
     add("Cost per metre", f"${float(cost):.0f}" if cost else None)
     return rows
@@ -167,26 +217,56 @@ def site_one_pager(summary: dict) -> str:
 
 
 def portfolio_stats(summaries: list[dict]) -> dict:
-    """Headline portfolio statistics for the KPI tiles."""
+    """Headline portfolio statistics for the KPI tiles.
+
+    There is deliberately no single "water pass rate". The old one counted
+    an aesthetic exceedance as safe *and* carried national-standard
+    failures inside the aesthetic bucket, so a portfolio breaching the
+    national standard everywhere still showed 100% passing. Three rates
+    replace it - compliant, failing and unproven - and they are reported
+    separately precisely so nobody can read one of them as all three.
+    """
     n = len(summaries)
     drilled = [s for s in summaries if s.get("total_depth_m")]
     # Count successes over the same population the rate divides by (drilled
     # holes), so success_rate can never exceed 100% - a summary classified
     # "successful" but carrying no depth is not a drilled hole.
-    n_successful = sum(1 for s in drilled if classify_status(s) == "successful")
+    n_successful = sum(1 for s in drilled if classify_status(s) == SiteStatus.SUCCESSFUL)
+    n_unrecognised = sum(
+        1
+        for s in summaries
+        if s.get("status") and classify_status(s) == SiteStatus.OTHER
+    )
     yields = [float(s["safe_yield_m3_per_h"]) for s in summaries
               if s.get("safe_yield_m3_per_h")]
     costs = [float(s["cost_per_meter_usd"]) for s in summaries
              if s.get("cost_per_meter_usd")]
-    verdicts = [str(s.get("water_verdict") or "").lower() for s in summaries
-                if s.get("water_verdict")]
-    wq_safe = sum(1 for v in verdicts if v in ("pass", "aesthetic"))
+
+    counts = {state: 0 for state in VERDICT_ORDER}
+    counts["unknown"] = 0
+    assessed = 0
+    for s in summaries:
+        if not s.get("water_verdict"):
+            continue
+        assessed += 1
+        state, _ = verdict_state(s)
+        counts[state if state in counts else "unknown"] += 1
+
+    def rate(total: int):
+        return (total / assessed * 100.0) if assessed else None
+
     return {
         "n_projects": n,
         "n_drilled": len(drilled),
         "n_successful": n_successful,
+        "n_status_unrecognised": n_unrecognised,
         "success_rate": (n_successful / len(drilled) * 100.0) if drilled else None,
         "mean_safe_yield_m3_per_h": (sum(yields) / len(yields)) if yields else None,
         "mean_cost_per_meter_usd": (sum(costs) / len(costs)) if costs else None,
-        "wq_pass_rate": (wq_safe / len(verdicts) * 100.0) if verdicts else None,
+        "n_wq_assessed": assessed,
+        "wq_counts": counts,
+        # meets every health AND national limit; aesthetic reservations only
+        "wq_compliant_rate": rate(counts["pass"] + counts["aesthetic"]),
+        "wq_fail_rate": rate(counts["health_fail"] + counts["national_fail"]),
+        "wq_unproven_rate": rate(counts["indeterminate"] + counts["unknown"]),
     }

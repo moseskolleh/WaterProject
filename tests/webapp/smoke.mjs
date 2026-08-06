@@ -719,6 +719,80 @@ await withPage(async (page, base, consoleErrors) => {
   check('standards: the quality report says the national column is provisional',
     qualityDoc.len > 1000 && qualityDoc.saysProvisional, JSON.stringify(qualityDoc));
 
+  // --- the API key never reaches long-term storage ------------------------
+  // It used to be a field of the persisted state, so the store mirrored it
+  // into localStorage on every change: unencrypted, surviving a browser
+  // restart, readable by anything with script access to this origin.
+  const credential = await page.evaluate(async () => {
+    const app = window.GWT.app;
+    app.setApiKey('sk-ant-smoke-test-key', false);
+    const inMemory = {
+      readable: app.getApiKey(),
+      inSession: sessionStorage.getItem('gwt.credential.v1'),
+      inLocal: (localStorage.getItem('gwt.project.v1') || '')
+        .includes('sk-ant-smoke-test-key'),
+      inState: JSON.stringify(app.store.state).includes('sk-ant-smoke-test-key'),
+    };
+    app.store.persist();
+    inMemory.inLocalAfterPersist = (localStorage.getItem('gwt.project.v1') || '')
+      .includes('sk-ant-smoke-test-key');
+
+    // opting in puts it in sessionStorage, which the browser drops with the tab
+    app.setApiKey('sk-ant-smoke-test-key', true);
+    const remembered = sessionStorage.getItem('gwt.credential.v1');
+    const stillNotInLocal = !(localStorage.getItem('gwt.project.v1') || '')
+      .includes('sk-ant-smoke-test-key');
+
+    app.forgetApiKey();
+    return Object.assign(inMemory, {
+      remembered,
+      stillNotInLocal,
+      forgotten: app.getApiKey(),
+      sessionCleared: sessionStorage.getItem('gwt.credential.v1'),
+    });
+  });
+  check('credentials: the key is usable in this tab',
+    credential.readable === 'sk-ant-smoke-test-key', JSON.stringify(credential));
+  check('credentials: it is not in the session state',
+    credential.inState === false, JSON.stringify(credential));
+  check('credentials: it is never written to long-term storage',
+    credential.inLocal === false && credential.inLocalAfterPersist === false &&
+    credential.stillNotInLocal === true, JSON.stringify(credential));
+  check('credentials: memory-only by default, session storage on opt-in',
+    credential.inSession === null &&
+    credential.remembered === 'sk-ant-smoke-test-key',
+    JSON.stringify(credential));
+  check('credentials: forgetting it is a real sweep',
+    credential.forgotten === '' && credential.sessionCleared === null,
+    JSON.stringify(credential));
+
+  // a project file is meant to be mailed to a colleague
+  const shared = await page.evaluate(async () => {
+    const app = window.GWT.app;
+    app.setApiKey('sk-ant-shared-file-key', true);
+    /* an older build could also leave a stale field in the store itself */
+    app.store.set('extraction.apiKey', 'sk-ant-stale-store-key');
+    let captured = '';
+    const original = window.GWT.support.download;
+    window.GWT.support.download = (name, body) => { captured = String(body); };
+    app.goto('settings');
+    app.render();
+    document.querySelectorAll('button').forEach((b) => {
+      if (b.textContent === 'Save project file') b.click();
+    });
+    window.GWT.support.download = original;
+    app.forgetApiKey();
+    app.store.remove('extraction.apiKey');
+    return {
+      length: captured.length,
+      carriesKey: captured.includes('sk-ant-shared-file-key'),
+      carriesStale: captured.includes('sk-ant-stale-store-key'),
+    };
+  });
+  check('credentials: a saved project file never carries the key',
+    shared.length > 100 && !shared.carriesKey && !shared.carriesStale,
+    JSON.stringify(shared));
+
   // --- autosave failure is announced --------------------------------------
   // localStorage quota is finite and photographs are large. Autosave dropping
   // out silently is the worst thing this app can do to a day of fieldwork.

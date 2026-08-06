@@ -22,13 +22,11 @@ dist-ssr
 *.sln
 *.sw?
 
-# The built frontend is committed on purpose: Streamlit Community Cloud has no
-# npm, so the component serves this directory as-is. This negation overrides
-# the repository-root `dist/` rule.
-!dist/
-!dist/**
-
-# The inline build's real home is inside the Python package
-# (src/groundwater/depth_spine/static/), placed there by scripts/place-static.mjs.
-# Committing this intermediate too would ship the same 250 KB twice.
+# Both builds land inside the Python package, and both are committed there on
+# purpose: Streamlit Community Cloud has no npm, and a wheel has to carry the
+# component or the Depth Spine page is dead for everyone who pip-installed it.
+#   npm run build         -> src/groundwater/depth_spine/frontend/
+#   npm run build:inline  -> src/groundwater/depth_spine/static/workspace.html
+# Nothing built stays in this directory, so there is no dist/ to negate.
+dist
 dist-inline

@@ -36,6 +36,11 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 groundwater = ["data/*.csv", "data/*.yaml", "data/*.geojson", "data/brand/*.png", "data/brand/*.svg"]
+# The Depth Spine workspace ships inside the wheel. Without these the page is
+# dead on every pip install: the component build is absent and the static
+# fallback with it. The asset filenames are content-hashed by Vite and change
+# on every rebuild, so the assets entry has to be a glob.
+"groundwater.depth_spine" = ["static/*.html", "frontend/index.html", "frontend/assets/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

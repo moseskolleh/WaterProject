@@ -1112,6 +1112,16 @@
         'drinking: ' + assessment.health_exceedances.map(function (r) {
           return r.parameter; }).join(', ') + ' exceed health based limits.');
     }
+    if (assessment.national_exceedances.length) {
+      recommendations.push('Treat before the supply is accepted against the ' +
+        'national standard: ' + assessment.national_exceedances.map(function (r) {
+          return r.parameter; }).join(', ') + ' exceed the national limit.');
+    }
+    if (assessment.verdict_state === 'indeterminate') {
+      recommendations.push('Do not describe this supply as safe to drink until ' +
+        'the results are complete: ' +
+        (assessment.uncertainties || []).join('; ') + '.');
+    }
     if (assessment.corrosivity && assessment.corrosivity.is_aggressive) {
       recommendations.push('Specify uPVC or stainless steel rising main and pump ' +
         'components; avoid galvanised iron.');
@@ -1133,9 +1143,12 @@
   }
 
   function statusLabel(status) {
+    /* Every status the assessment can produce has a label here: a row the
+     * toolkit could not grade must never reach a client as a raw code. */
     return {
       exceeds_health: 'Exceeds health', exceeds_national: 'Exceeds national',
-      exceeds_aesthetic: 'Exceeds acceptability', within_limits: 'Within limits',
+      exceeds_aesthetic: 'Exceeds acceptability',
+      indeterminate: 'NOT EVALUABLE', within_limits: 'Within limits',
       below_detection: 'Below detection', no_guideline: 'No guideline',
       not_measured: 'Not measured',
     }[status] || status;
@@ -1352,9 +1365,9 @@
       rec && rec.safe_yield_m3_per_h ? 'Safe yield: ' + C.yieldRangeText(rec) : null,
       rec && rec.pump_installation_depth_m !== null
         ? 'Pump setting: ' + rec.pump_installation_depth_m.toFixed(0) + ' m' : null,
-      assessment && assessment.health_exceedances.length
-        ? 'Water quality: treatment required'
-        : (assessment ? 'Water quality: meets health based guideline values' : null),
+      assessment
+        ? 'Water quality: ' + C.VERDICT_LONG[assessment.verdict_state].toLowerCase()
+        : null,
     ]);
 
     b.heading('1. Project Summary', 1);

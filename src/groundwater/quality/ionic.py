@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from ..models import DataFlag, WaterQualitySample
-from .standards import normalise_parameter
+from .standards import canonical_values, normalise_parameter
 
 # meq per mg: charge / molar mass
 _CATIONS = {
@@ -50,11 +50,22 @@ class IonicBalanceResult:
 
 
 def _value(sample: WaterQualitySample, key: str) -> Optional[float]:
+    """One ion in milliequivalents-ready mg/L.
+
+    The meq factors above are per mg/L, so the value has to be on that scale
+    before it is multiplied: the same chemistry reported in ug/L gave a
+    charge balance error of 8.7% and was flagged as a laboratory problem.
+    """
+    canonical = canonical_values(sample)
+    if key in canonical:
+        return canonical[key]
     for result in sample.results:
         if normalise_parameter(result.parameter) == key:
-            return result.value if result.value is not None else (
-                0.0 if result.below_detection else None
-            )
+            if result.value is not None:
+                # present but not convertible: refuse it rather than use the
+                # raw number on an unknown scale
+                return None
+            return 0.0 if result.below_detection else None
     return None
 
 

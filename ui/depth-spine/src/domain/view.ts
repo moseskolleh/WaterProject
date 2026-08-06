@@ -119,13 +119,18 @@ export interface DesignBlock {
   flags: Flag[];
 }
 
+// Every status groundwater/quality/assess.py can emit. It has to be the
+// complete set: a status the union omits is one the tone mapping below falls
+// through on, and falling through drew an ungraded row green.
 export type ParameterStatus =
   | 'within_limits'
   | 'exceeds_health'
   | 'exceeds_aesthetic'
   | 'exceeds_national'
+  | 'indeterminate'
   | 'below_detection'
-  | 'no_guideline';
+  | 'no_guideline'
+  | 'not_measured';
 
 export interface QualityRow {
   parameter: string;
@@ -177,9 +182,12 @@ export interface QualityBlock {
   laboratory: string;
   rows: QualityRow[];
   verdict: string;
+  verdictState: 'health_fail' | 'national_fail' | 'indeterminate' | 'aesthetic' | 'pass';
+  uncertainties: string[];
   healthExceedances: string[];
   nationalExceedances: string[];
   aestheticExceedances: string[];
+  indeterminate: string[];
   ionic: IonicBalance | null;
   piper: PiperData | null;
   corrosivity: Corrosivity | null;
