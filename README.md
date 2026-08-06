@@ -49,6 +49,51 @@ water quality guidelines.
     choropleth and a ranked table to steer where to drill next. Chiefdom
     populations aggregate the census onto the boundary polygons with
     district totals conserved exactly and the reconciliation shown
+13. A certification-readiness gate on every report: each report is judged
+    on the evidence it actually claims, and one built on missing evidence
+    is stamped PROVISIONAL - NOT FOR CERTIFICATION on its own cover with
+    the outstanding items listed. It judges completeness, not outcome - a
+    borehole whose water fails a health guideline is perfectly certifiable;
+    one whose result could not be read is not. An interim document can be
+    issued on a recorded override naming who issued it and why, which makes
+    it issuable and never certifiable
+14. A planning view over the coverage gap, because both halves of "people
+    per functional water point" are older than the phrase suggests: the
+    2015 census is projected to a year the user picks at a rate they can
+    set (defaulting to the rate implied by the 2004 and 2015 census totals,
+    and saying plainly that a uniform rate cannot reorder the ranking - only
+    district rates do that); the age of the survey behind each point is
+    measured, with coverage over recent surveys reported beside coverage
+    over all of them so the gap between them is the size of the assumption;
+    and dry-season service is a band rather than a number, because most
+    surveys never recorded how many months of the year a source yields water
+    and silence is not a year-round supply
+15. A seasonal sustainable-yield model: a pumping test measures one day,
+    so the tested water level is placed in the annual cycle and the yield
+    reported at three levels - as tested, at the normal end-of-dry-season
+    low, and in a drought year - with the pump intake set deep enough for
+    the worst of them. A date that could be read either way round (10/05 is
+    10 May or 5 October, opposite ends of the year) is treated as no date:
+    the whole annual range is reserved and the report says why
+16. Procurement tracking over the bill of quantities: the estimate is
+    frozen into a contract when it is awarded, work measured is kept
+    separate from work authorised so only the lower one is paid, variation
+    orders record who authorised the difference and why, and the interim
+    payment certificate shows every deduction between the value of the work
+    and the figure at the bottom. Work done but not authorised is named and
+    withheld rather than quietly paid or quietly dropped, a later
+    certificate that forgets what earlier ones paid is challenged, and a
+    certificate that would pay less than nothing pays nothing and says by
+    how much the job is overpaid
+17. A borehole asset registry for the second twenty years: a check-summed
+    identifier derived from the position (so two teams at the same wellhead
+    with no connection between them arrive at the same one), a printable
+    headworks plate carrying a QR symbol generated offline, an append-only
+    maintenance history that merges by content when two phones meet, and
+    derived condition and overdue dates. Nothing is assumed working - a
+    borehole nobody has reported on is unknown, not functional, and the
+    functionality rate is only ever computed over the points whose
+    condition is actually known
 
 ## Try it online
 
@@ -180,6 +225,15 @@ groundwater/
     mapping/      site maps, iso-resistivity and overburden maps, GIS export
     reporting/    house-styled .docx builders for the seven report types
     extraction/   scanned sheet extraction with review flagging
+    readiness.py  the certification gate: per-report requirements, overrides
+    seasonal.py   the tested day placed in the year: dry-season and drought
+                  yields, and the pump depth the worst of them needs
+    planning.py   coverage as a planning figure: population projection,
+                  survey freshness, dry-season service as a band
+    procurement.py  contract, variation orders, measurement and the interim
+                  payment certificate
+    registry.py   asset identifiers, maintenance events, derived condition
+    qr.py         a dependency-free QR encoder for the headworks plate
 ```
 
 ## Reference library

@@ -150,6 +150,41 @@
     return this;
   };
 
+  /* Say on the cover that this document is not a certification.
+   *
+   * A report is what a borehole is handed over on, so one built from
+   * incomplete evidence must not be indistinguishable from one built from
+   * complete evidence. A ready project gets no stamp; every other project
+   * gets this, naming what is outstanding or what was overridden and by
+   * whom, in the document itself rather than in a toast nobody keeps. */
+  ReportBuilder.prototype.provisionalStamp = function (readiness) {
+    if (!readiness || readiness.is_certifiable) return this;
+    var self = this;
+    var overridden = readiness.state === 'ready_with_overrides';
+    this.paragraph(overridden
+      ? 'ISSUED ON OVERRIDE - NOT A CERTIFICATION'
+      : 'PROVISIONAL - NOT FOR CERTIFICATION',
+      { bold: true, size: 13, align: 'center', color: 'B23A2E' });
+    this.paragraph(overridden
+      ? 'This report was issued although the following requirements were not ' +
+        'met. The reason recorded for each is given.'
+      : 'This report rests on incomplete results. The following requirements ' +
+        'for certification are outstanding.',
+      { italic: true, align: 'justify' });
+    var lines = [];
+    (readiness.overridden || []).forEach(function (req) {
+      var who = req.override_by ? ' (' + req.override_by + ')' : '';
+      lines.push(req.title + ': ' + req.detail + ' Overridden' + who + ': ' +
+        (req.override_reason || 'no reason recorded'));
+    });
+    (readiness.unmet || []).forEach(function (req) {
+      lines.push(req.title + ': ' + req.detail);
+    });
+    if (lines.length) self.bullets(lines);
+    this.pageBreak();
+    return this;
+  };
+
   ReportBuilder.prototype.executiveSummary = function (paragraphs, keyFindings) {
     var self = this;
     this.heading('Executive Summary', 1);
@@ -614,6 +649,7 @@
       site.community ? site.community + (site.district ? ', ' + site.district : '') : ''],
       ['Vertical electrical sounding for borehole siting'],
       siteDetails(site));
+    b.provisionalStamp(context.readiness);
     b.tableOfContents();
 
     var best = interpretations.slice().sort(function (a, c) {
@@ -771,6 +807,7 @@
         ['Drilling method', log.drilling_method || '—'],
         ['Status', log.status || '—'],
       ]));
+    b.provisionalStamp(context.readiness);
     b.tableOfContents();
 
     b.executiveSummary([
@@ -862,6 +899,7 @@
           ? test.static_water_level_m.toFixed(2) + ' m' : '—'],
         ['Borehole depth', test.borehole_depth_m ? C.fmtNum(test.borehole_depth_m) + ' m' : '—'],
       ]));
+    b.provisionalStamp(context.readiness);
     b.tableOfContents();
 
     b.executiveSummary([
@@ -998,6 +1036,53 @@
         (rec.pending_reason || 'required inputs are missing') + '.', { bold: true });
     }
 
+    var seasonal = context.seasonal;
+    if (seasonal && seasonal.is_established) {
+      b.heading('5.1 Through the year', 2);
+      b.paragraph('A pumping test measures one day. The borehole has to ' +
+        'supply the village on the worst day, and those are months apart: the ' +
+        'water table is recharged through the single wet season, peaks at the ' +
+        'end of it and falls through the dry season to an annual low in April ' +
+        'or May. The same test therefore means different things depending on ' +
+        'when it was run, so the yield is reported here at each of three ' +
+        'water levels rather than at one.', { align: 'justify' });
+      if (seasonal.month) {
+        b.paragraph('This test was run in ' + C.MONTH_NAMES[seasonal.month - 1] +
+          ', the ' + seasonal.season + '.');
+      } else if (seasonal.month_note) {
+        b.paragraph(seasonal.month_note + ' The whole annual range is ' +
+          'therefore reserved, which is the conservative reading.',
+        { bold: true });
+      }
+      b.table(seasonal.scenarios.map(function (sc) {
+        return [sc.title, C.pyFixed(sc.decline_m, 1),
+          C.fmtNum(sc.static_water_level_m), C.fmtNum(sc.available_drawdown_m),
+          C.fmtNum(sc.safe_yield_m3_per_h),
+          C.fmtNum(sc.pump_installation_depth_m)];
+      }), {
+        header: ['Scenario', 'Further decline (m)', 'Static level (m)',
+          'Available drawdown (m)', 'Safe yield (m³/h)', 'Pump intake (m)'],
+        caption: 'Safe yield and pump setting at each seasonal water level',
+      });
+      b.paragraph('The annual range used is ' +
+        C.pyFixed(seasonal.annual_range_m, 1) + ' m — ' + seasonal.range_source +
+        '. It is the one number here that a single test cannot measure, and ' +
+        'every figure in the table moves with it.', { italic: true });
+      if (seasonal.dry_season_loss_percent > 1) {
+        b.paragraph('By the end of the dry season the borehole yields about ' +
+          C.pyFixed(seasonal.dry_season_loss_percent, 0) + '% less than it did ' +
+          'on the day of the test.', { bold: true });
+      }
+      b.bullets(seasonal.scenarios.map(function (sc) { return sc.note; }));
+      if (seasonal.pump_installation_depth_m !== null) {
+        b.paragraph('Set the pump intake at ' +
+          C.fmtNum(seasonal.pump_installation_depth_m) + ' m below ground ' +
+          'level: deep enough for the drought case, because the pump is ' +
+          'fitted once and a pump that draws air in a bad year loses the ' +
+          'village its borehole in the year it is needed most.', { bold: true });
+      }
+    }
+
     b.heading('6. Limitations and Uncertainty', 1);
     limitationsParagraphs('pumping').forEach(function (text) {
       b.paragraph(text, { align: 'justify' });
@@ -1024,6 +1109,7 @@
         ['Sample date', sample.sample_date || '—'],
         ['Laboratory', sample.laboratory || '—'],
       ]));
+    b.provisionalStamp(context.readiness);
     b.tableOfContents();
 
     b.executiveSummary([assessment.verdict,
@@ -1167,6 +1253,7 @@
         ['Estimated total cost', S.money(estimate.total_cost_usd, 0)],
         ['Contract price', S.money(estimate.price_usd, 0)],
       ]));
+    b.provisionalStamp(context.readiness);
     b.tableOfContents();
 
     b.executiveSummary([
@@ -1285,6 +1372,7 @@
         ['Items answered', evaluation.answered + ' of ' + evaluation.total],
         ['Critical failures', String(evaluation.critical_failures)],
       ]));
+    b.provisionalStamp(context.readiness);
 
     b.heading('1. Summary', 1);
     b.paragraph(evaluation.verdict, { bold: true });
@@ -1348,6 +1436,7 @@
         ['Borehole reference', log.borehole_ref || context.boreholeRef || '—'],
         ['Handover date', context.handoverDate || ''],
       ]));
+    b.provisionalStamp(context.readiness);
     b.tableOfContents();
 
     b.executiveSummary([
@@ -1458,6 +1547,211 @@
     return b;
   }
 
+  /* --- the asset registry --------------------------------------------------
+   * Two documents. The placard is one page to print, laminate and fix to the
+   * headworks: the identifier in large type, the symbol that encodes it, and
+   * the facts that do not go out of date. The record is the history, and what
+   * that history says the borehole's condition is today.
+   * ---------------------------------------------------------------------- */
+
+  async function assetPlacard(context) {
+    var asset = context.asset;
+    var b = new ReportBuilder({ style: context.style,
+      title: 'Borehole ' + asset.asset_id });
+    var state = context.state || C.assetState(asset, context.today);
+
+    b.paragraph('BOREHOLE IDENTIFICATION PLATE', { bold: true, align: 'center' });
+    b.paragraph(asset.asset_id, { bold: true, size: 26, align: 'center' });
+    b.paragraph(C.assetLabel(asset), { size: 13, align: 'center' });
+    if (context.symbol) {
+      b.figure(context.symbol, 'Scan for this borehole’s identifier and ' +
+        'position. The symbol carries the details themselves, so it reads with ' +
+        'no network and no application installed.', 7.0);
+    }
+    b.table(C.placardLines(asset, state), {
+      header: ['', ''], caption: 'Borehole details', colWidthsCm: [5.0, 10.0] });
+    b.paragraph('Report a breakdown or a change to this borehole against the ' +
+      'identifier above. Quote it in full, including the last character — ' +
+      'it is a check character, and it is what stops a repair being recorded ' +
+      "against a different village's borehole.", { italic: true });
+    return b;
+  }
+
+  async function assetRecordReport(context) {
+    var asset = context.asset;
+    var state = context.state || C.assetState(asset, context.today);
+    var today = context.today || new Date().toISOString().slice(0, 10);
+    var b = new ReportBuilder({ style: context.style,
+      title: 'Asset record - ' + C.assetLabel(asset) });
+
+    b.cover(['Borehole Asset Record'], [C.assetLabel(asset), asset.asset_id],
+      [['Status', state.label], ['As at', today]]);
+    b.provisionalStamp(context.readiness);
+
+    b.heading('Condition', 1);
+    b.paragraph(state.label + '. ' + state.detail);
+    if (state.days_out_of_service !== null && state.days_out_of_service !== undefined) {
+      b.paragraph('This borehole has been out of service for ' +
+        state.days_out_of_service + ' days. Every day counted here is a day ' +
+        'the community went back to whatever they used before.', { bold: true });
+    }
+    if (state.undated_events) {
+      b.paragraph(state.undated_events + ' record(s) carry a date that could ' +
+        'not be read. They are listed below with the date as written, but they ' +
+        'establish nothing about when anything last happened.');
+    }
+
+    b.heading('Details', 1);
+    b.table(C.placardLines(asset, state),
+      { header: ['', ''], colWidthsCm: [5.0, 10.0] });
+
+    b.heading('Outstanding', 1);
+    var outstanding = state.due.filter(function (item) {
+      return item.state === 'overdue' || item.state === 'unknown';
+    });
+    var scheduled = state.due.filter(function (item) {
+      return item.state === 'scheduled' || item.state === 'due';
+    });
+    if (outstanding.length) {
+      b.bullets(outstanding.map(function (item) { return item.detail; }));
+    } else if (scheduled.length) {
+      b.bullets(scheduled.map(function (item) { return item.detail; }));
+    } else {
+      b.paragraph('Nothing is outstanding.');
+    }
+
+    b.heading('History', 1);
+    var events = (asset.events || []).slice().sort(function (a, c) {
+      var aw = a.when || '9999', cw = c.when || '9999';
+      if (aw !== cw) return aw < cw ? -1 : 1;
+      return a.kind < c.kind ? -1 : (a.kind > c.kind ? 1 : 0);
+    });
+    if (events.length) {
+      b.table(events.map(function (e) {
+        return [e.when || '(no date)', C.eventLabel(e.kind), e.note || '',
+          e.by || '', e.photo ? 'yes' : ''];
+      }), {
+        header: ['Date', 'Event', 'Note', 'Recorded by', 'Photo'],
+        caption: 'Everything recorded against this borehole',
+        colWidthsCm: [2.4, 3.2, 6.0, 2.4, 1.5],
+      });
+      b.paragraph('This history is append-only: a mistake is corrected by ' +
+        'recording the correction, so both entries stay visible. Nothing here ' +
+        'has been edited or removed.', { italic: true });
+    } else {
+      b.paragraph('Nothing has ever been recorded against this borehole. That ' +
+        'is not the same as nothing having happened to it.', { bold: true });
+    }
+    return b;
+  }
+
+  /* --- the interim payment certificate --------------------------------------
+   * The document a contractor is paid against, so everything that reduces
+   * the payment appears on its face with its own line. A certificate showing
+   * only the bottom figure is one nobody can check, and one nobody can check
+   * is one nobody can dispute.
+   * ---------------------------------------------------------------------- */
+
+  async function paymentCertificate(context) {
+    var contract = context.contract, certificate = context.certificate;
+    var b = new ReportBuilder({ style: context.style,
+      title: 'Interim Payment Certificate ' + certificate.number });
+
+    b.cover(['Interim Payment Certificate No. ' + certificate.number],
+      [contract.ref, contract.contractor || ''],
+      [['Date', certificate.date || '—'],
+        ['Due on this certificate', C.money0(certificate.due_now_usd)]]);
+    b.provisionalStamp(context.readiness);
+
+    if (certificate.problems.length) {
+      b.heading('Before the figures', 1);
+      b.paragraph('The valuation below could not be made cleanly. Each item ' +
+        'here reduces or holds back money, and the certificate is issued with ' +
+        'them showing rather than resolved silently.', { bold: true });
+      b.bullets(certificate.problems);
+    }
+
+    b.heading('Summary', 1);
+    b.table(C.contractSummaryRows(contract, certificate),
+      { header: ['', ''], colWidthsCm: [8.0, 7.0] });
+    if (certificate.overpaid_usd) {
+      b.paragraph('Certificates already issued exceed the value of the work ' +
+        'by ' + C.money0(certificate.overpaid_usd) + '. Nothing is due on ' +
+        'this certificate. Recovering the difference is a credit note to be ' +
+        'agreed, not a negative payment.', { bold: true });
+    }
+
+    b.heading('Measurement', 1);
+    b.table(certificate.lines.map(function (line) {
+      return [line.code, line.item, line.unit,
+        C.formatG(line.contract_quantity),
+        line.variation_quantity
+          ? (line.variation_quantity > 0 ? '+' : '') +
+            C.formatG(line.variation_quantity) : '—',
+        C.formatG(line.measured_quantity), C.formatG(line.payable_quantity),
+        C.thousandsFixed(line.rate_usd, 2),
+        C.thousandsFixed(C.pyRound(line.payable_amount_usd, 0), 0)];
+    }), {
+      header: ['Code', 'Item', 'Unit', 'Contract', 'Varied', 'Measured',
+        'Payable', 'Rate (USD)', 'Amount (USD)'],
+      caption: 'Work measured to date and what is payable on it',
+      colWidthsCm: [1.6, 4.2, 1.2, 1.6, 1.4, 1.6, 1.5, 1.6, 1.8],
+      fontSize: 8.5,
+    });
+
+    var over = certificate.lines.filter(function (line) {
+      return line.overmeasure_quantity > 0;
+    });
+    if (over.length) {
+      b.heading('Measured beyond what was authorised', 1);
+      b.paragraph('The quantities below have been done but not authorised, so ' +
+        'they are not certified here. That is not a judgement on whether the ' +
+        'work was necessary — it usually was — but on whether anybody has yet ' +
+        'signed for it. A variation order authorising them makes them payable ' +
+        'on the next certificate.', { align: 'justify' });
+      b.table(over.map(function (line) {
+        return [line.code, line.item,
+          C.formatG(line.authorised_quantity) + ' ' + line.unit,
+          C.formatG(line.measured_quantity) + ' ' + line.unit,
+          C.formatG(line.overmeasure_quantity) + ' ' + line.unit,
+          C.thousandsFixed(C.pyRound(line.overmeasure_amount_usd, 0), 0)];
+      }), {
+        header: ['Code', 'Item', 'Authorised', 'Measured', 'Excess',
+          'Value withheld (USD)'],
+        colWidthsCm: [1.8, 4.6, 2.4, 2.4, 2.0, 2.4],
+      });
+      b.paragraph('Total value measured but not certified: ' +
+        C.money0(certificate.overmeasure_usd) + '.', { bold: true });
+    }
+
+    var varied = certificate.lines.filter(function (line) {
+      return line.variation_refs && line.variation_refs.length;
+    });
+    if (varied.length) {
+      b.heading('Variations included', 1);
+      b.table(varied.map(function (line) {
+        var value = line.authorised_amount_usd - line.contract_amount_usd;
+        return [line.variation_refs.join(', '), line.code, line.item,
+          (line.variation_quantity > 0 ? '+' : '') +
+            C.formatG(line.variation_quantity) + ' ' + line.unit,
+          (value >= 0 ? '+' : '-') +
+            C.thousandsFixed(C.pyRound(Math.abs(value), 0), 0)];
+      }), {
+        header: ['Reference', 'Code', 'Item', 'Quantity', 'Value (USD)'],
+        colWidthsCm: [2.4, 1.8, 5.6, 2.6, 3.2],
+      });
+    }
+
+    b.heading('Certification', 1);
+    b.paragraph('The work described above has been measured and valued at ' +
+      C.money0(certificate.gross_usd) + '. After retention and previous ' +
+      'certificates, ' + C.money0(certificate.due_now_usd) + ' is due to ' +
+      (contract.contractor || 'the contractor') + ' on this certificate.');
+    b.signatures(['Supervising engineer', 'Contractor', 'Client']);
+    b.signOff(context.signOff);
+    return b;
+  }
+
   GWT.docx = {
     ReportBuilder: ReportBuilder,
     geophysicalReport: geophysicalReport,
@@ -1467,6 +1761,8 @@
     costingReport: costingReport,
     supervisionReport: supervisionReport,
     handoverReport: handoverReport,
+    assetPlacard: assetPlacard, assetRecordReport: assetRecordReport,
+    paymentCertificate: paymentCertificate,
     REFERENCES: REFERENCES, GLOSSARY: GLOSSARY, statusLabel: statusLabel,
   };
 }(typeof window !== 'undefined' ? window : globalThis));

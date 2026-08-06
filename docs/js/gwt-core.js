@@ -5728,6 +5728,30 @@
     return { counts: counts, unassigned: unassigned };
   }
 
+  /* The points themselves rather than a tally: the counts are enough to
+   * divide a population by, but not enough to say when they were surveyed or
+   * whether they last the dry season. */
+  function groupPointsByDistrict(points, polys, chiefdomDistrict) {
+    var grouped = {}, unassigned = [];
+    points.forEach(function (wp) {
+      var chiefdom = chiefdomOfPoint(wp.lat, wp.lon, polys);
+      var district = chiefdom ? chiefdomDistrict[chiefdom] : '';
+      if (!district) { unassigned.push(wp); return; }
+      (grouped[district] || (grouped[district] = [])).push(wp);
+    });
+    return { grouped: grouped, unassigned: unassigned };
+  }
+
+  function groupPointsByChiefdom(points, polys) {
+    var grouped = {}, unassigned = [];
+    points.forEach(function (wp) {
+      var chiefdom = chiefdomOfPoint(wp.lat, wp.lon, polys);
+      if (!chiefdom) { unassigned.push(wp); return; }
+      (grouped[chiefdom] || (grouped[chiefdom] = [])).push(wp);
+    });
+    return { grouped: grouped, unassigned: unassigned };
+  }
+
   /* Ranking is worst-first: areas with no functional source mapped rank at the
    * very top - unmet need is effectively infinite there - then the rest by
    * descending people-per-functional-point, with population breaking ties. */
@@ -5855,6 +5879,36 @@
     return false;
   }
 
+  /* The year out of a date as WPDx writes it. Exports carry ISO timestamps,
+   * dd/mm/yyyy and bare years depending on who assembled them, so the year is
+   * the first four-digit number in a plausible range rather than a format. */
+  function wpYearOf(value) {
+    var text = String(value === null || value === undefined ? '' : value).trim();
+    if (!text) return null;
+    var found = text.match(/\d{4}/g) || [];
+    for (var i = 0; i < found.length; i++) {
+      var year = Number(found[i]);
+      if (year >= 1960 && year <= 2100) return year;
+    }
+    return null;
+  }
+
+  /* Months of the year a point yields water. null is deliberately not twelve:
+   * most surveys never asked, and reading silence as a year-round supply is
+   * how a dry-season coverage figure ends up matching the wet-season one. */
+  function wpMonthsPerYear(value) {
+    var text = String(value === null || value === undefined ? '' : value)
+      .trim().toLowerCase();
+    if (!text) return null;
+    if (['yes', 'year round', 'year-round', 'all year', 'permanent']
+      .indexOf(text) >= 0) return 12;
+    if (text === 'no' || text === 'seasonal') return null;
+    var match = /\d+/.exec(text);
+    if (!match) return null;
+    var months = Number(match[0]);
+    return months >= 0 && months <= 12 ? months : null;
+  }
+
   function parseWpdxRecords(records) {
     var out = [];
     (records || []).forEach(function (record) {
@@ -5881,6 +5935,13 @@
         functional: functionalFrom(statusText, statusId),
         improved: improvedSource(source, technology),
         installed: isFinite(year) && year ? Math.round(year) : null,
+        /* when it was last surveyed, and how much of the year it yields
+         * water. A point reported functional in 2016 is evidence about 2016,
+         * and a null month count is not twelve. */
+        report_year: wpYearOf(wpFirst(record, ['report_date', 'date_of_record',
+          'survey_date', 'created_timestamp'])),
+        months_per_year: wpMonthsPerYear(wpFirst(record, ['months_year',
+          '#months_year', 'months_of_year', 'water_point_seasonality'])),
         adm2: String(wpFirst(record, ['clean_adm2', 'adm2']) || ''),
         name: String(wpFirst(record, ['water_source_description', 'source_name',
           'clean_adm4', 'clean_adm3']) || ''),
@@ -6093,6 +6154,8 @@
     chiefdomPopulation: chiefdomPopulation,
     countPointsByChiefdom: countPointsByChiefdom,
     countPointsByDistrict: countPointsByDistrict,
+    groupPointsByDistrict: groupPointsByDistrict,
+    groupPointsByChiefdom: groupPointsByChiefdom,
     coverageRows: coverageRows, chiefdomCoverageRows: chiefdomCoverageRows,
     coverageStats: coverageStats,
     parseWpdxRecords: parseWpdxRecords, pointsWithin: pointsWithin,
@@ -6713,6 +6776,266 @@
     portfolioSiteLabel: portfolioSiteLabel,
     portfolioSiteDetail: portfolioSiteDetail,
     portfolioOnePager: portfolioOnePager, portfolioStats: portfolioStats,
+  });
+
+  /* ============================================================== readiness
+   * groundwater/readiness.py. Whether a project's results are complete
+   * enough to certify.
+   *
+   * Completeness, not outcome: a borehole whose water fails the arsenic
+   * guideline is perfectly certifiable, because the finding is the point of
+   * the report. What is not certifiable is a borehole whose arsenic result
+   * could not be read. A gate that failed bad news would teach people to
+   * leave the bad news out.
+   */
+
+  var UNIT_BLOCKERS = ['time_unit_unknown', 'discharge_unit_unknown',
+    'discharge_ambiguous', 'time_reading_unreadable'];
+  var UNIT_ASSUMPTIONS = ['discharge_unit_assumed', 'unit_not_reported',
+    'unit_basis_assumed', 'utm_zone_assumed', 'test_type_inferred'];
+
+  function readinessFlags(objects) {
+    var out = [];
+    (objects || []).forEach(function (obj) {
+      if (obj && obj.flags) out = out.concat(obj.flags);
+    });
+    return out;
+  }
+
+  function flagsWithCode(flags, codes) {
+    return flags.filter(function (f) { return codes.indexOf(f && f.code) >= 0; });
+  }
+
+  /* Crews write the GPS on one sheet and not the others, so a project can be
+   * well located while the drilling log's own header block is blank. */
+  function projectSite(state) {
+    var candidates = [state.site];
+    if (state.drilling_log) candidates.push(state.drilling_log.site);
+    if (state.pump_analysis && state.pump_analysis.test) {
+      candidates.push(state.pump_analysis.test.site);
+    }
+    if (state.wq_assessment && state.wq_assessment.sample) {
+      candidates.push(state.wq_assessment.sample.site);
+    }
+    var merged = null;
+    candidates.forEach(function (site) {
+      if (!site) return;
+      if (!merged) { merged = Object.assign({}, site); return; }
+      Object.keys(site).forEach(function (key) {
+        var current = merged[key];
+        if ((current === null || current === undefined || current === '') &&
+            site[key] !== null && site[key] !== undefined && site[key] !== '') {
+          merged[key] = site[key];
+        }
+      });
+    });
+    return merged;
+  }
+
+  var READINESS_CHECKS = {
+    site_located: ['Site position', function (state) {
+      var site = projectSite(state);
+      if (!site || site.easting === null || site.easting === undefined ||
+          site.northing === null || site.northing === undefined) {
+        return ['unmet', 'No GPS position is recorded on any sheet in this ' +
+          'project. A borehole that cannot be found again on the ground ' +
+          'cannot be certified, revisited or maintained.'];
+      }
+      var zone = Number(site.utm_zone) || inferZoneForSierraLeone(Number(site.easting));
+      return ['met', 'Position recorded: ' + Math.round(site.easting) + ' mE, ' +
+        Math.round(site.northing) + ' mN (UTM ' + zone + 'N).'];
+    }],
+    borehole_logged: ['Drilling log', function (state) {
+      var log = state.drilling_log;
+      if (!log) return ['unmet', 'No drilling log has been loaded.'];
+      if (!log.total_depth_m) return ['unmet', 'The drilling log records no total depth.'];
+      if (!(log.intervals || []).length) {
+        return ['unmet', 'The drilling log records no lithology.'];
+      }
+      return ['met', 'Logged to ' + log.total_depth_m.toFixed(0) + ' m with ' +
+        log.intervals.length + ' lithological interval(s).'];
+    }],
+    readings_usable: ['Readable units', function (state) {
+      var analysis = state.pump_analysis;
+      var flags = readinessFlags([analysis, state.drilling_log,
+        analysis ? analysis.test : null]);
+      var refused = flagsWithCode(flags, UNIT_BLOCKERS);
+      if (refused.length) {
+        return ['unmet', refused.map(function (f) { return f.message; }).join('; ')];
+      }
+      return ['met', 'Every reading carried a unit the toolkit could read.'];
+    }],
+    pumping_measured: ['Pumping test measured', function (state) {
+      var analysis = state.pump_analysis;
+      if (!analysis) return ['unmet', 'No pumping test has been analysed.'];
+      var test = analysis.test;
+      if (test.static_water_level_m === null || test.static_water_level_m === undefined) {
+        return ['unmet', 'The static water level is missing, so no drawdown ' +
+          'can be computed from the test.'];
+      }
+      var missing = (test.steps || []).filter(function (s) {
+        return s.discharge_m3_per_h === null || s.discharge_m3_per_h === undefined;
+      });
+      if (missing.length === (test.steps || []).length) {
+        return ['unmet', 'No discharge is recorded for the test, so ' +
+          'transmissivity and yield stay pending.'];
+      }
+      if (missing.length) {
+        return ['unmet', 'Discharge is missing for step(s) ' +
+          missing.map(function (s) { return s.step_number; }).join(', ') + '.'];
+      }
+      return ['met', test.steps.length + ' step(s) with discharge, static ' +
+        'water level ' + test.static_water_level_m.toFixed(2) + ' m.'];
+    }],
+    yield_established: ['Yield established', function (state) {
+      var analysis = state.pump_analysis;
+      if (!analysis || !analysis.yield_recommendation) {
+        return ['unmet', 'No yield recommendation has been derived.'];
+      }
+      var rec = analysis.yield_recommendation;
+      if (rec.pending_reason) return ['unmet', rec.pending_reason];
+      if (rec.safe_yield_m3_per_h === null || rec.safe_yield_m3_per_h === undefined) {
+        return ['unmet', 'The safe yield could not be derived from this test.'];
+      }
+      return ['met', 'Safe yield ' + yieldRangeText(rec) + '.'];
+    }],
+    water_quality_panel: ['Water quality panel', function (state) {
+      var a = state.wq_assessment;
+      if (!a) return ['unmet', 'No water quality results have been assessed.'];
+      if ((a.missing_essential || []).length) {
+        return ['unmet', 'No evaluable result for ' +
+          a.missing_essential.join(', ') + '.'];
+      }
+      return ['met', 'The health panel was run and every result was evaluable.'];
+    }],
+    water_quality_evaluable: ['Water quality evaluable', function (state) {
+      /* The rows, not the headline: a health exceedance outranks uncertainty
+       * in the verdict but does not make an unreadable result readable. */
+      var a = state.wq_assessment;
+      if (!a) return ['unmet', 'No water quality results have been assessed.'];
+      var ungraded = (a.indeterminate_rows || []).concat(a.unknown_parameters || []);
+      if (ungraded.length) {
+        var names = [];
+        ungraded.forEach(function (r) {
+          if (names.indexOf(r.parameter) < 0) names.push(r.parameter);
+        });
+        return ['unmet', 'Not graded against any limit: ' + names.join(', ') + '.'];
+      }
+      if (!(a.evaluated_rows || []).length) {
+        return ['unmet', 'No result in the sample could be graded.'];
+      }
+      return ['met', a.evaluated_rows.length + ' determinand(s) graded; ' +
+        'verdict ' + a.verdict_state + '.'];
+    }],
+    design_derived: ['Borehole design', function (state) {
+      var design = state.borehole_design;
+      if (!design) return ['unmet', 'No borehole design has been derived.'];
+      var errors = (design.flags || []).filter(function (f) { return f.level === 'error'; });
+      if (errors.length) return ['unmet', errors[0].message];
+      if (!(design.screens || []).length) return ['unmet', 'The design places no screen.'];
+      return ['met', Number(design.total_screen_length_m).toFixed(1) +
+        ' m of screen in ' + design.screens.length + ' run(s).'];
+    }],
+    no_errors: ['No fatal data problems', function (state) {
+      var analysis = state.pump_analysis;
+      var flags = readinessFlags([state.drilling_log, analysis, state.wq_assessment,
+        state.borehole_design, state.cost_estimate,
+        analysis ? analysis.test : null]);
+      var errors = flags.filter(function (f) { return f && f.level === 'error'; });
+      if (errors.length) {
+        var seen = [];
+        errors.forEach(function (f) {
+          if (seen.indexOf(f.message) < 0) seen.push(f.message);
+        });
+        return ['unmet', seen.join('; ')];
+      }
+      return ['met', 'No module reported a fatal problem with the data.'];
+    }],
+  };
+
+  /* What each report has to be able to stand behind. A pumping report makes
+   * no claim about water quality; a handover report tells a village the
+   * water is safe to drink, so it needs everything. */
+  var READINESS_REPORTS = {
+    completion: ['site_located', 'borehole_logged', 'readings_usable',
+      'pumping_measured', 'yield_established', 'water_quality_panel',
+      'water_quality_evaluable', 'design_derived', 'no_errors'],
+    handover: ['site_located', 'borehole_logged', 'pumping_measured',
+      'yield_established', 'water_quality_panel', 'water_quality_evaluable',
+      'no_errors'],
+    quality: ['site_located', 'water_quality_panel', 'water_quality_evaluable',
+      'no_errors'],
+    pumping: ['site_located', 'readings_usable', 'pumping_measured',
+      'yield_established', 'no_errors'],
+    geophysical: ['site_located'],
+    costing: ['site_located', 'borehole_logged', 'design_derived'],
+    supervision: ['site_located'],
+  };
+
+  function assessReadiness(state, report, overrides) {
+    var kind = READINESS_REPORTS[report] ? report : 'completion';
+    var keys = READINESS_REPORTS[kind];
+    var given = overrides || {};
+    var requirements = keys.map(function (key) {
+      var spec = READINESS_CHECKS[key];
+      var found, detail;
+      try {
+        var answer = spec[1](state || {});
+        found = answer[0]; detail = answer[1];
+      } catch (e) {
+        /* a broken check is not a pass */
+        found = 'unmet';
+        detail = 'The ' + spec[0].toLowerCase() + ' check could not run: ' + e.message;
+      }
+      var override = own(given, key) ? given[key] : null;
+      if (found === 'unmet' && override) {
+        var reason = typeof override === 'string' ? override : (override.reason || '');
+        var by = typeof override === 'string' ? '' : (override.by || '');
+        return { key: key, title: spec[0], state: 'overridden', detail: detail,
+          override_reason: reason, override_by: by };
+      }
+      return { key: key, title: spec[0], state: found, detail: detail,
+        override_reason: '', override_by: '' };
+    });
+
+    var unmet = requirements.filter(function (r) { return r.state === 'unmet'; });
+    var overridden = requirements.filter(function (r) { return r.state === 'overridden'; });
+    var overall = unmet.length ? 'not_ready'
+      : (overridden.length ? 'ready_with_overrides' : 'ready');
+    var assumptions = [];
+    try {
+      var analysis = (state || {}).pump_analysis;
+      flagsWithCode(readinessFlags([(state || {}).drilling_log, analysis,
+        (state || {}).wq_assessment, (state || {}).borehole_design,
+        analysis ? analysis.test : null]), UNIT_ASSUMPTIONS)
+        .forEach(function (f) {
+          if (assumptions.indexOf(f.message) < 0) assumptions.push(f.message);
+        });
+    } catch (e) { /* a malformed object costs the list, not the gate */ }
+
+    var summary;
+    if (overall === 'ready') {
+      summary = 'All certification requirements are met.';
+    } else if (overall === 'ready_with_overrides') {
+      summary = 'Issued on override: ' +
+        overridden.map(function (r) { return r.title; }).join(', ') + '.';
+    } else {
+      summary = 'Not ready to certify - outstanding: ' +
+        unmet.map(function (r) { return r.title; }).join(', ') + '.';
+    }
+    return {
+      report: kind, requirements: requirements, assumptions: assumptions,
+      unmet: unmet, overridden: overridden, state: overall,
+      /* an override makes the document issuable, never certifiable */
+      is_certifiable: overall === 'ready',
+      summary: summary,
+    };
+  }
+
+  Object.assign(C, {
+    assessReadiness: assessReadiness,
+    READINESS_REPORTS: READINESS_REPORTS,
+    READINESS_CHECKS: READINESS_CHECKS,
   });
 
   /* =============================================================== depth spine
@@ -8164,6 +8487,1682 @@
     EXTRACTION_MODEL: EXTRACTION_MODEL, EXTRACTION_SCHEMA: EXTRACTION_SCHEMA,
     EXTRACTION_PROMPT: EXTRACTION_PROMPT,
   });
+
+
+  /* ===================================================================
+   * QR symbols - a port of groundwater/qr.py
+   *
+   * The identifier on a headworks plate is only useful if the phone in the
+   * technician's pocket reads it, and the places this runs have no signal to
+   * fetch an image over. So the symbol is generated here, offline, from no
+   * dependency: byte mode, versions 1 to 10, all four error-correction
+   * levels. The Python side is held to an independent encoder and to a real
+   * decoder; this side is held to the Python side, module for module.
+   * =================================================================== */
+
+  var QR_ECC_LEVELS = { L: 0.07, M: 0.15, Q: 0.25, H: 0.30 };
+  var QR_MAX_VERSION = 10;
+  var QR_ECC_BITS = { L: 1, M: 0, Q: 3, H: 2 };
+  var QR_TOTAL_CODEWORDS = [26, 44, 70, 100, 134, 172, 196, 242, 292, 346];
+
+  /* (ec codewords per block, g1 blocks, g1 data, g2 blocks, g2 data) */
+  var QR_BLOCKS = {
+    1: { L: [7, 1, 19, 0, 0], M: [10, 1, 16, 0, 0], Q: [13, 1, 13, 0, 0], H: [17, 1, 9, 0, 0] },
+    2: { L: [10, 1, 34, 0, 0], M: [16, 1, 28, 0, 0], Q: [22, 1, 22, 0, 0], H: [28, 1, 16, 0, 0] },
+    3: { L: [15, 1, 55, 0, 0], M: [26, 1, 44, 0, 0], Q: [18, 2, 17, 0, 0], H: [22, 2, 13, 0, 0] },
+    4: { L: [20, 1, 80, 0, 0], M: [18, 2, 32, 0, 0], Q: [26, 2, 24, 0, 0], H: [16, 4, 9, 0, 0] },
+    5: { L: [26, 1, 108, 0, 0], M: [24, 2, 43, 0, 0], Q: [18, 2, 15, 2, 16], H: [22, 2, 11, 2, 12] },
+    6: { L: [18, 2, 68, 0, 0], M: [16, 4, 27, 0, 0], Q: [24, 4, 19, 0, 0], H: [28, 4, 15, 0, 0] },
+    7: { L: [20, 2, 78, 0, 0], M: [18, 4, 31, 0, 0], Q: [18, 2, 14, 4, 15], H: [26, 4, 13, 1, 14] },
+    8: { L: [24, 2, 97, 0, 0], M: [22, 2, 38, 2, 39], Q: [22, 4, 18, 2, 19], H: [26, 4, 14, 2, 15] },
+    9: { L: [30, 2, 116, 0, 0], M: [22, 3, 36, 2, 37], Q: [20, 4, 16, 4, 17], H: [24, 4, 12, 4, 13] },
+    10: { L: [18, 2, 68, 2, 69], M: [26, 4, 43, 1, 44], Q: [24, 6, 19, 2, 20], H: [28, 6, 15, 2, 16] }
+  };
+
+  var QR_ALIGNMENT = {
+    1: [], 2: [6, 18], 3: [6, 22], 4: [6, 26], 5: [6, 30], 6: [6, 34],
+    7: [6, 22, 38], 8: [6, 24, 42], 9: [6, 26, 46], 10: [6, 28, 50]
+  };
+  var QR_VERSION_INFO = { 7: 0x07C94, 8: 0x085BC, 9: 0x09A99, 10: 0x0A4D3 };
+  var QR_REMAINDER_BITS = { 1: 0, 2: 7, 3: 7, 4: 7, 5: 7, 6: 7, 7: 0, 8: 0, 9: 0, 10: 0 };
+
+  var QR_EXP = new Array(512), QR_LOG = new Array(256);
+  (function buildGaloisTables() {
+    var x = 1;
+    for (var i = 0; i < 255; i++) {
+      QR_EXP[i] = x;
+      QR_LOG[x] = i;
+      x <<= 1;
+      if (x & 0x100) x ^= 0x11D;
+    }
+    for (var j = 255; j < 512; j++) QR_EXP[j] = QR_EXP[j - 255];
+  }());
+
+  function gfMul(a, b) {
+    if (a === 0 || b === 0) return 0;
+    return QR_EXP[QR_LOG[a] + QR_LOG[b]];
+  }
+
+  function qrGeneratorPoly(degree) {
+    var poly = [1];
+    for (var i = 0; i < degree; i++) {
+      var next = new Array(poly.length + 1).fill(0);
+      for (var j = 0; j < poly.length; j++) {
+        next[j] ^= gfMul(poly[j], 1);
+        next[j + 1] ^= gfMul(poly[j], QR_EXP[i]);
+      }
+      poly = next;
+    }
+    return poly;
+  }
+
+  function qrEcCodewords(data, count) {
+    var gen = qrGeneratorPoly(count);
+    var remainder = data.concat(new Array(count).fill(0));
+    for (var i = 0; i < data.length; i++) {
+      var lead = remainder[i];
+      if (!lead) continue;
+      for (var j = 0; j < gen.length; j++) {
+        remainder[i + j] ^= gfMul(gen[j], lead);
+      }
+    }
+    return remainder.slice(data.length);
+  }
+
+  function qrCapacityBytes(version, ecc) {
+    var b = QR_BLOCKS[version][ecc];
+    var dataCodewords = b[1] * b[2] + b[3] * b[4];
+    var countBits = version < 10 ? 8 : 16;
+    return Math.floor((dataCodewords * 8 - 4 - countBits) / 8);
+  }
+
+  function qrChooseVersion(length, ecc, minVersion) {
+    for (var v = Math.max(1, minVersion || 1); v <= QR_MAX_VERSION; v++) {
+      if (length <= qrCapacityBytes(v, ecc)) return v;
+    }
+    throw new Error(length + ' bytes will not fit in a version-' + QR_MAX_VERSION +
+      ' symbol at error-correction level ' + ecc + '; shorten the payload');
+  }
+
+  function qrBitstream(payload, version, ecc) {
+    var b = QR_BLOCKS[version][ecc];
+    var capacityBits = (b[1] * b[2] + b[3] * b[4]) * 8;
+    var bits = [0, 1, 0, 0];
+    var countBits = version < 10 ? 8 : 16, shift;
+    for (shift = countBits - 1; shift >= 0; shift--) bits.push((payload.length >> shift) & 1);
+    for (var i = 0; i < payload.length; i++) {
+      for (shift = 7; shift >= 0; shift--) bits.push((payload[i] >> shift) & 1);
+    }
+    var terminator = Math.min(4, capacityBits - bits.length);
+    for (var t = 0; t < terminator; t++) bits.push(0);
+    while (bits.length % 8) bits.push(0);
+    var pad = [0xEC, 0x11], k = 0;
+    while (bits.length < capacityBits) {
+      for (shift = 7; shift >= 0; shift--) bits.push((pad[k % 2] >> shift) & 1);
+      k++;
+    }
+    return bits;
+  }
+
+  function qrInterleave(bits, version, ecc) {
+    var spec = QR_BLOCKS[version][ecc], ecPerBlock = spec[0];
+    var codewords = [];
+    for (var i = 0; i < bits.length; i += 8) {
+      var value = 0;
+      for (var s = 0; s < 8; s++) value = (value << 1) | bits[i + s];
+      codewords.push(value);
+    }
+    var blocks = [], at = 0;
+    [[spec[1], spec[2]], [spec[3], spec[4]]].forEach(function (group) {
+      for (var n = 0; n < group[0]; n++) {
+        blocks.push(codewords.slice(at, at + group[1]));
+        at += group[1];
+      }
+    });
+    var ecBlocks = blocks.map(function (block) { return qrEcCodewords(block, ecPerBlock); });
+
+    var longest = Math.max.apply(null, blocks.map(function (b2) { return b2.length; }));
+    var out = [], j;
+    for (i = 0; i < longest; i++) {
+      for (j = 0; j < blocks.length; j++) {
+        if (i < blocks[j].length) out.push(blocks[j][i]);
+      }
+    }
+    for (i = 0; i < ecPerBlock; i++) {
+      for (j = 0; j < ecBlocks.length; j++) out.push(ecBlocks[j][i]);
+    }
+    var final = [];
+    out.forEach(function (codeword) {
+      for (var shift = 7; shift >= 0; shift--) final.push((codeword >> shift) & 1);
+    });
+    for (i = 0; i < QR_REMAINDER_BITS[version]; i++) final.push(0);
+    return final;
+  }
+
+  function qrGrid(size) {
+    var grid = [];
+    for (var i = 0; i < size; i++) grid.push(new Array(size).fill(false));
+    return grid;
+  }
+
+  function qrPlaceFunctionPatterns(modules, reserved, version) {
+    var size = modules.length, i, r, c;
+
+    function finder(row, col) {
+      for (r = -1; r < 8; r++) {
+        for (c = -1; c < 8; c++) {
+          var rr = row + r, cc = col + c;
+          if (rr < 0 || rr >= size || cc < 0 || cc >= size) continue;
+          var edge = Math.max(Math.abs(r - 3), Math.abs(c - 3));
+          modules[rr][cc] = edge !== 2 && edge <= 3;
+          reserved[rr][cc] = true;
+        }
+      }
+    }
+    finder(0, 0);
+    finder(0, size - 7);
+    finder(size - 7, 0);
+
+    for (i = 0; i < size; i++) {
+      if (!reserved[6][i]) { modules[6][i] = i % 2 === 0; reserved[6][i] = true; }
+      if (!reserved[i][6]) { modules[i][6] = i % 2 === 0; reserved[i][6] = true; }
+    }
+
+    /* Every combination of the centres but the three corners the finders
+     * hold. Tested on the index, not on whether the cell is taken: from
+     * version 7 the first centre is 6, so those patterns lie across the
+     * timing lines and are drawn over them. */
+    var centres = QR_ALIGNMENT[version], last = centres.length - 1;
+    centres.forEach(function (row, a) {
+      centres.forEach(function (col, b) {
+        if ((a === 0 && b === 0) || (a === 0 && b === last) || (a === last && b === 0)) return;
+        for (var dr = -2; dr < 3; dr++) {
+          for (var dc = -2; dc < 3; dc++) {
+            modules[row + dr][col + dc] = Math.max(Math.abs(dr), Math.abs(dc)) !== 1;
+            reserved[row + dr][col + dc] = true;
+          }
+        }
+      });
+    });
+
+    modules[4 * version + 9][8] = true;
+    reserved[4 * version + 9][8] = true;
+
+    for (i = 0; i < 9; i++) { reserved[8][i] = true; reserved[i][8] = true; }
+    for (i = 0; i < 8; i++) {
+      reserved[8][size - 1 - i] = true;
+      reserved[size - 1 - i][8] = true;
+    }
+
+    if (version >= 7) {
+      var info = QR_VERSION_INFO[version];
+      for (i = 0; i < 18; i++) {
+        var bit = ((info >> i) & 1) === 1;
+        var row2 = Math.floor(i / 3), col2 = size - 11 + (i % 3);
+        modules[row2][col2] = bit;
+        reserved[row2][col2] = true;
+        modules[col2][row2] = bit;
+        reserved[col2][row2] = true;
+      }
+    }
+  }
+
+  function qrPlaceData(modules, reserved, bits) {
+    var size = modules.length, at = 0, upward = true, col = size - 1;
+    while (col > 0) {
+      if (col === 6) col -= 1;
+      for (var n = 0; n < size; n++) {
+        var row = upward ? size - 1 - n : n;
+        for (var k = 0; k < 2; k++) {
+          var c = col - k;
+          if (reserved[row][c]) continue;
+          modules[row][c] = at < bits.length && bits[at] === 1;
+          at += 1;
+        }
+      }
+      upward = !upward;
+      col -= 2;
+    }
+  }
+
+  var QR_MASKS = [
+    function (i, j) { return (i + j) % 2 === 0; },
+    function (i) { return i % 2 === 0; },
+    function (i, j) { return j % 3 === 0; },
+    function (i, j) { return (i + j) % 3 === 0; },
+    function (i, j) { return (Math.floor(i / 2) + Math.floor(j / 3)) % 2 === 0; },
+    function (i, j) { return (i * j) % 2 + (i * j) % 3 === 0; },
+    function (i, j) { return ((i * j) % 2 + (i * j) % 3) % 2 === 0; },
+    function (i, j) { return ((i + j) % 2 + (i * j) % 3) % 2 === 0; }
+  ];
+
+  function qrApplyMask(modules, reserved, mask) {
+    var rule = QR_MASKS[mask];
+    return modules.map(function (row, i) {
+      return row.map(function (cell, j) {
+        return !reserved[i][j] && rule(i, j) ? !cell : cell;
+      });
+    });
+  }
+
+  function qrFormatBits(ecc, mask) {
+    var value = (QR_ECC_BITS[ecc] << 3) | mask;
+    var remainder = value;
+    for (var i = 0; i < 10; i++) {
+      remainder = (remainder << 1) ^ ((remainder >> 9) * 0x537);
+    }
+    return ((value << 10) | remainder) ^ 0x5412;
+  }
+
+  function qrPlaceFormat(modules, ecc, mask) {
+    var size = modules.length, bits = qrFormatBits(ecc, mask), i;
+    function bit(n) { return ((bits >> n) & 1) === 1; }
+
+    for (i = 0; i < 6; i++) modules[i][8] = bit(i);
+    modules[7][8] = bit(6);
+    modules[8][8] = bit(7);
+    modules[8][7] = bit(8);
+    for (i = 9; i < 15; i++) modules[8][14 - i] = bit(i);
+
+    for (i = 0; i < 8; i++) modules[8][size - 1 - i] = bit(i);
+    for (i = 8; i < 15; i++) modules[size - 15 + i][8] = bit(i);
+    modules[size - 8][8] = true;
+  }
+
+  var QR_PENALTY_RUN = 3, QR_PENALTY_BLOCK = 3, QR_PENALTY_FINDER = 40,
+    QR_PENALTY_BALANCE = 10;
+
+  function qrFinderLike(history) {
+    var unit = history[1];
+    var core = unit > 0 && history[2] === unit && history[3] === unit * 3 &&
+      history[4] === unit && history[5] === unit;
+    return (core && history[0] >= unit * 4 && history[6] >= unit ? 1 : 0) +
+      (core && history[6] >= unit * 4 && history[0] >= unit ? 1 : 0);
+  }
+
+  function qrPenalty(modules) {
+    var size = modules.length, score = 0, i, j;
+    var lines = modules.map(function (row) { return row.slice(); });
+    for (j = 0; j < size; j++) {
+      var column = [];
+      for (i = 0; i < size; i++) column.push(modules[i][j]);
+      lines.push(column);
+    }
+    lines.forEach(function (line) {
+      var colour = false, run = 0, history = new Array(7).fill(0);
+      function remember(length) {
+        if (history[0] === 0) length += size;
+        history.pop();
+        history.unshift(length);
+      }
+      line.forEach(function (cell) {
+        if (cell === colour) {
+          run += 1;
+          if (run === 5) score += QR_PENALTY_RUN;
+          else if (run > 5) score += 1;
+        } else {
+          remember(run);
+          if (!colour) score += qrFinderLike(history) * QR_PENALTY_FINDER;
+          colour = cell;
+          run = 1;
+        }
+      });
+      if (colour) { remember(run); run = 0; }
+      remember(run + size);
+      score += qrFinderLike(history) * QR_PENALTY_FINDER;
+    });
+    for (i = 0; i < size - 1; i++) {
+      for (j = 0; j < size - 1; j++) {
+        var a = modules[i][j], b = modules[i][j + 1],
+          c = modules[i + 1][j], d = modules[i + 1][j + 1];
+        if ((a && b && c && d) || (!a && !b && !c && !d)) score += QR_PENALTY_BLOCK;
+      }
+    }
+    var dark = 0;
+    modules.forEach(function (row) {
+      row.forEach(function (cell) { if (cell) dark += 1; });
+    });
+    var total = size * size;
+    var k = Math.ceil(Math.abs(dark * 20 - total * 10) / total) - 1;
+    return score + Math.max(k, 0) * QR_PENALTY_BALANCE;
+  }
+
+  function utf8Bytes(text) {
+    var out = [];
+    for (var i = 0; i < text.length; i++) {
+      var code = text.charCodeAt(i);
+      if (code < 0x80) { out.push(code); continue; }
+      if (code < 0x800) {
+        out.push(0xC0 | (code >> 6), 0x80 | (code & 63));
+        continue;
+      }
+      if (code >= 0xD800 && code <= 0xDBFF && i + 1 < text.length) {
+        var low = text.charCodeAt(i + 1);
+        if (low >= 0xDC00 && low <= 0xDFFF) {
+          code = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00);
+          i += 1;
+          out.push(0xF0 | (code >> 18), 0x80 | ((code >> 12) & 63),
+            0x80 | ((code >> 6) & 63), 0x80 | (code & 63));
+          continue;
+        }
+      }
+      out.push(0xE0 | (code >> 12), 0x80 | ((code >> 6) & 63), 0x80 | (code & 63));
+    }
+    return out;
+  }
+
+  /* options: {ecc, minVersion, mask} */
+  function qrEncode(text, options) {
+    var opts = options || {};
+    var ecc = opts.ecc || 'H';
+    if (!own(QR_ECC_LEVELS, ecc)) {
+      throw new Error("unknown error-correction level '" + ecc + "'");
+    }
+    var mask = opts.mask === undefined || opts.mask === null ? null : opts.mask;
+    if (mask !== null && !(mask >= 0 && mask <= 7)) {
+      throw new Error('mask must be 0 to 7, not ' + mask);
+    }
+    var payload = utf8Bytes(String(text));
+    var version = qrChooseVersion(payload.length, ecc, opts.minVersion || 1);
+    var bits = qrInterleave(qrBitstream(payload, version, ecc), version, ecc);
+    var size = 17 + 4 * version;
+    var modules = qrGrid(size), reserved = qrGrid(size);
+    qrPlaceFunctionPatterns(modules, reserved, version);
+    qrPlaceData(modules, reserved, bits);
+
+    var best = null, bestMask = 0, bestScore = null;
+    var candidates = mask === null ? [0, 1, 2, 3, 4, 5, 6, 7] : [mask];
+    candidates.forEach(function (candidateMask) {
+      var candidate = qrApplyMask(modules, reserved, candidateMask);
+      qrPlaceFormat(candidate, ecc, candidateMask);
+      var score = qrPenalty(candidate);
+      if (bestScore === null || score < bestScore) {
+        best = candidate; bestMask = candidateMask; bestScore = score;
+      }
+    });
+    return { version: version, ecc: ecc, mask: bestMask, size: size, modules: best };
+  }
+
+  /* The symbol as an SVG string. The quiet zone is not decoration: a symbol
+   * printed hard against a frame is much harder for a phone to find. */
+  function qrSvg(code, options) {
+    var opts = options || {};
+    var scale = opts.scale || 4, border = opts.border === undefined ? 4 : opts.border;
+    var size = code.size + 2 * border, parts = [];
+    for (var row = 0; row < code.size; row++) {
+      for (var col = 0; col < code.size; col++) {
+        if (code.modules[row][col]) {
+          parts.push('M' + (col + border) + ' ' + (row + border) + 'h1v1h-1z');
+        }
+      }
+    }
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="' + (size * scale) +
+      '" height="' + (size * scale) + '" viewBox="0 0 ' + size + ' ' + size +
+      '" shape-rendering="crispEdges">' +
+      '<rect width="' + size + '" height="' + size + '" fill="#ffffff"/>' +
+      '<path fill="#000000" d="' + parts.join('') + '"/></svg>';
+  }
+
+  Object.assign(C, {
+    QR_ECC_LEVELS: QR_ECC_LEVELS, QR_MAX_VERSION: QR_MAX_VERSION,
+    qrEncode: qrEncode, qrSvg: qrSvg, qrCapacityBytes: qrCapacityBytes,
+    qrPenalty: qrPenalty
+  });
+
+  /* ===================================================================
+   * The asset registry - a port of groundwater/registry.py
+   *
+   * A drilling project ends; the borehole does not. This is the other half:
+   * a stable identifier, an append-only event stream, and what that stream
+   * says is true today. Field updates are recorded at the wellhead with no
+   * signal, so events are identified by their content and merging two
+   * phones is a set union that needs no server to arbitrate it. Nothing is
+   * assumed working: an asset with no events is unknown, not functional.
+   * =================================================================== */
+
+  var CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+  var CROCKFORD_FOLD = { I: '1', L: '1', O: '0', U: 'V' };
+  var CHECK_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  var POSITION_STEP_M = 10;
+
+  var DISTRICT_CODES = {
+    'western area urban': 'WAU', 'western area rural': 'WAR', 'port loko': 'PL',
+    kambia: 'KAM', karene: 'KAR', bombali: 'BOM', falaba: 'FAL',
+    koinadugu: 'KOI', tonkolili: 'TON', kono: 'KON', kenema: 'KEN',
+    kailahun: 'KAI', bo: 'BO', bonthe: 'BON', moyamba: 'MOY', pujehun: 'PUJ'
+  };
+  var UNKNOWN_DISTRICT = 'XX';
+  var ASSET_ID_RE = /^SL-([A-Z]{2,4})-([0-9A-Z]{7})-([0-9A-Z])$/;
+
+  /* ISO 7064 MOD 37,36: every single wrong character and every transposition
+   * of two adjacent ones, which between them are almost all the mistakes
+   * people make copying a code off a plate into a phone. */
+  function checkCharacter(body) {
+    var product = 36;
+    var text = String(body || '').toUpperCase();
+    for (var i = 0; i < text.length; i++) {
+      var value = CHECK_ALPHABET.indexOf(text.charAt(i));
+      if (value < 0) continue;
+      var total = (product % 37) + value;
+      product = 2 * ((total % 37) || 37);
+    }
+    return CHECK_ALPHABET.charAt((37 - product % 37) % 36);
+  }
+
+  function positionCode(easting, northing, zone) {
+    var east = Math.round(Number(easting) / POSITION_STEP_M);
+    var north = Math.round(Number(northing) / POSITION_STEP_M);
+    if (!(east >= 0 && east < 131072) || !(north >= 0 && north < 131072)) {
+      throw new Error('(' + easting + ', ' + northing + ') is not a position ' +
+        'inside Sierra Leone; an identifier minted from it would not be findable');
+    }
+    /* 35 bits - zone flag, easting, northing, each to the nearest 10 m - cut
+     * into seven groups of five. Split into a top character and a 30-bit
+     * remainder because JavaScript's bitwise operators are 32-bit and would
+     * silently wrap the whole value. */
+    var top = ((Number(zone) === 29 ? 1 : 0) << 4) | (east >> 13);
+    var rest = (east & 0x1FFF) * 131072 + north;
+    var chars = CROCKFORD.charAt(top & 31);
+    for (var shift = 25; shift >= 0; shift -= 5) {
+      chars += CROCKFORD.charAt(Math.floor(rest / Math.pow(2, shift)) & 31);
+    }
+    return chars;
+  }
+
+  function districtCode(district) {
+    var key = String(district || '').trim().toLowerCase();
+    return own(DISTRICT_CODES, key) ? DISTRICT_CODES[key] : UNKNOWN_DISTRICT;
+  }
+
+  function formatAssetId(district, position) {
+    var body = 'SL-' + district + '-' + position;
+    return body + '-' + checkCharacter(body);
+  }
+
+  function mintAssetId(site) {
+    var s = site || {};
+    if (s.easting === null || s.easting === undefined ||
+        s.northing === null || s.northing === undefined) {
+      throw new Error('a borehole with no recorded position cannot be given ' +
+        'an identifier: there would be nothing to find it by');
+    }
+    var zone = s.utm_zone || inferZoneForSierraLeone(Number(s.easting));
+    return formatAssetId(districtCode(s.district),
+      positionCode(s.easting, s.northing, zone));
+  }
+
+  function parseAssetId(text) {
+    var raw = String(text === null || text === undefined ? '' : text)
+      .replace(/[\s_]+/g, '').toUpperCase().replace(/–/g, '-');
+    if (!raw) return null;
+    if (raw.indexOf('SL-') !== 0) raw = 'SL-' + raw;
+    var parts = raw.split('-');
+    if (parts.length !== 4) return null;
+    var district = parts[1], code = parts[2], given = parts[3];
+    code = code.split('').map(function (ch) {
+      return own(CROCKFORD_FOLD, ch) ? CROCKFORD_FOLD[ch] : ch;
+    }).join('');
+    if (own(CROCKFORD_FOLD, given)) given = CROCKFORD_FOLD[given];
+    var candidate = 'SL-' + district + '-' + code + '-' + given;
+    if (!ASSET_ID_RE.test(candidate)) return null;
+    if (checkCharacter('SL-' + district + '-' + code) !== given) return null;
+    return candidate;
+  }
+
+  function validateAssetId(text) {
+    var raw = String(text === null || text === undefined ? '' : text).trim();
+    if (!raw) return { ok: false, reason: 'No identifier was entered.' };
+    var parsed = parseAssetId(raw);
+    if (parsed) return { ok: true, reason: '', assetId: parsed };
+    var tidy = raw.replace(/[\s_]+/g, '').toUpperCase();
+    if (tidy.indexOf('SL-') !== 0) tidy = 'SL-' + tidy;
+    var parts = tidy.split('-');
+    if (parts.length !== 4) {
+      return { ok: false, reason: 'An identifier looks like SL-WAR-8T4KQ2A-7: ' +
+        'country, district, position, check character.' };
+    }
+    var code = parts[2].split('').map(function (ch) {
+      return own(CROCKFORD_FOLD, ch) ? CROCKFORD_FOLD[ch] : ch;
+    }).join('');
+    if (!/^[0-9A-Z]{7}$/.test(code)) {
+      return { ok: false, reason: 'The position part should be seven letters or digits.' };
+    }
+    var expected = checkCharacter('SL-' + parts[1] + '-' + code);
+    return { ok: false, reason: 'The check character does not match: this ' +
+      'identifier should end in ' + expected + ', not ' + parts[3] +
+      '. Something in it has been mistyped.' };
+  }
+
+  /* kind -> [label, what it establishes about function, is it a service visit] */
+  var EVENT_KINDS = {
+    commissioned: ['Commissioned', 'functional', false],
+    inspection: ['Sanitary inspection', null, true],
+    water_sample: ['Water sampled', null, false],
+    repair: ['Repair', 'functional', true],
+    failure: ['Failure', 'non_functional', true],
+    restored: ['Returned to service', 'functional', true],
+    decommissioned: ['Decommissioned', 'decommissioned', false],
+    note: ['Note', null, false]
+  };
+
+  var FUNCTION_LABELS = {
+    functional: 'Working', non_functional: 'Not working',
+    decommissioned: 'Decommissioned', unknown: 'Not known'
+  };
+
+  var FUNCTION_COLORS = {
+    functional: '#2E7D5B', non_functional: '#B23A2E',
+    decommissioned: '#6B7785', unknown: '#6B7785'
+  };
+
+  /* FNV-1a, kept to 32 bits with the same multiply-and-mask the Python side
+   * uses, so both engines derive the same event identifier. */
+  function hash32(text) {
+    var value = 0x811C9DC5;
+    for (var i = 0; i < text.length; i++) {
+      value = (value ^ (text.charCodeAt(i) & 0xFF)) >>> 0;
+      /* Math.imul, not a plain multiply: 2^32 times the FNV prime is well
+       * past 2^53, so the ordinary product loses low bits and the two
+       * engines would derive different event identifiers. */
+      value = Math.imul(value, 0x01000193) >>> 0;
+    }
+    return value >>> 0;
+  }
+
+  function eventId(assetId, when, kind, note, by) {
+    var digest = hash32(assetId + '|' + when + '|' + kind + '|' +
+      String(note || '').trim() + '|' + String(by || '').trim());
+    var tail = [15, 10, 5, 0].map(function (shift) {
+      return CROCKFORD.charAt((digest >>> shift) & 31);
+    }).join('');
+    return when + '/' + kind + '/' + tail;
+  }
+
+  function eventLabel(kind) {
+    return own(EVENT_KINDS, kind) ? EVENT_KINDS[kind][0] : 'Other';
+  }
+
+  var ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+  /* Days since the epoch, or null when the date cannot be read. Kept as a
+   * day number rather than a Date so arithmetic never meets a time zone. */
+  function isoDay(text) {
+    var match = ISO_DATE_RE.exec(String(text === null || text === undefined ? '' : text).trim());
+    if (!match) return null;
+    var year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+    if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) return null;
+    return Math.floor(Date.UTC(year, month - 1, day) / 86400000);
+  }
+
+  function isLeap(year) {
+    return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  }
+
+  function daysInMonth(year, month) {
+    return [31, isLeap(year) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  }
+
+  function dayToIso(day) {
+    if (day === null || day === undefined) return null;
+    var d = new Date(day * 86400000);
+    return d.toISOString().slice(0, 10);
+  }
+
+  /* Clamped rather than rolled over: six months from 31 August is 28
+   * February, not 3 March, and a due date that drifts forward is missed. */
+  function addMonths(iso, months) {
+    var match = ISO_DATE_RE.exec(iso);
+    if (!match) return null;
+    var year = Number(match[1]), month = Number(match[2]) - 1 + months;
+    var day = Number(match[3]);
+    year += Math.floor(month / 12);
+    month = ((month % 12) + 12) % 12 + 1;
+    day = Math.min(day, daysInMonth(year, month));
+    return year + '-' + pad2(month) + '-' + pad2(day);
+  }
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+  function coerceEvent(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    var kind = String(raw.kind || '').trim();
+    if (!own(EVENT_KINDS, kind)) kind = 'note';
+    return {
+      when: String(raw.when || '').trim(), kind: kind,
+      note: String(raw.note || ''), by: String(raw.by || ''),
+      photo: String(raw.photo || ''), event_id: String(raw.event_id || '')
+    };
+  }
+
+  function identifiedFor(event, assetId) {
+    return Object.assign({}, event, {
+      event_id: event.event_id ||
+        eventId(assetId, event.when, event.kind, event.note, event.by)
+    });
+  }
+
+  /* The whole offline story: two phones out of touch for a fortnight each
+   * hold part of the history, and merging is a union over content-derived
+   * identifiers - commutative, idempotent, and needing no clock agreement. */
+  function mergeEvents(assetId) {
+    var merged = {}, order = [];
+    for (var s = 1; s < arguments.length; s++) {
+      (arguments[s] || []).forEach(function (raw) {
+        var event = coerceEvent(raw);
+        if (!event) return;
+        event = identifiedFor(event, assetId);
+        if (!own(merged, event.event_id)) {
+          merged[event.event_id] = event;
+          order.push(event.event_id);
+        } else if (!merged[event.event_id].photo && event.photo) {
+          merged[event.event_id] = event;
+        }
+      });
+    }
+    return order.map(function (key) { return merged[key]; }).sort(function (a, b) {
+      var aw = a.when || '9999', bw = b.when || '9999';
+      if (aw !== bw) return aw < bw ? -1 : 1;
+      if (a.kind !== b.kind) return a.kind < b.kind ? -1 : 1;
+      return a.event_id < b.event_id ? -1 : (a.event_id > b.event_id ? 1 : 0);
+    });
+  }
+
+  function assetLatLon(asset) {
+    if (!asset || asset.easting === null || asset.easting === undefined ||
+        asset.northing === null || asset.northing === undefined) return null;
+    var zone = asset.utm_zone || inferZoneForSierraLeone(Number(asset.easting));
+    var fix;
+    try {
+      fix = utmToGeographic(Number(asset.easting), Number(asset.northing), Number(zone));
+    } catch (err) {
+      return null;
+    }
+    /* a pair, matching the Python tuple, so both engines index it the same */
+    return fix ? [fix.lat, fix.lon] : null;
+  }
+
+  function assetLabel(asset) {
+    var place = (asset && asset.community) || '(unnamed site)';
+    return asset && asset.district ? place + ' (' + asset.district + ')' : place;
+  }
+
+  var DEFAULT_SCHEDULE = {
+    inspection_months: 6, water_sample_months: 12, grace_days: 30
+  };
+
+  function dueItem(key, title, last, commissioned, months, graceDays, today, why) {
+    var anchor = last || commissioned;
+    if (!anchor) {
+      return { key: key, title: title, due_on: null, state: 'unknown',
+        detail: 'No ' + title.toLowerCase() + ' has been recorded, and there ' +
+          'is no commissioning date to count from. ' + why };
+    }
+    var dueOn = addMonths(anchor, months);
+    var dueDay = isoDay(dueOn), todayDay = isoDay(today);
+    if (todayDay > dueDay + graceDays) {
+      var never = last ? '' : 'has never been done; it ';
+      return { key: key, title: title, due_on: dueOn, state: 'overdue',
+        detail: title + ' ' + never + 'has been due since ' + dueOn + ', ' +
+          (todayDay - dueDay) + ' days ago. ' + why };
+    }
+    if (todayDay > dueDay) {
+      return { key: key, title: title, due_on: dueOn, state: 'due',
+        detail: title + ' fell due on ' + dueOn + '.' };
+    }
+    return { key: key, title: title, due_on: dueOn, state: 'scheduled',
+      detail: 'Next ' + title.toLowerCase() + ' due ' + dueOn + '.' };
+  }
+
+  function assetState(asset, today, schedule) {
+    var when = today || new Date().toISOString().slice(0, 10);
+    var plan = Object.assign({}, DEFAULT_SCHEDULE, schedule || {});
+    var events = mergeEvents(asset.asset_id, asset.events || []);
+    var todayDay = isoDay(when);
+    var dated = events.filter(function (e) { return isoDay(e.when) !== null; })
+      .sort(function (a, b) {
+        if (a.when !== b.when) return a.when < b.when ? -1 : 1;
+        if (a.kind !== b.kind) return a.kind < b.kind ? -1 : 1;
+        return a.event_id < b.event_id ? -1 : (a.event_id > b.event_id ? 1 : 0);
+      });
+    var undated = events.length - dated.length;
+
+    var fn = 'unknown', since = null;
+    var detail = 'Nothing has been recorded against this borehole, so whether ' +
+      'it is working is not known.';
+    var commissioned = null, lastInspection = null, lastSample = null;
+    dated.forEach(function (event) {
+      if (isoDay(event.when) > todayDay) return;
+      var establishes = EVENT_KINDS[event.kind][1];
+      if (establishes) {
+        fn = establishes;
+        since = event.when;
+        detail = eventLabel(event.kind) + ' recorded on ' + event.when +
+          (event.by ? ' by ' + event.by : '');
+      }
+      if (event.kind === 'commissioned' && !commissioned) commissioned = event.when;
+      if (event.kind === 'inspection') lastInspection = event.when;
+      if (event.kind === 'water_sample') lastSample = event.when;
+    });
+
+    var outFor = fn === 'non_functional' && since ? todayDay - isoDay(since) : null;
+    if (undated && fn === 'unknown') {
+      detail = undated + ' record(s) carry a date nobody can read, so nothing ' +
+        'can be established from them.';
+    }
+
+    var due = [];
+    if (fn !== 'decommissioned') {
+      due.push(dueItem('inspection', 'Sanitary inspection', lastInspection,
+        commissioned, plan.inspection_months, plan.grace_days, when,
+        'A sanitary inspection is what catches a cracked apron or a latrine ' +
+        'dug uphill before the water shows it.'));
+      due.push(dueItem('water_sample', 'Water quality sample', lastSample,
+        commissioned, plan.water_sample_months, plan.grace_days, when,
+        'Water that was safe at handover is not evidence that it is safe now: ' +
+        'the aquifer, the headworks and the catchment all change.'));
+    }
+    return {
+      function: fn, label: FUNCTION_LABELS[fn], since: since, detail: detail,
+      last_inspection: lastInspection, last_sample: lastSample,
+      commissioned: commissioned, days_out_of_service: outFor,
+      due: due, undated_events: undated,
+      overdue: due.filter(function (item) { return item.state === 'overdue'; }),
+      is_working: fn === 'functional'
+    };
+  }
+
+  /* Plain text, not a link. A link is only useful where there is a network,
+   * and the reason this symbol is on the headworks is that there is not one. */
+  function qrPayload(asset) {
+    var lines = ['BOREHOLE ' + asset.asset_id, assetLabel(asset)];
+    var latlon = assetLatLon(asset);
+    if (latlon) {
+      lines.push(pyFixed(Math.abs(latlon[0]), 5) + ' ' + (latlon[0] >= 0 ? 'N' : 'S') +
+        ', ' + pyFixed(Math.abs(latlon[1]), 5) + ' ' + (latlon[1] >= 0 ? 'E' : 'W'));
+    }
+    var facts = [];
+    if (asset.total_depth_m) facts.push(pyFixed(Number(asset.total_depth_m), 1) + ' m deep');
+    if (asset.safe_yield_m3_per_h) {
+      facts.push(pyFixed(Number(asset.safe_yield_m3_per_h), 2) + ' m3/h');
+    }
+    if (asset.pump_type) facts.push(asset.pump_type);
+    if (facts.length) lines.push(facts.join(', '));
+    return lines.join('\n');
+  }
+
+  function placardLines(asset, state) {
+    var rows = [['Identifier', asset.asset_id],
+      ['Community', asset.community || '-']];
+    if (asset.district) rows.push(['District', asset.district]);
+    var latlon = assetLatLon(asset);
+    if (latlon) {
+      rows.push(['Position', pyFixed(latlon[0], 5) + ' N, ' +
+        pyFixed(Math.abs(latlon[1]), 5) + ' W']);
+    }
+    if (asset.total_depth_m) {
+      rows.push(['Depth', pyFixed(Number(asset.total_depth_m), 1) + ' m']);
+    }
+    if (asset.safe_yield_m3_per_h) {
+      rows.push(['Safe yield', pyFixed(Number(asset.safe_yield_m3_per_h), 2) + ' m3/h']);
+    }
+    if (asset.pump_type) rows.push(['Pump', asset.pump_type]);
+    if (asset.installed_by) rows.push(['Installed by', asset.installed_by]);
+    if (state) {
+      if (state.commissioned) rows.push(['Commissioned', state.commissioned]);
+      rows.push(['Status', state.label]);
+    }
+    return rows;
+  }
+
+  function assetFromDict(payload) {
+    if (!payload || typeof payload !== 'object') return null;
+    var assetId = parseAssetId(payload.asset_id);
+    if (!assetId) return null;
+    var asset = {
+      asset_id: assetId,
+      community: payload.community || '', district: payload.district || '',
+      chiefdom: payload.chiefdom || '',
+      easting: payload.easting === undefined ? null : payload.easting,
+      northing: payload.northing === undefined ? null : payload.northing,
+      utm_zone: payload.utm_zone === undefined ? null : payload.utm_zone,
+      total_depth_m: payload.total_depth_m === undefined ? null : payload.total_depth_m,
+      safe_yield_m3_per_h: payload.safe_yield_m3_per_h === undefined
+        ? null : payload.safe_yield_m3_per_h,
+      pump_type: payload.pump_type || '', installed_by: payload.installed_by || '',
+      events: []
+    };
+    asset.events = mergeEvents(assetId, payload.events || []);
+    return asset;
+  }
+
+  /* Nothing is invented here: no commissioning event is written, because a
+   * borehole is commissioned by somebody deciding it is, on a day, and that
+   * decision is a record with a name on it rather than a side effect of
+   * opening a page. */
+  function assetFromProject(state) {
+    var site = projectSite(state || {});
+    if (!site || site.easting === null || site.easting === undefined) return null;
+    var assetId;
+    try {
+      assetId = mintAssetId(site);
+    } catch (err) {
+      return null;
+    }
+    var log = state.drilling_log, analysis = state.pump_analysis;
+    var recommendation = analysis && analysis.yield_recommendation;
+    return {
+      asset_id: assetId, community: site.community || '',
+      district: site.district || '', chiefdom: site.chiefdom || '',
+      easting: site.easting, northing: site.northing,
+      utm_zone: site.utm_zone || null,
+      total_depth_m: log ? log.total_depth_m : null,
+      safe_yield_m3_per_h: recommendation ? recommendation.safe_yield_m3_per_h : null,
+      pump_type: '', installed_by: site.contractor || '', events: []
+    };
+  }
+
+  function registryRows(assets, today, schedule) {
+    return (assets || []).map(function (asset) {
+      var state = assetState(asset, today, schedule);
+      return {
+        Identifier: asset.asset_id,
+        Community: asset.community || '(unnamed)',
+        District: asset.district || '',
+        Status: state.label,
+        Since: state.since || '',
+        'Last inspected': state.last_inspection || '',
+        'Last sampled': state.last_sample || '',
+        Overdue: state.overdue.map(function (i) { return i.title; }).join(', '),
+        Events: (asset.events || []).length
+      };
+    });
+  }
+
+  /* n_unknown sits beside the working and broken counts and is never folded
+   * into either: a register where most points are unknown looks very like
+   * one where most points are working, unless the number is on the page. */
+  function registryStats(assets, today, schedule) {
+    var list = assets || [];
+    var counts = { functional: 0, non_functional: 0, decommissioned: 0, unknown: 0 };
+    var overdue = {}, outDays = [];
+    list.forEach(function (asset) {
+      var state = assetState(asset, today, schedule);
+      counts[state.function] += 1;
+      if (state.days_out_of_service !== null) outDays.push(state.days_out_of_service);
+      state.overdue.forEach(function (item) {
+        overdue[item.key] = (own(overdue, item.key) ? overdue[item.key] : 0) + 1;
+      });
+    });
+    var known = counts.functional + counts.non_functional;
+    return {
+      n_assets: list.length,
+      n_functional: counts.functional,
+      n_non_functional: counts.non_functional,
+      n_decommissioned: counts.decommissioned,
+      n_unknown: counts.unknown,
+      functionality_rate: known ? counts.functional / known * 100 : null,
+      n_overdue_inspection: own(overdue, 'inspection') ? overdue.inspection : 0,
+      n_overdue_sample: own(overdue, 'water_sample') ? overdue.water_sample : 0,
+      mean_days_out_of_service: outDays.length
+        ? outDays.reduce(function (a, b) { return a + b; }, 0) / outDays.length : null
+    };
+  }
+
+  Object.assign(C, {
+    DISTRICT_CODES: DISTRICT_CODES, UNKNOWN_DISTRICT: UNKNOWN_DISTRICT,
+    EVENT_KINDS: EVENT_KINDS, FUNCTION_LABELS: FUNCTION_LABELS,
+    FUNCTION_COLORS: FUNCTION_COLORS, DEFAULT_SCHEDULE: DEFAULT_SCHEDULE,
+    checkCharacter: checkCharacter, mintAssetId: mintAssetId,
+    parseAssetId: parseAssetId, validateAssetId: validateAssetId,
+    eventId: eventId, eventLabel: eventLabel, mergeEvents: mergeEvents,
+    assetState: assetState, assetLatLon: assetLatLon, assetLabel: assetLabel,
+    assetFromDict: assetFromDict, assetFromProject: assetFromProject,
+    qrPayload: qrPayload, placardLines: placardLines,
+    registryRows: registryRows, registryStats: registryStats,
+    addMonths: addMonths, isoDay: isoDay, dayToIso: dayToIso
+  });
+
+
+
+  /* ===================================================================
+   * The seasonal yield model - a port of groundwater/seasonal.py
+   *
+   * A pumping test measures one day; the borehole has to supply the village
+   * on the worst day, and in Sierra Leone those are months apart. A single
+   * wet season recharges the aquifer, the table peaks at the end of it and
+   * falls to an annual low in April or May, so the same test means
+   * different things depending on when it was run. An ambiguous date is
+   * treated as no date: 10/05/2018 is two different ends of the year.
+   * =================================================================== */
+
+  var MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+
+  /* 0.0 at the annual high, 1.0 at the annual low. */
+  var SEASONAL_POSITION = {
+    1: 0.35, 2: 0.55, 3: 0.75, 4: 0.95, 5: 1.00, 6: 0.80,
+    7: 0.45, 8: 0.15, 9: 0.00, 10: 0.05, 11: 0.15, 12: 0.25
+  };
+
+  var SEASON_OF_MONTH = {
+    1: 'dry season', 2: 'dry season', 3: 'late dry season',
+    4: 'late dry season', 5: 'late dry season', 6: 'early wet season',
+    7: 'wet season', 8: 'wet season', 9: 'wet season',
+    10: 'late wet season', 11: 'early dry season', 12: 'dry season'
+  };
+
+  /* key -> [title, share of the annual range, why it is here] */
+  var SEASONAL_SCENARIOS = {
+    as_tested: ['As tested', 0.0,
+      'The level on the day of the test. Not a design figure: unless the ' +
+      'test was run at the end of the dry season the borehole will be lower ' +
+      'than this for part of every year.'],
+    dry_season: ['End of dry season', 1.0,
+      'The normal annual low, which the borehole reaches every year. This is ' +
+      'the figure a design should be sized on.'],
+    drought: ['Drought year', 1.5,
+      'A low deeper than a normal year\'s, for a run of poor rains. The pump ' +
+      'has to still be under water here, or the village loses the borehole ' +
+      'in exactly the year it is needed most.']
+  };
+
+  function monthOf(text) {
+    var raw = String(text === null || text === undefined ? '' : text).trim();
+    if (!raw) return { month: null, note: 'No date is recorded for the test.' };
+
+    var name = /[A-Za-z]{3,}/.exec(raw);
+    if (name) {
+      var head = name[0].toLowerCase().slice(0, 3);
+      for (var i = 0; i < MONTH_NAMES.length; i++) {
+        if (MONTH_NAMES[i].toLowerCase().indexOf(head) === 0) {
+          return { month: i + 1, note: '' };
+        }
+      }
+      return { month: null, note: 'The date ' + pyRepr(raw) +
+        ' does not name a month.' };
+    }
+
+    var parts = (raw.match(/\d+/g) || []).map(Number);
+    if (parts.length < 3) {
+      return { month: null, note: 'The date ' + pyRepr(raw) +
+        ' is not a full date.' };
+    }
+    if (parts[0] > 31) {
+      return parts[1] >= 1 && parts[1] <= 12
+        ? { month: parts[1], note: '' }
+        : { month: null, note: 'The date ' + pyRepr(raw) + ' has no month in it.' };
+    }
+    var first = parts[0], second = parts[1];
+    if (first > 12 && second >= 1 && second <= 12) return { month: second, note: '' };
+    if (second > 12 && first >= 1 && first <= 12) return { month: first, note: '' };
+    if (first >= 1 && first <= 12 && second >= 1 && second <= 12) {
+      return { month: null, note: 'The date ' + pyRepr(raw) +
+        ' could be read either way round: ' + MONTH_NAMES[second - 1] + ' or ' +
+        MONTH_NAMES[first - 1] + '. Those are different ends of the year and ' +
+        'give different answers, so the season is treated as unknown. Record ' +
+        'the month by name, or pick it below.' };
+    }
+    return { month: null, note: 'The date ' + pyRepr(raw) + ' has no month in it.' };
+  }
+
+  /* Python's repr for the strings that appear in these messages, so both
+   * engines produce the same sentence rather than one with the other's
+   * quoting. Python prefers single quotes unless the text contains one. */
+  function pyRepr(text) {
+    var body = String(text).replace(/\\/g, '\\\\');
+    if (body.indexOf("'") >= 0 && body.indexOf('"') < 0) {
+      return '"' + body + '"';
+    }
+    return "'" + body.replace(/'/g, "\\'") + "'";
+  }
+
+  function seasonOf(month) {
+    return month && own(SEASON_OF_MONTH, String(month))
+      ? SEASON_OF_MONTH[month] : 'unknown';
+  }
+
+  function declineToCome(month, rangeM, factor) {
+    var position = month && own(SEASONAL_POSITION, String(month))
+      ? SEASONAL_POSITION[month] : 0.0;
+    return Math.max(rangeM * (factor - position), 0.0);
+  }
+
+  function seasonalScenario(result, key) {
+    var found = null;
+    (result.scenarios || []).forEach(function (item) {
+      if (item.key === key) found = item;
+    });
+    return found;
+  }
+
+  function seasonalSummary(result) {
+    if (result.pending_reason) return result.pending_reason;
+    var design = seasonalScenario(result, 'dry_season');
+    var drought = seasonalScenario(result, 'drought');
+    if (!design || design.safe_yield_m3_per_h === null) {
+      return 'The seasonal yield could not be established.';
+    }
+    var text = 'Sized on the end of the dry season: ' +
+      formatG(roundSig(design.safe_yield_m3_per_h, 2), 2) + ' m3/h';
+    if (drought && drought.safe_yield_m3_per_h !== null) {
+      text += ', falling to ' + formatG(roundSig(drought.safe_yield_m3_per_h, 2), 2) +
+        ' m3/h in a drought year';
+    }
+    if (result.month) {
+      text += '. The test was run in ' + MONTH_NAMES[result.month - 1] +
+        ', the ' + result.season;
+    }
+    return text + '.';
+  }
+
+  /* options: {month, annualRangeM} */
+  function seasonalYield(analysis, config, options) {
+    var opts = options || {};
+    var cfg = config || defaultConfig().pumping;
+    var test = analysis && analysis.test;
+    var recommendation = analysis && analysis.yield_recommendation;
+
+    var month = null, note = '';
+    if (opts.month !== undefined && opts.month !== null) {
+      var wanted = Number(opts.month);
+      if (wanted >= 1 && wanted <= 12) month = wanted;
+      else note = pyRepr(String(opts.month)) + ' is not a month.';
+    } else {
+      var read = monthOf(test && test.site ? test.site.date : '');
+      month = read.month;
+      note = read.note;
+    }
+
+    var band, source;
+    if (opts.annualRangeM !== undefined && opts.annualRangeM !== null &&
+        Number(opts.annualRangeM) >= 0) {
+      band = Number(opts.annualRangeM);
+      source = 'measured for this programme';
+    } else {
+      band = Number(cfg.seasonal_allowance_m);
+      source = 'the configured dry-season allowance, not a measurement';
+    }
+
+    var result = {
+      month: month, season: seasonOf(month), month_note: note,
+      annual_range_m: band, range_source: source, scenarios: [],
+      pending_reason: ''
+    };
+    function finish(reason) {
+      result.pending_reason = reason;
+      result.summary = reason;
+      result.is_established = false;
+      result.design_yield_m3_per_h = null;
+      result.pump_installation_depth_m = null;
+      result.dry_season_loss_percent = null;
+      return result;
+    }
+    if (!test || !recommendation) {
+      return finish('No pumping test has been analysed, so there is nothing ' +
+        'to project through the year.');
+    }
+    if (recommendation.safe_yield_m3_per_h === null ||
+        recommendation.safe_yield_m3_per_h === undefined) {
+      return finish(recommendation.pending_reason ||
+        'The yield recommendation is pending, so it cannot be projected ' +
+        'through the year.');
+    }
+    var transmissivity = analysis.transmissivity_m2_per_day;
+    if (transmissivity === null || transmissivity === undefined) {
+      return finish('No transmissivity was fitted, so the seasonal projection ' +
+        'has nothing to run on.');
+    }
+
+    Object.keys(SEASONAL_SCENARIOS).forEach(function (key) {
+      var spec = SEASONAL_SCENARIOS[key];
+      var decline = declineToCome(month, band, spec[1]);
+      /* the same borehole with its static level lowered: available drawdown,
+       * the projection and the pump depth all follow from that one change,
+       * so the recommendation is re-run rather than scaled */
+      var lowered = Object.assign({}, test, {
+        static_water_level_m: test.static_water_level_m + decline
+      });
+      var variant = Object.assign({}, cfg, { seasonal_allowance_m: 0.0 });
+      var trial = recommendYield(lowered, transmissivity, analysis.step_test,
+        variant);
+      var noteText = spec[2];
+      if (key === 'as_tested' && month) {
+        noteText += ' The test was run in ' + MONTH_NAMES[month - 1] +
+          ', the ' + seasonOf(month) + '.';
+      }
+      if (key !== 'as_tested' && decline === 0.0 && month) {
+        noteText += ' No further decline is reserved: a test run in ' +
+          MONTH_NAMES[month - 1] + ' is already at or below this level.';
+      }
+      result.scenarios.push({
+        key: key, title: spec[0], decline_m: decline,
+        static_water_level_m: lowered.static_water_level_m,
+        available_drawdown_m: trial.available_drawdown_m,
+        safe_yield_m3_per_h: trial.safe_yield_m3_per_h,
+        pump_installation_depth_m: trial.pump_installation_depth_m,
+        note: noteText
+      });
+    });
+
+    var design = seasonalScenario(result, 'dry_season');
+    var tested = seasonalScenario(result, 'as_tested');
+    var depths = result.scenarios.map(function (s) {
+      return s.pump_installation_depth_m;
+    }).filter(function (d) { return d !== null && d !== undefined; });
+    result.is_established = !!(design && design.safe_yield_m3_per_h !== null);
+    result.design_yield_m3_per_h = design ? design.safe_yield_m3_per_h : null;
+    result.pump_installation_depth_m = depths.length
+      ? Math.max.apply(null, depths) : null;
+    result.dry_season_loss_percent =
+      (tested && design && tested.safe_yield_m3_per_h &&
+        design.safe_yield_m3_per_h !== null)
+        ? (1 - design.safe_yield_m3_per_h / tested.safe_yield_m3_per_h) * 100
+        : null;
+    result.summary = seasonalSummary(result);
+    return result;
+  }
+
+  Object.assign(C, {
+    MONTH_NAMES: MONTH_NAMES, SEASONAL_POSITION: SEASONAL_POSITION,
+    SEASONAL_SCENARIOS: SEASONAL_SCENARIOS,
+    monthOf: monthOf, seasonOf: seasonOf, seasonalYield: seasonalYield,
+    seasonalScenario: seasonalScenario
+  });
+
+
+
+  /* ===================================================================
+   * Coverage as a planning figure - a port of groundwater/planning.py
+   *
+   * The census is from 2015 and the survey behind each water point is older
+   * than it looks, so both halves of "people per functional point" are
+   * staler than the phrase suggests. Nothing here hides that: the
+   * projection states its year and rate, freshness is measured and
+   * reported, and dry-season service is a band rather than a number,
+   * because most surveys never asked and silence is not a year-round
+   * supply.
+   * =================================================================== */
+
+  var CENSUS_YEAR = 2015;
+  var CENSUS_TOTAL = 7092113;
+  var PREVIOUS_CENSUS_YEAR = 2004;
+  var PREVIOUS_CENSUS_TOTAL = 4976871;
+
+  /* Derived rather than quoted, so it can be checked against two published
+   * totals. It is higher than recent international projections - the 2004
+   * count followed the civil war - so a programme with its own figure
+   * should use it instead. */
+  function intercensalGrowthRate() {
+    return Math.pow(CENSUS_TOTAL / PREVIOUS_CENSUS_TOTAL,
+      1 / (CENSUS_YEAR - PREVIOUS_CENSUS_YEAR)) - 1;
+  }
+
+  var DEFAULT_GROWTH_RATE = intercensalGrowthRate();
+
+  var FRESH_YEARS = 3, AGEING_YEARS = 7;
+  var FRESHNESS_LABELS = {
+    fresh: 'Surveyed recently', ageing: 'Survey is getting old',
+    stale: 'Survey is out of date', unknown: 'Survey dates not recorded'
+  };
+
+  function projectionNote(projection) {
+    if (projection.target_year === projection.base_year) {
+      return 'Populations are the ' + projection.base_year +
+        ' census figures, not projected.';
+    }
+    var text = 'Populations are projected from the ' + projection.base_year +
+      ' census to ' + projection.target_year + ' at ' +
+      pyFixed(projection.rate * 100, 2) + '% a year, a factor of ' +
+      pyFixed(projection.factor, 3) + '.';
+    if (projection.uniform) {
+      text += ' The same rate is applied to every district, so the ranking ' +
+        'is unchanged by the projection - only the magnitudes move. District ' +
+        'rates would change it, and an urban district does not grow at the ' +
+        'rural rate.';
+    }
+    return text;
+  }
+
+  /* options: {rate, rates} */
+  function projectPopulation(population, toYear, options) {
+    var opts = options || {};
+    var national = (opts.rate === undefined || opts.rate === null)
+      ? DEFAULT_GROWTH_RATE : Number(opts.rate);
+    var years = Number(toYear) - CENSUS_YEAR;
+    if (years < 0) {
+      throw new Error(toYear + ' is before the ' + CENSUS_YEAR + ' census; ' +
+        'this projects forward, it does not reconstruct the past');
+    }
+    var perArea = {};
+    Object.keys(opts.rates || {}).forEach(function (key) {
+      perArea[String(key).trim().toLowerCase()] = Number(opts.rates[key]);
+    });
+    var projected = {};
+    Object.keys(population).forEach(function (name) {
+      var key = String(name).trim().toLowerCase();
+      var rate = own(perArea, key) ? perArea[key] : national;
+      projected[name] = Number(population[name]) * Math.pow(1 + rate, years);
+    });
+    var projection = {
+      base_year: CENSUS_YEAR, target_year: Number(toYear), rate: national,
+      uniform: Object.keys(perArea).length === 0,
+      factor: Math.pow(1 + national, years)
+    };
+    projection.note = projectionNote(projection);
+    return { projected: projected, projection: projection };
+  }
+
+  function pointFreshness(points, asOfYear) {
+    var list = points || [];
+    var years = list.map(function (p) { return p.report_year; })
+      .filter(function (y) { return y; }).sort(function (a, b) { return a - b; });
+    if (!years.length) {
+      var blank = { n_points: list.length, n_dated: 0, latest_year: null,
+        median_age_years: null, n_recent: 0, state: 'unknown' };
+      blank.label = FRESHNESS_LABELS.unknown;
+      blank.detail = 'No survey dates are recorded for these points, so how ' +
+        'current this coverage figure is cannot be established.';
+      return blank;
+    }
+    var ages = years.map(function (y) { return asOfYear - y; });
+    var middle = Math.floor(ages.length / 2);
+    var median = ages.length % 2
+      ? ages[middle] : (ages[middle - 1] + ages[middle]) / 2;
+    var recent = ages.filter(function (a) { return a <= FRESH_YEARS; }).length;
+    var state = median <= FRESH_YEARS ? 'fresh'
+      : (median <= AGEING_YEARS ? 'ageing' : 'stale');
+    var latest = years[years.length - 1];
+    return {
+      n_points: list.length, n_dated: years.length, latest_year: latest,
+      median_age_years: median, n_recent: recent, state: state,
+      label: FRESHNESS_LABELS[state],
+      detail: years.length + ' of ' + list.length + ' points carry a survey ' +
+        'date; the most recent is ' + latest + ' and the median is ' +
+        pyFixed(median, 0) + ' years old. ' + recent + ' were surveyed in the ' +
+        'last ' + FRESH_YEARS + ' years.'
+    };
+  }
+
+  /* A band, not a number: low counts only the points a survey confirmed work
+   * all year, high also counts the ones nobody asked about. */
+  function seasonalCoverage(points, population) {
+    var functional = (points || []).filter(function (p) { return p.functional; });
+    var yearRound = 0, seasonal = 0;
+    functional.forEach(function (p) {
+      if (p.months_per_year === null || p.months_per_year === undefined) return;
+      if (p.months_per_year >= 12) yearRound += 1; else seasonal += 1;
+    });
+    var unknown = functional.length - yearRound - seasonal;
+    var known = yearRound + seasonal;
+    var total = functional.length;
+    var detail;
+    if (!total) {
+      detail = 'There are no functional points here to ask about.';
+    } else if (!known) {
+      detail = 'No survey recorded how many months of the year these points ' +
+        'yield water, so dry-season service cannot be separated from ' +
+        'wet-season service. Silence is not a year-round supply.';
+    } else {
+      detail = yearRound + ' of ' + total + ' functional points are recorded ' +
+        'as working all year and ' + seasonal + ' as seasonal' +
+        (unknown ? '; ' + unknown + ' were never asked' : '') + '.';
+    }
+    return {
+      n_year_round: yearRound, n_seasonal: seasonal, n_unknown: unknown,
+      people_per_point_low: yearRound ? population / yearRound : null,
+      people_per_point_high: (yearRound + unknown)
+        ? population / (yearRound + unknown) : null,
+      is_established: known > 0 && known >= (known + unknown) * 0.5,
+      detail: detail
+    };
+  }
+
+  function stalenessGapPercent(row) {
+    if (!row.people_per_point || row.people_per_recent_point === null) return null;
+    return (row.people_per_recent_point / row.people_per_point - 1) * 100;
+  }
+
+  /* options: {asOfYear, rate, rates} */
+  function planningRows(population, pointsByArea, options) {
+    var opts = options || {};
+    var asOfYear = Number(opts.asOfYear);
+    var out = projectPopulation(population, asOfYear,
+      { rate: opts.rate, rates: opts.rates });
+    var rows = Object.keys(population).map(function (name) {
+      var points = (pointsByArea || {})[name] || [];
+      var people = out.projected[name];
+      var functional = points.filter(function (p) { return p.functional; });
+      var recent = functional.filter(function (p) {
+        return p.report_year && asOfYear - p.report_year <= AGEING_YEARS;
+      });
+      var row = {
+        name: name, census_population: Number(population[name]),
+        population: people, water_points: points.length,
+        functional_points: functional.length,
+        people_per_point: functional.length ? people / functional.length : null,
+        recent_functional_points: recent.length,
+        people_per_recent_point: recent.length ? people / recent.length : null,
+        freshness: pointFreshness(points, asOfYear),
+        seasonal: seasonalCoverage(points, people),
+        rank: 0
+      };
+      row.staleness_gap_percent = stalenessGapPercent(row);
+      return row;
+    });
+    rankCoverage(rows);
+    return { rows: rows, projection: out.projection };
+  }
+
+  function planningStats(rows, projection) {
+    var list = rows || [];
+    var served = list.filter(function (r) { return r.people_per_point !== null; });
+    var worst = null;
+    served.forEach(function (r) {
+      if (!worst || r.people_per_point > worst.people_per_point) worst = r;
+    });
+    function total(key) {
+      return list.reduce(function (a, r) { return a + r[key]; }, 0);
+    }
+    var people = total('population');
+    var functional = total('functional_points');
+    var recent = total('recent_functional_points');
+    var stale = list.filter(function (r) { return r.freshness.state === 'stale'; });
+    return {
+      n_areas: list.length,
+      as_of_year: projection.target_year,
+      projection_note: projection.note,
+      population: people,
+      census_population: total('census_population'),
+      worst_area: list.length ? list[0].name : null,
+      worst_people_per_point: list.length ? list[0].people_per_point : null,
+      worst_served_area: worst ? worst.name : null,
+      worst_served_people_per_point: worst ? worst.people_per_point : null,
+      n_no_source: list.filter(function (r) {
+        return r.functional_points === 0;
+      }).length,
+      national_people_per_point: functional ? people / functional : null,
+      national_people_per_recent_point: recent ? people / recent : null,
+      n_stale_areas: stale.length,
+      stale_areas: stale.map(function (r) { return r.name; }),
+      n_seasonality_recorded: list.reduce(function (a, r) {
+        return a + r.seasonal.n_year_round + r.seasonal.n_seasonal;
+      }, 0),
+      n_seasonality_unknown: list.reduce(function (a, r) {
+        return a + r.seasonal.n_unknown;
+      }, 0)
+    };
+  }
+
+  Object.assign(C, {
+    CENSUS_YEAR: CENSUS_YEAR, DEFAULT_GROWTH_RATE: DEFAULT_GROWTH_RATE,
+    FRESH_YEARS: FRESH_YEARS, AGEING_YEARS: AGEING_YEARS,
+    FRESHNESS_LABELS: FRESHNESS_LABELS,
+    intercensalGrowthRate: intercensalGrowthRate,
+    projectPopulation: projectPopulation, pointFreshness: pointFreshness,
+    seasonalCoverage: seasonalCoverage, planningRows: planningRows,
+    planningStats: planningStats
+  });
+
+
+
+  /* ===================================================================
+   * Procurement - a port of groundwater/procurement.py
+   *
+   * A bill of quantities is an estimate until somebody signs it. The three
+   * ways a drilling contract loses money afterwards are all handled the
+   * same way here: measured is not the same as authorised and only the
+   * lower one is paid; a certificate subtracts what earlier ones already
+   * paid; and retention is withheld and capped rather than forgotten.
+   * Nothing is netted away silently - a problem is reported on the face of
+   * the certificate.
+   * =================================================================== */
+
+  function contractSum(contract) {
+    return (contract.lines || []).reduce(function (total, line) {
+      return total + line.quantity * line.rate_usd;
+    }, 0);
+  }
+
+  function contractAdvance(contract) {
+    return contractSum(contract) * (contract.advance_percent || 0) / 100;
+  }
+
+  /* Freeze an estimate into a contract. The estimate keeps moving as the
+   * design changes; a contract does not, so this takes the copy that gets
+   * signed rather than a reference to the live one. */
+  function contractFromEstimate(estimate, ref, terms) {
+    return Object.assign({
+      ref: ref, contractor: '', client: '', date: '',
+      retention_percent: 10, retention_cap_percent: 5, advance_percent: 0
+    }, terms || {}, {
+      lines: (estimate.items || []).map(function (item) {
+        return {
+          code: item.code, item: item.item, unit: item.unit,
+          quantity: Number(item.quantity), rate_usd: Number(item.unit_cost_usd),
+          stage: item.stage || '', category: item.category || ''
+        };
+      })
+    });
+  }
+
+  function valuationFigures(line) {
+    var authorised = line.contract_quantity + line.variation_quantity;
+    var payable = Math.max(Math.min(line.measured_quantity, authorised), 0);
+    var over = Math.max(line.measured_quantity - authorised, 0);
+    return Object.assign({}, line, {
+      authorised_quantity: authorised,
+      payable_quantity: payable,
+      overmeasure_quantity: over,
+      contract_amount_usd: line.contract_quantity * line.rate_usd,
+      authorised_amount_usd: authorised * line.rate_usd,
+      payable_amount_usd: payable * line.rate_usd,
+      overmeasure_amount_usd: over * line.rate_usd,
+      percent_complete: authorised ? payable / authorised * 100 : null
+    });
+  }
+
+  /* Returns {lines, problems}. The problems are written for the person who
+   * has to fix them, and are never fatal: a certificate with a problem on it
+   * is still worth issuing, as long as the problem is printed on its face. */
+  function valueWork(contract, measurements, variations) {
+    var problems = [], varied = {}, order = [];
+    (variations || []).forEach(function (v) {
+      if (!own(varied, v.code)) {
+        varied[v.code] = { delta: 0, rate: null, refs: [], item: '', unit: '' };
+        order.push(v.code);
+      }
+      var entry = varied[v.code];
+      entry.delta += Number(v.quantity_delta || 0);
+      entry.refs.push(v.ref);
+      if (v.rate_usd !== null && v.rate_usd !== undefined) {
+        entry.rate = Number(v.rate_usd);
+      }
+      entry.item = entry.item || v.item || '';
+      entry.unit = entry.unit || v.unit || '';
+      if (!v.authorised_by) {
+        problems.push('Variation ' + v.ref + ' on ' + v.code + ' names nobody ' +
+          'who authorised it. An unsigned variation is a request, not an ' +
+          'instruction.');
+      }
+    });
+
+    var measured = {}, measuredOrder = [];
+    (measurements || []).forEach(function (m) {
+      if (Number(m.quantity) < 0) {
+        problems.push(m.code + ' is measured as a negative quantity (' +
+          formatG(Number(m.quantity)) + '); it is treated as nothing measured.');
+        return;
+      }
+      /* cumulative-to-date, so the latest figure wins rather than a running
+       * total being accumulated twice */
+      if (!own(measured, m.code)) measuredOrder.push(m.code);
+      measured[m.code] = Number(m.quantity);
+    });
+
+    var lines = [], seen = {};
+    (contract.lines || []).forEach(function (line) {
+      var change = own(varied, line.code) ? varied[line.code] : {};
+      seen[line.code] = true;
+      lines.push(valuationFigures({
+        code: line.code, item: line.item, unit: line.unit,
+        rate_usd: (change.rate === null || change.rate === undefined)
+          ? line.rate_usd : change.rate,
+        contract_quantity: line.quantity,
+        variation_quantity: change.delta || 0,
+        measured_quantity: own(measured, line.code) ? measured[line.code] : 0,
+        in_contract: true,
+        variation_refs: (change.refs || []).slice()
+      }));
+    });
+
+    order.concat(measuredOrder.filter(function (c) { return !own(varied, c); }))
+      .forEach(function (code) {
+        if (own(seen, code)) return;
+        seen[code] = true;
+        var change = own(varied, code) ? varied[code] : null;
+        if (!change) {
+          problems.push(code + ' has been measured but is neither in the ' +
+            'contract nor in any variation, so there is no rate to pay it at ' +
+            'and nothing authorising it. It is valued at zero.');
+          lines.push(valuationFigures({
+            code: code, item: '(not in the contract)', unit: '', rate_usd: 0,
+            contract_quantity: 0, variation_quantity: 0,
+            measured_quantity: own(measured, code) ? measured[code] : 0,
+            in_contract: false, variation_refs: []
+          }));
+          return;
+        }
+        if (change.rate === null || change.rate === undefined) {
+          problems.push('Variation ' + change.refs.join(', ') + ' adds ' + code +
+            ', which the contract does not price, without giving a rate. It is ' +
+            'valued at zero until one is agreed.');
+        }
+        lines.push(valuationFigures({
+          code: code, item: change.item || '(added by variation)',
+          unit: change.unit || '', rate_usd: change.rate || 0,
+          contract_quantity: 0, variation_quantity: change.delta || 0,
+          measured_quantity: own(measured, code) ? measured[code] : 0,
+          in_contract: false, variation_refs: change.refs.slice()
+        }));
+      });
+
+    lines.forEach(function (line) {
+      if (line.overmeasure_quantity > 0) {
+        problems.push(line.code + ' is measured at ' +
+          formatG(line.measured_quantity) + ' ' + line.unit + ' against ' +
+          formatG(line.authorised_quantity) + ' authorised. The extra ' +
+          formatG(line.overmeasure_quantity) + ' is not payable until a ' +
+          'variation authorises it - the work may well be justified, but that ' +
+          'is a decision somebody signs, not a measurement.');
+      }
+    });
+    return { lines: lines, problems: problems };
+  }
+
+  /* options: {number, date, variations, previouslyCertifiedUsd, preparedBy} */
+  function certify(contract, measurements, options) {
+    var opts = options || {};
+    var valued = valueWork(contract, measurements, opts.variations || []);
+    var problems = valued.problems.slice();
+    var previous = Number(opts.previouslyCertifiedUsd || 0);
+    var number = Number(opts.number || 1);
+    if (previous < 0) {
+      problems.push('Previously certified is negative, which cannot be right; ' +
+        'it is treated as nothing certified so far.');
+      previous = 0;
+    }
+    if (number > 1 && previous === 0) {
+      problems.push('This is certificate ' + number + ' but nothing is ' +
+        'recorded as previously certified. If earlier certificates were paid, ' +
+        'the contractor will be paid for that work twice.');
+    }
+
+    var gross = valued.lines.reduce(function (t, l) {
+      return t + l.payable_amount_usd;
+    }, 0);
+    var sum = contractSum(contract);
+    var variationValue = valued.lines.reduce(function (t, l) {
+      return t + l.authorised_amount_usd - l.contract_amount_usd;
+    }, 0);
+    var revised = sum + variationValue;
+    var held = gross * (contract.retention_percent || 0) / 100;
+    var cap = revised * (contract.retention_cap_percent || 0) / 100;
+    var retention = Math.min(held, cap);
+    var advance = contractAdvance(contract);
+    var recovered = (!advance || !revised) ? 0
+      : Math.min(advance * gross / revised, advance);
+    var net = gross - retention - recovered;
+    var due = Math.max(net - previous, 0);
+    var overpaid = Math.max(previous - net, 0);
+    var percent = revised ? gross / revised * 100 : null;
+
+    var summary = 'Certificate ' + number + ': ' + money0(due) +
+      ' due on work valued at ' + money0(gross);
+    if (percent !== null) {
+      summary += ' (' + pyFixed(percent, 0) + '% of the revised sum)';
+    }
+    if (overpaid) {
+      summary += '. Previous certificates exceed the value of the work by ' +
+        money0(overpaid) + ', so nothing is due';
+    }
+
+    return {
+      number: number, date: opts.date || '', contract_ref: contract.ref,
+      lines: valued.lines, problems: problems,
+      prepared_by: opts.preparedBy || '',
+      contract_sum_usd: sum, variation_usd: variationValue,
+      revised_sum_usd: revised, gross_usd: gross,
+      percent_complete: percent, retention_usd: retention,
+      advance_recovered_usd: recovered, net_certified_usd: net,
+      previously_certified_usd: previous, due_now_usd: due,
+      overpaid_usd: overpaid,
+      overmeasure_usd: valued.lines.reduce(function (t, l) {
+        return t + l.overmeasure_amount_usd;
+      }, 0),
+      summary: summary + '.'
+    };
+  }
+
+  /* Python's "${:,.0f}". Rounded through pyRound first: a retention of
+   * exactly 344.5 is 344 in Python and 345 through toLocaleString, and a
+   * certificate that differs from the toolkit's by a dollar is a
+   * certificate somebody has to reconcile by hand. */
+  function money0(value) {
+    return '$' + thousandsFixed(pyRound(Number(value), 0), 0);
+  }
+
+  function contractSummaryRows(contract, certificate) {
+    var rows = [['Contract', contract.ref]];
+    if (contract.contractor) rows.push(['Contractor', contract.contractor]);
+    if (contract.client) rows.push(['Client', contract.client]);
+    rows.push(['Contract sum', money0(certificate.contract_sum_usd)]);
+    rows.push(['Variations', (certificate.variation_usd < 0 ? '-' : '+') +
+      money0(Math.abs(certificate.variation_usd))]);
+    rows.push(['Revised sum', money0(certificate.revised_sum_usd)]);
+    rows.push(['Work valued to date', money0(certificate.gross_usd)]);
+    if (certificate.percent_complete !== null) {
+      rows.push(['Progress', pyFixed(certificate.percent_complete, 0) + '%']);
+    }
+    rows.push(['Less retention (' + formatG(contract.retention_percent) + '%)',
+      '-' + money0(certificate.retention_usd)]);
+    if (contract.advance_percent) {
+      rows.push(['Less advance recovery (' + formatG(contract.advance_percent) +
+        '% advance)', '-' + money0(certificate.advance_recovered_usd)]);
+    }
+    rows.push(['Net certified to date', money0(certificate.net_certified_usd)]);
+    rows.push(['Less previously certified',
+      '-' + money0(certificate.previously_certified_usd)]);
+    rows.push(['Due on this certificate', money0(certificate.due_now_usd)]);
+    return rows;
+  }
+
+  Object.assign(C, {
+    contractSum: contractSum, contractAdvance: contractAdvance,
+    contractFromEstimate: contractFromEstimate, valueWork: valueWork,
+    certify: certify, contractSummaryRows: contractSummaryRows,
+    money0: money0
+  });
+
 
   /* __SECTION_MARK__ */
 }(typeof window !== 'undefined' ? window : globalThis));

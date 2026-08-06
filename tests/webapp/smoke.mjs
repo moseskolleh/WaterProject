@@ -10,8 +10,9 @@ function check(name, ok, detail) {
 }
 
 const PAGES = ['overview', 'guided', 'site', 'ves', 'design', 'spine', 'pumping',
-  'quality', 'costing', 'supervision', 'handover', 'templates', 'extract',
-  'waterpoints', 'coverage', 'portfolio', 'settings', 'about'];
+  'quality', 'costing', 'procurement', 'supervision', 'handover',
+  'templates', 'extract',
+  'waterpoints', 'coverage', 'portfolio', 'registry', 'settings', 'about'];
 
 await withPage(async (page, base, consoleErrors) => {
   const downloads = [];
@@ -465,6 +466,70 @@ await withPage(async (page, base, consoleErrors) => {
   check('water points: being offline is a message, not a crash',
     /^WaterPointFetchError: /.test(waterPoints.failure || ''), waterPoints.failure);
 
+  // --- coverage as a planning figure ---------------------------------------
+  // The census is a decade old and the survey behind each point is older than
+  // it looks. The page has to show both rather than one figure that reads as
+  // current, and the year and rate have to be the analyst's to set.
+  const planning = await page.evaluate(() => {
+    const C = window.GWT.core, app = window.GWT.app;
+    const wp = (functional, year, months) => C.parseWpdxRecords([{
+      lat_deg: 8, lon_deg: -13,
+      status_clean: functional ? 'Functional' : 'Non-Functional',
+      status_id: functional ? 'Yes' : 'No',
+      water_source_clean: 'Borehole', water_tech_clean: 'Hand Pump',
+      report_date: year === null ? '' : String(year),
+      months_year: months === null ? '' : String(months),
+    }])[0];
+    const population = { Bo: 1000, Kono: 1000 };
+    const points = {
+      Bo: [wp(true, 2025, 12), wp(true, 2005, null)],
+      Kono: [wp(true, 2004, null), wp(true, 2003, null)],
+    };
+    const atCensus = C.planningRows(population, points, { asOfYear: 2015 });
+    const projected = C.planningRows(population, points, { asOfYear: 2026 });
+    const stats = C.planningStats(projected.rows, projected.projection);
+
+    app.store.set('coverage.year', 2030);
+    app.store.set('coverage.rate', 1.5);
+    const slow = C.planningRows(population, points,
+      { asOfYear: 2030, rate: 0.015 });
+    app.store.set('coverage.year', null);
+    app.store.set('coverage.rate', null);
+    return {
+      censusPeople: atCensus.rows[0].population,
+      projectedPeople: projected.rows[0].population,
+      order: projected.rows.map((r) => r.name),
+      note: projected.projection.note,
+      stats,
+      slowPeople: slow.rows[0].population,
+      freshness: projected.rows.map((r) => [r.name, r.freshness.state]),
+      seasonal: projected.rows[0].seasonal,
+    };
+  });
+  check('planning: the population is projected and says so',
+    planning.projectedPeople > planning.censusPeople &&
+    planning.note.includes('2015 census') && planning.note.includes('2026'),
+    planning.note);
+  check('planning: a uniform rate does not reorder the ranking, and says so',
+    planning.note.includes('ranking is unchanged'), planning.note);
+  check('planning: the rate is the analyst\'s to set',
+    planning.slowPeople < planning.projectedPeople,
+    `${planning.slowPeople} vs ${planning.projectedPeople}`);
+  check('planning: an area surveyed twenty years ago is flagged stale',
+    JSON.stringify(planning.freshness) ===
+      JSON.stringify([['Kono', 'stale'], ['Bo', 'stale']]) ||
+    planning.stats.n_stale_areas >= 1,
+    JSON.stringify(planning.freshness));
+  check('planning: counting only recent surveys makes coverage look worse',
+    planning.stats.national_people_per_recent_point >
+      planning.stats.national_people_per_point,
+    JSON.stringify([planning.stats.national_people_per_point,
+      planning.stats.national_people_per_recent_point]));
+  check('planning: unrecorded seasonality is a band, not a year-round supply',
+    planning.seasonal.people_per_point_low !== planning.seasonal.people_per_point_high &&
+    planning.seasonal.n_unknown > 0,
+    JSON.stringify(planning.seasonal));
+
   // --- Pasted GPS coordinates ---
   // Every longitude in Sierra Leone is west, and a handheld GPS writes that
   // as a letter rather than a minus sign. Reading "13.2317 W" as +13.2317
@@ -718,6 +783,381 @@ await withPage(async (page, base, consoleErrors) => {
   });
   check('standards: the quality report says the national column is provisional',
     qualityDoc.len > 1000 && qualityDoc.saysProvisional, JSON.stringify(qualityDoc));
+
+  // --- procurement ----------------------------------------------------------
+  // A bill of quantities is an estimate until somebody signs it. The three
+  // ways money leaks afterwards all have to survive the wiring: work measured
+  // that nobody authorised, work paid for twice, and retention forgotten.
+  const procurement = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, d = app.derived;
+    app.store.set('procurement', { contract: null, measured: {},
+      variations: [], number: 1, date: '', previous: 0 });
+    app.store.set('procurement.ref', 'WSD/2024/017');
+    app.goto('procurement');
+    app.render();
+    const before = document.querySelector('#page-host').textContent;
+
+    const press = (label) => {
+      const btn = Array.from(document.querySelectorAll('#page-host button'))
+        .find((b) => b.textContent === label);
+      if (btn) btn.click();
+      return !!btn;
+    };
+    const awarded = press('Award this estimate as the contract');
+    const contract = (app.store.get('procurement') || {}).contract;
+
+    // measure a drilling line well past what was priced
+    const drilling = contract.lines.find((l) => /drill/i.test(l.item)) ||
+      contract.lines[0];
+    const measured = {};
+    measured[drilling.code] = drilling.quantity * 2;
+    app.store.set('procurement', Object.assign(app.store.get('procurement'),
+      { measured }));
+    app.render();
+    const over = C.certify(contract,
+      [{ code: drilling.code, quantity: drilling.quantity * 2 }],
+      { number: 1, date: '2024-04-01' });
+
+    // then authorise it, and the same work becomes payable
+    const authorised = C.certify(contract,
+      [{ code: drilling.code, quantity: drilling.quantity * 2 }],
+      { number: 1, date: '2024-04-01', variations: [{
+        ref: 'VO-1', date: '2024-03-04', code: drilling.code,
+        quantity_delta: drilling.quantity, rate_usd: null,
+        reason: 'water deeper than priced', authorised_by: 'M. Kolleh' }] });
+
+    // a second certificate that forgets what the first one paid
+    const forgetful = C.certify(contract,
+      [{ code: drilling.code, quantity: drilling.quantity }],
+      { number: 2, date: '2024-05-01' });
+
+    const page_text = document.querySelector('#page-host').textContent;
+    const doc = await window.__docText(await (await window.GWT.docx
+      .paymentCertificate({ style: app.config().style, contract,
+        certificate: over })).build());
+
+    app.store.set('procurement', { contract: null, measured: {},
+      variations: [], number: 1, date: '', previous: 0 });
+    app.render();
+    return { before, awarded, lines: contract.lines.length,
+      code: drilling.code, over, authorised, forgetful, page_text, doc };
+  });
+  check('procurement: an estimate is not a contract until it is awarded',
+    procurement.before.includes('not a contract until it is awarded') &&
+    procurement.awarded === true && procurement.lines > 0,
+    `${procurement.lines} lines`);
+  check('procurement: work nobody authorised is withheld, not paid',
+    procurement.over.overmeasure_usd > 0 &&
+    procurement.over.gross_usd < procurement.over.revised_sum_usd &&
+    procurement.over.problems.some((p) => p.includes('not payable until a variation')),
+    JSON.stringify(procurement.over.problems));
+  check('procurement: the page says so where the analyst is looking',
+    procurement.page_text.includes('measured but not authorised'),
+    procurement.page_text.slice(0, 160));
+  check('procurement: a variation makes the same work payable',
+    procurement.authorised.overmeasure_usd === 0 &&
+    procurement.authorised.gross_usd > procurement.over.gross_usd,
+    JSON.stringify([procurement.over.gross_usd,
+      procurement.authorised.gross_usd]));
+  check('procurement: a later certificate with nothing certified is challenged',
+    procurement.forgetful.problems.some((p) =>
+      p.includes('paid for that work twice')),
+    JSON.stringify(procurement.forgetful.problems));
+  check('procurement: retention is withheld from the payment',
+    procurement.over.retention_usd > 0 &&
+    procurement.over.due_now_usd < procurement.over.gross_usd,
+    JSON.stringify([procurement.over.gross_usd, procurement.over.retention_usd,
+      procurement.over.due_now_usd]));
+  check('procurement: the certificate shows the problems before the money',
+    procurement.doc.includes('Before the figures') &&
+    // before the valuation, not before the cover's headline figure
+    procurement.doc.indexOf('Before the figures') <
+      procurement.doc.indexOf('Summary') &&
+    procurement.doc.includes('Measured beyond what was authorised') &&
+    procurement.doc.includes('not payable until a variation'),
+    procurement.doc.length + ' chars');
+
+  // --- the yield through the year ------------------------------------------
+  // The sample sheet's date is 10/05/2018, which is 10 May or 5 October -
+  // opposite ends of the year. The page has to say so rather than pick one,
+  // and the month the analyst picks has to reach the report.
+  const seasonal = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, d = app.derived;
+    app.store.set('seasonal', {});
+    app.goto('pumping');
+    app.render();
+    const asRead = {
+      text: document.querySelector('#page-host').textContent,
+      month: C.monthOf(d.analysis.test.site.date).month,
+    };
+
+    const pick = (month) => {
+      const select = Array.from(document.querySelectorAll('#page-host select'))
+        .find((s2) => Array.from(s2.options).some((o) => o.label === 'September'));
+      if (!select) return false;
+      select.value = String(month);
+      select.dispatchEvent(new Event('change'));
+      return true;
+    };
+    const picked = pick(9);
+    const september = {
+      text: document.querySelector('#page-host').textContent,
+      result: C.seasonalYield(d.analysis, app.config().pumping, { month: 9 }),
+    };
+    pick(5);
+    const may = C.seasonalYield(d.analysis, app.config().pumping, { month: 5 });
+
+    pick(9);
+    const doc = await window.__docText(await (await window.GWT.docx.pumpingReport({
+      style: app.config().style, site: app.store.get('site'),
+      analysis: d.analysis, figures: [],
+      seasonal: C.seasonalYield(d.analysis, app.config().pumping, { month: 9 }),
+    })).build());
+
+    app.store.set('seasonal', {});
+    app.render();
+    return { asRead, picked, september, may, doc };
+  });
+  check('seasonal: an ambiguous sheet date is explained, not resolved',
+    seasonal.asRead.month === null &&
+    seasonal.asRead.text.includes('could be read either way round'),
+    `month ${seasonal.asRead.month}`);
+  check('seasonal: picking the month changes what the test proves',
+    seasonal.picked === true &&
+    seasonal.may.design_yield_m3_per_h > seasonal.september.result.design_yield_m3_per_h,
+    JSON.stringify({ may: seasonal.may.design_yield_m3_per_h,
+      september: seasonal.september.result.design_yield_m3_per_h }));
+  check('seasonal: the page names the three scenarios',
+    ['As tested', 'End of dry season', 'Drought year']
+      .every((title) => seasonal.september.text.includes(title)),
+    seasonal.september.text.slice(0, 200));
+  check('seasonal: the pump is set for the drought case',
+    seasonal.september.result.pump_installation_depth_m ===
+      Math.max(...seasonal.september.result.scenarios
+        .map((s) => s.pump_installation_depth_m)),
+    JSON.stringify(seasonal.september.result.scenarios.map((s) =>
+      [s.key, s.pump_installation_depth_m])));
+  check('seasonal: the report carries the projection',
+    seasonal.doc.includes('Through the year') &&
+    seasonal.doc.includes('September') &&
+    seasonal.doc.includes('the pump is fitted once'),
+    seasonal.doc.length + ' chars');
+
+  // --- the asset registry --------------------------------------------------
+  // The identifier is derived from the position, the history is append-only
+  // and merges by content, and nothing counts as working until something
+  // says so. All three have to survive the wiring, not just the engine.
+  const registry = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, d = app.derived;
+    const site = app.store.get('site');
+    const saved = [site.easting, site.northing, site.utm_zone];
+    app.store.set('asset', null);
+    d.registry = [];
+    app.goto('registry');
+    app.render();
+    const unlocated = document.querySelector('#page-host').textContent;
+
+    site.easting = 694912; site.northing = 938150; site.utm_zone = 28;
+    app.render();
+    const located = {
+      text: document.querySelector('#page-host').textContent,
+      id: document.querySelector('#page-host .asset-id')?.textContent || '',
+      minted: C.mintAssetId(site),
+      hasSymbol: !!document.querySelector('#page-host .qr-preview svg'),
+    };
+
+    // record a visit through the form the way a field team would
+    const fill = (placeholder, value) => {
+      const input = document.querySelector(
+        '#page-host input[placeholder="' + placeholder + '"]');
+      if (!input) return false;
+      input.value = value;
+      input.dispatchEvent(new Event('change'));
+      return true;
+    };
+    const press = (label) => {
+      const btn = Array.from(document.querySelectorAll('#page-host button'))
+        .find((b) => b.textContent === label);
+      if (btn) btn.click();
+      return !!btn;
+    };
+    fill('YYYY-MM-DD', 'not a date');
+    const refusedBadDate = press('Add to the history') &&
+      ((app.store.get('asset') || {}).events || []).length === 0;
+
+    // re-queried each time: the page re-renders after every submit, so a
+    // node captured before it is detached and setting it changes nothing
+    const recordFailure = () => {
+      fill('YYYY-MM-DD', '2023-04-02');
+      fill('Name', 'A. Bangura');
+      fill('What was found or done', 'rising main parted');
+      const kind = Array.from(document.querySelectorAll('#page-host select'))
+        .find((s2) => Array.from(s2.options).some((o) => o.value === 'failure'));
+      if (kind) { kind.value = 'failure'; kind.dispatchEvent(new Event('change')); }
+      return press('Add to the history');
+    };
+    recordFailure();
+    const recorded = app.store.get('asset') || {};
+    const afterOne = C.assetState(C.assetFromDict(recorded), '2024-06-01');
+
+    // the same visit again: content-derived ids mean it merges, not doubles
+    recordFailure();
+    const afterTwice = (app.store.get('asset') || {}).events.length;
+
+    // a wrong identifier is refused with something a person can act on
+    app.store.set('registry.lookup', C.mintAssetId(site).slice(0, -1) + 'Z');
+    app.render();
+    // by content, not by tone: the status callout on a broken borehole is
+    // also a .callout-bad and sits above this one
+    const lookup = Array.from(document.querySelectorAll('#page-host .callout p'))
+      .map((n) => n.textContent).find((t) => t.includes('check character')) || '';
+
+    const doc = await window.__docText(await (await window.GWT.docx.assetRecordReport({
+      asset: C.assetFromDict(app.store.get('asset')),
+      today: '2024-06-01',
+    })).build());
+
+    app.store.set('registry.lookup', '');
+    app.store.set('asset', null);
+    site.easting = saved[0]; site.northing = saved[1]; site.utm_zone = saved[2];
+    app.render();
+    return { unlocated, located, refusedBadDate, afterOne, afterTwice, lookup, doc };
+  });
+  check('registry: a borehole with no position gets no identifier',
+    registry.unlocated.includes('nothing to find the borehole by'));
+  check('registry: the identifier is derived from the position',
+    registry.located.id === registry.located.minted &&
+    registry.located.id.startsWith('SL-WAR-'),
+    JSON.stringify({ shown: registry.located.id, minted: registry.located.minted }));
+  check('registry: the page draws the symbol that goes on the headworks',
+    registry.located.hasSymbol === true);
+  check('registry: a date nobody can read is refused, not stored',
+    registry.refusedBadDate === true);
+  check('registry: a recorded failure leaves the borehole not working',
+    registry.afterOne.function === 'non_functional' &&
+    registry.afterOne.days_out_of_service === 426,
+    JSON.stringify(registry.afterOne));
+  check('registry: the same visit recorded twice merges into one',
+    registry.afterTwice === 1, `${registry.afterTwice} events`);
+  check('registry: a mistyped identifier says what it should have ended in',
+    registry.lookup.includes('check character') &&
+    registry.lookup.includes('mistyped'), registry.lookup);
+  check('registry: the record names the days the community went without',
+    registry.doc.includes('Not working') && registry.doc.includes('426 days') &&
+    registry.doc.includes('rising main parted'));
+
+  // --- the certification gate ---------------------------------------------
+  // The gate never blocks a build: an interim report is a real need, and an
+  // analyst who is refused one will produce the document some other way. So
+  // the only thing between missing evidence and a page that reads as certified
+  // is the panel and the stamp, and both of them live in the wiring rather
+  // than in the engine the parity suite already pins.
+  const gate = await page.evaluate(async () => {
+    const app = window.GWT.app, docx = window.GWT.docx, d = app.derived;
+    const buildQuality = async () => window.__docText(await (await docx.qualityReport({
+      site: app.store.get('site'), assessment: d.assessment, figures: [],
+      readiness: app.reportReadiness('quality'),
+    })).build());
+    const panelText = () => document.querySelector('#page-host').textContent;
+
+    app.store.set('overrides', {});
+    app.goto('quality');
+
+    // The bundled sheets carry no coordinates - the crew never wrote one down -
+    // so the demo project really is short of this, and an analyst supplies it
+    // on the site page before the report goes out.
+    const sites = [app.store.get('site'), d.log && d.log.site,
+      d.analysis && d.analysis.test && d.analysis.test.site,
+      d.assessment && d.assessment.sample && d.assessment.sample.site]
+      .filter(Boolean);
+    const saved = sites.map((s) => [s.easting, s.northing, s.utm_zone]);
+    const site = app.store.get('site');
+    site.easting = 778000; site.northing = 946000; site.utm_zone = 28;
+    app.render();
+    const complete = {
+      state: app.reportReadiness('quality').state,
+      ok: !!document.querySelector('#page-host .callout-ok'),
+      doc: await buildQuality(),
+    };
+
+    // take the position off every sheet: a borehole nobody can find again
+    sites.forEach((s) => { s.easting = null; s.northing = null; });
+    app.render();
+    const missing = {
+      state: app.reportReadiness('quality').state,
+      bad: !!document.querySelector('#page-host .callout-bad'),
+      names: panelText(),
+      doc: await buildQuality(),
+    };
+
+    // an override with no reason is not an override
+    const fill = (placeholder, value) => {
+      const input = document.querySelector(
+        '#page-host input[placeholder="' + placeholder + '"]');
+      if (!input) return false;
+      input.value = value;
+      input.dispatchEvent(new Event('change'));
+      return true;
+    };
+    const press = (label) => {
+      const btn = Array.from(document.querySelectorAll('#page-host button'))
+        .find((b) => b.textContent === label);
+      if (btn) btn.click();
+      return !!btn;
+    };
+    const typedName = fill('Name', 'M. Kolleh');
+    press('Record override');
+    const refused = {
+      state: app.reportReadiness('quality').state,
+      recorded: Object.keys((app.store.get('overrides') || {}).quality || {}).length,
+    };
+
+    fill('Name', 'M. Kolleh');
+    fill('Why this is being issued now', 'GPS unit failed; position to follow');
+    const pressed = press('Record override');
+    const issued = {
+      state: app.reportReadiness('quality').state,
+      warn: !!document.querySelector('#page-host .callout-warn'),
+      doc: await buildQuality(),
+    };
+
+    press('Clear overrides');
+    const cleared = app.reportReadiness('quality').state;
+    site.easting = 778000; site.northing = 946000;
+    const restored = app.reportReadiness('quality').state;
+
+    sites.forEach((s, i) => {
+      s.easting = saved[i][0]; s.northing = saved[i][1]; s.utm_zone = saved[i][2];
+    });
+    app.store.set('overrides', {});
+    app.render();
+    return { complete, missing, refused, issued, cleared, typedName, pressed,
+      restored };
+  });
+  check('gate: a complete project reports as ready and carries no stamp',
+    gate.complete.state === 'ready' && gate.complete.ok === true &&
+    !gate.complete.doc.includes('PROVISIONAL'),
+    JSON.stringify({ state: gate.complete.state, ok: gate.complete.ok }));
+  check('gate: missing evidence is named on the page, not just counted',
+    gate.missing.state === 'not_ready' && gate.missing.bad === true &&
+    gate.missing.names.includes('Site position'),
+    JSON.stringify({ state: gate.missing.state, bad: gate.missing.bad }));
+  check('gate: the report is still produced, stamped provisional',
+    gate.missing.doc.includes('PROVISIONAL - NOT FOR CERTIFICATION') &&
+    gate.missing.doc.includes('Site position'));
+  check('gate: an override without a reason is refused',
+    gate.typedName === true && gate.refused.state === 'not_ready' &&
+    gate.refused.recorded === 0, JSON.stringify(gate.refused));
+  check('gate: an override issues the report and names who issued it',
+    gate.pressed === true && gate.issued.state === 'ready_with_overrides' &&
+    gate.issued.warn === true &&
+    gate.issued.doc.includes('ISSUED ON OVERRIDE - NOT A CERTIFICATION') &&
+    gate.issued.doc.includes('M. Kolleh') &&
+    gate.issued.doc.includes('GPS unit failed'),
+    JSON.stringify({ state: gate.issued.state, warn: gate.issued.warn }));
+  check('gate: clearing the override puts the requirement back',
+    gate.cleared === 'not_ready' && gate.restored === 'ready',
+    JSON.stringify({ cleared: gate.cleared, restored: gate.restored }));
 
   // --- the API key never reaches long-term storage ------------------------
   // It used to be a field of the persisted state, so the store mirrored it

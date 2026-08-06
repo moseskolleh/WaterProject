@@ -39,7 +39,9 @@ RESET_ON_LOAD_PREFIXES = (
     "upload_",   # file_uploader widgets, which outlive their src_ entry
     "sample_",   # bundled-sample pickers, likewise
 )
-RESET_ON_LOAD_KEYS = ("design_swl",)
+# asset_record belongs to the outgoing borehole. Left behind, the incoming
+# project would inherit somebody else's identifier and maintenance history.
+RESET_ON_LOAD_KEYS = ("design_swl", "asset_record")
 
 
 def stale_on_load(session) -> list[str]:
@@ -114,6 +116,7 @@ def serialize_project(session: dict, version: str) -> bytes:
             if encoded:
                 sources[key[len("src_"):]] = encoded
     summary = session.get("project_summary")
+    asset = session.get("asset_record")
     payload = {
         "groundwater_toolkit_project": version,
         "rates_overrides": session.get("rates_overrides", {}) or {},
@@ -122,6 +125,11 @@ def serialize_project(session: dict, version: str) -> bytes:
         # a small headline summary so a portfolio can be built from many
         # project files without recomputing each one
         "summary": summary if isinstance(summary, dict) else {},
+        # the asset record: identifier and maintenance history. It rides in
+        # the project file because that is what gets mailed between offices
+        # and carried into the field, and an event stream that only exists
+        # in one browser's storage is one bad phone away from gone.
+        "asset": asset if isinstance(asset, dict) else {},
         "state": state,
     }
     return yaml.safe_dump(payload, sort_keys=True).encode("utf-8")
@@ -180,4 +188,15 @@ def deserialize_project(raw: bytes) -> dict:
     summary = payload.get("summary")
     if isinstance(summary, dict) and summary:
         updates["summary"] = summary
+
+    asset = payload.get("asset")
+    if isinstance(asset, dict) and asset.get("asset_id"):
+        # Rebuilt through the registry so a file whose identifier has been
+        # damaged is dropped rather than loaded: a maintenance history under
+        # the wrong identifier is worse than no history at all.
+        from .registry import asset_from_dict
+
+        record = asset_from_dict(asset)
+        if record is not None:
+            updates["asset"] = record.as_dict()
     return updates

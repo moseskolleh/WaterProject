@@ -90,6 +90,14 @@ def clean(value):
         return [clean(v) for v in value.tolist()]
     if isinstance(value, (list, tuple)):
         return [clean(v) for v in value]
+    # Dicts have to recurse too. Without this a mapping passed through here
+    # came back untouched, so a tuple inside one stayed a tuple - identical
+    # in the written JSON, but --check compares the fresh value against the
+    # parsed file, and ("a", "b") != ["a", "b"]. That reads as 107 places
+    # where the browser disagrees with the toolkit when nothing disagrees
+    # at all, and a numpy scalar in the same position would survive too.
+    if isinstance(value, dict):
+        return {key: clean(v) for key, v in value.items()}
     return value
 
 
@@ -384,6 +392,286 @@ def build() -> dict:
             WaterQualityResult("E. coli", 0.0, "CFU/100 mL"),
         )))["rows"]
     ]
+
+    # The certification gate, over a project missing one thing at a time.
+    from groundwater.readiness import assess_readiness
+
+    _log = read_drilling_workbook(DATA / "dr_timbo" / "dr_timbo_drilling_log.xlsx")
+    _analysis = analyse_pumping_test(
+        read_pumping_workbook(DATA / "dr_timbo" / "dr_timbo_constant_test.xlsx"))
+    _assessment = assess_sample(
+        read_quality_workbook(DATA / "dr_timbo" / "dr_timbo_water_quality.xlsx"))
+    _design = design_borehole(
+        log=_log, static_water_level_m=_analysis.test.static_water_level_m)
+    _located = SiteMetadata(community="Dr. Timbo's", district="Western Area Rural",
+                            easting=778000.0, northing=946000.0, utm_zone=28)
+    _full = {"site": _located, "drilling_log": _log, "pump_analysis": _analysis,
+             "wq_assessment": _assessment, "borehole_design": _design}
+    _gate_cases = {
+        "full": (_full, {}),
+        "empty": ({}, {}),
+        "no_site": (dict(_full, site=SiteMetadata(community="Nowhere")), {}),
+        "no_quality": (dict(_full, wq_assessment=None), {}),
+        "overridden": (dict(_full, wq_assessment=None), {
+            "water_quality_panel": {"reason": "lab result awaited", "by": "M. K."},
+            "water_quality_evaluable": {"reason": "lab result awaited", "by": "M. K."},
+        }),
+    }
+    out["readiness"] = {}
+    for _name, (_state, _over) in _gate_cases.items():
+        out["readiness"][_name] = {
+            report: {
+                "state": assess_readiness(_state, report, _over).state,
+                "summary": assess_readiness(_state, report, _over).summary,
+                "requirements": [
+                    [r.key, r.state, r.detail, r.override_reason, r.override_by]
+                    for r in assess_readiness(_state, report, _over).requirements
+                ],
+            }
+            for report in ("completion", "handover", "quality", "pumping")
+        }
+
+    # The QR encoder. Every module of every symbol, because a symbol that is
+    # wrong in the data region still looks exactly like a QR symbol - and the
+    # browser draws the one that gets printed and fixed to the headworks.
+    from groundwater import qr
+
+    _qr_payloads = [
+        "SL-WAR-8FEEVKQ-T",
+        "BOREHOLE SL-WAR-8FEEVKQ-T\nDr. Timbo's (Western Area Rural)\n"
+        "8.48310 N, 13.22940 W\n62.0 m deep, 1.85 m3/h",
+        "Kailahun - 10\u00b0 12' 03\" N",     # non-ASCII, so UTF-8 is exercised
+    ]
+    out["qr"] = [
+        {
+            "text": text, "ecc": ecc, "mask": mask,
+            "version": _code.version, "size": _code.size,
+            "chosen_mask": _code.mask,
+            "penalty": qr._penalty(_code.modules),
+            # one string per row keeps the reference file readable and diffable
+            "rows": ["".join("1" if cell else "0" for cell in row)
+                     for row in _code.modules],
+        }
+        for text in _qr_payloads
+        for ecc in ("L", "M", "Q", "H")
+        for mask in (None, 0, 5)
+        for _code in [qr.encode(text, ecc=ecc, mask=mask)]
+    ]
+    out["qr_capacity"] = [
+        {"version": v, "ecc": e, "bytes": qr._capacity_bytes(v, e)}
+        for v in range(1, qr.MAX_VERSION + 1) for e in ("L", "M", "Q", "H")
+    ]
+
+    # The asset registry: identifiers, the merge, and what the event stream
+    # says is true on a fixed day.
+    from datetime import date as _date
+
+    from groundwater import registry as _registry
+
+    _sites = [
+        SiteMetadata(district="Western Area Rural", easting=694912.0,
+                     northing=938150.0, utm_zone=28),
+        SiteMetadata(district="Western Area Rural", easting=694914.0,
+                     northing=938147.0, utm_zone=28),
+        SiteMetadata(district="Bo", easting=790500.0, northing=875300.0,
+                     utm_zone=28),
+        SiteMetadata(district="Kailahun", easting=280400.0, northing=925600.0,
+                     utm_zone=29),
+        SiteMetadata(district="Nowhere At All", easting=694912.0,
+                     northing=938150.0, utm_zone=28),
+    ]
+    out["asset_ids"] = [
+        {"district": s.district, "easting": s.easting, "northing": s.northing,
+         "zone": s.utm_zone, "id": _registry.mint_asset_id(s)}
+        for s in _sites
+    ]
+    _timbo_id = _registry.mint_asset_id(_sites[0])
+    out["asset_id_parsing"] = [
+        {"typed": t, "parsed": _registry.parse_asset_id(t),
+         "ok": _registry.validate_asset_id(t)[0],
+         "reason": _registry.validate_asset_id(t)[1]}
+        for t in (_timbo_id, _timbo_id.lower(), _timbo_id.replace("0", "O"),
+                  _timbo_id.replace("1", "L"), " " + _timbo_id + " ",
+                  _timbo_id[:-1] + "Z", _timbo_id.replace("-", ""),
+                  "SL-WAR-XXXXXXX-9", "not an identifier", "")
+    ]
+    _streams = [
+        [{"when": "2020-01-10", "kind": "commissioned", "by": "M. Kolleh"},
+         {"when": "2023-04-02", "kind": "failure", "note": "rising main parted"}],
+        [{"when": "2023-04-02", "kind": "failure", "note": "rising main parted"},
+         {"when": "2023-05-11", "kind": "repair", "note": "new seals",
+          "by": "A. Bangura", "photo": "data:image/jpeg;base64,AAAA"},
+         {"when": "not written down", "kind": "inspection"},
+         {"when": "2099-01-01", "kind": "restored"}],
+    ]
+    out["asset_events"] = [
+        e.as_dict() for e in _registry.merge_events(_timbo_id, *_streams)
+    ]
+    _registry_cases = {
+        "silent": [],
+        "commissioned": _streams[0][:1],
+        "broken": _streams[0],
+        "repaired": _streams[0] + [{"when": "2023-05-11", "kind": "restored"}],
+        "sampled": _streams[0][:1] + [{"when": "2023-03-01", "kind": "water_sample"},
+                                      {"when": "2024-05-20", "kind": "inspection"}],
+        "decommissioned": _streams[0][:1] + [{"when": "2022-08-01",
+                                              "kind": "decommissioned"}],
+        "merged": _streams[0] + _streams[1],
+    }
+    _today = _date(2024, 6, 1)
+    _assets = {}
+    for _name, _events in _registry_cases.items():
+        _assets[_name] = _registry.Asset(
+            asset_id=_timbo_id, community="Dr. Timbo's",
+            district="Western Area Rural", easting=694912.0, northing=938150.0,
+            utm_zone=28, total_depth_m=62.0, safe_yield_m3_per_h=1.85,
+            pump_type="India Mark II", installed_by="WiNGiN",
+            events=[_registry.AssetEvent(**e) for e in _events],
+        )
+    out["asset_state"] = {
+        name: _registry.asset_state(asset, _today).as_dict()
+        for name, asset in _assets.items()
+    }
+    out["asset_placard"] = clean(_registry.placard_lines(
+        _assets["commissioned"],
+        _registry.asset_state(_assets["commissioned"], _today)))
+    out["asset_qr_payload"] = _registry.qr_payload(_assets["commissioned"])
+    out["registry_rows"] = _registry.registry_rows(list(_assets.values()), _today)
+    out["registry_stats"] = clean(
+        _registry.registry_stats(list(_assets.values()), _today))
+    out["asset_months"] = [
+        {"from": d, "months": m, "due": _registry._add_months(
+            _date.fromisoformat(d), m).isoformat()}
+        for d, m in (("2023-08-31", 6), ("2023-12-31", 2), ("2020-02-29", 12),
+                     ("2023-01-31", 1), ("2023-03-30", 11), ("2024-02-29", 12))
+    ]
+
+    # The seasonal yield model: the month read off the sheet, and the yield
+    # at each scenario's water level.
+    from groundwater.seasonal import month_of as _month_of
+    from groundwater.seasonal import seasonal_yield as _seasonal_yield
+
+    out["seasonal_dates"] = [
+        {"text": t, "month": _month_of(t)[0], "note": _month_of(t)[1]}
+        for t in ("10/05/2018", "25/04/2018", "04/25/2018", "2018-09-14",
+                  "14 Sept 2018", "September 2018", "during the rains",
+                  "05/2018", "", "31/13/2018", "2018/09/14")
+    ]
+    out["seasonal"] = {}
+    for _label, _month, _band in (("august", 8, None), ("may", 5, None),
+                                  ("september", 9, None), ("unknown", None, None),
+                                  ("wide", 8, 4.5), ("zero", 8, 0.0)):
+        _result = _seasonal_yield(_analysis, month=_month, annual_range_m=_band)
+        out["seasonal"][_label] = clean(_result.as_dict())
+
+    # Coverage as a planning figure: projection, freshness and the
+    # dry-season band.
+    from groundwater import planning as _planning
+    from groundwater.waterpoints import WaterPoint as _WaterPoint
+
+    def _wp(functional, year, months):
+        return _WaterPoint(
+            row_id="x", lat=8.0, lon=-13.0, functional=functional,
+            status="", source="Borehole", technology="Hand Pump",
+            install_year=None, adm2="", report_year=year,
+            months_per_year=months)
+
+    from groundwater.waterpoints import _months_per_year, _year_of
+
+    out["wpdx_fields"] = [
+        {"date": d, "year": _year_of(d),
+         "months_text": m, "months": _months_per_year(m)}
+        for d, m in (("2019-04-02T00:00:00", "12"), ("02/04/2019", "yes"),
+                     ("2019", "6 months"), ("", ""), ("not a date", "seasonal"),
+                     ("1899-01-01", "14"), ("survey 2024 round 2", "no"))
+    ]
+    out["growth_rate"] = _planning.intercensal_growth_rate()
+    _planning_population = {
+        "Bo": 575478.0, "Kono": 506100.0, "Pujehun": 346461.0,
+        "Falaba": 202566.0, "Western Area Urban": 1055964.0,
+    }
+    _planning_points = {
+        "Bo": [_wp(True, 2024, 12), _wp(True, 2010, None), _wp(False, 2024, 12)],
+        "Kono": [_wp(True, None, None), _wp(True, 2003, 6)],
+        "Pujehun": [_wp(False, 2020, None)],
+        "Western Area Urban": [_wp(True, 2025, 12), _wp(True, 2025, None),
+                               _wp(True, 2019, 4)],
+    }
+    out["planning"] = {}
+    for _label, _year, _rate, _rates in (
+        ("census", 2015, None, None),
+        ("today", 2026, None, None),
+        ("slow", 2026, 0.015, None),
+        ("districts", 2026, None, {"Western Area Urban": 0.06, "Pujehun": 0.01}),
+    ):
+        _rows, _proj = _planning.planning_rows(
+            _planning_population, _planning_points,
+            as_of_year=_year, rate=_rate, rates=_rates)
+        out["planning"][_label] = clean({
+            "projection": _proj.as_dict(),
+            "stats": _planning.planning_stats(_rows, _proj),
+            "rows": [r.as_dict() for r in _rows],
+        })
+
+    # Procurement: planned against actual, and what that makes payable.
+    from groundwater.procurement import (
+        Contract as _Contract,
+    )
+    from groundwater.procurement import (
+        ContractLine as _ContractLine,
+    )
+    from groundwater.procurement import (
+        Measurement as _Measurement,
+    )
+    from groundwater.procurement import (
+        Variation as _Variation,
+    )
+    from groundwater.procurement import certify as _certify
+    from groundwater.procurement import contract_summary as _contract_summary
+
+    def _proc_contract(**terms):
+        return _Contract(
+            ref="WSD/2024/017", contractor="WiNGiN", client="District Council",
+            date="2024-02-01",
+            lines=[
+                _ContractLine("MOB", "Mobilisation", "sum", 1, 3000.0),
+                _ContractLine("DRL-OB", "Drilling, overburden", "m", 20, 45.0),
+                _ContractLine("DRL-RK", "Drilling, rock", "m", 25, 80.0),
+                _ContractLine("CAS", "uPVC casing", "m", 45, 22.0),
+            ],
+            **terms)
+
+    _proc_cases = {
+        "clean": (_proc_contract(), [_Measurement("MOB", 1.0)], [], 1, 0.0),
+        "overmeasured": (_proc_contract(),
+                         [_Measurement("MOB", 1.0), _Measurement("DRL-RK", 42.0)],
+                         [], 1, 0.0),
+        "varied": (_proc_contract(),
+                   [_Measurement("MOB", 1.0), _Measurement("DRL-RK", 42.0)],
+                   [_Variation("VO-1", "2024-03-04", "DRL-RK", 17.0, None,
+                               "deeper water", "M. Kolleh")], 2, 1500.0),
+        "unsigned": (_proc_contract(), [_Measurement("GRAVEL", 12.0)],
+                     [_Variation("VO-2", "2024-03-04", "CAS", 5.0)], 1, 0.0),
+        "new_item": (_proc_contract(), [_Measurement("GRAVEL", 12.0)],
+                     [_Variation("VO-3", "2024-03-04", "GRAVEL", 12.0, None,
+                                 "gravel pack", "M. K.", "Gravel pack", "m3")],
+                     1, 0.0),
+        "advance": (_proc_contract(advance_percent=20.0, retention_percent=5.0),
+                    [_Measurement("MOB", 1.0), _Measurement("DRL-OB", 20.0),
+                     _Measurement("DRL-RK", 25.0), _Measurement("CAS", 45.0)],
+                    [], 1, 0.0),
+        "overpaid": (_proc_contract(retention_percent=0.0),
+                     [_Measurement("MOB", 1.0)], [], 2, 5000.0),
+        "negatives": (_proc_contract(), [_Measurement("CAS", -10.0)], [], 3, -5.0),
+    }
+    out["procurement"] = {}
+    for _label, (_ct, _ms, _vs, _no, _prev) in _proc_cases.items():
+        _cert = _certify(_ct, _ms, number=_no, date="2024-04-01",
+                         variations=_vs, previously_certified_usd=_prev)
+        out["procurement"][_label] = clean({
+            "certificate": _cert.as_dict(),
+            "summary_rows": _contract_summary(_ct, _cert),
+        })
 
     # Rounding and %g, which the two languages get wrong in different ways.
     out["rounding"] = [

@@ -677,6 +677,17 @@ table.data tr.row-total td { font-weight: 660; border-top: 2px solid var(--line-
   .app-top { padding: 0.5rem 0.9rem; }
 }
 
+/* The asset registry: the identifier is the point of the page, so it is set
+   in a monospaced face at a size you can read off a screen held at arm's
+   length beside the plate on the headworks. */
+.asset-id {
+  font-family: ui-monospace, "SFMono-Regular", "Menlo", "Consolas", monospace;
+  font-size: 1.6rem; font-weight: 700; letter-spacing: 0.06em;
+  margin: 0 0 0.35rem;
+}
+.qr-preview { margin: 0.6rem 0; }
+.qr-preview svg { max-width: 220px; height: auto; display: block; }
+
 @media print {
   .app-nav, .app-top, .app-brand, .btn, .next-step, .toast-host { display: none !important; }
   .app { display: block; }

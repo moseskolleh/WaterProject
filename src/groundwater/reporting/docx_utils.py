@@ -173,6 +173,47 @@ class ReportBuilder:
                 p.add_run(_clean(str(value)))
         self.page_break()
 
+    def provisional_stamp(self, readiness) -> None:
+        """Say on the cover that this document is not a certification.
+
+        A report is what a borehole is handed over on, so one built from
+        incomplete evidence must not be indistinguishable from one built
+        from complete evidence. A ready project gets no stamp at all; every
+        other project gets this, naming exactly what is outstanding or what
+        was overridden and by whom, in the document itself rather than in a
+        console message nobody keeps.
+        """
+        if readiness is None or readiness.is_certifiable:
+            return
+        overridden = readiness.state == "ready_with_overrides"
+        title = ("ISSUED ON OVERRIDE - NOT A CERTIFICATION" if overridden
+                 else "PROVISIONAL - NOT FOR CERTIFICATION")
+        para = self.doc.add_paragraph()
+        para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = para.add_run(_clean(title))
+        run.font.size = Pt(13)
+        run.font.bold = True
+        run.font.color.rgb = _hex_to_rgb("#B23A2E")
+
+        lead = (
+            "This report was issued although the following requirements were "
+            "not met. The reason recorded for each is given."
+            if overridden else
+            "This report rests on incomplete results. The following "
+            "requirements for certification are outstanding."
+        )
+        self.paragraph(lead, italic=True, align="justify")
+        lines = []
+        for req in readiness.overridden:
+            who = f" ({req.override_by})" if req.override_by else ""
+            reason = req.override_reason or "no reason recorded"
+            lines.append(f"{req.title}: {req.detail} Overridden{who}: {reason}")
+        for req in readiness.unmet:
+            lines.append(f"{req.title}: {req.detail}")
+        if lines:
+            self.bullets(lines)
+        self.page_break()
+
     def table_of_contents(self) -> None:
         self.heading("Table of Contents", level=1, numbered=False)
         para = self.doc.add_paragraph()
@@ -218,11 +259,13 @@ class ReportBuilder:
         self.doc.add_heading(_clean(text), level=level)
 
     def paragraph(self, text: str, bold: bool = False, italic: bool = False,
-                  align: str | None = None):
+                  align: str | None = None, size_pt: float | None = None):
         p = self.doc.add_paragraph()
         run = p.add_run(_clean(text))
         run.font.bold = bold
         run.font.italic = italic
+        if size_pt is not None:
+            run.font.size = Pt(size_pt)
         if align == "center":
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         elif align == "justify":

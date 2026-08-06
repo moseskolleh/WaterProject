@@ -1543,6 +1543,5655 @@
    "ratio": null
   }
  ],
+ "readiness": {
+  "full": {
+   "completion": {
+    "state": "ready",
+    "summary": "All certification requirements are met.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 70 m with 14 lithological interval(s).",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinand(s) graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "design_derived",
+      "met",
+      "22.5 m of screen in 4 run(s).",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "handover": {
+    "state": "ready",
+    "summary": "All certification requirements are met.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 70 m with 14 lithological interval(s).",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinand(s) graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "quality": {
+    "state": "ready",
+    "summary": "All certification requirements are met.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinand(s) graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "pumping": {
+    "state": "ready",
+    "summary": "All certification requirements are met.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   }
+  },
+  "empty": {
+   "completion": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position, Drilling log, Pumping test measured, Yield established, Water quality panel, Water quality evaluable, Borehole design.",
+    "requirements": [
+     [
+      "site_located",
+      "unmet",
+      "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained.",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "unmet",
+      "No drilling log has been loaded.",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "unmet",
+      "No pumping test has been analysed.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "unmet",
+      "No yield recommendation has been derived.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "design_derived",
+      "unmet",
+      "No borehole design has been derived.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "handover": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position, Drilling log, Pumping test measured, Yield established, Water quality panel, Water quality evaluable.",
+    "requirements": [
+     [
+      "site_located",
+      "unmet",
+      "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained.",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "unmet",
+      "No drilling log has been loaded.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "unmet",
+      "No pumping test has been analysed.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "unmet",
+      "No yield recommendation has been derived.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "quality": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position, Water quality panel, Water quality evaluable.",
+    "requirements": [
+     [
+      "site_located",
+      "unmet",
+      "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "pumping": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position, Pumping test measured, Yield established.",
+    "requirements": [
+     [
+      "site_located",
+      "unmet",
+      "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained.",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "unmet",
+      "No pumping test has been analysed.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "unmet",
+      "No yield recommendation has been derived.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   }
+  },
+  "no_site": {
+   "completion": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position.",
+    "requirements": [
+     [
+      "site_located",
+      "unmet",
+      "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained.",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 70 m with 14 lithological interval(s).",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinand(s) graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "design_derived",
+      "met",
+      "22.5 m of screen in 4 run(s).",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "handover": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position.",
+    "requirements": [
+     [
+      "site_located",
+      "unmet",
+      "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained.",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 70 m with 14 lithological interval(s).",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinand(s) graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "quality": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position.",
+    "requirements": [
+     [
+      "site_located",
+      "unmet",
+      "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinand(s) graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "pumping": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position.",
+    "requirements": [
+     [
+      "site_located",
+      "unmet",
+      "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained.",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   }
+  },
+  "no_quality": {
+   "completion": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Water quality panel, Water quality evaluable.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 70 m with 14 lithological interval(s).",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "design_derived",
+      "met",
+      "22.5 m of screen in 4 run(s).",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "handover": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Water quality panel, Water quality evaluable.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 70 m with 14 lithological interval(s).",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "quality": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Water quality panel, Water quality evaluable.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "pumping": {
+    "state": "ready",
+    "summary": "All certification requirements are met.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   }
+  },
+  "overridden": {
+   "completion": {
+    "state": "ready_with_overrides",
+    "summary": "Issued on override: Water quality panel, Water quality evaluable.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 70 m with 14 lithological interval(s).",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "overridden",
+      "No water quality results have been assessed.",
+      "lab result awaited",
+      "M. K."
+     ],
+     [
+      "water_quality_evaluable",
+      "overridden",
+      "No water quality results have been assessed.",
+      "lab result awaited",
+      "M. K."
+     ],
+     [
+      "design_derived",
+      "met",
+      "22.5 m of screen in 4 run(s).",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "handover": {
+    "state": "ready_with_overrides",
+    "summary": "Issued on override: Water quality panel, Water quality evaluable.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 70 m with 14 lithological interval(s).",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "overridden",
+      "No water quality results have been assessed.",
+      "lab result awaited",
+      "M. K."
+     ],
+     [
+      "water_quality_evaluable",
+      "overridden",
+      "No water quality results have been assessed.",
+      "lab result awaited",
+      "M. K."
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "quality": {
+    "state": "ready_with_overrides",
+    "summary": "Issued on override: Water quality panel, Water quality evaluable.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "overridden",
+      "No water quality results have been assessed.",
+      "lab result awaited",
+      "M. K."
+     ],
+     [
+      "water_quality_evaluable",
+      "overridden",
+      "No water quality results have been assessed.",
+      "lab result awaited",
+      "M. K."
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "pumping": {
+    "state": "ready",
+    "summary": "All certification requirements are met.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   }
+  }
+ },
+ "qr": [
+  {
+   "text": "SL-WAR-8FEEVKQ-T",
+   "ecc": "L",
+   "mask": null,
+   "version": 1,
+   "size": 21,
+   "chosen_mask": 3,
+   "penalty": 1057,
+   "rows": [
+    "111111101001101111111",
+    "100000100000001000001",
+    "101110101011001011101",
+    "101110101101001011101",
+    "101110101111101011101",
+    "100000100000001000001",
+    "111111101010101111111",
+    "000000000110000000000",
+    "111100101010010011101",
+    "000010000111101011000",
+    "010010100100001001011",
+    "100001011011100110001",
+    "001101100100000010000",
+    "000000001011011010111",
+    "111111100111011011000",
+    "100000100010010111100",
+    "101110100110001000001",
+    "101110101101000111000",
+    "101110101001110001000",
+    "100000101110011100001",
+    "111111101001010010000"
+   ]
+  },
+  {
+   "text": "SL-WAR-8FEEVKQ-T",
+   "ecc": "L",
+   "mask": 0,
+   "version": 1,
+   "size": 21,
+   "chosen_mask": 0,
+   "penalty": 1272,
+   "rows": [
+    "111111100111101111111",
+    "100000100100001000001",
+    "101110101011101011101",
+    "101110100100101011101",
+    "101110100100001011101",
+    "100000100111001000001",
+    "111111101010101111111",
+    "000000001010000000000",
+    "111011111010111000100",
+    "110011010110011010110",
+    "110001100111101010111",
+    "100110011100100001001",
+    "000011101010001100001",
+    "000000001111000110100",
+    "111111101111100011111",
+    "100000101011100110010",
+    "101110101101101011101",
+    "101110100010000000000",
+    "101110101111111111001",
+    "100000101010000000010",
+    "111111101001101010111"
+   ]
+  },
+  {
+   "text": "SL-WAR-8FEEVKQ-T",
+   "ecc": "L",
+   "mask": 5,
+   "version": 1,
+   "size": 21,
+   "chosen_mask": 5,
+   "penalty": 1078,
+   "rows": [
+    "111111100010101111111",
+    "100000100001101000001",
+    "101110100101101011101",
+    "101110101011001011101",
+    "101110101010001011101",
+    "100000100010101000001",
+    "111111101010101111111",
+    "000000000111100000000",
+    "110001110100100011000",
+    "001100001001100101001",
+    "111111101001100100110",
+    "010011001001010100111",
+    "010110111111011001011",
+    "000000001010110011010",
+    "111111101001101101110",
+    "100000101100011001101",
+    "101110100011100101100",
+    "101110100111110101110",
+    "101110100010101010011",
+    "100000101111110101100",
+    "111111101111100100110"
+   ]
+  },
+  {
+   "text": "SL-WAR-8FEEVKQ-T",
+   "ecc": "M",
+   "mask": null,
+   "version": 2,
+   "size": 25,
+   "chosen_mask": 6,
+   "penalty": 1158,
+   "rows": [
+    "1111111010010111001111111",
+    "1000001011000111001000001",
+    "1011101010011110001011101",
+    "1011101000100011101011101",
+    "1011101011100101001011101",
+    "1000001000100110101000001",
+    "1111111010101010101111111",
+    "0000000001100010100000000",
+    "1001111111110111010010111",
+    "1101000110101010001111000",
+    "1111111010111011101000011",
+    "0011100111011010001101111",
+    "0100111111010110101110100",
+    "1000010000101001001011001",
+    "1101001110000011011100011",
+    "1011010101001110111001110",
+    "1010111001011001111111011",
+    "0000000011010001100010101",
+    "1111111011001111101010101",
+    "1000001010110101100011001",
+    "1011101010010101111110101",
+    "1011101010001101011100111",
+    "1011101001110101101011111",
+    "1000001000011100101100111",
+    "1111111011011100110001001"
+   ]
+  },
+  {
+   "text": "SL-WAR-8FEEVKQ-T",
+   "ecc": "M",
+   "mask": 0,
+   "version": 2,
+   "size": 25,
+   "chosen_mask": 0,
+   "penalty": 1179,
+   "rows": [
+    "1111111001000010001111111",
+    "1000001010011100001000001",
+    "1011101001011001001011101",
+    "1011101001011100001011101",
+    "1011101010010100101011101",
+    "1000001001001011001000001",
+    "1111111010101010101111111",
+    "0000000000111001100000000",
+    "1010101000110000000010010",
+    "0010110001010101110000111",
+    "1110001011001010011001101",
+    "1110000010110111100000010",
+    "0001101010000011111011110",
+    "0011000011110010010000010",
+    "1010001001000100011011011",
+    "0100100010110001000110001",
+    "1011001000101000111110101",
+    "0000000010111100100011000",
+    "1111111000011010101011111",
+    "1000001001101110100010010",
+    "1011101011010010111111101",
+    "1011101001110010100011000",
+    "1011101010000100011010001",
+    "1000001001110001000001010",
+    "1111111010001001100100011"
+   ]
+  },
+  {
+   "text": "SL-WAR-8FEEVKQ-T",
+   "ecc": "M",
+   "mask": 5,
+   "version": 2,
+   "size": 25,
+   "chosen_mask": 5,
+   "penalty": 1349,
+   "rows": [
+    "1111111000010111001111111",
+    "1000001011000001001000001",
+    "1011101010111010101011101",
+    "1011101010100011101011101",
+    "1011101001110111001011101",
+    "1000001000010110001000001",
+    "1111111010101010101111111",
+    "0000000011100100100000000",
+    "1000001011010011111001110",
+    "1101000110101010001111000",
+    "1101101000101001111010001",
+    "0011010111101010111101001",
+    "0100111111010110101110100",
+    "1110010110101111001101001",
+    "1001101010100111111000111",
+    "1011010101001110111001110",
+    "1000101011001011111111001",
+    "0000000011100001100010011",
+    "1111111001001111101010101",
+    "1000001000110011100011001",
+    "1011101000110001111110001",
+    "1011101000001101011100111",
+    "1011101001100111111001101",
+    "1000001000101100011100001",
+    "1111111011011100110001001"
+   ]
+  },
+  {
+   "text": "SL-WAR-8FEEVKQ-T",
+   "ecc": "Q",
+   "mask": null,
+   "version": 2,
+   "size": 25,
+   "chosen_mask": 0,
+   "penalty": 1208,
+   "rows": [
+    "1111111011000010001111111",
+    "1000001010100100001000001",
+    "1011101011001001001011101",
+    "1011101011010100001011101",
+    "1011101010110100101011101",
+    "1000001000101011001000001",
+    "1111111010101010101111111",
+    "0000000010011001100000000",
+    "0110101100010000001011111",
+    "1001000011011101110000111",
+    "1111001111001010011001101",
+    "1100110111100111100000010",
+    "1010011000110011111011110",
+    "0011100110011010010000010",
+    "1011101001001110011011011",
+    "0111000100110001000110001",
+    "1011111000011000111110101",
+    "0000000010011110100011000",
+    "1111111011000110101011111",
+    "1000001000000110100010010",
+    "1011101011100010111111101",
+    "1011101000001100100011000",
+    "1011101011010000011010001",
+    "1000001010110101000001010",
+    "1111111001101101100100011"
+   ]
+  },
+  {
+   "text": "SL-WAR-8FEEVKQ-T",
+   "ecc": "Q",
+   "mask": 0,
+   "version": 2,
+   "size": 25,
+   "chosen_mask": 0,
+   "penalty": 1208,
+   "rows": [
+    "1111111011000010001111111",
+    "1000001010100100001000001",
+    "1011101011001001001011101",
+    "1011101011010100001011101",
+    "1011101010110100101011101",
+    "1000001000101011001000001",
+    "1111111010101010101111111",
+    "0000000010011001100000000",
+    "0110101100010000001011111",
+    "1001000011011101110000111",
+    "1111001111001010011001101",
+    "1100110111100111100000010",
+    "1010011000110011111011110",
+    "0011100110011010010000010",
+    "1011101001001110011011011",
+    "0111000100110001000110001",
+    "1011111000011000111110101",
+    "0000000010011110100011000",
+    "1111111011000110101011111",
+    "1000001000000110100010010",
+    "1011101011100010111111101",
+    "1011101000001100100011000",
+    "1011101011010000011010001",
+    "1000001010110101000001010",
+    "1111111001101101100100011"
+   ]
+  },
+  {
+   "text": "SL-WAR-8FEEVKQ-T",
+   "ecc": "Q",
+   "mask": 5,
+   "version": 2,
+   "size": 25,
+   "chosen_mask": 5,
+   "penalty": 1507,
+   "rows": [
+    "1111111010010111001111111",
+    "1000001011111001001000001",
+    "1011101000101010101011101",
+    "1011101000101011101011101",
+    "1011101001010111001011101",
+    "1000001001110110001000001",
+    "1111111010101010101111111",
+    "0000000001000100100000000",
+    "0100001111110011110000011",
+    "0110110100100010001111000",
+    "1100101100101001111010001",
+    "0001100010111010111101001",
+    "1111001101100110101110100",
+    "1110110011000111001101001",
+    "1000001010101101111000111",
+    "1000110011001110111001110",
+    "1000011011111011111111001",
+    "0000000011000011100010011",
+    "1111111010010011101010101",
+    "1000001001011011100011001",
+    "1011101000000001111110001",
+    "1011101001110011011100111",
+    "1011101000110011111001101",
+    "1000001011101000011100001",
+    "1111111000111000110001001"
+   ]
+  },
+  {
+   "text": "SL-WAR-8FEEVKQ-T",
+   "ecc": "H",
+   "mask": null,
+   "version": 3,
+   "size": 29,
+   "chosen_mask": 5,
+   "penalty": 1246,
+   "rows": [
+    "11111110100010001111001111111",
+    "10000010000000101001001000001",
+    "10111010101111001001101011101",
+    "10111010001111010001101011101",
+    "10111010110010101000101011101",
+    "10000010010100000010101000001",
+    "11111110101010101010101111111",
+    "00000000110011111000100000000",
+    "00000110011110100010101010101",
+    "10000001001011111000111010101",
+    "00111111000111000110110111000",
+    "11000100000010110010001010011",
+    "01111011000100001101111011011",
+    "10001000000100101010101111110",
+    "00000011101110111100001110000",
+    "00011000000000111011000010110",
+    "01000011011110001010001010111",
+    "10111001011101001100100101110",
+    "11101110110001111010100100101",
+    "10110000111100010011110101000",
+    "10101111101011101101111111010",
+    "00000000110010010010100011001",
+    "11111110001011100110101011000",
+    "10000010111100010111100011001",
+    "10111010011010001001111110101",
+    "10111010011111011100000011010",
+    "10111010010011000010101110010",
+    "10000010000010111101101100101",
+    "11111110011001111110000110000"
+   ]
+  },
+  {
+   "text": "SL-WAR-8FEEVKQ-T",
+   "ecc": "H",
+   "mask": 0,
+   "version": 3,
+   "size": 29,
+   "chosen_mask": 0,
+   "penalty": 1388,
+   "rows": [
+    "11111110110111011010001111111",
+    "10000010010111111110001000001",
+    "10111010010111110001001011101",
+    "10111010110000101110001011101",
+    "10111010001010010000001011101",
+    "10000010000011010101101000001",
+    "11111110101010101010101111111",
+    "00000000000100101111100000000",
+    "00101110100110011010010001001",
+    "01111100110100000111000101010",
+    "00000111111111111110001111111",
+    "00010001010101100101011101001",
+    "00101110010001011000101110001",
+    "01011101010011111101111000100",
+    "00111011010110000100110110111",
+    "11100101111111000100111101001",
+    "01111011100110110010110010000",
+    "01101100001010011011110010100",
+    "10111011100100101111110001111",
+    "01100101101011000100100010010",
+    "10010111010011010101111111101",
+    "00000000101101101101100010110",
+    "11111110010011011110101011111",
+    "10000010101011000000100010011",
+    "10111010101111011100111111111",
+    "10111010001000001011010100000",
+    "10111010101011111010010110101",
+    "10000010011101000010010011010",
+    "11111110000001000110111110111"
+   ]
+  },
+  {
+   "text": "SL-WAR-8FEEVKQ-T",
+   "ecc": "H",
+   "mask": 5,
+   "version": 3,
+   "size": 29,
+   "chosen_mask": 5,
+   "penalty": 1246,
+   "rows": [
+    "11111110100010001111001111111",
+    "10000010000000101001001000001",
+    "10111010101111001001101011101",
+    "10111010001111010001101011101",
+    "10111010110010101000101011101",
+    "10000010010100000010101000001",
+    "11111110101010101010101111111",
+    "00000000110011111000100000000",
+    "00000110011110100010101010101",
+    "10000001001011111000111010101",
+    "00111111000111000110110111000",
+    "11000100000010110010001010011",
+    "01111011000100001101111011011",
+    "10001000000100101010101111110",
+    "00000011101110111100001110000",
+    "00011000000000111011000010110",
+    "01000011011110001010001010111",
+    "10111001011101001100100101110",
+    "11101110110001111010100100101",
+    "10110000111100010011110101000",
+    "10101111101011101101111111010",
+    "00000000110010010010100011001",
+    "11111110001011100110101011000",
+    "10000010111100010111100011001",
+    "10111010011010001001111110101",
+    "10111010011111011100000011010",
+    "10111010010011000010101110010",
+    "10000010000010111101101100101",
+    "11111110011001111110000110000"
+   ]
+  },
+  {
+   "text": "BOREHOLE SL-WAR-8FEEVKQ-T\nDr. Timbo's (Western Area Rural)\n8.48310 N, 13.22940 W\n62.0 m deep, 1.85 m3/h",
+   "ecc": "L",
+   "mask": null,
+   "version": 5,
+   "size": 37,
+   "chosen_mask": 2,
+   "penalty": 1684,
+   "rows": [
+    "1111111001000100111101010100101111111",
+    "1000001011011011000001000011101000001",
+    "1011101001110011001111100011001011101",
+    "1011101011011101011100001110001011101",
+    "1011101000101000001011010000101011101",
+    "1000001010101001001001001101001000001",
+    "1111111010101010101010101010101111111",
+    "0000000000001001001001011001100000000",
+    "1111101111111111111001100111110101010",
+    "1101010011010000000101110101101100101",
+    "1011111110100011001000000111011010111",
+    "0001000110110000100001001011011100001",
+    "1100011101011110011010101101011001000",
+    "1000010011111000000101100000001100101",
+    "1100101110000011011011101111011001011",
+    "0101010111111010000001101010111010011",
+    "0000111101100111111010101110011111011",
+    "1000110011111000011101111010011000001",
+    "1100011111100011010010001101011100011",
+    "0100110010000010101101010010000111000",
+    "0001001010111111111010111101111011101",
+    "1100000100110010000101010000101001011",
+    "1111011101001001011001001001000011011",
+    "0110110000001000001001111001110000010",
+    "0110011100001100011110100101011100010",
+    "1000010101111101000100010101111101001",
+    "1000001010000011111001100001001100111",
+    "1011010110100000101011000000011000000",
+    "1001101010100101111010001010111111001",
+    "0000000010111001110100010011100010101",
+    "1111111010101001001001001111101011011",
+    "1000001001101001000111100011100011010",
+    "1011101011010101011101000111111111111",
+    "1011101010011010000100010001001000100",
+    "1011101011001001000000000010000100011",
+    "1000001011110011001001011010010110001",
+    "1111111011111101111110000110011100011"
+   ]
+  },
+  {
+   "text": "BOREHOLE SL-WAR-8FEEVKQ-T\nDr. Timbo's (Western Area Rural)\n8.48310 N, 13.22940 W\n62.0 m deep, 1.85 m3/h",
+   "ecc": "L",
+   "mask": 0,
+   "version": 5,
+   "size": 37,
+   "chosen_mask": 0,
+   "penalty": 1803,
+   "rows": [
+    "1111111000100111011110110111001111111",
+    "1000001001000111011101011111101000001",
+    "1011101010010000101100000000101011101",
+    "1011101001000001000000010010001011101",
+    "1011101001001011101000110011001011101",
+    "1000001000110101010101010001001000001",
+    "1111111010101010101010101010101111111",
+    "0000000010010101010101000101100000000",
+    "1110111110011100011010000100011000100",
+    "0001000111001100011001101001110000110",
+    "1000011101000000101011100100111001011",
+    "1101010010101100111101010111000000010",
+    "1111111110111101111001001110111010100",
+    "0100000111100100011001111100010000110",
+    "1111001101100000111000001100111010111",
+    "1001000011100110011101110110100110000",
+    "0011011110000100011001001101111100111",
+    "0100100111100100000001100110000100010",
+    "1111111100000000110001101110111111111",
+    "1000100110011110110001001110011011011",
+    "0010101001011100011001011110011000001",
+    "0000010000101110011001001100110101000",
+    "1100111110101010111010101010100000111",
+    "1010100100010100010101100101101100001",
+    "0101111111101111111101000110111111110",
+    "0100000001100001011000001001100001010",
+    "1011101001100000011010000010101111011",
+    "0111000010111100110111011100000100011",
+    "1010001001000110011001101001111110101",
+    "0000000010100101101000001111100010110",
+    "1111111011001010101010101100101010111",
+    "1000001011110101011011111111100011001",
+    "1011101010110110111110100100111110011",
+    "1011101000000110011000001101010100111",
+    "1011101010101010100011100001100111111",
+    "1000001011101111010101000110001010010",
+    "1111111010011110011101100101111111111"
+   ]
+  },
+  {
+   "text": "BOREHOLE SL-WAR-8FEEVKQ-T\nDr. Timbo's (Western Area Rural)\n8.48310 N, 13.22940 W\n62.0 m deep, 1.85 m3/h",
+   "ecc": "L",
+   "mask": 5,
+   "version": 5,
+   "size": 37,
+   "chosen_mask": 5,
+   "penalty": 1779,
+   "rows": [
+    "1111111001110010001011100010001111111",
+    "1000001000011010000000000010101000001",
+    "1011101001110011001111100011001011101",
+    "1011101010111110111111101101101011101",
+    "1011101010101000001011010000101011101",
+    "1000001001101000001000001100001000001",
+    "1111111010101010101010101010101111111",
+    "0000000001001000001000011000100000000",
+    "1100011101111111111001100111100011000",
+    "1110110000110011100110010110001111001",
+    "1011111110100011001000000111011010111",
+    "0000000111110001100000001010011101001",
+    "1010101011101000101100011011101111110",
+    "1001010010111001000100100001001101101",
+    "1100101110000011011011101111011001011",
+    "0110110100011001100010001001011001111",
+    "0000111101100111111010101110011111011",
+    "1001110010111001011100111011011001001",
+    "1010101001010101100100111011101010101",
+    "0101110011000011101100010011000110000",
+    "0001001010111111111010111101111011101",
+    "1111100111010001100110110011001010111",
+    "1111011101001001011001001001000011011",
+    "0111110001001001001000111000110001010",
+    "0000101010111010101000010011101010100",
+    "1001010100111100000101010100111100001",
+    "1000001010000011111001100001001100111",
+    "1000110101000011001000100011111011100",
+    "1001101010100101111010001010111111001",
+    "0000000011111000110101010010100011101",
+    "1111111010011111111111111001101011101",
+    "1000001010101000000110100010100010010",
+    "1011101001010101011101000111111111111",
+    "1011101001111001100111110010101011000",
+    "1011101001001001000000000010000100011",
+    "1000001010110010001000011011010111001",
+    "1111111011001011001000110000101010101"
+   ]
+  },
+  {
+   "text": "BOREHOLE SL-WAR-8FEEVKQ-T\nDr. Timbo's (Western Area Rural)\n8.48310 N, 13.22940 W\n62.0 m deep, 1.85 m3/h",
+   "ecc": "M",
+   "mask": null,
+   "version": 6,
+   "size": 41,
+   "chosen_mask": 5,
+   "penalty": 1825,
+   "rows": [
+    "11111110000111100000111011110100101111111",
+    "10000010110100000100000000000000001000001",
+    "10111010110110110110110110010010101011101",
+    "10111010110001010000110011101100101011101",
+    "10111010001001101111110100101011001011101",
+    "10000010001010101000101010001010101000001",
+    "11111110101010101010101010101010101111111",
+    "00000000101000001000101110111011100000000",
+    "10000010111101011000011010110001011001110",
+    "00111001000101110001111000000001101010110",
+    "01101011010010110010101010111100110110110",
+    "01000100001110000000000100111000100001001",
+    "00000111100111000011101110011001111101110",
+    "10110000011010010010010111110101101110011",
+    "10000010010000001010001001110010011010100",
+    "01101100101001000010101000100010101110111",
+    "01101111101000001111100001000110100010100",
+    "11000100000000111011011110010001000110011",
+    "00001011110011110111010101111101110011001",
+    "01000001111001101000001010100001110111000",
+    "01011010000001011011000001011101000100100",
+    "01001101110111101001000100100011000011101",
+    "11101010000110110000011001010110011000100",
+    "11111100001101110011001000000001001100011",
+    "10010110110111001111010110100101111100001",
+    "00000100011000101010101000001010111011100",
+    "01010110011110100010110011011110010011110",
+    "01110100011111110011101010000000001101110",
+    "00101011110001010001011101100111000111000",
+    "10110000000100010001100111110011001111111",
+    "11000111100110001111001111011011000111001",
+    "10011001111001100011100010000000111010001",
+    "10111110110110011001100101011111111110110",
+    "00000000111101101101100111111000100010101",
+    "11111110001000111100000011111001101011000",
+    "10000010011111111111001010000000100011001",
+    "10111010011010000101001110111001111111010",
+    "10111010001010101111100101110100010010001",
+    "10111010001010001000101010110000110110100",
+    "10000010010011101010101000001010010000101",
+    "11111110111011010110011001010111000010100"
+   ]
+  },
+  {
+   "text": "BOREHOLE SL-WAR-8FEEVKQ-T\nDr. Timbo's (Western Area Rural)\n8.48310 N, 13.22940 W\n62.0 m deep, 1.85 m3/h",
+   "ecc": "M",
+   "mask": 0,
+   "version": 6,
+   "size": 41,
+   "chosen_mask": 0,
+   "penalty": 1852,
+   "rows": [
+    "11111110010010110101101110100001101111111",
+    "10000010100011010011010111010111001000001",
+    "10111010001110001110001110101010001011101",
+    "10111010001110101111001100010011001011101",
+    "10111010110001010111001100010011101011101",
+    "10000010011101111111111101011101101000001",
+    "11111110101010101010101010101010101111111",
+    "00000000011111011111111001101100100000000",
+    "10101010000101100000100010001001100010010",
+    "11000100111010001110000111111110010101001",
+    "01010011101010001010010010000100001110001",
+    "10010001011001010111010011101111110110011",
+    "01010010110010010110111011001100101000100",
+    "01100101001101000101000000100010111001001",
+    "10111010101000110010110001001010100010011",
+    "10010001010110111101010111011101010001000",
+    "01010111010000110111011001111110011010011",
+    "00010001010111101100001001000110010001001",
+    "01011110100110100010000000101000100110011",
+    "10010100101110111111011101110110100000010",
+    "01100010111001100011111001100101111100011",
+    "10110000001000010110111011011100111100010",
+    "11010010111110001000100001101110100000011",
+    "00101001011010100100011111010110011011001",
+    "11000011100010011010000011110000101001011",
+    "11010001001111111101111111011101101100110",
+    "01101110100110011010001011100110101011001",
+    "10001001100000001100010101111111110010001",
+    "00010011001001101001100101011111111111111",
+    "01100101010011000110110000100100011000101",
+    "10010010110011011010011010001110010010011",
+    "01001100101110110100110101010111101101011",
+    "10000110001110100001011101100111111110001",
+    "00000000100010010010011000000111100011010",
+    "11111110010000000100111011000001101011111",
+    "10000010001000101000011101010111100010011",
+    "10111010101111010000011011101100111110000",
+    "10111010011101111000110010100011000101011",
+    "10111010110010110000010010001000001110011",
+    "10000010001100010101010111110101101111010",
+    "11111110100011101110100001101111111010011"
+   ]
+  },
+  {
+   "text": "BOREHOLE SL-WAR-8FEEVKQ-T\nDr. Timbo's (Western Area Rural)\n8.48310 N, 13.22940 W\n62.0 m deep, 1.85 m3/h",
+   "ecc": "M",
+   "mask": 5,
+   "version": 6,
+   "size": 41,
+   "chosen_mask": 5,
+   "penalty": 1825,
+   "rows": [
+    "11111110000111100000111011110100101111111",
+    "10000010110100000100000000000000001000001",
+    "10111010110110110110110110010010101011101",
+    "10111010110001010000110011101100101011101",
+    "10111010001001101111110100101011001011101",
+    "10000010001010101000101010001010101000001",
+    "11111110101010101010101010101010101111111",
+    "00000000101000001000101110111011100000000",
+    "10000010111101011000011010110001011001110",
+    "00111001000101110001111000000001101010110",
+    "01101011010010110010101010111100110110110",
+    "01000100001110000000000100111000100001001",
+    "00000111100111000011101110011001111101110",
+    "10110000011010010010010111110101101110011",
+    "10000010010000001010001001110010011010100",
+    "01101100101001000010101000100010101110111",
+    "01101111101000001111100001000110100010100",
+    "11000100000000111011011110010001000110011",
+    "00001011110011110111010101111101110011001",
+    "01000001111001101000001010100001110111000",
+    "01011010000001011011000001011101000100100",
+    "01001101110111101001000100100011000011101",
+    "11101010000110110000011001010110011000100",
+    "11111100001101110011001000000001001100011",
+    "10010110110111001111010110100101111100001",
+    "00000100011000101010101000001010111011100",
+    "01010110011110100010110011011110010011110",
+    "01110100011111110011101010000000001101110",
+    "00101011110001010001011101100111000111000",
+    "10110000000100010001100111110011001111111",
+    "11000111100110001111001111011011000111001",
+    "10011001111001100011100010000000111010001",
+    "10111110110110011001100101011111111110110",
+    "00000000111101101101100111111000100010101",
+    "11111110001000111100000011111001101011000",
+    "10000010011111111111001010000000100011001",
+    "10111010011010000101001110111001111111010",
+    "10111010001010101111100101110100010010001",
+    "10111010001010001000101010110000110110100",
+    "10000010010011101010101000001010010000101",
+    "11111110111011010110011001010111000010100"
+   ]
+  },
+  {
+   "text": "BOREHOLE SL-WAR-8FEEVKQ-T\nDr. Timbo's (Western Area Rural)\n8.48310 N, 13.22940 W\n62.0 m deep, 1.85 m3/h",
+   "ecc": "Q",
+   "mask": null,
+   "version": 8,
+   "size": 49,
+   "chosen_mask": 0,
+   "penalty": 2368,
+   "rows": [
+    "1111111010001111010000010001011110100100101111111",
+    "1000001011100101011011110100011111110011101000001",
+    "1011101010100111011110110001011111001001101011101",
+    "1011101011010101001111111000100001100001001011101",
+    "1011101011001011110100111111011110110100001011101",
+    "1000001000101001110111100011111101110010001000001",
+    "1111111010101010101010101010101010101010101111111",
+    "0000000011100000010111100011101101001111000000000",
+    "0110101100010100110011111111000101001011101011111",
+    "1000000000100101000011001110010111000100010101001",
+    "1010101000000111000110110100100101010001100101011",
+    "0011100011110110111101111011010110001100110001000",
+    "0111001001110000000101011001101010001010100110011",
+    "1101110001110100011110011001000101011100010100001",
+    "0001111011110001011101100111000011000001010001111",
+    "0011110111001111100110011011010101001110110100001",
+    "0000101101000011101001110010011111001011001111011",
+    "1110000110001100001000101001010101010101010111010",
+    "1100101000101010001010000100011010000100010110011",
+    "1110100011100110100100101000010110111010100100011",
+    "1010111011100001100010111100000110111011011110111",
+    "1110110110101110111011011110110111011001000110010",
+    "1010111111010010101101111111100010001010111111111",
+    "0111100010100100100110100011001110101001100010001",
+    "0111101011110000111100101011011110011011101010111",
+    "1001100010010001011101100011100101010101100011011",
+    "1001111111010100010101111111000110011011111111011",
+    "0010110000101001110110111101110101000000010101000",
+    "1000101100111000000011111101111110111010100000011",
+    "0111010101011110010110110101010010010000001101001",
+    "0111001100110100000000011001100110101001011010001",
+    "1101000001100111100001000110001101011010100010000",
+    "1010011000001111000011100000101011111000011100001",
+    "1011110110000100000010001100010101010101101100101",
+    "1000001100000001011101101100100001001100111000011",
+    "1110110111111011000001111011101011010100011101011",
+    "1110011110010110101101101001111010001010000001001",
+    "1110010101011100001101001111010111001001000001011",
+    "0100011001100101101101111010100100011110101110101",
+    "0111000110001000110010010010101110101001110101001",
+    "1110001011010111010010111110100011001110111110010",
+    "0000000010011110010101100011001100010101100010110",
+    "1111111011000010100010101010101010011000101011011",
+    "1000001000001011000101100010001010101001100010010",
+    "1011101011001011001001111111111111111111111111100",
+    "1011101001001111110001101111010000000101111110011",
+    "1011101011100011010101100000110011111000111011111",
+    "1000001011100110001011010101110001010110010100010",
+    "1111111000000001011000101011100110111000110011111"
+   ]
+  },
+  {
+   "text": "BOREHOLE SL-WAR-8FEEVKQ-T\nDr. Timbo's (Western Area Rural)\n8.48310 N, 13.22940 W\n62.0 m deep, 1.85 m3/h",
+   "ecc": "Q",
+   "mask": 0,
+   "version": 8,
+   "size": 49,
+   "chosen_mask": 0,
+   "penalty": 2368,
+   "rows": [
+    "1111111010001111010000010001011110100100101111111",
+    "1000001011100101011011110100011111110011101000001",
+    "1011101010100111011110110001011111001001101011101",
+    "1011101011010101001111111000100001100001001011101",
+    "1011101011001011110100111111011110110100001011101",
+    "1000001000101001110111100011111101110010001000001",
+    "1111111010101010101010101010101010101010101111111",
+    "0000000011100000010111100011101101001111000000000",
+    "0110101100010100110011111111000101001011101011111",
+    "1000000000100101000011001110010111000100010101001",
+    "1010101000000111000110110100100101010001100101011",
+    "0011100011110110111101111011010110001100110001000",
+    "0111001001110000000101011001101010001010100110011",
+    "1101110001110100011110011001000101011100010100001",
+    "0001111011110001011101100111000011000001010001111",
+    "0011110111001111100110011011010101001110110100001",
+    "0000101101000011101001110010011111001011001111011",
+    "1110000110001100001000101001010101010101010111010",
+    "1100101000101010001010000100011010000100010110011",
+    "1110100011100110100100101000010110111010100100011",
+    "1010111011100001100010111100000110111011011110111",
+    "1110110110101110111011011110110111011001000110010",
+    "1010111111010010101101111111100010001010111111111",
+    "0111100010100100100110100011001110101001100010001",
+    "0111101011110000111100101011011110011011101010111",
+    "1001100010010001011101100011100101010101100011011",
+    "1001111111010100010101111111000110011011111111011",
+    "0010110000101001110110111101110101000000010101000",
+    "1000101100111000000011111101111110111010100000011",
+    "0111010101011110010110110101010010010000001101001",
+    "0111001100110100000000011001100110101001011010001",
+    "1101000001100111100001000110001101011010100010000",
+    "1010011000001111000011100000101011111000011100001",
+    "1011110110000100000010001100010101010101101100101",
+    "1000001100000001011101101100100001001100111000011",
+    "1110110111111011000001111011101011010100011101011",
+    "1110011110010110101101101001111010001010000001001",
+    "1110010101011100001101001111010111001001000001011",
+    "0100011001100101101101111010100100011110101110101",
+    "0111000110001000110010010010101110101001110101001",
+    "1110001011010111010010111110100011001110111110010",
+    "0000000010011110010101100011001100010101100010110",
+    "1111111011000010100010101010101010011000101011011",
+    "1000001000001011000101100010001010101001100010010",
+    "1011101011001011001001111111111111111111111111100",
+    "1011101001001111110001101111010000000101111110011",
+    "1011101011100011010101100000110011111000111011111",
+    "1000001011100110001011010101110001010110010100010",
+    "1111111000000001011000101011100110111000110011111"
+   ]
+  },
+  {
+   "text": "BOREHOLE SL-WAR-8FEEVKQ-T\nDr. Timbo's (Western Area Rural)\n8.48310 N, 13.22940 W\n62.0 m deep, 1.85 m3/h",
+   "ecc": "Q",
+   "mask": 5,
+   "version": 8,
+   "size": 49,
+   "chosen_mask": 5,
+   "penalty": 2656,
+   "rows": [
+    "1111111011011010000101000100001011110000101111111",
+    "1000001010111000000110101001000010101111101000001",
+    "1011101001000100111101010010111100101001101011101",
+    "1011101000101010110000000111011110011101001011101",
+    "1011101000101000010111111110111101010100001011101",
+    "1000001001110100101010100010100000101110001000001",
+    "1111111010101010101010101010101010101010101111111",
+    "0000000000111101001010100010110000010010000000000",
+    "0100001111110111010000111110100110101000010000011",
+    "0111110111011010111100110001101000111011101010110",
+    "1001001011100100100101010111000110110010000110111",
+    "1110110110101011100000100110001011010001101100011",
+    "0010011100100101010000001100111111011111110011001",
+    "0000100100101001000011000100011000000001001001010",
+    "0010011000010010111110000100100000100010110010011",
+    "1100000000110000011001100100101010110001001011110",
+    "0011001110100000001010010001111100101000101100111",
+    "0011010011010001010101110100001000001000001010001",
+    "1001111101111111011111010001001111010001000011001",
+    "0011110110111011111001110101001011100111111001000",
+    "1001011000000010000001011111100101011000111101011",
+    "0001000001010001000100100001001000100110111001101",
+    "1001111110110001001110111110000001101001111110011",
+    "1010100011111001111011100010010011110100100011010",
+    "0010101010100101101001101010001011001110101011101",
+    "0100100011001100000000100010111000001000100010000",
+    "1010111110110111110110111110100101111000111110111",
+    "1101000111010110001001000010001010111111101010111",
+    "1011001111011011100000011110011101011001000011111",
+    "1010000000000011001011101000001111001101010000010",
+    "0010011001100001010101001100110011111100001111011",
+    "0000010100111010111100011011010000000111111111011",
+    "1001111011101100100000000011001000011011111111101",
+    "0100000001111011111101110011101010101010010011010",
+    "1011101111100010111110001111000010101111011011111",
+    "0011100010100110011100100110110110001001000000000",
+    "1011001011000011111000111100101111011111010100011",
+    "0011000000000001010000010010001010010100011100000",
+    "0100011010000110001110011001000111111101001101001",
+    "0111000001110111001101101101010001010110001010110",
+    "1110001000110100110001111111000000101101111111110",
+    "0000000011000011001000100010010001001000100011101",
+    "1111111010010111110111101011111111001101101010001",
+    "1000001001010110011000100011010111110100100011001",
+    "1011101000101000101010111110011100011100111110000",
+    "1011101000110000001110010000101111111010000001100",
+    "1011101000000000110110000011010000011011011000011",
+    "1000001010111011010110001000101100001011001001001",
+    "1111111001010100001101111110110011101101100110101"
+   ]
+  },
+  {
+   "text": "BOREHOLE SL-WAR-8FEEVKQ-T\nDr. Timbo's (Western Area Rural)\n8.48310 N, 13.22940 W\n62.0 m deep, 1.85 m3/h",
+   "ecc": "H",
+   "mask": null,
+   "version": 10,
+   "size": 57,
+   "chosen_mask": 6,
+   "penalty": 2983,
+   "rows": [
+    "111111100101000000000010110001111100101111101111001111111",
+    "100000100101111010100001011010011010010000011001001000001",
+    "101110101000101111111011110111010100110000111111001011101",
+    "101110101010111101110011000011011110110010101001001011101",
+    "101110100010100101011101101111101101101001111001001011101",
+    "100000100011010001010010101000100100001011010110001000001",
+    "111111101010101010101010101010101010101010101010101111111",
+    "000000000100000000110110101000110001011010101110100000000",
+    "000110110100110101111011111111100101100010010101100001100",
+    "011111001110000110100110010110101101001111111101111010010",
+    "111100111011101011100001001110011101011100001101101111011",
+    "111110000000100000010000011101001011111100011001101111110",
+    "110110100100001111000110111101110101101011011110001010001",
+    "111100010100111010101000011101001101101100111100101110110",
+    "111101110010010010011001001110001010100010011111011000010",
+    "010111000101000001011010100111111100111010110110101110100",
+    "010110111110100010010010011110101011101001001001001100010",
+    "100101011010101110101000100111110101010001101110110110110",
+    "000011111011111011100101101100101000100101001011011111101",
+    "000111011001010100101100101011101001111011111110101111101",
+    "011111110110000111110101011101000111001111100000010010010",
+    "100100010001111100011100101000110010111010101011101110100",
+    "111000100011100111000001010110001100110011001111010000111",
+    "101010000010100000001001000010010111111010010111110101100",
+    "100101100111000111000100011000001110011001001011111110111",
+    "011011000100100111100111111011011010111011011101111101111",
+    "101111111101111111001110011111111101111000110101111111001",
+    "000010001100010110101100001000110111101100100010100011100",
+    "111110101000100101011100001010101010110101101000101011110",
+    "011110001101100101111101001000100011100110111011100011101",
+    "001111111110110011000101011111101111010000111001111111001",
+    "000100010101011110100001110000111011000011001100000010111",
+    "101010100010011010011100100010110110000111100000010000010",
+    "011011000010001100010010001000001110101011110010001010110",
+    "100001111001100110001011100001111101100100100101001111101",
+    "001000011010000111101001010010001110111101000011101100101",
+    "100100100101001101000110011001011011100111101011000100100",
+    "111111000100101111101110010000011101001001111000110000111",
+    "101001110101100111000100001010001111011111101100101100010",
+    "100001010000100111011010000001101000010001101011101101111",
+    "111011110101011111111001100010001100000000110001101111000",
+    "000111000100010000101110110011010110011000101011001111001",
+    "001010101101001001011110000001000001011110000010101111101",
+    "100110000001000011100111111011011001110011000111111100111",
+    "001101100000001000101010100000111111110010110000100000000",
+    "001010010010000010100001001011001110101100100110100010100",
+    "101001111011110000101100111110100111001001010101011001001",
+    "111110011000001001001101011110100111000010011110100101101",
+    "000000100011111011111000001111100110001111011101111110011",
+    "000000001011011010010101111000100001011000110100100011111",
+    "111111101000100101001001011010101011000011011110101011100",
+    "100000100101100100101001001000110111011010100110100011110",
+    "101110101101100001111100011111100011001001101010111111011",
+    "101110101101001000110011100100100111111100100110011010000",
+    "101110100001110011110100100011101010111111011000101011011",
+    "100000100000001110000101001100000011101100110001101011011",
+    "111111100101110111000100001100001111011111110010111110100"
+   ]
+  },
+  {
+   "text": "BOREHOLE SL-WAR-8FEEVKQ-T\nDr. Timbo's (Western Area Rural)\n8.48310 N, 13.22940 W\n62.0 m deep, 1.85 m3/h",
+   "ecc": "H",
+   "mask": 0,
+   "version": 10,
+   "size": 57,
+   "chosen_mask": 0,
+   "penalty": 3007,
+   "rows": [
+    "111111101000010101010111100100101001111010111011001111111",
+    "100000100000010111001100110111110111111101110101001000001",
+    "101110100100110011100111101011001000101100100011001011101",
+    "101110101101000010001100111100100001001101010101001011101",
+    "101110100101100010011010101111101010101110111101001011101",
+    "100000100101100111100100011000110010111101100010001000001",
+    "111111101010101010101010101010101010101010101010101111111",
+    "000000000001101101011011001000111100110111000011000000000",
+    "001011101000101001100111101111111001111110001001110001001",
+    "100000010001111001011001101001010010110000000010000101101",
+    "111011111100101100100110001001011010011011001010101000011",
+    "001000010110010110100110101011111101001010101111011001000",
+    "100011110001011010010011101000100000111110001011011111011",
+    "010001011001010111000101110000100000000001010001000011011",
+    "100001101110001110000101010010010110111110000011000100001",
+    "101000011010111110100101011000000011000101001001010001011",
+    "010001111001100101010101011001101100101110001110001011010",
+    "010011001100011000011110010001000011100111011000000000000",
+    "010110101110101110110000111001111101110000011110001010111",
+    "101010010100111001000001000110000100010110010011000010000",
+    "000011101010011011101001000001011011010011111100001110001",
+    "011011001110000011100011010111001101000101010100010001011",
+    "111111100100100000000110010001001011110100001000010111111",
+    "011100010100010110111111110100100001001100100001000011010",
+    "110000110010010010010001001101011011001100011110101011101",
+    "110110001001001010001010010110110111010110110000010000010",
+    "110011111001100011010010001111100001100100101001111111010",
+    "111110001011101001010011111000101000010011011101100010011",
+    "111010101111100010011011001010101101110010101111101010110",
+    "101010001011010011001011111000110101010000001101100011011",
+    "011011111011100110010000001111111010000101101100111110011",
+    "101001011000110011001100011101010110101110100001101111010",
+    "110110111110000110000000111110101010011011111100001100001",
+    "100100011101110011101101110111110001010100001101110101001",
+    "100110111110100001001100100110111010100011100010001000101",
+    "111110001100110001011111100100111000001011110101011010011",
+    "110001110000011000010011001100001110110010111110010001110",
+    "010010001001000010000011111101110000100100010101011101010",
+    "110101101001111011011000010110010011000011110000110000001",
+    "011110001111011000100101111110010111101110010100010010000",
+    "111100110010011000111110100101001011000111110110101000000",
+    "110001010010100110011000000101100000101110011101111001111",
+    "011111111000011100001011010100010100001011010111111010111",
+    "001011001100101110001010010110110100011110101010010001010",
+    "010001111100010100110110111100100011101110101100111100011",
+    "110101001101111101011110110100110001010011011001011101011",
+    "101001111100110111101011111001100000001110010010011110001",
+    "111110001110111111111011101000010001110100101000010011011",
+    "000000110110101110101101011111110011011010001000111111001",
+    "000000001110110111111000011000101100110101011001100010010",
+    "111111100100111001010101001010110111011111000010101011111",
+    "100000101010011011010110111000101000100101011001100010001",
+    "101110101010100110111011011111100100001110101101111110011",
+    "101110100011111110000101010010010001001010010000101100110",
+    "101110101100100110100001110110111111101010001101111110001",
+    "100000100101100011101000100001101110000001011100000110110",
+    "111111100001101011011000010000010011000011101110100010111"
+   ]
+  },
+  {
+   "text": "BOREHOLE SL-WAR-8FEEVKQ-T\nDr. Timbo's (Western Area Rural)\n8.48310 N, 13.22940 W\n62.0 m deep, 1.85 m3/h",
+   "ecc": "H",
+   "mask": 5,
+   "version": 10,
+   "size": 57,
+   "chosen_mask": 5,
+   "penalty": 3038,
+   "rows": [
+    "111111101101000000000010110001111100101111101111001111111",
+    "100000100101100010111001000010000010001000000001001000001",
+    "101110101010111101101001100101000110100010101111001011101",
+    "101110100010111101110011000011011110110010101001001011101",
+    "101110101011101100010100101111100100100000110001001011101",
+    "100000100000010010010001101000100111001000010110001000001",
+    "111111101010101010101010101010101010101010101010101111111",
+    "000000001100011000101110111000101001000010110110100000000",
+    "000001100110100111101001101111110111110000000111101010101",
+    "011111001110000110100110010110101101001111111101111010010",
+    "110101110010100010101000000111010100010101000100100110010",
+    "111101000011100011010011011110001000111111011010101100110",
+    "110110100100001111000110111101110101101011011110001010001",
+    "100100001100100010110000000101010101110100100100110110101",
+    "101111100000000000001011011100011000110000001101001010000",
+    "010111000101000001011010100111111100111010110110101110100",
+    "011111110111101011011011010111100010100000000000000101011",
+    "100110011001101101101011100100110110010010101101110101110",
+    "000011111011111011100101101100101000100101001011011111101",
+    "011111000001001100110100110011110001100011100110110111110",
+    "001101100100010101100111001111010101011101110010000000000",
+    "100100010001111100011100101000110010111010101011101110100",
+    "110001101010101110001000011111000101111010000110011001110",
+    "101001000001100011001010000001010100111001010100110110100",
+    "100101100111000111000100011000001110011001001011111110111",
+    "000011011100111111111111100011000010100011000101100101100",
+    "111111111111101101011100001111101111101010100111111111011",
+    "000010001100010110101100001000110111101100100010100011100",
+    "110110101001101100010101001010100011111100100001101010111",
+    "011110001110100110111110001000100000100101111000100010101",
+    "001111111110110011000101011111101111010000111001111111001",
+    "011100001101000110111001101000100011011011010100011010100",
+    "111000110000001000001110110000100100010101110010000010000",
+    "011011000010001100010010001000001110101011110010001010110",
+    "101000110000101111000010101000110100101101101100000110100",
+    "001011011001000100101010010001001101111110000000101111101",
+    "100100100101001101000110011001011011100111101011000100100",
+    "100111011100110111110110001000000101010001100000101000100",
+    "111011100111110101010110011000011101001101111110111110000",
+    "100001010000100111011010000001101000010001101011101101111",
+    "110010111100010110110000101011000101001001111000100110001",
+    "000100000111010011101101110000010101011011101000001100001",
+    "001010101101001001011110000001000001011110000010101111101",
+    "111110011001011011111111100011000001101011011111100100100",
+    "011111110010011010111000110010101101100000100010110010010",
+    "001010010010000010100001001011001110101100100110100010100",
+    "101001110010111001100101110111101110000000011100010000000",
+    "111110011011001010001110011101100100000001011101100110101",
+    "000000100011111011111000001111100110001111011101111110011",
+    "000000001011000010001101101000111001000000101100100011100",
+    "111111100010110111011011001010111001010001001100101011110",
+    "100000101101100100101001001000110111011010100110100011110",
+    "101110100100101000110101011111101010000000100011111110010",
+    "101110100110001011110000100111100100111111100101011001000",
+    "101110100001110011110100100011101010111111011000101011011",
+    "100000100000010110011101010100011011110100101001110011000",
+    "111111100111100101010110011110011101001101100000101100110"
+   ]
+  },
+  {
+   "text": "Kailahun - 10\u00b0 12' 03\" N",
+   "ecc": "L",
+   "mask": null,
+   "version": 2,
+   "size": 25,
+   "chosen_mask": 7,
+   "penalty": 1078,
+   "rows": [
+    "1111111001001001101111111",
+    "1000001010011101001000001",
+    "1011101011111000101011101",
+    "1011101001110001101011101",
+    "1011101010000111001011101",
+    "1000001011010001001000001",
+    "1111111010101010101111111",
+    "0000000011001011100000000",
+    "1101001100100100101110110",
+    "1001110110110100011101111",
+    "0111111011100110010111011",
+    "0101000100000111010110010",
+    "1100101110001110001000001",
+    "0111110111111010111000011",
+    "1010001100101001111010101",
+    "0101110001101100010010001",
+    "1110101110011010111110100",
+    "0000000010000101100011000",
+    "1111111010001110101011111",
+    "1000001000001010100010100",
+    "1011101000101101111110010",
+    "1011101010011101010111100",
+    "1011101001101010010010001",
+    "1000001010100110100010000",
+    "1111111011001110111111011"
+   ]
+  },
+  {
+   "text": "Kailahun - 10\u00b0 12' 03\" N",
+   "ecc": "L",
+   "mask": 0,
+   "version": 2,
+   "size": 25,
+   "chosen_mask": 0,
+   "penalty": 1221,
+   "rows": [
+    "1111111001001001101111111",
+    "1000001000111001101000001",
+    "1011101011101010101011101",
+    "1011101001110001101011101",
+    "1011101000100011101011101",
+    "1000001001000011001000001",
+    "1111111010101010101111111",
+    "0000000011101111000000000",
+    "1110111110110110111000100",
+    "1001110110110100011101111",
+    "0011011111000010110011111",
+    "0111010110010101000100000",
+    "1100101110001110001000001",
+    "0011010011011110011100111",
+    "1000011110111011101000111",
+    "0101110001101100010010001",
+    "1010001010111110111110000",
+    "0000000010010111100011010",
+    "1111111010001110101011111",
+    "1000001010101110100010000",
+    "1011101010111111111110000",
+    "1011101000011101010111100",
+    "1011101011001110110110101",
+    "1000001010110100110000010",
+    "1111111011001110111111011"
+   ]
+  },
+  {
+   "text": "Kailahun - 10\u00b0 12' 03\" N",
+   "ecc": "L",
+   "mask": 5,
+   "version": 2,
+   "size": 25,
+   "chosen_mask": 5,
+   "penalty": 1366,
+   "rows": [
+    "1111111000011100101111111",
+    "1000001001100100101000001",
+    "1011101000001001001011101",
+    "1011101010001110001011101",
+    "1011101011000000001011101",
+    "1000001000011110001000001",
+    "1111111010101010101111111",
+    "0000000000110010000000000",
+    "1100011101010101000011000",
+    "0110000001001011100010000",
+    "0000111100100001010000011",
+    "1010000011001000011001011",
+    "1001111011011011011101011",
+    "1110000110000011000001100",
+    "1011111101011000001011011",
+    "1010000110010011101101110",
+    "1001101001011101111111100",
+    "0000000011001010100010001",
+    "1111111011011011101010101",
+    "1000001011110011100011011",
+    "1011101001011100111111100",
+    "1011101001100010101000011",
+    "1011101000101101010101001",
+    "1000001011101001101101001",
+    "1111111010011011101010001"
+   ]
+  },
+  {
+   "text": "Kailahun - 10\u00b0 12' 03\" N",
+   "ecc": "M",
+   "mask": null,
+   "version": 2,
+   "size": 25,
+   "chosen_mask": 3,
+   "penalty": 1197,
+   "rows": [
+    "1111111010110010001111111",
+    "1000001010110110101000001",
+    "1011101001010100101011101",
+    "1011101010010101101011101",
+    "1011101001101011001011101",
+    "1000001001100010101000001",
+    "1111111010101010101111111",
+    "0000000010110000000000000",
+    "1011011100111000101001011",
+    "0110110110111000000001100",
+    "0010011110010010001011000",
+    "0110010111001100110101110",
+    "1000001110001101101011101",
+    "0010110011111001011011111",
+    "0100101010010101100110110",
+    "1010110110110000001110010",
+    "0011001010000110111110111",
+    "0000000011100110100010100",
+    "1111111011001101101010011",
+    "1000001010001001100011000",
+    "1011101001110001111110001",
+    "1011101011000001001011111",
+    "1011101010010110001110010",
+    "1000001000100101000001100",
+    "1111111011001101011100111"
+   ]
+  },
+  {
+   "text": "Kailahun - 10\u00b0 12' 03\" N",
+   "ecc": "M",
+   "mask": 0,
+   "version": 2,
+   "size": 25,
+   "chosen_mask": 0,
+   "penalty": 1301,
+   "rows": [
+    "1111111001010001101111111",
+    "1000001011110001101000001",
+    "1011101001011010101011101",
+    "1011101000001001101011101",
+    "1011101011010011101011101",
+    "1000001000010011001000001",
+    "1111111010101010101111111",
+    "0000000001110111000000000",
+    "1010101000110110100010010",
+    "1010100010100100011101111",
+    "1010101110101010110011111",
+    "0111100110111101000100000",
+    "1011101101101110001000001",
+    "0101110100111110011100111",
+    "1010101100011011101000111",
+    "0110100010101100010010001",
+    "1011111010111110111110000",
+    "0000000010010111100011010",
+    "1111111000101110101011111",
+    "1000001001001110100010000",
+    "1011101011111111111110000",
+    "1011101001011101010111100",
+    "1011101010101110110110101",
+    "1000001001010100110000010",
+    "1111111010101110111111011"
+   ]
+  },
+  {
+   "text": "Kailahun - 10\u00b0 12' 03\" N",
+   "ecc": "M",
+   "mask": 5,
+   "version": 2,
+   "size": 25,
+   "chosen_mask": 5,
+   "penalty": 1413,
+   "rows": [
+    "1111111000000100101111111",
+    "1000001010101100101000001",
+    "1011101010111001001011101",
+    "1011101011110110001011101",
+    "1011101000110000001011101",
+    "1000001001001110001000001",
+    "1111111010101010101111111",
+    "0000000010101010000000000",
+    "1000001011010101011001110",
+    "0101010101011011100010000",
+    "1001001101001001010000011",
+    "1010110011100000011001011",
+    "1110111000111011011101011",
+    "1000100001100011000001100",
+    "1001001111111000001011011",
+    "1001010101010011101101110",
+    "1000011001011101111111100",
+    "0000000011001010100010001",
+    "1111111001111011101010101",
+    "1000001000010011100011011",
+    "1011101000011100111111100",
+    "1011101000100010101000011",
+    "1011101001001101010101001",
+    "1000001000001001101101001",
+    "1111111011111011101010001"
+   ]
+  },
+  {
+   "text": "Kailahun - 10\u00b0 12' 03\" N",
+   "ecc": "Q",
+   "mask": null,
+   "version": 3,
+   "size": 29,
+   "chosen_mask": 2,
+   "penalty": 1313,
+   "rows": [
+    "11111110100111001000001111111",
+    "10000010011101010010101000001",
+    "10111010011100101010001011101",
+    "10111010001101100110001011101",
+    "10111010101111010101001011101",
+    "10000010110001000100101000001",
+    "11111110101010101010101111111",
+    "00000000011110111110100000000",
+    "01111111001111010001000110001",
+    "10100000011001010010111010011",
+    "10100010110100001011011100100",
+    "01101000000010010001110010001",
+    "10101011111110110111000000111",
+    "00110001100001010001001110001",
+    "10010110001111010010010111010",
+    "00100000010010110000011011000",
+    "00110110001110110010010100110",
+    "11010000000001011000011011010",
+    "10101011111001000010000011100",
+    "10011001100111101111100010000",
+    "10101111101000100001111110111",
+    "00000000100100000110100010101",
+    "11111110111110010101101011010",
+    "10000010100111010110100011010",
+    "10111010111000011000111110110",
+    "10111010100110010010100000000",
+    "10111010101100011111111110010",
+    "10000010111101010110010010010",
+    "11111110010011111111010101100"
+   ]
+  },
+  {
+   "text": "Kailahun - 10\u00b0 12' 03\" N",
+   "ecc": "Q",
+   "mask": 0,
+   "version": 3,
+   "size": 29,
+   "chosen_mask": 0,
+   "penalty": 1621,
+   "rows": [
+    "11111110111111110000101111111",
+    "10000010111010010101101000001",
+    "10111010100100010010101011101",
+    "10111010101010100001001011101",
+    "10111010110111101101101011101",
+    "10000010010110000011101000001",
+    "11111110101010101010101111111",
+    "00000000111001111001100000000",
+    "01101011010111101001101011111",
+    "01100101011110010101111101011",
+    "10011010001100110011100100011",
+    "10101101000101010110110101001",
+    "10010011000110001111111000000",
+    "11110100100110010110001001001",
+    "10101110110111101010101111101",
+    "11100101010101110111011100000",
+    "00001110110110001010101100001",
+    "00010101000110011111011100010",
+    "10010011000001111010111011011",
+    "01011100100000101000100101000",
+    "10010111010000011001111110000",
+    "00000000100011000001100011101",
+    "11111110100110101101101011101",
+    "10000010000000010001100010010",
+    "10111010100000100000111110001",
+    "10111010000001010101100111000",
+    "10111010110100100111000110101",
+    "10000010111010010001010101010",
+    "11111110001011000111101101011"
+   ]
+  },
+  {
+   "text": "Kailahun - 10\u00b0 12' 03\" N",
+   "ecc": "Q",
+   "mask": 5,
+   "version": 3,
+   "size": 29,
+   "chosen_mask": 5,
+   "penalty": 1424,
+   "rows": [
+    "11111110101010100101101111111",
+    "10000010101101000010101000001",
+    "10111010011100101010001011101",
+    "10111010010101011110101011101",
+    "10111010001111010101001011101",
+    "10000010000001010100101000001",
+    "11111110101010101010101111111",
+    "00000000001110101110100000000",
+    "01000011101111010001010000011",
+    "10011000100001101010000010100",
+    "10100010110100001011011100100",
+    "01111000010010000001100010011",
+    "11000110010011011010101101010",
+    "00100001110001000001011110011",
+    "10010110001111010010010111010",
+    "00011000101010001000100011111",
+    "00110110001110110010010100110",
+    "11000000010001001000001011000",
+    "11000110010100101111101110001",
+    "10001001110111111111110010010",
+    "10101111101000100001111110111",
+    "00000000111100111110100010010",
+    "11111110111110010101101011010",
+    "10000010010111000110100011000",
+    "10111010010101110101111111011",
+    "10111010010110000010110000010",
+    "10111010001100011111111110010",
+    "10000010100101101110101010101",
+    "11111110010011111111010101100"
+   ]
+  },
+  {
+   "text": "Kailahun - 10\u00b0 12' 03\" N",
+   "ecc": "H",
+   "mask": null,
+   "version": 4,
+   "size": 33,
+   "chosen_mask": 3,
+   "penalty": 1438,
+   "rows": [
+    "111111100110100101001111001111111",
+    "100000100001001010111001001000001",
+    "101110100011100010101010001011101",
+    "101110100011110100000001101011101",
+    "101110101111110111001001101011101",
+    "100000100111100011010011001000001",
+    "111111101010101010101010101111111",
+    "000000001101100001110000100000000",
+    "001100111111011111011001011010000",
+    "010110011011000101101101101000101",
+    "010011101111100001011001001101101",
+    "001001001111010110000001000000010",
+    "000011110111100001101100000000000",
+    "000110011110111011100010010001001",
+    "111100111001011110000001010111000",
+    "000010010010010001101111100100110",
+    "110100110101101100011111001110000",
+    "011001011110110101101011101010110",
+    "010110110100000000111100011101011",
+    "110111000100001110111001000000000",
+    "100010111101111010110110101100101",
+    "101011010111111000001010100101011",
+    "000100101101001111000111110000001",
+    "010110000100100111101010010010000",
+    "100111111010110100000100111110000",
+    "000000001000100011110101100010000",
+    "111111101111101110011101101011110",
+    "100000100111010000011000100010101",
+    "101110100010110111111011111111110",
+    "101110101110000010111111100001100",
+    "101110101101011000100010101000000",
+    "100000100100110101001111001100101",
+    "111111100111010100011011110010000"
+   ]
+  },
+  {
+   "text": "Kailahun - 10\u00b0 12' 03\" N",
+   "ecc": "H",
+   "mask": 0,
+   "version": 4,
+   "size": 33,
+   "chosen_mask": 0,
+   "penalty": 1616,
+   "rows": [
+    "111111101000101011000001001111111",
+    "100000100101010110100101001000001",
+    "101110100011011010010010101011101",
+    "101110101010000101110000001011101",
+    "101110100100010100101010001011101",
+    "100000100000100100010100001000001",
+    "111111101010101010101010101111111",
+    "000000000001111101101100100000000",
+    "001011101111100111100001110001001",
+    "100111001010110100011100011001011",
+    "110000101100000010111010101110001",
+    "001110001000010001000110000111010",
+    "001101111001101111100010001110001",
+    "011010000010100111111110001101010",
+    "000100100001100110111001101111111",
+    "110011000011100000011110010101000",
+    "010111110110001111111100101101100",
+    "011110011001110010101100101101110",
+    "011000111010001110110010010011010",
+    "101011011000010010100101011100011",
+    "011010100101000010001110010100010",
+    "011010000110001001111011010100101",
+    "100111101110101100100100010011101",
+    "010001000011100000101101010101000",
+    "101001110100111010001010111110001",
+    "000000001100111111101001100010011",
+    "111111100111010110100101101011001",
+    "100000101110100001101001100011011",
+    "101110101001010100011000111110010",
+    "101110100001000101111000100110100",
+    "101110101011010110101100100110001",
+    "100000100000101001010011010000110",
+    "111111100111101100100011001010111"
+   ]
+  },
+  {
+   "text": "Kailahun - 10\u00b0 12' 03\" N",
+   "ecc": "H",
+   "mask": 5,
+   "version": 4,
+   "size": 33,
+   "chosen_mask": 5,
+   "penalty": 1449,
+   "rows": [
+    "111111101101111110010100001111111",
+    "100000100000100011010000101000001",
+    "101110101101010100011100101011101",
+    "101110100101111010001111101011101",
+    "101110101010011010100100001011101",
+    "100000100101010001100001101000001",
+    "111111101010101010101010101111111",
+    "000000001100001000011001000000000",
+    "000001100001101001101111101010101",
+    "011000010101001011100011100110100",
+    "111110100010001100110100100000000",
+    "111011011101100100110011110010100",
+    "011000101100111010110111011011011",
+    "101111010111010010001011111000100",
+    "001010101111101000110111100001110",
+    "001100011100011111100001101010111",
+    "011001111000000001110010100011101",
+    "101011001100000111011001011000000",
+    "001101101111011011100111000110000",
+    "011110001101100111010000101001101",
+    "010100101011001100000000011010011",
+    "100101011001110110000100101011010",
+    "101001100000100010101010011101100",
+    "100100010110010101011000100000110",
+    "111100100001101111011111111111011",
+    "000000001001001010011100100011101",
+    "111111100001011000101011101011000",
+    "100000101001011110010110100010100",
+    "101110100111011010010110111110011",
+    "101110100100110000001101010011010",
+    "101110100110000011111001110011011",
+    "100000100101011100100110100101000",
+    "111111100001100010101101000100110"
+   ]
+  }
+ ],
+ "qr_capacity": [
+  {
+   "version": 1,
+   "ecc": "L",
+   "bytes": 17
+  },
+  {
+   "version": 1,
+   "ecc": "M",
+   "bytes": 14
+  },
+  {
+   "version": 1,
+   "ecc": "Q",
+   "bytes": 11
+  },
+  {
+   "version": 1,
+   "ecc": "H",
+   "bytes": 7
+  },
+  {
+   "version": 2,
+   "ecc": "L",
+   "bytes": 32
+  },
+  {
+   "version": 2,
+   "ecc": "M",
+   "bytes": 26
+  },
+  {
+   "version": 2,
+   "ecc": "Q",
+   "bytes": 20
+  },
+  {
+   "version": 2,
+   "ecc": "H",
+   "bytes": 14
+  },
+  {
+   "version": 3,
+   "ecc": "L",
+   "bytes": 53
+  },
+  {
+   "version": 3,
+   "ecc": "M",
+   "bytes": 42
+  },
+  {
+   "version": 3,
+   "ecc": "Q",
+   "bytes": 32
+  },
+  {
+   "version": 3,
+   "ecc": "H",
+   "bytes": 24
+  },
+  {
+   "version": 4,
+   "ecc": "L",
+   "bytes": 78
+  },
+  {
+   "version": 4,
+   "ecc": "M",
+   "bytes": 62
+  },
+  {
+   "version": 4,
+   "ecc": "Q",
+   "bytes": 46
+  },
+  {
+   "version": 4,
+   "ecc": "H",
+   "bytes": 34
+  },
+  {
+   "version": 5,
+   "ecc": "L",
+   "bytes": 106
+  },
+  {
+   "version": 5,
+   "ecc": "M",
+   "bytes": 84
+  },
+  {
+   "version": 5,
+   "ecc": "Q",
+   "bytes": 60
+  },
+  {
+   "version": 5,
+   "ecc": "H",
+   "bytes": 44
+  },
+  {
+   "version": 6,
+   "ecc": "L",
+   "bytes": 134
+  },
+  {
+   "version": 6,
+   "ecc": "M",
+   "bytes": 106
+  },
+  {
+   "version": 6,
+   "ecc": "Q",
+   "bytes": 74
+  },
+  {
+   "version": 6,
+   "ecc": "H",
+   "bytes": 58
+  },
+  {
+   "version": 7,
+   "ecc": "L",
+   "bytes": 154
+  },
+  {
+   "version": 7,
+   "ecc": "M",
+   "bytes": 122
+  },
+  {
+   "version": 7,
+   "ecc": "Q",
+   "bytes": 86
+  },
+  {
+   "version": 7,
+   "ecc": "H",
+   "bytes": 64
+  },
+  {
+   "version": 8,
+   "ecc": "L",
+   "bytes": 192
+  },
+  {
+   "version": 8,
+   "ecc": "M",
+   "bytes": 152
+  },
+  {
+   "version": 8,
+   "ecc": "Q",
+   "bytes": 108
+  },
+  {
+   "version": 8,
+   "ecc": "H",
+   "bytes": 84
+  },
+  {
+   "version": 9,
+   "ecc": "L",
+   "bytes": 230
+  },
+  {
+   "version": 9,
+   "ecc": "M",
+   "bytes": 180
+  },
+  {
+   "version": 9,
+   "ecc": "Q",
+   "bytes": 130
+  },
+  {
+   "version": 9,
+   "ecc": "H",
+   "bytes": 98
+  },
+  {
+   "version": 10,
+   "ecc": "L",
+   "bytes": 271
+  },
+  {
+   "version": 10,
+   "ecc": "M",
+   "bytes": 213
+  },
+  {
+   "version": 10,
+   "ecc": "Q",
+   "bytes": 151
+  },
+  {
+   "version": 10,
+   "ecc": "H",
+   "bytes": 119
+  }
+ ],
+ "asset_ids": [
+  {
+   "district": "Western Area Rural",
+   "easting": 694912.0,
+   "northing": 938150.0,
+   "zone": 28,
+   "id": "SL-WAR-8FEEVKQ-T"
+  },
+  {
+   "district": "Western Area Rural",
+   "easting": 694914.0,
+   "northing": 938147.0,
+   "zone": 28,
+   "id": "SL-WAR-8FEEVKQ-T"
+  },
+  {
+   "district": "Bo",
+   "easting": 790500.0,
+   "northing": 875300.0,
+   "zone": 28,
+   "id": "SL-BO-9MSANFA-7"
+  },
+  {
+   "district": "Kailahun",
+   "easting": 280400.0,
+   "northing": 925600.0,
+   "zone": 29,
+   "id": "SL-KAI-KDH2TCG-K"
+  },
+  {
+   "district": "Nowhere At All",
+   "easting": 694912.0,
+   "northing": 938150.0,
+   "zone": 28,
+   "id": "SL-XX-8FEEVKQ-B"
+  }
+ ],
+ "asset_id_parsing": [
+  {
+   "typed": "SL-WAR-8FEEVKQ-T",
+   "parsed": "SL-WAR-8FEEVKQ-T",
+   "ok": true,
+   "reason": ""
+  },
+  {
+   "typed": "sl-war-8feevkq-t",
+   "parsed": "SL-WAR-8FEEVKQ-T",
+   "ok": true,
+   "reason": ""
+  },
+  {
+   "typed": "SL-WAR-8FEEVKQ-T",
+   "parsed": "SL-WAR-8FEEVKQ-T",
+   "ok": true,
+   "reason": ""
+  },
+  {
+   "typed": "SL-WAR-8FEEVKQ-T",
+   "parsed": "SL-WAR-8FEEVKQ-T",
+   "ok": true,
+   "reason": ""
+  },
+  {
+   "typed": " SL-WAR-8FEEVKQ-T ",
+   "parsed": "SL-WAR-8FEEVKQ-T",
+   "ok": true,
+   "reason": ""
+  },
+  {
+   "typed": "SL-WAR-8FEEVKQ-Z",
+   "parsed": null,
+   "ok": false,
+   "reason": "The check character does not match: this identifier should end in T, not Z. Something in it has been mistyped."
+  },
+  {
+   "typed": "SLWAR8FEEVKQT",
+   "parsed": null,
+   "ok": false,
+   "reason": "An identifier looks like SL-WAR-8T4KQ2A-7: country, district, position, check character."
+  },
+  {
+   "typed": "SL-WAR-XXXXXXX-9",
+   "parsed": null,
+   "ok": false,
+   "reason": "The check character does not match: this identifier should end in B, not 9. Something in it has been mistyped."
+  },
+  {
+   "typed": "not an identifier",
+   "parsed": null,
+   "ok": false,
+   "reason": "An identifier looks like SL-WAR-8T4KQ2A-7: country, district, position, check character."
+  },
+  {
+   "typed": "",
+   "parsed": null,
+   "ok": false,
+   "reason": "No identifier was entered."
+  }
+ ],
+ "asset_events": [
+  {
+   "when": "2020-01-10",
+   "kind": "commissioned",
+   "note": "",
+   "by": "M. Kolleh",
+   "photo": "",
+   "event_id": "2020-01-10/commissioned/MJSN"
+  },
+  {
+   "when": "2023-04-02",
+   "kind": "failure",
+   "note": "rising main parted",
+   "by": "",
+   "photo": "",
+   "event_id": "2023-04-02/failure/5MYX"
+  },
+  {
+   "when": "2023-05-11",
+   "kind": "repair",
+   "note": "new seals",
+   "by": "A. Bangura",
+   "photo": "data:image/jpeg;base64,AAAA",
+   "event_id": "2023-05-11/repair/XQAD"
+  },
+  {
+   "when": "2099-01-01",
+   "kind": "restored",
+   "note": "",
+   "by": "",
+   "photo": "",
+   "event_id": "2099-01-01/restored/XMX5"
+  },
+  {
+   "when": "not written down",
+   "kind": "inspection",
+   "note": "",
+   "by": "",
+   "photo": "",
+   "event_id": "not written down/inspection/8VQ7"
+  }
+ ],
+ "asset_state": {
+  "silent": {
+   "function": "unknown",
+   "label": "Not known",
+   "since": null,
+   "detail": "Nothing has been recorded against this borehole, so whether it is working is not known.",
+   "last_inspection": null,
+   "last_sample": null,
+   "commissioned": null,
+   "days_out_of_service": null,
+   "due": [
+    {
+     "key": "inspection",
+     "title": "Sanitary inspection",
+     "state": "unknown",
+     "due_on": null,
+     "detail": "No sanitary inspection has been recorded, and there is no commissioning date to count from. A sanitary inspection is what catches a cracked apron or a latrine dug uphill before the water shows it."
+    },
+    {
+     "key": "water_sample",
+     "title": "Water quality sample",
+     "state": "unknown",
+     "due_on": null,
+     "detail": "No water quality sample has been recorded, and there is no commissioning date to count from. Water that was safe at handover is not evidence that it is safe now: the aquifer, the headworks and the catchment all change."
+    }
+   ],
+   "undated_events": 0
+  },
+  "commissioned": {
+   "function": "functional",
+   "label": "Working",
+   "since": "2020-01-10",
+   "detail": "Commissioned recorded on 2020-01-10 by M. Kolleh",
+   "last_inspection": null,
+   "last_sample": null,
+   "commissioned": "2020-01-10",
+   "days_out_of_service": null,
+   "due": [
+    {
+     "key": "inspection",
+     "title": "Sanitary inspection",
+     "state": "overdue",
+     "due_on": "2020-07-10",
+     "detail": "Sanitary inspection has never been done; it has been due since 2020-07-10, 1422 days ago. A sanitary inspection is what catches a cracked apron or a latrine dug uphill before the water shows it."
+    },
+    {
+     "key": "water_sample",
+     "title": "Water quality sample",
+     "state": "overdue",
+     "due_on": "2021-01-10",
+     "detail": "Water quality sample has never been done; it has been due since 2021-01-10, 1238 days ago. Water that was safe at handover is not evidence that it is safe now: the aquifer, the headworks and the catchment all change."
+    }
+   ],
+   "undated_events": 0
+  },
+  "broken": {
+   "function": "non_functional",
+   "label": "Not working",
+   "since": "2023-04-02",
+   "detail": "Failure recorded on 2023-04-02",
+   "last_inspection": null,
+   "last_sample": null,
+   "commissioned": "2020-01-10",
+   "days_out_of_service": 426,
+   "due": [
+    {
+     "key": "inspection",
+     "title": "Sanitary inspection",
+     "state": "overdue",
+     "due_on": "2020-07-10",
+     "detail": "Sanitary inspection has never been done; it has been due since 2020-07-10, 1422 days ago. A sanitary inspection is what catches a cracked apron or a latrine dug uphill before the water shows it."
+    },
+    {
+     "key": "water_sample",
+     "title": "Water quality sample",
+     "state": "overdue",
+     "due_on": "2021-01-10",
+     "detail": "Water quality sample has never been done; it has been due since 2021-01-10, 1238 days ago. Water that was safe at handover is not evidence that it is safe now: the aquifer, the headworks and the catchment all change."
+    }
+   ],
+   "undated_events": 0
+  },
+  "repaired": {
+   "function": "functional",
+   "label": "Working",
+   "since": "2023-05-11",
+   "detail": "Returned to service recorded on 2023-05-11",
+   "last_inspection": null,
+   "last_sample": null,
+   "commissioned": "2020-01-10",
+   "days_out_of_service": null,
+   "due": [
+    {
+     "key": "inspection",
+     "title": "Sanitary inspection",
+     "state": "overdue",
+     "due_on": "2020-07-10",
+     "detail": "Sanitary inspection has never been done; it has been due since 2020-07-10, 1422 days ago. A sanitary inspection is what catches a cracked apron or a latrine dug uphill before the water shows it."
+    },
+    {
+     "key": "water_sample",
+     "title": "Water quality sample",
+     "state": "overdue",
+     "due_on": "2021-01-10",
+     "detail": "Water quality sample has never been done; it has been due since 2021-01-10, 1238 days ago. Water that was safe at handover is not evidence that it is safe now: the aquifer, the headworks and the catchment all change."
+    }
+   ],
+   "undated_events": 0
+  },
+  "sampled": {
+   "function": "functional",
+   "label": "Working",
+   "since": "2020-01-10",
+   "detail": "Commissioned recorded on 2020-01-10 by M. Kolleh",
+   "last_inspection": "2024-05-20",
+   "last_sample": "2023-03-01",
+   "commissioned": "2020-01-10",
+   "days_out_of_service": null,
+   "due": [
+    {
+     "key": "inspection",
+     "title": "Sanitary inspection",
+     "state": "scheduled",
+     "due_on": "2024-11-20",
+     "detail": "Next sanitary inspection due 2024-11-20."
+    },
+    {
+     "key": "water_sample",
+     "title": "Water quality sample",
+     "state": "overdue",
+     "due_on": "2024-03-01",
+     "detail": "Water quality sample has been due since 2024-03-01, 92 days ago. Water that was safe at handover is not evidence that it is safe now: the aquifer, the headworks and the catchment all change."
+    }
+   ],
+   "undated_events": 0
+  },
+  "decommissioned": {
+   "function": "decommissioned",
+   "label": "Decommissioned",
+   "since": "2022-08-01",
+   "detail": "Decommissioned recorded on 2022-08-01",
+   "last_inspection": null,
+   "last_sample": null,
+   "commissioned": "2020-01-10",
+   "days_out_of_service": null,
+   "due": [],
+   "undated_events": 0
+  },
+  "merged": {
+   "function": "functional",
+   "label": "Working",
+   "since": "2023-05-11",
+   "detail": "Repair recorded on 2023-05-11 by A. Bangura",
+   "last_inspection": null,
+   "last_sample": null,
+   "commissioned": "2020-01-10",
+   "days_out_of_service": null,
+   "due": [
+    {
+     "key": "inspection",
+     "title": "Sanitary inspection",
+     "state": "overdue",
+     "due_on": "2020-07-10",
+     "detail": "Sanitary inspection has never been done; it has been due since 2020-07-10, 1422 days ago. A sanitary inspection is what catches a cracked apron or a latrine dug uphill before the water shows it."
+    },
+    {
+     "key": "water_sample",
+     "title": "Water quality sample",
+     "state": "overdue",
+     "due_on": "2021-01-10",
+     "detail": "Water quality sample has never been done; it has been due since 2021-01-10, 1238 days ago. Water that was safe at handover is not evidence that it is safe now: the aquifer, the headworks and the catchment all change."
+    }
+   ],
+   "undated_events": 1
+  }
+ },
+ "asset_placard": [
+  [
+   "Identifier",
+   "SL-WAR-8FEEVKQ-T"
+  ],
+  [
+   "Community",
+   "Dr. Timbo's"
+  ],
+  [
+   "District",
+   "Western Area Rural"
+  ],
+  [
+   "Position",
+   "8.48310 N, 13.22940 W"
+  ],
+  [
+   "Depth",
+   "62.0 m"
+  ],
+  [
+   "Safe yield",
+   "1.85 m3/h"
+  ],
+  [
+   "Pump",
+   "India Mark II"
+  ],
+  [
+   "Installed by",
+   "WiNGiN"
+  ],
+  [
+   "Commissioned",
+   "2020-01-10"
+  ],
+  [
+   "Status",
+   "Working"
+  ]
+ ],
+ "asset_qr_payload": "BOREHOLE SL-WAR-8FEEVKQ-T\nDr. Timbo's (Western Area Rural)\n8.48310 N, 13.22940 W\n62.0 m deep, 1.85 m3/h, India Mark II",
+ "registry_rows": [
+  {
+   "Identifier": "SL-WAR-8FEEVKQ-T",
+   "Community": "Dr. Timbo's",
+   "District": "Western Area Rural",
+   "Status": "Not known",
+   "Since": "",
+   "Last inspected": "",
+   "Last sampled": "",
+   "Overdue": "",
+   "Events": 0
+  },
+  {
+   "Identifier": "SL-WAR-8FEEVKQ-T",
+   "Community": "Dr. Timbo's",
+   "District": "Western Area Rural",
+   "Status": "Working",
+   "Since": "2020-01-10",
+   "Last inspected": "",
+   "Last sampled": "",
+   "Overdue": "Sanitary inspection, Water quality sample",
+   "Events": 1
+  },
+  {
+   "Identifier": "SL-WAR-8FEEVKQ-T",
+   "Community": "Dr. Timbo's",
+   "District": "Western Area Rural",
+   "Status": "Not working",
+   "Since": "2023-04-02",
+   "Last inspected": "",
+   "Last sampled": "",
+   "Overdue": "Sanitary inspection, Water quality sample",
+   "Events": 2
+  },
+  {
+   "Identifier": "SL-WAR-8FEEVKQ-T",
+   "Community": "Dr. Timbo's",
+   "District": "Western Area Rural",
+   "Status": "Working",
+   "Since": "2023-05-11",
+   "Last inspected": "",
+   "Last sampled": "",
+   "Overdue": "Sanitary inspection, Water quality sample",
+   "Events": 3
+  },
+  {
+   "Identifier": "SL-WAR-8FEEVKQ-T",
+   "Community": "Dr. Timbo's",
+   "District": "Western Area Rural",
+   "Status": "Working",
+   "Since": "2020-01-10",
+   "Last inspected": "2024-05-20",
+   "Last sampled": "2023-03-01",
+   "Overdue": "Water quality sample",
+   "Events": 3
+  },
+  {
+   "Identifier": "SL-WAR-8FEEVKQ-T",
+   "Community": "Dr. Timbo's",
+   "District": "Western Area Rural",
+   "Status": "Decommissioned",
+   "Since": "2022-08-01",
+   "Last inspected": "",
+   "Last sampled": "",
+   "Overdue": "",
+   "Events": 2
+  },
+  {
+   "Identifier": "SL-WAR-8FEEVKQ-T",
+   "Community": "Dr. Timbo's",
+   "District": "Western Area Rural",
+   "Status": "Working",
+   "Since": "2023-05-11",
+   "Last inspected": "",
+   "Last sampled": "",
+   "Overdue": "Sanitary inspection, Water quality sample",
+   "Events": 6
+  }
+ ],
+ "registry_stats": {
+  "n_assets": 7,
+  "n_functional": 4,
+  "n_non_functional": 1,
+  "n_decommissioned": 1,
+  "n_unknown": 1,
+  "functionality_rate": 80.0,
+  "n_overdue_inspection": 4,
+  "n_overdue_sample": 5,
+  "mean_days_out_of_service": 426.0
+ },
+ "asset_months": [
+  {
+   "from": "2023-08-31",
+   "months": 6,
+   "due": "2024-02-29"
+  },
+  {
+   "from": "2023-12-31",
+   "months": 2,
+   "due": "2024-02-29"
+  },
+  {
+   "from": "2020-02-29",
+   "months": 12,
+   "due": "2021-02-28"
+  },
+  {
+   "from": "2023-01-31",
+   "months": 1,
+   "due": "2023-02-28"
+  },
+  {
+   "from": "2023-03-30",
+   "months": 11,
+   "due": "2024-02-29"
+  },
+  {
+   "from": "2024-02-29",
+   "months": 12,
+   "due": "2025-02-28"
+  }
+ ],
+ "seasonal_dates": [
+  {
+   "text": "10/05/2018",
+   "month": null,
+   "note": "The date '10/05/2018' could be read either way round: May or October. Those are different ends of the year and give different answers, so the season is treated as unknown. Record the month by name, or pick it below."
+  },
+  {
+   "text": "25/04/2018",
+   "month": 4,
+   "note": ""
+  },
+  {
+   "text": "04/25/2018",
+   "month": 4,
+   "note": ""
+  },
+  {
+   "text": "2018-09-14",
+   "month": 9,
+   "note": ""
+  },
+  {
+   "text": "14 Sept 2018",
+   "month": 9,
+   "note": ""
+  },
+  {
+   "text": "September 2018",
+   "month": 9,
+   "note": ""
+  },
+  {
+   "text": "during the rains",
+   "month": null,
+   "note": "The date 'during the rains' does not name a month."
+  },
+  {
+   "text": "05/2018",
+   "month": null,
+   "note": "The date '05/2018' is not a full date."
+  },
+  {
+   "text": "",
+   "month": null,
+   "note": "No date is recorded for the test."
+  },
+  {
+   "text": "31/13/2018",
+   "month": null,
+   "note": "The date '31/13/2018' has no month in it."
+  },
+  {
+   "text": "2018/09/14",
+   "month": 9,
+   "note": ""
+  }
+ ],
+ "seasonal": {
+  "august": {
+   "month": 8,
+   "season": "wet season",
+   "month_note": "",
+   "annual_range_m": 2.0,
+   "range_source": "the configured dry-season allowance, not a measurement",
+   "pending_reason": "",
+   "design_yield_m3_per_h": 0.9754928127988354,
+   "pump_installation_depth_m": 40,
+   "dry_season_loss_percent": 3.115835777126108,
+   "summary": "Sized on the end of the dry season: 0.98 m3/h, falling to 0.96 m3/h in a drought year. The test was run in August, the wet season.",
+   "scenarios": [
+    {
+     "key": "as_tested",
+     "title": "As tested",
+     "decline_m": 0.0,
+     "static_water_level_m": 9.44,
+     "available_drawdown_m": 54.56,
+     "safe_yield_m3_per_h": 1.0068650750341366,
+     "pump_installation_depth_m": 38,
+     "note": "The level on the day of the test. Not a design figure: unless the test was run at the end of the dry season the borehole will be lower than this for part of every year. The test was run in August, the wet season."
+    },
+    {
+     "key": "dry_season",
+     "title": "End of dry season",
+     "decline_m": 1.7,
+     "static_water_level_m": 11.139999999999999,
+     "available_drawdown_m": 52.86,
+     "safe_yield_m3_per_h": 0.9754928127988354,
+     "pump_installation_depth_m": 39,
+     "note": "The normal annual low, which the borehole reaches every year. This is the figure a design should be sized on."
+    },
+    {
+     "key": "drought",
+     "title": "Drought year",
+     "decline_m": 2.7,
+     "static_water_level_m": 12.14,
+     "available_drawdown_m": 51.86,
+     "safe_yield_m3_per_h": 0.9570385408957174,
+     "pump_installation_depth_m": 40,
+     "note": "A low deeper than a normal year's, for a run of poor rains. The pump has to still be under water here, or the village loses the borehole in exactly the year it is needed most."
+    }
+   ]
+  },
+  "may": {
+   "month": 5,
+   "season": "late dry season",
+   "month_note": "",
+   "annual_range_m": 2.0,
+   "range_source": "the configured dry-season allowance, not a measurement",
+   "pending_reason": "",
+   "design_yield_m3_per_h": 1.0068650750341366,
+   "pump_installation_depth_m": 39,
+   "dry_season_loss_percent": 0.0,
+   "summary": "Sized on the end of the dry season: 1 m3/h, falling to 0.99 m3/h in a drought year. The test was run in May, the late dry season.",
+   "scenarios": [
+    {
+     "key": "as_tested",
+     "title": "As tested",
+     "decline_m": 0.0,
+     "static_water_level_m": 9.44,
+     "available_drawdown_m": 54.56,
+     "safe_yield_m3_per_h": 1.0068650750341366,
+     "pump_installation_depth_m": 38,
+     "note": "The level on the day of the test. Not a design figure: unless the test was run at the end of the dry season the borehole will be lower than this for part of every year. The test was run in May, the late dry season."
+    },
+    {
+     "key": "dry_season",
+     "title": "End of dry season",
+     "decline_m": 0.0,
+     "static_water_level_m": 9.44,
+     "available_drawdown_m": 54.56,
+     "safe_yield_m3_per_h": 1.0068650750341366,
+     "pump_installation_depth_m": 38,
+     "note": "The normal annual low, which the borehole reaches every year. This is the figure a design should be sized on. No further decline is reserved: a test run in May is already at or below this level."
+    },
+    {
+     "key": "drought",
+     "title": "Drought year",
+     "decline_m": 1.0,
+     "static_water_level_m": 10.44,
+     "available_drawdown_m": 53.56,
+     "safe_yield_m3_per_h": 0.9884108031310183,
+     "pump_installation_depth_m": 39,
+     "note": "A low deeper than a normal year's, for a run of poor rains. The pump has to still be under water here, or the village loses the borehole in exactly the year it is needed most."
+    }
+   ]
+  },
+  "september": {
+   "month": 9,
+   "season": "wet season",
+   "month_note": "",
+   "annual_range_m": 2.0,
+   "range_source": "the configured dry-season allowance, not a measurement",
+   "pending_reason": "",
+   "design_yield_m3_per_h": 0.9699565312279003,
+   "pump_installation_depth_m": 40,
+   "dry_season_loss_percent": 3.6656891495600807,
+   "summary": "Sized on the end of the dry season: 0.97 m3/h, falling to 0.95 m3/h in a drought year. The test was run in September, the wet season.",
+   "scenarios": [
+    {
+     "key": "as_tested",
+     "title": "As tested",
+     "decline_m": 0.0,
+     "static_water_level_m": 9.44,
+     "available_drawdown_m": 54.56,
+     "safe_yield_m3_per_h": 1.0068650750341366,
+     "pump_installation_depth_m": 38,
+     "note": "The level on the day of the test. Not a design figure: unless the test was run at the end of the dry season the borehole will be lower than this for part of every year. The test was run in September, the wet season."
+    },
+    {
+     "key": "dry_season",
+     "title": "End of dry season",
+     "decline_m": 2.0,
+     "static_water_level_m": 11.44,
+     "available_drawdown_m": 52.56,
+     "safe_yield_m3_per_h": 0.9699565312279003,
+     "pump_installation_depth_m": 39,
+     "note": "The normal annual low, which the borehole reaches every year. This is the figure a design should be sized on."
+    },
+    {
+     "key": "drought",
+     "title": "Drought year",
+     "decline_m": 3.0,
+     "static_water_level_m": 12.44,
+     "available_drawdown_m": 51.56,
+     "safe_yield_m3_per_h": 0.9515022593247816,
+     "pump_installation_depth_m": 40,
+     "note": "A low deeper than a normal year's, for a run of poor rains. The pump has to still be under water here, or the village loses the borehole in exactly the year it is needed most."
+    }
+   ]
+  },
+  "unknown": {
+   "month": null,
+   "season": "unknown",
+   "month_note": "The date '10/05/2018' could be read either way round: May or October. Those are different ends of the year and give different answers, so the season is treated as unknown. Record the month by name, or pick it below.",
+   "annual_range_m": 2.0,
+   "range_source": "the configured dry-season allowance, not a measurement",
+   "pending_reason": "",
+   "design_yield_m3_per_h": 0.9699565312279003,
+   "pump_installation_depth_m": 40,
+   "dry_season_loss_percent": 3.6656891495600807,
+   "summary": "Sized on the end of the dry season: 0.97 m3/h, falling to 0.95 m3/h in a drought year.",
+   "scenarios": [
+    {
+     "key": "as_tested",
+     "title": "As tested",
+     "decline_m": 0.0,
+     "static_water_level_m": 9.44,
+     "available_drawdown_m": 54.56,
+     "safe_yield_m3_per_h": 1.0068650750341366,
+     "pump_installation_depth_m": 38,
+     "note": "The level on the day of the test. Not a design figure: unless the test was run at the end of the dry season the borehole will be lower than this for part of every year."
+    },
+    {
+     "key": "dry_season",
+     "title": "End of dry season",
+     "decline_m": 2.0,
+     "static_water_level_m": 11.44,
+     "available_drawdown_m": 52.56,
+     "safe_yield_m3_per_h": 0.9699565312279003,
+     "pump_installation_depth_m": 39,
+     "note": "The normal annual low, which the borehole reaches every year. This is the figure a design should be sized on."
+    },
+    {
+     "key": "drought",
+     "title": "Drought year",
+     "decline_m": 3.0,
+     "static_water_level_m": 12.44,
+     "available_drawdown_m": 51.56,
+     "safe_yield_m3_per_h": 0.9515022593247816,
+     "pump_installation_depth_m": 40,
+     "note": "A low deeper than a normal year's, for a run of poor rains. The pump has to still be under water here, or the village loses the borehole in exactly the year it is needed most."
+    }
+   ]
+  },
+  "wide": {
+   "month": 8,
+   "season": "wet season",
+   "month_note": "",
+   "annual_range_m": 4.5,
+   "range_source": "measured for this programme",
+   "pending_reason": "",
+   "design_yield_m3_per_h": 0.9362774850047089,
+   "pump_installation_depth_m": 42,
+   "dry_season_loss_percent": 7.010630498533732,
+   "summary": "Sized on the end of the dry season: 0.94 m3/h, falling to 0.89 m3/h in a drought year. The test was run in August, the wet season.",
+   "scenarios": [
+    {
+     "key": "as_tested",
+     "title": "As tested",
+     "decline_m": 0.0,
+     "static_water_level_m": 9.44,
+     "available_drawdown_m": 54.56,
+     "safe_yield_m3_per_h": 1.0068650750341366,
+     "pump_installation_depth_m": 38,
+     "note": "The level on the day of the test. Not a design figure: unless the test was run at the end of the dry season the borehole will be lower than this for part of every year. The test was run in August, the wet season."
+    },
+    {
+     "key": "dry_season",
+     "title": "End of dry season",
+     "decline_m": 3.8249999999999997,
+     "static_water_level_m": 13.264999999999999,
+     "available_drawdown_m": 50.735,
+     "safe_yield_m3_per_h": 0.9362774850047089,
+     "pump_installation_depth_m": 40,
+     "note": "The normal annual low, which the borehole reaches every year. This is the figure a design should be sized on."
+    },
+    {
+     "key": "drought",
+     "title": "Drought year",
+     "decline_m": 6.075,
+     "static_water_level_m": 15.515,
+     "available_drawdown_m": 48.485,
+     "safe_yield_m3_per_h": 0.8947553732226926,
+     "pump_installation_depth_m": 42,
+     "note": "A low deeper than a normal year's, for a run of poor rains. The pump has to still be under water here, or the village loses the borehole in exactly the year it is needed most."
+    }
+   ]
+  },
+  "zero": {
+   "month": 8,
+   "season": "wet season",
+   "month_note": "",
+   "annual_range_m": 0.0,
+   "range_source": "measured for this programme",
+   "pending_reason": "",
+   "design_yield_m3_per_h": 1.0068650750341366,
+   "pump_installation_depth_m": 38,
+   "dry_season_loss_percent": 0.0,
+   "summary": "Sized on the end of the dry season: 1 m3/h, falling to 1 m3/h in a drought year. The test was run in August, the wet season.",
+   "scenarios": [
+    {
+     "key": "as_tested",
+     "title": "As tested",
+     "decline_m": -0.0,
+     "static_water_level_m": 9.44,
+     "available_drawdown_m": 54.56,
+     "safe_yield_m3_per_h": 1.0068650750341366,
+     "pump_installation_depth_m": 38,
+     "note": "The level on the day of the test. Not a design figure: unless the test was run at the end of the dry season the borehole will be lower than this for part of every year. The test was run in August, the wet season."
+    },
+    {
+     "key": "dry_season",
+     "title": "End of dry season",
+     "decline_m": 0.0,
+     "static_water_level_m": 9.44,
+     "available_drawdown_m": 54.56,
+     "safe_yield_m3_per_h": 1.0068650750341366,
+     "pump_installation_depth_m": 38,
+     "note": "The normal annual low, which the borehole reaches every year. This is the figure a design should be sized on. No further decline is reserved: a test run in August is already at or below this level."
+    },
+    {
+     "key": "drought",
+     "title": "Drought year",
+     "decline_m": 0.0,
+     "static_water_level_m": 9.44,
+     "available_drawdown_m": 54.56,
+     "safe_yield_m3_per_h": 1.0068650750341366,
+     "pump_installation_depth_m": 38,
+     "note": "A low deeper than a normal year's, for a run of poor rains. The pump has to still be under water here, or the village loses the borehole in exactly the year it is needed most. No further decline is reserved: a test run in August is already at or below this level."
+    }
+   ]
+  }
+ },
+ "wpdx_fields": [
+  {
+   "date": "2019-04-02T00:00:00",
+   "year": 2019,
+   "months_text": "12",
+   "months": 12
+  },
+  {
+   "date": "02/04/2019",
+   "year": 2019,
+   "months_text": "yes",
+   "months": 12
+  },
+  {
+   "date": "2019",
+   "year": 2019,
+   "months_text": "6 months",
+   "months": 6
+  },
+  {
+   "date": "",
+   "year": null,
+   "months_text": "",
+   "months": null
+  },
+  {
+   "date": "not a date",
+   "year": null,
+   "months_text": "seasonal",
+   "months": null
+  },
+  {
+   "date": "1899-01-01",
+   "year": null,
+   "months_text": "14",
+   "months": null
+  },
+  {
+   "date": "survey 2024 round 2",
+   "year": 2024,
+   "months_text": "no",
+   "months": null
+  }
+ ],
+ "growth_rate": 0.03272233402866398,
+ "planning": {
+  "census": {
+   "projection": {
+    "base_year": 2015,
+    "target_year": 2015,
+    "rate": 0.03272233402866398,
+    "uniform": true,
+    "factor": 1.0,
+    "note": "Populations are the 2015 census figures, not projected."
+   },
+   "stats": {
+    "n_areas": 5,
+    "as_of_year": 2015,
+    "projection_note": "Populations are the 2015 census figures, not projected.",
+    "population": 2686569.0,
+    "census_population": 2686569.0,
+    "worst_area": "Pujehun",
+    "worst_people_per_point": null,
+    "worst_served_area": "Western Area Urban",
+    "worst_served_people_per_point": 351988.0,
+    "n_no_source": 2,
+    "national_people_per_point": 383795.5714285714,
+    "national_people_per_recent_point": 537313.8,
+    "n_stale_areas": 1,
+    "stale_areas": [
+     "Kono"
+    ],
+    "n_seasonality_recorded": 4,
+    "n_seasonality_unknown": 3
+   },
+   "rows": [
+    {
+     "name": "Pujehun",
+     "rank": 1,
+     "census_population": 346461.0,
+     "population": 346461.0,
+     "water_points": 1,
+     "functional_points": 0,
+     "people_per_point": null,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 1,
+      "n_dated": 1,
+      "latest_year": 2020,
+      "median_age_years": -5.0,
+      "n_recent": 1,
+      "state": "fresh",
+      "label": "Surveyed recently",
+      "detail": "1 of 1 points carry a survey date; the most recent is 2020 and the median is -5 years old. 1 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 0,
+      "n_unknown": 0,
+      "people_per_point_low": null,
+      "people_per_point_high": null,
+      "is_established": false,
+      "detail": "There are no functional points here to ask about."
+     }
+    },
+    {
+     "name": "Falaba",
+     "rank": 2,
+     "census_population": 202566.0,
+     "population": 202566.0,
+     "water_points": 0,
+     "functional_points": 0,
+     "people_per_point": null,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 0,
+      "n_dated": 0,
+      "latest_year": null,
+      "median_age_years": null,
+      "n_recent": 0,
+      "state": "unknown",
+      "label": "Survey dates not recorded",
+      "detail": "No survey dates are recorded for these points, so how current this coverage figure is cannot be established."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 0,
+      "n_unknown": 0,
+      "people_per_point_low": null,
+      "people_per_point_high": null,
+      "is_established": false,
+      "detail": "There are no functional points here to ask about."
+     }
+    },
+    {
+     "name": "Western Area Urban",
+     "rank": 3,
+     "census_population": 1055964.0,
+     "population": 1055964.0,
+     "water_points": 3,
+     "functional_points": 3,
+     "people_per_point": 351988.0,
+     "recent_functional_points": 3,
+     "people_per_recent_point": 351988.0,
+     "staleness_gap_percent": 0.0,
+     "freshness": {
+      "n_points": 3,
+      "n_dated": 3,
+      "latest_year": 2025,
+      "median_age_years": -10.0,
+      "n_recent": 3,
+      "state": "fresh",
+      "label": "Surveyed recently",
+      "detail": "3 of 3 points carry a survey date; the most recent is 2025 and the median is -10 years old. 3 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 1,
+      "n_seasonal": 1,
+      "n_unknown": 1,
+      "people_per_point_low": 1055964.0,
+      "people_per_point_high": 527982.0,
+      "is_established": true,
+      "detail": "1 of 3 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
+     }
+    },
+    {
+     "name": "Bo",
+     "rank": 4,
+     "census_population": 575478.0,
+     "population": 575478.0,
+     "water_points": 3,
+     "functional_points": 2,
+     "people_per_point": 287739.0,
+     "recent_functional_points": 2,
+     "people_per_recent_point": 287739.0,
+     "staleness_gap_percent": 0.0,
+     "freshness": {
+      "n_points": 3,
+      "n_dated": 3,
+      "latest_year": 2024,
+      "median_age_years": -9.0,
+      "n_recent": 2,
+      "state": "fresh",
+      "label": "Surveyed recently",
+      "detail": "3 of 3 points carry a survey date; the most recent is 2024 and the median is -9 years old. 2 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 1,
+      "n_seasonal": 0,
+      "n_unknown": 1,
+      "people_per_point_low": 575478.0,
+      "people_per_point_high": 287739.0,
+      "is_established": true,
+      "detail": "1 of 2 functional points are recorded as working all year and 0 as seasonal; 1 were never asked."
+     }
+    },
+    {
+     "name": "Kono",
+     "rank": 5,
+     "census_population": 506100.0,
+     "population": 506100.0,
+     "water_points": 2,
+     "functional_points": 2,
+     "people_per_point": 253050.0,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 2,
+      "n_dated": 1,
+      "latest_year": 2003,
+      "median_age_years": 12.0,
+      "n_recent": 0,
+      "state": "stale",
+      "label": "Survey is out of date",
+      "detail": "1 of 2 points carry a survey date; the most recent is 2003 and the median is 12 years old. 0 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 1,
+      "n_unknown": 1,
+      "people_per_point_low": null,
+      "people_per_point_high": 506100.0,
+      "is_established": true,
+      "detail": "0 of 2 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
+     }
+    }
+   ]
+  },
+  "today": {
+   "projection": {
+    "base_year": 2015,
+    "target_year": 2026,
+    "rate": 0.03272233402866398,
+    "uniform": true,
+    "factor": 1.4250144317584268,
+    "note": "Populations are projected from the 2015 census to 2026 at 3.27% a year, a factor of 1.425. The same rate is applied to every district, so the ranking is unchanged by the projection - only the magnitudes move. District rates would change it, and an urban district does not grow at the rural rate."
+   },
+   "stats": {
+    "n_areas": 5,
+    "as_of_year": 2026,
+    "projection_note": "Populations are projected from the 2015 census to 2026 at 3.27% a year, a factor of 1.425. The same rate is applied to every district, so the ranking is unchanged by the projection - only the magnitudes move. District rates would change it, and an urban district does not grow at the rural rate.",
+    "population": 3828399.596914805,
+    "census_population": 2686569.0,
+    "worst_area": "Pujehun",
+    "worst_people_per_point": null,
+    "worst_served_area": "Western Area Urban",
+    "worst_served_people_per_point": 501587.9798057852,
+    "n_no_source": 2,
+    "national_people_per_point": 546914.2281306864,
+    "national_people_per_recent_point": 957099.8992287013,
+    "n_stale_areas": 1,
+    "stale_areas": [
+     "Kono"
+    ],
+    "n_seasonality_recorded": 4,
+    "n_seasonality_unknown": 3
+   },
+   "rows": [
+    {
+     "name": "Pujehun",
+     "rank": 1,
+     "census_population": 346461.0,
+     "population": 493711.9250414563,
+     "water_points": 1,
+     "functional_points": 0,
+     "people_per_point": null,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 1,
+      "n_dated": 1,
+      "latest_year": 2020,
+      "median_age_years": 6.0,
+      "n_recent": 0,
+      "state": "ageing",
+      "label": "Survey is getting old",
+      "detail": "1 of 1 points carry a survey date; the most recent is 2020 and the median is 6 years old. 0 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 0,
+      "n_unknown": 0,
+      "people_per_point_low": null,
+      "people_per_point_high": null,
+      "is_established": false,
+      "detail": "There are no functional points here to ask about."
+     }
+    },
+    {
+     "name": "Falaba",
+     "rank": 2,
+     "census_population": 202566.0,
+     "population": 288659.4733835775,
+     "water_points": 0,
+     "functional_points": 0,
+     "people_per_point": null,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 0,
+      "n_dated": 0,
+      "latest_year": null,
+      "median_age_years": null,
+      "n_recent": 0,
+      "state": "unknown",
+      "label": "Survey dates not recorded",
+      "detail": "No survey dates are recorded for these points, so how current this coverage figure is cannot be established."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 0,
+      "n_unknown": 0,
+      "people_per_point_low": null,
+      "people_per_point_high": null,
+      "is_established": false,
+      "detail": "There are no functional points here to ask about."
+     }
+    },
+    {
+     "name": "Western Area Urban",
+     "rank": 3,
+     "census_population": 1055964.0,
+     "population": 1504763.9394173555,
+     "water_points": 3,
+     "functional_points": 3,
+     "people_per_point": 501587.9798057852,
+     "recent_functional_points": 3,
+     "people_per_recent_point": 501587.9798057852,
+     "staleness_gap_percent": 0.0,
+     "freshness": {
+      "n_points": 3,
+      "n_dated": 3,
+      "latest_year": 2025,
+      "median_age_years": 1.0,
+      "n_recent": 2,
+      "state": "fresh",
+      "label": "Surveyed recently",
+      "detail": "3 of 3 points carry a survey date; the most recent is 2025 and the median is 1 years old. 2 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 1,
+      "n_seasonal": 1,
+      "n_unknown": 1,
+      "people_per_point_low": 1504763.9394173555,
+      "people_per_point_high": 752381.9697086777,
+      "is_established": true,
+      "detail": "1 of 3 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
+     }
+    },
+    {
+     "name": "Bo",
+     "rank": 4,
+     "census_population": 575478.0,
+     "population": 820064.4551594759,
+     "water_points": 3,
+     "functional_points": 2,
+     "people_per_point": 410032.22757973796,
+     "recent_functional_points": 1,
+     "people_per_recent_point": 820064.4551594759,
+     "staleness_gap_percent": 100.0,
+     "freshness": {
+      "n_points": 3,
+      "n_dated": 3,
+      "latest_year": 2024,
+      "median_age_years": 2.0,
+      "n_recent": 2,
+      "state": "fresh",
+      "label": "Surveyed recently",
+      "detail": "3 of 3 points carry a survey date; the most recent is 2024 and the median is 2 years old. 2 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 1,
+      "n_seasonal": 0,
+      "n_unknown": 1,
+      "people_per_point_low": 820064.4551594759,
+      "people_per_point_high": 410032.22757973796,
+      "is_established": true,
+      "detail": "1 of 2 functional points are recorded as working all year and 0 as seasonal; 1 were never asked."
+     }
+    },
+    {
+     "name": "Kono",
+     "rank": 5,
+     "census_population": 506100.0,
+     "population": 721199.8039129399,
+     "water_points": 2,
+     "functional_points": 2,
+     "people_per_point": 360599.9019564699,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 2,
+      "n_dated": 1,
+      "latest_year": 2003,
+      "median_age_years": 23.0,
+      "n_recent": 0,
+      "state": "stale",
+      "label": "Survey is out of date",
+      "detail": "1 of 2 points carry a survey date; the most recent is 2003 and the median is 23 years old. 0 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 1,
+      "n_unknown": 1,
+      "people_per_point_low": null,
+      "people_per_point_high": 721199.8039129399,
+      "is_established": true,
+      "detail": "0 of 2 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
+     }
+    }
+   ]
+  },
+  "slow": {
+   "projection": {
+    "base_year": 2015,
+    "target_year": 2026,
+    "rate": 0.015,
+    "uniform": true,
+    "factor": 1.177948937400526,
+    "note": "Populations are projected from the 2015 census to 2026 at 1.50% a year, a factor of 1.178. The same rate is applied to every district, so the ranking is unchanged by the projection - only the magnitudes move. District rates would change it, and an urban district does not grow at the rural rate."
+   },
+   "stats": {
+    "n_areas": 5,
+    "as_of_year": 2026,
+    "projection_note": "Populations are projected from the 2015 census to 2026 at 1.50% a year, a factor of 1.178. The same rate is applied to every district, so the ranking is unchanged by the projection - only the magnitudes move. District rates would change it, and an urban district does not grow at the rural rate.",
+    "population": 3164641.098803194,
+    "census_population": 2686569.0,
+    "worst_area": "Pujehun",
+    "worst_people_per_point": null,
+    "worst_served_area": "Western Area Urban",
+    "worst_served_people_per_point": 414623.89057773637,
+    "n_no_source": 2,
+    "national_people_per_point": 452091.5855433134,
+    "national_people_per_recent_point": 791160.2747007984,
+    "n_stale_areas": 1,
+    "stale_areas": [
+     "Kono"
+    ],
+    "n_seasonality_recorded": 4,
+    "n_seasonality_unknown": 3
+   },
+   "rows": [
+    {
+     "name": "Pujehun",
+     "rank": 1,
+     "census_population": 346461.0,
+     "population": 408113.36680072366,
+     "water_points": 1,
+     "functional_points": 0,
+     "people_per_point": null,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 1,
+      "n_dated": 1,
+      "latest_year": 2020,
+      "median_age_years": 6.0,
+      "n_recent": 0,
+      "state": "ageing",
+      "label": "Survey is getting old",
+      "detail": "1 of 1 points carry a survey date; the most recent is 2020 and the median is 6 years old. 0 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 0,
+      "n_unknown": 0,
+      "people_per_point_low": null,
+      "people_per_point_high": null,
+      "is_established": false,
+      "detail": "There are no functional points here to ask about."
+     }
+    },
+    {
+     "name": "Falaba",
+     "rank": 2,
+     "census_population": 202566.0,
+     "population": 238612.40445347497,
+     "water_points": 0,
+     "functional_points": 0,
+     "people_per_point": null,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 0,
+      "n_dated": 0,
+      "latest_year": null,
+      "median_age_years": null,
+      "n_recent": 0,
+      "state": "unknown",
+      "label": "Survey dates not recorded",
+      "detail": "No survey dates are recorded for these points, so how current this coverage figure is cannot be established."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 0,
+      "n_unknown": 0,
+      "people_per_point_low": null,
+      "people_per_point_high": null,
+      "is_established": false,
+      "detail": "There are no functional points here to ask about."
+     }
+    },
+    {
+     "name": "Western Area Urban",
+     "rank": 3,
+     "census_population": 1055964.0,
+     "population": 1243871.6717332092,
+     "water_points": 3,
+     "functional_points": 3,
+     "people_per_point": 414623.89057773637,
+     "recent_functional_points": 3,
+     "people_per_recent_point": 414623.89057773637,
+     "staleness_gap_percent": 0.0,
+     "freshness": {
+      "n_points": 3,
+      "n_dated": 3,
+      "latest_year": 2025,
+      "median_age_years": 1.0,
+      "n_recent": 2,
+      "state": "fresh",
+      "label": "Surveyed recently",
+      "detail": "3 of 3 points carry a survey date; the most recent is 2025 and the median is 1 years old. 2 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 1,
+      "n_seasonal": 1,
+      "n_unknown": 1,
+      "people_per_point_low": 1243871.6717332092,
+      "people_per_point_high": 621935.8358666046,
+      "is_established": true,
+      "detail": "1 of 3 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
+     }
+    },
+    {
+     "name": "Bo",
+     "rank": 4,
+     "census_population": 575478.0,
+     "population": 677883.69859738,
+     "water_points": 3,
+     "functional_points": 2,
+     "people_per_point": 338941.84929869,
+     "recent_functional_points": 1,
+     "people_per_recent_point": 677883.69859738,
+     "staleness_gap_percent": 100.0,
+     "freshness": {
+      "n_points": 3,
+      "n_dated": 3,
+      "latest_year": 2024,
+      "median_age_years": 2.0,
+      "n_recent": 2,
+      "state": "fresh",
+      "label": "Surveyed recently",
+      "detail": "3 of 3 points carry a survey date; the most recent is 2024 and the median is 2 years old. 2 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 1,
+      "n_seasonal": 0,
+      "n_unknown": 1,
+      "people_per_point_low": 677883.69859738,
+      "people_per_point_high": 338941.84929869,
+      "is_established": true,
+      "detail": "1 of 2 functional points are recorded as working all year and 0 as seasonal; 1 were never asked."
+     }
+    },
+    {
+     "name": "Kono",
+     "rank": 5,
+     "census_population": 506100.0,
+     "population": 596159.9572184063,
+     "water_points": 2,
+     "functional_points": 2,
+     "people_per_point": 298079.9786092031,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 2,
+      "n_dated": 1,
+      "latest_year": 2003,
+      "median_age_years": 23.0,
+      "n_recent": 0,
+      "state": "stale",
+      "label": "Survey is out of date",
+      "detail": "1 of 2 points carry a survey date; the most recent is 2003 and the median is 23 years old. 0 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 1,
+      "n_unknown": 1,
+      "people_per_point_low": null,
+      "people_per_point_high": 596159.9572184063,
+      "is_established": true,
+      "detail": "0 of 2 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
+     }
+    }
+   ]
+  },
+  "districts": {
+   "projection": {
+    "base_year": 2015,
+    "target_year": 2026,
+    "rate": 0.03272233402866398,
+    "uniform": false,
+    "factor": 1.4250144317584268,
+    "note": "Populations are projected from the 2015 census to 2026 at 3.27% a year, a factor of 1.425."
+   },
+   "stats": {
+    "n_areas": 5,
+    "as_of_year": 2026,
+    "projection_note": "Populations are projected from the 2015 census to 2026 at 3.27% a year, a factor of 1.425.",
+    "population": 4220994.242364115,
+    "census_population": 2686569.0,
+    "worst_area": "Pujehun",
+    "worst_people_per_point": null,
+    "worst_served_area": "Western Area Urban",
+    "worst_served_people_per_point": 668178.3129513699,
+    "n_no_source": 2,
+    "national_people_per_point": 602999.1774805879,
+    "national_people_per_recent_point": 1055248.5605910288,
+    "n_stale_areas": 1,
+    "stale_areas": [
+     "Kono"
+    ],
+    "n_seasonality_recorded": 4,
+    "n_seasonality_unknown": 3
+   },
+   "rows": [
+    {
+     "name": "Pujehun",
+     "rank": 1,
+     "census_population": 346461.0,
+     "population": 386535.5710540122,
+     "water_points": 1,
+     "functional_points": 0,
+     "people_per_point": null,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 1,
+      "n_dated": 1,
+      "latest_year": 2020,
+      "median_age_years": 6.0,
+      "n_recent": 0,
+      "state": "ageing",
+      "label": "Survey is getting old",
+      "detail": "1 of 1 points carry a survey date; the most recent is 2020 and the median is 6 years old. 0 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 0,
+      "n_unknown": 0,
+      "people_per_point_low": null,
+      "people_per_point_high": null,
+      "is_established": false,
+      "detail": "There are no functional points here to ask about."
+     }
+    },
+    {
+     "name": "Falaba",
+     "rank": 2,
+     "census_population": 202566.0,
+     "population": 288659.4733835775,
+     "water_points": 0,
+     "functional_points": 0,
+     "people_per_point": null,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 0,
+      "n_dated": 0,
+      "latest_year": null,
+      "median_age_years": null,
+      "n_recent": 0,
+      "state": "unknown",
+      "label": "Survey dates not recorded",
+      "detail": "No survey dates are recorded for these points, so how current this coverage figure is cannot be established."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 0,
+      "n_unknown": 0,
+      "people_per_point_low": null,
+      "people_per_point_high": null,
+      "is_established": false,
+      "detail": "There are no functional points here to ask about."
+     }
+    },
+    {
+     "name": "Western Area Urban",
+     "rank": 3,
+     "census_population": 1055964.0,
+     "population": 2004534.9388541097,
+     "water_points": 3,
+     "functional_points": 3,
+     "people_per_point": 668178.3129513699,
+     "recent_functional_points": 3,
+     "people_per_recent_point": 668178.3129513699,
+     "staleness_gap_percent": 0.0,
+     "freshness": {
+      "n_points": 3,
+      "n_dated": 3,
+      "latest_year": 2025,
+      "median_age_years": 1.0,
+      "n_recent": 2,
+      "state": "fresh",
+      "label": "Surveyed recently",
+      "detail": "3 of 3 points carry a survey date; the most recent is 2025 and the median is 1 years old. 2 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 1,
+      "n_seasonal": 1,
+      "n_unknown": 1,
+      "people_per_point_low": 2004534.9388541097,
+      "people_per_point_high": 1002267.4694270549,
+      "is_established": true,
+      "detail": "1 of 3 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
+     }
+    },
+    {
+     "name": "Bo",
+     "rank": 4,
+     "census_population": 575478.0,
+     "population": 820064.4551594759,
+     "water_points": 3,
+     "functional_points": 2,
+     "people_per_point": 410032.22757973796,
+     "recent_functional_points": 1,
+     "people_per_recent_point": 820064.4551594759,
+     "staleness_gap_percent": 100.0,
+     "freshness": {
+      "n_points": 3,
+      "n_dated": 3,
+      "latest_year": 2024,
+      "median_age_years": 2.0,
+      "n_recent": 2,
+      "state": "fresh",
+      "label": "Surveyed recently",
+      "detail": "3 of 3 points carry a survey date; the most recent is 2024 and the median is 2 years old. 2 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 1,
+      "n_seasonal": 0,
+      "n_unknown": 1,
+      "people_per_point_low": 820064.4551594759,
+      "people_per_point_high": 410032.22757973796,
+      "is_established": true,
+      "detail": "1 of 2 functional points are recorded as working all year and 0 as seasonal; 1 were never asked."
+     }
+    },
+    {
+     "name": "Kono",
+     "rank": 5,
+     "census_population": 506100.0,
+     "population": 721199.8039129399,
+     "water_points": 2,
+     "functional_points": 2,
+     "people_per_point": 360599.9019564699,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 2,
+      "n_dated": 1,
+      "latest_year": 2003,
+      "median_age_years": 23.0,
+      "n_recent": 0,
+      "state": "stale",
+      "label": "Survey is out of date",
+      "detail": "1 of 2 points carry a survey date; the most recent is 2003 and the median is 23 years old. 0 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 1,
+      "n_unknown": 1,
+      "people_per_point_low": null,
+      "people_per_point_high": 721199.8039129399,
+      "is_established": true,
+      "detail": "0 of 2 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
+     }
+    }
+   ]
+  }
+ },
+ "procurement": {
+  "clean": {
+   "certificate": {
+    "number": 1,
+    "date": "2024-04-01",
+    "contract_ref": "WSD/2024/017",
+    "contract_sum_usd": 6890.0,
+    "variation_usd": 0.0,
+    "revised_sum_usd": 6890.0,
+    "gross_usd": 3000.0,
+    "percent_complete": 43.54136429608128,
+    "retention_usd": 300.0,
+    "advance_recovered_usd": 0.0,
+    "net_certified_usd": 2700.0,
+    "previously_certified_usd": 0.0,
+    "due_now_usd": 2700.0,
+    "overpaid_usd": 0.0,
+    "overmeasure_usd": 0.0,
+    "summary": "Certificate 1: $2,700 due on work valued at $3,000 (44% of the revised sum).",
+    "problems": [],
+    "lines": [
+     {
+      "code": "MOB",
+      "item": "Mobilisation",
+      "unit": "sum",
+      "rate_usd": 3000.0,
+      "contract_quantity": 1,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 1.0,
+      "measured_quantity": 1.0,
+      "payable_quantity": 1.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 3000.0,
+      "authorised_amount_usd": 3000.0,
+      "payable_amount_usd": 3000.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 100.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-OB",
+      "item": "Drilling, overburden",
+      "unit": "m",
+      "rate_usd": 45.0,
+      "contract_quantity": 20,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 20.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 900.0,
+      "authorised_amount_usd": 900.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-RK",
+      "item": "Drilling, rock",
+      "unit": "m",
+      "rate_usd": 80.0,
+      "contract_quantity": 25,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 25.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 2000.0,
+      "authorised_amount_usd": 2000.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "CAS",
+      "item": "uPVC casing",
+      "unit": "m",
+      "rate_usd": 22.0,
+      "contract_quantity": 45,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 45.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 990.0,
+      "authorised_amount_usd": 990.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     }
+    ]
+   },
+   "summary_rows": [
+    [
+     "Contract",
+     "WSD/2024/017"
+    ],
+    [
+     "Contractor",
+     "WiNGiN"
+    ],
+    [
+     "Client",
+     "District Council"
+    ],
+    [
+     "Contract sum",
+     "$6,890"
+    ],
+    [
+     "Variations",
+     "+$0"
+    ],
+    [
+     "Revised sum",
+     "$6,890"
+    ],
+    [
+     "Work valued to date",
+     "$3,000"
+    ],
+    [
+     "Progress",
+     "44%"
+    ],
+    [
+     "Less retention (10%)",
+     "-$300"
+    ],
+    [
+     "Net certified to date",
+     "$2,700"
+    ],
+    [
+     "Less previously certified",
+     "-$0"
+    ],
+    [
+     "Due on this certificate",
+     "$2,700"
+    ]
+   ]
+  },
+  "overmeasured": {
+   "certificate": {
+    "number": 1,
+    "date": "2024-04-01",
+    "contract_ref": "WSD/2024/017",
+    "contract_sum_usd": 6890.0,
+    "variation_usd": 0.0,
+    "revised_sum_usd": 6890.0,
+    "gross_usd": 5000.0,
+    "percent_complete": 72.56894049346879,
+    "retention_usd": 344.5,
+    "advance_recovered_usd": 0.0,
+    "net_certified_usd": 4655.5,
+    "previously_certified_usd": 0.0,
+    "due_now_usd": 4655.5,
+    "overpaid_usd": 0.0,
+    "overmeasure_usd": 1360.0,
+    "summary": "Certificate 1: $4,656 due on work valued at $5,000 (73% of the revised sum).",
+    "problems": [
+     "DRL-RK is measured at 42 m against 25 authorised. The extra 17 is not payable until a variation authorises it - the work may well be justified, but that is a decision somebody signs, not a measurement."
+    ],
+    "lines": [
+     {
+      "code": "MOB",
+      "item": "Mobilisation",
+      "unit": "sum",
+      "rate_usd": 3000.0,
+      "contract_quantity": 1,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 1.0,
+      "measured_quantity": 1.0,
+      "payable_quantity": 1.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 3000.0,
+      "authorised_amount_usd": 3000.0,
+      "payable_amount_usd": 3000.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 100.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-OB",
+      "item": "Drilling, overburden",
+      "unit": "m",
+      "rate_usd": 45.0,
+      "contract_quantity": 20,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 20.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 900.0,
+      "authorised_amount_usd": 900.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-RK",
+      "item": "Drilling, rock",
+      "unit": "m",
+      "rate_usd": 80.0,
+      "contract_quantity": 25,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 25.0,
+      "measured_quantity": 42.0,
+      "payable_quantity": 25.0,
+      "overmeasure_quantity": 17.0,
+      "contract_amount_usd": 2000.0,
+      "authorised_amount_usd": 2000.0,
+      "payable_amount_usd": 2000.0,
+      "overmeasure_amount_usd": 1360.0,
+      "percent_complete": 100.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "CAS",
+      "item": "uPVC casing",
+      "unit": "m",
+      "rate_usd": 22.0,
+      "contract_quantity": 45,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 45.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 990.0,
+      "authorised_amount_usd": 990.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     }
+    ]
+   },
+   "summary_rows": [
+    [
+     "Contract",
+     "WSD/2024/017"
+    ],
+    [
+     "Contractor",
+     "WiNGiN"
+    ],
+    [
+     "Client",
+     "District Council"
+    ],
+    [
+     "Contract sum",
+     "$6,890"
+    ],
+    [
+     "Variations",
+     "+$0"
+    ],
+    [
+     "Revised sum",
+     "$6,890"
+    ],
+    [
+     "Work valued to date",
+     "$5,000"
+    ],
+    [
+     "Progress",
+     "73%"
+    ],
+    [
+     "Less retention (10%)",
+     "-$344"
+    ],
+    [
+     "Net certified to date",
+     "$4,656"
+    ],
+    [
+     "Less previously certified",
+     "-$0"
+    ],
+    [
+     "Due on this certificate",
+     "$4,656"
+    ]
+   ]
+  },
+  "varied": {
+   "certificate": {
+    "number": 2,
+    "date": "2024-04-01",
+    "contract_ref": "WSD/2024/017",
+    "contract_sum_usd": 6890.0,
+    "variation_usd": 1360.0,
+    "revised_sum_usd": 8250.0,
+    "gross_usd": 6360.0,
+    "percent_complete": 77.0909090909091,
+    "retention_usd": 412.5,
+    "advance_recovered_usd": 0.0,
+    "net_certified_usd": 5947.5,
+    "previously_certified_usd": 1500.0,
+    "due_now_usd": 4447.5,
+    "overpaid_usd": 0.0,
+    "overmeasure_usd": 0.0,
+    "summary": "Certificate 2: $4,448 due on work valued at $6,360 (77% of the revised sum).",
+    "problems": [],
+    "lines": [
+     {
+      "code": "MOB",
+      "item": "Mobilisation",
+      "unit": "sum",
+      "rate_usd": 3000.0,
+      "contract_quantity": 1,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 1.0,
+      "measured_quantity": 1.0,
+      "payable_quantity": 1.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 3000.0,
+      "authorised_amount_usd": 3000.0,
+      "payable_amount_usd": 3000.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 100.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-OB",
+      "item": "Drilling, overburden",
+      "unit": "m",
+      "rate_usd": 45.0,
+      "contract_quantity": 20,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 20.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 900.0,
+      "authorised_amount_usd": 900.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-RK",
+      "item": "Drilling, rock",
+      "unit": "m",
+      "rate_usd": 80.0,
+      "contract_quantity": 25,
+      "variation_quantity": 17.0,
+      "authorised_quantity": 42.0,
+      "measured_quantity": 42.0,
+      "payable_quantity": 42.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 2000.0,
+      "authorised_amount_usd": 3360.0,
+      "payable_amount_usd": 3360.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 100.0,
+      "in_contract": true,
+      "variation_refs": [
+       "VO-1"
+      ]
+     },
+     {
+      "code": "CAS",
+      "item": "uPVC casing",
+      "unit": "m",
+      "rate_usd": 22.0,
+      "contract_quantity": 45,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 45.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 990.0,
+      "authorised_amount_usd": 990.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     }
+    ]
+   },
+   "summary_rows": [
+    [
+     "Contract",
+     "WSD/2024/017"
+    ],
+    [
+     "Contractor",
+     "WiNGiN"
+    ],
+    [
+     "Client",
+     "District Council"
+    ],
+    [
+     "Contract sum",
+     "$6,890"
+    ],
+    [
+     "Variations",
+     "+$1,360"
+    ],
+    [
+     "Revised sum",
+     "$8,250"
+    ],
+    [
+     "Work valued to date",
+     "$6,360"
+    ],
+    [
+     "Progress",
+     "77%"
+    ],
+    [
+     "Less retention (10%)",
+     "-$412"
+    ],
+    [
+     "Net certified to date",
+     "$5,948"
+    ],
+    [
+     "Less previously certified",
+     "-$1,500"
+    ],
+    [
+     "Due on this certificate",
+     "$4,448"
+    ]
+   ]
+  },
+  "unsigned": {
+   "certificate": {
+    "number": 1,
+    "date": "2024-04-01",
+    "contract_ref": "WSD/2024/017",
+    "contract_sum_usd": 6890.0,
+    "variation_usd": 110.0,
+    "revised_sum_usd": 7000.0,
+    "gross_usd": 0.0,
+    "percent_complete": 0.0,
+    "retention_usd": 0.0,
+    "advance_recovered_usd": 0.0,
+    "net_certified_usd": 0.0,
+    "previously_certified_usd": 0.0,
+    "due_now_usd": 0.0,
+    "overpaid_usd": 0.0,
+    "overmeasure_usd": 0.0,
+    "summary": "Certificate 1: $0 due on work valued at $0 (0% of the revised sum).",
+    "problems": [
+     "Variation VO-2 on CAS names nobody who authorised it. An unsigned variation is a request, not an instruction.",
+     "GRAVEL has been measured but is neither in the contract nor in any variation, so there is no rate to pay it at and nothing authorising it. It is valued at zero.",
+     "GRAVEL is measured at 12  against 0 authorised. The extra 12 is not payable until a variation authorises it - the work may well be justified, but that is a decision somebody signs, not a measurement."
+    ],
+    "lines": [
+     {
+      "code": "MOB",
+      "item": "Mobilisation",
+      "unit": "sum",
+      "rate_usd": 3000.0,
+      "contract_quantity": 1,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 1.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 3000.0,
+      "authorised_amount_usd": 3000.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-OB",
+      "item": "Drilling, overburden",
+      "unit": "m",
+      "rate_usd": 45.0,
+      "contract_quantity": 20,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 20.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 900.0,
+      "authorised_amount_usd": 900.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-RK",
+      "item": "Drilling, rock",
+      "unit": "m",
+      "rate_usd": 80.0,
+      "contract_quantity": 25,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 25.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 2000.0,
+      "authorised_amount_usd": 2000.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "CAS",
+      "item": "uPVC casing",
+      "unit": "m",
+      "rate_usd": 22.0,
+      "contract_quantity": 45,
+      "variation_quantity": 5.0,
+      "authorised_quantity": 50.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 990.0,
+      "authorised_amount_usd": 1100.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": [
+       "VO-2"
+      ]
+     },
+     {
+      "code": "GRAVEL",
+      "item": "(not in the contract)",
+      "unit": "",
+      "rate_usd": 0.0,
+      "contract_quantity": 0.0,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 0.0,
+      "measured_quantity": 12.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 12.0,
+      "contract_amount_usd": 0.0,
+      "authorised_amount_usd": 0.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": null,
+      "in_contract": false,
+      "variation_refs": []
+     }
+    ]
+   },
+   "summary_rows": [
+    [
+     "Contract",
+     "WSD/2024/017"
+    ],
+    [
+     "Contractor",
+     "WiNGiN"
+    ],
+    [
+     "Client",
+     "District Council"
+    ],
+    [
+     "Contract sum",
+     "$6,890"
+    ],
+    [
+     "Variations",
+     "+$110"
+    ],
+    [
+     "Revised sum",
+     "$7,000"
+    ],
+    [
+     "Work valued to date",
+     "$0"
+    ],
+    [
+     "Progress",
+     "0%"
+    ],
+    [
+     "Less retention (10%)",
+     "-$0"
+    ],
+    [
+     "Net certified to date",
+     "$0"
+    ],
+    [
+     "Less previously certified",
+     "-$0"
+    ],
+    [
+     "Due on this certificate",
+     "$0"
+    ]
+   ]
+  },
+  "new_item": {
+   "certificate": {
+    "number": 1,
+    "date": "2024-04-01",
+    "contract_ref": "WSD/2024/017",
+    "contract_sum_usd": 6890.0,
+    "variation_usd": 0.0,
+    "revised_sum_usd": 6890.0,
+    "gross_usd": 0.0,
+    "percent_complete": 0.0,
+    "retention_usd": 0.0,
+    "advance_recovered_usd": 0.0,
+    "net_certified_usd": 0.0,
+    "previously_certified_usd": 0.0,
+    "due_now_usd": 0.0,
+    "overpaid_usd": 0.0,
+    "overmeasure_usd": 0.0,
+    "summary": "Certificate 1: $0 due on work valued at $0 (0% of the revised sum).",
+    "problems": [
+     "Variation VO-3 adds GRAVEL, which the contract does not price, without giving a rate. It is valued at zero until one is agreed."
+    ],
+    "lines": [
+     {
+      "code": "MOB",
+      "item": "Mobilisation",
+      "unit": "sum",
+      "rate_usd": 3000.0,
+      "contract_quantity": 1,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 1.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 3000.0,
+      "authorised_amount_usd": 3000.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-OB",
+      "item": "Drilling, overburden",
+      "unit": "m",
+      "rate_usd": 45.0,
+      "contract_quantity": 20,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 20.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 900.0,
+      "authorised_amount_usd": 900.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-RK",
+      "item": "Drilling, rock",
+      "unit": "m",
+      "rate_usd": 80.0,
+      "contract_quantity": 25,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 25.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 2000.0,
+      "authorised_amount_usd": 2000.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "CAS",
+      "item": "uPVC casing",
+      "unit": "m",
+      "rate_usd": 22.0,
+      "contract_quantity": 45,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 45.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 990.0,
+      "authorised_amount_usd": 990.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "GRAVEL",
+      "item": "Gravel pack",
+      "unit": "m3",
+      "rate_usd": 0.0,
+      "contract_quantity": 0.0,
+      "variation_quantity": 12.0,
+      "authorised_quantity": 12.0,
+      "measured_quantity": 12.0,
+      "payable_quantity": 12.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 0.0,
+      "authorised_amount_usd": 0.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 100.0,
+      "in_contract": false,
+      "variation_refs": [
+       "VO-3"
+      ]
+     }
+    ]
+   },
+   "summary_rows": [
+    [
+     "Contract",
+     "WSD/2024/017"
+    ],
+    [
+     "Contractor",
+     "WiNGiN"
+    ],
+    [
+     "Client",
+     "District Council"
+    ],
+    [
+     "Contract sum",
+     "$6,890"
+    ],
+    [
+     "Variations",
+     "+$0"
+    ],
+    [
+     "Revised sum",
+     "$6,890"
+    ],
+    [
+     "Work valued to date",
+     "$0"
+    ],
+    [
+     "Progress",
+     "0%"
+    ],
+    [
+     "Less retention (10%)",
+     "-$0"
+    ],
+    [
+     "Net certified to date",
+     "$0"
+    ],
+    [
+     "Less previously certified",
+     "-$0"
+    ],
+    [
+     "Due on this certificate",
+     "$0"
+    ]
+   ]
+  },
+  "advance": {
+   "certificate": {
+    "number": 1,
+    "date": "2024-04-01",
+    "contract_ref": "WSD/2024/017",
+    "contract_sum_usd": 6890.0,
+    "variation_usd": 0.0,
+    "revised_sum_usd": 6890.0,
+    "gross_usd": 6890.0,
+    "percent_complete": 100.0,
+    "retention_usd": 344.5,
+    "advance_recovered_usd": 1378.0,
+    "net_certified_usd": 5167.5,
+    "previously_certified_usd": 0.0,
+    "due_now_usd": 5167.5,
+    "overpaid_usd": 0.0,
+    "overmeasure_usd": 0.0,
+    "summary": "Certificate 1: $5,168 due on work valued at $6,890 (100% of the revised sum).",
+    "problems": [],
+    "lines": [
+     {
+      "code": "MOB",
+      "item": "Mobilisation",
+      "unit": "sum",
+      "rate_usd": 3000.0,
+      "contract_quantity": 1,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 1.0,
+      "measured_quantity": 1.0,
+      "payable_quantity": 1.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 3000.0,
+      "authorised_amount_usd": 3000.0,
+      "payable_amount_usd": 3000.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 100.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-OB",
+      "item": "Drilling, overburden",
+      "unit": "m",
+      "rate_usd": 45.0,
+      "contract_quantity": 20,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 20.0,
+      "measured_quantity": 20.0,
+      "payable_quantity": 20.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 900.0,
+      "authorised_amount_usd": 900.0,
+      "payable_amount_usd": 900.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 100.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-RK",
+      "item": "Drilling, rock",
+      "unit": "m",
+      "rate_usd": 80.0,
+      "contract_quantity": 25,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 25.0,
+      "measured_quantity": 25.0,
+      "payable_quantity": 25.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 2000.0,
+      "authorised_amount_usd": 2000.0,
+      "payable_amount_usd": 2000.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 100.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "CAS",
+      "item": "uPVC casing",
+      "unit": "m",
+      "rate_usd": 22.0,
+      "contract_quantity": 45,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 45.0,
+      "measured_quantity": 45.0,
+      "payable_quantity": 45.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 990.0,
+      "authorised_amount_usd": 990.0,
+      "payable_amount_usd": 990.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 100.0,
+      "in_contract": true,
+      "variation_refs": []
+     }
+    ]
+   },
+   "summary_rows": [
+    [
+     "Contract",
+     "WSD/2024/017"
+    ],
+    [
+     "Contractor",
+     "WiNGiN"
+    ],
+    [
+     "Client",
+     "District Council"
+    ],
+    [
+     "Contract sum",
+     "$6,890"
+    ],
+    [
+     "Variations",
+     "+$0"
+    ],
+    [
+     "Revised sum",
+     "$6,890"
+    ],
+    [
+     "Work valued to date",
+     "$6,890"
+    ],
+    [
+     "Progress",
+     "100%"
+    ],
+    [
+     "Less retention (5%)",
+     "-$344"
+    ],
+    [
+     "Less advance recovery (20% advance)",
+     "-$1,378"
+    ],
+    [
+     "Net certified to date",
+     "$5,168"
+    ],
+    [
+     "Less previously certified",
+     "-$0"
+    ],
+    [
+     "Due on this certificate",
+     "$5,168"
+    ]
+   ]
+  },
+  "overpaid": {
+   "certificate": {
+    "number": 2,
+    "date": "2024-04-01",
+    "contract_ref": "WSD/2024/017",
+    "contract_sum_usd": 6890.0,
+    "variation_usd": 0.0,
+    "revised_sum_usd": 6890.0,
+    "gross_usd": 3000.0,
+    "percent_complete": 43.54136429608128,
+    "retention_usd": 0.0,
+    "advance_recovered_usd": 0.0,
+    "net_certified_usd": 3000.0,
+    "previously_certified_usd": 5000.0,
+    "due_now_usd": 0.0,
+    "overpaid_usd": 2000.0,
+    "overmeasure_usd": 0.0,
+    "summary": "Certificate 2: $0 due on work valued at $3,000 (44% of the revised sum). Previous certificates exceed the value of the work by $2,000, so nothing is due.",
+    "problems": [],
+    "lines": [
+     {
+      "code": "MOB",
+      "item": "Mobilisation",
+      "unit": "sum",
+      "rate_usd": 3000.0,
+      "contract_quantity": 1,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 1.0,
+      "measured_quantity": 1.0,
+      "payable_quantity": 1.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 3000.0,
+      "authorised_amount_usd": 3000.0,
+      "payable_amount_usd": 3000.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 100.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-OB",
+      "item": "Drilling, overburden",
+      "unit": "m",
+      "rate_usd": 45.0,
+      "contract_quantity": 20,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 20.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 900.0,
+      "authorised_amount_usd": 900.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-RK",
+      "item": "Drilling, rock",
+      "unit": "m",
+      "rate_usd": 80.0,
+      "contract_quantity": 25,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 25.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 2000.0,
+      "authorised_amount_usd": 2000.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "CAS",
+      "item": "uPVC casing",
+      "unit": "m",
+      "rate_usd": 22.0,
+      "contract_quantity": 45,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 45.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 990.0,
+      "authorised_amount_usd": 990.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     }
+    ]
+   },
+   "summary_rows": [
+    [
+     "Contract",
+     "WSD/2024/017"
+    ],
+    [
+     "Contractor",
+     "WiNGiN"
+    ],
+    [
+     "Client",
+     "District Council"
+    ],
+    [
+     "Contract sum",
+     "$6,890"
+    ],
+    [
+     "Variations",
+     "+$0"
+    ],
+    [
+     "Revised sum",
+     "$6,890"
+    ],
+    [
+     "Work valued to date",
+     "$3,000"
+    ],
+    [
+     "Progress",
+     "44%"
+    ],
+    [
+     "Less retention (0%)",
+     "-$0"
+    ],
+    [
+     "Net certified to date",
+     "$3,000"
+    ],
+    [
+     "Less previously certified",
+     "-$5,000"
+    ],
+    [
+     "Due on this certificate",
+     "$0"
+    ]
+   ]
+  },
+  "negatives": {
+   "certificate": {
+    "number": 3,
+    "date": "2024-04-01",
+    "contract_ref": "WSD/2024/017",
+    "contract_sum_usd": 6890.0,
+    "variation_usd": 0.0,
+    "revised_sum_usd": 6890.0,
+    "gross_usd": 0.0,
+    "percent_complete": 0.0,
+    "retention_usd": 0.0,
+    "advance_recovered_usd": 0.0,
+    "net_certified_usd": 0.0,
+    "previously_certified_usd": 0.0,
+    "due_now_usd": 0.0,
+    "overpaid_usd": 0.0,
+    "overmeasure_usd": 0.0,
+    "summary": "Certificate 3: $0 due on work valued at $0 (0% of the revised sum).",
+    "problems": [
+     "CAS is measured as a negative quantity (-10); it is treated as nothing measured.",
+     "Previously certified is negative, which cannot be right; it is treated as nothing certified so far.",
+     "This is certificate 3 but nothing is recorded as previously certified. If earlier certificates were paid, the contractor will be paid for that work twice."
+    ],
+    "lines": [
+     {
+      "code": "MOB",
+      "item": "Mobilisation",
+      "unit": "sum",
+      "rate_usd": 3000.0,
+      "contract_quantity": 1,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 1.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 3000.0,
+      "authorised_amount_usd": 3000.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-OB",
+      "item": "Drilling, overburden",
+      "unit": "m",
+      "rate_usd": 45.0,
+      "contract_quantity": 20,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 20.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 900.0,
+      "authorised_amount_usd": 900.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-RK",
+      "item": "Drilling, rock",
+      "unit": "m",
+      "rate_usd": 80.0,
+      "contract_quantity": 25,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 25.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 2000.0,
+      "authorised_amount_usd": 2000.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "CAS",
+      "item": "uPVC casing",
+      "unit": "m",
+      "rate_usd": 22.0,
+      "contract_quantity": 45,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 45.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 990.0,
+      "authorised_amount_usd": 990.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     }
+    ]
+   },
+   "summary_rows": [
+    [
+     "Contract",
+     "WSD/2024/017"
+    ],
+    [
+     "Contractor",
+     "WiNGiN"
+    ],
+    [
+     "Client",
+     "District Council"
+    ],
+    [
+     "Contract sum",
+     "$6,890"
+    ],
+    [
+     "Variations",
+     "+$0"
+    ],
+    [
+     "Revised sum",
+     "$6,890"
+    ],
+    [
+     "Work valued to date",
+     "$0"
+    ],
+    [
+     "Progress",
+     "0%"
+    ],
+    [
+     "Less retention (10%)",
+     "-$0"
+    ],
+    [
+     "Net certified to date",
+     "$0"
+    ],
+    [
+     "Less previously certified",
+     "-$0"
+    ],
+    [
+     "Due on this certificate",
+     "$0"
+    ]
+   ]
+  }
+ },
  "rounding": [
   {
    "value": 0.15,

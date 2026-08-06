@@ -34,6 +34,8 @@ import streamlit.components.v1 as components
 import yaml
 
 import groundwater
+from datetime import date
+
 from groundwater.config import Config
 from groundwater.costing import (
     CostingInputs,
@@ -74,7 +76,16 @@ from groundwater.mapping import (
     plot_portfolio_map,
     suitability_map,
 )
+from groundwater.planning import (
+    AGEING_YEARS,
+    CENSUS_YEAR,
+    DEFAULT_GROWTH_RATE,
+    planning_rows,
+    planning_stats,
+)
 from groundwater.coverage import (
+    group_points_by_chiefdom,
+    group_points_by_district,
     POPULATION_CREDIT,
     chiefdom_coverage_rows,
     chiefdom_population,
@@ -87,6 +98,38 @@ from groundwater.coverage import (
     load_chiefdom_district,
     load_chiefdom_polys,
     load_district_population,
+)
+from groundwater.readiness import assess_readiness
+from groundwater.procurement import (
+    Contract,
+    ContractLine,
+    Measurement,
+    Variation,
+    certify,
+    contract_from_estimate,
+    contract_summary,
+)
+from groundwater.reporting.procurement import (
+    PaymentCertificateInputs,
+    build_payment_certificate,
+)
+from groundwater.seasonal import MONTH_NAMES, month_of, seasonal_yield
+from groundwater.registry import (
+    EVENT_KINDS,
+    AssetEvent,
+    asset_from_dict,
+    asset_from_project,
+    asset_state,
+    merge_events,
+    parse_asset_id,
+    registry_rows,
+    registry_stats,
+    validate_asset_id,
+)
+from groundwater.reporting.registry import (
+    AssetReportInputs,
+    build_asset_placard,
+    build_asset_record,
 )
 from groundwater.portfolio import (
     STATUS_LABELS,
@@ -720,6 +763,79 @@ def _project_summary() -> dict:
     return {k: v for k, v in summary.items() if v not in (None, "")}
 
 
+# ---------------------------------------------------------------------------
+# Certification gate
+# ---------------------------------------------------------------------------
+
+def _project_state() -> dict:
+    """The session, keyed as groundwater.readiness expects it."""
+    return {
+        "site": site_from_state(),
+        "drilling_log": st.session_state.get("drilling_log"),
+        "pump_analysis": st.session_state.get("pump_analysis"),
+        "wq_assessment": st.session_state.get("wq_assessment"),
+        "borehole_design": st.session_state.get("borehole_design"),
+        "cost_estimate": st.session_state.get("cost_estimate"),
+    }
+
+
+def _overrides_for(report: str) -> dict:
+    """Overrides the analyst recorded for this report, from session state."""
+    return st.session_state.get(f"_override_{report}") or {}
+
+
+def report_gate(report: str):
+    """Show what this report can and cannot stand behind, and return it.
+
+    Deliberately never disables the button. An analyst who needs an interim
+    document will produce one either way; the useful thing is that the
+    document says what it rests on, so this renders the outstanding items,
+    offers a recorded override, and hands the result to the report builder
+    to stamp on its own cover.
+    """
+    readiness = assess_readiness(_project_state(), report, _overrides_for(report))
+    if readiness.state == "ready":
+        st.success("Ready to certify: " + readiness.summary)
+    else:
+        renderer = st.warning if readiness.state == "ready_with_overrides" else st.error
+        renderer(readiness.summary)
+        with st.expander("What this report cannot yet stand behind", expanded=True):
+            for req in readiness.unmet:
+                st.markdown(f"**{req.title}** — {req.detail}")
+            for req in readiness.overridden:
+                who = f" ({req.override_by})" if req.override_by else ""
+                st.markdown(
+                    f"**{req.title}** — {req.detail}  \n"
+                    f"_Overridden{who}: {req.override_reason or 'no reason recorded'}_"
+                )
+            if readiness.unmet:
+                st.caption(
+                    "The report will still be produced, stamped PROVISIONAL and "
+                    "listing these items. To issue it as an interim document "
+                    "instead, record who is issuing it and why."
+                )
+                with st.form(f"override_{report}"):
+                    by = st.text_input("Issued by", key=f"ovr_by_{report}")
+                    reason = st.text_area("Reason", key=f"ovr_why_{report}")
+                    picked = st.multiselect(
+                        "Requirements to issue on override",
+                        [r.key for r in readiness.unmet],
+                        format_func=lambda k: dict(
+                            (r.key, r.title) for r in readiness.unmet)[k],
+                        key=f"ovr_keys_{report}",
+                    )
+                    if st.form_submit_button("Record override") and picked and reason:
+                        st.session_state[f"_override_{report}"] = {
+                            key: {"reason": reason.strip(), "by": by.strip()}
+                            for key in picked
+                        }
+                        st.rerun()
+    if readiness.assumptions:
+        st.caption("Assumptions carried into this report: "
+                   + "; ".join(readiness.assumptions))
+    return readiness
+
+
 def _apply_latlon() -> None:
     """Convert the decimal lat/lon entry into the UTM site fields.
 
@@ -791,10 +907,15 @@ def _load_project() -> None:
     overrides = updates.pop("rates_overrides", None)
     committee = updates.pop("committee", None)
     sources = updates.pop("sources", None)
+    # the file names it "asset"; the session key it belongs under is the one
+    # serialize_project reads back, so the round trip has to be closed here
+    asset = updates.pop("asset", None)
     for key, value in updates.items():
         st.session_state[key] = value
     if isinstance(overrides, dict):
         st.session_state.rates_overrides = overrides
+    if isinstance(asset, dict) and asset:
+        st.session_state["asset_record"] = asset
     # restore the saved data files and flag a recompute so the analyses and
     # reports are rebuilt without re-uploading
     if isinstance(sources, dict) and sources:
@@ -826,8 +947,10 @@ NAV_GROUPS: list[tuple[str, list[str]]] = [
     ("Investigation", ["Geophysics (VES)", "Borehole design", "Depth Spine",
                        "Scanned sheets"]),
     ("Testing", ["Pumping test", "Water quality"]),
-    ("Delivery", ["Costing & BoQ", "Supervision", "Handover", "Templates"]),
-    ("Area analysis", ["Water points", "Coverage gap", "Portfolio"]),
+    ("Delivery", ["Costing & BoQ", "Procurement", "Supervision", "Handover",
+                  "Templates"]),
+    ("Area analysis", ["Water points", "Coverage gap", "Portfolio",
+                       "Asset registry"]),
 ]
 _ALL_PAGES = [p for _, pages in NAV_GROUPS for p in pages]
 DEFAULT_PAGE = "Overview"
@@ -1280,6 +1403,7 @@ tab_overview = _page("Overview")
 tab_guide = _page("Guided start")
 tab_ves = _page("Geophysics (VES)")
 tab_cost = _page("Costing & BoQ")
+tab_procurement = _page("Procurement")
 tab_supervision = _page("Supervision")
 tab_design = _page("Borehole design")
 tab_spine = _page("Depth Spine")
@@ -1292,6 +1416,7 @@ tab_coverage = _page("Coverage gap")
 tab_extract = _page("Scanned sheets")
 tab_templates = _page("Templates")
 tab_portfolio = _page("Portfolio")
+tab_registry = _page("Asset registry")
 
 _active_page = st.session_state.get("nav", DEFAULT_PAGE)
 st.markdown(
@@ -2217,10 +2342,81 @@ with tab_pump:
             )
             st.caption(yr.basis)
 
+        # --- through the year ------------------------------------------
+        # A test measures one day; the borehole has to supply the village on
+        # the worst one, and those are months apart.
+        st.subheader("Through the year")
+        _read_month, _month_note = month_of(test.site.date)
+        _choices = [0] + list(range(1, 13))
+        _picked = st.selectbox(
+            "Month the test was run",
+            _choices,
+            index=_choices.index(_read_month) if _read_month else 0,
+            format_func=lambda m: ("not known" if m == 0 else MONTH_NAMES[m - 1]),
+            key="seasonal_month",
+            help="The water table is highest at the end of the rains and "
+                 "lowest in April or May, so when the test was run changes "
+                 "what it proves. Read from the field sheet where it can be.",
+        )
+        # not named _band: that is a module-level helper used above, and
+        # shadowing it here would break the yield bands on the next rerun
+        _swing = st.number_input(
+            "Annual water-table swing (m)",
+            min_value=0.0, max_value=30.0, step=0.5,
+            value=float(app_config().pumping.seasonal_allowance_m),
+            key="seasonal_range",
+            help="Wet-season high to dry-season low in this borehole. A single "
+                 "test cannot measure it; two readings six months apart can. "
+                 "Every figure below moves with it.",
+        )
+        if _month_note:
+            st.warning(_month_note)
+        _seasonal = seasonal_yield(
+            analysis, app_config().pumping,
+            month=(_picked or None), annual_range_m=_swing)
+        if not _seasonal.is_established:
+            st.info(_seasonal.pending_reason or
+                    "The seasonal projection is not available for this test.")
+        else:
+            st.write(_seasonal.summary)
+            st.dataframe(
+                [{"Scenario": sc.title,
+                  "Further decline (m)": round(sc.decline_m, 1),
+                  "Static level (m)": round(sc.static_water_level_m, 2),
+                  "Available drawdown (m)": round(sc.available_drawdown_m, 1)
+                  if sc.available_drawdown_m else None,
+                  "Safe yield (m3/h)": round(sc.safe_yield_m3_per_h, 2)
+                  if sc.safe_yield_m3_per_h else None,
+                  "Pump intake (m)": sc.pump_installation_depth_m}
+                 for sc in _seasonal.scenarios],
+                hide_index=True, width="stretch",
+            )
+            _loss = _seasonal.dry_season_loss_percent
+            if _loss and _loss > 1:
+                st.warning(
+                    f"By the end of the dry season this borehole yields about "
+                    f"{_loss:.0f}% less than it did on the day of the test. "
+                    "Size the supply on the dry-season figure."
+                )
+            if _seasonal.pump_installation_depth_m is not None:
+                st.info(
+                    "Set the pump intake at "
+                    f"{fmt_num(_seasonal.pump_installation_depth_m)} m - deep "
+                    "enough for the drought case. The pump is fitted once, and "
+                    "one that draws air in a bad year loses the village its "
+                    "borehole in the year it is needed most."
+                )
+            st.caption(
+                f"The annual range used is {_seasonal.annual_range_m:.1f} m - "
+                f"{_seasonal.range_source}."
+            )
+
+        _pump_gate = report_gate("pumping")
         if st.button("Build pumping test report", key="build_pump_report"):
           with _working("Building the pumping test report..."):
             report_path = build_pumping_report(
-                PumpingReportInputs(analysis=analysis, figures_dir=workdir()),
+                PumpingReportInputs(analysis=analysis, figures_dir=workdir(),
+                                    readiness=_pump_gate, seasonal=_seasonal),
                 workdir() / "Pumping_Test_Report.docx",
                 app_config(),
             )
@@ -2311,10 +2507,12 @@ with tab_quality:
             col1.image(str(piper))
             col2.image(str(stiff))
 
+        _quality_gate = report_gate("quality")
         if st.button("Build water quality report", key="build_wq_report"):
           with _working("Building the water quality report - drawing the Piper and Stiff diagrams..."):
             report_path = build_quality_report(
-                QualityReportInputs(assessment=assessment, figures_dir=workdir()),
+                QualityReportInputs(assessment=assessment, figures_dir=workdir(),
+                                    readiness=_quality_gate),
                 workdir() / "Water_Quality_Report.docx",
                 app_config(),
             )
@@ -3092,6 +3290,7 @@ with tab_handover:
     client_rep = s2.text_input("Client representative", key="ho_client_rep")
     community_rep = s3.text_input("Community representative", key="ho_community_rep")
 
+    _handover_gate = report_gate("handover")
     if st.button("Build handover report", key="build_handover", type="primary"):
         committee = [
             CommitteeMember(
@@ -3116,6 +3315,7 @@ with tab_handover:
                 tariff_note=tariff,
                 pump_type=pump_type,
                 extra_recommendations=[r.strip() for r in recs_text.splitlines() if r.strip()],
+                readiness=_handover_gate,
                 contractor_rep=contractor_rep,
                 client_rep=client_rep,
                 community_rep=community_rep,
@@ -3334,13 +3534,17 @@ with tab_coverage:
         chiefdom = resolution == "Chiefdom"
         members = None
         rows = None
+        grouped = None
+        area_population = None
         if chiefdom:
             unit = "chiefdom"
             try:
                 counts, unassigned = count_points_by_chiefdom(
                     cov_points, cov_polys()
                 )
+                grouped, _ = group_points_by_chiefdom(cov_points, cov_polys())
                 chief_pop, members = cov_chiefdom_population()
+                area_population = chief_pop
                 rows = chiefdom_coverage_rows(chief_pop, counts, cov_crosswalk())
             except Exception as exc:  # e.g. a hand-edited crosswalk
                 st.error(
@@ -3352,9 +3556,27 @@ with tab_coverage:
             counts, unassigned = count_points_by_district(
                 cov_points, cov_polys(), cov_crosswalk()
             )
-            rows = coverage_rows(cov_population(), counts)
+            grouped, _ = group_points_by_district(
+                cov_points, cov_polys(), cov_crosswalk()
+            )
+            area_population = cov_population()
+            rows = coverage_rows(area_population, counts)
     if cov_points and rows is not None:
         stats = coverage_stats(rows)
+        _plan_year = st.number_input(
+            "Plan for year", min_value=CENSUS_YEAR, max_value=2050,
+            value=max(date.today().year, CENSUS_YEAR), step=1, key="cov_year",
+            help="The census is from 2015. A people-per-point figure without "
+                 "a year attached is a wrong number nobody notices.",
+        )
+        _plan_rate = st.number_input(
+            "Annual population growth (%)", min_value=0.0, max_value=10.0,
+            value=round(DEFAULT_GROWTH_RATE * 100, 2), step=0.1,
+            key="cov_rate",
+            help="The default is the rate implied by the 2004 and 2015 census "
+                 "totals. It is higher than recent international projections; "
+                 "use your programme's own figure if you have one.",
+        )
         c1, c2, c3, c4 = st.columns(4)
         c1.metric(f"{unit.title()}s", stats["n_areas"])
         c2.metric(
@@ -3372,6 +3594,76 @@ with tab_coverage:
             f"{stats['national_people_per_point']:,.0f}/pt"
             if stats["national_people_per_point"] is not None else "n/a",
         )
+        # --- planning view -------------------------------------------------
+        # The census is a decade old and the survey behind each point is
+        # older than it looks. Both are made visible rather than folded into
+        # one figure that reads as current.
+        _plan_rows, _projection = planning_rows(
+            area_population, grouped or {},
+            as_of_year=int(_plan_year), rate=_plan_rate / 100.0)
+        _plan_stats = planning_stats(_plan_rows, _projection)
+        st.caption(_projection.note)
+        p1, p2, p3 = st.columns(3)
+        p1.metric(
+            f"Population {int(_plan_year)}",
+            f"{_plan_stats['population']:,.0f}",
+            delta=f"{_plan_stats['population'] - _plan_stats['census_population']:+,.0f}"
+                  " since the census",
+        )
+        p2.metric(
+            f"People per point ({int(_plan_year)})",
+            f"{_plan_stats['national_people_per_point']:,.0f}"
+            if _plan_stats["national_people_per_point"] is not None else "n/a",
+        )
+        p3.metric(
+            "...counting recent surveys only",
+            f"{_plan_stats['national_people_per_recent_point']:,.0f}"
+            if _plan_stats["national_people_per_recent_point"] is not None
+            else "n/a",
+            help="A point reported functional years ago is evidence about "
+                 "then. The gap between these two figures is the size of the "
+                 "assumption in the one on the left.",
+        )
+        if _plan_stats["n_stale_areas"]:
+            st.warning(
+                f"{_plan_stats['n_stale_areas']} {unit}(s) rest on surveys "
+                f"more than {AGEING_YEARS} years old: "
+                + ", ".join(_plan_stats["stale_areas"][:8])
+                + ("..." if _plan_stats["n_stale_areas"] > 8 else "")
+                + ". Their coverage figures describe the year they were "
+                "surveyed, not this one."
+            )
+        if not _plan_stats["n_seasonality_recorded"]:
+            st.info(
+                f"None of these {_plan_stats['n_seasonality_unknown']:,} "
+                "functional points records how many months of the year it "
+                "yields water, so dry-season service cannot be separated from "
+                "wet-season service. Silence is not a year-round supply."
+            )
+        else:
+            st.caption(
+                f"{_plan_stats['n_seasonality_recorded']:,} points record "
+                f"their seasonality and {_plan_stats['n_seasonality_unknown']:,} "
+                "do not; the dry-season column below is a band between "
+                "counting the unrecorded ones and not counting them."
+            )
+        with st.expander("Planning table: freshness and dry-season service"):
+            st.dataframe(
+                [{"Rank": r.rank, unit.title(): r.name,
+                  f"Population {int(_plan_year)}": int(r.population),
+                  "Functional": r.functional_points,
+                  "Recently surveyed": r.recent_functional_points,
+                  "People / point": round(r.people_per_point)
+                  if r.people_per_point is not None else None,
+                  "...recent only": round(r.people_per_recent_point)
+                  if r.people_per_recent_point is not None else None,
+                  "Survey": r.freshness.label,
+                  "Year-round points": r.seasonal.n_year_round,
+                  "Seasonal points": r.seasonal.n_seasonal}
+                 for r in _plan_rows],
+                hide_index=True, width="stretch",
+            )
+
         cov_map = workdir() / "coverage_map.png"
         if chiefdom:
             plot_coverage_choropleth(
@@ -3599,6 +3891,343 @@ with tab_portfolio:
             key="portfolio_onepager",
         )
 
+with tab_registry:
+    st.header("Borehole asset registry")
+    st.caption(
+        "A drilling project ends; the borehole does not. This page holds the "
+        "other half: a stable identifier that outlives the project file, the "
+        "maintenance history recorded against it, and what that history says "
+        "is true today. Nothing here is assumed - a borehole nobody has "
+        "reported on is not working, it is unknown."
+    )
+
+    _asset = st.session_state.get("asset_record")
+    _draft = asset_from_project(_project_state())
+    if not _asset and _draft is not None:
+        _asset = _draft.as_dict()
+    _live = asset_from_dict(_asset) if _asset else None
+
+    st.subheader("This borehole")
+    if _live is None:
+        st.info(
+            "This project has no recorded position yet, so it cannot be given "
+            "an identifier - there would be nothing to find the borehole by. "
+            "Enter the GPS position in the site details in the sidebar."
+        )
+    else:
+        _state = asset_state(_live)
+        _c1, _c2, _c3 = st.columns([2, 1, 1])
+        _c1.metric("Identifier", _live.asset_id)
+        _c2.metric("Status", _state.label)
+        if _state.days_out_of_service is not None:
+            _c3.metric("Out of service", f"{_state.days_out_of_service} days")
+        st.caption(
+            "The identifier is derived from the position, so two teams at the "
+            "same wellhead with no connection between them arrive at the same "
+            "one. The last character is a check character: it catches every "
+            "single mistyped character and every transposition of two."
+        )
+        st.write(_state.detail)
+        _outstanding = [i for i in _state.due if i.state in ("overdue", "unknown")]
+        if _outstanding:
+            for _item in _outstanding:
+                st.warning(_item.detail)
+        else:
+            for _item in _state.due:
+                st.caption(_item.detail)
+
+        with st.form("asset_event_form", clear_on_submit=True):
+            st.markdown("**Record what happened**")
+            _f1, _f2, _f3 = st.columns([1, 1, 2])
+            _when = _f1.date_input("Date", key="asset_event_when")
+            _kind = _f2.selectbox(
+                "What happened", list(EVENT_KINDS),
+                format_func=lambda k: EVENT_KINDS[k][0], key="asset_event_kind")
+            _by = _f3.text_input("Recorded by", key="asset_event_by",
+                                 placeholder="Name")
+            _note = st.text_input("Note", key="asset_event_note",
+                                  placeholder="What was found or done")
+            if st.form_submit_button("Add to the history"):
+                _events = merge_events(
+                    _live.asset_id, _live.events,
+                    [AssetEvent(when=_when.isoformat(), kind=_kind,
+                                note=_note, by=_by)])
+                _live.events = _events
+                st.session_state["asset_record"] = _live.as_dict()
+                st.success("Recorded. The history is append-only: a mistake is "
+                           "corrected by recording the correction.")
+        st.caption(
+            "The history travels inside the saved project file, so a record "
+            "kept only in this browser is one bad laptop away from gone."
+        )
+
+        if _live.events:
+            st.subheader("History")
+            st.dataframe(
+                [{"Date": e.when or "(no date)", "Event": e.label,
+                  "Note": e.note, "Recorded by": e.by} for e in _live.events],
+                hide_index=True, width="stretch",
+            )
+
+        _r1, _r2 = st.columns(2)
+        if _r1.button("Build identification plate (.docx)", key="asset_placard"):
+            _inputs = AssetReportInputs(asset=_live, figures_dir=workdir(),
+                                        readiness=report_gate("completion"))
+            offer_download(
+                build_asset_placard(_inputs,
+                                    workdir() / f"placard_{_live.asset_id}.docx",
+                                    app_config()),
+                "Borehole identification plate")
+        if _r2.button("Build asset record (.docx)", key="asset_record_report"):
+            _inputs = AssetReportInputs(asset=_live, figures_dir=workdir(),
+                                        readiness=report_gate("completion"))
+            offer_download(
+                build_asset_record(_inputs,
+                                   workdir() / f"asset_{_live.asset_id}.docx",
+                                   app_config()),
+                "Borehole asset record")
+
+    st.divider()
+    st.subheader("Look up an identifier")
+    _typed = st.text_input(
+        "Identifier from a headworks plate", key="asset_lookup",
+        placeholder="SL-WAR-8FEEVKQ-T")
+    if _typed:
+        _ok, _reason = validate_asset_id(_typed)
+        if _ok:
+            st.success(f"That is a valid identifier: {parse_asset_id(_typed)}")
+        else:
+            st.error(_reason)
+
+    st.divider()
+    st.subheader("Many boreholes")
+    st.caption(
+        "Drop in saved project files to see the whole register: what is "
+        "working, what is not, and what is overdue a visit."
+    )
+    _files = st.file_uploader(
+        "Saved project files (.yaml)", type=["yaml", "yml"],
+        accept_multiple_files=True, key="registry_upload")
+    _assets, _dropped = [], 0
+    for _uploaded in _files or []:
+        try:
+            _updates = deserialize_project(_uploaded.getvalue())
+        except Exception:
+            _dropped += 1
+            continue
+        _record = asset_from_dict(_updates.get("asset") or {})
+        if _record is None:
+            _dropped += 1
+            continue
+        _assets.append(_record)
+    if _dropped:
+        st.warning(
+            f"{_dropped} file(s) carried no readable asset record and were "
+            "skipped. A project file only carries one once the borehole has "
+            "been given an identifier on this page."
+        )
+    if not _assets:
+        st.info("Upload saved project files that carry an asset record.")
+    else:
+        _stats = registry_stats(_assets)
+        _s1, _s2, _s3, _s4 = st.columns(4)
+        _s1.metric("Boreholes", _stats["n_assets"])
+        _s2.metric("Working", _stats["n_functional"])
+        _s3.metric("Not working", _stats["n_non_functional"])
+        _s4.metric("Condition unknown", _stats["n_unknown"])
+        if _stats["functionality_rate"] is not None:
+            st.metric("Functionality rate", f"{_stats['functionality_rate']:.0f}%",
+                      help="Over the boreholes whose condition is actually "
+                           "known. A rate computed over silence is the number "
+                           "that makes these registers untrustworthy.")
+        if _stats["n_unknown"]:
+            st.warning(
+                f"{_stats['n_unknown']} borehole(s) have nothing recorded "
+                "against them at all. That is not the same as nothing having "
+                "happened to them."
+            )
+        _chase = _stats["n_overdue_inspection"] + _stats["n_overdue_sample"]
+        if _chase:
+            st.info(
+                f"{_stats['n_overdue_inspection']} overdue a sanitary "
+                f"inspection, {_stats['n_overdue_sample']} overdue a water "
+                "quality sample."
+            )
+        st.dataframe(registry_rows(_assets), hide_index=True, width="stretch")
+
+
+with tab_procurement:
+    st.header("Procurement: planned against actual")
+    st.caption(
+        "A bill of quantities is an estimate until somebody signs it, and a "
+        "contract afterwards. This page tracks what was measured against what "
+        "was authorised, records the variation orders that move the line, and "
+        "produces the interim payment certificate. Work that was done but "
+        "nobody authorised is shown and withheld - not because it was "
+        "unnecessary, but because paying for it is a decision somebody signs."
+    )
+
+    _estimate = st.session_state.get("cost_estimate")
+    _contract_lines = st.session_state.get("proc_contract_lines")
+    if _contract_lines is None and _estimate is not None:
+        st.info(
+            "The cost estimate from the Costing page is not a contract until "
+            "it is awarded. Freeze it here and the certificate is measured "
+            "against the frozen copy, so a later change to the design cannot "
+            "move what was signed."
+        )
+    a1, a2, a3 = st.columns([2, 1, 1])
+    _ref = a1.text_input("Contract reference", key="proc_ref",
+                         placeholder="WSD/2024/017")
+    _retention = a2.number_input("Retention (%)", min_value=0.0, max_value=25.0,
+                                 value=10.0, step=0.5, key="proc_retention")
+    _advance = a3.number_input("Advance (%)", min_value=0.0, max_value=50.0,
+                               value=0.0, step=5.0, key="proc_advance")
+    if _estimate is not None and st.button("Award this estimate as the contract",
+                                           key="proc_award"):
+        _frozen = contract_from_estimate(
+            _estimate, ref=_ref or "(unreferenced)",
+            contractor=st.session_state.get("meta_contractor", ""),
+            client=st.session_state.get("meta_client", ""),
+            retention_percent=_retention, advance_percent=_advance)
+        st.session_state["proc_contract_lines"] = [
+            line.as_dict() for line in _frozen.lines]
+        st.success(
+            f"Contract frozen at ${_frozen.sum_usd:,.0f} across "
+            f"{len(_frozen.lines)} lines.")
+        _contract_lines = st.session_state["proc_contract_lines"]
+
+    if not _contract_lines:
+        st.info(
+            "No contract yet. Build a cost estimate on the Costing & BoQ page, "
+            "then award it here."
+        )
+    else:
+        _contract = Contract(
+            ref=_ref or "(unreferenced)",
+            contractor=st.session_state.get("meta_contractor", ""),
+            client=st.session_state.get("meta_client", ""),
+            lines=[ContractLine(
+                code=row["code"], item=row["item"], unit=row["unit"],
+                quantity=float(row["quantity"]),
+                rate_usd=float(row["rate_usd"]),
+                stage=row.get("stage", ""), category=row.get("category", ""))
+                for row in _contract_lines],
+            retention_percent=_retention, advance_percent=_advance)
+        st.metric("Contract sum", f"${_contract.sum_usd:,.0f}")
+
+        st.subheader("Measured to date")
+        st.caption(
+            "Cumulative quantities, not increments: this is everything done "
+            "so far on each line. The certificate works out what is new."
+        )
+        _measured_rows = st.data_editor(
+            st.session_state.get("proc_measured") or [
+                {"Code": line.code, "Item": line.item, "Unit": line.unit,
+                 "Contract": line.quantity, "Measured to date": 0.0}
+                for line in _contract.lines],
+            key="proc_measure_editor", hide_index=True, width="stretch",
+            disabled=["Code", "Item", "Unit", "Contract"],
+        )
+        st.session_state["proc_measured"] = (
+            _measured_rows.to_dict("records")
+            if hasattr(_measured_rows, "to_dict") else list(_measured_rows))
+
+        st.subheader("Variation orders")
+        st.caption(
+            "A variation is what makes extra work payable. It needs a reason "
+            "and a name: an unsigned variation is a request, not an "
+            "instruction."
+        )
+        _variation_rows = st.data_editor(
+            st.session_state.get("proc_variations") or [
+                {"Ref": "", "Date": "", "Code": "", "Quantity change": 0.0,
+                 "New rate (USD)": None, "Reason": "", "Authorised by": ""}],
+            key="proc_variation_editor", hide_index=True, width="stretch",
+            num_rows="dynamic",
+        )
+        st.session_state["proc_variations"] = (
+            _variation_rows.to_dict("records")
+            if hasattr(_variation_rows, "to_dict") else list(_variation_rows))
+
+        st.subheader("Certificate")
+        c1, c2, c3 = st.columns(3)
+        _number = c1.number_input("Certificate number", min_value=1, step=1,
+                                  value=1, key="proc_number")
+        _cert_date = c2.text_input("Date", key="proc_date",
+                                   placeholder="2024-04-01")
+        _previous = c3.number_input(
+            "Previously certified (USD)", min_value=0.0, step=100.0, value=0.0,
+            key="proc_previous",
+            help="Everything net-certified on earlier certificates. Leave it "
+                 "at zero on a later certificate and the contractor is paid "
+                 "for that work twice.")
+
+        _measurements = [
+            Measurement(code=str(row.get("Code") or ""),
+                        quantity=float(row.get("Measured to date") or 0.0))
+            for row in st.session_state["proc_measured"]
+            if str(row.get("Code") or "").strip()
+        ]
+        _variations = [
+            Variation(
+                ref=str(row.get("Ref") or ""), date=str(row.get("Date") or ""),
+                code=str(row.get("Code") or ""),
+                quantity_delta=float(row.get("Quantity change") or 0.0),
+                rate_usd=(float(row["New rate (USD)"])
+                          if row.get("New rate (USD)") not in (None, "") else None),
+                reason=str(row.get("Reason") or ""),
+                authorised_by=str(row.get("Authorised by") or ""))
+            for row in st.session_state["proc_variations"]
+            if str(row.get("Code") or "").strip()
+        ]
+        _certificate = certify(
+            _contract, _measurements, number=int(_number),
+            date=_cert_date or "(undated)", variations=_variations,
+            previously_certified_usd=float(_previous))
+
+        for _problem in _certificate.problems:
+            st.warning(_problem)
+        st.success(_certificate.summary)
+        st.dataframe(
+            [{"": label, " ": value}
+             for label, value in contract_summary(_contract, _certificate)],
+            hide_index=True, width="stretch",
+        )
+        if _certificate.overmeasure_usd:
+            st.error(
+                f"${_certificate.overmeasure_usd:,.0f} of work has been "
+                "measured but not authorised, so it is not certified here. "
+                "Record a variation order against those lines and it becomes "
+                "payable on the next certificate."
+            )
+        st.dataframe(
+            [{"Code": line.code, "Item": line.item, "Unit": line.unit,
+              "Contract": line.contract_quantity,
+              "Varied": line.variation_quantity,
+              "Authorised": line.authorised_quantity,
+              "Measured": line.measured_quantity,
+              "Payable": line.payable_quantity,
+              "Rate": round(line.rate_usd, 2),
+              "Amount (USD)": round(line.payable_amount_usd),
+              "% done": round(line.percent_complete)
+              if line.percent_complete is not None else None}
+             for line in _certificate.lines],
+            hide_index=True, width="stretch",
+        )
+        if st.button("Build interim payment certificate (.docx)",
+                     key="proc_build"):
+            with _working("Building the certificate..."):
+                _path = build_payment_certificate(
+                    PaymentCertificateInputs(
+                        contract=_contract, certificate=_certificate,
+                        prepared_by=st.session_state.get("meta_supervisor", ""),
+                        readiness=report_gate("costing")),
+                    workdir() / f"IPC_{int(_number)}.docx", app_config())
+            offer_download(_path,
+                           f"Interim payment certificate {int(_number)}")
+
+
 # ---------------------------------------------------------------------------
 # Deliverables, filled last for the same reason: the Overview renders before
 # the pages that build the files.
@@ -3636,6 +4265,12 @@ with _project_panel:
     )
     # capture a headline summary so the saved file feeds the portfolio view
     st.session_state["project_summary"] = _project_summary()
+    # and the asset identifier, so a located borehole carries one into the
+    # registry without anybody having to visit that page first
+    if not st.session_state.get("asset_record"):
+        _drafted = asset_from_project(_project_state())
+        if _drafted is not None:
+            st.session_state["asset_record"] = _drafted.as_dict()
     st.download_button(
         "Save project (.yaml)",
         project_file_bytes(),

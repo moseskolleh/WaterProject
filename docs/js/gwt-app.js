@@ -36,6 +36,7 @@
     ]],
     ['Delivery', [
       ['costing', 'Costing & BoQ'],
+      ['procurement', 'Procurement'],
       ['supervision', 'Supervision'],
       ['handover', 'Handover'],
       ['templates', 'Templates'],
@@ -44,6 +45,7 @@
       ['waterpoints', 'Water points'],
       ['coverage', 'Coverage gap'],
       ['portfolio', 'Portfolio'],
+      ['registry', 'Asset registry'],
     ]],
     ['', [
       ['settings', 'Settings'],
@@ -77,6 +79,12 @@
       waterpoints: { radius: 1000 },
       spine: { stage: 'design', ledger: {}, signatory: '' },
       extraction: { model: '' },
+      /* per report kind: { requirementKey: {reason, by} } */
+      overrides: {},
+      asset: null,
+      seasonal: {},
+      procurement: { contract: null, measured: {}, variations: [],
+        number: 1, date: '', previous: 0 },
       theme: 'auto',
     };
   }
@@ -2185,12 +2193,357 @@
         'fail in a dry year.') : null,
     ]));
 
+    nodes.push(seasonalCard(derived.analysis));
     nodes.push(reportCard('Pumping test report', 'pumping',
       'Test details, the full field data tables, each analysis method with its ' +
       'figure, the results summary and the yield recommendation.'));
     nodes.push(nextStep('Next, assess the water quality.', 'Water quality', 'quality'));
     return nodes;
   };
+
+  /* The month the test was run and the size of the annual swing, and what
+   * the yield becomes at the end of the dry season and in a drought year. A
+   * test measures one day; the borehole has to supply the village on the
+   * worst one, and those are months apart. */
+  function seasonalSettings() {
+    var stored = store.get('seasonal') || {};
+    return {
+      month: stored.month === undefined ? null : stored.month,
+      rangeM: stored.rangeM === undefined ? null : stored.rangeM,
+      touched: !!stored.touched,
+    };
+  }
+
+  function currentSeasonal(analysis) {
+    var chosen = seasonalSettings();
+    var cfg = config();
+    return C.seasonalYield(analysis, cfg.pumping, {
+      month: chosen.touched ? chosen.month : undefined,
+      annualRangeM: chosen.rangeM,
+    });
+  }
+
+  function seasonalCard(analysis) {
+    if (!analysis) return null;
+    var chosen = seasonalSettings();
+    var cfg = config();
+    var read = C.monthOf(analysis.test && analysis.test.site
+      ? analysis.test.site.date : '');
+    var result = currentSeasonal(analysis);
+    var months = [{ value: '0', label: 'not known' }].concat(
+      C.MONTH_NAMES.map(function (name, i) {
+        return { value: String(i + 1), label: name };
+      }));
+    var nodes = [
+      el('p.muted', 'A pumping test measures one day. The borehole has to ' +
+        'supply the village on the worst day, and those are months apart: the ' +
+        'water table is highest at the end of the rains and lowest in April ' +
+        'or May, so when the test was run changes what it proves.'),
+      el('div.field-row', [
+        field('Month the test was run',
+          S.selectInput(String((chosen.touched ? chosen.month : read.month) || 0),
+            months, function (v) {
+              store.set('seasonal', Object.assign({}, store.get('seasonal') || {},
+                { month: Number(v) || null, touched: true }));
+              render();
+            }), 'Read from the field sheet where it can be'),
+        field('Annual water-table swing (m)',
+          S.numberInput(chosen.rangeM === null
+            ? cfg.pumping.seasonal_allowance_m : chosen.rangeM,
+          function (v) {
+            store.set('seasonal', Object.assign({}, store.get('seasonal') || {},
+              { rangeM: (v === null || v === undefined) ? null : Number(v) }));
+            render();
+          }, { min: 0, max: 30, step: 0.5 }),
+        'Wet-season high to dry-season low. A single test cannot measure it'),
+      ]),
+    ];
+    if (result.month_note) {
+      nodes.push(el('div.callout.callout-warn', el('p', result.month_note)));
+    }
+    if (!result.is_established) {
+      nodes.push(el('p.muted', result.pending_reason ||
+        'The seasonal projection is not available for this test.'));
+      return card('Through the year', nodes);
+    }
+
+    nodes.push(el('p', result.summary));
+    nodes.push(S.table(
+      ['Scenario', 'Further decline (m)', 'Static level (m)',
+        'Available drawdown (m)', 'Safe yield (m3/h)', 'Pump intake (m)'],
+      result.scenarios.map(function (sc) {
+        return [sc.title, C.pyFixed(sc.decline_m, 1),
+          C.fmtNum(sc.static_water_level_m), C.fmtNum(sc.available_drawdown_m),
+          C.fmtNum(sc.safe_yield_m3_per_h),
+          C.fmtNum(sc.pump_installation_depth_m)];
+      })));
+    if (result.dry_season_loss_percent > 1) {
+      nodes.push(el('div.callout.callout-warn', el('p',
+        'By the end of the dry season this borehole yields about ' +
+        C.pyFixed(result.dry_season_loss_percent, 0) + '% less than it did on ' +
+        'the day of the test. Size the supply on the dry-season figure.')));
+    }
+    if (result.pump_installation_depth_m !== null) {
+      nodes.push(el('div.callout', el('p', 'Set the pump intake at ' +
+        C.fmtNum(result.pump_installation_depth_m) + ' m — deep enough for ' +
+        'the drought case. The pump is fitted once, and one that draws air in ' +
+        'a bad year loses the village its borehole in the year it is needed ' +
+        'most.')));
+    }
+    nodes.push(S.checkList(result.scenarios.map(function (sc) {
+      return { level: 'info', message: sc.title + ' — ' + sc.note };
+    })));
+    nodes.push(el('p.muted', 'The annual range used is ' +
+      C.pyFixed(result.annual_range_m, 1) + ' m — ' + result.range_source +
+      '. It is the one number here a single test cannot measure, and every ' +
+      'figure in the table moves with it.'));
+    return card('Through the year', nodes);
+  }
+
+  /* --- procurement ----------------------------------------------------------
+   * A bill of quantities is an estimate until somebody signs it. Afterwards
+   * the money leaks in three places: work measured that nobody authorised,
+   * work paid for twice, and retention nobody tracked. All three are shown
+   * here rather than netted away.
+   * ---------------------------------------------------------------------- */
+
+  function procurementState() {
+    return Object.assign({ contract: null, measured: {}, variations: [],
+      number: 1, date: '', previous: 0 }, store.get('procurement') || {});
+  }
+
+  function saveProcurement(patch) {
+    store.set('procurement', Object.assign(procurementState(), patch));
+    render();
+  }
+
+  PAGES.procurement = function () {
+    var state = procurementState();
+    var nodes = [
+      pageHead('Procurement', 'A bill of quantities is an estimate until ' +
+        'somebody signs it, and a contract afterwards. This page tracks what ' +
+        'was measured against what was authorised, records the variation ' +
+        'orders that move the line, and produces the interim payment ' +
+        'certificate. Work that was done but nobody authorised is shown and ' +
+        'withheld — not because it was unnecessary, but because paying for ' +
+        'it is a decision somebody signs.'),
+    ];
+
+    if (!state.contract) {
+      nodes.push(card('Award the contract', [
+        el('p.muted', 'The cost estimate is not a contract until it is ' +
+          'awarded. Freezing it here means the certificate is measured ' +
+          'against the frozen copy, so a later change to the design cannot ' +
+          'move what was signed.'),
+        !derived.estimate
+          ? S.empty('No cost estimate yet.',
+            button('Costing & BoQ', function () { goto('costing'); },
+              { variant: 'ghost' }))
+          : el('div', [
+            el('div.field-row', [
+              field('Contract reference', S.textInput(
+                store.get('procurement.ref', ''), function (v) {
+                  store.set('procurement.ref', String(v).trim());
+                }, { placeholder: 'WSD/2024/017' }), ''),
+              field('Retention (%)', S.numberInput(
+                store.get('procurement.retention', 10), function (v) {
+                  store.set('procurement.retention', v === null ? 10 : Number(v));
+                }, { min: 0, max: 25, step: 0.5 }), ''),
+              field('Advance (%)', S.numberInput(
+                store.get('procurement.advance', 0), function (v) {
+                  store.set('procurement.advance', v === null ? 0 : Number(v));
+                }, { min: 0, max: 50, step: 5 }), ''),
+            ]),
+            el('div.btn-row', [
+              button('Award this estimate as the contract', function () {
+                var site = store.get('site') || {};
+                saveProcurement({
+                  contract: C.contractFromEstimate(derived.estimate,
+                    store.get('procurement.ref', '') || '(unreferenced)', {
+                      contractor: site.contractor || '', client: site.client || '',
+                      retention_percent: store.get('procurement.retention', 10),
+                      advance_percent: store.get('procurement.advance', 0),
+                    }),
+                  measured: {}, variations: [], number: 1, previous: 0,
+                });
+                S.toast('Contract frozen.', 'ok');
+              }),
+            ]),
+          ]),
+      ]));
+      return nodes;
+    }
+
+    var contract = state.contract;
+    var measurements = contract.lines.map(function (line) {
+      return { code: line.code,
+        quantity: Number(state.measured[line.code] || 0) };
+    }).concat(Object.keys(state.measured).filter(function (code) {
+      return !contract.lines.some(function (l) { return l.code === code; });
+    }).map(function (code) {
+      return { code: code, quantity: Number(state.measured[code] || 0) };
+    }));
+    var certificate = C.certify(contract, measurements, {
+      number: state.number, date: state.date, variations: state.variations,
+      previouslyCertifiedUsd: state.previous,
+    });
+
+    nodes.push(card('Contract', [
+      S.statRow([
+        S.stat('Reference', contract.ref),
+        S.stat('Contract sum', C.money0(certificate.contract_sum_usd)),
+        S.stat('Revised sum', C.money0(certificate.revised_sum_usd),
+          'contract plus variations'),
+        S.stat('Progress', certificate.percent_complete === null ? '—'
+          : C.pyFixed(certificate.percent_complete, 0) + '%',
+        'of the revised sum'),
+      ]),
+      el('div.btn-row', [
+        button('Start again from the estimate', function () {
+          saveProcurement({ contract: null, measured: {}, variations: [] });
+        }, { variant: 'ghost' }),
+      ]),
+    ]));
+
+    nodes.push(card('Measured to date', [
+      el('p.muted', 'Cumulative quantities, not increments: this is ' +
+        'everything done so far on each line. The certificate works out what ' +
+        'is new.'),
+      S.table([
+        { key: 'code', label: 'Code' },
+        { key: 'item', label: 'Item' },
+        { key: 'unit', label: 'Unit' },
+        { key: 'contract_quantity', label: 'Contract', align: 'right' },
+        { key: 'authorised_quantity', label: 'Authorised', align: 'right' },
+        { key: 'measured_quantity', label: 'Measured to date', align: 'right',
+          format: function (value, row) {
+            return S.numberInput(state.measured[row.code] || 0, function (v) {
+              var next = Object.assign({}, procurementState().measured);
+              next[row.code] = v === null ? 0 : Number(v);
+              saveProcurement({ measured: next });
+            }, { min: 0, step: 1 });
+          } },
+        { key: 'payable_amount_usd', label: 'Payable', align: 'right',
+          format: function (v) { return C.money0(v); } },
+      ], certificate.lines),
+    ]));
+
+    nodes.push(variationCard(state, certificate));
+    nodes.push(certificateCard(state, contract, certificate));
+    return nodes;
+  };
+
+  function variationCard(state, certificate) {
+    var draft = { ref: '', code: '', quantity_delta: 0, rate_usd: null,
+      reason: '', authorised_by: '',
+      date: new Date().toISOString().slice(0, 10) };
+    var codes = state.contract.lines.map(function (line) {
+      return { value: line.code, label: line.code + ' — ' + line.item };
+    });
+    var nodes = [
+      el('p.muted', 'A variation is what makes extra work payable. It needs a ' +
+        'reason and a name: an unsigned variation is a request, not an ' +
+        'instruction.'),
+    ];
+    if (state.variations.length) {
+      nodes.push(S.table(['Reference', 'Date', 'Code', 'Quantity', 'New rate',
+        'Reason', 'Authorised by'],
+      state.variations.map(function (v) {
+        return [v.ref, v.date, v.code,
+          (v.quantity_delta > 0 ? '+' : '') + C.formatG(v.quantity_delta),
+          v.rate_usd === null || v.rate_usd === undefined ? '—'
+            : C.money0(v.rate_usd),
+          v.reason || '', v.authorised_by || ''];
+      })));
+    }
+    nodes.push(el('div.field-row', [
+      field('Reference', S.textInput('', function (v) {
+        draft.ref = String(v).trim();
+      }, { placeholder: 'VO-1' }), ''),
+      field('Line', S.selectInput('', [{ value: '', label: 'choose a line' }]
+        .concat(codes), function (v) { draft.code = v; }), ''),
+      field('Quantity change', S.numberInput(0, function (v) {
+        draft.quantity_delta = v === null ? 0 : Number(v);
+      }, { step: 1 }), 'negative to omit work'),
+      field('New rate (USD)', S.numberInput(null, function (v) {
+        draft.rate_usd = (v === null || v === undefined) ? null : Number(v);
+      }, { min: 0, step: 1 }), 'leave blank to keep the contract rate'),
+    ]));
+    nodes.push(el('div.field-row', [
+      field('Reason', S.textInput('', function (v) { draft.reason = String(v); },
+        { placeholder: 'Why the work changed' }), ''),
+      field('Authorised by', S.textInput('', function (v) {
+        draft.authorised_by = String(v).trim();
+      }, { placeholder: 'Name' }), ''),
+    ]));
+    nodes.push(el('div.btn-row', [
+      button('Record the variation', function () {
+        if (!draft.ref || !draft.code) {
+          S.toast('A variation needs a reference and a line.', 'warn');
+          return;
+        }
+        saveProcurement({
+          variations: procurementState().variations.concat([draft]),
+        });
+        S.toast('Recorded.', 'ok');
+      }, { variant: 'ghost' }),
+    ]));
+    return card('Variation orders', nodes);
+  }
+
+  function certificateCard(state, contract, certificate) {
+    var nodes = [
+      el('div.field-row', [
+        field('Certificate number', S.numberInput(state.number, function (v) {
+          saveProcurement({ number: Math.max(Number(v) || 1, 1) });
+        }, { min: 1, step: 1 }), ''),
+        field('Date', S.textInput(state.date, function (v) {
+          saveProcurement({ date: String(v).trim() });
+        }, { placeholder: 'YYYY-MM-DD' }), ''),
+        field('Previously certified (USD)',
+          S.numberInput(state.previous, function (v) {
+            saveProcurement({ previous: v === null ? 0 : Number(v) });
+          }, { min: 0, step: 100 }),
+        'leave this at zero on a later certificate and the work is paid for twice'),
+      ]),
+    ];
+    if (certificate.problems.length) {
+      nodes.push(S.checkList(certificate.problems.map(function (message) {
+        return { level: 'warning', message: message };
+      })));
+    }
+    nodes.push(el('div.callout.callout-' +
+      (certificate.overmeasure_usd ? 'warn' : 'ok'),
+    el('p', certificate.summary)));
+    if (certificate.overmeasure_usd) {
+      nodes.push(el('div.callout.callout-bad', el('p',
+        C.money0(certificate.overmeasure_usd) + ' of work has been measured ' +
+        'but not authorised, so it is not certified here. Record a variation ' +
+        'order against those lines and it becomes payable on the next ' +
+        'certificate.')));
+    }
+    nodes.push(S.table(['', ' '], C.contractSummaryRows(contract, certificate)));
+    nodes.push(el('div.btn-row', [
+      button('Interim payment certificate (.docx)', async function (event) {
+        var host = event.target.closest('.card');
+        try {
+          await S.withBusy(host, 'Building the certificate…', async function () {
+            var builder = await GWT.docx.paymentCertificate({
+              style: config().style, contract: contract,
+              certificate: certificate, signOff: signOffFor('costing'),
+              readiness: reportReadiness('costing'),
+            });
+            S.download('IPC_' + certificate.number + '.docx',
+              await builder.build());
+          });
+          S.toast('Certificate ready.', 'ok');
+        } catch (err) {
+          S.toast('Could not build the certificate: ' + err.message, 'bad');
+        }
+      }),
+    ]));
+    return card('Certificate', nodes);
+  }
 
   /* --- water quality -------------------------------------------------------- */
 
@@ -3255,9 +3608,12 @@
     var chiefdomDistrict = C.loadChiefdomDistrict();
     var rows, features, valueFor, nameFor, title;
 
+    var areaPopulation, grouped;
     if (level === 'district') {
       var counted = C.countPointsByDistrict(points, polys, chiefdomDistrict);
-      rows = C.coverageRows(C.loadDistrictPopulation(), counted.counts);
+      areaPopulation = C.loadDistrictPopulation();
+      grouped = C.groupPointsByDistrict(points, polys, chiefdomDistrict).grouped;
+      rows = C.coverageRows(areaPopulation, counted.counts);
       var byDistrict = {};
       rows.forEach(function (r) { byDistrict[r.name] = r.people_per_point; });
       features = (GWT.data.geo.chiefdomBoundaries || {}).features || [];
@@ -3272,6 +3628,8 @@
     } else {
       var pop = C.chiefdomPopulation();
       var counts = C.countPointsByChiefdom(points, polys);
+      areaPopulation = pop.population;
+      grouped = C.groupPointsByChiefdom(points, polys).grouped;
       rows = C.chiefdomCoverageRows(pop.population, counts.counts, chiefdomDistrict);
       var byChiefdom = {};
       rows.forEach(function (r) { byChiefdom[r.name] = r.people_per_point; });
@@ -3305,6 +3663,8 @@
       el('p.muted', C.POPULATION_CREDIT + ' ' + C.WPDX_CREDIT),
     ]));
 
+    nodes.push(planningCard(areaPopulation, grouped, level));
+
     nodes.push(card('Ranked need', [
       S.table([
         { key: 'rank', label: 'Rank', align: 'right' },
@@ -3327,6 +3687,102 @@
     ]));
     return nodes;
   };
+
+  /* The census is a decade old and the survey behind each point is older
+   * than it looks. Both halves of "people per functional point" are staler
+   * than the phrase suggests, so both are made visible here rather than
+   * folded into a figure that reads as current. */
+  function planningCard(population, grouped, level) {
+    var thisYear = new Date().getFullYear();
+    var year = Math.max(store.get('coverage.year', thisYear), C.CENSUS_YEAR);
+    var ratePercent = store.get('coverage.rate',
+      Math.round(C.DEFAULT_GROWTH_RATE * 10000) / 100);
+    var out = C.planningRows(population, grouped || {},
+      { asOfYear: year, rate: ratePercent / 100 });
+    var stats = C.planningStats(out.rows, out.projection);
+    var unit = level === 'district' ? 'district' : 'chiefdom';
+
+    var nodes = [
+      el('div.field-row', [
+        field('Plan for year', S.numberInput(year, function (v) {
+          store.set('coverage.year', Math.max(Number(v) || thisYear,
+            C.CENSUS_YEAR));
+          render();
+        }, { min: C.CENSUS_YEAR, max: 2050, step: 1 }),
+        'A people-per-point figure without a year attached is a wrong ' +
+        'number nobody notices'),
+        field('Annual population growth (%)',
+          S.numberInput(ratePercent, function (v) {
+            store.set('coverage.rate', v === null || v === undefined
+              ? Math.round(C.DEFAULT_GROWTH_RATE * 10000) / 100 : Number(v));
+            render();
+          }, { min: 0, max: 10, step: 0.1 }),
+        'The default is the rate implied by the 2004 and 2015 census totals'),
+      ]),
+      el('p.muted', out.projection.note),
+      S.statRow([
+        S.stat('Population ' + year, S.thousands(Math.round(stats.population)),
+          '+' + S.thousands(Math.round(stats.population -
+            stats.census_population)) + ' since the census'),
+        S.stat('People per point', stats.national_people_per_point
+          ? S.thousands(Math.round(stats.national_people_per_point)) : '—',
+        'over every functional point'),
+        S.stat('...recent surveys only', stats.national_people_per_recent_point
+          ? S.thousands(Math.round(stats.national_people_per_recent_point)) : '—',
+        'the gap is the size of the assumption'),
+      ]),
+    ];
+    if (stats.n_stale_areas) {
+      nodes.push(el('div.callout.callout-warn', el('p',
+        stats.n_stale_areas + ' ' + unit + '(s) rest on surveys more than ' +
+        C.AGEING_YEARS + ' years old: ' +
+        stats.stale_areas.slice(0, 8).join(', ') +
+        (stats.n_stale_areas > 8 ? '…' : '') + '. Their coverage figures ' +
+        'describe the year they were surveyed, not this one.')));
+    }
+    if (!stats.n_seasonality_recorded) {
+      nodes.push(el('div.callout', el('p', 'None of these ' +
+        S.thousands(stats.n_seasonality_unknown) + ' functional points ' +
+        'records how many months of the year it yields water, so dry-season ' +
+        'service cannot be separated from wet-season service. Silence is not ' +
+        'a year-round supply.')));
+    } else {
+      nodes.push(el('p.muted', S.thousands(stats.n_seasonality_recorded) +
+        ' points record their seasonality and ' +
+        S.thousands(stats.n_seasonality_unknown) + ' do not, so the ' +
+        'dry-season columns below are a band between counting the ' +
+        'unrecorded ones and not counting them.'));
+    }
+    nodes.push(S.table([
+      { key: 'rank', label: 'Rank', align: 'right' },
+      { key: 'name', label: level === 'district' ? 'District' : 'Chiefdom' },
+      { key: 'population', label: 'Population ' + year, align: 'right',
+        format: function (v) { return S.thousands(Math.round(v)); } },
+      { key: 'functional_points', label: 'Functional', align: 'right' },
+      { key: 'recent_functional_points', label: 'Surveyed lately',
+        align: 'right' },
+      { key: 'people_per_point', label: 'People per point', align: 'right',
+        format: function (v) {
+          return v === null ? 'no functional source' : S.thousands(Math.round(v));
+        } },
+      { key: 'people_per_recent_point', label: '…recent only', align: 'right',
+        format: function (v) {
+          return v === null ? '—' : S.thousands(Math.round(v));
+        } },
+      { key: 'freshness', label: 'Survey',
+        format: function (v) { return v.label; } },
+      { key: 'seasonal', label: 'Year-round / seasonal',
+        format: function (v) {
+          return v.n_year_round + ' / ' + v.n_seasonal +
+            (v.n_unknown ? ' (' + v.n_unknown + ' unasked)' : '');
+        } },
+    ], out.rows.slice(0, 60), {
+      rowClass: function (row) {
+        return row.freshness.state === 'stale' ? 'row-warn' : '';
+      },
+    }));
+    return card('Planning view: how current is this?', nodes);
+  }
 
   /* --- portfolio ------------------------------------------------------------ */
 
@@ -3363,6 +3819,299 @@
       northing: state.meta_northing,
       utm_zone: Number(String(state.meta_zone || '29N').replace(/N$/i, '')) || 29,
     };
+  }
+
+  /* --- the asset registry --------------------------------------------------
+   * A drilling project ends; the borehole does not. Everything on this page
+   * is about the second twenty years: a stable identifier, an append-only
+   * history recorded at the wellhead with no signal, and what that history
+   * says is true today. Nothing is assumed working.
+   * ---------------------------------------------------------------------- */
+
+  /* The symbol as a PNG data URL, drawn on a canvas rather than through the
+   * toolkit's own PNG writer: the browser already has an encoder, and the
+   * bytes only have to be a valid image - the modules themselves are what
+   * parity holds to the Python side. */
+  function qrDataUrl(text, options) {
+    var opts = options || {};
+    var code = C.qrEncode(text, { ecc: opts.ecc || 'H' });
+    var scale = opts.scale || 8, border = opts.border === undefined ? 4 : opts.border;
+    var size = (code.size + 2 * border) * scale;
+    var canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    var ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = '#000000';
+    for (var row = 0; row < code.size; row++) {
+      for (var col = 0; col < code.size; col++) {
+        if (code.modules[row][col]) {
+          ctx.fillRect((col + border) * scale, (row + border) * scale, scale, scale);
+        }
+      }
+    }
+    return { dataUrl: canvas.toDataURL('image/png'), mime: 'image/png',
+      width: size, height: size };
+  }
+
+  /* The stored record if there is one, otherwise a draft from the project.
+   * A draft carries no events: a borehole is commissioned by somebody
+   * deciding it is, on a day, not by opening a page. */
+  function currentAsset() {
+    var stored = store.get('asset');
+    var record = stored ? C.assetFromDict(stored) : null;
+    if (record) return record;
+    return C.assetFromProject(projectState());
+  }
+
+  function saveAsset(asset) {
+    store.set('asset', asset);
+    render();
+  }
+
+  PAGES.registry = function () {
+    var asset = currentAsset();
+    var nodes = [
+      pageHead('Asset registry', 'A drilling project ends; the borehole does ' +
+        'not. This page holds the other half: a stable identifier that ' +
+        'outlives the project file, the maintenance history recorded against ' +
+        'it, and what that history says is true today. Nothing here is ' +
+        'assumed — a borehole nobody has reported on is not working, it is ' +
+        'unknown.'),
+    ];
+
+    if (!asset) {
+      nodes.push(card('This borehole', [
+        el('div.callout.callout-warn', el('p', 'This project has no recorded ' +
+          'position yet, so it cannot be given an identifier — there would be ' +
+          'nothing to find the borehole by. Enter the GPS position on the ' +
+          'Site page.')),
+        el('div.btn-row', [button('Go to the site page', function () {
+          goto('site');
+        }, { variant: 'ghost' })]),
+      ]));
+    } else {
+      var state = C.assetState(asset);
+      var tone = state.function === 'functional' ? 'ok'
+        : (state.function === 'non_functional' ? 'bad' : 'warn');
+      var outstanding = state.due.filter(function (item) {
+        return item.state === 'overdue' || item.state === 'unknown';
+      });
+      nodes.push(card('This borehole', [
+        el('p.asset-id', asset.asset_id),
+        el('p.muted', 'The identifier is derived from the position, so two ' +
+          'teams at the same wellhead with no connection between them arrive ' +
+          'at the same one. The last character is a check character: it ' +
+          'catches every single mistyped character and every transposition ' +
+          'of two adjacent ones.'),
+        S.statRow([
+          S.stat('Status', state.label),
+          S.stat('Last inspected', state.last_inspection || 'never'),
+          S.stat('Last sampled', state.last_sample || 'never'),
+          S.stat('Records', String((asset.events || []).length)),
+        ]),
+        el('div.callout.callout-' + tone, el('p', state.detail)),
+        state.days_out_of_service === null || state.days_out_of_service === undefined
+          ? null
+          : el('p', el('strong', 'Out of service for ' +
+            state.days_out_of_service + ' days. Every day counted here is a ' +
+            'day the community went back to whatever they used before.')),
+        S.checkList(state.due.map(function (item) {
+          return {
+            level: item.state === 'overdue' ? 'error'
+              : (item.state === 'unknown' ? 'warning' : 'info'),
+            message: item.detail,
+          };
+        })),
+      ]));
+
+      var draft = { when: new Date().toISOString().slice(0, 10),
+        kind: 'inspection', note: '', by: '', photo: '' };
+      nodes.push(card('Record what happened', [
+        el('p.muted', 'The history is append-only: a mistake is corrected by ' +
+          'recording the correction, so both stay visible. Events are ' +
+          'identified by their content, so the same visit written down on two ' +
+          'phones merges into one when the project files meet.'),
+        el('div.field-row', [
+          field('Date', S.textInput(draft.when, function (v) {
+            draft.when = String(v).trim();
+          }, { placeholder: 'YYYY-MM-DD' }), ''),
+          field('What happened', S.selectInput(draft.kind,
+            Object.keys(C.EVENT_KINDS).map(function (k) {
+              return { value: k, label: C.EVENT_KINDS[k][0] };
+            }), function (v) { draft.kind = v; }), ''),
+          field('Recorded by', S.textInput('', function (v) {
+            draft.by = String(v).trim();
+          }, { placeholder: 'Name' }), ''),
+        ]),
+        field('Note', S.textInput('', function (v) { draft.note = String(v); },
+          { placeholder: 'What was found or done' }), ''),
+        el('div.btn-row', [
+          button('Add to the history', function () {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.when)) {
+              S.toast('The date should be written YYYY-MM-DD.', 'warn');
+              return;
+            }
+            var next = Object.assign({}, asset, {
+              events: C.mergeEvents(asset.asset_id, asset.events || [], [draft]),
+            });
+            saveAsset(next);
+            S.toast('Recorded.', 'ok');
+          }),
+        ]),
+      ]));
+
+      if ((asset.events || []).length) {
+        nodes.push(card('History', [
+          S.table(['Date', 'Event', 'Note', 'Recorded by'],
+            asset.events.map(function (e) {
+              return [e.when || '(no date)', C.eventLabel(e.kind), e.note || '',
+                e.by || ''];
+            })),
+        ]));
+      }
+
+      nodes.push(card('For the headworks', [
+        el('p.muted', 'The plate carries the identifier, the symbol that ' +
+          'encodes it and the facts that do not go out of date. The symbol ' +
+          'holds the details themselves rather than a link, because the ' +
+          'reason it is on the borehole is that there is no network there.'),
+        el('div.qr-preview', {
+          html: C.qrSvg(C.qrEncode(C.qrPayload(asset), { ecc: 'H' }),
+            { scale: 3, border: 4 }),
+        }),
+        el('div.btn-row', [
+          button('Identification plate (.docx)', async function (event) {
+            await buildAssetDoc('placard', asset, event.target);
+          }),
+          button('Asset record (.docx)', async function (event) {
+            await buildAssetDoc('record', asset, event.target);
+          }, { variant: 'ghost' }),
+        ]),
+      ]));
+    }
+
+    nodes.push(card('Look up an identifier', [
+      el('p.muted', 'Read off a headworks plate. I and L are read as 1, O as ' +
+        '0 and U as V, because those are reading mistakes rather than ' +
+        'different codes — but a failing check character is refused, since a ' +
+        'wrong identifier attaches a repair to somebody else’s borehole.'),
+      field('Identifier', S.textInput(store.get('registry.lookup', ''),
+        function (v) { store.set('registry.lookup', String(v).trim()); render(); },
+        { placeholder: 'SL-WAR-8FEEVKQ-T' }), ''),
+      lookupResult(store.get('registry.lookup', '')),
+    ]));
+
+    nodes.push(registryCard());
+    return nodes;
+  };
+
+  function lookupResult(typed) {
+    if (!typed) return null;
+    var verdict = C.validateAssetId(typed);
+    return el('div.callout.callout-' + (verdict.ok ? 'ok' : 'bad'),
+      el('p', verdict.ok
+        ? 'That is a valid identifier: ' + verdict.assetId
+        : verdict.reason));
+  }
+
+  function registryCard() {
+    var assets = derived.registry || [];
+    var nodes = [
+      el('p.muted', 'Drop in saved project files to see the whole register: ' +
+        'what is working, what is not, and what is overdue a visit. A file ' +
+        'only carries an asset record once its borehole has an identifier.'),
+      el('div.btn-row', [
+        button('Add project files', async function () {
+          var list = await S.pickFile('.json,.gwt,.yaml,.yml', true);
+          if (!list || !list.length) return;
+          var loaded = (derived.registry || []).slice();
+          var skipped = 0;
+          for (var i = 0; i < list.length; i++) {
+            try {
+              var text = await S.readFile(list[i], 'text');
+              var record = assetFromProjectFile(list[i].name, text);
+              if (record) loaded.push(record); else skipped += 1;
+            } catch (e) { skipped += 1; }
+          }
+          derived.registry = loaded;
+          S.toast(loaded.length + ' ' + S.plural(loaded.length, 'borehole') +
+            ' in the register' + (skipped ? ', ' + skipped + ' skipped' : '') + '.',
+          skipped ? 'warn' : 'ok');
+          render();
+        }),
+        assets.length ? button('Clear', function () {
+          derived.registry = [];
+          render();
+        }, { variant: 'ghost' }) : null,
+      ].filter(Boolean)),
+    ];
+    if (!assets.length) {
+      nodes.push(el('p.muted', 'Nothing loaded yet.'));
+      return card('Many boreholes', nodes);
+    }
+    var stats = C.registryStats(assets);
+    nodes.push(S.statRow([
+      S.stat('Boreholes', String(stats.n_assets)),
+      S.stat('Working', String(stats.n_functional)),
+      S.stat('Not working', String(stats.n_non_functional)),
+      S.stat('Condition unknown', String(stats.n_unknown)),
+    ]));
+    if (stats.functionality_rate !== null) {
+      nodes.push(el('p', el('strong', 'Functionality rate: ' +
+        C.pyFixed(stats.functionality_rate, 0) + '%')));
+      nodes.push(el('p.muted', 'Over the boreholes whose condition is ' +
+        'actually known. A rate computed over silence is the number that ' +
+        'makes these registers untrustworthy.'));
+    }
+    if (stats.n_unknown) {
+      nodes.push(el('div.callout.callout-warn', el('p', stats.n_unknown +
+        ' borehole(s) have nothing recorded against them at all. That is not ' +
+        'the same as nothing having happened to them.')));
+    }
+    if (stats.n_overdue_inspection + stats.n_overdue_sample) {
+      nodes.push(el('p', stats.n_overdue_inspection + ' overdue a sanitary ' +
+        'inspection, ' + stats.n_overdue_sample + ' overdue a water quality ' +
+        'sample.'));
+    }
+    var rows = C.registryRows(assets);
+    nodes.push(S.table(Object.keys(rows[0]), rows.map(function (row) {
+      return Object.keys(row).map(function (key) { return String(row[key]); });
+    })));
+    return card('Many boreholes', nodes);
+  }
+
+  function assetFromProjectFile(name, text) {
+    var payload = /\.ya?ml$/i.test(name) ? S.parseYaml(text) : JSON.parse(text);
+    if (!payload || typeof payload !== 'object') return null;
+    /* the Streamlit file carries it under "asset"; this app's own under
+     * state.asset, because that is where its store keeps it */
+    var raw = payload.asset ||
+      (payload.state && typeof payload.state === 'object' ? payload.state.asset : null);
+    return C.assetFromDict(raw || {});
+  }
+
+  async function buildAssetDoc(kind, asset, node) {
+    var host = node ? node.closest('.card') : $('#page-host');
+    try {
+      await S.withBusy(host, 'Building the document…', async function () {
+        var cfg = config();
+        var context = {
+          style: cfg.style, asset: asset, state: C.assetState(asset),
+          readiness: reportReadiness('completion'),
+          symbol: qrDataUrl(C.qrPayload(asset), { ecc: 'H', scale: 8 }),
+        };
+        var builder = kind === 'placard'
+          ? await GWT.docx.assetPlacard(context)
+          : await GWT.docx.assetRecordReport(context);
+        var bytes = await builder.build();
+        S.download((kind === 'placard' ? 'placard_' : 'asset_') +
+          asset.asset_id + '.docx', bytes);
+      });
+      S.toast('Document ready.', 'ok');
+    } catch (err) {
+      S.toast('Could not build the document: ' + err.message, 'bad');
+    }
   }
 
   PAGES.portfolio = function () {
@@ -3802,9 +4551,92 @@
 
   /* Build and download a report, rasterising the on-screen figures so the
    * document carries exactly the figures the page shows. */
+  /* The session, keyed as the readiness model expects it. */
+  function projectState() {
+    return {
+      site: store.get('site'),
+      drilling_log: derived.log,
+      pump_analysis: derived.analysis,
+      wq_assessment: derived.assessment,
+      borehole_design: derived.design,
+      cost_estimate: derived.estimate,
+    };
+  }
+
+  function reportReadiness(kind) {
+    return C.assessReadiness(projectState(), kind,
+      (store.get('overrides') || {})[kind] || {});
+  }
+
+  /* Deliberately never disables the button. An analyst who needs an interim
+   * document will produce one either way; what matters is that the document
+   * says what it rests on. */
+  function readinessPanel(kind) {
+    var readiness = reportReadiness(kind);
+    if (readiness.state === 'ready') {
+      return el('div.callout.callout-ok', el('p', readiness.summary));
+    }
+    var tone = readiness.state === 'ready_with_overrides' ? 'warn' : 'bad';
+    var items = readiness.unmet.map(function (req) {
+      return { level: 'error', message: req.title + ' — ' + req.detail };
+    }).concat(readiness.overridden.map(function (req) {
+      var who = req.override_by ? ' (' + req.override_by + ')' : '';
+      return { level: 'warning', message: req.title + ' — overridden' + who +
+        ': ' + (req.override_reason || 'no reason recorded') };
+    }));
+    var nodes = [
+      el('div.callout.callout-' + tone, el('p', readiness.summary)),
+      S.checkList(items),
+    ];
+    if (readiness.unmet.length) {
+      nodes.push(el('p.muted', 'The report will still be produced, stamped ' +
+        'PROVISIONAL and listing these items. To issue it as an interim ' +
+        'document instead, record who is issuing it and why.'));
+      var by = '', why = '';
+      nodes.push(field('Issued by',
+        S.textInput('', function (v) { by = String(v).trim(); },
+          { placeholder: 'Name' }), ''));
+      nodes.push(field('Reason',
+        S.textInput('', function (v) { why = String(v).trim(); },
+          { placeholder: 'Why this is being issued now' }), ''));
+      nodes.push(el('div.btn-row', [
+        button('Record override', function () {
+          if (!why) {
+            S.toast('An override needs a reason.', 'warn');
+            return;
+          }
+          var all = Object.assign({}, store.get('overrides') || {});
+          var forKind = {};
+          readiness.unmet.forEach(function (req) {
+            forKind[req.key] = { reason: why, by: by };
+          });
+          all[kind] = forKind;
+          store.set('overrides', all);
+          render();
+        }, { variant: 'ghost' }),
+      ]));
+    }
+    if (readiness.overridden.length) {
+      nodes.push(el('div.btn-row', [
+        button('Clear overrides', function () {
+          var all = Object.assign({}, store.get('overrides') || {});
+          delete all[kind];
+          store.set('overrides', all);
+          render();
+        }, { variant: 'ghost' }),
+      ]));
+    }
+    if (readiness.assumptions.length) {
+      nodes.push(el('p.muted', 'Assumptions carried into this report: ' +
+        readiness.assumptions.join('; ')));
+    }
+    return el('div', nodes.filter(Boolean));
+  }
+
   function reportCard(title, kind, description, extra) {
     return card(title, [
       el('p.muted', description),
+      readinessPanel(kind),
       el('div.btn-row', [
         button('Build ' + title + ' (.docx)', function (event) {
           buildReport(kind, extra, event.target);
@@ -3821,7 +4653,11 @@
         var context = {
           style: cfg.style, site: store.get('site'),
           signOff: signOffFor(kind),
+          readiness: reportReadiness(kind),
         };
+        if (kind === 'pumping' && derived.analysis) {
+          context.seasonal = currentSeasonal(derived.analysis);
+        }
         var builder;
         var figures = [];
 
@@ -4130,6 +4966,7 @@
     commitSpineScreens: commitSpineScreens, spineDecide: spineDecide,
     lookUpWaterPoints: lookUpWaterPoints, parseLatLon: parseLatLon,
     signOffFor: signOffFor, offlineReady: offlineReady,
+    projectState: projectState, reportReadiness: reportReadiness,
     getApiKey: getApiKey, setApiKey: setApiKey, forgetApiKey: forgetApiKey,
     renderAutosaveBanner: renderAutosaveBanner,
   };

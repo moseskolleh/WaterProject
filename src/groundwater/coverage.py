@@ -178,6 +178,44 @@ def count_points_by_district(
     return counts, unassigned
 
 
+def group_points_by_district(
+    points: Iterable[WaterPoint],
+    polys: list[ChiefdomPoly],
+    chiefdom_district: dict[str, str],
+) -> tuple[dict[str, list[WaterPoint]], list[WaterPoint]]:
+    """The points themselves per district, not just how many there are.
+
+    The counts are enough to divide a population by. They are not enough to
+    say when the points were last surveyed or whether they last the dry
+    season, which is what ``groundwater.planning`` needs, so the same walk
+    keeps the records instead of tallying them away.
+    """
+    grouped: dict[str, list[WaterPoint]] = {}
+    unassigned: list[WaterPoint] = []
+    for wp in points:
+        district = district_of_point(wp.lat, wp.lon, polys, chiefdom_district)
+        if not district:
+            unassigned.append(wp)
+            continue
+        grouped.setdefault(district, []).append(wp)
+    return grouped, unassigned
+
+
+def group_points_by_chiefdom(
+    points: Iterable[WaterPoint], polys: list[ChiefdomPoly]
+) -> tuple[dict[str, list[WaterPoint]], list[WaterPoint]]:
+    """The points themselves per chiefdom polygon."""
+    grouped: dict[str, list[WaterPoint]] = {}
+    unassigned: list[WaterPoint] = []
+    for wp in points:
+        chiefdom = chiefdom_of_point(wp.lat, wp.lon, polys)
+        if not chiefdom:
+            unassigned.append(wp)
+            continue
+        grouped.setdefault(chiefdom, []).append(wp)
+    return grouped, unassigned
+
+
 @dataclass
 class CoverageRow:
     """One district's water-coverage picture."""

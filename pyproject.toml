@@ -29,7 +29,10 @@ gis = ["geopandas>=0.14", "pyproj>=3.6"]
 app = ["streamlit>=1.57,<2"]
 extract = ["pdfplumber>=0.10"]
 ai = ["anthropic>=0.40"]
-dev = ["pytest>=7.4"]
+# segno and opencv are the two independent oracles the QR encoder is held
+# to - one encodes the same standard, the other reads the result back. They
+# are test-only: nothing the toolkit ships imports either.
+dev = ["pytest>=7.4", "segno>=1.6", "opencv-python-headless>=4.8"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

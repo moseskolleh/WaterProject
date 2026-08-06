@@ -117,6 +117,27 @@ def test_the_deployment_requirements_cover_the_declared_extras():
             )
 
 
+def test_the_qr_oracles_are_declared_so_ci_installs_them():
+    """The QR encoder is only as trustworthy as the things checking it.
+
+    Both oracles are imported through ``importorskip``, so a run without
+    them passes with the comparison quietly skipped. Naming them in the
+    extra CI installs is what stops that from becoming the normal state.
+    """
+    dev = _optional_dependencies().get("dev") or []
+    packages = {spec.split(">=")[0].split("<")[0].strip().lower() for spec in dev}
+    assert "segno" in packages, "the independent encoder is not in the dev extra"
+    assert packages & {"opencv-python-headless", "opencv-python"}, (
+        "the decoder is not in the dev extra")
+
+
+def test_the_qr_encoder_needs_nothing_at_run_time():
+    """The oracles must never become dependencies of the shipped code."""
+    source = (REPO / "src" / "groundwater" / "qr.py").read_text(encoding="utf-8")
+    for forbidden in ("segno", "cv2", "numpy", "PIL", "matplotlib"):
+        assert f"import {forbidden}" not in source, forbidden
+
+
 def test_frontend_dir_resolves_through_the_package():
     """Not through a path relative to the repository root.
 

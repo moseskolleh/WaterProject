@@ -10,6 +10,8 @@ signature block.
 
 from __future__ import annotations
 
+from typing import Any
+
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -43,6 +45,11 @@ class CompletionReportInputs:
     preparer_name: str = ""
     preparer_role: str = "Technical Manager"
     preparer_phone: str = ""
+    #: The certification gate for this report, from
+    #: :func:`groundwater.readiness.assess_readiness`. When it is not
+    #: certifiable the cover says so; when it is absent nothing is
+    #: stamped, so an existing caller is unaffected.
+    readiness: Any = None
 
 
 def _breached_limit(r) -> str:
@@ -138,6 +145,7 @@ def build_completion_report(
             ("Status", log.status or ""),
         ],
     )
+    rb.provisional_stamp(inputs.readiness)
     rb.table_of_contents()
 
     # ---- executive summary ---------------------------------------------------
