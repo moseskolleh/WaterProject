@@ -784,7 +784,7 @@ def _overrides_for(report: str) -> dict:
     return st.session_state.get(f"_override_{report}") or {}
 
 
-def report_gate(report: str):
+def report_gate(report: str, scope: str = ""):
     """Show what this report can and cannot stand behind, and return it.
 
     Deliberately never disables the button. An analyst who needs an interim
@@ -792,7 +792,12 @@ def report_gate(report: str):
     document says what it rests on, so this renders the outstanding items,
     offers a recorded override, and hands the result to the report builder
     to stamp on its own cover.
+
+    ``scope`` distinguishes two gates for the same report kind on one run -
+    the widget keys have to differ, while the recorded override does not:
+    an override of the costing evidence is an override wherever it is shown.
     """
+    keyed = f"{report}_{scope}" if scope else report
     readiness = assess_readiness(_project_state(), report, _overrides_for(report))
     if readiness.state == "ready":
         st.success("Ready to certify: " + readiness.summary)
@@ -814,22 +819,31 @@ def report_gate(report: str):
                     "listing these items. To issue it as an interim document "
                     "instead, record who is issuing it and why."
                 )
-                with st.form(f"override_{report}"):
-                    by = st.text_input("Issued by", key=f"ovr_by_{report}")
-                    reason = st.text_area("Reason", key=f"ovr_why_{report}")
+                with st.form(f"override_{keyed}"):
+                    by = st.text_input("Issued by", key=f"ovr_by_{keyed}")
+                    reason = st.text_area("Reason", key=f"ovr_why_{keyed}")
                     picked = st.multiselect(
                         "Requirements to issue on override",
                         [r.key for r in readiness.unmet],
                         format_func=lambda k: dict(
                             (r.key, r.title) for r in readiness.unmet)[k],
-                        key=f"ovr_keys_{report}",
+                        key=f"ovr_keys_{keyed}",
                     )
-                    if st.form_submit_button("Record override") and picked and reason:
-                        st.session_state[f"_override_{report}"] = {
-                            key: {"reason": reason.strip(), "by": by.strip()}
-                            for key in picked
-                        }
-                        st.rerun()
+                    if st.form_submit_button("Record override"):
+                        # A named issuer is the whole point of an override: it
+                        # is somebody's authority standing in for the missing
+                        # evidence, and an unsigned one is nobody's.
+                        if not picked or not reason.strip() or not by.strip():
+                            st.warning(
+                                "An override needs the requirement(s) it "
+                                "covers, who is issuing the report, and why."
+                            )
+                        else:
+                            st.session_state[f"_override_{report}"] = {
+                                key: {"reason": reason.strip(), "by": by.strip()}
+                                for key in picked
+                            }
+                            st.rerun()
     if readiness.assumptions:
         st.caption("Assumptions carried into this report: "
                    + "; ".join(readiness.assumptions))
@@ -2169,6 +2183,7 @@ with tab_ves:
                     "details) to draw the drill-target map."
                 )
 
+        _geo_gate = report_gate("geophysical")
         if st.button("Build geophysical survey report", key="build_geo_report"):
           with _working("Building the geophysical survey report - drawing the context maps and writing the document..."):
             report_path = build_geophysical_report(
@@ -2179,6 +2194,7 @@ with tab_ves:
                     figures_dir=workdir(),
                     flags=check_all([(s.sounding_id, s.site) for s in soundings]),
                     include_qa_annex=True,
+                    readiness=_geo_gate,
                 ),
                 workdir() / "Geophysical_Survey_Report.docx",
                 app_config(),
@@ -2940,6 +2956,7 @@ with tab_cost:
         st.caption(
             "The report cover uses the site details from the sidebar."
         )
+        _cost_gate = report_gate("costing", scope="estimate")
         dl1, dl2 = st.columns(2)
         with dl1:
             offer_download(boq_path, "Download bill of quantities (.xlsx)")
@@ -2950,6 +2967,7 @@ with tab_cost:
                         estimate=estimate,
                         site=site_from_state(),
                         figures_dir=workdir(),
+                        readiness=_cost_gate,
                     ),
                     workdir() / "Cost_Estimate_Report.docx",
                     app_config(),
@@ -3189,6 +3207,7 @@ with tab_supervision:
         )
         st.text_input("Community representative (sign off)",
                       key="meta_community_rep")
+        _sup_gate = report_gate("supervision")
         if st.button("Build supervision checklist report", key="build_sup_report"):
             site = site_from_state()
             report_path = build_supervision_report(
@@ -3200,6 +3219,7 @@ with tab_supervision:
                     supervisor=site.supervisor,
                     driller=site.contractor,
                     community_rep=st.session_state.get("meta_community_rep", ""),
+                    readiness=_sup_gate,
                 ),
                 workdir() / "Supervision_Checklist_Report.docx",
                 app_config(),
@@ -3659,7 +3679,9 @@ with tab_coverage:
                   if r.people_per_recent_point is not None else None,
                   "Survey": r.freshness.label,
                   "Year-round points": r.seasonal.n_year_round,
-                  "Seasonal points": r.seasonal.n_seasonal}
+                  "Seasonal points": r.seasonal.n_seasonal,
+                  "Dry-season people / point":
+                      r.seasonal.people_per_point_band}
                  for r in _plan_rows],
                 hide_index=True, width="stretch",
             )

@@ -3776,6 +3776,8 @@
           return v.n_year_round + ' / ' + v.n_seasonal +
             (v.n_unknown ? ' (' + v.n_unknown + ' unasked)' : '');
         } },
+      { key: 'seasonal', label: 'Dry-season people / point', align: 'right',
+        format: function (v) { return C.seasonalBandText(v); } },
     ], out.rows.slice(0, 60), {
       rowClass: function (row) {
         return row.freshness.state === 'stale' ? 'row-warn' : '';
@@ -4601,8 +4603,12 @@
           { placeholder: 'Why this is being issued now' }), ''));
       nodes.push(el('div.btn-row', [
         button('Record override', function () {
-          if (!why) {
-            S.toast('An override needs a reason.', 'warn');
+          /* A named issuer is the whole point of an override: it is somebody's
+           * authority standing in for the missing evidence, and an unsigned
+           * one is nobody's. */
+          if (!by || !why) {
+            S.toast('An override needs who is issuing the report and why.',
+              'warn');
             return;
           }
           var all = Object.assign({}, store.get('overrides') || {});

@@ -78,10 +78,12 @@ water quality guidelines.
 16. Procurement tracking over the bill of quantities: the estimate is
     frozen into a contract when it is awarded, work measured is kept
     separate from work authorised so only the lower one is paid, variation
-    orders record who authorised the difference and why, and the interim
-    payment certificate shows every deduction between the value of the work
-    and the figure at the bottom. Work done but not authorised is named and
-    withheld rather than quietly paid or quietly dropped, a later
+    orders record who authorised the difference and why - an order nobody
+    signed is left out of the valuation rather than valued with a warning
+    beside it - and the interim payment certificate shows every deduction
+    between the value of the work and the figure at the bottom. Work done
+    but not authorised is named and withheld rather than quietly paid or
+    quietly dropped, a later
     certificate that forgets what earlier ones paid is challenged, and a
     certificate that would pay less than nothing pays nothing and says by
     how much the job is overpaid

@@ -5246,6 +5246,7 @@
       "n_unknown": 0,
       "people_per_point_low": null,
       "people_per_point_high": null,
+      "people_per_point_band": "n/a",
       "is_established": false,
       "detail": "There are no functional points here to ask about."
      }
@@ -5277,6 +5278,7 @@
       "n_unknown": 0,
       "people_per_point_low": null,
       "people_per_point_high": null,
+      "people_per_point_band": "n/a",
       "is_established": false,
       "detail": "There are no functional points here to ask about."
      }
@@ -5308,6 +5310,7 @@
       "n_unknown": 1,
       "people_per_point_low": 1055964.0,
       "people_per_point_high": 527982.0,
+      "people_per_point_band": "527,982 to 1,055,964",
       "is_established": true,
       "detail": "1 of 3 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
      }
@@ -5339,6 +5342,7 @@
       "n_unknown": 1,
       "people_per_point_low": 575478.0,
       "people_per_point_high": 287739.0,
+      "people_per_point_band": "287,739 to 575,478",
       "is_established": true,
       "detail": "1 of 2 functional points are recorded as working all year and 0 as seasonal; 1 were never asked."
      }
@@ -5370,6 +5374,7 @@
       "n_unknown": 1,
       "people_per_point_low": null,
       "people_per_point_high": 506100.0,
+      "people_per_point_band": "506,100 to no confirmed point",
       "is_established": true,
       "detail": "0 of 2 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
      }
@@ -5433,6 +5438,7 @@
       "n_unknown": 0,
       "people_per_point_low": null,
       "people_per_point_high": null,
+      "people_per_point_band": "n/a",
       "is_established": false,
       "detail": "There are no functional points here to ask about."
      }
@@ -5464,6 +5470,7 @@
       "n_unknown": 0,
       "people_per_point_low": null,
       "people_per_point_high": null,
+      "people_per_point_band": "n/a",
       "is_established": false,
       "detail": "There are no functional points here to ask about."
      }
@@ -5495,6 +5502,7 @@
       "n_unknown": 1,
       "people_per_point_low": 1504763.9394173555,
       "people_per_point_high": 752381.9697086777,
+      "people_per_point_band": "752,382 to 1,504,764",
       "is_established": true,
       "detail": "1 of 3 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
      }
@@ -5526,6 +5534,7 @@
       "n_unknown": 1,
       "people_per_point_low": 820064.4551594759,
       "people_per_point_high": 410032.22757973796,
+      "people_per_point_band": "410,032 to 820,064",
       "is_established": true,
       "detail": "1 of 2 functional points are recorded as working all year and 0 as seasonal; 1 were never asked."
      }
@@ -5557,6 +5566,7 @@
       "n_unknown": 1,
       "people_per_point_low": null,
       "people_per_point_high": 721199.8039129399,
+      "people_per_point_band": "721,200 to no confirmed point",
       "is_established": true,
       "detail": "0 of 2 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
      }
@@ -5620,6 +5630,7 @@
       "n_unknown": 0,
       "people_per_point_low": null,
       "people_per_point_high": null,
+      "people_per_point_band": "n/a",
       "is_established": false,
       "detail": "There are no functional points here to ask about."
      }
@@ -5651,6 +5662,7 @@
       "n_unknown": 0,
       "people_per_point_low": null,
       "people_per_point_high": null,
+      "people_per_point_band": "n/a",
       "is_established": false,
       "detail": "There are no functional points here to ask about."
      }
@@ -5682,6 +5694,7 @@
       "n_unknown": 1,
       "people_per_point_low": 1243871.6717332092,
       "people_per_point_high": 621935.8358666046,
+      "people_per_point_band": "621,936 to 1,243,872",
       "is_established": true,
       "detail": "1 of 3 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
      }
@@ -5713,6 +5726,7 @@
       "n_unknown": 1,
       "people_per_point_low": 677883.69859738,
       "people_per_point_high": 338941.84929869,
+      "people_per_point_band": "338,942 to 677,884",
       "is_established": true,
       "detail": "1 of 2 functional points are recorded as working all year and 0 as seasonal; 1 were never asked."
      }
@@ -5744,6 +5758,7 @@
       "n_unknown": 1,
       "people_per_point_low": null,
       "people_per_point_high": 596159.9572184063,
+      "people_per_point_band": "596,160 to no confirmed point",
       "is_established": true,
       "detail": "0 of 2 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
      }
@@ -5807,6 +5822,7 @@
       "n_unknown": 0,
       "people_per_point_low": null,
       "people_per_point_high": null,
+      "people_per_point_band": "n/a",
       "is_established": false,
       "detail": "There are no functional points here to ask about."
      }
@@ -5838,6 +5854,7 @@
       "n_unknown": 0,
       "people_per_point_low": null,
       "people_per_point_high": null,
+      "people_per_point_band": "n/a",
       "is_established": false,
       "detail": "There are no functional points here to ask about."
      }
@@ -5869,6 +5886,7 @@
       "n_unknown": 1,
       "people_per_point_low": 2004534.9388541097,
       "people_per_point_high": 1002267.4694270549,
+      "people_per_point_band": "1,002,267 to 2,004,535",
       "is_established": true,
       "detail": "1 of 3 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
      }
@@ -5900,6 +5918,7 @@
       "n_unknown": 1,
       "people_per_point_low": 820064.4551594759,
       "people_per_point_high": 410032.22757973796,
+      "people_per_point_band": "410,032 to 820,064",
       "is_established": true,
       "detail": "1 of 2 functional points are recorded as working all year and 0 as seasonal; 1 were never asked."
      }
@@ -5931,6 +5950,7 @@
       "n_unknown": 1,
       "people_per_point_low": null,
       "people_per_point_high": 721199.8039129399,
+      "people_per_point_band": "721,200 to no confirmed point",
       "is_established": true,
       "detail": "0 of 2 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
      }
@@ -6396,8 +6416,8 @@
     "date": "2024-04-01",
     "contract_ref": "WSD/2024/017",
     "contract_sum_usd": 6890.0,
-    "variation_usd": 110.0,
-    "revised_sum_usd": 7000.0,
+    "variation_usd": 0.0,
+    "revised_sum_usd": 6890.0,
     "gross_usd": 0.0,
     "percent_complete": 0.0,
     "retention_usd": 0.0,
@@ -6409,7 +6429,7 @@
     "overmeasure_usd": 0.0,
     "summary": "Certificate 1: $0 due on work valued at $0 (0% of the revised sum).",
     "problems": [
-     "Variation VO-2 on CAS names nobody who authorised it. An unsigned variation is a request, not an instruction.",
+     "Variation VO-2 on CAS names nobody who authorised it. An unsigned variation is a request, not an instruction, so its quantity is left out of this valuation until somebody signs it.",
      "GRAVEL has been measured but is neither in the contract nor in any variation, so there is no rate to pay it at and nothing authorising it. It is valued at zero.",
      "GRAVEL is measured at 12  against 0 authorised. The extra 12 is not payable until a variation authorises it - the work may well be justified, but that is a decision somebody signs, not a measurement."
     ],
@@ -6477,20 +6497,18 @@
       "unit": "m",
       "rate_usd": 22.0,
       "contract_quantity": 45,
-      "variation_quantity": 5.0,
-      "authorised_quantity": 50.0,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 45.0,
       "measured_quantity": 0.0,
       "payable_quantity": 0.0,
       "overmeasure_quantity": 0.0,
       "contract_amount_usd": 990.0,
-      "authorised_amount_usd": 1100.0,
+      "authorised_amount_usd": 990.0,
       "payable_amount_usd": 0.0,
       "overmeasure_amount_usd": 0.0,
       "percent_complete": 0.0,
       "in_contract": true,
-      "variation_refs": [
-       "VO-2"
-      ]
+      "variation_refs": []
      },
      {
       "code": "GRAVEL",
@@ -6532,11 +6550,11 @@
     ],
     [
      "Variations",
-     "+$110"
+     "+$0"
     ],
     [
      "Revised sum",
-     "$7,000"
+     "$6,890"
     ],
     [
      "Work valued to date",

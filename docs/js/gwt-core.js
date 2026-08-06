@@ -9783,6 +9783,20 @@
     };
   }
 
+  /* The dry-season band as a planner reads it: best case to worst.
+   * people_per_point_high is the kinder end - it credits the points nobody
+   * asked about with working all year - so it comes first. */
+  function seasonalBandText(cov) {
+    var best = cov.people_per_point_high, worst = cov.people_per_point_low;
+    var absent = function (v) { return v === null || v === undefined; };
+    if (absent(best) && absent(worst)) return 'n/a';
+    if (absent(worst)) return thousandsFixed(best, 0) + ' to no confirmed point';
+    if (absent(best) || Math.round(best) === Math.round(worst)) {
+      return thousandsFixed(worst, 0);
+    }
+    return thousandsFixed(best, 0) + ' to ' + thousandsFixed(worst, 0);
+  }
+
   /* A band, not a number: low counts only the points a survey confirmed work
    * all year, high also counts the ones nobody asked about. */
   function seasonalCoverage(points, population) {
@@ -9807,7 +9821,7 @@
         'as working all year and ' + seasonal + ' as seasonal' +
         (unknown ? '; ' + unknown + ' were never asked' : '') + '.';
     }
-    return {
+    var cov = {
       n_year_round: yearRound, n_seasonal: seasonal, n_unknown: unknown,
       people_per_point_low: yearRound ? population / yearRound : null,
       people_per_point_high: (yearRound + unknown)
@@ -9815,6 +9829,8 @@
       is_established: known > 0 && known >= (known + unknown) * 0.5,
       detail: detail
     };
+    cov.people_per_point_band = seasonalBandText(cov);
+    return cov;
   }
 
   function stalenessGapPercent(row) {
@@ -9899,7 +9915,8 @@
     FRESHNESS_LABELS: FRESHNESS_LABELS,
     intercensalGrowthRate: intercensalGrowthRate,
     projectPopulation: projectPopulation, pointFreshness: pointFreshness,
-    seasonalCoverage: seasonalCoverage, planningRows: planningRows,
+    seasonalCoverage: seasonalCoverage, seasonalBandText: seasonalBandText,
+    planningRows: planningRows,
     planningStats: planningStats
   });
 
@@ -9968,21 +9985,28 @@
     var problems = [], varied = {}, order = [];
     (variations || []).forEach(function (v) {
       if (!own(varied, v.code)) {
-        varied[v.code] = { delta: 0, rate: null, refs: [], item: '', unit: '' };
+        varied[v.code] = { delta: 0, rate: null, refs: [], unsignedRefs: [],
+          item: '', unit: '' };
         order.push(v.code);
       }
       var entry = varied[v.code];
+      entry.item = entry.item || v.item || '';
+      entry.unit = entry.unit || v.unit || '';
+      /* An unsigned variation is not valued at all. Counting its quantity and
+       * then printing a warning beside the total pays for work nobody
+       * instructed: the warning is read once, the certificate is banked. */
+      if (!v.authorised_by) {
+        entry.unsignedRefs.push(v.ref);
+        problems.push('Variation ' + v.ref + ' on ' + v.code + ' names nobody ' +
+          'who authorised it. An unsigned variation is a request, not an ' +
+          'instruction, so its quantity is left out of this valuation until ' +
+          'somebody signs it.');
+        return;
+      }
       entry.delta += Number(v.quantity_delta || 0);
       entry.refs.push(v.ref);
       if (v.rate_usd !== null && v.rate_usd !== undefined) {
         entry.rate = Number(v.rate_usd);
-      }
-      entry.item = entry.item || v.item || '';
-      entry.unit = entry.unit || v.unit || '';
-      if (!v.authorised_by) {
-        problems.push('Variation ' + v.ref + ' on ' + v.code + ' names nobody ' +
-          'who authorised it. An unsigned variation is a request, not an ' +
-          'instruction.');
       }
     });
 
@@ -10032,7 +10056,12 @@
           }));
           return;
         }
-        if (change.rate === null || change.rate === undefined) {
+        if (!change.refs.length) {
+          problems.push('Variation ' + change.unsignedRefs.join(', ') + ' adds ' +
+            code + ', which the contract does not carry, and nobody has signed ' +
+            'it. Nothing is authorised against this line, so nothing on it is ' +
+            'payable.');
+        } else if (change.rate === null || change.rate === undefined) {
           problems.push('Variation ' + change.refs.join(', ') + ' adds ' + code +
             ', which the contract does not price, without giving a rate. It is ' +
             'valued at zero until one is agreed.');

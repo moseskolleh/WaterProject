@@ -1112,6 +1112,16 @@ await withPage(async (page, base, consoleErrors) => {
       recorded: Object.keys((app.store.get('overrides') || {}).quality || {}).length,
     };
 
+    // ...and a reason with nobody's name against it is not one either: an
+    // override is somebody's authority standing in for missing evidence
+    fill('Name', '');
+    fill('Why this is being issued now', 'GPS unit failed; position to follow');
+    press('Record override');
+    const unsigned = {
+      state: app.reportReadiness('quality').state,
+      recorded: Object.keys((app.store.get('overrides') || {}).quality || {}).length,
+    };
+
     fill('Name', 'M. Kolleh');
     fill('Why this is being issued now', 'GPS unit failed; position to follow');
     const pressed = press('Record override');
@@ -1131,8 +1141,8 @@ await withPage(async (page, base, consoleErrors) => {
     });
     app.store.set('overrides', {});
     app.render();
-    return { complete, missing, refused, issued, cleared, typedName, pressed,
-      restored };
+    return { complete, missing, refused, unsigned, issued, cleared, typedName,
+      pressed, restored };
   });
   check('gate: a complete project reports as ready and carries no stamp',
     gate.complete.state === 'ready' && gate.complete.ok === true &&
@@ -1148,6 +1158,9 @@ await withPage(async (page, base, consoleErrors) => {
   check('gate: an override without a reason is refused',
     gate.typedName === true && gate.refused.state === 'not_ready' &&
     gate.refused.recorded === 0, JSON.stringify(gate.refused));
+  check('gate: an override nobody has put their name to is refused',
+    gate.unsigned.state === 'not_ready' && gate.unsigned.recorded === 0,
+    JSON.stringify(gate.unsigned));
   check('gate: an override issues the report and names who issued it',
     gate.pressed === true && gate.issued.state === 'ready_with_overrides' &&
     gate.issued.warn === true &&

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from ..config import Config
 from ..geo import infer_zone_for_sierra_leone
@@ -76,6 +77,10 @@ class GeophysicalReportInputs:
     geologist_phone: str = ""
     flags: list[DataFlag] = field(default_factory=list)
     include_qa_annex: bool = False
+    #: :class:`~groundwater.readiness.Readiness` for this report, from
+    #: :func:`groundwater.readiness.assess_readiness`. When it is not
+    #: certifiable the cover carries a PROVISIONAL stamp listing why.
+    readiness: Any = None
 
 
 def _geology_for(district: str, override: str) -> str:
@@ -117,6 +122,7 @@ def build_geophysical_report(
             ("Prepared by", inputs.geologist_name or config.style.organisation or ""),
         ],
     )
+    rb.provisional_stamp(inputs.readiness)
 
     # ---- table of contents ---------------------------------------------------
     rb.table_of_contents()

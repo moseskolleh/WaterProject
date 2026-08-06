@@ -170,6 +170,21 @@ def test_a_seasonal_source_is_not_counted_as_dry_season_service():
     assert "2 of 4 functional points" in result.detail
 
 
+def test_the_dry_season_band_reads_best_case_to_worst():
+    """The figure the planning table shows, so the band is not just computed."""
+    points = [_point(months=12), _point(months=12), _point(months=6),
+              _point(months=None)]
+    assert (seasonal_coverage(points, 600.0).people_per_point_band
+            == "200 to 300")
+    # nothing confirmed: the worst case is that there is no dry-season point
+    assert (seasonal_coverage([_point(months=None)] * 4, 400.0)
+            .people_per_point_band == "100 to no confirmed point")
+    # every point asked and answered: a band of one number is a number
+    assert (seasonal_coverage([_point(months=12), _point(months=12)], 500.0)
+            .people_per_point_band == "250")
+    assert seasonal_coverage([], 500.0).people_per_point_band == "n/a"
+
+
 def test_a_broken_point_is_not_asked_about_the_dry_season():
     result = seasonal_coverage(
         [_point(functional=False, months=12), _point(months=12)], 100.0)

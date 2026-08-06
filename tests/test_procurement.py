@@ -95,6 +95,43 @@ def test_an_unsigned_variation_is_a_request_not_an_instruction():
     assert any("names nobody who authorised it" in p for p in problems)
 
 
+def test_an_unsigned_variation_does_not_authorise_the_work_it_asks_for():
+    """A warning beside the total is read once; the certificate is banked."""
+    lines, problems = value_work(
+        _contract(), [Measurement("DRL-RK", 42.0)],
+        [Variation("VO-2", "2024-03-04", "DRL-RK", quantity_delta=17.0,
+                   reason="water struck at 62 m, not 45 m")])
+    rock = [line for line in lines if line.code == "DRL-RK"][0]
+    assert rock.authorised_quantity == 25.0      # the contract, and no more
+    assert rock.payable_quantity == 25.0
+    assert rock.overmeasure_quantity == 17.0
+    assert rock.variation_refs == ()             # nothing signed to cite
+    assert any("left out of this valuation" in p for p in problems)
+
+
+def test_an_unsigned_variation_does_not_reprice_a_line_either():
+    lines, _ = value_work(
+        _contract(), [Measurement("CAS", 45.0)],
+        [Variation("VO-6", "2024-03-04", "CAS", rate_usd=26.0,
+                   reason="steel casing substituted")])
+    casing = [line for line in lines if line.code == "CAS"][0]
+    assert casing.rate_usd == 22.0
+    assert casing.payable_amount_usd == 45 * 22.0
+
+
+def test_work_added_only_by_an_unsigned_variation_is_authorised_by_nobody():
+    lines, problems = value_work(
+        _contract(), [Measurement("GRAVEL", 12.0)],
+        [Variation("VO-7", "2024-03-04", "GRAVEL", quantity_delta=12.0,
+                   rate_usd=15.0, item="Gravel pack", unit="m3")])
+    added = [line for line in lines if line.code == "GRAVEL"][0]
+    assert added.item == "Gravel pack"           # still named, so it is visible
+    assert added.authorised_quantity == 0.0
+    assert added.payable_amount_usd == 0.0
+    assert added.overmeasure_quantity == 12.0
+    assert any("nobody has signed it" in p for p in problems)
+
+
 def test_work_measured_against_nothing_at_all_is_valued_at_zero():
     lines, problems = value_work(_contract(), [Measurement("GRAVEL", 12.0)])
     stray = [line for line in lines if line.code == "GRAVEL"][0]

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from ..config import Config
 from ..costing.model import CostEstimate
@@ -25,6 +26,10 @@ class CostReportInputs:
     site: SiteMetadata | None = None
     figures_dir: Path = Path(".")
     prepared_by: str = ""
+    #: :class:`~groundwater.readiness.Readiness` for this report, from
+    #: :func:`groundwater.readiness.assess_readiness`. When it is not
+    #: certifiable the cover carries a PROVISIONAL stamp listing why.
+    readiness: Any = None
 
 
 def build_cost_report(
@@ -56,6 +61,7 @@ def build_cost_report(
             ("Date", site.date),
         ],
     )
+    rb.provisional_stamp(inputs.readiness)
     rb.table_of_contents()
 
     # ---- 1 method ------------------------------------------------------
