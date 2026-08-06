@@ -4820,6 +4820,329 @@
    "due": "2025-02-28"
   }
  ],
+ "seasonal_dates": [
+  {
+   "text": "10/05/2018",
+   "month": null,
+   "note": "The date '10/05/2018' could be read either way round: May or October. Those are different ends of the year and give different answers, so the season is treated as unknown. Record the month by name, or pick it below."
+  },
+  {
+   "text": "25/04/2018",
+   "month": 4,
+   "note": ""
+  },
+  {
+   "text": "04/25/2018",
+   "month": 4,
+   "note": ""
+  },
+  {
+   "text": "2018-09-14",
+   "month": 9,
+   "note": ""
+  },
+  {
+   "text": "14 Sept 2018",
+   "month": 9,
+   "note": ""
+  },
+  {
+   "text": "September 2018",
+   "month": 9,
+   "note": ""
+  },
+  {
+   "text": "during the rains",
+   "month": null,
+   "note": "The date 'during the rains' does not name a month."
+  },
+  {
+   "text": "05/2018",
+   "month": null,
+   "note": "The date '05/2018' is not a full date."
+  },
+  {
+   "text": "",
+   "month": null,
+   "note": "No date is recorded for the test."
+  },
+  {
+   "text": "31/13/2018",
+   "month": null,
+   "note": "The date '31/13/2018' has no month in it."
+  },
+  {
+   "text": "2018/09/14",
+   "month": 9,
+   "note": ""
+  }
+ ],
+ "seasonal": {
+  "august": {
+   "month": 8,
+   "season": "wet season",
+   "month_note": "",
+   "annual_range_m": 2.0,
+   "range_source": "the configured dry-season allowance, not a measurement",
+   "pending_reason": "",
+   "design_yield_m3_per_h": 0.9754928127988354,
+   "pump_installation_depth_m": 40,
+   "dry_season_loss_percent": 3.115835777126108,
+   "summary": "Sized on the end of the dry season: 0.98 m3/h, falling to 0.96 m3/h in a drought year. The test was run in August, the wet season.",
+   "scenarios": [
+    {
+     "key": "as_tested",
+     "title": "As tested",
+     "decline_m": 0.0,
+     "static_water_level_m": 9.44,
+     "available_drawdown_m": 54.56,
+     "safe_yield_m3_per_h": 1.0068650750341366,
+     "pump_installation_depth_m": 38,
+     "note": "The level on the day of the test. Not a design figure: unless the test was run at the end of the dry season the borehole will be lower than this for part of every year. The test was run in August, the wet season."
+    },
+    {
+     "key": "dry_season",
+     "title": "End of dry season",
+     "decline_m": 1.7,
+     "static_water_level_m": 11.139999999999999,
+     "available_drawdown_m": 52.86,
+     "safe_yield_m3_per_h": 0.9754928127988354,
+     "pump_installation_depth_m": 39,
+     "note": "The normal annual low, which the borehole reaches every year. This is the figure a design should be sized on."
+    },
+    {
+     "key": "drought",
+     "title": "Drought year",
+     "decline_m": 2.7,
+     "static_water_level_m": 12.14,
+     "available_drawdown_m": 51.86,
+     "safe_yield_m3_per_h": 0.9570385408957174,
+     "pump_installation_depth_m": 40,
+     "note": "A low deeper than a normal year's, for a run of poor rains. The pump has to still be under water here, or the village loses the borehole in exactly the year it is needed most."
+    }
+   ]
+  },
+  "may": {
+   "month": 5,
+   "season": "late dry season",
+   "month_note": "",
+   "annual_range_m": 2.0,
+   "range_source": "the configured dry-season allowance, not a measurement",
+   "pending_reason": "",
+   "design_yield_m3_per_h": 1.0068650750341366,
+   "pump_installation_depth_m": 39,
+   "dry_season_loss_percent": 0.0,
+   "summary": "Sized on the end of the dry season: 1 m3/h, falling to 0.99 m3/h in a drought year. The test was run in May, the late dry season.",
+   "scenarios": [
+    {
+     "key": "as_tested",
+     "title": "As tested",
+     "decline_m": 0.0,
+     "static_water_level_m": 9.44,
+     "available_drawdown_m": 54.56,
+     "safe_yield_m3_per_h": 1.0068650750341366,
+     "pump_installation_depth_m": 38,
+     "note": "The level on the day of the test. Not a design figure: unless the test was run at the end of the dry season the borehole will be lower than this for part of every year. The test was run in May, the late dry season."
+    },
+    {
+     "key": "dry_season",
+     "title": "End of dry season",
+     "decline_m": 0.0,
+     "static_water_level_m": 9.44,
+     "available_drawdown_m": 54.56,
+     "safe_yield_m3_per_h": 1.0068650750341366,
+     "pump_installation_depth_m": 38,
+     "note": "The normal annual low, which the borehole reaches every year. This is the figure a design should be sized on. No further decline is reserved: a test run in May is already at or below this level."
+    },
+    {
+     "key": "drought",
+     "title": "Drought year",
+     "decline_m": 1.0,
+     "static_water_level_m": 10.44,
+     "available_drawdown_m": 53.56,
+     "safe_yield_m3_per_h": 0.9884108031310183,
+     "pump_installation_depth_m": 39,
+     "note": "A low deeper than a normal year's, for a run of poor rains. The pump has to still be under water here, or the village loses the borehole in exactly the year it is needed most."
+    }
+   ]
+  },
+  "september": {
+   "month": 9,
+   "season": "wet season",
+   "month_note": "",
+   "annual_range_m": 2.0,
+   "range_source": "the configured dry-season allowance, not a measurement",
+   "pending_reason": "",
+   "design_yield_m3_per_h": 0.9699565312279003,
+   "pump_installation_depth_m": 40,
+   "dry_season_loss_percent": 3.6656891495600807,
+   "summary": "Sized on the end of the dry season: 0.97 m3/h, falling to 0.95 m3/h in a drought year. The test was run in September, the wet season.",
+   "scenarios": [
+    {
+     "key": "as_tested",
+     "title": "As tested",
+     "decline_m": 0.0,
+     "static_water_level_m": 9.44,
+     "available_drawdown_m": 54.56,
+     "safe_yield_m3_per_h": 1.0068650750341366,
+     "pump_installation_depth_m": 38,
+     "note": "The level on the day of the test. Not a design figure: unless the test was run at the end of the dry season the borehole will be lower than this for part of every year. The test was run in September, the wet season."
+    },
+    {
+     "key": "dry_season",
+     "title": "End of dry season",
+     "decline_m": 2.0,
+     "static_water_level_m": 11.44,
+     "available_drawdown_m": 52.56,
+     "safe_yield_m3_per_h": 0.9699565312279003,
+     "pump_installation_depth_m": 39,
+     "note": "The normal annual low, which the borehole reaches every year. This is the figure a design should be sized on."
+    },
+    {
+     "key": "drought",
+     "title": "Drought year",
+     "decline_m": 3.0,
+     "static_water_level_m": 12.44,
+     "available_drawdown_m": 51.56,
+     "safe_yield_m3_per_h": 0.9515022593247816,
+     "pump_installation_depth_m": 40,
+     "note": "A low deeper than a normal year's, for a run of poor rains. The pump has to still be under water here, or the village loses the borehole in exactly the year it is needed most."
+    }
+   ]
+  },
+  "unknown": {
+   "month": null,
+   "season": "unknown",
+   "month_note": "The date '10/05/2018' could be read either way round: May or October. Those are different ends of the year and give different answers, so the season is treated as unknown. Record the month by name, or pick it below.",
+   "annual_range_m": 2.0,
+   "range_source": "the configured dry-season allowance, not a measurement",
+   "pending_reason": "",
+   "design_yield_m3_per_h": 0.9699565312279003,
+   "pump_installation_depth_m": 40,
+   "dry_season_loss_percent": 3.6656891495600807,
+   "summary": "Sized on the end of the dry season: 0.97 m3/h, falling to 0.95 m3/h in a drought year.",
+   "scenarios": [
+    {
+     "key": "as_tested",
+     "title": "As tested",
+     "decline_m": 0.0,
+     "static_water_level_m": 9.44,
+     "available_drawdown_m": 54.56,
+     "safe_yield_m3_per_h": 1.0068650750341366,
+     "pump_installation_depth_m": 38,
+     "note": "The level on the day of the test. Not a design figure: unless the test was run at the end of the dry season the borehole will be lower than this for part of every year."
+    },
+    {
+     "key": "dry_season",
+     "title": "End of dry season",
+     "decline_m": 2.0,
+     "static_water_level_m": 11.44,
+     "available_drawdown_m": 52.56,
+     "safe_yield_m3_per_h": 0.9699565312279003,
+     "pump_installation_depth_m": 39,
+     "note": "The normal annual low, which the borehole reaches every year. This is the figure a design should be sized on."
+    },
+    {
+     "key": "drought",
+     "title": "Drought year",
+     "decline_m": 3.0,
+     "static_water_level_m": 12.44,
+     "available_drawdown_m": 51.56,
+     "safe_yield_m3_per_h": 0.9515022593247816,
+     "pump_installation_depth_m": 40,
+     "note": "A low deeper than a normal year's, for a run of poor rains. The pump has to still be under water here, or the village loses the borehole in exactly the year it is needed most."
+    }
+   ]
+  },
+  "wide": {
+   "month": 8,
+   "season": "wet season",
+   "month_note": "",
+   "annual_range_m": 4.5,
+   "range_source": "measured for this programme",
+   "pending_reason": "",
+   "design_yield_m3_per_h": 0.9362774850047089,
+   "pump_installation_depth_m": 42,
+   "dry_season_loss_percent": 7.010630498533732,
+   "summary": "Sized on the end of the dry season: 0.94 m3/h, falling to 0.89 m3/h in a drought year. The test was run in August, the wet season.",
+   "scenarios": [
+    {
+     "key": "as_tested",
+     "title": "As tested",
+     "decline_m": 0.0,
+     "static_water_level_m": 9.44,
+     "available_drawdown_m": 54.56,
+     "safe_yield_m3_per_h": 1.0068650750341366,
+     "pump_installation_depth_m": 38,
+     "note": "The level on the day of the test. Not a design figure: unless the test was run at the end of the dry season the borehole will be lower than this for part of every year. The test was run in August, the wet season."
+    },
+    {
+     "key": "dry_season",
+     "title": "End of dry season",
+     "decline_m": 3.8249999999999997,
+     "static_water_level_m": 13.264999999999999,
+     "available_drawdown_m": 50.735,
+     "safe_yield_m3_per_h": 0.9362774850047089,
+     "pump_installation_depth_m": 40,
+     "note": "The normal annual low, which the borehole reaches every year. This is the figure a design should be sized on."
+    },
+    {
+     "key": "drought",
+     "title": "Drought year",
+     "decline_m": 6.075,
+     "static_water_level_m": 15.515,
+     "available_drawdown_m": 48.485,
+     "safe_yield_m3_per_h": 0.8947553732226926,
+     "pump_installation_depth_m": 42,
+     "note": "A low deeper than a normal year's, for a run of poor rains. The pump has to still be under water here, or the village loses the borehole in exactly the year it is needed most."
+    }
+   ]
+  },
+  "zero": {
+   "month": 8,
+   "season": "wet season",
+   "month_note": "",
+   "annual_range_m": 0.0,
+   "range_source": "measured for this programme",
+   "pending_reason": "",
+   "design_yield_m3_per_h": 1.0068650750341366,
+   "pump_installation_depth_m": 38,
+   "dry_season_loss_percent": 0.0,
+   "summary": "Sized on the end of the dry season: 1 m3/h, falling to 1 m3/h in a drought year. The test was run in August, the wet season.",
+   "scenarios": [
+    {
+     "key": "as_tested",
+     "title": "As tested",
+     "decline_m": -0.0,
+     "static_water_level_m": 9.44,
+     "available_drawdown_m": 54.56,
+     "safe_yield_m3_per_h": 1.0068650750341366,
+     "pump_installation_depth_m": 38,
+     "note": "The level on the day of the test. Not a design figure: unless the test was run at the end of the dry season the borehole will be lower than this for part of every year. The test was run in August, the wet season."
+    },
+    {
+     "key": "dry_season",
+     "title": "End of dry season",
+     "decline_m": 0.0,
+     "static_water_level_m": 9.44,
+     "available_drawdown_m": 54.56,
+     "safe_yield_m3_per_h": 1.0068650750341366,
+     "pump_installation_depth_m": 38,
+     "note": "The normal annual low, which the borehole reaches every year. This is the figure a design should be sized on. No further decline is reserved: a test run in August is already at or below this level."
+    },
+    {
+     "key": "drought",
+     "title": "Drought year",
+     "decline_m": 0.0,
+     "static_water_level_m": 9.44,
+     "available_drawdown_m": 54.56,
+     "safe_yield_m3_per_h": 1.0068650750341366,
+     "pump_installation_depth_m": 38,
+     "note": "A low deeper than a normal year's, for a run of poor rains. The pump has to still be under water here, or the village loses the borehole in exactly the year it is needed most. No further decline is reserved: a test run in August is already at or below this level."
+    }
+   ]
+  }
+ },
  "rounding": [
   {
    "value": 0.15,

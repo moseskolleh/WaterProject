@@ -537,6 +537,24 @@ def build() -> dict:
                      ("2023-01-31", 1), ("2023-03-30", 11), ("2024-02-29", 12))
     ]
 
+    # The seasonal yield model: the month read off the sheet, and the yield
+    # at each scenario's water level.
+    from groundwater.seasonal import month_of as _month_of
+    from groundwater.seasonal import seasonal_yield as _seasonal_yield
+
+    out["seasonal_dates"] = [
+        {"text": t, "month": _month_of(t)[0], "note": _month_of(t)[1]}
+        for t in ("10/05/2018", "25/04/2018", "04/25/2018", "2018-09-14",
+                  "14 Sept 2018", "September 2018", "during the rains",
+                  "05/2018", "", "31/13/2018", "2018/09/14")
+    ]
+    out["seasonal"] = {}
+    for _label, _month, _band in (("august", 8, None), ("may", 5, None),
+                                  ("september", 9, None), ("unknown", None, None),
+                                  ("wide", 8, 4.5), ("zero", 8, 0.0)):
+        _result = _seasonal_yield(_analysis, month=_month, annual_range_m=_band)
+        out["seasonal"][_label] = clean(_result.as_dict())
+
     # Rounding and %g, which the two languages get wrong in different ways.
     out["rounding"] = [
         {"value": v, "digits": d, "rounded": clean(round(v, d))}

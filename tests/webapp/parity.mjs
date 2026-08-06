@@ -382,6 +382,37 @@ await withPage(async (page, base, consoleErrors) => {
       ['2023-01-31', 1], ['2023-03-30', 11], ['2024-02-29', 12]]
       .map(([from, months]) => ({ from, months, due: C.addMonths(from, months) }));
 
+    out.seasonal_dates = ['10/05/2018', '25/04/2018', '04/25/2018', '2018-09-14',
+      '14 Sept 2018', 'September 2018', 'during the rains', '05/2018', '',
+      '31/13/2018', '2018/09/14'].map((text) => {
+      const read = C.monthOf(text);
+      return { text, month: read.month, note: read.note };
+    });
+    out.seasonal = {};
+    [['august', 8, null], ['may', 5, null], ['september', 9, null],
+      ['unknown', null, null], ['wide', 8, 4.5], ['zero', 8, 0.0]]
+      .forEach(([label, month, band]) => {
+        const r = C.seasonalYield(analysis, null,
+          { month, annualRangeM: band });
+        out.seasonal[label] = {
+          month: r.month, season: r.season, month_note: r.month_note,
+          annual_range_m: r.annual_range_m, range_source: r.range_source,
+          pending_reason: r.pending_reason,
+          design_yield_m3_per_h: r.design_yield_m3_per_h,
+          pump_installation_depth_m: r.pump_installation_depth_m,
+          dry_season_loss_percent: r.dry_season_loss_percent,
+          summary: r.summary,
+          scenarios: r.scenarios.map((s) => ({
+            key: s.key, title: s.title, decline_m: s.decline_m,
+            static_water_level_m: s.static_water_level_m,
+            available_drawdown_m: s.available_drawdown_m,
+            safe_yield_m3_per_h: s.safe_yield_m3_per_h,
+            pump_installation_depth_m: s.pump_installation_depth_m,
+            note: s.note,
+          })),
+        };
+      });
+
     out.rounding = [[0.15, 1], [14.05, 1], [2.675, 2], [0.5, 0], [1.5, 0],
       [2.5, 0], [-0.15, 1], [2.34, 2], [2.345, 2], [0.125, 2], [-2.5, 0],
       [45.05, 1], [150.5, 0]]
@@ -588,6 +619,38 @@ await withPage(async (page, base, consoleErrors) => {
   // A report is what a borehole is handed over on, so both engines have to
   // agree on what it can stand behind, down to the sentence they give the
   // analyst.
+  // --- the seasonal yield model ---
+  parsed.seasonal_dates.forEach((js, i) => {
+    const py = R.seasonal_dates[i];
+    check(`seasonal: reading the date ${JSON.stringify(js.text)}`,
+      js.month === py.month && js.note === py.note,
+      JSON.stringify(js) + '\n     vs ' + JSON.stringify(py));
+  });
+  Object.keys(R.seasonal).forEach((label) => {
+    const js = parsed.seasonal[label], py = R.seasonal[label];
+    check(`seasonal ${label}: the headline figures`,
+      js.month === py.month && js.season === py.season &&
+      js.month_note === py.month_note && js.range_source === py.range_source &&
+      close(js.annual_range_m, py.annual_range_m) &&
+      close(js.design_yield_m3_per_h, py.design_yield_m3_per_h) &&
+      close(js.pump_installation_depth_m, py.pump_installation_depth_m) &&
+      close(js.dry_season_loss_percent, py.dry_season_loss_percent) &&
+      js.summary === py.summary,
+      JSON.stringify(js) + '\n     vs ' + JSON.stringify(py));
+    check(`seasonal ${label}: every scenario`,
+      js.scenarios.length === py.scenarios.length &&
+      js.scenarios.every((s, i) => {
+        const w = py.scenarios[i];
+        return s.key === w.key && s.title === w.title && s.note === w.note &&
+          close(s.decline_m, w.decline_m) &&
+          close(s.static_water_level_m, w.static_water_level_m) &&
+          close(s.available_drawdown_m, w.available_drawdown_m) &&
+          close(s.safe_yield_m3_per_h, w.safe_yield_m3_per_h) &&
+          close(s.pump_installation_depth_m, w.pump_installation_depth_m);
+      }),
+      JSON.stringify(js.scenarios) + '\n     vs ' + JSON.stringify(py.scenarios));
+  });
+
   // --- the QR encoder ---
   // Module for module. A symbol that is wrong in the data region still looks
   // exactly like a QR symbol, so nothing short of every module is a check.

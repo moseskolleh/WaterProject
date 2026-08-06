@@ -26,6 +26,7 @@ from ..hydraulics.plots import (
     plot_test_overview,
     plot_theis,
 )
+from ..seasonal import MONTH_NAMES
 from ..utils import fmt_num, safe_slug
 from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
@@ -44,6 +45,9 @@ class PumpingReportInputs:
     #: certifiable the cover says so; when it is absent nothing is
     #: stamped, so an existing caller is unaffected.
     readiness: Any = None
+    #: The seasonal projection from :func:`groundwater.seasonal.seasonal_yield`.
+    #: Absent, section 5 reports the single figure as before.
+    seasonal: Any = None
 
 
 def _executive_summary(analysis: PumpingTestAnalysis) -> tuple[list[str], list[str]]:
@@ -334,6 +338,58 @@ def build_pumping_report(
                 ]
             )
 
+    seasonal = inputs.seasonal
+    if seasonal is not None and seasonal.is_established:
+        rb.heading("5.1 Through the year", 2)
+        rb.paragraph(
+            "A pumping test measures one day. The borehole has to supply the "
+            "village on the worst day, and those are months apart: the water "
+            "table is recharged through the single wet season, peaks at the "
+            "end of it and falls through the dry season to an annual low in "
+            "April or May. The same test therefore means different things "
+            "depending on when it was run, so the yield is reported here at "
+            "each of three water levels rather than at one.",
+            align="justify")
+        if seasonal.month:
+            rb.paragraph(
+                f"This test was run in {MONTH_NAMES[seasonal.month - 1]}, the "
+                f"{seasonal.season}.")
+        elif seasonal.month_note:
+            rb.paragraph(
+                seasonal.month_note + " The whole annual range is therefore "
+                "reserved, which is the conservative reading.", bold=True)
+        rb.table(
+            [[s.title, f"{s.decline_m:.1f}",
+              fmt_num(s.static_water_level_m), fmt_num(s.available_drawdown_m),
+              fmt_num(s.safe_yield_m3_per_h),
+              fmt_num(s.pump_installation_depth_m)]
+             for s in seasonal.scenarios],
+            header=["Scenario", "Further decline (m)", "Static level (m)",
+                    "Available drawdown (m)", "Safe yield (m3/h)",
+                    "Pump intake (m)"],
+            caption="Safe yield and pump setting at each seasonal water level",
+        )
+        rb.paragraph(
+            f"The annual range used is {seasonal.annual_range_m:.1f} m - "
+            f"{seasonal.range_source}. It is the one number here that a single "
+            "test cannot measure, and every figure in the table moves with it.",
+            italic=True)
+        loss = seasonal.dry_season_loss_percent
+        if loss and loss > 1:
+            rb.paragraph(
+                f"By the end of the dry season the borehole yields about "
+                f"{loss:.0f}% less than it did on the day of the test.",
+                bold=True)
+        rb.bullets([s.note for s in seasonal.scenarios])
+        if seasonal.pump_installation_depth_m is not None:
+            rb.paragraph(
+                "Set the pump intake at "
+                f"{fmt_num(seasonal.pump_installation_depth_m)} m below ground "
+                "level: deep enough for the drought case, because the pump is "
+                "fitted once and a pump that draws air in a bad year loses the "
+                "village its borehole in the year it is needed most.",
+                bold=True)
+
     # ---- limitations -----------------------------------------------------------
     rb.heading("6. Limitations and Uncertainty", 1)
     rb.bullets(
@@ -348,9 +404,11 @@ def build_pumping_report(
             "The safe yield is projected to the design period from a short "
             "test; it should be confirmed by monitoring the pumping water "
             "level once the borehole is in service.",
-            "Yield varies with the season. A dry-season water-table decline is "
-            "reserved in the yield calculation and stated in the basis, but a "
-            "test run in the rains can still overstate the dry-season yield.",
+            "Yield varies with the season. Section 5.1 projects the tested "
+            "level to the annual low and to a drought year, but the size of "
+            "the annual swing is assumed rather than measured; two water-level "
+            "readings a year apart in this borehole would replace that "
+            "assumption with a number.",
         ]
     )
 

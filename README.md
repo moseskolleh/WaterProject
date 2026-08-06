@@ -57,7 +57,14 @@ water quality guidelines.
     one whose result could not be read is not. An interim document can be
     issued on a recorded override naming who issued it and why, which makes
     it issuable and never certifiable
-14. A borehole asset registry for the second twenty years: a check-summed
+14. A seasonal sustainable-yield model: a pumping test measures one day,
+    so the tested water level is placed in the annual cycle and the yield
+    reported at three levels - as tested, at the normal end-of-dry-season
+    low, and in a drought year - with the pump intake set deep enough for
+    the worst of them. A date that could be read either way round (10/05 is
+    10 May or 5 October, opposite ends of the year) is treated as no date:
+    the whole annual range is reserved and the report says why
+15. A borehole asset registry for the second twenty years: a check-summed
     identifier derived from the position (so two teams at the same wellhead
     with no connection between them arrive at the same one), a printable
     headworks plate carrying a QR symbol generated offline, an append-only
@@ -198,6 +205,8 @@ groundwater/
     reporting/    house-styled .docx builders for the seven report types
     extraction/   scanned sheet extraction with review flagging
     readiness.py  the certification gate: per-report requirements, overrides
+    seasonal.py   the tested day placed in the year: dry-season and drought
+                  yields, and the pump depth the worst of them needs
     registry.py   asset identifiers, maintenance events, derived condition
     qr.py         a dependency-free QR encoder for the headworks plate
 ```

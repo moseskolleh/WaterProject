@@ -1036,6 +1036,53 @@
         (rec.pending_reason || 'required inputs are missing') + '.', { bold: true });
     }
 
+    var seasonal = context.seasonal;
+    if (seasonal && seasonal.is_established) {
+      b.heading('5.1 Through the year', 2);
+      b.paragraph('A pumping test measures one day. The borehole has to ' +
+        'supply the village on the worst day, and those are months apart: the ' +
+        'water table is recharged through the single wet season, peaks at the ' +
+        'end of it and falls through the dry season to an annual low in April ' +
+        'or May. The same test therefore means different things depending on ' +
+        'when it was run, so the yield is reported here at each of three ' +
+        'water levels rather than at one.', { align: 'justify' });
+      if (seasonal.month) {
+        b.paragraph('This test was run in ' + C.MONTH_NAMES[seasonal.month - 1] +
+          ', the ' + seasonal.season + '.');
+      } else if (seasonal.month_note) {
+        b.paragraph(seasonal.month_note + ' The whole annual range is ' +
+          'therefore reserved, which is the conservative reading.',
+        { bold: true });
+      }
+      b.table(seasonal.scenarios.map(function (sc) {
+        return [sc.title, C.pyFixed(sc.decline_m, 1),
+          C.fmtNum(sc.static_water_level_m), C.fmtNum(sc.available_drawdown_m),
+          C.fmtNum(sc.safe_yield_m3_per_h),
+          C.fmtNum(sc.pump_installation_depth_m)];
+      }), {
+        header: ['Scenario', 'Further decline (m)', 'Static level (m)',
+          'Available drawdown (m)', 'Safe yield (m³/h)', 'Pump intake (m)'],
+        caption: 'Safe yield and pump setting at each seasonal water level',
+      });
+      b.paragraph('The annual range used is ' +
+        C.pyFixed(seasonal.annual_range_m, 1) + ' m — ' + seasonal.range_source +
+        '. It is the one number here that a single test cannot measure, and ' +
+        'every figure in the table moves with it.', { italic: true });
+      if (seasonal.dry_season_loss_percent > 1) {
+        b.paragraph('By the end of the dry season the borehole yields about ' +
+          C.pyFixed(seasonal.dry_season_loss_percent, 0) + '% less than it did ' +
+          'on the day of the test.', { bold: true });
+      }
+      b.bullets(seasonal.scenarios.map(function (sc) { return sc.note; }));
+      if (seasonal.pump_installation_depth_m !== null) {
+        b.paragraph('Set the pump intake at ' +
+          C.fmtNum(seasonal.pump_installation_depth_m) + ' m below ground ' +
+          'level: deep enough for the drought case, because the pump is ' +
+          'fitted once and a pump that draws air in a bad year loses the ' +
+          'village its borehole in the year it is needed most.', { bold: true });
+      }
+    }
+
     b.heading('6. Limitations and Uncertainty', 1);
     limitationsParagraphs('pumping').forEach(function (text) {
       b.paragraph(text, { align: 'justify' });

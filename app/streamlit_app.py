@@ -89,6 +89,7 @@ from groundwater.coverage import (
     load_district_population,
 )
 from groundwater.readiness import assess_readiness
+from groundwater.seasonal import MONTH_NAMES, month_of, seasonal_yield
 from groundwater.registry import (
     EVENT_KINDS,
     AssetEvent,
@@ -2315,12 +2316,81 @@ with tab_pump:
             )
             st.caption(yr.basis)
 
+        # --- through the year ------------------------------------------
+        # A test measures one day; the borehole has to supply the village on
+        # the worst one, and those are months apart.
+        st.subheader("Through the year")
+        _read_month, _month_note = month_of(test.site.date)
+        _choices = [0] + list(range(1, 13))
+        _picked = st.selectbox(
+            "Month the test was run",
+            _choices,
+            index=_choices.index(_read_month) if _read_month else 0,
+            format_func=lambda m: ("not known" if m == 0 else MONTH_NAMES[m - 1]),
+            key="seasonal_month",
+            help="The water table is highest at the end of the rains and "
+                 "lowest in April or May, so when the test was run changes "
+                 "what it proves. Read from the field sheet where it can be.",
+        )
+        # not named _band: that is a module-level helper used above, and
+        # shadowing it here would break the yield bands on the next rerun
+        _swing = st.number_input(
+            "Annual water-table swing (m)",
+            min_value=0.0, max_value=30.0, step=0.5,
+            value=float(app_config().pumping.seasonal_allowance_m),
+            key="seasonal_range",
+            help="Wet-season high to dry-season low in this borehole. A single "
+                 "test cannot measure it; two readings six months apart can. "
+                 "Every figure below moves with it.",
+        )
+        if _month_note:
+            st.warning(_month_note)
+        _seasonal = seasonal_yield(
+            analysis, app_config().pumping,
+            month=(_picked or None), annual_range_m=_swing)
+        if not _seasonal.is_established:
+            st.info(_seasonal.pending_reason or
+                    "The seasonal projection is not available for this test.")
+        else:
+            st.write(_seasonal.summary)
+            st.dataframe(
+                [{"Scenario": sc.title,
+                  "Further decline (m)": round(sc.decline_m, 1),
+                  "Static level (m)": round(sc.static_water_level_m, 2),
+                  "Available drawdown (m)": round(sc.available_drawdown_m, 1)
+                  if sc.available_drawdown_m else None,
+                  "Safe yield (m3/h)": round(sc.safe_yield_m3_per_h, 2)
+                  if sc.safe_yield_m3_per_h else None,
+                  "Pump intake (m)": sc.pump_installation_depth_m}
+                 for sc in _seasonal.scenarios],
+                hide_index=True, width="stretch",
+            )
+            _loss = _seasonal.dry_season_loss_percent
+            if _loss and _loss > 1:
+                st.warning(
+                    f"By the end of the dry season this borehole yields about "
+                    f"{_loss:.0f}% less than it did on the day of the test. "
+                    "Size the supply on the dry-season figure."
+                )
+            if _seasonal.pump_installation_depth_m is not None:
+                st.info(
+                    "Set the pump intake at "
+                    f"{fmt_num(_seasonal.pump_installation_depth_m)} m - deep "
+                    "enough for the drought case. The pump is fitted once, and "
+                    "one that draws air in a bad year loses the village its "
+                    "borehole in the year it is needed most."
+                )
+            st.caption(
+                f"The annual range used is {_seasonal.annual_range_m:.1f} m - "
+                f"{_seasonal.range_source}."
+            )
+
         _pump_gate = report_gate("pumping")
         if st.button("Build pumping test report", key="build_pump_report"):
           with _working("Building the pumping test report..."):
             report_path = build_pumping_report(
                 PumpingReportInputs(analysis=analysis, figures_dir=workdir(),
-                                    readiness=_pump_gate),
+                                    readiness=_pump_gate, seasonal=_seasonal),
                 workdir() / "Pumping_Test_Report.docx",
                 app_config(),
             )

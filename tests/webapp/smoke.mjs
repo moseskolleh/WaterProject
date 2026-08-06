@@ -719,6 +719,72 @@ await withPage(async (page, base, consoleErrors) => {
   check('standards: the quality report says the national column is provisional',
     qualityDoc.len > 1000 && qualityDoc.saysProvisional, JSON.stringify(qualityDoc));
 
+  // --- the yield through the year ------------------------------------------
+  // The sample sheet's date is 10/05/2018, which is 10 May or 5 October -
+  // opposite ends of the year. The page has to say so rather than pick one,
+  // and the month the analyst picks has to reach the report.
+  const seasonal = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, d = app.derived;
+    app.store.set('seasonal', {});
+    app.goto('pumping');
+    app.render();
+    const asRead = {
+      text: document.querySelector('#page-host').textContent,
+      month: C.monthOf(d.analysis.test.site.date).month,
+    };
+
+    const pick = (month) => {
+      const select = Array.from(document.querySelectorAll('#page-host select'))
+        .find((s2) => Array.from(s2.options).some((o) => o.label === 'September'));
+      if (!select) return false;
+      select.value = String(month);
+      select.dispatchEvent(new Event('change'));
+      return true;
+    };
+    const picked = pick(9);
+    const september = {
+      text: document.querySelector('#page-host').textContent,
+      result: C.seasonalYield(d.analysis, app.config().pumping, { month: 9 }),
+    };
+    pick(5);
+    const may = C.seasonalYield(d.analysis, app.config().pumping, { month: 5 });
+
+    pick(9);
+    const doc = await window.__docText(await (await window.GWT.docx.pumpingReport({
+      style: app.config().style, site: app.store.get('site'),
+      analysis: d.analysis, figures: [],
+      seasonal: C.seasonalYield(d.analysis, app.config().pumping, { month: 9 }),
+    })).build());
+
+    app.store.set('seasonal', {});
+    app.render();
+    return { asRead, picked, september, may, doc };
+  });
+  check('seasonal: an ambiguous sheet date is explained, not resolved',
+    seasonal.asRead.month === null &&
+    seasonal.asRead.text.includes('could be read either way round'),
+    `month ${seasonal.asRead.month}`);
+  check('seasonal: picking the month changes what the test proves',
+    seasonal.picked === true &&
+    seasonal.may.design_yield_m3_per_h > seasonal.september.result.design_yield_m3_per_h,
+    JSON.stringify({ may: seasonal.may.design_yield_m3_per_h,
+      september: seasonal.september.result.design_yield_m3_per_h }));
+  check('seasonal: the page names the three scenarios',
+    ['As tested', 'End of dry season', 'Drought year']
+      .every((title) => seasonal.september.text.includes(title)),
+    seasonal.september.text.slice(0, 200));
+  check('seasonal: the pump is set for the drought case',
+    seasonal.september.result.pump_installation_depth_m ===
+      Math.max(...seasonal.september.result.scenarios
+        .map((s) => s.pump_installation_depth_m)),
+    JSON.stringify(seasonal.september.result.scenarios.map((s) =>
+      [s.key, s.pump_installation_depth_m])));
+  check('seasonal: the report carries the projection',
+    seasonal.doc.includes('Through the year') &&
+    seasonal.doc.includes('September') &&
+    seasonal.doc.includes('the pump is fitted once'),
+    seasonal.doc.length + ' chars');
+
   // --- the asset registry --------------------------------------------------
   // The identifier is derived from the position, the history is append-only
   // and merges by content, and nothing counts as working until something

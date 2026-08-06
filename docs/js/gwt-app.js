@@ -81,6 +81,7 @@
       /* per report kind: { requirementKey: {reason, by} } */
       overrides: {},
       asset: null,
+      seasonal: {},
       theme: 'auto',
     };
   }
@@ -2189,12 +2190,112 @@
         'fail in a dry year.') : null,
     ]));
 
+    nodes.push(seasonalCard(derived.analysis));
     nodes.push(reportCard('Pumping test report', 'pumping',
       'Test details, the full field data tables, each analysis method with its ' +
       'figure, the results summary and the yield recommendation.'));
     nodes.push(nextStep('Next, assess the water quality.', 'Water quality', 'quality'));
     return nodes;
   };
+
+  /* The month the test was run and the size of the annual swing, and what
+   * the yield becomes at the end of the dry season and in a drought year. A
+   * test measures one day; the borehole has to supply the village on the
+   * worst one, and those are months apart. */
+  function seasonalSettings() {
+    var stored = store.get('seasonal') || {};
+    return {
+      month: stored.month === undefined ? null : stored.month,
+      rangeM: stored.rangeM === undefined ? null : stored.rangeM,
+      touched: !!stored.touched,
+    };
+  }
+
+  function currentSeasonal(analysis) {
+    var chosen = seasonalSettings();
+    var cfg = config();
+    return C.seasonalYield(analysis, cfg.pumping, {
+      month: chosen.touched ? chosen.month : undefined,
+      annualRangeM: chosen.rangeM,
+    });
+  }
+
+  function seasonalCard(analysis) {
+    if (!analysis) return null;
+    var chosen = seasonalSettings();
+    var cfg = config();
+    var read = C.monthOf(analysis.test && analysis.test.site
+      ? analysis.test.site.date : '');
+    var result = currentSeasonal(analysis);
+    var months = [{ value: '0', label: 'not known' }].concat(
+      C.MONTH_NAMES.map(function (name, i) {
+        return { value: String(i + 1), label: name };
+      }));
+    var nodes = [
+      el('p.muted', 'A pumping test measures one day. The borehole has to ' +
+        'supply the village on the worst day, and those are months apart: the ' +
+        'water table is highest at the end of the rains and lowest in April ' +
+        'or May, so when the test was run changes what it proves.'),
+      el('div.field-row', [
+        field('Month the test was run',
+          S.selectInput(String((chosen.touched ? chosen.month : read.month) || 0),
+            months, function (v) {
+              store.set('seasonal', Object.assign({}, store.get('seasonal') || {},
+                { month: Number(v) || null, touched: true }));
+              render();
+            }), 'Read from the field sheet where it can be'),
+        field('Annual water-table swing (m)',
+          S.numberInput(chosen.rangeM === null
+            ? cfg.pumping.seasonal_allowance_m : chosen.rangeM,
+          function (v) {
+            store.set('seasonal', Object.assign({}, store.get('seasonal') || {},
+              { rangeM: (v === null || v === undefined) ? null : Number(v) }));
+            render();
+          }, { min: 0, max: 30, step: 0.5 }),
+        'Wet-season high to dry-season low. A single test cannot measure it'),
+      ]),
+    ];
+    if (result.month_note) {
+      nodes.push(el('div.callout.callout-warn', el('p', result.month_note)));
+    }
+    if (!result.is_established) {
+      nodes.push(el('p.muted', result.pending_reason ||
+        'The seasonal projection is not available for this test.'));
+      return card('Through the year', nodes);
+    }
+
+    nodes.push(el('p', result.summary));
+    nodes.push(S.table(
+      ['Scenario', 'Further decline (m)', 'Static level (m)',
+        'Available drawdown (m)', 'Safe yield (m3/h)', 'Pump intake (m)'],
+      result.scenarios.map(function (sc) {
+        return [sc.title, C.pyFixed(sc.decline_m, 1),
+          C.fmtNum(sc.static_water_level_m), C.fmtNum(sc.available_drawdown_m),
+          C.fmtNum(sc.safe_yield_m3_per_h),
+          C.fmtNum(sc.pump_installation_depth_m)];
+      })));
+    if (result.dry_season_loss_percent > 1) {
+      nodes.push(el('div.callout.callout-warn', el('p',
+        'By the end of the dry season this borehole yields about ' +
+        C.pyFixed(result.dry_season_loss_percent, 0) + '% less than it did on ' +
+        'the day of the test. Size the supply on the dry-season figure.')));
+    }
+    if (result.pump_installation_depth_m !== null) {
+      nodes.push(el('div.callout', el('p', 'Set the pump intake at ' +
+        C.fmtNum(result.pump_installation_depth_m) + ' m — deep enough for ' +
+        'the drought case. The pump is fitted once, and one that draws air in ' +
+        'a bad year loses the village its borehole in the year it is needed ' +
+        'most.')));
+    }
+    nodes.push(S.checkList(result.scenarios.map(function (sc) {
+      return { level: 'info', message: sc.title + ' — ' + sc.note };
+    })));
+    nodes.push(el('p.muted', 'The annual range used is ' +
+      C.pyFixed(result.annual_range_m, 1) + ' m — ' + result.range_source +
+      '. It is the one number here a single test cannot measure, and every ' +
+      'figure in the table moves with it.'));
+    return card('Through the year', nodes);
+  }
 
   /* --- water quality -------------------------------------------------------- */
 
@@ -4203,6 +4304,9 @@
           signOff: signOffFor(kind),
           readiness: reportReadiness(kind),
         };
+        if (kind === 'pumping' && derived.analysis) {
+          context.seasonal = currentSeasonal(derived.analysis);
+        }
         var builder;
         var figures = [];
 
