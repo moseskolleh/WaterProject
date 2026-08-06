@@ -19,6 +19,7 @@ from groundwater.ingestion import (
     read_drilling_workbook,
     read_pumping_workbook,
     read_quality_workbook,
+    read_ves_workbook,
 )
 from groundwater.models import SiteMetadata, WaterQualityResult
 from groundwater.quality import assess_sample
@@ -223,6 +224,85 @@ def test_a_ready_report_carries_no_stamp(project, tmp_path):
     text = "\n".join(p.text for p in Document(str(out)).paragraphs)
     assert "PROVISIONAL" not in text
     assert "NOT A CERTIFICATION" not in text
+
+
+def test_the_geophysical_report_is_stamped_when_the_site_is_unlocated(
+        sample_data, tmp_path):
+    """The gate declares a rule for this report, so the report must carry it.
+
+    A survey whose points have no position cannot be found again on the
+    ground, which is the whole of what the geophysical requirement asks.
+    """
+    from docx import Document
+
+    from groundwater.reporting.geophysical import (
+        GeophysicalReportInputs,
+        build_geophysical_report,
+    )
+    from groundwater.ves import interpret_model, invert_sounding
+
+    soundings = read_ves_workbook(sample_data / "rokel" / "rokel_ves.xlsx")
+    inversions = [invert_sounding(s) for s in soundings]
+    interps = [interpret_model(s, r.model)
+               for s, r in zip(soundings, inversions)]
+    readiness = assess_readiness({"site": SiteMetadata(community="Nowhere")},
+                                 "geophysical")
+    assert not readiness.is_certifiable
+
+    out = build_geophysical_report(
+        GeophysicalReportInputs(
+            soundings=soundings, inversions=inversions,
+            interpretations=interps, figures_dir=tmp_path,
+            readiness=readiness),
+        tmp_path / "geophysical.docx",
+    )
+    text = "\n".join(p.text for p in Document(str(out)).paragraphs)
+    assert "PROVISIONAL - NOT FOR CERTIFICATION" in text
+    assert "Site position" in text
+
+
+def test_the_costing_and_supervision_reports_are_stamped_too(tmp_path):
+    from docx import Document
+
+    from groundwater.costing.model import CostingInputs, estimate_borehole_cost
+    from groundwater.reporting.costing import CostReportInputs, build_cost_report
+    from groundwater.reporting.supervision import (
+        SupervisionReportInputs,
+        build_supervision_report,
+    )
+    from groundwater.supervision.checklists import (
+        ChecklistResponse,
+        evaluate_checklist,
+        load_checklists,
+    )
+
+    site = SiteMetadata(community="Nowhere")
+    cost_readiness = assess_readiness({"site": site}, "costing")
+    assert not cost_readiness.is_certifiable
+    cost_doc = build_cost_report(
+        CostReportInputs(
+            estimate=estimate_borehole_cost(CostingInputs(total_depth_m=45.0)),
+            site=site, figures_dir=tmp_path, readiness=cost_readiness),
+        tmp_path / "cost.docx",
+    )
+    cost_text = "\n".join(p.text for p in Document(str(cost_doc)).paragraphs)
+    assert "PROVISIONAL - NOT FOR CERTIFICATION" in cost_text
+    assert "Drilling log" in cost_text
+
+    items = load_checklists()
+    responses = {i.item_id: ChecklistResponse(i.item_id, "yes")
+                 for i in items[:20]}
+    sup_readiness = assess_readiness({"site": site}, "supervision")
+    sup_doc = build_supervision_report(
+        SupervisionReportInputs(
+            site=site, items=items, responses=responses,
+            assessment=evaluate_checklist(items, responses),
+            readiness=sup_readiness),
+        tmp_path / "supervision.docx",
+    )
+    sup_text = "\n".join(p.text for p in Document(str(sup_doc)).paragraphs)
+    assert "PROVISIONAL - NOT FOR CERTIFICATION" in sup_text
+    assert "Site position" in sup_text
 
 
 def test_an_overridden_report_names_who_issued_it(project, tmp_path):

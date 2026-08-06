@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from ..config import Config
 from ..models import SiteMetadata
@@ -40,6 +41,10 @@ class SupervisionReportInputs:
     driller: str = ""
     community_rep: str = ""
     notes: list[str] = field(default_factory=list)
+    #: :class:`~groundwater.readiness.Readiness` for this report, from
+    #: :func:`groundwater.readiness.assess_readiness`. When it is not
+    #: certifiable the cover carries a PROVISIONAL stamp listing why.
+    readiness: Any = None
 
 
 def build_supervision_report(
@@ -70,6 +75,7 @@ def build_supervision_report(
             ("Date", site.date),
         ],
     )
+    rb.provisional_stamp(inputs.readiness)
     rb.table_of_contents()
 
     # ---- 1 summary -------------------------------------------------------

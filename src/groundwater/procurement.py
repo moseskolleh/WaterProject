@@ -258,18 +258,25 @@ def value_work(contract: Contract, measurements: Iterable[Measurement],
     varied: dict[str, dict] = {}
     for variation in variations:
         entry = varied.setdefault(variation.code, {
-            "delta": 0.0, "rate": None, "refs": [], "item": "", "unit": ""})
+            "delta": 0.0, "rate": None, "refs": [], "unsigned_refs": [],
+            "item": "", "unit": ""})
+        entry["item"] = entry["item"] or variation.item
+        entry["unit"] = entry["unit"] or variation.unit
+        # An unsigned variation is not valued at all. Counting its quantity
+        # and then printing a warning beside the total pays for work nobody
+        # instructed: the warning is read once, the certificate is banked.
+        if not variation.authorised_by:
+            entry["unsigned_refs"].append(variation.ref)
+            problems.append(
+                f"Variation {variation.ref} on {variation.code} names nobody "
+                "who authorised it. An unsigned variation is a request, not "
+                "an instruction, so its quantity is left out of this "
+                "valuation until somebody signs it.")
+            continue
         entry["delta"] += float(variation.quantity_delta)
         entry["refs"].append(variation.ref)
         if variation.rate_usd is not None:
             entry["rate"] = float(variation.rate_usd)
-        entry["item"] = entry["item"] or variation.item
-        entry["unit"] = entry["unit"] or variation.unit
-        if not variation.authorised_by:
-            problems.append(
-                f"Variation {variation.ref} on {variation.code} names nobody "
-                "who authorised it. An unsigned variation is a request, not "
-                "an instruction.")
 
     measured: dict[str, float] = {}
     for record in measurements:
@@ -314,7 +321,13 @@ def value_work(contract: Contract, measurements: Iterable[Measurement],
                 contract_quantity=0.0, variation_quantity=0.0,
                 measured_quantity=measured.get(code, 0.0), in_contract=False))
             continue
-        if change.get("rate") is None:
+        if not change["refs"]:
+            problems.append(
+                f"Variation {', '.join(change['unsigned_refs'])} adds {code}, "
+                "which the contract does not carry, and nobody has signed it. "
+                "Nothing is authorised against this line, so nothing on it is "
+                "payable.")
+        elif change.get("rate") is None:
             problems.append(
                 f"Variation {', '.join(change['refs'])} adds {code}, which the "
                 "contract does not price, without giving a rate. It is valued "

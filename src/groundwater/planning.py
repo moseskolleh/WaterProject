@@ -239,6 +239,22 @@ class SeasonalCoverage:
         return known > 0 and known >= (known + self.n_unknown) * 0.5
 
     @property
+    def people_per_point_band(self) -> str:
+        """The dry-season band as a planner reads it: best case to worst.
+
+        ``people_per_point_high`` is the kinder end - it credits the points
+        nobody asked about with working all year - so it comes first.
+        """
+        best, worst = self.people_per_point_high, self.people_per_point_low
+        if best is None and worst is None:
+            return "n/a"
+        if worst is None:
+            return f"{best:,.0f} to no confirmed point"
+        if best is None or round(best) == round(worst):
+            return f"{worst:,.0f}"
+        return f"{best:,.0f} to {worst:,.0f}"
+
+    @property
     def detail(self) -> str:
         total = self.n_year_round + self.n_seasonal + self.n_unknown
         if not total:
@@ -260,6 +276,7 @@ class SeasonalCoverage:
                 "n_seasonal": self.n_seasonal, "n_unknown": self.n_unknown,
                 "people_per_point_low": self.people_per_point_low,
                 "people_per_point_high": self.people_per_point_high,
+                "people_per_point_band": self.people_per_point_band,
                 "is_established": self.is_established, "detail": self.detail}
 
 
