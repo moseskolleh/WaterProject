@@ -44,6 +44,7 @@
       ['waterpoints', 'Water points'],
       ['coverage', 'Coverage gap'],
       ['portfolio', 'Portfolio'],
+      ['registry', 'Asset registry'],
     ]],
     ['', [
       ['settings', 'Settings'],
@@ -79,6 +80,7 @@
       extraction: { model: '' },
       /* per report kind: { requirementKey: {reason, by} } */
       overrides: {},
+      asset: null,
       theme: 'auto',
     };
   }
@@ -3365,6 +3367,299 @@
       northing: state.meta_northing,
       utm_zone: Number(String(state.meta_zone || '29N').replace(/N$/i, '')) || 29,
     };
+  }
+
+  /* --- the asset registry --------------------------------------------------
+   * A drilling project ends; the borehole does not. Everything on this page
+   * is about the second twenty years: a stable identifier, an append-only
+   * history recorded at the wellhead with no signal, and what that history
+   * says is true today. Nothing is assumed working.
+   * ---------------------------------------------------------------------- */
+
+  /* The symbol as a PNG data URL, drawn on a canvas rather than through the
+   * toolkit's own PNG writer: the browser already has an encoder, and the
+   * bytes only have to be a valid image - the modules themselves are what
+   * parity holds to the Python side. */
+  function qrDataUrl(text, options) {
+    var opts = options || {};
+    var code = C.qrEncode(text, { ecc: opts.ecc || 'H' });
+    var scale = opts.scale || 8, border = opts.border === undefined ? 4 : opts.border;
+    var size = (code.size + 2 * border) * scale;
+    var canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    var ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = '#000000';
+    for (var row = 0; row < code.size; row++) {
+      for (var col = 0; col < code.size; col++) {
+        if (code.modules[row][col]) {
+          ctx.fillRect((col + border) * scale, (row + border) * scale, scale, scale);
+        }
+      }
+    }
+    return { dataUrl: canvas.toDataURL('image/png'), mime: 'image/png',
+      width: size, height: size };
+  }
+
+  /* The stored record if there is one, otherwise a draft from the project.
+   * A draft carries no events: a borehole is commissioned by somebody
+   * deciding it is, on a day, not by opening a page. */
+  function currentAsset() {
+    var stored = store.get('asset');
+    var record = stored ? C.assetFromDict(stored) : null;
+    if (record) return record;
+    return C.assetFromProject(projectState());
+  }
+
+  function saveAsset(asset) {
+    store.set('asset', asset);
+    render();
+  }
+
+  PAGES.registry = function () {
+    var asset = currentAsset();
+    var nodes = [
+      pageHead('Asset registry', 'A drilling project ends; the borehole does ' +
+        'not. This page holds the other half: a stable identifier that ' +
+        'outlives the project file, the maintenance history recorded against ' +
+        'it, and what that history says is true today. Nothing here is ' +
+        'assumed — a borehole nobody has reported on is not working, it is ' +
+        'unknown.'),
+    ];
+
+    if (!asset) {
+      nodes.push(card('This borehole', [
+        el('div.callout.callout-warn', el('p', 'This project has no recorded ' +
+          'position yet, so it cannot be given an identifier — there would be ' +
+          'nothing to find the borehole by. Enter the GPS position on the ' +
+          'Site page.')),
+        el('div.btn-row', [button('Go to the site page', function () {
+          goto('site');
+        }, { variant: 'ghost' })]),
+      ]));
+    } else {
+      var state = C.assetState(asset);
+      var tone = state.function === 'functional' ? 'ok'
+        : (state.function === 'non_functional' ? 'bad' : 'warn');
+      var outstanding = state.due.filter(function (item) {
+        return item.state === 'overdue' || item.state === 'unknown';
+      });
+      nodes.push(card('This borehole', [
+        el('p.asset-id', asset.asset_id),
+        el('p.muted', 'The identifier is derived from the position, so two ' +
+          'teams at the same wellhead with no connection between them arrive ' +
+          'at the same one. The last character is a check character: it ' +
+          'catches every single mistyped character and every transposition ' +
+          'of two adjacent ones.'),
+        S.statRow([
+          S.stat('Status', state.label),
+          S.stat('Last inspected', state.last_inspection || 'never'),
+          S.stat('Last sampled', state.last_sample || 'never'),
+          S.stat('Records', String((asset.events || []).length)),
+        ]),
+        el('div.callout.callout-' + tone, el('p', state.detail)),
+        state.days_out_of_service === null || state.days_out_of_service === undefined
+          ? null
+          : el('p', el('strong', 'Out of service for ' +
+            state.days_out_of_service + ' days. Every day counted here is a ' +
+            'day the community went back to whatever they used before.')),
+        S.checkList(state.due.map(function (item) {
+          return {
+            level: item.state === 'overdue' ? 'error'
+              : (item.state === 'unknown' ? 'warning' : 'info'),
+            message: item.detail,
+          };
+        })),
+      ]));
+
+      var draft = { when: new Date().toISOString().slice(0, 10),
+        kind: 'inspection', note: '', by: '', photo: '' };
+      nodes.push(card('Record what happened', [
+        el('p.muted', 'The history is append-only: a mistake is corrected by ' +
+          'recording the correction, so both stay visible. Events are ' +
+          'identified by their content, so the same visit written down on two ' +
+          'phones merges into one when the project files meet.'),
+        el('div.field-row', [
+          field('Date', S.textInput(draft.when, function (v) {
+            draft.when = String(v).trim();
+          }, { placeholder: 'YYYY-MM-DD' }), ''),
+          field('What happened', S.selectInput(draft.kind,
+            Object.keys(C.EVENT_KINDS).map(function (k) {
+              return { value: k, label: C.EVENT_KINDS[k][0] };
+            }), function (v) { draft.kind = v; }), ''),
+          field('Recorded by', S.textInput('', function (v) {
+            draft.by = String(v).trim();
+          }, { placeholder: 'Name' }), ''),
+        ]),
+        field('Note', S.textInput('', function (v) { draft.note = String(v); },
+          { placeholder: 'What was found or done' }), ''),
+        el('div.btn-row', [
+          button('Add to the history', function () {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.when)) {
+              S.toast('The date should be written YYYY-MM-DD.', 'warn');
+              return;
+            }
+            var next = Object.assign({}, asset, {
+              events: C.mergeEvents(asset.asset_id, asset.events || [], [draft]),
+            });
+            saveAsset(next);
+            S.toast('Recorded.', 'ok');
+          }),
+        ]),
+      ]));
+
+      if ((asset.events || []).length) {
+        nodes.push(card('History', [
+          S.table(['Date', 'Event', 'Note', 'Recorded by'],
+            asset.events.map(function (e) {
+              return [e.when || '(no date)', C.eventLabel(e.kind), e.note || '',
+                e.by || ''];
+            })),
+        ]));
+      }
+
+      nodes.push(card('For the headworks', [
+        el('p.muted', 'The plate carries the identifier, the symbol that ' +
+          'encodes it and the facts that do not go out of date. The symbol ' +
+          'holds the details themselves rather than a link, because the ' +
+          'reason it is on the borehole is that there is no network there.'),
+        el('div.qr-preview', {
+          html: C.qrSvg(C.qrEncode(C.qrPayload(asset), { ecc: 'H' }),
+            { scale: 3, border: 4 }),
+        }),
+        el('div.btn-row', [
+          button('Identification plate (.docx)', async function (event) {
+            await buildAssetDoc('placard', asset, event.target);
+          }),
+          button('Asset record (.docx)', async function (event) {
+            await buildAssetDoc('record', asset, event.target);
+          }, { variant: 'ghost' }),
+        ]),
+      ]));
+    }
+
+    nodes.push(card('Look up an identifier', [
+      el('p.muted', 'Read off a headworks plate. I and L are read as 1, O as ' +
+        '0 and U as V, because those are reading mistakes rather than ' +
+        'different codes — but a failing check character is refused, since a ' +
+        'wrong identifier attaches a repair to somebody else’s borehole.'),
+      field('Identifier', S.textInput(store.get('registry.lookup', ''),
+        function (v) { store.set('registry.lookup', String(v).trim()); render(); },
+        { placeholder: 'SL-WAR-8FEEVKQ-T' }), ''),
+      lookupResult(store.get('registry.lookup', '')),
+    ]));
+
+    nodes.push(registryCard());
+    return nodes;
+  };
+
+  function lookupResult(typed) {
+    if (!typed) return null;
+    var verdict = C.validateAssetId(typed);
+    return el('div.callout.callout-' + (verdict.ok ? 'ok' : 'bad'),
+      el('p', verdict.ok
+        ? 'That is a valid identifier: ' + verdict.assetId
+        : verdict.reason));
+  }
+
+  function registryCard() {
+    var assets = derived.registry || [];
+    var nodes = [
+      el('p.muted', 'Drop in saved project files to see the whole register: ' +
+        'what is working, what is not, and what is overdue a visit. A file ' +
+        'only carries an asset record once its borehole has an identifier.'),
+      el('div.btn-row', [
+        button('Add project files', async function () {
+          var list = await S.pickFile('.json,.gwt,.yaml,.yml', true);
+          if (!list || !list.length) return;
+          var loaded = (derived.registry || []).slice();
+          var skipped = 0;
+          for (var i = 0; i < list.length; i++) {
+            try {
+              var text = await S.readFile(list[i], 'text');
+              var record = assetFromProjectFile(list[i].name, text);
+              if (record) loaded.push(record); else skipped += 1;
+            } catch (e) { skipped += 1; }
+          }
+          derived.registry = loaded;
+          S.toast(loaded.length + ' ' + S.plural(loaded.length, 'borehole') +
+            ' in the register' + (skipped ? ', ' + skipped + ' skipped' : '') + '.',
+          skipped ? 'warn' : 'ok');
+          render();
+        }),
+        assets.length ? button('Clear', function () {
+          derived.registry = [];
+          render();
+        }, { variant: 'ghost' }) : null,
+      ].filter(Boolean)),
+    ];
+    if (!assets.length) {
+      nodes.push(el('p.muted', 'Nothing loaded yet.'));
+      return card('Many boreholes', nodes);
+    }
+    var stats = C.registryStats(assets);
+    nodes.push(S.statRow([
+      S.stat('Boreholes', String(stats.n_assets)),
+      S.stat('Working', String(stats.n_functional)),
+      S.stat('Not working', String(stats.n_non_functional)),
+      S.stat('Condition unknown', String(stats.n_unknown)),
+    ]));
+    if (stats.functionality_rate !== null) {
+      nodes.push(el('p', el('strong', 'Functionality rate: ' +
+        C.pyFixed(stats.functionality_rate, 0) + '%')));
+      nodes.push(el('p.muted', 'Over the boreholes whose condition is ' +
+        'actually known. A rate computed over silence is the number that ' +
+        'makes these registers untrustworthy.'));
+    }
+    if (stats.n_unknown) {
+      nodes.push(el('div.callout.callout-warn', el('p', stats.n_unknown +
+        ' borehole(s) have nothing recorded against them at all. That is not ' +
+        'the same as nothing having happened to them.')));
+    }
+    if (stats.n_overdue_inspection + stats.n_overdue_sample) {
+      nodes.push(el('p', stats.n_overdue_inspection + ' overdue a sanitary ' +
+        'inspection, ' + stats.n_overdue_sample + ' overdue a water quality ' +
+        'sample.'));
+    }
+    var rows = C.registryRows(assets);
+    nodes.push(S.table(Object.keys(rows[0]), rows.map(function (row) {
+      return Object.keys(row).map(function (key) { return String(row[key]); });
+    })));
+    return card('Many boreholes', nodes);
+  }
+
+  function assetFromProjectFile(name, text) {
+    var payload = /\.ya?ml$/i.test(name) ? S.parseYaml(text) : JSON.parse(text);
+    if (!payload || typeof payload !== 'object') return null;
+    /* the Streamlit file carries it under "asset"; this app's own under
+     * state.asset, because that is where its store keeps it */
+    var raw = payload.asset ||
+      (payload.state && typeof payload.state === 'object' ? payload.state.asset : null);
+    return C.assetFromDict(raw || {});
+  }
+
+  async function buildAssetDoc(kind, asset, node) {
+    var host = node ? node.closest('.card') : $('#page-host');
+    try {
+      await S.withBusy(host, 'Building the document…', async function () {
+        var cfg = config();
+        var context = {
+          style: cfg.style, asset: asset, state: C.assetState(asset),
+          readiness: reportReadiness('completion'),
+          symbol: qrDataUrl(C.qrPayload(asset), { ecc: 'H', scale: 8 }),
+        };
+        var builder = kind === 'placard'
+          ? await GWT.docx.assetPlacard(context)
+          : await GWT.docx.assetRecordReport(context);
+        var bytes = await builder.build();
+        S.download((kind === 'placard' ? 'placard_' : 'asset_') +
+          asset.asset_id + '.docx', bytes);
+      });
+      S.toast('Document ready.', 'ok');
+    } catch (err) {
+      S.toast('Could not build the document: ' + err.message, 'bad');
+    }
   }
 
   PAGES.portfolio = function () {

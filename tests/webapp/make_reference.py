@@ -423,6 +423,120 @@ def build() -> dict:
             for report in ("completion", "handover", "quality", "pumping")
         }
 
+    # The QR encoder. Every module of every symbol, because a symbol that is
+    # wrong in the data region still looks exactly like a QR symbol - and the
+    # browser draws the one that gets printed and fixed to the headworks.
+    from groundwater import qr
+
+    _qr_payloads = [
+        "SL-WAR-8FEEVKQ-T",
+        "BOREHOLE SL-WAR-8FEEVKQ-T\nDr. Timbo's (Western Area Rural)\n"
+        "8.48310 N, 13.22940 W\n62.0 m deep, 1.85 m3/h",
+        "Kailahun - 10\u00b0 12' 03\" N",     # non-ASCII, so UTF-8 is exercised
+    ]
+    out["qr"] = [
+        {
+            "text": text, "ecc": ecc, "mask": mask,
+            "version": _code.version, "size": _code.size,
+            "chosen_mask": _code.mask,
+            "penalty": qr._penalty(_code.modules),
+            # one string per row keeps the reference file readable and diffable
+            "rows": ["".join("1" if cell else "0" for cell in row)
+                     for row in _code.modules],
+        }
+        for text in _qr_payloads
+        for ecc in ("L", "M", "Q", "H")
+        for mask in (None, 0, 5)
+        for _code in [qr.encode(text, ecc=ecc, mask=mask)]
+    ]
+    out["qr_capacity"] = [
+        {"version": v, "ecc": e, "bytes": qr._capacity_bytes(v, e)}
+        for v in range(1, qr.MAX_VERSION + 1) for e in ("L", "M", "Q", "H")
+    ]
+
+    # The asset registry: identifiers, the merge, and what the event stream
+    # says is true on a fixed day.
+    from datetime import date as _date
+
+    from groundwater import registry as _registry
+
+    _sites = [
+        SiteMetadata(district="Western Area Rural", easting=694912.0,
+                     northing=938150.0, utm_zone=28),
+        SiteMetadata(district="Western Area Rural", easting=694914.0,
+                     northing=938147.0, utm_zone=28),
+        SiteMetadata(district="Bo", easting=790500.0, northing=875300.0,
+                     utm_zone=28),
+        SiteMetadata(district="Kailahun", easting=280400.0, northing=925600.0,
+                     utm_zone=29),
+        SiteMetadata(district="Nowhere At All", easting=694912.0,
+                     northing=938150.0, utm_zone=28),
+    ]
+    out["asset_ids"] = [
+        {"district": s.district, "easting": s.easting, "northing": s.northing,
+         "zone": s.utm_zone, "id": _registry.mint_asset_id(s)}
+        for s in _sites
+    ]
+    _timbo_id = _registry.mint_asset_id(_sites[0])
+    out["asset_id_parsing"] = [
+        {"typed": t, "parsed": _registry.parse_asset_id(t),
+         "ok": _registry.validate_asset_id(t)[0],
+         "reason": _registry.validate_asset_id(t)[1]}
+        for t in (_timbo_id, _timbo_id.lower(), _timbo_id.replace("0", "O"),
+                  _timbo_id.replace("1", "L"), " " + _timbo_id + " ",
+                  _timbo_id[:-1] + "Z", _timbo_id.replace("-", ""),
+                  "SL-WAR-XXXXXXX-9", "not an identifier", "")
+    ]
+    _streams = [
+        [{"when": "2020-01-10", "kind": "commissioned", "by": "M. Kolleh"},
+         {"when": "2023-04-02", "kind": "failure", "note": "rising main parted"}],
+        [{"when": "2023-04-02", "kind": "failure", "note": "rising main parted"},
+         {"when": "2023-05-11", "kind": "repair", "note": "new seals",
+          "by": "A. Bangura", "photo": "data:image/jpeg;base64,AAAA"},
+         {"when": "not written down", "kind": "inspection"},
+         {"when": "2099-01-01", "kind": "restored"}],
+    ]
+    out["asset_events"] = [
+        e.as_dict() for e in _registry.merge_events(_timbo_id, *_streams)
+    ]
+    _registry_cases = {
+        "silent": [],
+        "commissioned": _streams[0][:1],
+        "broken": _streams[0],
+        "repaired": _streams[0] + [{"when": "2023-05-11", "kind": "restored"}],
+        "sampled": _streams[0][:1] + [{"when": "2023-03-01", "kind": "water_sample"},
+                                      {"when": "2024-05-20", "kind": "inspection"}],
+        "decommissioned": _streams[0][:1] + [{"when": "2022-08-01",
+                                              "kind": "decommissioned"}],
+        "merged": _streams[0] + _streams[1],
+    }
+    _today = _date(2024, 6, 1)
+    _assets = {}
+    for _name, _events in _registry_cases.items():
+        _assets[_name] = _registry.Asset(
+            asset_id=_timbo_id, community="Dr. Timbo's",
+            district="Western Area Rural", easting=694912.0, northing=938150.0,
+            utm_zone=28, total_depth_m=62.0, safe_yield_m3_per_h=1.85,
+            pump_type="India Mark II", installed_by="WiNGiN",
+            events=[_registry.AssetEvent(**e) for e in _events],
+        )
+    out["asset_state"] = {
+        name: _registry.asset_state(asset, _today).as_dict()
+        for name, asset in _assets.items()
+    }
+    out["asset_placard"] = _registry.placard_lines(
+        _assets["commissioned"], _registry.asset_state(_assets["commissioned"], _today))
+    out["asset_qr_payload"] = _registry.qr_payload(_assets["commissioned"])
+    out["registry_rows"] = _registry.registry_rows(list(_assets.values()), _today)
+    out["registry_stats"] = clean(
+        _registry.registry_stats(list(_assets.values()), _today))
+    out["asset_months"] = [
+        {"from": d, "months": m, "due": _registry._add_months(
+            _date.fromisoformat(d), m).isoformat()}
+        for d, m in (("2023-08-31", 6), ("2023-12-31", 2), ("2020-02-29", 12),
+                     ("2023-01-31", 1), ("2023-03-30", 11), ("2024-02-29", 12))
+    ]
+
     # Rounding and %g, which the two languages get wrong in different ways.
     out["rounding"] = [
         {"value": v, "digits": d, "rounded": clean(round(v, d))}

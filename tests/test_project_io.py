@@ -139,3 +139,40 @@ def test_bad_file_raises():
         deserialize_project(b"not: [valid, project")
     with pytest.raises(ValueError):
         deserialize_project(b"just_a_string")
+
+
+def test_the_asset_record_survives_the_round_trip():
+    """The maintenance history is what a project file is worth after handover."""
+    from groundwater.registry import Asset, AssetEvent, mint_asset_id
+    from groundwater.models import SiteMetadata
+
+    site = SiteMetadata(district="Bo", easting=790500.0, northing=875300.0,
+                        utm_zone=28)
+    asset = Asset(asset_id=mint_asset_id(site), community="Njala",
+                  district="Bo", easting=790500.0, northing=875300.0,
+                  utm_zone=28,
+                  events=[AssetEvent("2020-01-10", "commissioned", by="M. K."),
+                          AssetEvent("2023-04-02", "failure", "pump seized")])
+    raw = serialize_project({"meta_community": "Njala",
+                             "asset_record": asset.as_dict()}, "test")
+    updates = deserialize_project(raw)
+    assert updates["asset"]["asset_id"] == asset.asset_id
+    assert len(updates["asset"]["events"]) == 2
+    assert updates["asset"]["events"][1]["note"] == "pump seized"
+
+
+def test_a_project_file_with_a_damaged_identifier_drops_the_asset():
+    """A history under the wrong identifier is worse than no history."""
+    raw = serialize_project(
+        {"meta_community": "Njala",
+         "asset_record": {"asset_id": "SL-WAR-XXXXXXX-9",
+                          "events": [{"when": "2020-01-10",
+                                      "kind": "commissioned"}]}},
+        "test")
+    assert "asset" not in deserialize_project(raw)
+
+
+def test_loading_a_project_does_not_inherit_the_previous_borehole():
+    """Its identifier and maintenance history belong to the outgoing project."""
+    assert "asset_record" in stale_on_load({"asset_record": {"asset_id": "x"},
+                                            "meta_community": "keep me"})

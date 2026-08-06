@@ -89,6 +89,23 @@ from groundwater.coverage import (
     load_district_population,
 )
 from groundwater.readiness import assess_readiness
+from groundwater.registry import (
+    EVENT_KINDS,
+    AssetEvent,
+    asset_from_dict,
+    asset_from_project,
+    asset_state,
+    merge_events,
+    parse_asset_id,
+    registry_rows,
+    registry_stats,
+    validate_asset_id,
+)
+from groundwater.reporting.registry import (
+    AssetReportInputs,
+    build_asset_placard,
+    build_asset_record,
+)
 from groundwater.portfolio import (
     STATUS_LABELS,
     VERDICT_SCHEMA,
@@ -865,10 +882,15 @@ def _load_project() -> None:
     overrides = updates.pop("rates_overrides", None)
     committee = updates.pop("committee", None)
     sources = updates.pop("sources", None)
+    # the file names it "asset"; the session key it belongs under is the one
+    # serialize_project reads back, so the round trip has to be closed here
+    asset = updates.pop("asset", None)
     for key, value in updates.items():
         st.session_state[key] = value
     if isinstance(overrides, dict):
         st.session_state.rates_overrides = overrides
+    if isinstance(asset, dict) and asset:
+        st.session_state["asset_record"] = asset
     # restore the saved data files and flag a recompute so the analyses and
     # reports are rebuilt without re-uploading
     if isinstance(sources, dict) and sources:
@@ -901,7 +923,8 @@ NAV_GROUPS: list[tuple[str, list[str]]] = [
                        "Scanned sheets"]),
     ("Testing", ["Pumping test", "Water quality"]),
     ("Delivery", ["Costing & BoQ", "Supervision", "Handover", "Templates"]),
-    ("Area analysis", ["Water points", "Coverage gap", "Portfolio"]),
+    ("Area analysis", ["Water points", "Coverage gap", "Portfolio",
+                       "Asset registry"]),
 ]
 _ALL_PAGES = [p for _, pages in NAV_GROUPS for p in pages]
 DEFAULT_PAGE = "Overview"
@@ -1366,6 +1389,7 @@ tab_coverage = _page("Coverage gap")
 tab_extract = _page("Scanned sheets")
 tab_templates = _page("Templates")
 tab_portfolio = _page("Portfolio")
+tab_registry = _page("Asset registry")
 
 _active_page = st.session_state.get("nav", DEFAULT_PAGE)
 st.markdown(
@@ -3679,6 +3703,171 @@ with tab_portfolio:
             key="portfolio_onepager",
         )
 
+with tab_registry:
+    st.header("Borehole asset registry")
+    st.caption(
+        "A drilling project ends; the borehole does not. This page holds the "
+        "other half: a stable identifier that outlives the project file, the "
+        "maintenance history recorded against it, and what that history says "
+        "is true today. Nothing here is assumed - a borehole nobody has "
+        "reported on is not working, it is unknown."
+    )
+
+    _asset = st.session_state.get("asset_record")
+    _draft = asset_from_project(_project_state())
+    if not _asset and _draft is not None:
+        _asset = _draft.as_dict()
+    _live = asset_from_dict(_asset) if _asset else None
+
+    st.subheader("This borehole")
+    if _live is None:
+        st.info(
+            "This project has no recorded position yet, so it cannot be given "
+            "an identifier - there would be nothing to find the borehole by. "
+            "Enter the GPS position in the site details in the sidebar."
+        )
+    else:
+        _state = asset_state(_live)
+        _c1, _c2, _c3 = st.columns([2, 1, 1])
+        _c1.metric("Identifier", _live.asset_id)
+        _c2.metric("Status", _state.label)
+        if _state.days_out_of_service is not None:
+            _c3.metric("Out of service", f"{_state.days_out_of_service} days")
+        st.caption(
+            "The identifier is derived from the position, so two teams at the "
+            "same wellhead with no connection between them arrive at the same "
+            "one. The last character is a check character: it catches every "
+            "single mistyped character and every transposition of two."
+        )
+        st.write(_state.detail)
+        _outstanding = [i for i in _state.due if i.state in ("overdue", "unknown")]
+        if _outstanding:
+            for _item in _outstanding:
+                st.warning(_item.detail)
+        else:
+            for _item in _state.due:
+                st.caption(_item.detail)
+
+        with st.form("asset_event_form", clear_on_submit=True):
+            st.markdown("**Record what happened**")
+            _f1, _f2, _f3 = st.columns([1, 1, 2])
+            _when = _f1.date_input("Date", key="asset_event_when")
+            _kind = _f2.selectbox(
+                "What happened", list(EVENT_KINDS),
+                format_func=lambda k: EVENT_KINDS[k][0], key="asset_event_kind")
+            _by = _f3.text_input("Recorded by", key="asset_event_by",
+                                 placeholder="Name")
+            _note = st.text_input("Note", key="asset_event_note",
+                                  placeholder="What was found or done")
+            if st.form_submit_button("Add to the history"):
+                _events = merge_events(
+                    _live.asset_id, _live.events,
+                    [AssetEvent(when=_when.isoformat(), kind=_kind,
+                                note=_note, by=_by)])
+                _live.events = _events
+                st.session_state["asset_record"] = _live.as_dict()
+                st.success("Recorded. The history is append-only: a mistake is "
+                           "corrected by recording the correction.")
+        st.caption(
+            "The history travels inside the saved project file, so a record "
+            "kept only in this browser is one bad laptop away from gone."
+        )
+
+        if _live.events:
+            st.subheader("History")
+            st.dataframe(
+                [{"Date": e.when or "(no date)", "Event": e.label,
+                  "Note": e.note, "Recorded by": e.by} for e in _live.events],
+                hide_index=True, width="stretch",
+            )
+
+        _r1, _r2 = st.columns(2)
+        if _r1.button("Build identification plate (.docx)", key="asset_placard"):
+            _inputs = AssetReportInputs(asset=_live, figures_dir=workdir(),
+                                        readiness=report_gate("completion"))
+            offer_download(
+                build_asset_placard(_inputs,
+                                    workdir() / f"placard_{_live.asset_id}.docx",
+                                    app_config()),
+                "Borehole identification plate")
+        if _r2.button("Build asset record (.docx)", key="asset_record_report"):
+            _inputs = AssetReportInputs(asset=_live, figures_dir=workdir(),
+                                        readiness=report_gate("completion"))
+            offer_download(
+                build_asset_record(_inputs,
+                                   workdir() / f"asset_{_live.asset_id}.docx",
+                                   app_config()),
+                "Borehole asset record")
+
+    st.divider()
+    st.subheader("Look up an identifier")
+    _typed = st.text_input(
+        "Identifier from a headworks plate", key="asset_lookup",
+        placeholder="SL-WAR-8FEEVKQ-T")
+    if _typed:
+        _ok, _reason = validate_asset_id(_typed)
+        if _ok:
+            st.success(f"That is a valid identifier: {parse_asset_id(_typed)}")
+        else:
+            st.error(_reason)
+
+    st.divider()
+    st.subheader("Many boreholes")
+    st.caption(
+        "Drop in saved project files to see the whole register: what is "
+        "working, what is not, and what is overdue a visit."
+    )
+    _files = st.file_uploader(
+        "Saved project files (.yaml)", type=["yaml", "yml"],
+        accept_multiple_files=True, key="registry_upload")
+    _assets, _dropped = [], 0
+    for _uploaded in _files or []:
+        try:
+            _updates = deserialize_project(_uploaded.getvalue())
+        except Exception:
+            _dropped += 1
+            continue
+        _record = asset_from_dict(_updates.get("asset") or {})
+        if _record is None:
+            _dropped += 1
+            continue
+        _assets.append(_record)
+    if _dropped:
+        st.warning(
+            f"{_dropped} file(s) carried no readable asset record and were "
+            "skipped. A project file only carries one once the borehole has "
+            "been given an identifier on this page."
+        )
+    if not _assets:
+        st.info("Upload saved project files that carry an asset record.")
+    else:
+        _stats = registry_stats(_assets)
+        _s1, _s2, _s3, _s4 = st.columns(4)
+        _s1.metric("Boreholes", _stats["n_assets"])
+        _s2.metric("Working", _stats["n_functional"])
+        _s3.metric("Not working", _stats["n_non_functional"])
+        _s4.metric("Condition unknown", _stats["n_unknown"])
+        if _stats["functionality_rate"] is not None:
+            st.metric("Functionality rate", f"{_stats['functionality_rate']:.0f}%",
+                      help="Over the boreholes whose condition is actually "
+                           "known. A rate computed over silence is the number "
+                           "that makes these registers untrustworthy.")
+        if _stats["n_unknown"]:
+            st.warning(
+                f"{_stats['n_unknown']} borehole(s) have nothing recorded "
+                "against them at all. That is not the same as nothing having "
+                "happened to them."
+            )
+        _chase = _stats["n_overdue_inspection"] + _stats["n_overdue_sample"]
+        if _chase:
+            st.info(
+                f"{_stats['n_overdue_inspection']} overdue a sanitary "
+                f"inspection, {_stats['n_overdue_sample']} overdue a water "
+                "quality sample."
+            )
+        st.dataframe(registry_rows(_assets), hide_index=True, width="stretch")
+
+
 # ---------------------------------------------------------------------------
 # Deliverables, filled last for the same reason: the Overview renders before
 # the pages that build the files.
@@ -3716,6 +3905,12 @@ with _project_panel:
     )
     # capture a headline summary so the saved file feeds the portfolio view
     st.session_state["project_summary"] = _project_summary()
+    # and the asset identifier, so a located borehole carries one into the
+    # registry without anybody having to visit that page first
+    if not st.session_state.get("asset_record"):
+        _drafted = asset_from_project(_project_state())
+        if _drafted is not None:
+            st.session_state["asset_record"] = _drafted.as_dict()
     st.download_button(
         "Save project (.yaml)",
         project_file_bytes(),

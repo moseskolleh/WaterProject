@@ -259,11 +259,13 @@ class ReportBuilder:
         self.doc.add_heading(_clean(text), level=level)
 
     def paragraph(self, text: str, bold: bool = False, italic: bool = False,
-                  align: str | None = None):
+                  align: str | None = None, size_pt: float | None = None):
         p = self.doc.add_paragraph()
         run = p.add_run(_clean(text))
         run.font.bold = bold
         run.font.italic = italic
+        if size_pt is not None:
+            run.font.size = Pt(size_pt)
         if align == "center":
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         elif align == "justify":

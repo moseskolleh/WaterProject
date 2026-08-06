@@ -8425,5 +8425,940 @@
     EXTRACTION_PROMPT: EXTRACTION_PROMPT,
   });
 
+
+  /* ===================================================================
+   * QR symbols - a port of groundwater/qr.py
+   *
+   * The identifier on a headworks plate is only useful if the phone in the
+   * technician's pocket reads it, and the places this runs have no signal to
+   * fetch an image over. So the symbol is generated here, offline, from no
+   * dependency: byte mode, versions 1 to 10, all four error-correction
+   * levels. The Python side is held to an independent encoder and to a real
+   * decoder; this side is held to the Python side, module for module.
+   * =================================================================== */
+
+  var QR_ECC_LEVELS = { L: 0.07, M: 0.15, Q: 0.25, H: 0.30 };
+  var QR_MAX_VERSION = 10;
+  var QR_ECC_BITS = { L: 1, M: 0, Q: 3, H: 2 };
+  var QR_TOTAL_CODEWORDS = [26, 44, 70, 100, 134, 172, 196, 242, 292, 346];
+
+  /* (ec codewords per block, g1 blocks, g1 data, g2 blocks, g2 data) */
+  var QR_BLOCKS = {
+    1: { L: [7, 1, 19, 0, 0], M: [10, 1, 16, 0, 0], Q: [13, 1, 13, 0, 0], H: [17, 1, 9, 0, 0] },
+    2: { L: [10, 1, 34, 0, 0], M: [16, 1, 28, 0, 0], Q: [22, 1, 22, 0, 0], H: [28, 1, 16, 0, 0] },
+    3: { L: [15, 1, 55, 0, 0], M: [26, 1, 44, 0, 0], Q: [18, 2, 17, 0, 0], H: [22, 2, 13, 0, 0] },
+    4: { L: [20, 1, 80, 0, 0], M: [18, 2, 32, 0, 0], Q: [26, 2, 24, 0, 0], H: [16, 4, 9, 0, 0] },
+    5: { L: [26, 1, 108, 0, 0], M: [24, 2, 43, 0, 0], Q: [18, 2, 15, 2, 16], H: [22, 2, 11, 2, 12] },
+    6: { L: [18, 2, 68, 0, 0], M: [16, 4, 27, 0, 0], Q: [24, 4, 19, 0, 0], H: [28, 4, 15, 0, 0] },
+    7: { L: [20, 2, 78, 0, 0], M: [18, 4, 31, 0, 0], Q: [18, 2, 14, 4, 15], H: [26, 4, 13, 1, 14] },
+    8: { L: [24, 2, 97, 0, 0], M: [22, 2, 38, 2, 39], Q: [22, 4, 18, 2, 19], H: [26, 4, 14, 2, 15] },
+    9: { L: [30, 2, 116, 0, 0], M: [22, 3, 36, 2, 37], Q: [20, 4, 16, 4, 17], H: [24, 4, 12, 4, 13] },
+    10: { L: [18, 2, 68, 2, 69], M: [26, 4, 43, 1, 44], Q: [24, 6, 19, 2, 20], H: [28, 6, 15, 2, 16] }
+  };
+
+  var QR_ALIGNMENT = {
+    1: [], 2: [6, 18], 3: [6, 22], 4: [6, 26], 5: [6, 30], 6: [6, 34],
+    7: [6, 22, 38], 8: [6, 24, 42], 9: [6, 26, 46], 10: [6, 28, 50]
+  };
+  var QR_VERSION_INFO = { 7: 0x07C94, 8: 0x085BC, 9: 0x09A99, 10: 0x0A4D3 };
+  var QR_REMAINDER_BITS = { 1: 0, 2: 7, 3: 7, 4: 7, 5: 7, 6: 7, 7: 0, 8: 0, 9: 0, 10: 0 };
+
+  var QR_EXP = new Array(512), QR_LOG = new Array(256);
+  (function buildGaloisTables() {
+    var x = 1;
+    for (var i = 0; i < 255; i++) {
+      QR_EXP[i] = x;
+      QR_LOG[x] = i;
+      x <<= 1;
+      if (x & 0x100) x ^= 0x11D;
+    }
+    for (var j = 255; j < 512; j++) QR_EXP[j] = QR_EXP[j - 255];
+  }());
+
+  function gfMul(a, b) {
+    if (a === 0 || b === 0) return 0;
+    return QR_EXP[QR_LOG[a] + QR_LOG[b]];
+  }
+
+  function qrGeneratorPoly(degree) {
+    var poly = [1];
+    for (var i = 0; i < degree; i++) {
+      var next = new Array(poly.length + 1).fill(0);
+      for (var j = 0; j < poly.length; j++) {
+        next[j] ^= gfMul(poly[j], 1);
+        next[j + 1] ^= gfMul(poly[j], QR_EXP[i]);
+      }
+      poly = next;
+    }
+    return poly;
+  }
+
+  function qrEcCodewords(data, count) {
+    var gen = qrGeneratorPoly(count);
+    var remainder = data.concat(new Array(count).fill(0));
+    for (var i = 0; i < data.length; i++) {
+      var lead = remainder[i];
+      if (!lead) continue;
+      for (var j = 0; j < gen.length; j++) {
+        remainder[i + j] ^= gfMul(gen[j], lead);
+      }
+    }
+    return remainder.slice(data.length);
+  }
+
+  function qrCapacityBytes(version, ecc) {
+    var b = QR_BLOCKS[version][ecc];
+    var dataCodewords = b[1] * b[2] + b[3] * b[4];
+    var countBits = version < 10 ? 8 : 16;
+    return Math.floor((dataCodewords * 8 - 4 - countBits) / 8);
+  }
+
+  function qrChooseVersion(length, ecc, minVersion) {
+    for (var v = Math.max(1, minVersion || 1); v <= QR_MAX_VERSION; v++) {
+      if (length <= qrCapacityBytes(v, ecc)) return v;
+    }
+    throw new Error(length + ' bytes will not fit in a version-' + QR_MAX_VERSION +
+      ' symbol at error-correction level ' + ecc + '; shorten the payload');
+  }
+
+  function qrBitstream(payload, version, ecc) {
+    var b = QR_BLOCKS[version][ecc];
+    var capacityBits = (b[1] * b[2] + b[3] * b[4]) * 8;
+    var bits = [0, 1, 0, 0];
+    var countBits = version < 10 ? 8 : 16, shift;
+    for (shift = countBits - 1; shift >= 0; shift--) bits.push((payload.length >> shift) & 1);
+    for (var i = 0; i < payload.length; i++) {
+      for (shift = 7; shift >= 0; shift--) bits.push((payload[i] >> shift) & 1);
+    }
+    var terminator = Math.min(4, capacityBits - bits.length);
+    for (var t = 0; t < terminator; t++) bits.push(0);
+    while (bits.length % 8) bits.push(0);
+    var pad = [0xEC, 0x11], k = 0;
+    while (bits.length < capacityBits) {
+      for (shift = 7; shift >= 0; shift--) bits.push((pad[k % 2] >> shift) & 1);
+      k++;
+    }
+    return bits;
+  }
+
+  function qrInterleave(bits, version, ecc) {
+    var spec = QR_BLOCKS[version][ecc], ecPerBlock = spec[0];
+    var codewords = [];
+    for (var i = 0; i < bits.length; i += 8) {
+      var value = 0;
+      for (var s = 0; s < 8; s++) value = (value << 1) | bits[i + s];
+      codewords.push(value);
+    }
+    var blocks = [], at = 0;
+    [[spec[1], spec[2]], [spec[3], spec[4]]].forEach(function (group) {
+      for (var n = 0; n < group[0]; n++) {
+        blocks.push(codewords.slice(at, at + group[1]));
+        at += group[1];
+      }
+    });
+    var ecBlocks = blocks.map(function (block) { return qrEcCodewords(block, ecPerBlock); });
+
+    var longest = Math.max.apply(null, blocks.map(function (b2) { return b2.length; }));
+    var out = [], j;
+    for (i = 0; i < longest; i++) {
+      for (j = 0; j < blocks.length; j++) {
+        if (i < blocks[j].length) out.push(blocks[j][i]);
+      }
+    }
+    for (i = 0; i < ecPerBlock; i++) {
+      for (j = 0; j < ecBlocks.length; j++) out.push(ecBlocks[j][i]);
+    }
+    var final = [];
+    out.forEach(function (codeword) {
+      for (var shift = 7; shift >= 0; shift--) final.push((codeword >> shift) & 1);
+    });
+    for (i = 0; i < QR_REMAINDER_BITS[version]; i++) final.push(0);
+    return final;
+  }
+
+  function qrGrid(size) {
+    var grid = [];
+    for (var i = 0; i < size; i++) grid.push(new Array(size).fill(false));
+    return grid;
+  }
+
+  function qrPlaceFunctionPatterns(modules, reserved, version) {
+    var size = modules.length, i, r, c;
+
+    function finder(row, col) {
+      for (r = -1; r < 8; r++) {
+        for (c = -1; c < 8; c++) {
+          var rr = row + r, cc = col + c;
+          if (rr < 0 || rr >= size || cc < 0 || cc >= size) continue;
+          var edge = Math.max(Math.abs(r - 3), Math.abs(c - 3));
+          modules[rr][cc] = edge !== 2 && edge <= 3;
+          reserved[rr][cc] = true;
+        }
+      }
+    }
+    finder(0, 0);
+    finder(0, size - 7);
+    finder(size - 7, 0);
+
+    for (i = 0; i < size; i++) {
+      if (!reserved[6][i]) { modules[6][i] = i % 2 === 0; reserved[6][i] = true; }
+      if (!reserved[i][6]) { modules[i][6] = i % 2 === 0; reserved[i][6] = true; }
+    }
+
+    /* Every combination of the centres but the three corners the finders
+     * hold. Tested on the index, not on whether the cell is taken: from
+     * version 7 the first centre is 6, so those patterns lie across the
+     * timing lines and are drawn over them. */
+    var centres = QR_ALIGNMENT[version], last = centres.length - 1;
+    centres.forEach(function (row, a) {
+      centres.forEach(function (col, b) {
+        if ((a === 0 && b === 0) || (a === 0 && b === last) || (a === last && b === 0)) return;
+        for (var dr = -2; dr < 3; dr++) {
+          for (var dc = -2; dc < 3; dc++) {
+            modules[row + dr][col + dc] = Math.max(Math.abs(dr), Math.abs(dc)) !== 1;
+            reserved[row + dr][col + dc] = true;
+          }
+        }
+      });
+    });
+
+    modules[4 * version + 9][8] = true;
+    reserved[4 * version + 9][8] = true;
+
+    for (i = 0; i < 9; i++) { reserved[8][i] = true; reserved[i][8] = true; }
+    for (i = 0; i < 8; i++) {
+      reserved[8][size - 1 - i] = true;
+      reserved[size - 1 - i][8] = true;
+    }
+
+    if (version >= 7) {
+      var info = QR_VERSION_INFO[version];
+      for (i = 0; i < 18; i++) {
+        var bit = ((info >> i) & 1) === 1;
+        var row2 = Math.floor(i / 3), col2 = size - 11 + (i % 3);
+        modules[row2][col2] = bit;
+        reserved[row2][col2] = true;
+        modules[col2][row2] = bit;
+        reserved[col2][row2] = true;
+      }
+    }
+  }
+
+  function qrPlaceData(modules, reserved, bits) {
+    var size = modules.length, at = 0, upward = true, col = size - 1;
+    while (col > 0) {
+      if (col === 6) col -= 1;
+      for (var n = 0; n < size; n++) {
+        var row = upward ? size - 1 - n : n;
+        for (var k = 0; k < 2; k++) {
+          var c = col - k;
+          if (reserved[row][c]) continue;
+          modules[row][c] = at < bits.length && bits[at] === 1;
+          at += 1;
+        }
+      }
+      upward = !upward;
+      col -= 2;
+    }
+  }
+
+  var QR_MASKS = [
+    function (i, j) { return (i + j) % 2 === 0; },
+    function (i) { return i % 2 === 0; },
+    function (i, j) { return j % 3 === 0; },
+    function (i, j) { return (i + j) % 3 === 0; },
+    function (i, j) { return (Math.floor(i / 2) + Math.floor(j / 3)) % 2 === 0; },
+    function (i, j) { return (i * j) % 2 + (i * j) % 3 === 0; },
+    function (i, j) { return ((i * j) % 2 + (i * j) % 3) % 2 === 0; },
+    function (i, j) { return ((i + j) % 2 + (i * j) % 3) % 2 === 0; }
+  ];
+
+  function qrApplyMask(modules, reserved, mask) {
+    var rule = QR_MASKS[mask];
+    return modules.map(function (row, i) {
+      return row.map(function (cell, j) {
+        return !reserved[i][j] && rule(i, j) ? !cell : cell;
+      });
+    });
+  }
+
+  function qrFormatBits(ecc, mask) {
+    var value = (QR_ECC_BITS[ecc] << 3) | mask;
+    var remainder = value;
+    for (var i = 0; i < 10; i++) {
+      remainder = (remainder << 1) ^ ((remainder >> 9) * 0x537);
+    }
+    return ((value << 10) | remainder) ^ 0x5412;
+  }
+
+  function qrPlaceFormat(modules, ecc, mask) {
+    var size = modules.length, bits = qrFormatBits(ecc, mask), i;
+    function bit(n) { return ((bits >> n) & 1) === 1; }
+
+    for (i = 0; i < 6; i++) modules[i][8] = bit(i);
+    modules[7][8] = bit(6);
+    modules[8][8] = bit(7);
+    modules[8][7] = bit(8);
+    for (i = 9; i < 15; i++) modules[8][14 - i] = bit(i);
+
+    for (i = 0; i < 8; i++) modules[8][size - 1 - i] = bit(i);
+    for (i = 8; i < 15; i++) modules[size - 15 + i][8] = bit(i);
+    modules[size - 8][8] = true;
+  }
+
+  var QR_PENALTY_RUN = 3, QR_PENALTY_BLOCK = 3, QR_PENALTY_FINDER = 40,
+    QR_PENALTY_BALANCE = 10;
+
+  function qrFinderLike(history) {
+    var unit = history[1];
+    var core = unit > 0 && history[2] === unit && history[3] === unit * 3 &&
+      history[4] === unit && history[5] === unit;
+    return (core && history[0] >= unit * 4 && history[6] >= unit ? 1 : 0) +
+      (core && history[6] >= unit * 4 && history[0] >= unit ? 1 : 0);
+  }
+
+  function qrPenalty(modules) {
+    var size = modules.length, score = 0, i, j;
+    var lines = modules.map(function (row) { return row.slice(); });
+    for (j = 0; j < size; j++) {
+      var column = [];
+      for (i = 0; i < size; i++) column.push(modules[i][j]);
+      lines.push(column);
+    }
+    lines.forEach(function (line) {
+      var colour = false, run = 0, history = new Array(7).fill(0);
+      function remember(length) {
+        if (history[0] === 0) length += size;
+        history.pop();
+        history.unshift(length);
+      }
+      line.forEach(function (cell) {
+        if (cell === colour) {
+          run += 1;
+          if (run === 5) score += QR_PENALTY_RUN;
+          else if (run > 5) score += 1;
+        } else {
+          remember(run);
+          if (!colour) score += qrFinderLike(history) * QR_PENALTY_FINDER;
+          colour = cell;
+          run = 1;
+        }
+      });
+      if (colour) { remember(run); run = 0; }
+      remember(run + size);
+      score += qrFinderLike(history) * QR_PENALTY_FINDER;
+    });
+    for (i = 0; i < size - 1; i++) {
+      for (j = 0; j < size - 1; j++) {
+        var a = modules[i][j], b = modules[i][j + 1],
+          c = modules[i + 1][j], d = modules[i + 1][j + 1];
+        if ((a && b && c && d) || (!a && !b && !c && !d)) score += QR_PENALTY_BLOCK;
+      }
+    }
+    var dark = 0;
+    modules.forEach(function (row) {
+      row.forEach(function (cell) { if (cell) dark += 1; });
+    });
+    var total = size * size;
+    var k = Math.ceil(Math.abs(dark * 20 - total * 10) / total) - 1;
+    return score + Math.max(k, 0) * QR_PENALTY_BALANCE;
+  }
+
+  function utf8Bytes(text) {
+    var out = [];
+    for (var i = 0; i < text.length; i++) {
+      var code = text.charCodeAt(i);
+      if (code < 0x80) { out.push(code); continue; }
+      if (code < 0x800) {
+        out.push(0xC0 | (code >> 6), 0x80 | (code & 63));
+        continue;
+      }
+      if (code >= 0xD800 && code <= 0xDBFF && i + 1 < text.length) {
+        var low = text.charCodeAt(i + 1);
+        if (low >= 0xDC00 && low <= 0xDFFF) {
+          code = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00);
+          i += 1;
+          out.push(0xF0 | (code >> 18), 0x80 | ((code >> 12) & 63),
+            0x80 | ((code >> 6) & 63), 0x80 | (code & 63));
+          continue;
+        }
+      }
+      out.push(0xE0 | (code >> 12), 0x80 | ((code >> 6) & 63), 0x80 | (code & 63));
+    }
+    return out;
+  }
+
+  /* options: {ecc, minVersion, mask} */
+  function qrEncode(text, options) {
+    var opts = options || {};
+    var ecc = opts.ecc || 'H';
+    if (!own(QR_ECC_LEVELS, ecc)) {
+      throw new Error("unknown error-correction level '" + ecc + "'");
+    }
+    var mask = opts.mask === undefined || opts.mask === null ? null : opts.mask;
+    if (mask !== null && !(mask >= 0 && mask <= 7)) {
+      throw new Error('mask must be 0 to 7, not ' + mask);
+    }
+    var payload = utf8Bytes(String(text));
+    var version = qrChooseVersion(payload.length, ecc, opts.minVersion || 1);
+    var bits = qrInterleave(qrBitstream(payload, version, ecc), version, ecc);
+    var size = 17 + 4 * version;
+    var modules = qrGrid(size), reserved = qrGrid(size);
+    qrPlaceFunctionPatterns(modules, reserved, version);
+    qrPlaceData(modules, reserved, bits);
+
+    var best = null, bestMask = 0, bestScore = null;
+    var candidates = mask === null ? [0, 1, 2, 3, 4, 5, 6, 7] : [mask];
+    candidates.forEach(function (candidateMask) {
+      var candidate = qrApplyMask(modules, reserved, candidateMask);
+      qrPlaceFormat(candidate, ecc, candidateMask);
+      var score = qrPenalty(candidate);
+      if (bestScore === null || score < bestScore) {
+        best = candidate; bestMask = candidateMask; bestScore = score;
+      }
+    });
+    return { version: version, ecc: ecc, mask: bestMask, size: size, modules: best };
+  }
+
+  /* The symbol as an SVG string. The quiet zone is not decoration: a symbol
+   * printed hard against a frame is much harder for a phone to find. */
+  function qrSvg(code, options) {
+    var opts = options || {};
+    var scale = opts.scale || 4, border = opts.border === undefined ? 4 : opts.border;
+    var size = code.size + 2 * border, parts = [];
+    for (var row = 0; row < code.size; row++) {
+      for (var col = 0; col < code.size; col++) {
+        if (code.modules[row][col]) {
+          parts.push('M' + (col + border) + ' ' + (row + border) + 'h1v1h-1z');
+        }
+      }
+    }
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="' + (size * scale) +
+      '" height="' + (size * scale) + '" viewBox="0 0 ' + size + ' ' + size +
+      '" shape-rendering="crispEdges">' +
+      '<rect width="' + size + '" height="' + size + '" fill="#ffffff"/>' +
+      '<path fill="#000000" d="' + parts.join('') + '"/></svg>';
+  }
+
+  Object.assign(C, {
+    QR_ECC_LEVELS: QR_ECC_LEVELS, QR_MAX_VERSION: QR_MAX_VERSION,
+    qrEncode: qrEncode, qrSvg: qrSvg, qrCapacityBytes: qrCapacityBytes,
+    qrPenalty: qrPenalty
+  });
+
+  /* ===================================================================
+   * The asset registry - a port of groundwater/registry.py
+   *
+   * A drilling project ends; the borehole does not. This is the other half:
+   * a stable identifier, an append-only event stream, and what that stream
+   * says is true today. Field updates are recorded at the wellhead with no
+   * signal, so events are identified by their content and merging two
+   * phones is a set union that needs no server to arbitrate it. Nothing is
+   * assumed working: an asset with no events is unknown, not functional.
+   * =================================================================== */
+
+  var CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+  var CROCKFORD_FOLD = { I: '1', L: '1', O: '0', U: 'V' };
+  var CHECK_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  var POSITION_STEP_M = 10;
+
+  var DISTRICT_CODES = {
+    'western area urban': 'WAU', 'western area rural': 'WAR', 'port loko': 'PL',
+    kambia: 'KAM', karene: 'KAR', bombali: 'BOM', falaba: 'FAL',
+    koinadugu: 'KOI', tonkolili: 'TON', kono: 'KON', kenema: 'KEN',
+    kailahun: 'KAI', bo: 'BO', bonthe: 'BON', moyamba: 'MOY', pujehun: 'PUJ'
+  };
+  var UNKNOWN_DISTRICT = 'XX';
+  var ASSET_ID_RE = /^SL-([A-Z]{2,4})-([0-9A-Z]{7})-([0-9A-Z])$/;
+
+  /* ISO 7064 MOD 37,36: every single wrong character and every transposition
+   * of two adjacent ones, which between them are almost all the mistakes
+   * people make copying a code off a plate into a phone. */
+  function checkCharacter(body) {
+    var product = 36;
+    var text = String(body || '').toUpperCase();
+    for (var i = 0; i < text.length; i++) {
+      var value = CHECK_ALPHABET.indexOf(text.charAt(i));
+      if (value < 0) continue;
+      var total = (product % 37) + value;
+      product = 2 * ((total % 37) || 37);
+    }
+    return CHECK_ALPHABET.charAt((37 - product % 37) % 36);
+  }
+
+  function positionCode(easting, northing, zone) {
+    var east = Math.round(Number(easting) / POSITION_STEP_M);
+    var north = Math.round(Number(northing) / POSITION_STEP_M);
+    if (!(east >= 0 && east < 131072) || !(north >= 0 && north < 131072)) {
+      throw new Error('(' + easting + ', ' + northing + ') is not a position ' +
+        'inside Sierra Leone; an identifier minted from it would not be findable');
+    }
+    /* 35 bits - zone flag, easting, northing, each to the nearest 10 m - cut
+     * into seven groups of five. Split into a top character and a 30-bit
+     * remainder because JavaScript's bitwise operators are 32-bit and would
+     * silently wrap the whole value. */
+    var top = ((Number(zone) === 29 ? 1 : 0) << 4) | (east >> 13);
+    var rest = (east & 0x1FFF) * 131072 + north;
+    var chars = CROCKFORD.charAt(top & 31);
+    for (var shift = 25; shift >= 0; shift -= 5) {
+      chars += CROCKFORD.charAt(Math.floor(rest / Math.pow(2, shift)) & 31);
+    }
+    return chars;
+  }
+
+  function districtCode(district) {
+    var key = String(district || '').trim().toLowerCase();
+    return own(DISTRICT_CODES, key) ? DISTRICT_CODES[key] : UNKNOWN_DISTRICT;
+  }
+
+  function formatAssetId(district, position) {
+    var body = 'SL-' + district + '-' + position;
+    return body + '-' + checkCharacter(body);
+  }
+
+  function mintAssetId(site) {
+    var s = site || {};
+    if (s.easting === null || s.easting === undefined ||
+        s.northing === null || s.northing === undefined) {
+      throw new Error('a borehole with no recorded position cannot be given ' +
+        'an identifier: there would be nothing to find it by');
+    }
+    var zone = s.utm_zone || inferZoneForSierraLeone(Number(s.easting));
+    return formatAssetId(districtCode(s.district),
+      positionCode(s.easting, s.northing, zone));
+  }
+
+  function parseAssetId(text) {
+    var raw = String(text === null || text === undefined ? '' : text)
+      .replace(/[\s_]+/g, '').toUpperCase().replace(/–/g, '-');
+    if (!raw) return null;
+    if (raw.indexOf('SL-') !== 0) raw = 'SL-' + raw;
+    var parts = raw.split('-');
+    if (parts.length !== 4) return null;
+    var district = parts[1], code = parts[2], given = parts[3];
+    code = code.split('').map(function (ch) {
+      return own(CROCKFORD_FOLD, ch) ? CROCKFORD_FOLD[ch] : ch;
+    }).join('');
+    if (own(CROCKFORD_FOLD, given)) given = CROCKFORD_FOLD[given];
+    var candidate = 'SL-' + district + '-' + code + '-' + given;
+    if (!ASSET_ID_RE.test(candidate)) return null;
+    if (checkCharacter('SL-' + district + '-' + code) !== given) return null;
+    return candidate;
+  }
+
+  function validateAssetId(text) {
+    var raw = String(text === null || text === undefined ? '' : text).trim();
+    if (!raw) return { ok: false, reason: 'No identifier was entered.' };
+    var parsed = parseAssetId(raw);
+    if (parsed) return { ok: true, reason: '', assetId: parsed };
+    var tidy = raw.replace(/[\s_]+/g, '').toUpperCase();
+    if (tidy.indexOf('SL-') !== 0) tidy = 'SL-' + tidy;
+    var parts = tidy.split('-');
+    if (parts.length !== 4) {
+      return { ok: false, reason: 'An identifier looks like SL-WAR-8T4KQ2A-7: ' +
+        'country, district, position, check character.' };
+    }
+    var code = parts[2].split('').map(function (ch) {
+      return own(CROCKFORD_FOLD, ch) ? CROCKFORD_FOLD[ch] : ch;
+    }).join('');
+    if (!/^[0-9A-Z]{7}$/.test(code)) {
+      return { ok: false, reason: 'The position part should be seven letters or digits.' };
+    }
+    var expected = checkCharacter('SL-' + parts[1] + '-' + code);
+    return { ok: false, reason: 'The check character does not match: this ' +
+      'identifier should end in ' + expected + ', not ' + parts[3] +
+      '. Something in it has been mistyped.' };
+  }
+
+  /* kind -> [label, what it establishes about function, is it a service visit] */
+  var EVENT_KINDS = {
+    commissioned: ['Commissioned', 'functional', false],
+    inspection: ['Sanitary inspection', null, true],
+    water_sample: ['Water sampled', null, false],
+    repair: ['Repair', 'functional', true],
+    failure: ['Failure', 'non_functional', true],
+    restored: ['Returned to service', 'functional', true],
+    decommissioned: ['Decommissioned', 'decommissioned', false],
+    note: ['Note', null, false]
+  };
+
+  var FUNCTION_LABELS = {
+    functional: 'Working', non_functional: 'Not working',
+    decommissioned: 'Decommissioned', unknown: 'Not known'
+  };
+
+  var FUNCTION_COLORS = {
+    functional: '#2E7D5B', non_functional: '#B23A2E',
+    decommissioned: '#6B7785', unknown: '#6B7785'
+  };
+
+  /* FNV-1a, kept to 32 bits with the same multiply-and-mask the Python side
+   * uses, so both engines derive the same event identifier. */
+  function hash32(text) {
+    var value = 0x811C9DC5;
+    for (var i = 0; i < text.length; i++) {
+      value = (value ^ (text.charCodeAt(i) & 0xFF)) >>> 0;
+      /* Math.imul, not a plain multiply: 2^32 times the FNV prime is well
+       * past 2^53, so the ordinary product loses low bits and the two
+       * engines would derive different event identifiers. */
+      value = Math.imul(value, 0x01000193) >>> 0;
+    }
+    return value >>> 0;
+  }
+
+  function eventId(assetId, when, kind, note, by) {
+    var digest = hash32(assetId + '|' + when + '|' + kind + '|' +
+      String(note || '').trim() + '|' + String(by || '').trim());
+    var tail = [15, 10, 5, 0].map(function (shift) {
+      return CROCKFORD.charAt((digest >>> shift) & 31);
+    }).join('');
+    return when + '/' + kind + '/' + tail;
+  }
+
+  function eventLabel(kind) {
+    return own(EVENT_KINDS, kind) ? EVENT_KINDS[kind][0] : 'Other';
+  }
+
+  var ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+  /* Days since the epoch, or null when the date cannot be read. Kept as a
+   * day number rather than a Date so arithmetic never meets a time zone. */
+  function isoDay(text) {
+    var match = ISO_DATE_RE.exec(String(text === null || text === undefined ? '' : text).trim());
+    if (!match) return null;
+    var year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+    if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) return null;
+    return Math.floor(Date.UTC(year, month - 1, day) / 86400000);
+  }
+
+  function isLeap(year) {
+    return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  }
+
+  function daysInMonth(year, month) {
+    return [31, isLeap(year) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  }
+
+  function dayToIso(day) {
+    if (day === null || day === undefined) return null;
+    var d = new Date(day * 86400000);
+    return d.toISOString().slice(0, 10);
+  }
+
+  /* Clamped rather than rolled over: six months from 31 August is 28
+   * February, not 3 March, and a due date that drifts forward is missed. */
+  function addMonths(iso, months) {
+    var match = ISO_DATE_RE.exec(iso);
+    if (!match) return null;
+    var year = Number(match[1]), month = Number(match[2]) - 1 + months;
+    var day = Number(match[3]);
+    year += Math.floor(month / 12);
+    month = ((month % 12) + 12) % 12 + 1;
+    day = Math.min(day, daysInMonth(year, month));
+    return year + '-' + pad2(month) + '-' + pad2(day);
+  }
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+  function coerceEvent(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    var kind = String(raw.kind || '').trim();
+    if (!own(EVENT_KINDS, kind)) kind = 'note';
+    return {
+      when: String(raw.when || '').trim(), kind: kind,
+      note: String(raw.note || ''), by: String(raw.by || ''),
+      photo: String(raw.photo || ''), event_id: String(raw.event_id || '')
+    };
+  }
+
+  function identifiedFor(event, assetId) {
+    return Object.assign({}, event, {
+      event_id: event.event_id ||
+        eventId(assetId, event.when, event.kind, event.note, event.by)
+    });
+  }
+
+  /* The whole offline story: two phones out of touch for a fortnight each
+   * hold part of the history, and merging is a union over content-derived
+   * identifiers - commutative, idempotent, and needing no clock agreement. */
+  function mergeEvents(assetId) {
+    var merged = {}, order = [];
+    for (var s = 1; s < arguments.length; s++) {
+      (arguments[s] || []).forEach(function (raw) {
+        var event = coerceEvent(raw);
+        if (!event) return;
+        event = identifiedFor(event, assetId);
+        if (!own(merged, event.event_id)) {
+          merged[event.event_id] = event;
+          order.push(event.event_id);
+        } else if (!merged[event.event_id].photo && event.photo) {
+          merged[event.event_id] = event;
+        }
+      });
+    }
+    return order.map(function (key) { return merged[key]; }).sort(function (a, b) {
+      var aw = a.when || '9999', bw = b.when || '9999';
+      if (aw !== bw) return aw < bw ? -1 : 1;
+      if (a.kind !== b.kind) return a.kind < b.kind ? -1 : 1;
+      return a.event_id < b.event_id ? -1 : (a.event_id > b.event_id ? 1 : 0);
+    });
+  }
+
+  function assetLatLon(asset) {
+    if (!asset || asset.easting === null || asset.easting === undefined ||
+        asset.northing === null || asset.northing === undefined) return null;
+    var zone = asset.utm_zone || inferZoneForSierraLeone(Number(asset.easting));
+    var fix;
+    try {
+      fix = utmToGeographic(Number(asset.easting), Number(asset.northing), Number(zone));
+    } catch (err) {
+      return null;
+    }
+    /* a pair, matching the Python tuple, so both engines index it the same */
+    return fix ? [fix.lat, fix.lon] : null;
+  }
+
+  function assetLabel(asset) {
+    var place = (asset && asset.community) || '(unnamed site)';
+    return asset && asset.district ? place + ' (' + asset.district + ')' : place;
+  }
+
+  var DEFAULT_SCHEDULE = {
+    inspection_months: 6, water_sample_months: 12, grace_days: 30
+  };
+
+  function dueItem(key, title, last, commissioned, months, graceDays, today, why) {
+    var anchor = last || commissioned;
+    if (!anchor) {
+      return { key: key, title: title, due_on: null, state: 'unknown',
+        detail: 'No ' + title.toLowerCase() + ' has been recorded, and there ' +
+          'is no commissioning date to count from. ' + why };
+    }
+    var dueOn = addMonths(anchor, months);
+    var dueDay = isoDay(dueOn), todayDay = isoDay(today);
+    if (todayDay > dueDay + graceDays) {
+      var never = last ? '' : 'has never been done; it ';
+      return { key: key, title: title, due_on: dueOn, state: 'overdue',
+        detail: title + ' ' + never + 'has been due since ' + dueOn + ', ' +
+          (todayDay - dueDay) + ' days ago. ' + why };
+    }
+    if (todayDay > dueDay) {
+      return { key: key, title: title, due_on: dueOn, state: 'due',
+        detail: title + ' fell due on ' + dueOn + '.' };
+    }
+    return { key: key, title: title, due_on: dueOn, state: 'scheduled',
+      detail: 'Next ' + title.toLowerCase() + ' due ' + dueOn + '.' };
+  }
+
+  function assetState(asset, today, schedule) {
+    var when = today || new Date().toISOString().slice(0, 10);
+    var plan = Object.assign({}, DEFAULT_SCHEDULE, schedule || {});
+    var events = mergeEvents(asset.asset_id, asset.events || []);
+    var todayDay = isoDay(when);
+    var dated = events.filter(function (e) { return isoDay(e.when) !== null; })
+      .sort(function (a, b) {
+        if (a.when !== b.when) return a.when < b.when ? -1 : 1;
+        if (a.kind !== b.kind) return a.kind < b.kind ? -1 : 1;
+        return a.event_id < b.event_id ? -1 : (a.event_id > b.event_id ? 1 : 0);
+      });
+    var undated = events.length - dated.length;
+
+    var fn = 'unknown', since = null;
+    var detail = 'Nothing has been recorded against this borehole, so whether ' +
+      'it is working is not known.';
+    var commissioned = null, lastInspection = null, lastSample = null;
+    dated.forEach(function (event) {
+      if (isoDay(event.when) > todayDay) return;
+      var establishes = EVENT_KINDS[event.kind][1];
+      if (establishes) {
+        fn = establishes;
+        since = event.when;
+        detail = eventLabel(event.kind) + ' recorded on ' + event.when +
+          (event.by ? ' by ' + event.by : '');
+      }
+      if (event.kind === 'commissioned' && !commissioned) commissioned = event.when;
+      if (event.kind === 'inspection') lastInspection = event.when;
+      if (event.kind === 'water_sample') lastSample = event.when;
+    });
+
+    var outFor = fn === 'non_functional' && since ? todayDay - isoDay(since) : null;
+    if (undated && fn === 'unknown') {
+      detail = undated + ' record(s) carry a date nobody can read, so nothing ' +
+        'can be established from them.';
+    }
+
+    var due = [];
+    if (fn !== 'decommissioned') {
+      due.push(dueItem('inspection', 'Sanitary inspection', lastInspection,
+        commissioned, plan.inspection_months, plan.grace_days, when,
+        'A sanitary inspection is what catches a cracked apron or a latrine ' +
+        'dug uphill before the water shows it.'));
+      due.push(dueItem('water_sample', 'Water quality sample', lastSample,
+        commissioned, plan.water_sample_months, plan.grace_days, when,
+        'Water that was safe at handover is not evidence that it is safe now: ' +
+        'the aquifer, the headworks and the catchment all change.'));
+    }
+    return {
+      function: fn, label: FUNCTION_LABELS[fn], since: since, detail: detail,
+      last_inspection: lastInspection, last_sample: lastSample,
+      commissioned: commissioned, days_out_of_service: outFor,
+      due: due, undated_events: undated,
+      overdue: due.filter(function (item) { return item.state === 'overdue'; }),
+      is_working: fn === 'functional'
+    };
+  }
+
+  /* Plain text, not a link. A link is only useful where there is a network,
+   * and the reason this symbol is on the headworks is that there is not one. */
+  function qrPayload(asset) {
+    var lines = ['BOREHOLE ' + asset.asset_id, assetLabel(asset)];
+    var latlon = assetLatLon(asset);
+    if (latlon) {
+      lines.push(pyFixed(Math.abs(latlon[0]), 5) + ' ' + (latlon[0] >= 0 ? 'N' : 'S') +
+        ', ' + pyFixed(Math.abs(latlon[1]), 5) + ' ' + (latlon[1] >= 0 ? 'E' : 'W'));
+    }
+    var facts = [];
+    if (asset.total_depth_m) facts.push(pyFixed(Number(asset.total_depth_m), 1) + ' m deep');
+    if (asset.safe_yield_m3_per_h) {
+      facts.push(pyFixed(Number(asset.safe_yield_m3_per_h), 2) + ' m3/h');
+    }
+    if (asset.pump_type) facts.push(asset.pump_type);
+    if (facts.length) lines.push(facts.join(', '));
+    return lines.join('\n');
+  }
+
+  function placardLines(asset, state) {
+    var rows = [['Identifier', asset.asset_id],
+      ['Community', asset.community || '-']];
+    if (asset.district) rows.push(['District', asset.district]);
+    var latlon = assetLatLon(asset);
+    if (latlon) {
+      rows.push(['Position', pyFixed(latlon[0], 5) + ' N, ' +
+        pyFixed(Math.abs(latlon[1]), 5) + ' W']);
+    }
+    if (asset.total_depth_m) {
+      rows.push(['Depth', pyFixed(Number(asset.total_depth_m), 1) + ' m']);
+    }
+    if (asset.safe_yield_m3_per_h) {
+      rows.push(['Safe yield', pyFixed(Number(asset.safe_yield_m3_per_h), 2) + ' m3/h']);
+    }
+    if (asset.pump_type) rows.push(['Pump', asset.pump_type]);
+    if (asset.installed_by) rows.push(['Installed by', asset.installed_by]);
+    if (state) {
+      if (state.commissioned) rows.push(['Commissioned', state.commissioned]);
+      rows.push(['Status', state.label]);
+    }
+    return rows;
+  }
+
+  function assetFromDict(payload) {
+    if (!payload || typeof payload !== 'object') return null;
+    var assetId = parseAssetId(payload.asset_id);
+    if (!assetId) return null;
+    var asset = {
+      asset_id: assetId,
+      community: payload.community || '', district: payload.district || '',
+      chiefdom: payload.chiefdom || '',
+      easting: payload.easting === undefined ? null : payload.easting,
+      northing: payload.northing === undefined ? null : payload.northing,
+      utm_zone: payload.utm_zone === undefined ? null : payload.utm_zone,
+      total_depth_m: payload.total_depth_m === undefined ? null : payload.total_depth_m,
+      safe_yield_m3_per_h: payload.safe_yield_m3_per_h === undefined
+        ? null : payload.safe_yield_m3_per_h,
+      pump_type: payload.pump_type || '', installed_by: payload.installed_by || '',
+      events: []
+    };
+    asset.events = mergeEvents(assetId, payload.events || []);
+    return asset;
+  }
+
+  /* Nothing is invented here: no commissioning event is written, because a
+   * borehole is commissioned by somebody deciding it is, on a day, and that
+   * decision is a record with a name on it rather than a side effect of
+   * opening a page. */
+  function assetFromProject(state) {
+    var site = projectSite(state || {});
+    if (!site || site.easting === null || site.easting === undefined) return null;
+    var assetId;
+    try {
+      assetId = mintAssetId(site);
+    } catch (err) {
+      return null;
+    }
+    var log = state.drilling_log, analysis = state.pump_analysis;
+    var recommendation = analysis && analysis.yield_recommendation;
+    return {
+      asset_id: assetId, community: site.community || '',
+      district: site.district || '', chiefdom: site.chiefdom || '',
+      easting: site.easting, northing: site.northing,
+      utm_zone: site.utm_zone || null,
+      total_depth_m: log ? log.total_depth_m : null,
+      safe_yield_m3_per_h: recommendation ? recommendation.safe_yield_m3_per_h : null,
+      pump_type: '', installed_by: site.contractor || '', events: []
+    };
+  }
+
+  function registryRows(assets, today, schedule) {
+    return (assets || []).map(function (asset) {
+      var state = assetState(asset, today, schedule);
+      return {
+        Identifier: asset.asset_id,
+        Community: asset.community || '(unnamed)',
+        District: asset.district || '',
+        Status: state.label,
+        Since: state.since || '',
+        'Last inspected': state.last_inspection || '',
+        'Last sampled': state.last_sample || '',
+        Overdue: state.overdue.map(function (i) { return i.title; }).join(', '),
+        Events: (asset.events || []).length
+      };
+    });
+  }
+
+  /* n_unknown sits beside the working and broken counts and is never folded
+   * into either: a register where most points are unknown looks very like
+   * one where most points are working, unless the number is on the page. */
+  function registryStats(assets, today, schedule) {
+    var list = assets || [];
+    var counts = { functional: 0, non_functional: 0, decommissioned: 0, unknown: 0 };
+    var overdue = {}, outDays = [];
+    list.forEach(function (asset) {
+      var state = assetState(asset, today, schedule);
+      counts[state.function] += 1;
+      if (state.days_out_of_service !== null) outDays.push(state.days_out_of_service);
+      state.overdue.forEach(function (item) {
+        overdue[item.key] = (own(overdue, item.key) ? overdue[item.key] : 0) + 1;
+      });
+    });
+    var known = counts.functional + counts.non_functional;
+    return {
+      n_assets: list.length,
+      n_functional: counts.functional,
+      n_non_functional: counts.non_functional,
+      n_decommissioned: counts.decommissioned,
+      n_unknown: counts.unknown,
+      functionality_rate: known ? counts.functional / known * 100 : null,
+      n_overdue_inspection: own(overdue, 'inspection') ? overdue.inspection : 0,
+      n_overdue_sample: own(overdue, 'water_sample') ? overdue.water_sample : 0,
+      mean_days_out_of_service: outDays.length
+        ? outDays.reduce(function (a, b) { return a + b; }, 0) / outDays.length : null
+    };
+  }
+
+  Object.assign(C, {
+    DISTRICT_CODES: DISTRICT_CODES, UNKNOWN_DISTRICT: UNKNOWN_DISTRICT,
+    EVENT_KINDS: EVENT_KINDS, FUNCTION_LABELS: FUNCTION_LABELS,
+    FUNCTION_COLORS: FUNCTION_COLORS, DEFAULT_SCHEDULE: DEFAULT_SCHEDULE,
+    checkCharacter: checkCharacter, mintAssetId: mintAssetId,
+    parseAssetId: parseAssetId, validateAssetId: validateAssetId,
+    eventId: eventId, eventLabel: eventLabel, mergeEvents: mergeEvents,
+    assetState: assetState, assetLatLon: assetLatLon, assetLabel: assetLabel,
+    assetFromDict: assetFromDict, assetFromProject: assetFromProject,
+    qrPayload: qrPayload, placardLines: placardLines,
+    registryRows: registryRows, registryStats: registryStats,
+    addMonths: addMonths, isoDay: isoDay, dayToIso: dayToIso
+  });
+
+
   /* __SECTION_MARK__ */
 }(typeof window !== 'undefined' ? window : globalThis));

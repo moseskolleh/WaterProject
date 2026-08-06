@@ -285,6 +285,103 @@ await withPage(async (page, base, consoleErrors) => {
       });
     });
 
+    out.qr = [];
+    ["SL-WAR-8FEEVKQ-T",
+      "BOREHOLE SL-WAR-8FEEVKQ-T\nDr. Timbo's (Western Area Rural)\n" +
+      "8.48310 N, 13.22940 W\n62.0 m deep, 1.85 m3/h",
+      "Kailahun - 10\u00b0 12' 03\" N"].forEach((text) => {
+      ['L', 'M', 'Q', 'H'].forEach((ecc) => {
+        [null, 0, 5].forEach((mask) => {
+          const code = C.qrEncode(text, { ecc, mask });
+          out.qr.push({
+            text, ecc, mask, version: code.version, size: code.size,
+            chosen_mask: code.mask, penalty: C.qrPenalty(code.modules),
+            rows: code.modules.map((row) => row.map((c) => (c ? '1' : '0')).join('')),
+          });
+        });
+      });
+    });
+    out.qr_capacity = [];
+    for (let v = 1; v <= C.QR_MAX_VERSION; v++) {
+      ['L', 'M', 'Q', 'H'].forEach((ecc) => {
+        out.qr_capacity.push({ version: v, ecc, bytes: C.qrCapacityBytes(v, ecc) });
+      });
+    }
+
+    const sites = [
+      { district: 'Western Area Rural', easting: 694912.0, northing: 938150.0, utm_zone: 28 },
+      { district: 'Western Area Rural', easting: 694914.0, northing: 938147.0, utm_zone: 28 },
+      { district: 'Bo', easting: 790500.0, northing: 875300.0, utm_zone: 28 },
+      { district: 'Kailahun', easting: 280400.0, northing: 925600.0, utm_zone: 29 },
+      { district: 'Nowhere At All', easting: 694912.0, northing: 938150.0, utm_zone: 28 },
+    ];
+    out.asset_ids = sites.map((s) => ({
+      district: s.district, easting: s.easting, northing: s.northing,
+      zone: s.utm_zone, id: C.mintAssetId(s),
+    }));
+    const timboId = C.mintAssetId(sites[0]);
+    out.asset_id_parsing = [timboId, timboId.toLowerCase(),
+      timboId.replace(/0/g, 'O'), timboId.replace(/1/g, 'L'), ' ' + timboId + ' ',
+      timboId.slice(0, -1) + 'Z', timboId.replace(/-/g, ''),
+      'SL-WAR-XXXXXXX-9', 'not an identifier', ''].map((typed) => {
+      const v = C.validateAssetId(typed);
+      return { typed, parsed: C.parseAssetId(typed), ok: v.ok, reason: v.reason };
+    });
+    const streams = [
+      [{ when: '2020-01-10', kind: 'commissioned', by: 'M. Kolleh' },
+        { when: '2023-04-02', kind: 'failure', note: 'rising main parted' }],
+      [{ when: '2023-04-02', kind: 'failure', note: 'rising main parted' },
+        { when: '2023-05-11', kind: 'repair', note: 'new seals', by: 'A. Bangura',
+          photo: 'data:image/jpeg;base64,AAAA' },
+        { when: 'not written down', kind: 'inspection' },
+        { when: '2099-01-01', kind: 'restored' }],
+    ];
+    out.asset_events = C.mergeEvents(timboId, streams[0], streams[1]);
+    const registryCases = {
+      silent: [],
+      commissioned: streams[0].slice(0, 1),
+      broken: streams[0],
+      repaired: streams[0].concat([{ when: '2023-05-11', kind: 'restored' }]),
+      sampled: streams[0].slice(0, 1).concat([
+        { when: '2023-03-01', kind: 'water_sample' },
+        { when: '2024-05-20', kind: 'inspection' }]),
+      decommissioned: streams[0].slice(0, 1).concat([
+        { when: '2022-08-01', kind: 'decommissioned' }]),
+      merged: streams[0].concat(streams[1]),
+    };
+    const today = '2024-06-01';
+    const assets = {};
+    Object.keys(registryCases).forEach((name) => {
+      assets[name] = {
+        asset_id: timboId, community: "Dr. Timbo's",
+        district: 'Western Area Rural', easting: 694912.0, northing: 938150.0,
+        utm_zone: 28, total_depth_m: 62.0, safe_yield_m3_per_h: 1.85,
+        pump_type: 'India Mark II', installed_by: 'WiNGiN',
+        events: registryCases[name],
+      };
+    });
+    out.asset_state = {};
+    Object.keys(assets).forEach((name) => {
+      const st = C.assetState(assets[name], today);
+      out.asset_state[name] = {
+        function: st.function, label: st.label, since: st.since,
+        detail: st.detail, last_inspection: st.last_inspection,
+        last_sample: st.last_sample, commissioned: st.commissioned,
+        days_out_of_service: st.days_out_of_service,
+        due: st.due.map((d) => ({ key: d.key, title: d.title, state: d.state,
+          due_on: d.due_on, detail: d.detail })),
+        undated_events: st.undated_events,
+      };
+    });
+    out.asset_placard = C.placardLines(assets.commissioned,
+      C.assetState(assets.commissioned, today));
+    out.asset_qr_payload = C.qrPayload(assets.commissioned);
+    out.registry_rows = C.registryRows(Object.keys(assets).map((k) => assets[k]), today);
+    out.registry_stats = C.registryStats(Object.keys(assets).map((k) => assets[k]), today);
+    out.asset_months = [['2023-08-31', 6], ['2023-12-31', 2], ['2020-02-29', 12],
+      ['2023-01-31', 1], ['2023-03-30', 11], ['2024-02-29', 12]]
+      .map(([from, months]) => ({ from, months, due: C.addMonths(from, months) }));
+
     out.rounding = [[0.15, 1], [14.05, 1], [2.675, 2], [0.5, 0], [1.5, 0],
       [2.5, 0], [-0.15, 1], [2.34, 2], [2.345, 2], [0.125, 2], [-2.5, 0],
       [45.05, 1], [150.5, 0]]
@@ -491,6 +588,74 @@ await withPage(async (page, base, consoleErrors) => {
   // A report is what a borehole is handed over on, so both engines have to
   // agree on what it can stand behind, down to the sentence they give the
   // analyst.
+  // --- the QR encoder ---
+  // Module for module. A symbol that is wrong in the data region still looks
+  // exactly like a QR symbol, so nothing short of every module is a check.
+  check('qr: same number of symbols', parsed.qr.length === R.qr.length,
+    `js ${parsed.qr.length} vs py ${R.qr.length}`);
+  let qrMismatched = 0, qrFirst = '';
+  parsed.qr.forEach((js, i) => {
+    const py = R.qr[i];
+    if (!py) return;
+    if (js.version !== py.version || js.size !== py.size ||
+        js.chosen_mask !== py.chosen_mask || js.penalty !== py.penalty ||
+        js.rows.join('') !== py.rows.join('')) {
+      qrMismatched += 1;
+      if (!qrFirst) {
+        const row = js.rows.findIndex((r, k) => r !== py.rows[k]);
+        qrFirst = `${py.ecc}/${py.mask} v${py.version} vs v${js.version}, ` +
+          `mask ${js.chosen_mask} vs ${py.chosen_mask}, ` +
+          `penalty ${js.penalty} vs ${py.penalty}, first differing row ${row}`;
+      }
+    }
+  });
+  check('qr: every module of every symbol matches the toolkit',
+    qrMismatched === 0, `${qrMismatched} symbol(s) differ; ${qrFirst}`);
+  check('qr: the capacity table matches',
+    JSON.stringify(parsed.qr_capacity) === JSON.stringify(R.qr_capacity),
+    JSON.stringify(parsed.qr_capacity.filter((r, i) =>
+      JSON.stringify(r) !== JSON.stringify(R.qr_capacity[i]))));
+
+  // --- the asset registry ---
+  check('registry: identifiers are minted the same way',
+    JSON.stringify(parsed.asset_ids) === JSON.stringify(R.asset_ids),
+    JSON.stringify(parsed.asset_ids) + '\n     vs ' + JSON.stringify(R.asset_ids));
+  parsed.asset_id_parsing.forEach((js, i) => {
+    const py = R.asset_id_parsing[i];
+    check(`registry: reading ${JSON.stringify(js.typed)}`,
+      js.parsed === py.parsed && js.ok === py.ok && js.reason === py.reason,
+      JSON.stringify(js) + '\n     vs ' + JSON.stringify(py));
+  });
+  check('registry: merging two phones gives one history',
+    JSON.stringify(parsed.asset_events) === JSON.stringify(R.asset_events),
+    JSON.stringify(parsed.asset_events) + '\n     vs ' + JSON.stringify(R.asset_events));
+  Object.keys(R.asset_state).forEach((name) => {
+    check(`registry: state of the ${name} borehole`,
+      JSON.stringify(parsed.asset_state[name]) === JSON.stringify(R.asset_state[name]),
+      JSON.stringify(parsed.asset_state[name]) + '\n     vs ' +
+      JSON.stringify(R.asset_state[name]));
+  });
+  check('registry: the placard says the same thing',
+    JSON.stringify(parsed.asset_placard) === JSON.stringify(R.asset_placard),
+    JSON.stringify(parsed.asset_placard) + '\n     vs ' + JSON.stringify(R.asset_placard));
+  check('registry: the symbol carries the same text',
+    parsed.asset_qr_payload === R.asset_qr_payload,
+    JSON.stringify(parsed.asset_qr_payload) + '\n     vs ' +
+    JSON.stringify(R.asset_qr_payload));
+  check('registry: the table rows match',
+    JSON.stringify(parsed.registry_rows) === JSON.stringify(R.registry_rows),
+    JSON.stringify(parsed.registry_rows) + '\n     vs ' + JSON.stringify(R.registry_rows));
+  check('registry: the headline counts match',
+    Object.keys(R.registry_stats).every((k) => (
+      typeof R.registry_stats[k] === 'number'
+        ? close(parsed.registry_stats[k], R.registry_stats[k])
+        : parsed.registry_stats[k] === R.registry_stats[k])),
+    JSON.stringify(parsed.registry_stats) + '\n     vs ' +
+    JSON.stringify(R.registry_stats));
+  check('registry: a due date never drifts over a short month',
+    JSON.stringify(parsed.asset_months) === JSON.stringify(R.asset_months),
+    JSON.stringify(parsed.asset_months) + '\n     vs ' + JSON.stringify(R.asset_months));
+
   Object.keys(R.readiness).forEach((name) => {
     Object.keys(R.readiness[name]).forEach((report) => {
       const js = parsed.readiness[name][report], py = R.readiness[name][report];

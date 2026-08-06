@@ -11,7 +11,7 @@ function check(name, ok, detail) {
 
 const PAGES = ['overview', 'guided', 'site', 'ves', 'design', 'spine', 'pumping',
   'quality', 'costing', 'supervision', 'handover', 'templates', 'extract',
-  'waterpoints', 'coverage', 'portfolio', 'settings', 'about'];
+  'waterpoints', 'coverage', 'portfolio', 'registry', 'settings', 'about'];
 
 await withPage(async (page, base, consoleErrors) => {
   const downloads = [];
@@ -718,6 +718,109 @@ await withPage(async (page, base, consoleErrors) => {
   });
   check('standards: the quality report says the national column is provisional',
     qualityDoc.len > 1000 && qualityDoc.saysProvisional, JSON.stringify(qualityDoc));
+
+  // --- the asset registry --------------------------------------------------
+  // The identifier is derived from the position, the history is append-only
+  // and merges by content, and nothing counts as working until something
+  // says so. All three have to survive the wiring, not just the engine.
+  const registry = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, d = app.derived;
+    const site = app.store.get('site');
+    const saved = [site.easting, site.northing, site.utm_zone];
+    app.store.set('asset', null);
+    d.registry = [];
+    app.goto('registry');
+    app.render();
+    const unlocated = document.querySelector('#page-host').textContent;
+
+    site.easting = 694912; site.northing = 938150; site.utm_zone = 28;
+    app.render();
+    const located = {
+      text: document.querySelector('#page-host').textContent,
+      id: document.querySelector('#page-host .asset-id')?.textContent || '',
+      minted: C.mintAssetId(site),
+      hasSymbol: !!document.querySelector('#page-host .qr-preview svg'),
+    };
+
+    // record a visit through the form the way a field team would
+    const fill = (placeholder, value) => {
+      const input = document.querySelector(
+        '#page-host input[placeholder="' + placeholder + '"]');
+      if (!input) return false;
+      input.value = value;
+      input.dispatchEvent(new Event('change'));
+      return true;
+    };
+    const press = (label) => {
+      const btn = Array.from(document.querySelectorAll('#page-host button'))
+        .find((b) => b.textContent === label);
+      if (btn) btn.click();
+      return !!btn;
+    };
+    fill('YYYY-MM-DD', 'not a date');
+    const refusedBadDate = press('Add to the history') &&
+      ((app.store.get('asset') || {}).events || []).length === 0;
+
+    // re-queried each time: the page re-renders after every submit, so a
+    // node captured before it is detached and setting it changes nothing
+    const recordFailure = () => {
+      fill('YYYY-MM-DD', '2023-04-02');
+      fill('Name', 'A. Bangura');
+      fill('What was found or done', 'rising main parted');
+      const kind = Array.from(document.querySelectorAll('#page-host select'))
+        .find((s2) => Array.from(s2.options).some((o) => o.value === 'failure'));
+      if (kind) { kind.value = 'failure'; kind.dispatchEvent(new Event('change')); }
+      return press('Add to the history');
+    };
+    recordFailure();
+    const recorded = app.store.get('asset') || {};
+    const afterOne = C.assetState(C.assetFromDict(recorded), '2024-06-01');
+
+    // the same visit again: content-derived ids mean it merges, not doubles
+    recordFailure();
+    const afterTwice = (app.store.get('asset') || {}).events.length;
+
+    // a wrong identifier is refused with something a person can act on
+    app.store.set('registry.lookup', C.mintAssetId(site).slice(0, -1) + 'Z');
+    app.render();
+    // by content, not by tone: the status callout on a broken borehole is
+    // also a .callout-bad and sits above this one
+    const lookup = Array.from(document.querySelectorAll('#page-host .callout p'))
+      .map((n) => n.textContent).find((t) => t.includes('check character')) || '';
+
+    const doc = await window.__docText(await (await window.GWT.docx.assetRecordReport({
+      asset: C.assetFromDict(app.store.get('asset')),
+      today: '2024-06-01',
+    })).build());
+
+    app.store.set('registry.lookup', '');
+    app.store.set('asset', null);
+    site.easting = saved[0]; site.northing = saved[1]; site.utm_zone = saved[2];
+    app.render();
+    return { unlocated, located, refusedBadDate, afterOne, afterTwice, lookup, doc };
+  });
+  check('registry: a borehole with no position gets no identifier',
+    registry.unlocated.includes('nothing to find the borehole by'));
+  check('registry: the identifier is derived from the position',
+    registry.located.id === registry.located.minted &&
+    registry.located.id.startsWith('SL-WAR-'),
+    JSON.stringify({ shown: registry.located.id, minted: registry.located.minted }));
+  check('registry: the page draws the symbol that goes on the headworks',
+    registry.located.hasSymbol === true);
+  check('registry: a date nobody can read is refused, not stored',
+    registry.refusedBadDate === true);
+  check('registry: a recorded failure leaves the borehole not working',
+    registry.afterOne.function === 'non_functional' &&
+    registry.afterOne.days_out_of_service === 426,
+    JSON.stringify(registry.afterOne));
+  check('registry: the same visit recorded twice merges into one',
+    registry.afterTwice === 1, `${registry.afterTwice} events`);
+  check('registry: a mistyped identifier says what it should have ended in',
+    registry.lookup.includes('check character') &&
+    registry.lookup.includes('mistyped'), registry.lookup);
+  check('registry: the record names the days the community went without',
+    registry.doc.includes('Not working') && registry.doc.includes('426 days') &&
+    registry.doc.includes('rising main parted'));
 
   // --- the certification gate ---------------------------------------------
   // The gate never blocks a build: an interim report is a real need, and an

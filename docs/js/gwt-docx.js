@@ -1500,6 +1500,104 @@
     return b;
   }
 
+  /* --- the asset registry --------------------------------------------------
+   * Two documents. The placard is one page to print, laminate and fix to the
+   * headworks: the identifier in large type, the symbol that encodes it, and
+   * the facts that do not go out of date. The record is the history, and what
+   * that history says the borehole's condition is today.
+   * ---------------------------------------------------------------------- */
+
+  async function assetPlacard(context) {
+    var asset = context.asset;
+    var b = new ReportBuilder({ style: context.style,
+      title: 'Borehole ' + asset.asset_id });
+    var state = context.state || C.assetState(asset, context.today);
+
+    b.paragraph('BOREHOLE IDENTIFICATION PLATE', { bold: true, align: 'center' });
+    b.paragraph(asset.asset_id, { bold: true, size: 26, align: 'center' });
+    b.paragraph(C.assetLabel(asset), { size: 13, align: 'center' });
+    if (context.symbol) {
+      b.figure(context.symbol, 'Scan for this borehole’s identifier and ' +
+        'position. The symbol carries the details themselves, so it reads with ' +
+        'no network and no application installed.', 7.0);
+    }
+    b.table(C.placardLines(asset, state), {
+      header: ['', ''], caption: 'Borehole details', colWidthsCm: [5.0, 10.0] });
+    b.paragraph('Report a breakdown or a change to this borehole against the ' +
+      'identifier above. Quote it in full, including the last character — ' +
+      'it is a check character, and it is what stops a repair being recorded ' +
+      "against a different village's borehole.", { italic: true });
+    return b;
+  }
+
+  async function assetRecordReport(context) {
+    var asset = context.asset;
+    var state = context.state || C.assetState(asset, context.today);
+    var today = context.today || new Date().toISOString().slice(0, 10);
+    var b = new ReportBuilder({ style: context.style,
+      title: 'Asset record - ' + C.assetLabel(asset) });
+
+    b.cover(['Borehole Asset Record'], [C.assetLabel(asset), asset.asset_id],
+      [['Status', state.label], ['As at', today]]);
+    b.provisionalStamp(context.readiness);
+
+    b.heading('Condition', 1);
+    b.paragraph(state.label + '. ' + state.detail);
+    if (state.days_out_of_service !== null && state.days_out_of_service !== undefined) {
+      b.paragraph('This borehole has been out of service for ' +
+        state.days_out_of_service + ' days. Every day counted here is a day ' +
+        'the community went back to whatever they used before.', { bold: true });
+    }
+    if (state.undated_events) {
+      b.paragraph(state.undated_events + ' record(s) carry a date that could ' +
+        'not be read. They are listed below with the date as written, but they ' +
+        'establish nothing about when anything last happened.');
+    }
+
+    b.heading('Details', 1);
+    b.table(C.placardLines(asset, state),
+      { header: ['', ''], colWidthsCm: [5.0, 10.0] });
+
+    b.heading('Outstanding', 1);
+    var outstanding = state.due.filter(function (item) {
+      return item.state === 'overdue' || item.state === 'unknown';
+    });
+    var scheduled = state.due.filter(function (item) {
+      return item.state === 'scheduled' || item.state === 'due';
+    });
+    if (outstanding.length) {
+      b.bullets(outstanding.map(function (item) { return item.detail; }));
+    } else if (scheduled.length) {
+      b.bullets(scheduled.map(function (item) { return item.detail; }));
+    } else {
+      b.paragraph('Nothing is outstanding.');
+    }
+
+    b.heading('History', 1);
+    var events = (asset.events || []).slice().sort(function (a, c) {
+      var aw = a.when || '9999', cw = c.when || '9999';
+      if (aw !== cw) return aw < cw ? -1 : 1;
+      return a.kind < c.kind ? -1 : (a.kind > c.kind ? 1 : 0);
+    });
+    if (events.length) {
+      b.table(events.map(function (e) {
+        return [e.when || '(no date)', C.eventLabel(e.kind), e.note || '',
+          e.by || '', e.photo ? 'yes' : ''];
+      }), {
+        header: ['Date', 'Event', 'Note', 'Recorded by', 'Photo'],
+        caption: 'Everything recorded against this borehole',
+        colWidthsCm: [2.4, 3.2, 6.0, 2.4, 1.5],
+      });
+      b.paragraph('This history is append-only: a mistake is corrected by ' +
+        'recording the correction, so both entries stay visible. Nothing here ' +
+        'has been edited or removed.', { italic: true });
+    } else {
+      b.paragraph('Nothing has ever been recorded against this borehole. That ' +
+        'is not the same as nothing having happened to it.', { bold: true });
+    }
+    return b;
+  }
+
   GWT.docx = {
     ReportBuilder: ReportBuilder,
     geophysicalReport: geophysicalReport,
@@ -1509,6 +1607,7 @@
     costingReport: costingReport,
     supervisionReport: supervisionReport,
     handoverReport: handoverReport,
+    assetPlacard: assetPlacard, assetRecordReport: assetRecordReport,
     REFERENCES: REFERENCES, GLOSSARY: GLOSSARY, statusLabel: statusLabel,
   };
 }(typeof window !== 'undefined' ? window : globalThis));
