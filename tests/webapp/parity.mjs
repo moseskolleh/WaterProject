@@ -455,6 +455,49 @@ await withPage(async (page, base, consoleErrors) => {
         };
       });
 
+    const procContract = (terms) => Object.assign({
+      ref: 'WSD/2024/017', contractor: 'WiNGiN', client: 'District Council',
+      date: '2024-02-01', retention_percent: 10, retention_cap_percent: 5,
+      advance_percent: 0,
+      lines: [
+        { code: 'MOB', item: 'Mobilisation', unit: 'sum', quantity: 1, rate_usd: 3000 },
+        { code: 'DRL-OB', item: 'Drilling, overburden', unit: 'm', quantity: 20, rate_usd: 45 },
+        { code: 'DRL-RK', item: 'Drilling, rock', unit: 'm', quantity: 25, rate_usd: 80 },
+        { code: 'CAS', item: 'uPVC casing', unit: 'm', quantity: 45, rate_usd: 22 },
+      ],
+    }, terms || {});
+    const m = (code, quantity) => ({ code, quantity });
+    const vo = (ref, code, delta, rate, reason, by, item, unit) => ({
+      ref, date: '2024-03-04', code, quantity_delta: delta,
+      rate_usd: rate === undefined ? null : rate, reason: reason || '',
+      authorised_by: by || '', item: item || '', unit: unit || '',
+    });
+    const procCases = {
+      clean: [procContract(), [m('MOB', 1)], [], 1, 0],
+      overmeasured: [procContract(), [m('MOB', 1), m('DRL-RK', 42)], [], 1, 0],
+      varied: [procContract(), [m('MOB', 1), m('DRL-RK', 42)],
+        [vo('VO-1', 'DRL-RK', 17, null, 'deeper water', 'M. Kolleh')], 2, 1500],
+      unsigned: [procContract(), [m('GRAVEL', 12)],
+        [vo('VO-2', 'CAS', 5)], 1, 0],
+      new_item: [procContract(), [m('GRAVEL', 12)],
+        [vo('VO-3', 'GRAVEL', 12, null, 'gravel pack', 'M. K.', 'Gravel pack', 'm3')],
+        1, 0],
+      advance: [procContract({ advance_percent: 20, retention_percent: 5 }),
+        [m('MOB', 1), m('DRL-OB', 20), m('DRL-RK', 25), m('CAS', 45)], [], 1, 0],
+      overpaid: [procContract({ retention_percent: 0 }), [m('MOB', 1)], [], 2, 5000],
+      negatives: [procContract(), [m('CAS', -10)], [], 3, -5],
+    };
+    out.procurement = {};
+    Object.keys(procCases).forEach((label) => {
+      const [ct, ms, vs, no, prev] = procCases[label];
+      const cert = C.certify(ct, ms, { number: no, date: '2024-04-01',
+        variations: vs, previouslyCertifiedUsd: prev });
+      out.procurement[label] = {
+        certificate: cert,
+        summary_rows: C.contractSummaryRows(ct, cert),
+      };
+    });
+
     out.rounding = [[0.15, 1], [14.05, 1], [2.675, 2], [0.5, 0], [1.5, 0],
       [2.5, 0], [-0.15, 1], [2.34, 2], [2.345, 2], [0.125, 2], [-2.5, 0],
       [45.05, 1], [150.5, 0]]
@@ -661,6 +704,41 @@ await withPage(async (page, base, consoleErrors) => {
   // A report is what a borehole is handed over on, so both engines have to
   // agree on what it can stand behind, down to the sentence they give the
   // analyst.
+  // --- procurement ---
+  Object.keys(R.procurement).forEach((label) => {
+    const js = parsed.procurement[label].certificate;
+    const py = R.procurement[label].certificate;
+    check(`procurement ${label}: the money`,
+      ['contract_sum_usd', 'variation_usd', 'revised_sum_usd', 'gross_usd',
+        'percent_complete', 'retention_usd', 'advance_recovered_usd',
+        'net_certified_usd', 'previously_certified_usd', 'due_now_usd',
+        'overpaid_usd', 'overmeasure_usd'].every((k) => close(js[k], py[k])) &&
+      js.summary === py.summary,
+      JSON.stringify(js) + '\n     vs ' + JSON.stringify(py));
+    check(`procurement ${label}: the problems, word for word`,
+      JSON.stringify(js.problems) === JSON.stringify(py.problems),
+      JSON.stringify(js.problems) + '\n     vs ' + JSON.stringify(py.problems));
+    check(`procurement ${label}: every valued line`,
+      js.lines.length === py.lines.length && js.lines.every((line, i) => {
+        const w = py.lines[i];
+        return line.code === w.code && line.item === w.item &&
+          line.unit === w.unit && line.in_contract === w.in_contract &&
+          JSON.stringify(line.variation_refs) === JSON.stringify(w.variation_refs) &&
+          ['rate_usd', 'contract_quantity', 'variation_quantity',
+            'authorised_quantity', 'measured_quantity', 'payable_quantity',
+            'overmeasure_quantity', 'contract_amount_usd',
+            'authorised_amount_usd', 'payable_amount_usd',
+            'overmeasure_amount_usd', 'percent_complete']
+            .every((k) => close(line[k], w[k]));
+      }),
+      JSON.stringify(js.lines) + '\n     vs ' + JSON.stringify(py.lines));
+    check(`procurement ${label}: the head of the certificate`,
+      JSON.stringify(parsed.procurement[label].summary_rows) ===
+        JSON.stringify(R.procurement[label].summary_rows),
+      JSON.stringify(parsed.procurement[label].summary_rows) + '\n     vs ' +
+      JSON.stringify(R.procurement[label].summary_rows));
+  });
+
   // --- coverage as a planning figure ---
   parsed.wpdx_fields.forEach((js, i) => {
     const py = R.wpdx_fields[i];

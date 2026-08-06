@@ -1645,6 +1645,113 @@
     return b;
   }
 
+  /* --- the interim payment certificate --------------------------------------
+   * The document a contractor is paid against, so everything that reduces
+   * the payment appears on its face with its own line. A certificate showing
+   * only the bottom figure is one nobody can check, and one nobody can check
+   * is one nobody can dispute.
+   * ---------------------------------------------------------------------- */
+
+  async function paymentCertificate(context) {
+    var contract = context.contract, certificate = context.certificate;
+    var b = new ReportBuilder({ style: context.style,
+      title: 'Interim Payment Certificate ' + certificate.number });
+
+    b.cover(['Interim Payment Certificate No. ' + certificate.number],
+      [contract.ref, contract.contractor || ''],
+      [['Date', certificate.date || '—'],
+        ['Due on this certificate', C.money0(certificate.due_now_usd)]]);
+    b.provisionalStamp(context.readiness);
+
+    if (certificate.problems.length) {
+      b.heading('Before the figures', 1);
+      b.paragraph('The valuation below could not be made cleanly. Each item ' +
+        'here reduces or holds back money, and the certificate is issued with ' +
+        'them showing rather than resolved silently.', { bold: true });
+      b.bullets(certificate.problems);
+    }
+
+    b.heading('Summary', 1);
+    b.table(C.contractSummaryRows(contract, certificate),
+      { header: ['', ''], colWidthsCm: [8.0, 7.0] });
+    if (certificate.overpaid_usd) {
+      b.paragraph('Certificates already issued exceed the value of the work ' +
+        'by ' + C.money0(certificate.overpaid_usd) + '. Nothing is due on ' +
+        'this certificate. Recovering the difference is a credit note to be ' +
+        'agreed, not a negative payment.', { bold: true });
+    }
+
+    b.heading('Measurement', 1);
+    b.table(certificate.lines.map(function (line) {
+      return [line.code, line.item, line.unit,
+        C.formatG(line.contract_quantity),
+        line.variation_quantity
+          ? (line.variation_quantity > 0 ? '+' : '') +
+            C.formatG(line.variation_quantity) : '—',
+        C.formatG(line.measured_quantity), C.formatG(line.payable_quantity),
+        C.thousandsFixed(line.rate_usd, 2),
+        C.thousandsFixed(C.pyRound(line.payable_amount_usd, 0), 0)];
+    }), {
+      header: ['Code', 'Item', 'Unit', 'Contract', 'Varied', 'Measured',
+        'Payable', 'Rate (USD)', 'Amount (USD)'],
+      caption: 'Work measured to date and what is payable on it',
+      colWidthsCm: [1.6, 4.2, 1.2, 1.6, 1.4, 1.6, 1.5, 1.6, 1.8],
+      fontSize: 8.5,
+    });
+
+    var over = certificate.lines.filter(function (line) {
+      return line.overmeasure_quantity > 0;
+    });
+    if (over.length) {
+      b.heading('Measured beyond what was authorised', 1);
+      b.paragraph('The quantities below have been done but not authorised, so ' +
+        'they are not certified here. That is not a judgement on whether the ' +
+        'work was necessary — it usually was — but on whether anybody has yet ' +
+        'signed for it. A variation order authorising them makes them payable ' +
+        'on the next certificate.', { align: 'justify' });
+      b.table(over.map(function (line) {
+        return [line.code, line.item,
+          C.formatG(line.authorised_quantity) + ' ' + line.unit,
+          C.formatG(line.measured_quantity) + ' ' + line.unit,
+          C.formatG(line.overmeasure_quantity) + ' ' + line.unit,
+          C.thousandsFixed(C.pyRound(line.overmeasure_amount_usd, 0), 0)];
+      }), {
+        header: ['Code', 'Item', 'Authorised', 'Measured', 'Excess',
+          'Value withheld (USD)'],
+        colWidthsCm: [1.8, 4.6, 2.4, 2.4, 2.0, 2.4],
+      });
+      b.paragraph('Total value measured but not certified: ' +
+        C.money0(certificate.overmeasure_usd) + '.', { bold: true });
+    }
+
+    var varied = certificate.lines.filter(function (line) {
+      return line.variation_refs && line.variation_refs.length;
+    });
+    if (varied.length) {
+      b.heading('Variations included', 1);
+      b.table(varied.map(function (line) {
+        var value = line.authorised_amount_usd - line.contract_amount_usd;
+        return [line.variation_refs.join(', '), line.code, line.item,
+          (line.variation_quantity > 0 ? '+' : '') +
+            C.formatG(line.variation_quantity) + ' ' + line.unit,
+          (value >= 0 ? '+' : '-') +
+            C.thousandsFixed(C.pyRound(Math.abs(value), 0), 0)];
+      }), {
+        header: ['Reference', 'Code', 'Item', 'Quantity', 'Value (USD)'],
+        colWidthsCm: [2.4, 1.8, 5.6, 2.6, 3.2],
+      });
+    }
+
+    b.heading('Certification', 1);
+    b.paragraph('The work described above has been measured and valued at ' +
+      C.money0(certificate.gross_usd) + '. After retention and previous ' +
+      'certificates, ' + C.money0(certificate.due_now_usd) + ' is due to ' +
+      (contract.contractor || 'the contractor') + ' on this certificate.');
+    b.signatures(['Supervising engineer', 'Contractor', 'Client']);
+    b.signOff(context.signOff);
+    return b;
+  }
+
   GWT.docx = {
     ReportBuilder: ReportBuilder,
     geophysicalReport: geophysicalReport,
@@ -1655,6 +1762,7 @@
     supervisionReport: supervisionReport,
     handoverReport: handoverReport,
     assetPlacard: assetPlacard, assetRecordReport: assetRecordReport,
+    paymentCertificate: paymentCertificate,
     REFERENCES: REFERENCES, GLOSSARY: GLOSSARY, statusLabel: statusLabel,
   };
 }(typeof window !== 'undefined' ? window : globalThis));

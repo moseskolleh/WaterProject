@@ -75,7 +75,17 @@ water quality guidelines.
     the worst of them. A date that could be read either way round (10/05 is
     10 May or 5 October, opposite ends of the year) is treated as no date:
     the whole annual range is reserved and the report says why
-16. A borehole asset registry for the second twenty years: a check-summed
+16. Procurement tracking over the bill of quantities: the estimate is
+    frozen into a contract when it is awarded, work measured is kept
+    separate from work authorised so only the lower one is paid, variation
+    orders record who authorised the difference and why, and the interim
+    payment certificate shows every deduction between the value of the work
+    and the figure at the bottom. Work done but not authorised is named and
+    withheld rather than quietly paid or quietly dropped, a later
+    certificate that forgets what earlier ones paid is challenged, and a
+    certificate that would pay less than nothing pays nothing and says by
+    how much the job is overpaid
+17. A borehole asset registry for the second twenty years: a check-summed
     identifier derived from the position (so two teams at the same wellhead
     with no connection between them arrive at the same one), a printable
     headworks plate carrying a QR symbol generated offline, an append-only
@@ -220,6 +230,8 @@ groundwater/
                   yields, and the pump depth the worst of them needs
     planning.py   coverage as a planning figure: population projection,
                   survey freshness, dry-season service as a band
+    procurement.py  contract, variation orders, measurement and the interim
+                  payment certificate
     registry.py   asset identifiers, maintenance events, derived condition
     qr.py         a dependency-free QR encoder for the headworks plate
 ```

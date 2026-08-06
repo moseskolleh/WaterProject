@@ -1240,6 +1240,12 @@
   /* columns: [{key, label, align, format}] */
   function table(columns, rows, options) {
     var opts = options || {};
+    /* Two shapes, because both read well at the call site: a list of column
+     * objects over rows of objects, or plain header strings over rows that
+     * are already arrays. A string column indexes its row positionally. */
+    columns = columns.map(function (c, i) {
+      return typeof c === 'string' ? { key: i, label: c } : c;
+    });
     var head = el('thead', el('tr', columns.map(function (c) {
       return el('th', { class: c.align === 'right' ? 'right' : '' }, c.label);
     })));

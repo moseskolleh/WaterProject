@@ -10,7 +10,8 @@ function check(name, ok, detail) {
 }
 
 const PAGES = ['overview', 'guided', 'site', 'ves', 'design', 'spine', 'pumping',
-  'quality', 'costing', 'supervision', 'handover', 'templates', 'extract',
+  'quality', 'costing', 'procurement', 'supervision', 'handover',
+  'templates', 'extract',
   'waterpoints', 'coverage', 'portfolio', 'registry', 'settings', 'about'];
 
 await withPage(async (page, base, consoleErrors) => {
@@ -782,6 +783,99 @@ await withPage(async (page, base, consoleErrors) => {
   });
   check('standards: the quality report says the national column is provisional',
     qualityDoc.len > 1000 && qualityDoc.saysProvisional, JSON.stringify(qualityDoc));
+
+  // --- procurement ----------------------------------------------------------
+  // A bill of quantities is an estimate until somebody signs it. The three
+  // ways money leaks afterwards all have to survive the wiring: work measured
+  // that nobody authorised, work paid for twice, and retention forgotten.
+  const procurement = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, d = app.derived;
+    app.store.set('procurement', { contract: null, measured: {},
+      variations: [], number: 1, date: '', previous: 0 });
+    app.store.set('procurement.ref', 'WSD/2024/017');
+    app.goto('procurement');
+    app.render();
+    const before = document.querySelector('#page-host').textContent;
+
+    const press = (label) => {
+      const btn = Array.from(document.querySelectorAll('#page-host button'))
+        .find((b) => b.textContent === label);
+      if (btn) btn.click();
+      return !!btn;
+    };
+    const awarded = press('Award this estimate as the contract');
+    const contract = (app.store.get('procurement') || {}).contract;
+
+    // measure a drilling line well past what was priced
+    const drilling = contract.lines.find((l) => /drill/i.test(l.item)) ||
+      contract.lines[0];
+    const measured = {};
+    measured[drilling.code] = drilling.quantity * 2;
+    app.store.set('procurement', Object.assign(app.store.get('procurement'),
+      { measured }));
+    app.render();
+    const over = C.certify(contract,
+      [{ code: drilling.code, quantity: drilling.quantity * 2 }],
+      { number: 1, date: '2024-04-01' });
+
+    // then authorise it, and the same work becomes payable
+    const authorised = C.certify(contract,
+      [{ code: drilling.code, quantity: drilling.quantity * 2 }],
+      { number: 1, date: '2024-04-01', variations: [{
+        ref: 'VO-1', date: '2024-03-04', code: drilling.code,
+        quantity_delta: drilling.quantity, rate_usd: null,
+        reason: 'water deeper than priced', authorised_by: 'M. Kolleh' }] });
+
+    // a second certificate that forgets what the first one paid
+    const forgetful = C.certify(contract,
+      [{ code: drilling.code, quantity: drilling.quantity }],
+      { number: 2, date: '2024-05-01' });
+
+    const page_text = document.querySelector('#page-host').textContent;
+    const doc = await window.__docText(await (await window.GWT.docx
+      .paymentCertificate({ style: app.config().style, contract,
+        certificate: over })).build());
+
+    app.store.set('procurement', { contract: null, measured: {},
+      variations: [], number: 1, date: '', previous: 0 });
+    app.render();
+    return { before, awarded, lines: contract.lines.length,
+      code: drilling.code, over, authorised, forgetful, page_text, doc };
+  });
+  check('procurement: an estimate is not a contract until it is awarded',
+    procurement.before.includes('not a contract until it is awarded') &&
+    procurement.awarded === true && procurement.lines > 0,
+    `${procurement.lines} lines`);
+  check('procurement: work nobody authorised is withheld, not paid',
+    procurement.over.overmeasure_usd > 0 &&
+    procurement.over.gross_usd < procurement.over.revised_sum_usd &&
+    procurement.over.problems.some((p) => p.includes('not payable until a variation')),
+    JSON.stringify(procurement.over.problems));
+  check('procurement: the page says so where the analyst is looking',
+    procurement.page_text.includes('measured but not authorised'),
+    procurement.page_text.slice(0, 160));
+  check('procurement: a variation makes the same work payable',
+    procurement.authorised.overmeasure_usd === 0 &&
+    procurement.authorised.gross_usd > procurement.over.gross_usd,
+    JSON.stringify([procurement.over.gross_usd,
+      procurement.authorised.gross_usd]));
+  check('procurement: a later certificate with nothing certified is challenged',
+    procurement.forgetful.problems.some((p) =>
+      p.includes('paid for that work twice')),
+    JSON.stringify(procurement.forgetful.problems));
+  check('procurement: retention is withheld from the payment',
+    procurement.over.retention_usd > 0 &&
+    procurement.over.due_now_usd < procurement.over.gross_usd,
+    JSON.stringify([procurement.over.gross_usd, procurement.over.retention_usd,
+      procurement.over.due_now_usd]));
+  check('procurement: the certificate shows the problems before the money',
+    procurement.doc.includes('Before the figures') &&
+    // before the valuation, not before the cover's headline figure
+    procurement.doc.indexOf('Before the figures') <
+      procurement.doc.indexOf('Summary') &&
+    procurement.doc.includes('Measured beyond what was authorised') &&
+    procurement.doc.includes('not payable until a variation'),
+    procurement.doc.length + ' chars');
 
   // --- the yield through the year ------------------------------------------
   // The sample sheet's date is 10/05/2018, which is 10 May or 5 October -

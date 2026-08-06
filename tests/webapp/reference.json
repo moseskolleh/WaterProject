@@ -5938,6 +5938,1260 @@
    ]
   }
  },
+ "procurement": {
+  "clean": {
+   "certificate": {
+    "number": 1,
+    "date": "2024-04-01",
+    "contract_ref": "WSD/2024/017",
+    "contract_sum_usd": 6890.0,
+    "variation_usd": 0.0,
+    "revised_sum_usd": 6890.0,
+    "gross_usd": 3000.0,
+    "percent_complete": 43.54136429608128,
+    "retention_usd": 300.0,
+    "advance_recovered_usd": 0.0,
+    "net_certified_usd": 2700.0,
+    "previously_certified_usd": 0.0,
+    "due_now_usd": 2700.0,
+    "overpaid_usd": 0.0,
+    "overmeasure_usd": 0.0,
+    "summary": "Certificate 1: $2,700 due on work valued at $3,000 (44% of the revised sum).",
+    "problems": [],
+    "lines": [
+     {
+      "code": "MOB",
+      "item": "Mobilisation",
+      "unit": "sum",
+      "rate_usd": 3000.0,
+      "contract_quantity": 1,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 1.0,
+      "measured_quantity": 1.0,
+      "payable_quantity": 1.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 3000.0,
+      "authorised_amount_usd": 3000.0,
+      "payable_amount_usd": 3000.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 100.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-OB",
+      "item": "Drilling, overburden",
+      "unit": "m",
+      "rate_usd": 45.0,
+      "contract_quantity": 20,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 20.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 900.0,
+      "authorised_amount_usd": 900.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-RK",
+      "item": "Drilling, rock",
+      "unit": "m",
+      "rate_usd": 80.0,
+      "contract_quantity": 25,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 25.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 2000.0,
+      "authorised_amount_usd": 2000.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "CAS",
+      "item": "uPVC casing",
+      "unit": "m",
+      "rate_usd": 22.0,
+      "contract_quantity": 45,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 45.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 990.0,
+      "authorised_amount_usd": 990.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     }
+    ]
+   },
+   "summary_rows": [
+    [
+     "Contract",
+     "WSD/2024/017"
+    ],
+    [
+     "Contractor",
+     "WiNGiN"
+    ],
+    [
+     "Client",
+     "District Council"
+    ],
+    [
+     "Contract sum",
+     "$6,890"
+    ],
+    [
+     "Variations",
+     "+$0"
+    ],
+    [
+     "Revised sum",
+     "$6,890"
+    ],
+    [
+     "Work valued to date",
+     "$3,000"
+    ],
+    [
+     "Progress",
+     "44%"
+    ],
+    [
+     "Less retention (10%)",
+     "-$300"
+    ],
+    [
+     "Net certified to date",
+     "$2,700"
+    ],
+    [
+     "Less previously certified",
+     "-$0"
+    ],
+    [
+     "Due on this certificate",
+     "$2,700"
+    ]
+   ]
+  },
+  "overmeasured": {
+   "certificate": {
+    "number": 1,
+    "date": "2024-04-01",
+    "contract_ref": "WSD/2024/017",
+    "contract_sum_usd": 6890.0,
+    "variation_usd": 0.0,
+    "revised_sum_usd": 6890.0,
+    "gross_usd": 5000.0,
+    "percent_complete": 72.56894049346879,
+    "retention_usd": 344.5,
+    "advance_recovered_usd": 0.0,
+    "net_certified_usd": 4655.5,
+    "previously_certified_usd": 0.0,
+    "due_now_usd": 4655.5,
+    "overpaid_usd": 0.0,
+    "overmeasure_usd": 1360.0,
+    "summary": "Certificate 1: $4,656 due on work valued at $5,000 (73% of the revised sum).",
+    "problems": [
+     "DRL-RK is measured at 42 m against 25 authorised. The extra 17 is not payable until a variation authorises it - the work may well be justified, but that is a decision somebody signs, not a measurement."
+    ],
+    "lines": [
+     {
+      "code": "MOB",
+      "item": "Mobilisation",
+      "unit": "sum",
+      "rate_usd": 3000.0,
+      "contract_quantity": 1,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 1.0,
+      "measured_quantity": 1.0,
+      "payable_quantity": 1.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 3000.0,
+      "authorised_amount_usd": 3000.0,
+      "payable_amount_usd": 3000.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 100.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-OB",
+      "item": "Drilling, overburden",
+      "unit": "m",
+      "rate_usd": 45.0,
+      "contract_quantity": 20,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 20.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 900.0,
+      "authorised_amount_usd": 900.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-RK",
+      "item": "Drilling, rock",
+      "unit": "m",
+      "rate_usd": 80.0,
+      "contract_quantity": 25,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 25.0,
+      "measured_quantity": 42.0,
+      "payable_quantity": 25.0,
+      "overmeasure_quantity": 17.0,
+      "contract_amount_usd": 2000.0,
+      "authorised_amount_usd": 2000.0,
+      "payable_amount_usd": 2000.0,
+      "overmeasure_amount_usd": 1360.0,
+      "percent_complete": 100.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "CAS",
+      "item": "uPVC casing",
+      "unit": "m",
+      "rate_usd": 22.0,
+      "contract_quantity": 45,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 45.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 990.0,
+      "authorised_amount_usd": 990.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     }
+    ]
+   },
+   "summary_rows": [
+    [
+     "Contract",
+     "WSD/2024/017"
+    ],
+    [
+     "Contractor",
+     "WiNGiN"
+    ],
+    [
+     "Client",
+     "District Council"
+    ],
+    [
+     "Contract sum",
+     "$6,890"
+    ],
+    [
+     "Variations",
+     "+$0"
+    ],
+    [
+     "Revised sum",
+     "$6,890"
+    ],
+    [
+     "Work valued to date",
+     "$5,000"
+    ],
+    [
+     "Progress",
+     "73%"
+    ],
+    [
+     "Less retention (10%)",
+     "-$344"
+    ],
+    [
+     "Net certified to date",
+     "$4,656"
+    ],
+    [
+     "Less previously certified",
+     "-$0"
+    ],
+    [
+     "Due on this certificate",
+     "$4,656"
+    ]
+   ]
+  },
+  "varied": {
+   "certificate": {
+    "number": 2,
+    "date": "2024-04-01",
+    "contract_ref": "WSD/2024/017",
+    "contract_sum_usd": 6890.0,
+    "variation_usd": 1360.0,
+    "revised_sum_usd": 8250.0,
+    "gross_usd": 6360.0,
+    "percent_complete": 77.0909090909091,
+    "retention_usd": 412.5,
+    "advance_recovered_usd": 0.0,
+    "net_certified_usd": 5947.5,
+    "previously_certified_usd": 1500.0,
+    "due_now_usd": 4447.5,
+    "overpaid_usd": 0.0,
+    "overmeasure_usd": 0.0,
+    "summary": "Certificate 2: $4,448 due on work valued at $6,360 (77% of the revised sum).",
+    "problems": [],
+    "lines": [
+     {
+      "code": "MOB",
+      "item": "Mobilisation",
+      "unit": "sum",
+      "rate_usd": 3000.0,
+      "contract_quantity": 1,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 1.0,
+      "measured_quantity": 1.0,
+      "payable_quantity": 1.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 3000.0,
+      "authorised_amount_usd": 3000.0,
+      "payable_amount_usd": 3000.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 100.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-OB",
+      "item": "Drilling, overburden",
+      "unit": "m",
+      "rate_usd": 45.0,
+      "contract_quantity": 20,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 20.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 900.0,
+      "authorised_amount_usd": 900.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-RK",
+      "item": "Drilling, rock",
+      "unit": "m",
+      "rate_usd": 80.0,
+      "contract_quantity": 25,
+      "variation_quantity": 17.0,
+      "authorised_quantity": 42.0,
+      "measured_quantity": 42.0,
+      "payable_quantity": 42.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 2000.0,
+      "authorised_amount_usd": 3360.0,
+      "payable_amount_usd": 3360.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 100.0,
+      "in_contract": true,
+      "variation_refs": [
+       "VO-1"
+      ]
+     },
+     {
+      "code": "CAS",
+      "item": "uPVC casing",
+      "unit": "m",
+      "rate_usd": 22.0,
+      "contract_quantity": 45,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 45.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 990.0,
+      "authorised_amount_usd": 990.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     }
+    ]
+   },
+   "summary_rows": [
+    [
+     "Contract",
+     "WSD/2024/017"
+    ],
+    [
+     "Contractor",
+     "WiNGiN"
+    ],
+    [
+     "Client",
+     "District Council"
+    ],
+    [
+     "Contract sum",
+     "$6,890"
+    ],
+    [
+     "Variations",
+     "+$1,360"
+    ],
+    [
+     "Revised sum",
+     "$8,250"
+    ],
+    [
+     "Work valued to date",
+     "$6,360"
+    ],
+    [
+     "Progress",
+     "77%"
+    ],
+    [
+     "Less retention (10%)",
+     "-$412"
+    ],
+    [
+     "Net certified to date",
+     "$5,948"
+    ],
+    [
+     "Less previously certified",
+     "-$1,500"
+    ],
+    [
+     "Due on this certificate",
+     "$4,448"
+    ]
+   ]
+  },
+  "unsigned": {
+   "certificate": {
+    "number": 1,
+    "date": "2024-04-01",
+    "contract_ref": "WSD/2024/017",
+    "contract_sum_usd": 6890.0,
+    "variation_usd": 110.0,
+    "revised_sum_usd": 7000.0,
+    "gross_usd": 0.0,
+    "percent_complete": 0.0,
+    "retention_usd": 0.0,
+    "advance_recovered_usd": 0.0,
+    "net_certified_usd": 0.0,
+    "previously_certified_usd": 0.0,
+    "due_now_usd": 0.0,
+    "overpaid_usd": 0.0,
+    "overmeasure_usd": 0.0,
+    "summary": "Certificate 1: $0 due on work valued at $0 (0% of the revised sum).",
+    "problems": [
+     "Variation VO-2 on CAS names nobody who authorised it. An unsigned variation is a request, not an instruction.",
+     "GRAVEL has been measured but is neither in the contract nor in any variation, so there is no rate to pay it at and nothing authorising it. It is valued at zero.",
+     "GRAVEL is measured at 12  against 0 authorised. The extra 12 is not payable until a variation authorises it - the work may well be justified, but that is a decision somebody signs, not a measurement."
+    ],
+    "lines": [
+     {
+      "code": "MOB",
+      "item": "Mobilisation",
+      "unit": "sum",
+      "rate_usd": 3000.0,
+      "contract_quantity": 1,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 1.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 3000.0,
+      "authorised_amount_usd": 3000.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-OB",
+      "item": "Drilling, overburden",
+      "unit": "m",
+      "rate_usd": 45.0,
+      "contract_quantity": 20,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 20.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 900.0,
+      "authorised_amount_usd": 900.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-RK",
+      "item": "Drilling, rock",
+      "unit": "m",
+      "rate_usd": 80.0,
+      "contract_quantity": 25,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 25.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 2000.0,
+      "authorised_amount_usd": 2000.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "CAS",
+      "item": "uPVC casing",
+      "unit": "m",
+      "rate_usd": 22.0,
+      "contract_quantity": 45,
+      "variation_quantity": 5.0,
+      "authorised_quantity": 50.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 990.0,
+      "authorised_amount_usd": 1100.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": [
+       "VO-2"
+      ]
+     },
+     {
+      "code": "GRAVEL",
+      "item": "(not in the contract)",
+      "unit": "",
+      "rate_usd": 0.0,
+      "contract_quantity": 0.0,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 0.0,
+      "measured_quantity": 12.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 12.0,
+      "contract_amount_usd": 0.0,
+      "authorised_amount_usd": 0.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": null,
+      "in_contract": false,
+      "variation_refs": []
+     }
+    ]
+   },
+   "summary_rows": [
+    [
+     "Contract",
+     "WSD/2024/017"
+    ],
+    [
+     "Contractor",
+     "WiNGiN"
+    ],
+    [
+     "Client",
+     "District Council"
+    ],
+    [
+     "Contract sum",
+     "$6,890"
+    ],
+    [
+     "Variations",
+     "+$110"
+    ],
+    [
+     "Revised sum",
+     "$7,000"
+    ],
+    [
+     "Work valued to date",
+     "$0"
+    ],
+    [
+     "Progress",
+     "0%"
+    ],
+    [
+     "Less retention (10%)",
+     "-$0"
+    ],
+    [
+     "Net certified to date",
+     "$0"
+    ],
+    [
+     "Less previously certified",
+     "-$0"
+    ],
+    [
+     "Due on this certificate",
+     "$0"
+    ]
+   ]
+  },
+  "new_item": {
+   "certificate": {
+    "number": 1,
+    "date": "2024-04-01",
+    "contract_ref": "WSD/2024/017",
+    "contract_sum_usd": 6890.0,
+    "variation_usd": 0.0,
+    "revised_sum_usd": 6890.0,
+    "gross_usd": 0.0,
+    "percent_complete": 0.0,
+    "retention_usd": 0.0,
+    "advance_recovered_usd": 0.0,
+    "net_certified_usd": 0.0,
+    "previously_certified_usd": 0.0,
+    "due_now_usd": 0.0,
+    "overpaid_usd": 0.0,
+    "overmeasure_usd": 0.0,
+    "summary": "Certificate 1: $0 due on work valued at $0 (0% of the revised sum).",
+    "problems": [
+     "Variation VO-3 adds GRAVEL, which the contract does not price, without giving a rate. It is valued at zero until one is agreed."
+    ],
+    "lines": [
+     {
+      "code": "MOB",
+      "item": "Mobilisation",
+      "unit": "sum",
+      "rate_usd": 3000.0,
+      "contract_quantity": 1,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 1.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 3000.0,
+      "authorised_amount_usd": 3000.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-OB",
+      "item": "Drilling, overburden",
+      "unit": "m",
+      "rate_usd": 45.0,
+      "contract_quantity": 20,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 20.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 900.0,
+      "authorised_amount_usd": 900.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-RK",
+      "item": "Drilling, rock",
+      "unit": "m",
+      "rate_usd": 80.0,
+      "contract_quantity": 25,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 25.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 2000.0,
+      "authorised_amount_usd": 2000.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "CAS",
+      "item": "uPVC casing",
+      "unit": "m",
+      "rate_usd": 22.0,
+      "contract_quantity": 45,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 45.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 990.0,
+      "authorised_amount_usd": 990.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "GRAVEL",
+      "item": "Gravel pack",
+      "unit": "m3",
+      "rate_usd": 0.0,
+      "contract_quantity": 0.0,
+      "variation_quantity": 12.0,
+      "authorised_quantity": 12.0,
+      "measured_quantity": 12.0,
+      "payable_quantity": 12.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 0.0,
+      "authorised_amount_usd": 0.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 100.0,
+      "in_contract": false,
+      "variation_refs": [
+       "VO-3"
+      ]
+     }
+    ]
+   },
+   "summary_rows": [
+    [
+     "Contract",
+     "WSD/2024/017"
+    ],
+    [
+     "Contractor",
+     "WiNGiN"
+    ],
+    [
+     "Client",
+     "District Council"
+    ],
+    [
+     "Contract sum",
+     "$6,890"
+    ],
+    [
+     "Variations",
+     "+$0"
+    ],
+    [
+     "Revised sum",
+     "$6,890"
+    ],
+    [
+     "Work valued to date",
+     "$0"
+    ],
+    [
+     "Progress",
+     "0%"
+    ],
+    [
+     "Less retention (10%)",
+     "-$0"
+    ],
+    [
+     "Net certified to date",
+     "$0"
+    ],
+    [
+     "Less previously certified",
+     "-$0"
+    ],
+    [
+     "Due on this certificate",
+     "$0"
+    ]
+   ]
+  },
+  "advance": {
+   "certificate": {
+    "number": 1,
+    "date": "2024-04-01",
+    "contract_ref": "WSD/2024/017",
+    "contract_sum_usd": 6890.0,
+    "variation_usd": 0.0,
+    "revised_sum_usd": 6890.0,
+    "gross_usd": 6890.0,
+    "percent_complete": 100.0,
+    "retention_usd": 344.5,
+    "advance_recovered_usd": 1378.0,
+    "net_certified_usd": 5167.5,
+    "previously_certified_usd": 0.0,
+    "due_now_usd": 5167.5,
+    "overpaid_usd": 0.0,
+    "overmeasure_usd": 0.0,
+    "summary": "Certificate 1: $5,168 due on work valued at $6,890 (100% of the revised sum).",
+    "problems": [],
+    "lines": [
+     {
+      "code": "MOB",
+      "item": "Mobilisation",
+      "unit": "sum",
+      "rate_usd": 3000.0,
+      "contract_quantity": 1,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 1.0,
+      "measured_quantity": 1.0,
+      "payable_quantity": 1.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 3000.0,
+      "authorised_amount_usd": 3000.0,
+      "payable_amount_usd": 3000.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 100.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-OB",
+      "item": "Drilling, overburden",
+      "unit": "m",
+      "rate_usd": 45.0,
+      "contract_quantity": 20,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 20.0,
+      "measured_quantity": 20.0,
+      "payable_quantity": 20.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 900.0,
+      "authorised_amount_usd": 900.0,
+      "payable_amount_usd": 900.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 100.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-RK",
+      "item": "Drilling, rock",
+      "unit": "m",
+      "rate_usd": 80.0,
+      "contract_quantity": 25,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 25.0,
+      "measured_quantity": 25.0,
+      "payable_quantity": 25.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 2000.0,
+      "authorised_amount_usd": 2000.0,
+      "payable_amount_usd": 2000.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 100.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "CAS",
+      "item": "uPVC casing",
+      "unit": "m",
+      "rate_usd": 22.0,
+      "contract_quantity": 45,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 45.0,
+      "measured_quantity": 45.0,
+      "payable_quantity": 45.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 990.0,
+      "authorised_amount_usd": 990.0,
+      "payable_amount_usd": 990.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 100.0,
+      "in_contract": true,
+      "variation_refs": []
+     }
+    ]
+   },
+   "summary_rows": [
+    [
+     "Contract",
+     "WSD/2024/017"
+    ],
+    [
+     "Contractor",
+     "WiNGiN"
+    ],
+    [
+     "Client",
+     "District Council"
+    ],
+    [
+     "Contract sum",
+     "$6,890"
+    ],
+    [
+     "Variations",
+     "+$0"
+    ],
+    [
+     "Revised sum",
+     "$6,890"
+    ],
+    [
+     "Work valued to date",
+     "$6,890"
+    ],
+    [
+     "Progress",
+     "100%"
+    ],
+    [
+     "Less retention (5%)",
+     "-$344"
+    ],
+    [
+     "Less advance recovery (20% advance)",
+     "-$1,378"
+    ],
+    [
+     "Net certified to date",
+     "$5,168"
+    ],
+    [
+     "Less previously certified",
+     "-$0"
+    ],
+    [
+     "Due on this certificate",
+     "$5,168"
+    ]
+   ]
+  },
+  "overpaid": {
+   "certificate": {
+    "number": 2,
+    "date": "2024-04-01",
+    "contract_ref": "WSD/2024/017",
+    "contract_sum_usd": 6890.0,
+    "variation_usd": 0.0,
+    "revised_sum_usd": 6890.0,
+    "gross_usd": 3000.0,
+    "percent_complete": 43.54136429608128,
+    "retention_usd": 0.0,
+    "advance_recovered_usd": 0.0,
+    "net_certified_usd": 3000.0,
+    "previously_certified_usd": 5000.0,
+    "due_now_usd": 0.0,
+    "overpaid_usd": 2000.0,
+    "overmeasure_usd": 0.0,
+    "summary": "Certificate 2: $0 due on work valued at $3,000 (44% of the revised sum). Previous certificates exceed the value of the work by $2,000, so nothing is due.",
+    "problems": [],
+    "lines": [
+     {
+      "code": "MOB",
+      "item": "Mobilisation",
+      "unit": "sum",
+      "rate_usd": 3000.0,
+      "contract_quantity": 1,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 1.0,
+      "measured_quantity": 1.0,
+      "payable_quantity": 1.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 3000.0,
+      "authorised_amount_usd": 3000.0,
+      "payable_amount_usd": 3000.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 100.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-OB",
+      "item": "Drilling, overburden",
+      "unit": "m",
+      "rate_usd": 45.0,
+      "contract_quantity": 20,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 20.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 900.0,
+      "authorised_amount_usd": 900.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-RK",
+      "item": "Drilling, rock",
+      "unit": "m",
+      "rate_usd": 80.0,
+      "contract_quantity": 25,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 25.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 2000.0,
+      "authorised_amount_usd": 2000.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "CAS",
+      "item": "uPVC casing",
+      "unit": "m",
+      "rate_usd": 22.0,
+      "contract_quantity": 45,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 45.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 990.0,
+      "authorised_amount_usd": 990.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     }
+    ]
+   },
+   "summary_rows": [
+    [
+     "Contract",
+     "WSD/2024/017"
+    ],
+    [
+     "Contractor",
+     "WiNGiN"
+    ],
+    [
+     "Client",
+     "District Council"
+    ],
+    [
+     "Contract sum",
+     "$6,890"
+    ],
+    [
+     "Variations",
+     "+$0"
+    ],
+    [
+     "Revised sum",
+     "$6,890"
+    ],
+    [
+     "Work valued to date",
+     "$3,000"
+    ],
+    [
+     "Progress",
+     "44%"
+    ],
+    [
+     "Less retention (0%)",
+     "-$0"
+    ],
+    [
+     "Net certified to date",
+     "$3,000"
+    ],
+    [
+     "Less previously certified",
+     "-$5,000"
+    ],
+    [
+     "Due on this certificate",
+     "$0"
+    ]
+   ]
+  },
+  "negatives": {
+   "certificate": {
+    "number": 3,
+    "date": "2024-04-01",
+    "contract_ref": "WSD/2024/017",
+    "contract_sum_usd": 6890.0,
+    "variation_usd": 0.0,
+    "revised_sum_usd": 6890.0,
+    "gross_usd": 0.0,
+    "percent_complete": 0.0,
+    "retention_usd": 0.0,
+    "advance_recovered_usd": 0.0,
+    "net_certified_usd": 0.0,
+    "previously_certified_usd": 0.0,
+    "due_now_usd": 0.0,
+    "overpaid_usd": 0.0,
+    "overmeasure_usd": 0.0,
+    "summary": "Certificate 3: $0 due on work valued at $0 (0% of the revised sum).",
+    "problems": [
+     "CAS is measured as a negative quantity (-10); it is treated as nothing measured.",
+     "Previously certified is negative, which cannot be right; it is treated as nothing certified so far.",
+     "This is certificate 3 but nothing is recorded as previously certified. If earlier certificates were paid, the contractor will be paid for that work twice."
+    ],
+    "lines": [
+     {
+      "code": "MOB",
+      "item": "Mobilisation",
+      "unit": "sum",
+      "rate_usd": 3000.0,
+      "contract_quantity": 1,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 1.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 3000.0,
+      "authorised_amount_usd": 3000.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-OB",
+      "item": "Drilling, overburden",
+      "unit": "m",
+      "rate_usd": 45.0,
+      "contract_quantity": 20,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 20.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 900.0,
+      "authorised_amount_usd": 900.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "DRL-RK",
+      "item": "Drilling, rock",
+      "unit": "m",
+      "rate_usd": 80.0,
+      "contract_quantity": 25,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 25.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 2000.0,
+      "authorised_amount_usd": 2000.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     },
+     {
+      "code": "CAS",
+      "item": "uPVC casing",
+      "unit": "m",
+      "rate_usd": 22.0,
+      "contract_quantity": 45,
+      "variation_quantity": 0.0,
+      "authorised_quantity": 45.0,
+      "measured_quantity": 0.0,
+      "payable_quantity": 0.0,
+      "overmeasure_quantity": 0.0,
+      "contract_amount_usd": 990.0,
+      "authorised_amount_usd": 990.0,
+      "payable_amount_usd": 0.0,
+      "overmeasure_amount_usd": 0.0,
+      "percent_complete": 0.0,
+      "in_contract": true,
+      "variation_refs": []
+     }
+    ]
+   },
+   "summary_rows": [
+    [
+     "Contract",
+     "WSD/2024/017"
+    ],
+    [
+     "Contractor",
+     "WiNGiN"
+    ],
+    [
+     "Client",
+     "District Council"
+    ],
+    [
+     "Contract sum",
+     "$6,890"
+    ],
+    [
+     "Variations",
+     "+$0"
+    ],
+    [
+     "Revised sum",
+     "$6,890"
+    ],
+    [
+     "Work valued to date",
+     "$0"
+    ],
+    [
+     "Progress",
+     "0%"
+    ],
+    [
+     "Less retention (10%)",
+     "-$0"
+    ],
+    [
+     "Net certified to date",
+     "$0"
+    ],
+    [
+     "Less previously certified",
+     "-$0"
+    ],
+    [
+     "Due on this certificate",
+     "$0"
+    ]
+   ]
+  }
+ },
  "rounding": [
   {
    "value": 0.15,
