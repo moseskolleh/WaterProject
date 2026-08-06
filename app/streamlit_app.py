@@ -88,6 +88,7 @@ from groundwater.coverage import (
     load_chiefdom_polys,
     load_district_population,
 )
+from groundwater.readiness import assess_readiness
 from groundwater.portfolio import (
     STATUS_LABELS,
     VERDICT_SCHEMA,
@@ -718,6 +719,79 @@ def _project_summary() -> dict:
     if "ves_results" in st.session_state and "status" not in summary:
         summary["status"] = "sited"
     return {k: v for k, v in summary.items() if v not in (None, "")}
+
+
+# ---------------------------------------------------------------------------
+# Certification gate
+# ---------------------------------------------------------------------------
+
+def _project_state() -> dict:
+    """The session, keyed as groundwater.readiness expects it."""
+    return {
+        "site": site_from_state(),
+        "drilling_log": st.session_state.get("drilling_log"),
+        "pump_analysis": st.session_state.get("pump_analysis"),
+        "wq_assessment": st.session_state.get("wq_assessment"),
+        "borehole_design": st.session_state.get("borehole_design"),
+        "cost_estimate": st.session_state.get("cost_estimate"),
+    }
+
+
+def _overrides_for(report: str) -> dict:
+    """Overrides the analyst recorded for this report, from session state."""
+    return st.session_state.get(f"_override_{report}") or {}
+
+
+def report_gate(report: str):
+    """Show what this report can and cannot stand behind, and return it.
+
+    Deliberately never disables the button. An analyst who needs an interim
+    document will produce one either way; the useful thing is that the
+    document says what it rests on, so this renders the outstanding items,
+    offers a recorded override, and hands the result to the report builder
+    to stamp on its own cover.
+    """
+    readiness = assess_readiness(_project_state(), report, _overrides_for(report))
+    if readiness.state == "ready":
+        st.success("Ready to certify: " + readiness.summary)
+    else:
+        renderer = st.warning if readiness.state == "ready_with_overrides" else st.error
+        renderer(readiness.summary)
+        with st.expander("What this report cannot yet stand behind", expanded=True):
+            for req in readiness.unmet:
+                st.markdown(f"**{req.title}** — {req.detail}")
+            for req in readiness.overridden:
+                who = f" ({req.override_by})" if req.override_by else ""
+                st.markdown(
+                    f"**{req.title}** — {req.detail}  \n"
+                    f"_Overridden{who}: {req.override_reason or 'no reason recorded'}_"
+                )
+            if readiness.unmet:
+                st.caption(
+                    "The report will still be produced, stamped PROVISIONAL and "
+                    "listing these items. To issue it as an interim document "
+                    "instead, record who is issuing it and why."
+                )
+                with st.form(f"override_{report}"):
+                    by = st.text_input("Issued by", key=f"ovr_by_{report}")
+                    reason = st.text_area("Reason", key=f"ovr_why_{report}")
+                    picked = st.multiselect(
+                        "Requirements to issue on override",
+                        [r.key for r in readiness.unmet],
+                        format_func=lambda k: dict(
+                            (r.key, r.title) for r in readiness.unmet)[k],
+                        key=f"ovr_keys_{report}",
+                    )
+                    if st.form_submit_button("Record override") and picked and reason:
+                        st.session_state[f"_override_{report}"] = {
+                            key: {"reason": reason.strip(), "by": by.strip()}
+                            for key in picked
+                        }
+                        st.rerun()
+    if readiness.assumptions:
+        st.caption("Assumptions carried into this report: "
+                   + "; ".join(readiness.assumptions))
+    return readiness
 
 
 def _apply_latlon() -> None:
@@ -2217,10 +2291,12 @@ with tab_pump:
             )
             st.caption(yr.basis)
 
+        _pump_gate = report_gate("pumping")
         if st.button("Build pumping test report", key="build_pump_report"):
           with _working("Building the pumping test report..."):
             report_path = build_pumping_report(
-                PumpingReportInputs(analysis=analysis, figures_dir=workdir()),
+                PumpingReportInputs(analysis=analysis, figures_dir=workdir(),
+                                    readiness=_pump_gate),
                 workdir() / "Pumping_Test_Report.docx",
                 app_config(),
             )
@@ -2311,10 +2387,12 @@ with tab_quality:
             col1.image(str(piper))
             col2.image(str(stiff))
 
+        _quality_gate = report_gate("quality")
         if st.button("Build water quality report", key="build_wq_report"):
           with _working("Building the water quality report - drawing the Piper and Stiff diagrams..."):
             report_path = build_quality_report(
-                QualityReportInputs(assessment=assessment, figures_dir=workdir()),
+                QualityReportInputs(assessment=assessment, figures_dir=workdir(),
+                                    readiness=_quality_gate),
                 workdir() / "Water_Quality_Report.docx",
                 app_config(),
             )
@@ -3092,6 +3170,7 @@ with tab_handover:
     client_rep = s2.text_input("Client representative", key="ho_client_rep")
     community_rep = s3.text_input("Community representative", key="ho_community_rep")
 
+    _handover_gate = report_gate("handover")
     if st.button("Build handover report", key="build_handover", type="primary"):
         committee = [
             CommitteeMember(
@@ -3116,6 +3195,7 @@ with tab_handover:
                 tariff_note=tariff,
                 pump_type=pump_type,
                 extra_recommendations=[r.strip() for r in recs_text.splitlines() if r.strip()],
+                readiness=_handover_gate,
                 contractor_rep=contractor_rep,
                 client_rep=client_rep,
                 community_rep=community_rep,

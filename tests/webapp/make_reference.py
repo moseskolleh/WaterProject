@@ -385,6 +385,44 @@ def build() -> dict:
         )))["rows"]
     ]
 
+    # The certification gate, over a project missing one thing at a time.
+    from groundwater.readiness import assess_readiness
+
+    _log = read_drilling_workbook(DATA / "dr_timbo" / "dr_timbo_drilling_log.xlsx")
+    _analysis = analyse_pumping_test(
+        read_pumping_workbook(DATA / "dr_timbo" / "dr_timbo_constant_test.xlsx"))
+    _assessment = assess_sample(
+        read_quality_workbook(DATA / "dr_timbo" / "dr_timbo_water_quality.xlsx"))
+    _design = design_borehole(
+        log=_log, static_water_level_m=_analysis.test.static_water_level_m)
+    _located = SiteMetadata(community="Dr. Timbo's", district="Western Area Rural",
+                            easting=778000.0, northing=946000.0, utm_zone=28)
+    _full = {"site": _located, "drilling_log": _log, "pump_analysis": _analysis,
+             "wq_assessment": _assessment, "borehole_design": _design}
+    _gate_cases = {
+        "full": (_full, {}),
+        "empty": ({}, {}),
+        "no_site": (dict(_full, site=SiteMetadata(community="Nowhere")), {}),
+        "no_quality": (dict(_full, wq_assessment=None), {}),
+        "overridden": (dict(_full, wq_assessment=None), {
+            "water_quality_panel": {"reason": "lab result awaited", "by": "M. K."},
+            "water_quality_evaluable": {"reason": "lab result awaited", "by": "M. K."},
+        }),
+    }
+    out["readiness"] = {}
+    for _name, (_state, _over) in _gate_cases.items():
+        out["readiness"][_name] = {
+            report: {
+                "state": assess_readiness(_state, report, _over).state,
+                "summary": assess_readiness(_state, report, _over).summary,
+                "requirements": [
+                    [r.key, r.state, r.detail, r.override_reason, r.override_by]
+                    for r in assess_readiness(_state, report, _over).requirements
+                ],
+            }
+            for report in ("completion", "handover", "quality", "pumping")
+        }
+
     # Rounding and %g, which the two languages get wrong in different ways.
     out["rounding"] = [
         {"value": v, "digits": d, "rounded": clean(round(v, d))}

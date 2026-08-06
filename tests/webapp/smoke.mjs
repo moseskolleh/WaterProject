@@ -719,6 +719,119 @@ await withPage(async (page, base, consoleErrors) => {
   check('standards: the quality report says the national column is provisional',
     qualityDoc.len > 1000 && qualityDoc.saysProvisional, JSON.stringify(qualityDoc));
 
+  // --- the certification gate ---------------------------------------------
+  // The gate never blocks a build: an interim report is a real need, and an
+  // analyst who is refused one will produce the document some other way. So
+  // the only thing between missing evidence and a page that reads as certified
+  // is the panel and the stamp, and both of them live in the wiring rather
+  // than in the engine the parity suite already pins.
+  const gate = await page.evaluate(async () => {
+    const app = window.GWT.app, docx = window.GWT.docx, d = app.derived;
+    const buildQuality = async () => window.__docText(await (await docx.qualityReport({
+      site: app.store.get('site'), assessment: d.assessment, figures: [],
+      readiness: app.reportReadiness('quality'),
+    })).build());
+    const panelText = () => document.querySelector('#page-host').textContent;
+
+    app.store.set('overrides', {});
+    app.goto('quality');
+
+    // The bundled sheets carry no coordinates - the crew never wrote one down -
+    // so the demo project really is short of this, and an analyst supplies it
+    // on the site page before the report goes out.
+    const sites = [app.store.get('site'), d.log && d.log.site,
+      d.analysis && d.analysis.test && d.analysis.test.site,
+      d.assessment && d.assessment.sample && d.assessment.sample.site]
+      .filter(Boolean);
+    const saved = sites.map((s) => [s.easting, s.northing, s.utm_zone]);
+    const site = app.store.get('site');
+    site.easting = 778000; site.northing = 946000; site.utm_zone = 28;
+    app.render();
+    const complete = {
+      state: app.reportReadiness('quality').state,
+      ok: !!document.querySelector('#page-host .callout-ok'),
+      doc: await buildQuality(),
+    };
+
+    // take the position off every sheet: a borehole nobody can find again
+    sites.forEach((s) => { s.easting = null; s.northing = null; });
+    app.render();
+    const missing = {
+      state: app.reportReadiness('quality').state,
+      bad: !!document.querySelector('#page-host .callout-bad'),
+      names: panelText(),
+      doc: await buildQuality(),
+    };
+
+    // an override with no reason is not an override
+    const fill = (placeholder, value) => {
+      const input = document.querySelector(
+        '#page-host input[placeholder="' + placeholder + '"]');
+      if (!input) return false;
+      input.value = value;
+      input.dispatchEvent(new Event('change'));
+      return true;
+    };
+    const press = (label) => {
+      const btn = Array.from(document.querySelectorAll('#page-host button'))
+        .find((b) => b.textContent === label);
+      if (btn) btn.click();
+      return !!btn;
+    };
+    const typedName = fill('Name', 'M. Kolleh');
+    press('Record override');
+    const refused = {
+      state: app.reportReadiness('quality').state,
+      recorded: Object.keys((app.store.get('overrides') || {}).quality || {}).length,
+    };
+
+    fill('Name', 'M. Kolleh');
+    fill('Why this is being issued now', 'GPS unit failed; position to follow');
+    const pressed = press('Record override');
+    const issued = {
+      state: app.reportReadiness('quality').state,
+      warn: !!document.querySelector('#page-host .callout-warn'),
+      doc: await buildQuality(),
+    };
+
+    press('Clear overrides');
+    const cleared = app.reportReadiness('quality').state;
+    site.easting = 778000; site.northing = 946000;
+    const restored = app.reportReadiness('quality').state;
+
+    sites.forEach((s, i) => {
+      s.easting = saved[i][0]; s.northing = saved[i][1]; s.utm_zone = saved[i][2];
+    });
+    app.store.set('overrides', {});
+    app.render();
+    return { complete, missing, refused, issued, cleared, typedName, pressed,
+      restored };
+  });
+  check('gate: a complete project reports as ready and carries no stamp',
+    gate.complete.state === 'ready' && gate.complete.ok === true &&
+    !gate.complete.doc.includes('PROVISIONAL'),
+    JSON.stringify({ state: gate.complete.state, ok: gate.complete.ok }));
+  check('gate: missing evidence is named on the page, not just counted',
+    gate.missing.state === 'not_ready' && gate.missing.bad === true &&
+    gate.missing.names.includes('Site position'),
+    JSON.stringify({ state: gate.missing.state, bad: gate.missing.bad }));
+  check('gate: the report is still produced, stamped provisional',
+    gate.missing.doc.includes('PROVISIONAL - NOT FOR CERTIFICATION') &&
+    gate.missing.doc.includes('Site position'));
+  check('gate: an override without a reason is refused',
+    gate.typedName === true && gate.refused.state === 'not_ready' &&
+    gate.refused.recorded === 0, JSON.stringify(gate.refused));
+  check('gate: an override issues the report and names who issued it',
+    gate.pressed === true && gate.issued.state === 'ready_with_overrides' &&
+    gate.issued.warn === true &&
+    gate.issued.doc.includes('ISSUED ON OVERRIDE - NOT A CERTIFICATION') &&
+    gate.issued.doc.includes('M. Kolleh') &&
+    gate.issued.doc.includes('GPS unit failed'),
+    JSON.stringify({ state: gate.issued.state, warn: gate.issued.warn }));
+  check('gate: clearing the override puts the requirement back',
+    gate.cleared === 'not_ready' && gate.restored === 'ready',
+    JSON.stringify({ cleared: gate.cleared, restored: gate.restored }));
+
   // --- the API key never reaches long-term storage ------------------------
   // It used to be a field of the persisted state, so the store mirrored it
   // into localStorage on every change: unencrypted, surviving a browser

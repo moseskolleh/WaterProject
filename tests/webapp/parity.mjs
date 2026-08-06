@@ -254,6 +254,37 @@ await withPage(async (page, base, consoleErrors) => {
       evaluable: row.evaluable, limitMax: row.limitMax, ratio: row.ratio,
     }));
 
+    // the certification gate, over a project missing one thing at a time
+    const located = { community: "Dr. Timbo's", district: 'Western Area Rural',
+      easting: 778000.0, northing: 946000.0, utm_zone: 28 };
+    const fullProject = {
+      site: located, drilling_log: log, pump_analysis: analysis,
+      wq_assessment: assessed, borehole_design: design,
+    };
+    const gateCases = {
+      full: [fullProject, {}],
+      empty: [{}, {}],
+      no_site: [Object.assign({}, fullProject, { site: { community: 'Nowhere' } }), {}],
+      no_quality: [Object.assign({}, fullProject, { wq_assessment: null }), {}],
+      overridden: [Object.assign({}, fullProject, { wq_assessment: null }), {
+        water_quality_panel: { reason: 'lab result awaited', by: 'M. K.' },
+        water_quality_evaluable: { reason: 'lab result awaited', by: 'M. K.' },
+      }],
+    };
+    out.readiness = {};
+    Object.keys(gateCases).forEach((name) => {
+      const [state, over] = gateCases[name];
+      out.readiness[name] = {};
+      ['completion', 'handover', 'quality', 'pumping'].forEach((report) => {
+        const r = C.assessReadiness(state, report, over);
+        out.readiness[name][report] = {
+          state: r.state, summary: r.summary,
+          requirements: r.requirements.map((q) => [q.key, q.state, q.detail,
+            q.override_reason, q.override_by]),
+        };
+      });
+    });
+
     out.rounding = [[0.15, 1], [14.05, 1], [2.675, 2], [0.5, 0], [1.5, 0],
       [2.5, 0], [-0.15, 1], [2.34, 2], [2.345, 2], [0.125, 2], [-2.5, 0],
       [45.05, 1], [150.5, 0]]
@@ -454,6 +485,23 @@ await withPage(async (page, base, consoleErrors) => {
       row.guidelineUnit === py.guidelineUnit,
       `js ${row.valueInGuidelineUnit} ${row.guidelineUnit} ratio ${row.ratio}` +
       ` vs py ${py.valueInGuidelineUnit} ${py.guidelineUnit} ratio ${py.ratio}`);
+  });
+
+  // --- The certification gate ---
+  // A report is what a borehole is handed over on, so both engines have to
+  // agree on what it can stand behind, down to the sentence they give the
+  // analyst.
+  Object.keys(R.readiness).forEach((name) => {
+    Object.keys(R.readiness[name]).forEach((report) => {
+      const js = parsed.readiness[name][report], py = R.readiness[name][report];
+      check(`readiness ${name}/${report}: state`, js.state === py.state,
+        `js ${js.state} vs py ${py.state}`);
+      check(`readiness ${name}/${report}: summary`, js.summary === py.summary,
+        `js ${js.summary}\n     py ${py.summary}`);
+      check(`readiness ${name}/${report}: requirements`,
+        JSON.stringify(js.requirements) === JSON.stringify(py.requirements),
+        `js ${JSON.stringify(js.requirements)}\n     py ${JSON.stringify(py.requirements)}`);
+    });
   });
 
   // --- round() and %g, which the two languages get wrong differently ---

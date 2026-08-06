@@ -9,6 +9,8 @@ recommendations matched to the exceedances found.
 
 from __future__ import annotations
 
+from typing import Any
+
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -73,6 +75,11 @@ class QualityReportInputs:
     analyst_role: str = "Water Quality Analyst"
     analyst_phone: str = ""
     include_diagrams: bool = True
+    #: The certification gate for this report, from
+    #: :func:`groundwater.readiness.assess_readiness`. When it is not
+    #: certifiable the cover says so; when it is absent nothing is
+    #: stamped, so an existing caller is unaffected.
+    readiness: Any = None
 
 
 def _executive_summary(assessment: WaterQualityAssessment) -> tuple[list[str], list[str]]:
@@ -177,6 +184,7 @@ def build_quality_report(
             ("Laboratory", sample.laboratory),
         ],
     )
+    rb.provisional_stamp(inputs.readiness)
 
     # ---- executive summary ------------------------------------------------
     exec_paras, exec_key = _executive_summary(assessment)

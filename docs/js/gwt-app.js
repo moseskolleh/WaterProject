@@ -77,6 +77,8 @@
       waterpoints: { radius: 1000 },
       spine: { stage: 'design', ledger: {}, signatory: '' },
       extraction: { model: '' },
+      /* per report kind: { requirementKey: {reason, by} } */
+      overrides: {},
       theme: 'auto',
     };
   }
@@ -3802,9 +3804,92 @@
 
   /* Build and download a report, rasterising the on-screen figures so the
    * document carries exactly the figures the page shows. */
+  /* The session, keyed as the readiness model expects it. */
+  function projectState() {
+    return {
+      site: store.get('site'),
+      drilling_log: derived.log,
+      pump_analysis: derived.analysis,
+      wq_assessment: derived.assessment,
+      borehole_design: derived.design,
+      cost_estimate: derived.estimate,
+    };
+  }
+
+  function reportReadiness(kind) {
+    return C.assessReadiness(projectState(), kind,
+      (store.get('overrides') || {})[kind] || {});
+  }
+
+  /* Deliberately never disables the button. An analyst who needs an interim
+   * document will produce one either way; what matters is that the document
+   * says what it rests on. */
+  function readinessPanel(kind) {
+    var readiness = reportReadiness(kind);
+    if (readiness.state === 'ready') {
+      return el('div.callout.callout-ok', el('p', readiness.summary));
+    }
+    var tone = readiness.state === 'ready_with_overrides' ? 'warn' : 'bad';
+    var items = readiness.unmet.map(function (req) {
+      return { level: 'error', message: req.title + ' — ' + req.detail };
+    }).concat(readiness.overridden.map(function (req) {
+      var who = req.override_by ? ' (' + req.override_by + ')' : '';
+      return { level: 'warning', message: req.title + ' — overridden' + who +
+        ': ' + (req.override_reason || 'no reason recorded') };
+    }));
+    var nodes = [
+      el('div.callout.callout-' + tone, el('p', readiness.summary)),
+      S.checkList(items),
+    ];
+    if (readiness.unmet.length) {
+      nodes.push(el('p.muted', 'The report will still be produced, stamped ' +
+        'PROVISIONAL and listing these items. To issue it as an interim ' +
+        'document instead, record who is issuing it and why.'));
+      var by = '', why = '';
+      nodes.push(field('Issued by',
+        S.textInput('', function (v) { by = String(v).trim(); },
+          { placeholder: 'Name' }), ''));
+      nodes.push(field('Reason',
+        S.textInput('', function (v) { why = String(v).trim(); },
+          { placeholder: 'Why this is being issued now' }), ''));
+      nodes.push(el('div.btn-row', [
+        button('Record override', function () {
+          if (!why) {
+            S.toast('An override needs a reason.', 'warn');
+            return;
+          }
+          var all = Object.assign({}, store.get('overrides') || {});
+          var forKind = {};
+          readiness.unmet.forEach(function (req) {
+            forKind[req.key] = { reason: why, by: by };
+          });
+          all[kind] = forKind;
+          store.set('overrides', all);
+          render();
+        }, { variant: 'ghost' }),
+      ]));
+    }
+    if (readiness.overridden.length) {
+      nodes.push(el('div.btn-row', [
+        button('Clear overrides', function () {
+          var all = Object.assign({}, store.get('overrides') || {});
+          delete all[kind];
+          store.set('overrides', all);
+          render();
+        }, { variant: 'ghost' }),
+      ]));
+    }
+    if (readiness.assumptions.length) {
+      nodes.push(el('p.muted', 'Assumptions carried into this report: ' +
+        readiness.assumptions.join('; ')));
+    }
+    return el('div', nodes.filter(Boolean));
+  }
+
   function reportCard(title, kind, description, extra) {
     return card(title, [
       el('p.muted', description),
+      readinessPanel(kind),
       el('div.btn-row', [
         button('Build ' + title + ' (.docx)', function (event) {
           buildReport(kind, extra, event.target);
@@ -3821,6 +3906,7 @@
         var context = {
           style: cfg.style, site: store.get('site'),
           signOff: signOffFor(kind),
+          readiness: reportReadiness(kind),
         };
         var builder;
         var figures = [];
@@ -4130,6 +4216,7 @@
     commitSpineScreens: commitSpineScreens, spineDecide: spineDecide,
     lookUpWaterPoints: lookUpWaterPoints, parseLatLon: parseLatLon,
     signOffFor: signOffFor, offlineReady: offlineReady,
+    projectState: projectState, reportReadiness: reportReadiness,
     getApiKey: getApiKey, setApiKey: setApiKey, forgetApiKey: forgetApiKey,
     renderAutosaveBanner: renderAutosaveBanner,
   };

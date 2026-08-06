@@ -150,6 +150,41 @@
     return this;
   };
 
+  /* Say on the cover that this document is not a certification.
+   *
+   * A report is what a borehole is handed over on, so one built from
+   * incomplete evidence must not be indistinguishable from one built from
+   * complete evidence. A ready project gets no stamp; every other project
+   * gets this, naming what is outstanding or what was overridden and by
+   * whom, in the document itself rather than in a toast nobody keeps. */
+  ReportBuilder.prototype.provisionalStamp = function (readiness) {
+    if (!readiness || readiness.is_certifiable) return this;
+    var self = this;
+    var overridden = readiness.state === 'ready_with_overrides';
+    this.paragraph(overridden
+      ? 'ISSUED ON OVERRIDE - NOT A CERTIFICATION'
+      : 'PROVISIONAL - NOT FOR CERTIFICATION',
+      { bold: true, size: 13, align: 'center', color: 'B23A2E' });
+    this.paragraph(overridden
+      ? 'This report was issued although the following requirements were not ' +
+        'met. The reason recorded for each is given.'
+      : 'This report rests on incomplete results. The following requirements ' +
+        'for certification are outstanding.',
+      { italic: true, align: 'justify' });
+    var lines = [];
+    (readiness.overridden || []).forEach(function (req) {
+      var who = req.override_by ? ' (' + req.override_by + ')' : '';
+      lines.push(req.title + ': ' + req.detail + ' Overridden' + who + ': ' +
+        (req.override_reason || 'no reason recorded'));
+    });
+    (readiness.unmet || []).forEach(function (req) {
+      lines.push(req.title + ': ' + req.detail);
+    });
+    if (lines.length) self.bullets(lines);
+    this.pageBreak();
+    return this;
+  };
+
   ReportBuilder.prototype.executiveSummary = function (paragraphs, keyFindings) {
     var self = this;
     this.heading('Executive Summary', 1);
@@ -614,6 +649,7 @@
       site.community ? site.community + (site.district ? ', ' + site.district : '') : ''],
       ['Vertical electrical sounding for borehole siting'],
       siteDetails(site));
+    b.provisionalStamp(context.readiness);
     b.tableOfContents();
 
     var best = interpretations.slice().sort(function (a, c) {
@@ -771,6 +807,7 @@
         ['Drilling method', log.drilling_method || '—'],
         ['Status', log.status || '—'],
       ]));
+    b.provisionalStamp(context.readiness);
     b.tableOfContents();
 
     b.executiveSummary([
@@ -862,6 +899,7 @@
           ? test.static_water_level_m.toFixed(2) + ' m' : '—'],
         ['Borehole depth', test.borehole_depth_m ? C.fmtNum(test.borehole_depth_m) + ' m' : '—'],
       ]));
+    b.provisionalStamp(context.readiness);
     b.tableOfContents();
 
     b.executiveSummary([
@@ -1024,6 +1062,7 @@
         ['Sample date', sample.sample_date || '—'],
         ['Laboratory', sample.laboratory || '—'],
       ]));
+    b.provisionalStamp(context.readiness);
     b.tableOfContents();
 
     b.executiveSummary([assessment.verdict,
@@ -1167,6 +1206,7 @@
         ['Estimated total cost', S.money(estimate.total_cost_usd, 0)],
         ['Contract price', S.money(estimate.price_usd, 0)],
       ]));
+    b.provisionalStamp(context.readiness);
     b.tableOfContents();
 
     b.executiveSummary([
@@ -1285,6 +1325,7 @@
         ['Items answered', evaluation.answered + ' of ' + evaluation.total],
         ['Critical failures', String(evaluation.critical_failures)],
       ]));
+    b.provisionalStamp(context.readiness);
 
     b.heading('1. Summary', 1);
     b.paragraph(evaluation.verdict, { bold: true });
@@ -1348,6 +1389,7 @@
         ['Borehole reference', log.borehole_ref || context.boreholeRef || '—'],
         ['Handover date', context.handoverDate || ''],
       ]));
+    b.provisionalStamp(context.readiness);
     b.tableOfContents();
 
     b.executiveSummary([

@@ -6715,6 +6715,266 @@
     portfolioOnePager: portfolioOnePager, portfolioStats: portfolioStats,
   });
 
+  /* ============================================================== readiness
+   * groundwater/readiness.py. Whether a project's results are complete
+   * enough to certify.
+   *
+   * Completeness, not outcome: a borehole whose water fails the arsenic
+   * guideline is perfectly certifiable, because the finding is the point of
+   * the report. What is not certifiable is a borehole whose arsenic result
+   * could not be read. A gate that failed bad news would teach people to
+   * leave the bad news out.
+   */
+
+  var UNIT_BLOCKERS = ['time_unit_unknown', 'discharge_unit_unknown',
+    'discharge_ambiguous', 'time_reading_unreadable'];
+  var UNIT_ASSUMPTIONS = ['discharge_unit_assumed', 'unit_not_reported',
+    'unit_basis_assumed', 'utm_zone_assumed', 'test_type_inferred'];
+
+  function readinessFlags(objects) {
+    var out = [];
+    (objects || []).forEach(function (obj) {
+      if (obj && obj.flags) out = out.concat(obj.flags);
+    });
+    return out;
+  }
+
+  function flagsWithCode(flags, codes) {
+    return flags.filter(function (f) { return codes.indexOf(f && f.code) >= 0; });
+  }
+
+  /* Crews write the GPS on one sheet and not the others, so a project can be
+   * well located while the drilling log's own header block is blank. */
+  function projectSite(state) {
+    var candidates = [state.site];
+    if (state.drilling_log) candidates.push(state.drilling_log.site);
+    if (state.pump_analysis && state.pump_analysis.test) {
+      candidates.push(state.pump_analysis.test.site);
+    }
+    if (state.wq_assessment && state.wq_assessment.sample) {
+      candidates.push(state.wq_assessment.sample.site);
+    }
+    var merged = null;
+    candidates.forEach(function (site) {
+      if (!site) return;
+      if (!merged) { merged = Object.assign({}, site); return; }
+      Object.keys(site).forEach(function (key) {
+        var current = merged[key];
+        if ((current === null || current === undefined || current === '') &&
+            site[key] !== null && site[key] !== undefined && site[key] !== '') {
+          merged[key] = site[key];
+        }
+      });
+    });
+    return merged;
+  }
+
+  var READINESS_CHECKS = {
+    site_located: ['Site position', function (state) {
+      var site = projectSite(state);
+      if (!site || site.easting === null || site.easting === undefined ||
+          site.northing === null || site.northing === undefined) {
+        return ['unmet', 'No GPS position is recorded on any sheet in this ' +
+          'project. A borehole that cannot be found again on the ground ' +
+          'cannot be certified, revisited or maintained.'];
+      }
+      var zone = Number(site.utm_zone) || inferZoneForSierraLeone(Number(site.easting));
+      return ['met', 'Position recorded: ' + Math.round(site.easting) + ' mE, ' +
+        Math.round(site.northing) + ' mN (UTM ' + zone + 'N).'];
+    }],
+    borehole_logged: ['Drilling log', function (state) {
+      var log = state.drilling_log;
+      if (!log) return ['unmet', 'No drilling log has been loaded.'];
+      if (!log.total_depth_m) return ['unmet', 'The drilling log records no total depth.'];
+      if (!(log.intervals || []).length) {
+        return ['unmet', 'The drilling log records no lithology.'];
+      }
+      return ['met', 'Logged to ' + log.total_depth_m.toFixed(0) + ' m with ' +
+        log.intervals.length + ' lithological interval(s).'];
+    }],
+    readings_usable: ['Readable units', function (state) {
+      var analysis = state.pump_analysis;
+      var flags = readinessFlags([analysis, state.drilling_log,
+        analysis ? analysis.test : null]);
+      var refused = flagsWithCode(flags, UNIT_BLOCKERS);
+      if (refused.length) {
+        return ['unmet', refused.map(function (f) { return f.message; }).join('; ')];
+      }
+      return ['met', 'Every reading carried a unit the toolkit could read.'];
+    }],
+    pumping_measured: ['Pumping test measured', function (state) {
+      var analysis = state.pump_analysis;
+      if (!analysis) return ['unmet', 'No pumping test has been analysed.'];
+      var test = analysis.test;
+      if (test.static_water_level_m === null || test.static_water_level_m === undefined) {
+        return ['unmet', 'The static water level is missing, so no drawdown ' +
+          'can be computed from the test.'];
+      }
+      var missing = (test.steps || []).filter(function (s) {
+        return s.discharge_m3_per_h === null || s.discharge_m3_per_h === undefined;
+      });
+      if (missing.length === (test.steps || []).length) {
+        return ['unmet', 'No discharge is recorded for the test, so ' +
+          'transmissivity and yield stay pending.'];
+      }
+      if (missing.length) {
+        return ['unmet', 'Discharge is missing for step(s) ' +
+          missing.map(function (s) { return s.step_number; }).join(', ') + '.'];
+      }
+      return ['met', test.steps.length + ' step(s) with discharge, static ' +
+        'water level ' + test.static_water_level_m.toFixed(2) + ' m.'];
+    }],
+    yield_established: ['Yield established', function (state) {
+      var analysis = state.pump_analysis;
+      if (!analysis || !analysis.yield_recommendation) {
+        return ['unmet', 'No yield recommendation has been derived.'];
+      }
+      var rec = analysis.yield_recommendation;
+      if (rec.pending_reason) return ['unmet', rec.pending_reason];
+      if (rec.safe_yield_m3_per_h === null || rec.safe_yield_m3_per_h === undefined) {
+        return ['unmet', 'The safe yield could not be derived from this test.'];
+      }
+      return ['met', 'Safe yield ' + yieldRangeText(rec) + '.'];
+    }],
+    water_quality_panel: ['Water quality panel', function (state) {
+      var a = state.wq_assessment;
+      if (!a) return ['unmet', 'No water quality results have been assessed.'];
+      if ((a.missing_essential || []).length) {
+        return ['unmet', 'No evaluable result for ' +
+          a.missing_essential.join(', ') + '.'];
+      }
+      return ['met', 'The health panel was run and every result was evaluable.'];
+    }],
+    water_quality_evaluable: ['Water quality evaluable', function (state) {
+      /* The rows, not the headline: a health exceedance outranks uncertainty
+       * in the verdict but does not make an unreadable result readable. */
+      var a = state.wq_assessment;
+      if (!a) return ['unmet', 'No water quality results have been assessed.'];
+      var ungraded = (a.indeterminate_rows || []).concat(a.unknown_parameters || []);
+      if (ungraded.length) {
+        var names = [];
+        ungraded.forEach(function (r) {
+          if (names.indexOf(r.parameter) < 0) names.push(r.parameter);
+        });
+        return ['unmet', 'Not graded against any limit: ' + names.join(', ') + '.'];
+      }
+      if (!(a.evaluated_rows || []).length) {
+        return ['unmet', 'No result in the sample could be graded.'];
+      }
+      return ['met', a.evaluated_rows.length + ' determinand(s) graded; ' +
+        'verdict ' + a.verdict_state + '.'];
+    }],
+    design_derived: ['Borehole design', function (state) {
+      var design = state.borehole_design;
+      if (!design) return ['unmet', 'No borehole design has been derived.'];
+      var errors = (design.flags || []).filter(function (f) { return f.level === 'error'; });
+      if (errors.length) return ['unmet', errors[0].message];
+      if (!(design.screens || []).length) return ['unmet', 'The design places no screen.'];
+      return ['met', Number(design.total_screen_length_m).toFixed(1) +
+        ' m of screen in ' + design.screens.length + ' run(s).'];
+    }],
+    no_errors: ['No fatal data problems', function (state) {
+      var analysis = state.pump_analysis;
+      var flags = readinessFlags([state.drilling_log, analysis, state.wq_assessment,
+        state.borehole_design, state.cost_estimate,
+        analysis ? analysis.test : null]);
+      var errors = flags.filter(function (f) { return f && f.level === 'error'; });
+      if (errors.length) {
+        var seen = [];
+        errors.forEach(function (f) {
+          if (seen.indexOf(f.message) < 0) seen.push(f.message);
+        });
+        return ['unmet', seen.join('; ')];
+      }
+      return ['met', 'No module reported a fatal problem with the data.'];
+    }],
+  };
+
+  /* What each report has to be able to stand behind. A pumping report makes
+   * no claim about water quality; a handover report tells a village the
+   * water is safe to drink, so it needs everything. */
+  var READINESS_REPORTS = {
+    completion: ['site_located', 'borehole_logged', 'readings_usable',
+      'pumping_measured', 'yield_established', 'water_quality_panel',
+      'water_quality_evaluable', 'design_derived', 'no_errors'],
+    handover: ['site_located', 'borehole_logged', 'pumping_measured',
+      'yield_established', 'water_quality_panel', 'water_quality_evaluable',
+      'no_errors'],
+    quality: ['site_located', 'water_quality_panel', 'water_quality_evaluable',
+      'no_errors'],
+    pumping: ['site_located', 'readings_usable', 'pumping_measured',
+      'yield_established', 'no_errors'],
+    geophysical: ['site_located'],
+    costing: ['site_located', 'borehole_logged', 'design_derived'],
+    supervision: ['site_located'],
+  };
+
+  function assessReadiness(state, report, overrides) {
+    var kind = READINESS_REPORTS[report] ? report : 'completion';
+    var keys = READINESS_REPORTS[kind];
+    var given = overrides || {};
+    var requirements = keys.map(function (key) {
+      var spec = READINESS_CHECKS[key];
+      var found, detail;
+      try {
+        var answer = spec[1](state || {});
+        found = answer[0]; detail = answer[1];
+      } catch (e) {
+        /* a broken check is not a pass */
+        found = 'unmet';
+        detail = 'The ' + spec[0].toLowerCase() + ' check could not run: ' + e.message;
+      }
+      var override = own(given, key) ? given[key] : null;
+      if (found === 'unmet' && override) {
+        var reason = typeof override === 'string' ? override : (override.reason || '');
+        var by = typeof override === 'string' ? '' : (override.by || '');
+        return { key: key, title: spec[0], state: 'overridden', detail: detail,
+          override_reason: reason, override_by: by };
+      }
+      return { key: key, title: spec[0], state: found, detail: detail,
+        override_reason: '', override_by: '' };
+    });
+
+    var unmet = requirements.filter(function (r) { return r.state === 'unmet'; });
+    var overridden = requirements.filter(function (r) { return r.state === 'overridden'; });
+    var overall = unmet.length ? 'not_ready'
+      : (overridden.length ? 'ready_with_overrides' : 'ready');
+    var assumptions = [];
+    try {
+      var analysis = (state || {}).pump_analysis;
+      flagsWithCode(readinessFlags([(state || {}).drilling_log, analysis,
+        (state || {}).wq_assessment, (state || {}).borehole_design,
+        analysis ? analysis.test : null]), UNIT_ASSUMPTIONS)
+        .forEach(function (f) {
+          if (assumptions.indexOf(f.message) < 0) assumptions.push(f.message);
+        });
+    } catch (e) { /* a malformed object costs the list, not the gate */ }
+
+    var summary;
+    if (overall === 'ready') {
+      summary = 'All certification requirements are met.';
+    } else if (overall === 'ready_with_overrides') {
+      summary = 'Issued on override: ' +
+        overridden.map(function (r) { return r.title; }).join(', ') + '.';
+    } else {
+      summary = 'Not ready to certify - outstanding: ' +
+        unmet.map(function (r) { return r.title; }).join(', ') + '.';
+    }
+    return {
+      report: kind, requirements: requirements, assumptions: assumptions,
+      unmet: unmet, overridden: overridden, state: overall,
+      /* an override makes the document issuable, never certifiable */
+      is_certifiable: overall === 'ready',
+      summary: summary,
+    };
+  }
+
+  Object.assign(C, {
+    assessReadiness: assessReadiness,
+    READINESS_REPORTS: READINESS_REPORTS,
+    READINESS_CHECKS: READINESS_CHECKS,
+  });
+
   /* =============================================================== depth spine
    * groundwater/depth_spine/view.py. The whole borehole on one depth axis.
    *

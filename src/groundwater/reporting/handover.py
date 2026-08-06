@@ -9,6 +9,8 @@ details, recommendations and the handover signature blocks.
 
 from __future__ import annotations
 
+from typing import Any
+
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -89,6 +91,11 @@ class HandoverReportInputs:
     contractor_rep: str = ""
     client_rep: str = ""
     community_rep: str = ""
+    #: The certification gate for this report, from
+    #: :func:`groundwater.readiness.assess_readiness`. When it is not
+    #: certifiable the cover says so; when it is absent nothing is
+    #: stamped, so an existing caller is unaffected.
+    readiness: Any = None
 
 
 def build_handover_report(
@@ -120,6 +127,7 @@ def build_handover_report(
             ("Date", site.date),
         ],
     )
+    rb.provisional_stamp(inputs.readiness)
     rb.table_of_contents()
 
     # ---- executive summary ----------------------------------------------------

@@ -1543,6 +1543,1013 @@
    "ratio": null
   }
  ],
+ "readiness": {
+  "full": {
+   "completion": {
+    "state": "ready",
+    "summary": "All certification requirements are met.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 70 m with 14 lithological interval(s).",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinand(s) graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "design_derived",
+      "met",
+      "22.5 m of screen in 4 run(s).",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "handover": {
+    "state": "ready",
+    "summary": "All certification requirements are met.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 70 m with 14 lithological interval(s).",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinand(s) graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "quality": {
+    "state": "ready",
+    "summary": "All certification requirements are met.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinand(s) graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "pumping": {
+    "state": "ready",
+    "summary": "All certification requirements are met.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   }
+  },
+  "empty": {
+   "completion": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position, Drilling log, Pumping test measured, Yield established, Water quality panel, Water quality evaluable, Borehole design.",
+    "requirements": [
+     [
+      "site_located",
+      "unmet",
+      "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained.",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "unmet",
+      "No drilling log has been loaded.",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "unmet",
+      "No pumping test has been analysed.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "unmet",
+      "No yield recommendation has been derived.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "design_derived",
+      "unmet",
+      "No borehole design has been derived.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "handover": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position, Drilling log, Pumping test measured, Yield established, Water quality panel, Water quality evaluable.",
+    "requirements": [
+     [
+      "site_located",
+      "unmet",
+      "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained.",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "unmet",
+      "No drilling log has been loaded.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "unmet",
+      "No pumping test has been analysed.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "unmet",
+      "No yield recommendation has been derived.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "quality": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position, Water quality panel, Water quality evaluable.",
+    "requirements": [
+     [
+      "site_located",
+      "unmet",
+      "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "pumping": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position, Pumping test measured, Yield established.",
+    "requirements": [
+     [
+      "site_located",
+      "unmet",
+      "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained.",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "unmet",
+      "No pumping test has been analysed.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "unmet",
+      "No yield recommendation has been derived.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   }
+  },
+  "no_site": {
+   "completion": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position.",
+    "requirements": [
+     [
+      "site_located",
+      "unmet",
+      "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained.",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 70 m with 14 lithological interval(s).",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinand(s) graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "design_derived",
+      "met",
+      "22.5 m of screen in 4 run(s).",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "handover": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position.",
+    "requirements": [
+     [
+      "site_located",
+      "unmet",
+      "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained.",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 70 m with 14 lithological interval(s).",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinand(s) graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "quality": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position.",
+    "requirements": [
+     [
+      "site_located",
+      "unmet",
+      "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinand(s) graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "pumping": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position.",
+    "requirements": [
+     [
+      "site_located",
+      "unmet",
+      "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained.",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   }
+  },
+  "no_quality": {
+   "completion": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Water quality panel, Water quality evaluable.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 70 m with 14 lithological interval(s).",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "design_derived",
+      "met",
+      "22.5 m of screen in 4 run(s).",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "handover": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Water quality panel, Water quality evaluable.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 70 m with 14 lithological interval(s).",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "quality": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Water quality panel, Water quality evaluable.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "unmet",
+      "No water quality results have been assessed.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "pumping": {
+    "state": "ready",
+    "summary": "All certification requirements are met.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   }
+  },
+  "overridden": {
+   "completion": {
+    "state": "ready_with_overrides",
+    "summary": "Issued on override: Water quality panel, Water quality evaluable.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 70 m with 14 lithological interval(s).",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "overridden",
+      "No water quality results have been assessed.",
+      "lab result awaited",
+      "M. K."
+     ],
+     [
+      "water_quality_evaluable",
+      "overridden",
+      "No water quality results have been assessed.",
+      "lab result awaited",
+      "M. K."
+     ],
+     [
+      "design_derived",
+      "met",
+      "22.5 m of screen in 4 run(s).",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "handover": {
+    "state": "ready_with_overrides",
+    "summary": "Issued on override: Water quality panel, Water quality evaluable.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 70 m with 14 lithological interval(s).",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "overridden",
+      "No water quality results have been assessed.",
+      "lab result awaited",
+      "M. K."
+     ],
+     [
+      "water_quality_evaluable",
+      "overridden",
+      "No water quality results have been assessed.",
+      "lab result awaited",
+      "M. K."
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "quality": {
+    "state": "ready_with_overrides",
+    "summary": "Issued on override: Water quality panel, Water quality evaluable.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "overridden",
+      "No water quality results have been assessed.",
+      "lab result awaited",
+      "M. K."
+     ],
+     [
+      "water_quality_evaluable",
+      "overridden",
+      "No water quality results have been assessed.",
+      "lab result awaited",
+      "M. K."
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   },
+   "pumping": {
+    "state": "ready",
+    "summary": "All certification requirements are met.",
+    "requirements": [
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ]
+   }
+  }
+ },
  "rounding": [
   {
    "value": 0.15,
