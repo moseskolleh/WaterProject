@@ -57,14 +57,25 @@ water quality guidelines.
     one whose result could not be read is not. An interim document can be
     issued on a recorded override naming who issued it and why, which makes
     it issuable and never certifiable
-14. A seasonal sustainable-yield model: a pumping test measures one day,
+14. A planning view over the coverage gap, because both halves of "people
+    per functional water point" are older than the phrase suggests: the
+    2015 census is projected to a year the user picks at a rate they can
+    set (defaulting to the rate implied by the 2004 and 2015 census totals,
+    and saying plainly that a uniform rate cannot reorder the ranking - only
+    district rates do that); the age of the survey behind each point is
+    measured, with coverage over recent surveys reported beside coverage
+    over all of them so the gap between them is the size of the assumption;
+    and dry-season service is a band rather than a number, because most
+    surveys never recorded how many months of the year a source yields water
+    and silence is not a year-round supply
+15. A seasonal sustainable-yield model: a pumping test measures one day,
     so the tested water level is placed in the annual cycle and the yield
     reported at three levels - as tested, at the normal end-of-dry-season
     low, and in a drought year - with the pump intake set deep enough for
     the worst of them. A date that could be read either way round (10/05 is
     10 May or 5 October, opposite ends of the year) is treated as no date:
     the whole annual range is reserved and the report says why
-15. A borehole asset registry for the second twenty years: a check-summed
+16. A borehole asset registry for the second twenty years: a check-summed
     identifier derived from the position (so two teams at the same wellhead
     with no connection between them arrive at the same one), a printable
     headworks plate carrying a QR symbol generated offline, an append-only
@@ -207,6 +218,8 @@ groundwater/
     readiness.py  the certification gate: per-report requirements, overrides
     seasonal.py   the tested day placed in the year: dry-season and drought
                   yields, and the pump depth the worst of them needs
+    planning.py   coverage as a planning figure: population projection,
+                  survey freshness, dry-season service as a band
     registry.py   asset identifiers, maintenance events, derived condition
     qr.py         a dependency-free QR encoder for the headworks plate
 ```

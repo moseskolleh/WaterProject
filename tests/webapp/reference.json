@@ -5143,6 +5143,801 @@
    ]
   }
  },
+ "wpdx_fields": [
+  {
+   "date": "2019-04-02T00:00:00",
+   "year": 2019,
+   "months_text": "12",
+   "months": 12
+  },
+  {
+   "date": "02/04/2019",
+   "year": 2019,
+   "months_text": "yes",
+   "months": 12
+  },
+  {
+   "date": "2019",
+   "year": 2019,
+   "months_text": "6 months",
+   "months": 6
+  },
+  {
+   "date": "",
+   "year": null,
+   "months_text": "",
+   "months": null
+  },
+  {
+   "date": "not a date",
+   "year": null,
+   "months_text": "seasonal",
+   "months": null
+  },
+  {
+   "date": "1899-01-01",
+   "year": null,
+   "months_text": "14",
+   "months": null
+  },
+  {
+   "date": "survey 2024 round 2",
+   "year": 2024,
+   "months_text": "no",
+   "months": null
+  }
+ ],
+ "growth_rate": 0.03272233402866398,
+ "planning": {
+  "census": {
+   "projection": {
+    "base_year": 2015,
+    "target_year": 2015,
+    "rate": 0.03272233402866398,
+    "uniform": true,
+    "factor": 1.0,
+    "note": "Populations are the 2015 census figures, not projected."
+   },
+   "stats": {
+    "n_areas": 5,
+    "as_of_year": 2015,
+    "projection_note": "Populations are the 2015 census figures, not projected.",
+    "population": 2686569.0,
+    "census_population": 2686569.0,
+    "worst_area": "Pujehun",
+    "worst_people_per_point": null,
+    "worst_served_area": "Western Area Urban",
+    "worst_served_people_per_point": 351988.0,
+    "n_no_source": 2,
+    "national_people_per_point": 383795.5714285714,
+    "national_people_per_recent_point": 537313.8,
+    "n_stale_areas": 1,
+    "stale_areas": [
+     "Kono"
+    ],
+    "n_seasonality_recorded": 4,
+    "n_seasonality_unknown": 3
+   },
+   "rows": [
+    {
+     "name": "Pujehun",
+     "rank": 1,
+     "census_population": 346461.0,
+     "population": 346461.0,
+     "water_points": 1,
+     "functional_points": 0,
+     "people_per_point": null,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 1,
+      "n_dated": 1,
+      "latest_year": 2020,
+      "median_age_years": -5.0,
+      "n_recent": 1,
+      "state": "fresh",
+      "label": "Surveyed recently",
+      "detail": "1 of 1 points carry a survey date; the most recent is 2020 and the median is -5 years old. 1 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 0,
+      "n_unknown": 0,
+      "people_per_point_low": null,
+      "people_per_point_high": null,
+      "is_established": false,
+      "detail": "There are no functional points here to ask about."
+     }
+    },
+    {
+     "name": "Falaba",
+     "rank": 2,
+     "census_population": 202566.0,
+     "population": 202566.0,
+     "water_points": 0,
+     "functional_points": 0,
+     "people_per_point": null,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 0,
+      "n_dated": 0,
+      "latest_year": null,
+      "median_age_years": null,
+      "n_recent": 0,
+      "state": "unknown",
+      "label": "Survey dates not recorded",
+      "detail": "No survey dates are recorded for these points, so how current this coverage figure is cannot be established."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 0,
+      "n_unknown": 0,
+      "people_per_point_low": null,
+      "people_per_point_high": null,
+      "is_established": false,
+      "detail": "There are no functional points here to ask about."
+     }
+    },
+    {
+     "name": "Western Area Urban",
+     "rank": 3,
+     "census_population": 1055964.0,
+     "population": 1055964.0,
+     "water_points": 3,
+     "functional_points": 3,
+     "people_per_point": 351988.0,
+     "recent_functional_points": 3,
+     "people_per_recent_point": 351988.0,
+     "staleness_gap_percent": 0.0,
+     "freshness": {
+      "n_points": 3,
+      "n_dated": 3,
+      "latest_year": 2025,
+      "median_age_years": -10.0,
+      "n_recent": 3,
+      "state": "fresh",
+      "label": "Surveyed recently",
+      "detail": "3 of 3 points carry a survey date; the most recent is 2025 and the median is -10 years old. 3 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 1,
+      "n_seasonal": 1,
+      "n_unknown": 1,
+      "people_per_point_low": 1055964.0,
+      "people_per_point_high": 527982.0,
+      "is_established": true,
+      "detail": "1 of 3 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
+     }
+    },
+    {
+     "name": "Bo",
+     "rank": 4,
+     "census_population": 575478.0,
+     "population": 575478.0,
+     "water_points": 3,
+     "functional_points": 2,
+     "people_per_point": 287739.0,
+     "recent_functional_points": 2,
+     "people_per_recent_point": 287739.0,
+     "staleness_gap_percent": 0.0,
+     "freshness": {
+      "n_points": 3,
+      "n_dated": 3,
+      "latest_year": 2024,
+      "median_age_years": -9.0,
+      "n_recent": 2,
+      "state": "fresh",
+      "label": "Surveyed recently",
+      "detail": "3 of 3 points carry a survey date; the most recent is 2024 and the median is -9 years old. 2 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 1,
+      "n_seasonal": 0,
+      "n_unknown": 1,
+      "people_per_point_low": 575478.0,
+      "people_per_point_high": 287739.0,
+      "is_established": true,
+      "detail": "1 of 2 functional points are recorded as working all year and 0 as seasonal; 1 were never asked."
+     }
+    },
+    {
+     "name": "Kono",
+     "rank": 5,
+     "census_population": 506100.0,
+     "population": 506100.0,
+     "water_points": 2,
+     "functional_points": 2,
+     "people_per_point": 253050.0,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 2,
+      "n_dated": 1,
+      "latest_year": 2003,
+      "median_age_years": 12.0,
+      "n_recent": 0,
+      "state": "stale",
+      "label": "Survey is out of date",
+      "detail": "1 of 2 points carry a survey date; the most recent is 2003 and the median is 12 years old. 0 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 1,
+      "n_unknown": 1,
+      "people_per_point_low": null,
+      "people_per_point_high": 506100.0,
+      "is_established": true,
+      "detail": "0 of 2 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
+     }
+    }
+   ]
+  },
+  "today": {
+   "projection": {
+    "base_year": 2015,
+    "target_year": 2026,
+    "rate": 0.03272233402866398,
+    "uniform": true,
+    "factor": 1.4250144317584268,
+    "note": "Populations are projected from the 2015 census to 2026 at 3.27% a year, a factor of 1.425. The same rate is applied to every district, so the ranking is unchanged by the projection - only the magnitudes move. District rates would change it, and an urban district does not grow at the rural rate."
+   },
+   "stats": {
+    "n_areas": 5,
+    "as_of_year": 2026,
+    "projection_note": "Populations are projected from the 2015 census to 2026 at 3.27% a year, a factor of 1.425. The same rate is applied to every district, so the ranking is unchanged by the projection - only the magnitudes move. District rates would change it, and an urban district does not grow at the rural rate.",
+    "population": 3828399.596914805,
+    "census_population": 2686569.0,
+    "worst_area": "Pujehun",
+    "worst_people_per_point": null,
+    "worst_served_area": "Western Area Urban",
+    "worst_served_people_per_point": 501587.9798057852,
+    "n_no_source": 2,
+    "national_people_per_point": 546914.2281306864,
+    "national_people_per_recent_point": 957099.8992287013,
+    "n_stale_areas": 1,
+    "stale_areas": [
+     "Kono"
+    ],
+    "n_seasonality_recorded": 4,
+    "n_seasonality_unknown": 3
+   },
+   "rows": [
+    {
+     "name": "Pujehun",
+     "rank": 1,
+     "census_population": 346461.0,
+     "population": 493711.9250414563,
+     "water_points": 1,
+     "functional_points": 0,
+     "people_per_point": null,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 1,
+      "n_dated": 1,
+      "latest_year": 2020,
+      "median_age_years": 6.0,
+      "n_recent": 0,
+      "state": "ageing",
+      "label": "Survey is getting old",
+      "detail": "1 of 1 points carry a survey date; the most recent is 2020 and the median is 6 years old. 0 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 0,
+      "n_unknown": 0,
+      "people_per_point_low": null,
+      "people_per_point_high": null,
+      "is_established": false,
+      "detail": "There are no functional points here to ask about."
+     }
+    },
+    {
+     "name": "Falaba",
+     "rank": 2,
+     "census_population": 202566.0,
+     "population": 288659.4733835775,
+     "water_points": 0,
+     "functional_points": 0,
+     "people_per_point": null,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 0,
+      "n_dated": 0,
+      "latest_year": null,
+      "median_age_years": null,
+      "n_recent": 0,
+      "state": "unknown",
+      "label": "Survey dates not recorded",
+      "detail": "No survey dates are recorded for these points, so how current this coverage figure is cannot be established."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 0,
+      "n_unknown": 0,
+      "people_per_point_low": null,
+      "people_per_point_high": null,
+      "is_established": false,
+      "detail": "There are no functional points here to ask about."
+     }
+    },
+    {
+     "name": "Western Area Urban",
+     "rank": 3,
+     "census_population": 1055964.0,
+     "population": 1504763.9394173555,
+     "water_points": 3,
+     "functional_points": 3,
+     "people_per_point": 501587.9798057852,
+     "recent_functional_points": 3,
+     "people_per_recent_point": 501587.9798057852,
+     "staleness_gap_percent": 0.0,
+     "freshness": {
+      "n_points": 3,
+      "n_dated": 3,
+      "latest_year": 2025,
+      "median_age_years": 1.0,
+      "n_recent": 2,
+      "state": "fresh",
+      "label": "Surveyed recently",
+      "detail": "3 of 3 points carry a survey date; the most recent is 2025 and the median is 1 years old. 2 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 1,
+      "n_seasonal": 1,
+      "n_unknown": 1,
+      "people_per_point_low": 1504763.9394173555,
+      "people_per_point_high": 752381.9697086777,
+      "is_established": true,
+      "detail": "1 of 3 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
+     }
+    },
+    {
+     "name": "Bo",
+     "rank": 4,
+     "census_population": 575478.0,
+     "population": 820064.4551594759,
+     "water_points": 3,
+     "functional_points": 2,
+     "people_per_point": 410032.22757973796,
+     "recent_functional_points": 1,
+     "people_per_recent_point": 820064.4551594759,
+     "staleness_gap_percent": 100.0,
+     "freshness": {
+      "n_points": 3,
+      "n_dated": 3,
+      "latest_year": 2024,
+      "median_age_years": 2.0,
+      "n_recent": 2,
+      "state": "fresh",
+      "label": "Surveyed recently",
+      "detail": "3 of 3 points carry a survey date; the most recent is 2024 and the median is 2 years old. 2 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 1,
+      "n_seasonal": 0,
+      "n_unknown": 1,
+      "people_per_point_low": 820064.4551594759,
+      "people_per_point_high": 410032.22757973796,
+      "is_established": true,
+      "detail": "1 of 2 functional points are recorded as working all year and 0 as seasonal; 1 were never asked."
+     }
+    },
+    {
+     "name": "Kono",
+     "rank": 5,
+     "census_population": 506100.0,
+     "population": 721199.8039129399,
+     "water_points": 2,
+     "functional_points": 2,
+     "people_per_point": 360599.9019564699,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 2,
+      "n_dated": 1,
+      "latest_year": 2003,
+      "median_age_years": 23.0,
+      "n_recent": 0,
+      "state": "stale",
+      "label": "Survey is out of date",
+      "detail": "1 of 2 points carry a survey date; the most recent is 2003 and the median is 23 years old. 0 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 1,
+      "n_unknown": 1,
+      "people_per_point_low": null,
+      "people_per_point_high": 721199.8039129399,
+      "is_established": true,
+      "detail": "0 of 2 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
+     }
+    }
+   ]
+  },
+  "slow": {
+   "projection": {
+    "base_year": 2015,
+    "target_year": 2026,
+    "rate": 0.015,
+    "uniform": true,
+    "factor": 1.177948937400526,
+    "note": "Populations are projected from the 2015 census to 2026 at 1.50% a year, a factor of 1.178. The same rate is applied to every district, so the ranking is unchanged by the projection - only the magnitudes move. District rates would change it, and an urban district does not grow at the rural rate."
+   },
+   "stats": {
+    "n_areas": 5,
+    "as_of_year": 2026,
+    "projection_note": "Populations are projected from the 2015 census to 2026 at 1.50% a year, a factor of 1.178. The same rate is applied to every district, so the ranking is unchanged by the projection - only the magnitudes move. District rates would change it, and an urban district does not grow at the rural rate.",
+    "population": 3164641.098803194,
+    "census_population": 2686569.0,
+    "worst_area": "Pujehun",
+    "worst_people_per_point": null,
+    "worst_served_area": "Western Area Urban",
+    "worst_served_people_per_point": 414623.89057773637,
+    "n_no_source": 2,
+    "national_people_per_point": 452091.5855433134,
+    "national_people_per_recent_point": 791160.2747007984,
+    "n_stale_areas": 1,
+    "stale_areas": [
+     "Kono"
+    ],
+    "n_seasonality_recorded": 4,
+    "n_seasonality_unknown": 3
+   },
+   "rows": [
+    {
+     "name": "Pujehun",
+     "rank": 1,
+     "census_population": 346461.0,
+     "population": 408113.36680072366,
+     "water_points": 1,
+     "functional_points": 0,
+     "people_per_point": null,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 1,
+      "n_dated": 1,
+      "latest_year": 2020,
+      "median_age_years": 6.0,
+      "n_recent": 0,
+      "state": "ageing",
+      "label": "Survey is getting old",
+      "detail": "1 of 1 points carry a survey date; the most recent is 2020 and the median is 6 years old. 0 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 0,
+      "n_unknown": 0,
+      "people_per_point_low": null,
+      "people_per_point_high": null,
+      "is_established": false,
+      "detail": "There are no functional points here to ask about."
+     }
+    },
+    {
+     "name": "Falaba",
+     "rank": 2,
+     "census_population": 202566.0,
+     "population": 238612.40445347497,
+     "water_points": 0,
+     "functional_points": 0,
+     "people_per_point": null,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 0,
+      "n_dated": 0,
+      "latest_year": null,
+      "median_age_years": null,
+      "n_recent": 0,
+      "state": "unknown",
+      "label": "Survey dates not recorded",
+      "detail": "No survey dates are recorded for these points, so how current this coverage figure is cannot be established."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 0,
+      "n_unknown": 0,
+      "people_per_point_low": null,
+      "people_per_point_high": null,
+      "is_established": false,
+      "detail": "There are no functional points here to ask about."
+     }
+    },
+    {
+     "name": "Western Area Urban",
+     "rank": 3,
+     "census_population": 1055964.0,
+     "population": 1243871.6717332092,
+     "water_points": 3,
+     "functional_points": 3,
+     "people_per_point": 414623.89057773637,
+     "recent_functional_points": 3,
+     "people_per_recent_point": 414623.89057773637,
+     "staleness_gap_percent": 0.0,
+     "freshness": {
+      "n_points": 3,
+      "n_dated": 3,
+      "latest_year": 2025,
+      "median_age_years": 1.0,
+      "n_recent": 2,
+      "state": "fresh",
+      "label": "Surveyed recently",
+      "detail": "3 of 3 points carry a survey date; the most recent is 2025 and the median is 1 years old. 2 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 1,
+      "n_seasonal": 1,
+      "n_unknown": 1,
+      "people_per_point_low": 1243871.6717332092,
+      "people_per_point_high": 621935.8358666046,
+      "is_established": true,
+      "detail": "1 of 3 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
+     }
+    },
+    {
+     "name": "Bo",
+     "rank": 4,
+     "census_population": 575478.0,
+     "population": 677883.69859738,
+     "water_points": 3,
+     "functional_points": 2,
+     "people_per_point": 338941.84929869,
+     "recent_functional_points": 1,
+     "people_per_recent_point": 677883.69859738,
+     "staleness_gap_percent": 100.0,
+     "freshness": {
+      "n_points": 3,
+      "n_dated": 3,
+      "latest_year": 2024,
+      "median_age_years": 2.0,
+      "n_recent": 2,
+      "state": "fresh",
+      "label": "Surveyed recently",
+      "detail": "3 of 3 points carry a survey date; the most recent is 2024 and the median is 2 years old. 2 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 1,
+      "n_seasonal": 0,
+      "n_unknown": 1,
+      "people_per_point_low": 677883.69859738,
+      "people_per_point_high": 338941.84929869,
+      "is_established": true,
+      "detail": "1 of 2 functional points are recorded as working all year and 0 as seasonal; 1 were never asked."
+     }
+    },
+    {
+     "name": "Kono",
+     "rank": 5,
+     "census_population": 506100.0,
+     "population": 596159.9572184063,
+     "water_points": 2,
+     "functional_points": 2,
+     "people_per_point": 298079.9786092031,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 2,
+      "n_dated": 1,
+      "latest_year": 2003,
+      "median_age_years": 23.0,
+      "n_recent": 0,
+      "state": "stale",
+      "label": "Survey is out of date",
+      "detail": "1 of 2 points carry a survey date; the most recent is 2003 and the median is 23 years old. 0 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 1,
+      "n_unknown": 1,
+      "people_per_point_low": null,
+      "people_per_point_high": 596159.9572184063,
+      "is_established": true,
+      "detail": "0 of 2 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
+     }
+    }
+   ]
+  },
+  "districts": {
+   "projection": {
+    "base_year": 2015,
+    "target_year": 2026,
+    "rate": 0.03272233402866398,
+    "uniform": false,
+    "factor": 1.4250144317584268,
+    "note": "Populations are projected from the 2015 census to 2026 at 3.27% a year, a factor of 1.425."
+   },
+   "stats": {
+    "n_areas": 5,
+    "as_of_year": 2026,
+    "projection_note": "Populations are projected from the 2015 census to 2026 at 3.27% a year, a factor of 1.425.",
+    "population": 4220994.242364115,
+    "census_population": 2686569.0,
+    "worst_area": "Pujehun",
+    "worst_people_per_point": null,
+    "worst_served_area": "Western Area Urban",
+    "worst_served_people_per_point": 668178.3129513699,
+    "n_no_source": 2,
+    "national_people_per_point": 602999.1774805879,
+    "national_people_per_recent_point": 1055248.5605910288,
+    "n_stale_areas": 1,
+    "stale_areas": [
+     "Kono"
+    ],
+    "n_seasonality_recorded": 4,
+    "n_seasonality_unknown": 3
+   },
+   "rows": [
+    {
+     "name": "Pujehun",
+     "rank": 1,
+     "census_population": 346461.0,
+     "population": 386535.5710540122,
+     "water_points": 1,
+     "functional_points": 0,
+     "people_per_point": null,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 1,
+      "n_dated": 1,
+      "latest_year": 2020,
+      "median_age_years": 6.0,
+      "n_recent": 0,
+      "state": "ageing",
+      "label": "Survey is getting old",
+      "detail": "1 of 1 points carry a survey date; the most recent is 2020 and the median is 6 years old. 0 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 0,
+      "n_unknown": 0,
+      "people_per_point_low": null,
+      "people_per_point_high": null,
+      "is_established": false,
+      "detail": "There are no functional points here to ask about."
+     }
+    },
+    {
+     "name": "Falaba",
+     "rank": 2,
+     "census_population": 202566.0,
+     "population": 288659.4733835775,
+     "water_points": 0,
+     "functional_points": 0,
+     "people_per_point": null,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 0,
+      "n_dated": 0,
+      "latest_year": null,
+      "median_age_years": null,
+      "n_recent": 0,
+      "state": "unknown",
+      "label": "Survey dates not recorded",
+      "detail": "No survey dates are recorded for these points, so how current this coverage figure is cannot be established."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 0,
+      "n_unknown": 0,
+      "people_per_point_low": null,
+      "people_per_point_high": null,
+      "is_established": false,
+      "detail": "There are no functional points here to ask about."
+     }
+    },
+    {
+     "name": "Western Area Urban",
+     "rank": 3,
+     "census_population": 1055964.0,
+     "population": 2004534.9388541097,
+     "water_points": 3,
+     "functional_points": 3,
+     "people_per_point": 668178.3129513699,
+     "recent_functional_points": 3,
+     "people_per_recent_point": 668178.3129513699,
+     "staleness_gap_percent": 0.0,
+     "freshness": {
+      "n_points": 3,
+      "n_dated": 3,
+      "latest_year": 2025,
+      "median_age_years": 1.0,
+      "n_recent": 2,
+      "state": "fresh",
+      "label": "Surveyed recently",
+      "detail": "3 of 3 points carry a survey date; the most recent is 2025 and the median is 1 years old. 2 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 1,
+      "n_seasonal": 1,
+      "n_unknown": 1,
+      "people_per_point_low": 2004534.9388541097,
+      "people_per_point_high": 1002267.4694270549,
+      "is_established": true,
+      "detail": "1 of 3 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
+     }
+    },
+    {
+     "name": "Bo",
+     "rank": 4,
+     "census_population": 575478.0,
+     "population": 820064.4551594759,
+     "water_points": 3,
+     "functional_points": 2,
+     "people_per_point": 410032.22757973796,
+     "recent_functional_points": 1,
+     "people_per_recent_point": 820064.4551594759,
+     "staleness_gap_percent": 100.0,
+     "freshness": {
+      "n_points": 3,
+      "n_dated": 3,
+      "latest_year": 2024,
+      "median_age_years": 2.0,
+      "n_recent": 2,
+      "state": "fresh",
+      "label": "Surveyed recently",
+      "detail": "3 of 3 points carry a survey date; the most recent is 2024 and the median is 2 years old. 2 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 1,
+      "n_seasonal": 0,
+      "n_unknown": 1,
+      "people_per_point_low": 820064.4551594759,
+      "people_per_point_high": 410032.22757973796,
+      "is_established": true,
+      "detail": "1 of 2 functional points are recorded as working all year and 0 as seasonal; 1 were never asked."
+     }
+    },
+    {
+     "name": "Kono",
+     "rank": 5,
+     "census_population": 506100.0,
+     "population": 721199.8039129399,
+     "water_points": 2,
+     "functional_points": 2,
+     "people_per_point": 360599.9019564699,
+     "recent_functional_points": 0,
+     "people_per_recent_point": null,
+     "staleness_gap_percent": null,
+     "freshness": {
+      "n_points": 2,
+      "n_dated": 1,
+      "latest_year": 2003,
+      "median_age_years": 23.0,
+      "n_recent": 0,
+      "state": "stale",
+      "label": "Survey is out of date",
+      "detail": "1 of 2 points carry a survey date; the most recent is 2003 and the median is 23 years old. 0 were surveyed in the last 3 years."
+     },
+     "seasonal": {
+      "n_year_round": 0,
+      "n_seasonal": 1,
+      "n_unknown": 1,
+      "people_per_point_low": null,
+      "people_per_point_high": 721199.8039129399,
+      "is_established": true,
+      "detail": "0 of 2 functional points are recorded as working all year and 1 as seasonal; 1 were never asked."
+     }
+    }
+   ]
+  }
+ },
  "rounding": [
   {
    "value": 0.15,

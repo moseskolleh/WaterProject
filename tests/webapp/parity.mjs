@@ -413,6 +413,48 @@ await withPage(async (page, base, consoleErrors) => {
         };
       });
 
+    out.wpdx_fields = [['2019-04-02T00:00:00', '12'], ['02/04/2019', 'yes'],
+      ['2019', '6 months'], ['', ''], ['not a date', 'seasonal'],
+      ['1899-01-01', '14'], ['survey 2024 round 2', 'no']]
+      .map(([date, months]) => {
+        const [point] = C.parseWpdxRecords([{ lat_deg: 8, lon_deg: -13,
+          report_date: date, months_year: months }]);
+        return { date, year: point.report_year, months_text: months,
+          months: point.months_per_year };
+      });
+    out.growth_rate = C.intercensalGrowthRate();
+    const wp = (functional, year, months) => C.parseWpdxRecords([{
+      lat_deg: 8, lon_deg: -13, status_clean: functional ? 'Functional' : 'Non-Functional',
+      status_id: functional ? 'Yes' : 'No', water_source_clean: 'Borehole',
+      water_tech_clean: 'Hand Pump',
+      report_date: year === null ? '' : String(year),
+      months_year: months === null ? '' : String(months),
+    }])[0];
+    const planningPopulation = {
+      Bo: 575478.0, Kono: 506100.0, Pujehun: 346461.0, Falaba: 202566.0,
+      'Western Area Urban': 1055964.0,
+    };
+    const planningPoints = {
+      Bo: [wp(true, 2024, 12), wp(true, 2010, null), wp(false, 2024, 12)],
+      Kono: [wp(true, null, null), wp(true, 2003, 6)],
+      Pujehun: [wp(false, 2020, null)],
+      'Western Area Urban': [wp(true, 2025, 12), wp(true, 2025, null),
+        wp(true, 2019, 4)],
+    };
+    out.planning = {};
+    [['census', 2015, null, null], ['today', 2026, null, null],
+      ['slow', 2026, 0.015, null],
+      ['districts', 2026, null, { 'Western Area Urban': 0.06, Pujehun: 0.01 }]]
+      .forEach(([label, year, rate, rates]) => {
+        const r = C.planningRows(planningPopulation, planningPoints,
+          { asOfYear: year, rate, rates });
+        out.planning[label] = {
+          projection: r.projection,
+          stats: C.planningStats(r.rows, r.projection),
+          rows: r.rows,
+        };
+      });
+
     out.rounding = [[0.15, 1], [14.05, 1], [2.675, 2], [0.5, 0], [1.5, 0],
       [2.5, 0], [-0.15, 1], [2.34, 2], [2.345, 2], [0.125, 2], [-2.5, 0],
       [45.05, 1], [150.5, 0]]
@@ -619,6 +661,54 @@ await withPage(async (page, base, consoleErrors) => {
   // A report is what a borehole is handed over on, so both engines have to
   // agree on what it can stand behind, down to the sentence they give the
   // analyst.
+  // --- coverage as a planning figure ---
+  parsed.wpdx_fields.forEach((js, i) => {
+    const py = R.wpdx_fields[i];
+    check(`planning: reading ${JSON.stringify(js.date)} / ${JSON.stringify(js.months_text)}`,
+      js.year === py.year && js.months === py.months,
+      JSON.stringify(js) + ' vs ' + JSON.stringify(py));
+  });
+  check('planning: the growth rate is derived the same way',
+    close(parsed.growth_rate, R.growth_rate),
+    `${parsed.growth_rate} vs ${R.growth_rate}`);
+  Object.keys(R.planning).forEach((label) => {
+    const js = parsed.planning[label], py = R.planning[label];
+    check(`planning ${label}: the projection`,
+      js.projection.base_year === py.projection.base_year &&
+      js.projection.target_year === py.projection.target_year &&
+      js.projection.uniform === py.projection.uniform &&
+      close(js.projection.rate, py.projection.rate) &&
+      close(js.projection.factor, py.projection.factor) &&
+      js.projection.note === py.projection.note,
+      JSON.stringify(js.projection) + '\n     vs ' + JSON.stringify(py.projection));
+    check(`planning ${label}: the headline figures`,
+      Object.keys(py.stats).every((k) => (
+        typeof py.stats[k] === 'number'
+          ? close(js.stats[k], py.stats[k])
+          : JSON.stringify(js.stats[k]) === JSON.stringify(py.stats[k]))),
+      JSON.stringify(js.stats) + '\n     vs ' + JSON.stringify(py.stats));
+    check(`planning ${label}: every row`,
+      js.rows.length === py.rows.length && js.rows.every((row, i) => {
+        const w = py.rows[i];
+        return row.name === w.name && row.rank === w.rank &&
+          row.water_points === w.water_points &&
+          row.functional_points === w.functional_points &&
+          row.recent_functional_points === w.recent_functional_points &&
+          close(row.population, w.population) &&
+          close(row.people_per_point, w.people_per_point) &&
+          close(row.people_per_recent_point, w.people_per_recent_point) &&
+          close(row.staleness_gap_percent, w.staleness_gap_percent) &&
+          row.freshness.state === w.freshness.state &&
+          row.freshness.detail === w.freshness.detail &&
+          close(row.freshness.median_age_years, w.freshness.median_age_years) &&
+          row.seasonal.detail === w.seasonal.detail &&
+          row.seasonal.is_established === w.seasonal.is_established &&
+          close(row.seasonal.people_per_point_low, w.seasonal.people_per_point_low) &&
+          close(row.seasonal.people_per_point_high, w.seasonal.people_per_point_high);
+      }),
+      JSON.stringify(js.rows) + '\n     vs ' + JSON.stringify(py.rows));
+  });
+
   // --- the seasonal yield model ---
   parsed.seasonal_dates.forEach((js, i) => {
     const py = R.seasonal_dates[i];

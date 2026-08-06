@@ -34,6 +34,8 @@ import streamlit.components.v1 as components
 import yaml
 
 import groundwater
+from datetime import date
+
 from groundwater.config import Config
 from groundwater.costing import (
     CostingInputs,
@@ -74,7 +76,16 @@ from groundwater.mapping import (
     plot_portfolio_map,
     suitability_map,
 )
+from groundwater.planning import (
+    AGEING_YEARS,
+    CENSUS_YEAR,
+    DEFAULT_GROWTH_RATE,
+    planning_rows,
+    planning_stats,
+)
 from groundwater.coverage import (
+    group_points_by_chiefdom,
+    group_points_by_district,
     POPULATION_CREDIT,
     chiefdom_coverage_rows,
     chiefdom_population,
@@ -3508,13 +3519,17 @@ with tab_coverage:
         chiefdom = resolution == "Chiefdom"
         members = None
         rows = None
+        grouped = None
+        area_population = None
         if chiefdom:
             unit = "chiefdom"
             try:
                 counts, unassigned = count_points_by_chiefdom(
                     cov_points, cov_polys()
                 )
+                grouped, _ = group_points_by_chiefdom(cov_points, cov_polys())
                 chief_pop, members = cov_chiefdom_population()
+                area_population = chief_pop
                 rows = chiefdom_coverage_rows(chief_pop, counts, cov_crosswalk())
             except Exception as exc:  # e.g. a hand-edited crosswalk
                 st.error(
@@ -3526,9 +3541,27 @@ with tab_coverage:
             counts, unassigned = count_points_by_district(
                 cov_points, cov_polys(), cov_crosswalk()
             )
-            rows = coverage_rows(cov_population(), counts)
+            grouped, _ = group_points_by_district(
+                cov_points, cov_polys(), cov_crosswalk()
+            )
+            area_population = cov_population()
+            rows = coverage_rows(area_population, counts)
     if cov_points and rows is not None:
         stats = coverage_stats(rows)
+        _plan_year = st.number_input(
+            "Plan for year", min_value=CENSUS_YEAR, max_value=2050,
+            value=max(date.today().year, CENSUS_YEAR), step=1, key="cov_year",
+            help="The census is from 2015. A people-per-point figure without "
+                 "a year attached is a wrong number nobody notices.",
+        )
+        _plan_rate = st.number_input(
+            "Annual population growth (%)", min_value=0.0, max_value=10.0,
+            value=round(DEFAULT_GROWTH_RATE * 100, 2), step=0.1,
+            key="cov_rate",
+            help="The default is the rate implied by the 2004 and 2015 census "
+                 "totals. It is higher than recent international projections; "
+                 "use your programme's own figure if you have one.",
+        )
         c1, c2, c3, c4 = st.columns(4)
         c1.metric(f"{unit.title()}s", stats["n_areas"])
         c2.metric(
@@ -3546,6 +3579,76 @@ with tab_coverage:
             f"{stats['national_people_per_point']:,.0f}/pt"
             if stats["national_people_per_point"] is not None else "n/a",
         )
+        # --- planning view -------------------------------------------------
+        # The census is a decade old and the survey behind each point is
+        # older than it looks. Both are made visible rather than folded into
+        # one figure that reads as current.
+        _plan_rows, _projection = planning_rows(
+            area_population, grouped or {},
+            as_of_year=int(_plan_year), rate=_plan_rate / 100.0)
+        _plan_stats = planning_stats(_plan_rows, _projection)
+        st.caption(_projection.note)
+        p1, p2, p3 = st.columns(3)
+        p1.metric(
+            f"Population {int(_plan_year)}",
+            f"{_plan_stats['population']:,.0f}",
+            delta=f"{_plan_stats['population'] - _plan_stats['census_population']:+,.0f}"
+                  " since the census",
+        )
+        p2.metric(
+            f"People per point ({int(_plan_year)})",
+            f"{_plan_stats['national_people_per_point']:,.0f}"
+            if _plan_stats["national_people_per_point"] is not None else "n/a",
+        )
+        p3.metric(
+            "...counting recent surveys only",
+            f"{_plan_stats['national_people_per_recent_point']:,.0f}"
+            if _plan_stats["national_people_per_recent_point"] is not None
+            else "n/a",
+            help="A point reported functional years ago is evidence about "
+                 "then. The gap between these two figures is the size of the "
+                 "assumption in the one on the left.",
+        )
+        if _plan_stats["n_stale_areas"]:
+            st.warning(
+                f"{_plan_stats['n_stale_areas']} {unit}(s) rest on surveys "
+                f"more than {AGEING_YEARS} years old: "
+                + ", ".join(_plan_stats["stale_areas"][:8])
+                + ("..." if _plan_stats["n_stale_areas"] > 8 else "")
+                + ". Their coverage figures describe the year they were "
+                "surveyed, not this one."
+            )
+        if not _plan_stats["n_seasonality_recorded"]:
+            st.info(
+                f"None of these {_plan_stats['n_seasonality_unknown']:,} "
+                "functional points records how many months of the year it "
+                "yields water, so dry-season service cannot be separated from "
+                "wet-season service. Silence is not a year-round supply."
+            )
+        else:
+            st.caption(
+                f"{_plan_stats['n_seasonality_recorded']:,} points record "
+                f"their seasonality and {_plan_stats['n_seasonality_unknown']:,} "
+                "do not; the dry-season column below is a band between "
+                "counting the unrecorded ones and not counting them."
+            )
+        with st.expander("Planning table: freshness and dry-season service"):
+            st.dataframe(
+                [{"Rank": r.rank, unit.title(): r.name,
+                  f"Population {int(_plan_year)}": int(r.population),
+                  "Functional": r.functional_points,
+                  "Recently surveyed": r.recent_functional_points,
+                  "People / point": round(r.people_per_point)
+                  if r.people_per_point is not None else None,
+                  "...recent only": round(r.people_per_recent_point)
+                  if r.people_per_recent_point is not None else None,
+                  "Survey": r.freshness.label,
+                  "Year-round points": r.seasonal.n_year_round,
+                  "Seasonal points": r.seasonal.n_seasonal}
+                 for r in _plan_rows],
+                hide_index=True, width="stretch",
+            )
+
         cov_map = workdir() / "coverage_map.png"
         if chiefdom:
             plot_coverage_choropleth(

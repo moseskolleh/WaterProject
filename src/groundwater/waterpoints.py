@@ -82,6 +82,20 @@ class WaterPoint:
     install_year: int | None
     adm2: str  # district / second admin level, as recorded upstream
     distance_m: float | None = None  # filled in by ``points_within``
+    #: Year the point was last surveyed. A point reported functional in 2016
+    #: is evidence about 2016; whether it still works is a separate question,
+    #: which is why this is carried rather than folded into ``functional``.
+    report_year: int | None = None
+    #: Months of the year the point yields water, where the survey asked.
+    #: ``None`` means nobody recorded it - which is not the same as twelve.
+    months_per_year: int | None = None
+
+    @property
+    def year_round(self) -> bool | None:
+        """Whether it works all year: True, False, or None when unrecorded."""
+        if self.months_per_year is None:
+            return None
+        return self.months_per_year >= 12
 
     @property
     def improved(self) -> bool:
@@ -153,6 +167,44 @@ def _to_int(value) -> int | None:
         return None
 
 
+def _year_of(value) -> int | None:
+    """The year out of a date as WPDx writes it, or ``None``.
+
+    Exports carry ISO timestamps, ``dd/mm/yyyy`` and bare years depending on
+    who assembled them, so the year is taken as the first four-digit number
+    in a plausible range rather than by parsing a format that varies.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return None
+    for match in re.findall(r"\d{4}", text):
+        year = int(match)
+        if 1960 <= year <= 2100:
+            return year
+    return None
+
+
+def _months_per_year(value) -> int | None:
+    """Months of the year a point yields water, or ``None`` when unrecorded.
+
+    ``None`` is deliberately not twelve. Most surveys never asked, and
+    reading silence as a year-round supply is how a dry-season coverage
+    figure ends up matching the wet-season one.
+    """
+    text = str(value or "").strip().lower()
+    if not text:
+        return None
+    if text in ("yes", "year round", "year-round", "all year", "permanent"):
+        return 12
+    if text in ("no", "seasonal"):
+        return None  # says it is seasonal but not for how long
+    match = re.search(r"\d+", text)
+    if not match:
+        return None
+    months = int(match.group(0))
+    return months if 0 <= months <= 12 else None
+
+
 def _functional_from(status_text: str, status_id) -> bool | None:
     """Map WPDx status to functional True / False / None.
 
@@ -207,6 +259,11 @@ def parse_wpdx_records(records: Iterable[dict]) -> list[WaterPoint]:
                                       "water_tech", "technology") or ""),
                 install_year=_to_int(_first(record, "install_year")),
                 adm2=str(_first(record, "clean_adm2", "adm2") or ""),
+                report_year=_year_of(_first(record, "report_date", "date_of_record",
+                                            "survey_date", "created_timestamp")),
+                months_per_year=_months_per_year(
+                    _first(record, "months_year", "#months_year",
+                           "months_of_year", "water_point_seasonality")),
             )
         )
     return points

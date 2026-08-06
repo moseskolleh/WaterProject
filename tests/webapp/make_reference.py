@@ -555,6 +555,55 @@ def build() -> dict:
         _result = _seasonal_yield(_analysis, month=_month, annual_range_m=_band)
         out["seasonal"][_label] = clean(_result.as_dict())
 
+    # Coverage as a planning figure: projection, freshness and the
+    # dry-season band.
+    from groundwater import planning as _planning
+    from groundwater.waterpoints import WaterPoint as _WaterPoint
+
+    def _wp(functional, year, months):
+        return _WaterPoint(
+            row_id="x", lat=8.0, lon=-13.0, functional=functional,
+            status="", source="Borehole", technology="Hand Pump",
+            install_year=None, adm2="", report_year=year,
+            months_per_year=months)
+
+    from groundwater.waterpoints import _months_per_year, _year_of
+
+    out["wpdx_fields"] = [
+        {"date": d, "year": _year_of(d),
+         "months_text": m, "months": _months_per_year(m)}
+        for d, m in (("2019-04-02T00:00:00", "12"), ("02/04/2019", "yes"),
+                     ("2019", "6 months"), ("", ""), ("not a date", "seasonal"),
+                     ("1899-01-01", "14"), ("survey 2024 round 2", "no"))
+    ]
+    out["growth_rate"] = _planning.intercensal_growth_rate()
+    _planning_population = {
+        "Bo": 575478.0, "Kono": 506100.0, "Pujehun": 346461.0,
+        "Falaba": 202566.0, "Western Area Urban": 1055964.0,
+    }
+    _planning_points = {
+        "Bo": [_wp(True, 2024, 12), _wp(True, 2010, None), _wp(False, 2024, 12)],
+        "Kono": [_wp(True, None, None), _wp(True, 2003, 6)],
+        "Pujehun": [_wp(False, 2020, None)],
+        "Western Area Urban": [_wp(True, 2025, 12), _wp(True, 2025, None),
+                               _wp(True, 2019, 4)],
+    }
+    out["planning"] = {}
+    for _label, _year, _rate, _rates in (
+        ("census", 2015, None, None),
+        ("today", 2026, None, None),
+        ("slow", 2026, 0.015, None),
+        ("districts", 2026, None, {"Western Area Urban": 0.06, "Pujehun": 0.01}),
+    ):
+        _rows, _proj = _planning.planning_rows(
+            _planning_population, _planning_points,
+            as_of_year=_year, rate=_rate, rates=_rates)
+        out["planning"][_label] = clean({
+            "projection": _proj.as_dict(),
+            "stats": _planning.planning_stats(_rows, _proj),
+            "rows": [r.as_dict() for r in _rows],
+        })
+
     # Rounding and %g, which the two languages get wrong in different ways.
     out["rounding"] = [
         {"value": v, "digits": d, "rounded": clean(round(v, d))}

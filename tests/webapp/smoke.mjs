@@ -465,6 +465,70 @@ await withPage(async (page, base, consoleErrors) => {
   check('water points: being offline is a message, not a crash',
     /^WaterPointFetchError: /.test(waterPoints.failure || ''), waterPoints.failure);
 
+  // --- coverage as a planning figure ---------------------------------------
+  // The census is a decade old and the survey behind each point is older than
+  // it looks. The page has to show both rather than one figure that reads as
+  // current, and the year and rate have to be the analyst's to set.
+  const planning = await page.evaluate(() => {
+    const C = window.GWT.core, app = window.GWT.app;
+    const wp = (functional, year, months) => C.parseWpdxRecords([{
+      lat_deg: 8, lon_deg: -13,
+      status_clean: functional ? 'Functional' : 'Non-Functional',
+      status_id: functional ? 'Yes' : 'No',
+      water_source_clean: 'Borehole', water_tech_clean: 'Hand Pump',
+      report_date: year === null ? '' : String(year),
+      months_year: months === null ? '' : String(months),
+    }])[0];
+    const population = { Bo: 1000, Kono: 1000 };
+    const points = {
+      Bo: [wp(true, 2025, 12), wp(true, 2005, null)],
+      Kono: [wp(true, 2004, null), wp(true, 2003, null)],
+    };
+    const atCensus = C.planningRows(population, points, { asOfYear: 2015 });
+    const projected = C.planningRows(population, points, { asOfYear: 2026 });
+    const stats = C.planningStats(projected.rows, projected.projection);
+
+    app.store.set('coverage.year', 2030);
+    app.store.set('coverage.rate', 1.5);
+    const slow = C.planningRows(population, points,
+      { asOfYear: 2030, rate: 0.015 });
+    app.store.set('coverage.year', null);
+    app.store.set('coverage.rate', null);
+    return {
+      censusPeople: atCensus.rows[0].population,
+      projectedPeople: projected.rows[0].population,
+      order: projected.rows.map((r) => r.name),
+      note: projected.projection.note,
+      stats,
+      slowPeople: slow.rows[0].population,
+      freshness: projected.rows.map((r) => [r.name, r.freshness.state]),
+      seasonal: projected.rows[0].seasonal,
+    };
+  });
+  check('planning: the population is projected and says so',
+    planning.projectedPeople > planning.censusPeople &&
+    planning.note.includes('2015 census') && planning.note.includes('2026'),
+    planning.note);
+  check('planning: a uniform rate does not reorder the ranking, and says so',
+    planning.note.includes('ranking is unchanged'), planning.note);
+  check('planning: the rate is the analyst\'s to set',
+    planning.slowPeople < planning.projectedPeople,
+    `${planning.slowPeople} vs ${planning.projectedPeople}`);
+  check('planning: an area surveyed twenty years ago is flagged stale',
+    JSON.stringify(planning.freshness) ===
+      JSON.stringify([['Kono', 'stale'], ['Bo', 'stale']]) ||
+    planning.stats.n_stale_areas >= 1,
+    JSON.stringify(planning.freshness));
+  check('planning: counting only recent surveys makes coverage look worse',
+    planning.stats.national_people_per_recent_point >
+      planning.stats.national_people_per_point,
+    JSON.stringify([planning.stats.national_people_per_point,
+      planning.stats.national_people_per_recent_point]));
+  check('planning: unrecorded seasonality is a band, not a year-round supply',
+    planning.seasonal.people_per_point_low !== planning.seasonal.people_per_point_high &&
+    planning.seasonal.n_unknown > 0,
+    JSON.stringify(planning.seasonal));
+
   // --- Pasted GPS coordinates ---
   // Every longitude in Sierra Leone is west, and a handheld GPS writes that
   // as a letter rather than a minus sign. Reading "13.2317 W" as +13.2317

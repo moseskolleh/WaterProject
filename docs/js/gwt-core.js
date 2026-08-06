@@ -5728,6 +5728,30 @@
     return { counts: counts, unassigned: unassigned };
   }
 
+  /* The points themselves rather than a tally: the counts are enough to
+   * divide a population by, but not enough to say when they were surveyed or
+   * whether they last the dry season. */
+  function groupPointsByDistrict(points, polys, chiefdomDistrict) {
+    var grouped = {}, unassigned = [];
+    points.forEach(function (wp) {
+      var chiefdom = chiefdomOfPoint(wp.lat, wp.lon, polys);
+      var district = chiefdom ? chiefdomDistrict[chiefdom] : '';
+      if (!district) { unassigned.push(wp); return; }
+      (grouped[district] || (grouped[district] = [])).push(wp);
+    });
+    return { grouped: grouped, unassigned: unassigned };
+  }
+
+  function groupPointsByChiefdom(points, polys) {
+    var grouped = {}, unassigned = [];
+    points.forEach(function (wp) {
+      var chiefdom = chiefdomOfPoint(wp.lat, wp.lon, polys);
+      if (!chiefdom) { unassigned.push(wp); return; }
+      (grouped[chiefdom] || (grouped[chiefdom] = [])).push(wp);
+    });
+    return { grouped: grouped, unassigned: unassigned };
+  }
+
   /* Ranking is worst-first: areas with no functional source mapped rank at the
    * very top - unmet need is effectively infinite there - then the rest by
    * descending people-per-functional-point, with population breaking ties. */
@@ -5855,6 +5879,36 @@
     return false;
   }
 
+  /* The year out of a date as WPDx writes it. Exports carry ISO timestamps,
+   * dd/mm/yyyy and bare years depending on who assembled them, so the year is
+   * the first four-digit number in a plausible range rather than a format. */
+  function wpYearOf(value) {
+    var text = String(value === null || value === undefined ? '' : value).trim();
+    if (!text) return null;
+    var found = text.match(/\d{4}/g) || [];
+    for (var i = 0; i < found.length; i++) {
+      var year = Number(found[i]);
+      if (year >= 1960 && year <= 2100) return year;
+    }
+    return null;
+  }
+
+  /* Months of the year a point yields water. null is deliberately not twelve:
+   * most surveys never asked, and reading silence as a year-round supply is
+   * how a dry-season coverage figure ends up matching the wet-season one. */
+  function wpMonthsPerYear(value) {
+    var text = String(value === null || value === undefined ? '' : value)
+      .trim().toLowerCase();
+    if (!text) return null;
+    if (['yes', 'year round', 'year-round', 'all year', 'permanent']
+      .indexOf(text) >= 0) return 12;
+    if (text === 'no' || text === 'seasonal') return null;
+    var match = /\d+/.exec(text);
+    if (!match) return null;
+    var months = Number(match[0]);
+    return months >= 0 && months <= 12 ? months : null;
+  }
+
   function parseWpdxRecords(records) {
     var out = [];
     (records || []).forEach(function (record) {
@@ -5881,6 +5935,13 @@
         functional: functionalFrom(statusText, statusId),
         improved: improvedSource(source, technology),
         installed: isFinite(year) && year ? Math.round(year) : null,
+        /* when it was last surveyed, and how much of the year it yields
+         * water. A point reported functional in 2016 is evidence about 2016,
+         * and a null month count is not twelve. */
+        report_year: wpYearOf(wpFirst(record, ['report_date', 'date_of_record',
+          'survey_date', 'created_timestamp'])),
+        months_per_year: wpMonthsPerYear(wpFirst(record, ['months_year',
+          '#months_year', 'months_of_year', 'water_point_seasonality'])),
         adm2: String(wpFirst(record, ['clean_adm2', 'adm2']) || ''),
         name: String(wpFirst(record, ['water_source_description', 'source_name',
           'clean_adm4', 'clean_adm3']) || ''),
@@ -6093,6 +6154,8 @@
     chiefdomPopulation: chiefdomPopulation,
     countPointsByChiefdom: countPointsByChiefdom,
     countPointsByDistrict: countPointsByDistrict,
+    groupPointsByDistrict: groupPointsByDistrict,
+    groupPointsByChiefdom: groupPointsByChiefdom,
     coverageRows: coverageRows, chiefdomCoverageRows: chiefdomCoverageRows,
     coverageStats: coverageStats,
     parseWpdxRecords: parseWpdxRecords, pointsWithin: pointsWithin,
@@ -9604,6 +9667,240 @@
     SEASONAL_SCENARIOS: SEASONAL_SCENARIOS,
     monthOf: monthOf, seasonOf: seasonOf, seasonalYield: seasonalYield,
     seasonalScenario: seasonalScenario
+  });
+
+
+
+  /* ===================================================================
+   * Coverage as a planning figure - a port of groundwater/planning.py
+   *
+   * The census is from 2015 and the survey behind each water point is older
+   * than it looks, so both halves of "people per functional point" are
+   * staler than the phrase suggests. Nothing here hides that: the
+   * projection states its year and rate, freshness is measured and
+   * reported, and dry-season service is a band rather than a number,
+   * because most surveys never asked and silence is not a year-round
+   * supply.
+   * =================================================================== */
+
+  var CENSUS_YEAR = 2015;
+  var CENSUS_TOTAL = 7092113;
+  var PREVIOUS_CENSUS_YEAR = 2004;
+  var PREVIOUS_CENSUS_TOTAL = 4976871;
+
+  /* Derived rather than quoted, so it can be checked against two published
+   * totals. It is higher than recent international projections - the 2004
+   * count followed the civil war - so a programme with its own figure
+   * should use it instead. */
+  function intercensalGrowthRate() {
+    return Math.pow(CENSUS_TOTAL / PREVIOUS_CENSUS_TOTAL,
+      1 / (CENSUS_YEAR - PREVIOUS_CENSUS_YEAR)) - 1;
+  }
+
+  var DEFAULT_GROWTH_RATE = intercensalGrowthRate();
+
+  var FRESH_YEARS = 3, AGEING_YEARS = 7;
+  var FRESHNESS_LABELS = {
+    fresh: 'Surveyed recently', ageing: 'Survey is getting old',
+    stale: 'Survey is out of date', unknown: 'Survey dates not recorded'
+  };
+
+  function projectionNote(projection) {
+    if (projection.target_year === projection.base_year) {
+      return 'Populations are the ' + projection.base_year +
+        ' census figures, not projected.';
+    }
+    var text = 'Populations are projected from the ' + projection.base_year +
+      ' census to ' + projection.target_year + ' at ' +
+      pyFixed(projection.rate * 100, 2) + '% a year, a factor of ' +
+      pyFixed(projection.factor, 3) + '.';
+    if (projection.uniform) {
+      text += ' The same rate is applied to every district, so the ranking ' +
+        'is unchanged by the projection - only the magnitudes move. District ' +
+        'rates would change it, and an urban district does not grow at the ' +
+        'rural rate.';
+    }
+    return text;
+  }
+
+  /* options: {rate, rates} */
+  function projectPopulation(population, toYear, options) {
+    var opts = options || {};
+    var national = (opts.rate === undefined || opts.rate === null)
+      ? DEFAULT_GROWTH_RATE : Number(opts.rate);
+    var years = Number(toYear) - CENSUS_YEAR;
+    if (years < 0) {
+      throw new Error(toYear + ' is before the ' + CENSUS_YEAR + ' census; ' +
+        'this projects forward, it does not reconstruct the past');
+    }
+    var perArea = {};
+    Object.keys(opts.rates || {}).forEach(function (key) {
+      perArea[String(key).trim().toLowerCase()] = Number(opts.rates[key]);
+    });
+    var projected = {};
+    Object.keys(population).forEach(function (name) {
+      var key = String(name).trim().toLowerCase();
+      var rate = own(perArea, key) ? perArea[key] : national;
+      projected[name] = Number(population[name]) * Math.pow(1 + rate, years);
+    });
+    var projection = {
+      base_year: CENSUS_YEAR, target_year: Number(toYear), rate: national,
+      uniform: Object.keys(perArea).length === 0,
+      factor: Math.pow(1 + national, years)
+    };
+    projection.note = projectionNote(projection);
+    return { projected: projected, projection: projection };
+  }
+
+  function pointFreshness(points, asOfYear) {
+    var list = points || [];
+    var years = list.map(function (p) { return p.report_year; })
+      .filter(function (y) { return y; }).sort(function (a, b) { return a - b; });
+    if (!years.length) {
+      var blank = { n_points: list.length, n_dated: 0, latest_year: null,
+        median_age_years: null, n_recent: 0, state: 'unknown' };
+      blank.label = FRESHNESS_LABELS.unknown;
+      blank.detail = 'No survey dates are recorded for these points, so how ' +
+        'current this coverage figure is cannot be established.';
+      return blank;
+    }
+    var ages = years.map(function (y) { return asOfYear - y; });
+    var middle = Math.floor(ages.length / 2);
+    var median = ages.length % 2
+      ? ages[middle] : (ages[middle - 1] + ages[middle]) / 2;
+    var recent = ages.filter(function (a) { return a <= FRESH_YEARS; }).length;
+    var state = median <= FRESH_YEARS ? 'fresh'
+      : (median <= AGEING_YEARS ? 'ageing' : 'stale');
+    var latest = years[years.length - 1];
+    return {
+      n_points: list.length, n_dated: years.length, latest_year: latest,
+      median_age_years: median, n_recent: recent, state: state,
+      label: FRESHNESS_LABELS[state],
+      detail: years.length + ' of ' + list.length + ' points carry a survey ' +
+        'date; the most recent is ' + latest + ' and the median is ' +
+        pyFixed(median, 0) + ' years old. ' + recent + ' were surveyed in the ' +
+        'last ' + FRESH_YEARS + ' years.'
+    };
+  }
+
+  /* A band, not a number: low counts only the points a survey confirmed work
+   * all year, high also counts the ones nobody asked about. */
+  function seasonalCoverage(points, population) {
+    var functional = (points || []).filter(function (p) { return p.functional; });
+    var yearRound = 0, seasonal = 0;
+    functional.forEach(function (p) {
+      if (p.months_per_year === null || p.months_per_year === undefined) return;
+      if (p.months_per_year >= 12) yearRound += 1; else seasonal += 1;
+    });
+    var unknown = functional.length - yearRound - seasonal;
+    var known = yearRound + seasonal;
+    var total = functional.length;
+    var detail;
+    if (!total) {
+      detail = 'There are no functional points here to ask about.';
+    } else if (!known) {
+      detail = 'No survey recorded how many months of the year these points ' +
+        'yield water, so dry-season service cannot be separated from ' +
+        'wet-season service. Silence is not a year-round supply.';
+    } else {
+      detail = yearRound + ' of ' + total + ' functional points are recorded ' +
+        'as working all year and ' + seasonal + ' as seasonal' +
+        (unknown ? '; ' + unknown + ' were never asked' : '') + '.';
+    }
+    return {
+      n_year_round: yearRound, n_seasonal: seasonal, n_unknown: unknown,
+      people_per_point_low: yearRound ? population / yearRound : null,
+      people_per_point_high: (yearRound + unknown)
+        ? population / (yearRound + unknown) : null,
+      is_established: known > 0 && known >= (known + unknown) * 0.5,
+      detail: detail
+    };
+  }
+
+  function stalenessGapPercent(row) {
+    if (!row.people_per_point || row.people_per_recent_point === null) return null;
+    return (row.people_per_recent_point / row.people_per_point - 1) * 100;
+  }
+
+  /* options: {asOfYear, rate, rates} */
+  function planningRows(population, pointsByArea, options) {
+    var opts = options || {};
+    var asOfYear = Number(opts.asOfYear);
+    var out = projectPopulation(population, asOfYear,
+      { rate: opts.rate, rates: opts.rates });
+    var rows = Object.keys(population).map(function (name) {
+      var points = (pointsByArea || {})[name] || [];
+      var people = out.projected[name];
+      var functional = points.filter(function (p) { return p.functional; });
+      var recent = functional.filter(function (p) {
+        return p.report_year && asOfYear - p.report_year <= AGEING_YEARS;
+      });
+      var row = {
+        name: name, census_population: Number(population[name]),
+        population: people, water_points: points.length,
+        functional_points: functional.length,
+        people_per_point: functional.length ? people / functional.length : null,
+        recent_functional_points: recent.length,
+        people_per_recent_point: recent.length ? people / recent.length : null,
+        freshness: pointFreshness(points, asOfYear),
+        seasonal: seasonalCoverage(points, people),
+        rank: 0
+      };
+      row.staleness_gap_percent = stalenessGapPercent(row);
+      return row;
+    });
+    rankCoverage(rows);
+    return { rows: rows, projection: out.projection };
+  }
+
+  function planningStats(rows, projection) {
+    var list = rows || [];
+    var served = list.filter(function (r) { return r.people_per_point !== null; });
+    var worst = null;
+    served.forEach(function (r) {
+      if (!worst || r.people_per_point > worst.people_per_point) worst = r;
+    });
+    function total(key) {
+      return list.reduce(function (a, r) { return a + r[key]; }, 0);
+    }
+    var people = total('population');
+    var functional = total('functional_points');
+    var recent = total('recent_functional_points');
+    var stale = list.filter(function (r) { return r.freshness.state === 'stale'; });
+    return {
+      n_areas: list.length,
+      as_of_year: projection.target_year,
+      projection_note: projection.note,
+      population: people,
+      census_population: total('census_population'),
+      worst_area: list.length ? list[0].name : null,
+      worst_people_per_point: list.length ? list[0].people_per_point : null,
+      worst_served_area: worst ? worst.name : null,
+      worst_served_people_per_point: worst ? worst.people_per_point : null,
+      n_no_source: list.filter(function (r) {
+        return r.functional_points === 0;
+      }).length,
+      national_people_per_point: functional ? people / functional : null,
+      national_people_per_recent_point: recent ? people / recent : null,
+      n_stale_areas: stale.length,
+      stale_areas: stale.map(function (r) { return r.name; }),
+      n_seasonality_recorded: list.reduce(function (a, r) {
+        return a + r.seasonal.n_year_round + r.seasonal.n_seasonal;
+      }, 0),
+      n_seasonality_unknown: list.reduce(function (a, r) {
+        return a + r.seasonal.n_unknown;
+      }, 0)
+    };
+  }
+
+  Object.assign(C, {
+    CENSUS_YEAR: CENSUS_YEAR, DEFAULT_GROWTH_RATE: DEFAULT_GROWTH_RATE,
+    FRESH_YEARS: FRESH_YEARS, AGEING_YEARS: AGEING_YEARS,
+    FRESHNESS_LABELS: FRESHNESS_LABELS,
+    intercensalGrowthRate: intercensalGrowthRate,
+    projectPopulation: projectPopulation, pointFreshness: pointFreshness,
+    seasonalCoverage: seasonalCoverage, planningRows: planningRows,
+    planningStats: planningStats
   });
 
 

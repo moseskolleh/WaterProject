@@ -3360,9 +3360,12 @@
     var chiefdomDistrict = C.loadChiefdomDistrict();
     var rows, features, valueFor, nameFor, title;
 
+    var areaPopulation, grouped;
     if (level === 'district') {
       var counted = C.countPointsByDistrict(points, polys, chiefdomDistrict);
-      rows = C.coverageRows(C.loadDistrictPopulation(), counted.counts);
+      areaPopulation = C.loadDistrictPopulation();
+      grouped = C.groupPointsByDistrict(points, polys, chiefdomDistrict).grouped;
+      rows = C.coverageRows(areaPopulation, counted.counts);
       var byDistrict = {};
       rows.forEach(function (r) { byDistrict[r.name] = r.people_per_point; });
       features = (GWT.data.geo.chiefdomBoundaries || {}).features || [];
@@ -3377,6 +3380,8 @@
     } else {
       var pop = C.chiefdomPopulation();
       var counts = C.countPointsByChiefdom(points, polys);
+      areaPopulation = pop.population;
+      grouped = C.groupPointsByChiefdom(points, polys).grouped;
       rows = C.chiefdomCoverageRows(pop.population, counts.counts, chiefdomDistrict);
       var byChiefdom = {};
       rows.forEach(function (r) { byChiefdom[r.name] = r.people_per_point; });
@@ -3410,6 +3415,8 @@
       el('p.muted', C.POPULATION_CREDIT + ' ' + C.WPDX_CREDIT),
     ]));
 
+    nodes.push(planningCard(areaPopulation, grouped, level));
+
     nodes.push(card('Ranked need', [
       S.table([
         { key: 'rank', label: 'Rank', align: 'right' },
@@ -3432,6 +3439,102 @@
     ]));
     return nodes;
   };
+
+  /* The census is a decade old and the survey behind each point is older
+   * than it looks. Both halves of "people per functional point" are staler
+   * than the phrase suggests, so both are made visible here rather than
+   * folded into a figure that reads as current. */
+  function planningCard(population, grouped, level) {
+    var thisYear = new Date().getFullYear();
+    var year = Math.max(store.get('coverage.year', thisYear), C.CENSUS_YEAR);
+    var ratePercent = store.get('coverage.rate',
+      Math.round(C.DEFAULT_GROWTH_RATE * 10000) / 100);
+    var out = C.planningRows(population, grouped || {},
+      { asOfYear: year, rate: ratePercent / 100 });
+    var stats = C.planningStats(out.rows, out.projection);
+    var unit = level === 'district' ? 'district' : 'chiefdom';
+
+    var nodes = [
+      el('div.field-row', [
+        field('Plan for year', S.numberInput(year, function (v) {
+          store.set('coverage.year', Math.max(Number(v) || thisYear,
+            C.CENSUS_YEAR));
+          render();
+        }, { min: C.CENSUS_YEAR, max: 2050, step: 1 }),
+        'A people-per-point figure without a year attached is a wrong ' +
+        'number nobody notices'),
+        field('Annual population growth (%)',
+          S.numberInput(ratePercent, function (v) {
+            store.set('coverage.rate', v === null || v === undefined
+              ? Math.round(C.DEFAULT_GROWTH_RATE * 10000) / 100 : Number(v));
+            render();
+          }, { min: 0, max: 10, step: 0.1 }),
+        'The default is the rate implied by the 2004 and 2015 census totals'),
+      ]),
+      el('p.muted', out.projection.note),
+      S.statRow([
+        S.stat('Population ' + year, S.thousands(Math.round(stats.population)),
+          '+' + S.thousands(Math.round(stats.population -
+            stats.census_population)) + ' since the census'),
+        S.stat('People per point', stats.national_people_per_point
+          ? S.thousands(Math.round(stats.national_people_per_point)) : '—',
+        'over every functional point'),
+        S.stat('...recent surveys only', stats.national_people_per_recent_point
+          ? S.thousands(Math.round(stats.national_people_per_recent_point)) : '—',
+        'the gap is the size of the assumption'),
+      ]),
+    ];
+    if (stats.n_stale_areas) {
+      nodes.push(el('div.callout.callout-warn', el('p',
+        stats.n_stale_areas + ' ' + unit + '(s) rest on surveys more than ' +
+        C.AGEING_YEARS + ' years old: ' +
+        stats.stale_areas.slice(0, 8).join(', ') +
+        (stats.n_stale_areas > 8 ? '…' : '') + '. Their coverage figures ' +
+        'describe the year they were surveyed, not this one.')));
+    }
+    if (!stats.n_seasonality_recorded) {
+      nodes.push(el('div.callout', el('p', 'None of these ' +
+        S.thousands(stats.n_seasonality_unknown) + ' functional points ' +
+        'records how many months of the year it yields water, so dry-season ' +
+        'service cannot be separated from wet-season service. Silence is not ' +
+        'a year-round supply.')));
+    } else {
+      nodes.push(el('p.muted', S.thousands(stats.n_seasonality_recorded) +
+        ' points record their seasonality and ' +
+        S.thousands(stats.n_seasonality_unknown) + ' do not, so the ' +
+        'dry-season columns below are a band between counting the ' +
+        'unrecorded ones and not counting them.'));
+    }
+    nodes.push(S.table([
+      { key: 'rank', label: 'Rank', align: 'right' },
+      { key: 'name', label: level === 'district' ? 'District' : 'Chiefdom' },
+      { key: 'population', label: 'Population ' + year, align: 'right',
+        format: function (v) { return S.thousands(Math.round(v)); } },
+      { key: 'functional_points', label: 'Functional', align: 'right' },
+      { key: 'recent_functional_points', label: 'Surveyed lately',
+        align: 'right' },
+      { key: 'people_per_point', label: 'People per point', align: 'right',
+        format: function (v) {
+          return v === null ? 'no functional source' : S.thousands(Math.round(v));
+        } },
+      { key: 'people_per_recent_point', label: '…recent only', align: 'right',
+        format: function (v) {
+          return v === null ? '—' : S.thousands(Math.round(v));
+        } },
+      { key: 'freshness', label: 'Survey',
+        format: function (v) { return v.label; } },
+      { key: 'seasonal', label: 'Year-round / seasonal',
+        format: function (v) {
+          return v.n_year_round + ' / ' + v.n_seasonal +
+            (v.n_unknown ? ' (' + v.n_unknown + ' unasked)' : '');
+        } },
+    ], out.rows.slice(0, 60), {
+      rowClass: function (row) {
+        return row.freshness.state === 'stale' ? 'row-warn' : '';
+      },
+    }));
+    return card('Planning view: how current is this?', nodes);
+  }
 
   /* --- portfolio ------------------------------------------------------------ */
 
