@@ -278,6 +278,9 @@
     render();
     $('#app-nav').classList.remove('open');
     $('#main').focus({ preventScroll: true });
+    /* the main pane is the scroll container on a wide screen and the page is
+     * on a narrow one, so both are sent back to the top */
+    $('#main').scrollTo({ top: 0, behavior: 'smooth' });
     global.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -453,6 +456,26 @@
     }
   }
 
+  /* The rate catalogue with the analyst's edits applied. Used by the Costing
+   * page and by the Depth Spine, which signs off the number it shows. */
+  function costingRates() {
+    var overrides = store.get('costing.rateOverrides') || {};
+    return C.loadRates().map(function (rate) {
+      var override = overrides[rate.code];
+      return override === undefined || override === null || override === ''
+        ? rate : Object.assign({}, rate, { unit_cost_usd: Number(override) });
+    });
+  }
+
+  function costingOptions() {
+    var costing = store.get('costing');
+    return {
+      overheadsPercent: costing.overheads, marginPercent: costing.margin,
+      contingencyPercent: costing.contingency, vatPercent: costing.vat,
+      exchangeRate: costing.exchange,
+    };
+  }
+
   function rebuildCosting() {
     derived.estimate = null; derived.programme = null;
     var costing = store.get('costing');
@@ -473,25 +496,15 @@
     inputs.wq_samples = costing.wq_samples;
     inputs.handpumps = costing.handpumps;
 
-    var rates = C.loadRates().map(function (rate) {
-      var override = (costing.rateOverrides || {})[rate.code];
-      return override === undefined || override === null || override === ''
-        ? rate : Object.assign({}, rate, { unit_cost_usd: Number(override) });
-    });
+    var rates = costingRates();
     try {
-      derived.estimate = C.estimateBoreholeCost(inputs, rates, {
-        overheadsPercent: costing.overheads, marginPercent: costing.margin,
-        contingencyPercent: costing.contingency, vatPercent: costing.vat,
-        exchangeRate: costing.exchange,
-      });
+      derived.estimate = C.estimateBoreholeCost(inputs, rates, costingOptions());
       if (costing.programme_n > 1) {
-        derived.programme = C.estimateProgrammeCost(inputs, costing.programme_n, {
-          rates: rates, successRatePercent: costing.success_rate,
-          interSiteDistanceKm: costing.inter_site_km,
-          overheadsPercent: costing.overheads, marginPercent: costing.margin,
-          contingencyPercent: costing.contingency, vatPercent: costing.vat,
-          exchangeRate: costing.exchange,
-        });
+        derived.programme = C.estimateProgrammeCost(inputs, costing.programme_n,
+          Object.assign({
+            rates: rates, successRatePercent: costing.success_rate,
+            interSiteDistanceKm: costing.inter_site_km,
+          }, costingOptions()));
       }
     } catch (e) {
       S.toast('Cost estimate: ' + e.message, 'warn');
@@ -1685,9 +1698,17 @@
       S.editableTable([
         { key: 'top', label: 'Top (m)', type: 'number' },
         { key: 'bottom', label: 'Bottom (m)', type: 'number' },
-      ], (custom.screens || design.screens.map(function (s) {
-        return { top: s.top_m, bottom: s.bottom_m };
-      })), function (rows) {
+      ], (custom.screens
+        /* the store holds [top, bottom] pairs, which is what the engine and
+         * the Depth Spine both write; the table reads named columns, and
+         * feeding it the raw pairs rendered every edited screen blank and
+         * then wiped it on the next keystroke */
+        ? custom.screens.map(function (pair) {
+          return { top: pair[0], bottom: pair[1] };
+        })
+        : design.screens.map(function (s) {
+          return { top: s.top_m, bottom: s.bottom_m };
+        })), function (rows) {
         var screens = rows.filter(function (r) {
           return S.isNum(r.top) && S.isNum(r.bottom) && r.bottom > r.top;
         }).map(function (r) { return [r.top, r.bottom]; });
@@ -1939,6 +1960,14 @@
         log: derived.log, analysis: derived.analysis,
         assessment: derived.assessment, config: config(),
         mobilisationDistanceKm: store.get('costing.mobilisation_km') || 0,
+        /* the same rates and percentages the Costing page uses: the spine's
+         * price is the one a named person signs */
+        costing: Object.assign({
+          rates: costingRates(),
+          wqSamples: store.get('costing.wq_samples'),
+          handpumps: store.get('costing.handpumps'),
+          overburdenM: overburdenFromData(),
+        }, costingOptions()),
       }, store.get('design.screens'));
     } catch (e) {
       return [head, el('div.callout.callout-bad', [
@@ -2413,6 +2442,7 @@
     ]));
 
     nodes.push(seasonalCard(derived.analysis));
+    nodes.push(photoCard('pumping', 'Pumping test photographs'));
     nodes.push(reportCard('Pumping test report', 'pumping',
       'Test details, the full field data tables, each analysis method with its ' +
       'figure, the results summary and the yield recommendation.'));
@@ -3129,25 +3159,39 @@
           { key: 'remark', label: 'Remark' },
         ], stageItems.map(function (item) {
           var response = responses[item.item_id] || {};
+          /* Read the other half of the response back out of the store rather
+           * than out of this closure. The remark field does not re-render on
+           * every keystroke, so the captured `response` is stale the moment
+           * anything has been typed - and writing it back discarded whatever
+           * the supervisor had just written. */
+          function update(patch) {
+            var current = store.get('supervision.responses.' + item.item_id) || {};
+            store.set('supervision.responses.' + item.item_id, {
+              item_id: item.item_id,
+              status: patch.status !== undefined ? patch.status
+                : (current.status || 'pending'),
+              remark: patch.remark !== undefined ? patch.remark
+                : (current.remark || ''),
+            });
+          }
           return {
             section: item.section, text: item.text, critical: item.critical,
+            status: response.status || 'pending',
             answer: S.selectInput(response.status || 'pending',
               [{ value: 'pending', label: '—' }, { value: 'yes', label: 'Yes' },
                { value: 'no', label: 'No' }, { value: 'na', label: 'N/A' }],
               function (value) {
-                store.set('supervision.responses.' + item.item_id,
-                  { item_id: item.item_id, status: value, remark: response.remark || '' });
+                update({ status: value });
                 render();
               }, { class: 'input cell', style: { maxWidth: '6rem' } }),
             remark: S.textInput(response.remark || '', function (value) {
-              store.set('supervision.responses.' + item.item_id,
-                { item_id: item.item_id, status: response.status || 'pending', remark: value });
+              update({ remark: value });
             }, { class: 'input cell' }),
           };
         }), {
+          /* a failed item is the reason the page exists, so it is marked */
           rowClass: function (row) {
-            var r = responses[stageItems[0] ? '' : ''] || {};
-            return '';
+            return row.status === 'no' ? 'row-bad' : '';
           },
         }),
       ]));
@@ -3214,6 +3258,22 @@
         { key: 'min_distance_m', label: 'Minimum distance (m)', align: 'right' },
         { key: 'note', label: 'Note' },
       ], C.loadSeparationDistances()),
+    ]));
+
+    nodes.push(card('Site notes and instructions', [
+      el('p.muted', 'What was said on site: an instruction to the driller, a ' +
+        'deviation agreed, a delay and its reason. Each line is printed in ' +
+        'the supervision record under its own heading, which is the only ' +
+        'place the written instruction survives the job.'),
+      S.editableTable([
+        { key: 'note', label: 'Note' },
+      ], (store.get('supervision.notes') || []).map(function (note) {
+        return { note: note };
+      }), function (rows) {
+        store.set('supervision.notes', rows
+          .map(function (r) { return String(r.note || '').trim(); })
+          .filter(Boolean));
+      }, { addLabel: '+ Add a note' }),
     ]));
 
     nodes.push(photoCard('supervision', 'Supervision photographs'));
@@ -5000,6 +5060,11 @@
           context.notes = store.get('supervision.notes') || [];
           context.boreholeRef = (derived.log && derived.log.borehole_ref) ||
             (derived.test && derived.test.borehole_ref) || '';
+          GWT.imageSlot.collect(store.get('photos.supervision'), 'supervision')
+            .forEach(function (photo) {
+              figures.push({ image: photo, caption: photo.caption, widthCm: 13 });
+            });
+          context.figures = figures;
           builder = await docx.supervisionReport(context);
 
         } else if (kind === 'handover') {

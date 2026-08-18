@@ -7420,9 +7420,29 @@
       screensM: screensM && screensM.length ? screensM : null,
     });
 
-    var estimate = estimateBoreholeCost(inputsFromDesign(design, {
+    /* The spine's price is signed off by a named person, so it has to be the
+     * price the Costing page shows. That means the rates the analyst edited
+     * and the overheads, margin, contingency, VAT and exchange rate they set
+     * - not the catalogue defaults. Only the quantities differ, and they
+     * differ because the screens on the section moved. */
+    var money = inputs.costing || {};
+    var costInputs = inputsFromDesign(design, {
       mobilisationDistanceKm: inputs.mobilisationDistanceKm || 0.0,
-    }));
+      overburdenM: money.overburdenM,
+    });
+    if (money.wqSamples !== undefined && money.wqSamples !== null) {
+      costInputs.wq_samples = money.wqSamples;
+    }
+    if (money.handpumps !== undefined && money.handpumps !== null) {
+      costInputs.handpumps = money.handpumps;
+    }
+    var estimate = estimateBoreholeCost(costInputs, money.rates || null, {
+      overheadsPercent: money.overheadsPercent,
+      marginPercent: money.marginPercent,
+      contingencyPercent: money.contingencyPercent,
+      vatPercent: money.vatPercent,
+      exchangeRate: money.exchangeRate,
+    });
 
     var site = log.site || {};
     var latlon = null;

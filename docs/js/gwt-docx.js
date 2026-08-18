@@ -1442,6 +1442,16 @@
       });
     }
 
+    /* the supervisor's photographs: taken to be evidence, so they belong in
+     * the record rather than in the project file alone */
+    var figures = context.figures || [];
+    if (figures.length) {
+      b.heading('3.1 Photographic record', 2);
+      figures.forEach(function (f) {
+        b.figure(f.image, f.caption, f.widthCm || 13);
+      });
+    }
+
     b.heading('4. Sign Off', 1);
     b.signatures(['Supervisor', 'Drilling contractor', 'Client representative']);
     b.references([REFERENCES.rwsn_supervision, REFERENCES.unicef_toolkit]);
