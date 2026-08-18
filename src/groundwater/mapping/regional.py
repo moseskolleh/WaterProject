@@ -274,6 +274,67 @@ def _site_lonlat(site: SiteMetadata) -> tuple[float, float] | None:
     return lon, lat
 
 
+@dataclass
+class AreaWindow:
+    """Where to centre a local map, and how wide to make it.
+
+    A site with a GPS fix gives a point. A site with only a chiefdom or a
+    district recorded still gives an area, and an area is what most of
+    these maps are actually asked for: the reader wants to know where in
+    the country this is and what the ground is like around it. Only a
+    project with neither falls back to the national extent.
+    """
+
+    lon: float
+    lat: float
+    radius_km: float
+    label: str
+    #: True when the centre is a real GPS fix rather than an area centroid
+    exact: bool = True
+
+
+def _ring_span_km(rings: list[np.ndarray]) -> float:
+    pts = np.concatenate(rings)
+    lat = float(np.mean(pts[:, 1]))
+    dlat = float(pts[:, 1].max() - pts[:, 1].min()) * 111.32
+    dlon = (float(pts[:, 0].max() - pts[:, 0].min()) * 111.32
+            * math.cos(math.radians(lat)))
+    return max(dlat, dlon) / 2.0
+
+
+def area_window(
+    site: SiteMetadata | None,
+    radius_km: float | None = None,
+    admin_path: str | Path | None = None,
+    chiefdom_path: str | Path | None = None,
+) -> AreaWindow | None:
+    """The window a local map of this site should cover, if there is one."""
+    if site is None:
+        return None
+    lonlat = _site_lonlat(site)
+    if lonlat is not None:
+        return AreaWindow(lonlat[0], lonlat[1], radius_km or 40.0,
+                          site.community or "the site", True)
+    name = (site.chiefdom or "").strip().lower()
+    if name:
+        for area in load_chiefdoms(chiefdom_path):
+            if area.name.strip().lower() == name:
+                lon, lat = area.label_point
+                return AreaWindow(lon, lat,
+                                  max(_ring_span_km(area.rings) * 1.35, 12.0),
+                                  f"{area.name} chiefdom", False)
+    name = (site.district or "").strip().lower()
+    if name:
+        _, districts = load_admin(admin_path)
+        for area in districts:
+            if area.name.strip().lower() == name:
+                lon, lat = area.label_point
+                return AreaWindow(lon, lat,
+                                  max(_ring_span_km(area.rings) * 1.2, 20.0),
+                                  f"{area.name} district", False)
+    return None
+
+
 def _mask_outside_country(ax, outline: AdminArea, style: HouseStyle) -> None:
     """White out everything beyond the national boundary.
 
@@ -397,11 +458,12 @@ def _plot_units_map(
             )
             legend_order.setdefault(label, (era_rank, unit.glg))
 
-        site_lonlat = _mark_site(ax, site, "#C1272D") if site else None
-        if radius_km and site_lonlat is not None:
-            lon, lat = site_lonlat
-            dlat = radius_km / 111.32
-            dlon = radius_km / (111.32 * math.cos(math.radians(lat)))
+        _mark_site(ax, site, "#C1272D") if site else None
+        window = area_window(site, radius_km, admin_path) if radius_km else None
+        if window is not None:
+            lon, lat = window.lon, window.lat
+            dlat = window.radius_km / 111.32
+            dlon = window.radius_km / (111.32 * math.cos(math.radians(lat)))
             ax.set_xlim(lon - dlon, lon + dlon)
             ax.set_ylim(lat - dlat, lat + dlat)
         else:
@@ -426,12 +488,15 @@ def _plot_units_map(
             title=textwrap.fill(legend_title, 24), title_fontsize=7.5,
         )
         if title is None:
-            where = (site.community or "the site") if site else "Sierra Leone"
-            scope = (
-                f"Local {scope_word.lower()} setting" if radius_km
-                else f"{scope_word} map"
-            )
-            title = f"{scope} - {where}" if site else f"{scope} of Sierra Leone"
+            if window is not None:
+                scope = f"Local {scope_word.lower()} setting"
+                title = f"{scope} - {window.label}"
+                if not window.exact:
+                    title += " (no site position recorded)"
+            elif site is not None and (site.community or ""):
+                title = f"{scope_word} map - {site.community}"
+            else:
+                title = f"{scope_word} map of Sierra Leone"
         ax.set_title(title)
         fig.tight_layout()
         if path is not None:

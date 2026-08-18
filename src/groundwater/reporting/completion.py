@@ -29,6 +29,7 @@ from ..quality.assess import (
 from ..utils import fmt_num, safe_slug
 from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
+from .context import add_area_section
 
 
 @dataclass
@@ -163,6 +164,9 @@ def build_completion_report(
         "activities are presented in this report.",
         align="justify",
     )
+
+    add_area_section(rb, site, figures, config.style,
+                     heading="1.1 Location and setting")
 
     # ---- methodology -----------------------------------------------------------
     rb.heading("2. Methodology", 1)

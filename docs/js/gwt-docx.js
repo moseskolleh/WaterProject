@@ -607,6 +607,20 @@
     return pairs.concat(extra || []);
   }
 
+  /* Every report opens on where it is. The maps and the sentence above them
+   * are built by the caller (the app knows the boundaries); this only places
+   * them, so a report cannot end up with the maps and no explanation, or an
+   * explanation and no maps. */
+  function areaSection(b, context, heading) {
+    var maps = context.areaMaps || [];
+    if (!context.areaNote && !maps.length) return;
+    if (heading) b.heading(heading, 2);
+    if (context.areaNote) b.paragraph(context.areaNote, { align: 'justify' });
+    maps.forEach(function (fig) {
+      b.figure(fig.image, fig.caption, fig.widthCm || 14);
+    });
+  }
+
   function limitationsParagraphs(kind) {
     var shared = 'The findings rest on the data recorded on the field sheets and ' +
       'on the standard interpretation methods named in this report. Field data ' +
@@ -685,6 +699,8 @@
       '. The purpose of the survey was to locate a drilling point with the best ' +
       'prospect of a productive borehole, and to recommend a drilling depth.',
       { align: 'justify' });
+
+    areaSection(b, context, '1.1 Location and setting');
 
     b.heading('2. Background and Geology of the Project Area', 1);
     b.paragraph(context.geologyNote || 'The area lies within the crystalline ' +
@@ -835,6 +851,8 @@
       '. It presents the drilling log, the construction details and the ' +
       'as-built design.', { align: 'justify' });
 
+    areaSection(b, context, '1.1 Location and setting');
+
     b.heading('2. Methodology', 1);
     b.paragraph('The borehole was drilled by ' + (log.drilling_method ||
       'rotary and down-the-hole hammer') + '. Cuttings were collected at each ' +
@@ -933,6 +951,8 @@
         ? C.fmtNum(test.pumping_duration_min) + ' min' : '—'],
       ['Step length', test.step_length_min ? C.fmtNum(test.step_length_min) + ' min' : '—'],
     ]);
+
+    areaSection(b, context, '1.1 Location and setting');
 
     b.heading('2. Field Data', 1);
     b.paragraph('Water levels were measured with a dip meter against a fixed ' +
@@ -1135,6 +1155,8 @@
       ['District', site.district || '—'],
     ]);
 
+    areaSection(b, context, '1.1 Location and setting');
+
     b.heading('2. Results Against Guideline Values', 1);
     b.table(assessment.rows.map(function (row) {
       return [row.parameter,
@@ -1284,6 +1306,8 @@
       'is a client-side planning allowance and is shown separately so the ' +
       'contract price stays honest.', { align: 'justify' });
 
+    areaSection(b, context, '1.1 Location and setting');
+
     b.heading('2. Basis of the Estimate', 1);
     b.table([
       ['Total depth', C.fmtNum(estimate.inputs.total_depth_m) + ' m'],
@@ -1386,6 +1410,8 @@
       caption: 'Checklist progress by stage', fontSize: 9,
     });
 
+    areaSection(b, context, '1.1 Location and setting');
+
     b.heading('2. Checklist Record', 1);
     evaluation.stages.forEach(function (stage) {
       var stageItems = items.filter(function (i) { return i.checklist === stage.stage; });
@@ -1461,6 +1487,8 @@
 
     b.heading('1. Project Summary', 1);
     b.keyValueTable(siteDetails(site));
+
+    areaSection(b, context, '1.1 Location and setting');
 
     b.heading('2. Works Completed', 1);
     b.bullets([

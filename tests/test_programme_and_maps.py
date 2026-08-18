@@ -183,13 +183,48 @@ def test_maps_render_without_site(tmp_path):
 
 
 def test_context_maps_for_reports(tmp_path):
-    no_coords = SiteMetadata(community="X")
-    assert context_map_figures(no_coords, tmp_path) == {}
+    nowhere = SiteMetadata(community="X")
+    assert context_map_figures(nowhere, tmp_path) == {}
     site = SiteMetadata(community="Kuntolo", district="Bombali",
                         easting=178000, northing=1000000, utm_zone=29)
     maps = context_map_figures(site, tmp_path)
     assert set(maps) == {"admin", "geology", "hydrogeology"}
     assert all(p.exists() for p in maps.values())
+
+
+def test_context_maps_fall_back_to_the_recorded_area(tmp_path):
+    """A site with no GPS fix still gets a map: of its district."""
+    from groundwater.mapping import area_window
+
+    site = SiteMetadata(community="Kuntoloh", district="Port Loko")
+    window = area_window(site)
+    assert window is not None
+    assert window.exact is False
+    assert window.label == "Port Loko district"
+
+    maps = context_map_figures(site, tmp_path)
+    assert set(maps) == {"admin", "geology", "hydrogeology"}
+    assert all(p.exists() for p in maps.values())
+
+
+def test_area_maps_reach_every_report_kind(tmp_path):
+    """Every builder puts a map of the area in front of its numbers."""
+    from docx import Document
+
+    from groundwater.reporting.context import add_area_section
+    from groundwater.reporting.docx_utils import ReportBuilder
+
+    site = SiteMetadata(community="Kuntoloh", district="Port Loko")
+    rb = ReportBuilder(None, title="T")
+    maps = add_area_section(rb, site, tmp_path)
+    assert set(maps) == {"admin", "geology", "hydrogeology"}
+    out = tmp_path / "area.docx"
+    rb.save(out)
+    doc = Document(out)
+    assert len(doc.inline_shapes) == 1
+    text = "\n".join(p.text for p in doc.paragraphs)
+    assert "Port Loko district" in text
+    assert "No GPS position" in text
 
 
 def test_handover_report_embeds_location_map(tmp_path):

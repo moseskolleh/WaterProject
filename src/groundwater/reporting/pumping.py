@@ -30,6 +30,7 @@ from ..seasonal import MONTH_NAMES
 from ..utils import fmt_num, safe_slug
 from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
+from .context import add_area_section
 
 
 @dataclass
@@ -150,6 +151,9 @@ def build_pumping_report(
             "and yield results are pending until the discharge is supplied.",
             bold=True,
         )
+
+    add_area_section(rb, site, figures, config.style,
+                     heading="1.1 Location and setting")
 
     # ---- 2 data ------------------------------------------------------------
     rb.heading("2. Field Data", 1)

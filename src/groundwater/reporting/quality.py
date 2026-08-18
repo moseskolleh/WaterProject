@@ -26,6 +26,7 @@ from ..quality.standards import (
 from ..utils import fmt_num, safe_slug
 from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
+from .context import add_area_section
 
 #: The wording lives with the assessment so every surface prints the same
 #: label and a new status can never leak out as a raw code.
@@ -214,6 +215,9 @@ def build_quality_report(
     # say plainly when the limit it was judged against is not yet confirmed.
     if provisional_national_parameters():
         rb.paragraph(PROVISIONAL_NATIONAL_NOTE, align="justify")
+
+    add_area_section(rb, site, figures, config.style,
+                     heading="1.1 Location and setting")
 
     # ---- 2 results table ------------------------------------------------------
     rb.heading("2. Results Against Guideline Values", 1)

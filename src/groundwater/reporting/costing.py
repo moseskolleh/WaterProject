@@ -18,6 +18,7 @@ from ..costing.plots import plot_cost_breakdown
 from ..models import SiteMetadata
 from ..utils import fmt_num
 from .docx_utils import ReportBuilder
+from .context import add_area_section
 
 
 @dataclass
@@ -83,6 +84,9 @@ def build_cost_report(
         "before the estimate is used for contracting.",
         align="justify",
     )
+
+    add_area_section(rb, site, figures, config.style,
+                     heading="1.1 Location and setting")
 
     # ---- 2 basis -------------------------------------------------------
     rb.heading("2. Basis of the Estimate", 1)

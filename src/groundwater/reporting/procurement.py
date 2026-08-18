@@ -18,8 +18,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from pathlib import Path
+
 from ..config import Config
+from ..models import SiteMetadata
 from ..procurement import Certificate, Contract, contract_summary
+from .context import add_area_section
 from .docx_utils import ReportBuilder
 
 __all__ = ["PaymentCertificateInputs", "build_payment_certificate"]
@@ -32,6 +36,10 @@ class PaymentCertificateInputs:
     prepared_by: str = ""
     prepared_role: str = "Supervising engineer"
     readiness: Any = None
+    #: The works being paid for are at a place. Supply the site and a
+    #: figures directory and the certificate carries a map of it.
+    site: SiteMetadata | None = None
+    figures_dir: Path = Path(".")
 
 
 def build_payment_certificate(inputs: PaymentCertificateInputs,
@@ -56,6 +64,11 @@ def build_payment_certificate(inputs: PaymentCertificateInputs,
             "reduces or holds back money, and the certificate is issued with "
             "them showing rather than resolved silently.", bold=True)
         rb.bullets(certificate.problems)
+
+    if inputs.site is not None:
+        add_area_section(rb, inputs.site, Path(inputs.figures_dir),
+                         config.style if config else None,
+                         heading="Where the works are")
 
     rb.heading("Summary")
     rb.table([[label, value] for label, value in

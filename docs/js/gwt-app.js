@@ -1166,6 +1166,211 @@
     return ll;
   }
 
+  /* --- the area a report should map ---------------------------------------
+   *
+   * Every report is about a place, so every report carries a map of it. A GPS
+   * fix gives a point. Without one, the recorded chiefdom or district still
+   * gives an area, and an area is what most of these maps are really asked
+   * for: where in the country this is, and what the ground is like around it.
+   * Only a project that records neither gets no map, and then the report says
+   * so rather than leaving a gap.
+   *
+   * This mirrors groundwater.mapping.area_window on the Python side, so the
+   * browser report and the report the desktop toolkit writes cover the same
+   * ground.
+   */
+  function ringCentroid(ring) {
+    var a = 0, cx = 0, cy = 0;
+    for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      var cross = ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
+      a += cross;
+      cx += (ring[j][0] + ring[i][0]) * cross;
+      cy += (ring[j][1] + ring[i][1]) * cross;
+    }
+    if (!a) {
+      return [ring[0][0], ring[0][1]];
+    }
+    return [cx / (3 * a), cy / (3 * a)];
+  }
+
+  function featureRings(feature) {
+    var geometry = (feature || {}).geometry;
+    if (!geometry) return [];
+    if (geometry.type === 'Polygon') return geometry.coordinates;
+    if (geometry.type === 'MultiPolygon') {
+      return geometry.coordinates.map(function (poly) { return poly[0]; });
+    }
+    return [];
+  }
+
+  function featureWindow(feature, label, minRadiusKm, factor) {
+    var rings = featureRings(feature);
+    if (!rings.length) return null;
+    var biggest = rings[0], best = 0;
+    rings.forEach(function (ring) {
+      var lonMin = Infinity, lonMax = -Infinity, latMin = Infinity, latMax = -Infinity;
+      ring.forEach(function (c) {
+        lonMin = Math.min(lonMin, c[0]); lonMax = Math.max(lonMax, c[0]);
+        latMin = Math.min(latMin, c[1]); latMax = Math.max(latMax, c[1]);
+      });
+      var area = (lonMax - lonMin) * (latMax - latMin);
+      if (area > best) { best = area; biggest = ring; }
+    });
+    var centre = ringCentroid(biggest);
+    var latSpan = 0, lonSpan = 0;
+    biggest.forEach(function (c) {
+      lonSpan = Math.max(lonSpan, Math.abs(c[0] - centre[0]));
+      latSpan = Math.max(latSpan, Math.abs(c[1] - centre[1]));
+    });
+    var km = Math.max(latSpan * 110.574,
+      lonSpan * 111.320 * Math.cos(centre[1] * Math.PI / 180));
+    return {
+      lon: centre[0], lat: centre[1], label: label, exact: false,
+      radiusKm: Math.max(km * (factor || 1.2), minRadiusKm || 20),
+    };
+  }
+
+  function adminFeature(level, name) {
+    var wanted = String(name || '').trim().toLowerCase();
+    if (!wanted) return null;
+    var set = level === 'chiefdom'
+      ? ((GWT.data.geo || {}).chiefdomBoundaries || {}).features
+      : ((GWT.data.geo || {}).adminBoundaries || {}).features;
+    return (set || []).filter(function (feature) {
+      var props = feature.properties || {};
+      return String(props.name || props.shapeName || '').trim().toLowerCase() === wanted;
+    })[0] || null;
+  }
+
+  function areaWindow(radiusKm) {
+    var site = store.get('site') || {};
+    var latlon = siteLatLon();
+    if (latlon) {
+      return {
+        lon: latlon.lon, lat: latlon.lat, exact: true,
+        label: site.community || 'the site',
+        radiusKm: radiusKm || store.get('site.mapRadiusKm', 40),
+      };
+    }
+    var chiefdom = adminFeature('chiefdom', site.chiefdom);
+    if (chiefdom) {
+      return featureWindow(chiefdom, site.chiefdom + ' chiefdom', 12, 1.35);
+    }
+    var district = adminFeature('district', site.district);
+    if (district) {
+      return featureWindow(district, site.district + ' district', 20, 1.2);
+    }
+    return null;
+  }
+
+  function areaNote() {
+    var site = store.get('site') || {};
+    var where = [site.community, site.chiefdom && site.chiefdom + ' chiefdom',
+      site.district && site.district + ' district'].filter(Boolean).join(', ');
+    var latlon = siteLatLon();
+    if (latlon) {
+      return (where ? 'The site is at ' + where + ', ' : 'The site is at ') +
+        Math.abs(latlon.lat).toFixed(5) + ' ' + (latlon.lat < 0 ? 'S' : 'N') + ', ' +
+        Math.abs(latlon.lon).toFixed(5) + ' ' + (latlon.lon < 0 ? 'W' : 'E') + '.';
+    }
+    var window_ = areaWindow();
+    if (!window_) {
+      return (where ? 'The site is recorded as ' + where + '. ' : '') +
+        'Neither a GPS position nor an administrative area is recorded for it, ' +
+        'so no map of the area can be drawn. A borehole that cannot be found ' +
+        'again on the ground cannot be revisited or maintained: record the ' +
+        'position on the field sheet and reissue this report.';
+    }
+    return (where ? 'The site is recorded as ' + where + '. ' : '') +
+      'No GPS position is recorded for it, so the maps below cover ' +
+      window_.label + ' rather than the borehole itself and carry no site ' +
+      'marker. Record the position on the field sheet and reissue this report: ' +
+      'a borehole that cannot be found again on the ground cannot be revisited ' +
+      'or maintained.';
+  }
+
+  /* The figures themselves, rasterised for the .docx. `detail` adds the
+   * aquifer and geological setting to the locator. */
+  async function areaFigures(detail) {
+    var geo = GWT.data.geo || {};
+    if (!geo.adminBoundaries) return [];
+    var site = store.get('site') || {};
+    var latlon = siteLatLon();
+    var window_ = areaWindow();
+    if (!window_) return [];
+
+    var legendItems = [];
+    if (latlon) {
+      legendItems.push({ label: 'Project site', kind: 'diamond',
+        colour: charts.palette().secondary });
+    }
+    if (site.district) {
+      legendItems.push({ label: site.district + ' district', colour: '#CFE0D6' });
+    }
+    legendItems.push({ label: 'other districts', colour: '#EDEAE3' });
+
+    var out = [];
+    var locator = charts.siteMap({
+      context: (geo.adminBoundaries.features || []),
+      contextFill: function (feature) {
+        var name = (feature.properties || {}).name || (feature.properties || {}).shapeName;
+        return name === site.district ? '#CFE0D6' : '#EDEAE3';
+      },
+      points: latlon ? [{
+        lon: latlon.lon, lat: latlon.lat, label: siteLabel(),
+        colour: charts.palette().secondary, size: 6.5,
+      }] : [],
+      title: 'Location of ' + window_.label,
+      legendItems: legendItems,
+      credit: 'District boundaries: geoBoundaries (CC BY 4.0).',
+      width: 620, height: 560,
+    });
+    out.push({
+      image: await charts.toPng(locator),
+      caption: 'Location of ' + window_.label +
+        '. Boundaries from geoBoundaries (CC BY 4.0).',
+      widthCm: 14,
+    });
+    if (!detail) return out;
+
+    var pane = { lat: window_.lat, lon: window_.lon, radiusKm: window_.radiusKm };
+    if (geo.hydrogeology) {
+      out.push({
+        image: await charts.toPng(charts.thematicMap({
+          features: geo.hydrogeology.features || [],
+          context: geo.adminBoundaries.features || [],
+          key: 'unit', window: pane,
+          points: latlon ? [{ lon: latlon.lon, lat: latlon.lat, label: siteLabel() }] : [],
+          title: 'Aquifer productivity around ' + window_.label,
+          legendTitle: 'AQUIFER TYPE AND PRODUCTIVITY',
+          credit: 'BGS Africa Groundwater Atlas, CC BY-SA 4.0.',
+          width: 620, height: 620,
+        })),
+        caption: 'Aquifer type and productivity around ' + window_.label +
+          ', from the BGS Africa Groundwater Atlas country map (CC BY-SA 4.0).',
+        widthCm: 14,
+      });
+    }
+    if (geo.geology) {
+      out.push({
+        image: await charts.toPng(charts.thematicMap({
+          features: geo.geology.features || [],
+          context: geo.adminBoundaries.features || [],
+          key: 'unit', window: pane,
+          points: latlon ? [{ lon: latlon.lon, lat: latlon.lat, label: siteLabel() }] : [],
+          title: 'Geology around ' + window_.label,
+          legendTitle: 'GEOLOGICAL UNIT',
+          credit: 'USGS Geologic Map of Africa.',
+          width: 620, height: 620,
+        })),
+        caption: 'Geological setting around ' + window_.label +
+          ', from the USGS Geologic Map of Africa (1:5,000,000).',
+        widthCm: 14,
+      });
+    }
+    return out;
+  }
+
   function districtOf(chiefdom) {
     if (!chiefdom) return '';
     return (C.loadChiefdomDistrict() || {})[chiefdom] || '';
