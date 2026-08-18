@@ -338,6 +338,19 @@
     return [lon - dlon, lat - dlat, lon + dlon, lat + dlat];
   }
 
+  /* Water points whose position falls inside the window, filtered on the
+   * records rather than on features built from them. The coverage page
+   * fetches up to 200,000 points into the same place the site page reads
+   * them from, and building a quarter of a million features in order to
+   * throw almost all of them away is work nobody asked for. */
+  function pointsWithinWindow(points, win) {
+    if (!win) return (points || []).slice();
+    return (points || []).filter(function (p) {
+      return p.lon >= win[0] && p.lon <= win[2] &&
+        p.lat >= win[1] && p.lat <= win[3];
+    });
+  }
+
   /* A bounding-box test, not a clip: a polygon reaching into the window is
    * kept whole, so the unit the site sits in arrives with its real shape
    * and nothing is invented at the edge. */
@@ -351,17 +364,31 @@
 
   /* A project file is made to be handed to somebody else. The rule this app
    * keeps - the API key stays out of saved project files, so sharing a
-   * project never shares the key - is only kept if something checks. */
-  function assertNoSecrets(metadata) {
-    Object.keys(metadata || {}).forEach(function (key) {
+   * project never shares the key - is only kept if something checks.
+   *
+   * It recurses, because a guard that reads only the top level is a guard
+   * that says {"service": {"api_key": ...}} is fine, and the file it waves
+   * through carries the key anyway. Only the metadata regions are scanned,
+   * not feature properties: a credential does not arrive as an attribute of
+   * a mapped water point, and walking a national inventory to look for one
+   * would cost more than it could ever find. */
+  function assertNoSecrets(node, where) {
+    var at = where || 'metadata';
+    if (Array.isArray(node)) {
+      node.forEach(function (item) { assertNoSecrets(item, at); });
+      return;
+    }
+    if (!node || typeof node !== 'object') return;
+    Object.keys(node).forEach(function (key) {
       var lowered = String(key).toLowerCase();
       SECRET_HINTS.forEach(function (hint) {
         if (lowered.indexOf(hint) !== -1) {
           throw new Error('refusing to write "' + key + '" into a GeoLibre ' +
-            'project: it reads as a credential, and a project file is made ' +
-            'to be shared');
+            'project (' + at + '): it reads as a credential, and a project ' +
+            'file is made to be shared');
         }
       });
+      assertNoSecrets(node[key], at + '.' + key);
     });
   }
 
@@ -406,7 +433,10 @@
     Object.keys(opts.metadata || {}).forEach(function (k) {
       metadata[k] = opts.metadata[k];
     });
-    assertNoSecrets(metadata);
+    assertNoSecrets(metadata, 'project metadata');
+    kept.forEach(function (l) {
+      assertNoSecrets(l.metadata, 'layer "' + l.name + '"');
+    });
     if (metadata.generator === undefined) {
       metadata.generator = 'Groundwater Investigation Toolkit';
     }
@@ -469,8 +499,13 @@
           fillOpacity: 0.0, attribution: CREDITS.admin }));
     }
     if (opts.waterPoints) {
+      /* Windowed like the context layers, and for a sharper reason: the
+       * water points are one of the layers the camera frames on, so a
+       * national inventory arriving here would not merely make the file
+       * large, it would open the project on Sierra Leone with the survey
+       * lost inside it. */
       layers.push(layer('Existing water points',
-        waterPointFeatures(opts.waterPoints),
+        waterPointFeatures(pointsWithinWindow(opts.waterPoints, win)),
         { radius: 6.0, attribution: CREDITS.waterPoints }));
     }
     if (opts.suitability) {
@@ -521,9 +556,23 @@
 
   /* ---------------------------------------------------------------- links */
 
+  /* A published project URL is itself a URL, and the separators that matter
+   * - & = ? # - have to be encoded or the outer query swallows the inner
+   * one: a signed link ending ?sig=a&expires=1 would otherwise hand
+   * GeoLibre an "expires" parameter of its own and truncate the address it
+   * was supposed to open. The scheme and path separators stay readable.
+   * encodeURIComponent leaves : and / encoded, so they are put back, which
+   * makes this exactly the package's quote(value, safe=":/!*'()"). */
+  function encodeValue(value) {
+    return encodeURIComponent(String(value))
+      .replace(/%3A/g, ':').replace(/%2F/g, '/');
+  }
+
   function link(app, params) {
     var query = Object.keys(params).map(function (key) {
-      return params[key] === '' ? key : key + '=' + params[key];
+      /* a valueless parameter is written bare, as the GeoLibre
+       * documentation writes &maponly, rather than as maponly= */
+      return params[key] === '' ? key : key + '=' + encodeValue(params[key]);
     }).join('&');
     var base = app.replace(/[?&]+$/, '');
     return query ? base + '?' + query : base;
@@ -585,6 +634,7 @@
     stringify: stringify,
     windowAround: windowAround,
     featuresWithin: featuresWithin,
+    pointsWithinWindow: pointsWithinWindow,
     projectLink: projectLink,
     dataLink: dataLink,
   };

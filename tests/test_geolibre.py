@@ -468,6 +468,9 @@ writeFileSync(process.argv[4], JSON.stringify({
   slug: G.slug('Drill-target suitability'),
   version: G.PROJECT_FORMAT_VERSION,
   webApp: G.WEB_APP,
+  links: input.links.map((l) => (l.kind === 'data'
+    ? G.dataLink(l.url, l.options)
+    : G.projectLink(l.url, l.options))),
 }, null, 2));
 """
 
@@ -528,6 +531,7 @@ def test_the_browser_builder_agrees_with_this_one(tmp_path):
             ],
         },
         "portfolio": portfolio,
+        "links": _LINK_CASES,
     }
     (tmp_path / "input.json").write_text(json.dumps(payload), encoding="utf-8")
     driver = tmp_path / "driver.mjs"
@@ -557,3 +561,119 @@ def test_the_browser_builder_agrees_with_this_one(tmp_path):
         assert js["computed"][name] == by_name[name], f"{name} differs"
 
     assert js["portfolio"] == portfolio_project(portfolio)
+    assert js["links"] == [_python_link(case) for case in _LINK_CASES]
+
+
+# The link cases both builders are checked against. A signed URL is the one
+# that matters: its own query string has to survive being carried inside
+# another one.
+_LINK_CASES = [
+    {"kind": "project", "url": "https://x/p.geolibre.json", "options": {}},
+    {"kind": "project", "url": "https://x/p.json?sig=a&expires=1", "options": {}},
+    {"kind": "project", "url": "https://x/p.json",
+     "options": {"viewer": True, "theme": "dark"}},
+    {"kind": "project", "url": "https://x/p.json", "options": {"maponly": True}},
+    {"kind": "data", "url": "https://x/a b.geojson",
+     "options": {"styleUrl": "https://x/s.json?v=2"}},
+]
+
+
+def _python_link(case):
+    options = case["options"]
+    if case["kind"] == "data":
+        return data_link(case["url"], style_url=options.get("styleUrl"))
+    return project_link(
+        case["url"],
+        viewer=options.get("viewer", False),
+        theme=options.get("theme"),
+        maponly=options.get("maponly", False),
+    )
+
+
+# ------------------------------------------------ what the review found
+
+
+def test_a_national_inventory_cannot_ride_into_a_site_project():
+    """The web app's coverage page fetches up to 200,000 points into the same
+    place the site page reads them from. They are one of the layers the camera
+    frames on, so letting them through would not merely make the file large -
+    it would open the project on Sierra Leone with the survey lost inside it.
+    """
+    near = WaterPoint("near", 8.59, -13.18, True, "Functional", "Borehole",
+                      "Hand Pump", 2011, "Port Loko")
+    far = WaterPoint("far", 7.95, -11.20, True, "Functional", "Borehole",
+                     "Hand Pump", 2011, "Kenema")
+    project = site_project(
+        site=_site(), zone=ZONE, water_points=[near, far], window_km=40
+    )
+    layer = [l for l in project["layers"] if l["name"] == "Existing water points"][0]
+    assert len(layer["geojson"]["features"]) == 1, "the far point was embedded"
+    # and the camera still opens on the survey, not on the country
+    assert project["mapView"]["zoom"] > 11
+
+
+def test_without_a_window_every_water_point_is_kept():
+    """The filter is a guard against a national pull, not a silent trim."""
+    points = _water_points()
+    project = site_project(site=_site(), zone=ZONE, water_points=points)
+    layer = [l for l in project["layers"] if l["name"] == "Existing water points"][0]
+    assert len(layer["geojson"]["features"]) == len(points)
+
+
+def test_a_signed_url_survives_being_carried_inside_another_one():
+    """A published project URL is itself a URL. Its own query string has to be
+    encoded, or the outer query swallows it: ``?sig=a&expires=1`` would hand
+    GeoLibre an ``expires`` parameter of its own and truncate the address.
+    """
+    link = project_link("https://x/p.json?sig=a&expires=1")
+    assert link == "https://web.geolibre.app/?url=https://x/p.json%3Fsig%3Da%26expires%3D1"
+    # exactly one parameter reaches GeoLibre, and it is the whole URL
+    from urllib.parse import parse_qs, urlparse
+
+    query = parse_qs(urlparse(link).query)
+    assert list(query) == ["url"]
+    assert query["url"] == ["https://x/p.json?sig=a&expires=1"]
+
+
+def test_a_valueless_parameter_is_written_bare():
+    """The GeoLibre documentation writes ``&maponly``, not ``&maponly=``."""
+    link = project_link("https://x/p.json", maponly=True)
+    assert link.endswith("&maponly")
+
+
+def test_a_space_in_a_url_is_encoded():
+    assert data_link("https://x/a b.geojson") == (
+        "https://web.geolibre.app/?data=https://x/a%20b.geojson"
+    )
+
+
+def test_a_credential_nested_in_metadata_is_refused():
+    """A guard that reads only the top level waves the file through anyway."""
+    with pytest.raises(ValueError, match="credential"):
+        build_project("p", [], metadata={"service": {"api_key": "sk-secret"}})
+    with pytest.raises(ValueError, match="credential"):
+        build_project("p", [], metadata={"services": [{"auth_token": "x"}]})
+
+
+def test_a_credential_in_a_layer_is_refused():
+    feature = {"type": "Feature",
+               "geometry": {"type": "Point", "coordinates": [-13.0, 8.5]},
+               "properties": {}}
+    layer = geojson_layer("Sites", [feature])
+    layer["metadata"]["source"] = {"api_key": "sk-secret"}
+    with pytest.raises(ValueError, match="credential"):
+        build_project("p", [layer])
+
+
+def test_writing_checks_again_because_that_is_where_the_file_appears(tmp_path):
+    """A project assembled by hand never passed through the other check."""
+    project = build_project("p", [])
+    project["metadata"]["nested"] = {"access_token": "sk-secret"}
+    with pytest.raises(ValueError, match="credential"):
+        write_project(project, tmp_path / "leaky.geolibre.json")
+    assert not (tmp_path / "leaky.geolibre.json").exists()
+
+
+def test_the_error_says_where_the_credential_was_found():
+    with pytest.raises(ValueError, match=r"project metadata\.service"):
+        build_project("p", [], metadata={"service": {"api_key": "x"}})
