@@ -550,7 +550,7 @@
       width: opts.width || 340, height: opts.height || 430,
       margin: { top: 30, right: 22, bottom: 56, left: 56 },
       title: opts.title || 'Layered model',
-      xLabel: 'Resistivity (ohm-m)', yLabel: 'Depth (m)',
+      xLabel: 'Resistivity (\u03A9\u00B7m)', yLabel: 'Depth (m)',
       xLog: true, yDown: true,
       xDomain: padDomain(rho, true, 0.12), yDomain: [0, maxDepth],
     });
@@ -566,18 +566,20 @@
     });
     f.plot.appendChild(polyline(pts, { stroke: p.secondary, 'stroke-width': 2.2 }));
 
+    /* The resistivity of a layer is written against that layer. A thin layer
+     * at the surface has its midpoint above the top of the plot, and two thin
+     * layers together have midpoints a few pixels apart, so the anchors are
+     * collected first and then pushed apart inside the frame rather than
+     * written where they fall. */
+    var marks = [];
     depth = 0;
     rho.forEach(function (r, i) {
       var top = depth;
       var base = i < h.length ? depth + h[i] : maxDepth;
-      var mid = f.fy((top + Math.min(base, maxDepth)) / 2);
-      var lx = f.fx(r);
-      var flip = lx > f.margin.left + f.plotW * 0.55;
-      f.plot.appendChild(svgEl('text', {
-        x: flip ? lx - 8 : lx + 8, y: mid + 4, 'font-size': 10.5,
-        'text-anchor': flip ? 'end' : 'start', fill: p.inkSoft,
-        text: C.fmtNum(r, 3) + ' Ω·m',
-      }));
+      marks.push({
+        anchor: f.fy((top + Math.min(base, maxDepth)) / 2),
+        x: f.fx(r), text: C.fmtNum(r, 3) + ' \u03A9\u00B7m',
+      });
       if (i < h.length) {
         f.plot.appendChild(svgEl('line', {
           x1: f.margin.left, y1: f.fy(base), x2: f.margin.left + f.plotW, y2: f.fy(base),
@@ -586,6 +588,18 @@
       }
       depth = base;
     });
+    stackLabels(marks, 15, f.margin.top + 8, f.margin.top + f.plotH - 4)
+      .forEach(function (item) {
+        var e = item.entry;
+        var w = textWidth(e.text, 10.5);
+        /* keep the label inside the frame whichever side of the step it is on */
+        var flip = e.x + 8 + w > f.margin.left + f.plotW;
+        if (flip && e.x - 8 - w < f.margin.left) flip = false;
+        f.plot.appendChild(svgEl('text', {
+          x: flip ? e.x - 8 : e.x + 8, y: item.y + 4, 'font-size': 10.5,
+          'text-anchor': flip ? 'end' : 'start', fill: p.inkSoft, text: e.text,
+        }));
+      });
     return f.svg;
   }
 
@@ -845,19 +859,35 @@
 
   function piper(samples, options) {
     var opts = options || {};
-    var size = 200, gap = 36;
-    var width = opts.width || 720;
-    var height = opts.height || 560;
+    /* The gap between the two triangles is not cosmetic: it sets where the
+     * diamond sits, and C.piperPoints is given the same figure so the three
+     * plots stay one construction. It has to be wide enough for the two
+     * labels that meet in it - Na+K and HCO3 - to stand side by side, or
+     * they overprint each other. */
+    var size = opts.size || 200, gap = 64;
+    var titleH = opts.title === null ? 10 : 32;
     var p = palette();
+
+    /* the construction is measured, not guessed: the figure is exactly as
+     * tall as the diamond's apex plus the labels above and below it */
+    var stackPx = SQ3 / 2 * gap + SQ3 * size;
+    var ox = 40;
+    var oy = titleH + 16 + stackPx;
+    var width = opts.width || (2 * size + gap + 80);
+    var height = opts.height || (oy + 34);
+
     var svg = svgEl('svg', {
       viewBox: '0 0 ' + width + ' ' + height, width: '100%', xmlns: NS,
       'font-family': FONT, role: 'img', 'aria-label': 'Piper diagram',
     });
     svg.appendChild(svgEl('rect', { width: width, height: height, fill: p.surface }));
-
-    /* origin of the whole construction, chosen so the diamond fits above */
-    var ox = (width - (2 * size + gap)) / 2;
-    var oy = height - 60;
+    if (opts.title !== null) {
+      svg.appendChild(svgEl('text', {
+        x: 16, y: 20, 'font-size': 13, 'font-weight': 620, fill: p.ink,
+        text: opts.title || 'Piper diagram',
+      }));
+    }
+    ox = (width - (2 * size + gap)) / 2;
     function place(pt) { return { x: ox + pt.x * size, y: oy - pt.y * size }; }
 
     function triangle(originX, labels) {
@@ -883,9 +913,9 @@
         }));
       });
       g.appendChild(polyline(verts, { stroke: p.neutral, 'stroke-width': 1.3 }));
-      g.appendChild(svgEl('text', { x: x0 - 6, y: y0 + 15, 'text-anchor': 'end',
+      g.appendChild(svgEl('text', { x: x0, y: y0 + 16, 'text-anchor': 'middle',
         'font-size': 11, fill: p.inkSoft, text: labels[0] }));
-      g.appendChild(svgEl('text', { x: x0 + size + 6, y: y0 + 15, 'text-anchor': 'start',
+      g.appendChild(svgEl('text', { x: x0 + size, y: y0 + 16, 'text-anchor': 'middle',
         'font-size': 11, fill: p.inkSoft, text: labels[1] }));
       g.appendChild(svgEl('text', { x: x0 + 0.5 * size, y: y0 - SQ3 / 2 * size - 8,
         'text-anchor': 'middle', 'font-size': 11, fill: p.inkSoft, text: labels[2] }));
@@ -905,6 +935,23 @@
       { x: xMid - 0.5, y: yBot + SQ3 / 2 },
       { x: xMid, y: yBot },
     ].map(place);
+    /* The diamond is an affine image of the unit square: from its bottom
+     * corner, u runs along the Na+K axis and v along the SO4+Cl axis. Both
+     * grid families fall straight out of that, which is also how a point is
+     * read back off the figure. */
+    function diamondPoint(u, v) {
+      return place({ x: xMid + 0.5 * u - 0.5 * v, y: yBot + SQ3 / 2 * (u + v) });
+    }
+    var dgrid = svgEl('g', { 'aria-hidden': 'true' });
+    [0.2, 0.4, 0.6, 0.8].forEach(function (frac) {
+      [[[frac, 0], [frac, 1]], [[0, frac], [1, frac]]].forEach(function (pair) {
+        var a = diamondPoint(pair[0][0], pair[0][1]);
+        var b = diamondPoint(pair[1][0], pair[1][1]);
+        dgrid.appendChild(polyline([[a.x, a.y], [b.x, b.y]],
+          { stroke: p.grid, 'stroke-width': 0.8 }));
+      });
+    });
+    svg.appendChild(dgrid);
     svg.appendChild(polyline(diamond.map(function (d) { return [d.x, d.y]; }),
       { stroke: p.neutral, 'stroke-width': 1.3 }));
     svg.appendChild(svgEl('text', {
@@ -932,26 +979,22 @@
 
     if (entries.length) {
       var lg = svgEl('g');
-      var lx = 16, ly = 24;
+      /* clear of the line above the diamond, which is centred and wide */
+      var lx = 24, ly = titleH + 40;
+      var widest = entries.reduce(function (m, e) {
+        return Math.max(m, textWidth(e.label, 11));
+      }, 0);
       lg.appendChild(svgEl('rect', {
-        x: lx - 8, y: ly - 14, rx: 4, fill: p.surface, stroke: p.grid,
+        x: lx - 10, y: ly - 15, rx: 4, fill: p.surface, stroke: p.grid,
         'stroke-width': 1, 'fill-opacity': 0.94,
-        width: 24 + Math.max.apply(null, entries.map(function (e) {
-          return e.label.length;
-        })) * 6.1, height: entries.length * 17 + 6,
+        width: widest + 40, height: entries.length * 17 + 8,
       }));
       entries.forEach(function (e, i) {
-        lg.appendChild(marker(lx + 6, ly + i * 17 - 4, e.kind, e.colour, p.surface, 4.5));
-        lg.appendChild(svgEl('text', { x: lx + 18, y: ly + i * 17,
+        lg.appendChild(marker(lx, ly + i * 17 - 4, e.kind, e.colour, p.surface, 4.5));
+        lg.appendChild(svgEl('text', { x: lx + 14, y: ly + i * 17,
           'font-size': 11, fill: p.inkSoft, text: e.label }));
       });
       svg.appendChild(lg);
-    }
-    if (opts.title !== null) {
-      svg.appendChild(svgEl('text', {
-        x: 16, y: height - 12, 'font-size': 13, 'font-weight': 600, fill: p.ink,
-        text: opts.title || 'Piper diagram',
-      }));
     }
     return svg;
   }
