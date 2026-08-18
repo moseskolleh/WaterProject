@@ -2058,34 +2058,91 @@
     return svg;
   }
 
-  /* ============================================================ map figures */
+  /* ===================================================================== maps
+   *
+   * Every map in the toolkit is drawn by the three functions below, and every
+   * one of them gets the same furniture: a neatline, a graticule with its
+   * coordinates written on it, a scale bar in kilometres, a north arrow, a
+   * legend in its own panel below the frame, and the credit for the data.
+   *
+   * The furniture is not decoration. A map of a district with no scale on it
+   * cannot be used to judge whether the next village is 3 km away or 30, and
+   * a map with no coordinates on it cannot be checked against a GPS. These
+   * figures go into reports that someone has to act on, so they carry what a
+   * map has to carry to be acted on.
+   *
+   * The legend sits below the frame rather than on it. Drawn inside, it
+   * covered whatever happened to be in that corner, and there is no corner of
+   * a national map that is reliably empty.
+   */
 
-  /* An equirectangular projection is enough at country scale and keeps the
-   * whole map dependency-free. */
-  function mapProjection(features, width, height, padding) {
-    var pad = padding === undefined ? 18 : padding;
-    var lonMin = Infinity, lonMax = -Infinity, latMin = Infinity, latMax = -Infinity;
+  var MAP_NO_DATA = '#EFEDE6';
+
+  function featureBounds(features) {
+    var b = { lonMin: Infinity, lonMax: -Infinity, latMin: Infinity, latMax: -Infinity };
     function scan(coords) {
       if (typeof coords[0] === 'number') {
-        lonMin = Math.min(lonMin, coords[0]); lonMax = Math.max(lonMax, coords[0]);
-        latMin = Math.min(latMin, coords[1]); latMax = Math.max(latMax, coords[1]);
+        if (coords[0] < b.lonMin) b.lonMin = coords[0];
+        if (coords[0] > b.lonMax) b.lonMax = coords[0];
+        if (coords[1] < b.latMin) b.latMin = coords[1];
+        if (coords[1] > b.latMax) b.latMax = coords[1];
         return;
       }
       coords.forEach(scan);
     }
     features.forEach(function (f) {
-      if (f.geometry && f.geometry.coordinates) scan(f.geometry.coordinates);
+      if (f && f.geometry && f.geometry.coordinates) scan(f.geometry.coordinates);
     });
-    if (!isFinite(lonMin)) { lonMin = -13.4; lonMax = -10.2; latMin = 6.9; latMax = 10.0; }
-    var midLat = (latMin + latMax) / 2;
+    return b;
+  }
+
+  /* Equirectangular, scaled about the middle latitude of the extent. Over a
+   * district or a country this is within a percent of a conformal projection
+   * and it keeps north up and the arithmetic invertible, which is what the
+   * scale bar and the graticule need. */
+  function projectionInto(features, rect, pad) {
+    var b = featureBounds(features);
+    var padPx = pad === undefined ? 0 : pad;
+    if (!isFinite(b.lonMin)) {
+      b = { lonMin: -13.4, lonMax: -10.2, latMin: 6.9, latMax: 10.0 };
+    }
+    if (b.lonMax - b.lonMin < 1e-6) { b.lonMin -= 0.02; b.lonMax += 0.02; }
+    if (b.latMax - b.latMin < 1e-6) { b.latMin -= 0.02; b.latMax += 0.02; }
+    var midLat = (b.latMin + b.latMax) / 2;
     var kx = Math.cos(midLat * Math.PI / 180);
-    var w = (lonMax - lonMin) * kx, h = latMax - latMin;
-    var scale = Math.min((width - 2 * pad) / w, (height - 2 * pad) / h);
-    var ox = pad + ((width - 2 * pad) - w * scale) / 2;
-    var oy = pad + ((height - 2 * pad) - h * scale) / 2;
-    return function (lon, lat) {
-      return [ox + (lon - lonMin) * kx * scale, oy + (latMax - lat) * scale];
+    var w = (b.lonMax - b.lonMin) * kx, h = b.latMax - b.latMin;
+    var innerW = rect.w - 2 * padPx, innerH = rect.h - 2 * padPx;
+    var scale = Math.min(innerW / w, innerH / h);
+    var ox = rect.x + padPx + (innerW - w * scale) / 2;
+    var oy = rect.y + padPx + (innerH - h * scale) / 2;
+
+    function project(lon, lat) {
+      return [ox + (lon - b.lonMin) * kx * scale, oy + (b.latMax - lat) * scale];
+    }
+    project.scale = scale;
+    project.kx = kx;
+    /* one degree of longitude at the middle latitude, divided by the pixels
+     * it occupies: the number the scale bar is built from */
+    project.metresPerPx = 111320 / scale;
+    project.bounds = b;
+    project.rect = rect;
+    project.invert = function (x, y) {
+      return [b.lonMin + (x - ox) / (kx * scale), b.latMax - (y - oy) / scale];
     };
+    /* [lonMin, latMin, lonMax, latMax] of everything the frame shows */
+    project.visibleBox = function () {
+      var sw = project.invert(rect.x, rect.y + rect.h);
+      var ne = project.invert(rect.x + rect.w, rect.y);
+      return [sw[0], sw[1], ne[0], ne[1]];
+    };
+    return project;
+  }
+
+  /* Kept for callers outside this file; the layout-aware form is the one the
+   * maps below use. */
+  function mapProjection(features, width, height, padding) {
+    var pad = padding === undefined ? 18 : padding;
+    return projectionInto(features, { x: 0, y: 0, w: width, h: height }, pad);
   }
 
   function geometryPath(geometry, project) {
@@ -2104,78 +2161,372 @@
     return parts.join(' ');
   }
 
-  /* A choropleth over the district or chiefdom boundaries: one hue, light to
-   * dark, with the classes named in the legend. */
-  function choropleth(spec) {
+  /* --------------------------------------------------------- point in shape */
+
+  function pointInRing(lon, lat, ring) {
+    var inside = false;
+    for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      var xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+      if ((yi > lat) !== (yj > lat) &&
+          lon < (xj - xi) * (lat - yi) / ((yj - yi) || 1e-12) + xi) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }
+
+  function pointInFeature(lon, lat, geometry) {
+    if (!geometry) return false;
+    function inPolygon(rings) {
+      if (!rings.length || !pointInRing(lon, lat, rings[0])) return false;
+      for (var h = 1; h < rings.length; h++) {
+        if (pointInRing(lon, lat, rings[h])) return false;   /* in a hole */
+      }
+      return true;
+    }
+    if (geometry.type === 'Polygon') return inPolygon(geometry.coordinates);
+    if (geometry.type === 'MultiPolygon') {
+      return geometry.coordinates.some(inPolygon);
+    }
+    return false;
+  }
+
+  /* A polygon can cover a corner of the window without any sample point
+   * landing on it. Its own vertices give it away. */
+  function anyVertexInside(geometry, box) {
+    var found = false;
+    function scan(coords) {
+      if (found) return;
+      if (typeof coords[0] === 'number') {
+        if (coords[0] >= box[0] && coords[0] <= box[2] &&
+            coords[1] >= box[1] && coords[1] <= box[3]) found = true;
+        return;
+      }
+      coords.forEach(scan);
+    }
+    if (geometry && geometry.coordinates) scan(geometry.coordinates);
+    return found;
+  }
+
+  /* ------------------------------------------------------------- furniture */
+
+  var GRATICULE_STEPS = [0.02, 0.05, 0.1, 0.25, 0.5, 1, 2, 5];
+
+  function graticuleStep(span) {
+    for (var i = 0; i < GRATICULE_STEPS.length; i++) {
+      if (span / GRATICULE_STEPS[i] <= 5) return GRATICULE_STEPS[i];
+    }
+    return GRATICULE_STEPS[GRATICULE_STEPS.length - 1];
+  }
+
+  function degreeLabel(value, axis) {
+    var hemi = axis === 'lat' ? (value < 0 ? 'S' : 'N') : (value < 0 ? 'W' : 'E');
+    var v = Math.abs(value);
+    var text = v >= 10 ? v.toFixed(1) : v.toFixed(2);
+    return text.replace(/\.?0+$/, '') + '°' + hemi;
+  }
+
+  var SCALE_STEPS_KM = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
+
+  function drawMapFurniture(svg, project, rect, p, options) {
+    var opts = options || {};
+    var b = project.bounds;
+
+    /* graticule, labelled where it meets the neatline */
+    if (opts.graticule !== false) {
+      var g = svgEl('g', { 'aria-hidden': 'true' });
+      var lonStep = graticuleStep(b.lonMax - b.lonMin);
+      var latStep = graticuleStep(b.latMax - b.latMin);
+      var lon = Math.ceil(b.lonMin / lonStep) * lonStep;
+      for (; lon <= b.lonMax + 1e-9; lon += lonStep) {
+        var x = project(lon, b.latMax)[0];
+        if (x < rect.x + 14 || x > rect.x + rect.w - 14) continue;
+        g.appendChild(svgEl('line', {
+          x1: x, y1: rect.y, x2: x, y2: rect.y + rect.h,
+          stroke: p.grid, 'stroke-width': 0.7, 'stroke-dasharray': '2 4',
+        }));
+        g.appendChild(svgEl('text', {
+          x: x, y: rect.y + rect.h + 11, 'text-anchor': 'middle',
+          'font-size': 8.5, fill: p.muted, text: degreeLabel(lon, 'lon'),
+        }));
+      }
+      var lat = Math.ceil(b.latMin / latStep) * latStep;
+      for (; lat <= b.latMax + 1e-9; lat += latStep) {
+        var y = project(b.lonMin, lat)[1];
+        if (y < rect.y + 12 || y > rect.y + rect.h - 12) continue;
+        g.appendChild(svgEl('line', {
+          x1: rect.x, y1: y, x2: rect.x + rect.w, y2: y,
+          stroke: p.grid, 'stroke-width': 0.7, 'stroke-dasharray': '2 4',
+        }));
+        g.appendChild(svgEl('text', {
+          x: rect.x - 4, y: y + 3, 'text-anchor': 'end',
+          'font-size': 8.5, fill: p.muted, text: degreeLabel(lat, 'lat'),
+        }));
+      }
+      svg.appendChild(g);
+    }
+
+    /* neatline */
+    svg.appendChild(svgEl('rect', {
+      x: rect.x, y: rect.y, width: rect.w, height: rect.h,
+      fill: 'none', stroke: p.axis, 'stroke-width': 1,
+    }));
+
+    /* scale bar: a round number of kilometres, 60-150 px long */
+    if (opts.scaleBar !== false && isFinite(project.metresPerPx)) {
+      var target = 110 * project.metresPerPx / 1000;
+      var km = SCALE_STEPS_KM[SCALE_STEPS_KM.length - 1];
+      for (var i = 0; i < SCALE_STEPS_KM.length; i++) {
+        if (SCALE_STEPS_KM[i] >= target) { km = SCALE_STEPS_KM[i]; break; }
+      }
+      var barPx = km * 1000 / project.metresPerPx;
+      if (barPx > rect.w * 0.6) { km /= 2; barPx /= 2; }
+      var bx = rect.x + 10, by = rect.y + rect.h - 14;
+      var farLabel = km >= 1 ? km + ' km' : (km * 1000) + ' m';
+      svg.appendChild(svgEl('rect', {
+        x: bx - 6, y: by - 20, width: barPx + 12 + textWidth(farLabel, 8.5) / 2,
+        height: 26, rx: 3, fill: p.surface, 'fill-opacity': 0.88,
+      }));
+      /* two blocks, so the bar can be halved by eye */
+      [0, 1].forEach(function (half) {
+        svg.appendChild(svgEl('rect', {
+          x: bx + half * barPx / 2, y: by - 4, width: barPx / 2, height: 4,
+          fill: half ? p.surface : p.ink, stroke: p.ink, 'stroke-width': 0.7,
+        }));
+      });
+      svg.appendChild(svgEl('text', {
+        x: bx, y: by - 8, 'text-anchor': 'middle', 'font-size': 8.5,
+        fill: p.inkSoft, text: '0',
+      }));
+      svg.appendChild(svgEl('text', {
+        x: bx + barPx, y: by - 8, 'text-anchor': 'middle', 'font-size': 8.5,
+        fill: p.inkSoft, text: farLabel,
+      }));
+    }
+
+    /* north arrow */
+    if (opts.northArrow !== false) {
+      var nx = rect.x + rect.w - 18, ny = rect.y + 14;
+      svg.appendChild(svgEl('rect', {
+        x: nx - 11, y: ny - 10, width: 22, height: 34, rx: 3,
+        fill: p.surface, 'fill-opacity': 0.86,
+      }));
+      svg.appendChild(svgEl('path', {
+        d: 'M' + nx + ' ' + (ny - 8) + 'L' + (nx + 6) + ' ' + (ny + 9) +
+           'L' + nx + ' ' + (ny + 4) + 'L' + (nx - 6) + ' ' + (ny + 9) + 'Z',
+        fill: p.inkSoft,
+      }));
+      svg.appendChild(svgEl('text', {
+        x: nx, y: ny + 21, 'text-anchor': 'middle', 'font-size': 9,
+        'font-weight': 620, fill: p.inkSoft, text: 'N',
+      }));
+    }
+  }
+
+  /* The legend is measured before the map is laid out, because how many rows
+   * it needs is what decides how much height the map itself can have. */
+  function mapLegendLayout(items, width, size) {
+    var fontSize = size || 9.5;
+    var longest = items.reduce(function (m, it) {
+      return Math.max(m, textWidth(it.label, fontSize));
+    }, 0);
+    var cols = longest + 24 <= (width - 12) / 3 ? 3
+      : longest + 24 <= (width - 12) / 2 ? 2 : 1;
+    var colW = (width - 12) / cols;
+    var rows = items.map(function (item) {
+      return { item: item, lines: wrapText(item.label, colW - 24, fontSize) };
+    });
+    var perCol = Math.ceil(rows.length / cols);
+    var lineH = 12.5;
+    var height = 0;
+    for (var c = 0; c < cols; c++) {
+      var h = 0;
+      rows.slice(c * perCol, (c + 1) * perCol).forEach(function (row) {
+        h += row.lines.length * lineH + 4;
+      });
+      height = Math.max(height, h);
+    }
+    return { rows: rows, cols: cols, colW: colW, perCol: perCol,
+      lineH: lineH, fontSize: fontSize, height: height + 8 };
+  }
+
+  function drawMapLegend(svg, layout, x, y, p, title) {
+    if (title) {
+      svg.appendChild(svgEl('text', {
+        x: x, y: y - 4, 'font-size': 9, fill: p.muted,
+        'letter-spacing': '0.04em', text: title,
+      }));
+    }
+    layout.rows.forEach(function (row, i) {
+      var col = Math.floor(i / layout.perCol);
+      var within = i % layout.perCol;
+      var top = y + 4;
+      for (var k = col * layout.perCol; k < col * layout.perCol + within; k++) {
+        top += layout.rows[k].lines.length * layout.lineH + 4;
+      }
+      var cx = x + col * layout.colW;
+      var item = row.item;
+      if (item.kind && item.kind !== 'swatch') {
+        svg.appendChild(marker(cx + 5.5, top + 5, item.kind, item.colour,
+          p.surface, 4.5));
+      } else {
+        svg.appendChild(svgEl('rect', {
+          x: cx, y: top, width: 11, height: 11, rx: 1.5,
+          fill: item.colour, stroke: p.axis, 'stroke-width': 0.6,
+        }));
+      }
+      row.lines.forEach(function (line, li) {
+        svg.appendChild(svgEl('text', {
+          x: cx + 17, y: top + 9 + li * layout.lineH,
+          'font-size': layout.fontSize, fill: p.inkSoft, text: line,
+        }));
+      });
+    });
+  }
+
+  /* Lays out title, map frame, legend and credit, and hands back the frame so
+   * the caller only has to draw its own layer into it. */
+  function mapCanvas(spec, legendItems, extentFeatures) {
     var p = palette();
-    var width = spec.width || 620, height = spec.height || 560;
-    var features = spec.features || [];
-    var project = mapProjection(features, width, height - (spec.legend === false ? 10 : 64));
+    var width = spec.width || 620;
+    var height = spec.height || 520;
+    var titleH = spec.title ? 26 : 8;
+    var creditLines = spec.credit
+      ? wrapText(spec.credit, width - 28, 8.5) : [];
+    var creditH = creditLines.length ? creditLines.length * 11 + 6 : 0;
+
+    function frameFor(legendH) {
+      return {
+        x: 42, y: titleH + 6, w: width - 56,
+        h: height - titleH - 6 - legendH - creditH - 22,
+      };
+    }
+    function layoutFor(items) {
+      return items && items.length ? mapLegendLayout(items, width - 28) : null;
+    }
+    function heightOf(l) { return l ? l.height + (spec.legendTitle ? 14 : 4) : 0; }
+
+    var rect, legend, items;
+    if (typeof legendItems === 'function') {
+      rect = frameFor(0);
+      items = legendItems(projectionInto(extentFeatures, rect, 4), rect);
+      legend = layoutFor(items);
+      rect = frameFor(heightOf(legend));
+      items = legendItems(projectionInto(extentFeatures, rect, 4), rect);
+      legend = layoutFor(items);
+      rect = frameFor(heightOf(legend));
+    } else {
+      legend = layoutFor(legendItems);
+      rect = frameFor(heightOf(legend));
+    }
+    var legendH = heightOf(legend);
+
     var svg = svgEl('svg', {
       viewBox: '0 0 ' + width + ' ' + height, width: '100%', xmlns: NS,
       'font-family': FONT, role: 'img', 'aria-label': spec.title || 'map',
     });
     svg.appendChild(svgEl('rect', { width: width, height: height, fill: p.surface }));
-
-    var values = features.map(spec.value).filter(function (v) {
-      return typeof v === 'number' && isFinite(v);
-    });
-    var breaks = spec.breaks || quantileBreaks(values, 5);
-    var ramp = p.seq.slice(1, 1 + breaks.length + 1);
-
-    features.forEach(function (feature) {
-      var v = spec.value(feature);
-      var cls = classify(v, breaks);
-      svg.appendChild(svgEl('path', {
-        d: geometryPath(feature.geometry, project),
-        fill: cls === null ? '#D8D4CB' : ramp[Math.min(cls, ramp.length - 1)],
-        stroke: p.surface, 'stroke-width': 0.8,
-        'aria-label': (spec.name ? spec.name(feature) : '') +
-          (v === null || v === undefined ? '' : ': ' + S.sig(v, 3)),
+    if (spec.title) {
+      svg.appendChild(svgEl('text', {
+        x: 14, y: 19, 'font-size': 13, 'font-weight': 620, fill: p.ink,
+        text: ellipsise(spec.title, width - 28, 13),
       }));
-    });
+    }
+    /* the ground the layers are drawn on: anything left showing is a gap in
+     * the data, and the legend says so */
+    svg.appendChild(svgEl('rect', {
+      x: rect.x, y: rect.y, width: rect.w, height: rect.h, fill: MAP_NO_DATA,
+    }));
 
-    (spec.points || []).forEach(function (point) {
-      var pt = project(point.lon, point.lat);
-      svg.appendChild(marker(pt[0], pt[1], point.kind || 'circle',
-        point.colour || p.secondary, p.surface, point.size || 4.5));
+    var project = projectionInto(extentFeatures, rect, 4);
+    var layer = svgEl('g');
+    svg.appendChild(layer);
+
+    return {
+      svg: svg, layer: layer, project: project, rect: rect, palette: p,
+      width: width, height: height,
+      finish: function (options) {
+        drawMapFurniture(svg, project, rect, p, options || {});
+        var y = rect.y + rect.h + 18 + (spec.legendTitle ? 12 : 0);
+        if (legend) drawMapLegend(svg, legend, 14, y, p, spec.legendTitle);
+        if (creditLines.length) {
+          creditLines.forEach(function (line, i) {
+            svg.appendChild(svgEl('text', {
+              x: 14, y: height - 8 - (creditLines.length - 1 - i) * 11,
+              'font-size': 8.5, fill: p.muted, text: line,
+            }));
+          });
+        }
+        return svg;
+      },
+    };
+  }
+
+  function drawMapPoints(canvas, points) {
+    var p = canvas.palette;
+    (points || []).forEach(function (point) {
+      var pt = canvas.project(point.lon, point.lat);
+      if (pt[0] < canvas.rect.x - 4 || pt[0] > canvas.rect.x + canvas.rect.w + 4 ||
+          pt[1] < canvas.rect.y - 4 || pt[1] > canvas.rect.y + canvas.rect.h + 4) return;
+      canvas.svg.appendChild(marker(pt[0], pt[1], point.kind || 'circle',
+        point.colour || p.secondary, p.surface, point.size || 5));
       if (point.label) {
-        svg.appendChild(svgEl('text', {
-          x: pt[0] + 8, y: pt[1] + 3.5, 'font-size': 10, fill: p.ink,
-          stroke: p.surface, 'stroke-width': 2.6, 'paint-order': 'stroke',
+        var anchor = pt[0] > canvas.rect.x + canvas.rect.w * 0.72 ? 'end' : 'start';
+        canvas.svg.appendChild(svgEl('text', {
+          x: pt[0] + (anchor === 'end' ? -10 : 10), y: pt[1] + 3.5,
+          'text-anchor': anchor, 'font-size': 10, fill: p.ink,
+          stroke: p.surface, 'stroke-width': 3, 'paint-order': 'stroke',
           text: point.label,
         }));
       }
     });
+  }
 
-    if (spec.title) {
-      svg.appendChild(svgEl('text', {
-        x: 14, y: 20, 'font-size': 13, 'font-weight': 600, fill: p.ink,
-        text: spec.title,
-      }));
-    }
+  /* ------------------------------------------------------------ choropleth */
+
+  function choropleth(spec) {
+    var features = spec.features || [];
+    var values = features.map(spec.value).filter(function (v) {
+      return typeof v === 'number' && isFinite(v);
+    });
+    var breaks = spec.breaks || quantileBreaks(values, 5);
+    var pal = palette();
+    var ramp = pal.seq.slice(1, 1 + breaks.length + 1);
+
+    var legendItems = [];
     if (spec.legend !== false && breaks.length) {
-      var ly = height - 34;
-      svg.appendChild(svgEl('text', {
-        x: 14, y: ly - 8, 'font-size': 10.5, fill: p.muted,
-        text: spec.legendTitle || '',
-      }));
       ramp.forEach(function (colour, i) {
-        var x = 14 + i * 92;
-        svg.appendChild(svgEl('rect', {
-          x: x, y: ly, width: 16, height: 11, rx: 2, fill: colour,
-        }));
         var lo = i === 0 ? null : breaks[i - 1];
         var hi = i < breaks.length ? breaks[i] : null;
-        var label = lo === null ? '< ' + S.sig(hi, 3)
-          : (hi === null ? '≥ ' + S.sig(lo, 3)
-            : S.sig(lo, 3) + '–' + S.sig(hi, 3));
-        svg.appendChild(svgEl('text', {
-          x: x + 21, y: ly + 9.5, 'font-size': 10, fill: p.inkSoft, text: label,
-        }));
+        legendItems.push({
+          colour: colour,
+          label: lo === null ? 'under ' + S.sig(hi, 3)
+            : (hi === null ? S.sig(lo, 3) + ' and over'
+              : S.sig(lo, 3) + ' to ' + S.sig(hi, 3)),
+        });
       });
+      if (features.some(function (f) { return classify(spec.value(f), breaks) === null; })) {
+        legendItems.push({ colour: '#D8D4CB', label: 'no figure recorded' });
+      }
     }
-    return svg;
+
+    var canvas = mapCanvas(spec, legendItems, features);
+    features.forEach(function (feature) {
+      var v = spec.value(feature);
+      var cls = classify(v, breaks);
+      canvas.layer.appendChild(svgEl('path', {
+        d: geometryPath(feature.geometry, canvas.project),
+        fill: cls === null ? '#D8D4CB' : ramp[Math.min(cls, ramp.length - 1)],
+        stroke: canvas.palette.surface, 'stroke-width': 0.8,
+        'aria-label': (spec.name ? spec.name(feature) : '') +
+          (v === null || v === undefined ? '' : ': ' + S.sig(v, 3)),
+      }, [svgEl('title', {
+        text: (spec.name ? spec.name(feature) : '') +
+          (v === null || v === undefined ? '' : ': ' + S.sig(v, 3)),
+      })]));
+    });
+    drawMapPoints(canvas, spec.points);
+    return canvas.finish();
   }
 
   function quantileBreaks(values, n) {
@@ -2196,37 +2547,25 @@
     return breaks.length;
   }
 
-  /* A site map: boundaries as context, survey points as the data. */
+  /* ---------------------------------------------------------- thematic map */
+
+  var clipSeq = 0;
+
   /* A categorical polygon layer - geology or aquifer productivity - clipped
    * to a window around the site when there is one.
    *
    * The layers carry their own published colours, so the map reads the same
-   * way as the source sheet does rather than being recoloured here. Features
-   * are selected by bounding-box overlap with the window: a polygon that only
-   * touches the edge still belongs on the map, because what surrounds the site
-   * is the point of the figure. */
-  var clipSeq = 0;
-
+   * way the source sheet does rather than being recoloured here.
+   *
+   * The legend names the units that actually cover ground inside the window,
+   * found by sampling the window on a grid. Selecting by bounding box, which
+   * is how the polygons are chosen for drawing, would put a unit in the
+   * legend whose only claim on the window is that its bounding box reaches
+   * across the country. */
   function thematicMap(spec) {
-    var p = palette();
-    var width = spec.width || 620, height = spec.height || 520;
     var key = spec.key || 'unit';
     var all = spec.features || [];
-    var window_ = spec.window || null;      /* {lat, lon, radiusKm} */
-
-    function bbox(feature) {
-      var lonMin = Infinity, lonMax = -Infinity, latMin = Infinity, latMax = -Infinity;
-      function scan(coords) {
-        if (typeof coords[0] === 'number') {
-          lonMin = Math.min(lonMin, coords[0]); lonMax = Math.max(lonMax, coords[0]);
-          latMin = Math.min(latMin, coords[1]); latMax = Math.max(latMax, coords[1]);
-          return;
-        }
-        coords.forEach(scan);
-      }
-      if (feature.geometry && feature.geometry.coordinates) scan(feature.geometry.coordinates);
-      return [lonMin, latMin, lonMax, latMax];
-    }
+    var window_ = spec.window || null;
 
     var features = all, clip = null;
     if (window_) {
@@ -2236,9 +2575,9 @@
       clip = [window_.lon - dLon, window_.lat - dLat,
         window_.lon + dLon, window_.lat + dLat];
       features = all.filter(function (feature) {
-        var b = bbox(feature);
-        return isFinite(b[0]) && b[0] <= clip[2] && b[2] >= clip[0] &&
-          b[1] <= clip[3] && b[3] >= clip[1];
+        var b = featureBounds([feature]);
+        return isFinite(b.lonMin) && b.lonMin <= clip[2] && b.lonMax >= clip[0] &&
+          b.latMin <= clip[3] && b.latMax >= clip[1];
       });
       if (!features.length) features = all;
     }
@@ -2250,134 +2589,140 @@
         [clip[0], clip[1]], [clip[2], clip[1]], [clip[2], clip[3]], [clip[0], clip[3]],
       ]] } }]
       : features;
-    var legendRows = spec.legendItems || [];
-    var project = mapProjection(extent, width, height - 24 - legendRows.length * 15, 18);
 
-    var svg = svgEl('svg', {
-      viewBox: '0 0 ' + width + ' ' + height, width: '100%', xmlns: NS,
-      'font-family': FONT, role: 'img', 'aria-label': spec.title || 'thematic map',
-    });
-    svg.appendChild(svgEl('rect', { width: width, height: height, fill: p.surface }));
-
-    /* A counter, not a hash of the spec: two maps on one page can legitimately
-     * share dimensions and title length, and a collision would clip one of
-     * them to the other's window. */
-    clipSeq += 1;
-    var clipId = 'gwt-clip-' + clipSeq;
-    if (clip) {
-      var corner0 = project(clip[0], clip[3]), corner1 = project(clip[2], clip[1]);
-      var defs = svgEl('defs');
-      defs.appendChild(svgEl('clipPath', { id: clipId }, [svgEl('rect', {
-        x: corner0[0], y: corner0[1],
-        width: Math.max(1, corner1[0] - corner0[0]),
-        height: Math.max(1, corner1[1] - corner0[1]),
-      })]));
-      svg.appendChild(defs);
+    /* Which units are really in view. The frame shows more than the window
+     * asked for - the projection letterboxes it - so the box to sample is
+     * the one the frame actually covers, which mapCanvas works out. */
+    function legendFor(project) {
+      var box = project.visibleBox();
+      var seen = [], gaps = false;
+      function note(feature) {
+        var props = feature.properties || {};
+        var label = String(props[key] || 'unclassified');
+        if (!seen.some(function (s) { return s.label === label; })) {
+          seen.push({ label: label, colour: props.color || palette().neutral });
+        }
+      }
+      var STEPS = 22;
+      for (var i = 0; i <= STEPS; i++) {
+        for (var j = 0; j <= STEPS; j++) {
+          var lon = box[0] + (box[2] - box[0]) * i / STEPS;
+          var lat = box[1] + (box[3] - box[1]) * j / STEPS;
+          var hit = null;
+          for (var f = 0; f < features.length; f++) {
+            if (pointInFeature(lon, lat, features[f].geometry)) {
+              hit = features[f]; break;
+            }
+          }
+          if (!hit) { gaps = true; continue; }
+          note(hit);
+        }
+      }
+      /* a unit can cross a corner without a sample landing on it */
+      features.forEach(function (feature) {
+        if (anyVertexInside(feature.geometry, box)) note(feature);
+      });
+      seen.sort(function (a, b) { return a.label.localeCompare(b.label); });
+      var items = seen.slice();
+      if (gaps) items.push({ label: 'not mapped', colour: MAP_NO_DATA });
+      (spec.points || []).forEach(function (point) {
+        if (!point.label) return;
+        items.push({
+          label: point.legend || point.label, kind: point.kind || 'diamond',
+          colour: point.colour || palette().secondary,
+        });
+      });
+      return items;
     }
 
-    var group = svgEl('g', clip ? { 'clip-path': 'url(#' + clipId + ')' } : {});
-    var seen = [];
+    var canvas = mapCanvas(spec, legendFor, extent);
+    var p = canvas.palette;
+
+    clipSeq += 1;
+    var clipId = 'gwt-clip-' + clipSeq;
+    var defs = svgEl('defs');
+    defs.appendChild(svgEl('clipPath', { id: clipId }, [svgEl('rect', {
+      x: canvas.rect.x, y: canvas.rect.y,
+      width: canvas.rect.w, height: canvas.rect.h,
+    })]));
+    canvas.svg.insertBefore(defs, canvas.svg.firstChild);
+    canvas.layer.setAttribute('clip-path', 'url(#' + clipId + ')');
+
     features.forEach(function (feature) {
       var props = feature.properties || {};
-      var label = props[key] || 'unclassified';
-      var colour = props.color || p.neutral;
-      group.appendChild(svgEl('path', {
-        d: geometryPath(feature.geometry, project),
-        fill: colour, 'fill-opacity': 0.82, stroke: p.surface, 'stroke-width': 0.5,
-      }, [svgEl('title', { text: String(label) })]));
-      if (!seen.some(function (s) { return s.label === label; })) {
-        seen.push({ label: String(label), colour: colour });
-      }
+      canvas.layer.appendChild(svgEl('path', {
+        d: geometryPath(feature.geometry, canvas.project),
+        fill: props.color || p.neutral, 'fill-opacity': 0.85,
+        stroke: p.surface, 'stroke-width': 0.5,
+      }, [svgEl('title', { text: String(props[key] || 'unclassified') })]));
     });
-    svg.appendChild(group);
-
     (spec.context || []).forEach(function (feature) {
-      svg.appendChild(svgEl('path', {
-        d: geometryPath(feature.geometry, project), fill: 'none',
+      canvas.layer.appendChild(svgEl('path', {
+        d: geometryPath(feature.geometry, canvas.project), fill: 'none',
         stroke: p.axis, 'stroke-width': 0.8,
       }));
     });
-
-    (spec.points || []).forEach(function (point) {
-      var pt = project(point.lon, point.lat);
-      svg.appendChild(marker(pt[0], pt[1], point.kind || 'diamond',
-        point.colour || p.secondary, p.surface, point.size || 7));
-      if (point.label) {
-        svg.appendChild(svgEl('text', {
-          x: pt[0] + 10, y: pt[1] + 3.5, 'font-size': 10.5, fill: p.ink,
-          stroke: p.surface, 'stroke-width': 3, 'paint-order': 'stroke',
-          text: point.label,
-        }));
-      }
-    });
-
-    if (spec.title) {
-      svg.appendChild(svgEl('text', {
-        x: 14, y: 20, 'font-size': 13, 'font-weight': 600, fill: p.ink,
-        text: spec.title,
-      }));
-    }
-    seen.slice(0, 8).forEach(function (item, i) {
-      var y = height - 12 - (Math.min(seen.length, 8) - 1 - i) * 15;
-      svg.appendChild(svgEl('rect', {
-        x: 16, y: y - 8, width: 11, height: 11, rx: 2,
-        fill: item.colour, stroke: p.axis, 'stroke-width': 0.5,
-      }));
-      svg.appendChild(svgEl('text', {
-        x: 33, y: y, 'font-size': 10.5, fill: p.inkSoft,
-        text: item.label.length > 62 ? item.label.slice(0, 60) + '…' : item.label,
-      }));
-    });
-    return svg;
+    drawMapPoints(canvas, (spec.points || []).map(function (pt) {
+      return Object.assign({ kind: 'diamond', size: 6.5 }, pt);
+    }));
+    return canvas.finish();
   }
 
+  /* -------------------------------------------------------------- site map */
+
+  /* Boundaries as context, survey points as the data. Without a position the
+   * map is still drawn - the district is still worth showing - but it says in
+   * the legend that the site is not on it, because a locator map with no
+   * locator on it is the kind of figure that gets signed off by mistake. */
   function siteMap(spec) {
-    var p = palette();
-    var width = spec.width || 620, height = spec.height || 520;
     var context = spec.context || [];
-    var project = mapProjection(context.length ? context : (spec.points || []).map(function (pt) {
-      return { geometry: { type: 'Polygon', coordinates: [[[pt.lon, pt.lat]]] } };
-    }), width, height);
-    var svg = svgEl('svg', {
-      viewBox: '0 0 ' + width + ' ' + height, width: '100%', xmlns: NS,
-      'font-family': FONT, role: 'img', 'aria-label': spec.title || 'site map',
-    });
-    svg.appendChild(svgEl('rect', { width: width, height: height, fill: p.surface }));
-    context.forEach(function (feature) {
-      svg.appendChild(svgEl('path', {
-        d: geometryPath(feature.geometry, project),
-        fill: spec.contextFill ? spec.contextFill(feature) : '#EDEAE3',
-        stroke: p.axis, 'stroke-width': 0.7,
-      }));
-    });
-    (spec.points || []).forEach(function (point) {
-      var pt = project(point.lon, point.lat);
-      svg.appendChild(marker(pt[0], pt[1], point.kind || 'circle',
-        point.colour || p.accent, p.surface, point.size || 5.5));
-      if (point.label) {
-        svg.appendChild(svgEl('text', {
-          x: pt[0] + 9, y: pt[1] + 3.5, 'font-size': 10.5, fill: p.ink,
-          stroke: p.surface, 'stroke-width': 2.8, 'paint-order': 'stroke',
-          text: point.label,
-        }));
-      }
-    });
-    if (spec.title) {
-      svg.appendChild(svgEl('text', {
-        x: 14, y: 20, 'font-size': 13, 'font-weight': 600, fill: p.ink, text: spec.title,
-      }));
-    }
-    if (spec.legendItems && spec.legendItems.length) {
-      spec.legendItems.forEach(function (item, i) {
-        var y = height - 14 - (spec.legendItems.length - 1 - i) * 15;
-        svg.appendChild(marker(22, y - 3.5, item.kind || 'circle', item.colour,
-          p.surface, 4.5));
-        svg.appendChild(svgEl('text', {
-          x: 34, y: y, 'font-size': 10.5, fill: p.inkSoft, text: item.label,
-        }));
+    var points = spec.points || [];
+    var legendItems = (spec.legendItems || []).slice();
+    if (!legendItems.length) {
+      points.forEach(function (point) {
+        legendItems.push({
+          label: point.legend || point.label || 'Site',
+          colour: point.colour || palette().secondary,
+          kind: point.kind || 'diamond',
+        });
       });
     }
-    return svg;
+    if (!points.length) {
+      legendItems.push({ label: 'no position recorded for this site',
+        colour: MAP_NO_DATA });
+    }
+
+    var extent = context.length ? context : points.map(function (pt) {
+      return { geometry: { type: 'Polygon', coordinates: [[[pt.lon, pt.lat]]] } };
+    });
+    /* a lone point projects to a degenerate extent; give it a window it can
+     * actually be seen in */
+    if (!context.length && points.length) {
+      var pad = (spec.radiusKm || 25) / 110.574;
+      extent = [{ geometry: { type: 'Polygon', coordinates: [[
+        [points[0].lon - pad, points[0].lat - pad],
+        [points[0].lon + pad, points[0].lat - pad],
+        [points[0].lon + pad, points[0].lat + pad],
+        [points[0].lon - pad, points[0].lat + pad],
+      ]] } }];
+    }
+
+    var canvas = mapCanvas(spec, legendItems, extent);
+    var p = canvas.palette;
+    context.forEach(function (feature) {
+      canvas.layer.appendChild(svgEl('path', {
+        d: geometryPath(feature.geometry, canvas.project),
+        fill: spec.contextFill ? spec.contextFill(feature) : '#EDEAE3',
+        stroke: p.axis, 'stroke-width': 0.7,
+      }, [svgEl('title', {
+        text: String((feature.properties || {}).name ||
+          (feature.properties || {}).shapeName || ''),
+      })]));
+    });
+    drawMapPoints(canvas, points.map(function (pt) {
+      return Object.assign({ kind: 'diamond', size: 6.5 }, pt);
+    }));
+    return canvas.finish();
   }
 
   /* ============================================================ export */
@@ -2470,8 +2815,11 @@
     depthSpine: depthSpine, guidelineSpine: guidelineSpine,
     costBreakdown: costBreakdown, programmeGantt: programmeGantt,
     choropleth: choropleth, siteMap: siteMap, thematicMap: thematicMap,
-    mapProjection: mapProjection,
+    mapProjection: mapProjection, projectionInto: projectionInto,
     geometryPath: geometryPath, quantileBreaks: quantileBreaks,
+    pointInFeature: pointInFeature,
+    textWidth: textWidth, wrapText: wrapText, ellipsise: ellipsise,
+    stackLabels: stackLabels,
     toPng: toPng, downloadSvg: download, figure: figure,
   };
 }(typeof window !== 'undefined' ? window : globalThis));

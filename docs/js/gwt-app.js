@@ -996,6 +996,15 @@
     var mapNode = null;
     if (GWT.data.geo && GWT.data.geo.adminBoundaries) {
       var boundaries = GWT.data.geo.adminBoundaries.features || [];
+      var legendItems = [];
+      if (latlon) {
+        legendItems.push({ label: 'Project site', kind: 'diamond',
+          colour: charts.palette().secondary });
+      }
+      if (site.district) {
+        legendItems.push({ label: site.district + ' district', colour: '#CFE0D6' });
+      }
+      legendItems.push({ label: 'other districts', colour: '#EDEAE3' });
       mapNode = charts.siteMap({
         context: boundaries,
         contextFill: function (feature) {
@@ -1004,11 +1013,12 @@
         },
         points: latlon ? [{
           lon: latlon.lon, lat: latlon.lat, label: siteLabel(),
-          colour: charts.palette().secondary, size: 6,
+          colour: charts.palette().secondary, size: 6.5,
         }] : [],
         title: 'Site location',
-        legendItems: latlon ? [{ label: 'Project site', colour: charts.palette().secondary }] : [],
-        width: 620, height: 520,
+        legendItems: legendItems,
+        credit: 'District boundaries: Sierra Leone Statistics / OCHA COD-AB.',
+        width: 620, height: 560,
       });
     }
 
@@ -1114,7 +1124,9 @@
             points: latlon ? [{ lon: latlon.lon, lat: latlon.lat, label: siteLabel() }] : [],
             title: latlon ? 'Aquifer productivity around the site'
               : 'Aquifer productivity, Sierra Leone',
-            width: 560, height: 520,
+            credit: 'BGS Africa Groundwater Atlas, CC BY-SA 4.0.',
+            legendTitle: 'AQUIFER TYPE AND PRODUCTIVITY',
+            width: 560, height: 600,
           }), 'Aquifer type and productivity (BGS Africa Groundwater Atlas, CC BY-SA 4.0)',
           { filename: 'aquifer_map' }),
           charts.figure(charts.thematicMap({
@@ -1124,7 +1136,9 @@
             window: latlon ? { lat: latlon.lat, lon: latlon.lon, radiusKm: mapRadius } : null,
             points: latlon ? [{ lon: latlon.lon, lat: latlon.lat, label: siteLabel() }] : [],
             title: latlon ? 'Geology around the site' : 'Geology, Sierra Leone',
-            width: 560, height: 520,
+            credit: 'USGS Geologic Map of Africa.',
+            legendTitle: 'GEOLOGICAL UNIT',
+            width: 560, height: 600,
           }), 'Geology (USGS Geologic Map of Africa)', { filename: 'geology_map' }),
         ]),
       ]),
