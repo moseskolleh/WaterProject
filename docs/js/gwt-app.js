@@ -4880,6 +4880,11 @@
           signOff: signOffFor(kind),
           readiness: reportReadiness(kind),
         };
+        /* every report opens on where it is; the three reports that argue
+         * from the ground carry the aquifer and geology setting too */
+        context.areaNote = areaNote();
+        context.areaMaps = await areaFigures(
+          kind === 'geophysical' || kind === 'completion' || kind === 'handover');
         if (kind === 'pumping' && derived.analysis) {
           context.seasonal = currentSeasonal(derived.analysis);
         }

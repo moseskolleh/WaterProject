@@ -23,9 +23,11 @@ from __future__ import annotations
 import base64
 import csv
 import json
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / "src"))
 DATA = REPO / "src" / "groundwater" / "data"
 OUT = REPO / "docs" / "js" / "gwt-data.js"
 
@@ -56,6 +58,11 @@ COORD_DECIMALS = 5
 
 # The bundled sample datasets, transcribed from real survey and completion
 # reports. Keyed by the project the app offers on the Overview page.
+#
+# The ``site`` block here is only the fallback. The header block on the
+# workbook is the source of truth and is read out of it below: a hand-copied
+# district drifts from the sheet the app then parses, and the browser and the
+# Python engine end up disagreeing about where the same borehole is.
 SAMPLE_PROJECTS = {
     "rokel": {
         "label": "Rokel - geophysical survey",
@@ -67,7 +74,9 @@ SAMPLE_PROJECTS = {
         },
         "site": {
             "client": "Living Water International", "community": "Rokel",
-            "district": "Port Loko", "project": "Geophysical Survey",
+            # the sheet says "Western Area", which is not one of the sixteen
+            # districts; the recorded position settles it as Western Area Rural
+            "district": "Western Area Rural", "project": "Geophysical Survey",
         },
     },
     "kuntolo": {
@@ -78,7 +87,7 @@ SAMPLE_PROJECTS = {
         "files": {"pumping": "kuntolo/kuntolo_step_test.xlsx"},
         "site": {
             "client": "ACF", "community": "Kuntoloh",
-            "district": "Western Area Rural",
+            "district": "Port Loko",
         },
     },
     "dr_timbo": {
@@ -99,6 +108,94 @@ SAMPLE_PROJECTS = {
 }
 
 BRAND_ASSETS = {"icon": "brand/icon.svg"}
+
+
+# The readers the app itself uses, in the order the header block is most
+# likely to be complete: a drilling log carries the fullest one.
+_SITE_READERS = ("drilling", "pumping", "quality", "ves")
+
+_SITE_FIELDS = (
+    "client", "project", "community", "chiefdom", "district", "project_ref",
+    "easting", "northing", "utm_zone", "elevation_m", "date", "supervisor",
+    "contractor",
+)
+
+
+def site_from_workbooks(sources: dict[str, Path], fallback: dict) -> dict:
+    """Read the sample's header block out of its own workbooks.
+
+    The app parses these files on load, so anything written here by hand is
+    a second copy that can disagree with the first. Values found on a sheet
+    win; the hand-written block only fills what no sheet carries.
+    """
+    from groundwater.ingestion import (
+        read_drilling_workbook,
+        read_pumping_workbook,
+        read_quality_workbook,
+        read_ves_workbook,
+    )
+
+    readers = {
+        "drilling": read_drilling_workbook,
+        "pumping": read_pumping_workbook,
+        "quality": read_quality_workbook,
+        "ves": read_ves_workbook,
+    }
+    site = dict(fallback)
+    known_districts = {row["district"] for row in read_csv_rows("sl_districts.csv")}
+    for role in _SITE_READERS:
+        source = sources.get(role)
+        if source is None:
+            continue
+        try:
+            read = readers[role](source)
+            # the VES reader hands back one record per sounding; they share
+            # the sheet's header block, so the first one carries it
+            parsed = (read[0] if isinstance(read, list) else read).site
+        except Exception as exc:  # noqa: BLE001 - a bad sheet is the app's problem
+            print(f"  ! could not read the header block from {source.name}: {exc}")
+            continue
+        if parsed is None:
+            continue
+        for field in _SITE_FIELDS:
+            value = getattr(parsed, field, None)
+            if value in (None, ""):
+                continue
+            # A field sheet is filled in by hand and the administrative
+            # name is the field most often written loosely - "Western Area"
+            # is not one of the sixteen districts. A name the country does
+            # not have is not evidence, so it does not overwrite anything.
+            if field == "district" and value not in known_districts:
+                print(f"  ! {source.name}: district {value!r} is not one of "
+                      f"the sixteen; keeping {site.get(field)!r}")
+                continue
+            if site.get(field) in (None, ""):
+                site[field] = value
+            elif str(site[field]) != str(value):
+                print(f"  ! {source.name}: {field} is {value!r} on the sheet "
+                      f"but {site[field]!r} in build_webapp_data.py; "
+                      f"using the sheet")
+                site[field] = value
+
+    # A recorded position beats any name written on a sheet: it is the one
+    # field that can be checked against the boundaries.
+    if site.get("easting") is not None and site.get("northing") is not None:
+        from groundwater.geo import infer_zone_for_sierra_leone, utm_to_geographic
+        from groundwater.mapping import chiefdom_of
+
+        zone = site.get("utm_zone") or infer_zone_for_sierra_leone(
+            float(site["easting"]))
+        lat, lon = utm_to_geographic(float(site["easting"]),
+                                     float(site["northing"]), int(zone))
+        chiefdom, district = chiefdom_of(lat, lon)
+        for field, found in (("chiefdom", chiefdom), ("district", district)):
+            if not found:
+                continue
+            if site.get(field) not in (None, "", found):
+                print(f"  ! {field} is {site[field]!r} on the sheet but the "
+                      f"recorded position falls in {found!r}; using the position")
+            site[field] = found
+    return site
 
 
 def read_csv_rows(name: str) -> list[dict]:
@@ -140,16 +237,18 @@ def build() -> Path:
     samples = {}
     for key, spec in SAMPLE_PROJECTS.items():
         files = {}
+        sources: dict[str, Path] = {}
         for role, rel in spec["files"].items():
             source = REPO / "examples" / "data" / rel
             if not source.exists():
                 raise FileNotFoundError(
                     f"{source} is missing; run examples/build_sample_data.py first"
                 )
+            sources[role] = source
             files[role] = {"name": source.name, "b64": encode_file(source)}
         samples[key] = {
             "label": spec["label"], "note": spec["note"],
-            "site": spec["site"], "files": files,
+            "site": site_from_workbooks(sources, spec["site"]), "files": files,
         }
     payload["samples"] = samples
 
