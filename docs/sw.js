@@ -22,7 +22,7 @@
 /* Bump when the precache list below changes. Existing files do not need it:
  * they are revalidated on every load (see the fetch handler), so a deploy
  * reaches users without a version change. */
-var VERSION = 'gwt-v1';
+var VERSION = 'gwt-v2';
 var CACHE = VERSION + '-app';
 
 /* Relative to the worker's own directory, so the app works unchanged at a
@@ -40,6 +40,7 @@ var PRECACHE = [
   'js/gwt-data.js',
   'js/gwt-core.js',
   'js/gwt-charts.js',
+  'js/gwt-geolibre.js',
   'js/image-slot.js',
   'js/gwt-docx.js',
   'js/gwt-app.js',
