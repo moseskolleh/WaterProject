@@ -77,6 +77,7 @@ __all__ = [
     "data_link",
     "features_within",
     "geojson_layer",
+    "points_within_window",
     "portfolio_features",
     "portfolio_project",
     "project_link",
@@ -459,6 +460,24 @@ def window_around(lat: float, lon: float, radius_km: float):
     return lon - dlon, lat - dlat, lon + dlon, lat + dlat
 
 
+def points_within_window(points: Iterable, window) -> list:
+    """Water points whose position falls inside ``window``.
+
+    Applied to the records rather than to features built from them, because
+    the inventory this filters can be national. The web app's coverage page
+    fetches up to 200,000 points into the same place the site page reads
+    them from, and building a quarter of a million features in order to
+    throw almost all of them away is work nobody asked for.
+    """
+    if window is None:
+        return list(points)
+    west, south, east, north = window
+    return [
+        point for point in points
+        if west <= point.lon <= east and south <= point.lat <= north
+    ]
+
+
 def features_within(features: Iterable[dict], window) -> list[dict]:
     """Features whose extent reaches into ``window``.
 
@@ -558,21 +577,35 @@ def _frame(
     return centre, round(max(0.0, min(zoom, 20.0)), 2)
 
 
-def _assert_no_secrets(metadata: dict) -> None:
-    """Refuse metadata that looks like a credential.
+def _assert_no_secrets(metadata, _where: str = "metadata") -> None:
+    """Refuse metadata that looks like a credential, at any depth.
 
     A GeoLibre project is a file made to be handed to somebody else. The
     rule the rest of this toolkit keeps - the API key stays out of saved
     project files, so sharing a project never shares the key - is only
     kept if something checks, so this checks.
+
+    It recurses, because a guard that reads only the top level is a guard
+    that says ``{"service": {"api_key": ...}}`` is fine, and the file it
+    waves through carries the key anyway. Only the metadata regions are
+    scanned - the project's and each layer's - and not feature properties:
+    a credential does not arrive as an attribute of a mapped water point,
+    and walking a national inventory to look for one would cost more than
+    it could ever find.
     """
-    for key in metadata:
-        lowered = str(key).lower()
-        if any(hint in lowered for hint in _SECRET_HINTS):
-            raise ValueError(
-                f"refusing to write {key!r} into a GeoLibre project: it reads "
-                "as a credential, and a project file is made to be shared"
-            )
+    if isinstance(metadata, dict):
+        for key, value in metadata.items():
+            lowered = str(key).lower()
+            if any(hint in lowered for hint in _SECRET_HINTS):
+                raise ValueError(
+                    f"refusing to write {key!r} into a GeoLibre project "
+                    f"({_where}): it reads as a credential, and a project "
+                    "file is made to be shared"
+                )
+            _assert_no_secrets(value, f"{_where}.{key}")
+    elif isinstance(metadata, (list, tuple)):
+        for item in metadata:
+            _assert_no_secrets(item, _where)
 
 
 def build_project(
@@ -638,7 +671,9 @@ def build_project(
         map_view["bbox"] = [_round(v) for v in _at_least(bbox, _MIN_SPAN_DEG)]
 
     project_metadata = dict(metadata or {})
-    _assert_no_secrets(project_metadata)
+    _assert_no_secrets(project_metadata, "project metadata")
+    for layer in kept:
+        _assert_no_secrets(layer.get("metadata"), f"layer {layer['name']!r}")
     project_metadata.setdefault("generator", "Groundwater Investigation Toolkit")
     layer_credits = [
         layer["metadata"]["attribution"]
@@ -671,6 +706,14 @@ def write_project(project: dict, path: str | Path) -> Path:
     line. ``ensure_ascii=False`` keeps a community name spelled the way
     it is spelled.
     """
+    # Checked again here, not only in build_project: this is the point at
+    # which the project stops being a dict in memory and becomes a file
+    # somebody can send, and a project assembled by hand never passed
+    # through the other check at all.
+    _assert_no_secrets(project.get("metadata"), "project metadata")
+    for layer in project.get("layers", []):
+        _assert_no_secrets(layer.get("metadata"), f"layer {layer.get('name')!r}")
+
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
@@ -684,10 +727,27 @@ def write_project(project: dict, path: str | Path) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def _link(app: str, params: dict) -> str:
-    from urllib.parse import quote, urlencode
+#: Characters left alone inside a deep link's parameter value. A published
+#: project URL is itself a URL, and the separators that matter - ``&``, ``=``,
+#: ``?``, ``#`` - have to be encoded or the outer query swallows the inner
+#: one: a signed link ending ``?sig=a&expires=1`` would otherwise hand
+#: GeoLibre an ``expires`` parameter of its own and truncate the address it
+#: was supposed to open. The scheme and path separators stay readable, and
+#: the set matches JavaScript's ``encodeURIComponent`` exactly so the two
+#: apps build the same link.
+_LINK_SAFE = ":/!*'()"
 
-    query = urlencode(params, quote_via=quote, safe=":/?&=")
+
+def _link(app: str, params: dict) -> str:
+    from urllib.parse import quote
+
+    parts = []
+    for key, value in params.items():
+        # A valueless parameter is written bare, as the GeoLibre
+        # documentation writes ``&maponly``, rather than as ``maponly=``.
+        parts.append(key if value == "" else
+                     f"{key}={quote(str(value), safe=_LINK_SAFE)}")
+    query = "&".join(parts)
     separator = "" if app.endswith(("?", "&")) else "?"
     return f"{app.rstrip('?&')}{separator}{query}" if query else app
 
@@ -813,10 +873,15 @@ def site_project(
             )
         )
     if water_points:
+        # Windowed like the context layers, and for a sharper reason: the
+        # water points are one of the layers the camera frames on, so a
+        # national inventory arriving here would not merely make the file
+        # large, it would open the project on Sierra Leone with the survey
+        # lost inside it.
         layers.append(
             geojson_layer(
                 "Existing water points",
-                water_point_features(water_points),
+                water_point_features(points_within_window(water_points, window)),
                 radius=6.0,
                 attribution=WPDX_CREDIT,
             )
