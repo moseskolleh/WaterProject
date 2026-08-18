@@ -150,3 +150,25 @@ def test_root_redirect_points_at_the_site():
         "no visible fallback link for a browser that honours neither"
     # and the target has to exist, or the redirect is a loop into a 404
     assert (REPO / "docs" / "index.html").exists()
+
+
+def test_the_service_worker_precaches_every_script_the_page_loads():
+    """A script the worker does not know about is a page that breaks offline.
+
+    The app is used where the network is a luxury, and the failure is a
+    quiet one: everything works on the machine that added the script,
+    because it is in the browser's own cache, and the feature is simply
+    missing on a device that installed the app before it existed.
+    """
+    docs = REPO / "docs"
+    html = (docs / "index.html").read_text(encoding="utf-8")
+    scripts = re.findall(r'<script src="([^"]+)"></script>', html)
+    worker = (docs / "sw.js").read_text(encoding="utf-8")
+    precache = re.search(r"var PRECACHE = \[(.*?)\];", worker, re.DOTALL)
+    assert precache, "PRECACHE list not found in sw.js"
+    cached = set(re.findall(r"'([^']+)'", precache.group(1)))
+    missing = [src for src in scripts if src not in cached]
+    assert not missing, (
+        f"{missing} loaded by index.html but not precached by sw.js; add them "
+        "to PRECACHE and bump VERSION"
+    )

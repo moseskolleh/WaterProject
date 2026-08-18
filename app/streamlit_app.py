@@ -14,6 +14,7 @@ Run from the repository root:
 from __future__ import annotations
 
 import html as _html
+import re as _re
 import sys
 import tempfile
 from pathlib import Path
@@ -69,6 +70,11 @@ from groundwater.geo import geographic_to_utm, parse_latlon, utm_to_geographic
 from groundwater.mapping import (
     chiefdom_of,
     district_of,
+    geolibre,
+    load_admin,
+    load_chiefdoms,
+    load_geology,
+    load_hydrogeology,
     plot_admin_map,
     plot_coverage_choropleth,
     plot_geological_map,
@@ -575,6 +581,16 @@ def cached_districts():
         if row["province"] not in provinces:
             provinces.append(row["province"])
     return provinces, [(row["district"], row["province"]) for row in rows]
+
+
+def _file_stem(name: str) -> str:
+    """A filename stem from a community name typed by a person.
+
+    Anything a filesystem would object to becomes a hyphen, so "Rokel /
+    Masiaka" cannot write into a directory nobody asked for.
+    """
+    stem = _re.sub(r"[^A-Za-z0-9]+", "-", str(name or "")).strip("-").lower()
+    return stem or "site"
 
 
 def workdir() -> Path:
@@ -3403,6 +3419,72 @@ with tab_maps:
         st.image(str(map_path))
         offer_download(map_path, f"Download {map_path.name}")
 
+    st.divider()
+    st.subheader("Interactive map")
+    st.caption(
+        "The maps above are pictures, which is what a report needs. This "
+        "writes the same survey as a GeoLibre project file - an open, "
+        "plain-JSON map format - so it can be panned, zoomed, clicked and "
+        "put over satellite imagery instead. "
+        "[GeoLibre](https://geolibre.app) is free and open source, and the "
+        "file opens in its web app, its desktop app, its phone apps and in "
+        "a Jupyter notebook. Nothing is uploaded: the file is written here "
+        "and downloaded to this machine."
+    )
+    if site.latlon is None:
+        st.info(
+            "Enter the site coordinates above to build the project. Without a "
+            "position there is nothing for it to open on, and the bundled "
+            "geology and boundary layers alone would write a megabyte of "
+            "Sierra Leone with the site missing from it."
+        )
+    elif st.button("Build GeoLibre project", key="run_geolibre"):
+        survey = st.session_state.get("ves_results")
+        suitability = assess_siting(survey[2]) if survey else None
+        wp = st.session_state.get("wp_result") or {}
+        radius = float(st.session_state.get("map_radius") or 40)
+        project = geolibre.site_project(
+            site=site,
+            zone=site.utm_zone,
+            suitability=suitability,
+            water_points=wp.get("points"),
+            chiefdoms=load_chiefdoms(),
+            geology=load_geology(),
+            hydrogeology=load_hydrogeology(),
+            window_km=radius,
+        )
+        path = geolibre.write_project(
+            project, workdir() / f"{_file_stem(site.community)}.geolibre.json"
+        )
+        st.session_state["geolibre_path"] = str(path)
+        st.session_state["geolibre_layers"] = [
+            (layer["name"], len(layer["geojson"]["features"]))
+            for layer in project["layers"]
+        ]
+    if st.session_state.get("geolibre_path"):
+        offer_download(Path(st.session_state["geolibre_path"]),
+                       "Download GeoLibre project")
+        st.dataframe(
+            [{"Layer": name, "Features": count}
+             for name, count in st.session_state.get("geolibre_layers", [])],
+            hide_index=True, width="stretch",
+        )
+        st.markdown(
+            f"Open [{geolibre.GEOLIBRE_WEB_APP}]({geolibre.GEOLIBRE_WEB_APP}) "
+            "and use **Project -> Open** on the downloaded file, or drag it "
+            "onto the map. A file on this machine has no address, so there is "
+            "no link that can carry it - publish the project somewhere and "
+            "`geolibre.project_link(url)` builds the link that opens it "
+            "directly."
+        )
+        st.caption(
+            "The project opens on a blank background, not a basemap: "
+            "switching one on is the first request it makes to the network, "
+            "and that is the operator's decision rather than this app's. "
+            "Layer attributions travel inside the file - the aquifer layer is "
+            "CC BY-SA 4.0, so a project carrying it inherits ShareAlike."
+        )
+
 # ---------------------------------------------------------------------------
 # Existing water points (rehabilitate or drill?)
 # ---------------------------------------------------------------------------
@@ -3449,6 +3531,9 @@ with tab_waterpoints:
                 st.session_state["wp_result"] = {
                     "decision": decision,
                     "rows": [p.as_row() for p in points],
+                    # kept as objects too, so the GeoLibre project can put
+                    # them on the map rather than re-fetching them
+                    "points": points,
                 }
         result = st.session_state.get("wp_result")
         if result:
@@ -3887,6 +3972,17 @@ with tab_portfolio:
             pmap = workdir() / "portfolio_map.png"
             plot_portfolio_map(points, path=pmap, style=app_config().style)
             st.image(str(pmap))
+            if st.button("Build GeoLibre project", key="run_geolibre_portfolio",
+                         help="The same portfolio as an interactive map file"):
+                _, _districts = load_admin()
+                path = geolibre.write_project(
+                    geolibre.portfolio_project(points, districts=_districts),
+                    workdir() / "portfolio.geolibre.json",
+                )
+                st.session_state["geolibre_portfolio"] = str(path)
+            if st.session_state.get("geolibre_portfolio"):
+                offer_download(Path(st.session_state["geolibre_portfolio"]),
+                               "Download portfolio GeoLibre project")
         else:
             st.info("Add GPS coordinates to the projects to place them on the map.")
         st.subheader("Comparison")

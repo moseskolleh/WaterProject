@@ -301,10 +301,18 @@ thousand-tool GIS.
 
 ## 6. Suggested first three commits
 
-1. **`mapping/geolibre.py`** — build a `.geolibre.json` from the objects
+1. ~~**`mapping/geolibre.py`** — build a `.geolibre.json` from the objects
    we already have (`MapPoint`, WPDx points, chiefdom polygons, geology,
    hydrogeology), styled and legended, camera framed. Pure stdlib
-   `json`. Plus an "Open in GeoLibre" button in both apps.
+   `json`. Plus an "Open in GeoLibre" button in both apps.~~ **Done.**
+   `src/groundwater/mapping/geolibre.py` and its port in
+   `docs/js/gwt-geolibre.js`, held to each other by a parity test. Layer
+   ids are stable slugs rather than the format's own random UUIDs, so
+   the same data writes the same bytes twice; per-feature colours ride
+   as simplestyle properties rather than in a renderer schema that is at
+   version 0.1.0; each layer carries its own credit; and a `window_km`
+   trims the national context layers the way the printed local maps are
+   windowed (1085 kB down to 203 kB for a 40 km window).
 2. **COG output from `_interpolated_map`** — write the iso-resistivity
    and overburden grids as GeoTIFF alongside the PNG. Small change,
    unlocks restyling, contouring, zonal statistics and split-map.
