@@ -30,6 +30,11 @@
     return (value || '').trim() || fallback;
   }
 
+  var CAT_FALLBACK = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100',
+    '#e87ba4', '#008300', '#4a3aa7', '#e34948'];
+  var SEQ_FALLBACK = ['#cde2fb', '#9ec5f4', '#6da7ec', '#3987e5',
+    '#256abf', '#184f95', '#0d366b'];
+
   function palette() {
     return {
       surface: token('viz-surface', '#FFFFFF'),
@@ -42,11 +47,15 @@
       accentSoft: token('accent-soft', '#86b6ef'),
       secondary: token('secondary', '#C15A2A'),
       neutral: token('neutral', '#4D4D4D'),
-      cat: [1, 2, 3, 4, 5, 6, 7, 8].map(function (i) {
-        return token('cat-' + i, '#2a78d6');
+      /* The fallbacks are the stylesheet's own values, one per slot. A single
+       * fallback for the whole family collapsed every series to one colour
+       * anywhere the tokens could not be read - which is exactly where a
+       * figure is rasterised for a report. */
+      cat: CAT_FALLBACK.map(function (fallback, i) {
+        return token('cat-' + (i + 1), fallback);
       }),
-      seq: [1, 2, 3, 4, 5, 6, 7].map(function (i) {
-        return token('seq-' + i, '#3987e5');
+      seq: SEQ_FALLBACK.map(function (fallback, i) {
+        return token('seq-' + (i + 1), fallback);
       }),
       good: token('status-good', '#0ca30c'),
       warning: token('status-warning', '#fab219'),
@@ -199,10 +208,18 @@
         x1: x, y1: margin.top, x2: x, y2: margin.top + plotH,
         stroke: p.grid, 'stroke-width': 1,
       }));
+      /* a tick label centred on the last tick hangs off the right edge of the
+       * viewBox; the outermost ones are anchored inwards instead */
+      var label = t.label === undefined ? tickLabel(t) : t.label;
+      var half = textWidth(label, 11) / 2;
+      var anchor = 'middle';
+      if (x + half > width - 3) anchor = 'end';
+      else if (x - half < 3) anchor = 'start';
       grid.appendChild(svgEl('text', {
-        x: x, y: margin.top + plotH + 17, 'text-anchor': 'middle',
-        'font-size': 11, fill: p.muted,
-        text: t.label === undefined ? tickLabel(t) : t.label,
+        x: anchor === 'end' ? Math.min(x + half, width - 3)
+          : (anchor === 'start' ? Math.max(x - half, 3) : x),
+        y: margin.top + plotH + 17, 'text-anchor': anchor,
+        'font-size': 11, fill: p.muted, text: label,
       }));
     });
     yTicks.forEach(function (t) {
@@ -416,9 +433,9 @@
       g.appendChild(svgEl('text', {
         x: x + 22, y: ly, 'font-size': 11, fill: f.palette.inkSoft, text: entry.label,
       }));
-      widest = Math.max(widest, String(entry.label).length);
+      widest = Math.max(widest, textWidth(entry.label, 11));
     });
-    box.setAttribute('width', 30 + widest * 6.1 + pad);
+    box.setAttribute('width', 30 + widest + pad);
     box.setAttribute('height', entries.length * 17 + 6);
     f.svg.appendChild(g);
     return g;
@@ -1704,11 +1721,23 @@
       }));
       svg.appendChild(block);
       if (h > 12) {
-        svg.appendChild(svgEl('text', {
-          x: lithX + 6, y: y0 + h / 2 + 3.5, 'font-size': 9,
-          fill: unit.aquifer ? p.ink : '#FFFFFF',
-          text: String(unit.description || '').split(/[,;]/)[0].slice(0, 26),
-        }));
+        /* wrapped rather than cut at a character count, and in whichever of
+         * black or white stays readable on this fill - white on the sand
+         * colours was not */
+        var lines = wrapText(String(unit.description || ''), lithW - 12, 9);
+        var fits = Math.floor((h - 2) / 10.5);
+        if (lines.length > fits) {
+          lines = lines.slice(0, Math.max(1, fits));
+          lines[lines.length - 1] = ellipsise(lines[lines.length - 1] + ' …',
+            lithW - 12, 9);
+        }
+        var ink = unit.aquifer ? p.ink : readableInk(colour);
+        lines.forEach(function (line, k) {
+          svg.appendChild(svgEl('text', {
+            x: lithX + 6, y: y0 + h / 2 + 3.5 - (lines.length - 1) * 5.25 + k * 10.5,
+            'font-size': 9, fill: ink, text: line,
+          }));
+        });
       }
     });
     if (!(section.lithology || []).length) {
@@ -1939,7 +1968,9 @@
       var y = 38 + i * rowH;
       svg.appendChild(svgEl('text', {
         x: left - 8, y: y + 10, 'text-anchor': 'end', 'font-size': 9.5, fill: p.ink,
-        text: String(row.parameter).slice(0, 26),
+        /* "Nitrate (as NO3)" and "Total hardness" both fit; the point is that
+         * nothing is cut in the middle of a word without saying so */
+        text: ellipsise(String(row.parameter), left - 20, 9.5),
       }));
       /* Coloured by status, not by the ratio alone: a national limit is law
        * rather than taste, and a row the toolkit could not grade is neither a
@@ -1955,10 +1986,17 @@
         x: left, y: y + 3, width: Math.max(1, fx(row.ratio) - left), height: 12,
         rx: 2, fill: fill, opacity: (bad || warn) ? 0.9 : 0.75,
       }));
+      /* the value goes to the right of the bar, or inside its end when there
+       * is no longer room to the right of it */
+      var valueText = (row.value === null ? '—' : row.value) + ' ' + (row.unit || '');
+      var valueW = textWidth(valueText, 9);
+      var barEnd = fx(row.ratio);
+      var outside = barEnd + 5 + valueW <= width - 8;
       svg.appendChild(svgEl('text', {
-        x: Math.min(fx(row.ratio) + 5, right + 4), y: y + 13, 'font-size': 9,
-        fill: p.inkSoft,
-        text: (row.value === null ? '—' : row.value) + ' ' + (row.unit || ''),
+        x: outside ? barEnd + 5 : barEnd - 5, y: y + 13, 'font-size': 9,
+        'text-anchor': outside ? 'start' : 'end',
+        fill: outside ? p.inkSoft : '#FFFFFF',
+        text: valueText,
       }));
     });
     svg.appendChild(svgEl('text', {
@@ -1974,9 +2012,9 @@
     var data = mode === 'stage' ? estimate.by_stage() : estimate.by_category();
     var p = palette();
     var width = opts.width || 700;
-    var barH = 26, gap = 10;
+    var barH = 26, gap = 14;
     var height = 62 + data.length * (barH + gap);
-    var labelW = 150;
+    var labelW = 160;
     var total = data.reduce(function (a, d) { return a + d[1]; }, 0);
     var maxV = Math.max.apply(null, data.map(function (d) { return d[1]; }));
 
@@ -1992,24 +2030,43 @@
         : 'resource category')),
     }));
 
-    var plotW = width - labelW - 96;
+    /* room for the widest amount, so the longest bar's label has somewhere to
+     * go instead of being written past the right edge of the figure */
+    var amounts = data.map(function (row) {
+      return S.money(row[1], 0) + '  (' +
+        (total ? (100 * row[1] / total).toFixed(0) : '0') + '%)';
+    });
+    var amountW = amounts.reduce(function (m, text) {
+      return Math.max(m, textWidth(text, 11.5));
+    }, 0);
+    var plotW = width - labelW - amountW - 34;
+
     data.forEach(function (row, i) {
       var y = 42 + i * (barH + gap);
       var w = maxV > 0 ? (row[1] / maxV) * plotW : 0;
-      svg.appendChild(svgEl('text', {
-        x: labelW - 10, y: y + barH / 2 + 4, 'text-anchor': 'end',
-        'font-size': 11.5, fill: p.inkSoft,
-        text: mode === 'stage' ? row[0] : S.titleCase(row[0]),
-      }));
-      /* rounded data end anchored to the baseline */
+      /* the stage names run to "Development and completion", which written
+       * out at this size is wider than the gutter it was written into */
+      var label = mode === 'stage' ? row[0] : S.titleCase(row[0]);
+      var lines = wrapText(label, labelW - 14, 11.5);
+      if (lines.length > 2) {
+        lines = [lines[0], ellipsise(lines.slice(1).join(' '), labelW - 14, 11.5)];
+      }
+      lines.forEach(function (line, k) {
+        svg.appendChild(svgEl('text', {
+          x: labelW - 10, y: y + barH / 2 + 4.5 - (lines.length - 1) * 6 + k * 12,
+          'text-anchor': 'end', 'font-size': 11.5, fill: p.inkSoft, text: line,
+        }));
+      });
+      /* rounded data end anchored to the baseline. One hue: the bars are a
+       * ranking of one quantity, and giving each its own colour would say
+       * they are different kinds of thing. */
       svg.appendChild(svgEl('path', {
         d: roundedBar(labelW, y, Math.max(w, 2), barH, 4),
-        fill: p.cat[i % p.cat.length],
+        fill: p.accent,
       }));
       svg.appendChild(svgEl('text', {
         x: labelW + w + 10, y: y + barH / 2 + 4, 'font-size': 11.5, fill: p.ink,
-        text: S.money(row[1], 0) + '  (' +
-          (total ? (100 * row[1] / total).toFixed(0) : '0') + '%)',
+        text: amounts[i],
       }));
     });
     svg.appendChild(svgEl('line', {
@@ -2534,7 +2591,16 @@
     });
     var breaks = spec.breaks || quantileBreaks(values, 5);
     var pal = palette();
-    var ramp = pal.seq.slice(1, 1 + breaks.length + 1);
+    /* One colour per class, sampled across the whole ramp. Slicing a fixed
+     * window off it gave fewer colours than classes as soon as the breaks
+     * were supplied rather than computed, and the top classes then shared a
+     * colour while the legend still listed them apart. */
+    var classes = breaks.length + 1;
+    var ramp = [];
+    for (var c = 0; c < classes; c++) {
+      var t = classes === 1 ? 0.5 : c / (classes - 1);
+      ramp.push(pal.seq[Math.round(t * (pal.seq.length - 1))]);
+    }
 
     var legendItems = [];
     if (spec.legend !== false && breaks.length) {

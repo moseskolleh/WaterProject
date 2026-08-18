@@ -473,3 +473,36 @@ def test_an_asset_record_is_gated_like_every_other_report(tmp_path):
         tmp_path / "record.docx")
     text = "\n".join(p.text for p in Document(str(out)).paragraphs)
     assert "PROVISIONAL - NOT FOR CERTIFICATION" in text
+
+
+def test_a_minted_identifier_is_always_accepted_by_the_parser():
+    """Round trip every identifier a stretch of the country mints.
+
+    The check character comes from the full 36-character alphabet, in which
+    I, L, O and U mean themselves. Folding them the way the position code
+    folds them - where the alphabet has no such letters, so folding is
+    unambiguous - rejected one identifier in nine that this same module had
+    just minted, and with it the whole maintenance history filed under it.
+    """
+    from groundwater.models import SiteMetadata
+    from groundwater.registry import mint_asset_id, parse_asset_id
+
+    minted = 0
+    for easting in range(700000, 700400, 7):
+        for northing in range(900000, 900400, 11):
+            site = SiteMetadata(district="Port Loko", easting=easting,
+                                northing=northing, utm_zone=28)
+            asset_id = mint_asset_id(site)
+            minted += 1
+            assert parse_asset_id(asset_id) == asset_id, asset_id
+    assert minted > 2000
+
+
+def test_a_mistyped_check_character_is_still_refused():
+    """Forgiving the four Crockford confusions must not forgive a wrong code."""
+    from groundwater.registry import parse_asset_id
+
+    # SL-PL-8HE2QWG-3 is well formed; every other check character is not
+    assert parse_asset_id("SL-PL-8HE2QWG-3") == "SL-PL-8HE2QWG-3"
+    for wrong in "012456789ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+        assert parse_asset_id(f"SL-PL-8HE2QWG-{wrong}") is None

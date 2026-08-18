@@ -21,6 +21,7 @@ from ..supervision.checklists import (
     ChecklistResponse,
     stage_title,
 )
+from ..supervision.field_checks import FieldCheck
 from .docx_utils import ReportBuilder
 from .context import add_area_section
 
@@ -42,6 +43,11 @@ class SupervisionReportInputs:
     driller: str = ""
     community_rep: str = ""
     notes: list[str] = field(default_factory=list)
+    #: Sand content, verticality, screen open area, specific capacity and the
+    #: rest of :mod:`groundwater.supervision.field_checks`. A checklist says
+    #: what was inspected; these say what was measured, and they are what the
+    #: works are accepted or rejected against.
+    field_checks: list[FieldCheck] = field(default_factory=list)
     #: Where the location map is written. A supervision record is a record
     #: of a place as much as of a checklist, so it carries one.
     figures_dir: Path = Path(".")
@@ -136,13 +142,31 @@ def build_supervision_report(
         )
 
     # ---- 3 notes ----------------------------------------------------------
+    if inputs.notes or inputs.field_checks:
+        rb.heading("3. Site Record", 1)
     if inputs.notes:
-        rb.heading("3. Site Notes and Instructions", 1)
+        rb.heading("3.1 Site Notes and Instructions", 2)
         rb.paragraph(
             "Site instructions are issued in writing and signed in "
             "duplicate by the supervisor and the driller."
         )
         rb.bullets(inputs.notes)
+
+    # ---- field acceptance checks -------------------------------------------
+    if inputs.field_checks:
+        rb.heading("3.2 Field Acceptance Checks", 2)
+        rb.paragraph(
+            "Measured against the acceptance limits in the RWSN and UNICEF "
+            "supervision guidance. A failed check is a defect the contractor "
+            "is required to make good before the works are accepted.",
+            align="justify",
+        )
+        rb.table(
+            [[c.name, c.measured, c.limit, c.status.upper(), c.message]
+             for c in inputs.field_checks],
+            header=["Check", "Measured", "Acceptance limit", "Result", "Note"],
+            caption="Field acceptance checks.",
+        )
 
     # ---- signatures --------------------------------------------------------
     rb.heading("4. Sign Off", 1)

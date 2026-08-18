@@ -1384,6 +1384,45 @@
     return out;
   }
 
+  /* The same locator, for a document whose subject is an asset rather than
+   * the project currently loaded. */
+  function siteLikeFromAsset(asset) {
+    return {
+      community: asset.community || '', chiefdom: asset.chiefdom || '',
+      district: asset.district || '', easting: asset.easting,
+      northing: asset.northing, utm_zone: asset.utm_zone,
+    };
+  }
+
+  function areaNoteFor(asset) {
+    return withSite(siteLikeFromAsset(asset), areaNote);
+  }
+
+
+  async function areaFiguresFor(asset) {
+    return await withSite(siteLikeFromAsset(asset), function () {
+      return areaFigures(false);
+    });
+  }
+
+  /* Run `fn` as though `site` were the loaded project's site, and put the
+   * real one back afterwards whatever happens - including when `fn` is async
+   * and the substitution has to outlive the call that started it. The
+   * locator helpers read the store, which is the right default and the wrong
+   * one for an asset drawn from the registry rather than from the open
+   * project. */
+  async function withSite(site, fn) {
+    var previous = store.get('site');
+    var merged = Object.assign({}, previous);
+    Object.keys(site).forEach(function (key) { merged[key] = site[key]; });
+    store.set('site', merged);
+    try {
+      return await fn();
+    } finally {
+      store.set('site', previous);
+    }
+  }
+
   function districtOf(chiefdom) {
     if (!chiefdom) return '';
     return (C.loadChiefdomDistrict() || {})[chiefdom] || '';
@@ -2780,14 +2819,17 @@
             var builder = await GWT.docx.paymentCertificate({
               style: config().style, contract: contract,
               certificate: certificate, signOff: signOffFor('costing'),
-              readiness: reportReadiness('costing'),
+              /* a certificate makes no claim about the water, so it is not
+               * held back by the costing gate's design requirements */
+              readiness: reportReadiness('procurement'),
+              areaNote: areaNote(), areaMaps: await areaFigures(false),
             });
             S.download('IPC_' + certificate.number + '.docx',
               await builder.build());
           });
           S.toast('Certificate ready.', 'ok');
         } catch (err) {
-          S.toast('Could not build the certificate: ' + err.message, 'bad');
+          S.toast('Could not build the certificate: ' + err.message, 'error');
         }
       }),
     ]));
@@ -3387,6 +3429,36 @@
       note: 'Format the depth column as Text before typing "5-10", or Excel ' +
         'converts it to a date and the row is skipped.',
     },
+    daily: {
+      label: "Driller's daily report", file: 'daily_log_template.xlsx',
+      sheets: function () {
+        var rows = [
+          ["DRILLER'S DAILY REPORT"],
+          ['Community', '', '', 'Borehole Ref. No.', ''],
+          ['Date', '', '', 'Drill rig', ''],
+          ['Contractor', '', '', 'Supervisor', ''],
+          ['Weather / site conditions', '', '', 'Record taker', ''],
+          [],
+          ['Time from', 'Time to', 'Depth from (m)', 'Depth to (m)',
+            'Formation / activity', 'Water strike (m)', 'Airlift yield (L/s)'],
+        ];
+        for (var i = 0; i < 14; i++) rows.push(['', '', '', '', '', '', '']);
+        rows.push([]);
+        rows.push(['Metres drilled today', '', 'Cumulative metres', '',
+          'Casing installed today (m)', '']);
+        rows.push(['Standing / breakdown hours', '', 'Reason', '']);
+        rows.push([]);
+        rows.push(['Rig operator signature', '', '', 'Supervisor signature', '']);
+        rows.push([]);
+        rows.push(['Notes: one row per drilled interval or activity (moving, ' +
+          'standing, casing). Both signatures are required every day; the ' +
+          'office checks invoiced metres against these logs.']);
+        return [{ name: 'Daily Log', rows: rows }];
+      },
+      note: 'The daily record the supervision guidance expects, and what ' +
+        'invoiced metres are checked against. One row per drilled interval ' +
+        'or activity, and both signatures every day.',
+    },
     pumping: {
       label: 'Pumping test', file: 'pumping_test_template.xlsx',
       sheets: function () {
@@ -3454,8 +3526,9 @@
           }),
         ]);
       })),
-      card('All four at once', [
-        button('Download every template', async function () {
+      card('All of them at once', [
+        button('Download every template (' +
+          Object.keys(TEMPLATE_SPECS).length + ')', async function () {
           for (var key in TEMPLATE_SPECS) {
             if (!Object.prototype.hasOwnProperty.call(TEMPLATE_SPECS, key)) continue;
             var spec = TEMPLATE_SPECS[key];
@@ -4379,9 +4452,17 @@
         var cfg = config();
         var context = {
           style: cfg.style, asset: asset, state: C.assetState(asset),
-          readiness: reportReadiness('completion'),
+          /* a plate on the headworks makes no claim about the water, so it is
+           * not held back for want of a laboratory panel */
+          readiness: reportReadiness(kind === 'placard' ? 'placard' : 'asset'),
           symbol: qrDataUrl(C.qrPayload(asset), { ecc: 'H', scale: 8 }),
         };
+        if (kind !== 'placard') {
+          /* the record is what a district water office reads before sending a
+           * repair team, so it says where to send it */
+          context.areaNote = await areaNoteFor(asset);
+          context.areaMaps = await areaFiguresFor(asset);
+        }
         var builder = kind === 'placard'
           ? await GWT.docx.assetPlacard(context)
           : await GWT.docx.assetRecordReport(context);
@@ -4391,7 +4472,7 @@
       });
       S.toast('Document ready.', 'ok');
     } catch (err) {
-      S.toast('Could not build the document: ' + err.message, 'bad');
+      S.toast('Could not build the document: ' + err.message, 'error');
     }
   }
 
@@ -4986,6 +5067,11 @@
             });
           context.log = derived.log || {};
           context.design = derived.design;
+          /* the completion report's later sections: the test, the
+           * installation, the water and what to do about it */
+          context.analysis = derived.analysis;
+          context.assessment = derived.assessment;
+          context.pumpType = store.get('handover.pumpType') || 'Handpump';
           context.figures = figures;
           builder = await docx.completionReport(context);
 

@@ -669,7 +669,11 @@
   /* A minimal .xlsx writer, enough for the BoQ and template downloads.
    * sheets: [{name, rows: [[cell, ...], ...]}] */
   async function writeXlsx(sheets) {
-    var strings = [], stringIndex = {};
+    /* Object.create(null), not {}: `'constructor' in {}` is true, so a cell
+     * whose text happens to be the name of something on Object.prototype got
+     * that inherited value back as its index and the workbook came out
+     * corrupt. "Constructor" is a plausible typo for "Contractor". */
+    var strings = [], stringIndex = Object.create(null);
     function sharedIndex(text) {
       if (!(text in stringIndex)) {
         stringIndex[text] = strings.length;

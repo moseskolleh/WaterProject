@@ -621,6 +621,20 @@
     });
   }
 
+  /* The limit a parameter actually breached, matching its status. Taking the
+   * WHO health value first regardless would print a limit the parameter did
+   * not exceed beside a remark naming the one it did. Mirrors
+   * groundwater.reporting.completion._breached_limit. */
+  function breachedLimit(row) {
+    if (row.status === 'exceeds_national') {
+      return row.sl_standard || row.who_health || row.who_aesthetic || '';
+    }
+    if (row.status === 'exceeds_aesthetic') {
+      return row.who_aesthetic || row.sl_standard || row.who_health || '';
+    }
+    return row.who_health || row.sl_standard || row.who_aesthetic || '';
+  }
+
   function limitationsParagraphs(kind) {
     var shared = 'The findings rest on the data recorded on the field sheets and ' +
       'on the standard interpretation methods named in this report. Field data ' +
@@ -893,6 +907,125 @@
       b.bullets(design.design_basis);
     }
     figures.forEach(function (f) { b.figure(f.image, f.caption, f.widthCm || 13); });
+
+    /* Sections 6 to 9, which the Python builder has always written and this
+     * one stopped short of. A completion report that ends at the casing
+     * schedule does not say what the borehole yields, how the pump sits in
+     * it, whether the water is drinkable or what anyone should do next -
+     * which is most of what the client reads it for. */
+    var analysis = context.analysis || null;
+    var assessment = context.assessment || null;
+    var test = analysis ? analysis.test : null;
+    var rec = analysis ? analysis.yield_recommendation : null;
+    var section = 6;
+
+    if (analysis) {
+      b.heading(section + '. Pumping Test', 1);
+      var steps = (test && test.steps) || [];
+      var last = steps.length ? steps[steps.length - 1] : null;
+      /* the maximum drawdown is measured at the end of the last step, so the
+       * rate quoted beside it has to be that step's, not step one's */
+      var q = last ? last.discharge_m3_per_h : null;
+      var rows = [
+        ['Test type', (test && test.test_type) || '—'],
+        ['Duration', test && test.pumping_duration_min
+          ? C.fmtNum(test.pumping_duration_min) + ' min' : '—'],
+        [steps.length > 1 ? 'Discharge (final step)' : 'Discharge',
+          q ? C.fmtNum(q) + ' m3/h' : 'pending'],
+        ['Static water level', test && test.static_water_level_m !== null &&
+          test.static_water_level_m !== undefined
+          ? C.fmtNum(test.static_water_level_m) + ' m' : '—'],
+        ['Maximum drawdown', analysis.max_drawdown_m
+          ? C.fmtNum(analysis.max_drawdown_m) + ' m' : '—'],
+      ];
+      if (analysis.transmissivity_m2_per_day) {
+        rows.push(['Transmissivity',
+          C.fmtNum(analysis.transmissivity_m2_per_day) + ' m2/day']);
+      }
+      if (rec && rec.specific_capacity_m3hr_per_m) {
+        rows.push(['Specific capacity',
+          C.fmtNum(rec.specific_capacity_m3hr_per_m) + ' m3/h per m']);
+      }
+      b.table(rows, { header: ['Item', 'Value'], caption: 'Pumping test summary',
+        colWidthsCm: [5.6, 10.0] });
+      section += 1;
+    }
+
+    b.heading(section + '. Borehole Characteristics and Installation', 1);
+    var swl = test && test.static_water_level_m !== null &&
+      test.static_water_level_m !== undefined ? test.static_water_level_m : null;
+    var lastStep = test && test.steps && test.steps.length
+      ? test.steps[test.steps.length - 1] : null;
+    var dwl = lastStep && lastStep.water_level_m && lastStep.water_level_m.length
+      ? Number(lastStep.water_level_m[lastStep.water_level_m.length - 1]) : null;
+    var flow = lastStep ? lastStep.discharge_m3_per_h : null;
+    b.keyValueTable([
+      ['Borehole depth', log.total_depth_m ? C.fmtNum(log.total_depth_m) + ' m' : '—'],
+      ['Borehole diameter', design ? C.formatG(design.borehole_diameter_in) + '"' : '—'],
+      ['Static water level', swl !== null ? C.fmtNum(swl) + ' m' : '—'],
+      ['Dynamic water level', dwl !== null ? C.fmtNum(dwl) + ' m' : '—'],
+      ['Drawdown', (dwl !== null && swl !== null)
+        ? C.fmtNum(dwl - swl) + ' m' : '—'],
+      ['Flow rate', flow ? C.fmtNum(flow * 1000) + ' L/h' : 'pending'],
+      ['Pump type', context.pumpType || 'Handpump'],
+      ['Installation depth', rec && rec.pump_installation_depth_m
+        ? C.fmtNum(rec.pump_installation_depth_m) + ' m'
+        : (test && test.pump_setting_m ? C.fmtNum(test.pump_setting_m) + ' m' : '—')],
+    ]);
+    section += 1;
+
+    if (assessment) {
+      b.heading(section + '. Water Quality Summary', 1);
+      b.paragraph(assessment.verdict, { align: 'justify' });
+      var exceed = assessment.all_exceedances || [];
+      if (exceed.length) {
+        b.table(exceed.map(function (r) {
+          return [r.parameter, C.fmtNum(r.value), r.unit || '',
+            breachedLimit(r), r.remark || ''];
+        }), {
+          header: ['Parameter', 'Value', 'Unit', 'Limit', 'Remark'],
+          caption: 'Parameters above guideline or standard limits',
+          fontSize: 9, colWidthsCm: [3.8, 1.8, 1.8, 2.2, 6.0],
+        });
+      }
+      section += 1;
+    }
+
+    b.heading(section + '. Recommendations and Conclusions', 1);
+    var advice = [];
+    if (String(log.status || '').toLowerCase().indexOf('success') === 0 ||
+        (rec && rec.safe_yield_m3_per_h)) {
+      advice.push('The borehole is successful and sustainable when operated ' +
+        'as recommended.');
+    }
+    if (rec && rec.safe_yield_m3_per_h) {
+      advice.push('The recommended abstraction rate is ' +
+        C.fmtNum(rec.safe_yield_m3_per_h) + ' m3/h (safety factor ' +
+        C.formatG(rec.safety_factor) + ' applied to the long term yield).');
+      if (rec.pump_installation_depth_m) {
+        advice.push('The pump installation depth is ' +
+          C.fmtNum(rec.pump_installation_depth_m) + ' m.');
+      }
+      advice.push('The pump should rest for at least one hour in every ' +
+        'pumping cycle and the pumping water level should be checked routinely.');
+    } else if (analysis && test && !test.has_discharge) {
+      advice.push('The pumping test discharge must be supplied so the yield ' +
+        'recommendation can be completed; abstraction figures remain pending.');
+    }
+    var state = assessment ? assessment.verdict_state : null;
+    if (state === 'health_fail' || state === 'national_fail') {
+      advice.push('Water treatment is required before drinking; see the water ' +
+        'quality assessment.');
+    } else if (state === 'indeterminate') {
+      advice.push('The water quality results do not yet establish that the ' +
+        'supply is safe to drink: ' +
+        (assessment.uncertainties || []).join('; ') +
+        '. Resolve these before the borehole is handed over.');
+    } else {
+      advice.push('Physico-chemical and bacteriological testing should be ' +
+        'repeated at least once a year.');
+    }
+    b.bullets(advice);
 
     b.signOff(context.signOff);
     b.references([REFERENCES.rwsn_professional, REFERENCES.rwsn_supervision]);
@@ -1639,6 +1772,10 @@
         'establish nothing about when anything last happened.');
     }
 
+    /* the record is what a district water office reads before it decides
+     * where to send a repair team */
+    areaSection(b, context, 'Where it is');
+
     b.heading('Details', 1);
     b.table(C.placardLines(asset, state),
       { header: ['', ''], colWidthsCm: [5.0, 10.0] });
@@ -1708,6 +1845,9 @@
         'them showing rather than resolved silently.', { bold: true });
       b.bullets(certificate.problems);
     }
+
+    /* the works being paid for are at a place */
+    areaSection(b, context, 'Where the works are');
 
     b.heading('Summary', 1);
     b.table(C.contractSummaryRows(contract, certificate),
