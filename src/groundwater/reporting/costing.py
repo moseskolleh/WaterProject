@@ -15,8 +15,11 @@ from typing import Any
 from ..config import Config
 from ..costing.model import CostEstimate
 from ..costing.plots import plot_cost_breakdown
+from ..costing.plots import plot_programme_gantt
+from ..costing.programme import ProgrammeEstimate
 from ..models import SiteMetadata
 from ..utils import fmt_num
+from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
 from .context import add_area_section
 
@@ -27,6 +30,12 @@ class CostReportInputs:
     site: SiteMetadata | None = None
     figures_dir: Path = Path(".")
     prepared_by: str = ""
+    #: The package roll-up from
+    #: :func:`groundwater.costing.estimate_programme_cost`. A programme is
+    #: budgeted per successful borehole, and the number that has to be
+    #: budgeted for carries the dry attempts - a figure that existed in the
+    #: toolkit and appeared in no document it wrote.
+    programme: ProgrammeEstimate | None = None
     #: :class:`~groundwater.readiness.Readiness` for this report, from
     #: :func:`groundwater.readiness.assess_readiness`. When it is not
     #: certifiable the cover carries a PROVISIONAL stamp listing why.
@@ -150,8 +159,36 @@ def build_cost_report(
     plot_cost_breakdown(estimate, fig_path, config.style)
     rb.figure(fig_path, "Direct works cost by stage and by resource category.")
 
-    # ---- 5 notes ---------------------------------------------------------
-    rb.heading("5. Notes and Exclusions", 1)
+    # ---- 5 programme ------------------------------------------------------
+    section = 5
+    if inputs.programme is not None:
+        programme = inputs.programme
+        rb.heading(f"{section}. Programme of Works", 1)
+        rb.paragraph(
+            f"{programme.n_successful} successful "
+            + ("borehole" if programme.n_successful == 1 else "boreholes")
+            + f" at a siting success rate of {programme.success_rate_percent:g}% "
+            f"means budgeting for {programme.n_attempted} "
+            + ("attempt" if programme.n_attempted == 1 else "attempts")
+            + ". A programme budget that counts only the holes that find "
+            "water runs out before the last village has any.",
+            align="justify",
+        )
+        rb.table(
+            [list(row) for row in programme.summary_rows()],
+            header=["Item", "USD", "SLE"],
+            caption="Programme roll-up, carrying the expected dry attempts.",
+        )
+        gantt = figures / "programme_gantt.png"
+        plot_programme_gantt(programme, gantt, config.style)
+        rb.figure(gantt, "Indicative programme of works.")
+        if programme.assumptions:
+            rb.paragraph("Assumptions:", bold=True)
+            rb.bullets([str(a) for a in programme.assumptions])
+        section += 1
+
+    # ---- notes ------------------------------------------------------------
+    rb.heading(f"{section}. Notes and Exclusions", 1)
     notes = [
         "Unit rates are indicative and must be confirmed against local "
         "supplier and contractor quotations before award.",
@@ -164,5 +201,8 @@ def build_cost_report(
     for flag in estimate.flags:
         notes.append(str(flag.message))
     rb.bullets(notes)
+
+    rb.references(references_for("cost"))
+    rb.glossary(GLOSSARY)
 
     return rb.save(out_path)

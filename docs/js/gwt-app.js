@@ -5134,6 +5134,7 @@
             });
           }
           context.estimate = derived.estimate;
+          context.programme = derived.programme;
           context.figures = figures;
           builder = await docx.costingReport(context);
 

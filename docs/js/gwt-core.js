@@ -4289,6 +4289,38 @@
     return programme;
   }
 
+  /* The programme roll-up as a report table. Mirrors
+   * ProgrammeEstimate.summary_rows on the Python side, so the package
+   * estimate reads the same in either engine's cost report. */
+  function programmeSummaryRows(programme) {
+    function pair(usd) {
+      return [thousandsFixed(usd, 0), thousandsFixed(programme.in_local(usd), 0)];
+    }
+    var dry = (programme.n_attempted - programme.n_successful) *
+      programme.dry_attempt_cost_usd;
+    var rows = [
+      ['Successful boreholes required', String(programme.n_successful), ''],
+      ['Attempts planned (' + formatG(programme.success_rate_percent) +
+        '% success)', String(programme.n_attempted), ''],
+      ['Direct works cost'].concat(pair(programme.direct_cost_usd)),
+      ['- of which transport and moves'].concat(pair(programme.transport_cost_usd)),
+      ['- of which dry attempts'].concat(pair(dry)),
+      ['Total cost (overheads ' + formatG(programme.overheads_percent) + '%)']
+        .concat(pair(programme.total_cost_usd)),
+      ['Contract price (margin ' + formatG(programme.margin_percent) + '%)']
+        .concat(pair(programme.price_usd)),
+    ];
+    if (programme.vat_percent) {
+      rows.push(['Price including VAT (' + formatG(programme.vat_percent) + '%)']
+        .concat(pair(programme.price_with_vat_usd)));
+    }
+    rows.push(['Price per successful borehole']
+      .concat(pair(programme.price_per_successful_well_usd)));
+    rows.push(['Planning budget (contingency ' +
+      formatG(programme.contingency_percent) + '%)'].concat(pair(programme.budget_usd)));
+    return rows;
+  }
+
   /* ============================================================ supervision
    * groundwater/supervision/*. Checklist content follows RWSN/UNICEF
    * "Supervising Water Well Drilling"; the numeric field checks encode the
@@ -4590,6 +4622,7 @@
     costingInputs: costingInputs, resolveCostingInputs: resolveCostingInputs,
     inputsFromDesign: inputsFromDesign, estimateBoreholeCost: estimateBoreholeCost,
     estimateProgrammeCost: estimateProgrammeCost,
+    programmeSummaryRows: programmeSummaryRows,
     STAGE_TITLES: STAGE_TITLES, STAGE_ORDER: STAGE_ORDER,
     RESPONSE_STATES: RESPONSE_STATES, stageTitle: stageTitle,
     loadChecklists: loadChecklists, loadSeparationDistances: loadSeparationDistances,

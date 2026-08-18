@@ -22,6 +22,7 @@ from ..supervision.checklists import (
     stage_title,
 )
 from ..supervision.field_checks import FieldCheck
+from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
 from .context import add_area_section
 
@@ -183,5 +184,8 @@ def build_supervision_report(
         rb.paragraph("." * 30)
         rb.paragraph(f"{role}: {name}", bold=True)
         rb.paragraph("Date: ........................")
+
+    rb.references(references_for("supervision"))
+    rb.glossary(GLOSSARY)
 
     return rb.save(out_path)

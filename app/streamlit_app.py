@@ -3000,6 +3000,10 @@ with tab_cost:
                         site=site_from_state(),
                         figures_dir=workdir(),
                         readiness=_cost_gate,
+                        # the package roll-up, when one has been estimated:
+                        # it is the number a programme is budgeted against
+                        programme=(st.session_state.get("programme_estimate")
+                                   or (None,))[0],
                     ),
                     workdir() / "Cost_Estimate_Report.docx",
                     app_config(),

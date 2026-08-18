@@ -1498,7 +1498,33 @@
     });
     figures.forEach(function (f) { b.figure(f.image, f.caption, f.widthCm || 15); });
 
-    b.heading('5. Notes and Exclusions', 1);
+    /* The package roll-up. A programme is budgeted per successful borehole,
+     * and the figure that has to be budgeted for carries the dry attempts -
+     * which the app could compute and no document it wrote ever said. */
+    var section = 5;
+    var programme = context.programme;
+    if (programme) {
+      b.heading(section + '. Programme of Works', 1);
+      b.paragraph(programme.n_successful + ' successful ' +
+        S.plural(programme.n_successful, 'borehole') + ' at a siting success ' +
+        'rate of ' + C.formatG(programme.success_rate_percent) + '% means ' +
+        'budgeting for ' + programme.n_attempted + ' ' +
+        S.plural(programme.n_attempted, 'attempt') + '. A programme budget ' +
+        'that counts only the holes that find water runs out before the last ' +
+        'village has any.', { align: 'justify' });
+      b.table(C.programmeSummaryRows(programme), {
+        header: ['Item', 'US$', 'SLE'],
+        caption: 'Programme roll-up, carrying the expected dry attempts',
+        colWidthsCm: [7.0, 4.3, 4.3],
+      });
+      if (programme.assumptions && programme.assumptions.length) {
+        b.paragraph('Assumptions:', { bold: true });
+        b.bullets(programme.assumptions);
+      }
+      section += 1;
+    }
+
+    b.heading(section + '. Notes and Exclusions', 1);
     b.bullets([
       'Unit rates are indicative and must be confirmed against current local ' +
         'prices before the estimate is used in a tender.',
