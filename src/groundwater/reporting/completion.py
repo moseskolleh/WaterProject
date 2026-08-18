@@ -231,15 +231,14 @@ def build_completion_report(
     if inputs.design is not None:
         rb.heading("5. Borehole Construction", 1)
         design_fig = figures / f"borehole_design_{slug}.png"
-        if not design_fig.exists():
-            draw_borehole_design(
-                inputs.design, log, path=design_fig, style=config.style,
-                title=f"Borehole design - {site.community} ({log.borehole_ref})",
-                header_pairs=[
-                    ("Client", site.client), ("Contractor", site.contractor or ""),
-                    ("Method", log.drilling_method), ("Status", log.status),
-                ],
-            )
+        draw_borehole_design(
+            inputs.design, log, path=design_fig, style=config.style,
+            title=f"Borehole design - {site.community} ({log.borehole_ref})",
+            header_pairs=[
+                ("Client", site.client), ("Contractor", site.contractor or ""),
+                ("Method", log.drilling_method), ("Status", log.status),
+            ],
+        )
         rb.table(
             [[k, v] for k, v in inputs.design.summary_rows()],
             header=["Item", "Detail"],
@@ -270,8 +269,7 @@ def build_completion_report(
         test = analysis.test
         rb.heading(f"{section}. Pumping Test", 1)
         overview = figures / f"test_overview_{slug}.png"
-        if not overview.exists():
-            plot_test_overview(test, path=overview, style=config.style)
+        plot_test_overview(test, path=overview, style=config.style)
         rb.figure(overview, "Constant discharge test and recovery record.")
         # the maximum drawdown below is measured at the end of the last step,
         # so the rate quoted beside it has to be that step's, not step 1's

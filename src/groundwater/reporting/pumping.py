@@ -162,8 +162,7 @@ def build_pumping_report(
         align="justify",
     )
     overview_path = figures / f"test_overview_{slug}.png"
-    if not overview_path.exists():
-        plot_test_overview(test, path=overview_path, style=config.style)
+    plot_test_overview(test, path=overview_path, style=config.style)
     fig_no = rb.figure(overview_path, "Water level record for the full test including recovery.")
     if analysis.stabilised_level_m is not None:
         rb.paragraph(
@@ -192,8 +191,7 @@ def build_pumping_report(
         t = step.time_min
         s = step.water_level_m - swl
         cj_path = figures / f"cooper_jacob_{slug}.png"
-        if not cj_path.exists():
-            plot_cooper_jacob(t, s, cj, path=cj_path, style=config.style)
+        plot_cooper_jacob(t, s, cj, path=cj_path, style=config.style)
         rb.figure(cj_path, "Drawdown against log time with the fitted straight line.")
         rb.paragraph(
             f"The late time slope is {fmt_num(cj.slope_m_per_log_cycle)} m per "
@@ -215,8 +213,7 @@ def build_pumping_report(
         rb.heading(f"3.{section} Theis type curve fit", 2)
         step = test.steps[0]
         theis_path = figures / f"theis_fit_{slug}.png"
-        if not theis_path.exists():
-            plot_theis(step.time_min, step.water_level_m - swl, th, path=theis_path, style=config.style)
+        plot_theis(step.time_min, step.water_level_m - swl, th, path=theis_path, style=config.style)
         rb.figure(theis_path, "Log-log drawdown with the fitted Theis curve.")
         s_note = "" if th.storativity_reliable else (
             " In a single pumped well storativity trades off against the "
@@ -234,11 +231,10 @@ def build_pumping_report(
         rec = analysis.recovery
         rb.heading(f"3.{section} Theis recovery method", 2)
         rec_path = figures / f"recovery_{slug}.png"
-        if not rec_path.exists():
-            plot_recovery(
-                test.recovery_time_min, test.residual_drawdown(),
-                test.pumping_duration_min, rec, path=rec_path, style=config.style,
-            )
+        plot_recovery(
+            test.recovery_time_min, test.residual_drawdown(),
+            test.pumping_duration_min, rec, path=rec_path, style=config.style,
+        )
         rb.figure(rec_path, "Residual drawdown against t/t'.")
         rb.paragraph(
             f"The recovery slope is {fmt_num(rec.slope_m_per_log_cycle)} m per "
@@ -256,8 +252,7 @@ def build_pumping_report(
         st = analysis.step_test
         rb.heading(f"3.{section} Step drawdown analysis (Hantush-Bierschenk)", 2)
         st_path = figures / f"step_test_{slug}.png"
-        if not st_path.exists():
-            plot_step_test(test, st, path=st_path, style=config.style)
+        plot_step_test(test, st, path=st_path, style=config.style)
         rb.figure(st_path, "Step drawdown data and the specific drawdown fit.")
         rows = [
             [s["step"], fmt_num(s["discharge_m3_per_h"]), fmt_num(s["drawdown_end_m"]),
@@ -280,8 +275,7 @@ def build_pumping_report(
         section += 1
         rb.heading(f"3.{section} Step drawdown analysis", 2)
         step_path = figures / f"step_test_{slug}.png"
-        if not step_path.exists():
-            plot_step_test(test, None, path=step_path, style=config.style)
+        plot_step_test(test, None, path=step_path, style=config.style)
         rb.figure(step_path, "Step drawdown curves (discharge pending).")
         rb.paragraph(
             "Hantush-Bierschenk analysis is pending until the discharge of "

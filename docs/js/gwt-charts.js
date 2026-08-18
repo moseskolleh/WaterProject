@@ -55,6 +55,99 @@
     };
   }
 
+  /* ------------------------------------------------------- text geometry
+   *
+   * There is no way to measure text before it is in the document, and the
+   * figures are built detached so they can be rasterised without ever being
+   * shown. These two functions are the estimate everything else lays out
+   * against: they are deliberately a little generous, because a label with a
+   * few spare pixels reads fine and a label three pixels too wide is clipped.
+   */
+  function textWidth(text, size) {
+    var s = String(text === null || text === undefined ? '' : text);
+    var w = 0;
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      /* i/l/j/t/f/r and punctuation are narrow; capitals and m/w are wide */
+      if ('iljt.,:;\'`|!'.indexOf(s[i]) >= 0) w += 0.30;
+      else if ('fr()[]{}/\\ '.indexOf(s[i]) >= 0) w += 0.38;
+      else if ('mwMW@'.indexOf(s[i]) >= 0) w += 0.90;
+      else if (c >= 65 && c <= 90) w += 0.68;
+      else w += 0.545;
+    }
+    return w * (size || 10);
+  }
+
+  /* Break `text` into lines no wider than `maxWidth`. Words longer than the
+   * line are broken rather than allowed to run past the edge. */
+  function wrapText(text, maxWidth, size) {
+    var words = String(text === null || text === undefined ? '' : text)
+      .split(/\s+/).filter(Boolean);
+    var lines = [], line = '';
+    function flush() { if (line) { lines.push(line); line = ''; } }
+    words.forEach(function (word) {
+      var candidate = line ? line + ' ' + word : word;
+      if (textWidth(candidate, size) <= maxWidth) { line = candidate; return; }
+      flush();
+      while (textWidth(word, size) > maxWidth && word.length > 1) {
+        var cut = word.length;
+        while (cut > 1 && textWidth(word.slice(0, cut) + '-', size) > maxWidth) cut -= 1;
+        lines.push(word.slice(0, cut) + '-');
+        word = word.slice(cut);
+      }
+      line = word;
+    });
+    flush();
+    return lines.length ? lines : [''];
+  }
+
+  /* One line, shortened with an ellipsis only when it genuinely will not fit.
+   * Nothing in these figures truncates mid-word without saying so. */
+  function ellipsise(text, maxWidth, size) {
+    var s = String(text === null || text === undefined ? '' : text);
+    if (textWidth(s, size) <= maxWidth) return s;
+    var cut = s.length;
+    while (cut > 1 && textWidth(s.slice(0, cut) + '…', size) > maxWidth) cut -= 1;
+    return s.slice(0, cut).replace(/[\s,;:.-]+$/, '') + '…';
+  }
+
+  /* Place labels against their anchors without letting any two collide, and
+   * without letting any escape the drawing. Labels are sorted by anchor,
+   * pushed down until they clear the one above, then pulled back up from the
+   * bottom so the last one stays inside `yMax`. Returns {y, entry} pairs in
+   * anchor order. This is the same algorithm the matplotlib drawing uses, so
+   * the browser figure and the report figure lay their callouts out alike. */
+  function stackLabels(entries, minGap, yMin, yMax) {
+    var placed = entries.slice().sort(function (a, b) { return a.anchor - b.anchor; })
+      .map(function (entry) { return { y: entry.anchor, entry: entry }; });
+    var level = yMin;
+    placed.forEach(function (item) {
+      item.y = Math.max(item.y, level);
+      level = item.y + minGap;
+    });
+    var limit = yMax;
+    for (var i = placed.length - 1; i >= 0; i--) {
+      if (placed[i].y > limit) placed[i].y = limit;
+      limit = placed[i].y - minGap;
+    }
+    return placed;
+  }
+
+  /* Black or white, whichever stays readable on `hex`. Used wherever a label
+   * is written straight onto a fill whose colour comes from the data. */
+  function readableInk(hex) {
+    var m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+    if (!m) return '#FFFFFF';
+    var n = parseInt(m[1], 16);
+    function lin(v) {
+      var c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    }
+    var L = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) +
+      0.0722 * lin(n & 255);
+    return (L + 0.05) / 0.05 > 1.05 / (L + 0.05) ? '#12191A' : '#FFFFFF';
+  }
+
   /* --------------------------------------------------------------- frame */
 
   var FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
@@ -945,242 +1038,545 @@
 
   /* Lithology fills. Each is paired with a label in the legend, so the pattern
    * is a cue and never the only carrier of meaning. */
+  /* The colour stands for a class of material, not for one driller's wording,
+   * so the legend names the class. Order matters: the first pattern that
+   * matches wins, and a fracture zone is called a fracture zone whatever rock
+   * it is in. */
   var LITHOLOGY_COLOURS = [
-    [/laterite|duricrust|topsoil/i, '#B5651D'],
-    [/clay|saprolite/i, '#9E8B5F'],
-    [/sand|gravel/i, '#D9C89A'],
-    [/weather|regolith/i, '#A98F63'],
-    [/fresh|granite|basement|bedrock|gneiss|schist/i, '#7E7F84'],
-    [/fracture/i, '#6D8FA8'],
+    [/fracture|fissure/i, '#6D8FA8', 'Fracture zone'],
+    [/laterite|duricrust|topsoil/i, '#B5651D', 'Laterite and topsoil'],
+    [/clay|saprolite/i, '#9E8B5F', 'Clay and saprolite'],
+    [/sand|gravel/i, '#C8B57C', 'Sand and gravel'],
+    [/weather|regolith/i, '#A98F63', 'Weathered rock'],
+    [/fresh|granite|basement|bedrock|gneiss|schist/i, '#7E7F84', 'Fresh basement'],
   ];
+  var LITHOLOGY_OTHER = ['#B0A99C', 'Other material'];
 
-  function lithologyColour(description) {
+  function lithologyClass(description) {
     for (var i = 0; i < LITHOLOGY_COLOURS.length; i++) {
-      if (LITHOLOGY_COLOURS[i][0].test(description || '')) return LITHOLOGY_COLOURS[i][1];
+      if (LITHOLOGY_COLOURS[i][0].test(description || '')) {
+        return { colour: LITHOLOGY_COLOURS[i][1], label: LITHOLOGY_COLOURS[i][2] };
+      }
     }
-    return '#B0A99C';
+    return { colour: LITHOLOGY_OTHER[0], label: LITHOLOGY_OTHER[1] };
   }
 
-  /* A to-scale section: depth ruler, lithology column and construction column
-   * with the annulus, matching the drawing the .docx report carries. */
+  function lithologyColour(description) {
+    return lithologyClass(description).colour;
+  }
+
+  /* A well-completion section, drawn the way a driller draws one.
+   *
+   * Depth is to scale; width is not, because a 5" casing in a 6.5" hole at
+   * 70 m would be a hairline. What the width does carry is the order of the
+   * materials across the hole - formation, annulus fill, casing wall, the
+   * water standing inside the casing - so the section reads as a section and
+   * not as a bar chart.
+   *
+   * Everything that has to be said in words is said in one of three gutters:
+   * the formation column on the left, the water gutter between it and the
+   * hole, and the construction callouts on the right. Nothing is written
+   * across the drawing, and no callout is allowed to land on another: they
+   * are placed by stackLabels() against a leader line back to the thing they
+   * name.
+   */
+  var patternSeq = 0;
+
+  function fillPatterns(defs, kinds) {
+    /* Returns {kind: 'url(#id)'}. Patterns rather than flat fills so the
+     * section still reads when it is printed in monochrome. */
+    var out = {};
+    patternSeq += 1;
+    Object.keys(kinds).forEach(function (kind) {
+      var spec = kinds[kind];
+      var id = 'gwt-fill-' + patternSeq + '-' + kind;
+      var pattern = svgEl('pattern', {
+        id: id, width: spec.size, height: spec.size,
+        patternUnits: 'userSpaceOnUse',
+      });
+      pattern.appendChild(svgEl('rect', {
+        width: spec.size, height: spec.size, fill: spec.background,
+      }));
+      spec.marks.forEach(function (mark) { pattern.appendChild(mark); });
+      defs.appendChild(pattern);
+      out[kind] = 'url(#' + id + ')';
+    });
+    return out;
+  }
+
   function boreholeDesign(design, log, options) {
     var opts = options || {};
     var p = palette();
-    var width = opts.width || 620;
-    var height = opts.height || 700;
-    var top = 60, bottom = height - 46;
-    var depthMax = design.total_depth_m * 1.04;
-    function fy(d) { return top + (d / depthMax) * (bottom - top); }
+    var width = opts.width || 800;
+
+    /* 5.0 -> 5, 6.5 -> 6.5: a diameter is quoted the way it is stamped */
+    function trim(v) {
+      return typeof v === 'number' ? String(Math.round(v * 100) / 100) : String(v);
+    }
+
+    var depth = design.total_depth_m || 1;
+    var stickup = design.stickup_m || 0;
+    var swl = (design.static_water_level_m === null ||
+      design.static_water_level_m === undefined) ? null : design.static_water_level_m;
+
+    /* ------------------------------------------------------------ colours */
+    var COLOUR = {
+      gravel: '#D9C89A', gravelMark: '#9C8A55',
+      backfill: '#CFC9BB', backfillMark: '#938C7C',
+      seal: '#9BA3A8', sealMark: '#6E777D',
+      casing: '#EDEBE4', casingEdge: '#5C6360',
+      screen: p.accent, sump: '#7E8B92',
+      water: '#CBE3F5', waterEdge: '#7FB0DA',
+      concrete: '#BEBBB2', ground: '#8A8577',
+      rising: '#B7BDBB', pump: '#4D5457',
+    };
+
+    /* --------------------------------------------------------- the legend
+     * built first, because how many rows it needs decides how tall the
+     * drawing has to be for the section itself to keep its room */
+    var litho = (log && log.intervals) || [];
+    var lithoKeys = [];
+    litho.forEach(function (interval) {
+      var klass = lithologyClass(interval.description);
+      if (!lithoKeys.some(function (k) { return k.label === klass.label; })) {
+        lithoKeys.push({ label: klass.label, colour: klass.colour });
+      }
+    });
+    /* The construction materials come first because they are what the reader
+     * is being asked to check; the formation classes follow. Each interval is
+     * already named in the column beside it, so the legend explains what a
+     * colour means rather than repeating twelve descriptions. */
+    var legendItems = [
+      { label: 'Gravel pack', colour: COLOUR.gravel, fill: 'gravel' },
+      { label: 'Annular backfill', colour: COLOUR.backfill, fill: 'backfill' },
+      { label: 'Cement sanitary seal', colour: COLOUR.seal, fill: 'seal' },
+      { label: 'Plain casing', colour: COLOUR.casing },
+      { label: 'Screen', colour: COLOUR.screen },
+      { label: 'Sump', colour: COLOUR.sump },
+    ];
+    if (swl !== null) legendItems.push({ label: 'Water in the casing', colour: COLOUR.water });
+    legendItems = legendItems.concat(lithoKeys);
+
+    var legendCols = 2;
+    var legendColW = (width - 32) / legendCols;
+    var legendRowH = 16;
+    var legendRows = Math.ceil(legendItems.length / legendCols);
+    var legendH = legendRows * legendRowH + 22;
+
+    /* ------------------------------------------------------------- layout */
+    var titleY = 22;
+    var headerY = 40;
+    var groundY = opts.groundY || 96;           /* y of ground level */
+    var depthPx = opts.depthPx || 560;          /* pixels for the whole hole */
+    var height = opts.height || (groundY + depthPx + 46 + legendH);
+
+    var axisX = 74;                              /* the depth ruler */
+    var lithX = 92, lithW = 132;                 /* formation column */
+    var holeCx = Math.round(width * 0.545), holeHalf = 46;
+    var casHalf = 21, wall = 7;
+    var boreX0 = holeCx - holeHalf, boreX1 = holeCx + holeHalf;
+    var labelX = boreX1 + 78;                    /* construction callouts */
+    var labelMaxW = width - 14 - labelX;
+
+    var depthMax = depth * 1.015;
+    function fy(d) { return groundY + (d / depthMax) * depthPx; }
+    var bottomY = fy(depth);
+    var stickPx = Math.max(16, Math.min(34, fy(stickup) - groundY || 20));
 
     var svg = svgEl('svg', {
       viewBox: '0 0 ' + width + ' ' + height, width: '100%', xmlns: NS,
-      'font-family': FONT, role: 'img', 'aria-label': 'Borehole construction design',
+      'font-family': FONT, role: 'img',
+      'aria-label': 'Borehole construction design, drawn to scale with depth',
     });
     svg.appendChild(svgEl('rect', { width: width, height: height, fill: p.surface }));
+
+    var defs = svgEl('defs');
+    svg.appendChild(defs);
+    var fills = fillPatterns(defs, {
+      gravel: {
+        size: 9, background: COLOUR.gravel,
+        marks: [
+          svgEl('circle', { cx: 2.6, cy: 2.6, r: 1.25, fill: COLOUR.gravelMark }),
+          svgEl('circle', { cx: 6.8, cy: 6.4, r: 1.05, fill: COLOUR.gravelMark }),
+          svgEl('circle', { cx: 7.2, cy: 1.8, r: 0.8, fill: COLOUR.gravelMark }),
+        ],
+      },
+      backfill: {
+        size: 7, background: COLOUR.backfill,
+        marks: [
+          svgEl('circle', { cx: 1.8, cy: 1.8, r: 0.6, fill: COLOUR.backfillMark }),
+          svgEl('circle', { cx: 5.2, cy: 4.8, r: 0.6, fill: COLOUR.backfillMark }),
+        ],
+      },
+      seal: {
+        size: 7, background: COLOUR.seal,
+        marks: [
+          svgEl('path', {
+            d: 'M-2 2L2 -2M0 8L8 0M6 10L10 6', stroke: COLOUR.sealMark,
+            'stroke-width': 1.1,
+          }),
+        ],
+      },
+      concrete: {
+        size: 8, background: COLOUR.concrete,
+        marks: [
+          svgEl('path', {
+            d: 'M-2 6L6 -2M2 10L10 2', stroke: '#8E8B83', 'stroke-width': 0.9,
+          }),
+        ],
+      },
+    });
+
     svg.appendChild(svgEl('text', {
-      x: 16, y: 24, 'font-size': 13, 'font-weight': 600, fill: p.ink,
+      x: 16, y: titleY, 'font-size': 13.5, 'font-weight': 640, fill: p.ink,
       text: opts.title || 'Borehole construction design',
     }));
+    if (opts.subtitle) {
+      svg.appendChild(svgEl('text', {
+        x: 16, y: titleY + 17, 'font-size': 10.5, fill: p.muted,
+        text: ellipsise(opts.subtitle, width - 32, 10.5),
+      }));
+    }
 
-    var rulerX = 52;
-    var lithX = 74, lithW = 92;
-    var holeCx = 300, holeHalf = 52, casingHalf = 26;
+    /* ------------------------------------------------------ column headers */
+    function header(x, anchor, text) {
+      svg.appendChild(svgEl('text', {
+        x: x, y: headerY + 26, 'text-anchor': anchor, 'font-size': 10,
+        'font-weight': 620, fill: p.inkSoft, 'letter-spacing': '0.04em',
+        text: text,
+      }));
+    }
+    header(axisX, 'end', 'DEPTH (m)');
+    header(lithX + lithW / 2, 'middle', 'FORMATION');
+    header(holeCx, 'middle', 'CONSTRUCTION');
 
-    /* depth ruler */
+    /* -------------------------------------------------------- depth ruler */
     svg.appendChild(svgEl('line', {
-      x1: rulerX, y1: top, x2: rulerX, y2: bottom, stroke: p.axis, 'stroke-width': 1,
+      x1: axisX, y1: groundY, x2: axisX, y2: bottomY,
+      stroke: p.axis, 'stroke-width': 1,
     }));
-    var step = depthMax > 80 ? 10 : (depthMax > 30 ? 5 : 2);
-    for (var d = 0; d <= design.total_depth_m + 1e-9; d += step) {
-      var y = fy(d);
+    var step = depth > 120 ? 20 : depth > 60 ? 10 : depth > 24 ? 5 : 2;
+    for (var d = 0; d <= depth + 1e-9; d += step) {
+      var ty = fy(d);
       svg.appendChild(svgEl('line', {
-        x1: rulerX - 5, y1: y, x2: rulerX, y2: y, stroke: p.axis, 'stroke-width': 1,
+        x1: axisX - 5, y1: ty, x2: axisX, y2: ty, stroke: p.axis, 'stroke-width': 1,
       }));
       svg.appendChild(svgEl('text', {
-        x: rulerX - 9, y: y + 4, 'text-anchor': 'end', 'font-size': 10,
-        fill: p.muted, text: String(Math.round(d)),
+        x: axisX - 9, y: ty + 3.6, 'text-anchor': 'end', 'font-size': 10,
+        fill: p.muted, text: String(Math.round(d * 10) / 10),
       }));
     }
-    svg.appendChild(svgEl('text', {
-      x: rulerX - 9, y: top - 10, 'text-anchor': 'end', 'font-size': 10,
-      fill: p.muted, text: 'depth (m)',
-    }));
-
-    /* lithology column */
-    var litho = (log && log.intervals) || [];
-    var seen = [];
-    litho.forEach(function (interval) {
-      var colour = lithologyColour(interval.description);
-      var y0 = fy(interval.top_m), y1 = fy(Math.min(interval.bottom_m, design.total_depth_m));
-      svg.appendChild(svgEl('rect', {
-        x: lithX, y: y0, width: lithW, height: Math.max(1, y1 - y0),
-        fill: colour, stroke: p.surface, 'stroke-width': 1,
-      }));
-      if (y1 - y0 > 13) {
-        svg.appendChild(svgEl('text', {
-          x: lithX + lithW / 2, y: (y0 + y1) / 2 + 3.5, 'text-anchor': 'middle',
-          'font-size': 9, fill: '#FFFFFF',
-          text: String(interval.description || '').split(/[,;]/)[0].slice(0, 16),
-        }));
-      }
-      var key = String(interval.description || '').split(/[,;]/)[0];
-      if (key && !seen.some(function (s) { return s.label === key; })) {
-        seen.push({ label: key, colour: colour });
-      }
-    });
-    if (!litho.length) {
-      svg.appendChild(svgEl('rect', {
-        x: lithX, y: top, width: lithW, height: bottom - top,
-        fill: '#D8D4CB', stroke: p.axis, 'stroke-width': 1,
-      }));
+    if (Math.abs(depth % step) > 1e-6) {
       svg.appendChild(svgEl('text', {
-        x: lithX + lithW / 2, y: (top + bottom) / 2, 'text-anchor': 'middle',
-        'font-size': 10, fill: p.muted, text: 'no log',
+        x: axisX - 9, y: bottomY + 3.6, 'text-anchor': 'end', 'font-size': 10,
+        'font-weight': 620, fill: p.inkSoft, text: String(Math.round(depth * 10) / 10),
       }));
     }
-    svg.appendChild(svgEl('text', {
-      x: lithX + lithW / 2, y: top - 10, 'text-anchor': 'middle', 'font-size': 10,
-      fill: p.muted, text: 'lithology',
-    }));
 
-    /* annulus: gravel pack, backfill and sanitary seal */
-    function annulus(fromM, toM, fill, pattern) {
-      var y0 = fy(fromM), y1 = fy(toM);
-      if (y1 <= y0) return;
-      [-1, 1].forEach(function (side) {
-        var x = side < 0 ? holeCx - holeHalf : holeCx + casingHalf;
+    /* --------------------------------------------------- formation column */
+    if (litho.length) {
+      litho.forEach(function (interval) {
+        var colour = lithologyColour(interval.description);
+        var y0 = fy(Math.max(0, interval.top_m));
+        var y1 = fy(Math.min(interval.bottom_m, depth));
+        if (y1 <= y0) return;
         svg.appendChild(svgEl('rect', {
-          x: x, y: y0, width: holeHalf - casingHalf, height: y1 - y0,
-          fill: fill, stroke: p.axis, 'stroke-width': 0.7,
+          x: lithX, y: y0, width: lithW, height: y1 - y0,
+          fill: colour, stroke: '#FFFFFF', 'stroke-width': 0.8,
+        }, [svgEl('title', {
+          text: interval.top_m + '–' + interval.bottom_m + ' m: ' +
+            (interval.description || ''),
+        })]));
+        var lines = wrapText(interval.description || '', lithW - 12, 8.5);
+        var fits = Math.floor((y1 - y0 - 4) / 10);
+        if (fits >= 1) {
+          if (lines.length > fits) {
+            lines = lines.slice(0, fits);
+            lines[fits - 1] = ellipsise(lines[fits - 1] + ' …', lithW - 12, 8.5);
+          }
+          var ink = readableInk(colour);
+          var first = (y0 + y1) / 2 - (lines.length - 1) * 5 + 3;
+          lines.forEach(function (line, i) {
+            svg.appendChild(svgEl('text', {
+              x: lithX + lithW / 2, y: first + i * 10, 'text-anchor': 'middle',
+              'font-size': 8.5, fill: ink, text: line,
+            }));
+          });
+        }
+      });
+    } else {
+      svg.appendChild(svgEl('rect', {
+        x: lithX, y: groundY, width: lithW, height: bottomY - groundY,
+        fill: '#E4E1D9', stroke: p.axis, 'stroke-width': 1,
+      }));
+      svg.appendChild(svgEl('text', {
+        x: lithX + lithW / 2, y: (groundY + bottomY) / 2, 'text-anchor': 'middle',
+        'font-size': 10, fill: p.muted, text: 'no drilling log',
+      }));
+    }
+    svg.appendChild(svgEl('rect', {
+      x: lithX, y: groundY, width: lithW, height: bottomY - groundY,
+      fill: 'none', stroke: p.axis, 'stroke-width': 0.9,
+    }));
+
+    /* ------------------------------------------------------------ annulus */
+    function annulus(range, fill) {
+      if (!range) return;
+      var y0 = fy(Math.max(0, range[0])), y1 = fy(Math.min(range[1], depth));
+      if (y1 <= y0) return;
+      [[boreX0, holeCx - casHalf], [holeCx + casHalf, boreX1]].forEach(function (span) {
+        svg.appendChild(svgEl('rect', {
+          x: span[0], y: y0, width: span[1] - span[0], height: y1 - y0,
+          fill: fill, stroke: 'none',
         }));
       });
     }
-    annulus(design.gravel_pack[0], design.gravel_pack[1], '#D9C89A');
-    annulus(design.backfill[0], design.backfill[1], '#C9C4B6');
-    annulus(design.sanitary_seal[0], design.sanitary_seal[1], '#9BA3A8');
+    annulus(design.gravel_pack, fills.gravel);
+    annulus(design.backfill, fills.backfill);
+    annulus(design.sanitary_seal, fills.seal);
 
-    /* borehole wall */
-    [-1, 1].forEach(function (side) {
-      var x = holeCx + side * holeHalf;
-      svg.appendChild(svgEl('line', {
-        x1: x, y1: fy(0), x2: x, y2: fy(design.total_depth_m),
-        stroke: p.neutral, 'stroke-width': 1.4,
+    /* ----------------------------------------------- water in the casing */
+    var innerX = holeCx - casHalf + wall;
+    var innerW = 2 * (casHalf - wall);
+    if (swl !== null && swl < depth) {
+      svg.appendChild(svgEl('rect', {
+        x: innerX, y: fy(swl), width: innerW, height: bottomY - fy(swl),
+        fill: COLOUR.water,
       }));
-    });
-    svg.appendChild(svgEl('line', {
-      x1: holeCx - holeHalf, y1: fy(design.total_depth_m),
-      x2: holeCx + holeHalf, y2: fy(design.total_depth_m),
-      stroke: p.neutral, 'stroke-width': 1.4,
+    }
+
+    /* --------------------------------------------------------- hole walls */
+    svg.appendChild(svgEl('path', {
+      d: 'M' + boreX0 + ' ' + groundY + 'V' + bottomY + 'H' + boreX1 + 'V' + groundY,
+      fill: 'none', stroke: p.inkSoft, 'stroke-width': 1.5,
     }));
 
-    /* casing string */
-    design.segments.forEach(function (seg) {
-      var y0 = fy(seg.top_m), y1 = fy(seg.bottom_m);
-      var fill = seg.kind === 'screen' ? p.accent
-        : (seg.kind === 'sump' ? '#7E8B92' : '#E8E6E0');
-      [-1, 1].forEach(function (side) {
-        var x = side < 0 ? holeCx - casingHalf : holeCx + casingHalf - 9;
+    /* ------------------------------------------------------ casing string */
+    var segments = (design.segments || []).slice().sort(function (a, b) {
+      return a.top_m - b.top_m;
+    });
+    segments.forEach(function (seg) {
+      var y0 = fy(Math.max(0, seg.top_m)), y1 = fy(Math.min(seg.bottom_m, depth));
+      if (y1 <= y0) return;
+      var fill = seg.kind === 'screen' ? COLOUR.screen
+        : seg.kind === 'sump' ? COLOUR.sump : COLOUR.casing;
+      [holeCx - casHalf, holeCx + casHalf - wall].forEach(function (x) {
         svg.appendChild(svgEl('rect', {
-          x: x, y: y0, width: 9, height: Math.max(1, y1 - y0),
-          fill: fill, stroke: p.neutral, 'stroke-width': 0.8,
+          x: x, y: y0, width: wall, height: y1 - y0,
+          fill: fill, stroke: COLOUR.casingEdge, 'stroke-width': 0.8,
         }));
         if (seg.kind === 'screen') {
-          /* slot hatching, so a screen reads as a screen in monochrome print */
-          for (var sy = y0 + 3; sy < y1 - 2; sy += 5) {
+          for (var sy = y0 + 3; sy < y1 - 1.5; sy += 4.5) {
             svg.appendChild(svgEl('line', {
-              x1: x + 1, y1: sy, x2: x + 8, y2: sy,
-              stroke: p.surface, 'stroke-width': 1.1,
+              x1: x + 0.9, y1: sy, x2: x + wall - 0.9, y2: sy,
+              stroke: '#FFFFFF', 'stroke-width': 1.4,
             }));
           }
         }
       });
-      /* label to the right, with a leader */
-      var midY = (y0 + y1) / 2;
-      if (y1 - y0 > 11 || seg.kind === 'screen') {
-        var labelX = holeCx + holeHalf + 16;
-        svg.appendChild(svgEl('line', {
-          x1: holeCx + holeHalf + 2, y1: midY, x2: labelX - 4, y2: midY,
-          stroke: p.axis, 'stroke-width': 0.8,
-        }));
-        svg.appendChild(svgEl('text', {
-          x: labelX, y: midY + 3.5, 'font-size': 10, fill: p.inkSoft,
-          text: (seg.kind === 'screen' ? 'Screen ' : seg.kind === 'sump' ? 'Sump ' : 'Plain casing ') +
-            seg.top_m.toFixed(1) + '–' + seg.bottom_m.toFixed(1) + ' m',
-        }));
+      /* water entering through the screen: the point of the whole drawing */
+      if (seg.kind === 'screen' && y1 - y0 > 16) {
+        var arrows = Math.max(1, Math.min(4, Math.floor((y1 - y0) / 26)));
+        for (var a = 0; a < arrows; a++) {
+          var ay = y0 + (y1 - y0) * (a + 0.5) / arrows;
+          [-1, 1].forEach(function (side) {
+            var tipX = holeCx + side * (casHalf - wall - 1);
+            var tailX = holeCx + side * (holeHalf - 5);
+            svg.appendChild(svgEl('path', {
+              d: 'M' + tailX + ' ' + ay + 'L' + tipX + ' ' + ay,
+              stroke: COLOUR.waterEdge, 'stroke-width': 1.2,
+            }));
+            svg.appendChild(svgEl('path', {
+              d: 'M' + tipX + ' ' + ay + 'l' + (side * 4.5) + ' -2.6v5.2z',
+              fill: COLOUR.waterEdge,
+            }));
+          });
+        }
       }
     });
 
-    /* stick-up and apron */
+    /* bottom cap, drawn across the casing so the string is visibly closed */
     svg.appendChild(svgEl('rect', {
-      x: holeCx - casingHalf, y: fy(0) - 14, width: 2 * casingHalf, height: 14,
-      fill: '#E8E6E0', stroke: p.neutral, 'stroke-width': 0.8,
-    }));
-    svg.appendChild(svgEl('rect', {
-      x: holeCx - holeHalf - 22, y: fy(0) - 5, width: 2 * (holeHalf + 22), height: 6,
-      fill: '#B9B7AF', stroke: p.neutral, 'stroke-width': 0.8,
-    }));
-    svg.appendChild(svgEl('text', {
-      x: holeCx + holeHalf + 30, y: fy(0) - 8, 'font-size': 10, fill: p.inkSoft,
-      text: 'stick-up ' + design.stickup_m.toFixed(1) + ' m, ' +
-        design.casing_diameter_in + '" ' + design.casing_material,
+      x: holeCx - casHalf, y: bottomY - 5, width: 2 * casHalf, height: 5,
+      fill: COLOUR.pump, stroke: COLOUR.casingEdge, 'stroke-width': 0.8,
     }));
 
-    /* static water level and pump intake */
-    if (design.static_water_level_m !== null && design.static_water_level_m !== undefined) {
-      var swlY = fy(design.static_water_level_m);
+    /* ------------------------------------------- rising main and the pump */
+    var intake = (design.pump_intake_m === null || design.pump_intake_m === undefined)
+      ? null : design.pump_intake_m;
+    if (intake !== null && intake < depth) {
+      var iy = fy(intake);
+      svg.appendChild(svgEl('rect', {
+        x: holeCx - 3.5, y: groundY - stickPx + 4, width: 7, height: iy - groundY + stickPx - 4,
+        fill: COLOUR.rising, stroke: COLOUR.casingEdge, 'stroke-width': 0.7,
+      }));
+      svg.appendChild(svgEl('rect', {
+        x: holeCx - 8, y: iy - 6, width: 16, height: 26, rx: 3,
+        fill: COLOUR.pump, stroke: '#FFFFFF', 'stroke-width': 1,
+      }));
+    }
+
+    /* ---------------------------------------------------------- headworks */
+    /* ground line, with the soil side of it shaded so up is unambiguous */
+    svg.appendChild(svgEl('line', {
+      x1: axisX, y1: groundY, x2: boreX1 + 46, y2: groundY,
+      stroke: COLOUR.ground, 'stroke-width': 1.6,
+    }));
+
+    for (var gx = axisX; gx < boreX1 + 60; gx += 9) {
+      if (gx > lithX - 4 && gx < lithX + lithW + 4) continue;
+      if (gx > boreX0 - 42 && gx < boreX1 + 42) continue;
       svg.appendChild(svgEl('line', {
-        x1: holeCx - holeHalf - 26, y1: swlY, x2: holeCx + holeHalf + 8, y2: swlY,
-        stroke: p.cat[0], 'stroke-width': 1.6, 'stroke-dasharray': '6 3',
+        x1: gx, y1: groundY, x2: gx - 5, y2: groundY - 5,
+        stroke: COLOUR.ground, 'stroke-width': 0.8,
       }));
-      svg.appendChild(svgEl('text', {
-        x: holeCx - holeHalf - 30, y: swlY - 4, 'text-anchor': 'end',
-        'font-size': 10, fill: p.cat[0],
-        text: 'SWL ' + design.static_water_level_m.toFixed(2) + ' m',
+    }
+    /* apron slab and plinth */
+    svg.appendChild(svgEl('rect', {
+      x: boreX0 - 38, y: groundY - 7, width: 2 * (holeHalf + 38), height: 9,
+      fill: fills.concrete, stroke: COLOUR.casingEdge, 'stroke-width': 0.8,
+    }));
+    svg.appendChild(svgEl('rect', {
+      x: holeCx - casHalf - 13, y: groundY - stickPx + 8, width: 2 * casHalf + 26,
+      height: stickPx - 1, fill: fills.concrete,
+      stroke: COLOUR.casingEdge, 'stroke-width': 0.8,
+    }));
+    /* the casing above ground, and its cap */
+    [holeCx - casHalf, holeCx + casHalf - wall].forEach(function (x) {
+      svg.appendChild(svgEl('rect', {
+        x: x, y: groundY - stickPx, width: wall, height: stickPx,
+        fill: COLOUR.casing, stroke: COLOUR.casingEdge, 'stroke-width': 0.8,
       }));
+    });
+    svg.appendChild(svgEl('rect', {
+      x: holeCx - casHalf - 4, y: groundY - stickPx - 6, width: 2 * casHalf + 8,
+      height: 6, rx: 1.5, fill: COLOUR.casingEdge,
+    }));
+
+    /* ------------------------------------ water gutter: SWL and the strikes */
+    var gutterRight = boreX0 - 12;
+    var gutterLeft = lithX + lithW + 6;
+    var gutterW = gutterRight - gutterLeft;
+    var gutterEntries = [];
+    if (swl !== null) {
+      gutterEntries.push({
+        anchor: fy(swl), colour: p.cat[0],
+        text: 'SWL ' + S.fmt(swl, 2) + ' m', swl: true,
+      });
     }
     (design.water_strikes_m || []).forEach(function (strike) {
-      var sy = fy(strike);
-      svg.appendChild(svgEl('path', {
-        d: 'M' + (holeCx - holeHalf - 12) + ' ' + sy + 'l-9 -5v10z',
-        fill: p.secondary,
-      }));
-      svg.appendChild(svgEl('text', {
-        x: holeCx - holeHalf - 26, y: sy + 3.5, 'text-anchor': 'end',
-        'font-size': 9.5, fill: p.secondary, text: strike + ' m strike',
-      }));
+      gutterEntries.push({
+        anchor: fy(strike), colour: p.secondary,
+        text: 'strike ' + S.fmt(strike, strike % 1 ? 1 : 0) + ' m',
+      });
     });
-    if (design.pump_intake_m !== null && design.pump_intake_m !== undefined) {
-      var py = fy(design.pump_intake_m);
-      svg.appendChild(svgEl('rect', {
-        x: holeCx - 8, y: py - 9, width: 16, height: 18, rx: 2,
-        fill: p.neutral, stroke: p.surface, 'stroke-width': 1,
-      }));
-      svg.appendChild(svgEl('text', {
-        x: holeCx + holeHalf + 16, y: py + 3.5, 'font-size': 10, fill: p.inkSoft,
-        text: 'pump intake ' + design.pump_intake_m.toFixed(0) + ' m',
-      }));
+    stackLabels(gutterEntries, 14, groundY + 7, bottomY - 2)
+      .forEach(function (item) {
+        var e = item.entry;
+        if (e.swl) {
+          svg.appendChild(svgEl('line', {
+            x1: gutterRight - 4, y1: e.anchor, x2: boreX1 + 6, y2: e.anchor,
+            stroke: e.colour, 'stroke-width': 1.5, 'stroke-dasharray': '6 3',
+          }));
+          svg.appendChild(marker(holeCx, e.anchor, 'triangle', e.colour,
+            p.surface, 4.5));
+        } else {
+          svg.appendChild(svgEl('path', {
+            d: 'M' + boreX0 + ' ' + e.anchor + 'l-8 -4v8z', fill: e.colour,
+          }));
+          svg.appendChild(svgEl('line', {
+            x1: gutterRight - 4, y1: item.y, x2: boreX0 - 9, y2: e.anchor,
+            stroke: e.colour, 'stroke-width': 0.8,
+          }));
+        }
+        svg.appendChild(svgEl('text', {
+          x: gutterRight - 7, y: item.y + 3.4, 'text-anchor': 'end',
+          'font-size': 9.5, fill: e.colour,
+          text: ellipsise(e.text, gutterW - 12, 9.5),
+        }));
+      });
+
+    /* --------------------------------------------- construction callouts */
+    var callouts = [];
+    function callout(fromM, toM, text) {
+      if (fromM === null || fromM === undefined) return;
+      var a = Math.max(0, fromM), b = Math.min(toM === undefined ? fromM : toM, depth);
+      if (b < a) return;
+      callouts.push({ anchor: fy((a + b) / 2), text: text });
+    }
+    callout(-stickup, 0, 'Stick-up ' + S.fmt(stickup, 1) + ' m, ' +
+      trim(design.casing_diameter_in) + '" ' + (design.casing_material || 'uPVC') +
+      ' in a ' + trim(design.borehole_diameter_in) + '" hole');
+    if (design.sanitary_seal) {
+      callout(design.sanitary_seal[0], design.sanitary_seal[1],
+        'Cement sanitary seal ' + S.fmt(design.sanitary_seal[0], 1) + '–' +
+        S.fmt(design.sanitary_seal[1], 1) + ' m');
+    }
+    if (design.backfill && design.backfill[1] > design.backfill[0]) {
+      callout(design.backfill[0], design.backfill[1],
+        'Backfill ' + S.fmt(design.backfill[0], 1) + '–' +
+        S.fmt(design.backfill[1], 1) + ' m');
+    }
+    if (design.gravel_pack) {
+      callout(design.gravel_pack[0], design.gravel_pack[1],
+        'Gravel pack ' + S.fmt(design.gravel_pack[0], 1) + '–' +
+        S.fmt(design.gravel_pack[1], 1) + ' m');
+    }
+    segments.forEach(function (seg) {
+      var label = seg.kind === 'screen'
+        ? 'Screen ' + S.fmt(seg.top_m, 1) + '–' + S.fmt(seg.bottom_m, 1) + ' m' +
+          (design.screen_slot_mm ? ', ' + trim(design.screen_slot_mm) + ' mm slot' : '')
+        : seg.kind === 'sump'
+          ? 'Sump ' + S.fmt(seg.top_m, 1) + '–' + S.fmt(seg.bottom_m, 1) + ' m'
+          : 'Plain casing ' + S.fmt(seg.top_m, 1) + '–' + S.fmt(seg.bottom_m, 1) + ' m';
+      callout(seg.top_m, seg.bottom_m, label);
+    });
+    if (intake !== null) {
+      callout(intake, intake, 'Pump intake ' + S.fmt(intake, intake % 1 ? 1 : 0) + ' m');
     }
 
-    /* legend for the annulus and lithology fills */
-    var legendItems = [
-      { label: 'Gravel pack', colour: '#D9C89A' },
-      { label: 'Backfill', colour: '#C9C4B6' },
-      { label: 'Cement seal', colour: '#9BA3A8' },
-      { label: 'Screen', colour: p.accent },
-    ].concat(seen.slice(0, 4));
-    var lx = 16, ly = height - 26;
+    var wrapped = callouts.map(function (c) {
+      return { anchor: c.anchor, lines: wrapText(c.text, labelMaxW, 9.5) };
+    });
+    var tallest = wrapped.reduce(function (m, c) { return Math.max(m, c.lines.length); }, 1);
+    var gap = Math.max(15, tallest * 11 + 3);
+    stackLabels(wrapped, gap, groundY - stickPx + 6, bottomY - 2)
+      .forEach(function (item) {
+        var e = item.entry;
+        var midY = item.y;
+        svg.appendChild(polyline([
+          [boreX1 + 3, e.anchor], [labelX - 22, e.anchor],
+          [labelX - 6, midY],
+        ], { stroke: p.axis, 'stroke-width': 0.8 }));
+        e.lines.forEach(function (line, i) {
+          svg.appendChild(svgEl('text', {
+            x: labelX, y: midY + 3.4 - (e.lines.length - 1) * 5.5 + i * 11,
+            'font-size': 9.5, fill: p.inkSoft, text: line,
+          }));
+        });
+      });
+
+    /* --------------------------------------------------------- the legend */
+    var legendTop = height - legendH + 4;
+    svg.appendChild(svgEl('line', {
+      x1: 16, y1: legendTop - 6, x2: width - 16, y2: legendTop - 6,
+      stroke: p.grid, 'stroke-width': 1,
+    }));
     legendItems.forEach(function (item, i) {
-      var col = i % 4, row = Math.floor(i / 4);
-      var x = lx + col * 148, y = ly + row * 15 - 15;
+      var col = i % legendCols, row = Math.floor(i / legendCols);
+      var x = 16 + col * legendColW;
+      var y = legendTop + 12 + row * legendRowH;
       svg.appendChild(svgEl('rect', {
-        x: x, y: y - 8, width: 11, height: 11, fill: item.colour,
-        stroke: p.axis, 'stroke-width': 0.6, rx: 1.5,
+        x: x, y: y - 8, width: 11, height: 11, rx: 1.5,
+        fill: item.fill ? fills[item.fill] : item.colour,
+        stroke: p.axis, 'stroke-width': 0.6,
       }));
       svg.appendChild(svgEl('text', {
-        x: x + 16, y: y + 1, 'font-size': 9.5, fill: p.inkSoft,
-        text: String(item.label).slice(0, 20),
+        x: x + 17, y: y + 1, 'font-size': 9.5, fill: p.inkSoft,
+        text: ellipsise(item.label, legendColW - 26, 9.5),
       }));
     });
+
     return svg;
   }
 

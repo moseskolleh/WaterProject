@@ -197,11 +197,10 @@ def build_handover_report(
 
     if inputs.design is not None:
         design_fig = figures / f"borehole_design_{slug}.png"
-        if not design_fig.exists():
-            draw_borehole_design(
-                inputs.design, log, path=design_fig, style=config.style,
-                title=f"Borehole design - {site.community}",
-            )
+        draw_borehole_design(
+            inputs.design, log, path=design_fig, style=config.style,
+            title=f"Borehole design - {site.community}",
+        )
         rb.figure(design_fig, "As-built borehole diagram.", width_cm=13.0)
 
     # ---- 4 water quality ------------------------------------------------------------

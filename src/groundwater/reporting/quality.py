@@ -324,10 +324,8 @@ def build_quality_report(
         rb.heading("5. Hydrochemical Facies", 1)
         piper_path = figures / f"piper_{slug}.png"
         stiff_path = figures / f"stiff_{slug}.png"
-        if not piper_path.exists():
-            plot_piper([sample], path=piper_path, style=config.style)
-        if not stiff_path.exists():
-            plot_stiff(sample, path=stiff_path, style=config.style)
+        plot_piper([sample], path=piper_path, style=config.style)
+        plot_stiff(sample, path=stiff_path, style=config.style)
         rb.figure(piper_path, "Piper diagram.", width_cm=13.0)
         rb.figure(stiff_path, "Stiff diagram.", width_cm=11.0)
 

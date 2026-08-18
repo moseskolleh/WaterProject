@@ -143,8 +143,7 @@ def build_cost_report(
         ),
     )
     fig_path = figures / "cost_breakdown.png"
-    if not fig_path.exists():
-        plot_cost_breakdown(estimate, fig_path, config.style)
+    plot_cost_breakdown(estimate, fig_path, config.style)
     rb.figure(fig_path, "Direct works cost by stage and by resource category.")
 
     # ---- 5 notes ---------------------------------------------------------
