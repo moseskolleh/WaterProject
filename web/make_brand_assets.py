@@ -33,9 +33,14 @@ from matplotlib.path import Path as MplPath
 REPO = Path(__file__).resolve().parents[1]
 OUT = REPO / "src" / "groundwater" / "data" / "brand"
 
-ACCENT = "#1F5C8B"  # house accent (config.HouseStyle.accent_color)
-ACCENT_LIGHT = "#4C9BD6"
-INK = "#173B54"  # wordmark colour
+# The redesign study's palette (direction 1b "Project Workspace"), so the
+# droplet in the sidebar is the same colour as the page it sits on. These were
+# a blue taken from HouseStyle.accent_color, which appears nowhere in the
+# study: a blue mark on a warm-paper green page was the one thing on the site
+# that belonged to no palette.
+ACCENT = "#2B6850"  # oklch(0.47 0.075 165) - the study's accent
+ACCENT_LIGHT = "#67A88C"  # oklch(0.68 0.08 165) - its light tint
+INK = "#152220"  # the study's text colour
 
 # Circle-to-bezier constant for quarter arcs.
 K = 0.552284749831
