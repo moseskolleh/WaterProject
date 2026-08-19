@@ -8,6 +8,7 @@ from groundwater.ves.forward import (
     forward_for_sounding,
     forward_schlumberger,
     forward_schlumberger_finite_mn,
+    forward_schlumberger_models,
     forward_wenner,
     two_layer_schlumberger_series,
 )
@@ -247,3 +248,41 @@ def test_interpretation_and_preference(rokel_ves_a):
     rows = drilling_preference_table([interp_a, interp_b], preferred_order=["B (2)"])
     ranks = {r["VES Point"]: r["Ranking"] for r in rows}
     assert ranks["B (2)"] == "1st" and ranks["A (1)"] == "2nd"
+
+
+@pytest.mark.parametrize("ab2_max", [80.0, 300.0, 1000.0])
+def test_a_batch_of_models_answers_exactly_as_one_at_a_time(ab2_max):
+    """The batched forward model is the same numbers, not merely close.
+
+    The inversion's Jacobian takes differences over a 1e-4 step, so a
+    last-bit difference here is a different fitted layer sixty iterations
+    later, not a rounding detail. ``ab2_max`` walks the batch across the
+    reach threshold where it stops batching and evaluates one at a time.
+    """
+    rng = np.random.default_rng(19)
+    ab2 = np.geomspace(1.0, ab2_max, 15)
+    for n_layers in (1, 2, 3, 4):
+        rho = np.exp(rng.uniform(np.log(5), np.log(9000), size=(6, n_layers)))
+        # 0.2 m is the inversion's own thickness floor, and the reach it
+        # implies is what the batch has to decide about
+        h = np.exp(rng.uniform(np.log(0.2), np.log(80), size=(6, n_layers - 1)))
+        batched = forward_schlumberger_models(rho, h, ab2)
+        for k in range(len(rho)):
+            alone = forward_schlumberger((rho[k], h[k]), ab2)
+            assert np.array_equal(alone, batched[k])
+
+
+def test_the_rokel_inversion_is_reproducible_to_the_bit(rokel_ves_a):
+    """Pin the fitted model, so a faster inversion stays the same inversion.
+
+    These are the values the committed sample outputs and the browser
+    build's reference numbers were taken from. An optimisation that moves
+    them is not an optimisation.
+    """
+    result = invert_sounding(rokel_ves_a)
+    assert result.fit_error_percent == 13.34685059254818
+    assert list(result.model.resistivities) == [
+        1105.510777898404,
+        1637.760390980798,
+        47.279765638473506,
+    ]

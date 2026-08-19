@@ -38,6 +38,7 @@ from ..models import LayeredModel, VESSounding
 __all__ = [
     "resistivity_transform",
     "forward_schlumberger",
+    "forward_schlumberger_models",
     "forward_schlumberger_finite_mn",
     "forward_wenner",
     "forward_for_sounding",
@@ -275,6 +276,105 @@ def forward_schlumberger(
     # (T - rho1) decays like exp(-2 lambda h_min) = exp(-x / (L / (2 h_min)))
     decay = ab2 / (2.0 * max(h_min, _MIN_DECAY_H))
     return rho[0] + _hankel_integrals(g, 1, decay)
+
+
+def _transform_rows(
+    lam: np.ndarray, rho: np.ndarray, h: np.ndarray
+) -> np.ndarray:
+    """The resistivity transform with a different model on every row.
+
+    ``rho`` is ``(rows, n_layers)`` and ``h`` is ``(rows, n_layers - 1)``:
+    row j of ``lam`` is evaluated against row j of the model arrays. Every
+    step is the same elementwise operation on the same operand values it
+    would have had model by model - a layer's resistivity arrives as a
+    column to broadcast instead of a scalar - so the result is bit-identical
+    to calling :func:`resistivity_transform` once per row.
+    """
+    T = np.broadcast_to(rho[:, -1:], lam.shape)
+    if h.shape[1] == 0:
+        return T.copy()  # a half space: nothing writes to T below, so copy out
+    for i in range(h.shape[1] - 1, -1, -1):
+        rho_i = rho[:, i : i + 1]
+        th = lam * h[:, i : i + 1]
+        np.tanh(th, out=th)
+        denom = T * th
+        th *= rho_i
+        th += T
+        denom /= rho_i
+        denom += 1.0
+        th /= denom
+        T = th
+    return T
+
+
+def _batchable(order: int, n_members: int, decay_max: float) -> bool:
+    """Whether a batch of this reach should be evaluated in one pass.
+
+    Batching wins while the arrays are small enough that numpy spends more
+    time entering its element loops than running them. Past that it loses:
+    a sounding whose layers are at the inversion's 0.2 m floor and whose
+    spread runs to several hundred metres reaches far enough that the batch
+    is both slower and several times heavier in peak memory.
+
+    Requiring the base quadrature table to already cover the reach draws
+    that line, and closes a second question with it. Growing the table
+    raises the ceiling ``_hankel_integrals`` clips the panel count against,
+    so a member that a lone evaluation would have clipped might not be
+    clipped inside a batch that grew it. Inside the base table nothing is
+    clipped either way.
+    """
+    x_stop = 18.0 * max(decay_max, 1.0)
+    table = _TABLES.get(order)
+    if table is None:
+        table = _TABLES[order] = _build_tables(order)
+    if x_stop > table["panel_ends"][-1]:
+        return False
+    return n_members * (x_stop / math.pi + 8.0) * 10.0 <= _BATCH_ABSCISSA_CAP
+
+
+def forward_schlumberger_models(
+    rho: np.ndarray, h: np.ndarray, ab2: np.ndarray
+) -> np.ndarray:
+    """Schlumberger response of several layered models at the same spacings.
+
+    ``rho`` is ``(K, n_layers)`` and ``h`` is ``(K, n_layers - 1)``; the
+    result is ``(K, len(ab2))``. The inversion's numerical Jacobian asks for
+    exactly this: the same sounding evaluated against K models that differ
+    in one parameter each, so they share every abscissa and differ only in
+    the layer values they carry.
+
+    Falls back to evaluating the models one at a time when the batch would
+    reach too far to pay - see :func:`_batchable`. Either way the answer is
+    the same one :func:`forward_schlumberger` gives.
+    """
+    rho = np.atleast_2d(np.asarray(rho, dtype=float))
+    h = np.asarray(h, dtype=float).reshape(len(rho), -1)
+    ab2 = np.atleast_1d(np.asarray(ab2, dtype=float))
+    n_models, n_spacings = len(rho), ab2.size
+
+    h_min = np.full(n_models, 1.0) if h.shape[1] == 0 else h.min(axis=1)
+    scale = 2.0 * np.maximum(h_min, _MIN_DECAY_H)
+    decay = ab2[None, :] / scale[:, None]
+
+    if not _batchable(1, n_models * n_spacings, float(decay.max())):
+        return np.stack(
+            [forward_schlumberger((rho[k], h[k]), ab2) for k in range(n_models)]
+        )
+
+    model_of = np.repeat(np.arange(n_models), n_spacings)
+    spacing = np.tile(ab2, n_models)
+    rho_of, h_of = rho[model_of], h[model_of]
+
+    def g(x, rows):
+        rho_rows = rho_of[rows]
+        lam = x[None, :] / spacing[rows][:, None]
+        integrand = _transform_rows(lam, rho_rows, h_of[rows])
+        integrand -= rho_rows[:, :1]
+        integrand *= x[None, :]
+        return integrand
+
+    acc = _hankel_integrals(g, 1, decay.ravel())
+    return rho[:, :1] + acc.reshape(n_models, n_spacings)
 
 
 def _potential_integrals(rho, h, r: np.ndarray, h_min: float) -> np.ndarray:
