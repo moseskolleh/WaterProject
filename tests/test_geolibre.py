@@ -773,3 +773,45 @@ def test_the_project_is_named_for_the_area_when_the_site_is_unnamed():
         area=AreaWindow(-12.8, 8.8, 30.0, "Port Loko district", False),
     )
     assert project["name"] == "Port Loko district"
+
+
+def test_an_area_is_honoured_with_no_site_at_all():
+    """A supplied area used to be ignored unless a site came with it, which
+    produced the one thing a project file must never do: metadata saying it
+    was centred on an area while the camera sat on the country.
+    """
+    from groundwater.mapping.regional import AreaWindow, load_geology
+
+    area = AreaWindow(-11.0, 8.0, 25.0, "Somewhere chiefdom", False)
+    project = site_project(area=area, geology=load_geology())
+    assert project["mapView"]["center"] == [-11.0, 8.0]
+    assert project["mapView"]["zoom"] > 9, "not framed on the country"
+    geology = [l for l in project["layers"] if l["name"] == "Geology"][0]
+    assert len(geology["geojson"]["features"]) < 92, "context was not windowed"
+    assert project["name"] == "Somewhere chiefdom"
+
+
+def test_the_words_and_the_camera_never_disagree():
+    """Whenever the metadata claims an area, the camera must be on it."""
+    from groundwater.mapping.regional import AreaWindow
+
+    area = AreaWindow(-12.0, 9.0, 30.0, "Karene district", False)
+    for kwargs in (
+        {"area": area},
+        {"area": area, "site": SiteMetadata(community="Rokel")},
+        {"area": area, "site": SiteMetadata(community="Rokel", district="Karene")},
+    ):
+        project = site_project(**kwargs)
+        assert area.label in project["metadata"]["position"]
+        assert project["mapView"]["center"] == [-12.0, 9.0], (
+            "the file says one place and opens on another"
+        )
+
+
+def test_a_site_in_a_post_2017_district_can_be_exported():
+    """Karene and Falaba are offered by both apps and have no polygon of
+    their own in the bundled boundary release."""
+    for district in ("Karene", "Falaba"):
+        project = site_project(site=SiteMetadata(community="X", district=district))
+        assert project["metadata"]["area"] == f"{district} district"
+        assert project["mapView"]["zoom"] > 7.96, "framed on the country"

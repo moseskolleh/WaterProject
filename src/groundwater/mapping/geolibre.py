@@ -854,8 +854,14 @@ def site_project(
         if window_km:
             lat, lon = site.latlon
             window = window_around(lat, lon, window_km)
-    elif site is not None:
-        if area is None:
+    else:
+        # An area given outright is honoured whether or not a site came with
+        # it. Requiring one meant a caller could hand over an area, have it
+        # silently ignored, and get a file whose metadata said it was centred
+        # on that area while the camera sat on the country - the map and the
+        # words about it disagreeing, which is the one thing a project file
+        # must never do.
+        if area is None and site is not None:
             from .regional import area_window as _resolve_area
 
             area = _resolve_area(site, window_km)
