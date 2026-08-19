@@ -33,7 +33,19 @@ from typing import Iterable
 from ..geo import infer_zone_for_sierra_leone, utm_distance_m, utm_to_geographic
 from ..models import DataFlag, SiteMetadata
 
-_BUFFER_DEG = 0.05  # about 5.5 km; boundary points are not flagged
+_BUFFER_DEG = 0.05  # about 5.5 km; used only for the bounding-box fallback
+
+#: How far from a district's edge a point may sit and still be read as
+#: possibly inside it. Set to the Douglas-Peucker tolerance the chiefdom
+#: rings were simplified with in ``web/build_geodata.py``, because that is
+#: what the ambiguity actually is: about 445 m of drawing error along every
+#: boundary. A handheld GPS fix is good to ten metres or so and does not
+#: come into it.
+#:
+#: It is deliberately not ``_BUFFER_DEG``. Five and a half kilometres of
+#: slack is what let one wrong district statement in fourteen through the
+#: box test, and restoring it here would give that back.
+_BORDER_TOLERANCE_DEG = 0.004
 
 # Sierra Leone in geographic coordinates, generous margin
 _SL_BOUNDS = (-13.6, -10.0, 6.7, 10.2)  # lon_min, lon_max, lat_min, lat_max
@@ -143,6 +155,38 @@ def district_of_coordinates(lat: float, lon: float) -> str | None:
     return district_of_point(lat, lon, polys, crosswalk) or None
 
 
+def _distance_to_districts_deg(lat: float, lon: float, names: list[str]) -> float:
+    """Distance from a point to the nearest edge of any of these districts.
+
+    In degrees, with longitude scaled by the cosine of the latitude so the
+    two axes are comparable. Only reached when a conflict is about to be
+    reported, so the cost of walking the rings is paid once and rarely.
+    """
+    import math
+
+    import numpy as np
+
+    polys, crosswalk = _chiefdom_index()
+    wanted = set(names)
+    scale = math.cos(math.radians(lat))
+    point = np.array([lon * scale, lat])
+    best = math.inf
+    for poly in polys:
+        if crosswalk.get(poly.name) not in wanted:
+            continue
+        for ring in poly.rings:
+            pts = ring.copy()
+            pts[:, 0] *= scale
+            a, b = pts[:-1], pts[1:]
+            ab = b - a
+            length2 = (ab ** 2).sum(axis=1)
+            length2[length2 == 0] = 1e-18
+            t = (((point - a) * ab).sum(axis=1) / length2).clip(0.0, 1.0)
+            closest = a + t[:, None] * ab
+            best = min(best, float(np.hypot(*(point - closest).T).min()))
+    return best
+
+
 def districts_containing(lat: float, lon: float, buffer_deg: float = _BUFFER_DEG) -> list[str]:
     """Districts whose (approximate) box contains the point."""
     hits = []
@@ -206,9 +250,16 @@ def check_site_consistency(site: SiteMetadata, context: str = "") -> list[DataFl
     elif stated:
         actual = district_of_coordinates(lat, lon)
         if actual is not None:
-            inside = actual in stated
             likely = [actual]
             note = ""
+            # A point just over the line is not a wrong district. The rings
+            # are simplified, so the line itself is only drawn to about
+            # 445 m, and a site on a boundary can fall either side of it
+            # without anybody having written anything wrong.
+            inside = actual in stated or (
+                _distance_to_districts_deg(lat, lon, stated)
+                <= _BORDER_TOLERANCE_DEG
+            )
         else:
             # Outside every chiefdom: offshore, across the border, or in the
             # gap a simplified coastline leaves. The boxes are all there is.

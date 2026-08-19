@@ -225,3 +225,47 @@ def test_a_point_outside_every_chiefdom_falls_back_to_the_boxes():
     conflict = [f for f in flags if f.code == "district_coordinate_conflict"]
     if conflict:
         assert "approximate district extents" in conflict[0].message
+
+
+def test_a_point_on_a_boundary_is_not_a_wrong_district():
+    """The rings are simplified to about 445 m, so the line itself is only
+    drawn to that accuracy. A site 100 m from it can fall either side
+    without anybody having written anything wrong, and neither district
+    stated for it is a conflict.
+    """
+    from groundwater.ingestion.checks import (_BORDER_TOLERANCE_DEG,
+                                              _distance_to_districts_deg,
+                                              district_of_coordinates)
+
+    lat, lon = 8.543604, -12.336172  # 100 m outside Yoni (Tonkolili)
+    assert district_of_coordinates(lat, lon) == "Port Loko"
+    assert _distance_to_districts_deg(lat, lon, ["Tonkolili"]) < _BORDER_TOLERANCE_DEG
+
+    for stated in ("Tonkolili", "Port Loko"):
+        site = SiteMetadata(district=stated, easting=793251, northing=945408,
+                            utm_zone=28)
+        assert not any(f.code == "district_coordinate_conflict"
+                       for f in check_site_consistency(site)), stated
+
+
+def test_the_boundary_tolerance_is_the_drawing_error_not_the_old_slack():
+    """0.05 degrees of slack is what let one wrong district in fourteen
+    through the box test. The tolerance must stay at the scale of the
+    simplification, not go back to that.
+    """
+    from groundwater.ingestion.checks import _BORDER_TOLERANCE_DEG, _BUFFER_DEG
+
+    assert _BORDER_TOLERANCE_DEG < _BUFFER_DEG / 10
+    assert 300 < _BORDER_TOLERANCE_DEG * 111320 < 600  # metres
+
+
+def test_a_district_two_districts_away_is_still_caught():
+    """The tolerance forgives a boundary, not a copy-over error."""
+    from groundwater.geo import geographic_to_utm
+
+    lat, lon = 8.8524, -13.2678  # Samu, Kambia
+    utm = geographic_to_utm(lat, lon)
+    site = SiteMetadata(district="Kenema", easting=utm.easting,
+                        northing=utm.northing, utm_zone=utm.zone)
+    assert any(f.code == "district_coordinate_conflict"
+               for f in check_site_consistency(site))
