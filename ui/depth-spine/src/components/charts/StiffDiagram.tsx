@@ -37,13 +37,8 @@ export function StiffDiagram({ data }: { data: PiperData }) {
       ))}
       <line x1={CX} y1={y(0) - 6} x2={CX} y2={y(rows.length - 1) + 6}
         stroke="rgba(255,255,255,.22)" />
-      {/* Inline style rather than fill=/stroke=: a var() is only resolved in a
-          CSS declaration, never in an SVG presentation attribute. */}
-      <polygon points={polygon} strokeWidth={1.4}
-        style={{
-          fill: 'oklch(0.72 0.13 var(--accent-h) / .28)',
-          stroke: 'oklch(0.75 0.13 var(--accent-h))',
-        }} />
+      <polygon points={polygon} fill="oklch(0.72 0.13 190 / .28)"
+        stroke="oklch(0.75 0.13 190)" strokeWidth={1.4} />
       <g fontFamily="'IBM Plex Mono', monospace" fontSize={9} fill={label}>
         {rows.map((r, i) => (
           <g key={r.left[0]}>

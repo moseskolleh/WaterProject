@@ -19,7 +19,7 @@ const qty = (n: number, unit: string) =>
 const DESIGN_DRIVEN = /casing|screen|gravel|grout|seal|drill/i;
 
 const STAGE_COLOURS = [
-  'oklch(0.72 0.13 var(--accent-h))',
+  'oklch(0.72 0.13 190)',
   'oklch(0.66 0.12 210)',
   'oklch(0.7 0.13 145)',
   'oklch(0.78 0.13 110)',

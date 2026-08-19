@@ -94,7 +94,7 @@ export function DesignStage({
               screened
             </span>
             <span>
-              <span className="sw-line" style={{ background: 'oklch(0.72 0.15 var(--water-h))' }} />
+              <span className="sw-line" style={{ background: 'oklch(0.72 0.15 235)' }} />
               rest level
             </span>
             <span>

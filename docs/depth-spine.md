@@ -113,27 +113,6 @@ because the override is what ends up in front of the client with a name on it.
 Moving a screen reopens the design and costing decisions — a signature has to
 belong to the numbers that were in front of the person when they gave it.
 
-## Colours
-
-The workspace keeps the study's dark canvas - a borehole section is a drawing,
-and the lithology, casing and water lines read better against it than against
-paper white - but the accent is the house accent, not the study's teal. The
-tokens are generated:
-
-```bash
-python web/make_theme.py     # .streamlit/config.toml + ui/depth-spine/src/tokens.css
-cd ui/depth-spine && npm run build:all && cd - && python web/build_demo.py
-```
-
-`HouseStyle.accent_color` is the one source. The app theme takes it neat; the
-workspace needs it lightened, which is done in Oklab so the hue survives, and
-every pair is checked against WCAG AA before anything is written. Water moves
-from blue to cyan in the same change: with the accent now on the house blue, a
-water level and a button would otherwise have been the same hue, and in a
-section drawing that is a real ambiguity rather than a tidiness point. The hues
-that encode what a thing *is* - pump orange, screen green, the lithology fills -
-are the study's own and stay put.
-
 ## Changes to existing code
 
 Three, all small and additive:

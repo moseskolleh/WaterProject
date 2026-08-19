@@ -1,10 +1,12 @@
-/* The canvas, the accent and the water colours are generated from the house
-   style - see ui/depth-spine/src/tokens.css and web/make_theme.py. */
-@import './tokens.css';
-
-/* The rest are the study's own (direction 2a): they encode what a thing is,
-   not whose it is, so they are not brand colours to derive. */
+/* Design tokens lifted from the Depth Spine study (direction 2a). */
 :root {
+  --ink: #12181a;
+  --rail: #0d1315;
+  --accent: oklch(0.72 0.13 190);
+  --accent-bright: oklch(0.78 0.13 190);
+  --accent-text: oklch(0.85 0.11 190);
+  --water: oklch(0.72 0.15 235);
+  --water-text: oklch(0.8 0.13 235);
   --pump: oklch(0.8 0.14 55);
   --pump-text: oklch(0.82 0.14 55);
   --screen: oklch(0.8 0.14 145);
@@ -23,10 +25,10 @@
 
 body {
   margin: 0;
-  background: var(--surround);
+  background: #e7e5df;
   font-family: var(--sans);
   -webkit-font-smoothing: antialiased;
-  color: var(--surround-text);
+  color: #182220;
 }
 
 button {
@@ -88,7 +90,7 @@ body.embedded {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--on-accent);
+  color: #0b1214;
   font: 700 13px var(--display);
 }
 
@@ -138,7 +140,7 @@ body.embedded {
 
 .segmented button[aria-pressed='true'] {
   font-weight: 600;
-  color: var(--on-accent);
+  color: #0b1214;
   background: var(--accent);
 }
 
@@ -331,7 +333,7 @@ body.embedded {
 }
 
 .litho-block.is-aquifer {
-  border-color: oklch(0.72 0.13 var(--accent-h) / 0.55);
+  border-color: oklch(0.72 0.13 190 / 0.55);
 }
 
 .litho-block.fill-topsoil {
@@ -368,7 +370,7 @@ body.embedded {
   left: -6px;
   width: 70px;
   height: 1.5px;
-  background: oklch(0.8 0.11 var(--accent-h) / 0.75);
+  background: oklch(0.8 0.11 190 / 0.75);
 }
 
 .litho-label {
@@ -394,7 +396,7 @@ body.embedded {
 }
 
 .litho-label.is-aquifer .litho-note {
-  color: oklch(0.75 0.09 var(--accent-h) / 0.8);
+  color: oklch(0.75 0.09 190 / 0.8);
 }
 
 .strike-line {
@@ -457,8 +459,8 @@ body.embedded {
   position: absolute;
   left: 44px;
   width: 32px;
-  background: oklch(0.62 0.07 var(--water-h) / 0.35);
-  border: 1.5px solid oklch(0.72 0.1 var(--water-h));
+  background: oklch(0.62 0.07 235 / 0.35);
+  border: 1.5px solid oklch(0.72 0.1 235);
 }
 
 .seal {
@@ -588,8 +590,8 @@ body.embedded {
   right: 0;
   bottom: 0;
   background: linear-gradient(
-    oklch(0.6 0.12 var(--water-h) / 0.13),
-    oklch(0.6 0.12 var(--water-h) / 0.02)
+    oklch(0.6 0.12 235 / 0.13),
+    oklch(0.6 0.12 235 / 0.02)
   );
 }
 
@@ -896,7 +898,7 @@ button.chip:hover {
 
 .hint-title {
   font: 600 10.5px var(--sans);
-  color: oklch(0.8 0.11 var(--accent-h));
+  color: oklch(0.8 0.11 190);
   margin-bottom: 3px;
 }
 
@@ -1354,8 +1356,8 @@ button.chip:hover {
   border-radius: 0 3px 3px 0;
   background: linear-gradient(
     90deg,
-    oklch(0.72 0.13 var(--accent-h) / 0.35),
-    oklch(0.72 0.13 var(--accent-h) / 0.85)
+    oklch(0.72 0.13 190 / 0.35),
+    oklch(0.72 0.13 190 / 0.85)
   );
 }
 
@@ -1721,7 +1723,7 @@ button.chip:hover {
   font: 600 9.5px var(--mono);
   text-transform: uppercase;
   letter-spacing: 0.09em;
-  color: var(--on-accent);
+  color: #0b1214;
   background: var(--accent);
   border-radius: 20px;
   padding: 3px 9px;
@@ -1846,8 +1848,8 @@ button.chip:hover {
 .gspine-bar.is-ok {
   background: linear-gradient(
     90deg,
-    oklch(0.72 0.13 var(--accent-h) / 0.35),
-    oklch(0.72 0.13 var(--accent-h) / 0.85)
+    oklch(0.72 0.13 190 / 0.35),
+    oklch(0.72 0.13 190 / 0.85)
   );
 }
 
