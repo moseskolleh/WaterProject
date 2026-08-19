@@ -471,6 +471,7 @@ writeFileSync(process.argv[4], JSON.stringify({
   links: input.links.map((l) => (l.kind === 'data'
     ? G.dataLink(l.url, l.options)
     : G.projectLink(l.url, l.options))),
+  area: G.siteProject(input.area),
 }, null, 2));
 """
 
@@ -532,6 +533,15 @@ def test_the_browser_builder_agrees_with_this_one(tmp_path):
         },
         "portfolio": portfolio,
         "links": _LINK_CASES,
+        # The same area handed to both sides. The two *resolvers* -
+        # regional.area_window here, areaWindow in the app - are separate
+        # implementations over data rounded differently, so they can place a
+        # chiefdom a little differently. That is theirs to agree on; what has
+        # to match is what each builder does once given the same answer.
+        "area": {"community": "Rokel", "chiefdom": "Koya",
+                 "district": "Port Loko",
+                 "area": {"lon": -13.05, "lat": 8.62, "radiusKm": 22.0,
+                          "label": "Koya chiefdom", "exact": False}},
     }
     (tmp_path / "input.json").write_text(json.dumps(payload), encoding="utf-8")
     driver = tmp_path / "driver.mjs"
@@ -562,6 +572,20 @@ def test_the_browser_builder_agrees_with_this_one(tmp_path):
 
     assert js["portfolio"] == portfolio_project(portfolio)
     assert js["links"] == [_python_link(case) for case in _LINK_CASES]
+
+    # given the same area, both builders must frame it the same way, mark no
+    # position, and say the same thing about why
+    from groundwater.mapping.regional import AreaWindow
+
+    mine_area = site_project(
+        site=SiteMetadata(community="Rokel", chiefdom="Koya",
+                          district="Port Loko"),
+        area=AreaWindow(-13.05, 8.62, 22.0, "Koya chiefdom", False),
+    )
+    assert js["area"]["mapView"] == mine_area["mapView"]
+    assert js["area"]["metadata"] == mine_area["metadata"]
+    assert js["area"]["name"] == mine_area["name"]
+    assert "Site" not in [layer["name"] for layer in js["area"]["layers"]]
 
 
 # The link cases both builders are checked against. A signed URL is the one
@@ -677,3 +701,75 @@ def test_writing_checks_again_because_that_is_where_the_file_appears(tmp_path):
 def test_the_error_says_where_the_credential_was_found():
     with pytest.raises(ValueError, match=r"project metadata\.service"):
         build_project("p", [], metadata={"service": {"api_key": "x"}})
+
+
+# ------------------------------------------- a site with no GPS fix
+
+def _no_fix(**kwargs):
+    return SiteMetadata(community="Rokel", **kwargs)
+
+
+def test_a_site_with_only_a_chiefdom_still_gets_a_project():
+    """area_window resolves it to the chiefdom, and the map opens there."""
+    project = site_project(site=_no_fix(chiefdom="Koya", district="Port Loko"))
+    assert 9 < project["mapView"]["zoom"] < 13, "a chiefdom is not a country"
+    assert "Koya chiefdom" in project["metadata"]["position"]
+
+
+def test_a_site_with_only_a_district_falls_back_to_it():
+    project = site_project(site=_no_fix(district="Port Loko"))
+    assert "Port Loko district" in project["metadata"]["position"]
+    assert project["mapView"]["zoom"] < 11
+
+
+def test_a_centroid_is_never_drawn_as_a_position():
+    """A dot at a chiefdom centroid is indistinguishable on screen from a
+    surveyed wellhead, and a reader who cannot tell will measure from it.
+    """
+    project = site_project(
+        site=_no_fix(chiefdom="Koya"), chiefdoms=[], geology=[]
+    )
+    assert "Site" not in [layer["name"] for layer in project["layers"]]
+
+
+def test_the_file_says_the_centre_is_a_centroid():
+    """Framing alone does not tell a reader opening this somewhere else."""
+    project = site_project(site=_no_fix(chiefdom="Koya"))
+    assert "not a surveyed position" in project["metadata"]["position"]
+    assert project["metadata"]["area"] == "Koya chiefdom"
+
+
+def test_a_gps_fix_is_still_a_position_and_still_gets_a_marker():
+    project = site_project(site=_site(), zone=ZONE)
+    assert "Site" in [layer["name"] for layer in project["layers"]]
+    assert "position" not in project["metadata"], (
+        "a real fix must not be labelled an area centroid"
+    )
+
+
+def test_a_site_with_nothing_to_locate_it_is_not_placed_anywhere():
+    """No community-name geocoding: a name is not a position."""
+    project = site_project(site=_no_fix())
+    assert "position" not in project["metadata"]
+    assert "area" not in project["metadata"]
+
+
+def test_an_area_can_be_supplied_instead_of_resolved():
+    from groundwater.mapping.regional import AreaWindow
+
+    project = site_project(
+        site=_no_fix(),
+        area=AreaWindow(-11.0, 8.0, 25.0, "Somewhere chiefdom", False),
+    )
+    assert project["metadata"]["area"] == "Somewhere chiefdom"
+    assert project["mapView"]["center"] == [-11.0, 8.0]
+
+
+def test_the_project_is_named_for_the_area_when_the_site_is_unnamed():
+    from groundwater.mapping.regional import AreaWindow
+
+    project = site_project(
+        site=SiteMetadata(district="Port Loko"),
+        area=AreaWindow(-12.8, 8.8, 30.0, "Port Loko district", False),
+    )
+    assert project["name"] == "Port Loko district"

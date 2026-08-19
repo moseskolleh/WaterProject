@@ -416,7 +416,9 @@
     var bbox = union((focal.length ? focal : kept).map(layerBbox));
 
     var view;
-    if (!bbox) {
+    if (opts.center && opts.zoom != null) {
+      view = { center: opts.center, zoom: opts.zoom };
+    } else if (!bbox) {
       view = { center: [-11.78, 8.46], zoom: 7.0 };
     } else {
       view = frame(bbox);
@@ -476,9 +478,28 @@
    * boundaries over them, then the survey, then the point that matters. */
   function siteProject(options) {
     var opts = options || {};
+    var hasFix = opts.lat != null && opts.lon != null;
+    var area = opts.area || null;
     var win = null;
-    if (opts.windowKm && opts.lat != null && opts.lon != null) {
-      win = windowAround(opts.lat, opts.lon, opts.windowKm);
+    var centre = null;
+    var zoom = null;
+    if (hasFix) {
+      if (opts.windowKm) win = windowAround(opts.lat, opts.lon, opts.windowKm);
+    } else if (area) {
+      /* A site with no GPS fix still gets a project: the chiefdom it is in,
+       * or failing that the district. What it does not get is a marker - a
+       * dot at a chiefdom centroid is indistinguishable on screen from a
+       * surveyed wellhead, and a reader who cannot tell the difference will
+       * measure from it. The area is framed and named; the position stays
+       * absent because it is absent.
+       *
+       * Framed explicitly, because without a fix there is no focal layer
+       * for the camera to find and the context layers alone would open on
+       * the country. */
+      win = windowAround(area.lat, area.lon, area.radiusKm);
+      var framed = frame(win);
+      centre = framed.center;
+      zoom = framed.zoom;
     }
     var layers = [];
 
@@ -528,17 +549,30 @@
       }))], { radius: 10.0, color: '#B23A2E' }));
     }
 
-    return buildProject(opts.name || opts.community || 'Site', layers, {
-      metadata: clean({
-        community: opts.community || '',
-        chiefdom: opts.chiefdom || '',
-        district: opts.district || '',
-        client: opts.client || '',
-        project: opts.project || '',
-      }),
-      frameOn: ['Site', 'Drill-target suitability', 'Survey points',
-        'Existing water points'],
+    var metadata = clean({
+      community: opts.community || '',
+      chiefdom: opts.chiefdom || '',
+      district: opts.district || '',
+      client: opts.client || '',
+      project: opts.project || '',
     });
+    if (area && !area.exact) {
+      /* Said in the file, not only in the framing: a reader opening this
+       * somewhere else has no other way to know the centre is a centroid. */
+      metadata.area = area.label;
+      metadata.position = 'centred on ' + area.label + ' - an area centroid, ' +
+        'not a surveyed position; this site has no GPS fix';
+    }
+    return buildProject(
+      opts.name || opts.community || (area ? area.label : '') || 'Site',
+      layers,
+      {
+        metadata: metadata,
+        center: centre,
+        zoom: zoom,
+        frameOn: ['Site', 'Drill-target suitability', 'Survey points',
+          'Existing water points'],
+      });
   }
 
   function portfolioProject(points, options) {
