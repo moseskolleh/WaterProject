@@ -147,7 +147,10 @@ def _build_tables(order: int, n_zeros: int = _N_ZEROS):
     }
 
 
-_TABLES = {0: _build_tables(0), 1: _build_tables(1)}
+# Built on first use rather than at import. The tables are 1200 Bessel
+# zeros and their Gauss-Legendre panels per order, about 30 ms of work
+# that a cold start which never runs a forward model should not pay.
+_TABLES: dict[int, dict] = {}
 
 
 def _table_for(order: int, x_stop: float) -> dict:
@@ -156,7 +159,9 @@ def _table_for(order: int, x_stop: float) -> dict:
     Grows (and caches) the table rather than truncating the integral, which
     silently returned resistivities an order of magnitude wrong.
     """
-    table = _TABLES[order]
+    table = _TABLES.get(order)
+    if table is None:
+        table = _TABLES[order] = _build_tables(order)
     if table["panel_ends"][-1] >= x_stop or len(table["panel_ends"]) + 1 >= _MAX_ZEROS:
         return table
     # zeros of J are spaced about pi apart, so this is the count that reaches
@@ -202,6 +207,8 @@ def _hankel_integrals(g, order: int, x_decays: np.ndarray) -> np.ndarray:
     forward model into a visible one in the fitted layer.
     """
     x_decays = np.asarray(x_decays, dtype=float)
+    if not x_decays.size:  # a sounding with no readings integrates nothing
+        return np.empty(0, dtype=float)
     x_stop = 18.0 * np.maximum(x_decays, 1.0)
     t = _table_for(order, float(x_stop.max()))
     n_panels = np.searchsorted(t["panel_ends"], x_stop) + 1
@@ -255,7 +262,7 @@ def forward_schlumberger(
     """Ideal (gradient) Schlumberger apparent resistivity at AB/2 values."""
     rho, h = _model_arrays(model)
     ab2 = np.atleast_1d(np.asarray(ab2, dtype=float))
-    h_min = float(h[0]) if len(h) else 1.0
+    h_min = float(np.min(h)) if len(h) else 1.0
     # substitute x = lambda L: rho_a = rho1 + Int (T(x/L) - rho1) J1(x) x dx
     # (the L^2 prefactor cancels against the 1/L^2 from the substitution)
     def g(x, rows):
@@ -298,7 +305,7 @@ def forward_schlumberger_finite_mn(
     rho, h = _model_arrays(model)
     ab2 = np.atleast_1d(np.asarray(ab2, dtype=float))
     mn = np.atleast_1d(np.asarray(mn, dtype=float))
-    h_min = float(h[0]) if len(h) else 1.0
+    h_min = float(np.min(h)) if len(h) else 1.0
     out = np.empty_like(ab2)
 
     b = mn / 2.0
@@ -323,7 +330,7 @@ def forward_wenner(model: LayeredModel | tuple, a: np.ndarray) -> np.ndarray:
     """Wenner apparent resistivity at spacings a."""
     rho, h = _model_arrays(model)
     a = np.atleast_1d(np.asarray(a, dtype=float))
-    h_min = float(h[0]) if len(h) else 1.0
+    h_min = float(np.min(h)) if len(h) else 1.0
     # both radii of every spacing in one quadrature pass
     f = _potential_integrals(rho, h, np.concatenate([a, 2.0 * a]), h_min)
     n = len(a)

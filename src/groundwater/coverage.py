@@ -132,6 +132,29 @@ def load_chiefdom_polys(path: str | Path | None = None) -> list[ChiefdomPoly]:
     return polys
 
 
+def tally(
+    grouped: dict[str, list[WaterPoint]]
+) -> dict[str, dict[str, int]]:
+    """Total and functional counts from points already placed in areas.
+
+    Placing points is the expensive half - every point walked against the
+    chiefdom polygons - and counting them is free once it is done. A caller
+    that wants both used to ask for each separately and pay for the walk
+    twice.
+
+    Nothing is assumed working: only ``functional is True`` counts, so a
+    point nobody has surveyed stays in the total and out of the functional
+    figure.
+    """
+    return {
+        name: {
+            "total": len(points),
+            "functional": sum(1 for wp in points if wp.functional is True),
+        }
+        for name, points in grouped.items()
+    }
+
+
 def district_of_point(
     lat: float, lon: float, polys: list[ChiefdomPoly], chiefdom_district: dict[str, str]
 ) -> str:
@@ -156,20 +179,8 @@ def count_points_by_district(
     Returns ``({district: {"total": int, "functional": int}}, unassigned)``
     where ``unassigned`` holds points inside no chiefdom (never dropped).
     """
-    counts: dict[str, dict[str, int]] = {}
-    unassigned: list[WaterPoint] = []
-    index = _chiefdom_index(polys)
-    for wp in points:
-        hit = index.locate(wp.lon, wp.lat)
-        district = chiefdom_district.get(hit.name, "") if hit is not None else ""
-        if not district:
-            unassigned.append(wp)
-            continue
-        bucket = counts.setdefault(district, {"total": 0, "functional": 0})
-        bucket["total"] += 1
-        if wp.functional is True:
-            bucket["functional"] += 1
-    return counts, unassigned
+    grouped, unassigned = group_points_by_district(points, polys, chiefdom_district)
+    return tally(grouped), unassigned
 
 
 def group_points_by_district(
@@ -382,19 +393,8 @@ def count_points_by_chiefdom(
     points: Iterable[WaterPoint], polys: list[ChiefdomPoly]
 ) -> tuple[dict[str, dict[str, int]], list[WaterPoint]]:
     """Total and functional water-point counts per chiefdom polygon."""
-    counts: dict[str, dict[str, int]] = {}
-    unassigned: list[WaterPoint] = []
-    index = _chiefdom_index(polys)
-    for wp in points:
-        hit = index.locate(wp.lon, wp.lat)
-        if hit is None:
-            unassigned.append(wp)
-            continue
-        bucket = counts.setdefault(hit.name, {"total": 0, "functional": 0})
-        bucket["total"] += 1
-        if wp.functional is True:
-            bucket["functional"] += 1
-    return counts, unassigned
+    grouped, unassigned = group_points_by_chiefdom(points, polys)
+    return tally(grouped), unassigned
 
 
 def chiefdom_coverage_rows(
