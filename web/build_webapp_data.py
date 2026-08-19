@@ -68,9 +68,14 @@ SAMPLE_PROJECTS = {
         "label": "Rokel - geophysical survey",
         "note": "Six Schlumberger VES points from a Living Water International "
                 "siting survey; drives the VES, maps and geophysical report pages.",
+        # Only the roles the browser engine actually reads. It has no
+        # IPI2Win model reader - the Python package does, and
+        # examples/run_rokel_geophysics.py uses it - so shipping
+        # rokel_ipi2win_models.xlsx here put a workbook in the bundle that
+        # nothing could open. The file stays under examples/data for the
+        # Python example.
         "files": {
             "ves": "rokel/rokel_ves.xlsx",
-            "ipi2win": "rokel/rokel_ipi2win_models.xlsx",
         },
         "site": {
             "client": "Living Water International", "community": "Rokel",

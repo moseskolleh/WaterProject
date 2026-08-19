@@ -2892,11 +2892,15 @@
         S.modal(caption || 'Figure data', opts.table());
       }, { variant: 'quiet' }) : null,
       S.button('PNG', function () {
+        /* the rasteriser can fail - an unloadable font, a tainted canvas -
+         * and with no handler the button simply did nothing */
         toPng(svg, { scale: 2 }).then(function (png) {
-          fetch(png.dataUrl).then(function (r) { return r.blob(); })
+          return fetch(png.dataUrl).then(function (r) { return r.blob(); })
             .then(function (blob) {
               S.download((opts.filename || S.slug(caption || 'figure')) + '.png', blob);
             });
+        }).catch(function (e) {
+          S.toast('Could not export this figure as a PNG: ' + e.message, 'error');
         });
       }, { variant: 'quiet' }),
       S.button('SVG', function () {

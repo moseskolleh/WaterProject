@@ -632,7 +632,7 @@
     });
     fresh.sources = {};
     Object.keys(sample.files).forEach(function (role) {
-      fresh.sources[role === 'ipi2win' ? 'ipi2win' : role] = {
+      fresh.sources[role] = {
         name: sample.files[role].name, b64: sample.files[role].b64,
       };
     });
@@ -3708,14 +3708,20 @@
       ]),
       el('p.muted', doc.notes + ' Extractor: ' + doc.extractor + '.'),
       el('div.btn-row', [
-        button('Download review workbook (.xlsx)', function () {
-          buildReviewWorkbook(doc);
+        button('Download review workbook (.xlsx)', async function () {
+          try {
+            await buildReviewWorkbook(doc);
+          } catch (e) {
+            S.toast('Could not write the review workbook: ' + e.message, 'error');
+          }
         }),
         doc.document_kind === 'ves' && doc.tables.length
-          ? button('Download filled VES template (.xlsx)', function () {
+          ? button('Download filled VES template (.xlsx)', async function () {
             try {
-              buildFilledVesTemplate(doc);
-            } catch (e) { S.toast(e.message, 'error'); }
+              await buildFilledVesTemplate(doc);
+            } catch (e) {
+              S.toast('Could not write the VES template: ' + e.message, 'error');
+            }
           }, { variant: 'ghost' }) : null,
       ]),
     ]));
