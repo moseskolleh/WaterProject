@@ -37,7 +37,7 @@ from typing import Iterable
 
 import numpy as np
 
-from ._geometry import RingIndex, point_in_ring
+from ._geometry import RingIndex
 from ._resources import bundled_text, cache_bundled
 from .waterpoints import WaterPoint
 
@@ -62,20 +62,6 @@ class ChiefdomPoly:
 
 
 _resource_text = bundled_text
-
-
-def _poly_contains(poly: "ChiefdomPoly", lon: float, lat: float) -> bool:
-    """Point in a chiefdom, honouring enclaves cut out of it."""
-    for i, (ring, (x0, y0, x1, y1)) in enumerate(zip(poly.rings, poly.bboxes)):
-        if not (x0 <= lon <= x1 and y0 <= lat <= y1):
-            continue
-        if not point_in_ring(lon, lat, ring):
-            continue
-        inner = poly.holes[i] if i < len(poly.holes) else []
-        if any(point_in_ring(lon, lat, hole) for hole in inner):
-            continue  # inside an enclave: it belongs to the chiefdom there
-        return True
-    return False
 
 
 def _chiefdom_index(polys: list["ChiefdomPoly"]) -> RingIndex:
@@ -163,10 +149,8 @@ def district_of_point(
     Returns "" when the point falls outside every chiefdom (border, offshore,
     or a bad coordinate).
     """
-    for poly in polys:
-        if _poly_contains(poly, lon, lat):
-            return chiefdom_district.get(poly.name, "")
-    return ""
+    hit = _chiefdom_index(polys).locate(lon, lat)
+    return chiefdom_district.get(hit.name, "") if hit is not None else ""
 
 
 def count_points_by_district(
@@ -383,10 +367,8 @@ def chiefdom_of_point(
     lat: float, lon: float, polys: list[ChiefdomPoly]
 ) -> str:
     """Chiefdom polygon containing a point, or "" when outside every chiefdom."""
-    for poly in polys:
-        if _poly_contains(poly, lon, lat):
-            return poly.name
-    return ""
+    hit = _chiefdom_index(polys).locate(lon, lat)
+    return hit.name if hit is not None else ""
 
 
 def count_points_by_chiefdom(

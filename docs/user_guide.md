@@ -8,13 +8,14 @@ web interface. No programming is needed.
 
 Ask the analyst for the current template pack, or generate it from the
 **Templates** page of the web interface (sidebar, under *Delivery*).
-There are four templates:
+There are five templates:
 
 | Template | Used for |
 |---|---|
 | `template_ves.xlsx` | Vertical electrical sounding field data |
 | `template_pumping_test.xlsx` | Step and constant discharge tests |
 | `template_drilling_log.xlsx` | Drilling record and formation log |
+| `daily_log_template.xlsx` | The driller's daily report, one row per interval |
 | `template_water_quality.xlsx` | Laboratory results |
 
 General rules for all templates:

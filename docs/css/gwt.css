@@ -20,6 +20,7 @@
   --brand: #2B6850;
   --brand-dark: #1B5A43;
   --brand-tint: #E4EEE8;
+  --on-brand: #FFFFFF;
 
   /* Figures. The report house style is a blue/orange pair; the blue is nudged
    * one step (#1F5C8B -> #155D92) so the pair clears the chroma floor while
@@ -96,6 +97,7 @@
     --brand: #5DBE96;
     --brand-dark: #7ED0AC;
     --brand-tint: #1C2E28;
+    --on-brand: #0E1A16;
     --accent: #3987e5;
     --accent-soft: #86b6ef;
     --secondary: #d95926;
@@ -103,7 +105,11 @@
     --viz-surface: #1A2325;
     --viz-grid: #2c2c2a;
     --viz-axis: #383835;
-    --viz-muted: #898781;
+    --viz-muted: #9a9892;
+    --status-good: #35c035;
+    --status-warning: #ffc94a;
+    --status-serious: #f4a483;
+    --status-critical: #ef6a6a;
     --cat-1: #3987e5;
     --cat-2: #d95926;
     --cat-3: #199e70;
@@ -145,6 +151,7 @@
   --brand: #5DBE96;
   --brand-dark: #7ED0AC;
   --brand-tint: #1C2E28;
+  --on-brand: #0E1A16;
   --accent: #3987e5;
   --accent-soft: #86b6ef;
   --secondary: #d95926;
@@ -152,7 +159,11 @@
   --viz-surface: #1A2325;
   --viz-grid: #2c2c2a;
   --viz-axis: #383835;
-  --viz-muted: #898781;
+  --viz-muted: #9a9892;
+  --status-good: #35c035;
+  --status-warning: #ffc94a;
+  --status-serious: #f4a483;
+  --status-critical: #ef6a6a;
   --cat-1: #3987e5;
   --cat-2: #d95926;
   --cat-3: #199e70;
@@ -213,12 +224,27 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 1.4rem 0; }
 
 /* ------------------------------------------------------------------ shell */
 
+/* The shell owns the viewport and the main pane does the scrolling.
+ *
+ * With the page scrolling instead, three things were wrong at once and all
+ * three had the same cause. `position: sticky` on the top bar was inert,
+ * because a sticky item is constrained by its own grid area and the header's
+ * area is exactly one header tall. The nav rail was given `height: 100vh` to
+ * make it stick, so on any page longer than the viewport its background and
+ * its right-hand border simply stopped partway down. And the nav could not
+ * scroll independently of the page.
+ *
+ * Making the grid the height of the viewport and letting `.app-main` scroll
+ * fixes all three: the header and the rail no longer move because nothing
+ * moves them, and the rail fills its column. */
 .app {
   display: grid;
   grid-template-columns: var(--nav-w) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas: "brand top" "nav main";
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 .app-brand {
@@ -244,8 +270,6 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 1.4rem 0; }
   padding: 0.6rem 1.4rem;
   background: var(--bg-raised);
   border-bottom: 1px solid var(--line);
-  position: sticky;
-  top: 0;
   z-index: 30;
   flex-wrap: wrap;
 }
@@ -261,10 +285,7 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 1.4rem 0; }
   border-right: 1px solid var(--line);
   padding: 0.9rem 0.7rem 3rem;
   overflow-y: auto;
-  position: sticky;
-  top: 0;
-  align-self: start;
-  height: 100vh;
+  min-height: 0;
 }
 .nav-group { margin-bottom: 1.1rem; }
 .nav-group-title {
@@ -277,11 +298,14 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 1.4rem 0; }
   background: transparent; color: var(--ink-soft); font: inherit;
   font-size: 0.9rem; text-align: left; cursor: pointer;
 }
-.nav-item:hover { background: rgba(43, 104, 80, 0.09); color: var(--ink); }
+/* the hover wash was the light-mode brand written as a literal rgba, so it
+   disappeared against the dark rail */
+.nav-item:hover { background: color-mix(in srgb, var(--brand) 14%, transparent);
+  color: var(--ink); }
 .nav-item.active {
-  background: var(--brand); color: #fff; font-weight: 560;
+  background: var(--brand); color: var(--on-brand); font-weight: 560;
 }
-.nav-item.active .nav-dot { background: rgba(255, 255, 255, 0.9); }
+.nav-item.active .nav-dot { background: color-mix(in srgb, var(--on-brand) 90%, transparent); }
 .nav-item .nav-dot {
   width: 6px; height: 6px; border-radius: 50%; flex: none;
   background: var(--line-strong);
@@ -295,8 +319,11 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 1.4rem 0; }
   grid-area: main;
   padding: 1.4rem 1.6rem 5rem;
   min-width: 0;
-  max-width: 1180px;
+  min-height: 0;
+  overflow-y: auto;
+  scroll-behavior: smooth;
 }
+.app-main > * { max-width: 1180px; }
 
 .page-head { margin-bottom: 1.2rem; }
 .page-head .crumb {
@@ -328,7 +355,8 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 1.4rem 0; }
 .card-body > :last-child { margin-bottom: 0; }
 
 .grid { display: grid; gap: 1.1rem; }
-.grid-2 { grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); }
+/* min() so a 310px track cannot overflow a narrower card on a small phone */
+.grid-2 { grid-template-columns: repeat(auto-fit, minmax(min(310px, 100%), 1fr)); }
 .grid-3 { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
 
 .section { margin-bottom: 1.2rem; }
@@ -352,7 +380,7 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 1.4rem 0; }
   font-size: 0.9rem;
 }
 .input:focus {
-  outline: 2px solid color-mix(in srgb, var(--brand) 45%, transparent);
+  outline: 2px solid var(--brand);
   outline-offset: 1px;
   border-color: var(--brand);
 }
@@ -365,12 +393,18 @@ select.input { appearance: none; padding-right: 1.6rem;
   background-size: 5px 5px, 5px 5px;
   background-repeat: no-repeat;
 }
+/* A cell in an editable table is borderless until it is touched. The
+   transparent border is set after .input:focus, so on its own it took the
+   focus border back off again and a focused cell was unmarked. */
 .input.cell { padding: 0.24rem 0.4rem; font-size: 0.84rem; border-color: transparent;
   background: transparent; }
 .input.cell:hover { border-color: var(--line); }
-.check { display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.88rem;
+.input.cell:focus { border-color: var(--brand); background: var(--bg-raised); }
+/* the tick box; the .checks list below uses .checks > .check, so the two
+   components no longer share a bare class name and clobber each other */
+.checkbox { display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.88rem;
   cursor: pointer; margin-bottom: 0.4rem; }
-.check input { accent-color: var(--brand); width: 1rem; height: 1rem; }
+.checkbox input { accent-color: var(--brand); width: 1rem; height: 1rem; }
 
 .field-row { display: flex; gap: 0.8rem; flex-wrap: wrap; }
 .field-row > .field { flex: 1 1 180px; margin-bottom: 0.8rem; }
@@ -524,7 +558,7 @@ table.data tr.row-total td { font-weight: 660; border-top: 2px solid var(--line-
   text-align: center; color: var(--ink-faint);
 }
 .img-slot-drop:hover, .img-slot-drop:focus, .img-slot-drop.over {
-  background: var(--brand-tint); color: var(--brand-dark); outline: none;
+  background: var(--brand-tint); color: var(--brand-dark);
 }
 .img-slot-icon { font-size: 1.3rem; }
 .img-slot-hint { font-size: 0.78rem; }
@@ -604,10 +638,14 @@ table.data tr.row-total td { font-weight: 660; border-top: 2px solid var(--line-
   background: var(--bg-raised); font-size: 0.82rem; cursor: pointer; color: var(--ink-soft);
 }
 .chip:hover { border-color: var(--brand); color: var(--brand-dark); }
-.chip.active { background: var(--brand); border-color: var(--brand); color: #fff; }
+.chip.active { background: var(--brand); border-color: var(--brand);
+  color: var(--on-brand); }
 
+/* the strip scrolls sideways, which clips anything drawn outside a tab, so
+   the focus ring is drawn inside it */
 .tabs { display: flex; gap: 0.1rem; border-bottom: 1px solid var(--line);
   margin-bottom: 1rem; overflow-x: auto; }
+.tab:focus-visible { outline-offset: -3px; }
 .tab {
   padding: 0.45rem 0.85rem; border: 0; background: transparent; cursor: pointer;
   font: inherit; font-size: 0.88rem; color: var(--ink-faint);
@@ -651,7 +689,7 @@ table.data tr.row-total td { font-weight: 660; border-top: 2px solid var(--line-
   color: var(--ink-soft); margin-top: 0.5rem; }
 .legend-item { display: flex; align-items: center; gap: 0.35rem; }
 .legend-swatch { width: 12px; height: 12px; border-radius: 2px; flex: none;
-  border: 1px solid rgba(0, 0, 0, 0.15); }
+  border: 1px solid var(--line-strong); }
 
 .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.1rem; }
 /* A wide figure beside a narrow one: size the columns to the figures' own
@@ -666,12 +704,26 @@ table.data tr.row-total td { font-weight: 660; border-top: 2px solid var(--line-
 @media (max-width: 860px) {
   .app { grid-template-columns: minmax(0, 1fr); grid-template-areas: "brand" "top" "main"; }
   .app-brand { border-right: 0; }
+  .app { height: auto; overflow: visible; }
+  .app-main { overflow: visible; }
   .app-nav {
-    grid-area: auto; position: fixed; inset: 0 auto 0 0; width: min(17rem, 82vw);
+    grid-area: auto; position: fixed; inset: 0 auto 0 0;
+    width: min(var(--nav-w), 82vw);
     z-index: 100; transform: translateX(-100%); transition: transform 0.22s ease;
-    box-shadow: var(--shadow-lift); max-height: 100vh;
+    box-shadow: var(--shadow-lift);
+    /* height, not max-height: on a phone 100vh is taller than what is on
+       screen, and the last items in the drawer could not be reached */
+    height: 100dvh;
+    /* off-canvas is not just off-screen: hidden keeps it out of the tab order
+       and out of the accessibility tree */
+    visibility: hidden;
+    transition: transform 0.22s ease, visibility 0s linear 0.22s;
   }
-  .app-nav.open { transform: none; }
+  .app-nav.open {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.22s ease, visibility 0s;
+  }
   .nav-toggle { display: inline-flex; }
   .app-main { padding: 1rem 0.9rem 4rem; }
   .app-top { padding: 0.5rem 0.9rem; }
@@ -690,10 +742,19 @@ table.data tr.row-total td { font-weight: 660; border-top: 2px solid var(--line-
 
 @media print {
   .app-nav, .app-top, .app-brand, .btn, .next-step, .toast-host { display: none !important; }
-  .app { display: block; }
-  .app-main { max-width: none; padding: 0; }
+  .app { display: block; height: auto; overflow: visible; }
+  .app-main { max-width: none; padding: 0; overflow: visible; }
+  .app-main > * { max-width: none; }
   .card { break-inside: avoid; box-shadow: none; border-color: #999; }
-  body { background: #fff; font-size: 11pt; }
+  /* printing from the dark theme put white text on white paper: the page is
+     forced back to ink on white whichever theme is on screen */
+  body { background: #fff; color: #111; font-size: 11pt; }
+  :root, :root[data-theme="dark"] {
+    --bg: #fff; --bg-raised: #fff; --bg-sunken: #fff; --bg-nav: #fff;
+    --ink: #111; --ink-soft: #333; --ink-faint: #555;
+    --line: #bbb; --line-strong: #888;
+    --viz-surface: #fff;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -703,5 +764,13 @@ table.data tr.row-total td { font-weight: 660; border-top: 2px solid var(--line-
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+/* the skip link is the one .sr-only element meant to be seen: without this it
+   could be focused but never revealed, so it did nothing for anybody */
+.sr-only:focus, .sr-only:focus-visible {
+  position: fixed; top: 0.6rem; left: 0.6rem; z-index: 200;
+  width: auto; height: auto; margin: 0; overflow: visible; clip: auto;
+  padding: 0.5rem 0.9rem; border-radius: var(--radius-sm);
+  background: var(--brand); color: var(--on-brand); box-shadow: var(--shadow-lift);
 }
 :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }

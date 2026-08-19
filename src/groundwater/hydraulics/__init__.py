@@ -1,6 +1,6 @@
 """Pumping test analysis: aquifer parameters, safe yield and diagnostics."""
 
-from .._lazy import lazy_exports
+from .._lazy import lazy_exports as _lazy_exports
 from .analysis import (
     CooperJacobResult,
     TheisResult,
@@ -44,4 +44,11 @@ _LAZY = {
     "plot_step_test": ".plots",
 }
 
-__getattr__, __dir__ = lazy_exports(__name__, _LAZY)
+# The submodules stayed reachable as attributes of the package while
+# the eager imports bound them; keep that true without importing them.
+_LAZY_MODULES = (
+    "analysis",
+    "plots",
+)
+
+__getattr__, __dir__ = _lazy_exports(__name__, _LAZY, _LAZY_MODULES)

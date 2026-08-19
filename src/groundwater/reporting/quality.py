@@ -26,6 +26,7 @@ from ..quality.standards import (
 from ..utils import fmt_num, safe_slug
 from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
+from .context import add_area_section
 
 #: The wording lives with the assessment so every surface prints the same
 #: label and a new status can never leak out as a raw code.
@@ -215,6 +216,9 @@ def build_quality_report(
     if provisional_national_parameters():
         rb.paragraph(PROVISIONAL_NATIONAL_NOTE, align="justify")
 
+    add_area_section(rb, site, figures, config.style,
+                     heading="1.1 Location and setting")
+
     # ---- 2 results table ------------------------------------------------------
     rb.heading("2. Results Against Guideline Values", 1)
     table_no = rb.next_table_number
@@ -324,10 +328,8 @@ def build_quality_report(
         rb.heading("5. Hydrochemical Facies", 1)
         piper_path = figures / f"piper_{slug}.png"
         stiff_path = figures / f"stiff_{slug}.png"
-        if not piper_path.exists():
-            plot_piper([sample], path=piper_path, style=config.style)
-        if not stiff_path.exists():
-            plot_stiff(sample, path=stiff_path, style=config.style)
+        plot_piper([sample], path=piper_path, style=config.style)
+        plot_stiff(sample, path=stiff_path, style=config.style)
         rb.figure(piper_path, "Piper diagram.", width_cm=13.0)
         rb.figure(stiff_path, "Stiff diagram.", width_cm=11.0)
 

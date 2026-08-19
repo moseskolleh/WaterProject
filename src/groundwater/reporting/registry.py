@@ -33,6 +33,8 @@ from ..registry import (
     placard_lines,
     qr_payload,
 )
+from ..models import SiteMetadata
+from .context import add_area_section
 from .docx_utils import ReportBuilder
 
 __all__ = [
@@ -130,6 +132,15 @@ def build_asset_record(inputs: AssetReportInputs, out_path: str | Path,
             f"{state.undated_events} record(s) carry a date that could not be "
             "read. They are listed below with the date as written, but they "
             "establish nothing about when anything last happened.")
+
+    add_area_section(
+        rb,
+        SiteMetadata(community=asset.community, chiefdom=asset.chiefdom,
+                     district=asset.district, easting=asset.easting,
+                     northing=asset.northing, utm_zone=asset.utm_zone),
+        inputs.figures_dir, config.style if config else None,
+        heading="Where it is",
+    )
 
     rb.heading("Details")
     rb.table([[label, value] for label, value in placard_lines(asset, state)],

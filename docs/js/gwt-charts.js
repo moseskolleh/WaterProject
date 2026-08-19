@@ -30,6 +30,11 @@
     return (value || '').trim() || fallback;
   }
 
+  var CAT_FALLBACK = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100',
+    '#e87ba4', '#008300', '#4a3aa7', '#e34948'];
+  var SEQ_FALLBACK = ['#cde2fb', '#9ec5f4', '#6da7ec', '#3987e5',
+    '#256abf', '#184f95', '#0d366b'];
+
   function palette() {
     return {
       surface: token('viz-surface', '#FFFFFF'),
@@ -42,17 +47,114 @@
       accentSoft: token('accent-soft', '#86b6ef'),
       secondary: token('secondary', '#C15A2A'),
       neutral: token('neutral', '#4D4D4D'),
-      cat: [1, 2, 3, 4, 5, 6, 7, 8].map(function (i) {
-        return token('cat-' + i, '#2a78d6');
+      /* The fallbacks are the stylesheet's own values, one per slot. A single
+       * fallback for the whole family collapsed every series to one colour
+       * anywhere the tokens could not be read - which is exactly where a
+       * figure is rasterised for a report. */
+      cat: CAT_FALLBACK.map(function (fallback, i) {
+        return token('cat-' + (i + 1), fallback);
       }),
-      seq: [1, 2, 3, 4, 5, 6, 7].map(function (i) {
-        return token('seq-' + i, '#3987e5');
+      seq: SEQ_FALLBACK.map(function (fallback, i) {
+        return token('seq-' + (i + 1), fallback);
       }),
       good: token('status-good', '#0ca30c'),
       warning: token('status-warning', '#fab219'),
       serious: token('status-serious', '#ec835a'),
       critical: token('status-critical', '#d03b3b'),
     };
+  }
+
+  /* ------------------------------------------------------- text geometry
+   *
+   * There is no way to measure text before it is in the document, and the
+   * figures are built detached so they can be rasterised without ever being
+   * shown. These two functions are the estimate everything else lays out
+   * against: they are deliberately a little generous, because a label with a
+   * few spare pixels reads fine and a label three pixels too wide is clipped.
+   */
+  function textWidth(text, size) {
+    var s = String(text === null || text === undefined ? '' : text);
+    var w = 0;
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      /* i/l/j/t/f/r and punctuation are narrow; capitals and m/w are wide */
+      if ('iljt.,:;\'`|!'.indexOf(s[i]) >= 0) w += 0.30;
+      else if ('fr()[]{}/\\ '.indexOf(s[i]) >= 0) w += 0.38;
+      else if ('mwMW@'.indexOf(s[i]) >= 0) w += 0.90;
+      else if (c >= 65 && c <= 90) w += 0.68;
+      else w += 0.545;
+    }
+    return w * (size || 10);
+  }
+
+  /* Break `text` into lines no wider than `maxWidth`. Words longer than the
+   * line are broken rather than allowed to run past the edge. */
+  function wrapText(text, maxWidth, size) {
+    var words = String(text === null || text === undefined ? '' : text)
+      .split(/\s+/).filter(Boolean);
+    var lines = [], line = '';
+    function flush() { if (line) { lines.push(line); line = ''; } }
+    words.forEach(function (word) {
+      var candidate = line ? line + ' ' + word : word;
+      if (textWidth(candidate, size) <= maxWidth) { line = candidate; return; }
+      flush();
+      while (textWidth(word, size) > maxWidth && word.length > 1) {
+        var cut = word.length;
+        while (cut > 1 && textWidth(word.slice(0, cut) + '-', size) > maxWidth) cut -= 1;
+        lines.push(word.slice(0, cut) + '-');
+        word = word.slice(cut);
+      }
+      line = word;
+    });
+    flush();
+    return lines.length ? lines : [''];
+  }
+
+  /* One line, shortened with an ellipsis only when it genuinely will not fit.
+   * Nothing in these figures truncates mid-word without saying so. */
+  function ellipsise(text, maxWidth, size) {
+    var s = String(text === null || text === undefined ? '' : text);
+    if (textWidth(s, size) <= maxWidth) return s;
+    var cut = s.length;
+    while (cut > 1 && textWidth(s.slice(0, cut) + '…', size) > maxWidth) cut -= 1;
+    return s.slice(0, cut).replace(/[\s,;:.-]+$/, '') + '…';
+  }
+
+  /* Place labels against their anchors without letting any two collide, and
+   * without letting any escape the drawing. Labels are sorted by anchor,
+   * pushed down until they clear the one above, then pulled back up from the
+   * bottom so the last one stays inside `yMax`. Returns {y, entry} pairs in
+   * anchor order. This is the same algorithm the matplotlib drawing uses, so
+   * the browser figure and the report figure lay their callouts out alike. */
+  function stackLabels(entries, minGap, yMin, yMax) {
+    var placed = entries.slice().sort(function (a, b) { return a.anchor - b.anchor; })
+      .map(function (entry) { return { y: entry.anchor, entry: entry }; });
+    var level = yMin;
+    placed.forEach(function (item) {
+      item.y = Math.max(item.y, level);
+      level = item.y + minGap;
+    });
+    var limit = yMax;
+    for (var i = placed.length - 1; i >= 0; i--) {
+      if (placed[i].y > limit) placed[i].y = limit;
+      limit = placed[i].y - minGap;
+    }
+    return placed;
+  }
+
+  /* Black or white, whichever stays readable on `hex`. Used wherever a label
+   * is written straight onto a fill whose colour comes from the data. */
+  function readableInk(hex) {
+    var m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+    if (!m) return '#FFFFFF';
+    var n = parseInt(m[1], 16);
+    function lin(v) {
+      var c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    }
+    var L = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) +
+      0.0722 * lin(n & 255);
+    return (L + 0.05) / 0.05 > 1.05 / (L + 0.05) ? '#12191A' : '#FFFFFF';
   }
 
   /* --------------------------------------------------------------- frame */
@@ -106,10 +208,18 @@
         x1: x, y1: margin.top, x2: x, y2: margin.top + plotH,
         stroke: p.grid, 'stroke-width': 1,
       }));
+      /* a tick label centred on the last tick hangs off the right edge of the
+       * viewBox; the outermost ones are anchored inwards instead */
+      var label = t.label === undefined ? tickLabel(t) : t.label;
+      var half = textWidth(label, 11) / 2;
+      var anchor = 'middle';
+      if (x + half > width - 3) anchor = 'end';
+      else if (x - half < 3) anchor = 'start';
       grid.appendChild(svgEl('text', {
-        x: x, y: margin.top + plotH + 17, 'text-anchor': 'middle',
-        'font-size': 11, fill: p.muted,
-        text: t.label === undefined ? tickLabel(t) : t.label,
+        x: anchor === 'end' ? Math.min(x + half, width - 3)
+          : (anchor === 'start' ? Math.max(x - half, 3) : x),
+        y: margin.top + plotH + 17, 'text-anchor': anchor,
+        'font-size': 11, fill: p.muted, text: label,
       }));
     });
     yTicks.forEach(function (t) {
@@ -323,9 +433,9 @@
       g.appendChild(svgEl('text', {
         x: x + 22, y: ly, 'font-size': 11, fill: f.palette.inkSoft, text: entry.label,
       }));
-      widest = Math.max(widest, String(entry.label).length);
+      widest = Math.max(widest, textWidth(entry.label, 11));
     });
-    box.setAttribute('width', 30 + widest * 6.1 + pad);
+    box.setAttribute('width', 30 + widest + pad);
     box.setAttribute('height', entries.length * 17 + 6);
     f.svg.appendChild(g);
     return g;
@@ -457,7 +567,7 @@
       width: opts.width || 340, height: opts.height || 430,
       margin: { top: 30, right: 22, bottom: 56, left: 56 },
       title: opts.title || 'Layered model',
-      xLabel: 'Resistivity (ohm-m)', yLabel: 'Depth (m)',
+      xLabel: 'Resistivity (\u03A9\u00B7m)', yLabel: 'Depth (m)',
       xLog: true, yDown: true,
       xDomain: padDomain(rho, true, 0.12), yDomain: [0, maxDepth],
     });
@@ -473,18 +583,20 @@
     });
     f.plot.appendChild(polyline(pts, { stroke: p.secondary, 'stroke-width': 2.2 }));
 
+    /* The resistivity of a layer is written against that layer. A thin layer
+     * at the surface has its midpoint above the top of the plot, and two thin
+     * layers together have midpoints a few pixels apart, so the anchors are
+     * collected first and then pushed apart inside the frame rather than
+     * written where they fall. */
+    var marks = [];
     depth = 0;
     rho.forEach(function (r, i) {
       var top = depth;
       var base = i < h.length ? depth + h[i] : maxDepth;
-      var mid = f.fy((top + Math.min(base, maxDepth)) / 2);
-      var lx = f.fx(r);
-      var flip = lx > f.margin.left + f.plotW * 0.55;
-      f.plot.appendChild(svgEl('text', {
-        x: flip ? lx - 8 : lx + 8, y: mid + 4, 'font-size': 10.5,
-        'text-anchor': flip ? 'end' : 'start', fill: p.inkSoft,
-        text: C.fmtNum(r, 3) + ' Ω·m',
-      }));
+      marks.push({
+        anchor: f.fy((top + Math.min(base, maxDepth)) / 2),
+        x: f.fx(r), text: C.fmtNum(r, 3) + ' \u03A9\u00B7m',
+      });
       if (i < h.length) {
         f.plot.appendChild(svgEl('line', {
           x1: f.margin.left, y1: f.fy(base), x2: f.margin.left + f.plotW, y2: f.fy(base),
@@ -493,6 +605,18 @@
       }
       depth = base;
     });
+    stackLabels(marks, 15, f.margin.top + 8, f.margin.top + f.plotH - 4)
+      .forEach(function (item) {
+        var e = item.entry;
+        var w = textWidth(e.text, 10.5);
+        /* keep the label inside the frame whichever side of the step it is on */
+        var flip = e.x + 8 + w > f.margin.left + f.plotW;
+        if (flip && e.x - 8 - w < f.margin.left) flip = false;
+        f.plot.appendChild(svgEl('text', {
+          x: flip ? e.x - 8 : e.x + 8, y: item.y + 4, 'font-size': 10.5,
+          'text-anchor': flip ? 'end' : 'start', fill: p.inkSoft, text: e.text,
+        }));
+      });
     return f.svg;
   }
 
@@ -752,19 +876,35 @@
 
   function piper(samples, options) {
     var opts = options || {};
-    var size = 200, gap = 36;
-    var width = opts.width || 720;
-    var height = opts.height || 560;
+    /* The gap between the two triangles is not cosmetic: it sets where the
+     * diamond sits, and C.piperPoints is given the same figure so the three
+     * plots stay one construction. It has to be wide enough for the two
+     * labels that meet in it - Na+K and HCO3 - to stand side by side, or
+     * they overprint each other. */
+    var size = opts.size || 200, gap = 64;
+    var titleH = opts.title === null ? 10 : 32;
     var p = palette();
+
+    /* the construction is measured, not guessed: the figure is exactly as
+     * tall as the diamond's apex plus the labels above and below it */
+    var stackPx = SQ3 / 2 * gap + SQ3 * size;
+    var ox = 40;
+    var oy = titleH + 16 + stackPx;
+    var width = opts.width || (2 * size + gap + 80);
+    var height = opts.height || (oy + 34);
+
     var svg = svgEl('svg', {
       viewBox: '0 0 ' + width + ' ' + height, width: '100%', xmlns: NS,
       'font-family': FONT, role: 'img', 'aria-label': 'Piper diagram',
     });
     svg.appendChild(svgEl('rect', { width: width, height: height, fill: p.surface }));
-
-    /* origin of the whole construction, chosen so the diamond fits above */
-    var ox = (width - (2 * size + gap)) / 2;
-    var oy = height - 60;
+    if (opts.title !== null) {
+      svg.appendChild(svgEl('text', {
+        x: 16, y: 20, 'font-size': 13, 'font-weight': 620, fill: p.ink,
+        text: opts.title || 'Piper diagram',
+      }));
+    }
+    ox = (width - (2 * size + gap)) / 2;
     function place(pt) { return { x: ox + pt.x * size, y: oy - pt.y * size }; }
 
     function triangle(originX, labels) {
@@ -790,9 +930,9 @@
         }));
       });
       g.appendChild(polyline(verts, { stroke: p.neutral, 'stroke-width': 1.3 }));
-      g.appendChild(svgEl('text', { x: x0 - 6, y: y0 + 15, 'text-anchor': 'end',
+      g.appendChild(svgEl('text', { x: x0, y: y0 + 16, 'text-anchor': 'middle',
         'font-size': 11, fill: p.inkSoft, text: labels[0] }));
-      g.appendChild(svgEl('text', { x: x0 + size + 6, y: y0 + 15, 'text-anchor': 'start',
+      g.appendChild(svgEl('text', { x: x0 + size, y: y0 + 16, 'text-anchor': 'middle',
         'font-size': 11, fill: p.inkSoft, text: labels[1] }));
       g.appendChild(svgEl('text', { x: x0 + 0.5 * size, y: y0 - SQ3 / 2 * size - 8,
         'text-anchor': 'middle', 'font-size': 11, fill: p.inkSoft, text: labels[2] }));
@@ -812,6 +952,23 @@
       { x: xMid - 0.5, y: yBot + SQ3 / 2 },
       { x: xMid, y: yBot },
     ].map(place);
+    /* The diamond is an affine image of the unit square: from its bottom
+     * corner, u runs along the Na+K axis and v along the SO4+Cl axis. Both
+     * grid families fall straight out of that, which is also how a point is
+     * read back off the figure. */
+    function diamondPoint(u, v) {
+      return place({ x: xMid + 0.5 * u - 0.5 * v, y: yBot + SQ3 / 2 * (u + v) });
+    }
+    var dgrid = svgEl('g', { 'aria-hidden': 'true' });
+    [0.2, 0.4, 0.6, 0.8].forEach(function (frac) {
+      [[[frac, 0], [frac, 1]], [[0, frac], [1, frac]]].forEach(function (pair) {
+        var a = diamondPoint(pair[0][0], pair[0][1]);
+        var b = diamondPoint(pair[1][0], pair[1][1]);
+        dgrid.appendChild(polyline([[a.x, a.y], [b.x, b.y]],
+          { stroke: p.grid, 'stroke-width': 0.8 }));
+      });
+    });
+    svg.appendChild(dgrid);
     svg.appendChild(polyline(diamond.map(function (d) { return [d.x, d.y]; }),
       { stroke: p.neutral, 'stroke-width': 1.3 }));
     svg.appendChild(svgEl('text', {
@@ -839,26 +996,22 @@
 
     if (entries.length) {
       var lg = svgEl('g');
-      var lx = 16, ly = 24;
+      /* clear of the line above the diamond, which is centred and wide */
+      var lx = 24, ly = titleH + 40;
+      var widest = entries.reduce(function (m, e) {
+        return Math.max(m, textWidth(e.label, 11));
+      }, 0);
       lg.appendChild(svgEl('rect', {
-        x: lx - 8, y: ly - 14, rx: 4, fill: p.surface, stroke: p.grid,
+        x: lx - 10, y: ly - 15, rx: 4, fill: p.surface, stroke: p.grid,
         'stroke-width': 1, 'fill-opacity': 0.94,
-        width: 24 + Math.max.apply(null, entries.map(function (e) {
-          return e.label.length;
-        })) * 6.1, height: entries.length * 17 + 6,
+        width: widest + 40, height: entries.length * 17 + 8,
       }));
       entries.forEach(function (e, i) {
-        lg.appendChild(marker(lx + 6, ly + i * 17 - 4, e.kind, e.colour, p.surface, 4.5));
-        lg.appendChild(svgEl('text', { x: lx + 18, y: ly + i * 17,
+        lg.appendChild(marker(lx, ly + i * 17 - 4, e.kind, e.colour, p.surface, 4.5));
+        lg.appendChild(svgEl('text', { x: lx + 14, y: ly + i * 17,
           'font-size': 11, fill: p.inkSoft, text: e.label }));
       });
       svg.appendChild(lg);
-    }
-    if (opts.title !== null) {
-      svg.appendChild(svgEl('text', {
-        x: 16, y: height - 12, 'font-size': 13, 'font-weight': 600, fill: p.ink,
-        text: opts.title || 'Piper diagram',
-      }));
     }
     return svg;
   }
@@ -945,242 +1098,545 @@
 
   /* Lithology fills. Each is paired with a label in the legend, so the pattern
    * is a cue and never the only carrier of meaning. */
+  /* The colour stands for a class of material, not for one driller's wording,
+   * so the legend names the class. Order matters: the first pattern that
+   * matches wins, and a fracture zone is called a fracture zone whatever rock
+   * it is in. */
   var LITHOLOGY_COLOURS = [
-    [/laterite|duricrust|topsoil/i, '#B5651D'],
-    [/clay|saprolite/i, '#9E8B5F'],
-    [/sand|gravel/i, '#D9C89A'],
-    [/weather|regolith/i, '#A98F63'],
-    [/fresh|granite|basement|bedrock|gneiss|schist/i, '#7E7F84'],
-    [/fracture/i, '#6D8FA8'],
+    [/fracture|fissure/i, '#6D8FA8', 'Fracture zone'],
+    [/laterite|duricrust|topsoil/i, '#B5651D', 'Laterite and topsoil'],
+    [/clay|saprolite/i, '#9E8B5F', 'Clay and saprolite'],
+    [/sand|gravel/i, '#C8B57C', 'Sand and gravel'],
+    [/weather|regolith/i, '#A98F63', 'Weathered rock'],
+    [/fresh|granite|basement|bedrock|gneiss|schist/i, '#7E7F84', 'Fresh basement'],
   ];
+  var LITHOLOGY_OTHER = ['#B0A99C', 'Other material'];
 
-  function lithologyColour(description) {
+  function lithologyClass(description) {
     for (var i = 0; i < LITHOLOGY_COLOURS.length; i++) {
-      if (LITHOLOGY_COLOURS[i][0].test(description || '')) return LITHOLOGY_COLOURS[i][1];
+      if (LITHOLOGY_COLOURS[i][0].test(description || '')) {
+        return { colour: LITHOLOGY_COLOURS[i][1], label: LITHOLOGY_COLOURS[i][2] };
+      }
     }
-    return '#B0A99C';
+    return { colour: LITHOLOGY_OTHER[0], label: LITHOLOGY_OTHER[1] };
   }
 
-  /* A to-scale section: depth ruler, lithology column and construction column
-   * with the annulus, matching the drawing the .docx report carries. */
+  function lithologyColour(description) {
+    return lithologyClass(description).colour;
+  }
+
+  /* A well-completion section, drawn the way a driller draws one.
+   *
+   * Depth is to scale; width is not, because a 5" casing in a 6.5" hole at
+   * 70 m would be a hairline. What the width does carry is the order of the
+   * materials across the hole - formation, annulus fill, casing wall, the
+   * water standing inside the casing - so the section reads as a section and
+   * not as a bar chart.
+   *
+   * Everything that has to be said in words is said in one of three gutters:
+   * the formation column on the left, the water gutter between it and the
+   * hole, and the construction callouts on the right. Nothing is written
+   * across the drawing, and no callout is allowed to land on another: they
+   * are placed by stackLabels() against a leader line back to the thing they
+   * name.
+   */
+  var patternSeq = 0;
+
+  function fillPatterns(defs, kinds) {
+    /* Returns {kind: 'url(#id)'}. Patterns rather than flat fills so the
+     * section still reads when it is printed in monochrome. */
+    var out = {};
+    patternSeq += 1;
+    Object.keys(kinds).forEach(function (kind) {
+      var spec = kinds[kind];
+      var id = 'gwt-fill-' + patternSeq + '-' + kind;
+      var pattern = svgEl('pattern', {
+        id: id, width: spec.size, height: spec.size,
+        patternUnits: 'userSpaceOnUse',
+      });
+      pattern.appendChild(svgEl('rect', {
+        width: spec.size, height: spec.size, fill: spec.background,
+      }));
+      spec.marks.forEach(function (mark) { pattern.appendChild(mark); });
+      defs.appendChild(pattern);
+      out[kind] = 'url(#' + id + ')';
+    });
+    return out;
+  }
+
   function boreholeDesign(design, log, options) {
     var opts = options || {};
     var p = palette();
-    var width = opts.width || 620;
-    var height = opts.height || 700;
-    var top = 60, bottom = height - 46;
-    var depthMax = design.total_depth_m * 1.04;
-    function fy(d) { return top + (d / depthMax) * (bottom - top); }
+    var width = opts.width || 800;
+
+    /* 5.0 -> 5, 6.5 -> 6.5: a diameter is quoted the way it is stamped */
+    function trim(v) {
+      return typeof v === 'number' ? String(Math.round(v * 100) / 100) : String(v);
+    }
+
+    var depth = design.total_depth_m || 1;
+    var stickup = design.stickup_m || 0;
+    var swl = (design.static_water_level_m === null ||
+      design.static_water_level_m === undefined) ? null : design.static_water_level_m;
+
+    /* ------------------------------------------------------------ colours */
+    var COLOUR = {
+      gravel: '#D9C89A', gravelMark: '#9C8A55',
+      backfill: '#CFC9BB', backfillMark: '#938C7C',
+      seal: '#9BA3A8', sealMark: '#6E777D',
+      casing: '#EDEBE4', casingEdge: '#5C6360',
+      screen: p.accent, sump: '#7E8B92',
+      water: '#CBE3F5', waterEdge: '#7FB0DA',
+      concrete: '#BEBBB2', ground: '#8A8577',
+      rising: '#B7BDBB', pump: '#4D5457',
+    };
+
+    /* --------------------------------------------------------- the legend
+     * built first, because how many rows it needs decides how tall the
+     * drawing has to be for the section itself to keep its room */
+    var litho = (log && log.intervals) || [];
+    var lithoKeys = [];
+    litho.forEach(function (interval) {
+      var klass = lithologyClass(interval.description);
+      if (!lithoKeys.some(function (k) { return k.label === klass.label; })) {
+        lithoKeys.push({ label: klass.label, colour: klass.colour });
+      }
+    });
+    /* The construction materials come first because they are what the reader
+     * is being asked to check; the formation classes follow. Each interval is
+     * already named in the column beside it, so the legend explains what a
+     * colour means rather than repeating twelve descriptions. */
+    var legendItems = [
+      { label: 'Gravel pack', colour: COLOUR.gravel, fill: 'gravel' },
+      { label: 'Annular backfill', colour: COLOUR.backfill, fill: 'backfill' },
+      { label: 'Cement sanitary seal', colour: COLOUR.seal, fill: 'seal' },
+      { label: 'Plain casing', colour: COLOUR.casing },
+      { label: 'Screen', colour: COLOUR.screen },
+      { label: 'Sump', colour: COLOUR.sump },
+    ];
+    if (swl !== null) legendItems.push({ label: 'Water in the casing', colour: COLOUR.water });
+    legendItems = legendItems.concat(lithoKeys);
+
+    var legendCols = 2;
+    var legendColW = (width - 32) / legendCols;
+    var legendRowH = 16;
+    var legendRows = Math.ceil(legendItems.length / legendCols);
+    var legendH = legendRows * legendRowH + 22;
+
+    /* ------------------------------------------------------------- layout */
+    var titleY = 22;
+    var headerY = 40;
+    var groundY = opts.groundY || 96;           /* y of ground level */
+    var depthPx = opts.depthPx || 560;          /* pixels for the whole hole */
+    var height = opts.height || (groundY + depthPx + 46 + legendH);
+
+    var axisX = 74;                              /* the depth ruler */
+    var lithX = 92, lithW = 132;                 /* formation column */
+    var holeCx = Math.round(width * 0.545), holeHalf = 46;
+    var casHalf = 21, wall = 7;
+    var boreX0 = holeCx - holeHalf, boreX1 = holeCx + holeHalf;
+    var labelX = boreX1 + 78;                    /* construction callouts */
+    var labelMaxW = width - 14 - labelX;
+
+    var depthMax = depth * 1.015;
+    function fy(d) { return groundY + (d / depthMax) * depthPx; }
+    var bottomY = fy(depth);
+    var stickPx = Math.max(16, Math.min(34, fy(stickup) - groundY || 20));
 
     var svg = svgEl('svg', {
       viewBox: '0 0 ' + width + ' ' + height, width: '100%', xmlns: NS,
-      'font-family': FONT, role: 'img', 'aria-label': 'Borehole construction design',
+      'font-family': FONT, role: 'img',
+      'aria-label': 'Borehole construction design, drawn to scale with depth',
     });
     svg.appendChild(svgEl('rect', { width: width, height: height, fill: p.surface }));
+
+    var defs = svgEl('defs');
+    svg.appendChild(defs);
+    var fills = fillPatterns(defs, {
+      gravel: {
+        size: 9, background: COLOUR.gravel,
+        marks: [
+          svgEl('circle', { cx: 2.6, cy: 2.6, r: 1.25, fill: COLOUR.gravelMark }),
+          svgEl('circle', { cx: 6.8, cy: 6.4, r: 1.05, fill: COLOUR.gravelMark }),
+          svgEl('circle', { cx: 7.2, cy: 1.8, r: 0.8, fill: COLOUR.gravelMark }),
+        ],
+      },
+      backfill: {
+        size: 7, background: COLOUR.backfill,
+        marks: [
+          svgEl('circle', { cx: 1.8, cy: 1.8, r: 0.6, fill: COLOUR.backfillMark }),
+          svgEl('circle', { cx: 5.2, cy: 4.8, r: 0.6, fill: COLOUR.backfillMark }),
+        ],
+      },
+      seal: {
+        size: 7, background: COLOUR.seal,
+        marks: [
+          svgEl('path', {
+            d: 'M-2 2L2 -2M0 8L8 0M6 10L10 6', stroke: COLOUR.sealMark,
+            'stroke-width': 1.1,
+          }),
+        ],
+      },
+      concrete: {
+        size: 8, background: COLOUR.concrete,
+        marks: [
+          svgEl('path', {
+            d: 'M-2 6L6 -2M2 10L10 2', stroke: '#8E8B83', 'stroke-width': 0.9,
+          }),
+        ],
+      },
+    });
+
     svg.appendChild(svgEl('text', {
-      x: 16, y: 24, 'font-size': 13, 'font-weight': 600, fill: p.ink,
+      x: 16, y: titleY, 'font-size': 13.5, 'font-weight': 640, fill: p.ink,
       text: opts.title || 'Borehole construction design',
     }));
+    if (opts.subtitle) {
+      svg.appendChild(svgEl('text', {
+        x: 16, y: titleY + 17, 'font-size': 10.5, fill: p.muted,
+        text: ellipsise(opts.subtitle, width - 32, 10.5),
+      }));
+    }
 
-    var rulerX = 52;
-    var lithX = 74, lithW = 92;
-    var holeCx = 300, holeHalf = 52, casingHalf = 26;
+    /* ------------------------------------------------------ column headers */
+    function header(x, anchor, text) {
+      svg.appendChild(svgEl('text', {
+        x: x, y: headerY + 26, 'text-anchor': anchor, 'font-size': 10,
+        'font-weight': 620, fill: p.inkSoft, 'letter-spacing': '0.04em',
+        text: text,
+      }));
+    }
+    header(axisX, 'end', 'DEPTH (m)');
+    header(lithX + lithW / 2, 'middle', 'FORMATION');
+    header(holeCx, 'middle', 'CONSTRUCTION');
 
-    /* depth ruler */
+    /* -------------------------------------------------------- depth ruler */
     svg.appendChild(svgEl('line', {
-      x1: rulerX, y1: top, x2: rulerX, y2: bottom, stroke: p.axis, 'stroke-width': 1,
+      x1: axisX, y1: groundY, x2: axisX, y2: bottomY,
+      stroke: p.axis, 'stroke-width': 1,
     }));
-    var step = depthMax > 80 ? 10 : (depthMax > 30 ? 5 : 2);
-    for (var d = 0; d <= design.total_depth_m + 1e-9; d += step) {
-      var y = fy(d);
+    var step = depth > 120 ? 20 : depth > 60 ? 10 : depth > 24 ? 5 : 2;
+    for (var d = 0; d <= depth + 1e-9; d += step) {
+      var ty = fy(d);
       svg.appendChild(svgEl('line', {
-        x1: rulerX - 5, y1: y, x2: rulerX, y2: y, stroke: p.axis, 'stroke-width': 1,
+        x1: axisX - 5, y1: ty, x2: axisX, y2: ty, stroke: p.axis, 'stroke-width': 1,
       }));
       svg.appendChild(svgEl('text', {
-        x: rulerX - 9, y: y + 4, 'text-anchor': 'end', 'font-size': 10,
-        fill: p.muted, text: String(Math.round(d)),
+        x: axisX - 9, y: ty + 3.6, 'text-anchor': 'end', 'font-size': 10,
+        fill: p.muted, text: String(Math.round(d * 10) / 10),
       }));
     }
-    svg.appendChild(svgEl('text', {
-      x: rulerX - 9, y: top - 10, 'text-anchor': 'end', 'font-size': 10,
-      fill: p.muted, text: 'depth (m)',
-    }));
-
-    /* lithology column */
-    var litho = (log && log.intervals) || [];
-    var seen = [];
-    litho.forEach(function (interval) {
-      var colour = lithologyColour(interval.description);
-      var y0 = fy(interval.top_m), y1 = fy(Math.min(interval.bottom_m, design.total_depth_m));
-      svg.appendChild(svgEl('rect', {
-        x: lithX, y: y0, width: lithW, height: Math.max(1, y1 - y0),
-        fill: colour, stroke: p.surface, 'stroke-width': 1,
-      }));
-      if (y1 - y0 > 13) {
-        svg.appendChild(svgEl('text', {
-          x: lithX + lithW / 2, y: (y0 + y1) / 2 + 3.5, 'text-anchor': 'middle',
-          'font-size': 9, fill: '#FFFFFF',
-          text: String(interval.description || '').split(/[,;]/)[0].slice(0, 16),
-        }));
-      }
-      var key = String(interval.description || '').split(/[,;]/)[0];
-      if (key && !seen.some(function (s) { return s.label === key; })) {
-        seen.push({ label: key, colour: colour });
-      }
-    });
-    if (!litho.length) {
-      svg.appendChild(svgEl('rect', {
-        x: lithX, y: top, width: lithW, height: bottom - top,
-        fill: '#D8D4CB', stroke: p.axis, 'stroke-width': 1,
-      }));
+    if (Math.abs(depth % step) > 1e-6) {
       svg.appendChild(svgEl('text', {
-        x: lithX + lithW / 2, y: (top + bottom) / 2, 'text-anchor': 'middle',
-        'font-size': 10, fill: p.muted, text: 'no log',
+        x: axisX - 9, y: bottomY + 3.6, 'text-anchor': 'end', 'font-size': 10,
+        'font-weight': 620, fill: p.inkSoft, text: String(Math.round(depth * 10) / 10),
       }));
     }
-    svg.appendChild(svgEl('text', {
-      x: lithX + lithW / 2, y: top - 10, 'text-anchor': 'middle', 'font-size': 10,
-      fill: p.muted, text: 'lithology',
-    }));
 
-    /* annulus: gravel pack, backfill and sanitary seal */
-    function annulus(fromM, toM, fill, pattern) {
-      var y0 = fy(fromM), y1 = fy(toM);
-      if (y1 <= y0) return;
-      [-1, 1].forEach(function (side) {
-        var x = side < 0 ? holeCx - holeHalf : holeCx + casingHalf;
+    /* --------------------------------------------------- formation column */
+    if (litho.length) {
+      litho.forEach(function (interval) {
+        var colour = lithologyColour(interval.description);
+        var y0 = fy(Math.max(0, interval.top_m));
+        var y1 = fy(Math.min(interval.bottom_m, depth));
+        if (y1 <= y0) return;
         svg.appendChild(svgEl('rect', {
-          x: x, y: y0, width: holeHalf - casingHalf, height: y1 - y0,
-          fill: fill, stroke: p.axis, 'stroke-width': 0.7,
+          x: lithX, y: y0, width: lithW, height: y1 - y0,
+          fill: colour, stroke: '#FFFFFF', 'stroke-width': 0.8,
+        }, [svgEl('title', {
+          text: interval.top_m + '–' + interval.bottom_m + ' m: ' +
+            (interval.description || ''),
+        })]));
+        var lines = wrapText(interval.description || '', lithW - 12, 8.5);
+        var fits = Math.floor((y1 - y0 - 4) / 10);
+        if (fits >= 1) {
+          if (lines.length > fits) {
+            lines = lines.slice(0, fits);
+            lines[fits - 1] = ellipsise(lines[fits - 1] + ' …', lithW - 12, 8.5);
+          }
+          var ink = readableInk(colour);
+          var first = (y0 + y1) / 2 - (lines.length - 1) * 5 + 3;
+          lines.forEach(function (line, i) {
+            svg.appendChild(svgEl('text', {
+              x: lithX + lithW / 2, y: first + i * 10, 'text-anchor': 'middle',
+              'font-size': 8.5, fill: ink, text: line,
+            }));
+          });
+        }
+      });
+    } else {
+      svg.appendChild(svgEl('rect', {
+        x: lithX, y: groundY, width: lithW, height: bottomY - groundY,
+        fill: '#E4E1D9', stroke: p.axis, 'stroke-width': 1,
+      }));
+      svg.appendChild(svgEl('text', {
+        x: lithX + lithW / 2, y: (groundY + bottomY) / 2, 'text-anchor': 'middle',
+        'font-size': 10, fill: p.muted, text: 'no drilling log',
+      }));
+    }
+    svg.appendChild(svgEl('rect', {
+      x: lithX, y: groundY, width: lithW, height: bottomY - groundY,
+      fill: 'none', stroke: p.axis, 'stroke-width': 0.9,
+    }));
+
+    /* ------------------------------------------------------------ annulus */
+    function annulus(range, fill) {
+      if (!range) return;
+      var y0 = fy(Math.max(0, range[0])), y1 = fy(Math.min(range[1], depth));
+      if (y1 <= y0) return;
+      [[boreX0, holeCx - casHalf], [holeCx + casHalf, boreX1]].forEach(function (span) {
+        svg.appendChild(svgEl('rect', {
+          x: span[0], y: y0, width: span[1] - span[0], height: y1 - y0,
+          fill: fill, stroke: 'none',
         }));
       });
     }
-    annulus(design.gravel_pack[0], design.gravel_pack[1], '#D9C89A');
-    annulus(design.backfill[0], design.backfill[1], '#C9C4B6');
-    annulus(design.sanitary_seal[0], design.sanitary_seal[1], '#9BA3A8');
+    annulus(design.gravel_pack, fills.gravel);
+    annulus(design.backfill, fills.backfill);
+    annulus(design.sanitary_seal, fills.seal);
 
-    /* borehole wall */
-    [-1, 1].forEach(function (side) {
-      var x = holeCx + side * holeHalf;
-      svg.appendChild(svgEl('line', {
-        x1: x, y1: fy(0), x2: x, y2: fy(design.total_depth_m),
-        stroke: p.neutral, 'stroke-width': 1.4,
+    /* ----------------------------------------------- water in the casing */
+    var innerX = holeCx - casHalf + wall;
+    var innerW = 2 * (casHalf - wall);
+    if (swl !== null && swl < depth) {
+      svg.appendChild(svgEl('rect', {
+        x: innerX, y: fy(swl), width: innerW, height: bottomY - fy(swl),
+        fill: COLOUR.water,
       }));
-    });
-    svg.appendChild(svgEl('line', {
-      x1: holeCx - holeHalf, y1: fy(design.total_depth_m),
-      x2: holeCx + holeHalf, y2: fy(design.total_depth_m),
-      stroke: p.neutral, 'stroke-width': 1.4,
+    }
+
+    /* --------------------------------------------------------- hole walls */
+    svg.appendChild(svgEl('path', {
+      d: 'M' + boreX0 + ' ' + groundY + 'V' + bottomY + 'H' + boreX1 + 'V' + groundY,
+      fill: 'none', stroke: p.inkSoft, 'stroke-width': 1.5,
     }));
 
-    /* casing string */
-    design.segments.forEach(function (seg) {
-      var y0 = fy(seg.top_m), y1 = fy(seg.bottom_m);
-      var fill = seg.kind === 'screen' ? p.accent
-        : (seg.kind === 'sump' ? '#7E8B92' : '#E8E6E0');
-      [-1, 1].forEach(function (side) {
-        var x = side < 0 ? holeCx - casingHalf : holeCx + casingHalf - 9;
+    /* ------------------------------------------------------ casing string */
+    var segments = (design.segments || []).slice().sort(function (a, b) {
+      return a.top_m - b.top_m;
+    });
+    segments.forEach(function (seg) {
+      var y0 = fy(Math.max(0, seg.top_m)), y1 = fy(Math.min(seg.bottom_m, depth));
+      if (y1 <= y0) return;
+      var fill = seg.kind === 'screen' ? COLOUR.screen
+        : seg.kind === 'sump' ? COLOUR.sump : COLOUR.casing;
+      [holeCx - casHalf, holeCx + casHalf - wall].forEach(function (x) {
         svg.appendChild(svgEl('rect', {
-          x: x, y: y0, width: 9, height: Math.max(1, y1 - y0),
-          fill: fill, stroke: p.neutral, 'stroke-width': 0.8,
+          x: x, y: y0, width: wall, height: y1 - y0,
+          fill: fill, stroke: COLOUR.casingEdge, 'stroke-width': 0.8,
         }));
         if (seg.kind === 'screen') {
-          /* slot hatching, so a screen reads as a screen in monochrome print */
-          for (var sy = y0 + 3; sy < y1 - 2; sy += 5) {
+          for (var sy = y0 + 3; sy < y1 - 1.5; sy += 4.5) {
             svg.appendChild(svgEl('line', {
-              x1: x + 1, y1: sy, x2: x + 8, y2: sy,
-              stroke: p.surface, 'stroke-width': 1.1,
+              x1: x + 0.9, y1: sy, x2: x + wall - 0.9, y2: sy,
+              stroke: '#FFFFFF', 'stroke-width': 1.4,
             }));
           }
         }
       });
-      /* label to the right, with a leader */
-      var midY = (y0 + y1) / 2;
-      if (y1 - y0 > 11 || seg.kind === 'screen') {
-        var labelX = holeCx + holeHalf + 16;
-        svg.appendChild(svgEl('line', {
-          x1: holeCx + holeHalf + 2, y1: midY, x2: labelX - 4, y2: midY,
-          stroke: p.axis, 'stroke-width': 0.8,
-        }));
-        svg.appendChild(svgEl('text', {
-          x: labelX, y: midY + 3.5, 'font-size': 10, fill: p.inkSoft,
-          text: (seg.kind === 'screen' ? 'Screen ' : seg.kind === 'sump' ? 'Sump ' : 'Plain casing ') +
-            seg.top_m.toFixed(1) + '–' + seg.bottom_m.toFixed(1) + ' m',
-        }));
+      /* water entering through the screen: the point of the whole drawing */
+      if (seg.kind === 'screen' && y1 - y0 > 16) {
+        var arrows = Math.max(1, Math.min(4, Math.floor((y1 - y0) / 26)));
+        for (var a = 0; a < arrows; a++) {
+          var ay = y0 + (y1 - y0) * (a + 0.5) / arrows;
+          [-1, 1].forEach(function (side) {
+            var tipX = holeCx + side * (casHalf - wall - 1);
+            var tailX = holeCx + side * (holeHalf - 5);
+            svg.appendChild(svgEl('path', {
+              d: 'M' + tailX + ' ' + ay + 'L' + tipX + ' ' + ay,
+              stroke: COLOUR.waterEdge, 'stroke-width': 1.2,
+            }));
+            svg.appendChild(svgEl('path', {
+              d: 'M' + tipX + ' ' + ay + 'l' + (side * 4.5) + ' -2.6v5.2z',
+              fill: COLOUR.waterEdge,
+            }));
+          });
+        }
       }
     });
 
-    /* stick-up and apron */
+    /* bottom cap, drawn across the casing so the string is visibly closed */
     svg.appendChild(svgEl('rect', {
-      x: holeCx - casingHalf, y: fy(0) - 14, width: 2 * casingHalf, height: 14,
-      fill: '#E8E6E0', stroke: p.neutral, 'stroke-width': 0.8,
-    }));
-    svg.appendChild(svgEl('rect', {
-      x: holeCx - holeHalf - 22, y: fy(0) - 5, width: 2 * (holeHalf + 22), height: 6,
-      fill: '#B9B7AF', stroke: p.neutral, 'stroke-width': 0.8,
-    }));
-    svg.appendChild(svgEl('text', {
-      x: holeCx + holeHalf + 30, y: fy(0) - 8, 'font-size': 10, fill: p.inkSoft,
-      text: 'stick-up ' + design.stickup_m.toFixed(1) + ' m, ' +
-        design.casing_diameter_in + '" ' + design.casing_material,
+      x: holeCx - casHalf, y: bottomY - 5, width: 2 * casHalf, height: 5,
+      fill: COLOUR.pump, stroke: COLOUR.casingEdge, 'stroke-width': 0.8,
     }));
 
-    /* static water level and pump intake */
-    if (design.static_water_level_m !== null && design.static_water_level_m !== undefined) {
-      var swlY = fy(design.static_water_level_m);
+    /* ------------------------------------------- rising main and the pump */
+    var intake = (design.pump_intake_m === null || design.pump_intake_m === undefined)
+      ? null : design.pump_intake_m;
+    if (intake !== null && intake < depth) {
+      var iy = fy(intake);
+      svg.appendChild(svgEl('rect', {
+        x: holeCx - 3.5, y: groundY - stickPx + 4, width: 7, height: iy - groundY + stickPx - 4,
+        fill: COLOUR.rising, stroke: COLOUR.casingEdge, 'stroke-width': 0.7,
+      }));
+      svg.appendChild(svgEl('rect', {
+        x: holeCx - 8, y: iy - 6, width: 16, height: 26, rx: 3,
+        fill: COLOUR.pump, stroke: '#FFFFFF', 'stroke-width': 1,
+      }));
+    }
+
+    /* ---------------------------------------------------------- headworks */
+    /* ground line, with the soil side of it shaded so up is unambiguous */
+    svg.appendChild(svgEl('line', {
+      x1: axisX, y1: groundY, x2: boreX1 + 46, y2: groundY,
+      stroke: COLOUR.ground, 'stroke-width': 1.6,
+    }));
+
+    for (var gx = axisX; gx < boreX1 + 60; gx += 9) {
+      if (gx > lithX - 4 && gx < lithX + lithW + 4) continue;
+      if (gx > boreX0 - 42 && gx < boreX1 + 42) continue;
       svg.appendChild(svgEl('line', {
-        x1: holeCx - holeHalf - 26, y1: swlY, x2: holeCx + holeHalf + 8, y2: swlY,
-        stroke: p.cat[0], 'stroke-width': 1.6, 'stroke-dasharray': '6 3',
+        x1: gx, y1: groundY, x2: gx - 5, y2: groundY - 5,
+        stroke: COLOUR.ground, 'stroke-width': 0.8,
       }));
-      svg.appendChild(svgEl('text', {
-        x: holeCx - holeHalf - 30, y: swlY - 4, 'text-anchor': 'end',
-        'font-size': 10, fill: p.cat[0],
-        text: 'SWL ' + design.static_water_level_m.toFixed(2) + ' m',
+    }
+    /* apron slab and plinth */
+    svg.appendChild(svgEl('rect', {
+      x: boreX0 - 38, y: groundY - 7, width: 2 * (holeHalf + 38), height: 9,
+      fill: fills.concrete, stroke: COLOUR.casingEdge, 'stroke-width': 0.8,
+    }));
+    svg.appendChild(svgEl('rect', {
+      x: holeCx - casHalf - 13, y: groundY - stickPx + 8, width: 2 * casHalf + 26,
+      height: stickPx - 1, fill: fills.concrete,
+      stroke: COLOUR.casingEdge, 'stroke-width': 0.8,
+    }));
+    /* the casing above ground, and its cap */
+    [holeCx - casHalf, holeCx + casHalf - wall].forEach(function (x) {
+      svg.appendChild(svgEl('rect', {
+        x: x, y: groundY - stickPx, width: wall, height: stickPx,
+        fill: COLOUR.casing, stroke: COLOUR.casingEdge, 'stroke-width': 0.8,
       }));
+    });
+    svg.appendChild(svgEl('rect', {
+      x: holeCx - casHalf - 4, y: groundY - stickPx - 6, width: 2 * casHalf + 8,
+      height: 6, rx: 1.5, fill: COLOUR.casingEdge,
+    }));
+
+    /* ------------------------------------ water gutter: SWL and the strikes */
+    var gutterRight = boreX0 - 12;
+    var gutterLeft = lithX + lithW + 6;
+    var gutterW = gutterRight - gutterLeft;
+    var gutterEntries = [];
+    if (swl !== null) {
+      gutterEntries.push({
+        anchor: fy(swl), colour: p.cat[0],
+        text: 'SWL ' + S.fmt(swl, 2) + ' m', swl: true,
+      });
     }
     (design.water_strikes_m || []).forEach(function (strike) {
-      var sy = fy(strike);
-      svg.appendChild(svgEl('path', {
-        d: 'M' + (holeCx - holeHalf - 12) + ' ' + sy + 'l-9 -5v10z',
-        fill: p.secondary,
-      }));
-      svg.appendChild(svgEl('text', {
-        x: holeCx - holeHalf - 26, y: sy + 3.5, 'text-anchor': 'end',
-        'font-size': 9.5, fill: p.secondary, text: strike + ' m strike',
-      }));
+      gutterEntries.push({
+        anchor: fy(strike), colour: p.secondary,
+        text: 'strike ' + S.fmt(strike, strike % 1 ? 1 : 0) + ' m',
+      });
     });
-    if (design.pump_intake_m !== null && design.pump_intake_m !== undefined) {
-      var py = fy(design.pump_intake_m);
-      svg.appendChild(svgEl('rect', {
-        x: holeCx - 8, y: py - 9, width: 16, height: 18, rx: 2,
-        fill: p.neutral, stroke: p.surface, 'stroke-width': 1,
-      }));
-      svg.appendChild(svgEl('text', {
-        x: holeCx + holeHalf + 16, y: py + 3.5, 'font-size': 10, fill: p.inkSoft,
-        text: 'pump intake ' + design.pump_intake_m.toFixed(0) + ' m',
-      }));
+    stackLabels(gutterEntries, 14, groundY + 7, bottomY - 2)
+      .forEach(function (item) {
+        var e = item.entry;
+        if (e.swl) {
+          svg.appendChild(svgEl('line', {
+            x1: gutterRight - 4, y1: e.anchor, x2: boreX1 + 6, y2: e.anchor,
+            stroke: e.colour, 'stroke-width': 1.5, 'stroke-dasharray': '6 3',
+          }));
+          svg.appendChild(marker(holeCx, e.anchor, 'triangle', e.colour,
+            p.surface, 4.5));
+        } else {
+          svg.appendChild(svgEl('path', {
+            d: 'M' + boreX0 + ' ' + e.anchor + 'l-8 -4v8z', fill: e.colour,
+          }));
+          svg.appendChild(svgEl('line', {
+            x1: gutterRight - 4, y1: item.y, x2: boreX0 - 9, y2: e.anchor,
+            stroke: e.colour, 'stroke-width': 0.8,
+          }));
+        }
+        svg.appendChild(svgEl('text', {
+          x: gutterRight - 7, y: item.y + 3.4, 'text-anchor': 'end',
+          'font-size': 9.5, fill: e.colour,
+          text: ellipsise(e.text, gutterW - 12, 9.5),
+        }));
+      });
+
+    /* --------------------------------------------- construction callouts */
+    var callouts = [];
+    function callout(fromM, toM, text) {
+      if (fromM === null || fromM === undefined) return;
+      var a = Math.max(0, fromM), b = Math.min(toM === undefined ? fromM : toM, depth);
+      if (b < a) return;
+      callouts.push({ anchor: fy((a + b) / 2), text: text });
+    }
+    callout(-stickup, 0, 'Stick-up ' + S.fmt(stickup, 1) + ' m, ' +
+      trim(design.casing_diameter_in) + '" ' + (design.casing_material || 'uPVC') +
+      ' in a ' + trim(design.borehole_diameter_in) + '" hole');
+    if (design.sanitary_seal) {
+      callout(design.sanitary_seal[0], design.sanitary_seal[1],
+        'Cement sanitary seal ' + S.fmt(design.sanitary_seal[0], 1) + '–' +
+        S.fmt(design.sanitary_seal[1], 1) + ' m');
+    }
+    if (design.backfill && design.backfill[1] > design.backfill[0]) {
+      callout(design.backfill[0], design.backfill[1],
+        'Backfill ' + S.fmt(design.backfill[0], 1) + '–' +
+        S.fmt(design.backfill[1], 1) + ' m');
+    }
+    if (design.gravel_pack) {
+      callout(design.gravel_pack[0], design.gravel_pack[1],
+        'Gravel pack ' + S.fmt(design.gravel_pack[0], 1) + '–' +
+        S.fmt(design.gravel_pack[1], 1) + ' m');
+    }
+    segments.forEach(function (seg) {
+      var label = seg.kind === 'screen'
+        ? 'Screen ' + S.fmt(seg.top_m, 1) + '–' + S.fmt(seg.bottom_m, 1) + ' m' +
+          (design.screen_slot_mm ? ', ' + trim(design.screen_slot_mm) + ' mm slot' : '')
+        : seg.kind === 'sump'
+          ? 'Sump ' + S.fmt(seg.top_m, 1) + '–' + S.fmt(seg.bottom_m, 1) + ' m'
+          : 'Plain casing ' + S.fmt(seg.top_m, 1) + '–' + S.fmt(seg.bottom_m, 1) + ' m';
+      callout(seg.top_m, seg.bottom_m, label);
+    });
+    if (intake !== null) {
+      callout(intake, intake, 'Pump intake ' + S.fmt(intake, intake % 1 ? 1 : 0) + ' m');
     }
 
-    /* legend for the annulus and lithology fills */
-    var legendItems = [
-      { label: 'Gravel pack', colour: '#D9C89A' },
-      { label: 'Backfill', colour: '#C9C4B6' },
-      { label: 'Cement seal', colour: '#9BA3A8' },
-      { label: 'Screen', colour: p.accent },
-    ].concat(seen.slice(0, 4));
-    var lx = 16, ly = height - 26;
+    var wrapped = callouts.map(function (c) {
+      return { anchor: c.anchor, lines: wrapText(c.text, labelMaxW, 9.5) };
+    });
+    var tallest = wrapped.reduce(function (m, c) { return Math.max(m, c.lines.length); }, 1);
+    var gap = Math.max(15, tallest * 11 + 3);
+    stackLabels(wrapped, gap, groundY - stickPx + 6, bottomY - 2)
+      .forEach(function (item) {
+        var e = item.entry;
+        var midY = item.y;
+        svg.appendChild(polyline([
+          [boreX1 + 3, e.anchor], [labelX - 22, e.anchor],
+          [labelX - 6, midY],
+        ], { stroke: p.axis, 'stroke-width': 0.8 }));
+        e.lines.forEach(function (line, i) {
+          svg.appendChild(svgEl('text', {
+            x: labelX, y: midY + 3.4 - (e.lines.length - 1) * 5.5 + i * 11,
+            'font-size': 9.5, fill: p.inkSoft, text: line,
+          }));
+        });
+      });
+
+    /* --------------------------------------------------------- the legend */
+    var legendTop = height - legendH + 4;
+    svg.appendChild(svgEl('line', {
+      x1: 16, y1: legendTop - 6, x2: width - 16, y2: legendTop - 6,
+      stroke: p.grid, 'stroke-width': 1,
+    }));
     legendItems.forEach(function (item, i) {
-      var col = i % 4, row = Math.floor(i / 4);
-      var x = lx + col * 148, y = ly + row * 15 - 15;
+      var col = i % legendCols, row = Math.floor(i / legendCols);
+      var x = 16 + col * legendColW;
+      var y = legendTop + 12 + row * legendRowH;
       svg.appendChild(svgEl('rect', {
-        x: x, y: y - 8, width: 11, height: 11, fill: item.colour,
-        stroke: p.axis, 'stroke-width': 0.6, rx: 1.5,
+        x: x, y: y - 8, width: 11, height: 11, rx: 1.5,
+        fill: item.fill ? fills[item.fill] : item.colour,
+        stroke: p.axis, 'stroke-width': 0.6,
       }));
       svg.appendChild(svgEl('text', {
-        x: x + 16, y: y + 1, 'font-size': 9.5, fill: p.inkSoft,
-        text: String(item.label).slice(0, 20),
+        x: x + 17, y: y + 1, 'font-size': 9.5, fill: p.inkSoft,
+        text: ellipsise(item.label, legendColW - 26, 9.5),
       }));
     });
+
     return svg;
   }
 
@@ -1265,11 +1721,23 @@
       }));
       svg.appendChild(block);
       if (h > 12) {
-        svg.appendChild(svgEl('text', {
-          x: lithX + 6, y: y0 + h / 2 + 3.5, 'font-size': 9,
-          fill: unit.aquifer ? p.ink : '#FFFFFF',
-          text: String(unit.description || '').split(/[,;]/)[0].slice(0, 26),
-        }));
+        /* wrapped rather than cut at a character count, and in whichever of
+         * black or white stays readable on this fill - white on the sand
+         * colours was not */
+        var lines = wrapText(String(unit.description || ''), lithW - 12, 9);
+        var fits = Math.floor((h - 2) / 10.5);
+        if (lines.length > fits) {
+          lines = lines.slice(0, Math.max(1, fits));
+          lines[lines.length - 1] = ellipsise(lines[lines.length - 1] + ' …',
+            lithW - 12, 9);
+        }
+        var ink = unit.aquifer ? p.ink : readableInk(colour);
+        lines.forEach(function (line, k) {
+          svg.appendChild(svgEl('text', {
+            x: lithX + 6, y: y0 + h / 2 + 3.5 - (lines.length - 1) * 5.25 + k * 10.5,
+            'font-size': 9, fill: ink, text: line,
+          }));
+        });
       }
     });
     if (!(section.lithology || []).length) {
@@ -1500,7 +1968,9 @@
       var y = 38 + i * rowH;
       svg.appendChild(svgEl('text', {
         x: left - 8, y: y + 10, 'text-anchor': 'end', 'font-size': 9.5, fill: p.ink,
-        text: String(row.parameter).slice(0, 26),
+        /* "Nitrate (as NO3)" and "Total hardness" both fit; the point is that
+         * nothing is cut in the middle of a word without saying so */
+        text: ellipsise(String(row.parameter), left - 20, 9.5),
       }));
       /* Coloured by status, not by the ratio alone: a national limit is law
        * rather than taste, and a row the toolkit could not grade is neither a
@@ -1516,10 +1986,17 @@
         x: left, y: y + 3, width: Math.max(1, fx(row.ratio) - left), height: 12,
         rx: 2, fill: fill, opacity: (bad || warn) ? 0.9 : 0.75,
       }));
+      /* the value goes to the right of the bar, or inside its end when there
+       * is no longer room to the right of it */
+      var valueText = (row.value === null ? '—' : row.value) + ' ' + (row.unit || '');
+      var valueW = textWidth(valueText, 9);
+      var barEnd = fx(row.ratio);
+      var outside = barEnd + 5 + valueW <= width - 8;
       svg.appendChild(svgEl('text', {
-        x: Math.min(fx(row.ratio) + 5, right + 4), y: y + 13, 'font-size': 9,
-        fill: p.inkSoft,
-        text: (row.value === null ? '—' : row.value) + ' ' + (row.unit || ''),
+        x: outside ? barEnd + 5 : barEnd - 5, y: y + 13, 'font-size': 9,
+        'text-anchor': outside ? 'start' : 'end',
+        fill: outside ? p.inkSoft : '#FFFFFF',
+        text: valueText,
       }));
     });
     svg.appendChild(svgEl('text', {
@@ -1535,9 +2012,9 @@
     var data = mode === 'stage' ? estimate.by_stage() : estimate.by_category();
     var p = palette();
     var width = opts.width || 700;
-    var barH = 26, gap = 10;
+    var barH = 26, gap = 14;
     var height = 62 + data.length * (barH + gap);
-    var labelW = 150;
+    var labelW = 160;
     var total = data.reduce(function (a, d) { return a + d[1]; }, 0);
     var maxV = Math.max.apply(null, data.map(function (d) { return d[1]; }));
 
@@ -1553,24 +2030,43 @@
         : 'resource category')),
     }));
 
-    var plotW = width - labelW - 96;
+    /* room for the widest amount, so the longest bar's label has somewhere to
+     * go instead of being written past the right edge of the figure */
+    var amounts = data.map(function (row) {
+      return S.money(row[1], 0) + '  (' +
+        (total ? (100 * row[1] / total).toFixed(0) : '0') + '%)';
+    });
+    var amountW = amounts.reduce(function (m, text) {
+      return Math.max(m, textWidth(text, 11.5));
+    }, 0);
+    var plotW = width - labelW - amountW - 34;
+
     data.forEach(function (row, i) {
       var y = 42 + i * (barH + gap);
       var w = maxV > 0 ? (row[1] / maxV) * plotW : 0;
-      svg.appendChild(svgEl('text', {
-        x: labelW - 10, y: y + barH / 2 + 4, 'text-anchor': 'end',
-        'font-size': 11.5, fill: p.inkSoft,
-        text: mode === 'stage' ? row[0] : S.titleCase(row[0]),
-      }));
-      /* rounded data end anchored to the baseline */
+      /* the stage names run to "Development and completion", which written
+       * out at this size is wider than the gutter it was written into */
+      var label = mode === 'stage' ? row[0] : S.titleCase(row[0]);
+      var lines = wrapText(label, labelW - 14, 11.5);
+      if (lines.length > 2) {
+        lines = [lines[0], ellipsise(lines.slice(1).join(' '), labelW - 14, 11.5)];
+      }
+      lines.forEach(function (line, k) {
+        svg.appendChild(svgEl('text', {
+          x: labelW - 10, y: y + barH / 2 + 4.5 - (lines.length - 1) * 6 + k * 12,
+          'text-anchor': 'end', 'font-size': 11.5, fill: p.inkSoft, text: line,
+        }));
+      });
+      /* rounded data end anchored to the baseline. One hue: the bars are a
+       * ranking of one quantity, and giving each its own colour would say
+       * they are different kinds of thing. */
       svg.appendChild(svgEl('path', {
         d: roundedBar(labelW, y, Math.max(w, 2), barH, 4),
-        fill: p.cat[i % p.cat.length],
+        fill: p.accent,
       }));
       svg.appendChild(svgEl('text', {
         x: labelW + w + 10, y: y + barH / 2 + 4, 'font-size': 11.5, fill: p.ink,
-        text: S.money(row[1], 0) + '  (' +
-          (total ? (100 * row[1] / total).toFixed(0) : '0') + '%)',
+        text: amounts[i],
       }));
     });
     svg.appendChild(svgEl('line', {
@@ -1662,34 +2158,91 @@
     return svg;
   }
 
-  /* ============================================================ map figures */
+  /* ===================================================================== maps
+   *
+   * Every map in the toolkit is drawn by the three functions below, and every
+   * one of them gets the same furniture: a neatline, a graticule with its
+   * coordinates written on it, a scale bar in kilometres, a north arrow, a
+   * legend in its own panel below the frame, and the credit for the data.
+   *
+   * The furniture is not decoration. A map of a district with no scale on it
+   * cannot be used to judge whether the next village is 3 km away or 30, and
+   * a map with no coordinates on it cannot be checked against a GPS. These
+   * figures go into reports that someone has to act on, so they carry what a
+   * map has to carry to be acted on.
+   *
+   * The legend sits below the frame rather than on it. Drawn inside, it
+   * covered whatever happened to be in that corner, and there is no corner of
+   * a national map that is reliably empty.
+   */
 
-  /* An equirectangular projection is enough at country scale and keeps the
-   * whole map dependency-free. */
-  function mapProjection(features, width, height, padding) {
-    var pad = padding === undefined ? 18 : padding;
-    var lonMin = Infinity, lonMax = -Infinity, latMin = Infinity, latMax = -Infinity;
+  var MAP_NO_DATA = '#EFEDE6';
+
+  function featureBounds(features) {
+    var b = { lonMin: Infinity, lonMax: -Infinity, latMin: Infinity, latMax: -Infinity };
     function scan(coords) {
       if (typeof coords[0] === 'number') {
-        lonMin = Math.min(lonMin, coords[0]); lonMax = Math.max(lonMax, coords[0]);
-        latMin = Math.min(latMin, coords[1]); latMax = Math.max(latMax, coords[1]);
+        if (coords[0] < b.lonMin) b.lonMin = coords[0];
+        if (coords[0] > b.lonMax) b.lonMax = coords[0];
+        if (coords[1] < b.latMin) b.latMin = coords[1];
+        if (coords[1] > b.latMax) b.latMax = coords[1];
         return;
       }
       coords.forEach(scan);
     }
     features.forEach(function (f) {
-      if (f.geometry && f.geometry.coordinates) scan(f.geometry.coordinates);
+      if (f && f.geometry && f.geometry.coordinates) scan(f.geometry.coordinates);
     });
-    if (!isFinite(lonMin)) { lonMin = -13.4; lonMax = -10.2; latMin = 6.9; latMax = 10.0; }
-    var midLat = (latMin + latMax) / 2;
+    return b;
+  }
+
+  /* Equirectangular, scaled about the middle latitude of the extent. Over a
+   * district or a country this is within a percent of a conformal projection
+   * and it keeps north up and the arithmetic invertible, which is what the
+   * scale bar and the graticule need. */
+  function projectionInto(features, rect, pad) {
+    var b = featureBounds(features);
+    var padPx = pad === undefined ? 0 : pad;
+    if (!isFinite(b.lonMin)) {
+      b = { lonMin: -13.4, lonMax: -10.2, latMin: 6.9, latMax: 10.0 };
+    }
+    if (b.lonMax - b.lonMin < 1e-6) { b.lonMin -= 0.02; b.lonMax += 0.02; }
+    if (b.latMax - b.latMin < 1e-6) { b.latMin -= 0.02; b.latMax += 0.02; }
+    var midLat = (b.latMin + b.latMax) / 2;
     var kx = Math.cos(midLat * Math.PI / 180);
-    var w = (lonMax - lonMin) * kx, h = latMax - latMin;
-    var scale = Math.min((width - 2 * pad) / w, (height - 2 * pad) / h);
-    var ox = pad + ((width - 2 * pad) - w * scale) / 2;
-    var oy = pad + ((height - 2 * pad) - h * scale) / 2;
-    return function (lon, lat) {
-      return [ox + (lon - lonMin) * kx * scale, oy + (latMax - lat) * scale];
+    var w = (b.lonMax - b.lonMin) * kx, h = b.latMax - b.latMin;
+    var innerW = rect.w - 2 * padPx, innerH = rect.h - 2 * padPx;
+    var scale = Math.min(innerW / w, innerH / h);
+    var ox = rect.x + padPx + (innerW - w * scale) / 2;
+    var oy = rect.y + padPx + (innerH - h * scale) / 2;
+
+    function project(lon, lat) {
+      return [ox + (lon - b.lonMin) * kx * scale, oy + (b.latMax - lat) * scale];
+    }
+    project.scale = scale;
+    project.kx = kx;
+    /* one degree of longitude at the middle latitude, divided by the pixels
+     * it occupies: the number the scale bar is built from */
+    project.metresPerPx = 111320 / scale;
+    project.bounds = b;
+    project.rect = rect;
+    project.invert = function (x, y) {
+      return [b.lonMin + (x - ox) / (kx * scale), b.latMax - (y - oy) / scale];
     };
+    /* [lonMin, latMin, lonMax, latMax] of everything the frame shows */
+    project.visibleBox = function () {
+      var sw = project.invert(rect.x, rect.y + rect.h);
+      var ne = project.invert(rect.x + rect.w, rect.y);
+      return [sw[0], sw[1], ne[0], ne[1]];
+    };
+    return project;
+  }
+
+  /* Kept for callers outside this file; the layout-aware form is the one the
+   * maps below use. */
+  function mapProjection(features, width, height, padding) {
+    var pad = padding === undefined ? 18 : padding;
+    return projectionInto(features, { x: 0, y: 0, w: width, h: height }, pad);
   }
 
   function geometryPath(geometry, project) {
@@ -1708,78 +2261,381 @@
     return parts.join(' ');
   }
 
-  /* A choropleth over the district or chiefdom boundaries: one hue, light to
-   * dark, with the classes named in the legend. */
-  function choropleth(spec) {
+  /* --------------------------------------------------------- point in shape */
+
+  function pointInRing(lon, lat, ring) {
+    var inside = false;
+    for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      var xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+      if ((yi > lat) !== (yj > lat) &&
+          lon < (xj - xi) * (lat - yi) / ((yj - yi) || 1e-12) + xi) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }
+
+  function pointInFeature(lon, lat, geometry) {
+    if (!geometry) return false;
+    function inPolygon(rings) {
+      if (!rings.length || !pointInRing(lon, lat, rings[0])) return false;
+      for (var h = 1; h < rings.length; h++) {
+        if (pointInRing(lon, lat, rings[h])) return false;   /* in a hole */
+      }
+      return true;
+    }
+    if (geometry.type === 'Polygon') return inPolygon(geometry.coordinates);
+    if (geometry.type === 'MultiPolygon') {
+      return geometry.coordinates.some(inPolygon);
+    }
+    return false;
+  }
+
+  /* A polygon can cover a corner of the window without any sample point
+   * landing on it. Its own vertices give it away. */
+  function anyVertexInside(geometry, box) {
+    var found = false;
+    function scan(coords) {
+      if (found) return;
+      if (typeof coords[0] === 'number') {
+        if (coords[0] >= box[0] && coords[0] <= box[2] &&
+            coords[1] >= box[1] && coords[1] <= box[3]) found = true;
+        return;
+      }
+      coords.forEach(scan);
+    }
+    if (geometry && geometry.coordinates) scan(geometry.coordinates);
+    return found;
+  }
+
+  /* ------------------------------------------------------------- furniture */
+
+  var GRATICULE_STEPS = [0.02, 0.05, 0.1, 0.25, 0.5, 1, 2, 5];
+
+  function graticuleStep(span) {
+    for (var i = 0; i < GRATICULE_STEPS.length; i++) {
+      if (span / GRATICULE_STEPS[i] <= 5) return GRATICULE_STEPS[i];
+    }
+    return GRATICULE_STEPS[GRATICULE_STEPS.length - 1];
+  }
+
+  function degreeLabel(value, axis) {
+    var hemi = axis === 'lat' ? (value < 0 ? 'S' : 'N') : (value < 0 ? 'W' : 'E');
+    var v = Math.abs(value);
+    var text = v >= 10 ? v.toFixed(1) : v.toFixed(2);
+    return text.replace(/\.?0+$/, '') + '°' + hemi;
+  }
+
+  var SCALE_STEPS_KM = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
+
+  function drawMapFurniture(svg, project, rect, p, options) {
+    var opts = options || {};
+    var b = project.bounds;
+
+    /* graticule, labelled where it meets the neatline */
+    if (opts.graticule !== false) {
+      var g = svgEl('g', { 'aria-hidden': 'true' });
+      var lonStep = graticuleStep(b.lonMax - b.lonMin);
+      var latStep = graticuleStep(b.latMax - b.latMin);
+      var lon = Math.ceil(b.lonMin / lonStep) * lonStep;
+      for (; lon <= b.lonMax + 1e-9; lon += lonStep) {
+        var x = project(lon, b.latMax)[0];
+        if (x < rect.x + 14 || x > rect.x + rect.w - 14) continue;
+        g.appendChild(svgEl('line', {
+          x1: x, y1: rect.y, x2: x, y2: rect.y + rect.h,
+          stroke: p.grid, 'stroke-width': 0.7, 'stroke-dasharray': '2 4',
+        }));
+        g.appendChild(svgEl('text', {
+          x: x, y: rect.y + rect.h + 11, 'text-anchor': 'middle',
+          'font-size': 8.5, fill: p.muted, text: degreeLabel(lon, 'lon'),
+        }));
+      }
+      var lat = Math.ceil(b.latMin / latStep) * latStep;
+      for (; lat <= b.latMax + 1e-9; lat += latStep) {
+        var y = project(b.lonMin, lat)[1];
+        if (y < rect.y + 12 || y > rect.y + rect.h - 12) continue;
+        g.appendChild(svgEl('line', {
+          x1: rect.x, y1: y, x2: rect.x + rect.w, y2: y,
+          stroke: p.grid, 'stroke-width': 0.7, 'stroke-dasharray': '2 4',
+        }));
+        g.appendChild(svgEl('text', {
+          x: rect.x - 4, y: y + 3, 'text-anchor': 'end',
+          'font-size': 8.5, fill: p.muted, text: degreeLabel(lat, 'lat'),
+        }));
+      }
+      svg.appendChild(g);
+    }
+
+    /* neatline */
+    svg.appendChild(svgEl('rect', {
+      x: rect.x, y: rect.y, width: rect.w, height: rect.h,
+      fill: 'none', stroke: p.axis, 'stroke-width': 1,
+    }));
+
+    /* scale bar: a round number of kilometres, 60-150 px long */
+    if (opts.scaleBar !== false && isFinite(project.metresPerPx)) {
+      var target = 110 * project.metresPerPx / 1000;
+      var km = SCALE_STEPS_KM[SCALE_STEPS_KM.length - 1];
+      for (var i = 0; i < SCALE_STEPS_KM.length; i++) {
+        if (SCALE_STEPS_KM[i] >= target) { km = SCALE_STEPS_KM[i]; break; }
+      }
+      var barPx = km * 1000 / project.metresPerPx;
+      if (barPx > rect.w * 0.6) { km /= 2; barPx /= 2; }
+      var bx = rect.x + 10, by = rect.y + rect.h - 14;
+      var farLabel = km >= 1 ? km + ' km' : (km * 1000) + ' m';
+      svg.appendChild(svgEl('rect', {
+        x: bx - 6, y: by - 20, width: barPx + 12 + textWidth(farLabel, 8.5) / 2,
+        height: 26, rx: 3, fill: p.surface, 'fill-opacity': 0.88,
+      }));
+      /* two blocks, so the bar can be halved by eye */
+      [0, 1].forEach(function (half) {
+        svg.appendChild(svgEl('rect', {
+          x: bx + half * barPx / 2, y: by - 4, width: barPx / 2, height: 4,
+          fill: half ? p.surface : p.ink, stroke: p.ink, 'stroke-width': 0.7,
+        }));
+      });
+      svg.appendChild(svgEl('text', {
+        x: bx, y: by - 8, 'text-anchor': 'middle', 'font-size': 8.5,
+        fill: p.inkSoft, text: '0',
+      }));
+      svg.appendChild(svgEl('text', {
+        x: bx + barPx, y: by - 8, 'text-anchor': 'middle', 'font-size': 8.5,
+        fill: p.inkSoft, text: farLabel,
+      }));
+    }
+
+    /* north arrow */
+    if (opts.northArrow !== false) {
+      var nx = rect.x + rect.w - 18, ny = rect.y + 14;
+      svg.appendChild(svgEl('rect', {
+        x: nx - 11, y: ny - 10, width: 22, height: 34, rx: 3,
+        fill: p.surface, 'fill-opacity': 0.86,
+      }));
+      svg.appendChild(svgEl('path', {
+        d: 'M' + nx + ' ' + (ny - 8) + 'L' + (nx + 6) + ' ' + (ny + 9) +
+           'L' + nx + ' ' + (ny + 4) + 'L' + (nx - 6) + ' ' + (ny + 9) + 'Z',
+        fill: p.inkSoft,
+      }));
+      svg.appendChild(svgEl('text', {
+        x: nx, y: ny + 21, 'text-anchor': 'middle', 'font-size': 9,
+        'font-weight': 620, fill: p.inkSoft, text: 'N',
+      }));
+    }
+  }
+
+  /* The legend is measured before the map is laid out, because how many rows
+   * it needs is what decides how much height the map itself can have. */
+  function mapLegendLayout(items, width, size) {
+    var fontSize = size || 9.5;
+    var longest = items.reduce(function (m, it) {
+      return Math.max(m, textWidth(it.label, fontSize));
+    }, 0);
+    var cols = longest + 24 <= (width - 12) / 3 ? 3
+      : longest + 24 <= (width - 12) / 2 ? 2 : 1;
+    var colW = (width - 12) / cols;
+    var rows = items.map(function (item) {
+      return { item: item, lines: wrapText(item.label, colW - 24, fontSize) };
+    });
+    var perCol = Math.ceil(rows.length / cols);
+    var lineH = 12.5;
+    var height = 0;
+    for (var c = 0; c < cols; c++) {
+      var h = 0;
+      rows.slice(c * perCol, (c + 1) * perCol).forEach(function (row) {
+        h += row.lines.length * lineH + 4;
+      });
+      height = Math.max(height, h);
+    }
+    return { rows: rows, cols: cols, colW: colW, perCol: perCol,
+      lineH: lineH, fontSize: fontSize, height: height + 8 };
+  }
+
+  function drawMapLegend(svg, layout, x, y, p, title) {
+    if (title) {
+      svg.appendChild(svgEl('text', {
+        x: x, y: y - 4, 'font-size': 9, fill: p.muted,
+        'letter-spacing': '0.04em', text: title,
+      }));
+    }
+    layout.rows.forEach(function (row, i) {
+      var col = Math.floor(i / layout.perCol);
+      var within = i % layout.perCol;
+      var top = y + 4;
+      for (var k = col * layout.perCol; k < col * layout.perCol + within; k++) {
+        top += layout.rows[k].lines.length * layout.lineH + 4;
+      }
+      var cx = x + col * layout.colW;
+      var item = row.item;
+      if (item.kind && item.kind !== 'swatch') {
+        svg.appendChild(marker(cx + 5.5, top + 5, item.kind, item.colour,
+          p.surface, 4.5));
+      } else {
+        svg.appendChild(svgEl('rect', {
+          x: cx, y: top, width: 11, height: 11, rx: 1.5,
+          fill: item.colour, stroke: p.axis, 'stroke-width': 0.6,
+        }));
+      }
+      row.lines.forEach(function (line, li) {
+        svg.appendChild(svgEl('text', {
+          x: cx + 17, y: top + 9 + li * layout.lineH,
+          'font-size': layout.fontSize, fill: p.inkSoft, text: line,
+        }));
+      });
+    });
+  }
+
+  /* Lays out title, map frame, legend and credit, and hands back the frame so
+   * the caller only has to draw its own layer into it. */
+  function mapCanvas(spec, legendItems, extentFeatures) {
     var p = palette();
-    var width = spec.width || 620, height = spec.height || 560;
-    var features = spec.features || [];
-    var project = mapProjection(features, width, height - (spec.legend === false ? 10 : 64));
+    var width = spec.width || 620;
+    var height = spec.height || 520;
+    var titleH = spec.title ? 26 : 8;
+    var creditLines = spec.credit
+      ? wrapText(spec.credit, width - 28, 8.5) : [];
+    var creditH = creditLines.length ? creditLines.length * 11 + 6 : 0;
+
+    function frameFor(legendH) {
+      return {
+        x: 42, y: titleH + 6, w: width - 56,
+        h: height - titleH - 6 - legendH - creditH - 22,
+      };
+    }
+    function layoutFor(items) {
+      return items && items.length ? mapLegendLayout(items, width - 28) : null;
+    }
+    function heightOf(l) { return l ? l.height + (spec.legendTitle ? 14 : 4) : 0; }
+
+    var rect, legend, items;
+    if (typeof legendItems === 'function') {
+      rect = frameFor(0);
+      items = legendItems(projectionInto(extentFeatures, rect, 4), rect);
+      legend = layoutFor(items);
+      rect = frameFor(heightOf(legend));
+      items = legendItems(projectionInto(extentFeatures, rect, 4), rect);
+      legend = layoutFor(items);
+      rect = frameFor(heightOf(legend));
+    } else {
+      legend = layoutFor(legendItems);
+      rect = frameFor(heightOf(legend));
+    }
+    var legendH = heightOf(legend);
+
     var svg = svgEl('svg', {
       viewBox: '0 0 ' + width + ' ' + height, width: '100%', xmlns: NS,
       'font-family': FONT, role: 'img', 'aria-label': spec.title || 'map',
     });
     svg.appendChild(svgEl('rect', { width: width, height: height, fill: p.surface }));
-
-    var values = features.map(spec.value).filter(function (v) {
-      return typeof v === 'number' && isFinite(v);
-    });
-    var breaks = spec.breaks || quantileBreaks(values, 5);
-    var ramp = p.seq.slice(1, 1 + breaks.length + 1);
-
-    features.forEach(function (feature) {
-      var v = spec.value(feature);
-      var cls = classify(v, breaks);
-      svg.appendChild(svgEl('path', {
-        d: geometryPath(feature.geometry, project),
-        fill: cls === null ? '#D8D4CB' : ramp[Math.min(cls, ramp.length - 1)],
-        stroke: p.surface, 'stroke-width': 0.8,
-        'aria-label': (spec.name ? spec.name(feature) : '') +
-          (v === null || v === undefined ? '' : ': ' + S.sig(v, 3)),
+    if (spec.title) {
+      svg.appendChild(svgEl('text', {
+        x: 14, y: 19, 'font-size': 13, 'font-weight': 620, fill: p.ink,
+        text: ellipsise(spec.title, width - 28, 13),
       }));
-    });
+    }
+    /* the ground the layers are drawn on: anything left showing is a gap in
+     * the data, and the legend says so */
+    svg.appendChild(svgEl('rect', {
+      x: rect.x, y: rect.y, width: rect.w, height: rect.h, fill: MAP_NO_DATA,
+    }));
 
-    (spec.points || []).forEach(function (point) {
-      var pt = project(point.lon, point.lat);
-      svg.appendChild(marker(pt[0], pt[1], point.kind || 'circle',
-        point.colour || p.secondary, p.surface, point.size || 4.5));
+    var project = projectionInto(extentFeatures, rect, 4);
+    var layer = svgEl('g');
+    svg.appendChild(layer);
+
+    return {
+      svg: svg, layer: layer, project: project, rect: rect, palette: p,
+      width: width, height: height,
+      finish: function (options) {
+        drawMapFurniture(svg, project, rect, p, options || {});
+        var y = rect.y + rect.h + 18 + (spec.legendTitle ? 12 : 0);
+        if (legend) drawMapLegend(svg, legend, 14, y, p, spec.legendTitle);
+        if (creditLines.length) {
+          creditLines.forEach(function (line, i) {
+            svg.appendChild(svgEl('text', {
+              x: 14, y: height - 8 - (creditLines.length - 1 - i) * 11,
+              'font-size': 8.5, fill: p.muted, text: line,
+            }));
+          });
+        }
+        return svg;
+      },
+    };
+  }
+
+  function drawMapPoints(canvas, points) {
+    var p = canvas.palette;
+    (points || []).forEach(function (point) {
+      var pt = canvas.project(point.lon, point.lat);
+      if (pt[0] < canvas.rect.x - 4 || pt[0] > canvas.rect.x + canvas.rect.w + 4 ||
+          pt[1] < canvas.rect.y - 4 || pt[1] > canvas.rect.y + canvas.rect.h + 4) return;
+      canvas.svg.appendChild(marker(pt[0], pt[1], point.kind || 'circle',
+        point.colour || p.secondary, p.surface, point.size || 5));
       if (point.label) {
-        svg.appendChild(svgEl('text', {
-          x: pt[0] + 8, y: pt[1] + 3.5, 'font-size': 10, fill: p.ink,
-          stroke: p.surface, 'stroke-width': 2.6, 'paint-order': 'stroke',
+        var anchor = pt[0] > canvas.rect.x + canvas.rect.w * 0.72 ? 'end' : 'start';
+        canvas.svg.appendChild(svgEl('text', {
+          x: pt[0] + (anchor === 'end' ? -10 : 10), y: pt[1] + 3.5,
+          'text-anchor': anchor, 'font-size': 10, fill: p.ink,
+          stroke: p.surface, 'stroke-width': 3, 'paint-order': 'stroke',
           text: point.label,
         }));
       }
     });
+  }
 
-    if (spec.title) {
-      svg.appendChild(svgEl('text', {
-        x: 14, y: 20, 'font-size': 13, 'font-weight': 600, fill: p.ink,
-        text: spec.title,
-      }));
+  /* ------------------------------------------------------------ choropleth */
+
+  function choropleth(spec) {
+    var features = spec.features || [];
+    var values = features.map(spec.value).filter(function (v) {
+      return typeof v === 'number' && isFinite(v);
+    });
+    var breaks = spec.breaks || quantileBreaks(values, 5);
+    var pal = palette();
+    /* One colour per class, sampled across the whole ramp. Slicing a fixed
+     * window off it gave fewer colours than classes as soon as the breaks
+     * were supplied rather than computed, and the top classes then shared a
+     * colour while the legend still listed them apart. */
+    var classes = breaks.length + 1;
+    var ramp = [];
+    for (var c = 0; c < classes; c++) {
+      var t = classes === 1 ? 0.5 : c / (classes - 1);
+      ramp.push(pal.seq[Math.round(t * (pal.seq.length - 1))]);
     }
+
+    var legendItems = [];
     if (spec.legend !== false && breaks.length) {
-      var ly = height - 34;
-      svg.appendChild(svgEl('text', {
-        x: 14, y: ly - 8, 'font-size': 10.5, fill: p.muted,
-        text: spec.legendTitle || '',
-      }));
       ramp.forEach(function (colour, i) {
-        var x = 14 + i * 92;
-        svg.appendChild(svgEl('rect', {
-          x: x, y: ly, width: 16, height: 11, rx: 2, fill: colour,
-        }));
         var lo = i === 0 ? null : breaks[i - 1];
         var hi = i < breaks.length ? breaks[i] : null;
-        var label = lo === null ? '< ' + S.sig(hi, 3)
-          : (hi === null ? '≥ ' + S.sig(lo, 3)
-            : S.sig(lo, 3) + '–' + S.sig(hi, 3));
-        svg.appendChild(svgEl('text', {
-          x: x + 21, y: ly + 9.5, 'font-size': 10, fill: p.inkSoft, text: label,
-        }));
+        legendItems.push({
+          colour: colour,
+          label: lo === null ? 'under ' + S.sig(hi, 3)
+            : (hi === null ? S.sig(lo, 3) + ' and over'
+              : S.sig(lo, 3) + ' to ' + S.sig(hi, 3)),
+        });
       });
+      if (features.some(function (f) { return classify(spec.value(f), breaks) === null; })) {
+        legendItems.push({ colour: '#D8D4CB', label: 'no figure recorded' });
+      }
     }
-    return svg;
+
+    var canvas = mapCanvas(spec, legendItems, features);
+    features.forEach(function (feature) {
+      var v = spec.value(feature);
+      var cls = classify(v, breaks);
+      canvas.layer.appendChild(svgEl('path', {
+        d: geometryPath(feature.geometry, canvas.project),
+        fill: cls === null ? '#D8D4CB' : ramp[Math.min(cls, ramp.length - 1)],
+        stroke: canvas.palette.surface, 'stroke-width': 0.8,
+        'aria-label': (spec.name ? spec.name(feature) : '') +
+          (v === null || v === undefined ? '' : ': ' + S.sig(v, 3)),
+      }, [svgEl('title', {
+        text: (spec.name ? spec.name(feature) : '') +
+          (v === null || v === undefined ? '' : ': ' + S.sig(v, 3)),
+      })]));
+    });
+    drawMapPoints(canvas, spec.points);
+    return canvas.finish();
   }
 
   function quantileBreaks(values, n) {
@@ -1800,37 +2656,25 @@
     return breaks.length;
   }
 
-  /* A site map: boundaries as context, survey points as the data. */
+  /* ---------------------------------------------------------- thematic map */
+
+  var clipSeq = 0;
+
   /* A categorical polygon layer - geology or aquifer productivity - clipped
    * to a window around the site when there is one.
    *
    * The layers carry their own published colours, so the map reads the same
-   * way as the source sheet does rather than being recoloured here. Features
-   * are selected by bounding-box overlap with the window: a polygon that only
-   * touches the edge still belongs on the map, because what surrounds the site
-   * is the point of the figure. */
-  var clipSeq = 0;
-
+   * way the source sheet does rather than being recoloured here.
+   *
+   * The legend names the units that actually cover ground inside the window,
+   * found by sampling the window on a grid. Selecting by bounding box, which
+   * is how the polygons are chosen for drawing, would put a unit in the
+   * legend whose only claim on the window is that its bounding box reaches
+   * across the country. */
   function thematicMap(spec) {
-    var p = palette();
-    var width = spec.width || 620, height = spec.height || 520;
     var key = spec.key || 'unit';
     var all = spec.features || [];
-    var window_ = spec.window || null;      /* {lat, lon, radiusKm} */
-
-    function bbox(feature) {
-      var lonMin = Infinity, lonMax = -Infinity, latMin = Infinity, latMax = -Infinity;
-      function scan(coords) {
-        if (typeof coords[0] === 'number') {
-          lonMin = Math.min(lonMin, coords[0]); lonMax = Math.max(lonMax, coords[0]);
-          latMin = Math.min(latMin, coords[1]); latMax = Math.max(latMax, coords[1]);
-          return;
-        }
-        coords.forEach(scan);
-      }
-      if (feature.geometry && feature.geometry.coordinates) scan(feature.geometry.coordinates);
-      return [lonMin, latMin, lonMax, latMax];
-    }
+    var window_ = spec.window || null;
 
     var features = all, clip = null;
     if (window_) {
@@ -1840,9 +2684,9 @@
       clip = [window_.lon - dLon, window_.lat - dLat,
         window_.lon + dLon, window_.lat + dLat];
       features = all.filter(function (feature) {
-        var b = bbox(feature);
-        return isFinite(b[0]) && b[0] <= clip[2] && b[2] >= clip[0] &&
-          b[1] <= clip[3] && b[3] >= clip[1];
+        var b = featureBounds([feature]);
+        return isFinite(b.lonMin) && b.lonMin <= clip[2] && b.lonMax >= clip[0] &&
+          b.latMin <= clip[3] && b.latMax >= clip[1];
       });
       if (!features.length) features = all;
     }
@@ -1854,134 +2698,140 @@
         [clip[0], clip[1]], [clip[2], clip[1]], [clip[2], clip[3]], [clip[0], clip[3]],
       ]] } }]
       : features;
-    var legendRows = spec.legendItems || [];
-    var project = mapProjection(extent, width, height - 24 - legendRows.length * 15, 18);
 
-    var svg = svgEl('svg', {
-      viewBox: '0 0 ' + width + ' ' + height, width: '100%', xmlns: NS,
-      'font-family': FONT, role: 'img', 'aria-label': spec.title || 'thematic map',
-    });
-    svg.appendChild(svgEl('rect', { width: width, height: height, fill: p.surface }));
-
-    /* A counter, not a hash of the spec: two maps on one page can legitimately
-     * share dimensions and title length, and a collision would clip one of
-     * them to the other's window. */
-    clipSeq += 1;
-    var clipId = 'gwt-clip-' + clipSeq;
-    if (clip) {
-      var corner0 = project(clip[0], clip[3]), corner1 = project(clip[2], clip[1]);
-      var defs = svgEl('defs');
-      defs.appendChild(svgEl('clipPath', { id: clipId }, [svgEl('rect', {
-        x: corner0[0], y: corner0[1],
-        width: Math.max(1, corner1[0] - corner0[0]),
-        height: Math.max(1, corner1[1] - corner0[1]),
-      })]));
-      svg.appendChild(defs);
+    /* Which units are really in view. The frame shows more than the window
+     * asked for - the projection letterboxes it - so the box to sample is
+     * the one the frame actually covers, which mapCanvas works out. */
+    function legendFor(project) {
+      var box = project.visibleBox();
+      var seen = [], gaps = false;
+      function note(feature) {
+        var props = feature.properties || {};
+        var label = String(props[key] || 'unclassified');
+        if (!seen.some(function (s) { return s.label === label; })) {
+          seen.push({ label: label, colour: props.color || palette().neutral });
+        }
+      }
+      var STEPS = 22;
+      for (var i = 0; i <= STEPS; i++) {
+        for (var j = 0; j <= STEPS; j++) {
+          var lon = box[0] + (box[2] - box[0]) * i / STEPS;
+          var lat = box[1] + (box[3] - box[1]) * j / STEPS;
+          var hit = null;
+          for (var f = 0; f < features.length; f++) {
+            if (pointInFeature(lon, lat, features[f].geometry)) {
+              hit = features[f]; break;
+            }
+          }
+          if (!hit) { gaps = true; continue; }
+          note(hit);
+        }
+      }
+      /* a unit can cross a corner without a sample landing on it */
+      features.forEach(function (feature) {
+        if (anyVertexInside(feature.geometry, box)) note(feature);
+      });
+      seen.sort(function (a, b) { return a.label.localeCompare(b.label); });
+      var items = seen.slice();
+      if (gaps) items.push({ label: 'not mapped', colour: MAP_NO_DATA });
+      (spec.points || []).forEach(function (point) {
+        if (!point.label) return;
+        items.push({
+          label: point.legend || point.label, kind: point.kind || 'diamond',
+          colour: point.colour || palette().secondary,
+        });
+      });
+      return items;
     }
 
-    var group = svgEl('g', clip ? { 'clip-path': 'url(#' + clipId + ')' } : {});
-    var seen = [];
+    var canvas = mapCanvas(spec, legendFor, extent);
+    var p = canvas.palette;
+
+    clipSeq += 1;
+    var clipId = 'gwt-clip-' + clipSeq;
+    var defs = svgEl('defs');
+    defs.appendChild(svgEl('clipPath', { id: clipId }, [svgEl('rect', {
+      x: canvas.rect.x, y: canvas.rect.y,
+      width: canvas.rect.w, height: canvas.rect.h,
+    })]));
+    canvas.svg.insertBefore(defs, canvas.svg.firstChild);
+    canvas.layer.setAttribute('clip-path', 'url(#' + clipId + ')');
+
     features.forEach(function (feature) {
       var props = feature.properties || {};
-      var label = props[key] || 'unclassified';
-      var colour = props.color || p.neutral;
-      group.appendChild(svgEl('path', {
-        d: geometryPath(feature.geometry, project),
-        fill: colour, 'fill-opacity': 0.82, stroke: p.surface, 'stroke-width': 0.5,
-      }, [svgEl('title', { text: String(label) })]));
-      if (!seen.some(function (s) { return s.label === label; })) {
-        seen.push({ label: String(label), colour: colour });
-      }
+      canvas.layer.appendChild(svgEl('path', {
+        d: geometryPath(feature.geometry, canvas.project),
+        fill: props.color || p.neutral, 'fill-opacity': 0.85,
+        stroke: p.surface, 'stroke-width': 0.5,
+      }, [svgEl('title', { text: String(props[key] || 'unclassified') })]));
     });
-    svg.appendChild(group);
-
     (spec.context || []).forEach(function (feature) {
-      svg.appendChild(svgEl('path', {
-        d: geometryPath(feature.geometry, project), fill: 'none',
+      canvas.layer.appendChild(svgEl('path', {
+        d: geometryPath(feature.geometry, canvas.project), fill: 'none',
         stroke: p.axis, 'stroke-width': 0.8,
       }));
     });
-
-    (spec.points || []).forEach(function (point) {
-      var pt = project(point.lon, point.lat);
-      svg.appendChild(marker(pt[0], pt[1], point.kind || 'diamond',
-        point.colour || p.secondary, p.surface, point.size || 7));
-      if (point.label) {
-        svg.appendChild(svgEl('text', {
-          x: pt[0] + 10, y: pt[1] + 3.5, 'font-size': 10.5, fill: p.ink,
-          stroke: p.surface, 'stroke-width': 3, 'paint-order': 'stroke',
-          text: point.label,
-        }));
-      }
-    });
-
-    if (spec.title) {
-      svg.appendChild(svgEl('text', {
-        x: 14, y: 20, 'font-size': 13, 'font-weight': 600, fill: p.ink,
-        text: spec.title,
-      }));
-    }
-    seen.slice(0, 8).forEach(function (item, i) {
-      var y = height - 12 - (Math.min(seen.length, 8) - 1 - i) * 15;
-      svg.appendChild(svgEl('rect', {
-        x: 16, y: y - 8, width: 11, height: 11, rx: 2,
-        fill: item.colour, stroke: p.axis, 'stroke-width': 0.5,
-      }));
-      svg.appendChild(svgEl('text', {
-        x: 33, y: y, 'font-size': 10.5, fill: p.inkSoft,
-        text: item.label.length > 62 ? item.label.slice(0, 60) + '…' : item.label,
-      }));
-    });
-    return svg;
+    drawMapPoints(canvas, (spec.points || []).map(function (pt) {
+      return Object.assign({ kind: 'diamond', size: 6.5 }, pt);
+    }));
+    return canvas.finish();
   }
 
+  /* -------------------------------------------------------------- site map */
+
+  /* Boundaries as context, survey points as the data. Without a position the
+   * map is still drawn - the district is still worth showing - but it says in
+   * the legend that the site is not on it, because a locator map with no
+   * locator on it is the kind of figure that gets signed off by mistake. */
   function siteMap(spec) {
-    var p = palette();
-    var width = spec.width || 620, height = spec.height || 520;
     var context = spec.context || [];
-    var project = mapProjection(context.length ? context : (spec.points || []).map(function (pt) {
-      return { geometry: { type: 'Polygon', coordinates: [[[pt.lon, pt.lat]]] } };
-    }), width, height);
-    var svg = svgEl('svg', {
-      viewBox: '0 0 ' + width + ' ' + height, width: '100%', xmlns: NS,
-      'font-family': FONT, role: 'img', 'aria-label': spec.title || 'site map',
-    });
-    svg.appendChild(svgEl('rect', { width: width, height: height, fill: p.surface }));
-    context.forEach(function (feature) {
-      svg.appendChild(svgEl('path', {
-        d: geometryPath(feature.geometry, project),
-        fill: spec.contextFill ? spec.contextFill(feature) : '#EDEAE3',
-        stroke: p.axis, 'stroke-width': 0.7,
-      }));
-    });
-    (spec.points || []).forEach(function (point) {
-      var pt = project(point.lon, point.lat);
-      svg.appendChild(marker(pt[0], pt[1], point.kind || 'circle',
-        point.colour || p.accent, p.surface, point.size || 5.5));
-      if (point.label) {
-        svg.appendChild(svgEl('text', {
-          x: pt[0] + 9, y: pt[1] + 3.5, 'font-size': 10.5, fill: p.ink,
-          stroke: p.surface, 'stroke-width': 2.8, 'paint-order': 'stroke',
-          text: point.label,
-        }));
-      }
-    });
-    if (spec.title) {
-      svg.appendChild(svgEl('text', {
-        x: 14, y: 20, 'font-size': 13, 'font-weight': 600, fill: p.ink, text: spec.title,
-      }));
-    }
-    if (spec.legendItems && spec.legendItems.length) {
-      spec.legendItems.forEach(function (item, i) {
-        var y = height - 14 - (spec.legendItems.length - 1 - i) * 15;
-        svg.appendChild(marker(22, y - 3.5, item.kind || 'circle', item.colour,
-          p.surface, 4.5));
-        svg.appendChild(svgEl('text', {
-          x: 34, y: y, 'font-size': 10.5, fill: p.inkSoft, text: item.label,
-        }));
+    var points = spec.points || [];
+    var legendItems = (spec.legendItems || []).slice();
+    if (!legendItems.length) {
+      points.forEach(function (point) {
+        legendItems.push({
+          label: point.legend || point.label || 'Site',
+          colour: point.colour || palette().secondary,
+          kind: point.kind || 'diamond',
+        });
       });
     }
-    return svg;
+    if (!points.length) {
+      legendItems.push({ label: 'no position recorded for this site',
+        colour: MAP_NO_DATA });
+    }
+
+    var extent = context.length ? context : points.map(function (pt) {
+      return { geometry: { type: 'Polygon', coordinates: [[[pt.lon, pt.lat]]] } };
+    });
+    /* a lone point projects to a degenerate extent; give it a window it can
+     * actually be seen in */
+    if (!context.length && points.length) {
+      var pad = (spec.radiusKm || 25) / 110.574;
+      extent = [{ geometry: { type: 'Polygon', coordinates: [[
+        [points[0].lon - pad, points[0].lat - pad],
+        [points[0].lon + pad, points[0].lat - pad],
+        [points[0].lon + pad, points[0].lat + pad],
+        [points[0].lon - pad, points[0].lat + pad],
+      ]] } }];
+    }
+
+    var canvas = mapCanvas(spec, legendItems, extent);
+    var p = canvas.palette;
+    context.forEach(function (feature) {
+      canvas.layer.appendChild(svgEl('path', {
+        d: geometryPath(feature.geometry, canvas.project),
+        fill: spec.contextFill ? spec.contextFill(feature) : '#EDEAE3',
+        stroke: p.axis, 'stroke-width': 0.7,
+      }, [svgEl('title', {
+        text: String((feature.properties || {}).name ||
+          (feature.properties || {}).shapeName || ''),
+      })]));
+    });
+    drawMapPoints(canvas, points.map(function (pt) {
+      return Object.assign({ kind: 'diamond', size: 6.5 }, pt);
+    }));
+    return canvas.finish();
   }
 
   /* ============================================================ export */
@@ -2042,11 +2892,15 @@
         S.modal(caption || 'Figure data', opts.table());
       }, { variant: 'quiet' }) : null,
       S.button('PNG', function () {
+        /* the rasteriser can fail - an unloadable font, a tainted canvas -
+         * and with no handler the button simply did nothing */
         toPng(svg, { scale: 2 }).then(function (png) {
-          fetch(png.dataUrl).then(function (r) { return r.blob(); })
+          return fetch(png.dataUrl).then(function (r) { return r.blob(); })
             .then(function (blob) {
               S.download((opts.filename || S.slug(caption || 'figure')) + '.png', blob);
             });
+        }).catch(function (e) {
+          S.toast('Could not export this figure as a PNG: ' + e.message, 'error');
         });
       }, { variant: 'quiet' }),
       S.button('SVG', function () {
@@ -2074,8 +2928,11 @@
     depthSpine: depthSpine, guidelineSpine: guidelineSpine,
     costBreakdown: costBreakdown, programmeGantt: programmeGantt,
     choropleth: choropleth, siteMap: siteMap, thematicMap: thematicMap,
-    mapProjection: mapProjection,
+    mapProjection: mapProjection, projectionInto: projectionInto,
     geometryPath: geometryPath, quantileBreaks: quantileBreaks,
+    pointInFeature: pointInFeature,
+    textWidth: textWidth, wrapText: wrapText, ellipsise: ellipsise,
+    stackLabels: stackLabels,
     toPng: toPng, downloadSvg: download, figure: figure,
   };
 }(typeof window !== 'undefined' ? window : globalThis));

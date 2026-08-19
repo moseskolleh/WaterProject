@@ -1,6 +1,6 @@
 """Data ingestion: standard templates, parsers and consistency checks."""
 
-from .._lazy import lazy_exports
+from .._lazy import lazy_exports as _lazy_exports
 from .checks import check_site_consistency, check_all
 
 __all__ = [
@@ -28,4 +28,16 @@ _LAZY = {
     "read_quality_workbook": ".waterquality",
 }
 
-__getattr__, __dir__ = lazy_exports(__name__, _LAZY)
+# The submodules stayed reachable as attributes of the package while
+# the eager imports bound them; keep that true without importing them.
+_LAZY_MODULES = (
+    "templates",
+    "ves",
+    "pumping",
+    "drilling",
+    "waterquality",
+    "checks",
+    "common",
+)
+
+__getattr__, __dir__ = _lazy_exports(__name__, _LAZY, _LAZY_MODULES)

@@ -5,7 +5,7 @@ tagged by construction stage and resource category, cost kept apart
 from price, and an editable unit rate catalogue.
 """
 
-from .._lazy import lazy_exports
+from .._lazy import lazy_exports as _lazy_exports
 from .model import (
     DEFAULT_EXCHANGE_RATE_SLE_PER_USD,
     RESOURCE_CATEGORIES,
@@ -72,4 +72,14 @@ _LAZY = {
     "write_boq_workbook": ".export",
 }
 
-__getattr__, __dir__ = lazy_exports(__name__, _LAZY)
+# The submodules stayed reachable as attributes of the package while
+# the eager imports bound them; keep that true without importing them.
+_LAZY_MODULES = (
+    "model",
+    "enterprise",
+    "programme",
+    "plots",
+    "export",
+)
+
+__getattr__, __dir__ = _lazy_exports(__name__, _LAZY, _LAZY_MODULES)

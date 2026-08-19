@@ -669,7 +669,11 @@
   /* A minimal .xlsx writer, enough for the BoQ and template downloads.
    * sheets: [{name, rows: [[cell, ...], ...]}] */
   async function writeXlsx(sheets) {
-    var strings = [], stringIndex = {};
+    /* Object.create(null), not {}: `'constructor' in {}` is true, so a cell
+     * whose text happens to be the name of something on Object.prototype got
+     * that inherited value back as its index and the workbook came out
+     * corrupt. "Constructor" is a plausible typo for "Contractor". */
+    var strings = [], stringIndex = Object.create(null);
     function sharedIndex(text) {
       if (!(text in stringIndex)) {
         stringIndex[text] = strings.length;
@@ -1222,7 +1226,7 @@
   function checkboxInput(value, label, onChange) {
     var input = el('input', { type: 'checkbox', checked: !!value });
     input.addEventListener('change', function () { onChange(input.checked); });
-    return el('label.check', [input, el('span', label)]);
+    return el('label.checkbox', [input, el('span', label)]);
   }
 
   function button(label, onClick, options) {
@@ -1428,12 +1432,18 @@
 
   async function withBusy(node, label, work) {
     var overlay = el('div.busy', [el('span.spinner'), el('span', label || 'Working…')]);
+    /* The overlay is absolutely positioned, so it covers whatever the nearest
+     * positioned ancestor is. On a static host that is the whole viewport,
+     * which greys out the entire application to say one card is thinking. */
+    var positioned = getComputedStyle(node).position !== 'static';
+    if (!positioned) node.style.position = 'relative';
     node.appendChild(overlay);
     await nextFrame();
     try {
       return await work();
     } finally {
       if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      if (!positioned) node.style.position = '';
     }
   }
 

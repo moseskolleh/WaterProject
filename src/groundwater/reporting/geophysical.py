@@ -405,10 +405,9 @@ def _sounding_block(
 
     # curve + model figure
     curve_path = figures_dir / f"ves_curve_{safe_id}.png"
-    if not curve_path.exists():
-        plot_sounding_curve(
-            sounding, inversion.model, inversion.rho_calc, inversion.ab2, path=curve_path
-        )
+    plot_sounding_curve(
+        sounding, inversion.model, inversion.rho_calc, inversion.ab2, path=curve_path
+    )
     rb.figure(curve_path, f"Schlumberger array VES curve and model at point {sid}.")
 
     # model table (IPI2Win layout) with linearised uncertainty factors
@@ -448,13 +447,12 @@ def _sounding_block(
 
     # pseudo-section figure
     pseudo_path = figures_dir / f"ves_pseudosection_{safe_id}.png"
-    if not pseudo_path.exists():
-        plot_model_pseudosection(
-            inversion.model,
-            path=pseudo_path,
-            depth_max=interp.investigation_depth_m * 0.5,
-            title=f"Layer section at {sid}",
-        )
+    plot_model_pseudosection(
+        inversion.model,
+        path=pseudo_path,
+        depth_max=interp.investigation_depth_m * 0.5,
+        title=f"Layer section at {sid}",
+    )
     rb.figure(
         pseudo_path,
         f"Pseudo-section showing resistivity and layer thicknesses at point {sid}.",
@@ -519,8 +517,7 @@ def _suitability_block(rb: ReportBuilder, inputs, site) -> None:
     if map_points:
         zone = site.utm_zone or infer_zone_for_sierra_leone(map_points[0].easting)
         smap = Path(inputs.figures_dir) / f"suitability_map_{_site_slug(site)}.png"
-        if not smap.exists():
-            suitability_map(map_points, zone, path=smap)
+        suitability_map(map_points, zone, path=smap)
         rb.figure(
             smap,
             "Drill-target suitability of the surveyed points; greener is more "

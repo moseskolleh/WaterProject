@@ -2,7 +2,7 @@
 regional geological setting, administrative location, and the survey as
 an interactive GeoLibre project file."""
 
-from .._lazy import lazy_exports
+from .._lazy import lazy_exports as _lazy_exports
 
 __all__ = [
     "site_location_map",
@@ -14,6 +14,8 @@ __all__ = [
     "GEOLOGY_CREDIT",
     "HYDRO_CREDIT",
     "AdminArea",
+    "AreaWindow",
+    "area_window",
     "GeologyUnit",
     "chiefdom_of",
     "district_of",
@@ -50,6 +52,8 @@ _LAZY = {
     "GEOLOGY_CREDIT": ".regional",
     "HYDRO_CREDIT": ".regional",
     "AdminArea": ".regional",
+    "AreaWindow": ".regional",
+    "area_window": ".regional",
     "GeologyUnit": ".regional",
     "chiefdom_of": ".regional",
     "district_of": ".regional",
@@ -72,6 +76,13 @@ _LAZY = {
     "site_project": ".geolibre",
     "write_project": ".geolibre",
 }
-_LAZY_MODULES = ("geolibre",)
+# The submodules stayed reachable as attributes of the package while
+# the eager imports bound them; keep that true without importing them.
+_LAZY_MODULES = (
+    "maps",
+    "regional",
+    "export",
+    "geolibre",
+)
 
-__getattr__, __dir__ = lazy_exports(__name__, _LAZY, _LAZY_MODULES)
+__getattr__, __dir__ = _lazy_exports(__name__, _LAZY, _LAZY_MODULES)
