@@ -1,5 +1,6 @@
 """Pumping test analysis: aquifer parameters, safe yield and diagnostics."""
 
+from .._lazy import lazy_exports
 from .analysis import (
     CooperJacobResult,
     TheisResult,
@@ -12,13 +13,6 @@ from .analysis import (
     theis_fit,
     theis_recovery,
     hantush_bierschenk,
-)
-from .plots import (
-    plot_test_overview,
-    plot_cooper_jacob,
-    plot_theis,
-    plot_recovery,
-    plot_step_test,
 )
 
 __all__ = [
@@ -39,3 +33,15 @@ __all__ = [
     "plot_recovery",
     "plot_step_test",
 ]
+
+# Deferred: these pull matplotlib, openpyxl or python-docx, which the
+# analysis half of this package does not need. See groundwater._lazy.
+_LAZY = {
+    "plot_test_overview": ".plots",
+    "plot_cooper_jacob": ".plots",
+    "plot_theis": ".plots",
+    "plot_recovery": ".plots",
+    "plot_step_test": ".plots",
+}
+
+__getattr__, __dir__ = lazy_exports(__name__, _LAZY)

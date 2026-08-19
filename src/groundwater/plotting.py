@@ -24,7 +24,17 @@ _DEFAULT = HouseStyle()
 
 @contextmanager
 def figure_context(style: HouseStyle | None = None):
-    """rcParams context applying the house style."""
+    """rcParams context applying the house style.
+
+    A figure still open when the block raises is closed on the way out.
+    pyplot holds every figure it creates in a global registry until
+    something closes it, so a plot function that failed part way through -
+    a sounding with one usable reading, a column the field sheet never
+    filled in - leaked one. :func:`save_figure` closes the figure on the
+    normal path; this is the other one. The web app is a long-lived
+    process, and matplotlib slows measurably once hundreds of figures are
+    held open.
+    """
     style = style or _DEFAULT
     rc = {
         "figure.facecolor": style.background,
@@ -52,7 +62,13 @@ def figure_context(style: HouseStyle | None = None):
         "figure.dpi": 110,
     }
     with plt.rc_context(rc):
-        yield
+        open_before = set(plt.get_fignums())
+        try:
+            yield
+        except BaseException:
+            for num in set(plt.get_fignums()) - open_before:
+                plt.close(num)
+            raise
 
 
 def save_figure(fig, path: str | Path, style: HouseStyle | None = None) -> Path:

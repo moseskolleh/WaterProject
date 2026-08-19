@@ -57,10 +57,22 @@ def resistivity_transform(
     lam = np.asarray(lam, dtype=float)
     rho = np.asarray(resistivities, dtype=float)
     h = np.asarray(thicknesses, dtype=float)
-    T = np.full_like(lam, rho[-1])
+    T = np.full(lam.shape, rho[-1], dtype=float)
     for i in range(len(h) - 1, -1, -1):
-        th = np.tanh(lam * h[i])
-        T = (T + rho[i] * th) / (1.0 + T * th / rho[i])
+        # T <- (T + rho_i tanh) / (1 + T tanh / rho_i), written a step at a
+        # time so the recurrence allocates two arrays per layer instead of
+        # eight. This is the innermost loop of the whole VES stage - an
+        # inversion runs it a few hundred thousand times over arrays of a
+        # few thousand abscissas - and the arithmetic is unchanged.
+        th = lam * h[i]
+        np.tanh(th, out=th)
+        denom = T * th
+        th *= rho[i]
+        th += T
+        denom /= rho[i]
+        denom += 1.0
+        th /= denom
+        T = th
     return T
 
 
@@ -156,17 +168,85 @@ def _table_for(order: int, x_stop: float) -> dict:
     return table
 
 
-def _hankel_integral(g, order: int, x_decay: float) -> float:
-    """Int_0^inf g(x) J_order(x) dx for smooth g decaying like
-    exp(-x / x_decay) at large x."""
-    x_stop = 18.0 * max(x_decay, 1.0)
-    t = _table_for(order, x_stop)
-    acc = float(np.dot(g(t["s1_nodes"]), t["s1_wb"]))
-    n_panels = int(np.searchsorted(t["panel_ends"], x_stop)) + 1
-    n_panels = min(max(n_panels, 8), len(t["panel_ends"]))
-    k = n_panels * 10
-    acc += float(np.dot(g(t["s2_nodes"][:k]), t["s2_wb"][:k]))
+# Largest integrand buffer a batch may allocate, in abscissas. A batch is
+# evaluated in groups small enough to stay under it, so a sounding that walks
+# the quadrature table out to its ceiling cannot make the browser build
+# allocate hundreds of megabytes.
+_BATCH_ABSCISSA_CAP = 2_000_000
+
+
+def _hankel_integrals(g, order: int, x_decays: np.ndarray) -> np.ndarray:
+    """Int_0^inf g_j(x) J_order(x) dx for a batch of decay scales.
+
+    ``g(x, rows)`` returns the integrand of the members named by ``rows`` at
+    the abscissas ``x``, as a ``(len(rows), len(x))`` array. Each member j
+    decays like ``exp(-x / x_decays[j])`` at large x, so they need the
+    quadrature carried to different distances.
+
+    A sounding is a batch: one layered model sampled at every AB/2 the field
+    team walked out to. Evaluated one member at a time, the resistivity
+    transform is a separate pass each - and at these sizes, a few hundred to
+    a few thousand abscissas, numpy spends longer entering and leaving its
+    element loops than running them. So the members are evaluated together.
+
+    Section 1 shares its abscissas across the whole batch. Section 2 does
+    not, because members reach different distances, so it is walked in bands
+    and each band is evaluated once for exactly the members that reach it.
+    No member is integrated further than it would have been alone, and none
+    pays for a member that reaches further.
+
+    The sum is still taken one member at a time, over that member's own
+    abscissas. Adding the members' contributions in a matrix product instead
+    would reassociate the sum, and the inversion's numerical Jacobian takes
+    differences over a 1e-4 step, so it turns a last-bit change in the
+    forward model into a visible one in the fitted layer.
+    """
+    x_decays = np.asarray(x_decays, dtype=float)
+    x_stop = 18.0 * np.maximum(x_decays, 1.0)
+    t = _table_for(order, float(x_stop.max()))
+    n_panels = np.searchsorted(t["panel_ends"], x_stop) + 1
+    n_panels = np.clip(n_panels, 8, len(t["panel_ends"]))
+    ends = n_panels * 10  # last section 2 abscissa each member integrates to
+
+    s1_nodes, s1_wb = t["s1_nodes"], t["s1_wb"]
+    s2_nodes, s2_wb = t["s2_nodes"], t["s2_wb"]
+    acc = np.empty(len(x_decays), dtype=float)
+    by_reach = np.argsort(ends, kind="stable")
+
+    for group in _reach_groups(ends, by_reach):
+        span = int(ends[group[-1]])  # the furthest reach in this group
+        section1 = g(s1_nodes, group)
+        section2 = np.empty((len(group), span), dtype=float)
+        lo = 0
+        for position, member in enumerate(group):
+            hi = int(ends[member])
+            if hi <= lo:
+                continue  # another member reaches exactly this far
+            reaching = group[position:]
+            section2[position:, lo:hi] = g(s2_nodes[lo:hi], reaching)
+            lo = hi
+        for position, member in enumerate(group):
+            k = int(ends[member])
+            acc[member] = float(np.dot(section1[position], s1_wb)) + float(
+                np.dot(section2[position, :k], s2_wb[:k])
+            )
     return acc
+
+
+def _reach_groups(ends: np.ndarray, by_reach: np.ndarray):
+    """Members in reach order, split so no group's buffer exceeds the cap."""
+    if not len(by_reach):
+        return
+    start = 0
+    for position in range(1, len(by_reach)):
+        # the buffer is sized by the group's furthest member, which in reach
+        # order is whichever one is added last
+        if (position - start + 1) * int(
+            ends[by_reach[position]]
+        ) > _BATCH_ABSCISSA_CAP:
+            yield by_reach[start:position]
+            start = position
+    yield by_reach[start:]
 
 
 def forward_schlumberger(
@@ -175,26 +255,36 @@ def forward_schlumberger(
     """Ideal (gradient) Schlumberger apparent resistivity at AB/2 values."""
     rho, h = _model_arrays(model)
     ab2 = np.atleast_1d(np.asarray(ab2, dtype=float))
-    h_min = float(np.min(h)) if len(h) else 1.0
-    out = np.empty_like(ab2)
-    for i, L in enumerate(ab2):
-        # substitute x = lambda L: rho_a = rho1 + Int (T(x/L) - rho1) J1(x) x dx
-        # (the L^2 prefactor cancels against the 1/L^2 from the substitution)
-        def g(x, L=L):
-            return (resistivity_transform(x / L, rho, h) - rho[0]) * x
+    h_min = float(h[0]) if len(h) else 1.0
+    # substitute x = lambda L: rho_a = rho1 + Int (T(x/L) - rho1) J1(x) x dx
+    # (the L^2 prefactor cancels against the 1/L^2 from the substitution)
+    def g(x, rows):
+        lam = x[None, :] / ab2[rows][:, None]
+        integrand = resistivity_transform(lam, rho, h)
+        integrand -= rho[0]
+        integrand *= x[None, :]
+        return integrand
 
-        # (T - rho1) decays like exp(-2 lambda h_min) = exp(-x / (L / (2 h_min)))
-        out[i] = rho[0] + _hankel_integral(g, 1, L / (2.0 * max(h_min, _MIN_DECAY_H)))
-    return out
+    # (T - rho1) decays like exp(-2 lambda h_min) = exp(-x / (L / (2 h_min)))
+    decay = ab2 / (2.0 * max(h_min, _MIN_DECAY_H))
+    return rho[0] + _hankel_integrals(g, 1, decay)
 
 
-def _potential_integral(rho, h, r: float, h_min: float) -> float:
-    """F(r) = Int T(lam) J0(lam r) dlam = (rho1 + Int (T - rho1) J0(x) dx) / r."""
+def _potential_integrals(rho, h, r: np.ndarray, h_min: float) -> np.ndarray:
+    """F(r) = Int T(lam) J0(lam r) dlam, for every radius in ``r`` at once.
 
-    def g(x, r=r):
-        return resistivity_transform(x / r, rho, h) - rho[0]
+    ``F(r) = (rho1 + Int (T - rho1) J0(x) dx) / r``.
+    """
+    r = np.atleast_1d(np.asarray(r, dtype=float))
 
-    return (rho[0] + _hankel_integral(g, 0, r / (2.0 * max(h_min, _MIN_DECAY_H)))) / r
+    def g(x, rows):
+        lam = x[None, :] / r[rows][:, None]
+        integrand = resistivity_transform(lam, rho, h)
+        integrand -= rho[0]
+        return integrand
+
+    decay = r / (2.0 * max(h_min, _MIN_DECAY_H))
+    return (rho[0] + _hankel_integrals(g, 0, decay)) / r
 
 
 def forward_schlumberger_finite_mn(
@@ -208,17 +298,24 @@ def forward_schlumberger_finite_mn(
     rho, h = _model_arrays(model)
     ab2 = np.atleast_1d(np.asarray(ab2, dtype=float))
     mn = np.atleast_1d(np.asarray(mn, dtype=float))
-    h_min = float(np.min(h)) if len(h) else 1.0
+    h_min = float(h[0]) if len(h) else 1.0
     out = np.empty_like(ab2)
-    for i, (L, m) in enumerate(zip(ab2, mn)):
-        b = m / 2.0
-        if not np.isfinite(b) or b <= 0 or b >= L:
-            # fall back to the ideal gradient value
-            out[i] = forward_schlumberger((rho, h), np.array([L]))[0]
-            continue
-        f_in = _potential_integral(rho, h, L - b, h_min)
-        f_out = _potential_integral(rho, h, L + b, h_min)
-        out[i] = (L**2 - b**2) / (2.0 * b) * (f_in - f_out)
+
+    b = mn / 2.0
+    usable = np.isfinite(b) & (b > 0) & (b < ab2)
+    if not np.all(usable):
+        # an MN that cannot be used falls back to the ideal gradient value
+        idx = np.nonzero(~usable)[0]
+        out[idx] = forward_schlumberger((rho, h), ab2[idx])
+    if np.any(usable):
+        idx = np.nonzero(usable)[0]
+        L, half = ab2[idx], b[idx]
+        # the inner and outer potential radii of every reading at once
+        f = _potential_integrals(
+            rho, h, np.concatenate([L - half, L + half]), h_min
+        )
+        n = len(idx)
+        out[idx] = (L**2 - half**2) / (2.0 * half) * (f[:n] - f[n:])
     return out
 
 
@@ -226,15 +323,13 @@ def forward_wenner(model: LayeredModel | tuple, a: np.ndarray) -> np.ndarray:
     """Wenner apparent resistivity at spacings a."""
     rho, h = _model_arrays(model)
     a = np.atleast_1d(np.asarray(a, dtype=float))
-    h_min = float(np.min(h)) if len(h) else 1.0
-    out = np.empty_like(a)
-    for i, s in enumerate(a):
-        f1 = _potential_integral(rho, h, s, h_min)
-        f2 = _potential_integral(rho, h, 2.0 * s, h_min)
-        # rho_a = 2 pi a (V_M - V_N)/I; with A and B both contributing,
-        # V_M - V_N = (I/pi) (F(a) - F(2a)), so rho_a = 2 a (F(a) - F(2a)).
-        out[i] = 2.0 * s * (f1 - f2)
-    return out
+    h_min = float(h[0]) if len(h) else 1.0
+    # both radii of every spacing in one quadrature pass
+    f = _potential_integrals(rho, h, np.concatenate([a, 2.0 * a]), h_min)
+    n = len(a)
+    # rho_a = 2 pi a (V_M - V_N)/I; with A and B both contributing,
+    # V_M - V_N = (I/pi) (F(a) - F(2a)), so rho_a = 2 a (F(a) - F(2a)).
+    return 2.0 * a * (f[:n] - f[n:])
 
 
 def forward_for_sounding(
