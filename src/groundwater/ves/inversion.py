@@ -77,6 +77,26 @@ def _forward_columns(thetas, n_layers: int, ab2, array_type: str) -> np.ndarray:
     return np.log(np.maximum(calc, 1e-9)).T
 
 
+JACOBIAN_STEP = 1e-4
+
+
+def _jacobian(theta, res, log_obs, n_layers: int, ab2, array_type: str):
+    """Forward-difference Jacobian in log space, one column per parameter.
+
+    Returned C-ordered, which is not incidental: the caller forms
+    ``J.T @ J``, and that dispatches on memory layout. The columns arrive
+    here from a transpose, so leaving the result F-ordered sends the
+    product down a different path through BLAS, and it rounds differently.
+    Over sixty iterations that is a different fitted layer, not a different
+    last bit.
+    """
+    perturbed = theta[None, :] + np.eye(len(theta)) * JACOBIAN_STEP
+    columns = _forward_columns(perturbed, n_layers, ab2, array_type)
+    return np.ascontiguousarray(
+        (columns - log_obs[:, None] - res[:, None]) / JACOBIAN_STEP
+    )
+
+
 def fit_error_percent(rho_obs: np.ndarray, rho_calc: np.ndarray) -> float:
     rel = (rho_calc - rho_obs) / rho_obs
     return float(np.sqrt(np.mean(rel**2)) * 100.0)
@@ -133,16 +153,7 @@ def invert_model(
         # nudged, so they are taken in one pass over the quadrature rather
         # than one pass each - the same arithmetic, on arrays large enough
         # for numpy to be doing work rather than dispatching.
-        step = 1e-4
-        perturbed = theta[None, :] + np.eye(len(theta)) * step
-        # ascontiguousarray because the columns arrive from a transpose, and
-        # J.T @ J below dispatches on the memory layout: an F-ordered J takes
-        # a different path through BLAS and rounds differently, which over
-        # sixty iterations is a different answer rather than a different bit
-        J = np.ascontiguousarray(
-            (_forward_columns(perturbed, n_layers, ab2, array_type)
-             - log_obs[:, None] - res[:, None]) / step
-        )
+        J = _jacobian(theta, res, log_obs, n_layers, ab2, array_type)
 
         JtJ = J.T @ J
         g = J.T @ res
