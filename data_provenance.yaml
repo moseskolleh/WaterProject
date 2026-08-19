@@ -90,11 +90,15 @@ datasets:
     share_alike: false
     changes_made: >-
       Each chiefdom tagged with its parent district; the merged "Koya" feature
-      split by longitude into two chiefdoms (split_koya_feature).
+      split by longitude into two chiefdoms (split_koya_feature); and the
+      detached eastern part of "Maforki", which sits between Mafindor's two
+      lobes 250 km from Maforki's own body, moved back to Mafindor
+      (reattach_mafindor_part). Left in place it made every water point on
+      that ground count towards Port Loko instead of Kono.
     files:
       - path: src/groundwater/data/sl_chiefdoms_geoboundaries.geojson
-        bytes: 155398
-        sha256: 81ce1355ddacbaf1de1c668c971e27324e4cbde6d19382f75ab11652c2559443
+        bytes: 155391
+        sha256: ffd507189e13c3f802a4067b50391d712f28b4e1087053d94b6ddf053f8dac1a
         derived: true
 
   - id: usgs_geology

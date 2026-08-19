@@ -150,3 +150,78 @@ def test_parse_latlon_round_trips_through_utm():
     back = utm_to_geographic(utm.easting, utm.northing, utm.zone)
     assert abs(back[0] - lat) < 1e-9
     assert abs(back[1] - lon) < 1e-9
+
+
+def test_a_neighbouring_district_is_now_caught():
+    """The boxes interlock, so a wrong district often held the point anyway.
+
+    Samu chiefdom is in Kambia. Its box neighbour Port Loko contains the
+    same point, so stating Port Loko passed the box test and the
+    copy-over error reached the report unflagged.
+    """
+    from groundwater.geo import geographic_to_utm
+    from groundwater.ingestion.checks import districts_containing
+
+    lat, lon = 8.8524, -13.2678  # inside Samu, Kambia
+    assert "Kambia" not in districts_containing(lat, lon), (
+        "the box test has changed; this point no longer demonstrates the gap"
+    )
+    utm = geographic_to_utm(lat, lon)
+    site = SiteMetadata(district="Port Loko", easting=utm.easting,
+                        northing=utm.northing, utm_zone=utm.zone)
+    flags = check_site_consistency(site)
+    assert any(f.code == "district_coordinate_conflict" for f in flags)
+
+
+def test_the_right_district_is_still_not_flagged():
+    from groundwater.geo import geographic_to_utm
+
+    lat, lon = 8.8524, -13.2678  # Samu, Kambia
+    utm = geographic_to_utm(lat, lon)
+    site = SiteMetadata(district="Kambia", easting=utm.easting,
+                        northing=utm.northing, utm_zone=utm.zone)
+    assert not any(f.code == "district_coordinate_conflict"
+                   for f in check_site_consistency(site))
+
+
+def test_a_province_name_is_not_a_wrong_district():
+    """"Western Area" is the province over Urban and Rural. A sheet that
+    says only that has not said which, so a point in either is consistent.
+    """
+    from groundwater.ingestion.checks import _candidate_districts
+
+    assert set(_candidate_districts("Western Area")) == {
+        "Western Area Urban", "Western Area Rural"
+    }
+    # one point verified in each of the two, so the test proves both are
+    # accepted rather than that one of them happens to be picked
+    for easting, northing in (
+        (690668, 936835),  # West III, Western Area Urban
+        (693254, 895457),  # York Rural, Western Area Rural
+    ):
+        site = SiteMetadata(district="Western Area", easting=easting,
+                            northing=northing, utm_zone=28)
+        assert not any(f.code == "district_coordinate_conflict"
+                       for f in check_site_consistency(site)), (easting, northing)
+
+
+def test_a_post_2017_district_is_understood():
+    """Karene and Falaba have no polygon of their own; the crosswalk
+    places a point in them through its chiefdoms."""
+    from groundwater.ingestion.checks import district_of_coordinates
+
+    assert district_of_coordinates(9.0978, -10.8449) == "Falaba"
+
+
+def test_a_point_outside_every_chiefdom_falls_back_to_the_boxes():
+    """Offshore, or in the gap a simplified coastline leaves, the polygons
+    have no answer and must not be read as a conflict on their own."""
+    from groundwater.ingestion.checks import district_of_coordinates
+
+    assert district_of_coordinates(8.20, -13.45) is None  # offshore
+    site = SiteMetadata(district="Western Area Urban", easting=690000,
+                        northing=907000, utm_zone=28)
+    flags = check_site_consistency(site)
+    conflict = [f for f in flags if f.code == "district_coordinate_conflict"]
+    if conflict:
+        assert "approximate district extents" in conflict[0].message

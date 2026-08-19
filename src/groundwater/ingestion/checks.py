@@ -6,10 +6,22 @@ report states "Port Loko" for a sounding whose coordinates fall in the
 Western Area). These checks flag such conflicts before they reach a
 report.
 
-District extents are approximate bounding boxes bundled with the
-package (``data/sl_districts.csv``); they are meant to catch gross
-copy-over errors, not to adjudicate points near district boundaries.
-A configurable buffer keeps borderline points from being flagged.
+Where a point falls is decided by the bundled chiefdom polygons
+(``data/sl_chiefdoms_geoboundaries.geojson``) and the chiefdom ->
+current-district crosswalk, the same route
+:mod:`groundwater.coverage` uses to place a water point. The bounding
+boxes in ``data/sl_districts.csv`` remain as the fallback for a point
+outside every chiefdom - a coastal, border or offshore position - with
+a buffer so a borderline point is not flagged.
+
+The boxes were the whole test once, and they were too coarse to do the
+job this module exists for. Sierra Leone's districts interlock, so 35
+of the 120 box pairs overlap, and a box big enough to hold a district
+holds a good deal of its neighbours too. Measured over 166 points each
+verified inside its own chiefdom, 178 of the 2,490 possible
+wrong-district statements - about one in fourteen - sat inside the
+stated district's box and went unflagged. The polygons miss none of
+them.
 """
 
 from __future__ import annotations
@@ -66,21 +78,69 @@ def districts() -> dict[str, dict]:
     return _DISTRICTS
 
 
-def _normalise_district(name: str) -> str | None:
-    """Map a stated district name onto the lookup table."""
+def _candidate_districts(name: str) -> list[str]:
+    """Every district a stated name could mean.
+
+    Sheets do not always name a district. "Western Area" is the province
+    over Western Area Urban and Western Area Rural, and a sheet that says
+    only that has not said which - so both are returned and a point in
+    either is consistent with what was written.
+
+    Resolving to one of them instead, as this did while the check was
+    made against bounding boxes, is a guess. The boxes overlap enough to
+    hide it; polygons do not, and the guess surfaces as a conflict
+    reported against a sheet that was never wrong.
+    """
     key = name.strip().lower()
     if not key:
-        return None
+        return []
     table = districts()
     if key in table:
-        return key
+        return [table[key]["district"]]
     # "Western Area" without urban/rural, "Western Urban", abbreviations
-    candidates = [k for k in table if key in k or k in key]
-    if candidates:
-        return candidates[0]
+    hits = [table[k]["district"] for k in table if key in k or k in key]
+    if hits:
+        return hits
     if "western" in key:
-        return "western area rural"
-    return None
+        return [table["western area urban"]["district"],
+                table["western area rural"]["district"]]
+    return []
+
+
+def _normalise_district(name: str) -> str | None:
+    """The lookup key for a stated district name, when it names just one."""
+    candidates = _candidate_districts(name)
+    if len(candidates) != 1:
+        return None
+    return candidates[0].strip().lower()
+
+
+_CHIEFDOM_INDEX: tuple | None = None
+
+
+def _chiefdom_index() -> tuple:
+    """The chiefdom polygons and their crosswalk, parsed once."""
+    global _CHIEFDOM_INDEX
+    if _CHIEFDOM_INDEX is None:
+        from ..coverage import load_chiefdom_district, load_chiefdom_polys
+
+        _CHIEFDOM_INDEX = (load_chiefdom_polys(), load_chiefdom_district())
+    return _CHIEFDOM_INDEX
+
+
+def district_of_coordinates(lat: float, lon: float) -> str | None:
+    """The district a point actually falls in, or ``None`` outside them all.
+
+    Point -> chiefdom -> current district, so the answer covers Karene and
+    Falaba even though the district boundary release predates them.
+    ``None`` is not "nowhere": it is a point offshore, across the border,
+    or in the gap simplified boundaries leave along the coast, and the
+    caller falls back to the boxes rather than treating it as a conflict.
+    """
+    from ..coverage import district_of_point
+
+    polys, crosswalk = _chiefdom_index()
+    return district_of_point(lat, lon, polys, crosswalk) or None
 
 
 def districts_containing(lat: float, lon: float, buffer_deg: float = _BUFFER_DEG) -> list[str]:
@@ -132,8 +192,8 @@ def check_site_consistency(site: SiteMetadata, context: str = "") -> list[DataFl
         )
         return flags
 
-    stated = _normalise_district(site.district)
-    if site.district and stated is None:
+    stated = _candidate_districts(site.district)
+    if site.district and not stated:
         flags.append(
             DataFlag(
                 "warning",
@@ -143,22 +203,35 @@ def check_site_consistency(site: SiteMetadata, context: str = "") -> list[DataFl
                 ctx,
             )
         )
-    elif stated is not None:
-        box = districts()[stated]
-        inside = (
-            box["lon_min"] - _BUFFER_DEG <= lon <= box["lon_max"] + _BUFFER_DEG
-            and box["lat_min"] - _BUFFER_DEG <= lat <= box["lat_max"] + _BUFFER_DEG
-        )
-        if not inside:
+    elif stated:
+        actual = district_of_coordinates(lat, lon)
+        if actual is not None:
+            inside = actual in stated
+            likely = [actual]
+            note = ""
+        else:
+            # Outside every chiefdom: offshore, across the border, or in the
+            # gap a simplified coastline leaves. The boxes are all there is.
+            boxes = [b for b in districts().values() if b["district"] in stated]
+            inside = any(
+                b["lon_min"] - _BUFFER_DEG <= lon <= b["lon_max"] + _BUFFER_DEG
+                and b["lat_min"] - _BUFFER_DEG <= lat <= b["lat_max"] + _BUFFER_DEG
+                for b in boxes
+            )
             likely = districts_containing(lat, lon)
+            note = (
+                " The point lies outside every mapped chiefdom, so this was "
+                "judged on approximate district extents."
+            )
+        if not inside:
             hint = f" The point falls in {', '.join(likely)}." if likely else ""
             flags.append(
                 DataFlag(
                     "warning",
                     "district_coordinate_conflict",
                     f"Stated district '{site.district}' does not contain the "
-                    f"coordinates ({_fmt_latlon(lat, lon)}).{hint} District "
-                    "extents are approximate; verify against the field notes.",
+                    f"coordinates ({_fmt_latlon(lat, lon)}).{hint}{note} "
+                    "Verify against the field notes.",
                     ctx,
                 )
             )
