@@ -1,5 +1,6 @@
 """Maps and GIS export: site location, iso-resistivity, overburden,
-regional geological setting and administrative location."""
+regional geological setting, administrative location, and the survey as
+an interactive GeoLibre project file."""
 
 from .maps import (
     site_location_map,
@@ -29,6 +30,16 @@ from .regional import (
     plot_portfolio_map,
 )
 from .export import export_geojson, export_gpkg
+from . import geolibre
+from .geolibre import (
+    GEOLIBRE_WEB_APP,
+    build_project,
+    data_link,
+    portfolio_project,
+    project_link,
+    site_project,
+    write_project,
+)
 
 __all__ = [
     "site_location_map",
@@ -56,4 +67,12 @@ __all__ = [
     "plot_portfolio_map",
     "export_geojson",
     "export_gpkg",
+    "geolibre",
+    "GEOLIBRE_WEB_APP",
+    "build_project",
+    "data_link",
+    "portfolio_project",
+    "project_link",
+    "site_project",
+    "write_project",
 ]

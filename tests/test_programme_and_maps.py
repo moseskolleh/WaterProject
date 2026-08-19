@@ -283,3 +283,52 @@ def test_metres_reconciliation_boundaries():
     assert over.passed is False and "withhold" in over.message
     under = metres_reconciliation_check(60, 50)
     assert under.passed is True and "covers all completed work" in under.message
+
+
+def test_a_report_never_writes_figures_outside_the_directory_it_was_given(tmp_path,
+                                                                         monkeypatch):
+    """No builder may drop a PNG into the process working directory.
+
+    The figures directory used to default to ``Path(".")``, so a report built
+    without one scattered maps and charts wherever the process happened to be
+    running - which is how three location maps ended up committed at the root
+    of this repository.
+    """
+    from groundwater.costing import CostingInputs, estimate_borehole_cost
+    from groundwater.reporting.costing import CostReportInputs, build_cost_report
+    from groundwater.reporting.supervision import (
+        SupervisionReportInputs,
+        build_supervision_report,
+    )
+    from groundwater.supervision.checklists import (
+        evaluate_checklist,
+        load_checklists,
+    )
+
+    cwd = tmp_path / "cwd"
+    cwd.mkdir()
+    monkeypatch.chdir(cwd)
+    out = tmp_path / "out"
+    out.mkdir()
+
+    site = SiteMetadata(community="Kuntolo", district="Bombali")
+    items = load_checklists()
+    build_supervision_report(
+        SupervisionReportInputs(site=site, items=items, responses={},
+                                assessment=evaluate_checklist(items, {})),
+        out / "supervision.docx",
+    )
+    build_cost_report(
+        CostReportInputs(
+            estimate=estimate_borehole_cost(CostingInputs(total_depth_m=60)),
+            site=site,
+        ),
+        out / "cost.docx",
+    )
+
+    assert list(cwd.iterdir()) == [], (
+        "a report wrote into the working directory: "
+        + ", ".join(p.name for p in cwd.iterdir())
+    )
+    assert (out / "supervision.docx").exists()
+    assert any(p.suffix == ".png" for p in out.iterdir())

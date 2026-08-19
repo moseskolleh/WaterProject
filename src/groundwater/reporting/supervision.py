@@ -23,6 +23,7 @@ from ..supervision.checklists import (
 )
 from ..supervision.field_checks import FieldCheck
 from .citations import GLOSSARY, references_for
+from .context import _figures_dir
 from .docx_utils import ReportBuilder
 from .context import add_area_section
 
@@ -50,8 +51,10 @@ class SupervisionReportInputs:
     #: works are accepted or rejected against.
     field_checks: list[FieldCheck] = field(default_factory=list)
     #: Where the location map is written. A supervision record is a record
-    #: of a place as much as of a checklist, so it carries one.
-    figures_dir: Path = Path(".")
+    #: of a place as much as of a checklist, so it carries one. Left unset,
+    #: the figures go beside the document rather than into whatever
+    #: directory the process happens to be running in.
+    figures_dir: Path | None = None
     #: :class:`~groundwater.readiness.Readiness` for this report, from
     #: :func:`groundwater.readiness.assess_readiness`. When it is not
     #: certifiable the cover carries a PROVISIONAL stamp listing why.
@@ -110,8 +113,8 @@ def build_supervision_report(
         rb.paragraph("Critical items that failed:", bold=True)
         rb.bullets([f"{f.context}: {f.message}" for f in critical])
 
-    add_area_section(rb, site, Path(inputs.figures_dir), config.style,
-                     heading="1.1 Location and setting")
+    add_area_section(rb, site, _figures_dir(inputs.figures_dir, out_path),
+                     config.style, heading="1.1 Location and setting")
 
     # ---- 2 checklists -----------------------------------------------------
     rb.heading("2. Checklist Record", 1)

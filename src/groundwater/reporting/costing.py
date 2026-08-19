@@ -20,15 +20,17 @@ from ..costing.programme import ProgrammeEstimate
 from ..models import SiteMetadata
 from ..utils import fmt_num
 from .citations import GLOSSARY, references_for
+from .context import _figures_dir, add_area_section
 from .docx_utils import ReportBuilder
-from .context import add_area_section
 
 
 @dataclass
 class CostReportInputs:
     estimate: CostEstimate
     site: SiteMetadata | None = None
-    figures_dir: Path = Path(".")
+    #: Left unset, the figures go beside the document rather than into
+    #: whatever directory the process happens to be running in.
+    figures_dir: Path | None = None
     prepared_by: str = ""
     #: The package roll-up from
     #: :func:`groundwater.costing.estimate_programme_cost`. A programme is
@@ -50,8 +52,7 @@ def build_cost_report(
     config = config or Config()
     estimate = inputs.estimate
     site = inputs.site or SiteMetadata()
-    figures = Path(inputs.figures_dir)
-    figures.mkdir(parents=True, exist_ok=True)
+    figures = _figures_dir(inputs.figures_dir, out_path)
 
     rb = ReportBuilder(
         config.style,

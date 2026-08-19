@@ -98,6 +98,18 @@ water quality guidelines.
     borehole nobody has reported on is unknown, not functional, and the
     functionality rate is only ever computed over the points whose
     condition is actually known
+18. The survey as an interactive map, not only as a picture: both apps
+    write a [GeoLibre](https://geolibre.app) project file - an open,
+    plain-JSON map format - carrying the site, the scored drill targets,
+    any water points found nearby and the geology, aquifer and chiefdom
+    layers around it, styled, framed and with each layer's attribution
+    inside it. It opens in GeoLibre's web, desktop and phone apps and in
+    a Jupyter notebook, where it can be panned, clicked and put over
+    satellite imagery. Building it needs nothing new: the format is JSON,
+    the geometry is the GeoJSON already exported, and the file is
+    assembled offline. It opens on a blank background rather than a
+    basemap, because switching one on is a request to the network and
+    that is the operator's decision to make
 
 ## Try it online
 
@@ -226,7 +238,8 @@ groundwater/
                   calculators (depreciation, wear, loans), Excel export
     supervision/  stage checklists, separation distances and numeric
                   field acceptance checks
-    mapping/      site maps, iso-resistivity and overburden maps, GIS export
+    mapping/      site maps, iso-resistivity and overburden maps, GIS export,
+                  GeoLibre project files
     reporting/    house-styled .docx builders, one per document
     extraction/   scanned sheet extraction with review flagging
     readiness.py  the certification gate: per-report requirements, overrides

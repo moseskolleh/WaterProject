@@ -23,7 +23,7 @@ from pathlib import Path
 from ..config import Config
 from ..models import SiteMetadata
 from ..procurement import Certificate, Contract, contract_summary
-from .context import add_area_section
+from .context import _figures_dir, add_area_section
 from .docx_utils import ReportBuilder
 
 __all__ = ["PaymentCertificateInputs", "build_payment_certificate"]
@@ -36,10 +36,11 @@ class PaymentCertificateInputs:
     prepared_by: str = ""
     prepared_role: str = "Supervising engineer"
     readiness: Any = None
-    #: The works being paid for are at a place. Supply the site and a
-    #: figures directory and the certificate carries a map of it.
+    #: The works being paid for are at a place. Supply the site and the
+    #: certificate carries a map of it; the figures go beside the document
+    #: unless a directory is named.
     site: SiteMetadata | None = None
-    figures_dir: Path = Path(".")
+    figures_dir: Path | None = None
 
 
 def build_payment_certificate(inputs: PaymentCertificateInputs,
@@ -66,7 +67,8 @@ def build_payment_certificate(inputs: PaymentCertificateInputs,
         rb.bullets(certificate.problems)
 
     if inputs.site is not None:
-        add_area_section(rb, inputs.site, Path(inputs.figures_dir),
+        add_area_section(rb, inputs.site,
+                         _figures_dir(inputs.figures_dir, out_path),
                          config.style if config else None,
                          heading="Where the works are")
 

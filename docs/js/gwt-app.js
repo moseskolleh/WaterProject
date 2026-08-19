@@ -1156,10 +1156,72 @@
         ]),
       ]),
 
+      card('Interactive map', [
+        el('p.muted', 'The maps above are pictures, which is what a report ' +
+          'needs. This writes the same survey as a GeoLibre project file — an ' +
+          'open, plain-JSON map format — so it can be panned, zoomed, clicked ' +
+          'and put over satellite imagery instead. GeoLibre is free and open ' +
+          'source, and the file opens in its web app, its desktop app, its ' +
+          'phone apps and in a Jupyter notebook. Nothing is uploaded: the ' +
+          'project is assembled in this page and saved to this machine.'),
+        el('div.btn-row', [
+          button('Save GeoLibre project', function () {
+            saveGeolibreProject();
+          }, { variant: 'primary' }),
+          el('a.btn.btn-ghost', {
+            href: GWT.geolibre.WEB_APP, target: '_blank', rel: 'noopener',
+          }, 'Open GeoLibre'),
+        ]),
+        el('p.muted', 'Open GeoLibre and use Project → Open on the saved file, ' +
+          'or drag it onto the map. A file on this machine has no address, so ' +
+          'there is no link that can carry it; publish the project somewhere ' +
+          'and it opens directly from a link.'),
+        el('p.muted', 'The project opens on a blank background rather than a ' +
+          'basemap: switching one on is the first request it makes to the ' +
+          'network, and that is your decision rather than this app\'s. Layer ' +
+          'attributions travel inside the file — the aquifer layer is ' +
+          'CC BY-SA 4.0, so a project carrying it inherits ShareAlike.'),
+      ]),
+
       nextStep('With the site recorded, upload the geophysical survey to choose ' +
         'the drilling point.', 'Geophysics', 'ves'),
     ];
   };
+
+  /* Everything a GeoLibre project needs is already in the page: the site,
+   * the drill targets scored from the soundings, any water points that have
+   * been loaded, and the bundled boundary, geology and aquifer layers. This
+   * gathers them; gwt-geolibre.js knows what to do with them. */
+  function saveGeolibreProject() {
+    var latlon = siteLatLon();
+    /* Without a position there is nothing to open on, and the bundled
+     * geology and boundary layers alone would write a megabyte of Sierra
+     * Leone with the site missing from it. */
+    if (!latlon) {
+      S.toast('Enter the site coordinates first — a project with no position ' +
+        'has nothing to centre on.', 'warn');
+      return;
+    }
+    var site = store.get('site') || {};
+    var geo = GWT.data.geo || {};
+    var interpretations = (derived || {}).interpretations || [];
+    var zone = site.utm_zone ||
+      (site.easting ? C.inferZoneForSierraLeone(site.easting) : null);
+    var project = GWT.geolibre.saveForSite({
+      community: site.community, chiefdom: site.chiefdom,
+      district: site.district, client: site.client, project: site.project,
+      lat: latlon.lat, lon: latlon.lon, zone: zone,
+      /* Scores are in projected metres. Without a zone they cannot be
+       * placed, and guessing one puts half the country in the Atlantic. */
+      suitability: (interpretations.length && zone != null)
+        ? C.assessSiting(interpretations, config().ves) : null,
+      waterPoints: (derived || {}).waterPoints || null,
+      chiefdoms: geo.chiefdomBoundaries, geology: geo.geology,
+      hydrogeology: geo.hydrogeology,
+      windowKm: Number(store.get('site.mapRadiusKm')) || 40,
+    });
+    S.toast(project.layers.length + ' layers saved as a GeoLibre project.', 'ok');
+  }
 
   /* Sierra Leone lies in UTM zones 28N and 29N; the easting alone identifies
    * the zone, so it is inferred rather than guessed. A pair of small numbers is

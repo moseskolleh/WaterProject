@@ -19,6 +19,23 @@ from ..mapping import (
 from ..models import SiteMetadata
 
 
+def _figures_dir(figures_dir, out_path) -> Path:
+    """Where a report's figures belong.
+
+    A default of ``Path(".")`` meant a report built without one dropped its
+    PNGs into whatever directory the process was started in - a user's home,
+    a CI checkout, the repository root. The directory holding the document is
+    always known by the time anything is drawn, and is where someone looking
+    for the figures would look.
+    """
+    if figures_dir is not None:
+        figures = Path(figures_dir)
+    else:
+        figures = Path(out_path).parent
+    figures.mkdir(parents=True, exist_ok=True)
+    return figures
+
+
 def context_map_figures(
     site: SiteMetadata | None,
     figures_dir: str | Path,
