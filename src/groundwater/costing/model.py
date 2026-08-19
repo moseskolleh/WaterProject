@@ -25,12 +25,12 @@ from __future__ import annotations
 import csv
 import math
 from dataclasses import dataclass, field
-from importlib import resources
 from pathlib import Path
 from typing import Optional
 
 from ..models import DataFlag
 from ..utils import fmt_num
+from .._resources import bundled_text, cache_bundled
 
 # Canonical stage order for tables and charts (the six RWSN cost
 # components, with development and test pumping kept separate and the
@@ -72,14 +72,14 @@ class RateItem:
     note: str = ""
 
 
+@cache_bundled
 def load_rates(path: str | Path | None = None) -> list[RateItem]:
-    """Load the unit rate catalogue (bundled CSV unless a path is given)."""
-    if path is not None:
-        text = Path(path).read_text(encoding="utf-8")
-    else:
-        text = (
-            resources.files("groundwater") / "data" / "borehole_cost_items.csv"
-        ).read_text(encoding="utf-8")
+    """Load the unit rate catalogue (bundled CSV unless a path is given).
+
+    The bundled catalogue is parsed once per process and shared; treat the
+    result as read-only. Editing a rate builds a new :class:`RateItem`.
+    """
+    text = bundled_text("borehole_cost_items.csv", path)
     rates: list[RateItem] = []
     for row in csv.DictReader(text.splitlines()):
         rates.append(

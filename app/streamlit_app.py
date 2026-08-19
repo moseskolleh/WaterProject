@@ -95,8 +95,6 @@ from groundwater.coverage import (
     POPULATION_CREDIT,
     chiefdom_coverage_rows,
     chiefdom_population,
-    count_points_by_chiefdom,
-    count_points_by_district,
     coverage_rows,
     coverage_stats,
     choropleth_values,
@@ -104,6 +102,7 @@ from groundwater.coverage import (
     load_chiefdom_district,
     load_chiefdom_polys,
     load_district_population,
+    tally,
 )
 from groundwater.readiness import assess_readiness
 from groundwater.procurement import (
@@ -3685,10 +3684,12 @@ with tab_coverage:
         if chiefdom:
             unit = "chiefdom"
             try:
-                counts, unassigned = count_points_by_chiefdom(
+                # one pass over the polygons: the counts are a tally of the
+                # grouping, and placing the points is the expensive half
+                grouped, unassigned = group_points_by_chiefdom(
                     cov_points, cov_polys()
                 )
-                grouped, _ = group_points_by_chiefdom(cov_points, cov_polys())
+                counts = tally(grouped)
                 chief_pop, members = cov_chiefdom_population()
                 area_population = chief_pop
                 rows = chiefdom_coverage_rows(chief_pop, counts, cov_crosswalk())
@@ -3699,12 +3700,10 @@ with tab_coverage:
                 )
         else:
             unit = "district"
-            counts, unassigned = count_points_by_district(
+            grouped, unassigned = group_points_by_district(
                 cov_points, cov_polys(), cov_crosswalk()
             )
-            grouped, _ = group_points_by_district(
-                cov_points, cov_polys(), cov_crosswalk()
-            )
+            counts = tally(grouped)
             area_population = cov_population()
             rows = coverage_rows(area_population, counts)
     if cov_points and rows is not None:

@@ -1,5 +1,6 @@
 """Water quality assessment against WHO and Sierra Leone standards."""
 
+from .._lazy import lazy_exports as _lazy_exports
 from .standards import (
     PROVISIONAL_NATIONAL_NOTE,
     StandardEntry,
@@ -26,7 +27,6 @@ from .indices import (
     WaterQualityIndex,
     HealthRiskAssessment,
 )
-from .diagrams import plot_piper, plot_stiff
 
 __all__ = [
     "ESSENTIAL_HEALTH_PARAMETERS",
@@ -54,3 +54,23 @@ __all__ = [
     "plot_piper",
     "plot_stiff",
 ]
+
+# Deferred: these pull matplotlib, openpyxl or python-docx, which the
+# analysis half of this package does not need. See groundwater._lazy.
+_LAZY = {
+    "plot_piper": ".diagrams",
+    "plot_stiff": ".diagrams",
+}
+
+# The submodules stayed reachable as attributes of the package while
+# the eager imports bound them; keep that true without importing them.
+_LAZY_MODULES = (
+    "standards",
+    "assess",
+    "ionic",
+    "corrosivity",
+    "indices",
+    "diagrams",
+)
+
+__getattr__, __dir__ = _lazy_exports(__name__, _LAZY, _LAZY_MODULES)

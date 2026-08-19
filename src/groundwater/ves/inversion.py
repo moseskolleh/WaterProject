@@ -22,7 +22,11 @@ import numpy as np
 
 from ..config import VESConfig
 from ..models import LayeredModel, VESSounding
-from .forward import forward_schlumberger, forward_wenner
+from .forward import (
+    forward_schlumberger,
+    forward_schlumberger_models,
+    forward_wenner,
+)
 from .splice import splice_segments
 
 __all__ = ["InversionResult", "invert_model", "invert_sounding"]
@@ -53,6 +57,44 @@ def _forward(rho, h, ab2, array_type: str):
     if array_type.startswith("wenner"):
         return forward_wenner((rho, h), ab2)
     return forward_schlumberger((rho, h), ab2)
+
+
+def _forward_columns(thetas, n_layers: int, ab2, array_type: str) -> np.ndarray:
+    """log(response) for each row of ``thetas``, as columns of one array.
+
+    Schlumberger soundings go through the batched forward model; anything
+    else is walked one row at a time. Either way each column is what
+    ``residuals`` would have produced for that row on its own.
+    """
+    if not array_type.startswith("wenner"):
+        rho = np.exp(thetas[:, :n_layers])
+        h = np.exp(thetas[:, n_layers:])
+        calc = forward_schlumberger_models(rho, h, ab2)
+    else:
+        calc = np.stack([
+            forward_wenner(_unpack(t, n_layers), ab2) for t in thetas
+        ])
+    return np.log(np.maximum(calc, 1e-9)).T
+
+
+JACOBIAN_STEP = 1e-4
+
+
+def _jacobian(theta, res, log_obs, n_layers: int, ab2, array_type: str):
+    """Forward-difference Jacobian in log space, one column per parameter.
+
+    Returned C-ordered, which is not incidental: the caller forms
+    ``J.T @ J``, and that dispatches on memory layout. The columns arrive
+    here from a transpose, so leaving the result F-ordered sends the
+    product down a different path through BLAS, and it rounds differently.
+    Over sixty iterations that is a different fitted layer, not a different
+    last bit.
+    """
+    perturbed = theta[None, :] + np.eye(len(theta)) * JACOBIAN_STEP
+    columns = _forward_columns(perturbed, n_layers, ab2, array_type)
+    return np.ascontiguousarray(
+        (columns - log_obs[:, None] - res[:, None]) / JACOBIAN_STEP
+    )
 
 
 def fit_error_percent(rho_obs: np.ndarray, rho_calc: np.ndarray) -> float:
@@ -106,14 +148,12 @@ def invert_model(
     iterations = 0
     converged = False
     for iterations in range(1, max_iterations + 1):
-        # numerical Jacobian in log space
-        J = np.empty((len(ab2), len(theta)))
-        step = 1e-4
-        for j in range(len(theta)):
-            tp = theta.copy()
-            tp[j] += step
-            rp, _ = residuals(tp)
-            J[:, j] = (rp - res) / step
+        # numerical Jacobian in log space. The columns are the same sounding
+        # against one model per parameter, each with a single parameter
+        # nudged, so they are taken in one pass over the quadrature rather
+        # than one pass each - the same arithmetic, on arrays large enough
+        # for numpy to be doing work rather than dispatching.
+        J = _jacobian(theta, res, log_obs, n_layers, ab2, array_type)
 
         JtJ = J.T @ J
         g = J.T @ res

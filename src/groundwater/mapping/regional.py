@@ -18,11 +18,9 @@ be dropped in without code changes.
 
 from __future__ import annotations
 
-import json
 import math
 import textwrap
 from dataclasses import dataclass, field
-from importlib import resources
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -31,6 +29,8 @@ from matplotlib.patches import PathPatch
 from matplotlib.path import Path as MplPath
 
 from ..config import HouseStyle
+from .._geometry import RingIndex
+from .._resources import bundled_json, cache_bundled
 from ..models import SiteMetadata
 from ..plotting import figure_context, save_figure
 
@@ -92,16 +92,10 @@ def _ring_centroid(ring: np.ndarray) -> tuple[float, float]:
     return float(cx), float(cy)
 
 
-def _read_geojson(name: str, path: str | Path | None) -> dict:
-    if path is not None:
-        text = Path(path).read_text(encoding="utf-8")
-    else:
-        text = (resources.files("groundwater") / "data" / name).read_text(
-            encoding="utf-8"
-        )
-    return json.loads(text)
+_read_geojson = bundled_json
 
 
+@cache_bundled
 def load_geology(path: str | Path | None = None) -> list[GeologyUnit]:
     """The USGS geology polygons for the Sierra Leone window."""
     data = _read_geojson("sl_geology_usgs.geojson", path)
@@ -129,6 +123,7 @@ def load_geology(path: str | Path | None = None) -> list[GeologyUnit]:
     return units
 
 
+@cache_bundled
 def load_hydrogeology(path: str | Path | None = None) -> list[GeologyUnit]:
     """The BGS aquifer type and productivity polygons.
 
@@ -161,6 +156,7 @@ def load_hydrogeology(path: str | Path | None = None) -> list[GeologyUnit]:
     return units
 
 
+@cache_bundled
 def load_admin(path: str | Path | None = None) -> tuple[AdminArea, list[AdminArea]]:
     """The national outline and the district polygons."""
     data = _read_geojson("sl_admin_geoboundaries.geojson", path)
@@ -188,15 +184,16 @@ def load_admin(path: str | Path | None = None) -> tuple[AdminArea, list[AdminAre
     return outline, districts
 
 
-def _point_in_ring(lon: float, lat: float, ring: np.ndarray) -> bool:
-    """Ray casting point-in-polygon test."""
-    inside = False
-    for (x1, y1), (x2, y2) in zip(ring[:-1], ring[1:]):
-        if (y1 > lat) != (y2 > lat):
-            x_cross = x1 + (lat - y1) * (x2 - x1) / (y2 - y1)
-            if lon < x_cross:
-                inside = not inside
-    return inside
+@cache_bundled
+def _district_index(admin_path: str | Path | None = None) -> RingIndex:
+    """Ring index over the district polygons, for the point-in-district test."""
+    return RingIndex(load_admin(admin_path)[1])
+
+
+@cache_bundled
+def _chiefdom_index(path: str | Path | None = None) -> RingIndex:
+    """Ring index over the chiefdom polygons, for the point-in-chiefdom test."""
+    return RingIndex(load_chiefdoms(path))
 
 
 def district_of(
@@ -207,14 +204,11 @@ def district_of(
     Returns an empty string when the point falls outside every
     district (offshore, across the border, or wrong coordinates).
     """
-    _, districts = load_admin(admin_path)
-    for district in districts:
-        for ring in district.rings:
-            if _point_in_ring(lon, lat, ring):
-                return district.name
-    return ""
+    hit = _district_index(admin_path).locate(lon, lat)
+    return hit.name if hit is not None else ""
 
 
+@cache_bundled
 def load_chiefdoms(path: str | Path | None = None) -> list[AdminArea]:
     """The chiefdom (ADM3) polygons, each carrying its parent district.
 
@@ -255,15 +249,8 @@ def chiefdom_of(
     Returns ``(chiefdom, district)`` or ``("", "")`` when the point falls
     outside every chiefdom.
     """
-    for area in load_chiefdoms(path):
-        for i, ring in enumerate(area.rings):
-            if not _point_in_ring(lon, lat, ring):
-                continue
-            inner = area.holes[i] if i < len(area.holes) else []
-            if any(_point_in_ring(lon, lat, hole) for hole in inner):
-                continue  # inside an enclave: it belongs to the chiefdom there
-            return area.name, area.district
-    return "", ""
+    hit = _chiefdom_index(path).locate(lon, lat)
+    return (hit.name, hit.district) if hit is not None else ("", "")
 
 
 def _site_lonlat(site: SiteMetadata) -> tuple[float, float] | None:

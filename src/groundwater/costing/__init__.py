@@ -5,6 +5,7 @@ tagged by construction stage and resource category, cost kept apart
 from price, and an editable unit rate catalogue.
 """
 
+from .._lazy import lazy_exports as _lazy_exports
 from .model import (
     DEFAULT_EXCHANGE_RATE_SLE_PER_USD,
     RESOURCE_CATEGORIES,
@@ -32,8 +33,6 @@ from .enterprise import (
     running_cost_rock_per_m,
 )
 from .programme import ProgrammeEstimate, estimate_programme_cost
-from .plots import plot_cost_breakdown, plot_programme_gantt
-from .export import write_boq_workbook
 
 __all__ = [
     "DEFAULT_EXCHANGE_RATE_SLE_PER_USD",
@@ -64,3 +63,23 @@ __all__ = [
     "running_cost_overburden_per_m",
     "running_cost_rock_per_m",
 ]
+
+# Deferred: these pull matplotlib, openpyxl or python-docx, which the
+# analysis half of this package does not need. See groundwater._lazy.
+_LAZY = {
+    "plot_cost_breakdown": ".plots",
+    "plot_programme_gantt": ".plots",
+    "write_boq_workbook": ".export",
+}
+
+# The submodules stayed reachable as attributes of the package while
+# the eager imports bound them; keep that true without importing them.
+_LAZY_MODULES = (
+    "model",
+    "enterprise",
+    "programme",
+    "plots",
+    "export",
+)
+
+__getattr__, __dir__ = _lazy_exports(__name__, _LAZY, _LAZY_MODULES)

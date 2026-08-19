@@ -32,12 +32,13 @@ import io
 import json
 import math
 from dataclasses import dataclass, field
-from importlib import resources
 from pathlib import Path
 from typing import Iterable
 
 import numpy as np
 
+from ._geometry import RingIndex
+from ._resources import bundled_text, cache_bundled
 from .waterpoints import WaterPoint
 
 POPULATION_CREDIT = (
@@ -60,40 +61,15 @@ class ChiefdomPoly:
     holes: list[list[np.ndarray]] = field(default_factory=list)
 
 
-def _resource_text(name: str, path: str | Path | None) -> str:
-    if path is not None:
-        return Path(path).read_text(encoding="utf-8")
-    return (resources.files("groundwater") / "data" / name).read_text(
-        encoding="utf-8"
-    )
+_resource_text = bundled_text
 
 
-def _point_in_ring(lon: float, lat: float, ring: np.ndarray) -> bool:
-    """Ray-casting point-in-polygon test (matches mapping.regional)."""
-    inside = False
-    for (x1, y1), (x2, y2) in zip(ring[:-1], ring[1:]):
-        if (y1 > lat) != (y2 > lat):
-            x_cross = x1 + (lat - y1) * (x2 - x1) / (y2 - y1)
-            if lon < x_cross:
-                inside = not inside
-    return inside
+def _chiefdom_index(polys: list["ChiefdomPoly"]) -> RingIndex:
+    """Ring index over chiefdom polygons, reusing the bounding boxes they carry."""
+    return RingIndex(polys, boxes=[p.bboxes for p in polys])
 
 
-
-def _poly_contains(poly: "ChiefdomPoly", lon: float, lat: float) -> bool:
-    """Point in a chiefdom, honouring enclaves cut out of it."""
-    for i, (ring, (x0, y0, x1, y1)) in enumerate(zip(poly.rings, poly.bboxes)):
-        if not (x0 <= lon <= x1 and y0 <= lat <= y1):
-            continue
-        if not _point_in_ring(lon, lat, ring):
-            continue
-        inner = poly.holes[i] if i < len(poly.holes) else []
-        if any(_point_in_ring(lon, lat, hole) for hole in inner):
-            continue  # inside an enclave: it belongs to the chiefdom there
-        return True
-    return False
-
-
+@cache_bundled
 def load_district_population(path: str | Path | None = None) -> dict[str, float]:
     """District -> resident population (2015 census)."""
     text = _resource_text("sl_population_district.csv", path)
@@ -103,6 +79,7 @@ def load_district_population(path: str | Path | None = None) -> dict[str, float]
     return out
 
 
+@cache_bundled
 def load_chiefdom_district(path: str | Path | None = None) -> dict[str, str]:
     """Chiefdom name -> current district (the reconciliation crosswalk)."""
     text = _resource_text("sl_chiefdom_district.csv", path)
@@ -112,6 +89,7 @@ def load_chiefdom_district(path: str | Path | None = None) -> dict[str, str]:
     }
 
 
+@cache_bundled
 def load_chiefdom_polys(path: str | Path | None = None) -> list[ChiefdomPoly]:
     """Chiefdom polygons from the bundled geoBoundaries layer."""
     data = json.loads(_resource_text("sl_chiefdoms_geoboundaries.geojson", path))
@@ -140,6 +118,29 @@ def load_chiefdom_polys(path: str | Path | None = None) -> list[ChiefdomPoly]:
     return polys
 
 
+def tally(
+    grouped: dict[str, list[WaterPoint]]
+) -> dict[str, dict[str, int]]:
+    """Total and functional counts from points already placed in areas.
+
+    Placing points is the expensive half - every point walked against the
+    chiefdom polygons - and counting them is free once it is done. A caller
+    that wants both used to ask for each separately and pay for the walk
+    twice.
+
+    Nothing is assumed working: only ``functional is True`` counts, so a
+    point nobody has surveyed stays in the total and out of the functional
+    figure.
+    """
+    return {
+        name: {
+            "total": len(points),
+            "functional": sum(1 for wp in points if wp.functional is True),
+        }
+        for name, points in grouped.items()
+    }
+
+
 def district_of_point(
     lat: float, lon: float, polys: list[ChiefdomPoly], chiefdom_district: dict[str, str]
 ) -> str:
@@ -148,10 +149,8 @@ def district_of_point(
     Returns "" when the point falls outside every chiefdom (border, offshore,
     or a bad coordinate).
     """
-    for poly in polys:
-        if _poly_contains(poly, lon, lat):
-            return chiefdom_district.get(poly.name, "")
-    return ""
+    hit = _chiefdom_index(polys).locate(lon, lat)
+    return chiefdom_district.get(hit.name, "") if hit is not None else ""
 
 
 def count_points_by_district(
@@ -164,18 +163,8 @@ def count_points_by_district(
     Returns ``({district: {"total": int, "functional": int}}, unassigned)``
     where ``unassigned`` holds points inside no chiefdom (never dropped).
     """
-    counts: dict[str, dict[str, int]] = {}
-    unassigned: list[WaterPoint] = []
-    for wp in points:
-        district = district_of_point(wp.lat, wp.lon, polys, chiefdom_district)
-        if not district:
-            unassigned.append(wp)
-            continue
-        bucket = counts.setdefault(district, {"total": 0, "functional": 0})
-        bucket["total"] += 1
-        if wp.functional is True:
-            bucket["functional"] += 1
-    return counts, unassigned
+    grouped, unassigned = group_points_by_district(points, polys, chiefdom_district)
+    return tally(grouped), unassigned
 
 
 def group_points_by_district(
@@ -192,8 +181,10 @@ def group_points_by_district(
     """
     grouped: dict[str, list[WaterPoint]] = {}
     unassigned: list[WaterPoint] = []
+    index = _chiefdom_index(polys)
     for wp in points:
-        district = district_of_point(wp.lat, wp.lon, polys, chiefdom_district)
+        hit = index.locate(wp.lon, wp.lat)
+        district = chiefdom_district.get(hit.name, "") if hit is not None else ""
         if not district:
             unassigned.append(wp)
             continue
@@ -207,12 +198,13 @@ def group_points_by_chiefdom(
     """The points themselves per chiefdom polygon."""
     grouped: dict[str, list[WaterPoint]] = {}
     unassigned: list[WaterPoint] = []
+    index = _chiefdom_index(polys)
     for wp in points:
-        chiefdom = chiefdom_of_point(wp.lat, wp.lon, polys)
-        if not chiefdom:
+        hit = index.locate(wp.lon, wp.lat)
+        if hit is None:
             unassigned.append(wp)
             continue
-        grouped.setdefault(chiefdom, []).append(wp)
+        grouped.setdefault(hit.name, []).append(wp)
     return grouped, unassigned
 
 
@@ -322,6 +314,7 @@ class ChiefdomRow:
         return f"{self.people_per_point:,.0f} people per functional point"
 
 
+@cache_bundled
 def load_census_crosswalk(
     path: str | Path | None = None,
 ) -> dict[tuple[str, str], str]:
@@ -336,6 +329,7 @@ def load_census_crosswalk(
     }
 
 
+@cache_bundled
 def chiefdom_population(
     census_path: str | Path | None = None,
     crosswalk_path: str | Path | None = None,
@@ -373,28 +367,16 @@ def chiefdom_of_point(
     lat: float, lon: float, polys: list[ChiefdomPoly]
 ) -> str:
     """Chiefdom polygon containing a point, or "" when outside every chiefdom."""
-    for poly in polys:
-        if _poly_contains(poly, lon, lat):
-            return poly.name
-    return ""
+    hit = _chiefdom_index(polys).locate(lon, lat)
+    return hit.name if hit is not None else ""
 
 
 def count_points_by_chiefdom(
     points: Iterable[WaterPoint], polys: list[ChiefdomPoly]
 ) -> tuple[dict[str, dict[str, int]], list[WaterPoint]]:
     """Total and functional water-point counts per chiefdom polygon."""
-    counts: dict[str, dict[str, int]] = {}
-    unassigned: list[WaterPoint] = []
-    for wp in points:
-        chiefdom = chiefdom_of_point(wp.lat, wp.lon, polys)
-        if not chiefdom:
-            unassigned.append(wp)
-            continue
-        bucket = counts.setdefault(chiefdom, {"total": 0, "functional": 0})
-        bucket["total"] += 1
-        if wp.functional is True:
-            bucket["functional"] += 1
-    return counts, unassigned
+    grouped, unassigned = group_points_by_chiefdom(points, polys)
+    return tally(grouped), unassigned
 
 
 def chiefdom_coverage_rows(

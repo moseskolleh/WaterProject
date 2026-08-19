@@ -15,14 +15,15 @@ allowed interval.
 from __future__ import annotations
 
 import csv
+import io
 import re
 from dataclasses import dataclass
-from importlib import resources
 from pathlib import Path
 from typing import Optional
 
 from ..units import _normalise as normalise_unit_text
 from ..units import comparable, convert, parse_unit
+from .._resources import bundled_text, cache_bundled
 
 _RANGE_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*$")
 
@@ -252,15 +253,14 @@ def canonical_values(
     return values
 
 
+@cache_bundled
 def load_standards(path: str | Path | None = None) -> dict[str, StandardEntry]:
-    """Load the standards table keyed by normalised parameter name."""
-    if path is None:
-        source = resources.files("groundwater.data").joinpath("who_guidelines.csv")
-        fh = source.open("r", encoding="utf-8")
-    else:
-        fh = open(path, "r", encoding="utf-8")
-    with fh:
-        rows = list(csv.DictReader(fh))
+    """Load the standards table keyed by normalised parameter name.
+
+    The bundled table is parsed once per process and shared; treat the
+    result as read-only. A ``path`` override is always re-read.
+    """
+    rows = list(csv.DictReader(io.StringIO(bundled_text("who_guidelines.csv", path))))
     table: dict[str, StandardEntry] = {}
     for row in rows:
         entry = StandardEntry(

@@ -15,9 +15,10 @@ A configurable buffer keeps borderline points from being flagged.
 from __future__ import annotations
 
 import csv
-from importlib import resources
+import io
 from typing import Iterable
 
+from .._resources import bundled_text, cache_bundled
 from ..geo import infer_zone_for_sierra_leone, utm_distance_m, utm_to_geographic
 from ..models import DataFlag, SiteMetadata
 
@@ -38,11 +39,10 @@ def _fmt_latlon(lat: float, lon: float) -> str:
     return f"{abs(lat):.4f} {ns}, {abs(lon):.4f} {ew}"
 
 
-def _load_districts() -> dict[str, dict]:
-    with resources.files("groundwater.data").joinpath("sl_districts.csv").open(
-        "r", encoding="utf-8"
-    ) as fh:
-        rows = list(csv.DictReader(fh))
+@cache_bundled
+def districts() -> dict[str, dict]:
+    """District name -> its bounding box and province, parsed once."""
+    rows = csv.DictReader(io.StringIO(bundled_text("sl_districts.csv")))
     return {
         row["district"].strip().lower(): {
             "district": row["district"],
@@ -54,16 +54,6 @@ def _load_districts() -> dict[str, dict]:
         }
         for row in rows
     }
-
-
-_DISTRICTS = None
-
-
-def districts() -> dict[str, dict]:
-    global _DISTRICTS
-    if _DISTRICTS is None:
-        _DISTRICTS = _load_districts()
-    return _DISTRICTS
 
 
 def _normalise_district(name: str) -> str | None:

@@ -8,11 +8,17 @@ from groundwater.ves.forward import (
     forward_for_sounding,
     forward_schlumberger,
     forward_schlumberger_finite_mn,
+    forward_schlumberger_models,
     forward_wenner,
     two_layer_schlumberger_series,
 )
+from groundwater.ves import forward, inversion
 from groundwater.ves.interpret import drilling_preference_table
-from groundwater.ves.inversion import fit_error_percent
+from groundwater.ves.inversion import (
+    _forward_columns,
+    _unpack,
+    fit_error_percent,
+)
 from groundwater.ves.splice import splice_segments
 
 AB2 = np.array([1, 2, 3, 5, 7, 10, 15, 20, 30, 40, 50, 70, 80, 100], dtype=float)
@@ -247,3 +253,98 @@ def test_interpretation_and_preference(rokel_ves_a):
     rows = drilling_preference_table([interp_a, interp_b], preferred_order=["B (2)"])
     ranks = {r["VES Point"]: r["Ranking"] for r in rows}
     assert ranks["B (2)"] == "1st" and ranks["A (1)"] == "2nd"
+
+
+@pytest.mark.parametrize("ab2_max", [80.0, 300.0, 1000.0])
+def test_a_batch_of_models_answers_exactly_as_one_at_a_time(ab2_max):
+    """The batched forward model is the same numbers, not merely close.
+
+    The inversion's Jacobian takes differences over a 1e-4 step, so a
+    last-bit difference here is a different fitted layer sixty iterations
+    later, not a rounding detail. ``ab2_max`` walks the batch across the
+    reach threshold where it stops batching and evaluates one at a time.
+    """
+    rng = np.random.default_rng(19)
+    ab2 = np.geomspace(1.0, ab2_max, 15)
+    for n_layers in (1, 2, 3, 4):
+        rho = np.exp(rng.uniform(np.log(5), np.log(9000), size=(6, n_layers)))
+        # 0.2 m is the inversion's own thickness floor, and the reach it
+        # implies is what the batch has to decide about
+        h = np.exp(rng.uniform(np.log(0.2), np.log(80), size=(6, n_layers - 1)))
+        batched = forward_schlumberger_models(rho, h, ab2)
+        for k in range(len(rho)):
+            alone = forward_schlumberger((rho[k], h[k]), ab2)
+            assert np.array_equal(alone, batched[k])
+
+
+def test_the_batched_jacobian_matches_a_column_by_column_one(rokel_ves_a):
+    """The Jacobian must not depend on how its columns were assembled.
+
+    Including the memory layout. The columns arrive from a transpose, and
+    ``J.T @ J`` in the solver dispatches on layout: an F-ordered J takes a
+    different path through BLAS and rounds differently, which twenty
+    iterations later is a different fitted layer rather than a different
+    last bit. The values alone do not catch that, so the layout is asserted
+    on the array the inversion actually builds.
+    """
+    ab2 = rokel_ves_a.ab2
+    n_layers = 3
+    theta = np.log(np.array([1105.0, 1638.0, 47.3, 1.02, 7.08]))
+    log_obs = np.log(rokel_ves_a.rho_app)
+    res = np.log(
+        np.maximum(forward_schlumberger(_unpack(theta, n_layers), ab2), 1e-9)
+    ) - log_obs
+    step = inversion.JACOBIAN_STEP
+
+    reference = np.empty((len(ab2), len(theta)))
+    for j in range(len(theta)):
+        nudged = theta.copy()
+        nudged[j] += step
+        calc = forward_schlumberger(_unpack(nudged, n_layers), ab2)
+        reference[:, j] = (np.log(np.maximum(calc, 1e-9)) - log_obs - res) / step
+
+    built = inversion._jacobian(
+        theta, res, log_obs, n_layers, ab2, "schlumberger"
+    )
+    assert np.array_equal(reference, built)
+    assert built.flags.c_contiguous
+
+
+def test_batching_does_not_move_the_inversion(rokel_ves_a, monkeypatch):
+    """The fitted model must be the same whether or not the batch was taken.
+
+    Deliberately a comparison and not a pinned number. LAPACK is not bit
+    reproducible across BLAS builds - the same reason the browser build's
+    parity check compares within a tolerance rather than byte for byte - so
+    the last digits of a fitted layer legitimately differ between machines
+    and no absolute value holds everywhere. What holds on every machine is
+    that batching changes nothing on that machine.
+    """
+    batched = invert_sounding(rokel_ves_a)
+    monkeypatch.setattr(forward, "_batchable", lambda *args, **kwargs: False)
+    one_at_a_time = invert_sounding(rokel_ves_a)
+
+    assert np.array_equal(
+        batched.model.resistivities, one_at_a_time.model.resistivities
+    )
+    assert np.array_equal(
+        batched.model.thicknesses, one_at_a_time.model.thicknesses
+    )
+    assert np.array_equal(batched.rho_calc, one_at_a_time.rho_calc)
+    assert batched.fit_error_percent == one_at_a_time.fit_error_percent
+    assert batched.n_iterations == one_at_a_time.n_iterations
+
+
+def test_the_rokel_fit_stays_the_model_the_samples_were_built_from(rokel_ves_a):
+    """A loose pin on the fitted layers, to catch a change of substance.
+
+    The tolerance is deliberate: cross-BLAS variation moves these by about
+    1e-8, so anything tighter fails on somebody else's machine, and the
+    kind of mistake worth catching here - a different layer count, a layer
+    an order of magnitude out - is nowhere near that small.
+    """
+    result = invert_sounding(rokel_ves_a)
+    assert result.fit_error_percent == pytest.approx(13.3468506, rel=1e-6)
+    assert list(result.model.resistivities) == pytest.approx(
+        [1105.5107779, 1637.7603910, 47.2797656], rel=1e-6
+    )
