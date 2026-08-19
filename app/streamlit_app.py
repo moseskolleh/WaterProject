@@ -16,6 +16,7 @@ from __future__ import annotations
 import html as _html
 import sys
 import tempfile
+from string import Template
 from pathlib import Path
 
 # Always import the groundwater package from the repository checkout
@@ -34,7 +35,7 @@ import streamlit.components.v1 as components
 import yaml
 
 import groundwater
-from groundwater.config import Config
+from groundwater.config import Config, HouseStyle
 from groundwater.costing import (
     CostingInputs,
     RateItem,
@@ -211,20 +212,45 @@ st.set_page_config(
 )
 
 # Design language (from the "Groundwater Toolkit Redesign" study, direction
-# 1b "Project Workspace"): warm paper canvas, white result cards, deep
-# green-teal accents, Space Grotesk display over IBM Plex Sans/Mono.
-_INK = "#152220"
-_GREEN = "#2B6850"        # oklch(0.47 0.075 165)
-_GREEN_DARK = "#184735"   # oklch(0.36 0.06 165)
-_GREEN_MID = "#1B5A43"    # oklch(0.42 0.075 165)
+# 1b "Project Workspace"): light canvas, white result cards, Space Grotesk
+# display over IBM Plex Sans/Mono.
+#
+# The accent is the house accent - the same colour as every report figure, the
+# logo and the favicon - rather than a colour picked for the web only. Shades
+# are derived from it, so changing HouseStyle.accent_color moves the whole
+# interface with the reports.
+
+
+def _shade(colour: str, amount: float, towards: str = "#000000") -> str:
+    """Blend a hex colour towards another; ``amount`` is how far to go."""
+    def channels(value: str) -> tuple[int, ...]:
+        value = value.lstrip("#")
+        return tuple(int(value[i : i + 2], 16) for i in (0, 2, 4))
+
+    return "#" + "".join(
+        f"{round(a + (b - a) * amount):02X}"
+        for a, b in zip(channels(colour), channels(towards))
+    )
+
+
+_ACCENT = HouseStyle().accent_color
+_INK = "#173B54"                       # the wordmark ink from the brand assets
+_ACCENT_DARK = _shade(_ACCENT, 0.35)   # headings and chip text on tinted fills
+_ACCENT_MID = _shade(_ACCENT, 0.18)    # links and hover states
 _SUCCESS = "#5BBE62"      # oklch(0.72 0.16 145)
 _SUCCESS_TEXT = "#006925"
 _AMBER = "#E48E26"
 _AMBER_TEXT = "#994A00"
 _FIELD_RED = "#B14E49"    # measured field data accent
 
+# Older names, kept so this change stays a repaint rather than a rename.
+_GREEN = _ACCENT
+_GREEN_DARK = _ACCENT_DARK
+_GREEN_MID = _ACCENT_MID
+
 st.markdown(
-    """
+    Template(
+        """
     <style>
       /* No webfont @import here. A CSS @import is render-blocking, so on a
          slow or captive-portal link the whole app waited on
@@ -239,7 +265,7 @@ st.markdown(
       [data-testid="stMetricValue"] {
         font-family: 'Space Grotesk', 'IBM Plex Sans', sans-serif !important;
         letter-spacing: -0.01em;
-        color: #152220;
+        color: $ink;
       }
       code, pre, kbd { font-family: 'IBM Plex Mono', monospace; }
 
@@ -316,41 +342,41 @@ st.markdown(
       }
       section[data-testid="stSidebar"]
         label[data-testid="stRadioOption"][data-selected="true"] {
-        background: rgba(43, 104, 80, 0.13);
+        background: ${accent}21;
       }
       section[data-testid="stSidebar"]
         label[data-testid="stRadioOption"][data-selected="true"]
         > div > div > div:first-child {
-        background: #2B6850;
+        background: $accent;
       }
       section[data-testid="stSidebar"]
         label[data-testid="stRadioOption"][data-selected="true"] p {
-        font-weight: 600; color: #184735;
+        font-weight: 600; color: $accent_dark;
       }
       section[data-testid="stSidebar"] div[role="radiogroup"]
         label[data-baseweb="radio"]:has(input:checked) {
-        background: rgba(43, 104, 80, 0.13);
+        background: ${accent}21;
       }
       section[data-testid="stSidebar"] div[role="radiogroup"]
         label[data-baseweb="radio"]:has(input:checked) > div:first-of-type {
-        background: #2B6850;
+        background: $accent;
       }
       section[data-testid="stSidebar"] div[role="radiogroup"]
         label[data-baseweb="radio"]:has(input:checked)
         div[data-testid="stMarkdownContainer"] p {
-        font-weight: 600; color: #184735;
+        font-weight: 600; color: $accent_dark;
       }
       section[data-testid="stSidebar"] .stRadio { margin-bottom: 0.35rem; }
 
       /* Shared design pieces (overview dashboard, callouts, chips) */
       .gw-brand { display: flex; align-items: center; gap: 10px; }
       .gw-brand-mark {
-        width: 28px; height: 28px; border-radius: 7px; background: #2B6850;
+        width: 28px; height: 28px; border-radius: 7px; background: $accent;
         display: flex; align-items: center; justify-content: center;
         color: #fff; font: 700 14px 'Space Grotesk', sans-serif;
       }
       .gw-brand-name {
-        font: 600 14px 'Space Grotesk', sans-serif; color: #152220;
+        font: 600 14px 'Space Grotesk', sans-serif; color: $ink;
         line-height: 1.15;
       }
       .gw-brand-sub {
@@ -371,7 +397,7 @@ st.markdown(
         text-transform: uppercase; letter-spacing: 0.06em;
         border-radius: 20px; padding: 3px 10px; vertical-align: middle;
       }
-      .gw-chip-green { color: #184735; background: rgba(43, 104, 80, 0.14); }
+      .gw-chip-green { color: $accent_dark; background: $accent_wash; }
       .gw-chip-amber { color: #994A00; background: rgba(228, 142, 38, 0.18); }
       .gw-chip-red { color: #8C2F2B; background: rgba(177, 78, 73, 0.15); }
       .gw-chip-grey { color: rgba(0, 0, 0, 0.55); background: rgba(0, 0, 0, 0.07); }
@@ -383,7 +409,7 @@ st.markdown(
       }
       .gw-card .gw-cap { display: block; margin-bottom: 8px; }
       .gw-big {
-        font: 600 26px 'Space Grotesk', sans-serif; color: #152220;
+        font: 600 26px 'Space Grotesk', sans-serif; color: $ink;
         line-height: 1.1;
       }
       .gw-big small {
@@ -393,10 +419,10 @@ st.markdown(
         display: flex; justify-content: space-between; gap: 10px;
         font-size: 0.78rem; color: rgba(0, 0, 0, 0.65); padding: 2.5px 0;
       }
-      .gw-row b { color: #152220; font-weight: 500;
+      .gw-row b { color: $ink; font-weight: 500;
         font-family: 'IBM Plex Mono', monospace; }
       .gw-callout {
-        background: #2B6850; border-radius: 11px; padding: 14px 16px;
+        background: $accent; border-radius: 11px; padding: 14px 16px;
         color: #fff; margin: 4px 0 12px;
       }
       .gw-callout .gw-cap { color: rgba(255, 255, 255, 0.7); }
@@ -414,14 +440,14 @@ st.markdown(
         display: flex; align-items: center; justify-content: center;
         font: 700 12px sans-serif;
       }
-      .gw-step-done .gw-step-dot { background: #2B6850; color: #fff; }
+      .gw-step-done .gw-step-dot { background: $accent; color: #fff; }
       .gw-step-todo .gw-step-dot {
-        background: #fff; border: 2px dashed rgba(43, 104, 80, 0.6);
-        color: #2B6850; font-size: 11px;
+        background: #fff; border: 2px dashed ${accent}99;
+        color: $accent; font-size: 11px;
       }
-      .gw-step-label { font-size: 0.68rem; font-weight: 600; color: #152220; }
+      .gw-step-label { font-size: 0.68rem; font-weight: 600; color: $ink; }
       .gw-step-todo .gw-step-label { color: rgba(0, 0, 0, 0.5); }
-      .gw-step-line { flex: 1; height: 2px; background: #2B6850;
+      .gw-step-line { flex: 1; height: 2px; background: $accent;
         margin: 12px 6px 0; }
       .gw-step-line-todo {
         background: repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.2) 0 4px,
@@ -440,7 +466,14 @@ st.markdown(
       }
       .gw-report-row:last-child { border-bottom: none; }
     </style>
-    """,
+    """
+    ).substitute(
+        ink=_INK,
+        accent=_ACCENT,
+        accent_dark=_ACCENT_DARK,
+        accent_mid=_ACCENT_MID,
+        accent_wash=_ACCENT + "24",
+    ),
     unsafe_allow_html=True,
 )
 
@@ -1564,8 +1597,14 @@ with tab_overview:
             if _ov_cost is not None:
                 _stages = [(s, v) for s, v in _ov_cost.by_stage() if v > 0]
                 _total = sum(v for _, v in _stages) or 1.0
-                _bar_colors = ["#2B6850", "#4C8A6F", "#6FAC90",
-                               "#B0A365", "#C98A4B", "#8C8C7A"]
+                # Stage colours: three steps down from the house accent, then
+                # earthy tones. Categorical, so they only have to be distinct.
+                _bar_colors = [
+                    _ACCENT,
+                    _shade(_ACCENT, 0.32, "#FFFFFF"),
+                    _shade(_ACCENT, 0.58, "#FFFFFF"),
+                    "#B0A365", "#C98A4B", "#8C8C7A",
+                ]
                 _bar = "".join(
                     f"<div style='width:{100 * v / _total:.1f}%;"
                     f"background:{_bar_colors[i % len(_bar_colors)]}'></div>"

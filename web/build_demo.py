@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import tomllib
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -65,14 +66,72 @@ TEMPLATE = """<!doctype html>
 <link rel="icon" type="image/svg+xml" href="__FAVICON_SVG__" />
 <link rel="stylesheet" href="__STLITE_CSS__" />
 <style>
+  /* The first visit downloads about 60 MB, so this screen is on show for a
+     while. It uses the app's own palette, injected from .streamlit/config.toml,
+     so the demo looks like the toolkit before the toolkit has finished loading
+     rather than like a broken page. */
   html, body, #root { height: 100%; margin: 0; padding: 0; }
-  #boot-note { font-family: sans-serif; color: #444; padding: 2rem; }
+  body {
+    background: __BG__;
+    color: __TEXT__;
+    font-family: "Source Sans 3", "Source Sans Pro", -apple-system, system-ui, sans-serif;
+  }
+  #boot {
+    min-height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    box-sizing: border-box;
+  }
+  #boot-card {
+    max-width: 30rem;
+    text-align: center;
+  }
+  #boot-mark { width: 72px; height: 72px; margin: 0 auto 1.25rem; display: block; }
+  #boot-title {
+    margin: 0 0 .5rem;
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: __PRIMARY__;
+    letter-spacing: -0.01em;
+  }
+  #boot-note { margin: 0; line-height: 1.6; opacity: .75; font-size: .95rem; }
+  #boot-bar {
+    margin: 1.5rem auto 0;
+    width: 12rem;
+    height: 4px;
+    border-radius: 999px;
+    background: __BORDER__;
+    overflow: hidden;
+  }
+  #boot-bar::after {
+    content: "";
+    display: block;
+    width: 40%;
+    height: 100%;
+    border-radius: 999px;
+    background: __PRIMARY__;
+    animation: boot-slide 1.4s ease-in-out infinite;
+  }
+  @keyframes boot-slide {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(350%); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #boot-bar::after { animation: none; width: 100%; opacity: .5; }
+  }
 </style>
 </head>
 <body>
-<div id="root"><p id="boot-note">Loading the Groundwater Toolkit demo.
-The Python runtime and scientific libraries (about 60 MB) are downloaded
-on first visit and cached by the browser afterwards.</p></div>
+<div id="root"><div id="boot"><div id="boot-card">
+<img id="boot-mark" src="__FAVICON_SVG__" alt="" />
+<h1 id="boot-title">Groundwater Investigation Toolkit</h1>
+<p id="boot-note">Starting the browser demo. The Python runtime and scientific
+libraries (about 60 MB) are downloaded on first visit and cached by the browser
+afterwards.</p>
+<div id="boot-bar"></div>
+</div></div></div>
 <script type="module">
 import { mount } from "__STLITE_JS__";
 
@@ -90,19 +149,7 @@ mount(
     files,
     requirements: __REQUIREMENTS_JSON__,
 __PYODIDE_LINE__
-    streamlitConfig: {
-      "theme.base": "light",
-      "theme.primaryColor": "#2B6850",
-      "theme.backgroundColor": "#F6F5F1",
-      "theme.secondaryBackgroundColor": "#EFEEE8",
-      "theme.textColor": "#152220",
-      "theme.linkColor": "#1B5A43",
-      "theme.borderColor": "#DAD8D0",
-      "theme.baseRadius": "0.6rem",
-      "theme.sidebar.backgroundColor": "#ECEEE7",
-      "theme.sidebar.secondaryBackgroundColor": "#FFFFFF",
-      "client.toolbarMode": "viewer",
-    },
+    streamlitConfig: __THEME_JSON__,
   },
   document.getElementById("root"),
 );
@@ -149,6 +196,38 @@ def collect_files() -> dict:
     return files
 
 
+def _script_safe_json(value) -> str:
+    """JSON that can live inside a <script> block.
+
+    An HTML parser ends a script at the first literal ``</script>``, wherever
+    it appears - including inside a JavaScript string. Any inlined file that
+    mentions one would truncate the whole bundle, and everything after it would
+    be parsed as markup. Escaping ``<`` keeps the JSON valid and the tag
+    unrecognisable to the parser.
+    """
+    return json.dumps(value, ensure_ascii=True).replace("<", "\\u003c")
+
+
+def app_theme() -> dict[str, str]:
+    """The app's own theme, read from .streamlit/config.toml.
+
+    The demo used to carry a second copy of these values, which is one edit
+    away from the browser demo and the hosted app being different colours.
+    Read the app's config instead, so there is only ever one palette.
+    """
+    config = REPO / ".streamlit" / "config.toml"
+    with open(config, "rb") as fh:
+        data = tomllib.load(fh)
+
+    theme = data.get("theme", {}) or {}
+    sidebar = theme.pop("sidebar", {}) or {}
+    flat = {f"theme.{key}": value for key, value in theme.items()}
+    flat.update({f"theme.sidebar.{key}": value for key, value in sidebar.items()})
+    # The demo is a read-only shop window: no "deploy" or "edit" affordances.
+    flat["client.toolbarMode"] = "viewer"
+    return flat
+
+
 def _favicon_data_uri() -> str:
     """The brand droplet SVG inlined as the page favicon."""
     svg_path = REPO / "src" / "groundwater" / "data" / "brand" / "icon.svg"
@@ -163,13 +242,23 @@ def build(out_dir: Path, stlite_base: str, pyodide_url: str | None) -> Path:
     pyodide_line = (
         f'    pyodideUrl: {json.dumps(pyodide_url)},' if pyodide_url else "    // pyodideUrl: default (jsDelivr)"
     )
+    theme = app_theme()
     html = (
         TEMPLATE
         .replace("__FAVICON_SVG__", _favicon_data_uri())
+        # json.dumps closes the object at column 0; nudge it back so the
+        # generated script stays readable when someone views source.
+        .replace("__THEME_JSON__", json.dumps(theme, indent=6)[:-1] + "    }")
+        # The boot screen borrows the app's own colours, so there is still only
+        # one palette to change.
+        .replace("__BG__", theme.get("theme.backgroundColor", "#FFFFFF"))
+        .replace("__TEXT__", theme.get("theme.textColor", "#222222"))
+        .replace("__PRIMARY__", theme.get("theme.primaryColor", "#2B6850"))
+        .replace("__BORDER__", theme.get("theme.borderColor", "#DDDDDD"))
         .replace("__STLITE_CSS__", f"{stlite_base}/stlite.css")
         .replace("__STLITE_JS__", f"{stlite_base}/stlite.js")
-        .replace("__FILES_JSON__", json.dumps(files, ensure_ascii=True))
-        .replace("__REQUIREMENTS_JSON__", json.dumps(REQUIREMENTS))
+        .replace("__FILES_JSON__", _script_safe_json(files))
+        .replace("__REQUIREMENTS_JSON__", _script_safe_json(REQUIREMENTS))
         .replace("__PYODIDE_LINE__", pyodide_line)
     )
     out_dir.mkdir(parents=True, exist_ok=True)

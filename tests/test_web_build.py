@@ -54,3 +54,75 @@ def test_committed_demo_is_current(sample_data):
     assert not stale, (
         f"docs/index.html is stale for {stale[:5]}; run: python web/build_demo.py"
     )
+
+
+def test_inlined_files_cannot_end_the_script_block(tmp_path, sample_data):
+    """A file mentioning </script> must not truncate the demo.
+
+    An HTML parser ends a script at the first literal closing tag, even inside
+    a JavaScript string. Before this was escaped, one Python comment containing
+    "</script>" cut the bundle in half: mount() never ran, and the remainder of
+    the JSON was parsed as markup.
+    """
+    builder = _load_builder()
+    out = builder.build(tmp_path, builder.DEFAULT_STLITE_BASE, None)
+    html = out.read_text(encoding="utf-8")
+
+    # Exactly one script element: opening and closing tag, nothing in between.
+    assert html.count("<script") == 1
+    assert html.count("</script>") == 1
+
+    # And the escape survives a round trip, so the files still arrive intact.
+    match = re.search(r"const FILES = (\{.*?\});\n", html, re.DOTALL)
+    assert match
+    files = json.loads(match.group(1))
+    source = (REPO / "src" / "groundwater" / "depth_spine" / "inline.py").read_text(
+        encoding="utf-8"
+    )
+    assert "</script>" in source, "this test needs a file that mentions the tag"
+    assert files["groundwater/depth_spine/inline.py"]["d"] == source
+
+
+def test_demo_theme_comes_from_the_app_config(tmp_path, sample_data):
+    """One palette: the demo reads .streamlit/config.toml rather than copying it."""
+    import tomllib
+
+    builder = _load_builder()
+    with open(REPO / ".streamlit" / "config.toml", "rb") as fh:
+        expected = tomllib.load(fh)["theme"]
+
+    theme = builder.app_theme()
+    assert theme["theme.primaryColor"] == expected["primaryColor"]
+    assert theme["theme.backgroundColor"] == expected["backgroundColor"]
+    assert theme["theme.sidebar.backgroundColor"] == expected["sidebar"]["backgroundColor"]
+
+    # And those colours reach the page the visitor sees while it loads.
+    html = builder.build(tmp_path, builder.DEFAULT_STLITE_BASE, None).read_text(
+        encoding="utf-8"
+    )
+    shell = html[: html.index("const FILES")]
+    assert expected["backgroundColor"] in shell
+    assert expected["primaryColor"] in shell
+    assert "__" not in shell.replace("__FILES_JSON__", ""), "unsubstituted placeholder"
+
+
+def test_committed_theme_matches_the_house_style():
+    """.streamlit/config.toml must be what web/make_theme.py generates.
+
+    The palette is derived from HouseStyle.accent_color so the website, the
+    report figures and the logo are the same colour. Hand-editing the toml
+    would break that link silently.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "make_theme", REPO / "web" / "make_theme.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    committed = (REPO / ".streamlit" / "config.toml").read_text(encoding="utf-8")
+    assert committed == module.render(), (
+        "config.toml is stale; run: python web/make_theme.py"
+    )
+
+    # And the derived colours are actually readable.
+    assert module.check(module.palette()) == []
