@@ -68,6 +68,7 @@ from groundwater.ingestion import (
 from groundwater.ingestion.templates import write_all_templates
 from groundwater.geo import geographic_to_utm, parse_latlon, utm_to_geographic
 from groundwater.mapping import (
+    area_window,
     chiefdom_of,
     district_of,
     geolibre,
@@ -3472,12 +3473,14 @@ with tab_maps:
         "a Jupyter notebook. Nothing is uploaded: the file is written here "
         "and downloaded to this machine."
     )
-    if site.latlon is None:
+    _area = area_window(site, float(st.session_state.get("map_radius") or 40))
+    if _area is None:
         st.info(
-            "Enter the site coordinates above to build the project. Without a "
-            "position there is nothing for it to open on, and the bundled "
-            "geology and boundary layers alone would write a megabyte of "
-            "Sierra Leone with the site missing from it."
+            "Enter the site coordinates above, or its chiefdom or district, to "
+            "build the project. With none of the three there is nothing for it "
+            "to open on, and the bundled geology and boundary layers alone "
+            "would write a megabyte of Sierra Leone with the site missing "
+            "from it."
         )
     elif st.button("Build GeoLibre project", key="run_geolibre"):
         survey = st.session_state.get("ves_results")
@@ -3489,6 +3492,7 @@ with tab_maps:
             zone=site.utm_zone,
             suitability=suitability,
             water_points=wp.get("points"),
+            area=_area,
             chiefdoms=load_chiefdoms(),
             geology=load_geology(),
             hydrogeology=load_hydrogeology(),
@@ -3498,6 +3502,9 @@ with tab_maps:
             project, workdir() / f"{_file_stem(site.community)}.geolibre.json"
         )
         st.session_state["geolibre_path"] = str(path)
+        st.session_state["geolibre_area"] = (
+            "" if _area.exact else _area.label
+        )
         st.session_state["geolibre_layers"] = [
             (layer["name"], len(layer["geojson"]["features"]))
             for layer in project["layers"]
@@ -3505,6 +3512,14 @@ with tab_maps:
     if st.session_state.get("geolibre_path"):
         offer_download(Path(st.session_state["geolibre_path"]),
                        "Download GeoLibre project")
+        if st.session_state.get("geolibre_area"):
+            st.warning(
+                f"This site has no GPS fix, so the project is centred on "
+                f"{st.session_state['geolibre_area']} and marks no position. "
+                "An area centroid is not a wellhead, and a dot drawn at one "
+                "would be measured from as though it were.",
+                icon="📍",
+            )
         st.dataframe(
             [{"Layer": name, "Features": count}
              for name, count in st.session_state.get("geolibre_layers", [])],

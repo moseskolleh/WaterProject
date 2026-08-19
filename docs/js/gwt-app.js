@@ -1194,15 +1194,18 @@
    * gathers them; gwt-geolibre.js knows what to do with them. */
   function saveGeolibreProject() {
     var latlon = siteLatLon();
-    /* Without a position there is nothing to open on, and the bundled
-     * geology and boundary layers alone would write a megabyte of Sierra
-     * Leone with the site missing from it. */
-    if (!latlon) {
-      S.toast('Enter the site coordinates first — a project with no position ' +
-        'has nothing to centre on.', 'warn');
+    var site = store.get('site') || {};
+    /* Without a GPS fix the chiefdom, or failing that the district, is
+     * still an area worth opening on - the same resolution the local
+     * geology and aquifer maps use. With none of the three there is
+     * nothing to centre on, and the bundled layers alone would write a
+     * megabyte of Sierra Leone with the site missing from it. */
+    var area = areaWindow(store.get('site.mapRadiusKm') || 40);
+    if (!area) {
+      S.toast('Enter the site coordinates, or its chiefdom or district — a ' +
+        'project with no position has nothing to centre on.', 'warn');
       return;
     }
-    var site = store.get('site') || {};
     var geo = GWT.data.geo || {};
     var interpretations = (derived || {}).interpretations || [];
     var zone = site.utm_zone ||
@@ -1210,7 +1213,10 @@
     var project = GWT.geolibre.saveForSite({
       community: site.community, chiefdom: site.chiefdom,
       district: site.district, client: site.client, project: site.project,
-      lat: latlon.lat, lon: latlon.lon, zone: zone,
+      lat: latlon ? latlon.lat : null,
+      lon: latlon ? latlon.lon : null,
+      zone: zone,
+      area: area,
       /* Scores are in projected metres. Without a zone they cannot be
        * placed, and guessing one puts half the country in the Atlantic. */
       suitability: (interpretations.length && zone != null)
@@ -1220,7 +1226,9 @@
       hydrogeology: geo.hydrogeology,
       windowKm: Number(store.get('site.mapRadiusKm')) || 40,
     });
-    S.toast(project.layers.length + ' layers saved as a GeoLibre project.', 'ok');
+    S.toast(project.layers.length + ' layers saved as a GeoLibre project' +
+      (area.exact ? '.' : ', centred on ' + area.label +
+        ' — this site has no GPS fix, so no position is marked.'), 'ok');
   }
 
   /* Sierra Leone lies in UTM zones 28N and 29N; the easting alone identifies

@@ -810,6 +810,7 @@ def site_project(
     geology: Iterable | None = None,
     hydrogeology: Iterable | None = None,
     window_km: float | None = None,
+    area=None,
     metadata: dict | None = None,
 ) -> dict:
     """One site, with whatever context the caller has to hand.
@@ -828,6 +829,16 @@ def site_project(
     the site, the same way the printed local geology and aquifer maps are
     windowed. Without it the whole country is inlined, which is correct
     and about 400 kB.
+
+    A site with no GPS fix still gets a project.
+    :func:`~groundwater.mapping.regional.area_window` resolves it to the
+    chiefdom it is in, or failing that the district, and the map opens
+    there. What it does *not* do is plant a marker: a dot at a chiefdom
+    centroid is indistinguishable on screen from a surveyed wellhead, and
+    a reader who cannot tell the difference will measure from it. So the
+    area is framed and named, the ground around it is drawn, and the
+    position stays absent because it is absent. Pass ``area`` to override
+    the resolution, or nothing to have it done here.
     """
     from ..waterpoints import WPDX_CREDIT
     from .regional import ADMIN_CREDIT, GEOLOGY_CREDIT, HYDRO_CREDIT
@@ -836,9 +847,30 @@ def site_project(
         zone = site.utm.zone
 
     window = None
-    if window_km and site is not None and site.latlon is not None:
-        lat, lon = site.latlon
-        window = window_around(lat, lon, window_km)
+    center = None
+    zoom = None
+    has_fix = site is not None and site.latlon is not None
+    if has_fix:
+        if window_km:
+            lat, lon = site.latlon
+            window = window_around(lat, lon, window_km)
+    else:
+        # An area given outright is honoured whether or not a site came with
+        # it. Requiring one meant a caller could hand over an area, have it
+        # silently ignored, and get a file whose metadata said it was centred
+        # on that area while the camera sat on the country - the map and the
+        # words about it disagreeing, which is the one thing a project file
+        # must never do.
+        if area is None and site is not None:
+            from .regional import area_window as _resolve_area
+
+            area = _resolve_area(site, window_km)
+        if area is not None:
+            window = window_around(area.lat, area.lon, area.radius_km)
+            # Framed explicitly: without a fix there is no focal layer for
+            # the camera to find, and the context layers alone would open
+            # on the country.
+            center, zoom = _frame(window)
 
     layers: list[dict] = []
     if hydrogeology:
@@ -951,12 +983,27 @@ def site_project(
                 )
             )
 
+    if area is not None and not area.exact:
+        # Said in the file, not only in the framing: a reader opening this
+        # somewhere else has no other way to know the centre is a centroid.
+        site_metadata["area"] = area.label
+        site_metadata["position"] = (
+            f"centred on {area.label} - an area centroid, not a surveyed "
+            "position; this site has no GPS fix"
+        )
+
     if not name:
-        name = (site.community if site is not None and site.community else "") or "Site"
+        name = (
+            (site.community if site is not None and site.community else "")
+            or (area.label if area is not None else "")
+            or "Site"
+        )
 
     return build_project(
         name,
         layers,
+        center=center,
+        zoom=zoom,
         metadata=site_metadata,
         # The survey and the site are what the project is about; the
         # geology underneath it covers Sierra Leone and is context to zoom

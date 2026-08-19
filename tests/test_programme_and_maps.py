@@ -332,3 +332,60 @@ def test_a_report_never_writes_figures_outside_the_directory_it_was_given(tmp_pa
     )
     assert (out / "supervision.docx").exists()
     assert any(p.suffix == ".png" for p in out.iterdir())
+
+
+def test_every_district_the_app_offers_can_be_placed():
+    """A district in the sidebar that resolves to nothing is a dead end.
+
+    The bundled boundary layer is geoBoundaries as released, which predates
+    the 2017 creation of Karene and Falaba. Both are offered by the app, so
+    a site in either used to resolve to no area at all - no context map on
+    the report, and an export that told the user to enter a district they
+    had already entered.
+    """
+    import csv
+    import io
+    from importlib import resources
+
+    from groundwater.mapping import area_window
+
+    text = (resources.files("groundwater") / "data" / "sl_districts.csv").read_text(
+        encoding="utf-8"
+    )
+    districts = [row["district"] for row in csv.DictReader(io.StringIO(text))]
+    assert len(districts) == 16, "Sierra Leone has sixteen districts"
+
+    unplaceable = []
+    for district in districts:
+        window = area_window(SiteMetadata(community="X", district=district))
+        if window is None:
+            unplaceable.append(district)
+        else:
+            assert window.label == f"{district} district"
+            assert window.exact is False
+            # inside the country, roughly: 13.4W-10.2W, 6.8N-10.1N
+            assert -13.5 < window.lon < -10.1, (district, window.lon)
+            assert 6.7 < window.lat < 10.2, (district, window.lat)
+            assert 10.0 < window.radius_km < 200.0, (district, window.radius_km)
+    assert not unplaceable, f"districts with nowhere to put them: {unplaceable}"
+
+
+def test_the_two_districts_created_in_2017_come_from_their_chiefdoms():
+    """Karene and Falaba have no polygon of their own in the release."""
+    from groundwater.mapping.regional import _district_from_chiefdoms, load_admin
+
+    _, districts = load_admin()
+    names = {area.name for area in districts}
+    assert "Karene" not in names and "Falaba" not in names, (
+        "the boundary layer has gained these districts; the fallback can go"
+    )
+    for district in ("Karene", "Falaba"):
+        assembled = _district_from_chiefdoms(district)
+        assert assembled is not None, district
+
+
+def test_a_district_nobody_recognises_is_still_nothing():
+    """The fallback must not invent an area for a typo."""
+    from groundwater.mapping import area_window
+
+    assert area_window(SiteMetadata(community="X", district="Atlantis")) is None

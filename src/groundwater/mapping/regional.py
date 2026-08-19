@@ -18,6 +18,8 @@ be dropped in without code changes.
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import math
 import textwrap
@@ -302,6 +304,59 @@ def _ring_span_km(rings: list[np.ndarray]) -> float:
     return max(dlat, dlon) / 2.0
 
 
+def _current_district_of_chiefdom(path: str | Path | None = None) -> dict[str, str]:
+    """Chiefdom -> the district it is in *today*.
+
+    The bundled boundary layer is geoBoundaries as released, which predates
+    the 2017 creation of Karene and Falaba, so those two districts have no
+    polygon of their own and the chiefdom polygons still name the districts
+    they were split from. This crosswalk is what knows the current answer.
+    """
+    if path is not None:
+        text = Path(path).read_text(encoding="utf-8")
+    else:
+        text = (resources.files("groundwater") / "data"
+                / "sl_chiefdom_district.csv").read_text(encoding="utf-8")
+    return {
+        row["chiefdom"].strip(): row["district"].strip()
+        for row in csv.DictReader(io.StringIO(text))
+    }
+
+
+def _district_from_chiefdoms(
+    district: str,
+    chiefdom_path: str | Path | None = None,
+    crosswalk_path: str | Path | None = None,
+) -> tuple[float, float, float] | None:
+    """Centre and radius for a district assembled from its chiefdoms.
+
+    The two districts created in 2017 are not in the boundary layer, and a
+    site in one of them would otherwise resolve to nothing at all - telling
+    a user to enter a district they had already entered, and leaving the
+    reports without an area map for two of the sixteen. Their extent is
+    recovered from the chiefdoms the crosswalk assigns to them.
+
+    The centre is the middle of the combined extent rather than the
+    centroid of the largest part: a district assembled from nine chiefdoms
+    has no single dominant ring to sit in, and the middle of the whole is
+    what frames it.
+    """
+    wanted = district.strip().lower()
+    crosswalk = _current_district_of_chiefdom(crosswalk_path)
+    rings = [
+        ring
+        for area in load_chiefdoms(chiefdom_path)
+        if crosswalk.get(area.name, "").strip().lower() == wanted
+        for ring in area.rings
+    ]
+    if not rings:
+        return None
+    pts = np.concatenate(rings)
+    lon = float(pts[:, 0].min() + pts[:, 0].max()) / 2.0
+    lat = float(pts[:, 1].min() + pts[:, 1].max()) / 2.0
+    return lon, lat, _ring_span_km(rings)
+
+
 def area_window(
     site: SiteMetadata | None,
     radius_km: float | None = None,
@@ -332,6 +387,13 @@ def area_window(
                 return AreaWindow(lon, lat,
                                   max(_ring_span_km(area.rings) * 1.2, 20.0),
                                   f"{area.name} district", False)
+        # Karene and Falaba postdate the boundary release, so they are
+        # assembled from their chiefdoms rather than looked up.
+        assembled = _district_from_chiefdoms(name, chiefdom_path)
+        if assembled is not None:
+            lon, lat, span = assembled
+            return AreaWindow(lon, lat, max(span * 1.2, 20.0),
+                              f"{site.district.strip()} district", False)
     return None
 
 
