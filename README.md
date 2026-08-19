@@ -34,9 +34,11 @@ water quality guidelines.
    (geoBoundaries districts CC BY 4.0, USGS Geologic Map of Africa,
    BGS Africa Groundwater Atlas aquifer productivity CC BY-SA 4.0),
    embedded automatically into the survey and handover reports
-10. Seven report types: geophysical survey, borehole completion,
-    pumping test, water quality, project handover, cost estimate and
-    supervision checklist record; the web app saves and reloads the
+10. Ten documents: geophysical survey, borehole completion, pumping
+    test, water quality, project handover, cost estimate, supervision
+    checklist record, interim payment certificate, borehole asset record
+    and the laminated identification plate for the headworks. Every one
+    of them opens on a map of the area. The web app saves and reloads the
     whole working state as a project file
 11. A rehabilitate-or-drill check: existing water points near the site
     from the Water Point Data Exchange (WPdx+, CC BY 4.0), turned into a
@@ -133,7 +135,7 @@ the soundings, scoring the drill targets, analysing the pumping tests,
 assessing the water quality, designing the borehole on the Depth Spine,
 costing the works, running the supervision checklists, comparing a
 whole portfolio of boreholes, reading a scanned field sheet and writing
-the seven .docx reports. Uploaded sheets are parsed in the page and
+the .docx documents. Uploaded sheets are parsed in the page and
 never leave the machine. Its engine is held to the Python package's own
 numbers by a parity check in CI, on the real sample workbooks. Source
 lives in `docs/`.
@@ -238,7 +240,7 @@ groundwater/
                   field acceptance checks
     mapping/      site maps, iso-resistivity and overburden maps, GIS export,
                   GeoLibre project files
-    reporting/    house-styled .docx builders for the seven report types
+    reporting/    house-styled .docx builders, one per document
     extraction/   scanned sheet extraction with review flagging
     readiness.py  the certification gate: per-report requirements, overrides
     seasonal.py   the tested day placed in the year: dry-season and drought

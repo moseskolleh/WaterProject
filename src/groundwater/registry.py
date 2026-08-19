@@ -197,8 +197,12 @@ def parse_asset_id(text: str) -> str | None:
     if len(parts) != 4:
         return None
     _, district, code, given = parts
+    # The position code is written in the 32-character Crockford alphabet,
+    # which has no I, L, O or U, so folding them there is unambiguous. The
+    # check character is drawn from the full 36, where those four mean
+    # themselves - folding it rejected one identifier in nine that mint()
+    # had just produced.
     code = "".join(_FOLD.get(c, c) for c in code)
-    given = _FOLD.get(given, given)
     candidate = f"SL-{district}-{code}-{given}"
     if not _ID_RE.match(candidate):
         return None

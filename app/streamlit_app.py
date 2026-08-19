@@ -191,6 +191,10 @@ _VERDICT_CHIP = {
     "aesthetic": "gw-chip-amber",
     "pass": "gw-chip-green",
 }
+from groundwater.reporting.completion import (
+    CompletionReportInputs,
+    build_completion_report,
+)
 from groundwater.reporting.costing import CostReportInputs, build_cost_report
 from groundwater.reporting.handover import (
     CommitteeMember,
@@ -2599,6 +2603,34 @@ with tab_design:
             "gravel quantities carry over automatically."
         )
 
+        # The completion report is the document the client is handed for the
+        # borehole itself, and until now it was the one report the desktop app
+        # could not produce - it had to be written from a script.
+        st.subheader("Borehole completion report")
+        st.caption(
+            "Introduction, methodology, the drilling record, the borehole log "
+            "table, the as-built construction, the pumping test, the "
+            "installation, the water quality summary and the recommendations."
+        )
+        _completion_gate = report_gate("completion")
+        if st.button("Build borehole completion report",
+                     key="build_completion_report"):
+          with _working("Building the borehole completion report..."):
+            report_path = build_completion_report(
+                CompletionReportInputs(
+                    log=log,
+                    design=design,
+                    pumping=st.session_state.get("pump_analysis"),
+                    quality=st.session_state.get("wq_assessment"),
+                    figures_dir=workdir(),
+                    readiness=_completion_gate,
+                ),
+                workdir() / "Borehole_Completion_Report.docx",
+                app_config(),
+            )
+          offer_download(report_path,
+                         "Download borehole completion report (.docx)")
+
 # ---------------------------------------------------------------------------
 # Depth Spine
 # ---------------------------------------------------------------------------
@@ -2984,6 +3016,10 @@ with tab_cost:
                         site=site_from_state(),
                         figures_dir=workdir(),
                         readiness=_cost_gate,
+                        # the package roll-up, when one has been estimated:
+                        # it is the number a programme is budgeted against
+                        programme=(st.session_state.get("programme_estimate")
+                                   or (None,))[0],
                     ),
                     workdir() / "Cost_Estimate_Report.docx",
                     app_config(),
@@ -3203,6 +3239,9 @@ with tab_supervision:
                 "Templates page."
             )
 
+        # measured, so they belong in the record the works are accepted against
+        st.session_state.field_checks = [v, sc, spc, recon]
+
     with st.expander("📏 Minimum separation distances"):
         st.table(
             [
@@ -3235,6 +3274,8 @@ with tab_supervision:
                     supervisor=site.supervisor,
                     driller=site.contractor,
                     community_rep=st.session_state.get("meta_community_rep", ""),
+                    field_checks=st.session_state.get("field_checks", []),
+                    figures_dir=workdir(),
                     readiness=_sup_gate,
                 ),
                 workdir() / "Supervision_Checklist_Report.docx",
@@ -4090,7 +4131,7 @@ with tab_registry:
         _r1, _r2 = st.columns(2)
         if _r1.button("Build identification plate (.docx)", key="asset_placard"):
             _inputs = AssetReportInputs(asset=_live, figures_dir=workdir(),
-                                        readiness=report_gate("completion"))
+                                        readiness=report_gate("placard"))
             offer_download(
                 build_asset_placard(_inputs,
                                     workdir() / f"placard_{_live.asset_id}.docx",
@@ -4098,7 +4139,7 @@ with tab_registry:
                 "Borehole identification plate")
         if _r2.button("Build asset record (.docx)", key="asset_record_report"):
             _inputs = AssetReportInputs(asset=_live, figures_dir=workdir(),
-                                        readiness=report_gate("completion"))
+                                        readiness=report_gate("asset"))
             offer_download(
                 build_asset_record(_inputs,
                                    workdir() / f"asset_{_live.asset_id}.docx",
@@ -4340,7 +4381,7 @@ with tab_procurement:
                     PaymentCertificateInputs(
                         contract=_contract, certificate=_certificate,
                         prepared_by=st.session_state.get("meta_supervisor", ""),
-                        readiness=report_gate("costing")),
+                        readiness=report_gate("procurement")),
                     workdir() / f"IPC_{int(_number)}.docx", app_config())
             offer_download(_path,
                            f"Interim payment certificate {int(_number)}")

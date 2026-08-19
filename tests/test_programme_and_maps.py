@@ -183,13 +183,48 @@ def test_maps_render_without_site(tmp_path):
 
 
 def test_context_maps_for_reports(tmp_path):
-    no_coords = SiteMetadata(community="X")
-    assert context_map_figures(no_coords, tmp_path) == {}
+    nowhere = SiteMetadata(community="X")
+    assert context_map_figures(nowhere, tmp_path) == {}
     site = SiteMetadata(community="Kuntolo", district="Bombali",
                         easting=178000, northing=1000000, utm_zone=29)
     maps = context_map_figures(site, tmp_path)
     assert set(maps) == {"admin", "geology", "hydrogeology"}
     assert all(p.exists() for p in maps.values())
+
+
+def test_context_maps_fall_back_to_the_recorded_area(tmp_path):
+    """A site with no GPS fix still gets a map: of its district."""
+    from groundwater.mapping import area_window
+
+    site = SiteMetadata(community="Kuntoloh", district="Port Loko")
+    window = area_window(site)
+    assert window is not None
+    assert window.exact is False
+    assert window.label == "Port Loko district"
+
+    maps = context_map_figures(site, tmp_path)
+    assert set(maps) == {"admin", "geology", "hydrogeology"}
+    assert all(p.exists() for p in maps.values())
+
+
+def test_area_maps_reach_every_report_kind(tmp_path):
+    """Every builder puts a map of the area in front of its numbers."""
+    from docx import Document
+
+    from groundwater.reporting.context import add_area_section
+    from groundwater.reporting.docx_utils import ReportBuilder
+
+    site = SiteMetadata(community="Kuntoloh", district="Port Loko")
+    rb = ReportBuilder(None, title="T")
+    maps = add_area_section(rb, site, tmp_path)
+    assert set(maps) == {"admin", "geology", "hydrogeology"}
+    out = tmp_path / "area.docx"
+    rb.save(out)
+    doc = Document(out)
+    assert len(doc.inline_shapes) == 1
+    text = "\n".join(p.text for p in doc.paragraphs)
+    assert "Port Loko district" in text
+    assert "No GPS position" in text
 
 
 def test_handover_report_embeds_location_map(tmp_path):
@@ -248,3 +283,52 @@ def test_metres_reconciliation_boundaries():
     assert over.passed is False and "withhold" in over.message
     under = metres_reconciliation_check(60, 50)
     assert under.passed is True and "covers all completed work" in under.message
+
+
+def test_a_report_never_writes_figures_outside_the_directory_it_was_given(tmp_path,
+                                                                         monkeypatch):
+    """No builder may drop a PNG into the process working directory.
+
+    The figures directory used to default to ``Path(".")``, so a report built
+    without one scattered maps and charts wherever the process happened to be
+    running - which is how three location maps ended up committed at the root
+    of this repository.
+    """
+    from groundwater.costing import CostingInputs, estimate_borehole_cost
+    from groundwater.reporting.costing import CostReportInputs, build_cost_report
+    from groundwater.reporting.supervision import (
+        SupervisionReportInputs,
+        build_supervision_report,
+    )
+    from groundwater.supervision.checklists import (
+        evaluate_checklist,
+        load_checklists,
+    )
+
+    cwd = tmp_path / "cwd"
+    cwd.mkdir()
+    monkeypatch.chdir(cwd)
+    out = tmp_path / "out"
+    out.mkdir()
+
+    site = SiteMetadata(community="Kuntolo", district="Bombali")
+    items = load_checklists()
+    build_supervision_report(
+        SupervisionReportInputs(site=site, items=items, responses={},
+                                assessment=evaluate_checklist(items, {})),
+        out / "supervision.docx",
+    )
+    build_cost_report(
+        CostReportInputs(
+            estimate=estimate_borehole_cost(CostingInputs(total_depth_m=60)),
+            site=site,
+        ),
+        out / "cost.docx",
+    )
+
+    assert list(cwd.iterdir()) == [], (
+        "a report wrote into the working directory: "
+        + ", ".join(p.name for p in cwd.iterdir())
+    )
+    assert (out / "supervision.docx").exists()
+    assert any(p.suffix == ".png" for p in out.iterdir())

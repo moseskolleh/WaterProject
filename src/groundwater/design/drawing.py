@@ -14,27 +14,30 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.patches import Rectangle
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch, Rectangle
 
 from ..config import HouseStyle
 from ..models import DrillingLog
 from ..plotting import figure_context, save_figure
 from .designer import BoreholeDesign
 
-# lithology keyword -> (colour, hatch)
+# lithology keyword -> (colour, hatch, class name for the legend)
 _LITHO_STYLES = [
-    (("topsoil", "lateritic topsoil"), ("#8B5A2B", "")),
-    (("laterite", "clayey laterites"), ("#C4703E", "")),
-    (("clay",), ("#B8860B", "--")),
-    (("saprolite", "weathered granite fragments"), ("#D2B48C", "..")),
-    (("sand", "gravel"), ("#E8D8A0", "..")),
-    (("fracture", "fractured"), ("#9FB6CD", "xx")),
-    (("granite", "gneiss", "basement", "bedrock", "rock"), ("#A9A9A9", "++")),
+    (("topsoil", "lateritic topsoil"), ("#8B5A2B", "", "Topsoil")),
+    (("laterite", "clayey laterites"), ("#C4703E", "", "Laterite")),
+    (("clay",), ("#B8860B", "--", "Clay")),
+    (("saprolite", "weathered granite fragments"),
+     ("#D2B48C", "..", "Saprolite")),
+    (("sand", "gravel"), ("#E8D8A0", "..", "Sand and gravel")),
+    (("fracture", "fractured"), ("#9FB6CD", "xx", "Fracture zone")),
+    (("granite", "gneiss", "basement", "bedrock", "rock"),
+     ("#A9A9A9", "++", "Fresh basement")),
 ]
-_DEFAULT_LITHO = ("#CCCCCC", "")
+_DEFAULT_LITHO = ("#CCCCCC", "", "Other material")
 
 
-def _litho_style(description: str) -> tuple[str, str]:
+def _litho_style(description: str) -> tuple[str, str, str]:
     text = description.lower()
     for keywords, style in _LITHO_STYLES:
         if any(k in text for k in keywords):
@@ -83,8 +86,8 @@ def draw_borehole_design(
 
     with figure_context(style):
         fig, (ax_l, ax_c) = plt.subplots(
-            1, 2, figsize=(style.figure_width_in, 8.2), sharey=True,
-            width_ratios=[1.0, 1.35],
+            1, 2, figsize=(style.figure_width_in, 9.4), sharey=True,
+            width_ratios=[1.0, 1.3],
         )
         for ax in (ax_l, ax_c):
             ax.set_ylim(depth + depth * 0.04, y_top)
@@ -102,42 +105,41 @@ def draw_borehole_design(
         ax_l.set_xlim(0, 1.02)
         ax_l.set_xticks([])
         ax_l.set_ylabel("Depth (m)")
-        ax_l.set_title("Formation / profile", fontsize=10)
+        ax_l.set_title("Formation", fontsize=10)
+        litho_classes: dict[str, tuple[str, str]] = {}
         if log is not None and log.intervals:
             litho_entries = []
             for interval in log.intervals:
-                color, hatch = _litho_style(interval.description)
+                color, hatch, klass = _litho_style(interval.description)
+                if klass not in litho_classes:
+                    litho_classes[klass] = (color, hatch)
                 ax_l.add_patch(
                     Rectangle(
-                        (0.08, interval.top_m), 0.36, interval.thickness_m,
+                        (0.06, interval.top_m), 0.32, interval.thickness_m,
                         facecolor=color, hatch=hatch, edgecolor="#555555", lw=0.6,
                     )
                 )
-                wrapped = textwrap.fill(interval.description, 30)
+                wrapped = textwrap.fill(interval.description, 26)
                 mid = (interval.top_m + interval.bottom_m) / 2
                 litho_entries.append((mid, wrapped))
             gap = depth / 26.0
             for label_y, (mid, wrapped) in _stack_labels(
                 litho_entries, gap, y_top + gap, depth + depth * 0.02
             ):
-                ax_l.text(0.50, label_y, wrapped, fontsize=6.5, va="center",
+                ax_l.text(0.42, label_y, wrapped, fontsize=6.5, va="center",
                           linespacing=1.1)
         else:
             ax_l.text(0.5, depth / 2, "no drilling log", ha="center", fontsize=9,
                       color="#888888")
         ax_l.axhline(0, color="#333333", lw=1.2)
-        ax_l.text(0.02, -0.6, "GL", fontsize=7, color="#333333")
+        ax_l.text(0.01, -0.6, "GL", fontsize=7, color="#333333")
 
         # ------------------------------------------------------------------
         # right: construction column
         # ------------------------------------------------------------------
         ax_c.set_xlim(0, 1.16)
         ax_c.set_xticks([])
-        ax_c.set_title(
-            f'Borehole diagram ({design.borehole_diameter_in:g}" hole, '
-            f'{design.casing_diameter_in:g}" {design.casing_material})',
-            fontsize=10,
-        )
+        ax_c.set_title("Construction", fontsize=10)
         x_hole, w_hole = 0.30, 0.26
         x_case = x_hole + w_hole / 2 - 0.055
         w_case = 0.11
@@ -160,16 +162,26 @@ def draw_borehole_design(
         ax_c.plot([x_hole + w_hole, x_hole + w_hole], [0, depth], color="#333333", lw=1.4)
         ax_c.plot([x_hole, x_hole + w_hole], [depth, depth], color="#333333", lw=1.6)
 
+        # the water standing in the casing: the reason the borehole exists,
+        # and the quickest check that the screens are where the water is
+        if design.static_water_level_m is not None:
+            swl_m = design.static_water_level_m
+            if swl_m < depth:
+                ax_c.add_patch(
+                    Rectangle((x_case, swl_m), w_case, depth - swl_m,
+                              facecolor="#CBE3F5", edgecolor="none", zorder=3)
+                )
+
         # casing string
         for segment in design.segments:
             if segment.kind == "screen":
-                face, hatch = "white", "---"
+                face, hatch = "none", "---"
                 edge = style.accent_color
             elif segment.kind == "sump":
                 face, hatch = "#D8D8D8", ""
                 edge = "#333333"
             else:
-                face, hatch = "white", ""
+                face, hatch = "none", ""
                 edge = "#333333"
             ax_c.add_patch(
                 Rectangle((x_case, segment.top_m), w_case,
@@ -177,6 +189,19 @@ def draw_borehole_design(
                           facecolor=face, hatch=hatch, edgecolor=edge, lw=1.0,
                           zorder=5)
             )
+        # headworks: the apron slab and plinth the casing comes up through,
+        # so the top of the drawing is a wellhead and not a cut pipe
+        apron_h = max(stick * 0.35, depth * 0.006)
+        ax_c.add_patch(
+            Rectangle((x_hole - 0.10, -apron_h), w_hole + 0.20, apron_h,
+                      facecolor="#BEBBB2", hatch="//", edgecolor="#5C6360",
+                      lw=0.6, zorder=4)
+        )
+        ax_c.add_patch(
+            Rectangle((x_case - 0.035, -stick * 0.72), w_case + 0.07,
+                      stick * 0.72, facecolor="#BEBBB2", hatch="//",
+                      edgecolor="#5C6360", lw=0.6, zorder=4)
+        )
         # stick-up and cap
         ax_c.add_patch(
             Rectangle((x_case, -stick), w_case, stick, facecolor="white",
@@ -210,10 +235,22 @@ def draw_borehole_design(
                       ha="right", va="center", color="#2A6EBB")
         if design.pump_intake_m is not None:
             y = design.pump_intake_m
-            ax_c.add_patch(Rectangle((x_case + 0.015, y - 1.2), w_case - 0.03, 1.2,
-                                     facecolor=style.secondary_color, zorder=8))
-            annos.append((y - 0.6, f"pump intake {y:.0f} m",
-                          style.secondary_color))
+            # the rising main from the headworks down to the pump, so the
+            # intake reads as the bottom of a pump and not as a loose block
+            main_w = w_case * 0.16
+            ax_c.add_patch(
+                Rectangle((x_case + w_case / 2 - main_w / 2, -stick), main_w,
+                          y + stick, facecolor="#B7BDBB", edgecolor="#5C6360",
+                          lw=0.5, zorder=7)
+            )
+            pump_h = max(depth * 0.02, 0.8)
+            ax_c.add_patch(
+                Rectangle((x_case + w_case * 0.22, y - pump_h / 2),
+                          w_case * 0.56, pump_h * 2,
+                          facecolor=style.secondary_color, edgecolor="white",
+                          lw=0.8, zorder=8)
+            )
+            annos.append((y, f"pump intake {y:.0f} m", style.secondary_color))
 
         # right-hand annotations with depths
         screens = design.screens
@@ -232,9 +269,11 @@ def draw_borehole_design(
         if sump:
             annos.append(((sump[0].top_m + sump[0].bottom_m) / 2,
                           f"sump (sediment trap) "
-                          f"{sump[0].top_m:g}-{sump[0].bottom_m:g} m",
+                          f"{sump[0].top_m:g}-{sump[0].bottom_m:g} m, "
+                          f"bottom plug at {depth:g} m",
                           neutral))
-        annos.append((depth - 0.3, "bottom plug", neutral))
+        else:
+            annos.append((depth - 0.3, f"bottom plug at {depth:g} m", neutral))
         x_text = x_hole + w_hole + 0.06
         min_gap = depth / 28.0
         for label_y, (anchor_y, text, color) in _stack_labels(
@@ -255,15 +294,63 @@ def draw_borehole_design(
             ax.set_yticks(ticks)
 
         # ------------------------------------------------------------------
+        # legend: what each fill means, once, rather than a word on every band
+        # ------------------------------------------------------------------
+        handles: list = [
+            Patch(facecolor="#F0E3B2", hatch="..", edgecolor="#777777",
+                  label="gravel pack"),
+            Patch(facecolor="#E0D5C0", edgecolor="#777777", label="backfill"),
+            Patch(facecolor="#B0B0B0", hatch="//", edgecolor="#777777",
+                  label="cement sanitary seal"),
+            Patch(facecolor="white", edgecolor="#333333", label="plain casing"),
+            Patch(facecolor="white", hatch="---", edgecolor=style.accent_color,
+                  label="screen"),
+        ]
+        if any(seg.kind == "sump" for seg in design.segments):
+            handles.append(
+                Patch(facecolor="#D8D8D8", edgecolor="#333333", label="sump")
+            )
+        if design.static_water_level_m is not None:
+            handles.append(
+                Patch(facecolor="#CBE3F5", edgecolor="#7FB0DA",
+                      label="water in the casing")
+            )
+        if design.pump_intake_m is not None:
+            handles.append(
+                Line2D([], [], color="#B7BDBB", lw=4, label="rising main")
+            )
+            handles.append(
+                Patch(facecolor=style.secondary_color, edgecolor="white",
+                      label="pump")
+            )
+        for klass, (color, hatch) in litho_classes.items():
+            handles.append(
+                Patch(facecolor=color, hatch=hatch, edgecolor="#555555",
+                      label=klass.lower())
+            )
+        legend_cols = 4
+        legend_rows = (len(handles) + legend_cols - 1) // legend_cols
+        legend_space = 0.022 * legend_rows + 0.03
+        fig.legend(handles=handles, loc="lower center", ncol=legend_cols,
+                   fontsize=7, frameon=False,
+                   bbox_to_anchor=(0.5, 0.004))
+
+        # ------------------------------------------------------------------
         # title and header block
         # ------------------------------------------------------------------
         fig.suptitle(title or "Borehole design", fontsize=12, fontweight="bold",
                      color=style.accent_color)
+        header_pairs = list(header_pairs or [])
+        header_pairs.append((
+            "Construction",
+            f'{design.borehole_diameter_in:g}" hole, '
+            f'{design.casing_diameter_in:g}" {design.casing_material}',
+        ))
         if header_pairs:
             header_text = "    ".join(f"{k}: {v}" for k, v in header_pairs)
             fig.text(0.5, 0.945, header_text, ha="center", fontsize=8,
                      color="#444444")
-        fig.tight_layout(rect=(0, 0, 1, 0.94))
+        fig.tight_layout(rect=(0, legend_space, 1, 0.94))
         if path is not None:
             return save_figure(fig, path, style)
         return fig

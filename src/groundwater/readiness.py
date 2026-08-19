@@ -390,6 +390,17 @@ REPORTS: dict[str, tuple[str, ...]] = {
     "geophysical": ("site_located",),
     "costing": ("site_located", "borehole_logged", "design_derived"),
     "supervision": ("site_located",),
+    # The asset documents and the payment certificate. Without an entry each
+    # of these fell back to the completion set, so a plate for the headworks
+    # was stamped PROVISIONAL for want of a water quality panel - which a
+    # plate makes no claim about. What a plate does claim is that the
+    # identifier on it leads back to this borehole, and that identifier is
+    # minted from the position, so the position is the requirement.
+    "placard": ("site_located",),
+    "asset": ("site_located",),
+    # A certificate is a claim that work was done at a place and is worth
+    # paying for. It makes no claim about the water.
+    "procurement": ("site_located", "no_errors"),
 }
 
 

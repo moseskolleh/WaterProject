@@ -278,6 +278,9 @@
     render();
     $('#app-nav').classList.remove('open');
     $('#main').focus({ preventScroll: true });
+    /* the main pane is the scroll container on a wide screen and the page is
+     * on a narrow one, so both are sent back to the top */
+    $('#main').scrollTo({ top: 0, behavior: 'smooth' });
     global.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -453,6 +456,26 @@
     }
   }
 
+  /* The rate catalogue with the analyst's edits applied. Used by the Costing
+   * page and by the Depth Spine, which signs off the number it shows. */
+  function costingRates() {
+    var overrides = store.get('costing.rateOverrides') || {};
+    return C.loadRates().map(function (rate) {
+      var override = overrides[rate.code];
+      return override === undefined || override === null || override === ''
+        ? rate : Object.assign({}, rate, { unit_cost_usd: Number(override) });
+    });
+  }
+
+  function costingOptions() {
+    var costing = store.get('costing');
+    return {
+      overheadsPercent: costing.overheads, marginPercent: costing.margin,
+      contingencyPercent: costing.contingency, vatPercent: costing.vat,
+      exchangeRate: costing.exchange,
+    };
+  }
+
   function rebuildCosting() {
     derived.estimate = null; derived.programme = null;
     var costing = store.get('costing');
@@ -473,25 +496,15 @@
     inputs.wq_samples = costing.wq_samples;
     inputs.handpumps = costing.handpumps;
 
-    var rates = C.loadRates().map(function (rate) {
-      var override = (costing.rateOverrides || {})[rate.code];
-      return override === undefined || override === null || override === ''
-        ? rate : Object.assign({}, rate, { unit_cost_usd: Number(override) });
-    });
+    var rates = costingRates();
     try {
-      derived.estimate = C.estimateBoreholeCost(inputs, rates, {
-        overheadsPercent: costing.overheads, marginPercent: costing.margin,
-        contingencyPercent: costing.contingency, vatPercent: costing.vat,
-        exchangeRate: costing.exchange,
-      });
+      derived.estimate = C.estimateBoreholeCost(inputs, rates, costingOptions());
       if (costing.programme_n > 1) {
-        derived.programme = C.estimateProgrammeCost(inputs, costing.programme_n, {
-          rates: rates, successRatePercent: costing.success_rate,
-          interSiteDistanceKm: costing.inter_site_km,
-          overheadsPercent: costing.overheads, marginPercent: costing.margin,
-          contingencyPercent: costing.contingency, vatPercent: costing.vat,
-          exchangeRate: costing.exchange,
-        });
+        derived.programme = C.estimateProgrammeCost(inputs, costing.programme_n,
+          Object.assign({
+            rates: rates, successRatePercent: costing.success_rate,
+            interSiteDistanceKm: costing.inter_site_km,
+          }, costingOptions()));
       }
     } catch (e) {
       S.toast('Cost estimate: ' + e.message, 'warn');
@@ -619,7 +632,7 @@
     });
     fresh.sources = {};
     Object.keys(sample.files).forEach(function (role) {
-      fresh.sources[role === 'ipi2win' ? 'ipi2win' : role] = {
+      fresh.sources[role] = {
         name: sample.files[role].name, b64: sample.files[role].b64,
       };
     });
@@ -996,6 +1009,15 @@
     var mapNode = null;
     if (GWT.data.geo && GWT.data.geo.adminBoundaries) {
       var boundaries = GWT.data.geo.adminBoundaries.features || [];
+      var legendItems = [];
+      if (latlon) {
+        legendItems.push({ label: 'Project site', kind: 'diamond',
+          colour: charts.palette().secondary });
+      }
+      if (site.district) {
+        legendItems.push({ label: site.district + ' district', colour: '#CFE0D6' });
+      }
+      legendItems.push({ label: 'other districts', colour: '#EDEAE3' });
       mapNode = charts.siteMap({
         context: boundaries,
         contextFill: function (feature) {
@@ -1004,11 +1026,12 @@
         },
         points: latlon ? [{
           lon: latlon.lon, lat: latlon.lat, label: siteLabel(),
-          colour: charts.palette().secondary, size: 6,
+          colour: charts.palette().secondary, size: 6.5,
         }] : [],
         title: 'Site location',
-        legendItems: latlon ? [{ label: 'Project site', colour: charts.palette().secondary }] : [],
-        width: 620, height: 520,
+        legendItems: legendItems,
+        credit: 'District boundaries: Sierra Leone Statistics / OCHA COD-AB.',
+        width: 620, height: 560,
       });
     }
 
@@ -1114,7 +1137,9 @@
             points: latlon ? [{ lon: latlon.lon, lat: latlon.lat, label: siteLabel() }] : [],
             title: latlon ? 'Aquifer productivity around the site'
               : 'Aquifer productivity, Sierra Leone',
-            width: 560, height: 520,
+            credit: 'BGS Africa Groundwater Atlas, CC BY-SA 4.0.',
+            legendTitle: 'AQUIFER TYPE AND PRODUCTIVITY',
+            width: 560, height: 600,
           }), 'Aquifer type and productivity (BGS Africa Groundwater Atlas, CC BY-SA 4.0)',
           { filename: 'aquifer_map' }),
           charts.figure(charts.thematicMap({
@@ -1124,7 +1149,9 @@
             window: latlon ? { lat: latlon.lat, lon: latlon.lon, radiusKm: mapRadius } : null,
             points: latlon ? [{ lon: latlon.lon, lat: latlon.lat, label: siteLabel() }] : [],
             title: latlon ? 'Geology around the site' : 'Geology, Sierra Leone',
-            width: 560, height: 520,
+            credit: 'USGS Geologic Map of Africa.',
+            legendTitle: 'GEOLOGICAL UNIT',
+            width: 560, height: 600,
           }), 'Geology (USGS Geologic Map of Africa)', { filename: 'geology_map' }),
         ]),
       ]),
@@ -1212,6 +1239,250 @@
     ll.fromUtm = true; ll.zone = zone;
     ll.chiefdom = chiefdomAt(ll.lat, ll.lon);
     return ll;
+  }
+
+  /* --- the area a report should map ---------------------------------------
+   *
+   * Every report is about a place, so every report carries a map of it. A GPS
+   * fix gives a point. Without one, the recorded chiefdom or district still
+   * gives an area, and an area is what most of these maps are really asked
+   * for: where in the country this is, and what the ground is like around it.
+   * Only a project that records neither gets no map, and then the report says
+   * so rather than leaving a gap.
+   *
+   * This mirrors groundwater.mapping.area_window on the Python side, so the
+   * browser report and the report the desktop toolkit writes cover the same
+   * ground.
+   */
+  function ringCentroid(ring) {
+    var a = 0, cx = 0, cy = 0;
+    for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      var cross = ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
+      a += cross;
+      cx += (ring[j][0] + ring[i][0]) * cross;
+      cy += (ring[j][1] + ring[i][1]) * cross;
+    }
+    if (!a) {
+      return [ring[0][0], ring[0][1]];
+    }
+    return [cx / (3 * a), cy / (3 * a)];
+  }
+
+  function featureRings(feature) {
+    var geometry = (feature || {}).geometry;
+    if (!geometry) return [];
+    if (geometry.type === 'Polygon') return geometry.coordinates;
+    if (geometry.type === 'MultiPolygon') {
+      return geometry.coordinates.map(function (poly) { return poly[0]; });
+    }
+    return [];
+  }
+
+  function featureWindow(feature, label, minRadiusKm, factor) {
+    var rings = featureRings(feature);
+    if (!rings.length) return null;
+    var biggest = rings[0], best = 0;
+    rings.forEach(function (ring) {
+      var lonMin = Infinity, lonMax = -Infinity, latMin = Infinity, latMax = -Infinity;
+      ring.forEach(function (c) {
+        lonMin = Math.min(lonMin, c[0]); lonMax = Math.max(lonMax, c[0]);
+        latMin = Math.min(latMin, c[1]); latMax = Math.max(latMax, c[1]);
+      });
+      var area = (lonMax - lonMin) * (latMax - latMin);
+      if (area > best) { best = area; biggest = ring; }
+    });
+    var centre = ringCentroid(biggest);
+    var latSpan = 0, lonSpan = 0;
+    biggest.forEach(function (c) {
+      lonSpan = Math.max(lonSpan, Math.abs(c[0] - centre[0]));
+      latSpan = Math.max(latSpan, Math.abs(c[1] - centre[1]));
+    });
+    var km = Math.max(latSpan * 110.574,
+      lonSpan * 111.320 * Math.cos(centre[1] * Math.PI / 180));
+    return {
+      lon: centre[0], lat: centre[1], label: label, exact: false,
+      radiusKm: Math.max(km * (factor || 1.2), minRadiusKm || 20),
+    };
+  }
+
+  function adminFeature(level, name) {
+    var wanted = String(name || '').trim().toLowerCase();
+    if (!wanted) return null;
+    var set = level === 'chiefdom'
+      ? ((GWT.data.geo || {}).chiefdomBoundaries || {}).features
+      : ((GWT.data.geo || {}).adminBoundaries || {}).features;
+    return (set || []).filter(function (feature) {
+      var props = feature.properties || {};
+      return String(props.name || props.shapeName || '').trim().toLowerCase() === wanted;
+    })[0] || null;
+  }
+
+  function areaWindow(radiusKm) {
+    var site = store.get('site') || {};
+    var latlon = siteLatLon();
+    if (latlon) {
+      return {
+        lon: latlon.lon, lat: latlon.lat, exact: true,
+        label: site.community || 'the site',
+        radiusKm: radiusKm || store.get('site.mapRadiusKm', 40),
+      };
+    }
+    var chiefdom = adminFeature('chiefdom', site.chiefdom);
+    if (chiefdom) {
+      return featureWindow(chiefdom, site.chiefdom + ' chiefdom', 12, 1.35);
+    }
+    var district = adminFeature('district', site.district);
+    if (district) {
+      return featureWindow(district, site.district + ' district', 20, 1.2);
+    }
+    return null;
+  }
+
+  function areaNote() {
+    var site = store.get('site') || {};
+    var where = [site.community, site.chiefdom && site.chiefdom + ' chiefdom',
+      site.district && site.district + ' district'].filter(Boolean).join(', ');
+    var latlon = siteLatLon();
+    if (latlon) {
+      return (where ? 'The site is at ' + where + ', ' : 'The site is at ') +
+        Math.abs(latlon.lat).toFixed(5) + ' ' + (latlon.lat < 0 ? 'S' : 'N') + ', ' +
+        Math.abs(latlon.lon).toFixed(5) + ' ' + (latlon.lon < 0 ? 'W' : 'E') + '.';
+    }
+    var window_ = areaWindow();
+    if (!window_) {
+      return (where ? 'The site is recorded as ' + where + '. ' : '') +
+        'Neither a GPS position nor an administrative area is recorded for it, ' +
+        'so no map of the area can be drawn. A borehole that cannot be found ' +
+        'again on the ground cannot be revisited or maintained: record the ' +
+        'position on the field sheet and reissue this report.';
+    }
+    return (where ? 'The site is recorded as ' + where + '. ' : '') +
+      'No GPS position is recorded for it, so the maps below cover ' +
+      window_.label + ' rather than the borehole itself and carry no site ' +
+      'marker. Record the position on the field sheet and reissue this report: ' +
+      'a borehole that cannot be found again on the ground cannot be revisited ' +
+      'or maintained.';
+  }
+
+  /* The figures themselves, rasterised for the .docx. `detail` adds the
+   * aquifer and geological setting to the locator. */
+  async function areaFigures(detail) {
+    var geo = GWT.data.geo || {};
+    if (!geo.adminBoundaries) return [];
+    var site = store.get('site') || {};
+    var latlon = siteLatLon();
+    var window_ = areaWindow();
+    if (!window_) return [];
+
+    var legendItems = [];
+    if (latlon) {
+      legendItems.push({ label: 'Project site', kind: 'diamond',
+        colour: charts.palette().secondary });
+    }
+    if (site.district) {
+      legendItems.push({ label: site.district + ' district', colour: '#CFE0D6' });
+    }
+    legendItems.push({ label: 'other districts', colour: '#EDEAE3' });
+
+    var out = [];
+    var locator = charts.siteMap({
+      context: (geo.adminBoundaries.features || []),
+      contextFill: function (feature) {
+        var name = (feature.properties || {}).name || (feature.properties || {}).shapeName;
+        return name === site.district ? '#CFE0D6' : '#EDEAE3';
+      },
+      points: latlon ? [{
+        lon: latlon.lon, lat: latlon.lat, label: siteLabel(),
+        colour: charts.palette().secondary, size: 6.5,
+      }] : [],
+      title: 'Location of ' + window_.label,
+      legendItems: legendItems,
+      credit: 'District boundaries: geoBoundaries (CC BY 4.0).',
+      width: 620, height: 560,
+    });
+    out.push({
+      image: await charts.toPng(locator),
+      caption: 'Location of ' + window_.label +
+        '. Boundaries from geoBoundaries (CC BY 4.0).',
+      widthCm: 14,
+    });
+    if (!detail) return out;
+
+    var pane = { lat: window_.lat, lon: window_.lon, radiusKm: window_.radiusKm };
+    if (geo.hydrogeology) {
+      out.push({
+        image: await charts.toPng(charts.thematicMap({
+          features: geo.hydrogeology.features || [],
+          context: geo.adminBoundaries.features || [],
+          key: 'unit', window: pane,
+          points: latlon ? [{ lon: latlon.lon, lat: latlon.lat, label: siteLabel() }] : [],
+          title: 'Aquifer productivity around ' + window_.label,
+          legendTitle: 'AQUIFER TYPE AND PRODUCTIVITY',
+          credit: 'BGS Africa Groundwater Atlas, CC BY-SA 4.0.',
+          width: 620, height: 620,
+        })),
+        caption: 'Aquifer type and productivity around ' + window_.label +
+          ', from the BGS Africa Groundwater Atlas country map (CC BY-SA 4.0).',
+        widthCm: 14,
+      });
+    }
+    if (geo.geology) {
+      out.push({
+        image: await charts.toPng(charts.thematicMap({
+          features: geo.geology.features || [],
+          context: geo.adminBoundaries.features || [],
+          key: 'unit', window: pane,
+          points: latlon ? [{ lon: latlon.lon, lat: latlon.lat, label: siteLabel() }] : [],
+          title: 'Geology around ' + window_.label,
+          legendTitle: 'GEOLOGICAL UNIT',
+          credit: 'USGS Geologic Map of Africa.',
+          width: 620, height: 620,
+        })),
+        caption: 'Geological setting around ' + window_.label +
+          ', from the USGS Geologic Map of Africa (1:5,000,000).',
+        widthCm: 14,
+      });
+    }
+    return out;
+  }
+
+  /* The same locator, for a document whose subject is an asset rather than
+   * the project currently loaded. */
+  function siteLikeFromAsset(asset) {
+    return {
+      community: asset.community || '', chiefdom: asset.chiefdom || '',
+      district: asset.district || '', easting: asset.easting,
+      northing: asset.northing, utm_zone: asset.utm_zone,
+    };
+  }
+
+  function areaNoteFor(asset) {
+    return withSite(siteLikeFromAsset(asset), areaNote);
+  }
+
+
+  async function areaFiguresFor(asset) {
+    return await withSite(siteLikeFromAsset(asset), function () {
+      return areaFigures(false);
+    });
+  }
+
+  /* Run `fn` as though `site` were the loaded project's site, and put the
+   * real one back afterwards whatever happens - including when `fn` is async
+   * and the substitution has to outlive the call that started it. The
+   * locator helpers read the store, which is the right default and the wrong
+   * one for an asset drawn from the registry rather than from the open
+   * project. */
+  async function withSite(site, fn) {
+    var previous = store.get('site');
+    var merged = Object.assign({}, previous);
+    Object.keys(site).forEach(function (key) { merged[key] = site[key]; });
+    store.set('site', merged);
+    try {
+      return await fn();
+    } finally {
+      store.set('site', previous);
+    }
   }
 
   function districtOf(chiefdom) {
@@ -1528,9 +1799,17 @@
       S.editableTable([
         { key: 'top', label: 'Top (m)', type: 'number' },
         { key: 'bottom', label: 'Bottom (m)', type: 'number' },
-      ], (custom.screens || design.screens.map(function (s) {
-        return { top: s.top_m, bottom: s.bottom_m };
-      })), function (rows) {
+      ], (custom.screens
+        /* the store holds [top, bottom] pairs, which is what the engine and
+         * the Depth Spine both write; the table reads named columns, and
+         * feeding it the raw pairs rendered every edited screen blank and
+         * then wiped it on the next keystroke */
+        ? custom.screens.map(function (pair) {
+          return { top: pair[0], bottom: pair[1] };
+        })
+        : design.screens.map(function (s) {
+          return { top: s.top_m, bottom: s.bottom_m };
+        })), function (rows) {
         var screens = rows.filter(function (r) {
           return S.isNum(r.top) && S.isNum(r.bottom) && r.bottom > r.top;
         }).map(function (r) { return [r.top, r.bottom]; });
@@ -1782,6 +2061,14 @@
         log: derived.log, analysis: derived.analysis,
         assessment: derived.assessment, config: config(),
         mobilisationDistanceKm: store.get('costing.mobilisation_km') || 0,
+        /* the same rates and percentages the Costing page uses: the spine's
+         * price is the one a named person signs */
+        costing: Object.assign({
+          rates: costingRates(),
+          wqSamples: store.get('costing.wq_samples'),
+          handpumps: store.get('costing.handpumps'),
+          overburdenM: overburdenFromData(),
+        }, costingOptions()),
       }, store.get('design.screens'));
     } catch (e) {
       return [head, el('div.callout.callout-bad', [
@@ -2256,6 +2543,7 @@
     ]));
 
     nodes.push(seasonalCard(derived.analysis));
+    nodes.push(photoCard('pumping', 'Pumping test photographs'));
     nodes.push(reportCard('Pumping test report', 'pumping',
       'Test details, the full field data tables, each analysis method with its ' +
       'figure, the results summary and the yield recommendation.'));
@@ -2593,14 +2881,17 @@
             var builder = await GWT.docx.paymentCertificate({
               style: config().style, contract: contract,
               certificate: certificate, signOff: signOffFor('costing'),
-              readiness: reportReadiness('costing'),
+              /* a certificate makes no claim about the water, so it is not
+               * held back by the costing gate's design requirements */
+              readiness: reportReadiness('procurement'),
+              areaNote: areaNote(), areaMaps: await areaFigures(false),
             });
             S.download('IPC_' + certificate.number + '.docx',
               await builder.build());
           });
           S.toast('Certificate ready.', 'ok');
         } catch (err) {
-          S.toast('Could not build the certificate: ' + err.message, 'bad');
+          S.toast('Could not build the certificate: ' + err.message, 'error');
         }
       }),
     ]));
@@ -2972,25 +3263,39 @@
           { key: 'remark', label: 'Remark' },
         ], stageItems.map(function (item) {
           var response = responses[item.item_id] || {};
+          /* Read the other half of the response back out of the store rather
+           * than out of this closure. The remark field does not re-render on
+           * every keystroke, so the captured `response` is stale the moment
+           * anything has been typed - and writing it back discarded whatever
+           * the supervisor had just written. */
+          function update(patch) {
+            var current = store.get('supervision.responses.' + item.item_id) || {};
+            store.set('supervision.responses.' + item.item_id, {
+              item_id: item.item_id,
+              status: patch.status !== undefined ? patch.status
+                : (current.status || 'pending'),
+              remark: patch.remark !== undefined ? patch.remark
+                : (current.remark || ''),
+            });
+          }
           return {
             section: item.section, text: item.text, critical: item.critical,
+            status: response.status || 'pending',
             answer: S.selectInput(response.status || 'pending',
               [{ value: 'pending', label: '—' }, { value: 'yes', label: 'Yes' },
                { value: 'no', label: 'No' }, { value: 'na', label: 'N/A' }],
               function (value) {
-                store.set('supervision.responses.' + item.item_id,
-                  { item_id: item.item_id, status: value, remark: response.remark || '' });
+                update({ status: value });
                 render();
               }, { class: 'input cell', style: { maxWidth: '6rem' } }),
             remark: S.textInput(response.remark || '', function (value) {
-              store.set('supervision.responses.' + item.item_id,
-                { item_id: item.item_id, status: response.status || 'pending', remark: value });
+              update({ remark: value });
             }, { class: 'input cell' }),
           };
         }), {
+          /* a failed item is the reason the page exists, so it is marked */
           rowClass: function (row) {
-            var r = responses[stageItems[0] ? '' : ''] || {};
-            return '';
+            return row.status === 'no' ? 'row-bad' : '';
           },
         }),
       ]));
@@ -3057,6 +3362,22 @@
         { key: 'min_distance_m', label: 'Minimum distance (m)', align: 'right' },
         { key: 'note', label: 'Note' },
       ], C.loadSeparationDistances()),
+    ]));
+
+    nodes.push(card('Site notes and instructions', [
+      el('p.muted', 'What was said on site: an instruction to the driller, a ' +
+        'deviation agreed, a delay and its reason. Each line is printed in ' +
+        'the supervision record under its own heading, which is the only ' +
+        'place the written instruction survives the job.'),
+      S.editableTable([
+        { key: 'note', label: 'Note' },
+      ], (store.get('supervision.notes') || []).map(function (note) {
+        return { note: note };
+      }), function (rows) {
+        store.set('supervision.notes', rows
+          .map(function (r) { return String(r.note || '').trim(); })
+          .filter(Boolean));
+      }, { addLabel: '+ Add a note' }),
     ]));
 
     nodes.push(photoCard('supervision', 'Supervision photographs'));
@@ -3170,6 +3491,36 @@
       note: 'Format the depth column as Text before typing "5-10", or Excel ' +
         'converts it to a date and the row is skipped.',
     },
+    daily: {
+      label: "Driller's daily report", file: 'daily_log_template.xlsx',
+      sheets: function () {
+        var rows = [
+          ["DRILLER'S DAILY REPORT"],
+          ['Community', '', '', 'Borehole Ref. No.', ''],
+          ['Date', '', '', 'Drill rig', ''],
+          ['Contractor', '', '', 'Supervisor', ''],
+          ['Weather / site conditions', '', '', 'Record taker', ''],
+          [],
+          ['Time from', 'Time to', 'Depth from (m)', 'Depth to (m)',
+            'Formation / activity', 'Water strike (m)', 'Airlift yield (L/s)'],
+        ];
+        for (var i = 0; i < 14; i++) rows.push(['', '', '', '', '', '', '']);
+        rows.push([]);
+        rows.push(['Metres drilled today', '', 'Cumulative metres', '',
+          'Casing installed today (m)', '']);
+        rows.push(['Standing / breakdown hours', '', 'Reason', '']);
+        rows.push([]);
+        rows.push(['Rig operator signature', '', '', 'Supervisor signature', '']);
+        rows.push([]);
+        rows.push(['Notes: one row per drilled interval or activity (moving, ' +
+          'standing, casing). Both signatures are required every day; the ' +
+          'office checks invoiced metres against these logs.']);
+        return [{ name: 'Daily Log', rows: rows }];
+      },
+      note: 'The daily record the supervision guidance expects, and what ' +
+        'invoiced metres are checked against. One row per drilled interval ' +
+        'or activity, and both signatures every day.',
+    },
     pumping: {
       label: 'Pumping test', file: 'pumping_test_template.xlsx',
       sheets: function () {
@@ -3237,8 +3588,9 @@
           }),
         ]);
       })),
-      card('All four at once', [
-        button('Download every template', async function () {
+      card('All of them at once', [
+        button('Download every template (' +
+          Object.keys(TEMPLATE_SPECS).length + ')', async function () {
           for (var key in TEMPLATE_SPECS) {
             if (!Object.prototype.hasOwnProperty.call(TEMPLATE_SPECS, key)) continue;
             var spec = TEMPLATE_SPECS[key];
@@ -3356,14 +3708,20 @@
       ]),
       el('p.muted', doc.notes + ' Extractor: ' + doc.extractor + '.'),
       el('div.btn-row', [
-        button('Download review workbook (.xlsx)', function () {
-          buildReviewWorkbook(doc);
+        button('Download review workbook (.xlsx)', async function () {
+          try {
+            await buildReviewWorkbook(doc);
+          } catch (e) {
+            S.toast('Could not write the review workbook: ' + e.message, 'error');
+          }
         }),
         doc.document_kind === 'ves' && doc.tables.length
-          ? button('Download filled VES template (.xlsx)', function () {
+          ? button('Download filled VES template (.xlsx)', async function () {
             try {
-              buildFilledVesTemplate(doc);
-            } catch (e) { S.toast(e.message, 'error'); }
+              await buildFilledVesTemplate(doc);
+            } catch (e) {
+              S.toast('Could not write the VES template: ' + e.message, 'error');
+            }
           }, { variant: 'ghost' }) : null,
       ]),
     ]));
@@ -4162,9 +4520,17 @@
         var cfg = config();
         var context = {
           style: cfg.style, asset: asset, state: C.assetState(asset),
-          readiness: reportReadiness('completion'),
+          /* a plate on the headworks makes no claim about the water, so it is
+           * not held back for want of a laboratory panel */
+          readiness: reportReadiness(kind === 'placard' ? 'placard' : 'asset'),
           symbol: qrDataUrl(C.qrPayload(asset), { ecc: 'H', scale: 8 }),
         };
+        if (kind !== 'placard') {
+          /* the record is what a district water office reads before sending a
+           * repair team, so it says where to send it */
+          context.areaNote = await areaNoteFor(asset);
+          context.areaMaps = await areaFiguresFor(asset);
+        }
         var builder = kind === 'placard'
           ? await GWT.docx.assetPlacard(context)
           : await GWT.docx.assetRecordReport(context);
@@ -4174,7 +4540,7 @@
       });
       S.toast('Document ready.', 'ok');
     } catch (err) {
-      S.toast('Could not build the document: ' + err.message, 'bad');
+      S.toast('Could not build the document: ' + err.message, 'error');
     }
   }
 
@@ -4723,6 +5089,11 @@
           signOff: signOffFor(kind),
           readiness: reportReadiness(kind),
         };
+        /* every report opens on where it is; the three reports that argue
+         * from the ground carry the aquifer and geology setting too */
+        context.areaNote = areaNote();
+        context.areaMaps = await areaFigures(
+          kind === 'geophysical' || kind === 'completion' || kind === 'handover');
         if (kind === 'pumping' && derived.analysis) {
           context.seasonal = currentSeasonal(derived.analysis);
         }
@@ -4764,6 +5135,11 @@
             });
           context.log = derived.log || {};
           context.design = derived.design;
+          /* the completion report's later sections: the test, the
+           * installation, the water and what to do about it */
+          context.analysis = derived.analysis;
+          context.assessment = derived.assessment;
+          context.pumpType = store.get('handover.pumpType') || 'Handpump';
           context.figures = figures;
           builder = await docx.completionReport(context);
 
@@ -4826,6 +5202,7 @@
             });
           }
           context.estimate = derived.estimate;
+          context.programme = derived.programme;
           context.figures = figures;
           builder = await docx.costingReport(context);
 
@@ -4838,6 +5215,11 @@
           context.notes = store.get('supervision.notes') || [];
           context.boreholeRef = (derived.log && derived.log.borehole_ref) ||
             (derived.test && derived.test.borehole_ref) || '';
+          GWT.imageSlot.collect(store.get('photos.supervision'), 'supervision')
+            .forEach(function (photo) {
+              figures.push({ image: photo, caption: photo.caption, widthCm: 13 });
+            });
+          context.figures = figures;
           builder = await docx.supervisionReport(context);
 
         } else if (kind === 'handover') {

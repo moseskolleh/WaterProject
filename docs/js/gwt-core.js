@@ -1319,6 +1319,13 @@
   function pyRound(x, digits) {
     var d = digits || 0;
     if (!isFinite(x)) return x;
+    /* round(12345, -2) is 12300 in Python. The decimal-string path below
+     * cuts inside the fraction, which a negative cut has none of, so the
+     * scale is taken out first and put back after. */
+    if (d < 0) {
+      var scale = Math.pow(10, -d);
+      return pyRound(x / scale, 0) * scale;
+    }
     /* The tie test has to run on the real value, not on x * 10^d: 14.05 is
      * stored as 14.05000000000000071, which Python rounds up, but 14.05 * 10
      * is exactly 140.5 in binary and looked like a tie, so banker's rounding
@@ -1352,9 +1359,10 @@
   function roundSig(value, sig) {
     if (value === 0 || !isFinite(value)) return value;
     var exp = Number(Math.abs(value).toExponential().split('e')[1]);
-    var ndigits = (sig || 3) - 1 - exp;
-    var factor = Math.pow(10, ndigits);
-    return Math.round(value * factor) / factor;
+    /* Python's round(), not Math.round(): the two disagree on every tie, and
+     * a tie is not rare in a table of measurements. fmtNum runs on this, so
+     * the disagreement reached the text of the reports. */
+    return pyRound(value, (sig || 3) - 1 - exp);
   }
 
   /* Python's "%g": 6 significant digits, trailing zeros stripped, exponential
@@ -2133,10 +2141,11 @@
     if (test.recovery_level_m && hasSwl && test.recovery_time_min) {
       var residual = test.recovery_level_m.map(function (v) { return v - swl; });
       var qRec = null;
-      for (var k = test.steps.length - 1; k >= 0; k--) {
-        if (test.steps[k].discharge_m3_per_h !== null &&
-            test.steps[k].discharge_m3_per_h !== undefined) {
-          qRec = test.steps[k].discharge_m3_per_h;
+      var recSteps = test.steps || [];
+      for (var k = recSteps.length - 1; k >= 0; k--) {
+        if (recSteps[k].discharge_m3_per_h !== null &&
+            recSteps[k].discharge_m3_per_h !== undefined) {
+          qRec = recSteps[k].discharge_m3_per_h;
           break;
         }
       }
@@ -3831,23 +3840,26 @@
   }
 
   function designSummaryRows(design) {
+    /* pyFixed, not toFixed: a screen from 14.5 m is "15" to JavaScript and
+     * "14" to Python, so the browser report and the Python report disagreed
+     * by a metre on the same borehole. */
     var rows = [
-      ['Total depth', design.total_depth_m.toFixed(0) + ' m'],
+      ['Total depth', pyFixed(design.total_depth_m, 0) + ' m'],
       ['Drilled diameter', formatG(design.borehole_diameter_in) + '"'],
       ['Casing', formatG(design.casing_diameter_in) + '" ' + design.casing_material +
-        ', stick-up ' + design.stickup_m.toFixed(1) + ' m'],
+        ', stick-up ' + pyFixed(design.stickup_m, 1) + ' m'],
       ['Screens', design.screens.map(function (s) {
-        return s.top_m.toFixed(0) + '-' + s.bottom_m.toFixed(0) + ' m';
+        return pyFixed(s.top_m, 0) + '-' + pyFixed(s.bottom_m, 0) + ' m';
       }).join('; ') + ' (slot ' + formatG(design.screen_slot_mm) + ' mm)'],
-      ['Gravel pack', design.gravel_pack[0].toFixed(0) + '-' +
-        design.gravel_pack[1].toFixed(0) + ' m'],
-      ['Backfill', design.backfill[0].toFixed(0) + '-' +
-        design.backfill[1].toFixed(0) + ' m'],
-      ['Sanitary seal', design.sanitary_seal[0].toFixed(0) + '-' +
-        design.sanitary_seal[1].toFixed(0) + ' m cement grout'],
+      ['Gravel pack', pyFixed(design.gravel_pack[0], 0) + '-' +
+        pyFixed(design.gravel_pack[1], 0) + ' m'],
+      ['Backfill', pyFixed(design.backfill[0], 0) + '-' +
+        pyFixed(design.backfill[1], 0) + ' m'],
+      ['Sanitary seal', pyFixed(design.sanitary_seal[0], 0) + '-' +
+        pyFixed(design.sanitary_seal[1], 0) + ' m cement grout'],
     ];
     if (design.static_water_level_m !== null) {
-      rows.push(['Static water level', design.static_water_level_m.toFixed(2) + ' m']);
+      rows.push(['Static water level', pyFixed(design.static_water_level_m, 2) + ' m']);
     }
     if (design.water_strikes_m.length) {
       rows.push(['Water strikes', design.water_strikes_m.map(function (w) {
@@ -4277,6 +4289,38 @@
     return programme;
   }
 
+  /* The programme roll-up as a report table. Mirrors
+   * ProgrammeEstimate.summary_rows on the Python side, so the package
+   * estimate reads the same in either engine's cost report. */
+  function programmeSummaryRows(programme) {
+    function pair(usd) {
+      return [thousandsFixed(usd, 0), thousandsFixed(programme.in_local(usd), 0)];
+    }
+    var dry = (programme.n_attempted - programme.n_successful) *
+      programme.dry_attempt_cost_usd;
+    var rows = [
+      ['Successful boreholes required', String(programme.n_successful), ''],
+      ['Attempts planned (' + formatG(programme.success_rate_percent) +
+        '% success)', String(programme.n_attempted), ''],
+      ['Direct works cost'].concat(pair(programme.direct_cost_usd)),
+      ['- of which transport and moves'].concat(pair(programme.transport_cost_usd)),
+      ['- of which dry attempts'].concat(pair(dry)),
+      ['Total cost (overheads ' + formatG(programme.overheads_percent) + '%)']
+        .concat(pair(programme.total_cost_usd)),
+      ['Contract price (margin ' + formatG(programme.margin_percent) + '%)']
+        .concat(pair(programme.price_usd)),
+    ];
+    if (programme.vat_percent) {
+      rows.push(['Price including VAT (' + formatG(programme.vat_percent) + '%)']
+        .concat(pair(programme.price_with_vat_usd)));
+    }
+    rows.push(['Price per successful borehole']
+      .concat(pair(programme.price_per_successful_well_usd)));
+    rows.push(['Planning budget (contingency ' +
+      formatG(programme.contingency_percent) + '%)'].concat(pair(programme.budget_usd)));
+    return rows;
+  }
+
   /* ============================================================ supervision
    * groundwater/supervision/*. Checklist content follows RWSN/UNICEF
    * "Supervising Water Well Drilling"; the numeric field checks encode the
@@ -4578,6 +4622,7 @@
     costingInputs: costingInputs, resolveCostingInputs: resolveCostingInputs,
     inputsFromDesign: inputsFromDesign, estimateBoreholeCost: estimateBoreholeCost,
     estimateProgrammeCost: estimateProgrammeCost,
+    programmeSummaryRows: programmeSummaryRows,
     STAGE_TITLES: STAGE_TITLES, STAGE_ORDER: STAGE_ORDER,
     RESPONSE_STATES: RESPONSE_STATES, stageTitle: stageTitle,
     loadChecklists: loadChecklists, loadSeparationDistances: loadSeparationDistances,
@@ -5913,9 +5958,17 @@
     var out = [];
     (records || []).forEach(function (record) {
       if (!record || typeof record !== 'object') return;
-      var lat = Number(wpFirst(record, ['lat_deg', 'latitude', 'lat']));
-      var lon = Number(wpFirst(record, ['lon_deg', 'longitude', 'lon']));
+      /* Number(null) and Number('') are both 0, and a CSV export of WPdx+ is
+       * full of both. Left alone they became water points in the Gulf of
+       * Guinea, counted in the coverage of whatever chiefdom was nearest. */
+      var latRaw = wpFirst(record, ['lat_deg', 'latitude', 'lat']);
+      var lonRaw = wpFirst(record, ['lon_deg', 'longitude', 'lon']);
+      if (latRaw === null || latRaw === undefined || latRaw === '' ||
+          lonRaw === null || lonRaw === undefined || lonRaw === '') return;
+      var lat = Number(latRaw);
+      var lon = Number(lonRaw);
       if (!isFinite(lat) || !isFinite(lon)) return;
+      if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return;
       var source = String(wpFirst(record, ['water_source_clean', 'water_source',
         'source']) || '');
       var technology = String(wpFirst(record, ['water_tech_clean', 'water_tech',
@@ -6970,6 +7023,15 @@
     geophysical: ['site_located'],
     costing: ['site_located', 'borehole_logged', 'design_derived'],
     supervision: ['site_located'],
+    /* The asset documents and the payment certificate. Without an entry each
+     * of these fell back to the completion set, so a plate for the headworks
+     * was stamped PROVISIONAL for want of a water quality panel - which a
+     * plate makes no claim about. What it does claim is that the identifier
+     * on it leads back to this borehole, and that identifier is minted from
+     * the position. */
+    placard: ['site_located'],
+    asset: ['site_located'],
+    procurement: ['site_located', 'no_errors'],
   };
 
   function assessReadiness(state, report, overrides) {
@@ -7420,9 +7482,29 @@
       screensM: screensM && screensM.length ? screensM : null,
     });
 
-    var estimate = estimateBoreholeCost(inputsFromDesign(design, {
+    /* The spine's price is signed off by a named person, so it has to be the
+     * price the Costing page shows. That means the rates the analyst edited
+     * and the overheads, margin, contingency, VAT and exchange rate they set
+     * - not the catalogue defaults. Only the quantities differ, and they
+     * differ because the screens on the section moved. */
+    var money = inputs.costing || {};
+    var costInputs = inputsFromDesign(design, {
       mobilisationDistanceKm: inputs.mobilisationDistanceKm || 0.0,
-    }));
+      overburdenM: money.overburdenM,
+    });
+    if (money.wqSamples !== undefined && money.wqSamples !== null) {
+      costInputs.wq_samples = money.wqSamples;
+    }
+    if (money.handpumps !== undefined && money.handpumps !== null) {
+      costInputs.handpumps = money.handpumps;
+    }
+    var estimate = estimateBoreholeCost(costInputs, money.rates || null, {
+      overheadsPercent: money.overheadsPercent,
+      marginPercent: money.marginPercent,
+      contingencyPercent: money.contingencyPercent,
+      vatPercent: money.vatPercent,
+      exchangeRate: money.exchangeRate,
+    });
 
     var site = log.site || {};
     var latlon = null;
@@ -8950,8 +9032,11 @@
   }
 
   function positionCode(easting, northing, zone) {
-    var east = Math.round(Number(easting) / POSITION_STEP_M);
-    var north = Math.round(Number(northing) / POSITION_STEP_M);
+    /* Python's round(): two teams at one wellhead have to mint the same
+     * identifier, and an easting on an exact five-metre tie is where
+     * Math.round and round() part company. */
+    var east = pyRound(Number(easting) / POSITION_STEP_M, 0);
+    var north = pyRound(Number(northing) / POSITION_STEP_M, 0);
     if (!(east >= 0 && east < 131072) || !(north >= 0 && north < 131072)) {
       throw new Error('(' + easting + ', ' + northing + ') is not a position ' +
         'inside Sierra Leone; an identifier minted from it would not be findable');
@@ -9002,7 +9087,6 @@
     code = code.split('').map(function (ch) {
       return own(CROCKFORD_FOLD, ch) ? CROCKFORD_FOLD[ch] : ch;
     }).join('');
-    if (own(CROCKFORD_FOLD, given)) given = CROCKFORD_FOLD[given];
     var candidate = 'SL-' + district + '-' + code + '-' + given;
     if (!ASSET_ID_RE.test(candidate)) return null;
     if (checkCharacter('SL-' + district + '-' + code) !== given) return null;

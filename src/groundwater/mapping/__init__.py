@@ -10,6 +10,8 @@ from .maps import (
     MapPoint,
 )
 from .regional import (
+    AreaWindow,
+    area_window,
     ADMIN_CREDIT,
     GEOLOGY_CREDIT,
     HYDRO_CREDIT,
@@ -49,6 +51,8 @@ __all__ = [
     "GEOLOGY_CREDIT",
     "HYDRO_CREDIT",
     "AdminArea",
+    "AreaWindow",
+    "area_window",
     "GeologyUnit",
     "chiefdom_of",
     "district_of",
