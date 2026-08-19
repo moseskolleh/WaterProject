@@ -164,6 +164,62 @@
     });
   }
 
+  /* Vertices per protection-zone ring. At 64 the chord across a 3 m circle
+   * is under 30 cm, which is finer than the wellhead position is known. */
+  var ZONE_SEGMENTS = 64;
+
+  /* The sanitary separation distances, drawn as the rings they are.
+   *
+   * The table says a latrine must be 20 m away, a burial ground 1000 m, a
+   * building 3 m. Those are checked as numbers and reported as numbers,
+   * which asks whoever reads it to hold eight radii in their head and
+   * compare them against a site they may never have stood on. Drawn on the
+   * map over imagery, an encroachment is visible instead of asserted.
+   *
+   * Each ring is the distance inside which that structure must *not* be:
+   * ground the borehole needs kept clear, not ground it occupies.
+   *
+   * Generated in projected metres and unprojected vertex by vertex, so a
+   * 20 m ring is 20 m on the ground. Widest first, so the tight ones stay
+   * visible on top of them. */
+  function protectionZoneFeatures(lat, lon, distances, zone) {
+    var specs = (distances || GWT.data.separationDistances || []).map(function (d) {
+      return {
+        structure: String(d.structure || ''),
+        /* the bundled table carries these as text */
+        min_distance_m: Number(d.min_distance_m),
+        note: String(d.note || ''),
+      };
+    }).filter(function (d) { return isFinite(d.min_distance_m); });
+    specs.sort(function (a, b) { return b.min_distance_m - a.min_distance_m; });
+
+    var centre = GWT.core.geographicToUtm(lat, lon, zone);
+    return specs.map(function (spec) {
+      var ring = [];
+      for (var step = 0; step < ZONE_SEGMENTS; step++) {
+        var angle = 2 * Math.PI * step / ZONE_SEGMENTS;
+        var ll = GWT.core.utmToGeographic(
+          centre.easting + spec.min_distance_m * Math.cos(angle),
+          centre.northing + spec.min_distance_m * Math.sin(angle),
+          centre.zone);
+        ring.push([round6(ll.lon), round6(ll.lat)]);
+      }
+      ring.push([ring[0][0], ring[0][1]]);
+      return feature({ type: 'Polygon', coordinates: [ring] }, clean({
+        structure: spec.structure,
+        min_distance_m: spec.min_distance_m,
+        note: spec.note,
+        meaning: spec.structure + ' must be at least ' + spec.min_distance_m +
+          ' m from the borehole; this ring is the ground that has to stay ' +
+          'clear of it',
+        fill: '#C1772A',
+        'fill-opacity': 0.0,
+        stroke: '#C1772A',
+        'stroke-width': 1.5,
+      }));
+    });
+  }
+
   /* Administrative polygons, drawn as an outline. Interior rings survive
    * whole: Nongowa encloses Kenema Town, and a chiefdom drawn without its
    * hole swallows the town it surrounds. */
@@ -538,6 +594,12 @@
         suitabilityFeatures(opts.suitability, opts.zone),
         { radius: 9.0, stroke: '#222222' }));
     }
+    if (hasFix && opts.protectionZones !== false) {
+      layers.push(layer('Sanitary protection zones',
+        protectionZoneFeatures(opts.lat, opts.lon, opts.distances, opts.zone),
+        { kind: 'polygon', color: '#C1772A', stroke: '#C1772A',
+          fillOpacity: 0.0, strokeWidth: 1.5 }));
+    }
     if (opts.lat != null && opts.lon != null) {
       layers.push(layer('Site', [pointFeature(opts.lon, opts.lat, clean({
         label: opts.community || 'Site',
@@ -661,6 +723,7 @@
     waterPointFeatures: waterPointFeatures,
     suitabilityFeatures: suitabilityFeatures,
     portfolioFeatures: portfolioFeatures,
+    protectionZoneFeatures: protectionZoneFeatures,
     layer: layer,
     buildProject: buildProject,
     siteProject: siteProject,
