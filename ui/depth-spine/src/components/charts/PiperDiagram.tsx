@@ -1,5 +1,9 @@
 import type { PiperData } from '../../domain/view';
 
+// The sample's own marks, in the house accent (see src/tokens.css).
+const GUIDE = 'oklch(0.72 0.13 var(--accent-h) / .4)';
+const POINT = 'oklch(0.72 0.13 var(--accent-h))';
+
 /**
  * Trilinear Piper plot, drawn from the milliequivalents the ionic balance
  * already computed.
@@ -107,16 +111,18 @@ export function PiperDiagram({ data }: { data: PiperData }) {
       })}
       <polygon points={diamond.map((d) => `${d.x},${d.y}`).join(' ')} fill="none" stroke={edge} />
 
+      {/* Inline styles rather than stroke=/fill=: a var() is only resolved in a
+          CSS declaration, never in an SVG presentation attribute. */}
       <line x1={cation.x} y1={cation.y} x2={projected.x} y2={projected.y}
-        stroke="oklch(0.72 0.13 190 / .4)" strokeDasharray="3 3" />
+        strokeDasharray="3 3" style={{ stroke: GUIDE }} />
       <line x1={anion.x} y1={anion.y} x2={projected.x} y2={projected.y}
-        stroke="oklch(0.72 0.13 190 / .4)" strokeDasharray="3 3" />
+        strokeDasharray="3 3" style={{ stroke: GUIDE }} />
 
       {[cation, anion].map((pt, i) => (
-        <circle key={i} cx={pt.x} cy={pt.y} r={3} fill="oklch(0.72 0.13 190)" />
+        <circle key={i} cx={pt.x} cy={pt.y} r={3} style={{ fill: POINT }} />
       ))}
-      <circle cx={projected.x} cy={projected.y} r={5} fill="oklch(0.78 0.13 190)"
-        stroke="#12181a" strokeWidth={1.5} />
+      <circle cx={projected.x} cy={projected.y} r={5} strokeWidth={1.5}
+        style={{ fill: 'oklch(0.78 0.13 var(--accent-h))', stroke: 'var(--ink)' }} />
 
       <g fontFamily="'IBM Plex Mono', monospace" fontSize={8.5} fill={label}>
         <text x={X0 - 2} y={BASE_Y + 11} textAnchor="middle">Ca</text>
