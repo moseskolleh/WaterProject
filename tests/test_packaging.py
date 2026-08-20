@@ -129,6 +129,9 @@ def test_the_qr_oracles_are_declared_so_ci_installs_them():
     assert "segno" in packages, "the independent encoder is not in the dev extra"
     assert packages & {"opencv-python-headless", "opencv-python"}, (
         "the decoder is not in the dev extra")
+    assert "rasterio" in packages, (
+        "the GeoTIFF reader is not in the dev extra; without it the raster "
+        "checks skip and a wrongly georeferenced file ships looking fine")
 
 
 def test_the_qr_encoder_needs_nothing_at_run_time():

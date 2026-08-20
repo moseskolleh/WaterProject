@@ -456,7 +456,8 @@ for (const f of ['support.js', 'gwt-data.js', 'gwt-core.js', 'gwt-geolibre.js'])
 const G = sandbox.GWT.geolibre;
 const input = JSON.parse(readFileSync(process.argv[3], 'utf8'));
 const project = G.siteProject(input.site);
-const wanted = ['Site', 'Drill-target suitability', 'Existing water points'];
+const wanted = ['Site', 'Drill-target suitability', 'Existing water points',
+  'Sanitary protection zones'];
 const computed = {};
 for (const layer of project.layers) {
   if (wanted.includes(layer.name)) computed[layer.name] = layer;
@@ -567,7 +568,8 @@ def test_the_browser_builder_agrees_with_this_one(tmp_path):
     assert js["mapView"] == mine["mapView"]
 
     by_name = {layer["name"]: layer for layer in mine["layers"]}
-    for name in ("Site", "Drill-target suitability", "Existing water points"):
+    for name in ("Site", "Drill-target suitability", "Existing water points",
+                 "Sanitary protection zones"):
         assert js["computed"][name] == by_name[name], f"{name} differs"
 
     assert js["portfolio"] == portfolio_project(portfolio)
@@ -815,3 +817,77 @@ def test_a_site_in_a_post_2017_district_can_be_exported():
         project = site_project(site=SiteMetadata(community="X", district=district))
         assert project["metadata"]["area"] == f"{district} district"
         assert project["mapView"]["zoom"] > 7.96, "framed on the country"
+
+
+# ------------------------------------------- sanitary protection zones
+
+
+def test_a_protection_ring_is_its_distance_on_the_ground():
+    """20 m must be 20 m at this latitude, not 20 m at the equator."""
+    import math
+
+    from groundwater.geo import geographic_to_utm
+    from groundwater.mapping.geolibre import protection_zone_features
+
+    lat, lon = 8.59, -13.1827
+    ring = [f for f in protection_zone_features(lat, lon)
+            if f["properties"]["min_distance_m"] == 20][0]
+    centre = geographic_to_utm(lat, lon)
+    spread = []
+    for point_lon, point_lat in ring["geometry"]["coordinates"][0]:
+        utm = geographic_to_utm(point_lat, point_lon, centre.zone)
+        spread.append(math.hypot(utm.easting - centre.easting,
+                                 utm.northing - centre.northing))
+    # the slack is the six-decimal coordinate rounding, about 0.11 m
+    assert 19.8 < min(spread) and max(spread) < 20.2, (min(spread), max(spread))
+
+
+def test_the_rings_are_drawn_widest_first():
+    """A 1000 m ring drawn over a 3 m one hides it."""
+    from groundwater.mapping.geolibre import protection_zone_features
+
+    widths = [f["properties"]["min_distance_m"]
+              for f in protection_zone_features(8.59, -13.1827)]
+    assert widths == sorted(widths, reverse=True)
+    assert widths[0] == 1000 and widths[-1] == 3
+
+
+def test_every_separation_distance_is_drawn():
+    from groundwater.mapping.geolibre import protection_zone_features
+    from groundwater.supervision import load_separation_distances
+
+    features = protection_zone_features(8.59, -13.1827)
+    assert len(features) == len(load_separation_distances())
+    assert {f["properties"]["structure"] for f in features} == {
+        d.structure for d in load_separation_distances()
+    }
+
+
+def test_a_ring_says_what_it_means():
+    """A circle on a map is not self-explanatory: it could as easily be
+    read as the area the borehole serves."""
+    from groundwater.mapping.geolibre import protection_zone_features
+
+    latrine = [f for f in protection_zone_features(8.59, -13.1827)
+               if "Septic" in f["properties"]["structure"]][0]
+    assert "must be at least 20 m from the borehole" in latrine["properties"]["meaning"]
+    assert "stay clear" in latrine["properties"]["meaning"]
+
+
+def test_the_zones_are_drawn_but_do_not_decide_the_camera():
+    """The two 1000 m rings would otherwise frame every site the same way."""
+    project = site_project(site=_site(), zone=ZONE)
+    assert "Sanitary protection zones" in [l["name"] for l in project["layers"]]
+    assert project["mapView"]["zoom"] > 16, "the 1000 m rings took over the camera"
+
+
+def test_a_site_with_no_fix_gets_no_rings():
+    """A ring drawn round a chiefdom centroid would be a separation
+    distance from a place nobody surveyed."""
+    project = site_project(site=SiteMetadata(community="Rokel", chiefdom="Koya"))
+    assert "Sanitary protection zones" not in [l["name"] for l in project["layers"]]
+
+
+def test_the_zones_can_be_left_out():
+    project = site_project(site=_site(), zone=ZONE, protection_zones=False)
+    assert "Sanitary protection zones" not in [l["name"] for l in project["layers"]]

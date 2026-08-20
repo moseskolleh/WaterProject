@@ -58,3 +58,53 @@ def test_chiefdom_district_agrees_with_district_lookup():
     # matches the independent district lookup
     chief, district = chiefdom_of(8.8817, -12.0442)
     assert district == district_of(8.8817, -12.0442) == "Bombali"
+
+
+def test_no_chiefdom_has_a_part_stranded_across_the_country():
+    """A chiefdom's parts must lie near one another.
+
+    "Maforki" (Port Loko) shipped with a twelve-point part 250 km east,
+    wedged between Mafindor's two lobes in Kono - the two names are one
+    letter apart. Because ``district_of_point`` returns the first polygon
+    that contains the point, and Maforki is filed before Mafindor, every
+    water point on that ground counted towards Port Loko instead of Kono:
+    one district's coverage inflated and another's deflated, in the
+    ranking that decides where to drill next.
+
+    Sierra Leone is about 350 km across and no chiefdom is a fifth of it,
+    so parts a degree apart are a filing error rather than geography.
+    """
+    from groundwater.coverage import load_chiefdom_polys
+
+    stranded = []
+    for poly in load_chiefdom_polys():
+        if len(poly.bboxes) < 2:
+            continue
+        lon_span = max(b[2] for b in poly.bboxes) - min(b[0] for b in poly.bboxes)
+        lat_span = max(b[3] for b in poly.bboxes) - min(b[1] for b in poly.bboxes)
+        if max(lon_span, lat_span) > 1.0:
+            stranded.append((poly.name, round(lon_span, 2), round(lat_span, 2)))
+    assert not stranded, f"chiefdoms with parts a degree or more apart: {stranded}"
+
+
+def test_the_ground_between_mafindors_lobes_is_in_kono():
+    """The repair moved that part rather than deleting it.
+
+    Nothing else in the layer covers it, so dropping it would have punched
+    a hole in Kono instead of fixing the attribution.
+    """
+    from groundwater.coverage import (district_of_point, load_chiefdom_district,
+                                      load_chiefdom_polys)
+
+    polys = load_chiefdom_polys()
+    crosswalk = load_chiefdom_district()
+    assert district_of_point(8.6803, -10.5097, polys, crosswalk) == "Kono"
+
+
+def test_maforki_is_only_in_port_loko():
+    from groundwater.coverage import load_chiefdom_polys
+
+    maforki = [p for p in load_chiefdom_polys() if p.name == "Maforki"]
+    assert len(maforki) == 1
+    for west, _, east, _ in maforki[0].bboxes:
+        assert west < -12.0 and east < -12.0, "Maforki has drifted east again"

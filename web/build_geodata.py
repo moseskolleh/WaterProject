@@ -430,6 +430,7 @@ def build_chiefdoms(raw: Path, tol: float = 0.004) -> Path:
             "geometry": geom,
         })
     features = split_koya_feature(features)
+    features = reattach_mafindor_part(features)
     payload = {
         "type": "FeatureCollection",
         "attribution": "Chiefdoms from geoBoundaries (gbOpen, CC BY 4.0)",
@@ -465,6 +466,70 @@ CHIEFDOM_DISTRICT_OVERRIDES = {
     "Koya": "Kenema",
     "Koya (Port Loko)": "Port Loko",
 }
+
+
+def reattach_mafindor_part(features: list) -> list:
+    """Give Mafindor back the eastern part filed under "Maforki".
+
+    The geoBoundaries ADM3 "Maforki" feature carries two parts: its real
+    body in Port Loko, around 12.8 W, and a twelve-point ring 250 km east
+    at 10.5 W. Maforki and Mafindor are one letter apart, and the eastern
+    ring sits wedged between Mafindor's own two lobes in Kono - so it is
+    Mafindor's ground, filed under the wrong name.
+
+    It is moved rather than dropped. Nothing else in the layer covers that
+    ground: five hundred points sampled inside it fall in no other
+    chiefdom, so deleting it would punch a hole in Kono rather than fix
+    anything.
+
+    Left alone it is not cosmetic. ``district_of_point`` returns the first
+    polygon that contains the point and Maforki is filed before Mafindor,
+    so every water point on that ground was counted in Port Loko instead
+    of Kono - inflating one district's coverage and deflating another's in
+    the ranking that decides where to drill next.
+
+    Split by longitude, as the Koya repair above does: parts east of 12 W
+    belong to Mafindor, the rest stay Maforki.
+    """
+    strays: list = []
+    out: list = []
+    for feature in features:
+        if feature["properties"].get("name") != "Maforki":
+            out.append(feature)
+            continue
+        geom = feature["geometry"]
+        polys = (geom["coordinates"] if geom["type"] == "MultiPolygon"
+                 else [geom["coordinates"]])
+        kept = []
+        for poly in polys:
+            ring = poly[0]
+            centre_lon = sum(p[0] for p in ring) / len(ring)
+            (kept if centre_lon < -12.0 else strays).append(poly)
+        if not kept:
+            raise ValueError("Maforki has no part left in Port Loko")
+        feature = dict(feature)
+        feature["geometry"] = (
+            {"type": "Polygon", "coordinates": kept[0]} if len(kept) == 1
+            else {"type": "MultiPolygon", "coordinates": kept}
+        )
+        out.append(feature)
+
+    if not strays:
+        return out
+
+    for feature in out:
+        if feature["properties"].get("name") != "Mafindor":
+            continue
+        geom = feature["geometry"]
+        polys = (geom["coordinates"] if geom["type"] == "MultiPolygon"
+                 else [geom["coordinates"]])
+        feature["geometry"] = {"type": "MultiPolygon",
+                               "coordinates": polys + strays}
+        return out
+    raise ValueError(
+        "Maforki has a part in the east but there is no Mafindor to give "
+        "it to; the layer has changed and this repair needs revisiting"
+    )
 
 
 def split_koya_feature(features: list) -> list:

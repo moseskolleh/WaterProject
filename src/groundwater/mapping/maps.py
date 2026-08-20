@@ -165,6 +165,34 @@ def site_location_map(
         return fig
 
 
+def _write_grid_raster(path, grid, gx, gy, zone: int):
+    """Write an interpolated surface beside its picture, as a real raster.
+
+    The grid is already computed; rendering it and dropping it is what
+    made these maps answer "what does it look like" and nothing else. As
+    a GeoTIFF the same numbers can be sampled at the borehole, contoured
+    at a chosen interval, or laid under imagery, in any GIS.
+
+    ``gx`` and ``gy`` are pixel *centres* from :func:`numpy.linspace`, so
+    the corner written is half a pixel out from the first one - the file
+    says ``PixelIsArea``, and a raster shifted half a pixel is a raster
+    nobody notices is wrong.
+    """
+    from ..geotiff import utm_epsg, write_geotiff
+
+    pixel_width = float(gx[0, 1] - gx[0, 0])
+    pixel_height = float(gy[1, 0] - gy[0, 0])
+    return write_geotiff(
+        path,
+        grid,
+        west=float(gx.min()) - pixel_width / 2.0,
+        north=float(gy.max()) + pixel_height / 2.0,
+        pixel_width=pixel_width,
+        pixel_height=pixel_height,
+        epsg=utm_epsg(zone),
+    )
+
+
 def _interpolated_map(
     points: list[MapPoint],
     zone: int,
@@ -174,6 +202,7 @@ def _interpolated_map(
     style: HouseStyle | None,
     log_scale: bool = False,
     cmap: str = "viridis",
+    raster: bool = True,
 ):
     style = style or HouseStyle()
     valued = [p for p in points if p.value is not None]
@@ -195,6 +224,17 @@ def _interpolated_map(
     grid_lin = griddata((e, n), v, (gx, gy), method="linear")
     grid_near = griddata((e, n), v, (gx, gy), method="nearest")
     grid = np.where(np.isnan(grid_lin), grid_near, grid_lin)
+
+    if raster and path is not None:
+        # Un-logged first. The surface is interpolated in log10 because
+        # resistivity spans decades and a linear interpolation across them
+        # is meaningless, but a raster labelled ohm-m has to hold ohm-m:
+        # nobody opening it in a GIS will know to raise it to the power.
+        _write_grid_raster(
+            Path(path).with_suffix(".tif"),
+            np.power(10.0, grid) if log_scale else grid,
+            gx, gy, zone,
+        )
 
     with figure_context(style):
         fig, ax = plt.subplots(figsize=(style.figure_width_in, 5.4))
@@ -232,6 +272,7 @@ def suitability_map(
     path: str | Path | None = None,
     style: HouseStyle | None = None,
     title: str = "Drill-target suitability",
+    raster: bool = True,
 ):
     """Drill-target suitability map from scored VES points.
 
@@ -265,12 +306,32 @@ def suitability_map(
 
                 hull = ConvexHull(np.column_stack([e, n]))
                 poly = np.column_stack([e, n])[hull.vertices]
+                # A nanometre of radius, to settle a tie rather than to
+                # move the boundary. A grid point exactly on the hull is
+                # undefined for contains_points, which returns False for
+                # some hull vertices and True for others; the hull marks
+                # where data exists, so the inclusive answer is the right
+                # one and being deterministic about it matters more than
+                # which way it goes.
+                #
+                # It does not put a value at every sounding, and cannot:
+                # a sounding on the hull sits in a pixel whose centre may
+                # lie outside it, and that pixel is masked. Sampling the
+                # raster at a corner sounding can legitimately return
+                # nodata.
                 inside = MplPath(poly).contains_points(
-                    np.column_stack([gx.ravel(), gy.ravel()])
+                    np.column_stack([gx.ravel(), gy.ravel()]), radius=1e-9
                 ).reshape(gx.shape)
                 grid = np.where(inside, grid, np.nan)
             except Exception:
                 pass  # collinear points: show the unmasked surface
+            if raster and path is not None:
+                # Masked outside the hull, and written that way: the holes
+                # are ground nobody surveyed, and a suitability of zero
+                # there would be a score rather than an absence.
+                _write_grid_raster(
+                    Path(path).with_suffix(".tif"), grid, gx, gy, zone
+                )
             cs = ax.contourf(
                 gx, gy, grid, levels=np.linspace(0, 100, 11),
                 cmap=cmap, alpha=0.75, vmin=0, vmax=100,

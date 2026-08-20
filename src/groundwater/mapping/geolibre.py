@@ -66,7 +66,7 @@ import re
 from pathlib import Path
 from typing import Iterable, Sequence
 
-from ..geo import utm_to_geographic
+from ..geo import geographic_to_utm, utm_to_geographic
 from ..site_status import STATUS_COLORS, STATUS_LABELS, coerce_status
 
 __all__ = [
@@ -79,6 +79,7 @@ __all__ = [
     "geojson_layer",
     "points_within_window",
     "portfolio_features",
+    "protection_zone_features",
     "portfolio_project",
     "project_link",
     "site_project",
@@ -296,6 +297,70 @@ def portfolio_features(points: Iterable[dict]) -> list[dict]:
             }
         )
         features.append(_point(point["lon"], point["lat"], properties))
+    return features
+
+
+#: Vertices per protection-zone ring. At 64 the chord across a 3 m circle
+#: is under 30 cm, which is finer than the wellhead position is known.
+_ZONE_SEGMENTS = 64
+
+
+def protection_zone_features(
+    lat: float, lon: float, distances: Iterable | None = None, zone: int | None = None
+) -> list[dict]:
+    """The sanitary separation distances, drawn as the rings they are.
+
+    ``data/site_separation_distances.csv`` says a latrine must be 20 m
+    away, a burial ground 1000 m, a building 3 m. Those are checked as
+    numbers in :mod:`groundwater.supervision.field_checks` and reported as
+    numbers, which asks whoever reads it to hold eight radii in their head
+    and compare them against a site they may never have stood on. Drawn on
+    the map over imagery, an encroachment is visible instead of asserted.
+
+    Each ring is the distance inside which that structure must *not* be:
+    ground the borehole needs kept clear, not ground it occupies.
+
+    The circles are generated in projected metres and unprojected vertex
+    by vertex, so a 20 m ring is 20 m on the ground rather than 20 m at
+    the equator. Rings are ordered widest first so the tight ones stay
+    visible on top of them.
+    """
+    from ..supervision.checklists import load_separation_distances
+
+    if distances is None:
+        distances = load_separation_distances()
+    utm = geographic_to_utm(lat, lon, zone)
+    features = []
+    for spec in sorted(distances, key=lambda d: -d.min_distance_m):
+        ring = []
+        for step in range(_ZONE_SEGMENTS):
+            angle = 2.0 * math.pi * step / _ZONE_SEGMENTS
+            easting = utm.easting + spec.min_distance_m * math.cos(angle)
+            northing = utm.northing + spec.min_distance_m * math.sin(angle)
+            point_lat, point_lon = utm_to_geographic(easting, northing, utm.zone)
+            ring.append([_round(point_lon), _round(point_lat)])
+        ring.append(list(ring[0]))
+        features.append(
+            _feature(
+                {"type": "Polygon", "coordinates": [ring]},
+                _clean(
+                    {
+                        "structure": spec.structure,
+                        "min_distance_m": spec.min_distance_m,
+                        "note": spec.note,
+                        "meaning": (
+                            f"{spec.structure} must be at least "
+                            f"{spec.min_distance_m:g} m from the borehole; this "
+                            "ring is the ground that has to stay clear of it"
+                        ),
+                        "fill": "#C1772A",
+                        "fill-opacity": 0.0,
+                        "stroke": "#C1772A",
+                        "stroke-width": 1.5,
+                    }
+                ),
+            )
+        )
     return features
 
 
@@ -810,6 +875,7 @@ def site_project(
     geology: Iterable | None = None,
     hydrogeology: Iterable | None = None,
     window_km: float | None = None,
+    protection_zones: bool = True,
     area=None,
     metadata: dict | None = None,
 ) -> dict:
@@ -829,6 +895,13 @@ def site_project(
     the site, the same way the printed local geology and aquifer maps are
     windowed. Without it the whole country is inlined, which is correct
     and about 400 kB.
+
+    With a fix it also carries the sanitary separation distances as the
+    rings they are - the ground that has to stay clear of a latrine, a
+    burial ground, the coast. They are drawn but not framed on: the two
+    1000 m rings would otherwise decide the camera for every site, and
+    the ones checked most often, the 20 m latrine and the 50 m borehole,
+    are inside the survey view already.
 
     A site with no GPS fix still gets a project.
     :func:`~groundwater.mapping.regional.area_window` resolves it to the
@@ -943,6 +1016,20 @@ def site_project(
         )
 
     site_metadata = dict(metadata or {})
+    if has_fix and protection_zones:
+        lat, lon = site.latlon
+        layers.append(
+            geojson_layer(
+                "Sanitary protection zones",
+                protection_zone_features(lat, lon, zone=zone),
+                kind="polygon",
+                color="#C1772A",
+                stroke="#C1772A",
+                fill_opacity=0.0,
+                stroke_width=1.5,
+            )
+        )
+
     if site is not None:
         site_metadata.update(
             _clean(

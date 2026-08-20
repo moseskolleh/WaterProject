@@ -15,7 +15,11 @@ water quality guidelines.
 ## What it produces
 
 1. VES sounding curves, layered earth models and drilling preference tables
-2. Survey maps (site location, iso-resistivity, overburden thickness) and GIS layers
+2. Survey maps (site location, iso-resistivity, overburden thickness) and
+   GIS layers, including the interpolated resistivity, overburden and
+   drill-target surfaces written as georeferenced GeoTIFFs beside the
+   pictures, so they can be sampled, contoured or laid under imagery in
+   any GIS rather than only looked at
 3. To-scale borehole design drawings with lithology and construction columns
 4. Pumping test analysis (Cooper-Jacob, Theis, recovery, step tests) with a
    recommended safe yield and pump setting depth
