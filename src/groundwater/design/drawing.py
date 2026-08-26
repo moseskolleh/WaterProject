@@ -268,9 +268,9 @@ def draw_borehole_design(
         sump = [s for s in design.segments if s.kind == "sump"]
         if sump:
             annos.append(((sump[0].top_m + sump[0].bottom_m) / 2,
-                          f"sump (sediment trap) "
+                          (f"sump (sediment trap) "
                           f"{sump[0].top_m:g}-{sump[0].bottom_m:g} m, "
-                          f"bottom plug at {depth:g} m",
+                          f"bottom plug at {depth:g} m"),
                           neutral))
         else:
             annos.append((depth - 0.3, f"bottom plug at {depth:g} m", neutral))
@@ -343,8 +343,8 @@ def draw_borehole_design(
         header_pairs = list(header_pairs or [])
         header_pairs.append((
             "Construction",
-            f'{design.borehole_diameter_in:g}" hole, '
-            f'{design.casing_diameter_in:g}" {design.casing_material}',
+            (f'{design.borehole_diameter_in:g}" hole, '
+            f'{design.casing_diameter_in:g}" {design.casing_material}'),
         ))
         if header_pairs:
             header_text = "    ".join(f"{k}: {v}" for k, v in header_pairs)

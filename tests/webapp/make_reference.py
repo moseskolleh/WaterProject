@@ -438,8 +438,8 @@ def build() -> dict:
 
     _qr_payloads = [
         "SL-WAR-8FEEVKQ-T",
-        "BOREHOLE SL-WAR-8FEEVKQ-T\nDr. Timbo's (Western Area Rural)\n"
-        "8.48310 N, 13.22940 W\n62.0 m deep, 1.85 m3/h",
+        ("BOREHOLE SL-WAR-8FEEVKQ-T\nDr. Timbo's (Western Area Rural)\n"
+        "8.48310 N, 13.22940 W\n62.0 m deep, 1.85 m3/h"),
         "Kailahun - 10\u00b0 12' 03\" N",     # non-ASCII, so UTF-8 is exercised
     ]
     out["qr"] = [
@@ -751,8 +751,8 @@ def _typed_field_sheet_pdf() -> bytes:
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-        b"/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+        (b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+        b"/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"),
         b"<< /Length 6 0 R /Filter /FlateDecode >>\nstream\n" + content + b"\nendstream",
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
         str(len(content)).encode(),

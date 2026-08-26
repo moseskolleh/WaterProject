@@ -332,20 +332,20 @@ def build_geophysical_report(
 def _limitations(inversions: list[InversionResult]) -> list[str]:
     """Honest, calibrated limitations for the VES interpretation."""
     items = [
-        "Resistivity models are not unique: different layered models can fit "
+        ("Resistivity models are not unique: different layered models can fit "
         "the same sounding curve almost equally well (the equivalence and "
         "suppression problem), so the interpreted layer depths and "
         "thicknesses carry an uncertainty of the order of plus or minus 20 "
-        "percent.",
-        "A low resistivity layer can represent either a saturated, water "
+        "percent."),
+        ("A low resistivity layer can represent either a saturated, water "
         "bearing zone or a conductive clay; the interpretation is made from "
-        "the geological context and must be confirmed by drilling.",
-        "The depth of investigation is limited to roughly the maximum "
+        "the geological context and must be confirmed by drilling."),
+        ("The depth of investigation is limited to roughly the maximum "
         "electrode spacing, so any structure below the deepest reliable depth "
-        "is not resolved.",
-        "The survey indicates groundwater potential only. The actual yield and "
+        "is not resolved."),
+        ("The survey indicates groundwater potential only. The actual yield and "
         "water quality can be confirmed only by test drilling, test pumping "
-        "and laboratory analysis.",
+        "and laboratory analysis."),
     ]
     errs = [inv.fit_error_percent for inv in inversions if inv.fit_error_percent is not None]
     if errs:
@@ -628,8 +628,8 @@ def _recommendations(interpretations: list[SiteInterpretation]) -> list[str]:
     best = min(interpretations, key=lambda i: i.rank or 99)
     others = [i for i in interpretations if i is not best]
     items = [
-        f"Drilling should be carried out at the selected point "
-        f"{best.sounding_id} to confirm the existence of groundwater."
+        (f"Drilling should be carried out at the selected point "
+        f"{best.sounding_id} to confirm the existence of groundwater.")
     ]
     if others:
         items.append(

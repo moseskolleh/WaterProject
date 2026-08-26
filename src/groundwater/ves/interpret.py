@@ -298,8 +298,8 @@ def _narrative(interp: SiteInterpretation) -> str:
     """Interpretation paragraph for the report, one block per sounding."""
     n = interp.model.n_layers
     parts = [
-        f"The data at {interp.sounding_id} resolves a {n} layer subsurface "
-        f"({describe_curve_type(interp.curve_type)})."
+        (f"The data at {interp.sounding_id} resolves a {n} layer subsurface "
+        f"({describe_curve_type(interp.curve_type)}).")
     ]
     for layer in interp.layers:
         if layer.thickness_m is not None:

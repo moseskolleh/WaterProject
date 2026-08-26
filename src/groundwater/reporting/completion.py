@@ -79,8 +79,8 @@ def _executive_summary(inputs: CompletionReportInputs) -> tuple[list[str], list[
     status = (log.status or "").strip()
 
     bits = [
-        "This report documents the drilling, construction and testing of the "
-        f"borehole at {community}."
+        ("This report documents the drilling, construction and testing of the "
+        f"borehole at {community}.")
     ]
     if log.total_depth_m:
         s = f"The borehole was drilled to {fmt_num(log.total_depth_m)} m"

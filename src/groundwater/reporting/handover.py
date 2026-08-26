@@ -33,8 +33,8 @@ _OM_GUIDANCE = [
     (
         "Daily",
         [
-            "Keep the apron and surroundings clean; no washing or animal "
-            "watering on the apron.",
+            ("Keep the apron and surroundings clean; no washing or animal "
+            "watering on the apron."),
             "Check for leaks, unusual pump noise and discoloured water.",
             "Keep the drainage channel and soakaway free flowing.",
         ],
@@ -51,15 +51,15 @@ _OM_GUIDANCE = [
         [
             "Measure and record the water level where a dip access exists.",
             "Collect the agreed user fees and update the cash book.",
-            "Inspect the fence and the sanitary protection zone (no pit "
-            "latrine, refuse pit or animal pen within 30 m).",
+            ("Inspect the fence and the sanitary protection zone (no pit "
+            "latrine, refuse pit or animal pen within 30 m)."),
         ],
     ),
     (
         "Yearly",
         [
-            "Service the pump according to the manufacturer schedule and "
-            "replace fast wearing parts.",
+            ("Service the pump according to the manufacturer schedule and "
+            "replace fast wearing parts."),
             "Repeat the physico-chemical and bacteriological water tests.",
             "Review the tariff against the cost of spare parts.",
         ],
@@ -260,12 +260,12 @@ def build_handover_report(
     # ---- 7 recommendations -----------------------------------------------------------
     rb.heading("7. Recommendations", 1)
     recs = [
-        "Protect the wellhead: keep the 30 m sanitary zone free of latrines, "
-        "refuse pits and animal pens.",
-        "Keep this report and the borehole data sheet with the committee "
-        "records; any future contractor will need them.",
-        "Report persistent taste, odour or discolouration to the district "
-        "water office and arrange a water quality test.",
+        ("Protect the wellhead: keep the 30 m sanitary zone free of latrines, "
+        "refuse pits and animal pens."),
+        ("Keep this report and the borehole data sheet with the committee "
+        "records; any future contractor will need them."),
+        ("Report persistent taste, odour or discolouration to the district "
+        "water office and arrange a water quality test."),
     ]
     state = inputs.quality.verdict_state if inputs.quality is not None else None
     if state in ("health_fail", "national_fail"):

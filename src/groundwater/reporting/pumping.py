@@ -327,12 +327,12 @@ def build_pumping_report(
         if yr.safe_yield_m3_per_h:
             rb.bullets(
                 [
-                    f"Operate the borehole at no more than "
-                    f"{fmt_num(yr.safe_yield_m3_per_h)} m3/h.",
-                    f"Install the pump intake at {fmt_num(yr.pump_installation_depth_m)} m "
-                    "below ground level.",
-                    "Monitor the pumping water level and re-assess the yield if "
-                    "the level approaches the pump intake.",
+                    (f"Operate the borehole at no more than "
+                    f"{fmt_num(yr.safe_yield_m3_per_h)} m3/h."),
+                    (f"Install the pump intake at {fmt_num(yr.pump_installation_depth_m)} m "
+                    "below ground level."),
+                    ("Monitor the pumping water level and re-assess the yield if "
+                    "the level approaches the pump intake."),
                 ]
             )
 
@@ -392,21 +392,21 @@ def build_pumping_report(
     rb.heading("6. Limitations and Uncertainty", 1)
     rb.bullets(
         [
-            "The analysis assumes a homogeneous, isotropic aquifer of large "
+            ("The analysis assumes a homogeneous, isotropic aquifer of large "
             "extent. A barrier or a recharge (stream or coast) boundary, if "
             "present, changes the late-time drawdown slope and would bias the "
-            "transmissivity.",
-            "In a single pumped well the storativity trades off against the "
+            "transmissivity."),
+            ("In a single pumped well the storativity trades off against the "
             "effective well radius, so any storativity reported from this test "
-            "is indicative only.",
-            "The safe yield is projected to the design period from a short "
+            "is indicative only."),
+            ("The safe yield is projected to the design period from a short "
             "test; it should be confirmed by monitoring the pumping water "
-            "level once the borehole is in service.",
-            "Yield varies with the season. Section 5.1 projects the tested "
+            "level once the borehole is in service."),
+            ("Yield varies with the season. Section 5.1 projects the tested "
             "level to the annual low and to a drought year, but the size of "
             "the annual swing is assumed rather than measured; two water-level "
             "readings a year apart in this borehole would replace that "
-            "assumption with a number.",
+            "assumption with a number."),
         ]
     )
 

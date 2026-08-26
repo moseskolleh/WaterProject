@@ -511,8 +511,8 @@ def contract_summary(contract: Contract, certificate: Certificate) -> list[
          f"-${certificate.retention_usd:,.0f}"),
     ]
     if contract.advance_percent:
-        rows.append((f"Less advance recovery ({contract.advance_percent:g}% "
-                     "advance)", f"-${certificate.advance_recovered_usd:,.0f}"))
+        rows.append(((f"Less advance recovery ({contract.advance_percent:g}% "
+                     "advance)"), f"-${certificate.advance_recovered_usd:,.0f}"))
     rows += [
         ("Net certified to date", f"${certificate.net_certified_usd:,.0f}"),
         ("Less previously certified",

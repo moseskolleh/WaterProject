@@ -1637,8 +1637,8 @@ with tab_overview:
             if _ov_site.easting and _ov_site.northing:
                 _site_rows.append((
                     "UTM",
-                    f"{_ov_site.easting:.0f} E · {_ov_site.northing:.0f} N "
-                    f"({_ov_site.utm_zone}N)",
+                    (f"{_ov_site.easting:.0f} E · {_ov_site.northing:.0f} N "
+                    f"({_ov_site.utm_zone}N)"),
                 ))
             _wp = st.session_state.get("wp_result")
             if _wp and _wp.get("decision"):
@@ -1646,8 +1646,8 @@ with tab_overview:
                 if _wp_sum.get("total") is not None:
                     _site_rows.append((
                         "Water points nearby",
-                        f"{_wp_sum['total']} "
-                        f"({_wp_sum.get('functional', 0)} functional)",
+                        (f"{_wp_sum['total']} "
+                        f"({_wp_sum.get('functional', 0)} functional)"),
                     ))
             st.markdown(
                 "<div class='gw-card'><span class='gw-cap'>Site</span>"
