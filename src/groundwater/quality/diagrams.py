@@ -175,14 +175,14 @@ def plot_stiff(
         ax.fill(poly_x, poly_y, color=style.accent_color, alpha=0.25, lw=0)
         ax.plot(poly_x + [poly_x[0]], poly_y + [poly_y[0]], color=style.accent_color, lw=1.6)
         ax.axvline(0, color="#555555", lw=1.0)
-        for y, (c_meq, a_meq, c_label, a_label) in zip(ys, rows):
+        for y, (c_meq, a_meq, _c_label, _a_label) in zip(ys, rows, strict=True):
             ax.plot([-c_meq], [y], "o", ms=4, color=style.accent_color)
             ax.plot([a_meq], [y], "o", ms=4, color=style.accent_color)
             ax.text(ax.get_xlim()[0], y, "", fontsize=8)
         span = max(max(map(abs, xs_left)), max(xs_right), 0.5) * 1.3
         ax.set_xlim(-span, span)
         ax.set_ylim(-0.6, 2.6)
-        for y, (c, a, c_label, a_label) in zip(ys, rows):
+        for y, (_c, _a, c_label, a_label) in zip(ys, rows, strict=True):
             ax.text(-span * 0.98, y, c_label, ha="left", va="center", fontsize=9)
             ax.text(span * 0.98, y, a_label, ha="right", va="center", fontsize=9)
         ax.set_yticks([])

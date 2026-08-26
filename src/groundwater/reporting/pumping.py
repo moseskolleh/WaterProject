@@ -15,7 +15,6 @@ from typing import Any
 from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
 
 from ..config import Config
 from ..hydraulics.analysis import PumpingTestAnalysis
@@ -134,7 +133,8 @@ def build_pumping_report(
             ("Borehole Ref. No.", test.borehole_ref or ""), ("Date", site.date),
             ("Test type", test.test_type), ("Conducted by", site.supervisor),
             ("Depth of borehole", fmt_num(test.borehole_depth_m) + " m" if test.borehole_depth_m else ""),
-            ("Static water level", fmt_num(test.static_water_level_m) + " m" if test.static_water_level_m is not None else ""),
+            ("Static water level", fmt_num(test.static_water_level_m) + " m"
+             if test.static_water_level_m is not None else ""),
             ("Pump setting", fmt_num(test.pump_setting_m) + " m" if test.pump_setting_m else ""),
             ("Length of each step", fmt_num(test.step_length_min) + " min" if test.step_length_min else ""),
         ]

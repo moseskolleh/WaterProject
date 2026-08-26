@@ -86,7 +86,7 @@ def _normalise_district(name: str) -> str | None:
 def districts_containing(lat: float, lon: float, buffer_deg: float = _BUFFER_DEG) -> list[str]:
     """Districts whose (approximate) box contains the point."""
     hits = []
-    for key, box in districts().items():
+    for _key, box in districts().items():
         if (
             box["lon_min"] - buffer_deg <= lon <= box["lon_max"] + buffer_deg
             and box["lat_min"] - buffer_deg <= lat <= box["lat_max"] + buffer_deg

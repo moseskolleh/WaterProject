@@ -110,7 +110,7 @@ def _build_tables(order: int, n_zeros: int = _N_ZEROS):
     nodes8, weights8 = leggauss(8)
     edges = np.geomspace(1e-6, zeros[0], 15)
     s1_nodes, s1_wb = [], []
-    for lo, hi in zip(edges[:-1], edges[1:]):
+    for lo, hi in zip(edges[:-1], edges[1:], strict=True):
         mid, half = 0.5 * (lo + hi), 0.5 * (hi - lo)
         x = mid + half * nodes8
         s1_nodes.append(x)
@@ -210,7 +210,7 @@ def forward_schlumberger_finite_mn(
     mn = np.atleast_1d(np.asarray(mn, dtype=float))
     h_min = float(np.min(h)) if len(h) else 1.0
     out = np.empty_like(ab2)
-    for i, (L, m) in enumerate(zip(ab2, mn)):
+    for i, (L, m) in enumerate(zip(ab2, mn, strict=True)):
         b = m / 2.0
         if not np.isfinite(b) or b <= 0 or b >= L:
             # fall back to the ideal gradient value

@@ -75,7 +75,7 @@ class ProgrammeEstimate:
             return f"{usd:,.0f}", f"{self.in_local(usd):,.0f}"
 
         rows = [
-            (f"Successful boreholes required", f"{self.n_successful}", ""),
+            ("Successful boreholes required", f"{self.n_successful}", ""),
             (
                 f"Attempts planned ({self.success_rate_percent:g}% success)",
                 f"{self.n_attempted}", "",

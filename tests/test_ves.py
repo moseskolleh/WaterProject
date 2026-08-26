@@ -13,6 +13,7 @@ from groundwater.ves.forward import (
 )
 from groundwater.ves.interpret import drilling_preference_table
 from groundwater.ves.inversion import fit_error_percent
+from groundwater.ves.plots import plot_geoelectric_section
 from groundwater.ves.splice import splice_segments
 
 AB2 = np.array([1, 2, 3, 5, 7, 10, 15, 20, 30, 40, 50, 70, 80, 100], dtype=float)
@@ -247,3 +248,34 @@ def test_interpretation_and_preference(rokel_ves_a):
     rows = drilling_preference_table([interp_a, interp_b], preferred_order=["B (2)"])
     ranks = {r["VES Point"]: r["Ranking"] for r in rows}
     assert ranks["B (2)"] == "1st" and ranks["A (1)"] == "2nd"
+
+
+def test_a_section_will_not_draw_a_sounding_it_was_not_given():
+    """Positions and labels must match the models one for one.
+
+    The workbook reader skips a sheet whose resistivity column was never
+    labelled, so a survey typed up as three chainages can arrive here as two
+    models. Zipped, that drew the section a sounding short - or, when the
+    labels were the longer list, put every label against the wrong column -
+    and the finished figure gave no sign of it.
+    """
+    models = [
+        LayeredModel(np.array([500.0, 40.0]), np.array([6.0]), sounding_id="A"),
+        LayeredModel(np.array([700.0, 55.0]), np.array([8.0]), sounding_id="B"),
+    ]
+
+    with pytest.raises(ValueError, match="2 soundings need 2 positions"):
+        plot_geoelectric_section(models, positions=[0.0, 60.0, 120.0],
+                                 labels=["A", "B"], depth_max=45.0)
+
+    with pytest.raises(ValueError, match="2 soundings need 2 positions"):
+        plot_geoelectric_section(models, positions=[0.0, 60.0],
+                                 labels=["A", "B", "C"], depth_max=45.0)
+
+    with pytest.raises(ValueError, match="at least one sounding"):
+        plot_geoelectric_section([], depth_max=45.0)
+
+    # the matched case still draws
+    fig = plot_geoelectric_section(models, positions=[0.0, 60.0],
+                                   labels=["A", "B"], depth_max=45.0)
+    assert fig is not None

@@ -18,7 +18,6 @@ import zipfile
 from pathlib import Path
 
 import docx
-from docx.enum.section import WD_SECTION
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.oxml import OxmlElement
@@ -109,7 +108,7 @@ class ReportBuilder:
         footer_para = section.footer.paragraphs[0]
         footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run = footer_para.add_run()
-        for element, text in (("begin", None), (None, "PAGE"), ("end", None)):
+        for element, _text in (("begin", None), (None, "PAGE"), ("end", None)):
             if element:
                 fld = OxmlElement("w:fldChar")
                 fld.set(qn("w:fldCharType"), element)

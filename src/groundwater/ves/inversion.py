@@ -105,7 +105,7 @@ def invert_model(
     lam = damping
     iterations = 0
     converged = False
-    for iterations in range(1, max_iterations + 1):
+    for iterations in range(1, max_iterations + 1):  # noqa: B007 - returned below
         # numerical Jacobian in log space
         J = np.empty((len(ab2), len(theta)))
         step = 1e-4

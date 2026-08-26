@@ -268,7 +268,7 @@ def build() -> dict:
     rokel_inversions = [invert_sounding(s) for s in soundings]
     rokel_interps = [
         interpret_model(s, inv.model)
-        for s, inv in zip(soundings, rokel_inversions)
+        for s, inv in zip(soundings, rokel_inversions, strict=True)
     ]
     out["siting"] = [
         {
@@ -737,7 +737,7 @@ def _typed_field_sheet_pdf() -> bytes:
     placed = list(_PDF_HEADER)
     for i, row in enumerate(_PDF_ROWS):
         y = 630 - i * 18
-        for x, value in zip((60, 110, 200, 280), row):
+        for x, value in zip((60, 110, 200, 280), row, strict=True):
             placed.append((x, y, str(value)))
 
     ops = ["BT", "/F1 10 Tf"]
@@ -810,7 +810,7 @@ def drifted(fresh, committed, path=""):
         if len(fresh) != len(committed):
             yield (f"{path}[]", f"{len(fresh)} items", f"{len(committed)} items")
             return
-        for i, (a, b) in enumerate(zip(fresh, committed)):
+        for i, (a, b) in enumerate(zip(fresh, committed, strict=True)):
             yield from drifted(a, b, f"{path}[{i}]")
     elif isinstance(fresh, (int, float)) and isinstance(committed, (int, float)):
         if isinstance(fresh, bool) or isinstance(committed, bool):

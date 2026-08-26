@@ -123,7 +123,7 @@ def draw_borehole_design(
                 mid = (interval.top_m + interval.bottom_m) / 2
                 litho_entries.append((mid, wrapped))
             gap = depth / 26.0
-            for label_y, (mid, wrapped) in _stack_labels(
+            for label_y, (_mid, wrapped) in _stack_labels(
                 litho_entries, gap, y_top + gap, depth + depth * 0.02
             ):
                 ax_l.text(0.42, label_y, wrapped, fontsize=6.5, va="center",
@@ -148,7 +148,7 @@ def draw_borehole_design(
         seal_top, seal_bot = design.sanitary_seal
         back_top, back_bot = design.backfill
         grav_top, grav_bot = design.gravel_pack
-        for (top, bot), (color, hatch, label) in (
+        for (top, bot), (color, hatch, _label) in (
             ((seal_top, seal_bot), ("#B0B0B0", "//", "cement sanitary seal")),
             ((back_top, back_bot), ("#E0D5C0", "", "backfill")),
             ((grav_top, grav_bot), ("#F0E3B2", "..", "gravel pack")),

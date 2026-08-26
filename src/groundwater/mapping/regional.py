@@ -193,7 +193,7 @@ def load_admin(path: str | Path | None = None) -> tuple[AdminArea, list[AdminAre
 def _point_in_ring(lon: float, lat: float, ring: np.ndarray) -> bool:
     """Ray casting point-in-polygon test."""
     inside = False
-    for (x1, y1), (x2, y2) in zip(ring[:-1], ring[1:]):
+    for (x1, y1), (x2, y2) in zip(ring[:-1], ring[1:], strict=True):
         if (y1 > lat) != (y2 > lat):
             x_cross = x1 + (lat - y1) * (x2 - x1) / (y2 - y1)
             if lon < x_cross:

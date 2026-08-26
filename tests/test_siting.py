@@ -9,7 +9,8 @@ from groundwater.ves import interpret_model, invert_sounding
 def _interps(sample_data):
     soundings = read_ves_workbook(sample_data / "rokel" / "rokel_ves.xlsx")
     inversions = [invert_sounding(s) for s in soundings]
-    return [interpret_model(s, r.model) for s, r in zip(soundings, inversions)]
+    return [interpret_model(s, r.model)
+            for s, r in zip(soundings, inversions, strict=True)]
 
 
 def test_assess_siting_ranks_and_bounds(sample_data):

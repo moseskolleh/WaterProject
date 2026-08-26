@@ -14,7 +14,7 @@ from typing import Any
 from dataclasses import dataclass
 from pathlib import Path
 
-from docx.shared import Pt, RGBColor
+from docx.shared import RGBColor
 
 from ..config import Config
 from ..quality.assess import STATUS_LABELS, WaterQualityAssessment

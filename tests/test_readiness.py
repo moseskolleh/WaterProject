@@ -244,7 +244,7 @@ def test_the_geophysical_report_is_stamped_when_the_site_is_unlocated(
     soundings = read_ves_workbook(sample_data / "rokel" / "rokel_ves.xlsx")
     inversions = [invert_sounding(s) for s in soundings]
     interps = [interpret_model(s, r.model)
-               for s, r in zip(soundings, inversions)]
+               for s, r in zip(soundings, inversions, strict=True)]
     readiness = assess_readiness({"site": SiteMetadata(community="Nowhere")},
                                  "geophysical")
     assert not readiness.is_certifiable

@@ -32,7 +32,9 @@ ai = ["anthropic>=0.40"]
 # segno and opencv are the two independent oracles the QR encoder is held
 # to - one encodes the same standard, the other reads the result back. They
 # are test-only: nothing the toolkit ships imports either.
-dev = ["pytest>=7.4", "segno>=1.6", "opencv-python-headless>=4.8"]
+# ruff is pinned to the exact version CI runs, so "it lints here" and "it
+# lints in CI" mean the same thing.
+dev = ["pytest>=7.4", "segno>=1.6", "opencv-python-headless>=4.8", "ruff==0.16.4"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -47,3 +49,69 @@ groundwater = ["data/*.csv", "data/*.yaml", "data/*.geojson", "data/brand/*.png"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+# Ruff's own default excludes cover dist/ but not build/, which here holds a
+# whole second copy of the package from the last local build. It is skipped
+# today only because it is gitignored, so say so explicitly - otherwise a run
+# with --no-respect-gitignore starts linting stale build output and reports
+# every finding twice.
+extend-exclude = ["build"]
+
+# A backstop against the runaway line, not a house style. The tree already
+# keeps 99.4% of its lines under 88 without being told to, so a limit there
+# would open with 200-odd findings against code that is not wrong - and a
+# lint job that lands red is a lint job someone turns off. At 120 it catches
+# only the handful of lines that had genuinely stopped being readable.
+line-length = 120
+
+# target-version is deliberately unset: ruff reads requires-python (>=3.10)
+# from [project], so the syntax the rules assume cannot drift away from the
+# floor the package actually declares.
+
+[tool.ruff.lint]
+select = [
+    "E4", "E5", "E7", "E9",  # imports, line length, statements, syntax errors
+    "F",                     # undefined names, unused imports, dead locals
+    "W",                     # trailing whitespace and friends
+    "B",                     # bugbear: mutable defaults, silent surprises
+    "RET",                   # assign-then-return
+    "RSE",                   # raise with redundant parentheses
+    "FLY",                   # static "".join() that wants to be an f-string
+    "ISC",                   # implicit string concat: catches a missing comma
+    "EXE",                   # shebang and executable-bit mismatches
+]
+
+# Not selected, deliberately, so this job could land green on the day it was
+# added rather than as 400 findings someone has to triage:
+#   UP  - 147 hits, all mechanical (mostly Optional[X] -> X | None). Worth
+#         doing, but as its own reformatting change, not buried in this one.
+#   SIM - 17 hits, each a restructure of working logic. Individually
+#         arguable; several read worse as a ternary.
+#   C4  - 12 hits, nearly all `bbox=dict(...)` keyword dicts passed to
+#         matplotlib, where dict() is the idiom every example uses.
+#   BLE - the rule this source already annotates by hand, and the one most
+#         worth enforcing here. Twelve handlers still catch Exception with no
+#         stated reason; each needs reading before it can be annotated
+#         truthfully, and a comment invented to silence a linter is worse
+#         than no comment. Selected as soon as those twelve are done.
+
+ignore = [
+    # Every hit is a closure defined and called inside one iteration - cell()
+    # in the ingestion grid readers, remember() in the QR mask scorer. None is
+    # stored, returned or deferred, so there is no late binding to catch.
+    # B023 cannot see that, and ten permanent noqa lines on correct code is a
+    # worse trade than the rule.
+    "B023",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# The sys.path insert and the stale-module purge have to run before streamlit
+# and groundwater are imported: Streamlit Community Cloud pulls new source on
+# every push but only reinstalls packages when requirements.txt changes, so
+# without it the app file outruns the installed package and the imports break.
+# All 40 E402 in this file are that one deliberate decision.
+"app/streamlit_app.py" = ["E402"]
+# Cell writes are packed onto one line with semicolons so each block reads
+# like the region of the spreadsheet it is filling in.
+"examples/build_sample_data.py" = ["E702"]

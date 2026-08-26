@@ -32,7 +32,6 @@ if _SRC.is_dir() and str(_SRC) not in sys.path:
 
 import streamlit as st
 import streamlit.components.v1 as components
-import yaml
 
 import groundwater
 from datetime import date
@@ -156,7 +155,6 @@ from groundwater.waterpoints import (
     WPDX_CREDIT,
     WaterPointFetchError,
     fetch_water_points,
-    functionality_summary,
     parse_wpdx_csv,
     parse_wpdx_records,
     rehab_vs_drill,
@@ -2109,7 +2107,7 @@ with tab_ves:
 
     if "ves_results" in st.session_state:
         soundings, results, interps = st.session_state.ves_results
-        for sounding, result, interp in zip(soundings, results, interps):
+        for sounding, result, interp in zip(soundings, results, interps, strict=True):
             with st.container(border=True):
                 st.subheader(f"{sounding.sounding_id}")
                 col_fig, col_txt = st.columns([3, 2])
@@ -2206,7 +2204,8 @@ with tab_ves:
 
         _geo_gate = report_gate("geophysical")
         if st.button("Build geophysical survey report", key="build_geo_report"):
-          with _working("Building the geophysical survey report - drawing the context maps and writing the document..."):
+          with _working("Building the geophysical survey report - drawing the "
+                        "context maps and writing the document..."):
             report_path = build_geophysical_report(
                 GeophysicalReportInputs(
                     soundings=soundings,
@@ -2268,7 +2267,7 @@ with tab_pump:
         if missing:
             st.info("Enter discharge rates to complete the analysis (m3/h).")
             cols = st.columns(len(test.steps))
-            for col, step in zip(cols, test.steps):
+            for col, step in zip(cols, test.steps, strict=True):
                 with col:
                     q = st.number_input(
                         f"{step.label} Q", min_value=0.0, value=0.0, step=0.1,

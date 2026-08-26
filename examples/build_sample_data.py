@@ -76,7 +76,9 @@ ROKEL_HEADERS = {
 # IPI2Win models as printed in the report (N, rho, h, z, ERR)
 ROKEL_IPI2WIN = {
     "A (1)": {"err": 21.5, "rows": [(1, 832.14, 1.0, "0/0"), (2, 2102.80, 7.37, 1.0), (3, 36.71, None, 8.37)]},
-    "B (2)": {"err": 26.5, "rows": [(1, 1398.18, 0.71, "0/0"), (2, 703.00, 0.87, 0.71), (3, 1912.40, 8.42, 1.58), (4, 34.71, None, 10.00)]},
+    "B (2)": {"err": 26.5,
+              "rows": [(1, 1398.18, 0.71, "0/0"), (2, 703.00, 0.87, 0.71),
+                       (3, 1912.40, 8.42, 1.58), (4, 34.71, None, 10.00)]},
 }
 
 
@@ -86,7 +88,7 @@ def build_rokel_ves() -> Path:
     path = folder / "rokel_ves.xlsx"
     write_ves_template(path, n_soundings=2, n_rows=len(ROKEL_AB2))
     wb = load_workbook(path)
-    for ws, key in zip(wb.worksheets, ("A (1)", "B (2)")):
+    for ws, key in zip(wb.worksheets, ("A (1)", "B (2)"), strict=True):
         h = ROKEL_HEADERS[key]
         ws.title = key
         ws["B2"] = h["client"]; ws["D2"] = h["community"]
@@ -96,7 +98,11 @@ def build_rokel_ves() -> Path:
         ws["B6"] = h["supervisor"]; ws["D6"] = h["elevation"]
         ws["B7"] = ""; ws["D7"] = "28N"
         ws["B8"] = "Schlumberger"; ws["D8"] = "Syscal Junior"
-        for i, (a, m, r) in enumerate(zip(ROKEL_AB2, ROKEL_MN, h["rho"])):
+        # a mis-transcribed rho column would otherwise be truncated into a
+        # shorter sounding, and the parity fixtures built from it would
+        # then be wrong without anything saying so.
+        for i, (a, m, r) in enumerate(
+                zip(ROKEL_AB2, ROKEL_MN, h["rho"], strict=True)):
             row = 11 + i
             ws.cell(row=row, column=1, value=i + 1)
             ws.cell(row=row, column=2, value=a)

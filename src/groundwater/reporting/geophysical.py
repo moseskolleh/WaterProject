@@ -113,7 +113,9 @@ def build_geophysical_report(
         title_lines=["GEOPHYSICAL SURVEY REPORT"],
         subtitle_lines=[
             "Groundwater Investigation for Borehole Siting",
-            f"at {community}" + (f", {district} District" if district and "western" not in district.lower() else f", {district}" if district else ""),
+            f"at {community}" + (f", {district} District"
+                                 if district and "western" not in district.lower()
+                                 else f", {district}" if district else ""),
         ],
         details=[
             ("Client", client),
@@ -270,8 +272,11 @@ def build_geophysical_report(
 
     # ---- 4 data analysis ------------------------------------------------------
     rb.heading("4. Data Analysis and Interpretation", 1)
+    # one inversion and one interpretation per sounding, built in lockstep by
+    # every caller: a short list silently drops a point's whole analysis block
+    # while the preference table below still ranks it
     for sounding, inversion, interp in zip(
-        soundings, inputs.inversions, inputs.interpretations
+        soundings, inputs.inversions, inputs.interpretations, strict=True
     ):
         _sounding_block(rb, sounding, inversion, interp, inputs.figures_dir)
 
@@ -389,12 +394,16 @@ def _sounding_block(
             ("Project", site.project or "Geophysical Survey"), ("Sounding Number", sid),
             ("District", site.district), ("GPS Coordinate East", fmt_num(site.easting, 7)),
             ("Date", site.date), ("GPS Coordinate North", fmt_num(site.northing, 7)),
-            ("Field Supervisor", site.supervisor), ("Elevation", fmt_num(site.elevation_m) + " m" if site.elevation_m else ""),
+            ("Field Supervisor", site.supervisor),
+            ("Elevation", fmt_num(site.elevation_m) + " m" if site.elevation_m else ""),
         ]
     )
     rows = [
         [i + 1, fmt_num(a), fmt_num(m), fmt_num(r, 4)]
-        for i, (a, m, r) in enumerate(zip(sounding.ab2, sounding.mn, sounding.rho_app))
+        # the parser appends AB/2, MN and rho per row (blank MN becomes NaN),
+        # so a length mismatch means a hand-built sounding, not a short sheet
+        for i, (a, m, r) in enumerate(
+            zip(sounding.ab2, sounding.mn, sounding.rho_app, strict=True))
     ]
     rb.table(
         rows,

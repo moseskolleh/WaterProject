@@ -199,7 +199,7 @@ def _interpolated_map(
     with figure_context(style):
         fig, ax = plt.subplots(figsize=(style.figure_width_in, 5.4))
         cs = ax.contourf(gx, gy, grid, levels=12, cmap=cmap, alpha=0.9)
-        lines = ax.contour(gx, gy, grid, levels=cs.levels, colors="white", linewidths=0.5)
+        ax.contour(gx, gy, grid, levels=cs.levels, colors="white", linewidths=0.5)
         cbar = fig.colorbar(cs, ax=ax, pad=0.02, shrink=0.85)
         if log_scale:
             ticks = cbar.get_ticks()

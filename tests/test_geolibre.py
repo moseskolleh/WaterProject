@@ -399,7 +399,7 @@ def test_a_window_keeps_the_ground_around_the_site_and_drops_the_rest():
     project = site_project(
         site=_site(), zone=ZONE, geology=[near, far], window_km=40
     )
-    geology = [l for l in project["layers"] if l["name"] == "Geology"][0]
+    geology = [lyr for lyr in project["layers"] if lyr["name"] == "Geology"][0]
     assert len(geology["geojson"]["features"]) == 1, "the far unit was kept"
 
 
@@ -630,7 +630,7 @@ def test_a_national_inventory_cannot_ride_into_a_site_project():
     project = site_project(
         site=_site(), zone=ZONE, water_points=[near, far], window_km=40
     )
-    layer = [l for l in project["layers"] if l["name"] == "Existing water points"][0]
+    layer = [lyr for lyr in project["layers"] if lyr["name"] == "Existing water points"][0]
     assert len(layer["geojson"]["features"]) == 1, "the far point was embedded"
     # and the camera still opens on the survey, not on the country
     assert project["mapView"]["zoom"] > 11
@@ -640,7 +640,7 @@ def test_without_a_window_every_water_point_is_kept():
     """The filter is a guard against a national pull, not a silent trim."""
     points = _water_points()
     project = site_project(site=_site(), zone=ZONE, water_points=points)
-    layer = [l for l in project["layers"] if l["name"] == "Existing water points"][0]
+    layer = [lyr for lyr in project["layers"] if lyr["name"] == "Existing water points"][0]
     assert len(layer["geojson"]["features"]) == len(points)
 
 
@@ -786,7 +786,7 @@ def test_an_area_is_honoured_with_no_site_at_all():
     project = site_project(area=area, geology=load_geology())
     assert project["mapView"]["center"] == [-11.0, 8.0]
     assert project["mapView"]["zoom"] > 9, "not framed on the country"
-    geology = [l for l in project["layers"] if l["name"] == "Geology"][0]
+    geology = [lyr for lyr in project["layers"] if lyr["name"] == "Geology"][0]
     assert len(geology["geojson"]["features"]) < 92, "context was not windowed"
     assert project["name"] == "Somewhere chiefdom"
 

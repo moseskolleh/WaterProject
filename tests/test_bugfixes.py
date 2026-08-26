@@ -291,7 +291,7 @@ def test_app_survives_integer_meta_zone():
     every sidebar rerun."""
     from pathlib import Path
 
-    streamlit = pytest.importorskip("streamlit")
+    pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
 
     app_path = str(Path(__file__).resolve().parents[1] / "app" / "streamlit_app.py")
@@ -727,7 +727,7 @@ def test_completion_report_quotes_one_step_not_two(sample_data=None):
 
     data = Path(__file__).resolve().parents[1] / "examples" / "data"
     test = read_pumping_workbook(data / "kuntolo" / "kuntolo_step_test.xlsx")
-    for step, rate in zip(test.steps, (2.5, 3.5, 4.5)):
+    for step, rate in zip(test.steps, (2.5, 3.5, 4.5), strict=True):
         step.discharge_m3_per_h = rate
     assert len(test.steps) == 3
     analysis = analyse_pumping_test(test)

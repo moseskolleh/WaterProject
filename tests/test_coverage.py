@@ -6,7 +6,6 @@ import numpy as np
 
 from groundwater.coverage import (
     ChiefdomPoly,
-    CoverageRow,
     chiefdom_coverage_rows,
     chiefdom_of_point,
     chiefdom_population,

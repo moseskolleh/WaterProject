@@ -172,7 +172,7 @@ def clip_ring_to_bbox(points: list[tuple[float, float]]) -> list[tuple[float, fl
         lambda a, b: (a[0] + (b[0] - a[0]) * (lat_max - a[1]) / (b[1] - a[1]), lat_max),
     )
     ring = [tuple(p) for p in points]
-    for inside, cross in zip(edges, intersect):
+    for inside, cross in zip(edges, intersect, strict=True):
         if not ring:
             return []
         out: list[tuple[float, float]] = []
@@ -194,7 +194,8 @@ def clip_ring_to_bbox(points: list[tuple[float, float]]) -> list[tuple[float, fl
 def ring_area(points: list[tuple[float, float]]) -> float:
     """Absolute shoelace area in square degrees."""
     total = 0.0
-    for (x1, y1), (x2, y2) in zip(points, points[1:]):
+    # points[1:] is one shorter by design: each vertex pairs with its successor.
+    for (x1, y1), (x2, y2) in zip(points, points[1:], strict=False):
         total += x1 * y2 - x2 * y1
     return abs(total) / 2.0
 
@@ -213,11 +214,11 @@ def build_geology(raw: Path, tol: float = 0.004, min_area: float = 2e-4) -> Path
         x0, y0, x1, y1 = shape.bbox
         if x1 < BBOX[0] or x0 > BBOX[2] or y1 < BBOX[1] or y0 > BBOX[3]:
             continue
-        rec = dict(zip(fields, sf.record(i)))
+        rec = dict(zip(fields, sf.record(i), strict=True))
         if rec["GLG"] in ("SEA",):
             continue
         parts = list(shape.parts) + [len(shape.points)]
-        for start, end in zip(parts[:-1], parts[1:]):
+        for start, end in zip(parts[:-1], parts[1:], strict=True):
             ring = clip_ring_to_bbox(shape.points[start:end])
             if len(ring) < 4:
                 continue
@@ -314,13 +315,13 @@ def build_hydrogeology(tol: float = 0.002, min_area: float = 1e-4) -> Path:
     fields = [f[0] for f in sf.fields[1:]]
     features = []
     for i, shape in enumerate(sf.iterShapes()):
-        rec = dict(zip(fields, sf.record(i)))
+        rec = dict(zip(fields, sf.record(i), strict=True))
         code = str(rec.get("SLHGComb", "")).strip()
         label, color = HYDRO_CLASSES.get(
             code, (f"{rec.get('SLGLG', 'unit')} ({code})", "#CCCCCC")
         )
         parts = list(shape.parts) + [len(shape.points)]
-        for start, end in zip(parts[:-1], parts[1:]):
+        for start, end in zip(parts[:-1], parts[1:], strict=True):
             ring = simplify_ring([tuple(p) for p in shape.points[start:end]], tol)
             if len(ring) < 4 or ring_area(ring) < min_area:
                 continue
@@ -359,7 +360,7 @@ def build_hydrogeology(tol: float = 0.002, min_area: float = 1e-4) -> Path:
 
 def _point_in_ring(lon: float, lat: float, ring: list) -> bool:
     inside = False
-    for (x1, y1), (x2, y2) in zip(ring[:-1], ring[1:]):
+    for (x1, y1), (x2, y2) in zip(ring[:-1], ring[1:], strict=True):
         if (y1 > lat) != (y2 > lat):
             xc = x1 + (lat - y1) * (x2 - x1) / (y2 - y1)
             if lon < xc:

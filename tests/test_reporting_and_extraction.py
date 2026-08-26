@@ -4,7 +4,6 @@ import re
 import docx
 import pytest
 
-from groundwater.config import Config
 from groundwater.design import design_borehole
 from groundwater.hydraulics import analyse_pumping_test
 from groundwater.ingestion import (
@@ -39,7 +38,8 @@ def geophysical_report(sample_data, tmp_path_factory):
     tmp = tmp_path_factory.mktemp("geo")
     soundings = read_ves_workbook(sample_data / "rokel" / "rokel_ves.xlsx")
     inversions = [invert_sounding(s) for s in soundings]
-    interps = [interpret_model(s, r.model) for s, r in zip(soundings, inversions)]
+    interps = [interpret_model(s, r.model)
+               for s, r in zip(soundings, inversions, strict=True)]
     inputs = GeophysicalReportInputs(
         soundings=soundings,
         inversions=inversions,
@@ -289,7 +289,7 @@ def _typed_field_sheet(path):
     ]
     for i, row in enumerate(rows):
         y = 630 - i * 18
-        for x, value in zip((60, 110, 200, 280), row):
+        for x, value in zip((60, 110, 200, 280), row, strict=True):
             placed.append((x, y, str(value)))
 
     ops = ["BT", "/F1 10 Tf"]
