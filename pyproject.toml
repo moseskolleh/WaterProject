@@ -75,6 +75,8 @@ select = [
     "F",                     # undefined names, unused imports, dead locals
     "W",                     # trailing whitespace and friends
     "B",                     # bugbear: mutable defaults, silent surprises
+    "BLE",                   # blind except - the rule this source already
+                             # annotated by hand, now actually enforced
     "RET",                   # assign-then-return
     "RSE",                   # raise with redundant parentheses
     "FLY",                   # static "".join() that wants to be an f-string
@@ -90,11 +92,6 @@ select = [
 #         arguable; several read worse as a ternary.
 #   C4  - 12 hits, nearly all `bbox=dict(...)` keyword dicts passed to
 #         matplotlib, where dict() is the idiom every example uses.
-#   BLE - the rule this source already annotates by hand, and the one most
-#         worth enforcing here. Twelve handlers still catch Exception with no
-#         stated reason; each needs reading before it can be annotated
-#         truthfully, and a comment invented to silence a linter is worse
-#         than no comment. Selected as soon as those twelve are done.
 
 ignore = [
     # Every hit is a closure defined and called inside one iteration - cell()

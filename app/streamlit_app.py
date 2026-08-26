@@ -248,7 +248,7 @@ try:
     from groundwater.depth_spine.view import SpineInputs
 
     SPINE_ERROR = ""
-except Exception as _spine_exc:  # pragma: no cover - depends on the deployment
+except Exception as _spine_exc:  # noqa: BLE001 - optional import  # pragma: no cover
     build_spine_view = depth_spine = SpineInputs = None
     component_available = static_build_available = lambda: False
     render_static = None
@@ -521,7 +521,7 @@ st.markdown(
 if _LOGO:
     try:
         st.logo(_LOGO, icon_image=_ICON)
-    except Exception:
+    except Exception:  # noqa: BLE001 - a missing logo is cosmetic, not a result
         pass
 
 CONFIG = Config()
@@ -716,7 +716,7 @@ def parse_upload(reader, path: Path):
     """
     try:
         return reader(path)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - a bad workbook is an error, not a crash
         st.error(
             f"Could not read {path.name}: {exc}. Check that the file "
             "follows the standard template (Templates page)."
@@ -2896,8 +2896,12 @@ with tab_cost:
                 disabled=["Code", "Stage", "Item", "Unit"],
                 width="stretch",
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - read-only fallback, said out loud
             # very old or limited runtimes: show read-only rates instead
+            st.caption(
+                "This Streamlit build cannot render the editable rate "
+                "table, so the rates below are read-only."
+            )
             st.dataframe(rate_rows, width="stretch")
             edited = rate_rows
         edited_by_code = {row["Code"]: row for row in edited}
@@ -3651,7 +3655,7 @@ with tab_coverage:
                 cov_points = parse_wpdx_csv(
                     up.getvalue().decode("utf-8", "replace")
                 )
-            except Exception as exc:  # surfaced to the operator
+            except Exception as exc:  # noqa: BLE001 - surfaced to the operator
                 st.error(f"Could not read that CSV: {exc}")
     else:
         cov_limit = 200000
@@ -3706,7 +3710,8 @@ with tab_coverage:
                 chief_pop, members = cov_chiefdom_population()
                 area_population = chief_pop
                 rows = chiefdom_coverage_rows(chief_pop, counts, cov_crosswalk())
-            except Exception as exc:  # e.g. a hand-edited crosswalk
+            # e.g. a hand-edited crosswalk drops a census chiefdom
+            except Exception as exc:  # noqa: BLE001 - reported with a fix hint
                 st.error(
                     f"Could not build the chiefdom view: {exc}. "
                     "Fix data/sl_census_crosswalk.csv or use District resolution."
@@ -3920,7 +3925,7 @@ with tab_extract:
                 from groundwater.extraction import extract_pdf_text
 
                 document = extract_pdf_text(path)
-        except Exception as exc:  # surfaced to the operator
+        except Exception as exc:  # noqa: BLE001 - shown to the operator, not swallowed
             st.error(str(exc))
         else:
             st.success(
@@ -3971,7 +3976,7 @@ with tab_portfolio:
     for uploaded in files or []:
         try:
             updates = deserialize_project(uploaded.getvalue())
-        except Exception:
+        except Exception:  # noqa: BLE001 - a bad file is skipped and counted
             skipped += 1
             continue
         summary = updates.get("summary")
@@ -4185,7 +4190,7 @@ with tab_registry:
     for _uploaded in _files or []:
         try:
             _updates = deserialize_project(_uploaded.getvalue())
-        except Exception:
+        except Exception:  # noqa: BLE001 - a bad file is dropped and counted
             _dropped += 1
             continue
         _record = asset_from_dict(_updates.get("asset") or {})

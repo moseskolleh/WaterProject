@@ -110,7 +110,7 @@ def component_available() -> bool:
         return False
     try:
         import streamlit.components.v1  # noqa: F401
-    except Exception:
+    except Exception:  # noqa: BLE001 - an unimportable component is unavailable
         return False
     return True
 
