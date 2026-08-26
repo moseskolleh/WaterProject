@@ -199,7 +199,7 @@ def _interpolated_map(
     with figure_context(style):
         fig, ax = plt.subplots(figsize=(style.figure_width_in, 5.4))
         cs = ax.contourf(gx, gy, grid, levels=12, cmap=cmap, alpha=0.9)
-        lines = ax.contour(gx, gy, grid, levels=cs.levels, colors="white", linewidths=0.5)
+        ax.contour(gx, gy, grid, levels=cs.levels, colors="white", linewidths=0.5)
         cbar = fig.colorbar(cs, ax=ax, pad=0.02, shrink=0.85)
         if log_scale:
             ticks = cbar.get_ticks()
@@ -269,8 +269,18 @@ def suitability_map(
                     np.column_stack([gx.ravel(), gy.ravel()])
                 ).reshape(gx.shape)
                 grid = np.where(inside, grid, np.nan)
-            except Exception:
-                pass  # collinear points: show the unmasked surface
+            except Exception:  # noqa: BLE001 - said on the map itself
+                # The docstring promises this surface never extrapolates
+                # past the surveyed ground. Points along a single
+                # traverse line have no hull to clip to, so the promise
+                # quietly stopped holding on an ordinary survey.
+                ax.text(
+                    0.5, 0.012,
+                    "Surface not clipped: the survey points enclose no "
+                    "area, so values away from them are extrapolated.",
+                    transform=ax.transAxes, ha="center", va="bottom",
+                    fontsize=7.5, color="#B00020", zorder=8,
+                )
             cs = ax.contourf(
                 gx, gy, grid, levels=np.linspace(0, 100, 11),
                 cmap=cmap, alpha=0.75, vmin=0, vmax=100,

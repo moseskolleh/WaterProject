@@ -144,7 +144,7 @@ def extract_header_fields(grid: list[list], max_rows: int = 30) -> dict:
     """
     fields: dict = {}
     priorities: dict[str, int] = {}
-    for r, row in enumerate(grid[:max_rows]):
+    for _r, row in enumerate(grid[:max_rows]):
         for c, cell in enumerate(row):
             if cell is None or isinstance(cell, (int, float)):
                 continue

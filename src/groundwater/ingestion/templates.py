@@ -82,7 +82,7 @@ def write_ves_template(path: str | Path, n_soundings: int = 2, n_rows: int = 24)
             "with the old and new MN at every segment change."
         )
         ws.cell(row=12 + n_rows, column=1, value=note).font = Font(italic=True, size=9)
-        for col, width in zip("ABCD", (22, 16, 16, 28)):
+        for col, width in zip("ABCD", (22, 16, 16, 28), strict=True):
             ws.column_dimensions[col].width = width
     wb.save(path)
     return Path(path)
@@ -117,7 +117,7 @@ def write_pumping_template(path: str | Path) -> Path:
     groups = ["0-60 min", "61-120 min", "121-180 min", "181-240 min"]
     start_cols = [1, 4, 7, 10]
     header_row = 11
-    for g, (label, c0) in enumerate(zip(groups, start_cols)):
+    for _g, (label, c0) in enumerate(zip(groups, start_cols, strict=True)):
         cell = ws.cell(row=header_row - 1, column=c0, value=f"Constant discharge {label}")
         cell.font = Font(bold=True, size=10, color=ACCENT)
         _table_header(
@@ -184,7 +184,7 @@ def write_drilling_template(path: str | Path, n_rows: int = 20) -> Path:
         "Notes: write depth intervals as 0-5, 5-10 and so on. Enter a water strike "
         "depth on the row of the interval where water was struck."
     )).font = Font(italic=True, size=9)
-    for col, width in zip("ABCDEFG", (18, 10, 10, 20, 42, 18, 20)):
+    for col, width in zip("ABCDEFG", (18, 10, 10, 20, 42, 18, 20), strict=True):
         ws.column_dimensions[col].width = width
     wb.save(path)
     return Path(path)
@@ -252,7 +252,7 @@ def write_daily_log_template(path: str | Path, n_rows: int = 14) -> Path:
         "casing). Both signatures are required every day; the office checks "
         "invoiced metres against these logs."
     )).font = Font(italic=True, size=9)
-    for col, width in zip("ABCDEFG", (12, 12, 14, 14, 40, 16, 16)):
+    for col, width in zip("ABCDEFG", (12, 12, 14, 14, 40, 16, 16), strict=True):
         ws.column_dimensions[col].width = width
     wb.save(path)
     return Path(path)
@@ -299,7 +299,7 @@ def write_quality_template(path: str | Path) -> Path:
         "Notes: for results below detection write <DL in Value (for example <0.01) "
         "or leave Value empty and fill Detection limit. Add extra parameters on new rows."
     )).font = Font(italic=True, size=9)
-    for col, width in zip("ABCDE", (26, 16, 12, 16, 18)):
+    for col, width in zip("ABCDE", (26, 16, 12, 16, 18), strict=True):
         ws.column_dimensions[col].width = width
     wb.save(path)
     return Path(path)

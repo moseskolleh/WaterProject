@@ -165,7 +165,12 @@ def _page_lines(page) -> list[_Line]:
     """
     try:
         words = page.extract_words(use_text_flow=False, keep_blank_chars=False)
-    except Exception:  # pragma: no cover - a page with no text layer at all
+    except Exception:  # noqa: BLE001  # pragma: no cover
+        # Not a page with no text layer - that one raises nothing and
+        # simply yields no words. What reaches here is a content stream
+        # pdfplumber could not parse, and returning [] leaves it looking
+        # blank. One unreadable page must not cost the other nine, so it
+        # stays a skip until the reader has a flag channel to say so.
         return []
 
     lines: list[dict[str, Any]] = []

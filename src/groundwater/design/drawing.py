@@ -123,7 +123,7 @@ def draw_borehole_design(
                 mid = (interval.top_m + interval.bottom_m) / 2
                 litho_entries.append((mid, wrapped))
             gap = depth / 26.0
-            for label_y, (mid, wrapped) in _stack_labels(
+            for label_y, (_mid, wrapped) in _stack_labels(
                 litho_entries, gap, y_top + gap, depth + depth * 0.02
             ):
                 ax_l.text(0.42, label_y, wrapped, fontsize=6.5, va="center",
@@ -148,7 +148,7 @@ def draw_borehole_design(
         seal_top, seal_bot = design.sanitary_seal
         back_top, back_bot = design.backfill
         grav_top, grav_bot = design.gravel_pack
-        for (top, bot), (color, hatch, label) in (
+        for (top, bot), (color, hatch, _label) in (
             ((seal_top, seal_bot), ("#B0B0B0", "//", "cement sanitary seal")),
             ((back_top, back_bot), ("#E0D5C0", "", "backfill")),
             ((grav_top, grav_bot), ("#F0E3B2", "..", "gravel pack")),
@@ -268,9 +268,9 @@ def draw_borehole_design(
         sump = [s for s in design.segments if s.kind == "sump"]
         if sump:
             annos.append(((sump[0].top_m + sump[0].bottom_m) / 2,
-                          f"sump (sediment trap) "
+                          (f"sump (sediment trap) "
                           f"{sump[0].top_m:g}-{sump[0].bottom_m:g} m, "
-                          f"bottom plug at {depth:g} m",
+                          f"bottom plug at {depth:g} m"),
                           neutral))
         else:
             annos.append((depth - 0.3, f"bottom plug at {depth:g} m", neutral))
@@ -343,8 +343,8 @@ def draw_borehole_design(
         header_pairs = list(header_pairs or [])
         header_pairs.append((
             "Construction",
-            f'{design.borehole_diameter_in:g}" hole, '
-            f'{design.casing_diameter_in:g}" {design.casing_material}',
+            (f'{design.borehole_diameter_in:g}" hole, '
+            f'{design.casing_diameter_in:g}" {design.casing_material}'),
         ))
         if header_pairs:
             header_text = "    ".join(f"{k}: {v}" for k, v in header_pairs)

@@ -91,20 +91,20 @@ _SEASON_OF_MONTH = {
 SCENARIOS = {
     "as_tested": (
         "As tested", 0.0,
-        "The level on the day of the test. Not a design figure: unless the "
+        ("The level on the day of the test. Not a design figure: unless the "
         "test was run at the end of the dry season the borehole will be "
-        "lower than this for part of every year.",
+        "lower than this for part of every year."),
     ),
     "dry_season": (
         "End of dry season", 1.0,
-        "The normal annual low, which the borehole reaches every year. This "
-        "is the figure a design should be sized on.",
+        ("The normal annual low, which the borehole reaches every year. This "
+        "is the figure a design should be sized on."),
     ),
     "drought": (
         "Drought year", 1.5,
-        "A low deeper than a normal year's, for a run of poor rains. The "
+        ("A low deeper than a normal year's, for a run of poor rains. The "
         "pump has to still be under water here, or the village loses the "
-        "borehole in exactly the year it is needed most.",
+        "borehole in exactly the year it is needed most."),
     ),
 }
 

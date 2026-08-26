@@ -268,7 +268,7 @@ def build() -> dict:
     rokel_inversions = [invert_sounding(s) for s in soundings]
     rokel_interps = [
         interpret_model(s, inv.model)
-        for s, inv in zip(soundings, rokel_inversions)
+        for s, inv in zip(soundings, rokel_inversions, strict=True)
     ]
     out["siting"] = [
         {
@@ -438,8 +438,8 @@ def build() -> dict:
 
     _qr_payloads = [
         "SL-WAR-8FEEVKQ-T",
-        "BOREHOLE SL-WAR-8FEEVKQ-T\nDr. Timbo's (Western Area Rural)\n"
-        "8.48310 N, 13.22940 W\n62.0 m deep, 1.85 m3/h",
+        ("BOREHOLE SL-WAR-8FEEVKQ-T\nDr. Timbo's (Western Area Rural)\n"
+        "8.48310 N, 13.22940 W\n62.0 m deep, 1.85 m3/h"),
         "Kailahun - 10\u00b0 12' 03\" N",     # non-ASCII, so UTF-8 is exercised
     ]
     out["qr"] = [
@@ -737,7 +737,7 @@ def _typed_field_sheet_pdf() -> bytes:
     placed = list(_PDF_HEADER)
     for i, row in enumerate(_PDF_ROWS):
         y = 630 - i * 18
-        for x, value in zip((60, 110, 200, 280), row):
+        for x, value in zip((60, 110, 200, 280), row, strict=True):
             placed.append((x, y, str(value)))
 
     ops = ["BT", "/F1 10 Tf"]
@@ -751,8 +751,8 @@ def _typed_field_sheet_pdf() -> bytes:
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-        b"/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+        (b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+        b"/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"),
         b"<< /Length 6 0 R /Filter /FlateDecode >>\nstream\n" + content + b"\nendstream",
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
         str(len(content)).encode(),
@@ -810,7 +810,7 @@ def drifted(fresh, committed, path=""):
         if len(fresh) != len(committed):
             yield (f"{path}[]", f"{len(fresh)} items", f"{len(committed)} items")
             return
-        for i, (a, b) in enumerate(zip(fresh, committed)):
+        for i, (a, b) in enumerate(zip(fresh, committed, strict=True)):
             yield from drifted(a, b, f"{path}[{i}]")
     elif isinstance(fresh, (int, float)) and isinstance(committed, (int, float)):
         if isinstance(fresh, bool) or isinstance(committed, bool):

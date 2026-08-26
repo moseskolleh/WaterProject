@@ -14,7 +14,7 @@ from typing import Any
 from dataclasses import dataclass
 from pathlib import Path
 
-from docx.shared import Pt, RGBColor
+from docx.shared import RGBColor
 
 from ..config import Config
 from ..quality.assess import STATUS_LABELS, WaterQualityAssessment
@@ -368,16 +368,16 @@ def build_quality_report(
     rb.heading("7. Limitations and Uncertainty", 1)
     rb.bullets(
         [
-            "The results describe a single sample at one point in time. Water "
+            ("The results describe a single sample at one point in time. Water "
             "quality varies with the season, rainfall and the condition of the "
             "wellhead, so periodic re-testing is needed to confirm the "
-            "verdict.",
-            "Parameters reported below the laboratory detection limit are shown "
-            "as such; a non-detection does not prove complete absence.",
-            "The corrosivity and index calculations use the parameters "
+            "verdict."),
+            ("Parameters reported below the laboratory detection limit are shown "
+            "as such; a non-detection does not prove complete absence."),
+            ("The corrosivity and index calculations use the parameters "
             "supplied. Missing pH, calcium or alkalinity limit what can be "
             "assessed, and any assumptions made are stated where they are "
-            "used.",
+            "used."),
         ]
     )
 

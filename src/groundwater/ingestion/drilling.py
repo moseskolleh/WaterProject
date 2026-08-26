@@ -125,7 +125,8 @@ def drilling_from_grid(grid: list[list], source: str = "") -> DrillingLog:
     )
 
     # consistency of the interval column
-    for a, b in zip(log.intervals, log.intervals[1:]):
+    # intervals[1:] is one shorter by design: n intervals give n-1 boundaries.
+    for a, b in zip(log.intervals, log.intervals[1:], strict=False):
         if b.top_m < a.bottom_m - 1e-9:
             flags.append(
                 DataFlag(

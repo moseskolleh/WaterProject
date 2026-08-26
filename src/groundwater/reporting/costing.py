@@ -107,16 +107,16 @@ def build_cost_report(
             ["Overburden / hard rock",
              f"{fmt_num(quantities.overburden_m)} m / {fmt_num(quantities.bedrock_m)} m"],
             ["Plain casing / screen",
-             f"{fmt_num(quantities.casing_m)} m / {fmt_num(quantities.screen_m)} m "
-             f"({quantities.casing_diameter_in:g} inch)"],
+             (f"{fmt_num(quantities.casing_m)} m / {fmt_num(quantities.screen_m)} m "
+             f"({quantities.casing_diameter_in:g} inch)")],
             ["Drilled diameter", f"{quantities.borehole_diameter_in:g} inch"],
             ["Gravel packed interval", fmt_num(quantities.gravel_interval_m) + " m"],
             ["Mobilisation distance (one way)",
              fmt_num(quantities.mobilisation_distance_km) + " km"],
             ["Crew time on site", fmt_num(quantities.crew_days) + " days"],
             ["Development / test pumping",
-             f"{fmt_num(quantities.development_hours)} h / "
-             f"{fmt_num(quantities.test_pumping_hours)} h"],
+             (f"{fmt_num(quantities.development_hours)} h / "
+             f"{fmt_num(quantities.test_pumping_hours)} h")],
             ["Water quality samples", fmt_num(quantities.wq_samples)],
             ["Handpumps included", fmt_num(quantities.handpumps)],
         ],
@@ -191,13 +191,13 @@ def build_cost_report(
     # ---- notes ------------------------------------------------------------
     rb.heading(f"{section}. Notes and Exclusions", 1)
     notes = [
-        "Unit rates are indicative and must be confirmed against local "
-        "supplier and contractor quotations before award.",
-        "The estimate covers one production borehole; failed or abandoned "
+        ("Unit rates are indicative and must be confirmed against local "
+        "supplier and contractor quotations before award."),
+        ("The estimate covers one production borehole; failed or abandoned "
         "holes, standby time and exceptional ground conditions are not "
-        "included and should be covered by the contract conditions.",
-        "Land access, community mobilisation and post-construction "
-        "monitoring are excluded.",
+        "included and should be covered by the contract conditions."),
+        ("Land access, community mobilisation and post-construction "
+        "monitoring are excluded."),
     ]
     for flag in estimate.flags:
         notes.append(str(flag.message))

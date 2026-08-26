@@ -80,8 +80,8 @@ class BoreholeDesign:
             ("Drilled diameter", f'{self.borehole_diameter_in:g}"'),
             (
                 "Casing",
-                f'{self.casing_diameter_in:g}" {self.casing_material}, stick-up '
-                f"{self.stickup_m:.1f} m",
+                (f'{self.casing_diameter_in:g}" {self.casing_material}, stick-up '
+                f"{self.stickup_m:.1f} m"),
             ),
             (
                 "Screens",
@@ -368,14 +368,14 @@ def _assemble(
 
     basis.extend(
         [
-            f"{rules.casing_diameter_in:g} inch {rules.casing_material} casing in a "
-            f"{rules.borehole_diameter_in:g} inch hole",
-            f"gravel pack ({rules.gravel_pack_material}) from {gravel[0]:.0f} m to "
-            f"the bottom, {rules.gravel_pack_above_top_screen_m:g} m above the top screen",
+            (f"{rules.casing_diameter_in:g} inch {rules.casing_material} casing in a "
+            f"{rules.borehole_diameter_in:g} inch hole"),
+            (f"gravel pack ({rules.gravel_pack_material}) from {gravel[0]:.0f} m to "
+            f"the bottom, {rules.gravel_pack_above_top_screen_m:g} m above the top screen"),
             f"cement sanitary seal from surface to {rules.sanitary_seal_depth_m:g} m "
             "with " + rules.apron_note,
-            f"screens kept at least {rules.min_screen_below_swl_m:g} m below the "
-            "static water level",
+            (f"screens kept at least {rules.min_screen_below_swl_m:g} m below the "
+            "static water level"),
         ]
     )
 

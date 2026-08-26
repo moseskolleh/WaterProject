@@ -37,8 +37,8 @@ segno = pytest.importorskip("segno", reason="the oracle encoder is not installed
 
 PLACARD_PAYLOADS = [
     "SL-WAR-8T4KQ2-7",
-    "BH SL-WAR-8T4KQ2-7\nDr. Timbo's Residence, Western Area Rural\n"
-    "8.48310 N 13.22940 W\nDrilled 2018-05-10  62.0 m  1.85 m3/h",
+    ("BH SL-WAR-8T4KQ2-7\nDr. Timbo's Residence, Western Area Rural\n"
+    "8.48310 N 13.22940 W\nDrilled 2018-05-10  62.0 m  1.85 m3/h"),
     "x",
     "0123456789" * 11,
 ]

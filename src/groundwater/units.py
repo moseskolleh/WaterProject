@@ -118,8 +118,7 @@ def _normalise(text: str) -> str:
         return ""
     # collapse whitespace, and drop it around a solidus so "mg / l" == "mg/l"
     s = re.sub(r"\s+", " ", s).strip()
-    s = re.sub(r"\s*/\s*", "/", s)
-    return s
+    return re.sub(r"\s*/\s*", "/", s)
 
 
 def _split_basis(text: str) -> tuple[str, str]:

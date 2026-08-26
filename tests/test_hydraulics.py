@@ -101,7 +101,6 @@ def test_pending_without_discharge(sample_data):
 
 
 def test_seasonal_decline_reduces_safe_yield(sample_data):
-    from dataclasses import replace
 
     from groundwater.config import PumpingConfig
 
@@ -118,7 +117,7 @@ def test_seasonal_decline_reduces_safe_yield(sample_data):
 
 def test_step_analysis_after_supplying_discharge(sample_data):
     test = read_pumping_workbook(sample_data / "kuntolo" / "kuntolo_step_test.xlsx")
-    for step, q in zip(test.steps, (1.5, 2.2, 3.0)):
+    for step, q in zip(test.steps, (1.5, 2.2, 3.0), strict=True):
         step.discharge_m3_per_h = q
     analysis = analyse_pumping_test(test)
     assert analysis.step_test is not None

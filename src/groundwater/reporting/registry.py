@@ -21,7 +21,6 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from docx.shared import Pt
 
 from .. import qr
 from ..config import Config

@@ -3,7 +3,6 @@ multi-sounding geoelectric cross-sections."""
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -204,10 +203,24 @@ def plot_geoelectric_section(
     boundaries are connected between adjacent soundings.
     """
     style = style or HouseStyle()
+    if not models:
+        raise ValueError("a geoelectric section needs at least one sounding model")
     if positions is None:
         positions = list(np.arange(len(models), dtype=float) * 100.0)
     if labels is None:
         labels = [m.sounding_id or f"VES {i + 1}" for i, m in enumerate(models)]
+    # The three lists are read as one column per sounding, so they have to
+    # agree. A caller that derives them separately can desynchronise them: the
+    # workbook reader skips a sheet whose resistivity column was never
+    # labelled, which leaves the models one short of a chainage list typed by
+    # hand. Zipped, that draws the section with a sounding silently dropped or
+    # the labels off by one - neither of which is visible in the finished
+    # figure, and both of which reach a signed survey report.
+    if len(positions) != len(models) or len(labels) != len(models):
+        raise ValueError(
+            f"{len(models)} soundings need {len(models)} positions and "
+            f"{len(models)} labels; got {len(positions)} and {len(labels)}"
+        )
     if depth_max is None:
         depth_max = max(
             (m.depths_top[-1] if m.n_layers > 1 else 10) * 1.35 + 5 for m in models
@@ -218,7 +231,7 @@ def plot_geoelectric_section(
 
     with figure_context(style):
         fig, ax = plt.subplots(figsize=(style.figure_width_in, 3.6))
-        for x, model in zip(positions, models):
+        for x, model in zip(positions, models, strict=True):
             tops = model.depths_top
             for i, rho in enumerate(model.resistivities):
                 top = tops[i]
@@ -243,7 +256,7 @@ def plot_geoelectric_section(
                     [z1, z2],
                     color="#777777", lw=1.0, ls="--",
                 )
-        for x, label in zip(positions, labels):
+        for x, label in zip(positions, labels, strict=True):
             ax.text(
                 x, depth_max * 0.035, label, ha="center", va="top", fontsize=9,
                 fontweight="bold", color=style.accent_color,

@@ -378,7 +378,7 @@ def hantush_bierschenk(
         ss_tot = float(np.sum((sq - sq.mean()) ** 2))
         r2 = 1.0 - float(np.sum((sq - fitted) ** 2)) / ss_tot if ss_tot > 0 else 1.0
     steps = []
-    for i, (qi, si) in enumerate(zip(q, s), start=1):
+    for i, (qi, si) in enumerate(zip(q, s, strict=True), start=1):
         eff = 100.0 * B * qi / (B * qi + C * qi**2) if (B * qi + C * qi**2) > 0 else 100.0
         steps.append(
             {

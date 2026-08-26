@@ -79,8 +79,8 @@ def _executive_summary(inputs: CompletionReportInputs) -> tuple[list[str], list[
     status = (log.status or "").strip()
 
     bits = [
-        "This report documents the drilling, construction and testing of the "
-        f"borehole at {community}."
+        ("This report documents the drilling, construction and testing of the "
+        f"borehole at {community}.")
     ]
     if log.total_depth_m:
         s = f"The borehole was drilled to {fmt_num(log.total_depth_m)} m"
@@ -316,8 +316,11 @@ def build_completion_report(
         ("Drawdown", fmt_num(dwl - swl) + " m" if (dwl is not None and swl is not None) else ""),
         ("Flow rate", fmt_num(q * 1000) + " L/h" if q else "pending"),
         ("Pump type", inputs.pump_type),
-        ("Installation depth", fmt_num(yr.pump_installation_depth_m) + " m" if yr and yr.pump_installation_depth_m else
-         (fmt_num(inputs.pumping.test.pump_setting_m) + " m" if inputs.pumping and inputs.pumping.test.pump_setting_m else "")),
+        ("Installation depth",
+         fmt_num(yr.pump_installation_depth_m) + " m"
+         if yr and yr.pump_installation_depth_m
+         else (fmt_num(inputs.pumping.test.pump_setting_m) + " m"
+               if inputs.pumping and inputs.pumping.test.pump_setting_m else "")),
     ]
     rb.header_block_table(pairs)
     section += 1

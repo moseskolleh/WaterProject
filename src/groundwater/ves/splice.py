@@ -80,7 +80,7 @@ def splice_segments(
             shifts = [s / shifts[-1] for s in shifts]
 
     ab2_all, rho_all = [], []
-    for shift, idx in zip(shifts, segments):
+    for shift, idx in zip(shifts, segments, strict=True):
         ab2_all.extend(sounding.ab2[idx])
         rho_all.extend(sounding.rho_app[idx] * shift)
     ab2_all = np.asarray(ab2_all)

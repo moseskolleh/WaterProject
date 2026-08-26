@@ -312,7 +312,7 @@ def test_coverage_tab_csv_flow(sample_data):
     ranking = next(t.value for t in at.dataframe if "District" in t.value.columns
                    and "Rank" in t.value.columns)
     assert len(ranking) == 16
-    by_district = dict(zip(ranking["District"], ranking["Functional"]))
+    by_district = dict(zip(ranking["District"], ranking["Functional"], strict=True))
     assert by_district["Bombali"] == 1  # one functional of the two Bombali points
     assert by_district["Kenema"] == 1
     assert any(m.label == "Districts" for m in at.metric)

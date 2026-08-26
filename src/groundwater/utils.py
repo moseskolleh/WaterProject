@@ -128,7 +128,8 @@ def ordinal(n: int) -> str:
 
 def strictly_increasing(values: Iterable[float]) -> bool:
     vals = list(values)
-    return all(b > a for a, b in zip(vals, vals[1:]))
+    # vals[1:] is one shorter by design - each value pairs with its successor.
+    return all(b > a for a, b in zip(vals, vals[1:], strict=False))
 
 
 def clean_text(value) -> str:

@@ -58,9 +58,10 @@ def main() -> None:
 
     # ---- analysis ----------------------------------------------------------------
     analysis = analyse_pumping_test(test, project.config.pumping)
+    safe_yield = analysis.yield_recommendation.safe_yield_m3_per_h
     print(
         f"\nT = {analysis.transmissivity_m2_per_day and round(analysis.transmissivity_m2_per_day, 2)} m2/day, "
-        f"safe yield = {analysis.yield_recommendation.safe_yield_m3_per_h and round(analysis.yield_recommendation.safe_yield_m3_per_h, 2)} m3/h"
+        f"safe yield = {safe_yield and round(safe_yield, 2)} m3/h"
     )
     assessment = assess_sample(sample)
     print("water quality:", assessment.verdict.split(".")[0] + ".")

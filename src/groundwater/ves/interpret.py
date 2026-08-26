@@ -298,8 +298,8 @@ def _narrative(interp: SiteInterpretation) -> str:
     """Interpretation paragraph for the report, one block per sounding."""
     n = interp.model.n_layers
     parts = [
-        f"The data at {interp.sounding_id} resolves a {n} layer subsurface "
-        f"({describe_curve_type(interp.curve_type)})."
+        (f"The data at {interp.sounding_id} resolves a {n} layer subsurface "
+        f"({describe_curve_type(interp.curve_type)}).")
     ]
     for layer in interp.layers:
         if layer.thickness_m is not None:
@@ -396,16 +396,16 @@ def drilling_preference_table(
     rank_interpretations(interpretations, preferred_order)
     rows = []
     for i, interp in enumerate(interpretations, start=1):
-        layer_numbers = "\n".join(str(l.number) for l in interp.layers)
+        layer_numbers = "\n".join(str(layer.number) for layer in interp.layers)
         thicknesses = "\n".join(
-            fmt_num(l.thickness_m) if l.thickness_m is not None else ""
-            for l in interp.layers
+            fmt_num(layer.thickness_m) if layer.thickness_m is not None else ""
+            for layer in interp.layers
         )
         depths = "\n".join(
-            fmt_num(l.bottom_m) if math.isfinite(l.bottom_m) else ""
-            for l in interp.layers
+            fmt_num(layer.bottom_m) if math.isfinite(layer.bottom_m) else ""
+            for layer in interp.layers
         )
-        rhos = "\n".join(fmt_num(l.rho, 4) for l in interp.layers)
+        rhos = "\n".join(fmt_num(layer.rho, 4) for layer in interp.layers)
         zones = "\n".join(f"{int(t)}-{int(b)}" for t, b in interp.water_zones) or "none resolved"
         rows.append(
             {

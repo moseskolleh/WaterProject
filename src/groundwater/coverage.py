@@ -71,7 +71,7 @@ def _resource_text(name: str, path: str | Path | None) -> str:
 def _point_in_ring(lon: float, lat: float, ring: np.ndarray) -> bool:
     """Ray-casting point-in-polygon test (matches mapping.regional)."""
     inside = False
-    for (x1, y1), (x2, y2) in zip(ring[:-1], ring[1:]):
+    for (x1, y1), (x2, y2) in zip(ring[:-1], ring[1:], strict=True):
         if (y1 > lat) != (y2 > lat):
             x_cross = x1 + (lat - y1) * (x2 - x1) / (y2 - y1)
             if lon < x_cross:
@@ -82,7 +82,9 @@ def _point_in_ring(lon: float, lat: float, ring: np.ndarray) -> bool:
 
 def _poly_contains(poly: "ChiefdomPoly", lon: float, lat: float) -> bool:
     """Point in a chiefdom, honouring enclaves cut out of it."""
-    for i, (ring, (x0, y0, x1, y1)) in enumerate(zip(poly.rings, poly.bboxes)):
+    for i, (ring, (x0, y0, x1, y1)) in enumerate(
+        zip(poly.rings, poly.bboxes, strict=True)
+    ):
         if not (x0 <= lon <= x1 and y0 <= lat <= y1):
             continue
         if not _point_in_ring(lon, lat, ring):
