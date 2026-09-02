@@ -156,11 +156,11 @@ def test_the_ai_extra_floor_supports_structured_outputs():
     anthropic SDK accepts from 0.78; an older client satisfied the previous
     floor and failed with a TypeError the moment Extract was pressed."""
     import re
-    import tomllib
 
-    with open(REPO / "pyproject.toml", "rb") as fh:
-        extras = tomllib.load(fh)["project"]["optional-dependencies"]
-    spec = next(s for s in extras["ai"] if s.startswith("anthropic"))
+    # read as text rather than with tomllib, which is 3.11+ and the matrix
+    # starts at 3.10
+    text = (REPO / "pyproject.toml").read_text(encoding="utf-8")
+    spec = re.search(r'^ai = \["(anthropic[^"]*)"\]', text, re.M).group(1)
     floor = re.search(r">=\s*(\d+)\.(\d+)", spec)
     assert floor, spec
     assert (int(floor.group(1)), int(floor.group(2))) >= (0, 78)

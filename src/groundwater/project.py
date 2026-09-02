@@ -3,7 +3,9 @@
 Every borehole project lives in one folder with a fixed layout::
 
     <project>/
-        project.yaml     project metadata and configuration overrides
+        project.yaml     site metadata
+        config.yaml      optional configuration overrides (house style,
+                         VES, pumping and design rules)
         raw/             field data exactly as received (never modified)
         processed/       parsed and derived tables (CSV)
         figures/         all generated figures (PNG)

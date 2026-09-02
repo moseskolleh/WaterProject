@@ -1942,7 +1942,10 @@ with tab_guide:
             ["rokel/rokel_ves.xlsx"],
         )
         if wiz_path is not None:
-            wiz_soundings = parse_upload(read_ves_workbook, wiz_path)
+            _wiz_skipped: list = []
+            wiz_soundings = parse_upload(
+                lambda p: read_ves_workbook(p, skipped=_wiz_skipped), wiz_path)
+            show_flags(_wiz_skipped)
             if wiz_soundings:
                 st.success(f"Parsed {len(wiz_soundings)} sounding(s).")
                 if st.button("Run siting analysis", key="wiz_run_ves",
@@ -2111,7 +2114,12 @@ with tab_ves:
         ["rokel/rokel_ves.xlsx"],
     )
     if path is not None:
-        soundings = parse_upload(read_ves_workbook, path)
+        # a sheet the reader could not use is named with the reason, rather
+        # than a three-sheet workbook quietly coming back as two soundings
+        _skipped_sheets: list = []
+        soundings = parse_upload(
+            lambda p: read_ves_workbook(p, skipped=_skipped_sheets), path)
+        show_flags(_skipped_sheets)
         if soundings is None:
             pass
         elif not soundings:

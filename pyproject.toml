@@ -40,6 +40,11 @@ ai = ["anthropic>=0.78"]
 # lints in CI" mean the same thing.
 dev = ["pytest>=7.4", "segno>=1.6", "opencv-python-headless>=4.8", "ruff==0.16.4"]
 
+[project.scripts]
+# batch use without the apps: recompute saved projects, pool a portfolio,
+# write templates, read a scanned sheet
+groundwater = "groundwater.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

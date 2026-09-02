@@ -76,8 +76,13 @@ design.
 
 Enter the laboratory certificate values against the pre-printed
 parameter list. For results below the detection limit write `<` and
-the limit (for example `<0.01`) in the value column. Add extra
-parameters on new rows with their units.
+the limit (for example `<0.01`) in the value column; the words a
+certificate uses for the same thing (`Absent`, `ND`, `Not detected`)
+are read too. For E. coli and total coliforms, `<1` or `Absent` means
+not detected in the 100 mL sample, which is the guideline being met.
+Add extra parameters on new rows with their units: the common
+certificate spellings (`Iron (Fe)`, `Total alkalinity`, `Nitrate-N`,
+`Colour`, `Thermotolerant coliforms`) are recognised.
 
 Results are judged against two columns: the WHO guideline value and a
 national one. **The national column is provisional.** Its values are
