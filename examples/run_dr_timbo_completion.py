@@ -76,10 +76,11 @@ def main() -> None:
 
     # ---- the certification gate ---------------------------------------------------
     # The transcribed sheets carry no GPS fix, and a borehole nobody can find
-    # again cannot be certified; the position below is illustrative, so the
-    # example shows a certifiable set rather than three stamped covers.
+    # again cannot be certified; the position below is illustrative (Western
+    # Area Rural, the district the sheets name), so the example shows a
+    # certifiable set rather than three stamped covers.
     if log.site.easting is None:
-        log.site.easting, log.site.northing, log.site.utm_zone = 825127.0, 983069.0, 28
+        log.site.easting, log.site.northing, log.site.utm_zone = 709345.0, 920841.0, 28
     state = {
         "site": log.site, "drilling_log": log, "pump_analysis": analysis,
         "wq_assessment": assessment, "borehole_design": design,
