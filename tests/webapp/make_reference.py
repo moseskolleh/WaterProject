@@ -663,6 +663,19 @@ def build() -> dict:
         "overpaid": (_proc_contract(retention_percent=0.0),
                      [_Measurement("MOB", 1.0)], [], 2, 5000.0),
         "negatives": (_proc_contract(), [_Measurement("CAS", -10.0)], [], 3, -5.0),
+        # a rate-only variation is a variation; an omission beyond the line
+        # authorises nothing; a duplicated code is valued once and named
+        "repriced": (_proc_contract(),
+                     [_Measurement("MOB", 1.0), _Measurement("CAS", 45.0)],
+                     [_Variation("VO-4", "2024-03-04", "CAS", 0.0, 26.0,
+                                 "supplier price", "Engineer")], 1, 0.0),
+        "over_omitted": (_proc_contract(), [_Measurement("CAS", 10.0)],
+                         [_Variation("VO-5", "2024-03-04", "CAS", -60.0, None,
+                                     "redesign", "Engineer")], 1, 0.0),
+        "duplicate": (_Contract(ref="DUP", lines=[
+                          _ContractLine("CAS", "uPVC casing 6 in", "m", 10, 22.0),
+                          _ContractLine("CAS", "uPVC casing 4 in", "m", 10, 22.0)]),
+                      [_Measurement("CAS", 10.0)], [], 1, 0.0),
     }
     out["procurement"] = {}
     for _label, (_ct, _ms, _vs, _no, _prev) in _proc_cases.items():

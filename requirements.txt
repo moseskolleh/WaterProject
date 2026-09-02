@@ -16,5 +16,5 @@ pdfplumber>=0.10
 # the AI reading path in the Scanned sheets tab. Without it the tab offers a
 # feature the deployment cannot run: the import fails at the moment a field
 # officer asks for it, which is the worst possible moment to find out.
-anthropic>=0.40
+anthropic>=0.78
 .

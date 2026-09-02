@@ -142,6 +142,66 @@ def load_chiefdom_polys(path: str | Path | None = None) -> list[ChiefdomPoly]:
     return polys
 
 
+def assign_chiefdoms(
+    points: Iterable[WaterPoint], polys: list[ChiefdomPoly]
+) -> list[str]:
+    """Chiefdom name per point, "" for a point inside no chiefdom.
+
+    The same answer as ``chiefdom_of_point`` for each point (first polygon
+    in file order that contains it, enclaves honoured), computed for all
+    the points at once: a national pull is fifty thousand points, and the
+    per-point ray cast took about ten seconds on every rerun of the coverage
+    page. The bounding-box reject is kept per ring, and the points already
+    placed drop out of the candidate set for the next ring.
+    """
+    from matplotlib.path import Path as MplPath
+
+    points = list(points)
+    names = [""] * len(points)
+    if not points:
+        return names
+    xy = np.array([(wp.lon, wp.lat) for wp in points], dtype=float)
+    pending = np.ones(len(points), dtype=bool)
+    for poly in polys:
+        for i, (ring, (x0, y0, x1, y1)) in enumerate(
+            zip(poly.rings, poly.bboxes, strict=True)
+        ):
+            candidates = pending & (
+                (xy[:, 0] >= x0) & (xy[:, 0] <= x1)
+                & (xy[:, 1] >= y0) & (xy[:, 1] <= y1)
+            )
+            if not candidates.any():
+                continue
+            idx = np.flatnonzero(candidates)
+            inside = MplPath(ring).contains_points(xy[idx])
+            for hole in poly.holes[i] if i < len(poly.holes) else []:
+                if inside.any():
+                    inside &= ~MplPath(hole).contains_points(xy[idx])
+            hit = idx[inside]
+            for j in hit:
+                names[j] = poly.name
+            pending[hit] = False
+        if not pending.any():
+            break
+    return names
+
+
+def counts_from_groups(
+    grouped: dict[str, list[WaterPoint]]
+) -> dict[str, dict[str, int]]:
+    """Total and functional counts derived from grouped points.
+
+    Grouping and counting are the same walk; doing both is doing it twice.
+    """
+    return {
+        area: {
+            "total": len(members),
+            "functional": sum(1 for wp in members if wp.functional is True),
+        }
+        for area, members in grouped.items()
+    }
+
+
 def district_of_point(
     lat: float, lon: float, polys: list[ChiefdomPoly], chiefdom_district: dict[str, str]
 ) -> str:
@@ -166,18 +226,8 @@ def count_points_by_district(
     Returns ``({district: {"total": int, "functional": int}}, unassigned)``
     where ``unassigned`` holds points inside no chiefdom (never dropped).
     """
-    counts: dict[str, dict[str, int]] = {}
-    unassigned: list[WaterPoint] = []
-    for wp in points:
-        district = district_of_point(wp.lat, wp.lon, polys, chiefdom_district)
-        if not district:
-            unassigned.append(wp)
-            continue
-        bucket = counts.setdefault(district, {"total": 0, "functional": 0})
-        bucket["total"] += 1
-        if wp.functional is True:
-            bucket["functional"] += 1
-    return counts, unassigned
+    grouped, unassigned = group_points_by_district(points, polys, chiefdom_district)
+    return counts_from_groups(grouped), unassigned
 
 
 def group_points_by_district(
@@ -192,10 +242,11 @@ def group_points_by_district(
     season, which is what ``groundwater.planning`` needs, so the same walk
     keeps the records instead of tallying them away.
     """
+    points = list(points)
     grouped: dict[str, list[WaterPoint]] = {}
     unassigned: list[WaterPoint] = []
-    for wp in points:
-        district = district_of_point(wp.lat, wp.lon, polys, chiefdom_district)
+    for wp, chiefdom in zip(points, assign_chiefdoms(points, polys), strict=True):
+        district = chiefdom_district.get(chiefdom, "") if chiefdom else ""
         if not district:
             unassigned.append(wp)
             continue
@@ -207,10 +258,10 @@ def group_points_by_chiefdom(
     points: Iterable[WaterPoint], polys: list[ChiefdomPoly]
 ) -> tuple[dict[str, list[WaterPoint]], list[WaterPoint]]:
     """The points themselves per chiefdom polygon."""
+    points = list(points)
     grouped: dict[str, list[WaterPoint]] = {}
     unassigned: list[WaterPoint] = []
-    for wp in points:
-        chiefdom = chiefdom_of_point(wp.lat, wp.lon, polys)
+    for wp, chiefdom in zip(points, assign_chiefdoms(points, polys), strict=True):
         if not chiefdom:
             unassigned.append(wp)
             continue
@@ -385,18 +436,8 @@ def count_points_by_chiefdom(
     points: Iterable[WaterPoint], polys: list[ChiefdomPoly]
 ) -> tuple[dict[str, dict[str, int]], list[WaterPoint]]:
     """Total and functional water-point counts per chiefdom polygon."""
-    counts: dict[str, dict[str, int]] = {}
-    unassigned: list[WaterPoint] = []
-    for wp in points:
-        chiefdom = chiefdom_of_point(wp.lat, wp.lon, polys)
-        if not chiefdom:
-            unassigned.append(wp)
-            continue
-        bucket = counts.setdefault(chiefdom, {"total": 0, "functional": 0})
-        bucket["total"] += 1
-        if wp.functional is True:
-            bucket["functional"] += 1
-    return counts, unassigned
+    grouped, unassigned = group_points_by_chiefdom(points, polys)
+    return counts_from_groups(grouped), unassigned
 
 
 def chiefdom_coverage_rows(

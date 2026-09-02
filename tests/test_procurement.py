@@ -49,11 +49,20 @@ def test_a_contract_is_frozen_from_the_estimate_not_linked_to_it(sample_data):
     estimate = estimate_borehole_cost(CostingInputs(total_depth_m=45.0))
     contract = contract_from_estimate(estimate, ref="WSD/2024/017")
     assert len(contract.lines) == len(estimate.items)
-    assert contract.sum_usd == pytest.approx(estimate.direct_cost_usd)
+    # frozen at the contract price the same estimate recommends, not at the
+    # contractor's bare cost rates (which paid a third below that price)
+    assert contract.sum_usd == pytest.approx(estimate.price_usd)
+    assert contract.rate_basis == "price" and contract.rate_uplift > 1.0
+    at_cost = contract_from_estimate(estimate, ref="X", basis="cost")
+    assert at_cost.sum_usd == pytest.approx(estimate.direct_cost_usd)
+    with_vat = contract_from_estimate(estimate, ref="X", basis="price_with_vat")
+    assert with_vat.sum_usd == pytest.approx(estimate.price_with_vat_usd)
+    with pytest.raises(ValueError):
+        contract_from_estimate(estimate, ref="X", basis="retail")
 
     # a later change to the estimate cannot move what was signed
     estimate.items[0].quantity *= 2
-    assert contract.sum_usd != pytest.approx(estimate.direct_cost_usd)
+    assert contract.sum_usd != pytest.approx(estimate.price_usd)
 
 
 # ---------------------------------------------------------------------------
@@ -390,3 +399,45 @@ def test_a_clean_certificate_carries_no_problem_section(tmp_path):
     assert "Before the figures" not in text
     assert "Measured beyond what was authorised" not in text
     assert "Certification" in text
+
+
+def test_a_rate_only_variation_is_a_variation():
+    """Repricing a line used to leave 'Variations +$0' on the certificate
+    while paying the new rate: the contract amount was valued at the varied
+    rate too, so the difference cancelled."""
+    contract = Contract(ref="C", lines=[
+        ContractLine(code="MOB", item="Mobilisation", unit="sum", quantity=1, rate_usd=3000),
+        ContractLine(code="CAS", item="Casing", unit="m", quantity=45, rate_usd=22),
+    ])
+    repriced = Variation(ref="VO-1", date="2024-05-01", code="CAS", rate_usd=26,
+                         reason="supplier price", authorised_by="Engineer")
+    cert = certify(contract, [Measurement("MOB", 1), Measurement("CAS", 45)],
+                   number=1, date="2024-06-01", variations=[repriced])
+    assert cert.variation_usd == pytest.approx(45 * (26 - 22))
+    assert cert.revised_sum_usd == pytest.approx(3000 + 45 * 26)
+    assert cert.gross_usd == pytest.approx(cert.revised_sum_usd)
+    assert cert.percent_complete == pytest.approx(100.0)
+
+
+def test_an_omission_beyond_the_line_authorises_nothing_and_says_so():
+    contract = Contract(ref="C", lines=[
+        ContractLine(code="CAS", item="Casing", unit="m", quantity=45, rate_usd=22),
+    ])
+    omission = Variation(ref="VO-2", date="2024-05-01", code="CAS", quantity_delta=-60,
+                         reason="redesign", authorised_by="Engineer")
+    lines, problems = value_work(contract, [Measurement("CAS", 10)], [omission])
+    line = lines[0]
+    assert line.authorised_quantity == 0.0
+    assert line.payable_quantity == 0.0 and line.overmeasure_quantity == 10.0
+    assert line.percent_complete is None or line.percent_complete >= 0
+    assert any("omits 60" in p and "only carries 45" in p for p in problems)
+
+
+def test_duplicate_contract_codes_are_named_and_valued_once():
+    contract = Contract(ref="C", lines=[
+        ContractLine(code="CAS", item="Casing 6 in", unit="m", quantity=10, rate_usd=22),
+        ContractLine(code="CAS", item="Casing 4 in", unit="m", quantity=10, rate_usd=22),
+    ])
+    lines, problems = value_work(contract, [Measurement("CAS", 10)])
+    assert len(lines) == 1 and lines[0].payable_amount_usd == pytest.approx(220)
+    assert any("more than one line coded CAS" in p for p in problems)

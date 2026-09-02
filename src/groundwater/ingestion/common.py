@@ -10,6 +10,8 @@ helpers here deal with all of that in one place.
 
 from __future__ import annotations
 
+import datetime
+
 import re
 from pathlib import Path
 
@@ -169,6 +171,12 @@ def extract_header_fields(grid: list[list], max_rows: int = 30) -> dict:
                         value = nxt
                         break
             if value is None:
+                # A columnar header block - labels across one row, values in
+                # the row beneath - used to parse to nothing at all. The cell
+                # below is taken only when it is not itself a label, so the
+                # stacked template layout (label over label) is unaffected.
+                value = _value_below(grid, _r, c)
+            if value is None:
                 continue
             if key in NUMERIC_HEADER_KEYS:
                 number = parse_number(value)
@@ -176,9 +184,38 @@ def extract_header_fields(grid: list[list], max_rows: int = 30) -> dict:
                     fields[key] = number
                     priorities[key] = priority
             else:
-                fields[key] = clean_text(value)
+                fields[key] = clean_text(_date_text(value))
                 priorities[key] = priority
     return fields
+
+
+def _value_below(grid: list[list], r: int, c: int):
+    if r + 1 >= len(grid) or c >= len(grid[r + 1]):
+        return None
+    below = grid[r + 1][c]
+    if below is None or clean_text(below) == "":
+        return None
+    if not isinstance(below, (int, float)):
+        below_label, _ = split_inline_value(str(below))
+        if match_label(below_label):
+            return None
+    return below
+
+
+def _date_text(value):
+    """A date cell as text: ``2015-12-08``, not ``2015-12-08 00:00:00``.
+
+    openpyxl hands a cell typed as a date back as a datetime, and str() of
+    that carried a midnight time onto the report cover. ISO is what the
+    browser app already prints for the same cell, so the two apps agree.
+    """
+    if isinstance(value, datetime.datetime):
+        if value.hour or value.minute or value.second:
+            return value.isoformat(sep=" ", timespec="minutes")
+        return value.date().isoformat()
+    if isinstance(value, datetime.date):
+        return value.isoformat()
+    return value
 
 
 def site_from_fields(fields: dict, source: str = "") -> SiteMetadata:

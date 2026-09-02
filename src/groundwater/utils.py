@@ -14,6 +14,10 @@ import re
 from typing import Iterable
 
 _NUMBER_RE = re.compile(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?")
+# a comma followed by exactly three digits that end the number is a thousands
+# separator; any other comma between digits is a decimal point
+_THOUSANDS_RE = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")
+_DECIMAL_COMMA_RE = re.compile(r"(?<=\d),(?=\d)")
 
 
 def parse_number(value, default=None) -> float | None:
@@ -34,6 +38,21 @@ def parse_number(value, default=None) -> float | None:
     2933.0
     >>> parse_number("") is None
     True
+
+    A comma is a thousands separator only when exactly three digits follow
+    it and end the number; otherwise it is a decimal comma, which crews
+    trained on French-language sheets type as a matter of course. ``1,5``
+    used to parse as 15 and ``078,7`` as 787, a silent tenfold error in an
+    electrode spacing or a resistivity.
+
+    >>> parse_number("1,5")
+    1.5
+    >>> parse_number("078,7")
+    78.7
+    >>> parse_number("1.234,5")
+    1234.5
+    >>> parse_number("12,345,678")
+    12345678.0
     """
     if value is None:
         return default
@@ -44,7 +63,14 @@ def parse_number(value, default=None) -> float | None:
     text = str(value).strip()
     if not text:
         return default
-    text = text.replace(",", "")
+    if "," in text:
+        if "." in text and text.rfind(",") > text.rfind("."):
+            # 1.234,5 - point-grouped thousands with a decimal comma
+            text = text.replace(".", "").replace(",", ".")
+        else:
+            text = _THOUSANDS_RE.sub("", text)
+            text = _DECIMAL_COMMA_RE.sub(".", text)
+            text = text.replace(",", "")
     match = _NUMBER_RE.search(text)
     if match is None:
         return default

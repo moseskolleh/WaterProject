@@ -23,6 +23,7 @@ from groundwater import Project
 from groundwater.hydraulics import analyse_pumping_test
 from groundwater.ingestion import read_pumping_workbook
 from groundwater.models import SiteMetadata
+from groundwater.readiness import assess_readiness
 from groundwater.reporting.pumping import PumpingReportInputs, build_pumping_report
 
 HERE = Path(__file__).parent
@@ -53,11 +54,19 @@ def main() -> None:
     print("safe yield:", yr.safe_yield_m3_per_h, "m3/h")
     print("basis:", yr.basis)
 
+    # the certification gate: with the discharges still pending this report
+    # is stamped PROVISIONAL on its cover, which is the point of the example
+    readiness = assess_readiness(
+        {"site": test.site, "pump_analysis": analysis}, "pumping"
+    )
+    print("\nreadiness:", readiness.summary)
+
     report = build_pumping_report(
         PumpingReportInputs(
             analysis=analysis,
             figures_dir=project.figures,
             analyst_name="A. N. Analyst",
+            readiness=readiness,
         ),
         project.report_path("Kuntolo_Pumping_Test_Report.docx"),
         project.config,

@@ -17,7 +17,7 @@ from pathlib import Path
 
 
 from ..config import Config
-from ..hydraulics.analysis import PumpingTestAnalysis
+from ..hydraulics.analysis import METHOD_LABELS, PumpingTestAnalysis
 from ..hydraulics.plots import (
     plot_cooper_jacob,
     plot_recovery,
@@ -73,8 +73,10 @@ def _executive_summary(analysis: PumpingTestAnalysis) -> tuple[list[str], list[s
             "Operate within the recommended rate and monitor the pumping level.",
         ]
     else:
+        # the recommendation names what stopped it; a blank used to be
+        # blamed on the discharge whether or not it was on the sheet
         reason = (yr.pending_reason if yr and yr.pending_reason
-                  else "the discharge is not recorded")
+                  else "the analysis is incomplete")
         para = (
             f"A {test_name} pumping test was carried out on the borehole at "
             f"{community}. The drawdown and recovery curves are valid, but the "
@@ -258,9 +260,13 @@ def build_pumping_report(
         st_path = figures / f"step_test_{slug}.png"
         plot_step_test(test, st, path=st_path, style=config.style)
         rb.figure(st_path, "Step drawdown data and the specific drawdown fit.")
+        # a refit with a coefficient pinned at zero has no efficiency to
+        # report; 0% or 100% printed as a borehole's efficiency is a number
+        # nobody should act on
         rows = [
             [s["step"], fmt_num(s["discharge_m3_per_h"]), fmt_num(s["drawdown_end_m"]),
-             fmt_num(s["sw_over_q_day_per_m2"], 3), f"{s['efficiency_percent']:.0f}%"]
+             fmt_num(s["sw_over_q_day_per_m2"], 3),
+             "n/a" if st.fit_note else f"{s['efficiency_percent']:.0f}%"]
             for s in st.steps
         ]
         rb.table(
@@ -272,7 +278,8 @@ def build_pumping_report(
             f"The drawdown-discharge relationship is s = BQ + CQ2 with "
             f"B = {st.aquifer_loss_B:.3e} day/m2 (aquifer loss) and "
             f"C = {st.well_loss_C:.3e} day2/m5 (well loss), fitted with "
-            f"R squared {st.r_squared:.3f}.",
+            f"R squared {st.r_squared:.3f}."
+            + (f" Note: {st.fit_note}." if st.fit_note else ""),
             align="justify",
         )
     elif test.test_type.startswith("step") and not test.has_discharge:
@@ -288,13 +295,15 @@ def build_pumping_report(
 
     # ---- 4 results summary ------------------------------------------------
     rb.heading("4. Results Summary", 1)
+    source = analysis.transmissivity_source
     rows = []
-    if analysis.cooper_jacob:
-        rows.append(["Cooper-Jacob", fmt_num(analysis.cooper_jacob.transmissivity_m2_per_day)])
-    if analysis.theis:
-        rows.append(["Theis curve fit", fmt_num(analysis.theis.transmissivity_m2_per_day)])
-    if analysis.recovery:
-        rows.append(["Theis recovery", fmt_num(analysis.recovery.transmissivity_m2_per_day)])
+    for key in ("cooper_jacob", "theis", "recovery"):
+        result = getattr(analysis, key)
+        if result is not None:
+            rows.append([
+                METHOD_LABELS[key] + (" (adopted)" if key == source else ""),
+                fmt_num(result.transmissivity_m2_per_day),
+            ])
     if rows:
         rb.table(rows, header=["Method", "Transmissivity (m2/day)"],
                  caption="Transmissivity estimates.")
@@ -303,6 +312,9 @@ def build_pumping_report(
     yr = analysis.yield_recommendation
     if yr is not None:
         summary_rows = [
+            ["Transmissivity adopted for the yield",
+             f"{fmt_num(analysis.transmissivity_m2_per_day)} m2/day "
+             f"({METHOD_LABELS[source]})" if source else "pending"],
             ["Specific capacity", fmt_num(yr.specific_capacity_m3hr_per_m) + " m3/h per m"
              if yr.specific_capacity_m3hr_per_m else "pending"],
             ["Available drawdown", fmt_num(yr.available_drawdown_m) + " m"
@@ -378,6 +390,10 @@ def build_pumping_report(
                 f"By the end of the dry season the borehole yields about "
                 f"{loss:.0f}% less than it did on the day of the test.",
                 bold=True)
+        if any(s.safe_yield_m3_per_h is None for s in seasonal.scenarios):
+            # a blank cell in the table is not a finding; the summary says
+            # in words that the pump would be dry in that scenario
+            rb.paragraph(seasonal.summary, bold=True)
         rb.bullets([s.note for s in seasonal.scenarios])
         if seasonal.pump_installation_depth_m is not None:
             rb.paragraph(
@@ -402,11 +418,21 @@ def build_pumping_report(
             ("The safe yield is projected to the design period from a short "
             "test; it should be confirmed by monitoring the pumping water "
             "level once the borehole is in service."),
-            ("Yield varies with the season. Section 5.1 projects the tested "
-            "level to the annual low and to a drought year, but the size of "
-            "the annual swing is assumed rather than measured; two water-level "
-            "readings a year apart in this borehole would replace that "
-            "assumption with a number."),
+            # Section 5.1 exists only when a seasonal projection was supplied;
+            # the bullet used to cite it in every report regardless
+            (
+                "Yield varies with the season. Section 5.1 projects the tested "
+                "level to the annual low and to a drought year, but the size of "
+                "the annual swing is assumed rather than measured; two water-level "
+                "readings a year apart in this borehole would replace that "
+                "assumption with a number."
+                if seasonal is not None and seasonal.is_established
+                else "Yield varies with the season. This report gives the yield at "
+                "the water level measured on the day of the test; no seasonal "
+                "projection was supplied, so the dry-season and drought-year "
+                "figures are not given. Two water-level readings a year apart in "
+                "this borehole would allow that projection."
+            ),
         ]
     )
 

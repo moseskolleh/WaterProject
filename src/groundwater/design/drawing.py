@@ -70,6 +70,30 @@ def _stack_labels(
     return placed
 
 
+_HEADER_LINE_CHARS = 88
+
+
+def _header_lines(pairs) -> list[str]:
+    """Header pairs packed into lines of at most ``_HEADER_LINE_CHARS``.
+
+    A pair is never split; a single pair longer than the limit gets a line
+    of its own (and is the contractor's problem to shorten).
+    """
+    lines: list[str] = []
+    current = ""
+    for key, value in pairs:
+        piece = f"{key}: {value}"
+        joined = f"{current}    {piece}" if current else piece
+        if current and len(joined) > _HEADER_LINE_CHARS:
+            lines.append(current)
+            current = piece
+        else:
+            current = joined
+    if current:
+        lines.append(current)
+    return lines
+
+
 def draw_borehole_design(
     design: BoreholeDesign,
     log: DrillingLog | None = None,
@@ -346,11 +370,16 @@ def draw_borehole_design(
             (f'{design.borehole_diameter_in:g}" hole, '
             f'{design.casing_diameter_in:g}" {design.casing_material}'),
         ))
-        if header_pairs:
-            header_text = "    ".join(f"{k}: {v}" for k, v in header_pairs)
-            fig.text(0.5, 0.945, header_text, ha="center", fontsize=8,
+        # The header is laid out in rows that fit the canvas. One long line
+        # does not clip: save_figure uses bbox_inches="tight", which grows the
+        # canvas sideways to fit it, and the completion report's drawing came
+        # out a third narrower than the handover's for the same borehole.
+        header_lines = _header_lines(header_pairs)
+        for i, line in enumerate(header_lines):
+            fig.text(0.5, 0.948 - 0.018 * i, line, ha="center", fontsize=8,
                      color="#444444")
-        fig.tight_layout(rect=(0, legend_space, 1, 0.94))
+        header_space = 0.018 * max(len(header_lines) - 1, 0)
+        fig.tight_layout(rect=(0, legend_space, 1, 0.94 - header_space))
         if path is not None:
             return save_figure(fig, path, style)
         return fig

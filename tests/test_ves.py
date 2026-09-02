@@ -279,3 +279,24 @@ def test_a_section_will_not_draw_a_sounding_it_was_not_given():
     fig = plot_geoelectric_section(models, positions=[0.0, 60.0],
                                    labels=["A", "B"], depth_max=45.0)
     assert fig is not None
+
+
+def test_the_layer_search_does_not_stop_at_a_good_enough_two_layer_fit():
+    """A noise-free A-type curve over a 15 m aquifer above basement: the
+    two-layer model fits to 4.7%, under the target, and the search used to
+    stop there - reporting basement at 6 m instead of 19 m and no water
+    zone at all. The richer model must at least be tried so the parsimony
+    rule can see that it fits an order of magnitude better."""
+    ab2 = np.array([1, 1.5, 2, 3, 4, 5, 7, 10, 15, 20, 30, 40, 50, 70, 100], float)
+    rho_app = forward_schlumberger(
+        (np.array([100.0, 400.0, 3000.0]), np.array([4.0, 15.0])), ab2
+    )
+    sounding = VESSounding(
+        site=SiteMetadata(community="synthetic"), sounding_id="S1",
+        ab2=ab2, mn=np.full_like(ab2, np.nan), rho_app=rho_app,
+    )
+    result = invert_sounding(sounding)
+    assert result.model.n_layers == 3
+    assert abs(float(np.sum(result.model.thicknesses)) - 19.0) / 19.0 < 0.25
+    assert result.fit_error_percent < 1.0
+    assert [n for n, _ in result.trials][:2] == [2, 3]

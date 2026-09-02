@@ -25,6 +25,7 @@ from groundwater.ingestion import (
     read_quality_workbook,
 )
 from groundwater.quality import assess_sample
+from groundwater.readiness import assess_readiness
 from groundwater.reporting.completion import (
     CompletionReportInputs,
     build_completion_report,
@@ -73,6 +74,20 @@ def main() -> None:
         rules=project.config.design,
     )
 
+    # ---- the certification gate ---------------------------------------------------
+    # The transcribed sheets carry no GPS fix, and a borehole nobody can find
+    # again cannot be certified; the position below is illustrative, so the
+    # example shows a certifiable set rather than three stamped covers.
+    if log.site.easting is None:
+        log.site.easting, log.site.northing, log.site.utm_zone = 825127.0, 983069.0, 28
+    state = {
+        "site": log.site, "drilling_log": log, "pump_analysis": analysis,
+        "wq_assessment": assessment, "borehole_design": design,
+    }
+    gates = {kind: assess_readiness(state, kind) for kind in ("completion", "quality", "handover")}
+    for kind, gate in gates.items():
+        print(f"readiness ({kind}):", gate.summary)
+
     # ---- reports --------------------------------------------------------------------
     completion = build_completion_report(
         CompletionReportInputs(
@@ -80,6 +95,7 @@ def main() -> None:
             design=design,
             pumping=analysis,
             quality=assessment,
+            readiness=gates["completion"],
             figures_dir=project.figures,
             development_record=[
                 ("17:00", "17:17", "", "Muddy water flushed out"),
@@ -103,6 +119,7 @@ def main() -> None:
             assessment=assessment,
             figures_dir=project.figures,
             analyst_name="A. N. Analyst",
+            readiness=gates["quality"],
         ),
         project.report_path("Dr_Timbo_Water_Quality_Report.docx"),
         project.config,
@@ -126,6 +143,7 @@ def main() -> None:
             pump_type="Submersible pump",
             contractor_rep="WiNGiN Heavy Duty Machines Co. Ltd",
             client_rep="Dr. Timbo",
+            readiness=gates["handover"],
         ),
         project.report_path("Dr_Timbo_Handover_Report.docx"),
         project.config,

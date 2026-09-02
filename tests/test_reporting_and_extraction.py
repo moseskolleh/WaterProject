@@ -1,3 +1,4 @@
+from pathlib import Path
 import hashlib
 import re
 
@@ -375,3 +376,89 @@ def test_pdf_extraction_feeds_the_ves_template(tmp_path):
     assert sounding.rho_app[0] == pytest.approx(210.4)
     assert sounding.ab2[-1] == pytest.approx(15.0)
     assert sounding.rho_app[-1] == pytest.approx(198.3)
+
+
+def test_the_works_lists_only_claim_what_the_data_evidences(sample_data, tmp_path: Path):
+    """The handover is signed by three parties and the completion report is
+    what the contractor is paid against; neither may assert a pumping test,
+    a laboratory analysis, a gravel pack or a development that nobody
+    supplied."""
+    log = read_drilling_workbook(sample_data / "dr_timbo" / "dr_timbo_drilling_log.xlsx")
+    bare_handover = build_handover_report(
+        HandoverReportInputs(site=log.site, log=log, figures_dir=tmp_path),
+        tmp_path / "bare_handover.docx",
+    )
+    text = _doc_text(bare_handover)
+    for claim in ("Pumping test and yield assessment", "Water quality sampling",
+                  "Geophysical siting survey", "Development of the borehole"):
+        assert claim not in text, claim
+    assert "Drilling of the borehole" in text
+    bare_completion = build_completion_report(
+        CompletionReportInputs(log=log, figures_dir=tmp_path),
+        tmp_path / "bare_completion.docx",
+    )
+    text = _doc_text(bare_completion)
+    for claim in ("Gravel packing", "airlifting", "Supply and installation of casings"):
+        assert claim not in text, claim
+    assert "Mobilisation of the drill rig" in text and "Demobilisation" in text
+
+    design = design_borehole(log=log, static_water_level_m=9.4)
+    full = build_completion_report(
+        CompletionReportInputs(log=log, design=design, figures_dir=tmp_path,
+                               development_note="airlifted for 4 hours until clear"),
+        tmp_path / "full_completion.docx",
+    )
+    text = _doc_text(full)
+    assert "Gravel packing" in text and "airlifting" in text
+    sited = build_handover_report(
+        HandoverReportInputs(site=log.site, log=log, design=design, sited=True,
+                             figures_dir=tmp_path),
+        tmp_path / "sited_handover.docx",
+    )
+    text = _doc_text(sited)
+    assert "Geophysical siting survey" in text and "Development of the borehole" in text
+
+
+def test_the_bgs_atlas_is_cited_as_its_licence_prescribes(sample_data, tmp_path: Path):
+    from groundwater.reporting.citations import references_for
+
+    refs = " ".join(references_for("geophysical"))
+    assert "British Geological Survey. 2019/2021. Africa Groundwater Atlas Country Hydrogeology Maps" in refs
+    assert "OR/21/063" in refs and "MacDonald" not in refs
+
+
+def test_the_design_drawing_header_never_widens_the_canvas(sample_data, tmp_path: Path):
+    """A long header line used to push bbox_inches='tight' a third wider, so
+    the completion report's as-built drawing came out a third smaller than
+    the handover's for the same borehole."""
+    from PIL import Image
+
+    from groundwater.design.drawing import draw_borehole_design
+
+    log = read_drilling_workbook(sample_data / "dr_timbo" / "dr_timbo_drilling_log.xlsx")
+    design = design_borehole(log=log, static_water_level_m=9.4)
+    plain = draw_borehole_design(design, log=log, path=tmp_path / "plain.png")
+    headed = draw_borehole_design(
+        design, log=log, path=tmp_path / "headed.png",
+        header_pairs=[
+            ("Client", "Dr Timbo's Residence, Makeni"),
+            ("Contractor", "A Very Long Drilling Contractor Company (SL) Limited"),
+            ("Method", "Down-the-hole hammer"),
+            ("Status", "Completed and handed over"),
+        ],
+    )
+    with Image.open(plain) as a, Image.open(headed) as b:
+        ratio_plain = a.size[0] / a.size[1]
+        ratio_headed = b.size[0] / b.size[1]
+    assert abs(ratio_headed - ratio_plain) / ratio_plain < 0.05
+
+
+def _doc_text(path: Path) -> str:
+    from docx import Document
+
+    doc = Document(str(path))
+    parts = [p.text for p in doc.paragraphs]
+    for table in doc.tables:
+        for row in table.rows:
+            parts.extend(cell.text for cell in row.cells)
+    return "\n".join(parts)
