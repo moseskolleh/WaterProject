@@ -3,9 +3,9 @@
 from groundwater.mapping import chiefdom_of, load_chiefdoms
 
 _DISTRICTS = {
-    "Bo", "Bombali", "Bonthe", "Kailahun", "Kambia", "Kenema", "Koinadugu",
-    "Kono", "Moyamba", "Port Loko", "Pujehun", "Tonkolili",
-    "Western Area Rural", "Western Area Urban",
+    "Bo", "Bombali", "Bonthe", "Falaba", "Kailahun", "Kambia", "Karene",
+    "Kenema", "Koinadugu", "Kono", "Moyamba", "Port Loko", "Pujehun",
+    "Tonkolili", "Western Area Rural", "Western Area Urban",
 }
 
 
@@ -58,3 +58,20 @@ def test_chiefdom_district_agrees_with_district_lookup():
     # matches the independent district lookup
     chief, district = chiefdom_of(8.8817, -12.0442)
     assert district == district_of(8.8817, -12.0442) == "Bombali"
+
+
+def test_the_lookups_return_the_districts_as_they_are_today():
+    """Karene and Falaba were created in 2017; the boundary release predates
+    them. Kamakwie used to come back as Bombali and Falaba town as
+    Koinadugu, and the app pre-filled those districts without a word."""
+    from groundwater.mapping.regional import chiefdom_of, district_of, load_chiefdoms
+
+    assert chiefdom_of(9.4967, -12.2417) == ("Sella Limba", "Karene")   # Kamakwie
+    assert district_of(9.4967, -12.2417) == "Karene"
+    assert district_of(9.8586, -11.3211) == "Falaba"                    # Falaba town
+    assert district_of(8.4403, -13.1716) == "Western Area Urban"        # Freetown
+    assert district_of(8.7266, -12.7423) == "Port Loko"
+    # the layer itself carries the current parentage
+    by_name = {area.name: area.district for area in load_chiefdoms()}
+    assert by_name["Sella Limba"] == "Karene" and by_name["Sulima"] == "Falaba"
+    assert district_of(6.0, -13.5) == ""                                # offshore

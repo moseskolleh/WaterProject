@@ -110,13 +110,32 @@ def test_a_detection_limit_under_the_guideline_does_prove_compliance():
     assert a.rows[0].evaluable
 
 
-def test_any_positive_detection_limit_is_uninformative_for_e_coli():
-    """Its guideline is zero, so "< 1 per 100 mL" cannot show compliance."""
-    a = assess_sample(_sample(
+def test_not_detected_in_100_ml_is_the_e_coli_guideline_being_met():
+    """A membrane-filtration count cannot resolve below one colony per volume
+    filtered, so "<1 CFU/100 mL" - the documented way to transcribe a clean
+    certificate - is exactly "not detectable in any 100 mL sample". A limit
+    of 10 (a 10 mL volume) still cannot show it."""
+    clean = assess_sample(_sample(
         WaterQualityResult("E. coli", None, "CFU/100 mL",
                            detection_limit=1.0, below_detection=True),
     ))
-    assert a.rows[0].status == "indeterminate"
+    assert clean.rows[0].status == "below_detection" and clean.rows[0].evaluable
+    assert "100 mL" in clean.rows[0].remark
+    absent = assess_sample(_sample(
+        WaterQualityResult("E. coli", None, "CFU/100 mL", below_detection=True),
+    ))
+    assert absent.rows[0].status == "below_detection"
+    coarse = assess_sample(_sample(
+        WaterQualityResult("E. coli", None, "CFU/100 mL",
+                           detection_limit=10.0, below_detection=True),
+    ))
+    assert coarse.rows[0].status == "indeterminate"
+    # a chemical determinand with no stated limit is still an open question
+    chem = assess_sample(_sample(
+        WaterQualityResult("Arsenic", None, "mg/L", below_detection=True),
+    ))
+    assert chem.rows[0].status == "indeterminate"
+    assert chem.rows[0].reason == "detection_limit_unknown"
 
 
 def test_a_detection_limit_is_converted_before_it_is_compared():
@@ -331,3 +350,65 @@ def test_the_spine_plots_the_converted_value_against_its_limit():
         WaterQualityResult("Arsenic", 5.0, "wibbles"))))
     assert bad["rows"][0]["ratio"] is None
     assert bad["rows"][0]["evaluable"] is False
+
+
+@pytest.mark.parametrize("written,key", [
+    ("Iron (Fe)", "iron"), ("Total iron", "iron"), ("Total alkalinity", "alkalinity"),
+    ("Alkalinity (as CaCO3)", "alkalinity"), ("Calcium (Ca)", "calcium"),
+    ("Manganese (Mn)", "manganese"), ("Conductivity (EC)", "electrical conductivity"),
+    ("Nitrate (NO3)", "nitrate (as no3)"), ("Sulphate (SO4)", "sulfate"),
+    ("Bicarbonate (HCO3)", "bicarbonate"), ("Turbidity (NTU)", "turbidity"),
+    ("Temperature (°C)", "temperature"), ("pH value", "ph"),
+    ("Thermotolerant coliforms", "e. coli"), ("Faecal coliform", "e. coli"),
+    ("Colour", "colour"), ("Color", "colour"), ("Phosphate", "phosphate"),
+    ("Free chlorine", "free chlorine"), ("Residual chlorine", "free chlorine"),
+    ("Silica", "silica"), ("Total suspended solids", "total suspended solids"),
+    ("Nitrate-N", "nitrate (as n)"), ("Nitrate (as N)", "nitrate (as n)"),
+    ("Chromium (total)", "chromium (total)"), ("E.Coli", "e. coli"),
+])
+def test_certificate_spellings_resolve_to_the_table(written, key):
+    from groundwater.quality.standards import load_standards, normalise_parameter
+
+    assert normalise_parameter(written) == key
+    assert key in load_standards(), key
+
+
+def test_a_routine_certificate_is_not_refused_for_its_spellings():
+    """The assessment is fail-closed, so an unknown name made the whole
+    sample "not proven safe"; a clean panel written the way a laboratory
+    writes it now passes."""
+    a = assess_sample(_sample(
+        WaterQualityResult("pH value", 7.1, "pH units"),
+        WaterQualityResult("Turbidity (NTU)", 1.0, "NTU"),
+        WaterQualityResult("Iron (Fe)", 0.1, "mg/L"),
+        WaterQualityResult("Nitrate-N", 2.0, "mg/L"),
+        WaterQualityResult("Fluoride", 0.3, "mg/L"),
+        WaterQualityResult("Arsenic", 0.002, "mg/L"),
+        WaterQualityResult("Total alkalinity", 46.0, "mg/L as CaCO3"),
+        WaterQualityResult("Colour", 5.0, "TCU"),
+        WaterQualityResult("Silica", 12.0, "mg/L"),
+        WaterQualityResult("E. coli", None, "CFU/100 mL", below_detection=True),
+        WaterQualityResult("Total coliforms", None, "CFU/100 mL",
+                           detection_limit=1.0, below_detection=True),
+    ))
+    assert a.verdict_state == "pass", [(r.parameter, r.status, r.reason) for r in a.rows]
+    nitrate_n = next(r for r in a.rows if r.parameter == "Nitrate-N")
+    assert nitrate_n.status == "within_limits"
+    high = assess_sample(_sample(WaterQualityResult("Nitrate-N", 12.0, "mg/L")))
+    assert next(r for r in high.rows if r.parameter == "Nitrate-N").status == "exceeds_health"
+
+
+def test_missing_sulfate_is_an_incomplete_analysis_not_an_unreliable_one():
+    from groundwater.quality.ionic import ionic_balance
+
+    def ions(**extra):
+        results = [
+            WaterQualityResult("Calcium", 20.0, "mg/L"), WaterQualityResult("Magnesium", 5.0, "mg/L"),
+            WaterQualityResult("Sodium", 10.0, "mg/L"), WaterQualityResult("Potassium", 2.0, "mg/L"),
+            WaterQualityResult("Chloride", 15.0, "mg/L"), WaterQualityResult("Bicarbonate", 60.0, "mg/L"),
+        ] + [WaterQualityResult(k, v, "mg/L") for k, v in extra.items()]
+        return _sample(*results)
+
+    assert ionic_balance(ions()) is None
+    with_sulfate = ionic_balance(ions(Sulfate=20.0))
+    assert with_sulfate is not None and abs(with_sulfate.error_percent) < 5

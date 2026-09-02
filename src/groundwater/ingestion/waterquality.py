@@ -31,6 +31,16 @@ def _find_results_header(grid: list[list]) -> tuple[int, dict] | None:
     return None
 
 
+#: What a laboratory writes for "nothing found": read as a below-detection
+#: result with no stated limit, which the assessment then judges by the
+#: parameter (a microbiological count with nothing in 100 mL meets its
+#: guideline; a chemical determinand still needs the method's limit).
+ABSENCE_TOKENS = frozenset({
+    "absent", "nd", "n.d", "n/d", "nil", "none", "not detected", "none detected",
+    "bdl", "below detection", "below detection limit", "<dl", "negative", "neg",
+})
+
+
 def read_quality_workbook(path: str | Path) -> WaterQualitySample:
     grid, _ = common.load_grid(path)
     fields = common.extract_header_fields(grid)
@@ -53,8 +63,11 @@ def read_quality_workbook(path: str | Path) -> WaterQualitySample:
             continue
         raw_value = cell("value")
         text_value = clean_text(raw_value)
-        below_detection = text_value.startswith("<")
-        value = parse_number(raw_value)
+        # "<1", and the words a certificate uses for the same thing
+        below_detection = text_value.startswith("<") or (
+            text_value.lower().rstrip(".") in ABSENCE_TOKENS
+        )
+        value = None if text_value.lower().rstrip(".") in ABSENCE_TOKENS else parse_number(raw_value)
         dl = parse_number(cell("dl"))
         if below_detection:
             # A "<X" marker means the true concentration is unknown, bounded

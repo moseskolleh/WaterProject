@@ -93,8 +93,8 @@ datasets:
       split by longitude into two chiefdoms (split_koya_feature).
     files:
       - path: src/groundwater/data/sl_chiefdoms_geoboundaries.geojson
-        bytes: 155398
-        sha256: 81ce1355ddacbaf1de1c668c971e27324e4cbde6d19382f75ab11652c2559443
+        bytes: 155377
+        sha256: e116421056b75ba42a9d79fe148ea942dd5245f9154ab2fb92d856e3cc331e6e
         derived: true
 
   - id: usgs_geology
@@ -181,8 +181,8 @@ datasets:
       value.
     files:
       - path: src/groundwater/data/who_guidelines.csv
-        bytes: 3099
-        sha256: 9e8833bdb09fb46e402aba1044fa7ad2c57319bb8d6791e3279d1ffd1dc740f7
+        bytes: 3811
+        sha256: 0d399e5a9304f45c75293ebc5e58858658c54b42ce3c11ef003f6942c7449b18
 
   - id: wpdx
     name: Water Point Data Exchange (WPdx+)
