@@ -33,9 +33,11 @@ _ANIONS = {
     "fluoride": 1 / 18.998,
 }
 
-# the four majors on each side that make a balance meaningful
+# the majors on each side that make a balance meaningful. Sulfate is one of
+# the three major anions: without it the balance came out 15% short and was
+# reported as an unreliable analysis, when the analysis was merely incomplete
 _REQUIRED_CATIONS = ("calcium", "magnesium", "sodium")
-_REQUIRED_ANIONS = ("chloride", "bicarbonate")
+_REQUIRED_ANIONS = ("chloride", "bicarbonate", "sulfate")
 
 
 @dataclass

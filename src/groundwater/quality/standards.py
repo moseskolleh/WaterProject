@@ -128,12 +128,73 @@ _ALIASES = {
     "sulphate": "sulfate",
     "so4": "sulfate",
     "aluminum": "aluminium",
+    # the spellings a Sierra Leone certificate actually carries
+    "total alkalinity": "alkalinity",
+    "alkalinity (as caco3)": "alkalinity",
+    "alkalinity as caco3": "alkalinity",
+    "total alkalinity as caco3": "alkalinity",
+    "total iron": "iron",
+    "iron (total)": "iron",
+    "total dissolved solid": "tds",
+    "dissolved solids": "tds",
+    "specific conductance": "electrical conductivity",
+    "ph value": "ph",
+    "color": "colour",
+    "true colour": "colour",
+    "apparent colour": "colour",
+    "thermotolerant coliforms": "e. coli",
+    "thermotolerant coliform": "e. coli",
+    "faecal coliform": "e. coli",
+    "fecal coliform": "e. coli",
+    "total coliform": "total coliforms",
+    "residual chlorine": "free chlorine",
+    "chlorine residual": "free chlorine",
+    "free residual chlorine": "free chlorine",
+    "nitrate-n": "nitrate (as n)",
+    "nitrate n": "nitrate (as n)",
+    "nitrate as n": "nitrate (as n)",
+    "nitrate nitrogen": "nitrate (as n)",
+    "no3-n": "nitrate (as n)",
+    "nitrite-n": "nitrite (as n)",
+    "nitrite n": "nitrite (as n)",
+    "nitrite as n": "nitrite (as n)",
+    "nitrite nitrogen": "nitrite (as n)",
+    "no2-n": "nitrite (as n)",
+    "orthophosphate": "phosphate",
+    "phosphate (as po4)": "phosphate",
+    "po4": "phosphate",
+    "silica (as sio2)": "silica",
+    "sio2": "silica",
+    "tss": "total suspended solids",
+    "suspended solids": "total suspended solids",
+    "co3": "carbonate",
+    "hco3": "bicarbonate",
 }
+
+# "Iron (Fe)", "Turbidity (NTU)", "Conductivity (EC)", "Temperature (°C)":
+# a trailing bracket that is a symbol or a unit, not a basis ("(as NO3)")
+# and not the table's own qualifier ("(total)")
+_TRAILING_QUALIFIER_RE = re.compile(r"\s*\((?!\s*as\s)[^)]*\)\s*$")
 
 
 def normalise_parameter(name: str) -> str:
-    key = re.sub(r"\s+", " ", name.strip().lower())
-    return _ALIASES.get(key, key)
+    """The standards-table key a certificate's parameter name refers to.
+
+    Every laboratory writes the same determinand differently ("Iron (Fe)",
+    "Total iron", "Nitrate (NO3)", "pH value"). The assessment is
+    fail-closed - an unknown name makes the whole sample "not proven safe" -
+    so name resolution is load-bearing, and it used to know only the
+    template's own spellings.
+    """
+    key = re.sub(r"\s+", " ", str(name or "").strip().lower())
+    if key in _ALIASES:
+        return _ALIASES[key]
+    stripped = _TRAILING_QUALIFIER_RE.sub("", key)
+    if stripped != key:
+        # "chromium (total)" strips to "chromium", which the aliases map
+        # straight back; "iron (fe)" strips to "iron", a table key
+        return _ALIASES.get(stripped, stripped)
+    return key
 
 
 _PARAMETER_BASIS_RE = re.compile(r"\(\s*as\s+([^)]+?)\s*\)")

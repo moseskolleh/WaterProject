@@ -2771,11 +2771,64 @@
     sulphate: 'sulfate',
     so4: 'sulfate',
     aluminum: 'aluminium',
+    /* the spellings a Sierra Leone certificate actually carries */
+    'total alkalinity': 'alkalinity',
+    'alkalinity (as caco3)': 'alkalinity',
+    'alkalinity as caco3': 'alkalinity',
+    'total alkalinity as caco3': 'alkalinity',
+    'total iron': 'iron',
+    'iron (total)': 'iron',
+    'total dissolved solid': 'tds',
+    'dissolved solids': 'tds',
+    'specific conductance': 'electrical conductivity',
+    'ph value': 'ph',
+    color: 'colour',
+    'true colour': 'colour',
+    'apparent colour': 'colour',
+    'thermotolerant coliforms': 'e. coli',
+    'thermotolerant coliform': 'e. coli',
+    'faecal coliform': 'e. coli',
+    'fecal coliform': 'e. coli',
+    'total coliform': 'total coliforms',
+    'residual chlorine': 'free chlorine',
+    'chlorine residual': 'free chlorine',
+    'free residual chlorine': 'free chlorine',
+    'nitrate-n': 'nitrate (as n)',
+    'nitrate n': 'nitrate (as n)',
+    'nitrate as n': 'nitrate (as n)',
+    'nitrate nitrogen': 'nitrate (as n)',
+    'no3-n': 'nitrate (as n)',
+    'nitrite-n': 'nitrite (as n)',
+    'nitrite n': 'nitrite (as n)',
+    'nitrite as n': 'nitrite (as n)',
+    'nitrite nitrogen': 'nitrite (as n)',
+    'no2-n': 'nitrite (as n)',
+    orthophosphate: 'phosphate',
+    'phosphate (as po4)': 'phosphate',
+    po4: 'phosphate',
+    'silica (as sio2)': 'silica',
+    sio2: 'silica',
+    tss: 'total suspended solids',
+    'suspended solids': 'total suspended solids',
+    co3: 'carbonate',
+    hco3: 'bicarbonate',
   };
 
+  /* "Iron (Fe)", "Turbidity (NTU)", "Conductivity (EC)": a trailing bracket
+   * that is a symbol or a unit, not a basis ("(as NO3)") */
+  var TRAILING_QUALIFIER_RE = /\s*\((?!\s*as\s)[^)]*\)\s*$/;
+
+  /* The standards-table key a certificate's parameter name refers to. The
+   * assessment is fail-closed - an unknown name makes the whole sample "not
+   * proven safe" - so name resolution is load-bearing. */
   function normaliseParameter(name) {
     var key = String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
-    return PARAMETER_ALIASES[key] || key;
+    if (own(PARAMETER_ALIASES, key)) return PARAMETER_ALIASES[key];
+    var stripped = key.replace(TRAILING_QUALIFIER_RE, '');
+    if (stripped !== key) {
+      return own(PARAMETER_ALIASES, stripped) ? PARAMETER_ALIASES[stripped] : stripped;
+    }
+    return key;
   }
 
   var _standardsCache = null;
@@ -2847,7 +2900,9 @@
     fluoride: 1 / 18.998,
   };
   var REQUIRED_CATIONS = ['calcium', 'magnesium', 'sodium'];
-  var REQUIRED_ANIONS = ['chloride', 'bicarbonate'];
+  /* sulfate is one of the three major anions: without it the balance came
+   * out 15% short and was reported as an unreliable analysis */
+  var REQUIRED_ANIONS = ['chloride', 'bicarbonate', 'sulfate'];
 
   /* A result below the detection limit counts as zero; a result with no value
    * at all counts as not measured. */
@@ -3414,6 +3469,16 @@
       return row;
     }
     var strictest = Math.min.apply(null, limits);
+    var microbiological = entry.category === 'microbiological';
+    if (microbiological && dlText === null) {
+      /* "Absent", "ND", "not detected": the count found nothing in the
+       * sample, which for a guideline of "not detectable in any 100 mL
+       * sample" is the guideline being met, not an unknown */
+      row.status = 'below_detection';
+      row.remark = 'reported not detected; the guideline is met provided the ' +
+        'laboratory examined a 100 mL sample';
+      return row;
+    }
     if (dlText === null) {
       row.status = 'indeterminate';
       row.evaluable = false;
@@ -3432,6 +3497,15 @@
         " '" + (result.unit || '') + "', which cannot be compared with the " +
         "guideline in '" + entry.unit + "': " +
         INDETERMINATE_REASONS[converted.reason] + '.';
+      return row;
+    }
+    if (microbiological && converted.value <= 1.0) {
+      /* a membrane-filtration count cannot resolve below one colony per
+       * volume filtered, so "<1 CFU/100 mL" is exactly what "not detectable
+       * in any 100 mL sample" looks like on a certificate */
+      row.status = 'below_detection';
+      row.remark = 'not detected in a 100 mL sample (reported as <' +
+        formatG(converted.value) + ' ' + entry.unit + ')';
       return row;
     }
     if (converted.value > strictest) {
@@ -3521,6 +3595,8 @@
     return row;
   }
 
+  var ESSENTIAL_EQUIVALENTS = { 'nitrate (as no3)': ['nitrate (as n)'] };
+
   function missingEssential(rows, table) {
     var graded = {};
     rows.forEach(function (row) {
@@ -3529,6 +3605,9 @@
     var missing = [];
     ESSENTIAL_HEALTH_PARAMETERS.forEach(function (key) {
       if (graded[key]) return;
+      /* a laboratory that reports nitrate as nitrogen has measured the nitrate */
+      var alternatives = ESSENTIAL_EQUIVALENTS[key] || [];
+      if (alternatives.some(function (alt) { return graded[alt]; })) return;
       var entry = table[key];
       missing.push(entry ? entry.parameter : key);
     });
@@ -5515,6 +5594,12 @@
     return null;
   }
 
+  /* what a laboratory writes for "nothing found": a below-detection result
+   * with no stated limit, judged by the assessment per parameter */
+  var ABSENCE_TOKENS = ['absent', 'nd', 'n.d', 'n/d', 'nil', 'none', 'not detected',
+    'none detected', 'bdl', 'below detection', 'below detection limit', '<dl',
+    'negative', 'neg'];
+
   function qualityFromGrid(grid, source) {
     var fields = extractHeaderFields(grid);
     var site = siteFromFields(fields, source);
@@ -5535,8 +5620,10 @@
       if (!parameter || parameter.toLowerCase().indexOf('note') === 0) continue;
       var rawValue = cell('value');
       var textValue = cleanText(rawValue);
-      var belowDetection = textValue.indexOf('<') === 0;
-      var value = parseNumber(rawValue);
+      /* "<1", and the words a certificate uses for the same thing */
+      var absent = ABSENCE_TOKENS.indexOf(textValue.toLowerCase().replace(/\.+$/, '')) >= 0;
+      var belowDetection = textValue.indexOf('<') === 0 || absent;
+      var value = absent ? null : parseNumber(rawValue);
       var dl = parseNumber(cell('dl'));
       if (belowDetection) {
         /* A "<X" marker means the true concentration is unknown, bounded above

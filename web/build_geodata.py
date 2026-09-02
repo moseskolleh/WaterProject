@@ -368,6 +368,16 @@ def _point_in_ring(lon: float, lat: float, ring: list) -> bool:
     return inside
 
 
+def _current_district(chiefdom: str) -> str:
+    """Chiefdom -> district today, from the bundled crosswalk."""
+    path = Path(__file__).resolve().parents[1] / "src" / "groundwater" / "data" / "sl_chiefdom_district.csv"
+    with open(path, encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            if row["chiefdom"].strip() == chiefdom:
+                return row["district"].strip()
+    return ""
+
+
 def build_chiefdoms(raw: Path, tol: float = 0.004) -> Path:
     """Chiefdom (ADM3) polygons with their parent district.
 
@@ -424,10 +434,15 @@ def build_chiefdoms(raw: Path, tol: float = 0.004) -> Path:
         geom = ({"type": "Polygon", "coordinates": new_polys[0]}
                 if len(new_polys) == 1
                 else {"type": "MultiPolygon", "coordinates": new_polys})
+        # The district is the current one from the crosswalk (Karene and
+        # Falaba included); the centroid test against the pre-2017 ADM2
+        # polygons is only the fallback for a chiefdom the crosswalk lacks.
+        chiefdom_name = f["properties"].get("shapeName", "")
         features.append({
             "type": "Feature",
-            "properties": {"name": f["properties"].get("shapeName", ""),
-                           "district": district_of(cx, cy)},
+            "properties": {"name": chiefdom_name,
+                           "district": _current_district(chiefdom_name)
+                           or district_of(cx, cy)},
             "geometry": geom,
         })
     features = split_koya_feature(features)
