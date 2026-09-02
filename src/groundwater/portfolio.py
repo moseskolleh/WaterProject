@@ -9,6 +9,7 @@ statistics. Pure and map-library-free, so it is unit-testable.
 
 from __future__ import annotations
 
+import math
 from .geo import infer_zone_for_sierra_leone, utm_to_geographic
 from .quality.assess import VERDICT_LONG, VERDICT_ORDER, VERDICT_SHORT
 from .site_status import (
@@ -97,18 +98,35 @@ def verdict_state(summary: dict) -> tuple[str | None, bool]:
     return _LEGACY_VERDICTS.get(raw), True
 
 
+def _num(value):
+    """A finite float, or None for anything that is not one.
+
+    Summaries come out of project files people edit by hand; one
+    ``total_depth_m: 52 m`` in one of forty files used to take the whole
+    portfolio page down with a traceback that named no file. The browser
+    app already reads such a value as blank, so the two now agree.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
 def _latlon(summary: dict):
-    easting = summary.get("easting")
-    northing = summary.get("northing")
+    easting = _num(summary.get("easting"))
+    northing = _num(summary.get("northing"))
     if not easting or not northing:
         return None
     # same fallback as SiteMetadata.utm: a hard-coded zone dropped every
     # zone-less project 6 degrees off, into the Atlantic and off the map
-    zone = int(summary.get("utm_zone") or 0) or infer_zone_for_sierra_leone(
-        float(easting)
+    zone = int(_num(summary.get("utm_zone")) or 0) or infer_zone_for_sierra_leone(
+        easting
     )
     try:
-        return utm_to_geographic(float(easting), float(northing), zone)
+        return utm_to_geographic(easting, northing, zone)
     except Exception:  # noqa: BLE001 - a bad coordinate simply drops the point
         return None
 
@@ -117,8 +135,9 @@ def portfolio_rows(summaries: list[dict]) -> list[dict]:
     """Formatted comparison rows, one per project."""
     rows = []
     for s in summaries:
-        yield_ = s.get("safe_yield_m3_per_h")
-        cost = s.get("cost_per_meter_usd")
+        depth = _num(s.get("total_depth_m"))
+        yield_ = _num(s.get("safe_yield_m3_per_h"))
+        cost = _num(s.get("cost_per_meter_usd"))
         state, legacy = verdict_state(s)
         water = VERDICT_SHORT.get(state, "") if state else ""
         if water and legacy:
@@ -130,11 +149,10 @@ def portfolio_rows(summaries: list[dict]) -> list[dict]:
                 "Community": s.get("community") or "(unnamed)",
                 "District": s.get("district") or "",
                 "Status": status_label(classify_status(s)),
-                "Depth (m)": round(float(s["total_depth_m"]), 1)
-                if s.get("total_depth_m") else None,
-                "Safe yield (m3/h)": round(float(yield_), 2) if yield_ else None,
+                "Depth (m)": round(depth, 1) if depth else None,
+                "Safe yield (m3/h)": round(yield_, 2) if yield_ else None,
                 "Water": water,
-                "Cost/m (USD)": round(float(cost), 0) if cost else None,
+                "Cost/m (USD)": round(cost, 0) if cost else None,
             }
         )
     return rows
@@ -189,10 +207,10 @@ def site_detail(summary: dict) -> list[tuple[str, str]]:
     latlon = _latlon(summary)
     if latlon is not None:
         add("Location", f"{latlon[0]:.5f} N, {abs(latlon[1]):.5f} W")
-    depth = summary.get("total_depth_m")
-    add("Total depth", f"{float(depth):.1f} m" if depth else None)
-    yield_ = summary.get("safe_yield_m3_per_h")
-    add("Safe yield", f"{float(yield_):.2f} m3/h" if yield_ else None)
+    depth = _num(summary.get("total_depth_m"))
+    add("Total depth", f"{depth:.1f} m" if depth else None)
+    yield_ = _num(summary.get("safe_yield_m3_per_h"))
+    add("Safe yield", f"{yield_:.2f} m3/h" if yield_ else None)
     state, legacy = verdict_state(summary)
     if state is not None:
         add(
@@ -200,8 +218,8 @@ def site_detail(summary: dict) -> list[tuple[str, str]]:
             VERDICT_LONG[state]
             + (" (read from an older project file)" if legacy else ""),
         )
-    cost = summary.get("cost_per_meter_usd")
-    add("Cost per metre", f"${float(cost):.0f}" if cost else None)
+    cost = _num(summary.get("cost_per_meter_usd"))
+    add("Cost per metre", f"${cost:.0f}" if cost else None)
     return rows
 
 
@@ -237,10 +255,16 @@ def portfolio_stats(summaries: list[dict]) -> dict:
         for s in summaries
         if s.get("status") and classify_status(s) == SiteStatus.OTHER
     )
-    yields = [float(s["safe_yield_m3_per_h"]) for s in summaries
-              if s.get("safe_yield_m3_per_h")]
-    costs = [float(s["cost_per_meter_usd"]) for s in summaries
-             if s.get("cost_per_meter_usd")]
+    yields = [y for y in (_num(s.get("safe_yield_m3_per_h")) for s in summaries) if y]
+    costs = [c for c in (_num(s.get("cost_per_meter_usd")) for s in summaries) if c]
+    # values that were written but cannot be read as numbers; the page says
+    # how many rather than pretending the means cover every project
+    n_unreadable = sum(
+        1
+        for s in summaries
+        for key in ("total_depth_m", "safe_yield_m3_per_h", "cost_per_meter_usd")
+        if s.get(key) not in (None, "") and _num(s.get(key)) is None
+    )
 
     counts = {state: 0 for state in VERDICT_ORDER}
     counts["unknown"] = 0
@@ -258,6 +282,7 @@ def portfolio_stats(summaries: list[dict]) -> dict:
     return {
         "n_projects": n,
         "n_drilled": len(drilled),
+        "n_values_unreadable": n_unreadable,
         "n_successful": n_successful,
         "n_status_unrecognised": n_unrecognised,
         "success_rate": (n_successful / len(drilled) * 100.0) if drilled else None,

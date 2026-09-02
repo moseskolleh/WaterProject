@@ -250,3 +250,20 @@ def test_fetch_rejects_non_list_payload():
 
     with pytest.raises(WaterPointFetchError):
         fetch_water_points(BASE_LAT, BASE_LON, urlopen=opener)
+
+
+def test_fetch_wraps_a_body_cut_off_mid_transfer():
+    """IncompleteRead is an HTTPException, not an OSError: a national pull
+    that dies half way through must reach the operator as the offline-CSV
+    advice, not a traceback."""
+    import http.client
+
+    class _Truncated(_FakeResponse):
+        def read(self):
+            raise http.client.IncompleteRead(b'[{"lat_deg": 8.4', 5_000_000)
+
+    def opener(request, timeout=None):
+        return _Truncated(b"")
+
+    with pytest.raises(WaterPointFetchError):
+        fetch_water_points(BASE_LAT, BASE_LON, urlopen=opener)

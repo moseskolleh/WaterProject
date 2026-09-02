@@ -252,7 +252,12 @@ def invert_sounding(
                 # already in hand, so a small n-1 -> n gain (equivalence /
                 # suppression) cannot abandon the search while the fit is still
                 # far above target.
-                if best_for_n[2] <= config.target_fit_percent / 2:
+                # "Comfortably" means the noise floor the accept rule below
+                # uses (a tenth of the target), not half of it: at half, a
+                # 4.7% two-layer fit ended the search before the three-layer
+                # model that fitted a 15 m aquifer over basement exactly was
+                # ever tried, and the parsimony rule never saw it.
+                if best_for_n[2] <= config.target_fit_percent / 10.0:
                     break
                 if (
                     len(trials) >= 2
@@ -348,5 +353,7 @@ def _parameter_uncertainty(ab2, rho_app, model, array_type):
     std = np.sqrt(np.clip(np.diag(cov), 0.0, None))
     # cap the reported factor so a wildly unconstrained parameter does not
     # print an absurd number; anything above ~10x is "not resolved"
-    factors = np.minimum(np.exp(std), 10.0)
+    # clip in log space: exp() of an unconstrained parameter's std overflowed
+    # and warned on every poorly resolved sounding before the minimum applied
+    factors = np.exp(np.minimum(std, np.log(10.0)))
     return factors[:n_layers], factors[n_layers:]

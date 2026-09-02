@@ -176,3 +176,56 @@ def test_loading_a_project_does_not_inherit_the_previous_borehole():
     """Its identifier and maintenance history belong to the outgoing project."""
     assert "asset_record" in stale_on_load({"asset_record": {"asset_id": "x"},
                                             "meta_community": "keep me"})
+
+
+def test_a_hand_edited_project_file_fails_as_a_message_not_a_traceback():
+    """An integer key has no startswith(); it used to escape as an
+    AttributeError the app did not catch, so the operator saw a traceback
+    instead of 'not a project file'."""
+    import numpy as np
+
+    from groundwater.project_io import (
+        PROJECT_SCHEMA,
+        deserialize_project,
+        serialize_project,
+    )
+
+    assert "1" not in deserialize_project(b"state: {1: 2}\n")
+    assert "meta_community" not in deserialize_project(b"state: {meta_community: [a, b]}\n")
+    with pytest.raises(ValueError):
+        deserialize_project(b"state: [1, 2]\n")
+
+    future = deserialize_project(
+        f"schema: {PROJECT_SCHEMA + 1}\nstate: {{meta_community: X}}\n".encode()
+    )
+    assert future["meta_community"] == "X"
+    assert any("format" in w for w in future["warnings"])
+
+    saved = serialize_project(
+        {"meta_easting": np.float64(778000.0), "fx_rate": np.int64(23),
+         "meta_community": "Rokel"}, "0.2.0",
+    )
+    back = deserialize_project(saved)
+    assert back["meta_easting"] == 778000.0 and back["fx_rate"] == 23
+    assert "warnings" not in back
+    assert b"schema: 1" in saved and b"format: groundwater-toolkit-project" in saved
+
+
+def test_a_browser_app_project_file_yields_its_summary():
+    """The browser app saves .gwt.json; JSON is YAML, and its summary block
+    has the same schema, so the Streamlit portfolio page can pool it."""
+    import json
+
+    from groundwater.project_io import deserialize_project
+
+    payload = {
+        "format": "groundwater-toolkit-project", "version": 1,
+        "saved": "2026-01-01T00:00:00Z",
+        "summary": {"community": "Dr. Timbo's Residence", "district": "Bombali",
+                    "status": "Successful", "total_depth_m": 62.0,
+                    "verdict_schema": 2, "water_verdict": "pass"},
+        "state": {"meta_community": "Dr. Timbo's Residence"},
+    }
+    updates = deserialize_project(json.dumps(payload).encode())
+    assert updates["summary"]["community"] == "Dr. Timbo's Residence"
+    assert updates["meta_community"] == "Dr. Timbo's Residence"

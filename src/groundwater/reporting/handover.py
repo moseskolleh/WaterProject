@@ -83,6 +83,9 @@ class HandoverReportInputs:
     quality: WaterQualityAssessment | None = None
     figures_dir: Path = Path(".")
     works_completed: list[str] = field(default_factory=list)
+    # True when a geophysical survey sited the borehole; the default works
+    # list only claims the siting survey when the caller says it happened
+    sited: bool = False
     committee: list[CommitteeMember] = field(default_factory=list)
     committee_notes: str = ""
     tariff_note: str = ""
@@ -362,7 +365,16 @@ def _executive_summary(inputs: HandoverReportInputs) -> tuple[list[str], list[st
 
 
 def _default_works(inputs: HandoverReportInputs) -> list[str]:
-    works = ["Geophysical siting survey and borehole location selection."]
+    """The works list, built only from what the project actually holds.
+
+    This document is signed by the contractor, the client and the
+    community, so it must not assert a pumping test or a laboratory
+    analysis that nobody supplied. Each bullet is conditioned on the object
+    that evidences it; ``works_completed`` remains the explicit override.
+    """
+    works = []
+    if inputs.sited:
+        works.append("Geophysical siting survey and borehole location selection.")
     if inputs.log is not None:
         works.append(
             f"Drilling of the borehole to {fmt_num(inputs.log.total_depth_m)} m"
@@ -375,10 +387,11 @@ def _default_works(inputs: HandoverReportInputs) -> list[str]:
             f"{inputs.design.casing_diameter_in:g} inch {inputs.design.casing_material} "
             "casing and screens, gravel pack and sanitary seal."
         )
-    works += [
-        "Development of the borehole by air lifting until clear.",
-        "Pumping test and yield assessment.",
-        "Water quality sampling and laboratory analysis.",
-        "Wellhead completion with apron and drainage.",
-    ]
+    if inputs.design is not None:
+        works.append("Development of the borehole by air lifting until clear.")
+    if inputs.pumping is not None:
+        works.append("Pumping test and yield assessment.")
+    if inputs.quality is not None:
+        works.append("Water quality sampling and laboratory analysis.")
+    works.append("Wellhead completion with apron and drainage.")
     return works

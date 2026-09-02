@@ -129,6 +129,13 @@ class Contract:
     retention_cap_percent: float = 5.0
     #: Paid before work starts and recovered pro rata from certificates.
     advance_percent: float = 0.0
+    #: What the rates include: "price" (cost plus overheads and margin, the
+    #: figure the estimate recommends as the contract price), "cost" (the
+    #: contractor's bare cost rates) or "price_with_vat".
+    rate_basis: str = "price"
+    #: The factor the estimate's cost rates were multiplied by to give the
+    #: rates above; 1.0 when they were carried across unchanged.
+    rate_uplift: float = 1.0
 
     @property
     def sum_usd(self) -> float:
@@ -150,25 +157,49 @@ class Contract:
                 "retention_percent": self.retention_percent,
                 "retention_cap_percent": self.retention_cap_percent,
                 "advance_percent": self.advance_percent,
+                "rate_basis": self.rate_basis,
+                "rate_uplift": self.rate_uplift,
                 "sum_usd": self.sum_usd,
                 "lines": [line.as_dict() for line in self.lines]}
 
 
-def contract_from_estimate(estimate, ref: str, **terms) -> Contract:
+RATE_BASES = ("price", "cost", "price_with_vat")
+
+
+def contract_from_estimate(estimate, ref: str, basis: str = "price",
+                           **terms) -> Contract:
     """Freeze a cost estimate into a contract.
 
     The estimate keeps moving as the design changes; a contract does not.
     This takes the copy that gets signed, so a later change to the design
     cannot silently change what a certificate is measured against.
+
+    ``basis`` says what the frozen rates include. The estimate's line rates
+    are the contractor's direct costs; the figure the same estimate
+    recommends as the contract price is cost plus overheads plus margin, so
+    ``"price"`` (the default) uplifts every rate by that factor and the
+    contract sum equals ``estimate.price_usd``. Freezing at the bare cost
+    rates - the old behaviour, kept as ``"cost"`` - paid the contractor a
+    quarter to a third below the price the toolkit had just recommended.
+    ``"price_with_vat"`` adds the estimate's VAT on top.
     """
+    if basis not in RATE_BASES:
+        raise ValueError(f"basis must be one of {RATE_BASES}, not {basis!r}")
+    uplift = 1.0
+    if basis in ("price", "price_with_vat"):
+        uplift *= (1.0 + estimate.overheads_percent / 100.0) * (
+            1.0 + estimate.margin_percent / 100.0)
+    if basis == "price_with_vat":
+        uplift *= 1.0 + (estimate.vat_percent or 0.0) / 100.0
     lines = [
         ContractLine(code=item.code, item=item.item, unit=item.unit,
                      quantity=float(item.quantity),
-                     rate_usd=float(item.unit_cost_usd),
+                     rate_usd=float(item.unit_cost_usd) * uplift,
                      stage=item.stage, category=item.category)
         for item in estimate.items
     ]
-    return Contract(ref=ref, lines=lines, **terms)
+    return Contract(ref=ref, lines=lines, rate_basis=basis, rate_uplift=uplift,
+                    **terms)
 
 
 # ---------------------------------------------------------------------------
@@ -188,10 +219,16 @@ class LineValuation:
     measured_quantity: float
     in_contract: bool
     variation_refs: tuple[str, ...] = ()
+    #: The signed rate, when a variation has repriced the line. The contract
+    #: amount is valued at this rate so that a rate-only variation shows up
+    #: as a variation instead of vanishing from the revised sum.
+    contract_rate_usd: Optional[float] = None
 
     @property
     def authorised_quantity(self) -> float:
-        return self.contract_quantity + self.variation_quantity
+        # a variation that omits more than the contract carries authorises
+        # nothing, not a negative quantity (which paid phantom overmeasure)
+        return max(self.contract_quantity + self.variation_quantity, 0.0)
 
     @property
     def payable_quantity(self) -> float:
@@ -205,7 +242,8 @@ class LineValuation:
 
     @property
     def contract_amount_usd(self) -> float:
-        return self.contract_quantity * self.rate_usd
+        rate = self.contract_rate_usd if self.contract_rate_usd is not None else self.rate_usd
+        return self.contract_quantity * rate
 
     @property
     def authorised_amount_usd(self) -> float:
@@ -291,19 +329,39 @@ def value_work(contract: Contract, measurements: Iterable[Measurement],
 
     valuations: list[LineValuation] = []
     seen: set[str] = set()
+    duplicates: list[str] = []
     for line in contract.lines:
+        if line.code in seen:
+            # two contract lines under one code would each be paid the one
+            # measurement; the first is valued and the rest are named
+            duplicates.append(line.code)
+            continue
         change = varied.get(line.code, {})
         seen.add(line.code)
+        delta = change.get("delta", 0.0)
+        if delta < 0 and -delta > line.quantity:
+            problems.append(
+                f"Variation {', '.join(change.get('refs', ()))} omits "
+                f"{-delta:g} {line.unit} of {line.code} but the contract only "
+                f"carries {line.quantity:g}; the line is treated as fully "
+                "omitted and nothing on it is payable.")
         valuations.append(LineValuation(
             code=line.code, item=line.item, unit=line.unit,
             rate_usd=change.get("rate") if change.get("rate") is not None
             else line.rate_usd,
             contract_quantity=line.quantity,
-            variation_quantity=change.get("delta", 0.0),
+            variation_quantity=delta,
             measured_quantity=measured.get(line.code, 0.0),
             in_contract=True,
             variation_refs=tuple(change.get("refs", ())),
+            contract_rate_usd=line.rate_usd,
         ))
+    if duplicates:
+        problems.append(
+            f"The contract carries more than one line coded "
+            f"{', '.join(dict.fromkeys(duplicates))}; only the first line under "
+            "each code is valued, so recode the others before the next "
+            "certificate.")
 
     # work added entirely by variation, and work measured against nothing
     for code in list(varied) + [c for c in measured if c not in varied]:

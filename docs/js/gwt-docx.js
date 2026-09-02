@@ -560,8 +560,12 @@
       'fourth edition incorporating the first and second addenda. WHO, Geneva.',
     geology: 'Ministry of Water Resources and SALWACO (2017). Geology of Sierra ' +
       'Leone. Government of Sierra Leone, Freetown.',
-    bgs: 'British Geological Survey (2019). Africa Groundwater Atlas: Hydrogeology ' +
-      'of Sierra Leone. BGS, Keyworth (CC BY-SA 4.0).',
+    // the wording the CC BY-SA licence prescribes (THIRD_PARTY_NOTICES.md)
+    bgs: 'British Geological Survey. 2019/2021. Africa Groundwater Atlas Country ' +
+      'Hydrogeology Maps. Africa Groundwater Atlas ' +
+      '(https://www2.bgs.ac.uk/africagroundwateratlas/index.cfm). Licensed CC BY-SA 4.0.',
+    bgs_guide: 'Ó Dochartaigh, B. (2021). User Guide Version 1.2: Africa Groundwater ' +
+      'Atlas Country Hydrogeology Maps. British Geological Survey Open Report OR/21/063.',
     stop_the_rot: 'RWSN (2021). Stop the Rot: Handpump Corrosion and Premature ' +
       'Failure in Sub-Saharan Africa. Rural Water Supply Network, St Gallen.',
   };
@@ -817,7 +821,8 @@
       b.bullets(context.verificationNotes);
     }
 
-    b.references([REFERENCES.rwsn_professional, REFERENCES.geology, REFERENCES.bgs]);
+    b.references([REFERENCES.rwsn_professional, REFERENCES.geology, REFERENCES.bgs,
+      REFERENCES.bgs_guide]);
     b.glossary(GLOSSARY);
     return b;
   }

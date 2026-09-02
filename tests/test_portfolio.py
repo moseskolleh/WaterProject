@@ -212,3 +212,26 @@ def test_site_one_pager_contains_key_facts():
     assert "Safe yield:" in text
     assert "2.40 m3/h" in text
     assert "Cost per metre:" in text
+
+
+def test_a_hand_edited_number_blanks_one_cell_not_the_whole_page():
+    """One ``total_depth_m: 52 m`` in one of forty files used to take the
+    portfolio page down with a traceback that named no file."""
+    edited = [
+        {"community": "A", "total_depth_m": "52 m", "safe_yield_m3_per_h": "n/a",
+         "cost_per_meter_usd": "abc", "utm_zone": "28N", "easting": 800000.0,
+         "northing": 950000.0, "status": "Successful"},
+        {"community": "B", "total_depth_m": 40.0, "safe_yield_m3_per_h": 1.5,
+         "cost_per_meter_usd": 120.0, "status": "Successful"},
+    ]
+    rows = portfolio_rows(edited)
+    assert rows[0]["Depth (m)"] is None and rows[0]["Safe yield (m3/h)"] is None
+    assert rows[1]["Depth (m)"] == 40.0
+    detail = dict(site_detail(edited[0]))
+    assert "Total depth" not in detail and "Cost per metre" not in detail
+    # the zone string could not be read, so it was inferred from the easting
+    assert detail["Location"].startswith("8.58")
+    stats = portfolio_stats(edited)
+    assert stats["mean_safe_yield_m3_per_h"] == 1.5
+    assert stats["n_values_unreadable"] == 3
+    assert portfolio_stats(_SUMMARIES)["n_values_unreadable"] == 0

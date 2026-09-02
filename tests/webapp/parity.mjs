@@ -486,6 +486,16 @@ await withPage(async (page, base, consoleErrors) => {
         [m('MOB', 1), m('DRL-OB', 20), m('DRL-RK', 25), m('CAS', 45)], [], 1, 0],
       overpaid: [procContract({ retention_percent: 0 }), [m('MOB', 1)], [], 2, 5000],
       negatives: [procContract(), [m('CAS', -10)], [], 3, -5],
+      repriced: [procContract(), [m('MOB', 1), m('CAS', 45)],
+        [vo('VO-4', 'CAS', 0, 26, 'supplier price', 'Engineer')], 1, 0],
+      over_omitted: [procContract(), [m('CAS', 10)],
+        [vo('VO-5', 'CAS', -60, null, 'redesign', 'Engineer')], 1, 0],
+      duplicate: [{ ref: 'DUP', contractor: '', client: '', date: '',
+        retention_percent: 10, retention_cap_percent: 5, advance_percent: 0,
+        lines: [
+          { code: 'CAS', item: 'uPVC casing 6 in', unit: 'm', quantity: 10, rate_usd: 22 },
+          { code: 'CAS', item: 'uPVC casing 4 in', unit: 'm', quantity: 10, rate_usd: 22 },
+        ] }, [m('CAS', 10)], [], 1, 0],
     };
     out.procurement = {};
     Object.keys(procCases).forEach((label) => {

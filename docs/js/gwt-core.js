@@ -67,6 +67,17 @@
       pump_submergence_min_m: 3.0,
       seasonal_allowance_m: 2.0,
       cooper_jacob_u_max: 0.05,
+      /* a late-time slope below what a dipper can resolve is noise or a
+       * stabilised level, and gives a transmissivity of thousands of m2/day */
+      cooper_jacob_min_slope_m: 0.02,
+      cooper_jacob_min_r2: 0.8,
+      /* fits below this R squared are passed over when choosing which
+       * transmissivity the yield rests on */
+      min_fit_r_squared: 0.8,
+      /* a test shorter than this is projected over several log cycles of
+       * time to reach the design period, so its yield is flagged */
+      min_constant_test_min: 240.0,
+      min_step_length_min: 60.0,
     },
     design: {
       borehole_diameter_in: 6.5,
@@ -986,7 +997,11 @@
            * diminishing-returns test only applies once an adequate fit is in
            * hand, so a small gain cannot abandon the search while the fit is
            * still far above target. */
-          if (bestForN.err <= cfg.target_fit_percent / 2) break;
+          /* "comfortably" means the noise floor the accept rule uses (a tenth
+           * of the target), not half of it: at half, a 4.7% two-layer fit
+           * ended the search before the three-layer model that fitted a 15 m
+           * aquifer over basement exactly was ever tried */
+          if (bestForN.err <= cfg.target_fit_percent / 10.0) break;
           if (trials.length >= 2 &&
               trials[trials.length - 1][1] > 0.9 * trials[trials.length - 2][1] &&
               bestForN.err <= cfg.target_fit_percent) break;
@@ -1614,6 +1629,22 @@
       throw new Error('Drawdown does not increase with log time; ' +
         'Cooper-Jacob does not apply');
     }
+    /* T is inversely proportional to the slope, so a tail that has flattened
+     * to within reading resolution gave thousands of m2/day with a straight
+     * face; a line that does not explain the window is no better. */
+    if (fit.slope < cfg.cooper_jacob_min_slope_m) {
+      throw new Error('The fitted window ' + formatG(fitWindow[0]) + '-' +
+        formatG(fitWindow[1]) + ' min is flat (' + fit.slope.toFixed(3) +
+        ' m per log cycle, under ' + formatG(cfg.cooper_jacob_min_slope_m) +
+        ' m): the drawdown has stabilised or the slope is below reading ' +
+        'resolution, so Cooper-Jacob does not apply');
+    }
+    if (fit.r2 < cfg.cooper_jacob_min_r2) {
+      throw new Error('The straight line explains too little of the window ' +
+        formatG(fitWindow[0]) + '-' + formatG(fitWindow[1]) + ' min (R squared ' +
+        fit.r2.toFixed(3) + ', under ' + formatG(cfg.cooper_jacob_min_r2) +
+        '), so Cooper-Jacob does not apply');
+    }
     var qDay = dischargeM3PerH * 24.0;
     var T = 2.303 * qDay / (4.0 * Math.PI * fit.slope);
     var t0Min = Math.pow(10, -fit.intercept / fit.slope);
@@ -1793,11 +1824,14 @@
     var sq = s.map(function (v, i) { return v / q[i]; });
     var fit = lineFit(q, sq);
     var C = fit.slope, B = fit.intercept, r2 = fit.r2;
+    var fitNote = '';
     if (C < 0) {
       /* negative well loss has no physical meaning; fall back to pure
        * aquifer loss */
       C = 0.0;
       B = arrMean(sq);
+      fitNote = 'negative well loss refitted as pure aquifer loss; the ' +
+        'efficiencies are 100% by construction and not meaningful';
     }
     if (B < 0) {
       /* Neither has a negative aquifer loss: it made the reported well
@@ -1815,6 +1849,8 @@
       }
       r2 = (ssTot > 1e-20 * q.length * sqBar * sqBar)
         ? 1.0 - ssRes / ssTot : 1.0;
+      fitNote = 'negative aquifer loss refitted as pure well loss; ' +
+        'efficiencies are not meaningful';
     }
     var steps = q.map(function (qi, i) {
       var total = B * qi + C * qi * qi;
@@ -1831,6 +1867,7 @@
       well_loss_C: C,
       steps: steps,
       r_squared: r2,
+      fit_note: fitNote,
       drawdown_at: function (qDay) { return B * qDay + C * qDay * qDay; },
       efficiency_at: function (qDay) {
         var total = B * qDay + C * qDay * qDay;
@@ -1846,6 +1883,41 @@
    * applied. Every input is recorded in `basis` so the recommendation is
    * traceable back to the sheet.
    */
+
+  var METHOD_LABELS = {
+    recovery: 'Theis recovery',
+    cooper_jacob: 'Cooper-Jacob',
+    theis: 'Theis curve fit',
+  };
+
+  /* Why the pump setting leaves nothing to draw on, in the sheet's numbers. */
+  function noUsableDrawdownReason(test, cfg) {
+    var swl = test.static_water_level_m;
+    var where, gap, reserves, fix;
+    if (test.pump_setting_m !== null && test.pump_setting_m !== undefined) {
+      where = 'the pump intake at ' + test.pump_setting_m.toFixed(1) + ' m';
+      gap = test.pump_setting_m - swl;
+      reserves = ['the ' + formatG(cfg.pump_submergence_min_m) + ' m submergence margin'];
+      fix = 'set the pump deeper';
+    } else {
+      where = 'the borehole bottom at ' + test.borehole_depth_m.toFixed(1) + ' m';
+      gap = test.borehole_depth_m - swl;
+      reserves = ['the 3 m clearance above the bottom',
+        'the ' + formatG(cfg.pump_submergence_min_m) + ' m submergence margin'];
+      fix = 'record the pump setting or deepen the borehole';
+    }
+    if (cfg.seasonal_allowance_m > 0) {
+      reserves.push('the ' + formatG(cfg.seasonal_allowance_m) + ' m dry-season reserve');
+      fix += ' or reduce the reserve';
+    }
+    var position = gap >= 0
+      ? 'is ' + gap.toFixed(1) + ' m below the static level of ' + swl.toFixed(1) + ' m'
+      : 'is ' + (-gap).toFixed(1) + ' m above the static level of ' + swl.toFixed(1) + ' m';
+    var listed = reserves.length === 1 ? reserves[0]
+      : reserves.slice(0, -1).join(', ') + ' and ' + reserves[reserves.length - 1];
+    return where + ' ' + position + '; after ' + listed +
+      ' no usable drawdown remains - ' + fix;
+  }
 
   function recommendYield(test, transmissivity, stepResult, config, options) {
     var opts = options || {};
@@ -1880,25 +1952,14 @@
      * fraction. A test run in the rains sits on a higher static level than the
      * borehole will see at the end of the dry season, so the raw available
      * drawdown would over-state the sustainable yield. */
-    var usable = available
+    /* A zero here is an answer (the intake sits at the submergence margin),
+     * not a missing value, so only null is treated as unknown. */
+    var usable = available !== null
       ? Math.max(available - cfg.seasonal_allowance_m, 0.0) *
         cfg.available_drawdown_fraction
       : null;
 
-    if (transmissivity === null || transmissivity === undefined ||
-        swl === null || swl === undefined) {
-      /* Name what is actually missing: blaming the discharge when it was
-       * recorded and the fit simply failed sends the crew back to the field
-       * for a number that is already on the sheet. */
-      var missing = [];
-      if (swl === null || swl === undefined) missing.push('static water level is missing');
-      if (transmissivity === null || transmissivity === undefined) {
-        var anyQ = (test.steps || []).some(function (s) { return s.discharge_m3_per_h; });
-        missing.push(anyQ
-          ? 'transmissivity could not be fitted from the readings'
-          : 'discharge is missing on the field sheet');
-      }
-      var reason = missing.join(' and ');
+    function pending(reason) {
       return {
         specific_capacity_m3hr_per_m: specificCapacity,
         available_drawdown_m: available,
@@ -1916,6 +1977,31 @@
         envelope_basis: '',
       };
     }
+
+    if (transmissivity === null || transmissivity === undefined ||
+        swl === null || swl === undefined) {
+      /* Name what is actually missing: blaming the discharge when it was
+       * recorded and the fit simply failed sends the crew back to the field
+       * for a number that is already on the sheet. */
+      var missing = [];
+      if (swl === null || swl === undefined) missing.push('static water level is missing');
+      if (transmissivity === null || transmissivity === undefined) {
+        var anyQ = (test.steps || []).some(function (s) { return s.discharge_m3_per_h; });
+        missing.push(anyQ
+          ? 'transmissivity could not be fitted from the readings'
+          : 'discharge is missing on the field sheet');
+      }
+      return pending(missing.join(' and '));
+    }
+
+    /* No drawdown to spend is a finding about the pump setting. It used to
+     * come back as a blank recommendation with no reason, which every report
+     * then blamed on the discharge. */
+    if (usable === null) {
+      return pending('neither the pump setting nor the borehole depth is ' +
+        'recorded, so the available drawdown cannot be computed');
+    }
+    if (usable <= 0) return pending(noUsableDrawdownReason(test, cfg));
 
     var tDesign = cfg.design_period_days;
     var logTerm = Math.log(2.25 * transmissivity * tDesign /
@@ -1936,39 +2022,41 @@
       return s;
     }
 
-    var longTerm = null;
-    if (usable && usable > 0) {
-      var qLo = 0.01, qHi = 200.0;
-      for (var it = 0; it < 80; it++) {
-        var qMid = 0.5 * (qLo + qHi);
-        if (projectedDrawdown(qMid) > usable) qHi = qMid; else qLo = qMid;
-      }
-      longTerm = qLo;
+    /* bisect Q so projected drawdown equals the usable drawdown */
+    var qLo = 0.01, qHi = 200.0;
+    if (projectedDrawdown(qHi) <= usable) {
+      /* The search would hand back its ceiling as if it were an answer.
+       * Either the transmissivity is implausible or the drawdown budget is
+       * enormous; in both cases this test does not limit the yield. */
+      return pending('the drawdown projection does not limit the yield within ' +
+        formatG(qHi) + ' m3/h, so the usable drawdown is not the constraint; ' +
+        'check the transmissivity fit before relying on this test');
     }
-
-    var safe = longTerm ? longTerm / cfg.safety_factor : null;
-
-    var pumpDepth = null;
-    if (safe !== null) {
-      var sAtSafe = projectedDrawdown(safe);
-      pumpDepth = swl + sAtSafe + cfg.seasonal_allowance_m + cfg.pump_submergence_min_m;
-      if (test.borehole_depth_m) {
-        pumpDepth = Math.min(pumpDepth, test.borehole_depth_m - 3.0);
-      }
-      pumpDepth = Math.ceil(pumpDepth);
+    for (var it = 0; it < 80; it++) {
+      var qMid = 0.5 * (qLo + qHi);
+      if (projectedDrawdown(qMid) > usable) qHi = qMid; else qLo = qMid;
     }
+    var longTerm = qLo;
+    var safe = longTerm / cfg.safety_factor;
 
+    var sAtSafe = projectedDrawdown(safe);
+    var pumpDepth = swl + sAtSafe + cfg.seasonal_allowance_m + cfg.pump_submergence_min_m;
+    if (test.borehole_depth_m) {
+      pumpDepth = Math.min(pumpDepth, test.borehole_depth_m - 3.0);
+    }
+    pumpDepth = Math.ceil(pumpDepth);
+
+    var method = METHOD_LABELS[opts.transmissivitySource || ''] || '';
     var pct = Math.round(cfg.available_drawdown_fraction * 100) + '%';
-    var basis = 'Transmissivity ' + transmissivity.toFixed(1) + ' m2/day; drawdown ' +
-      'projected to ' + tDesign.toFixed(0) + ' days with storativity assumed ' +
-      formatG(assumedStorativity) + ' and effective radius ' + effectiveRadiusM +
-      ' m; usable drawdown taken as ' + pct + ' of the available drawdown' +
-      (available
-        ? ' ' + available.toFixed(1) + ' m (static level to pump intake less ' +
-          cfg.pump_submergence_min_m.toFixed(0) + ' m submergence), after ' +
-          'reserving a ' + cfg.seasonal_allowance_m.toFixed(0) + ' m dry-season ' +
-          'water-table decline'
-        : '') +
+    var basis = 'Transmissivity ' + transmissivity.toFixed(1) + ' m2/day' +
+      (method ? ' from the ' + method + ' fit' : '') +
+      '; drawdown projected to ' + tDesign.toFixed(0) + ' days with storativity ' +
+      'assumed ' + formatG(assumedStorativity) + ' and effective radius ' +
+      effectiveRadiusM + ' m; usable drawdown taken as ' + pct + ' of the ' +
+      'available drawdown ' + available.toFixed(1) + ' m (static level to pump ' +
+      'intake less ' + cfg.pump_submergence_min_m.toFixed(0) + ' m submergence), ' +
+      'after reserving a ' + cfg.seasonal_allowance_m.toFixed(0) + ' m dry-season ' +
+      'water-table decline' +
       (stepResult ? '; well losses from the step test are included' : '') +
       '. A safety factor of ' + cfg.safety_factor + ' is applied to the long ' +
       'term yield.';
@@ -1977,7 +2065,7 @@
       specific_capacity_m3hr_per_m: specificCapacity,
       available_drawdown_m: available,
       usable_drawdown_m: usable,
-      projected_drawdown_m: safe ? projectedDrawdown(safe) : null,
+      projected_drawdown_m: sAtSafe,
       long_term_yield_m3_per_h: longTerm,
       safe_yield_m3_per_h: safe,
       safety_factor: cfg.safety_factor,
@@ -2058,6 +2146,55 @@
   /* Run every applicable analysis on a parsed pumping test. Methods that need
    * missing inputs are skipped with a flag instead of failing, so partially
    * filled sheets still produce curves and a report skeleton. */
+  /* Every method that fitted, in order of preference. */
+  function fittedMethods(analysis) {
+    return [['recovery', analysis.recovery], ['cooper_jacob', analysis.cooper_jacob],
+      ['theis', analysis.theis]].filter(function (f) { return !!f[1]; });
+  }
+
+  /* {method, result, qualifies} for the transmissivity the yield rests on. */
+  function adoptedFit(analysis) {
+    var fits = fittedMethods(analysis);
+    var minR2 = analysis.min_fit_r_squared === undefined
+      ? defaultConfig().pumping.min_fit_r_squared : analysis.min_fit_r_squared;
+    for (var i = 0; i < fits.length; i++) {
+      var r2 = fits[i][1].r_squared;
+      if (r2 === undefined || r2 === null || r2 >= minR2) {
+        return { method: fits[i][0], result: fits[i][1], qualifies: true };
+      }
+    }
+    if (!fits.length) return { method: null, result: null, qualifies: false };
+    var best = fits[0];
+    for (var j = 1; j < fits.length; j++) {
+      if (fits[j][1].r_squared > best[1].r_squared) best = fits[j];
+    }
+    return { method: best[0], result: best[1], qualifies: false };
+  }
+
+  /* [minutes, kind]: how long the aquifer was stressed at one rate. A
+   * constant test is judged on the whole pumped duration; a step test on the
+   * length of a step. */
+  function pumpedDurationMin(test) {
+    var finiteMax = function (values) {
+      var found = (values || []).filter(function (v) { return isFinite(v); });
+      return found.length ? arrMax(found) : null;
+    };
+    if (String(test.test_type || '').indexOf('step') === 0) {
+      var length = test.step_length_min;
+      if (!length && test.steps && test.steps.length) {
+        length = finiteMax(test.steps[0].time_min);
+      }
+      return [length || null, 'step'];
+    }
+    var duration = test.pumping_duration_min;
+    if (!duration && test.steps && test.steps.length) {
+      var all = [];
+      test.steps.forEach(function (s) { all = all.concat(s.time_min || []); });
+      duration = finiteMax(all);
+    }
+    return [duration || null, 'constant'];
+  }
+
   function analysePumpingTest(test, config, options) {
     var opts = options || {};
     var cfg = (config && config.pumping) ? config.pumping
@@ -2067,6 +2204,7 @@
       test: test, cooper_jacob: null, theis: null, recovery: null,
       step_test: null, yield_recommendation: null,
       stabilised_level_m: null, max_drawdown_m: null, flags: [],
+      min_fit_r_squared: cfg.min_fit_r_squared,
     };
 
     /* drop parse-time discharge flags the analyst has since resolved */
@@ -2104,7 +2242,48 @@
       var tail = last.water_level_m.slice(-3);
       if (tail.length >= 2 && (arrMax(tail) - arrMin(tail)) <= 0.05) {
         analysis.stabilised_level_m = arrMean(tail);
+        /* Theis assumes an infinite aquifer whose drawdown never stops
+         * growing with log time; a level that has held still is being fed
+         * by something, and projecting it to 365 days is the wrong question. */
+        flags.push({
+          level: 'warning', code: 'drawdown_stabilised',
+          message: 'The pumped water level held at about ' +
+            analysis.stabilised_level_m.toFixed(2) + ' m over the last ' +
+            'readings: a recharge boundary or leakage is indicated, so the ' +
+            'Theis/Cooper-Jacob projection to the design period is not the ' +
+            'governing check; the stabilised level is.',
+        });
       }
+    }
+
+    /* Test length: the yield is projected to the design period on log time,
+     * so a short test is extrapolated over several decades of time from a
+     * curve that has not yet shown its late-time behaviour. Say how far. */
+    var lengthInfo = pumpedDurationMin(test);
+    var duration = lengthInfo[0], lengthKind = lengthInfo[1];
+    var threshold = lengthKind === 'step' ? cfg.min_step_length_min
+      : cfg.min_constant_test_min;
+    var shortPrefix = '';
+    if (duration !== null && duration > 0 && duration < threshold) {
+      var cycles = Math.log(cfg.design_period_days * MIN_PER_DAY / duration) / Math.LN10;
+      var what;
+      if (lengthKind === 'step') {
+        what = 'Each step ran for ' + formatG(duration) + ' minutes';
+        shortPrefix = 'Projected from ' + formatG(duration) + '-minute steps';
+      } else {
+        what = 'The test pumped for ' + formatG(duration) + ' minutes';
+        shortPrefix = 'Projected from a ' + formatG(duration) + '-minute test';
+      }
+      shortPrefix += ' (' + cycles.toFixed(1) + ' log cycles to ' +
+        formatG(cfg.design_period_days) + ' days); treat as indicative. ';
+      flags.push({
+        level: 'warning', code: 'short_test',
+        message: what + ', below the ' + formatG(threshold) + ' minutes needed ' +
+          'to see late-time behaviour; the yield is extrapolated ' +
+          cycles.toFixed(1) + ' log cycles of time to the ' +
+          formatG(cfg.design_period_days) + '-day design period and should be ' +
+          'treated as indicative.',
+      });
     }
 
     /* Cooper-Jacob and Theis on the first step: it pumps at a single rate from
@@ -2166,14 +2345,43 @@
         return s.discharge_m3_per_h !== null && s.discharge_m3_per_h !== undefined;
       });
       if (withQ.length >= 2) {
-        try {
-          analysis.step_test = hantushBierschenk(
-            withQ.map(function (s) { return s.discharge_m3_per_h; }),
-            withQ.map(function (s) {
-              return s.water_level_m[s.water_level_m.length - 1] - swl;
-            }));
-        } catch (e4) {
-          flags.push({ level: 'warning', code: 'step_test_failed', message: e4.message });
+        /* A step that ends at or above the static level has no drawdown to
+         * divide by: its s/Q is zero or negative, the intercept goes negative
+         * and the refit reports a borehole with no aquifer loss and 0%
+         * efficiency. A first step ending 4 m above static (a datum anomaly)
+         * is what the sheets actually hold. */
+        var positive = [];
+        withQ.forEach(function (s) {
+          var sEnd = s.water_level_m[s.water_level_m.length - 1] - swl;
+          var label = s.label || ('step ' + s.step_number);
+          if (!(sEnd > 0)) {
+            flags.push({
+              level: 'warning', code: 'step_negative_drawdown',
+              message: label + ' ends at ' + sEnd.toFixed(2) + ' m drawdown, at ' +
+                'or above the static level, so it is left out of the ' +
+                'Hantush-Bierschenk fit; check the static level and the datum ' +
+                'for that step.',
+              context: label,
+            });
+          } else {
+            positive.push([s.discharge_m3_per_h, sEnd]);
+          }
+        });
+        if (positive.length >= 2) {
+          try {
+            analysis.step_test = hantushBierschenk(
+              positive.map(function (p) { return p[0]; }),
+              positive.map(function (p) { return p[1]; }));
+          } catch (e4) {
+            flags.push({ level: 'warning', code: 'step_test_failed', message: e4.message });
+          }
+        } else {
+          flags.push({
+            level: 'warning', code: 'step_test_pending',
+            message: 'Step test analysis pending: only ' + positive.length +
+              ' step(s) with discharge show positive drawdown, and the fit ' +
+              'needs at least two.',
+          });
         }
       } else {
         flags.push({
@@ -2183,17 +2391,37 @@
       }
     }
 
-    /* Preferred transmissivity: recovery is least affected by well losses,
-     * then Cooper-Jacob, then Theis. */
-    analysis.transmissivity_m2_per_day = null;
-    [analysis.recovery, analysis.cooper_jacob, analysis.theis].some(function (r) {
-      if (r) { analysis.transmissivity_m2_per_day = r.transmissivity_m2_per_day; return true; }
-      return false;
-    });
+    /* The transmissivity the yield rests on: recovery is least affected by
+     * well losses, then Cooper-Jacob, then Theis - but a straight line has
+     * to reach min_fit_r_squared to be adopted (Theis is a curve fit with
+     * no R squared and is always eligible, which keeps it last). Taking
+     * recovery unconditionally adopted a 0.52 m2/day recovery at R squared
+     * 0.69 over a 4.3 m2/day Cooper-Jacob at 0.99. */
+    var adopted = adoptedFit(analysis);
+    analysis.transmissivity_source = adopted.method;
+    analysis.transmissivity_m2_per_day = adopted.result
+      ? adopted.result.transmissivity_m2_per_day : null;
+    if (adopted.result && !adopted.qualifies) {
+      var scored = fittedMethods(analysis).map(function (f) {
+        return METHOD_LABELS[f[0]] + ' ' + f[1].r_squared.toFixed(3);
+      }).join(', ');
+      flags.push({
+        level: 'warning', code: 'transmissivity_low_confidence',
+        message: 'No fit reached R squared ' + formatG(cfg.min_fit_r_squared) +
+          ' (' + scored + '); the ' + METHOD_LABELS[adopted.method] + ' value of ' +
+          adopted.result.transmissivity_m2_per_day.toFixed(2) + ' m2/day is ' +
+          'adopted as the best available, so the yield rests on a poor fit.',
+      });
+    }
 
     analysis.yield_recommendation = recommendYield(test,
-      analysis.transmissivity_m2_per_day, analysis.step_test, cfg);
+      analysis.transmissivity_m2_per_day, analysis.step_test, cfg,
+      { transmissivitySource: adopted.method });
     attachYieldEnvelope(analysis, cfg);
+    if (shortPrefix && analysis.yield_recommendation.safe_yield_m3_per_h !== null) {
+      analysis.yield_recommendation.basis = shortPrefix +
+        analysis.yield_recommendation.basis;
+    }
     analysis.yield_range_text = yieldRangeText(analysis.yield_recommendation);
 
     analysis.flags = flags;
@@ -3682,17 +3910,27 @@
   var NEGATION_PHRASES = ['no water', 'not reached', 'without water',
     'water table not'];
 
+  /* The basis sentences are written from the zones that survive clipping,
+   * not from the candidates: a strike above the static-level floor used to
+   * leave "screens positioned against the water strikes (8 m)" in the client
+   * document beside "no aquifer intervals identified", and blocked the VES
+   * fallback while contributing no screen. */
   function targetZones(log, interpretation, swl, totalDepth, rules) {
-    var basis = [], zones = [];
-    if (log && log.water_strikes_m && log.water_strikes_m.length) {
-      log.water_strikes_m.forEach(function (strike) {
-        zones.push([Math.max(strike - 1.0, 0.0), strike + 5.0]);
+    var floor = (swl || 0.0) + rules.min_screen_below_swl_m;
+    function clip(candidates) {
+      var out = [];
+      candidates.forEach(function (z) {
+        var top = Math.ceil(Math.max(z[0], floor) * 2.0) / 2.0;
+        var bottom = Math.floor(Math.min(z[1], totalDepth - rules.sump_length_m) * 2.0) / 2.0;
+        if (bottom - top >= 1.0) out.push([top, bottom]);
       });
-      basis.push('screens positioned against the water strikes recorded in ' +
-        'the drilling log (' + log.water_strikes_m.map(function (w) {
-          return formatG(w) + ' m';
-        }).join(', ') + ')');
+      return out;
     }
+    var basis = [], strikeZones = [], lithoZones = [];
+    var strikes = (log && log.water_strikes_m) ? log.water_strikes_m : [];
+    strikes.forEach(function (strike) {
+      strikeZones.push([Math.max(strike - 1.0, 0.0), strike + 5.0]);
+    });
     if (log && log.intervals) {
       log.intervals.forEach(function (interval) {
         var text = String(interval.description || '').toLowerCase();
@@ -3700,25 +3938,28 @@
         var words = text.match(/[a-z]+/g) || [];
         var hit = words.some(function (w) { return AQUIFER_WORDS.indexOf(w) >= 0; }) ||
           AQUIFER_PHRASES.some(function (p) { return text.indexOf(p) >= 0; });
-        if (hit) zones.push([interval.top_m, interval.bottom_m]);
+        if (hit) lithoZones.push([interval.top_m, interval.bottom_m]);
       });
     }
-    if (!zones.length && interpretation && interpretation.water_zones.length) {
-      zones = interpretation.water_zones.map(function (z) { return [z[0], z[1]]; });
-      basis.push('screens positioned against the low resistivity zones of the ' +
-        'VES interpretation (' + interpretation.water_zones.map(function (z) {
-          return Math.trunc(z[0]) + '-' + Math.trunc(z[1]) + ' m';
+    var keptStrikes = strikes.filter(function (strike, i) {
+      return clip([strikeZones[i]]).length > 0;
+    });
+    var clipped = clip(strikeZones).concat(clip(lithoZones));
+    if (keptStrikes.length) {
+      basis.push('screens positioned against the water strikes recorded in ' +
+        'the drilling log (' + keptStrikes.map(function (w) {
+          return formatG(w) + ' m';
         }).join(', ') + ')');
     }
-
-    /* clip to the hole, keep below the static level margin, round to 0.5 m */
-    var floor = (swl || 0.0) + rules.min_screen_below_swl_m;
-    var clipped = [];
-    zones.forEach(function (z) {
-      var top = Math.ceil(Math.max(z[0], floor) * 2.0) / 2.0;
-      var bottom = Math.floor(Math.min(z[1], totalDepth - rules.sump_length_m) * 2.0) / 2.0;
-      if (bottom - top >= 1.0) clipped.push([top, bottom]);
-    });
+    if (!clipped.length && interpretation && interpretation.water_zones.length) {
+      clipped = clip(interpretation.water_zones.map(function (z) { return [z[0], z[1]]; }));
+      if (clipped.length) {
+        basis.push('screens positioned against the low resistivity zones of the ' +
+          'VES interpretation (' + interpretation.water_zones.map(function (z) {
+            return Math.trunc(z[0]) + '-' + Math.trunc(z[1]) + ' m';
+          }).join(', ') + ')');
+      }
+    }
     clipped.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
     var merged = [];
     clipped.forEach(function (zone) {
@@ -3814,6 +4055,55 @@
       });
     }
 
+    /* the same annulus rule the field checks apply (50 mm per side to place
+     * gravel, 70 mm for it to filter), on the design itself */
+    var annulusMm = (rules.borehole_diameter_in - rules.casing_diameter_in) * 25.4 / 2.0;
+    if (annulusMm < 50.0) {
+      flags.push({
+        level: 'warning', code: 'thin_annulus',
+        message: 'A ' + formatG(rules.casing_diameter_in) + ' inch casing in a ' +
+          formatG(rules.borehole_diameter_in) + ' inch hole leaves ' +
+          annulusMm.toFixed(0) + ' mm of annulus per side, under the 50 mm needed ' +
+          'to place gravel without bridging (70 mm for a true filter pack); use a ' +
+          'larger bit or smaller casing.',
+      });
+    } else if (annulusMm < 70.0) {
+      flags.push({
+        level: 'info', code: 'thin_annulus',
+        message: 'The ' + annulusMm.toFixed(0) + ' mm annulus meets the 50 mm ' +
+          'placement minimum but is under 70 mm, so the annular fill acts as a ' +
+          'formation stabiliser rather than a filter pack.',
+      });
+    }
+
+    /* a pump intake is written straight through from the caller; it used to
+     * be accepted below the hole bottom, inside a screen or above the water */
+    var intake = spec.pumpIntakeM;
+    if (intake !== null && intake !== undefined) {
+      if (intake > sumpTop) {
+        flags.push({
+          level: 'error', code: 'pump_intake_below_hole',
+          message: 'The pump intake at ' + formatG(intake) + ' m is below the top of ' +
+            'the sump at ' + formatG(sumpTop) + ' m in a ' + formatG(totalDepthM) +
+            ' m hole; it cannot be set there.',
+        });
+      } else if (screens.some(function (s) { return s[0] <= intake && intake <= s[1]; })) {
+        flags.push({
+          level: 'warning', code: 'pump_intake_in_screen',
+          message: 'The pump intake at ' + formatG(intake) + ' m sits inside a ' +
+            'screened interval; set it in plain casing above or below the screen ' +
+            'so the inflow is not drawn across the pump.',
+        });
+      }
+      if (swl !== null && swl !== undefined && intake <= swl) {
+        flags.push({
+          level: 'error', code: 'pump_intake_above_swl',
+          message: 'The pump intake at ' + formatG(intake) + ' m is at or above the ' +
+            'static water level of ' + formatG(swl) + ' m; the pump would run dry.',
+        });
+      }
+    }
+
     var design = {
       total_depth_m: totalDepthM,
       borehole_diameter_in: rules.borehole_diameter_in,
@@ -3906,7 +4196,8 @@
       var floor = (swl || 0.0) + rules.min_screen_below_swl_m;
       var sumpTop = Math.max(totalDepthM - rules.sump_length_m, 0.0);
       var bottom = sumpTop;
-      var top = Math.max(totalDepthM * 2.0 / 3.0, floor);
+      /* rounded to 0.5 m like every other screen top */
+      var top = Math.ceil(Math.max(totalDepthM * 2.0 / 3.0, floor) * 2.0) / 2.0;
       if (bottom - top < 3.0) {
         top = Math.max(bottom - rules.screen_length_default_m, floor);
       }
@@ -4674,7 +4965,19 @@
     if (typeof value === 'boolean') return dflt;
     var text = String(value).trim();
     if (!text) return dflt;
-    text = text.replace(/,/g, '');
+    if (text.indexOf(',') >= 0) {
+      /* A comma is a thousands separator only when exactly three digits
+       * follow it and end the number; any other comma between digits is a
+       * decimal comma, which crews trained on French-language sheets type
+       * as a matter of course. "1,5" used to parse as 15 and "078,7" as 787. */
+      if (text.indexOf('.') >= 0 && text.lastIndexOf(',') > text.lastIndexOf('.')) {
+        text = text.replace(/\./g, '').replace(/,/g, '.');
+      } else {
+        text = text.replace(/(\d),(?=\d{3}(?!\d))/g, '$1');
+        text = text.replace(/(\d),(?=\d)/g, '$1.');
+        text = text.replace(/,/g, '');
+      }
+    }
     var m = NUMBER_RE.exec(text);
     return m === null ? dflt : parseFloat(m[0]);
   }
@@ -4785,6 +5088,19 @@
     return [text, null];
   }
 
+  function valueBelow(grid, r, c) {
+    if (r + 1 >= grid.length) return null;
+    var next = grid[r + 1] || [];
+    if (c >= next.length) return null;
+    var below = next[c];
+    if (below === null || below === undefined || cleanText(below) === '') return null;
+    if (typeof below !== 'number') {
+      var belowLabel = splitInlineValue(below instanceof Date ? cleanText(below) : String(below));
+      if (matchLabel(belowLabel[0])) return null;
+    }
+    return below;
+  }
+
   function extractHeaderFields(grid, maxRows) {
     var limit = maxRows === undefined ? 30 : maxRows;
     var fields = {}, priorities = {};
@@ -4815,6 +5131,13 @@
               break;
             }
           }
+        }
+        if (value === null || value === undefined) {
+          /* A columnar header block - labels across one row, values in the
+           * row beneath - used to parse to nothing at all. The cell below is
+           * taken only when it is not itself a label, so the stacked template
+           * layout (label over label) is unaffected. */
+          value = valueBelow(grid, r, c);
         }
         if (value === null || value === undefined) continue;
         if (NUMERIC_HEADER_KEYS.indexOf(key) >= 0) {
@@ -4855,6 +5178,9 @@
 
   var MN_HALF_RE = /mn\s*\/\s*2/;
 
+  /* "Resistance (ohm)", "R (ohm)", "V/I", "dV/I": a measured resistance */
+  var RESISTANCE_RE = /resistance|^r\s*\(|v\s*\/\s*i/;
+
   function findVesDataHeader(grid) {
     for (var r = 0; r < grid.length; r++) {
       var texts = rowText(grid[r]);
@@ -4871,35 +5197,67 @@
           cols.mn_half = c;
         } else if (t.indexOf('mn') === 0) {
           cols.mn = c;
+        } else if (RESISTANCE_RE.test(t)) {
+          /* a sheet that records V/I (a resistance, in ohms) is not a
+           * resistivity sheet: "R (ohm)" used to match the "ohm" test below
+           * and every reading came through as a resistivity of 0.9 */
+          cols.resistance = c;
         } else if (t.indexOf('resistivity') >= 0 || t.indexOf('rho') === 0 ||
-                   t.indexOf('ohm') >= 0) {
+                   t.indexOf('ohm') >= 0 || t.indexOf('apparent') >= 0 ||
+                   t.indexOf('\u03c1') >= 0 || t.indexOf('\u03c9') >= 0) {
           cols.rho = c;
+        } else if (['k', 'k (m)', 'k(m)', 'geometric factor'].indexOf(t) >= 0) {
+          cols.k = c;
         } else if (['no.', 'no', 'reading', 'n'].indexOf(t) >= 0) {
           cols.no = c;
         }
       }
-      if ('ab2' in cols && 'rho' in cols) return { row: r, cols: cols };
+      if ('ab2' in cols && ('rho' in cols || 'resistance' in cols)) {
+        return { row: r, cols: cols };
+      }
     }
     return null;
   }
 
   function soundingFromGrid(grid, source, sheetName) {
+    return soundingOrReason(grid, source, sheetName)[0];
+  }
+
+  /* [sounding | null, reason]: the sounding on a sheet, or why there is none.
+   * A sheet the reader could not use was dropped without a word, so a
+   * three-sheet workbook with one mislabelled sheet came back as two
+   * soundings and nothing said so. */
+  function soundingOrReason(grid, source, sheetName) {
     var fields = extractHeaderFields(grid);
     var site = siteFromFields(fields, source);
     var located = findVesDataHeader(grid);
-    if (!located) return null;
+    if (!located) {
+      return [null, 'no data table found: a header row needs an AB/2 column and ' +
+        'an apparent-resistivity column (Resistivity, Rho, ohm.m, \u03c1 or \u03a9)'];
+    }
     var cols = located.cols;
 
     var ab2 = [], mn = [], rho = [], flags = [];
     var mnIsHalf = !('mn' in cols) && ('mn_half' in cols);
     var mnCol = 'mn' in cols ? cols.mn : cols.mn_half;
+    var fromResistance = !('rho' in cols);
+    var valueCol = fromResistance ? cols.resistance : cols.rho;
+    var kCol = cols.k;
     var blankRun = 0;
 
     for (var r = located.row + 1; r < grid.length; r++) {
       var row = grid[r] || [];
       var a = cols.ab2 < row.length ? parseNumber(row[cols.ab2]) : null;
-      var rr = cols.rho < row.length ? parseNumber(row[cols.rho]) : null;
+      var rr = valueCol < row.length ? parseNumber(row[valueCol]) : null;
       var m = (mnCol !== undefined && mnCol < row.length) ? parseNumber(row[mnCol]) : null;
+      if (fromResistance && a !== null && rr !== null) {
+        /* rho_a = K x (dV/I): the sheet's own K column when it has one,
+         * otherwise the Schlumberger factor from the spacings */
+        var k = (kCol !== undefined && kCol < row.length) ? parseNumber(row[kCol]) : null;
+        var spacing = (m !== null && mnIsHalf) ? 2.0 * m : m;
+        if (k === null && spacing) k = geometricFactor('schlumberger', { ab2: a, mn: spacing });
+        rr = k ? k * rr : null;
+      }
       if (a === null && rr === null) {
         var fullyBlank = row.every(function (v) {
           return v === null || v === undefined || cleanText(v) === '';
@@ -4921,7 +5279,17 @@
       mn.push(m === null ? NaN : m);
       rho.push(rr);
     }
-    if (!ab2.length) return null;
+    if (!ab2.length) {
+      return [null, 'the data table has a header but no numeric rows; if the ' +
+        'cells hold formulas, open the workbook in Excel and save it so the ' +
+        'values are stored'];
+    }
+    if (fromResistance) {
+      flags.push({ level: 'info', code: 'rho_computed_from_resistance',
+        message: 'The sheet records a resistance (V/I), not a resistivity; ' +
+          'apparent resistivity was computed as K x R from the electrode ' +
+          'spacings' + (kCol === undefined ? '' : " and the sheet's K column") + '.' });
+    }
 
     var soundingId = String(fields.sounding_id || sheetName || 'VES 1') || 'VES 1';
     var sounding = {
@@ -4961,15 +5329,21 @@
           'changes); both readings kept.', context: soundingId });
     }
     sounding.flags = flags;
-    return sounding;
+    return [sounding, ''];
   }
 
   /* One worksheet per sounding. */
-  function readVesSheets(sheets, source) {
+  /* skipped, when given, receives one warning flag per sheet that yielded
+   * no sounding, naming the sheet and the reason */
+  function readVesSheets(sheets, source, skipped) {
     var out = [];
     sheets.forEach(function (sheet) {
-      var sounding = soundingFromGrid(sheet.rows, source || '', sheet.name);
-      if (sounding) out.push(sounding);
+      var pair = soundingOrReason(sheet.rows, source || '', sheet.name);
+      if (pair[0]) out.push(pair[0]);
+      else if (skipped) {
+        skipped.push({ level: 'warning', code: 'sheet_skipped',
+          message: "Sheet '" + sheet.name + "' was skipped: " + pair[1] + '.' });
+      }
     });
     return out;
   }
@@ -5560,15 +5934,22 @@
           '. Drawdown and recovery curves are produced, but transmissivity and ' +
           'yield results are pending until discharge values are supplied.' });
     }
-    if (swl !== null && steps.length) {
-      var anyAbove = steps.some(function (s) {
+    if (swl !== null) {
+      /* The recovery limb is checked too: a recovery that overshoots the
+       * static level gives negative residual drawdown, and the recovery
+       * transmissivity - the one the yield prefers - is fitted through it. */
+      var above = [];
+      if (steps.length && steps.some(function (s) {
         return s.water_level_m.some(function (v) { return v < swl - 0.01; });
-      });
-      if (anyAbove) {
+      })) above.push('pumping');
+      if (recoveryLevel && recoveryLevel.some(function (v) { return v < swl - 0.01; })) {
+        above.push('recovery');
+      }
+      if (above.length) {
         flags.push({ level: 'warning', code: 'water_level_above_static',
-          message: 'Some pumping water levels are above the stated static water ' +
-            'level, giving negative drawdown. Check the static level and the ' +
-            'measuring datum on the sheet.' });
+          message: 'Some ' + above.join(' and ') + ' water levels are above the ' +
+            'stated static water level, giving negative drawdown. Check the ' +
+            'static level and the measuring datum on the sheet.' });
       }
     }
     steps.forEach(function (s) {
@@ -6771,10 +7152,24 @@
     var successful = drilled.filter(function (s) {
       return classifyStatus(s) === 'successful';
     }).length;
-    var yields = list.filter(function (s) { return s.safe_yield_m3_per_h; })
-      .map(function (s) { return Number(s.safe_yield_m3_per_h); });
-    var costs = list.filter(function (s) { return s.cost_per_meter_usd; })
-      .map(function (s) { return Number(s.cost_per_meter_usd); });
+    /* a hand-edited "52 m" is a blank cell and a count, not NaN in a mean */
+    var num = function (v) {
+      if (v === null || v === undefined || v === '' || typeof v === 'boolean') return null;
+      var n = Number(v);
+      return isFinite(n) ? n : null;
+    };
+    var yields = list.map(function (s) { return num(s.safe_yield_m3_per_h); })
+      .filter(function (v) { return v; });
+    var costs = list.map(function (s) { return num(s.cost_per_meter_usd); })
+      .filter(function (v) { return v; });
+    var unreadable = 0;
+    list.forEach(function (s) {
+      ['total_depth_m', 'safe_yield_m3_per_h', 'cost_per_meter_usd'].forEach(function (key) {
+        if (s[key] !== null && s[key] !== undefined && s[key] !== '' && num(s[key]) === null) {
+          unreadable += 1;
+        }
+      });
+    });
     var unrecognised = list.filter(function (s) {
       return s.status && classifyStatus(s) === 'other';
     }).length;
@@ -6805,6 +7200,7 @@
     return {
       n_projects: list.length,
       n_drilled: drilled.length,
+      n_values_unreadable: unreadable,
       n_successful: successful,
       n_status_unrecognised: unrecognised,
       success_rate: drilled.length ? successful / drilled.length * 100.0 : null,
@@ -6989,6 +7385,13 @@
       return ['met', Number(design.total_screen_length_m).toFixed(1) +
         ' m of screen in ' + design.screens.length + ' run(s).'];
     }],
+    cost_basis: ['Cost estimate', function (state) {
+      var estimate = state.cost_estimate;
+      if (!estimate) return ['unmet', 'No cost estimate has been computed.'];
+      var depth = estimate.inputs ? estimate.inputs.total_depth_m : null;
+      if (!depth) return ['unmet', 'The cost estimate has no total depth to price against.'];
+      return ['met', 'Estimate priced for a ' + Math.round(depth) + ' m borehole.'];
+    }],
     no_errors: ['No fatal data problems', function (state) {
       var analysis = state.pump_analysis;
       var flags = readinessFlags([state.drilling_log, analysis, state.wq_assessment,
@@ -7021,7 +7424,9 @@
     pumping: ['site_located', 'readings_usable', 'pumping_measured',
       'yield_established', 'no_errors'],
     geophysical: ['site_located'],
-    costing: ['site_located', 'borehole_logged', 'design_derived'],
+    /* an estimate is priced before anything is drilled, so it is judged on
+     * its own inputs, not on a log and an as-built design it cannot have */
+    costing: ['site_located', 'cost_basis', 'no_errors'],
     supervision: ['site_located'],
     /* The asset documents and the payment certificate. Without an entry each
      * of these fell back to the completion set, so a plate for the headworks
@@ -9554,20 +9959,26 @@
     var raw = String(text === null || text === undefined ? '' : text).trim();
     if (!raw) return { month: null, note: 'No date is recorded for the test.' };
 
-    var name = /[A-Za-z]{3,}/.exec(raw);
-    if (name) {
-      var head = name[0].toLowerCase().slice(0, 3);
+    /* A month written by name settles it wherever it sits in the text. Only
+     * the first word used to be looked at, so "Wed 25/04/2018" and
+     * "Date: 14/09/2018" - both perfectly clear - were reported as naming
+     * no month at all. */
+    var words = raw.match(/[A-Za-z]{3,}/g) || [];
+    for (var w = 0; w < words.length; w++) {
+      var head = words[w].toLowerCase().slice(0, 3);
       for (var i = 0; i < MONTH_NAMES.length; i++) {
         if (MONTH_NAMES[i].toLowerCase().indexOf(head) === 0) {
           return { month: i + 1, note: '' };
         }
       }
-      return { month: null, note: 'The date ' + pyRepr(raw) +
-        ' does not name a month.' };
     }
 
     var parts = (raw.match(/\d+/g) || []).map(Number);
     if (parts.length < 3) {
+      if (words.length) {
+        return { month: null, note: 'The date ' + pyRepr(raw) +
+          ' does not name a month.' };
+      }
       return { month: null, note: 'The date ' + pyRepr(raw) +
         ' is not a full date.' };
     }
@@ -9621,16 +10032,31 @@
 
   function seasonalSummary(result) {
     if (result.pending_reason) return result.pending_reason;
+    var tested = seasonalScenario(result, 'as_tested');
     var design = seasonalScenario(result, 'dry_season');
     var drought = seasonalScenario(result, 'drought');
-    if (!design || design.safe_yield_m3_per_h === null) {
-      return 'The seasonal yield could not be established.';
-    }
-    var text = 'Sized on the end of the dry season: ' +
-      formatG(roundSig(design.safe_yield_m3_per_h, 2), 2) + ' m3/h';
-    if (drought && drought.safe_yield_m3_per_h !== null) {
-      text += ', falling to ' + formatG(roundSig(drought.safe_yield_m3_per_h, 2), 2) +
-        ' m3/h in a drought year';
+    if (!design) return 'The seasonal yield could not be established.';
+    var text;
+    if (design.safe_yield_m3_per_h === null) {
+      /* Not "could not be established": it was, and the answer is that the
+       * pump runs dry before the annual low is reached. */
+      text = 'No yield at the end of the dry season: the pump would be dry ' +
+        'at the dry-season low';
+      if (tested && tested.safe_yield_m3_per_h !== null) {
+        text += ' (the test itself gave ' +
+          formatG(roundSig(tested.safe_yield_m3_per_h, 2), 2) + ' m3/h)';
+      }
+    } else {
+      text = 'Sized on the end of the dry season: ' +
+        formatG(roundSig(design.safe_yield_m3_per_h, 2), 2) + ' m3/h';
+      if (drought && drought.safe_yield_m3_per_h !== null) {
+        text += ', falling to ' + formatG(roundSig(drought.safe_yield_m3_per_h, 2), 2) +
+          ' m3/h in a drought year';
+      } else if (drought) {
+        /* a clause that used to be dropped, which read as if a drought
+         * year cost nothing */
+        text += ', and the pump would be dry in a drought year';
+      }
     }
     if (result.month) {
       text += '. The test was run in ' + MONTH_NAMES[result.month - 1] +
@@ -9718,6 +10144,12 @@
         noteText += ' No further decline is reserved: a test run in ' +
           MONTH_NAMES[month - 1] + ' is already at or below this level.';
       }
+      if (trial.safe_yield_m3_per_h === null || trial.safe_yield_m3_per_h === undefined) {
+        /* the pump would be dry at this level; the table cell is blank, so
+         * the note has to carry the reason */
+        noteText += ' No yield at this level: ' +
+          (trial.pending_reason || 'the projection leaves no usable drawdown') + '.';
+      }
       result.scenarios.push({
         key: key, title: spec[0], decline_m: decline,
         static_water_level_m: lowered.static_water_level_m,
@@ -9737,11 +10169,13 @@
     result.design_yield_m3_per_h = design ? design.safe_yield_m3_per_h : null;
     result.pump_installation_depth_m = depths.length
       ? Math.max.apply(null, depths) : null;
-    result.dry_season_loss_percent =
-      (tested && design && tested.safe_yield_m3_per_h &&
-        design.safe_yield_m3_per_h !== null)
-        ? (1 - design.safe_yield_m3_per_h / tested.safe_yield_m3_per_h) * 100
-        : null;
+    result.dry_season_loss_percent = null;
+    if (tested && design && tested.safe_yield_m3_per_h) {
+      /* the dry season takes all of it: the pump is dry at the annual low */
+      result.dry_season_loss_percent = design.safe_yield_m3_per_h === null
+        ? 100.0
+        : (1 - design.safe_yield_m3_per_h / tested.safe_yield_m3_per_h) * 100;
+    }
     result.summary = seasonalSummary(result);
     return result;
   }
@@ -10031,15 +10465,34 @@
   /* Freeze an estimate into a contract. The estimate keeps moving as the
    * design changes; a contract does not, so this takes the copy that gets
    * signed rather than a reference to the live one. */
-  function contractFromEstimate(estimate, ref, terms) {
+  var RATE_BASES = ['price', 'cost', 'price_with_vat'];
+
+  /* basis says what the frozen rates include: the estimate's line rates are
+   * the contractor's direct costs, and the figure the same estimate recommends
+   * as the contract price is cost plus overheads plus margin, so 'price' (the
+   * default) uplifts every rate by that factor. Freezing at the bare cost
+   * rates - kept as 'cost' - paid the contractor a third below the price the
+   * toolkit had just recommended. */
+  function contractFromEstimate(estimate, ref, terms, basis) {
+    var kind = basis || 'price';
+    if (RATE_BASES.indexOf(kind) < 0) {
+      throw new Error('basis must be one of ' + RATE_BASES.join(', ') + ', not ' + kind);
+    }
+    var uplift = 1.0;
+    if (kind === 'price' || kind === 'price_with_vat') {
+      uplift *= (1.0 + Number(estimate.overheads_percent || 0) / 100.0) *
+        (1.0 + Number(estimate.margin_percent || 0) / 100.0);
+    }
+    if (kind === 'price_with_vat') uplift *= 1.0 + Number(estimate.vat_percent || 0) / 100.0;
     return Object.assign({
       ref: ref, contractor: '', client: '', date: '',
       retention_percent: 10, retention_cap_percent: 5, advance_percent: 0
     }, terms || {}, {
+      rate_basis: kind, rate_uplift: uplift,
       lines: (estimate.items || []).map(function (item) {
         return {
           code: item.code, item: item.item, unit: item.unit,
-          quantity: Number(item.quantity), rate_usd: Number(item.unit_cost_usd),
+          quantity: Number(item.quantity), rate_usd: Number(item.unit_cost_usd) * uplift,
           stage: item.stage || '', category: item.category || ''
         };
       })
@@ -10047,14 +10500,20 @@
   }
 
   function valuationFigures(line) {
-    var authorised = line.contract_quantity + line.variation_quantity;
+    /* a variation that omits more than the contract carries authorises
+     * nothing, not a negative quantity (which paid phantom overmeasure) */
+    var authorised = Math.max(line.contract_quantity + line.variation_quantity, 0);
     var payable = Math.max(Math.min(line.measured_quantity, authorised), 0);
     var over = Math.max(line.measured_quantity - authorised, 0);
+    /* the contract amount is valued at the signed rate, so a rate-only
+     * variation shows as a variation instead of vanishing from the sum */
+    var contractRate = (line.contract_rate_usd === null || line.contract_rate_usd === undefined)
+      ? line.rate_usd : line.contract_rate_usd;
     return Object.assign({}, line, {
       authorised_quantity: authorised,
       payable_quantity: payable,
       overmeasure_quantity: over,
-      contract_amount_usd: line.contract_quantity * line.rate_usd,
+      contract_amount_usd: line.contract_quantity * contractRate,
       authorised_amount_usd: authorised * line.rate_usd,
       payable_amount_usd: payable * line.rate_usd,
       overmeasure_amount_usd: over * line.rate_usd,
@@ -10107,21 +10566,41 @@
       measured[m.code] = Number(m.quantity);
     });
 
-    var lines = [], seen = {};
+    var lines = [], seen = {}, duplicates = [];
     (contract.lines || []).forEach(function (line) {
+      if (own(seen, line.code)) {
+        /* two contract lines under one code would each be paid the one
+         * measurement; the first is valued and the rest are named */
+        duplicates.push(line.code);
+        return;
+      }
       var change = own(varied, line.code) ? varied[line.code] : {};
       seen[line.code] = true;
+      var delta = change.delta || 0;
+      if (delta < 0 && -delta > line.quantity) {
+        problems.push('Variation ' + (change.refs || []).join(', ') + ' omits ' +
+          formatG(-delta) + ' ' + line.unit + ' of ' + line.code + ' but the ' +
+          'contract only carries ' + formatG(line.quantity) + '; the line is ' +
+          'treated as fully omitted and nothing on it is payable.');
+      }
       lines.push(valuationFigures({
         code: line.code, item: line.item, unit: line.unit,
         rate_usd: (change.rate === null || change.rate === undefined)
           ? line.rate_usd : change.rate,
         contract_quantity: line.quantity,
-        variation_quantity: change.delta || 0,
+        variation_quantity: delta,
         measured_quantity: own(measured, line.code) ? measured[line.code] : 0,
         in_contract: true,
-        variation_refs: (change.refs || []).slice()
+        variation_refs: (change.refs || []).slice(),
+        contract_rate_usd: line.rate_usd
       }));
     });
+    if (duplicates.length) {
+      var named = duplicates.filter(function (c, i) { return duplicates.indexOf(c) === i; });
+      problems.push('The contract carries more than one line coded ' + named.join(', ') +
+        '; only the first line under each code is valued, so recode the others ' +
+        'before the next certificate.');
+    }
 
     order.concat(measuredOrder.filter(function (c) { return !own(varied, c); }))
       .forEach(function (code) {

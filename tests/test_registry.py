@@ -506,3 +506,18 @@ def test_a_mistyped_check_character_is_still_refused():
     assert parse_asset_id("SL-PL-8HE2QWG-3") == "SL-PL-8HE2QWG-3"
     for wrong in "012456789ABCDEFGHIJKLMNOPQRSTUVWXYZ":
         assert parse_asset_id(f"SL-PL-8HE2QWG-{wrong}") is None
+
+
+def test_an_emoji_in_a_note_hashes_the_same_as_the_browser():
+    """The browser hashes UTF-16 code units; Python used to hash code points.
+
+    They agree on everything in the Basic Multilingual Plane and diverged on
+    an emoji, so the same repair noted with a thumbs-up on a phone and typed
+    in the office never merged. The literals are the browser engine's own
+    answers (docs/js/gwt-core.js eventId)."""
+    from groundwater.registry import event_id
+
+    asset = "SL-WAR-8T4KQ2A-7"
+    assert event_id(asset, "2024-01-01", "failure", "pump seized", "M") == "2024-01-01/failure/8Z6E"
+    assert event_id(asset, "2024-01-01", "failure", "café", "M") == "2024-01-01/failure/GTTD"
+    assert event_id(asset, "2024-01-01", "failure", "pump seized 😀", "M") == "2024-01-01/failure/1QW1"

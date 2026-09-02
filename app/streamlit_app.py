@@ -95,8 +95,7 @@ from groundwater.coverage import (
     POPULATION_CREDIT,
     chiefdom_coverage_rows,
     chiefdom_population,
-    count_points_by_chiefdom,
-    count_points_by_district,
+    counts_from_groups,
     coverage_rows,
     coverage_stats,
     choropleth_values,
@@ -212,7 +211,6 @@ from groundwater.reporting.supervision import (
 )
 from groundwater.supervision import (
     ChecklistResponse,
-    annular_space_check,
     disinfection_dose,
     evaluate_checklist,
     handpump_corrosion_check,
@@ -563,6 +561,27 @@ def cov_chiefdom_population():
 
 
 @st.cache_resource
+def _cov_join(points, resolution: str):
+    """The chiefdom/district join for the coverage page, done once per source.
+
+    The join is the expensive step on this page and the year and growth-rate
+    inputs rerun the script on every keystroke; the points list is memoised
+    by identity so those reruns reuse the last join instead of redoing it.
+    """
+    key = (id(points), len(points), resolution)
+    memo = st.session_state.get("_cov_join_memo")
+    if memo and memo[0] == key:
+        return memo[1], memo[2]
+    if resolution == "chiefdom":
+        grouped, unassigned = group_points_by_chiefdom(points, cov_polys())
+    else:
+        grouped, unassigned = group_points_by_district(
+            points, cov_polys(), cov_crosswalk()
+        )
+    st.session_state["_cov_join_memo"] = (key, grouped, unassigned)
+    return grouped, unassigned
+
+
 def cov_polys():
     """Chiefdom polygons for coverage point-in-polygon (numpy-heavy, cached by
     reference)."""
@@ -938,6 +957,8 @@ def _load_project() -> None:
     ):
         st.session_state.pop(result_key, None)
     overrides = updates.pop("rates_overrides", None)
+    # a file saved in a newer project format says so instead of half-loading
+    st.session_state["project_load_warnings"] = updates.pop("warnings", []) or []
     committee = updates.pop("committee", None)
     sources = updates.pop("sources", None)
     # the file names it "asset"; the session key it belongs under is the one
@@ -2581,15 +2602,9 @@ with tab_design:
         col_table, col_draw = st.columns([2, 3])
         with col_table:
             st.table(design.summary_rows())
-            annulus = annular_space_check(
-                design.borehole_diameter_in,
-                design.casing_diameter_in * 25.4,
-            )
-            note = f"Annular space {annulus.measured}: {annulus.message}"
-            if annulus.passed:
-                st.caption(note)
-            else:
-                st.warning(note)
+            # the annulus rule and the pump-intake checks are on the design
+            # itself now, so the report and the browser app see them too
+            show_flags(design.flags)
         with col_draw:
             drawing = workdir() / "design.png"
             draw_borehole_design(
@@ -3391,6 +3406,7 @@ with tab_handover:
                 quality=quality,
                 figures_dir=workdir(),
                 works_completed=[w.strip() for w in works_text.splitlines() if w.strip()],
+                sited="ves_results" in st.session_state,
                 committee=committee,
                 committee_notes=committee_notes,
                 tariff_note=tariff,
@@ -3703,10 +3719,8 @@ with tab_coverage:
         if chiefdom:
             unit = "chiefdom"
             try:
-                counts, unassigned = count_points_by_chiefdom(
-                    cov_points, cov_polys()
-                )
-                grouped, _ = group_points_by_chiefdom(cov_points, cov_polys())
+                grouped, unassigned = _cov_join(cov_points, "chiefdom")
+                counts = counts_from_groups(grouped)
                 chief_pop, members = cov_chiefdom_population()
                 area_population = chief_pop
                 rows = chiefdom_coverage_rows(chief_pop, counts, cov_crosswalk())
@@ -3718,12 +3732,8 @@ with tab_coverage:
                 )
         else:
             unit = "district"
-            counts, unassigned = count_points_by_district(
-                cov_points, cov_polys(), cov_crosswalk()
-            )
-            grouped, _ = group_points_by_district(
-                cov_points, cov_polys(), cov_crosswalk()
-            )
+            grouped, unassigned = _cov_join(cov_points, "district")
+            counts = counts_from_groups(grouped)
             area_population = cov_population()
             rows = coverage_rows(area_population, counts)
     if cov_points and rows is not None:
@@ -3967,8 +3977,10 @@ with tab_portfolio:
         "for a status map, a comparison table and headline figures - the "
         "programme view a water manager needs."
     )
+    # the browser app saves .gwt.json; its summary block has the same schema
+    # and the user guide promises either app can pool the other's files
     files = st.file_uploader(
-        "Saved project files (.yaml)", type=["yaml", "yml"],
+        "Saved project files (.yaml or .gwt.json)", type=["yaml", "yml", "json"],
         accept_multiple_files=True, key="portfolio_upload",
     )
     summaries = []
@@ -3996,6 +4008,12 @@ with tab_portfolio:
         st.info("Upload two or more saved project files to build the portfolio.")
     else:
         stats = portfolio_stats(summaries)
+        if stats.get("n_values_unreadable"):
+            st.warning(
+                f"{stats['n_values_unreadable']} value(s) in the uploaded summaries "
+                "could not be read as numbers and are left blank (a hand-edited "
+                "depth, yield or cost, for example)."
+            )
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Projects", stats["n_projects"])
         c2.metric("Successful", stats["n_successful"],
@@ -4272,7 +4290,8 @@ with tab_procurement:
             line.as_dict() for line in _frozen.lines]
         st.success(
             f"Contract frozen at ${_frozen.sum_usd:,.0f} across "
-            f"{len(_frozen.lines)} lines.")
+            f"{len(_frozen.lines)} lines, at the contract price (the estimate's "
+            "cost rates plus overheads and margin).")
         _contract_lines = st.session_state["proc_contract_lines"]
 
     if not _contract_lines:

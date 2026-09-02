@@ -59,10 +59,19 @@ CITATIONS: dict[str, str] = {
         "political administrative boundaries. PLoS ONE, 15(4). Licensed CC BY "
         "4.0."
     ),
+    # The wording the CC BY-SA licence prescribes (see THIRD_PARTY_NOTICES.md
+    # and the licence file shipped with the shapefile); the user guide is the
+    # report the country map is documented in.
     "bgs_atlas": (
-        "MacDonald, A.M. et al. British Geological Survey, Africa Groundwater "
-        "Atlas: Hydrogeology of Sierra Leone (OR/21/063). Licensed CC BY-SA "
-        "4.0."
+        "British Geological Survey. 2019/2021. Africa Groundwater Atlas "
+        "Country Hydrogeology Maps. Africa Groundwater Atlas "
+        "(https://www2.bgs.ac.uk/africagroundwateratlas/index.cfm). Licensed "
+        "CC BY-SA 4.0."
+    ),
+    "bgs_guide": (
+        "Ó Dochartaigh, B. (2021). User Guide Version 1.2: Africa Groundwater "
+        "Atlas Country Hydrogeology Maps. British Geological Survey Open "
+        "Report OR/21/063."
     ),
     "usgs_geology": (
         "United States Geological Survey (1997). Geologic Map of Africa, "
@@ -77,7 +86,8 @@ CITATIONS: dict[str, str] = {
 # references relevant to each report type, in a sensible reading order
 _REFERENCES_FOR = {
     "geophysical": [
-        "salwaco_geology", "usgs_geology", "bgs_atlas", "geoboundaries",
+        "salwaco_geology", "usgs_geology", "bgs_atlas", "bgs_guide",
+        "geoboundaries",
         "niwas_singhal", "rwsn_drilling",
     ],
     "pumping": ["theis", "cooper_jacob", "hantush", "rwsn_drilling"],

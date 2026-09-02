@@ -261,10 +261,18 @@ FUNCTION_LABELS = {
 
 
 def _hash32(text: str) -> int:
-    """FNV-1a. Small, deterministic, and the same four lines in any language."""
+    """FNV-1a. Small, deterministic, and the same four lines in any language.
+
+    The bytes hashed are the low byte of each UTF-16 code unit, because that
+    is what the browser app's ``charCodeAt(i) & 0xFF`` sees. Iterating code
+    points instead agrees for everything on the Basic Multilingual Plane and
+    diverges on an emoji, and a note with a thumbs-up then carried a
+    different identifier on the phone and in the office copy, so the same
+    visit no longer merged into one.
+    """
     value = 0x811C9DC5
-    for char in text:
-        value = ((value ^ (ord(char) & 0xFF)) * 0x01000193) & 0xFFFFFFFF
+    for low in text.encode("utf-16-le")[::2]:
+        value = ((value ^ low) * 0x01000193) & 0xFFFFFFFF
     return value
 
 

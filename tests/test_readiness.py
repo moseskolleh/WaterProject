@@ -277,17 +277,23 @@ def test_the_costing_and_supervision_reports_are_stamped_too(tmp_path):
     )
 
     site = SiteMetadata(community="Nowhere")
+    estimate = estimate_borehole_cost(CostingInputs(total_depth_m=45.0))
     cost_readiness = assess_readiness({"site": site}, "costing")
     assert not cost_readiness.is_certifiable
     cost_doc = build_cost_report(
         CostReportInputs(
-            estimate=estimate_borehole_cost(CostingInputs(total_depth_m=45.0)),
-            site=site, figures_dir=tmp_path, readiness=cost_readiness),
+            estimate=estimate, site=site, figures_dir=tmp_path,
+            readiness=cost_readiness),
         tmp_path / "cost.docx",
     )
     cost_text = "\n".join(p.text for p in Document(str(cost_doc)).paragraphs)
     assert "PROVISIONAL - NOT FOR CERTIFICATION" in cost_text
-    assert "Drilling log" in cost_text
+    # an estimate is a pre-construction document: it is not held to a drilling
+    # log or an as-built design, only to a position and its own basis
+    assert "Cost estimate" in cost_text and "Drilling log" not in cost_text
+    located = SiteMetadata(community="Nowhere", easting=778000.0, northing=946000.0, utm_zone=28)
+    assert assess_readiness({"site": located, "cost_estimate": estimate}, "costing").is_certifiable
+    assert not assess_readiness({"site": located}, "costing").is_certifiable
 
     items = load_checklists()
     responses = {i.item_id: ChecklistResponse(i.item_id, "yes")

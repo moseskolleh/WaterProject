@@ -181,17 +181,24 @@ def build_completion_report(
     # ---- drilling ---------------------------------------------------------------
     rb.heading("3. Drilling", 1)
     rb.paragraph("The drilling work included the following:")
-    rb.bullets(
-        [
-            "Mobilisation of the drill rig and all necessary equipment.",
-            "Drilling through all formations for completion of the borehole"
-            + (f" using the {log.drilling_method} method." if log.drilling_method else "."),
+    # only the activities the supplied data evidences: a log-only report
+    # used to assert casing, gravel pack and development it had no record of
+    drilling_works = [
+        "Mobilisation of the drill rig and all necessary equipment.",
+        "Drilling through all formations for completion of the borehole"
+        + (f" using the {log.drilling_method} method." if log.drilling_method else "."),
+    ]
+    if inputs.design is not None:
+        drilling_works += [
             "Supply and installation of casings (plain and screen).",
             "Gravel packing of the annulus.",
-            "Development of the borehole by surging with compressed air and airlifting.",
-            "Demobilisation.",
         ]
-    )
+    if inputs.development_record or inputs.development_note:
+        drilling_works.append(
+            "Development of the borehole by surging with compressed air and airlifting."
+        )
+    drilling_works.append("Demobilisation.")
+    rb.bullets(drilling_works)
     rb.header_block_table(
         [
             ("Contractor", site.contractor or ""), ("Client", site.client),

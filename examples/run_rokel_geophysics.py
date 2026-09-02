@@ -19,6 +19,7 @@ from pathlib import Path
 from groundwater import Project
 from groundwater.ingestion import check_all, read_ves_workbook
 from groundwater.models import SiteMetadata
+from groundwater.readiness import assess_readiness
 from groundwater.reporting.geophysical import (
     GeophysicalReportInputs,
     build_geophysical_report,
@@ -117,12 +118,15 @@ def main() -> None:
     )
 
     # ---- report ---------------------------------------------------------------
+    readiness = assess_readiness({"site": soundings[0].site}, "geophysical")
+    print("readiness:", readiness.summary)
     report_path = build_geophysical_report(
         GeophysicalReportInputs(
             soundings=soundings,
             inversions=inversions,
             interpretations=interpretations,
             figures_dir=project.figures,
+            readiness=readiness,
             geologist_name="A. N. Geologist",
             geologist_phone="+232 00 000 000",
             flags=flags,

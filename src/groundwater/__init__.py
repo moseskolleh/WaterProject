@@ -1,38 +1,51 @@
-"""Groundwater investigation analysis and reporting toolkit.
-
-A modular toolkit for rural water supply borehole projects in Sierra
-Leone, covering geophysical siting surveys (VES), borehole design,
-drilling records, pumping tests, water quality assessment and report
-generation.
+"""Groundwater investigation toolkit for rural water supply boreholes.
 
 Subpackages
 -----------
 ingestion
-    Data templates, parsers and metadata consistency checks.
+    Excel/CSV field-sheet templates, parsers and metadata consistency checks.
 ves
-    Vertical electrical sounding analysis: geometric factors, forward
-    modelling, 1D inversion, IPI2Win import, curve classification,
-    hydrogeological interpretation and plotting.
+    Vertical electrical sounding: geometric factors, 1D forward model and
+    inversion, IPI2Win import, curve classification, interpretation.
 hydraulics
-    Pumping test analysis: Cooper-Jacob, Theis, recovery, step tests,
-    specific capacity and safe yield.
+    Pumping test analysis (Cooper-Jacob, Theis, recovery, step tests),
+    safe yield and pump setting depth.
 quality
-    Water quality assessment against WHO and national standards.
+    Water quality against WHO and national standards, ionic balance,
+    indices, corrosivity, Piper and Stiff diagrams.
 design
-    Borehole design rules and to-scale schematic drawings.
+    Borehole construction design rules and to-scale drawings.
 costing
-    Borehole cost estimation, pricing and bill of quantities following
-    the RWSN Cost-Effective Boreholes methodology.
+    RWSN-style cost model, bills of quantities, programme estimates,
+    enterprise calculators and Excel export.
 supervision
-    Drilling supervision checklists and field acceptance checks from
-    the RWSN/UNICEF supervision guidance.
+    Drilling supervision checklists and numeric field acceptance checks.
 mapping
-    Site maps, iso-resistivity and overburden thickness maps, GIS export.
+    Site, geology and aquifer maps, GIS export, GeoLibre project files.
+siting
+    Suitability scoring of drill targets.
 reporting
-    Templated .docx report generation.
+    House-styled .docx report builders, one per document.
+extraction
+    Scanned field sheet extraction with review flagging.
+depth_spine
+    The interactive borehole workspace and its Streamlit bridge.
+
+Modules
+-------
+readiness, seasonal, planning, procurement, registry, qr, coverage,
+waterpoints, portfolio, recompute, project, project_io, units, geo, config,
+models, utils.
 """
 
-__version__ = "0.2.0"
+from importlib import metadata as _metadata
+
+try:
+    # single source of truth is pyproject.toml; the literal below is only
+    # for a checkout that was never installed
+    __version__ = _metadata.version("groundwater-toolkit")
+except _metadata.PackageNotFoundError:  # pragma: no cover - uninstalled checkout
+    __version__ = "0.2.0"
 
 from .project import Project
 

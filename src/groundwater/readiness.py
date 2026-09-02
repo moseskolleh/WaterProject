@@ -347,6 +347,22 @@ def _no_errors(state: dict) -> tuple[str, str]:
     return "met", "No module reported a fatal problem with the data."
 
 
+def _cost_basis(state: dict) -> tuple[str, str]:
+    """A cost estimate exists and is built on a stated depth.
+
+    An estimate is a pre-construction document by its own words, so it is
+    not held to a drilling log and an as-built design: demanding those
+    stamped every budget PROVISIONAL at exactly the time a budget is needed.
+    """
+    estimate = state.get("cost_estimate")
+    if estimate is None:
+        return "unmet", "No cost estimate has been computed."
+    depth = getattr(getattr(estimate, "inputs", None), "total_depth_m", None)
+    if not depth:
+        return "unmet", "The cost estimate has no total depth to price against."
+    return "met", f"Estimate priced for a {depth:.0f} m borehole."
+
+
 #: Every requirement, in the order a reader should see them: the borehole
 #: first, then what was measured in it, then what it produced.
 REQUIREMENTS: dict[str, tuple[str, Any]] = {
@@ -361,6 +377,7 @@ REQUIREMENTS: dict[str, tuple[str, Any]] = {
     "water_quality_panel": ("Water quality panel", _water_quality_panel),
     "water_quality_evaluable": ("Water quality evaluable", _water_quality_evaluable),
     "design_derived": ("Borehole design", _design_derived),
+    "cost_basis": ("Cost estimate", _cost_basis),
     "no_errors": ("No fatal data problems", _no_errors),
 }
 
@@ -388,7 +405,9 @@ REPORTS: dict[str, tuple[str, ...]] = {
         "yield_established", "no_errors",
     ),
     "geophysical": ("site_located",),
-    "costing": ("site_located", "borehole_logged", "design_derived"),
+    # An estimate is priced before anything is drilled, so it is judged on
+    # its own inputs, not on a log and an as-built design it cannot have.
+    "costing": ("site_located", "cost_basis", "no_errors"),
     "supervision": ("site_located",),
     # The asset documents and the payment certificate. Without an entry each
     # of these fell back to the completion set, so a plate for the headworks

@@ -36,6 +36,14 @@ from ..models import DataFlag, PumpingTest
 
 MIN_PER_DAY = 1440.0
 
+#: How each transmissivity method is named in reports, keyed by the
+#: ``transmissivity_source`` an analysis adopts.
+METHOD_LABELS = {
+    "recovery": "Theis recovery",
+    "cooper_jacob": "Cooper-Jacob",
+    "theis": "Theis curve fit",
+}
+
 
 # ---------------------------------------------------------------------------
 # Result containers
@@ -83,6 +91,10 @@ class StepTestResult:
     well_loss_C: float
     steps: list[dict]  # per step: Q, s_end, sw/Q, efficiency %
     r_squared: float
+    # set when a coefficient came out negative and the fit was redone with it
+    # pinned at zero: the efficiencies are then an artefact of the refit, and
+    # the report has to say so instead of printing them
+    fit_note: str = ""
 
     def drawdown_at(self, q_m3_per_day: float) -> float:
         return self.aquifer_loss_B * q_m3_per_day + self.well_loss_C * q_m3_per_day**2
@@ -141,15 +153,58 @@ class PumpingTestAnalysis:
     stabilised_level_m: Optional[float] = None
     max_drawdown_m: Optional[float] = None
     flags: list[DataFlag] = field(default_factory=list)
+    # The R squared a straight-line fit has to reach before its transmissivity
+    # is adopted. Copied from PumpingConfig by analyse_pumping_test, because the
+    # analysis travels (session state, pickles) without its config.
+    min_fit_r_squared: float = PumpingConfig.min_fit_r_squared
+
+    def fits(self) -> list[tuple[str, object]]:
+        """Every method that fitted, in order of preference.
+
+        Recovery is least affected by well losses and rate fluctuations,
+        then Cooper-Jacob, then Theis.
+        """
+        return [
+            (name, result)
+            for name, result in (
+                ("recovery", self.recovery),
+                ("cooper_jacob", self.cooper_jacob),
+                ("theis", self.theis),
+            )
+            if result is not None
+        ]
+
+    def adopted_fit(self) -> tuple[Optional[str], Optional[object], bool]:
+        """``(method, result, qualifies)`` for the transmissivity the yield rests on.
+
+        The first method in order of preference whose straight line reaches
+        ``min_fit_r_squared`` is adopted; Theis is a curve fit with no R
+        squared and is always eligible, which keeps it last. Taking recovery
+        unconditionally adopted a 0.52 m2/day recovery at R squared 0.69
+        over a 4.3 m2/day Cooper-Jacob at 0.99. When nothing reaches the
+        threshold the best of the poor fits is still adopted, so a yield is
+        produced, and ``qualifies`` is False so the caller can flag it.
+        """
+        fits = self.fits()
+        for name, result in fits:
+            r2 = getattr(result, "r_squared", None)
+            if r2 is None or r2 >= self.min_fit_r_squared:
+                return name, result, True
+        if not fits:
+            return None, None, False
+        name, result = max(fits, key=lambda item: item[1].r_squared)
+        return name, result, False
+
+    @property
+    def transmissivity_source(self) -> Optional[str]:
+        """``"recovery" | "cooper_jacob" | "theis"``, or None when nothing fitted."""
+        return self.adopted_fit()[0]
 
     @property
     def transmissivity_m2_per_day(self) -> Optional[float]:
-        """Preferred transmissivity: recovery is least affected by well
-        losses, then Cooper-Jacob, then Theis."""
-        for result in (self.recovery, self.cooper_jacob, self.theis):
-            if result is not None:
-                return result.transmissivity_m2_per_day
-        return None
+        """The transmissivity the yield recommendation rests on."""
+        result = self.adopted_fit()[1]
+        return result.transmissivity_m2_per_day if result is not None else None
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +281,24 @@ def cooper_jacob(
     if slope <= 0:
         raise ValueError(
             "Drawdown does not increase with log time; Cooper-Jacob does not apply"
+        )
+    # T is inversely proportional to the slope, so a tail that has flattened
+    # to within reading resolution gave thousands of m2/day with a straight
+    # face; a line that does not explain the window is no better.
+    if slope < config.cooper_jacob_min_slope_m:
+        raise ValueError(
+            f"The fitted window {fit_window_min[0]:g}-{fit_window_min[1]:g} min "
+            f"is flat ({slope:.3f} m per log cycle, under "
+            f"{config.cooper_jacob_min_slope_m:g} m): the drawdown has stabilised "
+            "or the slope is below reading resolution, so Cooper-Jacob does not "
+            "apply"
+        )
+    if r2 < config.cooper_jacob_min_r2:
+        raise ValueError(
+            f"The straight line explains too little of the window "
+            f"{fit_window_min[0]:g}-{fit_window_min[1]:g} min (R squared "
+            f"{r2:.3f}, under {config.cooper_jacob_min_r2:g}), so Cooper-Jacob "
+            "does not apply"
         )
     q_day = discharge_m3_per_h * 24.0
     T = 2.303 * q_day / (4.0 * math.pi * slope)
@@ -362,11 +435,16 @@ def hantush_bierschenk(
         raise ValueError("A step test needs at least two steps with discharge")
     sq = s / q
     C, B, r2 = _line_fit(q, sq)
+    fit_note = ""
     if C < 0:
         # negative well loss has no physical meaning; fall back to pure
         # aquifer loss
         C = 0.0
         B = float(np.mean(sq))
+        fit_note = (
+            "negative well loss refitted as pure aquifer loss; the efficiencies "
+            "are 100% by construction and not meaningful"
+        )
     if B < 0:
         # Neither has a negative aquifer loss: it made the reported well
         # efficiency negative (100 B Q / (B Q + C Q^2) with B < 0), which went
@@ -377,6 +455,10 @@ def hantush_bierschenk(
         fitted = C * q
         ss_tot = float(np.sum((sq - sq.mean()) ** 2))
         r2 = 1.0 - float(np.sum((sq - fitted) ** 2)) / ss_tot if ss_tot > 0 else 1.0
+        fit_note = (
+            "negative aquifer loss refitted as pure well loss; efficiencies are "
+            "not meaningful"
+        )
     steps = []
     for i, (qi, si) in enumerate(zip(q, s, strict=True), start=1):
         eff = 100.0 * B * qi / (B * qi + C * qi**2) if (B * qi + C * qi**2) > 0 else 100.0
@@ -389,12 +471,49 @@ def hantush_bierschenk(
                 "efficiency_percent": float(eff),
             }
         )
-    return StepTestResult(aquifer_loss_B=float(B), well_loss_C=float(C), steps=steps, r_squared=r2)
+    return StepTestResult(
+        aquifer_loss_B=float(B), well_loss_C=float(C), steps=steps, r_squared=r2,
+        fit_note=fit_note,
+    )
 
 
 # ---------------------------------------------------------------------------
 # Yield recommendation
 # ---------------------------------------------------------------------------
+
+def _no_usable_drawdown_reason(test: PumpingTest, config: PumpingConfig) -> str:
+    """Why the pump setting leaves nothing to draw on, in the sheet's numbers.
+
+    The reserves are named one by one so the fix is obvious: set the pump
+    deeper, or reduce the reserve when the test was run at the annual low.
+    """
+    swl = test.static_water_level_m
+    if test.pump_setting_m is not None:
+        where = f"the pump intake at {test.pump_setting_m:.1f} m"
+        gap = test.pump_setting_m - swl
+        reserves = [f"the {config.pump_submergence_min_m:g} m submergence margin"]
+        fix = "set the pump deeper"
+    else:
+        where = f"the borehole bottom at {test.borehole_depth_m:.1f} m"
+        gap = test.borehole_depth_m - swl
+        reserves = [
+            "the 3 m clearance above the bottom",
+            f"the {config.pump_submergence_min_m:g} m submergence margin",
+        ]
+        fix = "record the pump setting or deepen the borehole"
+    if config.seasonal_allowance_m > 0:
+        reserves.append(f"the {config.seasonal_allowance_m:g} m dry-season reserve")
+        fix += " or reduce the reserve"
+    if gap >= 0:
+        position = f"is {gap:.1f} m below the static level of {swl:.1f} m"
+    else:
+        position = f"is {-gap:.1f} m above the static level of {swl:.1f} m"
+    listed = (
+        reserves[0] if len(reserves) == 1
+        else ", ".join(reserves[:-1]) + " and " + reserves[-1]
+    )
+    return f"{where} {position}; after {listed} no usable drawdown remains - {fix}"
+
 
 def recommend_yield(
     test: PumpingTest,
@@ -403,6 +522,7 @@ def recommend_yield(
     config: PumpingConfig | None = None,
     assumed_storativity: float = 1e-3,
     effective_radius_m: float = 0.1,
+    transmissivity_source: str | None = None,
 ) -> YieldRecommendation:
     """Specific capacity, sustainable yield and pump depth.
 
@@ -410,7 +530,9 @@ def recommend_yield(
     where ``s_proj`` projects Cooper-Jacob drawdown to the design
     period with the fitted T (plus well losses when a step test is
     available). The stated safety factor is then applied. Every input
-    is recorded in ``basis`` so the recommendation is traceable.
+    is recorded in ``basis`` so the recommendation is traceable;
+    ``transmissivity_source`` (a key of :data:`METHOD_LABELS`) names the
+    method the transmissivity came from in that narrative.
     """
     config = config or PumpingConfig()
     swl = test.static_water_level_m
@@ -441,12 +563,29 @@ def recommend_yield(
     # available drawdown would over-state the sustainable yield.
     # seasonal_allowance_m is the expected wet-to-dry decline (configurable
     # per district); it is already applied to the pump-setting depth below.
+    # A zero here is an answer (the intake sits at the submergence margin),
+    # not a missing value, so only None is treated as unknown.
     usable = (
         max(available - config.seasonal_allowance_m, 0.0)
         * config.available_drawdown_fraction
-        if available
+        if available is not None
         else None
     )
+
+    def pending(reason: str) -> YieldRecommendation:
+        return YieldRecommendation(
+            specific_capacity_m3hr_per_m=specific_capacity,
+            available_drawdown_m=available,
+            usable_drawdown_m=usable,
+            projected_drawdown_m=None,
+            long_term_yield_m3_per_h=None,
+            safe_yield_m3_per_h=None,
+            safety_factor=config.safety_factor,
+            design_period_days=config.design_period_days,
+            pump_installation_depth_m=None,
+            basis="Yield recommendation pending: " + reason + ".",
+            pending_reason=reason,
+        )
 
     if transmissivity is None or swl is None:
         # name what is actually missing: blaming the discharge when it was
@@ -461,20 +600,18 @@ def recommend_yield(
                 if not any(s.discharge_m3_per_h for s in test.steps)
                 else "transmissivity could not be fitted from the readings"
             )
-        reason = " and ".join(missing)
-        return YieldRecommendation(
-            specific_capacity_m3hr_per_m=specific_capacity,
-            available_drawdown_m=available,
-            usable_drawdown_m=usable,
-            projected_drawdown_m=None,
-            long_term_yield_m3_per_h=None,
-            safe_yield_m3_per_h=None,
-            safety_factor=config.safety_factor,
-            design_period_days=config.design_period_days,
-            pump_installation_depth_m=None,
-            basis="Yield recommendation pending: " + reason + ".",
-            pending_reason=reason,
+        return pending(" and ".join(missing))
+
+    # No drawdown to spend is a finding about the pump setting. It used to
+    # come back as a blank recommendation with no reason, which every report
+    # then blamed on the discharge.
+    if usable is None:
+        return pending(
+            "neither the pump setting nor the borehole depth is recorded, so "
+            "the available drawdown cannot be computed"
         )
+    if usable <= 0:
+        return pending(_no_usable_drawdown_reason(test, config))
 
     t_design = config.design_period_days
     log_term = math.log10(
@@ -497,41 +634,43 @@ def recommend_yield(
             )
         return s
 
-    long_term = None
-    if usable and usable > 0:
-        # bisect Q so projected drawdown equals the usable drawdown
-        q_lo, q_hi = 0.01, 200.0
-        for _ in range(80):
-            q_mid = 0.5 * (q_lo + q_hi)
-            if projected_drawdown(q_mid) > usable:
-                q_hi = q_mid
-            else:
-                q_lo = q_mid
-        long_term = q_lo
-
-    safe = long_term / config.safety_factor if long_term else None
-
-    pump_depth = None
-    if safe is not None:
-        s_at_safe = projected_drawdown(safe)
-        pump_depth = swl + s_at_safe + config.seasonal_allowance_m + config.pump_submergence_min_m
-        if test.borehole_depth_m:
-            pump_depth = min(pump_depth, test.borehole_depth_m - 3.0)
-        pump_depth = math.ceil(pump_depth)
-
-    basis = (
-        f"Transmissivity {transmissivity:.1f} m2/day; drawdown projected to "
-        f"{t_design:.0f} days with storativity assumed {assumed_storativity:g} and "
-        f"effective radius {effective_radius_m} m; usable drawdown taken as "
-        f"{config.available_drawdown_fraction:.0%} of the available drawdown"
-        + (
-            f" {available:.1f} m (static level to pump intake less "
-            f"{config.pump_submergence_min_m:.0f} m submergence), after "
-            f"reserving a {config.seasonal_allowance_m:.0f} m dry-season "
-            "water-table decline"
-            if available
-            else ""
+    # bisect Q so projected drawdown equals the usable drawdown
+    q_lo, q_hi = 0.01, 200.0
+    if projected_drawdown(q_hi) <= usable:
+        # The search would hand back its ceiling as if it were an answer.
+        # Either the transmissivity is implausible or the drawdown budget is
+        # enormous; in both cases this test does not limit the yield.
+        return pending(
+            f"the drawdown projection does not limit the yield within {q_hi:g} "
+            "m3/h, so the usable drawdown is not the constraint; check the "
+            "transmissivity fit before relying on this test"
         )
+    for _ in range(80):
+        q_mid = 0.5 * (q_lo + q_hi)
+        if projected_drawdown(q_mid) > usable:
+            q_hi = q_mid
+        else:
+            q_lo = q_mid
+    long_term = q_lo
+    safe = long_term / config.safety_factor
+
+    s_at_safe = projected_drawdown(safe)
+    pump_depth = swl + s_at_safe + config.seasonal_allowance_m + config.pump_submergence_min_m
+    if test.borehole_depth_m:
+        pump_depth = min(pump_depth, test.borehole_depth_m - 3.0)
+    pump_depth = math.ceil(pump_depth)
+
+    method = METHOD_LABELS.get(transmissivity_source or "", "")
+    basis = (
+        f"Transmissivity {transmissivity:.1f} m2/day"
+        + (f" from the {method} fit" if method else "")
+        + f"; drawdown projected to {t_design:.0f} days with storativity assumed "
+        f"{assumed_storativity:g} and effective radius {effective_radius_m} m; "
+        f"usable drawdown taken as {config.available_drawdown_fraction:.0%} of "
+        f"the available drawdown {available:.1f} m (static level to pump intake "
+        f"less {config.pump_submergence_min_m:.0f} m submergence), after "
+        f"reserving a {config.seasonal_allowance_m:.0f} m dry-season "
+        "water-table decline"
         + (
             "; well losses from the step test are included"
             if step_result is not None
@@ -544,7 +683,7 @@ def recommend_yield(
         specific_capacity_m3hr_per_m=specific_capacity,
         available_drawdown_m=available,
         usable_drawdown_m=usable,
-        projected_drawdown_m=projected_drawdown(safe) if safe else None,
+        projected_drawdown_m=s_at_safe,
         long_term_yield_m3_per_h=long_term,
         safe_yield_m3_per_h=safe,
         safety_factor=config.safety_factor,
@@ -629,6 +768,29 @@ def attach_yield_envelope(
     )
 
 
+def _pumped_duration_min(test: PumpingTest) -> tuple[Optional[float], str]:
+    """``(minutes, kind)``: how long the aquifer was stressed at one rate.
+
+    A constant test is judged on the whole pumped duration; a step test on
+    the length of a step, which is also the time its end-of-step drawdowns
+    refer to when they are projected forward. ``kind`` is ``"step"`` or
+    ``"constant"``.
+    """
+    if test.test_type.startswith("step"):
+        length = test.step_length_min
+        if not length and test.steps:
+            first = test.steps[0].time_min
+            finite = first[np.isfinite(first)]
+            length = float(finite.max()) if len(finite) else None
+        return length, "step"
+    duration = test.pumping_duration_min
+    if not duration and test.steps:
+        times, _ = test.all_times_levels()
+        finite = times[np.isfinite(times)]
+        duration = float(finite.max()) if len(finite) else None
+    return duration, "constant"
+
+
 def analyse_pumping_test(
     test: PumpingTest,
     config: PumpingConfig | None = None,
@@ -641,7 +803,7 @@ def analyse_pumping_test(
     still produce curves and a report skeleton.
     """
     config = config or PumpingConfig()
-    analysis = PumpingTestAnalysis(test=test)
+    analysis = PumpingTestAnalysis(test=test, min_fit_r_squared=config.min_fit_r_squared)
     # drop parse-time discharge flags that the analyst has since resolved
     flags = [
         f
@@ -677,6 +839,53 @@ def analyse_pumping_test(
         tail = last.water_level_m[-3:]
         if len(tail) >= 2 and (np.max(tail) - np.min(tail)) <= 0.05:
             analysis.stabilised_level_m = float(np.mean(tail))
+            # Theis assumes an infinite aquifer whose drawdown never stops
+            # growing with log time; a level that has held still is being
+            # fed by something, and projecting it to 365 days is the wrong
+            # question.
+            flags.append(
+                DataFlag(
+                    "warning",
+                    "drawdown_stabilised",
+                    f"The pumped water level held at about "
+                    f"{analysis.stabilised_level_m:.2f} m over the last readings: "
+                    "a recharge boundary or leakage is indicated, so the "
+                    "Theis/Cooper-Jacob projection to the design period is not "
+                    "the governing check; the stabilised level is.",
+                )
+            )
+
+    # ---- test length ------------------------------------------------------
+    # The yield is projected to the design period on log time, so a short
+    # test is extrapolated over several decades of time from a curve that
+    # has not yet shown its late-time behaviour. Say how far.
+    duration, kind = _pumped_duration_min(test)
+    threshold = (
+        config.min_step_length_min if kind == "step" else config.min_constant_test_min
+    )
+    short_prefix = ""
+    if duration is not None and 0 < duration < threshold:
+        cycles = math.log10(config.design_period_days * MIN_PER_DAY / duration)
+        if kind == "step":
+            what = f"Each step ran for {duration:g} minutes"
+            short_prefix = f"Projected from {duration:g}-minute steps"
+        else:
+            what = f"The test pumped for {duration:g} minutes"
+            short_prefix = f"Projected from a {duration:g}-minute test"
+        short_prefix += (
+            f" ({cycles:.1f} log cycles to {config.design_period_days:g} days); "
+            "treat as indicative. "
+        )
+        flags.append(
+            DataFlag(
+                "warning",
+                "short_test",
+                f"{what}, below the {threshold:g} minutes needed to see late-time "
+                f"behaviour; the yield is extrapolated {cycles:.1f} log cycles of "
+                f"time to the {config.design_period_days:g}-day design period and "
+                "should be treated as indicative.",
+            )
+        )
 
     # ---- Cooper-Jacob and Theis on the first step -----------------------------
     # The first step pumps at a single rate from static conditions, so the
@@ -725,13 +934,46 @@ def analyse_pumping_test(
     if test.test_type.startswith("step") and swl is not None and len(test.steps) >= 2:
         with_q = [s for s in test.steps if s.discharge_m3_per_h is not None]
         if len(with_q) >= 2:
-            try:
-                analysis.step_test = hantush_bierschenk(
-                    [s.discharge_m3_per_h for s in with_q],
-                    [float(s.water_level_m[-1] - swl) for s in with_q],
+            # A step that ends at or above the static level has no drawdown
+            # to divide by: its s/Q is zero or negative, the intercept of the
+            # fit goes negative and the refit reports a borehole with no
+            # aquifer loss and 0% efficiency. A first step ending 4 m above
+            # static (a datum anomaly) is what the sheets actually hold.
+            positive = []
+            for s in with_q:
+                s_end = float(s.water_level_m[-1] - swl)
+                label = s.label or f"step {s.step_number}"
+                if not s_end > 0:
+                    flags.append(
+                        DataFlag(
+                            "warning",
+                            "step_negative_drawdown",
+                            f"{label} ends at {s_end:.2f} m drawdown, at or above "
+                            "the static level, so it is left out of the "
+                            "Hantush-Bierschenk fit; check the static level and "
+                            "the datum for that step.",
+                            context=label,
+                        )
+                    )
+                else:
+                    positive.append((s.discharge_m3_per_h, s_end))
+            if len(positive) >= 2:
+                try:
+                    analysis.step_test = hantush_bierschenk(
+                        [q for q, _ in positive], [s_end for _, s_end in positive]
+                    )
+                except ValueError as exc:
+                    flags.append(DataFlag("warning", "step_test_failed", str(exc)))
+            else:
+                flags.append(
+                    DataFlag(
+                        "warning",
+                        "step_test_pending",
+                        f"Step test analysis pending: only {len(positive)} step(s) "
+                        "with discharge show positive drawdown, and the fit "
+                        "needs at least two.",
+                    )
                 )
-            except ValueError as exc:
-                flags.append(DataFlag("warning", "step_test_failed", str(exc)))
         else:
             flags.append(
                 DataFlag(
@@ -741,14 +983,36 @@ def analyse_pumping_test(
                 )
             )
 
+    # ---- transmissivity ---------------------------------------------------------
+    method, fit, qualifies = analysis.adopted_fit()
+    if fit is not None and not qualifies:
+        scored = ", ".join(
+            f"{METHOD_LABELS[name]} {result.r_squared:.3f}"
+            for name, result in analysis.fits()
+        )
+        flags.append(
+            DataFlag(
+                "warning",
+                "transmissivity_low_confidence",
+                f"No fit reached R squared {config.min_fit_r_squared:g} ({scored}); "
+                f"the {METHOD_LABELS[method]} value of "
+                f"{fit.transmissivity_m2_per_day:.2f} m2/day is adopted as the "
+                "best available, so the yield rests on a poor fit.",
+            )
+        )
+
     # ---- yield ---------------------------------------------------------------
     analysis.yield_recommendation = recommend_yield(
         test,
         analysis.transmissivity_m2_per_day,
         analysis.step_test,
         config,
+        transmissivity_source=method,
     )
     attach_yield_envelope(analysis, config)
+    recommendation = analysis.yield_recommendation
+    if short_prefix and recommendation.safe_yield_m3_per_h is not None:
+        recommendation.basis = short_prefix + recommendation.basis
 
     analysis.flags = flags
     return analysis

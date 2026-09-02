@@ -220,3 +220,35 @@ def test_chiefdom_of_point_real_data():
     polys = load_chiefdom_polys()
     assert chiefdom_of_point(8.8817, -12.0442, polys) == "Makeni Town"
     assert chiefdom_of_point(8.0, -14.0, polys) == ""  # offshore
+
+
+def test_the_vectorised_join_agrees_with_the_point_by_point_one():
+    """assign_chiefdoms is the same answer as chiefdom_of_point for every
+    point, first polygon in file order, enclaves honoured; it exists because
+    the per-point walk took ten seconds per rerun on a national pull."""
+    import numpy as np
+
+    from groundwater.coverage import (
+        assign_chiefdoms,
+        chiefdom_of_point,
+        counts_from_groups,
+        group_points_by_chiefdom,
+        load_chiefdom_polys,
+    )
+
+    polys = load_chiefdom_polys()
+    rng = np.random.default_rng(7)
+    lats = rng.uniform(6.9, 10.0, 3000)
+    lons = rng.uniform(-13.4, -10.2, 3000)
+    points = [_wp(lat, lon, bool(i % 3)) for i, (lat, lon) in enumerate(zip(lats, lons, strict=True))]
+    # the Nongowa/Kenema Town enclave pair, the case the holes exist for
+    points.append(_wp(7.8767, -11.1875, True))
+    fast = assign_chiefdoms(points, polys)
+    slow = [chiefdom_of_point(wp.lat, wp.lon, polys) for wp in points]
+    assert fast == slow
+    assert sum(1 for name in fast if name) > 1500
+    grouped, unassigned = group_points_by_chiefdom(points, polys)
+    counts = counts_from_groups(grouped)
+    assert sum(c["total"] for c in counts.values()) + len(unassigned) == len(points)
+    assert all(c["functional"] <= c["total"] for c in counts.values())
+    assert assign_chiefdoms([], polys) == []

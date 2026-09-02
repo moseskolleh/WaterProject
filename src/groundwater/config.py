@@ -7,6 +7,7 @@ changes.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
@@ -71,6 +72,20 @@ class PumpingConfig:
     pump_submergence_min_m: float = 3.0  # minimum water column above pump
     seasonal_allowance_m: float = 2.0  # dry season decline allowance
     cooper_jacob_u_max: float = 0.05  # validity criterion for straight line fit
+    # A late-time slope below what a dipper can resolve (2 cm per log cycle)
+    # is reading noise or a level that has stabilised, and 2.303 Q / (4 pi
+    # slope) turns it into a transmissivity of thousands of m2/day that no
+    # basement borehole has. The fit is refused rather than reported.
+    cooper_jacob_min_slope_m: float = 0.02  # m per log cycle
+    cooper_jacob_min_r2: float = 0.8  # the line has to explain the window
+    # Fits below this R squared are passed over when choosing which
+    # transmissivity the yield rests on (recovery first, then Cooper-Jacob,
+    # then Theis, which is a curve fit with no R squared and always eligible).
+    min_fit_r_squared: float = 0.8
+    # A test shorter than this is projected over several log cycles of time
+    # to reach the design period, so its yield is flagged as indicative.
+    min_constant_test_min: float = 240.0  # pumped duration of a constant test
+    min_step_length_min: float = 60.0  # length of each step in a step test
 
 
 # ---------------------------------------------------------------------------
@@ -99,6 +114,26 @@ class DesignRules:
 # Top level configuration
 # ---------------------------------------------------------------------------
 
+def _coerce_like(current, value, key: str):
+    """``value`` as the type of the field it overrides.
+
+    YAML hands back whatever was typed: a quoted "2.0" is a string, and a
+    string safety factor multiplied a yield into a TypeError three pages
+    later. Numbers are coerced; anything else is passed through as typed.
+    """
+    if isinstance(current, bool) or value is None or isinstance(value, bool):
+        return value
+    if isinstance(current, (int, float)) and isinstance(value, (int, float, str)):
+        try:
+            number = float(value)
+        except ValueError as exc:
+            raise ValueError(f"config: '{key}' must be a number, not {value!r}") from exc
+        return int(number) if isinstance(current, int) and number == int(number) else number
+    if isinstance(current, str) and not isinstance(value, str):
+        return str(value)
+    return value
+
+
 @dataclass
 class Config:
     style: HouseStyle = field(default_factory=HouseStyle)
@@ -125,8 +160,23 @@ class Config:
         ):
             overrides = data.get(section_name, {}) or {}
             for key, value in overrides.items():
-                if hasattr(section, key):
-                    setattr(section, key, value)
+                if not hasattr(section, key):
+                    # a mis-keyed override (safety_factor under design:
+                    # instead of pumping:) used to vanish without a word
+                    warnings.warn(
+                        f"{path.name}: unknown key '{key}' under '{section_name}' "
+                        "is ignored; check the spelling and the section",
+                        stacklevel=2,
+                    )
+                    continue
+                setattr(section, key, _coerce_like(getattr(section, key), value, key))
+        for key in data:
+            if key not in ("style", "ves", "pumping", "design"):
+                warnings.warn(
+                    f"{path.name}: unknown section '{key}' is ignored "
+                    "(expected style, ves, pumping or design)",
+                    stacklevel=2,
+                )
         return cfg
 
     def dump(self, path: str | Path) -> None:

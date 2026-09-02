@@ -239,3 +239,38 @@ def test_a_report_without_the_projection_is_unchanged(analysis, tmp_path):
         tmp_path / "pumping_plain.docx")
     text = "\n".join(p.text for p in Document(str(out)).paragraphs)
     assert "Through the year" not in text
+
+
+def test_a_weekday_or_a_label_before_the_date_does_not_hide_the_month():
+    from groundwater.seasonal import month_of
+
+    assert month_of("Wed 25/04/2018") == (4, "")
+    assert month_of("Date: 14/09/2018") == (9, "")
+    assert month_of("14/09/2018 (dry)") == (9, "")
+    assert month_of("Sept 2018")[0] == 9
+    month, why = month_of("during the rains")
+    assert month is None and "does not name a month" in why
+    month, why = month_of("10/05/2018")
+    assert month is None and "either way round" in why
+
+
+def test_a_pump_that_runs_dry_in_the_drought_scenario_is_said_so(sample_data):
+    """The drought clause used to vanish from the summary when that scenario
+    had no yield, which read as if a drought year cost nothing."""
+    from dataclasses import replace
+
+    from groundwater.hydraulics import analyse_pumping_test
+    from groundwater.ingestion import read_pumping_workbook
+    from groundwater.seasonal import seasonal_yield
+
+    test = read_pumping_workbook(sample_data / "dr_timbo" / "dr_timbo_constant_test.xlsx")
+    swl = test.static_water_level_m
+    shallow = replace(test, pump_setting_m=swl + 7.5)
+    analysis = analyse_pumping_test(shallow)
+    assert analysis.yield_recommendation.safe_yield_m3_per_h is not None
+    result = seasonal_yield(analysis, month=9, annual_range_m=3.0)
+    drought = result.scenario("drought")
+    assert drought.safe_yield_m3_per_h is None
+    assert "No yield at this level" in drought.note and "pump intake" in drought.note
+    assert "dry" in result.summary
+    assert result.dry_season_loss_percent is not None

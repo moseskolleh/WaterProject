@@ -15,6 +15,7 @@ allowed interval.
 from __future__ import annotations
 
 import csv
+import functools
 import re
 from dataclasses import dataclass
 from importlib import resources
@@ -252,15 +253,28 @@ def canonical_values(
     return values
 
 
+@functools.lru_cache(maxsize=1)
+def _bundled_rows() -> tuple[dict, ...]:
+    """The bundled CSV, parsed once per process.
+
+    assess_sample used to open and parse the file about twenty-six times
+    per sample (once per ion the ionic balance and the corrosivity indices
+    asked for); the portfolio and the Streamlit pages assess every borehole
+    on each rerun, and the Pyodide build pays for file IO dearly. Callers
+    still get fresh StandardEntry objects, so a table they edit stays theirs.
+    """
+    source = resources.files("groundwater.data").joinpath("who_guidelines.csv")
+    with source.open("r", encoding="utf-8") as fh:
+        return tuple(csv.DictReader(fh))
+
+
 def load_standards(path: str | Path | None = None) -> dict[str, StandardEntry]:
     """Load the standards table keyed by normalised parameter name."""
     if path is None:
-        source = resources.files("groundwater.data").joinpath("who_guidelines.csv")
-        fh = source.open("r", encoding="utf-8")
+        rows = _bundled_rows()
     else:
-        fh = open(path, "r", encoding="utf-8")
-    with fh:
-        rows = list(csv.DictReader(fh))
+        with open(path, "r", encoding="utf-8") as fh:
+            rows = list(csv.DictReader(fh))
     table: dict[str, StandardEntry] = {}
     for row in rows:
         entry = StandardEntry(
