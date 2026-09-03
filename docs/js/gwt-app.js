@@ -343,7 +343,11 @@
     if (sources.ves) {
       try {
         var sheets = await S.readXlsx(S.base64ToBytes(sources.ves.b64));
-        derived.soundings = C.readVesSheets(sheets, sources.ves.name);
+        var skippedSheets = [];
+        derived.soundings = C.readVesSheets(sheets, sources.ves.name, skippedSheets);
+        /* a sheet the reader could not use is named with the reason */
+        derived.skippedVesSheets = skippedSheets;
+        skippedSheets.forEach(function (flag) { S.toast(flag.message, 'warn'); });
       } catch (e) {
         S.toast('VES sheet: ' + e.message, 'error');
       }

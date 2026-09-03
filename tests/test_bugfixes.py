@@ -763,3 +763,68 @@ def test_coordinate_flag_uses_west_hemisphere():
 
     text = _fmt_latlon(8.5859, -12.4562)
     assert text == "8.5859 N, 12.4562 W"
+
+
+def test_the_design_basis_does_not_contradict_itself_when_a_strike_is_clipped():
+    """A strike above the static-level floor used to leave 'screens
+    positioned against the water strikes (8 m)' beside 'no aquifer intervals
+    identified' in the client document, and blocked the VES fallback."""
+    from groundwater.design import design_borehole
+    from groundwater.models import DrillingLog, LayeredModel, LithologyInterval, SiteMetadata
+    from groundwater.ves.interpret import SiteInterpretation
+
+    log = DrillingLog(
+        site=SiteMetadata(community="X"), total_depth_m=40.0,
+        intervals=[LithologyInterval(0.0, 40.0, "dry granite")],
+        water_strikes_m=[8.0],
+    )
+    design = design_borehole(log=log, static_water_level_m=12.0)
+    placement = [b for b in design.design_basis if "screens positioned" in b or "default" in b]
+    assert len(placement) == 1 and "water strikes" not in placement[0]
+    assert any(f.code == "default_screens" for f in design.flags)
+    top = design.screens[0].top_m
+    assert top == round(top * 2) / 2   # the fallback top is rounded like every other
+
+    interpretation = SiteInterpretation(
+        sounding_id="S", model=LayeredModel(resistivities=[300.0, 60.0, 3000.0],
+                                              thicknesses=[5.0, 30.0]),
+        curve_type="H", layers=[], water_zones=[(20.0, 30.0)], depth_to_basement_m=35.0,
+        aquifer_thickness_m=10.0, max_drilling_depth_m=50.0, investigation_depth_m=100.0,
+        score=1.0,
+    )
+    with_ves = design_borehole(log=log, interpretation=interpretation, static_water_level_m=12.0)
+    assert any("VES interpretation" in b for b in with_ves.design_basis)
+    assert not any("water strikes" in b for b in with_ves.design_basis)
+    assert with_ves.screens[0].top_m == 20.0 and with_ves.screens[0].bottom_m == 30.0
+
+
+def test_the_design_flags_its_own_annulus_and_an_impossible_pump_intake():
+    from groundwater.config import DesignRules
+    from groundwater.design import design_borehole
+    from groundwater.models import DrillingLog, LithologyInterval, SiteMetadata
+
+    log = DrillingLog(
+        site=SiteMetadata(community="X"), total_depth_m=50.0,
+        intervals=[LithologyInterval(0.0, 20.0, "laterite"),
+                   LithologyInterval(20.0, 50.0, "fractured granite, water bearing")],
+        water_strikes_m=[25.0],
+    )
+    default = design_borehole(log=log, static_water_level_m=10.0)
+    thin = [f for f in default.flags if f.code == "thin_annulus"]
+    assert thin and thin[0].level == "warning" and "19 mm" in thin[0].message
+    # 8 in over 4 in is 51 mm: placeable, but still only a formation stabiliser
+    wide = design_borehole(log=log, static_water_level_m=10.0,
+                           rules=DesignRules(borehole_diameter_in=8.0, casing_diameter_in=4.0))
+    assert [f.level for f in wide.flags if f.code == "thin_annulus"] == ["info"]
+    filter_pack = design_borehole(log=log, static_water_level_m=10.0,
+                                  rules=DesignRules(borehole_diameter_in=10.0, casing_diameter_in=4.0))
+    assert not any(f.code == "thin_annulus" for f in filter_pack.flags)
+
+    too_deep = design_borehole(log=log, static_water_level_m=10.0, pump_intake_m=80.0)
+    assert any(f.code == "pump_intake_below_hole" and f.level == "error" for f in too_deep.flags)
+    screened = design_borehole(log=log, static_water_level_m=10.0, pump_intake_m=27.0)
+    assert any(f.code == "pump_intake_in_screen" for f in screened.flags)
+    dry = design_borehole(log=log, static_water_level_m=10.0, pump_intake_m=8.0)
+    assert any(f.code == "pump_intake_above_swl" for f in dry.flags)
+    fine = design_borehole(log=log, static_water_level_m=10.0, pump_intake_m=18.0)
+    assert not any(f.code.startswith("pump_intake") for f in fine.flags)

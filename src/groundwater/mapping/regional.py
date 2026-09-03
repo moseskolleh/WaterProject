@@ -19,6 +19,7 @@ be dropped in without code changes.
 from __future__ import annotations
 
 import csv
+import functools
 import io
 import json
 import math
@@ -94,14 +95,22 @@ def _ring_centroid(ring: np.ndarray) -> tuple[float, float]:
     return float(cx), float(cy)
 
 
+@functools.lru_cache(maxsize=8)
+def _bundled_geojson(name: str) -> dict:
+    """A bundled layer, parsed once per process.
+
+    district_of and chiefdom_of re-read and re-parsed 240 KB of GeoJSON on
+    every Streamlit rerun; the parsed dict is shared and never mutated by
+    the loaders, which build their own arrays from it.
+    """
+    text = (resources.files("groundwater") / "data" / name).read_text(encoding="utf-8")
+    return json.loads(text)
+
+
 def _read_geojson(name: str, path: str | Path | None) -> dict:
     if path is not None:
-        text = Path(path).read_text(encoding="utf-8")
-    else:
-        text = (resources.files("groundwater") / "data" / name).read_text(
-            encoding="utf-8"
-        )
-    return json.loads(text)
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    return _bundled_geojson(name)
 
 
 def load_geology(path: str | Path | None = None) -> list[GeologyUnit]:
@@ -204,11 +213,22 @@ def _point_in_ring(lon: float, lat: float, ring: np.ndarray) -> bool:
 def district_of(
     lat: float, lon: float, admin_path: str | Path | None = None
 ) -> str:
-    """The district containing a point, from the boundary polygons.
+    """The district containing a point, as the districts are today.
 
-    Returns an empty string when the point falls outside every
-    district (offshore, across the border, or wrong coordinates).
+    The bundled district polygons predate the 2017 creation of Karene and
+    Falaba, so a point is placed in its chiefdom first and the chiefdom's
+    current district read from the crosswalk; only a point inside no
+    chiefdom polygon (a boundary gap in the simplified layer) falls back to
+    the district polygons. Kamakwie used to come back as Bombali, and the
+    app pre-filled that district and its province without a word.
+
+    Returns an empty string when the point falls outside every district
+    (offshore, across the border, or wrong coordinates).
     """
+    if admin_path is None:
+        _, district = chiefdom_of(lat, lon)
+        if district:
+            return district
     _, districts = load_admin(admin_path)
     for district in districts:
         for ring in district.rings:
@@ -255,17 +275,26 @@ def chiefdom_of(
     """The chiefdom and its district containing a point.
 
     Returns ``(chiefdom, district)`` or ``("", "")`` when the point falls
-    outside every chiefdom.
+    outside every chiefdom. The district is the current one from the
+    crosswalk (Karene and Falaba included), not the pre-2017 parent the
+    boundary release carried.
     """
-    for area in load_chiefdoms(path):
+    current = _current_district_of_chiefdom() if path is None else {}
+    for area in _cached_chiefdoms() if path is None else load_chiefdoms(path):
         for i, ring in enumerate(area.rings):
             if not _point_in_ring(lon, lat, ring):
                 continue
             inner = area.holes[i] if i < len(area.holes) else []
             if any(_point_in_ring(lon, lat, hole) for hole in inner):
                 continue  # inside an enclave: it belongs to the chiefdom there
-            return area.name, area.district
+            return area.name, current.get(area.name, area.district)
     return "", ""
+
+
+@functools.lru_cache(maxsize=1)
+def _cached_chiefdoms() -> tuple:
+    """The bundled chiefdom areas, built once; callers only read them."""
+    return tuple(load_chiefdoms())
 
 
 def _site_lonlat(site: SiteMetadata) -> tuple[float, float] | None:
@@ -304,6 +333,16 @@ def _ring_span_km(rings: list[np.ndarray]) -> float:
     return max(dlat, dlon) / 2.0
 
 
+@functools.lru_cache(maxsize=1)
+def _bundled_crosswalk() -> dict[str, str]:
+    text = (resources.files("groundwater") / "data"
+            / "sl_chiefdom_district.csv").read_text(encoding="utf-8")
+    return {
+        row["chiefdom"].strip(): row["district"].strip()
+        for row in csv.DictReader(io.StringIO(text))
+    }
+
+
 def _current_district_of_chiefdom(path: str | Path | None = None) -> dict[str, str]:
     """Chiefdom -> the district it is in *today*.
 
@@ -312,11 +351,9 @@ def _current_district_of_chiefdom(path: str | Path | None = None) -> dict[str, s
     polygon of their own and the chiefdom polygons still name the districts
     they were split from. This crosswalk is what knows the current answer.
     """
-    if path is not None:
-        text = Path(path).read_text(encoding="utf-8")
-    else:
-        text = (resources.files("groundwater") / "data"
-                / "sl_chiefdom_district.csv").read_text(encoding="utf-8")
+    if path is None:
+        return dict(_bundled_crosswalk())
+    text = Path(path).read_text(encoding="utf-8")
     return {
         row["chiefdom"].strip(): row["district"].strip()
         for row in csv.DictReader(io.StringIO(text))

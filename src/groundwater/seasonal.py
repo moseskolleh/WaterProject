@@ -120,16 +120,21 @@ def month_of(text) -> tuple[int | None, str]:
     if not raw:
         return None, "No date is recorded for the test."
 
-    name = re.search(r"[A-Za-z]{3,}", raw)
-    if name:
-        head = name.group(0).lower()[:3]
+    # A month written by name settles it wherever it sits in the text. Only
+    # the first word used to be looked at, so "Wed 25/04/2018" and
+    # "Date: 14/09/2018" - both perfectly clear - were reported as naming
+    # no month at all.
+    words = re.findall(r"[A-Za-z]{3,}", raw)
+    for word in words:
+        head = word.lower()[:3]
         for index, month in enumerate(MONTH_NAMES, start=1):
             if month.lower().startswith(head):
                 return index, ""
-        return None, f"The date {raw!r} does not name a month."
 
     parts = [int(p) for p in re.findall(r"\d+", raw)]
     if len(parts) < 3:
+        if words:
+            return None, f"The date {raw!r} does not name a month."
         return None, f"The date {raw!r} is not a full date."
 
     # An ISO date is unambiguous: a four-digit year can only be the year.
@@ -244,8 +249,11 @@ class SeasonalYield:
         design = self.scenario("dry_season")
         if not tested or not design:
             return None
-        if not tested.safe_yield_m3_per_h or design.safe_yield_m3_per_h is None:
+        if not tested.safe_yield_m3_per_h:
             return None
+        if design.safe_yield_m3_per_h is None:
+            # the dry season takes all of it: the pump is dry at the annual low
+            return 100.0
         return (1.0 - design.safe_yield_m3_per_h
                 / tested.safe_yield_m3_per_h) * 100.0
 
@@ -253,15 +261,29 @@ class SeasonalYield:
     def summary(self) -> str:
         if self.pending_reason:
             return self.pending_reason
+        tested = self.scenario("as_tested")
         design = self.scenario("dry_season")
         drought = self.scenario("drought")
-        if design is None or design.safe_yield_m3_per_h is None:
+        if design is None:
             return "The seasonal yield could not be established."
-        text = (f"Sized on the end of the dry season: "
-                f"{design.safe_yield_m3_per_h:.2g} m3/h")
-        if drought and drought.safe_yield_m3_per_h is not None:
-            text += (f", falling to {drought.safe_yield_m3_per_h:.2g} m3/h in "
-                     "a drought year")
+        if design.safe_yield_m3_per_h is None:
+            # Not "could not be established": it was, and the answer is that
+            # the pump runs dry before the annual low is reached.
+            text = ("No yield at the end of the dry season: the pump would be "
+                    "dry at the dry-season low")
+            if tested and tested.safe_yield_m3_per_h is not None:
+                text += (f" (the test itself gave "
+                         f"{tested.safe_yield_m3_per_h:.2g} m3/h)")
+        else:
+            text = (f"Sized on the end of the dry season: "
+                    f"{design.safe_yield_m3_per_h:.2g} m3/h")
+            if drought and drought.safe_yield_m3_per_h is not None:
+                text += (f", falling to {drought.safe_yield_m3_per_h:.2g} m3/h "
+                         "in a drought year")
+            elif drought is not None:
+                # a clause that used to be dropped, which read as if a
+                # drought year cost nothing
+                text += ", and the pump would be dry in a drought year"
         if self.month:
             text += (f". The test was run in {MONTH_NAMES[self.month - 1]}, "
                      f"the {self.season}")
@@ -357,6 +379,13 @@ def seasonal_yield(analysis, config: PumpingConfig | None = None, *,
                 f" No further decline is reserved: a test run in "
                 f"{MONTH_NAMES[found_month - 1]} is already at or below this "
                 "level.")
+        if trial.safe_yield_m3_per_h is None:
+            # the pump would be dry at this level; the table cell is blank,
+            # so the note has to carry the reason
+            note_text += (
+                " No yield at this level: "
+                + (trial.pending_reason
+                   or "the projection leaves no usable drawdown") + ".")
         scenarios.append(SeasonalScenario(
             key=key, title=title, decline_m=decline,
             static_water_level_m=lowered.static_water_level_m,

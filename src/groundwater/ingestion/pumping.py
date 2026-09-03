@@ -500,15 +500,23 @@ def _assemble(grid: list[list], source: str) -> PumpingTest:
                 "and yield results are pending until discharge values are supplied.",
             )
         )
-    if swl is not None and steps:
-        if any(np.any(s.water_level_m < swl - 0.01) for s in steps):
+    if swl is not None:
+        # The recovery limb is checked too: a recovery that overshoots the
+        # static level gives negative residual drawdown, and the recovery
+        # transmissivity - the one the yield prefers - is fitted through it.
+        above = []
+        if steps and any(np.any(s.water_level_m < swl - 0.01) for s in steps):
+            above.append("pumping")
+        if recovery_level is not None and np.any(recovery_level < swl - 0.01):
+            above.append("recovery")
+        if above:
             flags.append(
                 DataFlag(
                     "warning",
                     "water_level_above_static",
-                    "Some pumping water levels are above the stated static water "
-                    "level, giving negative drawdown. Check the static level and "
-                    "the measuring datum on the sheet.",
+                    f"Some {' and '.join(above)} water levels are above the "
+                    "stated static water level, giving negative drawdown. Check "
+                    "the static level and the measuring datum on the sheet.",
                 )
             )
     for s in steps:

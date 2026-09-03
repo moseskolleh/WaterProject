@@ -176,3 +176,31 @@ def test_report_is_reproducible(tmp_path: Path):
     a = build_cost_report(CostReportInputs(**kwargs), tmp_path / "a.docx")
     b = build_cost_report(CostReportInputs(**kwargs), tmp_path / "b.docx")
     assert a.read_bytes() == b.read_bytes()
+
+
+def test_the_boq_workbook_carries_the_whole_summary_from_editable_assumptions(tmp_path: Path):
+    """The workbook used to stop at the contract price with the percentages
+    baked into the formulas, so the client's budget, VAT and cost per metre
+    were in the report but not in the file they download as the BoQ."""
+    est = estimate_borehole_cost(
+        CostingInputs(total_depth_m=50, mobilisation_distance_km=100),
+        vat_percent=15.0,
+    )
+    ws = load_workbook(write_boq_workbook(est, tmp_path / "boq.xlsx")).active
+    labels = {c.value for row in ws.iter_rows(min_col=3, max_col=3) for c in row if c.value}
+    for label in ("Planning budget", "VAT/GST", "Cost per metre drilled",
+                  "Price including VAT", "Contingency", "Exchange rate (SLE per USD)"):
+        assert label in labels, label
+    formulas = [c.value for row in ws.iter_rows(min_col=7, max_col=7)
+                for c in row if isinstance(c.value, str) and c.value.startswith("=")]
+    assert any("$E$" in f for f in formulas)          # the summary reads the assumption cells
+    assert not any("0.15" in f or "1.2" in f for f in formulas)  # no literal percentages
+    sle = [c.value for row in ws.iter_rows(min_col=8, max_col=8)
+           for c in row if isinstance(c.value, str) and c.value.startswith("=")]
+    assert sle and all("$E$" in f for f in sle)
+    # the assumption cells hold the estimate's own figures
+    values = {ws.cell(row=r, column=3).value: ws.cell(row=r, column=5).value
+              for r in range(1, ws.max_row + 1)}
+    assert values["VAT/GST (%)"] == 15.0
+    assert values["Total depth drilled (m)"] == 50
+    assert values["Exchange rate (SLE per USD)"] == est.exchange_rate_sle_per_usd

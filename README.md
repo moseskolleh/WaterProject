@@ -202,7 +202,8 @@ project layout:
 
 ```
 <project>/
-    project.yaml     site metadata and configuration overrides
+    project.yaml     site metadata
+    config.yaml      optional configuration overrides
     raw/             field data exactly as received
     processed/       parsed and derived tables (CSV)
     figures/         all generated figures (PNG)
@@ -221,6 +222,24 @@ streamlit run app/streamlit_app.py
 The field team can upload template files, review the automatic data
 checks, supply missing values (for example step discharges), and
 download figures and reports without touching code.
+
+## Command line
+
+For batch work without either app - forty saved projects to re-run after
+a standards-table update, a programme table to build, templates to hand
+out - the same library calls are on the command line:
+
+```bash
+groundwater recompute project.yaml --json summary.json   # rebuild a saved project's analyses
+groundwater portfolio *.yaml --csv programme.csv --map programme.png
+groundwater templates ./templates                        # the five field templates
+groundwater extract field_sheet.pdf --out ./review       # a text-layer PDF into a review workbook
+```
+
+`recompute` prints one line per saved source and exits non-zero when one
+could not be rebuilt, so a shell loop over a folder of project files
+stops on the file that needs attention. `python -m groundwater` is the
+same thing.
 
 ## Package layout
 

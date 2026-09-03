@@ -100,14 +100,31 @@ def committee_records(data) -> list[dict]:
     return records
 
 
+PROJECT_FORMAT = "groundwater-toolkit-project"
+PROJECT_SCHEMA = 1
+
+
+def _plain_scalar(value):
+    """A numpy scalar as the Python number it is; yaml.safe_dump refuses
+    numpy types, and np.float64 passes an isinstance(float) check."""
+    item = getattr(value, "item", None)
+    if callable(item) and not isinstance(value, (str, bytes)):
+        try:
+            return item()
+        except (TypeError, ValueError):
+            return value
+    return value
+
+
 def serialize_project(session: dict, version: str) -> bytes:
     """Serialise the saveable parts of a session-state mapping to YAML bytes."""
-    state = {
-        key: value
-        for key, value in session.items()
-        if key.startswith(PERSIST_PREFIXES)
-        and isinstance(value, (str, int, float, bool))
-    }
+    state = {}
+    for key, value in session.items():
+        if not key.startswith(PERSIST_PREFIXES):
+            continue
+        plain = _plain_scalar(value)
+        if isinstance(plain, (str, int, float, bool)):
+            state[key] = plain
     committee = session.get("ho_committee_data")
     sources = {}
     for key, value in session.items():
@@ -119,6 +136,11 @@ def serialize_project(session: dict, version: str) -> bytes:
     asset = session.get("asset_record")
     payload = {
         "groundwater_toolkit_project": version,
+        # the file's own schema number, independent of the toolkit version,
+        # so a later layout can be migrated on load and a newer file warned
+        # about instead of half-read
+        "format": PROJECT_FORMAT,
+        "schema": PROJECT_SCHEMA,
         "rates_overrides": session.get("rates_overrides", {}) or {},
         "committee": committee if isinstance(committee, list) else [],
         "sources": sources,
@@ -148,13 +170,33 @@ def deserialize_project(raw: bytes) -> dict:
         raise ValueError("could not parse project file") from exc
     if not isinstance(payload, dict) or not isinstance(payload.get("state"), dict):
         raise ValueError("not a valid project file")
+    try:
+        return _updates_from_payload(payload)
+    except ValueError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - a hand-edited file is a message, not a traceback
+        raise ValueError(f"could not read project file: {exc}") from exc
 
+
+def _updates_from_payload(payload: dict) -> dict:
     updates: dict = {}
+    warnings: list[str] = []
+    schema = payload.get("schema")
+    if isinstance(schema, (int, float)) and schema > PROJECT_SCHEMA:
+        warnings.append(
+            f"This file was saved in project format {int(schema)}; this "
+            f"toolkit reads format {PROJECT_SCHEMA}. Inputs it does not "
+            "recognise are not restored."
+        )
     for key, value in payload["state"].items():
-        if key.startswith(PERSIST_PREFIXES) and isinstance(
+        # a hand-edited file can carry an integer key, which has no
+        # startswith(); str() keeps the check honest instead of crashing it
+        if str(key).startswith(PERSIST_PREFIXES) and isinstance(
             value, (str, int, float, bool)
         ):
-            updates[key] = value
+            updates[str(key)] = value
+    if warnings:
+        updates["warnings"] = warnings
 
     overrides = payload.get("rates_overrides") or {}
     if isinstance(overrides, dict):

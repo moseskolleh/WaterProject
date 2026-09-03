@@ -35,3 +35,11 @@ Uranium,mg/L,0.03,,0.03,provisional,metal,Provisional health based guideline
 Antimony,mg/L,0.02,,0.02,provisional,metal,Health based guideline
 E. coli,CFU/100 mL,0,,0,provisional,microbiological,Must not be detectable in any 100 mL sample
 Total coliforms,CFU/100 mL,,0,0,provisional,microbiological,Indicator of treatment effectiveness and integrity; national limit 0
+Colour,TCU,,15,15,provisional,physical,Acceptability; consumers notice colour above about 15 TCU
+Total suspended solids,mg/L,,,,,physical,No guideline value
+Carbonate,mg/L,,,,,major ion,No guideline value; carried for the ionic balance
+Nitrate (as N),mg/L,11,,11,provisional,inorganic,The 50 mg/L nitrate guideline expressed as nitrogen (divide by 4.43)
+Nitrite (as N),mg/L,0.9,,0.9,provisional,inorganic,The 3 mg/L nitrite guideline expressed as nitrogen (divide by 3.29)
+Phosphate,mg/L,,,,,inorganic,No guideline value
+Silica,mg/L,,,,,inorganic,No guideline value
+Free chlorine,mg/L,5,,5,provisional,inorganic,Health based guideline; 0.2 to 0.5 mg/L residual is the operational target at the point of delivery

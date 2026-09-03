@@ -15,6 +15,7 @@ allowed interval.
 from __future__ import annotations
 
 import csv
+import functools
 import re
 from dataclasses import dataclass
 from importlib import resources
@@ -127,12 +128,73 @@ _ALIASES = {
     "sulphate": "sulfate",
     "so4": "sulfate",
     "aluminum": "aluminium",
+    # the spellings a Sierra Leone certificate actually carries
+    "total alkalinity": "alkalinity",
+    "alkalinity (as caco3)": "alkalinity",
+    "alkalinity as caco3": "alkalinity",
+    "total alkalinity as caco3": "alkalinity",
+    "total iron": "iron",
+    "iron (total)": "iron",
+    "total dissolved solid": "tds",
+    "dissolved solids": "tds",
+    "specific conductance": "electrical conductivity",
+    "ph value": "ph",
+    "color": "colour",
+    "true colour": "colour",
+    "apparent colour": "colour",
+    "thermotolerant coliforms": "e. coli",
+    "thermotolerant coliform": "e. coli",
+    "faecal coliform": "e. coli",
+    "fecal coliform": "e. coli",
+    "total coliform": "total coliforms",
+    "residual chlorine": "free chlorine",
+    "chlorine residual": "free chlorine",
+    "free residual chlorine": "free chlorine",
+    "nitrate-n": "nitrate (as n)",
+    "nitrate n": "nitrate (as n)",
+    "nitrate as n": "nitrate (as n)",
+    "nitrate nitrogen": "nitrate (as n)",
+    "no3-n": "nitrate (as n)",
+    "nitrite-n": "nitrite (as n)",
+    "nitrite n": "nitrite (as n)",
+    "nitrite as n": "nitrite (as n)",
+    "nitrite nitrogen": "nitrite (as n)",
+    "no2-n": "nitrite (as n)",
+    "orthophosphate": "phosphate",
+    "phosphate (as po4)": "phosphate",
+    "po4": "phosphate",
+    "silica (as sio2)": "silica",
+    "sio2": "silica",
+    "tss": "total suspended solids",
+    "suspended solids": "total suspended solids",
+    "co3": "carbonate",
+    "hco3": "bicarbonate",
 }
+
+# "Iron (Fe)", "Turbidity (NTU)", "Conductivity (EC)", "Temperature (°C)":
+# a trailing bracket that is a symbol or a unit, not a basis ("(as NO3)")
+# and not the table's own qualifier ("(total)")
+_TRAILING_QUALIFIER_RE = re.compile(r"\s*\((?!\s*as\s)[^)]*\)\s*$")
 
 
 def normalise_parameter(name: str) -> str:
-    key = re.sub(r"\s+", " ", name.strip().lower())
-    return _ALIASES.get(key, key)
+    """The standards-table key a certificate's parameter name refers to.
+
+    Every laboratory writes the same determinand differently ("Iron (Fe)",
+    "Total iron", "Nitrate (NO3)", "pH value"). The assessment is
+    fail-closed - an unknown name makes the whole sample "not proven safe" -
+    so name resolution is load-bearing, and it used to know only the
+    template's own spellings.
+    """
+    key = re.sub(r"\s+", " ", str(name or "").strip().lower())
+    if key in _ALIASES:
+        return _ALIASES[key]
+    stripped = _TRAILING_QUALIFIER_RE.sub("", key)
+    if stripped != key:
+        # "chromium (total)" strips to "chromium", which the aliases map
+        # straight back; "iron (fe)" strips to "iron", a table key
+        return _ALIASES.get(stripped, stripped)
+    return key
 
 
 _PARAMETER_BASIS_RE = re.compile(r"\(\s*as\s+([^)]+?)\s*\)")
@@ -252,15 +314,28 @@ def canonical_values(
     return values
 
 
+@functools.lru_cache(maxsize=1)
+def _bundled_rows() -> tuple[dict, ...]:
+    """The bundled CSV, parsed once per process.
+
+    assess_sample used to open and parse the file about twenty-six times
+    per sample (once per ion the ionic balance and the corrosivity indices
+    asked for); the portfolio and the Streamlit pages assess every borehole
+    on each rerun, and the Pyodide build pays for file IO dearly. Callers
+    still get fresh StandardEntry objects, so a table they edit stays theirs.
+    """
+    source = resources.files("groundwater.data").joinpath("who_guidelines.csv")
+    with source.open("r", encoding="utf-8") as fh:
+        return tuple(csv.DictReader(fh))
+
+
 def load_standards(path: str | Path | None = None) -> dict[str, StandardEntry]:
     """Load the standards table keyed by normalised parameter name."""
     if path is None:
-        source = resources.files("groundwater.data").joinpath("who_guidelines.csv")
-        fh = source.open("r", encoding="utf-8")
+        rows = _bundled_rows()
     else:
-        fh = open(path, "r", encoding="utf-8")
-    with fh:
-        rows = list(csv.DictReader(fh))
+        with open(path, "r", encoding="utf-8") as fh:
+            rows = list(csv.DictReader(fh))
     table: dict[str, StandardEntry] = {}
     for row in rows:
         entry = StandardEntry(

@@ -28,13 +28,22 @@ gis = ["geopandas>=0.14", "pyproj>=3.6"]
 # floor accordingly and mirror the deployment cap in requirements.txt.
 app = ["streamlit>=1.57,<2"]
 extract = ["pdfplumber>=0.10"]
-ai = ["anthropic>=0.40"]
+# 0.78 is the first SDK whose messages.create accepts output_config (the
+# JSON-schema structured output) and adaptive thinking, which the extractor
+# sends; an older client satisfied ">=0.40" and failed with a TypeError at
+# the moment a field officer pressed Extract.
+ai = ["anthropic>=0.78"]
 # segno and opencv are the two independent oracles the QR encoder is held
 # to - one encodes the same standard, the other reads the result back. They
 # are test-only: nothing the toolkit ships imports either.
 # ruff is pinned to the exact version CI runs, so "it lints here" and "it
 # lints in CI" mean the same thing.
 dev = ["pytest>=7.4", "segno>=1.6", "opencv-python-headless>=4.8", "ruff==0.16.4"]
+
+[project.scripts]
+# batch use without the apps: recompute saved projects, pool a portfolio,
+# write templates, read a scanned sheet
+groundwater = "groundwater.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

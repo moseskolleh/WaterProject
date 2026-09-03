@@ -113,16 +113,32 @@ def _target_zones(
     total_depth: float,
     rules: DesignRules,
 ) -> tuple[list[tuple[float, float]], list[str]]:
-    """Candidate aquifer intervals from strikes, lithology and VES."""
+    """Candidate aquifer intervals from strikes, lithology and VES.
+
+    The basis sentences are written from the zones that survive clipping,
+    not from the candidates: a strike above the static-level floor used to
+    leave "screens positioned against the water strikes (8 m)" in the client
+    document beside "no aquifer intervals identified", and blocked the VES
+    fallback while contributing no screen.
+    """
+    floor = (swl or 0.0) + rules.min_screen_below_swl_m
+
+    def clip(candidates):
+        clipped = []
+        for top, bottom in candidates:
+            top = math.ceil(max(top, floor) * 2.0) / 2.0
+            bottom = math.floor(min(bottom, total_depth - rules.sump_length_m) * 2.0) / 2.0
+            if bottom - top >= 1.0:
+                clipped.append((top, bottom))
+        return clipped
+
     basis = []
-    zones: list[tuple[float, float]] = []
+    strike_zones: list[tuple[float, float]] = []
+    litho_zones: list[tuple[float, float]] = []
     if log is not None and log.water_strikes_m:
-        for strike in log.water_strikes_m:
-            zones.append((max(strike - 1.0, 0.0), strike + 5.0))
-        basis.append(
-            "screens positioned against the water strikes recorded in the "
-            "drilling log (" + ", ".join(f"{w:g} m" for w in log.water_strikes_m) + ")"
-        )
+        strike_zones = [
+            (max(strike - 1.0, 0.0), strike + 5.0) for strike in log.water_strikes_m
+        ]
     if log is not None:
         for interval in log.intervals:
             text = interval.description.lower()
@@ -130,23 +146,27 @@ def _target_zones(
                 continue  # e.g. "dry, no water struck" is not an aquifer
             words = set(re.findall(r"[a-z]+", text))
             if (words & _AQUIFER_WORDS) or any(p in text for p in _AQUIFER_PHRASES):
-                zones.append((interval.top_m, interval.bottom_m))
-    if not zones and interpretation is not None and interpretation.water_zones:
-        zones = [(t, b) for t, b in interpretation.water_zones]
+                litho_zones.append((interval.top_m, interval.bottom_m))
+    kept_strikes = [
+        strike for strike, zone in zip(log.water_strikes_m if log else [], strike_zones,
+                                       strict=True)
+        if clip([zone])
+    ]
+    clipped = clip(strike_zones) + clip(litho_zones)
+    if kept_strikes:
         basis.append(
-            "screens positioned against the low resistivity zones of the VES "
-            "interpretation ("
-            + ", ".join(f"{int(t)}-{int(b)} m" for t, b in interpretation.water_zones)
-            + ")"
+            "screens positioned against the water strikes recorded in the "
+            "drilling log (" + ", ".join(f"{w:g} m" for w in kept_strikes) + ")"
         )
-    # clip to the hole, keep below the static level margin, round to 0.5 m
-    floor = (swl or 0.0) + rules.min_screen_below_swl_m
-    clipped = []
-    for top, bottom in zones:
-        top = math.ceil(max(top, floor) * 2.0) / 2.0
-        bottom = math.floor(min(bottom, total_depth - rules.sump_length_m) * 2.0) / 2.0
-        if bottom - top >= 1.0:
-            clipped.append((top, bottom))
+    if not clipped and interpretation is not None and interpretation.water_zones:
+        clipped = clip([(t, b) for t, b in interpretation.water_zones])
+        if clipped:
+            basis.append(
+                "screens positioned against the low resistivity zones of the VES "
+                "interpretation ("
+                + ", ".join(f"{int(t)}-{int(b)} m" for t, b in interpretation.water_zones)
+                + ")"
+            )
     clipped.sort()
     merged: list[tuple[float, float]] = []
     for zone in clipped:
@@ -211,7 +231,9 @@ def design_borehole(
         floor = (swl or 0.0) + rules.min_screen_below_swl_m
         sump_top = max(total_depth_m - rules.sump_length_m, 0.0)
         bottom = sump_top
-        top = max(total_depth_m * 2.0 / 3.0, floor)
+        # rounded to 0.5 m like every other screen top, so the summary does
+        # not read "27-38 m" over a segment that carries 26.666...
+        top = math.ceil(max(total_depth_m * 2.0 / 3.0, floor) * 2.0) / 2.0
         if bottom - top < 3.0:
             top = max(bottom - rules.screen_length_default_m, floor)
         if bottom - top < 1.0:
@@ -387,6 +409,67 @@ def _assemble(
                 "The top screen is above the static water level; check the design.",
             )
         )
+
+    # The same annulus rule the field checks apply (50 mm per side to place
+    # gravel, 70 mm for it to filter): the app used to compute this ad hoc on
+    # one page, so the completion report, the Depth Spine and the browser
+    # app never saw that the default 6.5 in hole and 5 in casing fail it.
+    annulus_mm = (rules.borehole_diameter_in - rules.casing_diameter_in) * 25.4 / 2.0
+    if annulus_mm < 50.0:
+        flags.append(
+            DataFlag(
+                "warning",
+                "thin_annulus",
+                f"A {rules.casing_diameter_in:g} inch casing in a "
+                f"{rules.borehole_diameter_in:g} inch hole leaves {annulus_mm:.0f} mm "
+                "of annulus per side, under the 50 mm needed to place gravel "
+                "without bridging (70 mm for a true filter pack); use a larger "
+                "bit or smaller casing.",
+            )
+        )
+    elif annulus_mm < 70.0:
+        flags.append(
+            DataFlag(
+                "info",
+                "thin_annulus",
+                f"The {annulus_mm:.0f} mm annulus meets the 50 mm placement minimum "
+                "but is under 70 mm, so the annular fill acts as a formation "
+                "stabiliser rather than a filter pack.",
+            )
+        )
+
+    # a pump intake is written straight through from the caller; it used to
+    # be accepted below the hole bottom, inside a screen or above the water
+    if pump_intake_m is not None:
+        if pump_intake_m > sump_top:
+            flags.append(
+                DataFlag(
+                    "error",
+                    "pump_intake_below_hole",
+                    f"The pump intake at {pump_intake_m:g} m is below the top of the "
+                    f"sump at {sump_top:g} m in a {total_depth_m:g} m hole; it cannot "
+                    "be set there.",
+                )
+            )
+        elif any(top <= pump_intake_m <= bottom for top, bottom in screens):
+            flags.append(
+                DataFlag(
+                    "warning",
+                    "pump_intake_in_screen",
+                    f"The pump intake at {pump_intake_m:g} m sits inside a screened "
+                    "interval; set it in plain casing above or below the screen so "
+                    "the inflow is not drawn across the pump.",
+                )
+            )
+        if swl is not None and pump_intake_m <= swl:
+            flags.append(
+                DataFlag(
+                    "error",
+                    "pump_intake_above_swl",
+                    f"The pump intake at {pump_intake_m:g} m is at or above the static "
+                    f"water level of {swl:g} m; the pump would run dry.",
+                )
+            )
 
     return BoreholeDesign(
         total_depth_m=total_depth_m,

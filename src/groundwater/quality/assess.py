@@ -144,6 +144,12 @@ ESSENTIAL_HEALTH_PARAMETERS = (
     "nitrate (as no3)",
 )
 
+#: Other table keys that answer the same health question: a laboratory that
+#: reports nitrate as nitrogen has measured the nitrate.
+ESSENTIAL_EQUIVALENTS = {
+    "nitrate (as no3)": ("nitrate (as n)",),
+}
+
 #: Machine codes explaining why a row could not be graded.
 INDETERMINATE_REASONS = {
     "unit_unreadable": "the reported unit could not be read",
@@ -469,6 +475,17 @@ def _assess_below_detection(
         return row
 
     strictest = min(limits)
+    microbiological = entry.category == "microbiological"
+    if microbiological and result.detection_limit is None:
+        # "Absent", "ND", "not detected": the count found nothing in the
+        # sample, which for a guideline of "not detectable in any 100 mL
+        # sample" is the guideline being met, not an unknown
+        row.status = "below_detection"
+        row.remark = (
+            "reported not detected; the guideline is met provided the "
+            "laboratory examined a 100 mL sample"
+        )
+        return row
     if result.detection_limit is None:
         row.status = "indeterminate"
         row.evaluable = False
@@ -495,6 +512,17 @@ def _assess_below_detection(
         return row
 
     row.value_in_guideline_unit = None
+    if microbiological and dl <= 1.0:
+        # A membrane-filtration count cannot resolve below one colony per
+        # volume filtered, so "<1 CFU/100 mL" is exactly what "not
+        # detectable in any 100 mL sample" looks like on a certificate.
+        # Refusing it as a detection limit above zero made the documented
+        # way of transcribing a clean E. coli result "not proven safe".
+        row.status = "below_detection"
+        row.remark = (
+            f"not detected in a 100 mL sample (reported as <{dl:g} {entry.unit})"
+        )
+        return row
     if dl > strictest:
         row.status = "indeterminate"
         row.evaluable = False
@@ -593,7 +621,7 @@ def _missing_essential(rows: list[ParameterAssessment], table: dict) -> list[str
     }
     missing = []
     for key in ESSENTIAL_HEALTH_PARAMETERS:
-        if key in graded:
+        if key in graded or any(alt in graded for alt in ESSENTIAL_EQUIVALENTS.get(key, ())):
             continue
         entry = table.get(key)
         missing.append(entry.parameter if entry is not None else key)

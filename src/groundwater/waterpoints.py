@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import csv
 import io
+import http.client
 import json
 import math
 import re
@@ -455,7 +456,14 @@ def fetch_water_points(
         with opener(request, timeout=timeout) as response:
             payload = response.read()
         data = json.loads(payload)
-    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+    # http.client.IncompleteRead (a body cut off mid-transfer, the usual way
+    # a 100 MB national pull fails on a rural link) is an HTTPException, which
+    # is neither an OSError nor a ValueError; without it here the coverage
+    # page showed a traceback instead of the offline-CSV advice.
+    except (
+        urllib.error.URLError, TimeoutError, OSError, ValueError,
+        http.client.HTTPException,
+    ) as exc:
         raise WaterPointFetchError(
             f"Could not reach the Water Point Data Exchange: {exc}"
         ) from exc

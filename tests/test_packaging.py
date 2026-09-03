@@ -149,3 +149,20 @@ def test_frontend_dir_resolves_through_the_package():
     found = frontend_dir()
     assert found is not None, "the committed component build should be found"
     assert (found / "index.html").is_file()
+
+
+def test_the_ai_extra_floor_supports_structured_outputs():
+    """The extractor sends output_config and adaptive thinking, which the
+    anthropic SDK accepts from 0.78; an older client satisfied the previous
+    floor and failed with a TypeError the moment Extract was pressed."""
+    import re
+
+    # read as text rather than with tomllib, which is 3.11+ and the matrix
+    # starts at 3.10
+    text = (REPO / "pyproject.toml").read_text(encoding="utf-8")
+    spec = re.search(r'^ai = \["(anthropic[^"]*)"\]', text, re.M).group(1)
+    floor = re.search(r">=\s*(\d+)\.(\d+)", spec)
+    assert floor, spec
+    assert (int(floor.group(1)), int(floor.group(2))) >= (0, 78)
+    requirements = (REPO / "requirements.txt").read_text()
+    assert spec in requirements
