@@ -639,7 +639,664 @@
    12.5,
    70.0
   ],
-  "screen_len": 22.5
+  "screen_len": 22.5,
+  "seal": [
+   0.0,
+   6.0
+  ],
+  "cement_bags": 4.0
+ },
+ "checklists": {
+  "ids": [
+   [
+    "prc-contractor-registered-country",
+    "procurement-01",
+    "procurement",
+    "Prequalification",
+    true
+   ],
+   [
+    "prc-contractor-completed-least",
+    "procurement-02",
+    "procurement",
+    "Prequalification",
+    false
+   ],
+   [
+    "prc-contractor-owns-secured",
+    "procurement-03",
+    "procurement",
+    "Prequalification",
+    false
+   ],
+   [
+    "prc-contractor-financial-capacity",
+    "procurement-04",
+    "procurement",
+    "Prequalification",
+    false
+   ],
+   [
+    "prc-contract-uses-bill",
+    "procurement-05",
+    "procurement",
+    "Contract",
+    true
+   ],
+   [
+    "prc-dry-hole-low",
+    "procurement-06",
+    "procurement",
+    "Contract",
+    true
+   ],
+   [
+    "prc-bill-quantities-checked",
+    "procurement-07",
+    "procurement",
+    "Contract",
+    false
+   ],
+   [
+    "prc-performance-bond-5",
+    "procurement-08",
+    "procurement",
+    "Contract",
+    false
+   ],
+   [
+    "prc-independent-supervision-arranged",
+    "procurement-09",
+    "procurement",
+    "Supervision",
+    true
+   ],
+   [
+    "pre-drilling-rig-inspected",
+    "pre_contract-01",
+    "pre_contract",
+    "Equipment",
+    true
+   ],
+   [
+    "pre-compressor-run-hour",
+    "pre_contract-02",
+    "pre_contract",
+    "Equipment",
+    true
+   ],
+   [
+    "pre-mud-pump-generator",
+    "pre_contract-03",
+    "pre_contract",
+    "Equipment",
+    false
+   ],
+   [
+    "pre-water-tanker-checked",
+    "pre_contract-04",
+    "pre_contract",
+    "Equipment",
+    false
+   ],
+   [
+    "pre-support-trucks-available",
+    "pre_contract-05",
+    "pre_contract",
+    "Equipment",
+    false
+   ],
+   [
+    "pre-drill-pipes-adequate",
+    "pre_contract-06",
+    "pre_contract",
+    "Equipment",
+    true
+   ],
+   [
+    "pre-drill-bits-hammer",
+    "pre_contract-07",
+    "pre_contract",
+    "Equipment",
+    true
+   ],
+   [
+    "pre-geophysical-survey-equipment",
+    "pre_contract-08",
+    "pre_contract",
+    "Equipment",
+    false
+   ],
+   [
+    "pre-drilling-manager-hydrogeologist",
+    "pre_contract-09",
+    "pre_contract",
+    "Personnel",
+    false
+   ],
+   [
+    "pre-rig-operator-driver",
+    "pre_contract-10",
+    "pre_contract",
+    "Personnel",
+    false
+   ],
+   [
+    "pre-record-taker-designated",
+    "pre_contract-11",
+    "pre_contract",
+    "Personnel",
+    true
+   ],
+   [
+    "sit-convenient-point-use",
+    "siting-01",
+    "siting",
+    "Water users",
+    false
+   ],
+   [
+    "sit-land-ownership-access",
+    "siting-02",
+    "siting",
+    "Water users",
+    true
+   ],
+   [
+    "sit-expected-yield-renewable",
+    "siting-03",
+    "siting",
+    "Hydrogeology",
+    false
+   ],
+   [
+    "sit-interference-other-groundwater",
+    "siting-04",
+    "siting",
+    "Hydrogeology",
+    false
+   ],
+   [
+    "sit-chance-success-rated",
+    "siting-05",
+    "siting",
+    "Hydrogeology",
+    false
+   ],
+   [
+    "sit-potential-pollution-source",
+    "siting-06",
+    "siting",
+    "Contamination",
+    true
+   ],
+   [
+    "sit-access-allowed-physically",
+    "siting-07",
+    "siting",
+    "Logistics",
+    false
+   ],
+   [
+    "sit-siting-report-submitted",
+    "siting-08",
+    "siting",
+    "Logistics",
+    true
+   ],
+   [
+    "mob-contract-signed-pre",
+    "mobilisation-01",
+    "mobilisation",
+    "Contract",
+    true
+   ],
+   [
+    "mob-programme-works-submitted",
+    "mobilisation-02",
+    "mobilisation",
+    "Contract",
+    false
+   ],
+   [
+    "mob-community-briefed-process",
+    "mobilisation-03",
+    "mobilisation",
+    "Community",
+    false
+   ],
+   [
+    "mob-equipment-matches-what",
+    "mobilisation-04",
+    "mobilisation",
+    "Equipment",
+    true
+   ],
+   [
+    "mob-material-samples-approved",
+    "mobilisation-05",
+    "mobilisation",
+    "Materials",
+    true
+   ],
+   [
+    "mob-data-collection-forms",
+    "mobilisation-06",
+    "mobilisation",
+    "Records",
+    false
+   ],
+   [
+    "mob-project-filing-system",
+    "mobilisation-07",
+    "mobilisation",
+    "Records",
+    false
+   ],
+   [
+    "mob-drill-camp-layout",
+    "mobilisation-08",
+    "mobilisation",
+    "Camp",
+    false
+   ],
+   [
+    "drl-health-safety-place",
+    "drilling-01",
+    "drilling",
+    "Safety",
+    true
+   ],
+   [
+    "drl-rig-positioned-exactly",
+    "drilling-02",
+    "drilling",
+    "Set up",
+    false
+   ],
+   [
+    "drl-depth-measured-marked",
+    "drilling-03",
+    "drilling",
+    "Records",
+    true
+   ],
+   [
+    "drl-penetration-rate-recorded",
+    "drilling-04",
+    "drilling",
+    "Records",
+    false
+   ],
+   [
+    "drl-drilling-fluid-type",
+    "drilling-05",
+    "drilling",
+    "Fluids",
+    false
+   ],
+   [
+    "drl-circulation-pits-hold",
+    "drilling-06",
+    "drilling",
+    "Fluids",
+    false
+   ],
+   [
+    "drl-cutting-samples-taken",
+    "drilling-07",
+    "drilling",
+    "Samples",
+    true
+   ],
+   [
+    "drl-strata-log-prepared",
+    "drilling-08",
+    "drilling",
+    "Samples",
+    false
+   ],
+   [
+    "drl-water-strikes-recorded",
+    "drilling-09",
+    "drilling",
+    "Water",
+    false
+   ],
+   [
+    "drl-final-drilling-depth",
+    "drilling-10",
+    "drilling",
+    "Decision",
+    true
+   ],
+   [
+    "drl-daily-drilling-log",
+    "drilling-11",
+    "drilling",
+    "Records",
+    true
+   ],
+   [
+    "des-casing-screen-assemblage",
+    "design-01",
+    "design",
+    "Preparation",
+    true
+   ],
+   [
+    "des-casing-screens-new",
+    "design-02",
+    "design",
+    "Materials",
+    false
+   ],
+   [
+    "des-joints-clean-watertight",
+    "design-03",
+    "design",
+    "Installation",
+    false
+   ],
+   [
+    "des-installed-casing-screen",
+    "design-04",
+    "design",
+    "Installation",
+    true
+   ],
+   [
+    "des-screens-placed-against",
+    "design-05",
+    "design",
+    "Screens",
+    true
+   ],
+   [
+    "des-screen-open-area",
+    "design-06",
+    "design",
+    "Screens",
+    false
+   ],
+   [
+    "des-gravel-pack-placed",
+    "design-07",
+    "design",
+    "Annulus",
+    true
+   ],
+   [
+    "des-backfill-placed-6",
+    "design-08",
+    "design",
+    "Annulus",
+    true
+   ],
+   [
+    "dev-development-continued-until",
+    "development-01",
+    "development",
+    "Development",
+    true
+   ],
+   [
+    "dev-pumping-test-carried",
+    "development-02",
+    "development",
+    "Testing",
+    true
+   ],
+   [
+    "dev-sand-content-end",
+    "development-03",
+    "development",
+    "Acceptance",
+    true
+   ],
+   [
+    "dev-turbidity-within-stipulated",
+    "development-04",
+    "development",
+    "Acceptance",
+    false
+   ],
+   [
+    "dev-plumb-test-passed",
+    "development-05",
+    "development",
+    "Acceptance",
+    true
+   ],
+   [
+    "dev-water-sampled-correctly",
+    "development-06",
+    "development",
+    "Quality",
+    true
+   ],
+   [
+    "dev-borehole-disinfected-chlorine",
+    "development-07",
+    "development",
+    "Quality",
+    true
+   ],
+   [
+    "dev-platform-cast-correctly",
+    "development-08",
+    "development",
+    "Platform",
+    false
+   ],
+   [
+    "dev-final-decision-recorded",
+    "development-09",
+    "development",
+    "Decision",
+    true
+   ],
+   [
+    "dem-installation-work-complete",
+    "demobilisation-01",
+    "demobilisation",
+    "Completion",
+    false
+   ],
+   [
+    "dem-testing-complete-documentation",
+    "demobilisation-02",
+    "demobilisation",
+    "Completion",
+    true
+   ],
+   [
+    "dem-cleared-waste-removed",
+    "demobilisation-03",
+    "demobilisation",
+    "Site",
+    false
+   ],
+   [
+    "dem-unused-materials-handled",
+    "demobilisation-04",
+    "demobilisation",
+    "Site",
+    false
+   ],
+   [
+    "dem-work-completion-certificate",
+    "demobilisation-05",
+    "demobilisation",
+    "Certificate",
+    true
+   ],
+   [
+    "hnd-drilling-report-completed",
+    "handover-01",
+    "handover",
+    "Reporting",
+    true
+   ],
+   [
+    "hnd-handover-date-agreed",
+    "handover-02",
+    "handover",
+    "Handover",
+    true
+   ],
+   [
+    "hnd-defect-liability-monitoring",
+    "handover-03",
+    "handover",
+    "Follow up",
+    false
+   ],
+   [
+    "hnd-problems-found-during",
+    "handover-04",
+    "handover",
+    "Follow up",
+    false
+   ],
+   [
+    "hnd-supervision-invoice-submitted",
+    "handover-05",
+    "handover",
+    "Payment",
+    false
+   ],
+   [
+    "pst-groundwater-ph-tested",
+    "post_construction-01",
+    "post_construction",
+    "Water safety",
+    true
+   ],
+   [
+    "pst-sanitary-inspection-completed",
+    "post_construction-02",
+    "post_construction",
+    "Water safety",
+    false
+   ],
+   [
+    "pst-water-users-way",
+    "post_construction-03",
+    "post_construction",
+    "Monitoring",
+    false
+   ],
+   [
+    "pst-third-party-inspection",
+    "post_construction-04",
+    "post_construction",
+    "Monitoring",
+    false
+   ],
+   [
+    "pst-post-construction-monitoring",
+    "post_construction-05",
+    "post_construction",
+    "Monitoring",
+    false
+   ],
+   [
+    "pst-drilling-log-pumping",
+    "post_construction-06",
+    "post_construction",
+    "Records",
+    true
+   ]
+  ],
+  "legacy": {
+   "procurement-01": "prc-contractor-registered-country",
+   "procurement-02": "prc-contractor-completed-least",
+   "procurement-03": "prc-contractor-owns-secured",
+   "procurement-04": "prc-contractor-financial-capacity",
+   "procurement-05": "prc-contract-uses-bill",
+   "procurement-06": "prc-dry-hole-low",
+   "procurement-07": "prc-bill-quantities-checked",
+   "procurement-08": "prc-performance-bond-5",
+   "procurement-09": "prc-independent-supervision-arranged",
+   "pre_contract-01": "pre-drilling-rig-inspected",
+   "pre_contract-02": "pre-compressor-run-hour",
+   "pre_contract-03": "pre-mud-pump-generator",
+   "pre_contract-04": "pre-water-tanker-checked",
+   "pre_contract-05": "pre-support-trucks-available",
+   "pre_contract-06": "pre-drill-pipes-adequate",
+   "pre_contract-07": "pre-drill-bits-hammer",
+   "pre_contract-08": "pre-geophysical-survey-equipment",
+   "pre_contract-09": "pre-drilling-manager-hydrogeologist",
+   "pre_contract-10": "pre-rig-operator-driver",
+   "pre_contract-11": "pre-record-taker-designated",
+   "siting-01": "sit-convenient-point-use",
+   "siting-02": "sit-land-ownership-access",
+   "siting-03": "sit-expected-yield-renewable",
+   "siting-04": "sit-interference-other-groundwater",
+   "siting-05": "sit-chance-success-rated",
+   "siting-06": "sit-potential-pollution-source",
+   "siting-07": "sit-access-allowed-physically",
+   "siting-08": "sit-siting-report-submitted",
+   "mobilisation-01": "mob-contract-signed-pre",
+   "mobilisation-02": "mob-programme-works-submitted",
+   "mobilisation-03": "mob-community-briefed-process",
+   "mobilisation-04": "mob-equipment-matches-what",
+   "mobilisation-05": "mob-material-samples-approved",
+   "mobilisation-06": "mob-data-collection-forms",
+   "mobilisation-07": "mob-project-filing-system",
+   "mobilisation-08": "mob-drill-camp-layout",
+   "drilling-01": "drl-health-safety-place",
+   "drilling-02": "drl-rig-positioned-exactly",
+   "drilling-03": "drl-depth-measured-marked",
+   "drilling-04": "drl-penetration-rate-recorded",
+   "drilling-05": "drl-drilling-fluid-type",
+   "drilling-06": "drl-circulation-pits-hold",
+   "drilling-07": "drl-cutting-samples-taken",
+   "drilling-08": "drl-strata-log-prepared",
+   "drilling-09": "drl-water-strikes-recorded",
+   "drilling-10": "drl-final-drilling-depth",
+   "drilling-11": "drl-daily-drilling-log",
+   "design-01": "des-casing-screen-assemblage",
+   "design-02": "des-casing-screens-new",
+   "design-03": "des-joints-clean-watertight",
+   "design-04": "des-installed-casing-screen",
+   "design-05": "des-screens-placed-against",
+   "design-06": "des-screen-open-area",
+   "design-07": "des-gravel-pack-placed",
+   "design-08": "des-backfill-placed-6",
+   "development-01": "dev-development-continued-until",
+   "development-02": "dev-pumping-test-carried",
+   "development-03": "dev-sand-content-end",
+   "development-04": "dev-turbidity-within-stipulated",
+   "development-05": "dev-plumb-test-passed",
+   "development-06": "dev-water-sampled-correctly",
+   "development-07": "dev-borehole-disinfected-chlorine",
+   "development-08": "dev-platform-cast-correctly",
+   "development-09": "dev-final-decision-recorded",
+   "demobilisation-01": "dem-installation-work-complete",
+   "demobilisation-02": "dem-testing-complete-documentation",
+   "demobilisation-03": "dem-cleared-waste-removed",
+   "demobilisation-04": "dem-unused-materials-handled",
+   "demobilisation-05": "dem-work-completion-certificate",
+   "handover-01": "hnd-drilling-report-completed",
+   "handover-02": "hnd-handover-date-agreed",
+   "handover-03": "hnd-defect-liability-monitoring",
+   "handover-04": "hnd-problems-found-during",
+   "handover-05": "hnd-supervision-invoice-submitted",
+   "post_construction-01": "pst-groundwater-ph-tested",
+   "post_construction-02": "pst-sanitary-inspection-completed",
+   "post_construction-03": "pst-water-users-way",
+   "post_construction-04": "pst-third-party-inspection",
+   "post_construction-05": "pst-post-construction-monitoring",
+   "post_construction-06": "pst-drilling-log-pumping"
+  },
+  "migrated": {
+   "chk_prc-contractor-registered-country": "yes",
+   "rmk_drl-depth-measured-marked": "note",
+   "chk_pre-compressor-run-hour": "no",
+   "chk_nowhere-99": "na"
+  }
  },
  "inversion": {
   "rho": [

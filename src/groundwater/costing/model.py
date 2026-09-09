@@ -29,6 +29,7 @@ from importlib import resources
 from pathlib import Path
 from typing import Optional
 
+from ..config import DesignRules
 from ..models import DataFlag
 from ..utils import fmt_num
 
@@ -153,13 +154,15 @@ class CostingInputs:
                 "(from 15 m below ground to the bottom of the borehole)."
             )
         if r.cement_bags is None:
-            seal_volume = annulus_volume_m3(
-                r.borehole_diameter_in, r.casing_diameter_in, 15.0
+            # the seal the design rules draw, not a 15 m one nobody drew
+            seal_m = DesignRules().sanitary_seal_depth_m
+            r.cement_bags = cement_bags_for_seal(
+                r.borehole_diameter_in, r.casing_diameter_in, seal_m
             )
-            r.cement_bags = max(4.0, math.ceil(seal_volume * 20.0))
             assumptions.append(
-                f"Cement estimated at {fmt_num(r.cement_bags)} bags for the "
-                "grout seal (about 20 bags per cubic metre of annulus)."
+                f"Cement estimated at {fmt_num(r.cement_bags)} bags for a "
+                f"{fmt_num(seal_m)} m grout seal (about 20 bags per cubic metre "
+                "of annulus)."
             )
         if r.crew_days is None:
             r.crew_days = math.ceil(r.total_depth_m / 25.0) + 4
@@ -181,6 +184,18 @@ class CostingInputs:
         return annulus_volume_m3(
             self.borehole_diameter_in, self.casing_diameter_in, interval, allowance=1.3
         )
+
+
+def cement_bags_for_seal(
+    borehole_diameter_in: float, casing_diameter_in: float, seal_m: float
+) -> float:
+    """Bags of cement for a grout seal over ``seal_m`` of annulus.
+
+    About 20 bags per cubic metre of annulus, never fewer than four: a seal
+    is mixed by the bag and a thin one still needs a batch.
+    """
+    volume = annulus_volume_m3(borehole_diameter_in, casing_diameter_in, seal_m)
+    return max(4.0, float(math.ceil(volume * 20.0)))
 
 
 def annulus_volume_m3(
@@ -215,6 +230,7 @@ def inputs_from_design(design, *, mobilisation_distance_km: float = 0.0,
         design.total_depth_m + design.stickup_m - screen_m,
     )
     gravel_top, gravel_bottom = design.gravel_pack
+    seal_top, seal_bottom = design.sanitary_seal
     return CostingInputs(
         total_depth_m=design.total_depth_m,
         overburden_m=overburden_m,
@@ -223,6 +239,12 @@ def inputs_from_design(design, *, mobilisation_distance_km: float = 0.0,
         borehole_diameter_in=design.borehole_diameter_in,
         casing_diameter_in=design.casing_diameter_in,
         gravel_interval_m=max(0.0, gravel_bottom - gravel_top),
+        # the cement follows the drawing's seal, so the BoQ prices what the
+        # completion report shows
+        cement_bags=cement_bags_for_seal(
+            design.borehole_diameter_in, design.casing_diameter_in,
+            max(0.0, seal_bottom - seal_top),
+        ),
         mobilisation_distance_km=mobilisation_distance_km,
     )
 

@@ -43,12 +43,17 @@ RESPONSE_STATES = ("pending", "yes", "no", "na")
 class ChecklistItem:
     """One supervision checklist requirement."""
 
-    item_id: str  # stable id, e.g. "drilling-03"
+    item_id: str  # stable id from the CSV, e.g. "drl-depth-measured-marked"
     checklist: str  # stage key, e.g. "drilling"
     section: str  # grouping within the stage, e.g. "Safety"
     text: str
     critical: bool = False
     guidance: str = ""
+    #: The id this row had before ids were written into the CSV: its position
+    #: within its stage ("drilling-03"). Saved answers were keyed by it, and
+    #: inserting one row re-mapped every later answer to a different
+    #: question; the loader keeps it so those answers can be carried across.
+    legacy_id: str = ""
 
 
 def stage_title(key: str) -> str:
@@ -68,20 +73,61 @@ def load_checklists(path: str | Path | None = None) -> list[ChecklistItem]:
         ).read_text(encoding="utf-8")
     items: list[ChecklistItem] = []
     counters: dict[str, int] = {}
+    seen: set[str] = set()
     for row in csv.DictReader(text.splitlines()):
         checklist = row["checklist"].strip()
         counters[checklist] = counters.get(checklist, 0) + 1
+        positional = f"{checklist}-{counters[checklist]:02d}"
+        # the CSV's own id when it has one, so a row inserted or reworded
+        # never moves anybody's saved answer; a project CSV without the
+        # column keeps the positional ids it always had
+        item_id = (row.get("id") or "").strip() or positional
+        if item_id in seen:
+            raise ValueError(f"checklist id {item_id!r} appears twice in the CSV")
+        seen.add(item_id)
         items.append(
             ChecklistItem(
-                item_id=f"{checklist}-{counters[checklist]:02d}",
+                item_id=item_id,
                 checklist=checklist,
                 section=row["section"].strip(),
                 text=row["item"].strip(),
                 critical=(row.get("critical") or "").strip().lower() == "yes",
                 guidance=(row.get("guidance") or "").strip(),
+                legacy_id=positional,
             )
         )
     return items
+
+
+def legacy_item_ids(items: list[ChecklistItem]) -> dict[str, str]:
+    """Positional id -> stable id, for every item whose id changed."""
+    return {
+        item.legacy_id: item.item_id
+        for item in items
+        if item.legacy_id and item.legacy_id != item.item_id
+    }
+
+
+def migrate_response_keys(keys: dict, items: list[ChecklistItem] | None = None,
+                          prefixes: tuple[str, ...] = ("chk_", "rmk_")) -> dict:
+    """``keys`` with positional checklist ids replaced by the stable ones.
+
+    A project file saved before the CSV carried ids keys its answers by
+    position; this carries them onto the questions they were given to. A
+    key that already uses a stable id, or one the current CSV does not
+    know, is left as it is - nothing is guessed.
+    """
+    legacy = legacy_item_ids(items if items is not None else load_checklists())
+    if not legacy:
+        return dict(keys)
+    out: dict = {}
+    for key, value in keys.items():
+        for prefix in prefixes:
+            if isinstance(key, str) and key.startswith(prefix) and key[len(prefix):] in legacy:
+                key = prefix + legacy[key[len(prefix):]]
+                break
+        out.setdefault(key, value)
+    return out
 
 
 @dataclass

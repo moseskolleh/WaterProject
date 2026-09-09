@@ -85,7 +85,7 @@
       seasonal: {},
       procurement: { contract: null, measured: {}, variations: [],
         number: 1, date: '', previous: 0 },
-      theme: 'auto',
+      theme: 'dark',
     };
   }
 
@@ -217,13 +217,13 @@
   }
 
   function themeIcon() {
-    var theme = store.get('theme', 'auto');
+    var theme = store.get('theme', 'dark');
     return theme === 'dark' ? '☾' : (theme === 'light' ? '☀' : '◐');
   }
 
   function toggleTheme() {
     var order = ['auto', 'light', 'dark'];
-    var next = order[(order.indexOf(store.get('theme', 'auto')) + 1) % order.length];
+    var next = order[(order.indexOf(store.get('theme', 'dark')) + 1) % order.length];
     store.set('theme', next);
     applyTheme();
     renderChrome();
@@ -231,7 +231,7 @@
   }
 
   function applyTheme() {
-    var theme = store.get('theme', 'auto');
+    var theme = store.get('theme', 'dark');
     if (theme === 'auto') document.documentElement.removeAttribute('data-theme');
     else document.documentElement.setAttribute('data-theme', theme);
   }
@@ -602,6 +602,17 @@
     S.toast('Project saved as ' + name, 'ok');
   }
 
+  /* A project saved before the checklists carried stable ids keys its
+   * answers by position. Carry them onto the questions they answered so a
+   * row inserted in the CSV never moves anybody's ticks. */
+  function migrateLoadedState(state) {
+    var sup = state && state.supervision;
+    if (sup && sup.responses && typeof sup.responses === 'object') {
+      sup.responses = C.migrateChecklistResponses(sup.responses);
+    }
+    return state;
+  }
+
   async function openProject() {
     var file = await S.pickFile('.json,.gwt,application/json');
     if (!file) return;
@@ -613,7 +624,7 @@
        * never be adopted into this session's storage. The key held for this
        * tab is untouched - it belongs to this browser, not to the file. */
       if (state.extraction) delete state.extraction.apiKey;
-      store.replace(Object.assign(blankState(), state));
+      store.replace(migrateLoadedState(Object.assign(blankState(), state)));
       applyTheme();
       await recompute();
       await runInversions({ quiet: true });
@@ -630,7 +641,7 @@
     if (!sample) return;
     var fresh = blankState();
     fresh.nav = store.get('nav');
-    fresh.theme = store.get('theme', 'auto');
+    fresh.theme = store.get('theme', 'dark');
     Object.keys(sample.site || {}).forEach(function (k) {
       fresh.site[k] = sample.site[k];
     });
@@ -5387,7 +5398,7 @@
         strandedKey = merged.extraction.apiKey;
         delete merged.extraction.apiKey;
       }
-      store.replace(merged);
+      store.replace(migrateLoadedState(merged));
       if (strandedKey) store.persist();
     }
     applyTheme();

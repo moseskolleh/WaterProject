@@ -20,7 +20,8 @@ const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
 const svg = readFileSync(join(repo, 'docs', 'icon.svg'), 'utf8');
 
 /* [file, pixels, maskable] - a maskable icon keeps the artwork inside the
- * middle 80% and fills the rest with the brand blue rather than transparency. */
+ * middle 80% and fills the rest with the design's near-black rather than
+ * transparency. */
 const TARGETS = [
   ['icon-192.png', 192, false],
   ['icon-512.png', 512, false],
@@ -38,7 +39,7 @@ try {
     await page.setContent(`<!doctype html><meta charset="utf-8">
       <style>
         html, body { margin: 0; padding: 0; width: ${size}px; height: ${size}px; }
-        body { background: ${maskable ? '#1F5C8B' : 'transparent'}; }
+        body { background: ${maskable ? '#0a0a0a' : 'transparent'}; }
         svg { position: absolute; left: ${inset}px; top: ${inset}px;
               width: ${size - inset * 2}px; height: ${size - inset * 2}px; }
       </style>${svg}`);

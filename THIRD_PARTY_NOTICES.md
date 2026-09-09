@@ -111,6 +111,20 @@ as unverified for redistribution. The options, in rough order of preference:
 | Geology of Sierra Leone (MoWR-SALWACO 2017) | Government of Sierra Leone | unverified |
 | Africa Groundwater Atlas Country Maps User Guide (OR/21/063) | British Geological Survey | **CC BY-SA 4.0** — the one document whose licence is evidenced |
 
+## Fonts
+
+The browser app and the Streamlit app set their text in three faces shipped
+with the repository as Latin subsets (`docs/fonts/`, and inlined into the
+Streamlit stylesheet), so no page needs a request to a third party:
+
+- **Space Grotesk** (Florian Karsten) · SIL Open Font License 1.1
+- **Inter** (Rasmus Andersson) · SIL Open Font License 1.1
+- **IBM Plex Mono** (IBM) · SIL Open Font License 1.1
+
+The licence text is at `docs/fonts/LICENSE-OFL.txt`. The subsets are the
+ones built for `moseskolleh/sustaintheworld`, whose design language this
+project's interfaces follow.
+
 ## Software dependencies
 
 Runtime dependencies are declared in `pyproject.toml` and installed from PyPI;

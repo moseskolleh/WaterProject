@@ -104,6 +104,22 @@ await withPage(async (page, base, consoleErrors) => {
     out.design = {
       depth: design.total_depth_m, screens: design.screens.map((s) => [s.top_m, s.bottom_m]),
       gravel: design.gravel_pack, screen_len: design.total_screen_length_m,
+      seal: design.sanitary_seal,
+      cement_bags: C.inputsFromDesign(design).cement_bags,
+    };
+
+    const items = C.loadChecklists();
+    const migrated = {};
+    const prefixed = C.migrateChecklistResponses({
+      'procurement-01': 'chk_procurement-01', 'drilling-03': 'rmk_drilling-03',
+      [items[10].item_id]: 'chk_' + items[10].item_id, 'nowhere-99': 'chk_nowhere-99',
+    }, items);
+    // the Python keys carry a widget prefix; the browser keys the item alone
+    Object.keys(prefixed).forEach((k) => { migrated[prefixed[k].slice(0, 4) + k] = prefixed[k]; });
+    out.checklists = {
+      ids: items.map((i) => [i.item_id, i.legacy_id, i.checklist, i.section, i.critical]),
+      legacy: C.legacyItemIds(items),
+      migrated: migrated,
     };
 
     const inverted = C.invertSounding(C.readVesSheets(vesSheets, '')[0]);
@@ -600,6 +616,20 @@ await withPage(async (page, base, consoleErrors) => {
     `js ${parsed.assessed.corros} vs py ${R.assessed.corros}`);
   check('design: screens', JSON.stringify(parsed.design.screens) === JSON.stringify(R.design.screens),
     JSON.stringify(parsed.design.screens) + ' vs ' + JSON.stringify(R.design.screens));
+  check('design: sanitary seal', JSON.stringify(parsed.design.seal) === JSON.stringify(R.design.seal),
+    JSON.stringify(parsed.design.seal) + ' vs ' + JSON.stringify(R.design.seal));
+  check('design: cement for the seal', close(parsed.design.cement_bags, R.design.cement_bags),
+    `js ${parsed.design.cement_bags} vs py ${R.design.cement_bags}`);
+  check('checklists: every item id, in order',
+    JSON.stringify(parsed.checklists.ids) === JSON.stringify(R.checklists.ids),
+    JSON.stringify(parsed.checklists.ids.slice(0, 3)) + ' vs ' + JSON.stringify(R.checklists.ids.slice(0, 3)));
+  check('checklists: the positional-to-stable map',
+    JSON.stringify(parsed.checklists.legacy) === JSON.stringify(R.checklists.legacy),
+    JSON.stringify(parsed.checklists.legacy).slice(0, 200) + ' vs ' + JSON.stringify(R.checklists.legacy).slice(0, 200));
+  check('checklists: an old answer lands on the same question',
+    JSON.stringify(Object.keys(parsed.checklists.migrated).sort()) ===
+      JSON.stringify(Object.keys(R.checklists.migrated).sort()),
+    JSON.stringify(parsed.checklists.migrated) + ' vs ' + JSON.stringify(R.checklists.migrated));
   check('inversion: rho', parsed.inversion.rho.every((v, i) => close(v, R.inversion.rho[i], 1e-3)),
     JSON.stringify(parsed.inversion.rho) + '\n     vs ' + JSON.stringify(R.inversion.rho));
   check('inversion: h', parsed.inversion.h.every((v, i) => close(v, R.inversion.h[i], 1e-3)),

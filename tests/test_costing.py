@@ -204,3 +204,41 @@ def test_the_boq_workbook_carries_the_whole_summary_from_editable_assumptions(tm
     assert values["VAT/GST (%)"] == 15.0
     assert values["Total depth drilled (m)"] == 50
     assert values["Exchange rate (SLE per USD)"] == est.exchange_rate_sle_per_usd
+
+
+def test_cement_is_priced_for_the_seal_the_drawing_shows():
+    """One seal depth: the design rule draws it, the checklist asks for it
+    and the BoQ prices it. Nothing should quietly price a deeper one."""
+    from groundwater.config import DesignRules
+    from groundwater.costing import cement_bags_for_seal
+    from groundwater.design import design_borehole
+    from groundwater.models import DrillingLog, LithologyInterval
+    from groundwater.supervision import load_checklists
+
+    rules = DesignRules()
+    seal_item = next(i for i in load_checklists() if "sanitary seal" in i.text.lower())
+    assert f"{rules.sanitary_seal_depth_m:g} m" in seal_item.text
+
+    log = DrillingLog(
+        site=SiteMetadata(community="Rokel"), total_depth_m=60.0,
+        intervals=[LithologyInterval(0, 8, "laterite"),
+                   LithologyInterval(8, 25, "weathered granite"),
+                   LithologyInterval(25, 60, "fractured granite")],
+        water_strikes_m=[30.0],
+    )
+    design = design_borehole(log=log, static_water_level_m=6.0)
+    assert design.sanitary_seal == (0.0, rules.sanitary_seal_depth_m)
+
+    inputs = inputs_from_design(design)
+    expected = cement_bags_for_seal(
+        design.borehole_diameter_in, design.casing_diameter_in,
+        rules.sanitary_seal_depth_m)
+    assert inputs.cement_bags == expected
+    # a 6 m seal of a 6.5 in hole round 4.5 in casing is a few bags, not the
+    # ten-plus the old 15 m default priced
+    assert 4 <= expected <= 6
+
+    # the default costing (no design) prices the same seal
+    plain, assumptions = CostingInputs(total_depth_m=60.0, overburden_m=8.0).resolved()
+    assert plain.cement_bags == expected
+    assert any("6 m grout seal" in a for a in assumptions)
