@@ -281,67 +281,158 @@ st.set_page_config(
     },
 )
 
-# Design language (from the "Groundwater Toolkit Redesign" study, direction
-# 1b "Project Workspace"): warm paper canvas, white result cards, deep
-# green-teal accents, Space Grotesk display over IBM Plex Sans/Mono.
-_INK = "#152220"
-_GREEN = "#2B6850"        # oklch(0.47 0.075 165)
-_GREEN_DARK = "#184735"   # oklch(0.36 0.06 165)
-_GREEN_MID = "#1B5A43"    # oklch(0.42 0.075 165)
-_SUCCESS = "#5BBE62"      # oklch(0.72 0.16 145)
-_SUCCESS_TEXT = "#006925"
-_AMBER = "#E48E26"
-_AMBER_TEXT = "#994A00"
-_FIELD_RED = "#B14E49"    # measured field data accent
+# Design language: the sustaintheworld style. A near-black ground with
+# cards one step lighter, one neon green accent, Space Grotesk for headings
+# and controls, Inter for text and IBM Plex Mono for the small uppercase
+# labels. The printed reports keep their own house style (config.HouseStyle).
+_GREEN = "#7CFC00"        # primary green
+_GREEN_HOVER = "#9FFF4D"
+_ON_GREEN = "#051000"     # ink on a green surface
+_BG = "#0a0a0a"
+_CARD = "#1a1a1a"
+_CARD_ALT = "#141414"
+_TEXT = "#ffffff"
+_TEXT_SOFT = "#b0b0b0"
+_LINE = "rgba(124, 252, 0, 0.18)"
+_LINE_SOFT = "rgba(124, 252, 0, 0.08)"
+_AMBER = "#f2b705"
+_BLUE = "#2ea3e0"
+_SALMON = "#e07a5f"
+_EMERALD = "#3ad07a"
+_BAR_COLORS = [_GREEN, _EMERALD, _BLUE, _AMBER, _SALMON, "#8c8c8c"]
+
+
+@st.cache_resource(show_spinner=False)
+def _font_faces() -> str:
+    """The three faces as @font-face rules with the files inlined.
+
+    They ship as package data (Latin subsets, SIL Open Font License, see
+    THIRD_PARTY_NOTICES.md), so the app sets its type without a request
+    to a font service - it works offline and in the browser demo alike.
+    A missing file falls through to the system stack in the rules below.
+    """
+    import base64
+
+    faces = (
+        ("Space Grotesk", "400 700", "space-grotesk-latin.woff2"),
+        ("Inter", "400 600", "inter-latin.woff2"),
+        ("IBM Plex Mono", "400", "ibm-plex-mono-latin-400.woff2"),
+        ("IBM Plex Mono", "500", "ibm-plex-mono-latin-500.woff2"),
+    )
+    rules = []
+    for family, weight, name in faces:
+        path = _BRAND_DIR / "fonts" / name
+        if not path.exists():
+            continue
+        data = base64.b64encode(path.read_bytes()).decode("ascii")
+        rules.append(
+            f"@font-face{{font-family:'{family}';font-style:normal;"
+            f"font-weight:{weight};font-display:swap;"
+            f"src:url(data:font/woff2;base64,{data}) format('woff2');}}"
+        )
+    return "".join(rules)
+
+
+st.markdown(
+    "<style>" + _font_faces() + "</style>",
+    unsafe_allow_html=True,
+)
 
 st.markdown(
     """
     <style>
-      /* No webfont @import here. A CSS @import is render-blocking, so on a
-         slow or captive-portal link the whole app waited on
-         fonts.googleapis.com - and everything else in the toolkit works
-         offline. The stacks below fall back to the platform UI font. */
-
       html, body, [data-testid="stAppViewContainer"], .stMarkdown,
       button, input, textarea, select {
-        font-family: 'IBM Plex Sans', system-ui, sans-serif;
+        font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
       }
       h1, h2, h3, h4,
       [data-testid="stMetricValue"] {
-        font-family: 'Space Grotesk', 'IBM Plex Sans', sans-serif !important;
-        letter-spacing: -0.01em;
-        color: #152220;
+        font-family: 'Space Grotesk', 'Segoe UI', sans-serif !important;
+        font-weight: 700; line-height: 1.15; letter-spacing: 0.01em;
+        color: #ffffff;
       }
       code, pre, kbd { font-family: 'IBM Plex Mono', monospace; }
+      a { color: #7CFC00; transition: all 0.3s ease; }
+      a:hover { color: #9FFF4D; }
 
       .block-container { padding-top: 2.4rem; }
       [data-testid="stAppViewContainer"] h1 {
-        font-size: 1.7rem; font-weight: 600; margin-bottom: 0.1rem;
+        font-size: 1.75rem; text-transform: uppercase; margin-bottom: 0.1rem;
       }
-      [data-testid="stAppViewContainer"] h2 {
-        font-size: 1.3rem; font-weight: 600;
+      [data-testid="stAppViewContainer"] h2 { font-size: 1.3rem; }
+      [data-testid="stAppViewContainer"] h3 { font-size: 1.05rem; font-weight: 600; }
+
+      /* Pill buttons: the primary is the green one, the rest are bordered */
+      .stButton > button, .stDownloadButton > button,
+      [data-testid="stFormSubmitButton"] > button {
+        font-family: 'Space Grotesk', sans-serif; font-weight: 600;
+        font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase;
+        border-radius: 999px; padding: 0.45rem 1.1rem;
+        transition: all 0.3s ease;
       }
-      [data-testid="stAppViewContainer"] h3 {
-        font-size: 1.05rem; font-weight: 600;
+      .stButton > button:hover, .stDownloadButton > button:hover,
+      [data-testid="stFormSubmitButton"] > button:hover {
+        transform: translateY(-3px);
+      }
+      .stButton > button[kind="primary"],
+      [data-testid="stFormSubmitButton"] > button[kind="primary"] {
+        color: #051000;
+      }
+      .stButton > button[kind="primary"]:hover {
+        box-shadow: 0 10px 30px rgba(124, 252, 0, 0.3);
       }
 
-      /* Result cards: white on the warm paper canvas */
-      div[data-testid="stMetric"] {
-        background: #FFFFFF;
-        border: 1px solid rgba(0, 0, 0, 0.09);
-        border-radius: 11px;
-        padding: 0.65rem 0.9rem;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+      /* Inputs on the darker card surface with the green focus ring */
+      [data-testid="stTextInput"] input, [data-testid="stNumberInput"] input,
+      [data-testid="stTextArea"] textarea,
+      [data-baseweb="select"] > div, [data-baseweb="input"] {
+        background: #141414 !important; border-radius: 8px;
       }
+      [data-baseweb="input"]:focus-within, [data-baseweb="select"] > div:focus-within,
+      [data-baseweb="textarea"]:focus-within {
+        box-shadow: 0 0 0 3px rgba(124, 252, 0, 0.12);
+      }
+
+      /* Result cards: one step lighter than the ground, hairline in green */
+      div[data-testid="stMetric"] {
+        background: #1a1a1a;
+        border: 1px solid rgba(124, 252, 0, 0.08);
+        border-radius: 12px;
+        padding: 0.75rem 0.95rem;
+        box-shadow: 0 8px 30px rgba(124, 252, 0, 0.1);
+        transition: all 0.3s ease;
+      }
+      div[data-testid="stMetric"]:hover { border-color: rgba(124, 252, 0, 0.18); }
       div[data-testid="stMetric"] label p {
         font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.66rem; font-weight: 600;
-        text-transform: uppercase; letter-spacing: 0.09em;
-        color: rgba(0, 0, 0, 0.45);
+        font-size: 0.68rem; font-weight: 500;
+        text-transform: uppercase; letter-spacing: 0.08em;
+        color: #b0b0b0;
       }
       div[data-testid="stSidebarUserContent"] .stCaption p { line-height: 1.35; }
 
+      /* Expanders, tabs and tables pick up the same hairline and label */
+      [data-testid="stExpander"] details {
+        border: 1px solid rgba(124, 252, 0, 0.08); border-radius: 12px;
+        background: #1a1a1a;
+      }
+      [data-testid="stExpander"] summary p {
+        font-family: 'Space Grotesk', sans-serif; font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      .stTabs [data-baseweb="tab"] {
+        font-family: 'Space Grotesk', sans-serif; font-size: 0.78rem;
+        font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase;
+      }
+      .stTabs [data-baseweb="tab-highlight"] { background-color: #7CFC00; }
+      [data-testid="stDataFrame"], [data-testid="stTable"] {
+        border-radius: 12px; overflow: hidden;
+      }
+
       /* Sidebar: brand, active-project card and grouped navigation */
+      section[data-testid="stSidebar"] {
+        border-right: 1px solid rgba(124, 252, 0, 0.08);
+      }
       section[data-testid="stSidebar"] div[data-testid="stSidebarUserContent"] {
         padding-top: 1.1rem;
       }
@@ -349,9 +440,9 @@ st.markdown(
       section[data-testid="stSidebar"] .stRadio
         [data-testid="stWidgetLabel"] p {
         font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.62rem; font-weight: 600;
+        font-size: 0.62rem; font-weight: 500;
         text-transform: uppercase; letter-spacing: 0.11em;
-        color: rgba(0, 0, 0, 0.38);
+        color: #8c8c8c;
       }
       /* Navigation items. Two selector sets: react-aria markup
          (stRadioOption, Streamlit >= 1.59) and baseweb markup
@@ -363,16 +454,23 @@ st.markdown(
       section[data-testid="stSidebar"] div[role="radiogroup"]
         label[data-baseweb="radio"] {
         display: flex; align-items: center;
-        width: 100%; margin: 0 0 2px; padding: 6px 10px;
-        border-radius: 7px; cursor: pointer;
+        width: 100%; margin: 0 0 2px; padding: 7px 10px;
+        border-radius: 8px; cursor: pointer;
+        border-left: 2px solid transparent;
+        transition: all 0.3s ease;
+      }
+      section[data-testid="stSidebar"] label[data-testid="stRadioOption"]:hover,
+      section[data-testid="stSidebar"] div[role="radiogroup"]
+        label[data-baseweb="radio"]:hover {
+        transform: translateX(4px);
       }
       section[data-testid="stSidebar"] label[data-testid="stRadioOption"]
         > div > div > div:first-child,
       section[data-testid="stSidebar"] div[role="radiogroup"]
         label[data-baseweb="radio"] > div:first-of-type {
-        width: 5px; height: 5px; min-width: 5px; min-height: 5px;
-        margin-right: 9px; border-width: 0; border-radius: 50%;
-        background: rgba(0, 0, 0, 0.18);
+        width: 6px; height: 6px; min-width: 6px; min-height: 6px;
+        margin-right: 10px; border-width: 0; border-radius: 50%;
+        background: rgba(124, 252, 0, 0.18);
       }
       section[data-testid="stSidebar"] label[data-testid="stRadioOption"]
         > div > div > div:first-child > div,
@@ -383,100 +481,104 @@ st.markdown(
       section[data-testid="stSidebar"] label[data-testid="stRadioOption"] p,
       section[data-testid="stSidebar"] div[role="radiogroup"]
         label[data-baseweb="radio"] div[data-testid="stMarkdownContainer"] p {
-        font-size: 0.83rem; font-weight: 500; color: rgba(0, 0, 0, 0.66);
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 0.78rem; font-weight: 500; letter-spacing: 0.06em;
+        text-transform: uppercase; color: #b0b0b0;
       }
       section[data-testid="stSidebar"]
         label[data-testid="stRadioOption"][data-selected="true"] {
-        background: rgba(43, 104, 80, 0.13);
+        background: rgba(124, 252, 0, 0.1); border-left-color: #7CFC00;
       }
       section[data-testid="stSidebar"]
         label[data-testid="stRadioOption"][data-selected="true"]
         > div > div > div:first-child {
-        background: #2B6850;
+        background: #7CFC00;
       }
       section[data-testid="stSidebar"]
         label[data-testid="stRadioOption"][data-selected="true"] p {
-        font-weight: 600; color: #184735;
+        font-weight: 600; color: #7CFC00;
       }
       section[data-testid="stSidebar"] div[role="radiogroup"]
         label[data-baseweb="radio"]:has(input:checked) {
-        background: rgba(43, 104, 80, 0.13);
+        background: rgba(124, 252, 0, 0.1); border-left-color: #7CFC00;
       }
       section[data-testid="stSidebar"] div[role="radiogroup"]
         label[data-baseweb="radio"]:has(input:checked) > div:first-of-type {
-        background: #2B6850;
+        background: #7CFC00;
       }
       section[data-testid="stSidebar"] div[role="radiogroup"]
         label[data-baseweb="radio"]:has(input:checked)
         div[data-testid="stMarkdownContainer"] p {
-        font-weight: 600; color: #184735;
+        font-weight: 600; color: #7CFC00;
       }
       section[data-testid="stSidebar"] .stRadio { margin-bottom: 0.35rem; }
 
       /* Shared design pieces (overview dashboard, callouts, chips) */
       .gw-brand { display: flex; align-items: center; gap: 10px; }
       .gw-brand-mark {
-        width: 28px; height: 28px; border-radius: 7px; background: #2B6850;
+        width: 30px; height: 30px; border-radius: 8px; background: #7CFC00;
         display: flex; align-items: center; justify-content: center;
-        color: #fff; font: 700 14px 'Space Grotesk', sans-serif;
+        color: #051000; font: 700 15px 'Space Grotesk', sans-serif;
       }
       .gw-brand-name {
-        font: 600 14px 'Space Grotesk', sans-serif; color: #152220;
-        line-height: 1.15;
+        font: 700 14px 'Space Grotesk', sans-serif; color: #ffffff;
+        letter-spacing: 0.04em; text-transform: uppercase; line-height: 1.15;
       }
       .gw-brand-sub {
         font: 400 9.5px 'IBM Plex Mono', monospace;
-        color: rgba(0, 0, 0, 0.45); letter-spacing: 0.05em;
+        color: #8c8c8c; letter-spacing: 0.08em;
       }
       .gw-project-card {
-        background: #fff; border: 1px solid rgba(0, 0, 0, 0.1);
-        border-radius: 9px; padding: 9px 11px; margin: 4px 0 6px;
+        background: #1a1a1a; border: 1px solid rgba(124, 252, 0, 0.08);
+        border-radius: 12px; padding: 10px 12px; margin: 4px 0 6px;
       }
       .gw-cap {
-        font: 600 10px 'IBM Plex Mono', monospace;
-        text-transform: uppercase; letter-spacing: 0.09em;
-        color: rgba(0, 0, 0, 0.45);
+        font: 500 10px 'IBM Plex Mono', monospace;
+        text-transform: uppercase; letter-spacing: 0.08em;
+        color: #b0b0b0;
       }
       .gw-chip {
-        display: inline-block; font: 600 10px 'IBM Plex Mono', monospace;
+        display: inline-block; font: 500 10px 'IBM Plex Mono', monospace;
         text-transform: uppercase; letter-spacing: 0.06em;
-        border-radius: 20px; padding: 3px 10px; vertical-align: middle;
+        border-radius: 999px; padding: 3px 10px; vertical-align: middle;
       }
-      .gw-chip-green { color: #184735; background: rgba(43, 104, 80, 0.14); }
-      .gw-chip-amber { color: #994A00; background: rgba(228, 142, 38, 0.18); }
-      .gw-chip-red { color: #8C2F2B; background: rgba(177, 78, 73, 0.15); }
-      .gw-chip-grey { color: rgba(0, 0, 0, 0.55); background: rgba(0, 0, 0, 0.07); }
-      .gw-chip-blue { color: #1F5C8B; background: rgba(31, 92, 139, 0.14); }
+      .gw-chip-green { color: #7CFC00; background: rgba(124, 252, 0, 0.12); }
+      .gw-chip-amber { color: #f2b705; background: rgba(242, 183, 5, 0.14); }
+      .gw-chip-red { color: #e07a5f; background: rgba(224, 122, 95, 0.16); }
+      .gw-chip-grey { color: #b0b0b0; background: rgba(255, 255, 255, 0.08); }
+      .gw-chip-blue { color: #2ea3e0; background: rgba(46, 163, 224, 0.14); }
       .gw-card {
-        background: #fff; border: 1px solid rgba(0, 0, 0, 0.09);
-        border-radius: 11px; padding: 14px 15px;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-        margin-bottom: 14px;
+        background: #1a1a1a; border: 1px solid rgba(124, 252, 0, 0.08);
+        border-radius: 12px; padding: 15px 16px;
+        box-shadow: 0 8px 30px rgba(124, 252, 0, 0.1);
+        margin-bottom: 14px; transition: all 0.3s ease;
       }
+      .gw-card:hover { border-color: rgba(124, 252, 0, 0.18); }
       .gw-card .gw-cap { display: block; margin-bottom: 8px; }
       .gw-big {
-        font: 600 26px 'Space Grotesk', sans-serif; color: #152220;
+        font: 700 26px 'Space Grotesk', sans-serif; color: #ffffff;
         line-height: 1.1;
       }
       .gw-big small {
-        font: 500 12px 'IBM Plex Mono', monospace; color: rgba(0, 0, 0, 0.5);
+        font: 500 12px 'IBM Plex Mono', monospace; color: #b0b0b0;
       }
       .gw-row {
         display: flex; justify-content: space-between; gap: 10px;
-        font-size: 0.78rem; color: rgba(0, 0, 0, 0.65); padding: 2.5px 0;
+        font-size: 0.78rem; color: #b0b0b0; padding: 2.5px 0;
       }
-      .gw-row b { color: #152220; font-weight: 500;
+      .gw-row b { color: #ffffff; font-weight: 500;
         font-family: 'IBM Plex Mono', monospace; }
       .gw-callout {
-        background: #2B6850; border-radius: 11px; padding: 14px 16px;
-        color: #fff; margin: 4px 0 12px;
+        background: #7CFC00; border-radius: 12px; padding: 15px 17px;
+        color: #051000; margin: 4px 0 12px;
+        box-shadow: 0 8px 30px rgba(124, 252, 0, 0.2);
       }
-      .gw-callout .gw-cap { color: rgba(255, 255, 255, 0.7); }
-      .gw-callout .gw-big { color: #fff; }
-      .gw-callout .gw-big small { color: rgba(255, 255, 255, 0.65); }
+      .gw-callout .gw-cap { color: rgba(5, 16, 0, 0.7); }
+      .gw-callout .gw-big { color: #051000; }
+      .gw-callout .gw-big small { color: rgba(5, 16, 0, 0.65); }
       .gw-callout p {
         margin: 4px 0 0; font-size: 0.75rem; line-height: 1.4;
-        color: rgba(255, 255, 255, 0.82);
+        color: rgba(5, 16, 0, 0.82);
       }
       .gw-steps { display: flex; align-items: flex-start; margin: 6px 0 4px; }
       .gw-step { display: flex; flex-direction: column; align-items: center;
@@ -484,31 +586,33 @@ st.markdown(
       .gw-step-dot {
         width: 26px; height: 26px; border-radius: 50%;
         display: flex; align-items: center; justify-content: center;
-        font: 700 12px sans-serif;
+        font: 500 12px 'IBM Plex Mono', monospace;
       }
-      .gw-step-done .gw-step-dot { background: #2B6850; color: #fff; }
+      .gw-step-done .gw-step-dot { background: #7CFC00; color: #051000; }
       .gw-step-todo .gw-step-dot {
-        background: #fff; border: 2px dashed rgba(43, 104, 80, 0.6);
-        color: #2B6850; font-size: 11px;
+        background: #141414; border: 2px dashed rgba(124, 252, 0, 0.45);
+        color: #7CFC00; font-size: 11px;
       }
-      .gw-step-label { font-size: 0.68rem; font-weight: 600; color: #152220; }
-      .gw-step-todo .gw-step-label { color: rgba(0, 0, 0, 0.5); }
-      .gw-step-line { flex: 1; height: 2px; background: #2B6850;
+      .gw-step-label { font-size: 0.68rem; font-weight: 600; color: #ffffff;
+        font-family: 'Space Grotesk', sans-serif; letter-spacing: 0.04em;
+        text-transform: uppercase; }
+      .gw-step-todo .gw-step-label { color: #8c8c8c; }
+      .gw-step-line { flex: 1; height: 2px; background: #7CFC00;
         margin: 12px 6px 0; }
       .gw-step-line-todo {
-        background: repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.2) 0 4px,
+        background: repeating-linear-gradient(90deg, rgba(124, 252, 0, 0.3) 0 4px,
           transparent 4px 8px);
       }
       .gw-bar { display: flex; height: 9px; border-radius: 5px;
-        overflow: hidden; margin: 8px 0; }
+        overflow: hidden; margin: 8px 0; background: #141414; }
       .gw-legend { display: flex; flex-wrap: wrap; gap: 3px 12px;
-        font-size: 0.66rem; color: rgba(0, 0, 0, 0.6); }
+        font-size: 0.66rem; color: #b0b0b0; }
       .gw-legend i { display: inline-block; width: 8px; height: 8px;
         border-radius: 2px; margin-right: 4px; }
       .gw-report-row {
         display: flex; justify-content: space-between; align-items: center;
-        font-size: 0.78rem; color: rgba(0, 0, 0, 0.72); padding: 4px 0;
-        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        font-size: 0.78rem; color: #b0b0b0; padding: 4px 0;
+        border-bottom: 1px solid rgba(124, 252, 0, 0.08);
       }
       .gw-report-row:last-child { border-bottom: none; }
     </style>
@@ -1518,7 +1622,7 @@ def compute_cost_estimate(inputs: CostingInputs, rates, **kwargs) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Overview - the project dashboard (design direction 1b, Project Workspace)
+# Overview - the project dashboard
 # ---------------------------------------------------------------------------
 
 # Upper bound of the guided start's depth fields. Streamlit raises on a
@@ -1626,7 +1730,7 @@ with tab_overview:
     if not _has_results:
         st.markdown(
             "<div class='gw-card'><span class='gw-cap'>Getting started</span>"
-            "<div style='font-size:0.86rem;color:rgba(0,0,0,.7);line-height:1.5'>"
+            "<div style='font-size:0.86rem;color:#b0b0b0;line-height:1.5'>"
             "Nothing has been analysed yet. Work through the guided start, "
             "or open any page from the sidebar - every page offers bundled "
             "sample data (Rokel, Dr Timbo, Kuntolo) so you can try the whole "
@@ -1747,7 +1851,7 @@ with tab_overview:
                                "discharge pending")
                     _pump_head = (
                         "<span class='gw-chip gw-chip-amber'>Pending</span>"
-                        f"<div style='font-size:0.75rem;color:rgba(0,0,0,.55);"
+                        f"<div style='font-size:0.75rem;color:#8c8c8c;"
                         f"margin-top:6px'>{_html.escape(_reason)}</div>"
                     )
                 _pump_rows = []
@@ -1790,7 +1894,7 @@ with tab_overview:
                     "<div class='gw-card'><span class='gw-cap'>Water quality"
                     " — WHO</span>"
                     f"<span class='gw-chip {_wq_chip[0]}'>{_wq_chip[1]}</span>"
-                    f"<div style='font-size:0.75rem;color:rgba(0,0,0,.55);"
+                    f"<div style='font-size:0.75rem;color:#8c8c8c;"
                     f"margin-top:6px'>{_html.escape(_wq_note)}</div>"
                     + _rows_html([
                         ("Parameters assessed", str(len(_ov_wq.rows))),
@@ -1803,8 +1907,7 @@ with tab_overview:
             if _ov_cost is not None:
                 _stages = [(s, v) for s, v in _ov_cost.by_stage() if v > 0]
                 _total = sum(v for _, v in _stages) or 1.0
-                _bar_colors = ["#2B6850", "#4C8A6F", "#6FAC90",
-                               "#B0A365", "#C98A4B", "#8C8C7A"]
+                _bar_colors = _BAR_COLORS
                 _bar = "".join(
                     f"<div style='width:{100 * v / _total:.1f}%;"
                     f"background:{_bar_colors[i % len(_bar_colors)]}'></div>"
@@ -1822,7 +1925,7 @@ with tab_overview:
                     f"<div class='gw-big'>US$ {_ov_cost.price_usd:,.0f} "
                     "<small>price</small></div>"
                     f"<div style='font:400 10px \"IBM Plex Mono\",monospace;"
-                    f"color:rgba(0,0,0,.45)'>RWSN model · "
+                    f"color:#b0b0b0'>RWSN model · "
                     f"US$ {_ov_cost.cost_per_meter_usd:,.0f}/m</div>"
                     f"<div class='gw-bar'>{_bar}</div>"
                     f"<div class='gw-legend'>{_legend}</div></div>",

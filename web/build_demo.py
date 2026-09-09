@@ -6,9 +6,8 @@ compiled to WebAssembly with Pyodide). No server is involved; uploads
 never leave the browser. The page inlines the whole ``groundwater``
 package, the app script and the bundled sample datasets, so the only
 external fetches are the stlite runtime and the Pyodide/scientific
-wheels from the jsDelivr CDN, plus the app's display fonts from
-Google Fonts (optional: system fallbacks are used when that fetch
-fails, e.g. offline).
+wheels from the jsDelivr CDN. The display fonts ship inside the
+package, so nothing is fetched from a font service.
 
 This is the *second* thing published to Pages. The site root is the
 standalone JavaScript app (``docs/index.html``), which needs no Python
@@ -73,7 +72,8 @@ TEMPLATE = """<!doctype html>
 <link rel="stylesheet" href="__STLITE_CSS__" />
 <style>
   html, body, #root { height: 100%; margin: 0; padding: 0; }
-  #boot-note { font-family: sans-serif; color: #444; padding: 2rem; }
+  body { background: #0a0a0a; }
+  #boot-note { font-family: sans-serif; color: #b0b0b0; padding: 2rem; }
 </style>
 </head>
 <body>
@@ -98,16 +98,16 @@ mount(
     requirements: __REQUIREMENTS_JSON__,
 __PYODIDE_LINE__
     streamlitConfig: {
-      "theme.base": "light",
-      "theme.primaryColor": "#2B6850",
-      "theme.backgroundColor": "#F6F5F1",
-      "theme.secondaryBackgroundColor": "#EFEEE8",
-      "theme.textColor": "#152220",
-      "theme.linkColor": "#1B5A43",
-      "theme.borderColor": "#DAD8D0",
-      "theme.baseRadius": "0.6rem",
-      "theme.sidebar.backgroundColor": "#ECEEE7",
-      "theme.sidebar.secondaryBackgroundColor": "#FFFFFF",
+      "theme.base": "dark",
+      "theme.primaryColor": "#7CFC00",
+      "theme.backgroundColor": "#0a0a0a",
+      "theme.secondaryBackgroundColor": "#1a1a1a",
+      "theme.textColor": "#ffffff",
+      "theme.linkColor": "#9FFF4D",
+      "theme.borderColor": "#253A10",
+      "theme.baseRadius": "12px",
+      "theme.sidebar.backgroundColor": "#000000",
+      "theme.sidebar.secondaryBackgroundColor": "#141414",
       "client.toolbarMode": "viewer",
     },
   },

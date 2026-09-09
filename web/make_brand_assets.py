@@ -33,9 +33,16 @@ from matplotlib.path import Path as MplPath
 REPO = Path(__file__).resolve().parents[1]
 OUT = REPO / "src" / "groundwater" / "data" / "brand"
 
-ACCENT = "#1F5C8B"  # house accent (config.HouseStyle.accent_color)
-ACCENT_LIGHT = "#4C9BD6"
-INK = "#173B54"  # wordmark colour
+# The sustaintheworld design language: the droplet runs from the neon green
+# at the tip to the emerald at the bowl, the water table is drawn in the
+# near-black the design puts on green, and the wordmark is white for the
+# dark sidebar it sits in. The printed reports keep their own house style
+# (config.HouseStyle) - this is the interface brand, not the report's.
+ACCENT = "#3ad07a"  # bowl of the droplet (emerald accent)
+ACCENT_LIGHT = "#7CFC00"  # tip of the droplet (primary green)
+WAVE = "#051000"  # water table strokes: the design's ink on green
+INK = "#ffffff"  # wordmark colour
+TAGLINE = "#7CFC00"
 
 # Circle-to-bezier constant for quarter arcs.
 K = 0.552284749831
@@ -50,10 +57,10 @@ ICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   </defs>
   <path fill="url(#g)" d="M32 4 C28 16 12 26 12 41 C12 32.95 12 41 12 41
     C12 52.05 20.95 61 32 61 C43.05 61 52 52.05 52 41 C52 26 36 16 32 4 Z"/>
-  <path fill="none" stroke="#FFFFFF" stroke-width="3.6" stroke-linecap="round"
+  <path fill="none" stroke="{wave}" stroke-width="3.6" stroke-linecap="round"
     d="M17.5 42.5 C21 38.5 25 38.5 28.5 42.5 C32 46.5 36 46.5 39.5 42.5
        C42 39.7 44.5 39.2 46.5 41"/>
-  <path fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"
+  <path fill="none" stroke="{wave}" stroke-width="2.4" stroke-linecap="round"
     opacity="0.55"
     d="M20.5 50 C23.5 47 26.5 47 29.5 50 C32.5 53 35.5 53 38.5 50"/>
 </svg>
@@ -83,7 +90,7 @@ def droplet_path() -> MplPath:
 
 
 def draw_droplet(ax) -> None:
-    """Gradient-filled droplet with white water table waves."""
+    """Gradient-filled droplet with the water table drawn across it."""
     path = droplet_path()
     patch = PathPatch(path, facecolor="none", edgecolor="none")
     ax.add_patch(patch)
@@ -105,11 +112,11 @@ def draw_droplet(ax) -> None:
     # water table: a bold wave and a fainter one below (y-up coordinates)
     x = np.linspace(17.5, 46.5, 200)
     y = 21.5 + 2.6 * np.sin((x - 17.5) / 29.0 * 2.0 * np.pi * 1.25)
-    line1 = ax.plot(x, y, color="white", lw=9.5, solid_capstyle="round", zorder=2)[0]
+    line1 = ax.plot(x, y, color=WAVE, lw=9.5, solid_capstyle="round", zorder=2)[0]
     x2 = np.linspace(20.5, 38.5, 150)
     y2 = 13.5 + 1.9 * np.sin((x2 - 20.5) / 18.0 * 2.0 * np.pi * 0.75 + np.pi)
     line2 = ax.plot(
-        x2, y2, color="white", lw=6.5, alpha=0.55, solid_capstyle="round", zorder=2
+        x2, y2, color=WAVE, lw=6.5, alpha=0.55, solid_capstyle="round", zorder=2
     )[0]
     line1.set_clip_path(patch)
     line2.set_clip_path(patch)
@@ -142,7 +149,7 @@ def make_logo(out_path: Path) -> None:
     )
     ax_text.text(
         0.012, 0.20, "Siting - Drilling - Testing - Quality - Reporting",
-        fontsize=17, color=ACCENT,
+        fontsize=17, color=TAGLINE,
         ha="left", va="center", family="DejaVu Sans",
     )
     fig.savefig(out_path, transparent=True, dpi=100)
@@ -152,7 +159,8 @@ def make_logo(out_path: Path) -> None:
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "icon.svg").write_text(
-        ICON_SVG.format(light=ACCENT_LIGHT, accent=ACCENT), encoding="utf-8"
+        ICON_SVG.format(light=ACCENT_LIGHT, accent=ACCENT, wave=WAVE),
+        encoding="utf-8",
     )
     make_icon(OUT / "icon.png")
     make_logo(OUT / "logo.png")

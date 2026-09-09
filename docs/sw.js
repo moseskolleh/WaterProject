@@ -22,7 +22,7 @@
 /* Bump when the precache list below changes. Existing files do not need it:
  * they are revalidated on every load (see the fetch handler), so a deploy
  * reaches users without a version change. */
-var VERSION = 'gwt-v2';
+var VERSION = 'gwt-v3';
 var CACHE = VERSION + '-app';
 
 /* Relative to the worker's own directory, so the app works unchanged at a
@@ -36,6 +36,10 @@ var PRECACHE = [
   'icon-512.png',
   'icon-maskable-512.png',
   'css/gwt.css',
+  'fonts/space-grotesk-latin.woff2',
+  'fonts/inter-latin.woff2',
+  'fonts/ibm-plex-mono-latin-400.woff2',
+  'fonts/ibm-plex-mono-latin-500.woff2',
   'js/support.js',
   'js/gwt-data.js',
   'js/gwt-core.js',

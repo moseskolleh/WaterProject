@@ -85,7 +85,7 @@
       seasonal: {},
       procurement: { contract: null, measured: {}, variations: [],
         number: 1, date: '', previous: 0 },
-      theme: 'auto',
+      theme: 'dark',
     };
   }
 
@@ -217,13 +217,13 @@
   }
 
   function themeIcon() {
-    var theme = store.get('theme', 'auto');
+    var theme = store.get('theme', 'dark');
     return theme === 'dark' ? '☾' : (theme === 'light' ? '☀' : '◐');
   }
 
   function toggleTheme() {
     var order = ['auto', 'light', 'dark'];
-    var next = order[(order.indexOf(store.get('theme', 'auto')) + 1) % order.length];
+    var next = order[(order.indexOf(store.get('theme', 'dark')) + 1) % order.length];
     store.set('theme', next);
     applyTheme();
     renderChrome();
@@ -231,7 +231,7 @@
   }
 
   function applyTheme() {
-    var theme = store.get('theme', 'auto');
+    var theme = store.get('theme', 'dark');
     if (theme === 'auto') document.documentElement.removeAttribute('data-theme');
     else document.documentElement.setAttribute('data-theme', theme);
   }
@@ -641,7 +641,7 @@
     if (!sample) return;
     var fresh = blankState();
     fresh.nav = store.get('nav');
-    fresh.theme = store.get('theme', 'auto');
+    fresh.theme = store.get('theme', 'dark');
     Object.keys(sample.site || {}).forEach(function (k) {
       fresh.site[k] = sample.site[k];
     });
