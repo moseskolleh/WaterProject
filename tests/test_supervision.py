@@ -156,3 +156,59 @@ def test_supervision_report_builds_and_reproducible(tmp_path: Path):
     b = build_supervision_report(inputs, tmp_path / "b.docx")
     assert a.stat().st_size > 20_000
     assert a.read_bytes() == b.read_bytes()
+
+
+def test_checklist_ids_are_stable_slugs_not_positions():
+    """A saved answer must survive a row being inserted above it."""
+    from groundwater.supervision.checklists import (
+        legacy_item_ids,
+        migrate_response_keys,
+    )
+
+    items = load_checklists()
+    for item in items:
+        assert item.item_id != item.legacy_id, item.item_id
+        assert " " not in item.item_id and item.item_id == item.item_id.lower()
+    legacy = legacy_item_ids(items)
+    assert legacy["drilling-01"] == next(
+        i for i in items if i.checklist == "drilling").item_id
+
+    # the seal item is critical and its wording agrees with the design rule
+    from groundwater.config import DesignRules
+
+    seal_item = next(i for i in items if "sanitary seal" in i.text.lower())
+    assert seal_item.critical
+    assert f"top {DesignRules().sanitary_seal_depth_m:g} m" in seal_item.text
+
+    # answers keyed by position land on the same question
+    migrated = migrate_response_keys(
+        {"chk_drilling-01": "yes", "rmk_drilling-01": "ok",
+         "chk_" + items[3].item_id: "no", "chk_nowhere-99": "na",
+         "meta_community": "Rokel"},
+        items,
+    )
+    assert migrated["chk_" + legacy["drilling-01"]] == "yes"
+    assert migrated["rmk_" + legacy["drilling-01"]] == "ok"
+    assert migrated["chk_" + items[3].item_id] == "no"
+    assert migrated["chk_nowhere-99"] == "na"
+    assert migrated["meta_community"] == "Rokel"
+    assert "chk_drilling-01" not in migrated
+
+
+def test_checklist_csv_without_ids_keeps_positions_and_rejects_duplicates(tmp_path: Path):
+    from groundwater.supervision.checklists import legacy_item_ids
+
+    header = "checklist,section,item,critical,guidance\n"
+    (tmp_path / "plain.csv").write_text(
+        header + "drilling,Safety,Hard hats worn,no,\n"
+        "drilling,Safety,Guards fitted,yes,\n", encoding="utf-8")
+    items = load_checklists(tmp_path / "plain.csv")
+    assert [i.item_id for i in items] == ["drilling-01", "drilling-02"]
+    assert legacy_item_ids(items) == {}
+
+    (tmp_path / "dup.csv").write_text(
+        "id,checklist,section,item,critical,guidance\n"
+        "drl-hats,drilling,Safety,Hard hats worn,no,\n"
+        "drl-hats,drilling,Safety,Guards fitted,yes,\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="appears twice"):
+        load_checklists(tmp_path / "dup.csv")

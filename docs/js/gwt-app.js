@@ -602,6 +602,17 @@
     S.toast('Project saved as ' + name, 'ok');
   }
 
+  /* A project saved before the checklists carried stable ids keys its
+   * answers by position. Carry them onto the questions they answered so a
+   * row inserted in the CSV never moves anybody's ticks. */
+  function migrateLoadedState(state) {
+    var sup = state && state.supervision;
+    if (sup && sup.responses && typeof sup.responses === 'object') {
+      sup.responses = C.migrateChecklistResponses(sup.responses);
+    }
+    return state;
+  }
+
   async function openProject() {
     var file = await S.pickFile('.json,.gwt,application/json');
     if (!file) return;
@@ -613,7 +624,7 @@
        * never be adopted into this session's storage. The key held for this
        * tab is untouched - it belongs to this browser, not to the file. */
       if (state.extraction) delete state.extraction.apiKey;
-      store.replace(Object.assign(blankState(), state));
+      store.replace(migrateLoadedState(Object.assign(blankState(), state)));
       applyTheme();
       await recompute();
       await runInversions({ quiet: true });
@@ -5387,7 +5398,7 @@
         strandedKey = merged.extraction.apiKey;
         delete merged.extraction.apiKey;
       }
-      store.replace(merged);
+      store.replace(migrateLoadedState(merged));
       if (strandedKey) store.persist();
     }
     applyTheme();

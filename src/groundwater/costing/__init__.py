@@ -15,6 +15,7 @@ from .model import (
     RateItem,
     annulus_volume_m3,
     estimate_borehole_cost,
+    cement_bags_for_seal,
     inputs_from_design,
     load_rates,
 )
@@ -45,6 +46,7 @@ __all__ = [
     "RateItem",
     "annulus_volume_m3",
     "estimate_borehole_cost",
+    "cement_bags_for_seal",
     "inputs_from_design",
     "load_rates",
     "plot_cost_breakdown",

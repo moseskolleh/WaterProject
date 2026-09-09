@@ -195,6 +195,11 @@ def _updates_from_payload(payload: dict) -> dict:
             value, (str, int, float, bool)
         ):
             updates[str(key)] = value
+    # supervision answers saved before the checklist CSV carried stable ids
+    # are keyed by position; carry them onto the questions they answered
+    from .supervision.checklists import migrate_response_keys
+
+    updates = migrate_response_keys(updates)
     if warnings:
         updates["warnings"] = warnings
 

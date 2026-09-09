@@ -229,3 +229,25 @@ def test_a_browser_app_project_file_yields_its_summary():
     updates = deserialize_project(json.dumps(payload).encode())
     assert updates["summary"]["community"] == "Dr. Timbo's Residence"
     assert updates["meta_community"] == "Dr. Timbo's Residence"
+
+
+def test_positional_checklist_answers_are_carried_onto_stable_ids():
+    """A project saved before the checklists carried ids keys its answers by
+    position; loading it must land each answer on the question it answered."""
+    from groundwater.supervision.checklists import legacy_item_ids, load_checklists
+
+    items = load_checklists()
+    legacy = legacy_item_ids(items)
+    first_drilling = legacy["drilling-01"]
+    session = {
+        "chk_drilling-01": "yes",
+        "rmk_drilling-01": "seen on site",
+        "chk_" + items[0].item_id: "no",
+        "meta_community": "Rokel",
+    }
+    updates = deserialize_project(serialize_project(session, "0.2.0"))
+    assert updates["chk_" + first_drilling] == "yes"
+    assert updates["rmk_" + first_drilling] == "seen on site"
+    assert updates["chk_" + items[0].item_id] == "no"
+    assert "chk_drilling-01" not in updates
+    assert updates["meta_community"] == "Rokel"

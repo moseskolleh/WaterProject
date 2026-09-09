@@ -85,8 +85,9 @@
       casing_material: 'uPVC',
       screen_slot_mm: 0.75,
       screen_length_default_m: 9.0,
-      sanitary_seal_depth_m: 3.0,
-      grout_min_depth_m: 15.0,
+      /* the one seal depth: the RWSN checklist's critical item and the
+       * costing's cement quantity both follow it */
+      sanitary_seal_depth_m: 6.0,
       gravel_pack_above_top_screen_m: 2.0,
       gravel_pack_material: 'well sorted siliceous gravel, 2-4 mm',
       sump_length_m: 2.0,
@@ -4382,6 +4383,13 @@
 
   /* Fill missing fields from documented rules of thumb, recording every
    * assumption on the estimate so nothing is hidden. */
+  /* bags of cement for a grout seal over sealM of annulus: about 20 bags per
+   * cubic metre, never fewer than four */
+  function cementBagsForSeal(boreholeIn, casingIn, sealM) {
+    var volume = annulusVolumeM3(boreholeIn, casingIn, sealM);
+    return Math.max(4.0, Math.ceil(volume * 20.0));
+  }
+
   function resolveCostingInputs(inputs) {
     var r = Object.assign({}, inputs);
     var assumptions = [];
@@ -4408,10 +4416,12 @@
         'bottom of the borehole).');
     }
     if (r.cement_bags === null || r.cement_bags === undefined) {
-      var sealVolume = annulusVolumeM3(r.borehole_diameter_in, r.casing_diameter_in, 15.0);
-      r.cement_bags = Math.max(4.0, Math.ceil(sealVolume * 20.0));
+      /* the seal the design rules draw, not a 15 m one nobody drew */
+      var sealM = defaultConfig().design.sanitary_seal_depth_m;
+      r.cement_bags = cementBagsForSeal(r.borehole_diameter_in, r.casing_diameter_in, sealM);
       assumptions.push('Cement estimated at ' + fmtNum(r.cement_bags) +
-        ' bags for the grout seal (about 20 bags per cubic metre of annulus).');
+        ' bags for a ' + fmtNum(sealM) + ' m grout seal (about 20 bags per cubic ' +
+        'metre of annulus).');
     }
     if (r.crew_days === null || r.crew_days === undefined) {
       r.crew_days = Math.ceil(r.total_depth_m / 25.0) + 4;
@@ -4439,6 +4449,10 @@
       borehole_diameter_in: design.borehole_diameter_in,
       casing_diameter_in: design.casing_diameter_in,
       gravel_interval_m: Math.max(0.0, design.gravel_pack[1] - design.gravel_pack[0]),
+      cement_bags: cementBagsForSeal(
+        design.borehole_diameter_in, design.casing_diameter_in,
+        Math.max(0.0, design.sanitary_seal[1] - design.sanitary_seal[0])
+      ),
       mobilisation_distance_km: opts.mobilisationDistanceKm || 0.0,
     });
   }
@@ -4722,12 +4736,19 @@
 
   function loadChecklists(rows) {
     var source = rows || (GWT.data && GWT.data.supervisionChecklists) || [];
-    var counters = {};
+    var counters = {}, seen = {};
     return source.map(function (row) {
       var checklist = String(row.checklist || '').trim();
       counters[checklist] = (counters[checklist] || 0) + 1;
+      var positional = checklist + '-' + String(counters[checklist]).padStart(2, '0');
+      /* the CSV's own id when it has one, so a row inserted or reworded never
+       * moves anybody's saved answer */
+      var itemId = String(row.id || '').trim() || positional;
+      if (own(seen, itemId)) throw new Error('checklist id ' + itemId + ' appears twice');
+      seen[itemId] = true;
       return {
-        item_id: checklist + '-' + String(counters[checklist]).padStart(2, '0'),
+        item_id: itemId,
+        legacy_id: positional,
         checklist: checklist,
         section: String(row.section || '').trim(),
         text: String(row.item || '').trim(),
@@ -4735,6 +4756,31 @@
         guidance: String(row.guidance || '').trim(),
       };
     });
+  }
+
+  /* positional id -> stable id, for every item whose id changed */
+  function legacyItemIds(items) {
+    var out = {};
+    (items || loadChecklists()).forEach(function (item) {
+      if (item.legacy_id && item.legacy_id !== item.item_id) out[item.legacy_id] = item.item_id;
+    });
+    return out;
+  }
+
+  /* responses saved before the CSV carried ids are keyed by position; carry
+   * them onto the questions they answered. Nothing is guessed: a key that is
+   * already stable, or that the current CSV does not know, is left alone. */
+  function migrateChecklistResponses(responses, items) {
+    var legacy = legacyItemIds(items);
+    var out = {};
+    Object.keys(responses || {}).forEach(function (key) {
+      var target = own(legacy, key) ? legacy[key] : key;
+      if (own(out, target)) return;
+      var value = responses[key];
+      out[target] = (value && typeof value === 'object' && value.item_id === key)
+        ? Object.assign({}, value, { item_id: target }) : value;
+    });
+    return out;
   }
 
   function loadSeparationDistances(rows) {
@@ -4995,7 +5041,8 @@
     programmeSummaryRows: programmeSummaryRows,
     STAGE_TITLES: STAGE_TITLES, STAGE_ORDER: STAGE_ORDER,
     RESPONSE_STATES: RESPONSE_STATES, stageTitle: stageTitle,
-    loadChecklists: loadChecklists, loadSeparationDistances: loadSeparationDistances,
+    loadChecklists: loadChecklists, legacyItemIds: legacyItemIds,
+    migrateChecklistResponses: migrateChecklistResponses, loadSeparationDistances: loadSeparationDistances,
     evaluateChecklist: evaluateChecklist,
     sandContentCheck: sandContentCheck, verticalityCheck: verticalityCheck,
     screenOpenAreaCheck: screenOpenAreaCheck,

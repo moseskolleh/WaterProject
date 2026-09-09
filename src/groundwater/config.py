@@ -100,8 +100,13 @@ class DesignRules:
     casing_material: str = "uPVC"
     screen_slot_mm: float = 0.75
     screen_length_default_m: float = 9.0
-    sanitary_seal_depth_m: float = 3.0  # cement grout from surface
-    grout_min_depth_m: float = 15.0  # backfill/seal above gravel pack
+    # Cement grout from the surface. This is the one number: the bundled
+    # RWSN checklist's critical item ("sanitary seal in the top 6 m") and the
+    # costing's cement quantity both follow it, so a supervisor applying the
+    # toolkit's own checklist to the toolkit's own drawing no longer has to
+    # answer No, and the BoQ no longer prices a 15 m seal the drawing did not
+    # show.
+    sanitary_seal_depth_m: float = 6.0
     gravel_pack_above_top_screen_m: float = 2.0
     gravel_pack_material: str = "well sorted siliceous gravel, 2-4 mm"
     sump_length_m: float = 2.0  # plain casing below the lowest screen

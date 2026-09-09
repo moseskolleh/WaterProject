@@ -42,6 +42,7 @@ from pathlib import Path
 import numpy as np
 
 from groundwater.depth_spine.view import SpineInputs, build_view
+from groundwater.costing import inputs_from_design
 from groundwater.design import design_borehole
 from groundwater.hydraulics import analyse_pumping_test
 from groundwater.ingestion import (
@@ -67,6 +68,11 @@ from groundwater.geo import geodesic_distance_m, geographic_to_utm
 from groundwater.quality import assess_sample
 from groundwater.units import convert as unit_convert
 from groundwater.siting import assess_siting
+from groundwater.supervision.checklists import (
+    legacy_item_ids,
+    load_checklists,
+    migrate_response_keys,
+)
 from groundwater.ves.interpret import interpret_model
 from groundwater.ves.inversion import invert_sounding
 
@@ -203,6 +209,22 @@ def build() -> dict:
         "screens": [[clean(s.top_m), clean(s.bottom_m)] for s in design.screens],
         "gravel": clean(list(design.gravel_pack)),
         "screen_len": clean(design.total_screen_length_m),
+        # the seal the drawing shows is the seal the BoQ prices
+        "seal": clean(list(design.sanitary_seal)),
+        "cement_bags": clean(inputs_from_design(design).cement_bags),
+    }
+
+    # The supervision checklists: both engines must read the same ids out of
+    # the CSV, and carry a positional answer onto the same stable id.
+    _items = load_checklists()
+    out["checklists"] = {
+        "ids": [[i.item_id, i.legacy_id, i.checklist, i.section, i.critical]
+                for i in _items],
+        "legacy": legacy_item_ids(_items),
+        "migrated": migrate_response_keys(
+            {"chk_procurement-01": "yes", "rmk_drilling-03": "note",
+             "chk_" + _items[10].item_id: "no", "chk_nowhere-99": "na"},
+            _items),
     }
 
     inverted = invert_sounding(soundings[0])
