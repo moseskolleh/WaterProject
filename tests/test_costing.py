@@ -242,3 +242,19 @@ def test_cement_is_priced_for_the_seal_the_drawing_shows():
     plain, assumptions = CostingInputs(total_depth_m=60.0, overburden_m=8.0).resolved()
     assert plain.cement_bags == expected
     assert any("6 m grout seal" in a for a in assumptions)
+
+
+def test_a_manual_estimate_prices_the_seal_it_is_given():
+    """A caller working to its own rules passes the seal it draws; the BoQ
+    must price that seal, not the module default."""
+    from groundwater.costing import cement_bags_for_seal
+
+    default, _ = CostingInputs(total_depth_m=60.0).resolved()
+    deep, notes = CostingInputs(total_depth_m=60.0, sanitary_seal_m=30.0).resolved()
+    assert deep.cement_bags == cement_bags_for_seal(6.5, 5.0, 30.0)
+    assert deep.cement_bags > default.cement_bags
+    assert any("30 m grout seal" in n for n in notes)
+    # an explicit bag count still wins over any seal depth
+    given, _ = CostingInputs(total_depth_m=60.0, sanitary_seal_m=30.0,
+                             cement_bags=2.0).resolved()
+    assert given.cement_bags == 2.0

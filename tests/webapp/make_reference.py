@@ -42,7 +42,7 @@ from pathlib import Path
 import numpy as np
 
 from groundwater.depth_spine.view import SpineInputs, build_view
-from groundwater.costing import inputs_from_design
+from groundwater.costing import CostingInputs, inputs_from_design
 from groundwater.design import design_borehole
 from groundwater.hydraulics import analyse_pumping_test
 from groundwater.ingestion import (
@@ -212,6 +212,14 @@ def build() -> dict:
         # the seal the drawing shows is the seal the BoQ prices
         "seal": clean(list(design.sanitary_seal)),
         "cement_bags": clean(inputs_from_design(design).cement_bags),
+    }
+
+    # A manual estimate with its own seal rule: cement follows the seal given.
+    _manual, _manual_notes = CostingInputs(
+        total_depth_m=60.0, sanitary_seal_m=30.0).resolved()
+    out["costing_manual"] = {
+        "cement_bags": clean(_manual.cement_bags),
+        "seal_note": next(n for n in _manual_notes if "grout seal" in n),
     }
 
     # The supervision checklists: both engines must read the same ids out of

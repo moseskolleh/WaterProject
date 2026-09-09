@@ -646,6 +646,10 @@
   ],
   "cement_bags": 4.0
  },
+ "costing_manual": {
+  "cement_bags": 6.0,
+  "seal_note": "Cement estimated at 6 bags for a 30 m grout seal (about 20 bags per cubic metre of annulus)."
+ },
  "checklists": {
   "ids": [
    [

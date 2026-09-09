@@ -1610,6 +1610,21 @@ def run_ves_inversion(soundings) -> None:
     st.session_state.ves_results = (soundings, results, interps)
 
 
+
+def _manual_costing_rules() -> dict:
+    """The design rules a manual estimate prices when there is no drawing.
+
+    Without a design the diameters and the seal depth would fall back to
+    the costing module's own defaults, so an estimate typed in from a
+    depth could disagree with the rules the design page draws by.
+    """
+    rules = CONFIG.design
+    return {
+        "borehole_diameter_in": rules.borehole_diameter_in,
+        "casing_diameter_in": rules.casing_diameter_in,
+        "sanitary_seal_m": rules.sanitary_seal_depth_m,
+    }
+
 def compute_cost_estimate(inputs: CostingInputs, rates, **kwargs) -> None:
     """Estimate and build the shared artifacts (chart and BoQ workbook)."""
     estimate = estimate_borehole_cost(inputs, rates, **kwargs)
@@ -2142,6 +2157,7 @@ with tab_guide:
                     total_depth_m=wiz_depth,
                     overburden_m=wiz_over or None,
                     mobilisation_distance_km=wiz_dist,
+                    **_manual_costing_rules(),
                 ),
                 cached_rates(),
             )
@@ -3060,6 +3076,7 @@ with tab_cost:
                 total_depth_m=depth,
                 overburden_m=overburden or None,
                 mobilisation_distance_km=distance,
+                **_manual_costing_rules(),
             )
         inputs.handpumps = int(handpumps)
         inputs.wq_samples = int(samples)
@@ -3177,6 +3194,7 @@ with tab_cost:
                 total_depth_m=depth,
                 overburden_m=overburden or None,
                 mobilisation_distance_km=distance,
+                **_manual_costing_rules(),
                 handpumps=int(handpumps),
                 wq_samples=int(samples),
                 development_hours=float(dev_hours),

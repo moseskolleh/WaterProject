@@ -119,6 +119,10 @@ class CostingInputs:
     casing_diameter_in: float = 5.0
     gravel_interval_m: Optional[float] = None  # gravel packed annulus length
     cement_bags: Optional[float] = None  # sanitary seal and grout
+    # Depth of the grout seal the cement is worked out for when cement_bags
+    # is not given. None means the design rules' default; a caller working to
+    # its own rules passes the rule it draws so the BoQ prices that seal.
+    sanitary_seal_m: Optional[float] = None
     crew_days: Optional[float] = None  # days on site including moves
     development_hours: float = 6.0
     test_pumping_hours: float = 30.0  # step plus constant plus recovery
@@ -155,7 +159,8 @@ class CostingInputs:
             )
         if r.cement_bags is None:
             # the seal the design rules draw, not a 15 m one nobody drew
-            seal_m = DesignRules().sanitary_seal_depth_m
+            seal_m = (r.sanitary_seal_m if r.sanitary_seal_m is not None
+                      else DesignRules().sanitary_seal_depth_m)
             r.cement_bags = cement_bags_for_seal(
                 r.borehole_diameter_in, r.casing_diameter_in, seal_m
             )
