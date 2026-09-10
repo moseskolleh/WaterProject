@@ -4376,6 +4376,9 @@
       total_depth_m: 0, overburden_m: null, casing_m: null, screen_m: null,
       borehole_diameter_in: 6.5, casing_diameter_in: 5.0,
       gravel_interval_m: null, cement_bags: null, crew_days: null,
+      /* the seal the cement is worked out for when cement_bags is not
+       * given; null means the design rules' default */
+      sanitary_seal_m: null,
       development_hours: 6.0, test_pumping_hours: 30.0,
       mobilisation_distance_km: 0.0, wq_samples: 1, handpumps: 1,
     }, values || {});
@@ -4417,7 +4420,8 @@
     }
     if (r.cement_bags === null || r.cement_bags === undefined) {
       /* the seal the design rules draw, not a 15 m one nobody drew */
-      var sealM = defaultConfig().design.sanitary_seal_depth_m;
+      var sealM = (r.sanitary_seal_m === null || r.sanitary_seal_m === undefined)
+        ? defaultConfig().design.sanitary_seal_depth_m : r.sanitary_seal_m;
       r.cement_bags = cementBagsForSeal(r.borehole_diameter_in, r.casing_diameter_in, sealM);
       assumptions.push('Cement estimated at ' + fmtNum(r.cement_bags) +
         ' bags for a ' + fmtNum(sealM) + ' m grout seal (about 20 bags per cubic ' +

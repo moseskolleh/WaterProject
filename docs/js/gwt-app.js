@@ -490,9 +490,15 @@
         overburdenM: overburdenFromData(),
       });
     } else if (costing.total_depth_m) {
+      /* no drawing yet: the diameters and the seal come from the rules the
+       * Settings page holds, not from the engine's own defaults */
+      var rules = config().design;
       inputs = C.costingInputs({
         total_depth_m: costing.total_depth_m,
         mobilisation_distance_km: costing.mobilisation_km,
+        borehole_diameter_in: rules.borehole_diameter_in,
+        casing_diameter_in: rules.casing_diameter_in,
+        sanitary_seal_m: rules.sanitary_seal_depth_m,
       });
     } else {
       return;

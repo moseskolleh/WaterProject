@@ -108,6 +108,12 @@ await withPage(async (page, base, consoleErrors) => {
       cement_bags: C.inputsFromDesign(design).cement_bags,
     };
 
+    const manual = C.resolveCostingInputs(C.costingInputs({ total_depth_m: 60.0, sanitary_seal_m: 30.0 }));
+    out.costing_manual = {
+      cement_bags: manual.inputs.cement_bags,
+      seal_note: manual.assumptions.find((n) => n.indexOf('grout seal') >= 0),
+    };
+
     const items = C.loadChecklists();
     const migrated = {};
     const prefixed = C.migrateChecklistResponses({
@@ -620,6 +626,10 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify(parsed.design.seal) + ' vs ' + JSON.stringify(R.design.seal));
   check('design: cement for the seal', close(parsed.design.cement_bags, R.design.cement_bags),
     `js ${parsed.design.cement_bags} vs py ${R.design.cement_bags}`);
+  check('costing: a manual estimate prices the seal it is given',
+    close(parsed.costing_manual.cement_bags, R.costing_manual.cement_bags) &&
+      parsed.costing_manual.seal_note === R.costing_manual.seal_note,
+    JSON.stringify(parsed.costing_manual) + ' vs ' + JSON.stringify(R.costing_manual));
   check('checklists: every item id, in order',
     JSON.stringify(parsed.checklists.ids) === JSON.stringify(R.checklists.ids),
     JSON.stringify(parsed.checklists.ids.slice(0, 3)) + ' vs ' + JSON.stringify(R.checklists.ids.slice(0, 3)));
