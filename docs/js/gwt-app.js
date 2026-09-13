@@ -5268,6 +5268,8 @@
           context.assessment = derived.assessment;
           context.committee = store.get('handover.committee') || [];
           context.handoverDate = store.get('handover.date') || '';
+          /* the works list names a siting survey only if one was interpreted */
+          context.interpretations = derived.interpretations;
           context.figures = figures;
           builder = await docx.handoverReport(context);
         }
