@@ -1,0 +1,17 @@
+name: Incorrect data or map
+description: Report a source, coordinate, boundary, unit or inventory problem
+title: '[Data] '
+body:
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Source and affected records
+      description: Include source URL, release/date, licence, record IDs and expected values. Do not attach credentials.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction and expected result
+    validations:
+      required: true
