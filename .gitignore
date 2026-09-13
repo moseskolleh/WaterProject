@@ -26,3 +26,7 @@ htmlcov/
 
 # Node test tooling (Playwright is installed globally in CI)
 node_modules/
+
+# Example packs are built from files that are already committed
+# (python examples/build_catalogue.py), so a second copy would only go stale.
+examples/packs/

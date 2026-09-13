@@ -195,7 +195,15 @@ python examples/run_rokel_geophysics.py      # VES survey -> geophysical report
 python examples/run_kuntolo_step_test.py     # step test with pending discharge
 python examples/run_dr_timbo_completion.py   # drilling -> design, completion,
                                              # water quality, handover reports
+python examples/build_catalogue.py           # index them, and pack each case up
 ```
+
+`examples/CATALOGUE.md` is what that last command writes: what went into
+each case, counted by the readers themselves, and what each report says
+on its own cover. Two of the three cases publish stamped reports, because
+their sheets are missing something real - a GPS fix, the discharges - and
+an example that papered over that would be advertising something the
+toolkit does not do.
 
 Each example writes into `examples/projects/<name>/` using the fixed
 project layout:

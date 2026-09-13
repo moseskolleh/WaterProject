@@ -95,8 +95,12 @@ jobs:
           npm install --no-save playwright@1.56.1
           npx playwright install --with-deps chromium
 
+      # The chiefdom layer is checked before the bundle is built from it, so a
+      # withheld boundary fragment that never made it back into the committed
+      # data is reported as itself rather than as a puzzling bundle diff.
       - name: The bundled data must match the source tables
         run: |
+          python web/build_boundary_review.py --check
           python web/build_webapp_data.py
           python web/build_offline.py
           git diff --exit-code docs/js/gwt-data.js docs/sw.js

@@ -1,4 +1,4 @@
-/* gwt-docx.js - the seven house-styled .docx reports, written in the browser.
+/* gwt-docx.js - the house-styled .docx reports, written in the browser.
  *
  * A .docx is a ZIP of OOXML parts, so with a ZIP writer (support.js) the whole
  * report can be assembled client-side: no server, no library, and the file the

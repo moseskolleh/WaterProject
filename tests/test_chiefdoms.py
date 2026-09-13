@@ -75,3 +75,94 @@ def test_the_lookups_return_the_districts_as_they_are_today():
     by_name = {area.name: area.district for area in load_chiefdoms()}
     assert by_name["Sella Limba"] == "Karene" and by_name["Sulima"] == "Falaba"
     assert district_of(6.0, -13.5) == ""                                # offshore
+
+
+def test_no_chiefdom_claims_ground_it_is_nowhere_near():
+    """A piece of a chiefdom 250 km from the rest of it is somebody else's.
+
+    geoBoundaries builds its ADM3 layer by dissolving same-named units, and a
+    near-name collision there files real ground under the wrong chiefdom.
+    "Maforki" (Port Loko) carried a 21 km2 wedge on the Guinea border in Kono,
+    247 km from the rest of it, so a borehole sited there was reported - on the
+    completion report, in the programme table and in the coverage ranking that
+    decides where to drill next - as being in Port Loko. That is not a rounding
+    error in a map; it is the wrong district on a document somebody signs.
+
+    web/build_boundary_review.py withholds geometry like that. The real test is
+    not that the wedge is gone but that nothing replaced it with another
+    confident answer: a point nobody can place has to come back unplaced.
+    """
+    import json
+    from pathlib import Path
+
+    from groundwater.mapping.regional import _bundled_geojson
+
+    for feature in _bundled_geojson("sl_chiefdoms_geoboundaries.geojson")["features"]:
+        geometry = feature["geometry"]
+        parts = (geometry["coordinates"] if geometry["type"] == "MultiPolygon"
+                 else [geometry["coordinates"]])
+        if len(parts) < 2:
+            continue
+
+        def centre(ring):
+            return (sum(p[0] for p in ring) / len(ring),
+                    sum(p[1] for p in ring) / len(ring))
+
+        def area(ring):
+            return abs(sum(ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1]
+                           for i in range(len(ring) - 1)) / 2)
+
+        home = centre(max(parts, key=lambda p: area(p[0]))[0])
+        for part in parts:
+            here = centre(part[0])
+            km = ((here[0] - home[0]) * 111.32) ** 2 + ((here[1] - home[1]) * 110.57) ** 2
+            assert km ** 0.5 < 50, (
+                f"{feature['properties']['name']} has a part {km ** 0.5:.0f} km from "
+                "the rest of it; run web/build_boundary_review.py"
+            )
+
+    # the wedge itself, and an honest answer where it used to be
+    assert chiefdom_of(8.673, -10.51) == ("", "")
+    assert chiefdom_of(8.72, -12.75) == ("Maforki", "Port Loko")
+    assert chiefdom_of(8.65, -10.50) == ("Mafindor", "Kono")
+
+    review = json.loads(
+        (Path(__file__).resolve().parents[1] / "src" / "groundwater" / "data"
+         / "boundary_review.geojson").read_text(encoding="utf-8"))
+    withheld = {f["properties"]["name"] for f in review["features"]}
+    assert withheld == {"Maforki"}
+    # the file has to say why, and what it is not claiming
+    held = review["features"][0]["properties"]
+    assert held["proposed_owner"] == "Mafindor"
+    assert held["shares_boundary_with"][0]["chiefdom"] == "Mafindor"
+    assert "not authority for reassigning ground" in held["decision"]
+
+
+def test_the_boundary_review_survives_being_rebuilt():
+    """Running the repair twice must not quietly empty the review.
+
+    The withheld geometry is no longer in the layer, so a second run cannot
+    rediscover it. If the review file were rebuilt from the layer alone it
+    would come back empty, the record of what was taken out and why would be
+    gone, and CI would report the emptied file as the current state.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "build_boundary_review", repo / "web" / "build_boundary_review.py"
+    )
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+
+    chiefdoms, review, withheld = builder.build()
+    assert len(withheld) == 1
+    assert builder.CHIEFDOMS.read_text(encoding="utf-8") == chiefdoms, (
+        "the committed chiefdom layer is stale; "
+        "run: python web/build_boundary_review.py"
+    )
+    assert builder.REVIEW.read_text(encoding="utf-8") == review, (
+        "the committed boundary review is stale; "
+        "run: python web/build_boundary_review.py"
+    )
