@@ -172,3 +172,88 @@ def test_the_service_worker_precaches_every_script_the_page_loads():
         f"{missing} loaded by index.html but not precached by sw.js; add them "
         "to PRECACHE and bump VERSION"
     )
+
+
+def _load_offline_builder():
+    spec = importlib.util.spec_from_file_location(
+        "build_offline", REPO / "web" / "build_offline.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_committed_worker_is_current():
+    """docs/sw.js must be what web/build_offline.py produces from the shell.
+
+    The worker is generated from the app shell precisely so nobody has to
+    remember it: a script added to index.html is precached by the next
+    build. A committed worker that has drifted from the shell is the
+    failure that was being designed out - the device that installed the
+    app yesterday quietly missing a page today.
+    """
+    builder = _load_offline_builder()
+    fresh = builder.render(builder.shell_assets())
+    assert builder.OUT.read_text(encoding="utf-8") == fresh, (
+        "docs/sw.js is stale; run: python web/build_offline.py"
+    )
+
+
+def test_the_release_identifier_follows_the_shell():
+    """Change a precached byte and the release has to change with it.
+
+    A release identifier that stays put is a device that keeps serving the
+    previous app with nothing to show for it: the browser compares the
+    worker byte for byte, and an identical worker is never replaced.
+    """
+    builder = _load_offline_builder()
+    paths = builder.shell_assets()
+    before = builder.release_id(paths)
+    assert before.startswith("gwt-v"), (
+        "the activate handler sweeps caches by the 'gwt-v' prefix"
+    )
+
+    engine = REPO / "docs" / "js" / "gwt-core.js"
+    original = engine.read_bytes()
+    try:
+        engine.write_bytes(original + b"\n/* a deployed change */\n")
+        assert builder.release_id(paths) != before
+    finally:
+        engine.write_bytes(original)
+    assert builder.release_id(paths) == before
+
+
+def test_the_precache_list_is_the_shell_the_page_loads():
+    """Everything the page loads is precached, and nothing precached is absent.
+
+    Both directions matter. A script that is loaded but not cached is a
+    feature missing offline; a path that is cached but not on disk fails
+    the install outright, and with an all-or-nothing precache that means no
+    offline app at all.
+    """
+    builder = _load_offline_builder()
+    paths = builder.shell_assets()
+    docs = REPO / "docs"
+    html = (docs / "index.html").read_text(encoding="utf-8")
+
+    loaded = re.findall(r'<script src="([^"]+)"></script>', html)
+    loaded += re.findall(r'<link rel="stylesheet" href="([^"]+)"', html)
+    missing = [src for src in loaded if src not in paths]
+    assert not missing, f"{missing} is loaded by index.html but not precached"
+
+    absent = [p for p in paths if p != "./" and not (docs / p).exists()]
+    assert not absent, f"{absent} is precached but not in docs/"
+
+    # The stlite build is a 60 MB Python runtime from a CDN. Putting it on
+    # someone's phone unasked is a decision for the user, not the worker.
+    assert not [p for p in paths if p.startswith("wasm/")]
+
+
+def test_the_worker_is_written_in_one_step(tmp_path):
+    """A worker truncated half way through a write shadows the one that worked."""
+    builder = _load_offline_builder()
+    target = tmp_path / "sw.js"
+    target.write_text("previous release", encoding="utf-8")
+    builder.write_atomically(target, "next release")
+    assert target.read_text(encoding="utf-8") == "next release"
+    assert not list(tmp_path.glob("*.tmp")), "the staging file was left behind"

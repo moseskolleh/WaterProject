@@ -20,10 +20,36 @@ const TYPES = {
   '.md': 'text/markdown',
 };
 
-export async function serveDocs() {
+/* Serve docs/ over http on a free port.
+ *
+ * `overlay` replaces or removes individual files for the life of one run,
+ * without touching the working tree: a pathname maps to `{ body, type }` to
+ * answer with something else, or to `null` to answer 404. The offline checks
+ * need this to stage a release that cannot install - a worker listing a file
+ * the server will not serve - and a deploy that is missing a file is not
+ * something to reproduce by deleting it out of docs/ mid-test.
+ *
+ * `network` is how those checks take the network away. Setting `network.down`
+ * makes the server drop connections rather than answer them, which is what
+ * the service worker sees on a site with no signal: a fetch that fails, not a
+ * server that says no. Emulated offline mode is not enough here - it does not
+ * reliably reach a worker's own fetches, and a check that quietly still had a
+ * network would pass while proving nothing.
+ */
+export async function serveDocs(options = {}) {
+  const overlay = options.overlay || {};
+  const network = options.network || {};
   const server = createServer(async (req, res) => {
     try {
+      if (network.down) { req.socket.destroy(); return; }
       const url = new URL(req.url, 'http://localhost');
+      if (Object.prototype.hasOwnProperty.call(overlay, url.pathname)) {
+        const entry = overlay[url.pathname];
+        if (!entry) throw new Error('withheld');
+        res.writeHead(200, { 'Content-Type': entry.type || 'text/javascript' });
+        res.end(entry.body);
+        return;
+      }
       // A bare engine page for the parity checks: loads the runtime without
       // the app shell, so a UI error cannot masquerade as a numeric one.
       if (url.pathname === '/__engine.html') {
@@ -52,12 +78,16 @@ export async function serveDocs() {
 }
 
 export async function withPage(fn, options = {}) {
-  const { server, base } = await serveDocs();
+  const { server, base } = await serveDocs(options);
   const browser = await chromium.launch({
     executablePath: options.executablePath,
     args: ['--no-sandbox', '--disable-dev-shm-usage'],
   });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  /* an explicit context rather than browser.newPage(), which creates one that
+   * refuses a second page: the offline checks need to close every tab and
+   * open a fresh one to let a waiting service worker take over */
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const page = await context.newPage();
   const consoleErrors = [];
   page.on('console', (m) => {
     if (m.type() === 'error') consoleErrors.push(m.text());
