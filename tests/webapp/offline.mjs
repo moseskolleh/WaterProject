@@ -54,10 +54,15 @@ function release(id, extra) {
 const overlay = {};
 const network = { down: false };
 
+/* A cross-origin host that resolves nowhere on any machine (RFC 2606), so the
+ * pass-through checks below prove what the worker does rather than what the
+ * network happens to allow. */
+const FOREIGN = 'https://water-point-inventory.invalid/resource.json';
+
 /* Requests this file breaks on purpose. Their console noise is the test
  * working, not the app failing; anything else is a real error. */
 const PROVOKED = ['not-in-this-deploy.js', 'never-downloaded.json',
-  'waterpointdata.org', 'wasm/index.html', 'ERR_', 'Failed to fetch',
+  'water-point-inventory.invalid', 'wasm/index.html', 'ERR_', 'Failed to fetch',
   'Offline support unavailable',
   /* the worker's own answer for a file that was never downloaded; the check
    * above asserts that exact status, so the browser logging it is the point */
@@ -144,7 +149,7 @@ await withPage(async (page, base, consoleErrors) => {
     offlineWork.analysed && offlineWork.designed && offlineWork.safe > 0,
     JSON.stringify(offlineWork));
 
-  const answers = await page.evaluate(async () => {
+  const answers = await page.evaluate(async (FOREIGN) => {
     const out = {};
     /* a file of the app's that genuinely was never downloaded */
     const miss = await fetch('never-downloaded.json');
@@ -153,18 +158,35 @@ await withPage(async (page, base, consoleErrors) => {
     /* the 60 MB Python runtime is passed through, not mirrored, so with no
      * network it fails rather than being quietly served off somebody's phone */
     out.wasm = await fetch('wasm/index.html').then((r) => r.status).catch(() => 'refused');
-    /* and the live water point inventory is never answered from disk */
-    out.wpdx = await fetch('https://data.waterpointdata.org/resource/eqje-vguj.json')
-      .then((r) => r.status).catch(() => 'refused');
+    /* Somebody else's server is never this worker's to answer. A cross-origin
+     * request has to fail the way a cross-origin request fails, rather than
+     * come back as the worker's own offline reply served off this device -
+     * a stale water point inventory read back from disk is indistinguishable
+     * from a live one. The host is a reserved .invalid name (RFC 2606) that
+     * resolves nowhere, so what this proves is decided by the worker rather
+     * than by whether the machine running the checks has a network: asking
+     * the real endpoint would pass here and answer 200 on a runner that can
+     * reach it. */
+    out.foreign = await fetch(FOREIGN)
+      .then(async (r) => 'answered ' + r.status + ': ' + (await r.text()).slice(0, 30))
+      .catch(() => 'refused');
+    /* and nothing of anybody else's is on the device to serve */
+    const names = await caches.keys();
+    const cache = await caches.open(names.find((n) => n.startsWith('gwt-v')));
+    out.foreignCached = !!(await cache.match(FOREIGN, { ignoreSearch: true }));
+    out.wpdxCached = !!(await cache.match(
+      'https://data.waterpointdata.org/resource/eqje-vguj.json',
+      { ignoreSearch: true }));
     return out;
-  });
+  }, FOREIGN);
   check('no network: a file never downloaded says so plainly',
     answers.missStatus === 504 && answers.missText.startsWith('Offline, and this file'),
     JSON.stringify(answers));
   check('no network: the WebAssembly runtime is not mirrored onto the device',
     answers.wasm === 'refused', JSON.stringify(answers));
-  check('no network: the live water point inventory is never served from disk',
-    answers.wpdx === 'refused', JSON.stringify(answers));
+  check('no network: somebody else\'s server is never answered from disk',
+    answers.foreign === 'refused' && answers.foreignCached === false &&
+    answers.wpdxCached === false, JSON.stringify(answers));
 
   network.down = false;
   await page.goto(base + '/index.html', { waitUntil: 'load' });
