@@ -1,0 +1,17 @@
+name: Report or example problem
+description: Report a calculation, evidence label or document layout problem
+title: '[Report] '
+body:
+  - type: input
+    id: report
+    attributes:
+      label: Report type, example and app version
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Input, observed result and expected result
+      description: Include the page/figure, units and a minimal source file or screenshot.
+    validations:
+      required: true
