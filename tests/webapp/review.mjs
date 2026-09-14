@@ -428,6 +428,60 @@ await withPage(async (page, base, consoleErrors) => {
     coverage.text.includes('no usable latitude'),
     JSON.stringify(coverage.skippedCodes));
 
+  // --- one page, one population ----------------------------------------------
+  // The map and the ranking were built on the 2015 census while the planning
+  // view a card below projected it forward, so the same area appeared twice on
+  // one screen with two different numbers of people in it and nothing saying
+  // which was which. The growth rate is uniform, so the ranking does not move
+  // - only the magnitudes, which are the figures anybody quotes.
+  const population = await page.evaluate(async () => {
+    const app = window.GWT.app;
+    app.store.set('coverage.level', 'district');
+    app.store.set('coverage.year', 2030);
+    app.goto('coverage');
+    await new Promise((r) => setTimeout(r, 400));
+    const host = document.querySelector('#page-host');
+    const tables = Array.from(host.querySelectorAll('table.data'));
+    /* the population column of each table, keyed by area name, so the two are
+     * compared on the same area rather than on row order */
+    const byName = tables.map((table) => {
+      const heads = Array.from(table.querySelectorAll('th')).map((n) => n.textContent);
+      const nameAt = heads.findIndex((h) => h === 'District');
+      const popAt = heads.findIndex((h) => h.startsWith('Population'));
+      const out = {};
+      if (nameAt < 0 || popAt < 0) return { label: null, values: out };
+      Array.from(table.querySelectorAll('tbody tr')).forEach((tr) => {
+        const cells = tr.querySelectorAll('td');
+        out[cells[nameAt].textContent] = cells[popAt].textContent;
+      });
+      return { label: heads[popAt], values: out };
+    }).filter((t) => t.label);
+    return {
+      tables: byName,
+      title: (host.textContent.match(
+        /People per functional water point, by district \((\d+)\)/) || [])[0],
+      note: host.textContent.includes('Populations are projected from the 2015 census to 2030'),
+    };
+  });
+
+  check('coverage: the map says which year its populations are for',
+    population.title === 'People per functional water point, by district (2030)' &&
+    population.note === true, JSON.stringify(population.title));
+  check('coverage: every population column on the page names the same year',
+    population.tables.length >= 2 &&
+    population.tables.every((t) => t.label === 'Population 2030'),
+    JSON.stringify(population.tables.map((t) => t.label)));
+
+  const first = population.tables[0];
+  const rest = population.tables.slice(1);
+  const shared = Object.keys(first.values).filter(
+    (name) => rest.every((t) => t.values[name] !== undefined));
+  check('coverage: the same area has the same population in every table',
+    shared.length > 0 &&
+    shared.every((name) => rest.every((t) => t.values[name] === first.values[name])),
+    JSON.stringify(shared.slice(0, 3).map(
+      (name) => [name, first.values[name]].concat(rest.map((t) => t.values[name])))));
+
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));
 });

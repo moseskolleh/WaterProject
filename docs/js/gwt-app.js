@@ -4104,10 +4104,27 @@
     var chiefdomDistrict = C.loadChiefdomDistrict();
     var rows, features, valueFor, nameFor, title;
 
-    var areaPopulation, grouped;
+    /* One page, one population. The map and the ranking below used the 2015
+     * census while the planning view a card further down projected it forward,
+     * so the same chiefdom appeared twice on one screen with two different
+     * numbers of people in it and nothing saying which was which. The census
+     * is a decade old; the figure anybody quotes should be for the year they
+     * are planning in, and it should say so. The rate is uniform, so this
+     * moves the magnitudes rather than the ranking - which is exactly why the
+     * unlabelled version was so easy to read straight past. */
+    var coverageYear = Math.max(
+      store.get('coverage.year', new Date().getFullYear()), C.CENSUS_YEAR);
+    var coverageRate = store.get('coverage.rate',
+      Math.round(C.DEFAULT_GROWTH_RATE * 10000) / 100) / 100;
+
+    var areaPopulation, censusPopulation, grouped;
     if (level === 'district') {
       var counted = C.countPointsByDistrict(points, polys, chiefdomDistrict);
-      areaPopulation = C.loadDistrictPopulation();
+      censusPopulation = C.loadDistrictPopulation();
+      var districtProjection = C.projectPopulation(
+        censusPopulation, coverageYear, { rate: coverageRate });
+      areaPopulation = districtProjection.projected;
+      var projection = districtProjection.projection;
       grouped = C.groupPointsByDistrict(points, polys, chiefdomDistrict).grouped;
       rows = C.coverageRows(areaPopulation, counted.counts);
       var byDistrict = {};
@@ -4120,13 +4137,18 @@
         return v === null || v === undefined ? null : v;
       };
       nameFor = function (feature) { return (feature.properties || {}).name; };
-      title = 'People per functional water point, by district';
+      title = 'People per functional water point, by district (' +
+        coverageYear + ')';
     } else {
       var pop = C.chiefdomPopulation();
       var counts = C.countPointsByChiefdom(points, polys);
-      areaPopulation = pop.population;
+      censusPopulation = pop.population;
+      var chiefdomProjection = C.projectPopulation(
+        censusPopulation, coverageYear, { rate: coverageRate });
+      areaPopulation = chiefdomProjection.projected;
+      projection = chiefdomProjection.projection;
       grouped = C.groupPointsByChiefdom(points, polys).grouped;
-      rows = C.chiefdomCoverageRows(pop.population, counts.counts, chiefdomDistrict);
+      rows = C.chiefdomCoverageRows(areaPopulation, counts.counts, chiefdomDistrict);
       var byChiefdom = {};
       rows.forEach(function (r) { byChiefdom[r.name] = r.people_per_point; });
       features = (GWT.data.geo.chiefdomBoundaries || {}).features || [];
@@ -4135,7 +4157,8 @@
         return v === null || v === undefined ? null : v;
       };
       nameFor = function (feature) { return (feature.properties || {}).name; };
-      title = 'People per functional water point, by chiefdom';
+      title = 'People per functional water point, by chiefdom (' +
+        coverageYear + ')';
     }
 
     var stats = C.coverageStats(rows);
@@ -4156,16 +4179,19 @@
         title: title, legendTitle: 'people per functional water point',
         width: 640, height: 600,
       }), title, { filename: 'coverage_' + level }),
+      el('p.muted', projection.note),
       el('p.muted', C.POPULATION_CREDIT + ' ' + C.WPDX_CREDIT),
     ]));
 
-    nodes.push(planningCard(areaPopulation, grouped, level));
+    /* the census figures, not the projected ones: planningCard projects them
+     * itself from the same year and rate, and projecting twice would compound */
+    nodes.push(planningCard(censusPopulation, grouped, level));
 
     var rankedColumns = [
       { key: 'rank', label: 'Rank', align: 'right' },
       { key: 'name', label: level === 'district' ? 'District' : 'Chiefdom' },
       level === 'chiefdom' ? { key: 'district', label: 'District' } : null,
-      { key: 'population', label: 'Population', align: 'right',
+      { key: 'population', label: 'Population ' + coverageYear, align: 'right',
         format: function (v) { return S.thousands(Math.round(v)); } },
       { key: 'water_points', label: 'Mapped points', align: 'right' },
       { key: 'functional_points', label: 'Functional', align: 'right' },
