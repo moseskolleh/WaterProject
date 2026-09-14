@@ -181,13 +181,20 @@ await withPage(async (page, base, consoleErrors) => {
     said(works.full, 'Pumping test') && !said(works.noPumping, 'Pumping test'),
     JSON.stringify(works.noPumping));
   check('a handover with no laboratory analysis does not claim one',
-    said(works.full, 'Water quality sampled') &&
-    !said(works.noQuality, 'Water quality sampled'),
+    said(works.full, 'laboratory analysis') &&
+    !said(works.noQuality, 'laboratory analysis'),
     JSON.stringify(works.noQuality));
   check('a handover with no design claims neither construction nor development',
-    !said(works.noDesign, 'Cased and screened') &&
-    !said(works.noDesign, 'developed by air lifting'),
+    !said(works.noDesign, 'Construction with') &&
+    !said(works.noDesign, 'air lifting'),
     JSON.stringify(works.noDesign));
+  // The bullets a payment is argued from carry the quantities a surveyor
+  // checks. They used to carry the casing size in one engine and the screen
+  // run in the other, and the seal in neither.
+  check('the construction bullet carries the casing, the screen run and the seal',
+    said(works.full, 'Construction with 5 inch uPVC casing, 22.5 m of screen, ' +
+      'gravel pack and sanitary seal to 6 m.'),
+    JSON.stringify(works.full));
   check('a siting survey is listed only where one was interpreted',
     !said(works.full, 'Geophysical siting survey') &&
     said(works.sited, 'Geophysical siting survey'),
@@ -212,9 +219,87 @@ await withPage(async (page, base, consoleErrors) => {
     registry.warned.includes('no recorded position yet'),
     JSON.stringify(registry));
 
-  // --- and a recorded position clears it ------------------------------------
-  // The stamp has to track the evidence rather than a flag somebody set:
-  // supply the one missing record and the document stops hedging.
+  // --- a demonstration says so, and keeps saying it -------------------------
+  // The sample files are offered from a picker so nobody has to have drilled
+  // a borehole to see what the toolkit does. The documents they produce are
+  // indistinguishable from real ones - same letterhead, same signature block
+  // - and they leave as .docx files that get forwarded and filed, so the fact
+  // has to travel with the document rather than live in the session that made
+  // it. Dr Timbo's water quality workbook is the sharp case: no sample was
+  // ever taken, and the determinand values exist to exercise the assessment.
+  const demo = await page.evaluate(() => {
+    const out = {};
+    for (const kind of Object.keys(window.GWT.core.READINESS_REPORTS)) {
+      const r = window.GWT.app.reportReadiness(kind);
+      const q = r.requirements.filter((x) => x.key === 'field_data')[0];
+      out[kind] = q ? [q.state, q.detail] : null;
+    }
+    return out;
+  });
+  const demoKinds = Object.keys(demo);
+  check('every report kind knows it is describing a worked example',
+    demoKinds.length >= 10 && demoKinds.every((k) => demo[k] && demo[k][0] === 'unmet'),
+    JSON.stringify(demo));
+  check('it says the readings were never measured, not merely that they are samples',
+    demoKinds.every((k) => /never measured/.test(demo[k][1]) &&
+      /dr_timbo_water_quality\.xlsx/.test(demo[k][1])),
+    JSON.stringify(demo.completion));
+
+  // The document, not the screen. This is the whole point: the stamp and the
+  // reason have to be inside the file somebody forwards.
+  const demoDoc = await issued('quality');
+  check('the reason a demonstration cannot be certified is in the document',
+    demoDoc.includes('PROVISIONAL - NOT FOR CERTIFICATION') &&
+    demoDoc.includes('Field data') &&
+    demoDoc.includes('Readings that were never measured are in this project'),
+    demoDoc.slice(0, 800));
+
+  // Saving and reopening must not launder it. The marker rides in the project
+  // file with the source it belongs to; this runs the same two steps that
+  // openProject() runs on a picked file, without the picker.
+  const reopened = await page.evaluate(() => {
+    const saved = JSON.stringify(window.GWT.app.projectPayload());
+    const state = JSON.parse(saved).state;
+    window.GWT.app.store.replace(Object.assign(window.GWT.app.blankState(), state));
+    const r = window.GWT.app.reportReadiness('quality');
+    const q = r.requirements.filter((x) => x.key === 'field_data')[0];
+    return { written: /dr_timbo\/dr_timbo_water_quality\.xlsx/.test(saved),
+      state: q.state, certifiable: r.is_certifiable };
+  });
+  check('saving and reopening a demonstration leaves it a demonstration',
+    reopened.written === true && reopened.state === 'unmet' &&
+    reopened.certifiable === false, JSON.stringify(reopened));
+
+  // And it has to clear, per role, when real data arrives - otherwise it is a
+  // label nobody can remove and everybody learns to ignore. Dropping a file on
+  // a role replaces that whole source, which is what clears its marker.
+  const replaced = await page.evaluate(() => {
+    const before = window.GWT.app.store.get('sources');
+    const b64 = before.quality.b64;
+    window.GWT.app.store.set('sources.quality',
+      { name: 'kambia_lab_results.xlsx', b64: b64 });
+    const one = window.GWT.app.reportReadiness('quality').requirements
+      .filter((x) => x.key === 'field_data')[0];
+    ['drilling', 'pumping'].forEach(function (role) {
+      window.GWT.app.store.set('sources.' + role,
+        { name: 'kambia_' + role + '.xlsx', b64: before[role].b64 });
+    });
+    const all = window.GWT.app.reportReadiness('quality').requirements
+      .filter((x) => x.key === 'field_data')[0];
+    return { one: [one.state, one.detail], all: [all.state, all.detail] };
+  });
+  check('replacing one demonstration file drops that file, and only that file',
+    replaced.one[0] === 'unmet' && !/never measured/.test(replaced.one[1]) &&
+    /dr_timbo_drilling_log\.xlsx/.test(replaced.one[1]),
+    JSON.stringify(replaced.one));
+  check('replacing the data with the analyst\'s own clears the marker',
+    replaced.all[0] === 'met', JSON.stringify(replaced.all));
+
+  // --- and a recorded position clears the rest ------------------------------
+  // The stamp has to track the evidence rather than a flag somebody set. The
+  // data is the analyst's own now; supply the one record still missing and
+  // the document stops hedging. Both were needed, which is the point: the
+  // stamp comes off when the evidence is there, and not before.
   await page.evaluate(() => {
     window.GWT.app.store.set('site.easting', 778000);
     window.GWT.app.store.set('site.northing', 946000);
@@ -385,10 +470,19 @@ await withPage(async (page, base, consoleErrors) => {
         report_date: '2019-01-01',
       });
     }
+    /* two readable points that land inside no chiefdom - the offshore and
+     * across-the-border cases the 300 km search box deliberately overhangs */
+    const offshore = [
+      { lat_deg: 7.0, lon_deg: -14.0, status_clean: 'Functional',
+        report_date: '2019-01-01' },
+      { lat_deg: 6.9, lon_deg: -14.2, status_clean: 'Functional',
+        report_date: '2019-01-01' },
+    ];
     /* one row with no position and one that is not a record at all */
     const skipped = [];
     app.derived.waterPoints = C.parseWpdxRecords(
-      rows.concat([{ lat_deg: '', lon_deg: 1 }, 'not a record']), skipped);
+      rows.concat(offshore).concat([{ lat_deg: '', lon_deg: 1 }, 'not a record']),
+      skipped);
     app.derived.waterPointsSkipped = skipped;
     app.derived.waterPointsSource = 'a synthetic inventory';
     app.store.set('coverage.level', 'chiefdom');
@@ -424,6 +518,15 @@ await withPage(async (page, base, consoleErrors) => {
     coverage.buttons >= 1 && coverage.exported !== null &&
     coverage.exported.rows === Number(showing[2].replace(/,/g, '')),
     JSON.stringify(coverage.exported));
+  // A point inside no chiefdom is left out of every area's ratio, so the
+  // ranking is computed as though it were not there and the areas it belonged
+  // to rank worse than the data supports. Streamlit has always said how many
+  // went; this page ranked the country without them and said nothing.
+  check('coverage: the ranking says how many points it left out of every area',
+    /fell outside every chiefdom polygon/.test(coverage.text) &&
+    /not counted in any area above/.test(coverage.text),
+    coverage.text.slice(0, 400));
+
   check('coverage: the inventory says what it could not place',
     coverage.skippedCodes.includes('water_point_unplaced') &&
     coverage.skippedCodes.includes('water_point_unreadable') &&

@@ -910,10 +910,25 @@ def _project_summary() -> dict:
 # Certification gate
 # ---------------------------------------------------------------------------
 
+def _loaded_sources() -> dict:
+    """The files this project was built from, keyed by upload role.
+
+    The same `src_*` keys the project file saves and `recompute_results`
+    reads, handed to the gate so it can tell a report drawn from the
+    bundled examples from one drawn from this site's own work.
+    """
+    return {
+        str(key)[len("src_"):]: value
+        for key, value in st.session_state.items()
+        if str(key).startswith("src_") and isinstance(value, dict)
+    }
+
+
 def _project_state() -> dict:
     """The session, keyed as groundwater.readiness expects it."""
     return {
         "site": site_from_state(),
+        "sources": _loaded_sources(),
         "drilling_log": st.session_state.get("drilling_log"),
         "pump_analysis": st.session_state.get("pump_analysis"),
         "wq_assessment": st.session_state.get("wq_assessment"),
@@ -1276,11 +1291,7 @@ def _status_chip() -> tuple[str, str]:
 # before the sidebar so the active-project status reflects the loaded state
 # on the same run.
 if st.session_state.pop("_recompute_pending", False):
-    _sources = {
-        key[len("src_"):]: value
-        for key, value in st.session_state.items()
-        if key.startswith("src_") and isinstance(value, dict)
-    }
+    _sources = _loaded_sources()
     _discharges = {
         key[len("q_"):]: value
         for key, value in st.session_state.items()
@@ -4014,8 +4025,8 @@ with tab_coverage:
         if unassigned:
             st.caption(
                 f"{len(unassigned)} water point(s) fell outside every chiefdom "
-                "polygon (border, offshore or simplified geometry) and were "
-                "not counted."
+                "polygon (border, offshore, or geometry held back by the "
+                "boundary review) and were not counted in any area above."
             )
         if chiefdom and members:
             aggregated = {gb: names for gb, names in sorted(members.items())

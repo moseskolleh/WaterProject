@@ -1073,6 +1073,18 @@ await withPage(async (page, base, consoleErrors) => {
     const saved = sites.map((s) => [s.easting, s.northing, s.utm_zone]);
     const site = app.store.get('site');
     site.easting = 778000; site.northing = 946000; site.utm_zone = 28;
+    /* ...and the data is the analyst's own by this point. Loading a bundled
+     * sample marks the project a demonstration, which no amount of GPS
+     * clears - rightly, since Dr Timbo's water quality workbook is synthetic
+     * - so a fixture that is testing the evidence gate has to stop being one
+     * first. This is what an analyst does: look at the sample, then put their
+     * own sheets in. */
+    const savedSources = JSON.parse(JSON.stringify(app.store.get('sources')));
+    Object.keys(savedSources).forEach((role) => {
+      app.store.set('sources.' + role, {
+        name: 'kambia_' + role + '.xlsx', b64: savedSources[role].b64,
+      });
+    });
     app.render();
     const complete = {
       state: app.reportReadiness('quality').state,
@@ -1139,6 +1151,7 @@ await withPage(async (page, base, consoleErrors) => {
     sites.forEach((s, i) => {
       s.easting = saved[i][0]; s.northing = saved[i][1]; s.utm_zone = saved[i][2];
     });
+    app.store.set('sources', savedSources);
     app.store.set('overrides', {});
     app.render();
     return { complete, missing, refused, unsigned, issued, cleared, typedName,
@@ -1300,10 +1313,13 @@ await withPage(async (page, base, consoleErrors) => {
     /* and the copy still parses back into a project, not just a string */
     let restored = null;
     try { restored = JSON.parse(after); } catch (e) { restored = null; }
+    /* read the banner before restoring: a successful write clears it */
+    const banner = document.querySelector('#autosave-banner')?.textContent || '';
     store.persist();
     return {
       failed,
       key,
+      banner,
       survived: after !== null && after === before,
       restorable: !!(restored && typeof restored === 'object'),
     };
@@ -1311,6 +1327,50 @@ await withPage(async (page, base, consoleErrors) => {
   check('autosave: a failed write leaves the copy that already succeeded',
     mirror.failed === false && mirror.survived === true &&
     mirror.restorable === true, JSON.stringify(mirror));
+  // ...and the banner says so. The two failures need opposite warnings, so
+  // each has to be pinned against the other's wording: a banner that always
+  // said "nothing was stored" would be just as wrong as one that always
+  // promised a copy, and either passes a test that only checks one case.
+  check('autosave: a surviving copy is what the banner reports',
+    /copy it already had is still there/.test(mirror.banner) &&
+    !/has not managed to store the session even once/.test(mirror.banner),
+    JSON.stringify(mirror.banner));
+
+  // But on a browser that has never managed a single write - a private
+  // window, or a tablet whose storage was full before the app opened - there
+  // is no copy, and the banner must not say there is. That is the case where
+  // the whole day is at stake rather than the last few minutes, so it is the
+  // case where a promised backup does the most damage.
+  const nothingKept = await page.evaluate(async () => {
+    const store = window.GWT.app.store;
+    /* return the store to the healthy state first, so the stub below causes
+     * the transition that fires onPersistError; without this the block
+     * depends on whatever the previous one left behind */
+    store.persist();
+    store.forget();
+
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function () {
+      const err = new Error('quota');
+      err.name = 'QuotaExceededError';
+      throw err;
+    };
+    store.set('site.community', 'typed in a private window');
+    store.persist();
+    Storage.prototype.setItem = original;
+
+    /* read the banner before restoring the store: a successful write fires
+     * onPersistRecovered, which clears the host */
+    const text = document.querySelector('#autosave-banner')?.textContent || '';
+    const shown = !!document.querySelector('#autosave-banner .callout-bad');
+    store.persist();
+    return { shown, text };
+  });
+  check('autosave: a browser that never stored anything is not promised a copy',
+    nothingKept.shown === true &&
+    /has not managed to store the session even once/.test(nothingKept.text) &&
+    !/copy it already had is still there/.test(nothingKept.text),
+    JSON.stringify(nothingKept));
 
   // --- offline: the app installs itself ------------------------------------
   // 127.0.0.1 is a secure context, so the real worker registers here.

@@ -94,27 +94,41 @@
    * fails silently by design - quota is finite and photos are large - so the
    * failure has to be said out loud, and it has to keep being said until the
    * user has a project file on disk. */
-  function renderAutosaveBanner(broken) {
+  function renderAutosaveBanner(broken, kept) {
     var host = document.getElementById('autosave-banner');
     if (!host) return;
     S.clear(host);
     if (!broken) return;
+    /* Two failures wear the same red banner and call for different urgency:
+     * losing the last few minutes, or losing the whole day. Saying the first
+     * when it is the second promises a backup that is not there, on exactly
+     * the browsers - a private window, a tablet whose storage was full before
+     * the app opened - where the user most needs to be told to save a file. */
     S.append(host, el('div.callout.callout-bad', [
-      el('p', el('strong', 'Autosave has stopped')),
-      el('p', 'This browser will not take a new copy of the session — ' +
-        'usually because its storage is full, often from photographs. The ' +
-        'copy it already had is still there, but it stops here: anything ' +
-        'entered from now on is in this tab only, and refreshing or closing ' +
-        'it loses that. Save a project file now.'),
+      el('p', el('strong', kept ? 'Autosave has stopped'
+        : 'Nothing is being autosaved')),
+      el('p', kept
+        ? 'This browser will not take a new copy of the session — usually ' +
+          'because its storage is full, often from photographs. The copy it ' +
+          'already had is still there, but it stops here: anything entered ' +
+          'from now on is in this tab only, and refreshing or closing it ' +
+          'loses that. Save a project file now.'
+        : 'This browser has not managed to store the session even once — its ' +
+          'storage is full, or switched off, as it is in a private window. ' +
+          'There is no copy to go back to: everything entered so far is in ' +
+          'this tab only, and refreshing or closing it loses all of it. Save ' +
+          'a project file now, before anything else.'),
       button('Save project', saveProject),
     ]));
   }
 
   var store = S.createStore(blankState(), {
     persistKey: STORE_KEY,
-    onPersistError: function () {
-      renderAutosaveBanner(true);
-      S.toast('Autosave has stopped — save a project file now.', 'error', 12000);
+    onPersistError: function (e, kept) {
+      renderAutosaveBanner(true, kept);
+      S.toast(kept ? 'Autosave has stopped — save a project file now.'
+        : 'Nothing has been autosaved — save a project file now.',
+        'error', 12000);
     },
     onPersistRecovered: function () {
       renderAutosaveBanner(false);
@@ -653,10 +667,17 @@
     Object.keys(sample.site || {}).forEach(function (k) {
       fresh.site[k] = sample.site[k];
     });
+    /* Each source records the bundled file it came from. The certification
+     * gate reads it, so every report this project produces says on its own
+     * cover that it describes a worked example; it is saved with the project,
+     * so reopening one does not quietly turn it into somebody's field work;
+     * and an upload replaces the whole source object, so dropping real data
+     * on a role clears the marker for that role and nothing else. */
     fresh.sources = {};
     Object.keys(sample.files).forEach(function (role) {
       fresh.sources[role] = {
         name: sample.files[role].name, b64: sample.files[role].b64,
+        sample: sample.files[role].path || sample.files[role].name,
       };
     });
     store.replace(fresh);
@@ -4118,7 +4139,7 @@
     var coverageRate = store.get('coverage.rate',
       Math.round(C.DEFAULT_GROWTH_RATE * 10000) / 100) / 100;
 
-    var areaPopulation, censusPopulation, grouped;
+    var areaPopulation, censusPopulation, grouped, unplaced;
     if (level === 'district') {
       var counted = C.countPointsByDistrict(points, polys, chiefdomDistrict);
       censusPopulation = C.loadDistrictPopulation();
@@ -4128,6 +4149,7 @@
       var projection = districtProjection.projection;
       grouped = C.groupPointsByDistrict(points, polys, chiefdomDistrict).grouped;
       rows = C.coverageRows(areaPopulation, counted.counts);
+      unplaced = counted.unassigned;
       var byDistrict = {};
       rows.forEach(function (r) { byDistrict[r.name] = r.people_per_point; });
       features = (GWT.data.geo.chiefdomBoundaries || {}).features || [];
@@ -4155,6 +4177,7 @@
       projection = chiefdomProjection.projection;
       grouped = C.groupPointsByChiefdom(points, polys).grouped;
       rows = C.chiefdomCoverageRows(areaPopulation, counts.counts, chiefdomDistrict);
+      unplaced = counts.unassigned;
       var byChiefdom = {};
       rows.forEach(function (r) { byChiefdom[r.name] = r.people_per_point; });
       features = (GWT.data.geo.chiefdomBoundaries || {}).features || [];
@@ -4218,6 +4241,20 @@
         },
       }),
       tableTail(rows, rankedColumns, 'coverage_' + level + '.csv'),
+      /* A point that lands inside no chiefdom is left out of every area's
+       * ratio, so the ranking above is computed as though it were not there,
+       * and the areas it belonged to rank worse than the data supports.
+       * Border and offshore points have always done this and the boundary
+       * review now holds geometry back on purpose, which makes more of them.
+       * The Streamlit app has always said how many went; this page ranked the
+       * country without them and said nothing, so the same inventory read as
+       * more complete here than it was. */
+      unplaced && unplaced.length ? el('p.muted',
+        S.thousands(unplaced.length) + ' water ' +
+        S.plural(unplaced.length, 'point') + ' fell outside every chiefdom ' +
+        'polygon (border, offshore, or geometry held back by the boundary ' +
+        'review) and ' + (unplaced.length === 1 ? 'was' : 'were') +
+        ' not counted in any area above.') : null,
     ].filter(Boolean)));
     return nodes;
   };
@@ -5136,6 +5173,9 @@
   function projectState() {
     return {
       site: store.get('site'),
+      /* the files this project was built from, so the gate can tell a report
+       * drawn from the bundled examples from one drawn from this site's work */
+      sources: store.get('sources') || {},
       drilling_log: derived.log,
       pump_analysis: derived.analysis,
       wq_assessment: derived.assessment,

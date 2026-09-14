@@ -163,7 +163,7 @@ def build_handover_report(
 
     # ---- 2 works completed ---------------------------------------------------------
     rb.heading("2. Works Completed", 1)
-    works = inputs.works_completed or _default_works(inputs)
+    works = inputs.works_completed or default_works(inputs)
     rb.bullets(works)
 
     # ---- 3 borehole data sheet ---------------------------------------------------
@@ -364,30 +364,47 @@ def _executive_summary(inputs: HandoverReportInputs) -> tuple[list[str], list[st
     return [" ".join(bits)], key
 
 
-def _default_works(inputs: HandoverReportInputs) -> list[str]:
+def default_works(inputs: HandoverReportInputs) -> list[str]:
     """The works list, built only from what the project actually holds.
 
     This document is signed by the contractor, the client and the
     community, so it must not assert a pumping test or a laboratory
     analysis that nobody supplied. Each bullet is conditioned on the object
     that evidences it; ``works_completed`` remains the explicit override.
+
+    It is also why a bullet names its method and carries its quantity: an
+    interim payment is argued from this list, and what a quantity surveyor
+    checks is the drilled depth, the screen run and the seal. "Cased and
+    screened" is not a figure anybody can measure against.
+
+    The browser writes the same list in ``docs/js/gwt-docx.js`` and
+    ``tests/webapp/parity.mjs`` holds the two to the same words, so a
+    reworded bullet here is a reworded bullet there. They used to differ in
+    four of seven bullets, which handed one borehole two different
+    certificates: a surveyor got the casing size or the screen run, never
+    both, and never the seal.
     """
     works = []
     if inputs.sited:
         works.append("Geophysical siting survey and borehole location selection.")
-    if inputs.log is not None:
+    log = inputs.log
+    # The depth is the first quantity anyone measures the claim against, so
+    # the bullet waits for one rather than certifying a borehole drilled to
+    # "n/a" off a sheet where nobody wrote the depth down.
+    if log is not None and log.total_depth_m is not None:
         works.append(
-            f"Drilling of the borehole to {fmt_num(inputs.log.total_depth_m)} m"
-            + (f" by {inputs.log.drilling_method}" if inputs.log.drilling_method else "")
+            f"Drilling of the borehole to {fmt_num(log.total_depth_m)} m"
+            + (f" by {log.drilling_method}" if log.drilling_method else "")
             + "."
         )
-    if inputs.design is not None:
+    design = inputs.design
+    if design is not None:
         works.append(
-            "Construction with "
-            f"{inputs.design.casing_diameter_in:g} inch {inputs.design.casing_material} "
-            "casing and screens, gravel pack and sanitary seal."
+            f"Construction with {design.casing_diameter_in:g} inch "
+            f"{design.casing_material} casing, "
+            f"{fmt_num(design.total_screen_length_m)} m of screen, gravel pack "
+            f"and sanitary seal to {fmt_num(design.sanitary_seal[1])} m."
         )
-    if inputs.design is not None:
         works.append("Development of the borehole by air lifting until clear.")
     if inputs.pumping is not None:
         works.append("Pumping test and yield assessment.")

@@ -45,6 +45,9 @@ CSV_TABLES = {
     # the fixed scale the coverage map is coloured by, so both engines class
     # the same number the same way rather than each rescaling to its own figure
     "coverageServiceClasses": "coverage_service_classes.csv",
+    # what each bundled example file actually contains, so the browser's
+    # certification gate can say so on the reports it writes from them
+    "sampleProvenance": "sample_provenance.csv",
 }
 
 # Map layers. Coordinates are rounded to 5 decimal places (about 1 m at the
@@ -253,7 +256,13 @@ def build() -> Path:
                     f"{source} is missing; run examples/build_sample_data.py first"
                 )
             sources[role] = source
-            files[role] = {"name": source.name, "b64": encode_file(source)}
+            # ``path`` is the marker the certification gate reads: it is the
+            # same relative path the Streamlit picker records, so a project
+            # started in either app says the same thing about where its data
+            # came from.
+            files[role] = {
+                "name": source.name, "path": rel, "b64": encode_file(source),
+            }
         samples[key] = {
             "label": spec["label"], "note": spec["note"],
             "site": site_from_workbooks(sources, spec["site"]), "files": files,

@@ -7458,7 +7458,97 @@
     return merged;
   }
 
+  /* What each bundled example file actually contains, the same record the
+   * Python engine reads. Keyed by basename: the browser bundles
+   * "dr_timbo/dr_timbo_water_quality.xlsx", the Streamlit picker offers the
+   * same relative path and the example script opens it straight off disk,
+   * and it is one file whichever of those did it. */
+  function loadSampleProvenance(rows) {
+    var source = rows || (GWT.data && GWT.data.sampleProvenance) || [];
+    var out = {};
+    source.forEach(function (row) {
+      var file = String(row.file || '').trim();
+      var base = file.split('/').pop().toLowerCase();
+      if (!base) return;
+      out[base] = {
+        file: file,
+        kind: String(row.provenance || '').trim().toLowerCase(),
+        note: String(row.note || '').trim(),
+      };
+    });
+    return out;
+  }
+
+  /* The provenance record for one loaded source, if it is a bundled file.
+   * Either key is matched, so a file is recognised however it was loaded. */
+  function sourceProvenance(source, known) {
+    if (!source || typeof source !== 'object') return null;
+    var table = known || loadSampleProvenance();
+    var keys = ['sample', 'name'];
+    for (var i = 0; i < keys.length; i += 1) {
+      var value = source[keys[i]];
+      if (!value) continue;
+      var base = String(value).split('/').pop().toLowerCase();
+      if (table[base]) return table[base];
+    }
+    return null;
+  }
+
   var READINESS_CHECKS = {
+    /* The report describes this borehole, not a worked example.
+     *
+     * The toolkit ships example datasets and offers them from a picker,
+     * which is right: nobody should have to have drilled a borehole to see
+     * what the software does. But the documents it writes from them carry
+     * the same letterhead and the same signature block as the ones it
+     * writes from real work, and they leave as .docx files that get
+     * forwarded and filed. So the fact travels with the document.
+     *
+     * Two different things fail this, and they are not equally serious: a
+     * source whose readings were invented (the Dr Timbo water quality
+     * workbook - no sample was ever taken), and a source picked from the
+     * sample list whoever it was transcribed from (the Rokel soundings are
+     * a real 2015 survey, but a report produced by clicking "load a sample"
+     * is a survey of Rokel, not of the site on its cover). Both are stated
+     * rather than blocked, and an override is recorded on the cover. */
+    field_data: ['Field data', function (state) {
+      var sources = state.sources;
+      if (!sources || typeof sources !== 'object') {
+        return ['met', 'No input is a bundled example file.'];
+      }
+      var known = loadSampleProvenance();
+      var invented = [], bundled = [];
+      Object.keys(sources).forEach(function (role) {
+        var source = sources[role];
+        var record = sourceProvenance(source, known);
+        if (!record) return;
+        var base = record.file.split('/').pop();
+        /* Synthetic is true of the file however it was opened: nothing was
+         * sampled. Being a bundled example only counts when it was picked
+         * from the sample list - the marker the two apps' pickers set and
+         * nothing else does - because that is a fact about the session, not
+         * about the data. A script publishing the Rokel example under the
+         * Rokel name is reporting exactly what it says it is. */
+        var into = null;
+        if (record.kind === 'synthetic') into = invented;
+        else if (source && source.sample) into = bundled;
+        if (into && into.indexOf(base) < 0) into.push(base);
+      });
+      if (invented.length) {
+        return ['unmet', 'Readings that were never measured are in this ' +
+          'project: ' + invented.sort().join(', ') + '. The values in ' +
+          (invented.length === 1 ? 'that file were' : 'those files were') +
+          ' invented to demonstrate the toolkit, so no result derived from ' +
+          'them describes anything that was sampled.'];
+      }
+      if (bundled.length) {
+        return ['unmet', 'This project is built on the bundled example data (' +
+          bundled.sort().join(', ') + '), which was recorded at another ' +
+          'site. The analysis is of that example, not of the borehole named ' +
+          'on this report.'];
+      }
+      return ['met', 'No input is a bundled example file.'];
+    }],
     site_located: ['Site position', function (state) {
       var site = projectSite(state);
       if (!site || site.easting === null || site.easting === undefined ||
@@ -7590,30 +7680,30 @@
    * no claim about water quality; a handover report tells a village the
    * water is safe to drink, so it needs everything. */
   var READINESS_REPORTS = {
-    completion: ['site_located', 'borehole_logged', 'readings_usable',
+    completion: ['field_data', 'site_located', 'borehole_logged', 'readings_usable',
       'pumping_measured', 'yield_established', 'water_quality_panel',
       'water_quality_evaluable', 'design_derived', 'no_errors'],
-    handover: ['site_located', 'borehole_logged', 'pumping_measured',
+    handover: ['field_data', 'site_located', 'borehole_logged', 'pumping_measured',
       'yield_established', 'water_quality_panel', 'water_quality_evaluable',
       'no_errors'],
-    quality: ['site_located', 'water_quality_panel', 'water_quality_evaluable',
+    quality: ['field_data', 'site_located', 'water_quality_panel', 'water_quality_evaluable',
       'no_errors'],
-    pumping: ['site_located', 'readings_usable', 'pumping_measured',
+    pumping: ['field_data', 'site_located', 'readings_usable', 'pumping_measured',
       'yield_established', 'no_errors'],
-    geophysical: ['site_located'],
+    geophysical: ['field_data', 'site_located'],
     /* an estimate is priced before anything is drilled, so it is judged on
      * its own inputs, not on a log and an as-built design it cannot have */
-    costing: ['site_located', 'cost_basis', 'no_errors'],
-    supervision: ['site_located'],
+    costing: ['field_data', 'site_located', 'cost_basis', 'no_errors'],
+    supervision: ['field_data', 'site_located'],
     /* The asset documents and the payment certificate. Without an entry each
      * of these fell back to the completion set, so a plate for the headworks
      * was stamped PROVISIONAL for want of a water quality panel - which a
      * plate makes no claim about. What it does claim is that the identifier
      * on it leads back to this borehole, and that identifier is minted from
      * the position. */
-    placard: ['site_located'],
-    asset: ['site_located'],
-    procurement: ['site_located', 'no_errors'],
+    placard: ['field_data', 'site_located'],
+    asset: ['field_data', 'site_located'],
+    procurement: ['field_data', 'site_located', 'no_errors'],
   };
 
   function assessReadiness(state, report, overrides) {
@@ -7678,6 +7768,8 @@
 
   Object.assign(C, {
     assessReadiness: assessReadiness,
+    loadSampleProvenance: loadSampleProvenance,
+    sourceProvenance: sourceProvenance,
     READINESS_REPORTS: READINESS_REPORTS,
     READINESS_CHECKS: READINESS_CHECKS,
   });

@@ -1120,6 +1120,17 @@
      * swallowed. */
     var persistOk = true;
 
+    /* Whether a copy from an earlier successful write is still readable. A
+     * browser that has refused every write since the tab opened - a private
+     * window, or a quota that was already full - is holding nothing at all,
+     * and telling someone their morning is mirrored when it is not is worse
+     * than any amount of staleness. */
+    function mirrorExists() {
+      if (!opts.persistKey) return false;
+      try { return localStorage.getItem(opts.persistKey) !== null; }
+      catch (e) { return false; }
+    }
+
     function persist() {
       if (!opts.persistKey) return true;
       try {
@@ -1142,7 +1153,9 @@
          * being updated, which is now true of it rather than of its absence. */
         if (persistOk) {
           persistOk = false;
-          if (opts.onPersistError) opts.onPersistError(e);
+          /* Reading storage here is safe: it happens on the transition into
+           * failure, not on every retry. */
+          if (opts.onPersistError) opts.onPersistError(e, mirrorExists());
         }
         return false;
       }
