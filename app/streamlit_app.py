@@ -3862,8 +3862,23 @@ with tab_coverage:
         help="District population is exact; chiefdom aggregates the 2015 "
         "census onto the chiefdom polygons (district totals conserved).",
     )
+    # What the reader could not use belongs with the source it came from, and
+    # it has to appear whether or not anything survived. The case that matters
+    # most is the one where nothing did: a WPdx export whose header did not
+    # survive - a BOM makes the first column "\ufefflat_deg" - loses every
+    # coordinate, so the page has nothing to rank and everything to explain.
+    # Hung below the ranking, this said nothing at all in exactly that case,
+    # and "No water points found in that source" reads as "this area has no
+    # water points" rather than "this file did not load". The browser engine
+    # had the same defect, for the same reason, in waterPointSourceNote().
+    if cov_skipped:
+        show_flags(cov_skipped)
     if cov_points is not None and not cov_points:
-        st.warning("No water points found in that source.")
+        st.warning(
+            "No usable water point came back from that source; every row was "
+            "discarded for the reason above."
+            if cov_skipped else "No water points found in that source."
+        )
     elif cov_points:
         chiefdom = resolution == "Chiefdom"
         members = None
@@ -4035,11 +4050,10 @@ with tab_coverage:
                  "Status": r.status}) for r in rows],
             hide_index=True, width="stretch",
         )
-        # Two different places a record can be lost: the reader could not use
-        # the row at all, and the join could not place a usable one. Both
-        # belong beside the ranking they were left out of.
-        if cov_skipped:
-            show_flags(cov_skipped)
+        # The other place a record is lost: the reader could use the row, but
+        # the join could not place it. That one belongs beside the ranking it
+        # was left out of, because there is a ranking for it to be missing
+        # from - unlike the parse-time discards reported with the source above.
         if unassigned:
             st.caption(
                 f"{len(unassigned)} water point(s) fell outside every chiefdom "
