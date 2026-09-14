@@ -327,6 +327,44 @@ def test_coverage_tab_csv_flow(sample_data):
     assert any(m.label == "Chiefdoms" for m in at.metric)
 
 
+def test_coverage_says_why_when_every_row_was_discarded(sample_data):
+    """An export that parsed to nothing explains itself.
+
+    The hardest case for the page to get right is the one where the count and
+    the discards disagree completely: a WPdx export whose header did not
+    survive - a BOM makes the first column "\ufefflat_deg" - loses every
+    coordinate, so there is nothing to rank and everything to explain.
+    Reporting only the count leaves "No water points found in that source",
+    which is the opposite of what the export says, and a programme officer
+    reads it as "this area has no water points" rather than "this file did
+    not load".
+    """
+    csv_text = (
+        "lat_deg,lon_deg,status_clean,water_source_clean\n"
+        ",,Functional,Borehole\n"
+        ",,Functional,Borehole\n"
+        ",,Non-Functional,Borehole\n"
+    )
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.run()
+    assert not at.exception
+    at.file_uploader(key="cov_csv").set_value(
+        [("wpdx.csv", csv_text.encode(), "text/csv")]
+    )
+    at.run()
+    assert not at.exception
+
+    # nothing survived, so there is no ranking
+    assert not [t for t in at.dataframe if "Rank" in getattr(t.value, "columns", [])]
+
+    # ...and the page says what was thrown away, not merely that it found none
+    page = " ".join(
+        [w.value for w in at.warning] + [e.value for e in at.error]
+        + [i.value for i in at.info] + [c.value for c in at.caption]
+    )
+    assert "no usable latitude and longitude" in page.lower(), page
+
+
 def test_waterpoints_tab_guarded(sample_data):
     """The water points tab renders and, given coordinates, shows the lookup
     control - without touching the network (no button click)."""
