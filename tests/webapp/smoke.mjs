@@ -1276,6 +1276,42 @@ await withPage(async (page, base, consoleErrors) => {
     autosave.okAfterRecovery === true && autosave.recovered === true &&
     autosave.bannerCleared === true, JSON.stringify(autosave));
 
+  // A failed write used to delete the copy that had already succeeded, so the
+  // first photograph that filled the quota took this morning's drilling log
+  // with it and the next load opened a blank app. An hour-old copy is worth
+  // having; nothing is not.
+  const mirror = await page.evaluate(async () => {
+    const store = window.GWT.app.store;
+    const key = Object.keys(localStorage).find((k) => k.startsWith('gwt'));
+    store.persist();
+    const before = localStorage.getItem(key);
+
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function () {
+      const err = new Error('quota');
+      err.name = 'QuotaExceededError';
+      throw err;
+    };
+    store.set('site.community', 'typed after the quota filled');
+    const failed = store.persist();
+    Storage.prototype.setItem = original;
+
+    const after = localStorage.getItem(key);
+    /* and the copy still parses back into a project, not just a string */
+    let restored = null;
+    try { restored = JSON.parse(after); } catch (e) { restored = null; }
+    store.persist();
+    return {
+      failed,
+      key,
+      survived: after !== null && after === before,
+      restorable: !!(restored && typeof restored === 'object'),
+    };
+  });
+  check('autosave: a failed write leaves the copy that already succeeded',
+    mirror.failed === false && mirror.survived === true &&
+    mirror.restorable === true, JSON.stringify(mirror));
+
   // --- offline: the app installs itself ------------------------------------
   // 127.0.0.1 is a secure context, so the real worker registers here.
   const worker = await page.evaluate(async () => {

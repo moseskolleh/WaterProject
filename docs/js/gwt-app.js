@@ -101,10 +101,11 @@
     if (!broken) return;
     S.append(host, el('div.callout.callout-bad', [
       el('p', el('strong', 'Autosave has stopped')),
-      el('p', 'This browser will not keep a copy of the session any more — ' +
-        'usually because its storage is full, often from photographs. If you ' +
-        'refresh or close this tab, unsaved work is gone. Save a project file ' +
-        'now; it is the only record from here on.'),
+      el('p', 'This browser will not take a new copy of the session — ' +
+        'usually because its storage is full, often from photographs. The ' +
+        'copy it already had is still there, but it stops here: anything ' +
+        'entered from now on is in this tab only, and refreshing or closing ' +
+        'it loses that. Save a project file now.'),
       button('Save project', saveProject),
     ]));
   }
