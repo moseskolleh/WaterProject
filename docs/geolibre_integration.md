@@ -100,14 +100,14 @@ The format is documented and plain JSON: `mapView`, `basemapStyleUrl`,
 Writing one needs **no new dependency** — it fits the "no heavy GIS
 dependencies" rule exactly as `export_geojson` does.
 
-Emit `<site>.geolibre.json` beside the seven `.docx` reports, carrying:
+Emit `<site>.geolibre.json` beside the ten `.docx` documents, carrying:
 VES stations styled by suitability grade, the borehole, the chiefdom
 boundary, geology and hydrogeology, nearby WPDx points coloured by
 functionality, sanitary protection buffers, a legend, and a camera
 already framed on the site.
 
 That single file opens unchanged in the web app, the desktop app, on
-Android and iOS, and in a Jupyter widget. It becomes the eighth
+Android and iOS, and in a Jupyter widget. It becomes the eleventh
 deliverable — the one the client can *interrogate* rather than read.
 
 Keep it behind one adapter module. The format is at `version 0.1.0` and

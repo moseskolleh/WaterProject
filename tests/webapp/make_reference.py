@@ -223,6 +223,46 @@ def build() -> dict:
         "seal_note": next(n for n in _manual_notes if "grout seal" in n),
     }
 
+    # The cost summary table a contract is signed on. The browser inlined its
+    # own eight rows here with no VAT branch at all, so a VAT-set estimate
+    # printed a contract price, then a contingency computed on a VAT-inclusive
+    # budget, and no line saying where the difference went.
+    from groundwater.costing import estimate_borehole_cost  # noqa: E402
+
+    _cost_inputs, _ = CostingInputs(total_depth_m=60.0).resolved()
+    out["cost_summary"] = {
+        "no_vat": estimate_borehole_cost(_cost_inputs).summary_rows(),
+        "vat": estimate_borehole_cost(
+            _cost_inputs, vat_percent=15.0).summary_rows(),
+    }
+
+    # A real Streamlit project file, produced by the real serializer rather
+    # than hand-written. Both apps claim they can read each other's projects,
+    # and the browser could not read ANY of them: serialize_project always
+    # writes rates_overrides, committee, sources, summary and asset, PyYAML
+    # renders an empty one as {} or [] on one line, and the browser's parser
+    # refused flow syntax outright. The hand-written fixture that was supposed
+    # to guard this carried none of those five keys.
+    from groundwater.project_io import deserialize_project, serialize_project  # noqa: E402
+
+    _saved = serialize_project(
+        {
+            "meta_community": "Kuntoloh",
+            "meta_district": "Western Area Rural",
+            "project_summary": {
+                "community": "Kuntoloh", "district": "Western Area Rural",
+                "status": "Completed - dry", "total_depth_m": 52.0,
+                "cost_per_meter_usd": 151.0,
+            },
+        },
+        "0.2.0",
+    ).decode("utf-8")
+    out["streamlit_project_file"] = {
+        "yaml": _saved,
+        # what Python itself reads back out of those exact bytes
+        "summary": deserialize_project(_saved.encode("utf-8"))["summary"],
+    }
+
     # The supervision checklists: both engines must read the same ids out of
     # the CSV, and carry a positional answer onto the same stable id.
     _items = load_checklists()
@@ -458,6 +498,12 @@ def build() -> dict:
             "ves": {"name": "rokel_ves.xlsx", "b64": "x",
                     "sample": "rokel/rokel_ves.xlsx"},
         }), {}),
+        # A bundled file whose measurements are real but whose blank columns
+        # were filled in illustratively. Not blocking - it is a stated
+        # assumption, which is the other half of the gate's output.
+        "reconstructed_source": (dict(_full, sources={
+            "log": {"sample": "dr_timbo/dr_timbo_drilling_log.xlsx"},
+        }), {}),
         # The same synthetic workbook opened off disk by a script, with no
         # picker marker on it. Invented readings are invented whoever opened
         # the file, so this still fails.
@@ -492,6 +538,10 @@ def build() -> dict:
                     [r.key, r.state, r.detail, r.override_reason, r.override_by]
                     for r in assess_readiness(_state, report, _over).requirements
                 ],
+                # Stated assumptions travel onto the report beside the gate, so
+                # the two engines have to state the same ones. Nothing compared
+                # these, and the browser was silently stating none of them.
+                "assumptions": assess_readiness(_state, report, _over).assumptions,
             }
             for report in ("completion", "handover", "quality", "pumping")
         }

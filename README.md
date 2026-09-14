@@ -38,8 +38,9 @@ water quality guidelines.
     test, water quality, project handover, cost estimate, supervision
     checklist record, interim payment certificate, borehole asset record
     and the laminated identification plate for the headworks. Every one
-    of them opens on a map of the area. The web app saves and reloads the
-    whole working state as a project file
+    of the reports opens on a map of the area; the plate is a single
+    laminated sheet and carries the asset QR code instead. The web app
+    saves and reloads the whole working state as a project file
 11. A rehabilitate-or-drill check: existing water points near the site
     from the Water Point Data Exchange (WPdx+, CC BY 4.0), turned into a
     recommendation - a broken improved source nearby is a rehabilitation
@@ -51,7 +52,9 @@ water quality guidelines.
     choropleth and a ranked table to steer where to drill next. Chiefdom
     populations aggregate the census onto the boundary polygons with
     district totals conserved exactly and the reconciliation shown
-13. A certification-readiness gate on every report: each report is judged
+13. A certification-readiness gate on every document that has a cover to
+    stamp (all but the identification plate, which is a single laminated
+    sheet): each is judged
     on the evidence it actually claims, and one built on missing evidence
     is stamped PROVISIONAL - NOT FOR CERTIFICATION on its own cover with
     the outstanding items listed. It judges completeness, not outcome - a

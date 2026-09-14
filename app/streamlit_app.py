@@ -3733,8 +3733,11 @@ with tab_waterpoints:
         if st.button("Look up water points", key="run_waterpoints",
                      type="primary"):
             try:
+                _wp_skipped: list = []
                 with st.spinner("Querying the Water Point Data Exchange..."):
-                    points = water_points_near(lat, lon, float(radius))
+                    points = water_points_near(
+                        lat, lon, float(radius), skipped=_wp_skipped)
+                st.session_state["wp_skipped"] = _wp_skipped
             except WaterPointFetchError as exc:
                 st.session_state.pop("wp_result", None)
                 st.error(
@@ -3753,6 +3756,11 @@ with tab_waterpoints:
                 }
         result = st.session_state.get("wp_result")
         if result:
+            # Rows the reader could not use, beside the ones it could. The
+            # point count is what the rehabilitate-or-drill call is argued
+            # from, so an export that arrived half unusable must not read the
+            # same as a complete one.
+            show_flags(st.session_state.get("wp_skipped") or [])
             decision = result["decision"]
             banner = {
                 VERIFY_NEED: st.warning,
@@ -3805,12 +3813,17 @@ with tab_coverage:
         "fully offline analysis, or fetch live (needs internet).",
     )
     cov_points = None
+    # What the reader threw away belongs beside what it kept: an export that is
+    # half unusable and a complete one both arrive as a number of water points,
+    # and that number decides which chiefdom reads as served.
+    cov_skipped: list = []
     if cov_input == "Upload WPDx CSV export":
         up = st.file_uploader("WPDx CSV export (.csv)", type=["csv"], key="cov_csv")
         if up is not None:
             try:
                 cov_points = parse_wpdx_csv(
-                    up.getvalue().decode("utf-8", "replace")
+                    up.getvalue().decode("utf-8", "replace"),
+                    skipped=cov_skipped,
                 )
             except Exception as exc:  # noqa: BLE001 - surfaced to the operator
                 st.error(f"Could not read that CSV: {exc}")
@@ -3841,7 +3854,7 @@ with tab_coverage:
                     "ranking may be partial. Prefer a filtered WPDx CSV export "
                     "for a complete, reproducible analysis."
                 )
-            cov_points = parse_wpdx_records(raw)
+            cov_points = parse_wpdx_records(raw, skipped=cov_skipped)
 
     resolution = st.radio(
         "Resolution", ["District", "Chiefdom"], key="cov_resolution",
@@ -4022,6 +4035,11 @@ with tab_coverage:
                  "Status": r.status}) for r in rows],
             hide_index=True, width="stretch",
         )
+        # Two different places a record can be lost: the reader could not use
+        # the row at all, and the join could not place a usable one. Both
+        # belong beside the ranking they were left out of.
+        if cov_skipped:
+            show_flags(cov_skipped)
         if unassigned:
             st.caption(
                 f"{len(unassigned)} water point(s) fell outside every chiefdom "

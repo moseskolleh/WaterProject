@@ -410,5 +410,11 @@ def default_works(inputs: HandoverReportInputs) -> list[str]:
         works.append("Pumping test and yield assessment.")
     if inputs.quality is not None:
         works.append("Water quality sampling and laboratory analysis.")
-    works.append("Wellhead completion with apron and drainage.")
+    # No wellhead bullet. This used to be appended unconditionally, which made
+    # the docstring above false in its own function: the toolkit holds no
+    # headworks record of any kind, so there was nothing for it to be
+    # conditioned on and the list certified an apron and a drainage channel on
+    # every borehole - including one whose only input was a drilling log. A
+    # supervisor who built them says so through ``works_completed``, which is
+    # what that field is for.
     return works

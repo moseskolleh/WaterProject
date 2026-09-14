@@ -35,6 +35,13 @@ fails the install and leaves the device on the release it already had; an open
 tab finishes on the release it started with, so close every app tab and reopen
 to pick up a waiting update.
 
+Nothing but `install` may write to the versioned cache. Serving a precached
+file and quietly revalidating it back into that cache is what makes a
+half-uploaded deploy become the app a file at a time, under the old release's
+identifier, with no install having succeeded - which is the exact failure the
+`addAll` is there to refuse. Anything in scope the release does not carry goes
+in the separate runtime cache instead.
+
 ## Two engines, one answer
 
 `src/groundwater/` and `docs/js/gwt-core.js` compute the same results, and

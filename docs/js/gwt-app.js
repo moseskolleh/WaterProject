@@ -3891,18 +3891,30 @@
   }
 
   function waterPointSourceNote() {
-    var points = derived.waterPoints || [];
-    if (!points.length) return null;
     /* What the reader threw away belongs next to what it kept. An export that
      * is half unusable and a complete one both come back as a number of water
      * points, and that number is what decides whether a community here reads
-     * as served or unserved. */
+     * as served or unserved.
+     *
+     * The count and the discards are reported independently, because the case
+     * that matters most is the one where they disagree hardest: a BOM'd CSV
+     * whose first column arrives as "\ufefflat_deg" loses every coordinate, so
+     * the page has nothing to count and everything to explain. Hanging the
+     * whole note on points.length hid the explanation in exactly that case and
+     * left "no water points near this site" - the opposite of what the export
+     * says. */
+    var points = derived.waterPoints || [];
     var skipped = derived.waterPointsSkipped || [];
+    if (!points.length && !skipped.length) return null;
+    var source = derived.waterPointsSource ?
+      ' (' + derived.waterPointsSource + ')' : '';
     return el('div', [
-      el('p.muted', [
-        S.thousands(points.length) + ' water points loaded' +
-        (derived.waterPointsSource ? ' (' + derived.waterPointsSource + ')' : '') +
-        '. ' + C.WPDX_CREDIT,
+      points.length ? el('p.muted', [
+        S.thousands(points.length) + ' water points loaded' + source + '. ' +
+        C.WPDX_CREDIT,
+      ]) : el('p.muted', [
+        'No usable water point came back from this inventory' + source + '. ' +
+        C.WPDX_CREDIT,
       ]),
       skipped.length ? el('p.muted', skipped.map(function (flag) {
         return flag.message;
@@ -5334,7 +5346,7 @@
            * installation, the water and what to do about it */
           context.analysis = derived.analysis;
           context.assessment = derived.assessment;
-          context.pumpType = store.get('handover.pumpType') || 'Handpump';
+          context.pumpType = store.get('handover.pumpType') || '';
           context.figures = figures;
           builder = await docx.completionReport(context);
 

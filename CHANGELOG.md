@@ -139,6 +139,88 @@ a browser that has never managed a write at all - a private window, or a
 tablet whose storage was full before the app opened - is losing the whole
 day, and must not be told a copy is waiting for it.
 
+A release really is all of its files or none of them now. The install
+handler has always refused half a release, but that was worth little
+while an ordinary page load could rewrite the release it was running:
+the fetch handler revalidated in the background and put each answer
+back into the *versioned* cache, so a deploy that was still uploading
+became the app one file at a time, under the old release's identifier,
+without any install ever succeeding. The release cache is now written
+only by `install`. Anything in scope that the release does not carry
+gets ordinary revalidation in a separate runtime cache, which is
+swept with the release it belongs to. `tests/webapp/offline.mjs`
+changes a file on the server, loads the page and requires the bytes on
+disk to be unchanged; with the old behaviour restored that check sees
+the shipped engine replaced by a 39-byte placeholder.
+
+A project saved in the Streamlit app can now be opened in the browser
+app. It never could: `serialize_project` always writes five container
+keys, PyYAML renders an empty one as `{}` or `[]`, and the browser's
+YAML reader refused flow syntax outright - so every Streamlit project
+failed to parse, and the portfolio and asset-registry pickers reported
+it only as a count of skipped files. Two places in the app and the
+user guide said the opposite. The reader now accepts the two empty
+collections and still refuses a non-empty flow collection, which it
+genuinely cannot read. The smoke fixture that was supposed to guard
+this was hand-written and carried none of the five keys, so it passed
+against a file no save has ever produced; parity now round-trips the
+real bytes of a real `serialize_project` call.
+
+Reports no longer assert equipment and works nobody recorded. The
+handover works list ended with an unconditional wellhead bullet, so a
+project holding nothing but a site certified an apron and a drainage
+channel - in the same function whose docstring says every bullet is
+conditioned on the record that evidences it; there is no headworks
+record in the toolkit for it to be conditioned on, so the bullet is
+gone and `works_completed` remains the supervisor's way to assert it.
+The browser's completion report printed "Handpump" as the pump type on
+every borehole, from a field nothing in that app ever writes.
+
+The browser's costing report prints the VAT lines again. Its cost
+summary table was eight hand-inlined rows with no VAT branch at all,
+while the app offers a VAT input and the engine computes the figures,
+so a VAT-set estimate showed a contract price, then a contingency
+computed on a VAT-inclusive budget, and no line saying where the
+difference went. The table now comes from a shared
+`costSummaryRows`, compared against Python's `summary_rows` with and
+without VAT.
+
+The Streamlit app now reports the inventory rows its reader could not
+use. The `skipped` out-parameter added last release was wired only
+into the browser, so the two apps disagreed about the same export. And
+in the browser, the note that carries those discards sat behind a
+"did we load any points?" guard, so it was suppressed in exactly the
+case it exists for - a BOM'd export whose first column arrives as
+`\ufefflat_deg` loses every coordinate, and the page said "no water
+points near this site", the opposite of what the export says.
+
+Stated assumptions are now compared across the two engines, and the
+browser states the ones it was silently dropping. A bundled file whose
+blank columns were filled in illustratively is recorded as an
+assumption on the Python gate and was recorded nowhere on the
+browser's; nothing compared the two, because parity checked a gate's
+requirements and not its assumptions.
+
+Several documented claims were not true and have been corrected:
+`DEPLOY.md` listed two generated parts of `docs/` when there are three
+(a deploy following it shipped a stale service worker) and counted six
+`.docx` reports when there are ten; `README.md` said every one of the
+ten documents opens on a map and that the gate stamps every report,
+both of which exclude the laminated identification plate;
+`docs/user_guide.md` described the browser app's persistence with the
+Streamlit app's words and named a template file the toolkit does not
+write; `docs/geolibre_integration.md` still counted seven reports; and
+`THIRD_PARTY_NOTICES.md` did not record that chiefdom geometry is
+withheld from the CC BY layer.
+
+One test that claimed to catch a defect did not. `review.mjs`'s
+"the same figure is the same colour whatever else is on the map"
+compared two maps to each other over rank-identical fixtures, and
+quantile breaks are rank-based - so the per-map scale it was written
+to prevent satisfied every clause in it. It now pins each fill to the
+colour the shared class table gives that value, over a third fixture
+that is deliberately not rank-equivalent.
+
 ## A note on the sixteen districts
 
 The shipped district polygons are the pre-2017 fourteen, from

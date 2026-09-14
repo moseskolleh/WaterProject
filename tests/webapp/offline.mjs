@@ -192,6 +192,40 @@ await withPage(async (page, base, consoleErrors) => {
   await page.goto(base + '/index.html', { waitUntil: 'load' });
   await page.waitForFunction(() => window.GWT && window.GWT.app);
 
+  // --- the running release is read-only -------------------------------------
+  // The install handler refuses half a release, but that is worth nothing if
+  // an ordinary page load can rewrite the release it is running, one file at
+  // a time, from whatever happens to be on the server. That is precisely what
+  // a background revalidation that writes back into the versioned cache does:
+  // a deploy that is half uploaded becomes the app a file at a time, under the
+  // OLD release's identifier, without any install ever succeeding. So: change
+  // a file on the server, load the page, and require the release on disk to be
+  // exactly what it was.
+  const before = await page.evaluate(async (v) => {
+    const c = await caches.open(v + '-app');
+    const r = await c.match(new URL('js/gwt-core.js', location.href).href);
+    return r ? (await r.text()).length : null;
+  }, version);
+
+  overlay['/js/gwt-core.js'] = {
+    body: '/* a deploy that is still uploading */\n', type: 'application/javascript',
+  };
+  await page.goto(base + '/index.html', { waitUntil: 'load' });
+  await new Promise((r) => setTimeout(r, 800));
+  const after = await page.evaluate(async (v) => {
+    const c = await caches.open(v + '-app');
+    const r = await c.match(new URL('js/gwt-core.js', location.href).href);
+    return {
+      length: r ? (await r.text()).length : null,
+      names: (await caches.keys()).sort(),
+    };
+  }, version);
+  delete overlay['/js/gwt-core.js'];
+
+  check('a page load never rewrites the release it is running',
+    before !== null && after.length === before,
+    JSON.stringify({ before, after: after.length, names: after.names }));
+
   // --- a deploy that half arrived ------------------------------------------
   // The release is all of its files or it is none of them. A worker that
   // cannot fetch one of them must fail to install, and the device must keep
@@ -216,7 +250,8 @@ await withPage(async (page, base, consoleErrors) => {
   check('half a release: the incomplete deploy never becomes the app',
     broken.waiting === false, JSON.stringify(broken));
   check('half a release: it leaves no trace that it tried',
-    broken.caches.length === 1 && broken.caches[0] === version + '-app',
+    broken.caches.every((n) => n.indexOf('gwt-vbroken0000') !== 0) &&
+    broken.caches.includes(version + '-app'),
     JSON.stringify(broken.caches));
 
   const stillWorks = await page.evaluate(async () => {

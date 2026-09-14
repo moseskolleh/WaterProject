@@ -616,27 +616,74 @@ await withPage(async (page, base, consoleErrors) => {
       });
       return out;
     }
-    /* 900 sits in the same band on both maps; only the company it keeps differs */
+    /* 900 sits in the same band on all three; only the company it keeps
+     * differs. The third map is deliberately NOT rank-equivalent to the other
+     * two - under a per-map quantile scale 900 is the middle value on the
+     * first two and the lowest on the wide one, which is what tells a fixed
+     * scale apart from a recomputed one. */
     const mild = fillsFor([900, 1200, 100]);
     const severe = fillsFor([900, 40000, 100]);
+    const wide = fillsFor([900, 40000, 30000, 25000, 20000, 100]);
     const sentinels = fillsFor([900, Infinity, null]);
+    /* what the shared class table says 900 and 100 should be, independent of
+     * any map: the band whose ceiling first covers the value */
+    const bandOf = (v) => classes.filter((c) => c.kind === 'class').find(
+      (c) => c.max_people_per_point === null ||
+        c.max_people_per_point === undefined || v <= Number(c.max_people_per_point));
     return {
-      mild900: mild.A0, severe900: severe.A0,
-      mild100: mild.A2, severe100: severe.A2,
+      mild900: mild.A0, severe900: severe.A0, wide900: wide.A0,
+      mild100: mild.A2, severe100: severe.A2, wide100: wide.A5,
+      band900: bandOf(900).colour, band100: bandOf(100).colour,
       noSource: sentinels.A1, noData: sentinels.A2,
       table: classes.map((c) => [c.kind, c.colour]),
     };
   });
 
+  // Pinned to the class table, not just to each other. Comparing two maps
+  // proves nothing when the fixtures are rank-identical: quantile breaks are
+  // rank-based, so the per-map scale this replaced satisfied every relative
+  // clause while colouring 900 differently on a wider map.
   check('coverage map: the same figure is the same colour whatever else is on the map',
-    scale.mild900 === scale.severe900 && scale.mild100 === scale.severe100 &&
-    scale.mild900 !== scale.mild100,
+    scale.mild900 === scale.band900 && scale.severe900 === scale.band900 &&
+    scale.wide900 === scale.band900 &&
+    scale.mild100 === scale.band100 && scale.severe100 === scale.band100 &&
+    scale.wide100 === scale.band100 &&
+    scale.band900 !== scale.band100,
     JSON.stringify(scale));
   check('coverage map: no functional source is not the same as no data',
     scale.noSource !== scale.noData &&
     scale.noSource === scale.table.find((c) => c[0] === 'no_source')[1] &&
     scale.noData === scale.table.find((c) => c[0] === 'no_data')[1],
     JSON.stringify({ noSource: scale.noSource, noData: scale.noData }));
+
+  // The hardest case for the note to get right is the one where the count and
+  // the discards disagree completely: a BOM'd export whose first column
+  // arrives as "\ufefflat_deg" loses every coordinate, so there is nothing to
+  // count and everything to explain. Reporting only the count leaves "no water
+  // points near this site" - the opposite of what the export says.
+  const allBad = await page.evaluate(async () => {
+    const C = window.GWT.core, app = window.GWT.app;
+    const rows = [];
+    for (let i = 0; i < 500; i += 1) {
+      rows.push({ lat_deg: '', lon_deg: '', status_clean: 'Functional' });
+    }
+    const skipped = [];
+    app.derived.waterPoints = C.parseWpdxRecords(rows, skipped);
+    app.derived.waterPointsSkipped = skipped;
+    app.derived.waterPointsSource = 'an export whose header did not survive';
+    app.goto('waterpoints');
+    await new Promise((r) => setTimeout(r, 300));
+    return {
+      loaded: app.derived.waterPoints.length,
+      codes: skipped.map((f) => f.code),
+      text: document.querySelector('#page-host').textContent,
+    };
+  });
+  check('an inventory that parsed to nothing says why, not "none near this site"',
+    allBad.loaded === 0 && allBad.codes.includes('water_point_unplaced') &&
+    /no usable latitude and longitude/i.test(allBad.text),
+    JSON.stringify({ loaded: allBad.loaded, codes: allBad.codes,
+      text: allBad.text.slice(0, 260) }));
 
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));

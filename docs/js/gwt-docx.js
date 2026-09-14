@@ -972,7 +972,11 @@
       ['Drawdown', (dwl !== null && swl !== null)
         ? C.fmtNum(dwl - swl) + ' m' : '—'],
       ['Flow rate', flow ? C.fmtNum(flow * 1000) + ' L/h' : 'pending'],
-      ['Pump type', context.pumpType || 'Handpump'],
+      /* Blank, not 'Handpump'. Nothing in this app records which pump was
+       * installed, so the fallback asserted one on every borehole it wrote a
+       * completion report for - a claim about equipment nobody had entered.
+       * Python prints inputs.pump_type and leaves it empty. */
+      ['Pump type', context.pumpType || ''],
       ['Installation depth', rec && rec.pump_installation_depth_m
         ? C.fmtNum(rec.pump_installation_depth_m) + ' m'
         : (test && test.pump_setting_m ? C.fmtNum(test.pump_setting_m) + ' m' : '—')],
@@ -1478,26 +1482,7 @@
     });
 
     b.heading('4. Cost Summary', 1);
-    b.table([
-      ['Direct works cost', S.money(estimate.direct_cost_usd, 0),
-        S.thousands(estimate.in_local(estimate.direct_cost_usd), 0)],
-      ['Overheads (' + estimate.overheads_percent + '%)',
-        S.money(estimate.overheads_usd, 0),
-        S.thousands(estimate.in_local(estimate.overheads_usd), 0)],
-      ['Total cost', S.money(estimate.total_cost_usd, 0),
-        S.thousands(estimate.in_local(estimate.total_cost_usd), 0)],
-      ['Cost per metre drilled', S.money(estimate.cost_per_meter_usd, 0),
-        S.thousands(estimate.in_local(estimate.cost_per_meter_usd), 0)],
-      ['Margin (' + estimate.margin_percent + '%)', S.money(estimate.margin_usd, 0),
-        S.thousands(estimate.in_local(estimate.margin_usd), 0)],
-      ['Contract price', S.money(estimate.price_usd, 0),
-        S.thousands(estimate.in_local(estimate.price_usd), 0)],
-      ['Contingency (' + estimate.contingency_percent + '%)',
-        S.money(estimate.contingency_usd, 0),
-        S.thousands(estimate.in_local(estimate.contingency_usd), 0)],
-      ['Planning budget', S.money(estimate.budget_usd, 0),
-        S.thousands(estimate.in_local(estimate.budget_usd), 0)],
-    ], {
+    b.table(C.costSummaryRows(estimate), {
       header: ['Item', 'US$', 'SLE'], caption: 'Cost and price summary',
       colWidthsCm: [7.0, 4.3, 4.3],
     });
@@ -1663,7 +1648,10 @@
     if (context.assessment) {
       works.push('Water quality sampling and laboratory analysis.');
     }
-    works.push('Wellhead completion with apron and drainage.');
+    /* No wellhead bullet: the toolkit holds no headworks record for it to be
+     * conditioned on, and an unconditional one certified an apron and a
+     * drainage channel on every borehole. A supervisor who built them says so
+     * through the works notes. */
     return works;
   }
 

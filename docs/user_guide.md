@@ -15,7 +15,7 @@ There are five templates:
 | `template_ves.xlsx` | Vertical electrical sounding field data |
 | `template_pumping_test.xlsx` | Step and constant discharge tests |
 | `template_drilling_log.xlsx` | Drilling record and formation log |
-| `daily_log_template.xlsx` | The driller's daily report, one row per interval |
+| `template_daily_drilling_report.xlsx` | The driller's daily report, one row per interval |
 | `template_water_quality.xlsx` | Laboratory results |
 
 General rules for all templates:
@@ -269,10 +269,18 @@ both still pools into one view.
 ## 11. Saving your work
 
 Everything you enter (site details, checklist answers, costing
-inputs, edited unit rates) lives only in the browser session and is
-lost on refresh. Use the sidebar's "Project file" panel to save the
-whole working state as a small `.yaml` file, and load it back later
-or on another machine to continue where you stopped.
+inputs, edited unit rates) lives in the session you are working in.
+Use the "Project file" panel to save the whole working state and load
+it back later or on another machine to continue where you stopped.
+
+The two apps differ in what survives on their own. The Streamlit app
+holds its session in memory, so a refresh loses it; it saves a
+`.yaml` project file. The standalone browser app mirrors the session
+to the browser's own storage as you go, so a refresh or a closed tab
+comes back where you left it, and it warns you in red if that mirror
+ever stops being written; it saves a `.gwt.json` project file. Either
+app reads the other's file, so a project started in the field on a
+phone can be finished at a desk.
 
 ## 12. Scanned sheets
 

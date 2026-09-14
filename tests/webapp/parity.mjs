@@ -25,7 +25,7 @@ await withPage(async (page, base, consoleErrors) => {
   await page.waitForFunction(() => window.GWT && window.GWT.core && window.GWT.data &&
     window.GWT.docx);
 
-  const parsed = await page.evaluate(async () => {
+  const parsed = await page.evaluate(async (R_STREAMLIT_YAML) => {
     const S = GWT.support, C = GWT.core, D = GWT.data;
     async function grids(b64) {
       return GWT.support.readXlsx(S.base64ToBytes(b64));
@@ -113,6 +113,26 @@ await withPage(async (page, base, consoleErrors) => {
     out.costing_manual = {
       cement_bags: manual.inputs.cement_bags,
       seal_note: manual.assumptions.find((n) => n.indexOf('grout seal') >= 0),
+    };
+
+    // The cost summary table a contract is signed on, with and without VAT.
+    const costInputs = C.resolveCostingInputs(
+      C.costingInputs({ total_depth_m: 60.0 })).inputs;
+    out.cost_summary = {
+      no_vat: C.costSummaryRows(C.estimateBoreholeCost(costInputs)),
+      vat: C.costSummaryRows(
+        C.estimateBoreholeCost(costInputs, null, { vatPercent: 15.0 })),
+    };
+
+    // The real bytes a Streamlit save produces, parsed by the browser's own
+    // YAML reader. Both apps advertise that they read each other's projects.
+    let streamlitRead = null, streamlitError = null;
+    try { streamlitRead = S.parseYaml(R_STREAMLIT_YAML); }
+    catch (e) { streamlitError = String(e && e.message || e); }
+    out.streamlit_project_file = {
+      error: streamlitError,
+      summary: streamlitRead ? streamlitRead.summary : null,
+      keys: streamlitRead ? Object.keys(streamlitRead).sort() : null,
     };
 
     const items = C.loadChecklists();
@@ -304,6 +324,12 @@ await withPage(async (page, base, consoleErrors) => {
         sources: { ves: { name: 'rokel_ves.xlsx', b64: 'x',
           sample: 'rokel/rokel_ves.xlsx' } },
       }), {}],
+      // A bundled file whose measurements are real but whose blank columns
+      // were filled in illustratively. Not blocking - it is a stated
+      // assumption, which is the other half of the gate's output.
+      reconstructed_source: [Object.assign({}, fullProject, {
+        sources: { log: { sample: 'dr_timbo/dr_timbo_drilling_log.xlsx' } },
+      }), {}],
       // The same synthetic workbook opened off disk by a script, with no
       // picker marker on it. Invented readings are invented whoever opened
       // the file, so this still fails.
@@ -337,6 +363,7 @@ await withPage(async (page, base, consoleErrors) => {
           state: r.state, summary: r.summary,
           requirements: r.requirements.map((q) => [q.key, q.state, q.detail,
             q.override_reason, q.override_by]),
+          assumptions: r.assumptions,
         };
       });
     });
@@ -597,7 +624,7 @@ await withPage(async (page, base, consoleErrors) => {
       one_pager: C.portfolioOnePager(summaries[1]),
     };
     return out;
-  });
+  }, reference.streamlit_project_file.yaml);
 
   const R = reference;
   // --- VES ---
@@ -989,6 +1016,23 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify(parsed.asset_months) === JSON.stringify(R.asset_months),
     JSON.stringify(parsed.asset_months) + '\n     vs ' + JSON.stringify(R.asset_months));
 
+  check('a Streamlit .yaml project file is readable by the browser at all',
+    parsed.streamlit_project_file.error === null,
+    String(parsed.streamlit_project_file.error));
+  check('a Streamlit .yaml project file reads back the same summary',
+    JSON.stringify(parsed.streamlit_project_file.summary) ===
+    JSON.stringify(R.streamlit_project_file.summary),
+    `js ${JSON.stringify(parsed.streamlit_project_file.summary)}\n     py ${
+      JSON.stringify(R.streamlit_project_file.summary)}`);
+
+  Object.keys(R.cost_summary).forEach((name) => {
+    check(`cost summary ${name}: the same rows, in the same words`,
+      JSON.stringify(parsed.cost_summary[name]) ===
+      JSON.stringify(R.cost_summary[name]),
+      `js ${JSON.stringify(parsed.cost_summary[name])}\n     py ${
+        JSON.stringify(R.cost_summary[name])}`);
+  });
+
   Object.keys(R.handover_works).forEach((name) => {
     check(`handover works ${name}: the same bullets, in the same words`,
       JSON.stringify(parsed.handover_works[name]) ===
@@ -1007,6 +1051,9 @@ await withPage(async (page, base, consoleErrors) => {
       check(`readiness ${name}/${report}: requirements`,
         JSON.stringify(js.requirements) === JSON.stringify(py.requirements),
         `js ${JSON.stringify(js.requirements)}\n     py ${JSON.stringify(py.requirements)}`);
+      check(`readiness ${name}/${report}: stated assumptions`,
+        JSON.stringify(js.assumptions) === JSON.stringify(py.assumptions),
+        `js ${JSON.stringify(js.assumptions)}\n     py ${JSON.stringify(py.assumptions)}`);
     });
   });
 

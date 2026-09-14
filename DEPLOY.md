@@ -50,19 +50,24 @@ Python sources are not published alongside the site.
 ### Rebuilding what `docs/` contains
 
 The standalone app is hand-written source, not generated — edit
-`docs/index.html`, `docs/css/gwt.css` and `docs/js/*.js` directly. Two
-parts of it are generated and must be regenerated when their sources
-change:
+`docs/index.html`, `docs/css/gwt.css` and `docs/js/*.js` directly. Three
+parts of it are generated and must be regenerated, in this order, when
+their sources change:
 
 ```bash
 python web/build_webapp_data.py   # docs/js/gwt-data.js: the guideline
                                   # table, rate catalogue, checklists,
                                   # map layers and sample workbooks
 python web/build_demo.py          # docs/wasm/index.html: the stlite build
+python web/build_offline.py       # docs/sw.js: the service worker and the
+                                  # release identifier. LAST: it hashes the
+                                  # whole app shell, gwt-data.js included
 ```
 
-CI fails if `docs/js/gwt-data.js` is out of date with the CSVs it is
-built from, so the two can never drift apart.
+CI fails if any of the three is out of date with the sources it is built
+from, so they can never drift apart. `build_offline.py` going last
+matters: run it before the bundle it is meant to describe and the
+release identifier names a shell that no longer exists.
 
 ### Checking it before you publish
 
@@ -133,7 +138,7 @@ and add a line `anthropic` to `requirements.txt`.
   Cooper-Jacob/Theis/recovery/step analyses, the yield recommendation,
   the water quality assessment and the borehole design all agree, and
   the generated report prose matches character for character.
-- The six .docx reports the app writes were opened with `python-docx`
+- The ten .docx reports the app writes were opened with `python-docx`
   (a strict OOXML reader): headings, tables and embedded figures all
   parse, and the BoQ workbook reads back through `openpyxl`.
 - Every page of the standalone app was driven in headless Chromium
