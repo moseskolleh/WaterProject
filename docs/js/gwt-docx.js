@@ -1,4 +1,4 @@
-/* gwt-docx.js - the seven house-styled .docx reports, written in the browser.
+/* gwt-docx.js - the house-styled .docx reports, written in the browser.
  *
  * A .docx is a ZIP of OOXML parts, so with a ZIP writer (support.js) the whole
  * report can be assembled client-side: no server, no library, and the file the
@@ -1630,6 +1630,7 @@
     var analysis = context.analysis, assessment = context.assessment;
     var figures = context.figures || [];
     var rec = analysis ? analysis.yield_recommendation : null;
+    var sited = !!(context.interpretations && context.interpretations.length);
 
     b.cover(['Project Handover Report', site.community || ''], [],
       siteDetails(site, [
@@ -1665,14 +1666,21 @@
     areaSection(b, context, '1.1 Location and setting');
 
     b.heading('2. Works Completed', 1);
+    /* Every bullet is conditioned on the record that evidences it. This
+     * document is signed by the contractor, the client and the community, so
+     * it must not assert a pumping test, a laboratory analysis or a handpump
+     * that nobody supplied - a signature under a works list is what an
+     * interim payment is later argued from. Anything genuinely done that the
+     * project does not hold a record of goes in as a works note. */
     b.bullets([
+      sited ? 'Geophysical siting survey and borehole location selection.' : null,
       log.total_depth_m ? 'Borehole drilled to ' + C.fmtNum(log.total_depth_m) + ' m.' : null,
       design ? 'Cased and screened with ' + C.fmtNum(design.total_screen_length_m) +
         ' m of screen; gravel packed and grout sealed.' : null,
-      'Borehole developed and test pumped.',
+      design ? 'Borehole developed by air lifting until clear.' : null,
+      analysis ? 'Pumping test and yield assessment.' : null,
       assessment ? 'Water quality sampled and analysed.' : null,
-      'Headworks constructed with an apron, drainage channel and soakaway.',
-      'Handpump installed and commissioned.',
+      'Wellhead completion with apron and drainage.',
     ].filter(Boolean).concat(context.worksNotes || []));
 
     b.heading('3. Borehole Data Sheet', 1);

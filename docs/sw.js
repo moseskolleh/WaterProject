@@ -1,5 +1,10 @@
 /* Service worker for the Groundwater Investigation Toolkit.
  *
+ * GENERATED FILE - do not edit. The source of truth is the app shell under
+ * docs/; regenerate with:
+ *
+ *     python web/build_offline.py
+ *
  * The toolkit is used in places where the network is a luxury: a chiefdom
  * with one bar of signal, a vehicle between villages, a drilling site with
  * none at all. Everything the app computes already runs in the browser, so
@@ -19,23 +24,27 @@
  *      carries an API key is not something to do by accident.
  */
 
-/* Bump when the precache list below changes. Existing files do not need it:
- * they are revalidated on every load (see the fetch handler), so a deploy
- * reaches users without a version change. */
-var VERSION = 'gwt-v3';
+/* A hash of the precached files, not a number someone bumps by hand. Change
+ * any byte of the shell and this changes with it, so the browser fetches the
+ * new worker and drops the old cache; forget to change it and a device keeps
+ * serving last month's app with nothing to show that it is doing so. */
+var VERSION = 'gwt-v284dfc331357';
 var CACHE = VERSION + '-app';
 
 /* Relative to the worker's own directory, so the app works unchanged at a
- * domain root or under a GitHub Pages project path. */
+ * domain root or under a GitHub Pages project path. In the order a browser
+ * meets them: the page, the links in its head, the icons the manifest names,
+ * the faces the stylesheet loads, then the scripts. A precache interrupted
+ * part way therefore leaves the most useful part on disk. */
 var PRECACHE = [
   './',
   'index.html',
   'manifest.webmanifest',
-  'icon.svg',
   'icon-192.png',
+  'css/gwt.css',
+  'icon.svg',
   'icon-512.png',
   'icon-maskable-512.png',
-  'css/gwt.css',
   'fonts/space-grotesk-latin.woff2',
   'fonts/inter-latin.woff2',
   'fonts/ibm-plex-mono-latin-400.woff2',
@@ -56,19 +65,32 @@ self.addEventListener('install', function (event) {
   event.waitUntil((async function () {
     var cache = await caches.open(CACHE);
     /* cache: 'reload' so a precache never copies a stale entry out of the
-     * browser's own HTTP cache - the point of this pass is a known-good set. */
-    var results = await Promise.allSettled(PRECACHE.map(function (path) {
-      return cache.add(new Request(new URL(path, self.registration.scope).href,
-        { cache: 'reload' }));
-    }));
-    var failed = results.filter(function (r) { return r.status === 'rejected'; });
-    if (failed.length) {
-      /* One missing optional file must not leave the app half-installed and
-       * unusable offline; the rest of the shell is cached and works. */
-      console.warn('[sw] ' + failed.length + ' of ' + PRECACHE.length +
-        ' assets could not be precached');
+     * browser's own HTTP cache - the point of this pass is a known-good set.
+     *
+     * addAll rather than a tolerated pass of individual adds: a release is
+     * all of these files or it is none of them. If one cannot be fetched the
+     * install fails, this worker never activates, and whatever the device
+     * already had keeps serving. Half a release installed is the worst of
+     * both - an app that looks updated and is missing a page - and the build
+     * script has already checked that every one of these files exists, so a
+     * failure here means a deploy that genuinely did not arrive. */
+    try {
+      await cache.addAll(PRECACHE.map(function (path) {
+        return new Request(new URL(path, self.registration.scope).href,
+          { cache: 'reload' });
+      }));
+    } catch (e) {
+      /* Opening the cache created it, so a release that could not be fetched
+       * would otherwise leave an empty one behind under its own name, to be
+       * swept by whichever release eventually succeeds. Take it back out: a
+       * release that did not arrive should leave no trace that it tried. */
+      await caches.delete(CACHE);
+      throw e;
     }
-    await self.skipWaiting();
+    /* No skipWaiting: a tab that is open keeps the release it started with.
+     * Swapping the engine under a page that is half way through a recompute
+     * is how one app ends up running two releases at once. The new worker
+     * waits, the app says so, and the next open is the new release. */
   })());
 });
 

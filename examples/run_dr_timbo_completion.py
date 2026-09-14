@@ -76,11 +76,14 @@ def main() -> None:
 
     # ---- the certification gate ---------------------------------------------------
     # The transcribed sheets carry no GPS fix, and a borehole nobody can find
-    # again cannot be certified; the position below is illustrative (Western
-    # Area Rural, the district the sheets name), so the example shows a
-    # certifiable set rather than three stamped covers.
-    if log.site.easting is None:
-        log.site.easting, log.site.northing, log.site.utm_zone = 709345.0, 920841.0, 28
+    # again cannot be certified. This example used to supply an illustrative
+    # position here so the covers came out clean, which is the one thing
+    # CONTRIBUTING.md tells contributors never to do: the reports it wrote
+    # asserted a GPS fix that nobody had taken, and said nothing in the
+    # document about where it came from. The sheets are left as they were
+    # found, so the three reports carry the provisional stamp and list the
+    # position as outstanding - which is what this data honestly supports,
+    # and a better demonstration of the gate than a clean cover is.
     state = {
         "site": log.site, "drilling_log": log, "pump_analysis": analysis,
         "wq_assessment": assessment, "borehole_design": design,

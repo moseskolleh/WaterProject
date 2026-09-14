@@ -90,11 +90,18 @@ datasets:
     share_alike: false
     changes_made: >-
       Each chiefdom tagged with its parent district; the merged "Koya" feature
-      split by longitude into two chiefdoms (split_koya_feature).
+      split by longitude into two chiefdoms (split_koya_feature); geometry
+      filed under a chiefdom it cannot belong to withheld into
+      boundary_review.geojson by web/build_boundary_review.py, which records
+      the measurements the decision rests on. Nothing is reassigned.
     files:
       - path: src/groundwater/data/sl_chiefdoms_geoboundaries.geojson
-        bytes: 155377
-        sha256: e116421056b75ba42a9d79fe148ea942dd5245f9154ab2fb92d856e3cc331e6e
+        bytes: 155130
+        sha256: 04d97198b8ad692e6367089f30058ea0790be9dfaef416a990c414972ffa1277
+        derived: true
+      - path: src/groundwater/data/boundary_review.geojson
+        bytes: 1170
+        sha256: 5a530503e58ec276d881db4e9b8d8c6b578915d6e55a4732f21f109c82cd4d61
         derived: true
 
   - id: usgs_geology
