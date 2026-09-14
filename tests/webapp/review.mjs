@@ -349,21 +349,23 @@ await withPage(async (page, base, consoleErrors) => {
     broken.warned.includes(failed) &&
     broken.warned.includes('could not be interpreted'), broken.warned);
 
-  const report = await page.evaluate(async () => {
-    const cfg = window.GWT.app.config();
-    const d = window.GWT.app.derived;
-    const figures = [];
-    for (let i = 0; i < d.inversions.length; i += 1) {
-      figures.push({ soundingId: d.interpretations[i].sounding_id });
-    }
-    return {
-      captions: figures.map((f) => f.soundingId),
-      style: !!cfg.style,
-    };
-  });
-  check('ves: the report figures carry the same names the page does',
-    report.captions.every((id) => broken.interpreted.includes(id)) &&
-    !report.captions.includes(failed), JSON.stringify(report.captions));
+  // The .docx pairs a figure to a sounding's block by identity, not by order
+  // (gwt-docx.js: f.soundingId === interp.sounding_id). A figure stamped with
+  // the wrong name therefore matched no block at all, so a surviving sounding
+  // got a heading, a narrative and a layer table with no curve and no model
+  // under it, while its own figures sat in the package under the failed
+  // sounding's name. This goes through the app's own report build - the one
+  // that stamps the names - and reads the document it downloads.
+  const geophysical = await issued('geophysical');
+  check('ves: every surviving sounding keeps its figures in its own block',
+    survived.every((id) =>
+      geophysical.includes('Sounding curve and fitted model for ' + id)) &&
+    !geophysical.includes('Sounding curve and fitted model for ' + failed) &&
+    !geophysical.includes('Layered earth model for ' + failed),
+    JSON.stringify({ survived, failed }));
+  check('ves: the report does not head a block for a sounding it could not interpret',
+    !new RegExp('^' + failed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'm')
+      .test(geophysical), failed);
 
   // --- a ranking that is cut short says so -----------------------------------
   // The coverage table is read to decide where to drill next, and it is sorted
