@@ -28,7 +28,7 @@
  * any byte of the shell and this changes with it, so the browser fetches the
  * new worker and drops the old cache; forget to change it and a device keeps
  * serving last month's app with nothing to show that it is doing so. */
-var VERSION = 'gwt-v1e5d3da97cad';
+var VERSION = 'gwt-v4d192c600845';
 var CACHE = VERSION + '-app';
 
 /* Relative to the worker's own directory, so the app works unchanged at a

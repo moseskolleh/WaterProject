@@ -4130,11 +4130,16 @@
       var byDistrict = {};
       rows.forEach(function (r) { byDistrict[r.name] = r.people_per_point; });
       features = (GWT.data.geo.chiefdomBoundaries || {}).features || [];
+      /* null is an area nothing is known about; Infinity is a mapped area with
+       * no functional source in it, which is the worst case rather than a
+       * missing one. They were both null, so the areas most in need were the
+       * same grey as the areas nobody has a figure for. */
       valueFor = function (feature) {
         var name = (feature.properties || {}).name;
         var district = chiefdomDistrict[name];
+        if (!(district in byDistrict)) return null;
         var v = byDistrict[district];
-        return v === null || v === undefined ? null : v;
+        return v === null || v === undefined ? Infinity : v;
       };
       nameFor = function (feature) { return (feature.properties || {}).name; };
       title = 'People per functional water point, by district (' +
@@ -4153,8 +4158,10 @@
       rows.forEach(function (r) { byChiefdom[r.name] = r.people_per_point; });
       features = (GWT.data.geo.chiefdomBoundaries || {}).features || [];
       valueFor = function (feature) {
-        var v = byChiefdom[(feature.properties || {}).name];
-        return v === null || v === undefined ? null : v;
+        var name = (feature.properties || {}).name;
+        if (!(name in byChiefdom)) return null;
+        var v = byChiefdom[name];
+        return v === null || v === undefined ? Infinity : v;
       };
       nameFor = function (feature) { return (feature.properties || {}).name; };
       title = 'People per functional water point, by chiefdom (' +
@@ -4177,6 +4184,7 @@
       charts.figure(charts.choropleth({
         features: features, value: valueFor, name: nameFor,
         title: title, legendTitle: 'people per functional water point',
+        classes: C.loadServiceClasses(),
         width: 640, height: 600,
       }), title, { filename: 'coverage_' + level }),
       el('p.muted', projection.note),

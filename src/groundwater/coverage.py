@@ -327,6 +327,76 @@ def coverage_rows(
     return rows
 
 
+@dataclass(frozen=True)
+class ServiceClass:
+    """One band of the people-per-functional-point scale."""
+
+    kind: str  # "class" | "no_source" | "no_data"
+    max_people_per_point: float | None  # None on the open-ended top class
+    label: str
+    basis: str
+    colour: str
+
+
+def load_service_classes(path: str | Path | None = None) -> list[ServiceClass]:
+    """The fixed scale both engines colour the coverage map by.
+
+    The map used to be coloured by a scale recomputed from whatever was on it:
+    a continuous ramp stretched to each figure's own minimum and maximum in
+    Python, five quantiles in the browser. A chiefdom at 900 people per
+    functional point was therefore pale on a map whose worst area was 40,000
+    and dark on one whose worst was 1,200 - same chiefdom, same data, opposite
+    reading - and the two engines drew the same country two different ways.
+    Nothing on either key said what a colour meant in absolute terms, so there
+    was no way to tell which was right.
+
+    A fixed scale is comparable by construction. Where the breaks fall is a
+    judgement whichever way it is made, so the table says what each one rests
+    on rather than leaving it to be inferred from the colours. The two lowest
+    are the Sphere handbook's figures for a tapstand and a handpump; no copy
+    of that standard is committed here, so the table marks them as not
+    evidenced in this repository and they should be read as a stated basis
+    rather than as a standard this project holds.
+    """
+    rows = csv.DictReader(io.StringIO(
+        _resource_text("coverage_service_classes.csv", path)))
+    out = []
+    for row in rows:
+        top = (row.get("max_people_per_point") or "").strip()
+        out.append(ServiceClass(
+            kind=(row.get("kind") or "class").strip(),
+            max_people_per_point=float(top) if top else None,
+            label=(row.get("label") or "").strip(),
+            basis=(row.get("basis") or "").strip(),
+            colour=(row.get("colour") or "").strip(),
+        ))
+    return out
+
+
+def service_class_of(
+    value: float | None, classes: list[ServiceClass] | None = None
+) -> ServiceClass:
+    """Which band a people-per-point figure falls in.
+
+    Follows the convention :func:`choropleth_values` already uses: ``None``
+    is an area nothing is known about, and infinity is an area with no
+    functional mapped source at all. Those are opposite situations and the
+    browser painted both the same grey, so the areas most in need - the ones
+    that rank first by definition - were indistinguishable from the areas
+    nobody has a figure for.
+    """
+    table = classes if classes is not None else load_service_classes()
+    bands = [c for c in table if c.kind == "class"]
+    if value is None:
+        return next((c for c in table if c.kind == "no_data"), bands[-1])
+    if not math.isfinite(value):
+        return next((c for c in table if c.kind == "no_source"), bands[-1])
+    for band in bands:
+        if band.max_people_per_point is not None and value < band.max_people_per_point:
+            return band
+    return bands[-1]
+
+
 def choropleth_values(rows: Iterable[CoverageRow]) -> dict[str, float]:
     """District -> people-per-point for the map.
 

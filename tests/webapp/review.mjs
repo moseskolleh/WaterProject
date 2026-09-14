@@ -482,6 +482,57 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify(shared.slice(0, 3).map(
       (name) => [name, first.values[name]].concat(rest.map((t) => t.values[name])))));
 
+  // --- the same number is the same colour on every map -----------------------
+  // The coverage map is the figure a district officer argues from, and it used
+  // to be coloured by a scale recomputed from whatever was on it. A chiefdom at
+  // 900 people per functional point was pale beside a worst case of 40,000 and
+  // dark beside a worst case of 1,200 - same chiefdom, same data, opposite
+  // reading - and nothing on the key said what a colour meant.
+  const scale = await page.evaluate(() => {
+    const C = window.GWT.core, charts = window.GWT.charts;
+    const classes = C.loadServiceClasses();
+    const square = (i) => ({
+      type: 'Feature',
+      properties: { name: 'A' + i },
+      geometry: { type: 'Polygon', coordinates: [[[i, 0], [i + 1, 0],
+        [i + 1, 1], [i, 1], [i, 0]]] },
+    });
+    function fillsFor(values) {
+      const features = values.map((_, i) => square(i));
+      const svg = charts.choropleth({
+        features: features,
+        value: (f) => values[Number(f.properties.name.slice(1))],
+        name: (f) => f.properties.name,
+        classes: classes, width: 200, height: 200, title: 't',
+      });
+      const out = {};
+      svg.querySelectorAll('path[aria-label]').forEach((p) => {
+        out[p.getAttribute('aria-label').split(':')[0]] = p.getAttribute('fill');
+      });
+      return out;
+    }
+    /* 900 sits in the same band on both maps; only the company it keeps differs */
+    const mild = fillsFor([900, 1200, 100]);
+    const severe = fillsFor([900, 40000, 100]);
+    const sentinels = fillsFor([900, Infinity, null]);
+    return {
+      mild900: mild.A0, severe900: severe.A0,
+      mild100: mild.A2, severe100: severe.A2,
+      noSource: sentinels.A1, noData: sentinels.A2,
+      table: classes.map((c) => [c.kind, c.colour]),
+    };
+  });
+
+  check('coverage map: the same figure is the same colour whatever else is on the map',
+    scale.mild900 === scale.severe900 && scale.mild100 === scale.severe100 &&
+    scale.mild900 !== scale.mild100,
+    JSON.stringify(scale));
+  check('coverage map: no functional source is not the same as no data',
+    scale.noSource !== scale.noData &&
+    scale.noSource === scale.table.find((c) => c[0] === 'no_source')[1] &&
+    scale.noData === scale.table.find((c) => c[0] === 'no_data')[1],
+    JSON.stringify({ noSource: scale.noSource, noData: scale.noData }));
+
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));
 });

@@ -6230,6 +6230,24 @@
     return out;
   }
 
+  /* The fixed scale the coverage map is coloured by, the same table the
+   * Python engine reads. Colouring by a scale recomputed from each map made
+   * two maps of one country incomparable. */
+  function loadServiceClasses(rows) {
+    var source = rows || (GWT.data && GWT.data.coverageServiceClasses) || [];
+    return source.map(function (row) {
+      var top = String(row.max_people_per_point === null ||
+        row.max_people_per_point === undefined ? '' : row.max_people_per_point).trim();
+      return {
+        kind: String(row.kind || 'class').trim(),
+        max_people_per_point: top === '' ? null : Number(top),
+        label: String(row.label || '').trim(),
+        basis: String(row.basis || '').trim(),
+        colour: String(row.colour || '').trim(),
+      };
+    });
+  }
+
   function loadChiefdomDistrict(rows) {
     var source = rows || (GWT.data && GWT.data.chiefdomDistrict) || [];
     var out = {};
@@ -6749,6 +6767,7 @@
     groupPointsByDistrict: groupPointsByDistrict,
     groupPointsByChiefdom: groupPointsByChiefdom,
     coverageRows: coverageRows, chiefdomCoverageRows: chiefdomCoverageRows,
+    loadServiceClasses: loadServiceClasses,
     coverageStats: coverageStats,
     parseWpdxRecords: parseWpdxRecords, pointsWithin: pointsWithin,
     functionalitySummary: functionalitySummary, rehabVsDrill: rehabVsDrill,

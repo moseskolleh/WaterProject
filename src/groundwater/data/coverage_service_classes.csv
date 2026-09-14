@@ -1,0 +1,8 @@
+kind,max_people_per_point,label,basis,colour
+class,250,Under 250,"Sphere handbook figure for one tapstand; not evidenced in this repository",#FBF1E9
+class,500,250 to 500,"Sphere handbook figure for one handpump; not evidenced in this repository",#EDCBB9
+class,1000,500 to 1000,Twice the handpump figure,#DEA68A
+class,2000,1000 to 2000,Four times the handpump figure,#D0805A
+class,,2000 and over,Over four times the handpump figure,#C15A2A
+no_source,,No functional source,No working mapped point at all; ranks worst by definition,#5A1A12
+no_data,,No data,No population figure or no boundary match,#E9E9E9

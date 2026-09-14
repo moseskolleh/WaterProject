@@ -52,6 +52,15 @@ the detached Maforki fragment, which shares a boundary with Mafindor in Kono.
 Confirming that against a gazetteer, and moving it, is a data correction
 somebody with a source should make.
 
+`coverage_service_classes.csv` is the fixed scale both engines colour the
+coverage map by. It is a display convention, not a dataset: where the breaks
+fall is a judgement whichever way it is made, so each row carries the basis it
+rests on. The two lowest are the Sphere handbook's figures for a tapstand and a
+handpump, and the table says in the file that no copy of that standard is
+committed here - read them as a stated basis, not as a standard this project
+holds. Change the breaks and both engines follow; regenerate the bundle
+afterwards so the browser sees the same table.
+
 The district polygons in `sl_admin_geoboundaries.geojson` are the pre-2017
 fourteen: Karene and Falaba have none. A point is still placed in one of the
 sixteen current districts through the chiefdom polygons and

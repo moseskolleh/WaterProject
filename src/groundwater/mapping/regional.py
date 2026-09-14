@@ -34,6 +34,7 @@ from matplotlib.patches import PathPatch
 from matplotlib.path import Path as MplPath
 
 from ..config import HouseStyle
+from ..coverage import load_service_classes, service_class_of
 from ..models import SiteMetadata
 from ..plotting import figure_context, save_figure
 
@@ -785,32 +786,20 @@ def plot_coverage_choropleth(
     names are annotated once at their centroid; for the chiefdom view, omit
     ``group_labels`` (166 labels would be unreadable).
     """
-    from matplotlib.cm import ScalarMappable
-    from matplotlib.colors import LinearSegmentedColormap, Normalize
-
     style = style or HouseStyle()
     outline, _ = load_admin(admin_path)
     areas = load_chiefdoms(chiefdom_path)
-    finite = [
-        v for v in chiefdom_values.values() if v is not None and math.isfinite(v)
-    ]
-    norm = Normalize(min(finite), max(finite)) if finite else Normalize(0.0, 1.0)
-    cmap = LinearSegmentedColormap.from_list(
-        "unmet_need", ["#FBF1E9", style.secondary_color]
-    )
-    no_data = "#E9E9E9"
-    no_source = "#5A1A12"  # dark laterite: no functional source mapped
+    # A fixed scale, not one stretched to whatever is on this map. Rescaling
+    # per figure made two maps of the same country incomparable: a chiefdom at
+    # 900 people per functional point was pale beside a worst case of 40,000
+    # and dark beside a worst case of 1,200, and no key said what a colour
+    # meant. The bands and their colours come from the table both engines read.
+    classes = load_service_classes()
     with figure_context(style):
         fig, ax = plt.subplots(figsize=(style.figure_width_in, 5.8))
         label_pts: dict[str, list[tuple[float, float]]] = {}
         for area in areas:
-            value = chiefdom_values.get(area.name)
-            if value is None:
-                face = no_data
-            elif not math.isfinite(value):
-                face = no_source
-            else:
-                face = cmap(norm(value))
+            face = service_class_of(chiefdom_values.get(area.name), classes).colour
             for ring in area.rings:
                 ax.add_patch(
                     plt.Polygon(ring, closed=True, facecolor=face,
@@ -837,20 +826,17 @@ def plot_coverage_choropleth(
         ax.set_xlim(all_pts[:, 0].min() - 0.2, all_pts[:, 0].max() + 0.15)
         ax.set_ylim(all_pts[:, 1].min() - 0.15, all_pts[:, 1].max() + 0.12)
         _geo_axes_finish(ax, float(np.mean(ax.get_ylim())), credit)
-        mappable = ScalarMappable(norm=norm, cmap=cmap)
-        mappable.set_array([])
-        fig.colorbar(mappable, ax=ax, shrink=0.6, label=legend_label)
-        # legend keys for the two out-of-ramp classes, so a reader can tell the
-        # dark districts are the worst case (no source), not the ramp maximum
+        # Every class is a key, including the two that are not on the ramp, so
+        # a reader can tell the darkest areas are the worst case rather than
+        # the top of whatever range this particular map happened to span.
         from matplotlib.patches import Patch
 
         ax.legend(
             handles=[
-                Patch(facecolor=no_source, edgecolor="#8FA6B8",
-                      label="No functional source"),
-                Patch(facecolor=no_data, edgecolor="#8FA6B8", label="No data"),
+                Patch(facecolor=c.colour, edgecolor="#8FA6B8", label=c.label)
+                for c in classes
             ],
-            loc="lower right", fontsize=7, framealpha=0.95,
+            loc="lower right", fontsize=7, framealpha=0.95, title=legend_label,
         )
         ax.set_title(title)
         fig.tight_layout()
