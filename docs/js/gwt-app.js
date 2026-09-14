@@ -1583,14 +1583,44 @@
     }
 
     var cfg = config();
+
+    /* A sounding that would not invert is only ever announced by a toast, which
+     * is gone by the time anyone reads the page. Say on the page which ones are
+     * missing: a survey reported on four soundings when five were shot is a
+     * different survey, and the reader cannot tell from the figures alone. */
+    var interpretedIds = derived.interpretations.map(function (interp) {
+      return interp.sounding_id;
+    });
+    var uninterpreted = (derived.soundings || []).filter(function (sounding) {
+      return interpretedIds.indexOf(sounding.sounding_id) < 0;
+    });
+    if (uninterpreted.length) {
+      nodes.push(el('div.callout.callout-warn', [
+        el('p', el('strong', uninterpreted.length + ' ' +
+          S.plural(uninterpreted.length, 'sounding') + ' could not be interpreted')),
+        el('p', S.joinList(uninterpreted.map(function (s2) { return s2.sounding_id; })) +
+          '. Nothing below is drawn from ' +
+          (uninterpreted.length === 1 ? 'it' : 'them') + ', and the geophysical ' +
+          'report will not carry ' + (uninterpreted.length === 1 ? 'it' : 'them') +
+          '. Check the readings on the field sheet and reload.'),
+      ]));
+    }
+
+    /* The id comes off the interpretation, not out of derived.soundings by the
+     * same index. A sounding that will not invert is not pushed to either list,
+     * so the lists are shorter than the soundings and every index past the
+     * failure points at the wrong sounding: the next sounding's curve, model
+     * and interpretation appear under the failed one's name, and the last
+     * sounding disappears. An inversion and its interpretation are pushed
+     * together, so reading the name off the interpretation cannot drift. */
     derived.inversions.forEach(function (result, i) {
       var interp = derived.interpretations[i];
-      var sounding = derived.soundings[i];
+      var soundingId = interp.sounding_id;
       var curve = charts.vesCurve(result);
       var model = charts.layeredModel(result.model, {
         maxDepth: Math.max(interp.investigation_depth_m, 20),
       });
-      nodes.push(card(sounding.sounding_id + ' — ' +
+      nodes.push(card(soundingId + ' — ' +
         C.describeCurveType(interp.curve_type).split(';')[0], [
         S.statRow([
           S.stat('Fit error', result.fit_error_percent.toFixed(1) + '%',
@@ -1606,8 +1636,8 @@
             'S = ' + C.fmtNum(interp.protective_conductance_s, 3) + ' S'),
         ]),
         el('div.split.split-figure', [
-          charts.figure(curve, 'Sounding curve for ' + sounding.sounding_id, {
-            filename: 'ves_' + S.slug(sounding.sounding_id),
+          charts.figure(curve, 'Sounding curve for ' + soundingId, {
+            filename: 'ves_' + S.slug(soundingId),
             table: function () {
               return S.table([
                 { key: 'ab2', label: 'AB/2 (m)', align: 'right' },
@@ -1621,8 +1651,8 @@
               }));
             },
           }),
-          charts.figure(model, 'Layered model for ' + sounding.sounding_id,
-            { filename: 'model_' + S.slug(sounding.sounding_id) }),
+          charts.figure(model, 'Layered model for ' + soundingId,
+            { filename: 'model_' + S.slug(soundingId) }),
         ]),
         S.table([
           { key: 'number', label: 'Layer' },
@@ -5135,7 +5165,11 @@
           }
           for (var i = 0; i < derived.inversions.length; i++) {
             var result = derived.inversions[i];
-            var id = derived.soundings[i].sounding_id;
+            /* off the interpretation, which was pushed with this inversion; a
+             * sounding that failed to invert is in neither list, so indexing
+             * derived.soundings here captioned one sounding's figures with
+             * another sounding's name */
+            var id = derived.interpretations[i].sounding_id;
             figures.push({
               soundingId: id,
               image: await charts.toPng(charts.vesCurve(result, { hover: false })),

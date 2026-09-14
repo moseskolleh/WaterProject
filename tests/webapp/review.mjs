@@ -284,6 +284,87 @@ await withPage(async (page, base, consoleErrors) => {
     !!pending.reason && pending.detail === pending.reason &&
     pending.unmet.includes('yield_established'), JSON.stringify(pending));
 
+  // --- a sounding that will not invert takes only itself out -----------------
+  // The inversion is the one computation here that can fail on real readings,
+  // and it fails one sounding at a time. What must never happen is the survey
+  // closing ranks over the gap: the geophysical report argues where to drill
+  // from a named sounding's curve, so a figure captioned with one sounding's
+  // name carrying another's data sends a rig to the wrong place. Silence is
+  // the second failure - a survey reported on four soundings when five were
+  // shot is a different survey, and the reader cannot tell from the figures.
+  await page.evaluate(() => window.GWT.app.loadSample('rokel'));
+  await page.waitForFunction(
+    () => window.GWT.app.recomputeState.running === 0 &&
+          (window.GWT.app.derived.interpretations || []).length > 0,
+    { timeout: 120000 });
+
+  const soundings = await page.evaluate(
+    () => window.GWT.app.derived.soundings.map((s) => s.sounding_id));
+  check('ves: the sample has more than one sounding to confuse',
+    soundings.length > 1, JSON.stringify(soundings));
+
+  const broken = await page.evaluate(async () => {
+    const C = window.GWT.core;
+    const real = C.invertSounding;
+    let seen = 0;
+    /* the FIRST sounding fails, so every later index is shifted by one - the
+     * arrangement that used to rename them */
+    C.invertSounding = function (s, o) {
+      seen += 1;
+      if (seen === 1) throw new Error('this sounding will not invert');
+      return real.call(C, s, o);
+    };
+    try {
+      await window.GWT.app.runInversions({ quiet: true });
+    } finally {
+      C.invertSounding = real;
+    }
+    window.GWT.app.goto('ves');
+    await new Promise((r) => setTimeout(r, 200));
+    const d = window.GWT.app.derived;
+    return {
+      soundings: d.soundings.map((s) => s.sounding_id),
+      interpreted: d.interpretations.map((interp) => interp.sounding_id),
+      /* what the page actually captions each figure with */
+      captions: Array.from(document.querySelectorAll('#page-host figure figcaption'))
+        .map((n) => n.textContent),
+      warned: Array.from(document.querySelectorAll('#page-host .callout-warn'))
+        .map((n) => n.textContent).join(' '),
+    };
+  });
+
+  const failed = broken.soundings[0];
+  const survived = broken.soundings.slice(1);
+  check('ves: the sounding that failed is not interpreted',
+    !broken.interpreted.includes(failed), JSON.stringify(broken.interpreted));
+  check('ves: every sounding that did invert keeps its own name',
+    survived.every((id) => broken.interpreted.includes(id)) &&
+    broken.interpreted.length === survived.length,
+    JSON.stringify({ survived, interpreted: broken.interpreted }));
+  check('ves: no figure is captioned with the failed sounding',
+    broken.captions.length > 0 &&
+    !broken.captions.some((c) => c.includes(failed)),
+    JSON.stringify(broken.captions));
+  check('ves: the page names the sounding it could not interpret',
+    broken.warned.includes(failed) &&
+    broken.warned.includes('could not be interpreted'), broken.warned);
+
+  const report = await page.evaluate(async () => {
+    const cfg = window.GWT.app.config();
+    const d = window.GWT.app.derived;
+    const figures = [];
+    for (let i = 0; i < d.inversions.length; i += 1) {
+      figures.push({ soundingId: d.interpretations[i].sounding_id });
+    }
+    return {
+      captions: figures.map((f) => f.soundingId),
+      style: !!cfg.style,
+    };
+  });
+  check('ves: the report figures carry the same names the page does',
+    report.captions.every((id) => broken.interpreted.includes(id)) &&
+    !report.captions.includes(failed), JSON.stringify(report.captions));
+
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));
 });
