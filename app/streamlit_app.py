@@ -88,6 +88,7 @@ from groundwater.planning import (
     DEFAULT_GROWTH_RATE,
     planning_rows,
     planning_stats,
+    project_population,
 )
 from groundwater.coverage import (
     group_points_by_chiefdom,
@@ -3866,7 +3867,11 @@ with tab_coverage:
             area_population = cov_population()
             rows = coverage_rows(area_population, counts)
     if cov_points and rows is not None:
-        stats = coverage_stats(rows)
+        # One page, one population. The ranking and the map used the 2015
+        # census while the planning view below projected it forward, so the
+        # same district appeared twice on one screen with two different
+        # numbers of people in it. The year governs the whole page, so it is
+        # asked for before anything is counted.
         _plan_year = st.number_input(
             "Plan for year", min_value=CENSUS_YEAR, max_value=2050,
             value=max(date.today().year, CENSUS_YEAR), step=1, key="cov_year",
@@ -3881,6 +3886,13 @@ with tab_coverage:
                  "totals. It is higher than recent international projections; "
                  "use your programme's own figure if you have one.",
         )
+        _census_population = area_population
+        area_population, _projection = project_population(
+            _census_population, int(_plan_year), rate=_plan_rate / 100.0)
+        rows = (chiefdom_coverage_rows(area_population, counts, cov_crosswalk())
+                if chiefdom else coverage_rows(area_population, counts))
+        st.caption(_projection.note)
+        stats = coverage_stats(rows)
         c1, c2, c3, c4 = st.columns(4)
         c1.metric(f"{unit.title()}s", stats["n_areas"])
         c2.metric(
@@ -3902,11 +3914,13 @@ with tab_coverage:
         # The census is a decade old and the survey behind each point is
         # older than it looks. Both are made visible rather than folded into
         # one figure that reads as current.
+        # the census figures, not the projected ones: planning_rows projects
+        # them itself from the same year and rate, and projecting twice would
+        # compound the growth
         _plan_rows, _projection = planning_rows(
-            area_population, grouped or {},
+            _census_population, grouped or {},
             as_of_year=int(_plan_year), rate=_plan_rate / 100.0)
         _plan_stats = planning_stats(_plan_rows, _projection)
-        st.caption(_projection.note)
         p1, p2, p3 = st.columns(3)
         p1.metric(
             f"Population {int(_plan_year)}",

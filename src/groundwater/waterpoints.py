@@ -41,6 +41,8 @@ import urllib.request
 from dataclasses import dataclass, replace
 from typing import Callable, Iterable
 
+from .models import DataFlag
+
 WPDX_CREDIT = (
     "Water points: Water Point Data Exchange (WPdx+), CC BY 4.0, "
     "https://www.waterpointdata.org"
@@ -230,19 +232,31 @@ def _functional_from(status_text: str, status_id) -> bool | None:
     return None
 
 
-def parse_wpdx_records(records: Iterable[dict]) -> list[WaterPoint]:
+def parse_wpdx_records(
+    records: Iterable[dict], skipped: list[DataFlag] | None = None
+) -> list[WaterPoint]:
     """Parse raw WPDx JSON rows into :class:`WaterPoint` objects.
 
     Rows without a usable latitude/longitude are skipped rather than raising,
-    so one malformed record does not lose the whole response.
+    so one malformed record does not lose the whole response. Pass ``skipped``
+    to be told how many went: a point with no coordinates cannot be counted
+    against a chiefdom or measured from a site, so it is genuinely unusable
+    here - but an export that is half unusable and an export that is complete
+    produce the same answer on the page, and the difference decides whether a
+    community reads as served or unserved. The count is the only thing that
+    tells them apart.
     """
     points: list[WaterPoint] = []
+    unplaced = 0
+    malformed = 0
     for record in records:
         if not isinstance(record, dict):
+            malformed += 1
             continue
         lat = _to_float(_first(record, "lat_deg", "latitude", "lat"))
         lon = _to_float(_first(record, "lon_deg", "longitude", "lon"))
         if lat is None or lon is None:
+            unplaced += 1
             continue
         status_text = str(_first(record, "status_clean", "status") or "")
         points.append(
@@ -267,6 +281,18 @@ def parse_wpdx_records(records: Iterable[dict]) -> list[WaterPoint]:
                            "months_of_year", "water_point_seasonality")),
             )
         )
+    if skipped is not None:
+        if unplaced:
+            skipped.append(DataFlag(
+                "warning", "water_point_unplaced",
+                f"{unplaced} inventory record(s) carry no usable latitude and "
+                "longitude and are not counted anywhere on this page.",
+            ))
+        if malformed:
+            skipped.append(DataFlag(
+                "warning", "water_point_unreadable",
+                f"{malformed} inventory record(s) could not be read at all.",
+            ))
     return points
 
 
@@ -475,7 +501,9 @@ def fetch_water_points(
     return data
 
 
-def parse_wpdx_csv(text: str) -> list[WaterPoint]:
+def parse_wpdx_csv(
+    text: str, skipped: list[DataFlag] | None = None
+) -> list[WaterPoint]:
     """Parse a WPDx CSV export into :class:`WaterPoint` records.
 
     A WPDx/Socrata CSV export uses the same column names as the JSON API
@@ -488,13 +516,15 @@ def parse_wpdx_csv(text: str) -> list[WaterPoint]:
     # on the first field name. When that field is lat_deg every row loses its
     # coordinates and the file parses to zero points - reported to the user as
     # "no water points near this site", the opposite of what the export says.
-    return parse_wpdx_records(csv.DictReader(io.StringIO(text.lstrip("﻿"))))
+    return parse_wpdx_records(
+        csv.DictReader(io.StringIO(text.lstrip("﻿"))), skipped)
 
 
 def water_points_near(
     lat: float,
     lon: float,
     radius_m: float = DEFAULT_SEARCH_RADIUS_M,
+    skipped: list[DataFlag] | None = None,
     **fetch_kwargs,
 ) -> list[WaterPoint]:
     """Fetch, parse and distance-filter water points near a site (one call).
@@ -503,4 +533,4 @@ def water_points_near(
     the data cannot be fetched.
     """
     raw = fetch_water_points(lat, lon, radius_m, **fetch_kwargs)
-    return points_within(parse_wpdx_records(raw), lat, lon, radius_m)
+    return points_within(parse_wpdx_records(raw, skipped), lat, lon, radius_m)

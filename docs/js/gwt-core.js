@@ -6230,6 +6230,24 @@
     return out;
   }
 
+  /* The fixed scale the coverage map is coloured by, the same table the
+   * Python engine reads. Colouring by a scale recomputed from each map made
+   * two maps of one country incomparable. */
+  function loadServiceClasses(rows) {
+    var source = rows || (GWT.data && GWT.data.coverageServiceClasses) || [];
+    return source.map(function (row) {
+      var top = String(row.max_people_per_point === null ||
+        row.max_people_per_point === undefined ? '' : row.max_people_per_point).trim();
+      return {
+        kind: String(row.kind || 'class').trim(),
+        max_people_per_point: top === '' ? null : Number(top),
+        label: String(row.label || '').trim(),
+        basis: String(row.basis || '').trim(),
+        colour: String(row.colour || '').trim(),
+      };
+    });
+  }
+
   function loadChiefdomDistrict(rows) {
     var source = rows || (GWT.data && GWT.data.chiefdomDistrict) || [];
     var out = {};
@@ -6473,21 +6491,30 @@
     return months >= 0 && months <= 12 ? months : null;
   }
 
-  function parseWpdxRecords(records) {
+  /* `skipped` is optional and is how the page finds out what this threw away.
+   * A record with no usable position cannot be counted against a chiefdom or
+   * measured from a site, so dropping it is right - but an export that is half
+   * unusable and an export that is complete produce the same answer on the
+   * page, and the difference decides whether a community reads as served. */
+  function parseWpdxRecords(records, skipped) {
     var out = [];
+    var unplaced = 0;
+    var unreadable = 0;
     (records || []).forEach(function (record) {
-      if (!record || typeof record !== 'object') return;
+      if (!record || typeof record !== 'object') { unreadable += 1; return; }
       /* Number(null) and Number('') are both 0, and a CSV export of WPdx+ is
        * full of both. Left alone they became water points in the Gulf of
        * Guinea, counted in the coverage of whatever chiefdom was nearest. */
       var latRaw = wpFirst(record, ['lat_deg', 'latitude', 'lat']);
       var lonRaw = wpFirst(record, ['lon_deg', 'longitude', 'lon']);
       if (latRaw === null || latRaw === undefined || latRaw === '' ||
-          lonRaw === null || lonRaw === undefined || lonRaw === '') return;
+          lonRaw === null || lonRaw === undefined || lonRaw === '') {
+        unplaced += 1; return;
+      }
       var lat = Number(latRaw);
       var lon = Number(lonRaw);
-      if (!isFinite(lat) || !isFinite(lon)) return;
-      if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return;
+      if (!isFinite(lat) || !isFinite(lon)) { unplaced += 1; return; }
+      if (Math.abs(lat) > 90 || Math.abs(lon) > 180) { unplaced += 1; return; }
       var source = String(wpFirst(record, ['water_source_clean', 'water_source',
         'source']) || '');
       var technology = String(wpFirst(record, ['water_tech_clean', 'water_tech',
@@ -6520,6 +6547,17 @@
         distance_m: null,
       });
     });
+    if (skipped) {
+      if (unplaced) {
+        skipped.push({ level: 'warning', code: 'water_point_unplaced',
+          message: unplaced + ' inventory record(s) carry no usable latitude ' +
+            'and longitude and are not counted anywhere on this page.' });
+      }
+      if (unreadable) {
+        skipped.push({ level: 'warning', code: 'water_point_unreadable',
+          message: unreadable + ' inventory record(s) could not be read at all.' });
+      }
+    }
     return out;
   }
 
@@ -6606,10 +6644,10 @@
    * 1.4 km away lands in a 1 km search: the rehabilitate-or-drill decision
    * re-filters and would ignore it, but the functionality totals and anything
    * built on the stored inventory would silently count it. */
-  async function waterPointsNear(lat, lon, radiusM, options) {
+  async function waterPointsNear(lat, lon, radiusM, options, skipped) {
     var radius = radiusM || DEFAULT_SEARCH_RADIUS_M;
     var raw = await fetchWaterPoints(lat, lon, radius, options);
-    return pointsWithin(parseWpdxRecords(raw), lat, lon, radius);
+    return pointsWithin(parseWpdxRecords(raw, skipped), lat, lon, radius);
   }
 
   function pointsWithin(points, lat, lon, radiusM) {
@@ -6729,6 +6767,7 @@
     groupPointsByDistrict: groupPointsByDistrict,
     groupPointsByChiefdom: groupPointsByChiefdom,
     coverageRows: coverageRows, chiefdomCoverageRows: chiefdomCoverageRows,
+    loadServiceClasses: loadServiceClasses,
     coverageStats: coverageStats,
     parseWpdxRecords: parseWpdxRecords, pointsWithin: pointsWithin,
     functionalitySummary: functionalitySummary, rehabVsDrill: rehabVsDrill,

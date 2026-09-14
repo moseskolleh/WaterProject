@@ -267,3 +267,42 @@ def test_fetch_wraps_a_body_cut_off_mid_transfer():
 
     with pytest.raises(WaterPointFetchError):
         fetch_water_points(BASE_LAT, BASE_LON, urlopen=opener)
+
+
+def test_the_reader_says_what_it_could_not_place():
+    """A record with no coordinates is dropped, and the drop is reported.
+
+    Dropping it is right: a point with no position cannot be counted against a
+    chiefdom or measured from a site. But an export half full of such rows and
+    a complete one both come back as a number of water points, and that number
+    is what the coverage ranking turns into "this community is unserved". The
+    count is the only thing that tells the two apart.
+    """
+    from groundwater.waterpoints import parse_wpdx_records
+
+    records = [
+        {"lat_deg": 8.48, "lon_deg": -13.23, "status_clean": "Functional"},
+        {"lat_deg": None, "lon_deg": -13.23},
+        {"lon_deg": -13.23},
+        "not a record at all",
+    ]
+    skipped: list = []
+    points = parse_wpdx_records(records, skipped)
+
+    assert len(points) == 1
+    codes = {flag.code for flag in skipped}
+    assert codes == {"water_point_unplaced", "water_point_unreadable"}
+    unplaced = next(f for f in skipped if f.code == "water_point_unplaced")
+    assert "2" in unplaced.message, unplaced.message
+    assert all(flag.level == "warning" for flag in skipped)
+
+
+def test_a_caller_that_does_not_ask_is_unaffected():
+    """The audit is an out-parameter, so every existing caller keeps working."""
+    from groundwater.waterpoints import parse_wpdx_records
+
+    records = [
+        {"lat_deg": 8.48, "lon_deg": -13.23},
+        {"lat_deg": None, "lon_deg": -13.23},
+    ]
+    assert len(parse_wpdx_records(records)) == 1

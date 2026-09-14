@@ -252,3 +252,64 @@ def test_the_vectorised_join_agrees_with_the_point_by_point_one():
     assert sum(c["total"] for c in counts.values()) + len(unassigned) == len(points)
     assert all(c["functional"] <= c["total"] for c in counts.values())
     assert assign_chiefdoms([], polys) == []
+
+
+def test_the_service_scale_is_fixed_and_says_what_it_rests_on():
+    """Two maps of the same country have to be comparable.
+
+    The choropleth used to be coloured by a ramp stretched to each figure's own
+    minimum and maximum, so a chiefdom at 900 people per functional point was
+    pale beside a worst case of 40,000 and dark beside a worst case of 1,200 -
+    same data, opposite reading. Where the breaks fall is a judgement whichever
+    way it is made, so the table carries the basis for each one rather than
+    leaving it to be inferred from the colours.
+    """
+    import math
+
+    from groundwater.coverage import load_service_classes, service_class_of
+
+    classes = load_service_classes()
+    bands = [c for c in classes if c.kind == "class"]
+    assert len(bands) >= 3
+    assert {c.kind for c in classes} >= {"class", "no_source", "no_data"}
+    assert all(c.basis for c in classes), "a break with no stated basis"
+    assert all(c.colour.startswith("#") for c in classes)
+
+    # the open-ended top band, and nothing above it
+    assert bands[-1].max_people_per_point is None
+    tops = [c.max_people_per_point for c in bands[:-1]]
+    assert tops == sorted(tops), "the bands are out of order"
+
+    # the same figure lands in the same band regardless of anything else
+    assert service_class_of(900, classes) is service_class_of(900, classes)
+    assert service_class_of(100, classes) is not service_class_of(900, classes)
+
+    # an area with no working source is the worst case, not a missing one
+    assert service_class_of(math.inf, classes).kind == "no_source"
+    assert service_class_of(None, classes).kind == "no_data"
+    assert (service_class_of(math.inf, classes).colour
+            != service_class_of(None, classes).colour)
+
+
+def test_the_choropleth_is_drawn_from_that_scale(tmp_path):
+    """The table is only worth having if the figure reads it."""
+    from groundwater.mapping import regional
+
+    calls = []
+    real = regional.service_class_of
+
+    def spy(value, classes=None):
+        calls.append(value)
+        return real(value, classes)
+
+    regional.service_class_of = spy
+    try:
+        regional.plot_coverage_choropleth(
+            {"Nongowa": 900.0, "Bargbe": float("inf")},
+            path=tmp_path / "cov.png",
+        )
+    finally:
+        regional.service_class_of = real
+
+    assert calls, "the choropleth colours polygons without the shared scale"
+    assert 900.0 in calls

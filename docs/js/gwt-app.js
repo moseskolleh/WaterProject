@@ -184,6 +184,7 @@
     /* brought in by hand rather than computed from the sources: an area
      * inventory, other projects' summaries, an extracted scan */
     waterPoints: null, waterPointsSource: null, waterPointsCapped: false,
+    waterPointsSkipped: null,
     portfolio: null, extraction: null,
   };
 
@@ -1583,14 +1584,44 @@
     }
 
     var cfg = config();
+
+    /* A sounding that would not invert is only ever announced by a toast, which
+     * is gone by the time anyone reads the page. Say on the page which ones are
+     * missing: a survey reported on four soundings when five were shot is a
+     * different survey, and the reader cannot tell from the figures alone. */
+    var interpretedIds = derived.interpretations.map(function (interp) {
+      return interp.sounding_id;
+    });
+    var uninterpreted = (derived.soundings || []).filter(function (sounding) {
+      return interpretedIds.indexOf(sounding.sounding_id) < 0;
+    });
+    if (uninterpreted.length) {
+      nodes.push(el('div.callout.callout-warn', [
+        el('p', el('strong', uninterpreted.length + ' ' +
+          S.plural(uninterpreted.length, 'sounding') + ' could not be interpreted')),
+        el('p', S.joinList(uninterpreted.map(function (s2) { return s2.sounding_id; })) +
+          '. Nothing below is drawn from ' +
+          (uninterpreted.length === 1 ? 'it' : 'them') + ', and the geophysical ' +
+          'report will not carry ' + (uninterpreted.length === 1 ? 'it' : 'them') +
+          '. Check the readings on the field sheet and reload.'),
+      ]));
+    }
+
+    /* The id comes off the interpretation, not out of derived.soundings by the
+     * same index. A sounding that will not invert is not pushed to either list,
+     * so the lists are shorter than the soundings and every index past the
+     * failure points at the wrong sounding: the next sounding's curve, model
+     * and interpretation appear under the failed one's name, and the last
+     * sounding disappears. An inversion and its interpretation are pushed
+     * together, so reading the name off the interpretation cannot drift. */
     derived.inversions.forEach(function (result, i) {
       var interp = derived.interpretations[i];
-      var sounding = derived.soundings[i];
+      var soundingId = interp.sounding_id;
       var curve = charts.vesCurve(result);
       var model = charts.layeredModel(result.model, {
         maxDepth: Math.max(interp.investigation_depth_m, 20),
       });
-      nodes.push(card(sounding.sounding_id + ' — ' +
+      nodes.push(card(soundingId + ' — ' +
         C.describeCurveType(interp.curve_type).split(';')[0], [
         S.statRow([
           S.stat('Fit error', result.fit_error_percent.toFixed(1) + '%',
@@ -1606,8 +1637,8 @@
             'S = ' + C.fmtNum(interp.protective_conductance_s, 3) + ' S'),
         ]),
         el('div.split.split-figure', [
-          charts.figure(curve, 'Sounding curve for ' + sounding.sounding_id, {
-            filename: 'ves_' + S.slug(sounding.sounding_id),
+          charts.figure(curve, 'Sounding curve for ' + soundingId, {
+            filename: 'ves_' + S.slug(soundingId),
             table: function () {
               return S.table([
                 { key: 'ab2', label: 'AB/2 (m)', align: 'right' },
@@ -1621,8 +1652,8 @@
               }));
             },
           }),
-          charts.figure(model, 'Layered model for ' + sounding.sounding_id,
-            { filename: 'model_' + S.slug(sounding.sounding_id) }),
+          charts.figure(model, 'Layered model for ' + soundingId,
+            { filename: 'model_' + S.slug(soundingId) }),
         ]),
         S.table([
           { key: 'number', label: 'Layer' },
@@ -3818,7 +3849,9 @@
           /* the cap is on rows returned by the query, so it has to be judged
            * before any of them are filtered out */
           derived.waterPointsCapped = !!(spec.limit && raw.length >= spec.limit);
-          var points = C.parseWpdxRecords(raw);
+          var skipped = [];
+          var points = C.parseWpdxRecords(raw, skipped);
+          derived.waterPointsSkipped = skipped;
           if (spec.clip) {
             points = C.pointsWithin(points, spec.lat, spec.lon, spec.radiusM);
           }
@@ -3838,11 +3871,21 @@
   function waterPointSourceNote() {
     var points = derived.waterPoints || [];
     if (!points.length) return null;
-    return el('p.muted', [
-      S.thousands(points.length) + ' water points loaded' +
-      (derived.waterPointsSource ? ' (' + derived.waterPointsSource + ')' : '') +
-      '. ' + C.WPDX_CREDIT,
-    ]);
+    /* What the reader threw away belongs next to what it kept. An export that
+     * is half unusable and a complete one both come back as a number of water
+     * points, and that number is what decides whether a community here reads
+     * as served or unserved. */
+    var skipped = derived.waterPointsSkipped || [];
+    return el('div', [
+      el('p.muted', [
+        S.thousands(points.length) + ' water points loaded' +
+        (derived.waterPointsSource ? ' (' + derived.waterPointsSource + ')' : '') +
+        '. ' + C.WPDX_CREDIT,
+      ]),
+      skipped.length ? el('p.muted', skipped.map(function (flag) {
+        return flag.message;
+      }).join(' ')) : null,
+    ].filter(Boolean));
   }
 
   PAGES.waterpoints = function () {
@@ -3886,7 +3929,9 @@
             if (!file) return;
             try {
               var text = await S.readFile(file, 'text');
-              derived.waterPoints = C.parseWpdxRecords(S.parseCsv(text));
+              var csvSkipped = [];
+              derived.waterPoints = C.parseWpdxRecords(S.parseCsv(text), csvSkipped);
+              derived.waterPointsSkipped = csvSkipped;
               derived.waterPointsSource = file.name;
               derived.waterPointsCapped = false;
               S.toast(derived.waterPoints.length + ' water points read.', 'ok');
@@ -3897,7 +3942,8 @@
           }, { variant: 'ghost' }),
           points.length ? button('Clear', function () {
             derived.waterPoints = null; derived.waterPointsSource = null;
-            derived.waterPointsCapped = false; render();
+            derived.waterPointsCapped = false;
+            derived.waterPointsSkipped = null; render();
           }, { variant: 'ghost' }) : null,
         ]),
         !latlon ? el('p.muted', 'The live lookup needs the site GPS position; ' +
@@ -4042,7 +4088,8 @@
             { variant: 'ghost' }),
           points.length ? button('Clear', function () {
             derived.waterPoints = null; derived.waterPointsSource = null;
-            derived.waterPointsCapped = false; render();
+            derived.waterPointsCapped = false;
+            derived.waterPointsSkipped = null; render();
           }, { variant: 'ghost' }) : null,
         ]),
         derived.waterPointsCapped ? el('div.callout.callout-warn', el('p',
@@ -4057,38 +4104,68 @@
     var chiefdomDistrict = C.loadChiefdomDistrict();
     var rows, features, valueFor, nameFor, title;
 
-    var areaPopulation, grouped;
+    /* One page, one population. The map and the ranking below used the 2015
+     * census while the planning view a card further down projected it forward,
+     * so the same chiefdom appeared twice on one screen with two different
+     * numbers of people in it and nothing saying which was which. The census
+     * is a decade old; the figure anybody quotes should be for the year they
+     * are planning in, and it should say so. The rate is uniform, so this
+     * moves the magnitudes rather than the ranking - which is exactly why the
+     * unlabelled version was so easy to read straight past. */
+    var coverageYear = Math.max(
+      store.get('coverage.year', new Date().getFullYear()), C.CENSUS_YEAR);
+    var coverageRate = store.get('coverage.rate',
+      Math.round(C.DEFAULT_GROWTH_RATE * 10000) / 100) / 100;
+
+    var areaPopulation, censusPopulation, grouped;
     if (level === 'district') {
       var counted = C.countPointsByDistrict(points, polys, chiefdomDistrict);
-      areaPopulation = C.loadDistrictPopulation();
+      censusPopulation = C.loadDistrictPopulation();
+      var districtProjection = C.projectPopulation(
+        censusPopulation, coverageYear, { rate: coverageRate });
+      areaPopulation = districtProjection.projected;
+      var projection = districtProjection.projection;
       grouped = C.groupPointsByDistrict(points, polys, chiefdomDistrict).grouped;
       rows = C.coverageRows(areaPopulation, counted.counts);
       var byDistrict = {};
       rows.forEach(function (r) { byDistrict[r.name] = r.people_per_point; });
       features = (GWT.data.geo.chiefdomBoundaries || {}).features || [];
+      /* null is an area nothing is known about; Infinity is a mapped area with
+       * no functional source in it, which is the worst case rather than a
+       * missing one. They were both null, so the areas most in need were the
+       * same grey as the areas nobody has a figure for. */
       valueFor = function (feature) {
         var name = (feature.properties || {}).name;
         var district = chiefdomDistrict[name];
+        if (!(district in byDistrict)) return null;
         var v = byDistrict[district];
-        return v === null || v === undefined ? null : v;
+        return v === null || v === undefined ? Infinity : v;
       };
       nameFor = function (feature) { return (feature.properties || {}).name; };
-      title = 'People per functional water point, by district';
+      title = 'People per functional water point, by district (' +
+        coverageYear + ')';
     } else {
       var pop = C.chiefdomPopulation();
       var counts = C.countPointsByChiefdom(points, polys);
-      areaPopulation = pop.population;
+      censusPopulation = pop.population;
+      var chiefdomProjection = C.projectPopulation(
+        censusPopulation, coverageYear, { rate: coverageRate });
+      areaPopulation = chiefdomProjection.projected;
+      projection = chiefdomProjection.projection;
       grouped = C.groupPointsByChiefdom(points, polys).grouped;
-      rows = C.chiefdomCoverageRows(pop.population, counts.counts, chiefdomDistrict);
+      rows = C.chiefdomCoverageRows(areaPopulation, counts.counts, chiefdomDistrict);
       var byChiefdom = {};
       rows.forEach(function (r) { byChiefdom[r.name] = r.people_per_point; });
       features = (GWT.data.geo.chiefdomBoundaries || {}).features || [];
       valueFor = function (feature) {
-        var v = byChiefdom[(feature.properties || {}).name];
-        return v === null || v === undefined ? null : v;
+        var name = (feature.properties || {}).name;
+        if (!(name in byChiefdom)) return null;
+        var v = byChiefdom[name];
+        return v === null || v === undefined ? Infinity : v;
       };
       nameFor = function (feature) { return (feature.properties || {}).name; };
-      title = 'People per functional water point, by chiefdom';
+      title = 'People per functional water point, by chiefdom (' +
+        coverageYear + ')';
     }
 
     var stats = C.coverageStats(rows);
@@ -4107,35 +4184,68 @@
       charts.figure(charts.choropleth({
         features: features, value: valueFor, name: nameFor,
         title: title, legendTitle: 'people per functional water point',
+        classes: C.loadServiceClasses(),
         width: 640, height: 600,
       }), title, { filename: 'coverage_' + level }),
+      el('p.muted', projection.note),
       el('p.muted', C.POPULATION_CREDIT + ' ' + C.WPDX_CREDIT),
     ]));
 
-    nodes.push(planningCard(areaPopulation, grouped, level));
+    /* the census figures, not the projected ones: planningCard projects them
+     * itself from the same year and rate, and projecting twice would compound */
+    nodes.push(planningCard(censusPopulation, grouped, level));
+
+    var rankedColumns = [
+      { key: 'rank', label: 'Rank', align: 'right' },
+      { key: 'name', label: level === 'district' ? 'District' : 'Chiefdom' },
+      level === 'chiefdom' ? { key: 'district', label: 'District' } : null,
+      { key: 'population', label: 'Population ' + coverageYear, align: 'right',
+        format: function (v) { return S.thousands(Math.round(v)); } },
+      { key: 'water_points', label: 'Mapped points', align: 'right' },
+      { key: 'functional_points', label: 'Functional', align: 'right' },
+      { key: 'people_per_point', label: 'People per point', align: 'right',
+        format: function (v) {
+          return v === null ? 'no functional source' : S.thousands(Math.round(v));
+        } },
+    ].filter(Boolean);
 
     nodes.push(card('Ranked need', [
-      S.table([
-        { key: 'rank', label: 'Rank', align: 'right' },
-        { key: 'name', label: level === 'district' ? 'District' : 'Chiefdom' },
-        level === 'chiefdom' ? { key: 'district', label: 'District' } : null,
-        { key: 'population', label: 'Population', align: 'right',
-          format: function (v) { return S.thousands(Math.round(v)); } },
-        { key: 'water_points', label: 'Mapped points', align: 'right' },
-        { key: 'functional_points', label: 'Functional', align: 'right' },
-        { key: 'people_per_point', label: 'People per point', align: 'right',
-          format: function (v) {
-            return v === null ? 'no functional source' : S.thousands(Math.round(v));
-          } },
-      ].filter(Boolean), rows.slice(0, 60), {
+      S.table(rankedColumns, rows.slice(0, TABLE_ROWS_SHOWN), {
         rowClass: function (row) {
           return row.functional_points === 0 ? 'row-bad'
             : (row.rank <= 5 ? 'row-warn' : '');
         },
       }),
-    ]));
+      tableTail(rows, rankedColumns, 'coverage_' + level + '.csv'),
+    ].filter(Boolean)));
     return nodes;
   };
+
+  /* A long table is cut short on screen so the page stays readable, which is
+   * fine until nobody says so. This is the ranking that decides where to drill
+   * next: 166 chiefdoms shown as 60 looks like the whole country, and the
+   * areas that fall off the end are by definition the ones already doing
+   * worst. Say how many are not shown, and hand over the whole set as a file
+   * so the cut is a display choice rather than a limit on the answer. */
+  var TABLE_ROWS_SHOWN = 60;
+
+  function tableTail(rows, columns, filename) {
+    if (!rows.length) return null;
+    var hidden = rows.length - Math.min(rows.length, TABLE_ROWS_SHOWN);
+    return el('div.btn-row', [
+      hidden ? el('p.muted', 'Showing ' + TABLE_ROWS_SHOWN + ' of ' +
+        S.thousands(rows.length) + '. The ' + S.thousands(hidden) +
+        ' not shown rank below these; download the table for all of them.')
+        : el('p.muted', 'Showing all ' + S.thousands(rows.length) + '.'),
+      button('Download table (.csv)', function () {
+        S.download(filename, S.toCsv(rows.map(function (row) {
+          var out = {};
+          columns.forEach(function (col) { out[col.label] = row[col.key]; });
+          return out;
+        }), columns.map(function (col) { return col.label; })), 'text/csv');
+      }, { variant: 'ghost' }),
+    ].filter(Boolean));
+  }
 
   /* The census is a decade old and the survey behind each point is older
    * than it looks. Both halves of "people per functional point" are staler
@@ -4202,7 +4312,7 @@
         'dry-season columns below are a band between counting the ' +
         'unrecorded ones and not counting them.'));
     }
-    nodes.push(S.table([
+    var planningColumns = [
       { key: 'rank', label: 'Rank', align: 'right' },
       { key: 'name', label: level === 'district' ? 'District' : 'Chiefdom' },
       { key: 'population', label: 'Population ' + year, align: 'right',
@@ -4227,12 +4337,23 @@
         } },
       { key: 'seasonal', label: 'Dry-season people / point', align: 'right',
         format: function (v) { return C.seasonalBandText(v); } },
-    ], out.rows.slice(0, 60), {
+    ];
+    nodes.push(S.table(planningColumns, out.rows.slice(0, TABLE_ROWS_SHOWN), {
       rowClass: function (row) {
         return row.freshness.state === 'stale' ? 'row-warn' : '';
       },
     }));
-    return card('Planning view: how current is this?', nodes);
+    /* the freshness and seasonality columns are objects, so they are flattened
+     * to the same words the table shows rather than exported as [object Object] */
+    nodes.push(tableTail(out.rows.map(function (row) {
+      return Object.assign({}, row, {
+        freshness: row.freshness ? row.freshness.label : '',
+        seasonal: row.seasonal ? C.seasonalBandText(row.seasonal) : '',
+      });
+    }), planningColumns.filter(function (col) {
+      return col.label !== 'Year-round / seasonal';
+    }), 'coverage_planning_' + level + '.csv'));
+    return card('Planning view: how current is this?', nodes.filter(Boolean));
   }
 
   /* --- portfolio ------------------------------------------------------------ */
@@ -5135,7 +5256,11 @@
           }
           for (var i = 0; i < derived.inversions.length; i++) {
             var result = derived.inversions[i];
-            var id = derived.soundings[i].sounding_id;
+            /* off the interpretation, which was pushed with this inversion; a
+             * sounding that failed to invert is in neither list, so indexing
+             * derived.soundings here captioned one sounding's figures with
+             * another sounding's name */
+            var id = derived.interpretations[i].sounding_id;
             figures.push({
               soundingId: id,
               image: await charts.toPng(charts.vesCurve(result, { hover: false })),

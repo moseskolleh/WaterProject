@@ -284,6 +284,257 @@ await withPage(async (page, base, consoleErrors) => {
     !!pending.reason && pending.detail === pending.reason &&
     pending.unmet.includes('yield_established'), JSON.stringify(pending));
 
+  // --- a sounding that will not invert takes only itself out -----------------
+  // The inversion is the one computation here that can fail on real readings,
+  // and it fails one sounding at a time. What must never happen is the survey
+  // closing ranks over the gap: the geophysical report argues where to drill
+  // from a named sounding's curve, so a figure captioned with one sounding's
+  // name carrying another's data sends a rig to the wrong place. Silence is
+  // the second failure - a survey reported on four soundings when five were
+  // shot is a different survey, and the reader cannot tell from the figures.
+  await page.evaluate(() => window.GWT.app.loadSample('rokel'));
+  await page.waitForFunction(
+    () => window.GWT.app.recomputeState.running === 0 &&
+          (window.GWT.app.derived.interpretations || []).length > 0,
+    { timeout: 120000 });
+
+  const soundings = await page.evaluate(
+    () => window.GWT.app.derived.soundings.map((s) => s.sounding_id));
+  check('ves: the sample has more than one sounding to confuse',
+    soundings.length > 1, JSON.stringify(soundings));
+
+  const broken = await page.evaluate(async () => {
+    const C = window.GWT.core;
+    const real = C.invertSounding;
+    let seen = 0;
+    /* the FIRST sounding fails, so every later index is shifted by one - the
+     * arrangement that used to rename them */
+    C.invertSounding = function (s, o) {
+      seen += 1;
+      if (seen === 1) throw new Error('this sounding will not invert');
+      return real.call(C, s, o);
+    };
+    try {
+      await window.GWT.app.runInversions({ quiet: true });
+    } finally {
+      C.invertSounding = real;
+    }
+    window.GWT.app.goto('ves');
+    await new Promise((r) => setTimeout(r, 200));
+    const d = window.GWT.app.derived;
+    return {
+      soundings: d.soundings.map((s) => s.sounding_id),
+      interpreted: d.interpretations.map((interp) => interp.sounding_id),
+      /* what the page actually captions each figure with */
+      captions: Array.from(document.querySelectorAll('#page-host figure figcaption'))
+        .map((n) => n.textContent),
+      warned: Array.from(document.querySelectorAll('#page-host .callout-warn'))
+        .map((n) => n.textContent).join(' '),
+    };
+  });
+
+  const failed = broken.soundings[0];
+  const survived = broken.soundings.slice(1);
+  check('ves: the sounding that failed is not interpreted',
+    !broken.interpreted.includes(failed), JSON.stringify(broken.interpreted));
+  check('ves: every sounding that did invert keeps its own name',
+    survived.every((id) => broken.interpreted.includes(id)) &&
+    broken.interpreted.length === survived.length,
+    JSON.stringify({ survived, interpreted: broken.interpreted }));
+  check('ves: no figure is captioned with the failed sounding',
+    broken.captions.length > 0 &&
+    !broken.captions.some((c) => c.includes(failed)),
+    JSON.stringify(broken.captions));
+  check('ves: the page names the sounding it could not interpret',
+    broken.warned.includes(failed) &&
+    broken.warned.includes('could not be interpreted'), broken.warned);
+
+  // The .docx pairs a figure to a sounding's block by identity, not by order
+  // (gwt-docx.js: f.soundingId === interp.sounding_id). A figure stamped with
+  // the wrong name therefore matched no block at all, so a surviving sounding
+  // got a heading, a narrative and a layer table with no curve and no model
+  // under it, while its own figures sat in the package under the failed
+  // sounding's name. This goes through the app's own report build - the one
+  // that stamps the names - and reads the document it downloads.
+  const geophysical = await issued('geophysical');
+  check('ves: every surviving sounding keeps its figures in its own block',
+    survived.every((id) =>
+      geophysical.includes('Sounding curve and fitted model for ' + id)) &&
+    !geophysical.includes('Sounding curve and fitted model for ' + failed) &&
+    !geophysical.includes('Layered earth model for ' + failed),
+    JSON.stringify({ survived, failed }));
+  check('ves: the report does not head a block for a sounding it could not interpret',
+    !new RegExp('^' + failed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'm')
+      .test(geophysical), failed);
+
+  // --- a ranking that is cut short says so -----------------------------------
+  // The coverage table is read to decide where to drill next, and it is sorted
+  // worst first, so the rows that fall off the end are the ones already doing
+  // worst. Showing 60 of 166 without a word looks like the whole country. The
+  // same goes for the inventory it is built from: a record with no coordinates
+  // is rightly dropped, but an export half full of them and a complete one
+  // otherwise produce the same page.
+  const coverage = await page.evaluate(async () => {
+    const C = window.GWT.core, app = window.GWT.app;
+    const rows = [];
+    for (let i = 0; i < 400; i += 1) {
+      rows.push({
+        lat_deg: 7.2 + (i % 40) * 0.06,
+        lon_deg: -13.1 + Math.floor(i / 40) * 0.28,
+        status_clean: i % 3 ? 'Functional' : 'Non-Functional',
+        report_date: '2019-01-01',
+      });
+    }
+    /* one row with no position and one that is not a record at all */
+    const skipped = [];
+    app.derived.waterPoints = C.parseWpdxRecords(
+      rows.concat([{ lat_deg: '', lon_deg: 1 }, 'not a record']), skipped);
+    app.derived.waterPointsSkipped = skipped;
+    app.derived.waterPointsSource = 'a synthetic inventory';
+    app.store.set('coverage.level', 'chiefdom');
+    app.goto('coverage');
+    await new Promise((r) => setTimeout(r, 400));
+
+    const host = document.querySelector('#page-host');
+    const shown = host.querySelectorAll('table.data tbody tr').length;
+    let exported = null;
+    const realDownload = window.GWT.support.download;
+    window.GWT.support.download = function (name, data) {
+      exported = { name, rows: String(data).trim().split('\r\n').length - 1 };
+    };
+    const buttons = Array.from(host.querySelectorAll('button'))
+      .filter((b) => b.textContent.includes('Download table'));
+    if (buttons.length) buttons[0].click();
+    window.GWT.support.download = realDownload;
+
+    return {
+      text: host.textContent,
+      shown,
+      buttons: buttons.length,
+      exported,
+      skippedCodes: skipped.map((f) => f.code),
+    };
+  });
+
+  const showing = coverage.text.match(/Showing (\d+) of ([\d,]+)/);
+  check('coverage: a truncated ranking says how many it is not showing',
+    !!showing && Number(showing[1]) < Number(showing[2].replace(/,/g, '')),
+    showing ? showing[0] : coverage.text.slice(0, 200));
+  check('coverage: the whole ranking is downloadable, not just the rows shown',
+    coverage.buttons >= 1 && coverage.exported !== null &&
+    coverage.exported.rows === Number(showing[2].replace(/,/g, '')),
+    JSON.stringify(coverage.exported));
+  check('coverage: the inventory says what it could not place',
+    coverage.skippedCodes.includes('water_point_unplaced') &&
+    coverage.skippedCodes.includes('water_point_unreadable') &&
+    coverage.text.includes('no usable latitude'),
+    JSON.stringify(coverage.skippedCodes));
+
+  // --- one page, one population ----------------------------------------------
+  // The map and the ranking were built on the 2015 census while the planning
+  // view a card below projected it forward, so the same area appeared twice on
+  // one screen with two different numbers of people in it and nothing saying
+  // which was which. The growth rate is uniform, so the ranking does not move
+  // - only the magnitudes, which are the figures anybody quotes.
+  const population = await page.evaluate(async () => {
+    const app = window.GWT.app;
+    app.store.set('coverage.level', 'district');
+    app.store.set('coverage.year', 2030);
+    app.goto('coverage');
+    await new Promise((r) => setTimeout(r, 400));
+    const host = document.querySelector('#page-host');
+    const tables = Array.from(host.querySelectorAll('table.data'));
+    /* the population column of each table, keyed by area name, so the two are
+     * compared on the same area rather than on row order */
+    const byName = tables.map((table) => {
+      const heads = Array.from(table.querySelectorAll('th')).map((n) => n.textContent);
+      const nameAt = heads.findIndex((h) => h === 'District');
+      const popAt = heads.findIndex((h) => h.startsWith('Population'));
+      const out = {};
+      if (nameAt < 0 || popAt < 0) return { label: null, values: out };
+      Array.from(table.querySelectorAll('tbody tr')).forEach((tr) => {
+        const cells = tr.querySelectorAll('td');
+        out[cells[nameAt].textContent] = cells[popAt].textContent;
+      });
+      return { label: heads[popAt], values: out };
+    }).filter((t) => t.label);
+    return {
+      tables: byName,
+      title: (host.textContent.match(
+        /People per functional water point, by district \((\d+)\)/) || [])[0],
+      note: host.textContent.includes('Populations are projected from the 2015 census to 2030'),
+    };
+  });
+
+  check('coverage: the map says which year its populations are for',
+    population.title === 'People per functional water point, by district (2030)' &&
+    population.note === true, JSON.stringify(population.title));
+  check('coverage: every population column on the page names the same year',
+    population.tables.length >= 2 &&
+    population.tables.every((t) => t.label === 'Population 2030'),
+    JSON.stringify(population.tables.map((t) => t.label)));
+
+  const first = population.tables[0];
+  const rest = population.tables.slice(1);
+  const shared = Object.keys(first.values).filter(
+    (name) => rest.every((t) => t.values[name] !== undefined));
+  check('coverage: the same area has the same population in every table',
+    shared.length > 0 &&
+    shared.every((name) => rest.every((t) => t.values[name] === first.values[name])),
+    JSON.stringify(shared.slice(0, 3).map(
+      (name) => [name, first.values[name]].concat(rest.map((t) => t.values[name])))));
+
+  // --- the same number is the same colour on every map -----------------------
+  // The coverage map is the figure a district officer argues from, and it used
+  // to be coloured by a scale recomputed from whatever was on it. A chiefdom at
+  // 900 people per functional point was pale beside a worst case of 40,000 and
+  // dark beside a worst case of 1,200 - same chiefdom, same data, opposite
+  // reading - and nothing on the key said what a colour meant.
+  const scale = await page.evaluate(() => {
+    const C = window.GWT.core, charts = window.GWT.charts;
+    const classes = C.loadServiceClasses();
+    const square = (i) => ({
+      type: 'Feature',
+      properties: { name: 'A' + i },
+      geometry: { type: 'Polygon', coordinates: [[[i, 0], [i + 1, 0],
+        [i + 1, 1], [i, 1], [i, 0]]] },
+    });
+    function fillsFor(values) {
+      const features = values.map((_, i) => square(i));
+      const svg = charts.choropleth({
+        features: features,
+        value: (f) => values[Number(f.properties.name.slice(1))],
+        name: (f) => f.properties.name,
+        classes: classes, width: 200, height: 200, title: 't',
+      });
+      const out = {};
+      svg.querySelectorAll('path[aria-label]').forEach((p) => {
+        out[p.getAttribute('aria-label').split(':')[0]] = p.getAttribute('fill');
+      });
+      return out;
+    }
+    /* 900 sits in the same band on both maps; only the company it keeps differs */
+    const mild = fillsFor([900, 1200, 100]);
+    const severe = fillsFor([900, 40000, 100]);
+    const sentinels = fillsFor([900, Infinity, null]);
+    return {
+      mild900: mild.A0, severe900: severe.A0,
+      mild100: mild.A2, severe100: severe.A2,
+      noSource: sentinels.A1, noData: sentinels.A2,
+      table: classes.map((c) => [c.kind, c.colour]),
+    };
+  });
+
+  check('coverage map: the same figure is the same colour whatever else is on the map',
+    scale.mild900 === scale.severe900 && scale.mild100 === scale.severe100 &&
+    scale.mild900 !== scale.mild100,
+    JSON.stringify(scale));
+  check('coverage map: no functional source is not the same as no data',
+    scale.noSource !== scale.noData &&
+    scale.noSource === scale.table.find((c) => c[0] === 'no_source')[1] &&
+    scale.noData === scale.table.find((c) => c[0] === 'no_data')[1],
+    JSON.stringify({ noSource: scale.noSource, noData: scale.noData }));
+
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));
 });

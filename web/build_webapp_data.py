@@ -42,6 +42,9 @@ CSV_TABLES = {
     "populationDistrict": "sl_population_district.csv",
     "populationChiefdom": "sl_population_chiefdom.csv",
     "censusCrosswalk": "sl_census_crosswalk.csv",
+    # the fixed scale the coverage map is coloured by, so both engines class
+    # the same number the same way rather than each rescaling to its own figure
+    "coverageServiceClasses": "coverage_service_classes.csv",
 }
 
 # Map layers. Coordinates are rounded to 5 decimal places (about 1 m at the

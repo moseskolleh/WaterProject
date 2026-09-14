@@ -165,6 +165,43 @@ def site_location_map(
         return fig
 
 
+def _clip_to_surveyed_ground(ax, grid, e, n, gx, gy):
+    """Blank the interpolated surface outside the ground the survey covered.
+
+    An interpolated resistivity or thickness surface is read as data: a
+    hydrogeologist looking at a contour 400 m from the nearest sounding will
+    site a borehole on it. Outside the hull of the points there is no
+    measurement behind the colour at all - it is the interpolator continuing a
+    trend - so the surface is blanked there rather than drawn in a shade that
+    looks like every other shade on the map.
+
+    Points along a single traverse line enclose no area and so have no hull to
+    clip to. That is an ordinary survey, not an error, so the surface is drawn
+    and the figure says on its own face that the values away from the line are
+    extrapolated. A caption can be skipped; a line across the middle of the
+    figure cannot.
+    """
+    try:
+        from matplotlib.path import Path as MplPath
+        from scipy.spatial import ConvexHull
+
+        hull = ConvexHull(np.column_stack([e, n]))
+        poly = np.column_stack([e, n])[hull.vertices]
+        inside = MplPath(poly).contains_points(
+            np.column_stack([gx.ravel(), gy.ravel()])
+        ).reshape(gx.shape)
+        return np.where(inside, grid, np.nan), True
+    except Exception:  # noqa: BLE001 - said on the map itself
+        ax.text(
+            0.5, 0.012,
+            "Surface not clipped: the survey points enclose no "
+            "area, so values away from them are extrapolated.",
+            transform=ax.transAxes, ha="center", va="bottom",
+            fontsize=7.5, color="#B00020", zorder=8,
+        )
+        return grid, False
+
+
 def _interpolated_map(
     points: list[MapPoint],
     zone: int,
@@ -198,6 +235,7 @@ def _interpolated_map(
 
     with figure_context(style):
         fig, ax = plt.subplots(figsize=(style.figure_width_in, 5.4))
+        grid, _clipped = _clip_to_surveyed_ground(ax, grid, e, n, gx, gy)
         cs = ax.contourf(gx, gy, grid, levels=12, cmap=cmap, alpha=0.9)
         ax.contour(gx, gy, grid, levels=cs.levels, colors="white", linewidths=0.5)
         cbar = fig.colorbar(cs, ax=ax, pad=0.02, shrink=0.85)
@@ -259,28 +297,7 @@ def suitability_map(
             grid_lin = griddata((e, n), v, (gx, gy), method="linear")
             grid_near = griddata((e, n), v, (gx, gy), method="nearest")
             grid = np.where(np.isnan(grid_lin), grid_near, grid_lin)
-            try:
-                from matplotlib.path import Path as MplPath
-                from scipy.spatial import ConvexHull
-
-                hull = ConvexHull(np.column_stack([e, n]))
-                poly = np.column_stack([e, n])[hull.vertices]
-                inside = MplPath(poly).contains_points(
-                    np.column_stack([gx.ravel(), gy.ravel()])
-                ).reshape(gx.shape)
-                grid = np.where(inside, grid, np.nan)
-            except Exception:  # noqa: BLE001 - said on the map itself
-                # The docstring promises this surface never extrapolates
-                # past the surveyed ground. Points along a single
-                # traverse line have no hull to clip to, so the promise
-                # quietly stopped holding on an ordinary survey.
-                ax.text(
-                    0.5, 0.012,
-                    "Surface not clipped: the survey points enclose no "
-                    "area, so values away from them are extrapolated.",
-                    transform=ax.transAxes, ha="center", va="bottom",
-                    fontsize=7.5, color="#B00020", zorder=8,
-                )
+            grid, _clipped = _clip_to_surveyed_ground(ax, grid, e, n, gx, gy)
             cs = ax.contourf(
                 gx, gy, grid, levels=np.linspace(0, 100, 11),
                 cmap=cmap, alpha=0.75, vmin=0, vmax=100,

@@ -530,8 +530,10 @@ def _suitability_block(rb: ReportBuilder, inputs, site) -> None:
         rb.figure(
             smap,
             "Drill-target suitability of the surveyed points; greener is more "
-            "suitable, and any interpolated surface is limited to the area "
-            "actually covered by the survey.",
+            "suitable. The interpolated surface is blanked outside the ground "
+            "the survey covered, except where the points lie on one line and "
+            "enclose no area - the figure says so on its own face when that "
+            "happens.",
         )
 
 
