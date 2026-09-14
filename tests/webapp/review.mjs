@@ -365,6 +365,69 @@ await withPage(async (page, base, consoleErrors) => {
     report.captions.every((id) => broken.interpreted.includes(id)) &&
     !report.captions.includes(failed), JSON.stringify(report.captions));
 
+  // --- a ranking that is cut short says so -----------------------------------
+  // The coverage table is read to decide where to drill next, and it is sorted
+  // worst first, so the rows that fall off the end are the ones already doing
+  // worst. Showing 60 of 166 without a word looks like the whole country. The
+  // same goes for the inventory it is built from: a record with no coordinates
+  // is rightly dropped, but an export half full of them and a complete one
+  // otherwise produce the same page.
+  const coverage = await page.evaluate(async () => {
+    const C = window.GWT.core, app = window.GWT.app;
+    const rows = [];
+    for (let i = 0; i < 400; i += 1) {
+      rows.push({
+        lat_deg: 7.2 + (i % 40) * 0.06,
+        lon_deg: -13.1 + Math.floor(i / 40) * 0.28,
+        status_clean: i % 3 ? 'Functional' : 'Non-Functional',
+        report_date: '2019-01-01',
+      });
+    }
+    /* one row with no position and one that is not a record at all */
+    const skipped = [];
+    app.derived.waterPoints = C.parseWpdxRecords(
+      rows.concat([{ lat_deg: '', lon_deg: 1 }, 'not a record']), skipped);
+    app.derived.waterPointsSkipped = skipped;
+    app.derived.waterPointsSource = 'a synthetic inventory';
+    app.store.set('coverage.level', 'chiefdom');
+    app.goto('coverage');
+    await new Promise((r) => setTimeout(r, 400));
+
+    const host = document.querySelector('#page-host');
+    const shown = host.querySelectorAll('table.data tbody tr').length;
+    let exported = null;
+    const realDownload = window.GWT.support.download;
+    window.GWT.support.download = function (name, data) {
+      exported = { name, rows: String(data).trim().split('\r\n').length - 1 };
+    };
+    const buttons = Array.from(host.querySelectorAll('button'))
+      .filter((b) => b.textContent.includes('Download table'));
+    if (buttons.length) buttons[0].click();
+    window.GWT.support.download = realDownload;
+
+    return {
+      text: host.textContent,
+      shown,
+      buttons: buttons.length,
+      exported,
+      skippedCodes: skipped.map((f) => f.code),
+    };
+  });
+
+  const showing = coverage.text.match(/Showing (\d+) of ([\d,]+)/);
+  check('coverage: a truncated ranking says how many it is not showing',
+    !!showing && Number(showing[1]) < Number(showing[2].replace(/,/g, '')),
+    showing ? showing[0] : coverage.text.slice(0, 200));
+  check('coverage: the whole ranking is downloadable, not just the rows shown',
+    coverage.buttons >= 1 && coverage.exported !== null &&
+    coverage.exported.rows === Number(showing[2].replace(/,/g, '')),
+    JSON.stringify(coverage.exported));
+  check('coverage: the inventory says what it could not place',
+    coverage.skippedCodes.includes('water_point_unplaced') &&
+    coverage.skippedCodes.includes('water_point_unreadable') &&
+    coverage.text.includes('no usable latitude'),
+    JSON.stringify(coverage.skippedCodes));
+
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));
 });

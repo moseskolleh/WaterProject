@@ -184,6 +184,7 @@
     /* brought in by hand rather than computed from the sources: an area
      * inventory, other projects' summaries, an extracted scan */
     waterPoints: null, waterPointsSource: null, waterPointsCapped: false,
+    waterPointsSkipped: null,
     portfolio: null, extraction: null,
   };
 
@@ -3848,7 +3849,9 @@
           /* the cap is on rows returned by the query, so it has to be judged
            * before any of them are filtered out */
           derived.waterPointsCapped = !!(spec.limit && raw.length >= spec.limit);
-          var points = C.parseWpdxRecords(raw);
+          var skipped = [];
+          var points = C.parseWpdxRecords(raw, skipped);
+          derived.waterPointsSkipped = skipped;
           if (spec.clip) {
             points = C.pointsWithin(points, spec.lat, spec.lon, spec.radiusM);
           }
@@ -3868,11 +3871,21 @@
   function waterPointSourceNote() {
     var points = derived.waterPoints || [];
     if (!points.length) return null;
-    return el('p.muted', [
-      S.thousands(points.length) + ' water points loaded' +
-      (derived.waterPointsSource ? ' (' + derived.waterPointsSource + ')' : '') +
-      '. ' + C.WPDX_CREDIT,
-    ]);
+    /* What the reader threw away belongs next to what it kept. An export that
+     * is half unusable and a complete one both come back as a number of water
+     * points, and that number is what decides whether a community here reads
+     * as served or unserved. */
+    var skipped = derived.waterPointsSkipped || [];
+    return el('div', [
+      el('p.muted', [
+        S.thousands(points.length) + ' water points loaded' +
+        (derived.waterPointsSource ? ' (' + derived.waterPointsSource + ')' : '') +
+        '. ' + C.WPDX_CREDIT,
+      ]),
+      skipped.length ? el('p.muted', skipped.map(function (flag) {
+        return flag.message;
+      }).join(' ')) : null,
+    ].filter(Boolean));
   }
 
   PAGES.waterpoints = function () {
@@ -3916,7 +3929,9 @@
             if (!file) return;
             try {
               var text = await S.readFile(file, 'text');
-              derived.waterPoints = C.parseWpdxRecords(S.parseCsv(text));
+              var csvSkipped = [];
+              derived.waterPoints = C.parseWpdxRecords(S.parseCsv(text), csvSkipped);
+              derived.waterPointsSkipped = csvSkipped;
               derived.waterPointsSource = file.name;
               derived.waterPointsCapped = false;
               S.toast(derived.waterPoints.length + ' water points read.', 'ok');
@@ -3927,7 +3942,8 @@
           }, { variant: 'ghost' }),
           points.length ? button('Clear', function () {
             derived.waterPoints = null; derived.waterPointsSource = null;
-            derived.waterPointsCapped = false; render();
+            derived.waterPointsCapped = false;
+            derived.waterPointsSkipped = null; render();
           }, { variant: 'ghost' }) : null,
         ]),
         !latlon ? el('p.muted', 'The live lookup needs the site GPS position; ' +
@@ -4072,7 +4088,8 @@
             { variant: 'ghost' }),
           points.length ? button('Clear', function () {
             derived.waterPoints = null; derived.waterPointsSource = null;
-            derived.waterPointsCapped = false; render();
+            derived.waterPointsCapped = false;
+            derived.waterPointsSkipped = null; render();
           }, { variant: 'ghost' }) : null,
         ]),
         derived.waterPointsCapped ? el('div.callout.callout-warn', el('p',
@@ -4144,28 +4161,57 @@
 
     nodes.push(planningCard(areaPopulation, grouped, level));
 
+    var rankedColumns = [
+      { key: 'rank', label: 'Rank', align: 'right' },
+      { key: 'name', label: level === 'district' ? 'District' : 'Chiefdom' },
+      level === 'chiefdom' ? { key: 'district', label: 'District' } : null,
+      { key: 'population', label: 'Population', align: 'right',
+        format: function (v) { return S.thousands(Math.round(v)); } },
+      { key: 'water_points', label: 'Mapped points', align: 'right' },
+      { key: 'functional_points', label: 'Functional', align: 'right' },
+      { key: 'people_per_point', label: 'People per point', align: 'right',
+        format: function (v) {
+          return v === null ? 'no functional source' : S.thousands(Math.round(v));
+        } },
+    ].filter(Boolean);
+
     nodes.push(card('Ranked need', [
-      S.table([
-        { key: 'rank', label: 'Rank', align: 'right' },
-        { key: 'name', label: level === 'district' ? 'District' : 'Chiefdom' },
-        level === 'chiefdom' ? { key: 'district', label: 'District' } : null,
-        { key: 'population', label: 'Population', align: 'right',
-          format: function (v) { return S.thousands(Math.round(v)); } },
-        { key: 'water_points', label: 'Mapped points', align: 'right' },
-        { key: 'functional_points', label: 'Functional', align: 'right' },
-        { key: 'people_per_point', label: 'People per point', align: 'right',
-          format: function (v) {
-            return v === null ? 'no functional source' : S.thousands(Math.round(v));
-          } },
-      ].filter(Boolean), rows.slice(0, 60), {
+      S.table(rankedColumns, rows.slice(0, TABLE_ROWS_SHOWN), {
         rowClass: function (row) {
           return row.functional_points === 0 ? 'row-bad'
             : (row.rank <= 5 ? 'row-warn' : '');
         },
       }),
-    ]));
+      tableTail(rows, rankedColumns, 'coverage_' + level + '.csv'),
+    ].filter(Boolean)));
     return nodes;
   };
+
+  /* A long table is cut short on screen so the page stays readable, which is
+   * fine until nobody says so. This is the ranking that decides where to drill
+   * next: 166 chiefdoms shown as 60 looks like the whole country, and the
+   * areas that fall off the end are by definition the ones already doing
+   * worst. Say how many are not shown, and hand over the whole set as a file
+   * so the cut is a display choice rather than a limit on the answer. */
+  var TABLE_ROWS_SHOWN = 60;
+
+  function tableTail(rows, columns, filename) {
+    if (!rows.length) return null;
+    var hidden = rows.length - Math.min(rows.length, TABLE_ROWS_SHOWN);
+    return el('div.btn-row', [
+      hidden ? el('p.muted', 'Showing ' + TABLE_ROWS_SHOWN + ' of ' +
+        S.thousands(rows.length) + '. The ' + S.thousands(hidden) +
+        ' not shown rank below these; download the table for all of them.')
+        : el('p.muted', 'Showing all ' + S.thousands(rows.length) + '.'),
+      button('Download table (.csv)', function () {
+        S.download(filename, S.toCsv(rows.map(function (row) {
+          var out = {};
+          columns.forEach(function (col) { out[col.label] = row[col.key]; });
+          return out;
+        }), columns.map(function (col) { return col.label; })), 'text/csv');
+      }, { variant: 'ghost' }),
+    ].filter(Boolean));
+  }
 
   /* The census is a decade old and the survey behind each point is older
    * than it looks. Both halves of "people per functional point" are staler
@@ -4232,7 +4278,7 @@
         'dry-season columns below are a band between counting the ' +
         'unrecorded ones and not counting them.'));
     }
-    nodes.push(S.table([
+    var planningColumns = [
       { key: 'rank', label: 'Rank', align: 'right' },
       { key: 'name', label: level === 'district' ? 'District' : 'Chiefdom' },
       { key: 'population', label: 'Population ' + year, align: 'right',
@@ -4257,12 +4303,23 @@
         } },
       { key: 'seasonal', label: 'Dry-season people / point', align: 'right',
         format: function (v) { return C.seasonalBandText(v); } },
-    ], out.rows.slice(0, 60), {
+    ];
+    nodes.push(S.table(planningColumns, out.rows.slice(0, TABLE_ROWS_SHOWN), {
       rowClass: function (row) {
         return row.freshness.state === 'stale' ? 'row-warn' : '';
       },
     }));
-    return card('Planning view: how current is this?', nodes);
+    /* the freshness and seasonality columns are objects, so they are flattened
+     * to the same words the table shows rather than exported as [object Object] */
+    nodes.push(tableTail(out.rows.map(function (row) {
+      return Object.assign({}, row, {
+        freshness: row.freshness ? row.freshness.label : '',
+        seasonal: row.seasonal ? C.seasonalBandText(row.seasonal) : '',
+      });
+    }), planningColumns.filter(function (col) {
+      return col.label !== 'Year-round / seasonal';
+    }), 'coverage_planning_' + level + '.csv'));
+    return card('Planning view: how current is this?', nodes.filter(Boolean));
   }
 
   /* --- portfolio ------------------------------------------------------------ */
