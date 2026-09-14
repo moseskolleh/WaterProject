@@ -52,6 +52,7 @@ from groundwater.ingestion import (
     read_ves_workbook,
 )
 from groundwater.models import (
+    DrillingLog,
     SiteMetadata,
     WaterQualityResult,
     WaterQualitySample,
@@ -446,6 +447,40 @@ def build() -> dict:
             "water_quality_panel": {"reason": "lab result awaited", "by": "M. K."},
             "water_quality_evaluable": {"reason": "lab result awaited", "by": "M. K."},
         }),
+        # The demonstration paths, which the two engines have to read the
+        # same way: a bundled file whose readings were invented, and a
+        # bundled file faithfully transcribed from a real survey. Both hold
+        # the report back; only the first says nothing was measured.
+        "synthetic_source": (dict(_full, sources={
+            "wq": {"sample": "dr_timbo/dr_timbo_water_quality.xlsx"},
+        }), {}),
+        "bundled_source": (dict(_full, sources={
+            "ves": {"name": "rokel_ves.xlsx", "b64": "x",
+                    "sample": "rokel/rokel_ves.xlsx"},
+        }), {}),
+        # The same synthetic workbook opened off disk by a script, with no
+        # picker marker on it. Invented readings are invented whoever opened
+        # the file, so this still fails.
+        "synthetic_by_name": (dict(_full, sources={
+            "wq": {"name": "dr_timbo_water_quality.xlsx"},
+        }), {}),
+        # But a faithfully transcribed example opened the same way is not a
+        # demonstration: a script publishing the Rokel survey under the Rokel
+        # name is reporting exactly what it says it is.
+        "transcribed_by_name": (dict(_full, sources={
+            "ves": {"name": "rokel_ves.xlsx"},
+        }), {}),
+        # An upload of the analyst's own file is not a demonstration, however
+        # it is named - the check must not fire on everything with a source.
+        "own_upload": (dict(_full, sources={
+            "log": {"name": "kambia_drilling_log.xlsx", "b64": "x"},
+        }), {}),
+        # The one case an override is for: publishing the worked example
+        # itself, with the reason on the cover.
+        "demonstration_override": (dict(_full, sources={
+            "wq": {"sample": "dr_timbo/dr_timbo_water_quality.xlsx"},
+        }), {"field_data": {"reason": "published as a worked example",
+                            "by": "M. K."}}),
     }
     out["readiness"] = {}
     for _name, (_state, _over) in _gate_cases.items():
@@ -460,6 +495,28 @@ def build() -> dict:
             }
             for report in ("completion", "handover", "quality", "pumping")
         }
+
+    # The handover works list. Both engines build it from the same records
+    # and it is what an interim payment is argued from, so the two have to
+    # word it identically; nothing compared them until now.
+    from groundwater.reporting.handover import (
+        HandoverReportInputs, default_works,
+    )
+
+    def _works(**kw):
+        return default_works(HandoverReportInputs(site=_located, **kw))
+
+    out["handover_works"] = {
+        "full": _works(log=_log, design=_design, pumping=_analysis,
+                       quality=_assessment),
+        "sited": _works(log=_log, design=_design, pumping=_analysis,
+                        quality=_assessment, sited=True),
+        "bare": _works(),
+        # a sheet where nobody wrote the depth down: the bullet waits for a
+        # figure rather than certifying a borehole drilled to "n/a"
+        "no_depth": _works(log=DrillingLog(
+            site=_located, drilling_method="Air rotary (DTH hammer)")),
+    }
 
     # The QR encoder. Every module of every symbol, because a symbol that is
     # wrong in the data region still looks exactly like a QR symbol - and the

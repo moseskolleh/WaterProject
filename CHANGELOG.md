@@ -88,6 +88,57 @@ document the user downloads, that a health failure is still a readable
 result while a reading nobody can grade is named, and that an interim
 issue says who issued it and why without becoming a certification.
 
+A report drawn from the bundled example data now says so on its own
+cover. The samples are offered from a picker so that nobody needs a
+borehole to see what the toolkit does, but the documents they produce
+carry the same letterhead and signature block as real ones and leave as
+`.docx` files that get forwarded and filed. `src/groundwater/data/sample_provenance.csv`
+records what each bundled file actually holds - transcribed verbatim,
+part illustrative reconstruction, or synthetic - and the certification
+gate reads it. Two things fail it, and they are
+not equally serious: a source whose readings were invented, which is
+true of the file however it was opened, and a source picked from the
+sample list, which is a fact about the session and so turns on the
+picker's own marker. The Dr Timbo water quality workbook is the first
+case - no sample was ever taken - so the completion, quality and
+handover reports that example publishes now list it as outstanding. The
+Rokel survey is the second: a verbatim transcription of a real 2015
+survey, so the example that publishes it under the Rokel name is still
+certifiable, while the same file pulled into somebody else's project is
+not. The marker is saved with the project, so reopening one does not
+launder it, and a role's marker clears when real data is dropped on that
+role. `examples/build_catalogue.py` reads the difference straight off
+the covers.
+
+The handover works list is now worded identically by the two engines,
+and `tests/webapp/parity.mjs` holds them there. Four of its seven
+bullets differed, so one borehole got two different certificates: a
+quantity surveyor reading the browser's got the screen run, one reading
+Python's got the casing size, and neither got the sanitary seal. The
+merged bullet carries all three. The drilling bullet also now waits for
+a depth figure instead of certifying a borehole drilled to "n/a m" off a
+sheet where nobody wrote one down.
+
+The coverage ranking in the browser says how many water points it could
+not place. A point inside no chiefdom - the Guinea and Liberia fringe
+the search box overhangs, offshore points from bad coordinates, and the
+geometry the boundary review now holds back - is left out of every
+area's ratio, so the areas it belonged to rank worse than the data
+supports. The Streamlit app has always said how many went; this page
+ranked the country without them and said nothing.
+
+Autosave tells the truth about what it is holding. A failed write no
+longer deletes the copy that already succeeded - the whole state goes in
+one `setItem`, which either replaces the old value or throws and leaves
+it intact, so there was never a half-written mirror to clear up, and
+what the removal actually did was delete this morning's drilling log the
+first time a photograph filled the quota. The banner now distinguishes
+the two failures, because they call for different urgency: a browser
+that has stored something and stopped is losing the last few minutes, and
+a browser that has never managed a write at all - a private window, or a
+tablet whose storage was full before the app opened - is losing the whole
+day, and must not be told a copy is waiting for it.
+
 ## A note on the sixteen districts
 
 The shipped district polygons are the pre-2017 fourteen, from

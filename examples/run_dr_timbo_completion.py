@@ -84,9 +84,21 @@ def main() -> None:
     # found, so the three reports carry the provisional stamp and list the
     # position as outstanding - which is what this data honestly supports,
     # and a better demonstration of the gate than a clean cover is.
+    #
+    # The files are named to the gate for the same reason. The drilling log
+    # and the constant discharge test are transcribed from the WiNGiN
+    # completion report, but the water quality workbook is synthetic - no
+    # sample was ever taken, and its determinand values exist to exercise the
+    # assessment. A quality report that quoted them without saying so would be
+    # stating arsenic and coliform results for a sample that does not exist.
     state = {
         "site": log.site, "drilling_log": log, "pump_analysis": analysis,
         "wq_assessment": assessment, "borehole_design": design,
+        "sources": {
+            "log": {"name": "dr_timbo_drilling_log.xlsx"},
+            "pump": {"name": "dr_timbo_constant_test.xlsx"},
+            "wq": {"name": "dr_timbo_water_quality.xlsx"},
+        },
     }
     gates = {kind: assess_readiness(state, kind) for kind in ("completion", "quality", "handover")}
     for kind, gate in gates.items():

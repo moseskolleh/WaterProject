@@ -1120,6 +1120,17 @@
      * swallowed. */
     var persistOk = true;
 
+    /* Whether a copy from an earlier successful write is still readable. A
+     * browser that has refused every write since the tab opened - a private
+     * window, or a quota that was already full - is holding nothing at all,
+     * and telling someone their morning is mirrored when it is not is worse
+     * than any amount of staleness. */
+    function mirrorExists() {
+      if (!opts.persistKey) return false;
+      try { return localStorage.getItem(opts.persistKey) !== null; }
+      catch (e) { return false; }
+    }
+
     function persist() {
       if (!opts.persistKey) return true;
       try {
@@ -1130,13 +1141,21 @@
         }
         return true;
       } catch (e) {
-        /* Quota is finite and photos are large; drop the mirror rather than
-         * interrupting the user - but the project file is now the only record,
-         * and the user is the only one who can write it. */
-        try { localStorage.removeItem(opts.persistKey); } catch (e2) { /* ignore */ }
+        /* The copy that is already there is left exactly where it is. This
+         * used to remove it, on the reasoning that a mirror which has stopped
+         * updating is misleading - but the whole state goes in one setItem,
+         * which either replaces the old value or throws and leaves it intact,
+         * so there was never a half-written mirror to clear up. What the
+         * removal actually did was delete this morning's drilling log the
+         * first time a photograph filled the quota, and the next load opened
+         * a blank app. An hour-old copy is worth having; nothing is not, and
+         * a warning is not a backup. The banner says the copy has stopped
+         * being updated, which is now true of it rather than of its absence. */
         if (persistOk) {
           persistOk = false;
-          if (opts.onPersistError) opts.onPersistError(e);
+          /* Reading storage here is safe: it happens on the transition into
+           * failure, not on every retry. */
+          if (opts.onPersistError) opts.onPersistError(e, mirrorExists());
         }
         return false;
       }

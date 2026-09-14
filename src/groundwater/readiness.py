@@ -32,7 +32,13 @@ analysis it is supposed to describe.
 
 from __future__ import annotations
 
+import csv
+import io
+import os
 from dataclasses import dataclass, field
+from functools import lru_cache
+from importlib import resources
+from pathlib import Path
 from typing import Any, Iterable, Optional
 
 __all__ = [
@@ -40,7 +46,10 @@ __all__ = [
     "Readiness",
     "REPORTS",
     "REQUIREMENTS",
+    "SampleProvenance",
     "assess_readiness",
+    "load_sample_provenance",
+    "source_provenance",
 ]
 
 #: Flag codes that mean a reading was refused, converted from an unreadable
@@ -62,6 +71,97 @@ _UNIT_ASSUMPTIONS = (
     "utm_zone_assumed",
     "test_type_inferred",
 )
+
+
+@dataclass(frozen=True)
+class SampleProvenance:
+    """What one bundled example file actually contains.
+
+    ``kind`` is one of:
+
+    ``transcribed``
+        Copied verbatim off a real survey or completion document. Numbers
+        read out of it are somebody's real measurements.
+    ``reconstructed``
+        Real measurements, but a column the original left blank has been
+        filled in illustratively. Worth stating on the report; not a reason
+        to withhold certification, because the measurements are real.
+    ``synthetic``
+        The readings were invented. Nothing was measured, and a report that
+        quotes them is describing a sample that was never taken.
+    """
+
+    file: str
+    kind: str
+    note: str = ""
+
+    @property
+    def measured(self) -> bool:
+        """Whether the readings in this file were taken from something real."""
+        return self.kind != "synthetic"
+
+
+@lru_cache(maxsize=4)
+def load_sample_provenance(path: str | Path | None = None) -> dict[str, SampleProvenance]:
+    """The bundled example files, keyed by basename.
+
+    Keyed by basename rather than by the path each engine happens to use:
+    the browser bundles ``dr_timbo/dr_timbo_water_quality.xlsx``, the
+    Streamlit picker offers the same relative path, and
+    ``examples/run_dr_timbo_completion.py`` opens it straight off disk. It
+    is one file, and what it contains does not depend on which of those
+    opened it.
+    """
+    try:
+        if path is not None:
+            text = Path(path).read_text(encoding="utf-8")
+        else:
+            text = (resources.files("groundwater") / "data" /
+                    "sample_provenance.csv").read_text(encoding="utf-8")
+    except (OSError, ModuleNotFoundError):
+        # The record is packaged with the library, so this should not
+        # happen - but losing it must not take the gate down with it. An
+        # empty record means no file is *known* to be synthetic, and the
+        # bundled-sample marker below still does its half of the job.
+        return {}
+    out: dict[str, SampleProvenance] = {}
+    for row in csv.DictReader(io.StringIO(text)):
+        name = os.path.basename((row.get("file") or "").strip())
+        if not name:
+            continue
+        out[name.lower()] = SampleProvenance(
+            file=(row.get("file") or "").strip(),
+            kind=(row.get("provenance") or "").strip().lower(),
+            note=(row.get("note") or "").strip(),
+        )
+    return out
+
+
+def source_provenance(source: Any) -> SampleProvenance | None:
+    """The provenance record for one loaded source, if it is a bundled file.
+
+    ``source`` is a source dict as both apps hold them: ``{"name": ...}``
+    for an upload, ``{"sample": <relative path>}`` for a bundled pick, and
+    in the browser both at once. Either key is matched against the record
+    by basename, so a file is recognised however it was loaded.
+
+    Matching on the name means a user file that happens to share a bundled
+    file's name is taken for the bundled one. That is deliberate: the cost
+    is a report stamped provisional that need not have been, which an
+    analyst can see and override, and the alternative error is a report
+    that quotes invented water quality results without saying so.
+    """
+    if not isinstance(source, dict):
+        return None
+    known = load_sample_provenance()
+    for key in ("sample", "name"):
+        value = source.get(key)
+        if not value:
+            continue
+        found = known.get(os.path.basename(str(value)).lower())
+        if found is not None:
+            return found
+    return None
 
 
 @dataclass(frozen=True)
@@ -363,9 +463,89 @@ def _cost_basis(state: dict) -> tuple[str, str]:
     return "met", f"Estimate priced for a {depth:.0f} m borehole."
 
 
+def _field_data(state: dict) -> tuple[str, str]:
+    """The report describes this borehole, not a worked example.
+
+    The toolkit ships example datasets and offers them from a picker, which
+    is the right thing to do: nobody should have to have drilled a borehole
+    to find out what the software does. But the documents it writes from
+    them are indistinguishable from the ones it writes from real work - the
+    same letterhead, the same tables, the same signature block - and they
+    leave the machine that made them as .docx files that get forwarded,
+    filed and read years later by somebody who was not there when they were
+    generated.
+
+    So the fact travels with the document. Two different things make a
+    project fail this, and they are not equally serious:
+
+    * a source whose readings were **invented**. The Dr Timbo water quality
+      workbook is the one in the bundle: no sample was ever taken, and the
+      determinand values exist to exercise the assessment. A quality report
+      drawn from it states arsenic and coliform results for a sample that
+      does not exist.
+    * a source **picked from the sample list**, whoever it was transcribed
+      from. The Rokel soundings are a real 2015 survey, faithfully copied,
+      and the numbers in them are sound - but a report an evaluator
+      produces by clicking "load a sample" is a survey of Rokel, not of the
+      site they are evaluating, and it should not be issuable as one.
+
+      This one turns on the ``sample`` marker rather than on the file,
+      because it is a fact about the session and not about the data. A
+      script that opens the same workbook to publish the worked example
+      itself is reporting Rokel as Rokel, and is not caught.
+
+    Both are stated rather than blocked, like every other requirement here.
+    An override is available and is recorded on the cover, which is the
+    right escape hatch for the one case that needs it: someone
+    deliberately publishing the worked example itself.
+    """
+    sources = state.get("sources") or {}
+    if not isinstance(sources, dict):
+        return "met", "No input is a bundled example file."
+
+    invented, bundled = [], []
+    for source in sources.values():
+        record = source_provenance(source)
+        if record is None:
+            continue
+        name = os.path.basename(record.file)
+        if not record.measured:
+            # True of the file however it was opened: nothing was sampled.
+            invented.append(name)
+        elif isinstance(source, dict) and source.get("sample"):
+            # Only when it was *picked from the sample list*. The marker is
+            # set by the two apps' pickers and by nothing else, which is the
+            # distinction that matters: the Rokel soundings are a real survey,
+            # so examples/run_rokel_geophysics.py publishing them under the
+            # Rokel name is reporting exactly what it says it is. The same
+            # file pulled into somebody else's project is not.
+            bundled.append(name)
+
+    if invented:
+        return "unmet", (
+            "Readings that were never measured are in this project: "
+            + ", ".join(sorted(dict.fromkeys(invented)))
+            + ". The values in "
+            + ("that file were" if len(set(invented)) == 1 else "those files were")
+            + " invented to demonstrate the toolkit, so no result derived "
+            "from them describes anything that was sampled."
+        )
+    if bundled:
+        return "unmet", (
+            "This project is built on the bundled example data ("
+            + ", ".join(sorted(dict.fromkeys(bundled)))
+            + "), which was recorded at another site. The analysis is of "
+            "that example, not of the borehole named on this report."
+        )
+    return "met", "No input is a bundled example file."
+
+
 #: Every requirement, in the order a reader should see them: the borehole
 #: first, then what was measured in it, then what it produced.
 REQUIREMENTS: dict[str, tuple[str, Any]] = {
+    # First, because it qualifies every other answer below it: a met
+    # requirement established from invented readings is still invented.
+    "field_data": ("Field data", _field_data),
     "site_located": ("Site position", _site_located),
     "borehole_logged": ("Drilling log", _borehole_logged),
     # Negative checks: vacuously met when there is nothing to have gone wrong
@@ -387,39 +567,43 @@ REQUIREMENTS: dict[str, tuple[str, Any]] = {
 #: needs everything.
 REPORTS: dict[str, tuple[str, ...]] = {
     "completion": (
+        "field_data",
         "site_located", "borehole_logged", "readings_usable",
         "pumping_measured", "yield_established", "water_quality_panel",
         "water_quality_evaluable", "design_derived", "no_errors",
     ),
     "handover": (
+        "field_data",
         "site_located", "borehole_logged", "pumping_measured",
         "yield_established", "water_quality_panel", "water_quality_evaluable",
         "no_errors",
     ),
     "quality": (
+        "field_data",
         "site_located", "water_quality_panel", "water_quality_evaluable",
         "no_errors",
     ),
     "pumping": (
+        "field_data",
         "site_located", "readings_usable", "pumping_measured",
         "yield_established", "no_errors",
     ),
-    "geophysical": ("site_located",),
+    "geophysical": ("field_data", "site_located"),
     # An estimate is priced before anything is drilled, so it is judged on
     # its own inputs, not on a log and an as-built design it cannot have.
-    "costing": ("site_located", "cost_basis", "no_errors"),
-    "supervision": ("site_located",),
+    "costing": ("field_data", "site_located", "cost_basis", "no_errors"),
+    "supervision": ("field_data", "site_located"),
     # The asset documents and the payment certificate. Without an entry each
     # of these fell back to the completion set, so a plate for the headworks
     # was stamped PROVISIONAL for want of a water quality panel - which a
     # plate makes no claim about. What a plate does claim is that the
     # identifier on it leads back to this borehole, and that identifier is
     # minted from the position, so the position is the requirement.
-    "placard": ("site_located",),
-    "asset": ("site_located",),
+    "placard": ("field_data", "site_located"),
+    "asset": ("field_data", "site_located"),
     # A certificate is a claim that work was done at a place and is worth
     # paying for. It makes no claim about the water.
-    "procurement": ("site_located", "no_errors"),
+    "procurement": ("field_data", "site_located", "no_errors"),
 }
 
 
@@ -479,5 +663,19 @@ def assess_readiness(
         ))
     except Exception:  # noqa: BLE001 - a malformed object costs the list, not the gate
         assumptions = []
+
+    # A bundled file whose measurements are real but whose blank columns were
+    # filled in illustratively. Not blocking - the readings are somebody's
+    # real readings - but the reader should know which column is which.
+    try:
+        for source in (state.get("sources") or {}).values():
+            record = source_provenance(source)
+            if record is not None and record.kind == "reconstructed":
+                assumptions.append(
+                    f"{os.path.basename(record.file)}: {record.note}")
+        assumptions = list(dict.fromkeys(assumptions))
+    except Exception:  # noqa: BLE001 - as above
+        pass
+
     return Readiness(report=report, requirements=requirements,
                      assumptions=assumptions)

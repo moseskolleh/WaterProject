@@ -35,6 +35,21 @@ fails the install and leaves the device on the release it already had; an open
 tab finishes on the release it started with, so close every app tab and reopen
 to pick up a waiting update.
 
+## Two engines, one answer
+
+`src/groundwater/` and `docs/js/gwt-core.js` compute the same results, and
+`tests/webapp/parity.mjs` holds them to each other against
+`tests/webapp/reference.json`. It covers prose the two engines both write, not
+only numbers: the handover works list is compared bullet for bullet, because
+that list is what an interim payment is argued from and four of its seven
+bullets once differed - a quantity surveyor reading one document got the screen
+run, one reading the other got the casing size, and neither got the seal. Word
+a shared sentence in one engine and word it the same in the other, then run
+`python tests/webapp/make_reference.py` and the parity suite.
+
+Document-level assertions - what reaches the `.docx` a user downloads - belong
+in `tests/webapp/review.mjs`, not in parity.
+
 ## Data corrections
 
 Give the source URL, release date, licence, affected identifiers and a small
@@ -60,6 +75,16 @@ handpump, and the table says in the file that no copy of that standard is
 committed here - read them as a stated basis, not as a standard this project
 holds. Change the breaks and both engines follow; regenerate the bundle
 afterwards so the browser sees the same table.
+
+`sample_provenance.csv` says what each bundled example file actually holds:
+`transcribed` verbatim from a real document, `reconstructed` (real
+measurements with a column the original left blank filled in illustratively),
+or `synthetic` (the readings were invented). The certification gate reads it,
+so adding a sample file means adding its row - an unlisted file is treated as
+the analyst's own work and its reports come out unmarked. Be strict about
+`synthetic`: it is the class that keeps a report from stating results for a
+sample nobody took. Regenerate the bundle afterwards so the browser sees the
+same table.
 
 The district polygons in `sl_admin_geoboundaries.geojson` are the pre-2017
 fourteen: Karene and Falaba have none. A point is still placed in one of the

@@ -22,7 +22,8 @@ const reference = JSON.parse(await readFile(REF, 'utf8'));
 
 await withPage(async (page, base, consoleErrors) => {
   await page.goto(base + '/__engine.html', { waitUntil: 'load' });
-  await page.waitForFunction(() => window.GWT && window.GWT.core && window.GWT.data);
+  await page.waitForFunction(() => window.GWT && window.GWT.core && window.GWT.data &&
+    window.GWT.docx);
 
   const parsed = await page.evaluate(async () => {
     const S = GWT.support, C = GWT.core, D = GWT.data;
@@ -292,6 +293,39 @@ await withPage(async (page, base, consoleErrors) => {
         water_quality_panel: { reason: 'lab result awaited', by: 'M. K.' },
         water_quality_evaluable: { reason: 'lab result awaited', by: 'M. K.' },
       }],
+      // The demonstration paths, which the two engines have to read the same
+      // way: a bundled file whose readings were invented, and a bundled file
+      // faithfully transcribed from a real survey. Both hold the report back;
+      // only the first says nothing was measured.
+      synthetic_source: [Object.assign({}, fullProject, {
+        sources: { wq: { sample: 'dr_timbo/dr_timbo_water_quality.xlsx' } },
+      }), {}],
+      bundled_source: [Object.assign({}, fullProject, {
+        sources: { ves: { name: 'rokel_ves.xlsx', b64: 'x',
+          sample: 'rokel/rokel_ves.xlsx' } },
+      }), {}],
+      // The same synthetic workbook opened off disk by a script, with no
+      // picker marker on it. Invented readings are invented whoever opened
+      // the file, so this still fails.
+      synthetic_by_name: [Object.assign({}, fullProject, {
+        sources: { wq: { name: 'dr_timbo_water_quality.xlsx' } },
+      }), {}],
+      // But a faithfully transcribed example opened the same way is not a
+      // demonstration: a script publishing the Rokel survey under the Rokel
+      // name is reporting exactly what it says it is.
+      transcribed_by_name: [Object.assign({}, fullProject, {
+        sources: { ves: { name: 'rokel_ves.xlsx' } },
+      }), {}],
+      // An upload of the analyst's own file is not a demonstration, however
+      // it is named - the check must not fire on everything with a source.
+      own_upload: [Object.assign({}, fullProject, {
+        sources: { log: { name: 'kambia_drilling_log.xlsx', b64: 'x' } },
+      }), {}],
+      // The one case an override is for: publishing the worked example
+      // itself, with the reason on the cover.
+      demonstration_override: [Object.assign({}, fullProject, {
+        sources: { wq: { sample: 'dr_timbo/dr_timbo_water_quality.xlsx' } },
+      }), { field_data: { reason: 'published as a worked example', by: 'M. K.' } }],
     };
     out.readiness = {};
     Object.keys(gateCases).forEach((name) => {
@@ -306,6 +340,24 @@ await withPage(async (page, base, consoleErrors) => {
         };
       });
     });
+
+    // The handover works list. Both engines build it from the same records
+    // and it is what an interim payment is argued from, so the two have to
+    // word it identically; nothing compared them until now.
+    out.handover_works = {
+      full: window.GWT.docx.handoverWorks({
+        log: log, design: design, analysis: analysis, assessment: assessed,
+        interpretations: [],
+      }),
+      sited: window.GWT.docx.handoverWorks({
+        log: log, design: design, analysis: analysis, assessment: assessed,
+        interpretations: [{ sounding_id: 'VES 1' }],
+      }),
+      bare: window.GWT.docx.handoverWorks({ log: {}, design: null }),
+      no_depth: window.GWT.docx.handoverWorks({
+        log: { drilling_method: 'Air rotary (DTH hammer)' }, design: null,
+      }),
+    };
 
     out.qr = [];
     ["SL-WAR-8FEEVKQ-T",
@@ -936,6 +988,14 @@ await withPage(async (page, base, consoleErrors) => {
   check('registry: a due date never drifts over a short month',
     JSON.stringify(parsed.asset_months) === JSON.stringify(R.asset_months),
     JSON.stringify(parsed.asset_months) + '\n     vs ' + JSON.stringify(R.asset_months));
+
+  Object.keys(R.handover_works).forEach((name) => {
+    check(`handover works ${name}: the same bullets, in the same words`,
+      JSON.stringify(parsed.handover_works[name]) ===
+      JSON.stringify(R.handover_works[name]),
+      `js ${JSON.stringify(parsed.handover_works[name])}\n     py ${
+        JSON.stringify(R.handover_works[name])}`);
+  });
 
   Object.keys(R.readiness).forEach((name) => {
     Object.keys(R.readiness[name]).forEach((report) => {

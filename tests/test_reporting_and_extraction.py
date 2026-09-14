@@ -462,3 +462,30 @@ def _doc_text(path: Path) -> str:
         for row in table.rows:
             parts.extend(cell.text for cell in row.cells)
     return "\n".join(parts)
+
+
+def test_the_works_list_waits_for_a_depth_before_certifying_one():
+    """A sheet with no depth gets no drilling bullet, not "n/a m".
+
+    The works list is what an interim payment is argued from, and the first
+    quantity a surveyor measures the claim against is the drilled depth.
+    ``fmt_num(None)`` returns "n/a", so gating on the log object rather than
+    on the figure put "Drilling of the borehole to n/a m." into a signed
+    document - a certified claim about a depth nobody recorded.
+    """
+    from groundwater.models import DrillingLog, SiteMetadata
+    from groundwater.reporting.handover import (
+        HandoverReportInputs, default_works,
+    )
+
+    site = SiteMetadata(community="Kambia", district="Kambia")
+    no_depth = default_works(HandoverReportInputs(
+        site=site, log=DrillingLog(site=site, drilling_method="Air rotary")))
+    assert not any("Drilling of the borehole" in line for line in no_depth)
+    assert not any("n/a" in line for line in no_depth)
+
+    logged = default_works(HandoverReportInputs(
+        site=site,
+        log=DrillingLog(site=site, total_depth_m=70.0,
+                        drilling_method="Air rotary")))
+    assert "Drilling of the borehole to 70 m by Air rotary." in logged

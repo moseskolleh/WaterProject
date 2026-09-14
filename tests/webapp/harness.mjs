@@ -57,7 +57,12 @@ export async function serveDocs(options = {}) {
         res.end('<!doctype html><meta charset="utf-8"><title>engine</title>' +
           '<script src="/js/support.js"></script>' +
           '<script src="/js/gwt-data.js"></script>' +
-          '<script src="/js/gwt-core.js"></script>');
+          '<script src="/js/gwt-core.js"></script>' +
+          /* gwt-docx.js builds the handover works list, which parity holds to
+           * the Python wording. It touches no DOM - its only window reference
+           * is the IIFE tail - so it is safe on the bare engine page.
+           * Document-level assertions still belong in review.mjs. */
+          '<script src="/js/gwt-docx.js"></script>');
         return;
       }
       let path = normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, '');

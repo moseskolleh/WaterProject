@@ -47,9 +47,9 @@ Drilling log to borehole design and drawing, constant discharge test, water qual
   - `dr_timbo_constant_test.xlsx` (pumping): constant+recovery test, 11 water level reading(s), 1 step(s)
   - `dr_timbo_water_quality.xlsx` (quality): 28 determinand(s)
 - Reports:
-  - `Dr_Timbo_Borehole_Completion_Report.docx`: provisional - outstanding: Site position
-  - `Dr_Timbo_Handover_Report.docx`: provisional - outstanding: Site position
-  - `Dr_Timbo_Water_Quality_Report.docx`: provisional - outstanding: Site position
+  - `Dr_Timbo_Borehole_Completion_Report.docx`: provisional - outstanding: Field data, Site position
+  - `Dr_Timbo_Handover_Report.docx`: provisional - outstanding: Field data, Site position
+  - `Dr_Timbo_Water_Quality_Report.docx`: provisional - outstanding: Field data, Site position
 - Figures: 12
 
 ## Packs

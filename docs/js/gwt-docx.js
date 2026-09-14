@@ -1624,13 +1624,55 @@
 
   /* --- 7. project handover --------------------------------------------------- */
 
+  /* The works list, built only from the records the project actually holds.
+   *
+   * This document is signed by the contractor, the client and the community,
+   * so it must not assert a pumping test, a laboratory analysis or a handpump
+   * that nobody supplied - a signature under a works list is what an interim
+   * payment is later argued from. It is the same reason each bullet names its
+   * method and carries its quantity: what a quantity surveyor checks is the
+   * drilled depth, the screen run and the seal.
+   *
+   * groundwater/reporting/handover.py builds the same list from the same
+   * records, and tests/webapp/parity.mjs holds the two to the same words, so
+   * a reworded bullet here is a reworded bullet there. They used to differ in
+   * four of seven bullets, which handed one borehole two different
+   * certificates: a surveyor got the casing size or the screen run, never
+   * both, and never the seal. */
+  function handoverWorks(context) {
+    var log = context.log || {}, design = context.design;
+    var works = [];
+    if (context.interpretations && context.interpretations.length) {
+      works.push('Geophysical siting survey and borehole location selection.');
+    }
+    /* the depth is the first quantity anyone measures the claim against, so
+     * the bullet waits for one rather than certifying a borehole drilled to
+     * "n/a" off a sheet where nobody wrote the depth down */
+    if (log.total_depth_m !== null && log.total_depth_m !== undefined) {
+      works.push('Drilling of the borehole to ' + C.fmtNum(log.total_depth_m) +
+        ' m' + (log.drilling_method ? ' by ' + log.drilling_method : '') + '.');
+    }
+    if (design) {
+      works.push('Construction with ' + C.formatG(design.casing_diameter_in) +
+        ' inch ' + design.casing_material + ' casing, ' +
+        C.fmtNum(design.total_screen_length_m) + ' m of screen, gravel pack ' +
+        'and sanitary seal to ' + C.fmtNum(design.sanitary_seal[1]) + ' m.');
+      works.push('Development of the borehole by air lifting until clear.');
+    }
+    if (context.analysis) works.push('Pumping test and yield assessment.');
+    if (context.assessment) {
+      works.push('Water quality sampling and laboratory analysis.');
+    }
+    works.push('Wellhead completion with apron and drainage.');
+    return works;
+  }
+
   async function handoverReport(context) {
     var b = new ReportBuilder({ style: context.style, title: 'Project Handover Report' });
     var site = context.site || {}, log = context.log || {}, design = context.design;
     var analysis = context.analysis, assessment = context.assessment;
     var figures = context.figures || [];
     var rec = analysis ? analysis.yield_recommendation : null;
-    var sited = !!(context.interpretations && context.interpretations.length);
 
     b.cover(['Project Handover Report', site.community || ''], [],
       siteDetails(site, [
@@ -1666,22 +1708,7 @@
     areaSection(b, context, '1.1 Location and setting');
 
     b.heading('2. Works Completed', 1);
-    /* Every bullet is conditioned on the record that evidences it. This
-     * document is signed by the contractor, the client and the community, so
-     * it must not assert a pumping test, a laboratory analysis or a handpump
-     * that nobody supplied - a signature under a works list is what an
-     * interim payment is later argued from. Anything genuinely done that the
-     * project does not hold a record of goes in as a works note. */
-    b.bullets([
-      sited ? 'Geophysical siting survey and borehole location selection.' : null,
-      log.total_depth_m ? 'Borehole drilled to ' + C.fmtNum(log.total_depth_m) + ' m.' : null,
-      design ? 'Cased and screened with ' + C.fmtNum(design.total_screen_length_m) +
-        ' m of screen; gravel packed and grout sealed.' : null,
-      design ? 'Borehole developed by air lifting until clear.' : null,
-      analysis ? 'Pumping test and yield assessment.' : null,
-      assessment ? 'Water quality sampled and analysed.' : null,
-      'Wellhead completion with apron and drainage.',
-    ].filter(Boolean).concat(context.worksNotes || []));
+    b.bullets(handoverWorks(context).concat(context.worksNotes || []));
 
     b.heading('3. Borehole Data Sheet', 1);
     var dataRows = [
@@ -1977,7 +2004,7 @@
     qualityReport: qualityReport,
     costingReport: costingReport,
     supervisionReport: supervisionReport,
-    handoverReport: handoverReport,
+    handoverReport: handoverReport, handoverWorks: handoverWorks,
     assetPlacard: assetPlacard, assetRecordReport: assetRecordReport,
     paymentCertificate: paymentCertificate,
     REFERENCES: REFERENCES, GLOSSARY: GLOSSARY, statusLabel: statusLabel,

@@ -53,31 +53,54 @@ def stale_on_load(session) -> list[str]:
 
 
 def _encode_source(source: dict) -> dict:
-    """Encode an uploaded-file or bundled-sample source for the project file."""
+    """Encode an uploaded-file or bundled-sample source for the project file.
+
+    A source can carry both: the browser inlines each bundled sample's bytes
+    into its own state, so a demonstration project loaded there has the file
+    content *and* the sample it came from. Both are kept, because the
+    ``sample`` key is what tells the certification gate that this project
+    describes a worked example rather than the site on its cover - dropping
+    it on the way through a save would quietly launder a demonstration into
+    a report that looks like real work.
+    """
     if not isinstance(source, dict):
         return {}
+    encoded: dict = {}
     if source.get("bytes") is not None:
-        return {
+        encoded = {
             "name": str(source.get("name") or "data"),
             "b64": base64.b64encode(bytes(source["bytes"])).decode("ascii"),
         }
+    elif source.get("b64"):
+        encoded = {
+            "name": str(source.get("name") or "data"),
+            "b64": str(source["b64"]),
+        }
     if source.get("sample"):
-        return {"sample": str(source["sample"])}
-    return {}
+        encoded["sample"] = str(source["sample"])
+    return encoded
 
 
 def _decode_source(stored: dict) -> dict | None:
-    """Decode a stored source back to bytes or a bundled-sample reference."""
+    """Decode a stored source back to bytes or a bundled-sample reference.
+
+    The ``sample`` marker rides along with the bytes when both were saved,
+    so a demonstration project saved in the browser and reopened here is
+    still recognisable as one.
+    """
     if not isinstance(stored, dict):
         return None
     if stored.get("b64"):
         try:
-            return {
+            decoded = {
                 "name": str(stored.get("name") or "data"),
                 "bytes": base64.b64decode(stored["b64"]),
             }
         except Exception:  # noqa: BLE001 - a corrupt blob is simply dropped
             return None
+        if stored.get("sample"):
+            decoded["sample"] = str(stored["sample"])
+        return decoded
     if stored.get("sample"):
         return {"sample": str(stored["sample"])}
     return None
