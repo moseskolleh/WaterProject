@@ -230,11 +230,13 @@ def build() -> dict:
     from groundwater.costing import estimate_borehole_cost  # noqa: E402
 
     _cost_inputs, _ = CostingInputs(total_depth_m=60.0).resolved()
-    out["cost_summary"] = {
+    # through clean(): summary_rows returns tuples, and --check compares the
+    # fresh value against the parsed file, where a tuple has become a list
+    out["cost_summary"] = clean({
         "no_vat": estimate_borehole_cost(_cost_inputs).summary_rows(),
         "vat": estimate_borehole_cost(
             _cost_inputs, vat_percent=15.0).summary_rows(),
-    }
+    })
 
     # A real Streamlit project file, produced by the real serializer rather
     # than hand-written. Both apps claim they can read each other's projects,
