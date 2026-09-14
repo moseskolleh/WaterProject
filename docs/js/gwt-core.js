@@ -4680,6 +4680,39 @@
   /* The programme roll-up as a report table. Mirrors
    * ProgrammeEstimate.summary_rows on the Python side, so the package
    * estimate reads the same in either engine's cost report. */
+  /* The single-borehole cost summary, the table section 4 of the costing
+   * report prints. The browser used to inline eight fixed rows here and had
+   * no VAT branch at all, so with VAT set - and the browser offers the input -
+   * the document showed a contract price, then a contingency computed on a
+   * VAT-inclusive budget, and no line saying where the difference went. The
+   * reader could not reconcile the total on the page they were asked to sign.
+   * groundwater.costing.model.Estimate.summary_rows is the same table; parity
+   * holds the two to the same rows. */
+  function costSummaryRows(estimate) {
+    function pair(usd) {
+      return [thousandsFixed(usd, 0), thousandsFixed(estimate.in_local(usd), 0)];
+    }
+    var rows = [
+      ['Direct works cost'].concat(pair(estimate.direct_cost_usd)),
+      ['Overheads (' + formatG(estimate.overheads_percent) + '%)']
+        .concat(pair(estimate.overheads_usd)),
+      ['Total cost'].concat(pair(estimate.total_cost_usd)),
+      ['Cost per metre drilled'].concat(pair(estimate.cost_per_meter_usd)),
+      ['Margin (' + formatG(estimate.margin_percent) + '%)']
+        .concat(pair(estimate.margin_usd)),
+      ['Contract price'].concat(pair(estimate.price_usd)),
+    ];
+    if (estimate.vat_percent) {
+      rows.push(['VAT/GST (' + formatG(estimate.vat_percent) + '%)']
+        .concat(pair(estimate.vat_usd)));
+      rows.push(['Price including VAT'].concat(pair(estimate.price_with_vat_usd)));
+    }
+    rows.push(['Contingency (' + formatG(estimate.contingency_percent) + '%)']
+      .concat(pair(estimate.contingency_usd)));
+    rows.push(['Planning budget'].concat(pair(estimate.budget_usd)));
+    return rows;
+  }
+
   function programmeSummaryRows(programme) {
     function pair(usd) {
       return [thousandsFixed(usd, 0), thousandsFixed(programme.in_local(usd), 0)];
@@ -5042,6 +5075,7 @@
     costingInputs: costingInputs, resolveCostingInputs: resolveCostingInputs,
     inputsFromDesign: inputsFromDesign, estimateBoreholeCost: estimateBoreholeCost,
     estimateProgrammeCost: estimateProgrammeCost,
+    costSummaryRows: costSummaryRows,
     programmeSummaryRows: programmeSummaryRows,
     STAGE_TITLES: STAGE_TITLES, STAGE_ORDER: STAGE_ORDER,
     RESPONSE_STATES: RESPONSE_STATES, stageTitle: stageTitle,
@@ -7746,6 +7780,22 @@
           if (assumptions.indexOf(f.message) < 0) assumptions.push(f.message);
         });
     } catch (e) { /* a malformed object costs the list, not the gate */ }
+
+    /* A bundled file whose measurements are real but whose blank columns were
+     * filled in illustratively. Not blocking - the readings are somebody's
+     * real readings - but the reader should know which column is which. The
+     * Python engine states this, so the browser has to state it in the same
+     * words or the same project yields two different documents. */
+    try {
+      var known = loadSampleProvenance();
+      var sources = (state || {}).sources || {};
+      Object.keys(sources).forEach(function (role) {
+        var record = sourceProvenance(sources[role], known);
+        if (!record || record.kind !== 'reconstructed') return;
+        var line = record.file.split('/').pop() + ': ' + record.note;
+        if (assumptions.indexOf(line) < 0) assumptions.push(line);
+      });
+    } catch (e) { /* as above */ }
 
     var summary;
     if (overall === 'ready') {

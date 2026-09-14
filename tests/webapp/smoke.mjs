@@ -353,7 +353,18 @@ await withPage(async (page, base, consoleErrors) => {
   const portfolio = await page.evaluate(() => {
     const app = window.GWT.app, C = window.GWT.core;
     const own = JSON.stringify(app.projectPayload());
+    /* The shape serialize_project really emits: five container keys it always
+     * writes, any of which comes out as {} or [] when empty. The fixture that
+     * stood here carried none of them, so it passed against a file no
+     * Streamlit save has ever produced. parity.mjs now checks the real bytes;
+     * this keeps the portfolio path honest too. */
     const streamlit = [
+      'asset: {}',
+      'committee: []',
+      'format: groundwater-toolkit-project',
+      'rates_overrides: {}',
+      'schema: 1',
+      'sources: {}',
       'groundwater_toolkit_project: 0.2.0',
       'summary:',
       '  community: Kuntoloh',

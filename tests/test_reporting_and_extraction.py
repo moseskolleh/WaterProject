@@ -489,3 +489,27 @@ def test_the_works_list_waits_for_a_depth_before_certifying_one():
         log=DrillingLog(site=site, total_depth_m=70.0,
                         drilling_method="Air rotary")))
     assert "Drilling of the borehole to 70 m by Air rotary." in logged
+
+
+def test_the_works_list_certifies_nothing_the_project_holds_no_record_of():
+    """A bare project gets no bullets at all.
+
+    The works list is signed by the contractor, the client and the community,
+    and an interim payment is argued from it. It used to end with an
+    unconditional "Wellhead completion with apron and drainage." - so a
+    project holding nothing but a site certified an apron and a drainage
+    channel that nobody had recorded, in the same function whose docstring
+    says every bullet is conditioned on the object that evidences it.
+    """
+    from groundwater.models import SiteMetadata
+    from groundwater.reporting.handover import (
+        HandoverReportInputs, default_works,
+    )
+
+    site = SiteMetadata(community="Kambia", district="Kambia")
+    assert default_works(HandoverReportInputs(site=site)) == []
+
+    # ...and the supervisor's own escape hatch still works.
+    built = HandoverReportInputs(
+        site=site, works_completed=["Wellhead completion with apron."])
+    assert built.works_completed == ["Wellhead completion with apron."]

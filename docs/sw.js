@@ -28,8 +28,14 @@
  * any byte of the shell and this changes with it, so the browser fetches the
  * new worker and drops the old cache; forget to change it and a device keeps
  * serving last month's app with nothing to show that it is doing so. */
-var VERSION = 'gwt-va63426f8eef5';
+var VERSION = 'gwt-v7a94bc424212';
+/* The release: exactly what install put on disk, and nothing else. Only the
+ * install handler ever writes to it. */
 var CACHE = VERSION + '-app';
+/* Everything else in scope that the app asks for and the release does not
+ * carry. Versioned too, so a new release starts with an empty one rather than
+ * inheriting answers fetched against the shell it replaced. */
+var RUNTIME = VERSION + '-runtime';
 
 /* Relative to the worker's own directory, so the app works unchanged at a
  * domain root or under a GitHub Pages project path. In the order a browser
@@ -99,7 +105,7 @@ self.addEventListener('activate', function (event) {
     var names = await caches.keys();
     await Promise.all(names.map(function (name) {
       /* only this app's caches, and only the ones this version replaced */
-      return name.indexOf('gwt-v') === 0 && name !== CACHE
+      return name.indexOf('gwt-v') === 0 && name !== CACHE && name !== RUNTIME
         ? caches.delete(name) : null;
     }));
     await self.clients.claim();
@@ -122,6 +128,31 @@ function isAppRequest(request) {
   return url.href.indexOf(self.registration.scope) === 0;
 }
 
+/* Whether this request is for a file the release itself carries.
+ *
+ * A navigation counts whatever its path: the app is a single page, so the
+ * release's index.html is the right answer for any in-app URL. */
+var RELEASE_PATHS = null;
+function isReleaseRequest(request) {
+  if (request.mode === 'navigate') return true;
+  if (!RELEASE_PATHS) {
+    RELEASE_PATHS = {};
+    PRECACHE.forEach(function (path) {
+      RELEASE_PATHS[new URL(path, self.registration.scope).pathname] = true;
+    });
+  }
+  var url;
+  try { url = new URL(request.url); } catch (e) { return false; }
+  return RELEASE_PATHS[url.pathname] === true;
+}
+
+function offline() {
+  return new Response(
+    'Offline, and this file was never downloaded. Reconnect once and it ' +
+    'will be available from then on.',
+    { status: 504, statusText: 'Offline', headers: { 'Content-Type': 'text/plain' } });
+}
+
 self.addEventListener('fetch', function (event) {
   var request = event.request;
   /* Not calling respondWith leaves the request entirely alone: no cache
@@ -130,14 +161,39 @@ self.addEventListener('fetch', function (event) {
   if (!isAppRequest(request)) return;
 
   event.respondWith((async function () {
-    var cache = await caches.open(CACHE);
-    var cached = await cache.match(request, { ignoreSearch: true });
+    if (isReleaseRequest(request)) {
+      /* Served from the release, and the release is never written to here.
+       *
+       * This used to revalidate in the background and put the answer back
+       * into the versioned cache, which quietly undid the thing the whole
+       * design is for. Every page load rewrote the running release's files
+       * one at a time from whatever was on the server, so a deploy that was
+       * half uploaded became the app a file at a time, under the old
+       * release's identifier and without an install ever succeeding - the
+       * exact failure the addAll in install refuses. A release changes only
+       * by a new worker installing a new one whole. */
+      var cache = await caches.open(CACHE);
+      var hit = await cache.match(request, { ignoreSearch: true });
+      if (hit) return hit;
+      if (request.mode === 'navigate') {
+        var shell = await cache.match(new URL('index.html', self.registration.scope).href)
+          || await cache.match(self.registration.scope);
+        if (shell) return shell;
+      }
+      /* Named in the shell but not on disk: this device is running an older
+       * release that never carried it. Ask the network, and still do not
+       * write the answer into a release that does not contain it. */
+      var live = await fetch(request).catch(function () { return null; });
+      return live || offline();
+    }
 
-    /* Revalidate in the background: the user gets the cached file straight
-     * away, and the next load gets whatever was deployed since. */
+    /* In scope, but not part of the release - so there is no release to
+     * damage, and ordinary revalidation is the right behaviour. */
+    var runtime = await caches.open(RUNTIME);
+    var cached = await runtime.match(request, { ignoreSearch: true });
     var network = fetch(request).then(function (response) {
       if (response && response.ok && response.type === 'basic') {
-        cache.put(request, response.clone());
+        runtime.put(request, response.clone());
       }
       return response;
     }).catch(function () { return null; });
@@ -146,21 +202,7 @@ self.addEventListener('fetch', function (event) {
       event.waitUntil(network);
       return cached;
     }
-
     var fresh = await network;
-    if (fresh) return fresh;
-
-    /* Offline, and never seen before. A navigation is still answerable - the
-     * app is a single page, so the cached shell is the right answer for any
-     * in-app URL. Anything else has genuinely failed. */
-    if (request.mode === 'navigate') {
-      var shell = await cache.match(new URL('index.html', self.registration.scope).href)
-        || await cache.match(self.registration.scope);
-      if (shell) return shell;
-    }
-    return new Response(
-      'Offline, and this file was never downloaded. Reconnect once and it ' +
-      'will be available from then on.',
-      { status: 504, statusText: 'Offline', headers: { 'Content-Type': 'text/plain' } });
+    return fresh || offline();
   })());
 });

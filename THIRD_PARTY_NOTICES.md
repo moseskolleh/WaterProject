@@ -38,7 +38,7 @@ committed file so a silent substitution is detectable.
 | **Source** | geoBoundaries gbOpen, `geoBoundaries-SLE-ADM0/ADM2/ADM3_simplified.geojson`, https://github.com/wmgeolab/geoBoundaries — **release version unrecorded, needs confirmation** |
 | **Licence** | CC BY 4.0 — asserted in the files' own attribution fields and at `web/build_geodata.py` |
 | **Required attribution** | "Runfola, D. et al. (2020). geoBoundaries: A global database of political administrative boundaries. PLoS ONE 15(4): e0231866. CC BY 4.0" |
-| **Changes made** | Clipped, simplified, and each chiefdom tagged with its parent district. The merged "Koya" feature is split by longitude into two chiefdoms (`split_koya_feature`). The district set predates the 2017 creation of Karene and Falaba, so it carries 14 districts; the file's own `description` says so. |
+| **Changes made** | Clipped, simplified, and each chiefdom tagged with its parent district. The merged "Koya" feature is split by longitude into two chiefdoms (`split_koya_feature`). The district set predates the 2017 creation of Karene and Falaba, so it carries 14 districts; the file's own `description` says so. Chiefdom geometry that cannot place a borehole — a fragment an implausible distance from the rest of its chiefdom — is withheld from the lookup layer by `web/build_boundary_review.py` and written instead to `src/groundwater/data/boundary_review.geojson` with the measurements behind the decision; nothing is reassigned, and a point there comes back unplaced. |
 
 ### USGS Geologic Map of Africa · **US Government work, public domain**
 

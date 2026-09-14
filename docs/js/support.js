@@ -875,6 +875,18 @@
       if (s.charAt(0) === "'" && s.charAt(s.length - 1) === "'" && s.length > 1) {
         return s.slice(1, -1).replace(/''/g, "'");
       }
+      /* The empty collections, which are the only flow syntax PyYAML emits
+       * for a project file - and it emits them often: serialize_project
+       * always writes rates_overrides, committee, sources, summary and asset,
+       * and any one of them being empty comes out as {} or [] on one line.
+       * Rejecting those made every Streamlit-saved project unreadable here,
+       * which the portfolio and registry pickers reported only as a count of
+       * skipped files, while two places in the app and the user guide said
+       * the two apps could read each other's projects. A non-empty flow
+       * collection is still refused: this parser genuinely cannot read one,
+       * and guessing is worse than saying so. */
+      if (s === '{}') return {};
+      if (s === '[]') return [];
       if (s.charAt(0) === '[' || s.charAt(0) === '{' || s.charAt(0) === '&' ||
           s.charAt(0) === '*' || s.charAt(0) === '!' || s.charAt(0) === '|' ||
           s.charAt(0) === '>') {

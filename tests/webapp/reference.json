@@ -650,6 +650,112 @@
   "cement_bags": 6.0,
   "seal_note": "Cement estimated at 6 bags for a 30 m grout seal (about 20 bags per cubic metre of annulus)."
  },
+ "cost_summary": {
+  "no_vat": [
+   [
+    "Direct works cost",
+    "5,955",
+    "136,955"
+   ],
+   [
+    "Overheads (15%)",
+    "893",
+    "20,543"
+   ],
+   [
+    "Total cost",
+    "6,848",
+    "157,498"
+   ],
+   [
+    "Cost per metre drilled",
+    "114",
+    "2,625"
+   ],
+   [
+    "Margin (20%)",
+    "1,370",
+    "31,500"
+   ],
+   [
+    "Contract price",
+    "8,217",
+    "188,998"
+   ],
+   [
+    "Contingency (10%)",
+    "822",
+    "18,900"
+   ],
+   [
+    "Planning budget",
+    "9,039",
+    "207,898"
+   ]
+  ],
+  "vat": [
+   [
+    "Direct works cost",
+    "5,955",
+    "136,955"
+   ],
+   [
+    "Overheads (15%)",
+    "893",
+    "20,543"
+   ],
+   [
+    "Total cost",
+    "6,848",
+    "157,498"
+   ],
+   [
+    "Cost per metre drilled",
+    "114",
+    "2,625"
+   ],
+   [
+    "Margin (20%)",
+    "1,370",
+    "31,500"
+   ],
+   [
+    "Contract price",
+    "8,217",
+    "188,998"
+   ],
+   [
+    "VAT/GST (15%)",
+    "1,233",
+    "28,350"
+   ],
+   [
+    "Price including VAT",
+    "9,450",
+    "217,348"
+   ],
+   [
+    "Contingency (10%)",
+    "945",
+    "21,735"
+   ],
+   [
+    "Planning budget",
+    "10,395",
+    "239,082"
+   ]
+  ]
+ },
+ "streamlit_project_file": {
+  "yaml": "asset: {}\ncommittee: []\nformat: groundwater-toolkit-project\ngroundwater_toolkit_project: 0.2.0\nrates_overrides: {}\nschema: 1\nsources: {}\nstate:\n  meta_community: Kuntoloh\n  meta_district: Western Area Rural\nsummary:\n  community: Kuntoloh\n  cost_per_meter_usd: 151.0\n  district: Western Area Rural\n  status: Completed - dry\n  total_depth_m: 52.0\n",
+  "summary": {
+   "community": "Kuntoloh",
+   "cost_per_meter_usd": 151.0,
+   "district": "Western Area Rural",
+   "status": "Completed - dry",
+   "total_depth_m": 52.0
+  }
+ },
  "checklists": {
   "ids": [
    [
@@ -2294,7 +2400,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "handover": {
     "state": "ready",
@@ -2356,7 +2463,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "quality": {
     "state": "ready",
@@ -2397,7 +2505,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "pumping": {
     "state": "ready",
@@ -2445,7 +2554,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    }
   },
   "empty": {
@@ -2523,7 +2633,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "handover": {
     "state": "not_ready",
@@ -2585,7 +2696,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "quality": {
     "state": "not_ready",
@@ -2626,7 +2738,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "pumping": {
     "state": "not_ready",
@@ -2674,7 +2787,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    }
   },
   "no_site": {
@@ -2752,7 +2866,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "handover": {
     "state": "not_ready",
@@ -2814,7 +2929,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "quality": {
     "state": "not_ready",
@@ -2855,7 +2971,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "pumping": {
     "state": "not_ready",
@@ -2903,7 +3020,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    }
   },
   "no_quality": {
@@ -2981,7 +3099,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "handover": {
     "state": "not_ready",
@@ -3043,7 +3162,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "quality": {
     "state": "not_ready",
@@ -3084,7 +3204,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "pumping": {
     "state": "ready",
@@ -3132,7 +3253,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    }
   },
   "overridden": {
@@ -3210,7 +3332,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "handover": {
     "state": "ready_with_overrides",
@@ -3272,7 +3395,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "quality": {
     "state": "ready_with_overrides",
@@ -3313,7 +3437,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "pumping": {
     "state": "ready",
@@ -3361,7 +3486,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    }
   },
   "synthetic_source": {
@@ -3439,7 +3565,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "handover": {
     "state": "not_ready",
@@ -3501,7 +3628,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "quality": {
     "state": "not_ready",
@@ -3542,7 +3670,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "pumping": {
     "state": "not_ready",
@@ -3590,7 +3719,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    }
   },
   "bundled_source": {
@@ -3668,7 +3798,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "handover": {
     "state": "not_ready",
@@ -3730,7 +3861,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "quality": {
     "state": "not_ready",
@@ -3771,7 +3903,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "pumping": {
     "state": "not_ready",
@@ -3819,6 +3952,248 @@
       "",
       ""
      ]
+    ],
+    "assumptions": []
+   }
+  },
+  "reconstructed_source": {
+   "completion": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Field data.",
+    "requirements": [
+     [
+      "field_data",
+      "unmet",
+      "This project is built on the bundled example data (dr_timbo_drilling_log.xlsx), which was recorded at another site. The analysis is of that example, not of the borehole named on this report.",
+      "",
+      ""
+     ],
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 70 m with 14 lithological interval(s).",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinand(s) graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "design_derived",
+      "met",
+      "22.5 m of screen in 4 run(s).",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ],
+    "assumptions": [
+     "dr_timbo_drilling_log.xlsx: Intervals, times, penetration rates, water strikes, grouting depth and dates are transcribed from the WiNGiN completion report. The lithology descriptions are illustrative reconstructions guided by the borehole diagram annotations - the original log leaves the sample description column empty."
+    ]
+   },
+   "handover": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Field data.",
+    "requirements": [
+     [
+      "field_data",
+      "unmet",
+      "This project is built on the bundled example data (dr_timbo_drilling_log.xlsx), which was recorded at another site. The analysis is of that example, not of the borehole named on this report.",
+      "",
+      ""
+     ],
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 70 m with 14 lithological interval(s).",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinand(s) graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ],
+    "assumptions": [
+     "dr_timbo_drilling_log.xlsx: Intervals, times, penetration rates, water strikes, grouting depth and dates are transcribed from the WiNGiN completion report. The lithology descriptions are illustrative reconstructions guided by the borehole diagram annotations - the original log leaves the sample description column empty."
+    ]
+   },
+   "quality": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Field data.",
+    "requirements": [
+     [
+      "field_data",
+      "unmet",
+      "This project is built on the bundled example data (dr_timbo_drilling_log.xlsx), which was recorded at another site. The analysis is of that example, not of the borehole named on this report.",
+      "",
+      ""
+     ],
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinand(s) graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ],
+    "assumptions": [
+     "dr_timbo_drilling_log.xlsx: Intervals, times, penetration rates, water strikes, grouting depth and dates are transcribed from the WiNGiN completion report. The lithology descriptions are illustrative reconstructions guided by the borehole diagram annotations - the original log leaves the sample description column empty."
+    ]
+   },
+   "pumping": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Field data.",
+    "requirements": [
+     [
+      "field_data",
+      "unmet",
+      "This project is built on the bundled example data (dr_timbo_drilling_log.xlsx), which was recorded at another site. The analysis is of that example, not of the borehole named on this report.",
+      "",
+      ""
+     ],
+     [
+      "site_located",
+      "met",
+      "Position recorded: 778000 mE, 946000 mN (UTM 28N).",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step(s) with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "met",
+      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ],
+    "assumptions": [
+     "dr_timbo_drilling_log.xlsx: Intervals, times, penetration rates, water strikes, grouting depth and dates are transcribed from the WiNGiN completion report. The lithology descriptions are illustrative reconstructions guided by the borehole diagram annotations - the original log leaves the sample description column empty."
     ]
    }
   },
@@ -3897,7 +4272,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "handover": {
     "state": "not_ready",
@@ -3959,7 +4335,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "quality": {
     "state": "not_ready",
@@ -4000,7 +4377,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "pumping": {
     "state": "not_ready",
@@ -4048,7 +4426,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    }
   },
   "transcribed_by_name": {
@@ -4126,7 +4505,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "handover": {
     "state": "ready",
@@ -4188,7 +4568,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "quality": {
     "state": "ready",
@@ -4229,7 +4610,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "pumping": {
     "state": "ready",
@@ -4277,7 +4659,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    }
   },
   "own_upload": {
@@ -4355,7 +4738,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "handover": {
     "state": "ready",
@@ -4417,7 +4801,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "quality": {
     "state": "ready",
@@ -4458,7 +4843,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "pumping": {
     "state": "ready",
@@ -4506,7 +4892,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    }
   },
   "demonstration_override": {
@@ -4584,7 +4971,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "handover": {
     "state": "ready_with_overrides",
@@ -4646,7 +5034,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "quality": {
     "state": "ready_with_overrides",
@@ -4687,7 +5076,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    },
    "pumping": {
     "state": "ready_with_overrides",
@@ -4735,7 +5125,8 @@
       "",
       ""
      ]
-    ]
+    ],
+    "assumptions": []
    }
   }
  },
@@ -4745,8 +5136,7 @@
    "Construction with 5 inch uPVC casing, 22.5 m of screen, gravel pack and sanitary seal to 6 m.",
    "Development of the borehole by air lifting until clear.",
    "Pumping test and yield assessment.",
-   "Water quality sampling and laboratory analysis.",
-   "Wellhead completion with apron and drainage."
+   "Water quality sampling and laboratory analysis."
   ],
   "sited": [
    "Geophysical siting survey and borehole location selection.",
@@ -4754,15 +5144,10 @@
    "Construction with 5 inch uPVC casing, 22.5 m of screen, gravel pack and sanitary seal to 6 m.",
    "Development of the borehole by air lifting until clear.",
    "Pumping test and yield assessment.",
-   "Water quality sampling and laboratory analysis.",
-   "Wellhead completion with apron and drainage."
+   "Water quality sampling and laboratory analysis."
   ],
-  "bare": [
-   "Wellhead completion with apron and drainage."
-  ],
-  "no_depth": [
-   "Wellhead completion with apron and drainage."
-  ]
+  "bare": [],
+  "no_depth": []
  },
  "qr": [
   {
