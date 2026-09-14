@@ -132,3 +132,91 @@ def test_iso_map_needs_three_points(tmp_path):
     points = [MapPoint("V1", 0, 0, value=1.0), MapPoint("V2", 10, 10, value=2.0)]
     with pytest.raises(ValueError):
         iso_resistivity_map(points, zone=28, ab2=40, path=tmp_path / "iso.png")
+
+
+def test_an_interpolated_surface_stops_at_the_surveyed_ground():
+    """Outside the hull of the points there is no measurement behind the colour.
+
+    A contour 400 m from the nearest sounding is the interpolator continuing a
+    trend, and it is read as data: somebody sites a borehole on it. The
+    iso-resistivity and overburden maps padded their grid 25% past the points
+    and filled every gap by nearest neighbour, so the surface ran to the edge
+    of the frame in a shade indistinguishable from measured ground.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    from groundwater.mapping.maps import _clip_to_surveyed_ground
+
+    # a triangle of points, and a grid that reaches well outside it
+    e = np.array([0.0, 100.0, 50.0])
+    n = np.array([0.0, 0.0, 100.0])
+    gx, gy = np.meshgrid(np.linspace(-200, 300, 40), np.linspace(-200, 300, 40))
+    grid = np.ones_like(gx)
+
+    fig, ax = plt.subplots()
+    try:
+        clipped, did_clip = _clip_to_surveyed_ground(ax, grid, e, n, gx, gy)
+    finally:
+        plt.close(fig)
+
+    assert did_clip is True
+    inside = clipped[np.argmin(abs(gy[:, 0] - 25)), np.argmin(abs(gx[0] - 50))]
+    assert not np.isnan(inside), "the middle of the survey lost its surface"
+    corner = clipped[0, 0]
+    assert np.isnan(corner), "the surface still runs past the surveyed ground"
+
+
+def test_points_on_one_line_say_so_rather_than_pretending_to_clip():
+    """A traverse encloses no area, which is an ordinary survey, not an error.
+
+    There is no hull to clip to, so the surface is drawn and the figure carries
+    the warning itself - a caption can be skipped, a line across the middle of
+    the figure cannot.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    from groundwater.mapping.maps import _clip_to_surveyed_ground
+
+    e = np.array([0.0, 50.0, 100.0])
+    n = np.array([0.0, 0.0, 0.0])
+    gx, gy = np.meshgrid(np.linspace(-50, 150, 20), np.linspace(-50, 50, 20))
+    grid = np.ones_like(gx)
+
+    fig, ax = plt.subplots()
+    try:
+        clipped, did_clip = _clip_to_surveyed_ground(ax, grid, e, n, gx, gy)
+        said = [t.get_text() for t in ax.texts]
+    finally:
+        plt.close(fig)
+
+    assert did_clip is False
+    assert not np.isnan(clipped).any(), "a traverse should still get a surface"
+    assert any("not clipped" in text for text in said), said
+
+
+def test_the_iso_map_actually_clips(monkeypatch, tmp_path):
+    """The helper is only worth having if the maps that mislead call it."""
+    from groundwater import mapping
+    from groundwater.mapping import MapPoint, maps
+
+    calls = []
+    real = maps._clip_to_surveyed_ground
+
+    def spy(ax, grid, e, n, gx, gy):
+        calls.append(len(e))
+        return real(ax, grid, e, n, gx, gy)
+
+    monkeypatch.setattr(maps, "_clip_to_surveyed_ground", spy)
+    points = [
+        MapPoint(label="A", easting=700000.0, northing=900000.0, value=120.0),
+        MapPoint(label="B", easting=700400.0, northing=900000.0, value=240.0),
+        MapPoint(label="C", easting=700200.0, northing=900400.0, value=80.0),
+    ]
+    mapping.iso_resistivity_map(points, zone=28, ab2=40, path=tmp_path / "iso.png")
+    assert calls == [3], "the iso-resistivity surface is drawn without a clip"
