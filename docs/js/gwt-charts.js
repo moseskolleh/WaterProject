@@ -2920,18 +2920,22 @@
     var x = corner.indexOf('right') >= 0
       ? rect.x + rect.w - w - margin : rect.x + margin;
     var y = corner.indexOf('lower') >= 0
-      ? rect.y + rect.h - h - margin : rect.y + margin + 10;
+      ? rect.y + rect.h - h - margin : rect.y + margin;
     var p = canvas.palette;
+    var titleH = 12;
     var group = svgEl('g');
     group.appendChild(svgEl('rect', {
       x: x, y: y, width: w, height: h, fill: p.surface, opacity: 0.95,
       stroke: '#888888', 'stroke-width': 0.8,
     }));
+    /* the caption goes inside the plate, not above it: above it lands on
+     * the map frame and gets clipped by it */
     group.appendChild(svgEl('text', {
-      x: x + w / 2, y: y - 2, 'text-anchor': 'middle', 'font-size': 8,
+      x: x + w / 2, y: y + titleH - 3, 'text-anchor': 'middle', 'font-size': 8,
       'font-weight': 620, fill: p.ink, text: 'Sierra Leone',
     }));
-    var project = projectionInto(outline, { x: x, y: y, w: w, h: h }, 4);
+    var project = projectionInto(
+      outline, { x: x, y: y + titleH, w: w, h: h - titleH }, 4);
     outline.forEach(function (feature) {
       group.appendChild(svgEl('path', {
         d: geometryPath(feature.geometry, project),

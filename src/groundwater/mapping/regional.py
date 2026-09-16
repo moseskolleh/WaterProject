@@ -1008,7 +1008,9 @@ def _locator_inset(ax, outline: AdminArea, window: AreaWindow,
         spine.set_edgecolor("#888888")
         spine.set_linewidth(0.8)
     inset.patch.set_facecolor(style.background)
-    inset.patch.set_alpha(0.95)
+    # opaque: at 0.95 the chiefdom names underneath showed through the
+    # thumbnail as ghost text across Sierra Leone
+    inset.patch.set_alpha(1.0)
     inset.set_title("Sierra Leone", fontsize=6.5, pad=2.0)
 
 
@@ -1117,7 +1119,10 @@ def plot_study_area_map(
         ]
         if site is not None and window.exact and site.latlon is not None:
             drawn_at.append((site.latlon[1], site.latlon[0]))
-        occupancy = _corner_occupancy(ax, drawn_at)
+        # the chiefdom names count as occupancy too: a map with no survey
+        # points on it still has a corner full of writing, and the inset
+        # put itself on top of four district names on the first one drawn
+        occupancy = _corner_occupancy(ax, drawn_at + placed_labels)
         free = sorted(("lower right", "upper left"), key=lambda c: occupancy[c])
         _locator_inset(ax, outline, window, districts, style, corner=free[0])
         if handles:

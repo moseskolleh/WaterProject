@@ -3,6 +3,7 @@ multi-sounding geoelectric cross-sections."""
 
 from __future__ import annotations
 
+import textwrap
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -196,11 +197,26 @@ def plot_geoelectric_section(
     style: HouseStyle | None = None,
     depth_max: float | None = None,
     title: str = "Interpreted geoelectric cross-section",
+    half_width_m: float | None = None,
+    note: str = "",
 ):
     """Cross-section through several soundings along a profile.
 
     Each sounding is drawn as a column at its chainage; layer
     boundaries are connected between adjacent soundings.
+
+    ``half_width_m`` is how much ground either side of the peg a column
+    stands for. The default divides the profile between the soundings,
+    which is fine for the evenly spaced default positions and wrong for
+    real ones: two soundings 20 km apart came out as two columns 8 km
+    wide, which says the sounding measured 8 km of ground. Pass the
+    sounding's own lateral reach - its largest electrode half-spacing is
+    the defensible number - and the column stands for what it sampled.
+
+    ``note`` is printed under the axes. Use it to say what the figure
+    cannot: chiefly that a correlation drawn across a gap much larger
+    than the depth of investigation is a line between two points, not a
+    horizon anybody traced.
     """
     style = style or HouseStyle()
     if not models:
@@ -226,7 +242,15 @@ def plot_geoelectric_section(
             (m.depths_top[-1] if m.n_layers > 1 else 10) * 1.35 + 5 for m in models
         )
     span = max(positions) - min(positions) or 100.0
-    half_w = span / (len(models) * 2.6)
+    if half_width_m is not None:
+        # never wider than the ground to the next peg, or the columns
+        # overlap and the section reads as one continuous exposure
+        ordered_x = sorted(positions)
+        gaps = [b - a for a, b in zip(ordered_x, ordered_x[1:], strict=False)]
+        limit = min(gaps) / 2.2 if gaps else span
+        half_w = max(min(float(half_width_m), limit), span * 0.004)
+    else:
+        half_w = span / (len(models) * 2.6)
     cmap = plt.get_cmap("viridis")
 
     with figure_context(style):
@@ -265,6 +289,10 @@ def plot_geoelectric_section(
         ax.set_ylim(depth_max, 0)
         ax.set_xlabel("Distance along profile (m)")
         ax.set_ylabel("Depth (m)")
+        if note:
+            ax.text(0.5, -0.30, textwrap.fill(note, 104),
+                    transform=ax.transAxes, ha="center", va="top",
+                    fontsize=7, color="#B00020")
         ax.set_title(title)
         sm = cm.ScalarMappable(norm=_RHO_NORM, cmap=cmap)
         cbar = fig.colorbar(sm, ax=ax, pad=0.03)

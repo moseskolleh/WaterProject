@@ -1388,7 +1388,6 @@
     if (!window_) return null;
     var geo = GWT.data.geo || {};
     var points = [];
-    var derived = GWT.app.derived || {};
     (derived.interpretations || []).forEach(function (interp) {
       var pos = soundingLatLon(interp);
       if (pos) {
@@ -1400,7 +1399,8 @@
       points.push({ lat: window_.lat, lon: window_.lon, label: siteLabel(),
         kind: 'borehole' });
     }
-    (store.get('waterPoints.points') || []).slice(0, 40).forEach(function (wp) {
+    /* the water points the Water points page looked up, if it has run */
+    (derived.waterPoints || []).slice(0, 40).forEach(function (wp) {
       if (typeof wp.lat === 'number' && typeof wp.lon === 'number') {
         points.push({ lat: wp.lat, lon: wp.lon, kind: 'water point' });
       }

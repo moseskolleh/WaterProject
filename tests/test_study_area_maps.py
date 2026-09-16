@@ -590,3 +590,57 @@ def test_a_section_through_one_sounding_is_refused(tmp_path):
     with pytest.raises(ValueError, match="at least two"):
         geoelectric_section_along_traverse(interps,
                                            path=tmp_path / "section.png")
+
+
+def test_a_column_stands_for_the_ground_the_sounding_reached(tmp_path):
+    """Two soundings 20 km apart are not two columns 8 km wide."""
+    from groundwater.ves.plots import plot_geoelectric_section
+
+    models = [
+        LayeredModel(resistivities=np.array([300.0, 60.0, 4000.0]),
+                     thicknesses=np.array([2.0, 18.0]), sounding_id="A"),
+        LayeredModel(resistivities=np.array([280.0, 55.0, 3800.0]),
+                     thicknesses=np.array([2.5, 20.0]), sounding_id="B"),
+    ]
+    wide = plot_geoelectric_section(models, positions=[0.0, 20000.0],
+                                    labels=["A", "B"])
+    narrow = plot_geoelectric_section(models, positions=[0.0, 20000.0],
+                                      labels=["A", "B"], half_width_m=80.0)
+    # the drawn column is a filled polygon; its width is what changed
+    def widest(fig):
+        spans = [
+            float(np.ptp(coll.get_paths()[0].vertices[:, 0]))
+            for coll in fig.axes[0].collections if coll.get_paths()
+        ]
+        return max(spans) if spans else 0.0
+
+    assert widest(wide) > 3000, "the old default really is kilometres wide"
+    assert widest(narrow) < 500, "the reach-limited column is metres wide"
+    plot_geoelectric_section(models, positions=[0.0, 20000.0],
+                             labels=["A", "B"], half_width_m=80.0,
+                             path=tmp_path / "section.png")
+
+
+def test_a_correlation_across_ground_nobody_surveyed_says_so():
+    """The dashed lines are a proposal when the gap dwarfs the reach."""
+    from groundwater.mapping.subsurface import _correlation_note
+
+    _soundings, close = _traverse()
+    profile = traverse_profile(close)
+    reach = max(i.investigation_depth_m for i in close)
+    # stations ~130 m apart, soundings reaching 100 m: correlation is fine
+    assert _correlation_note(profile, reach) == ""
+
+    # push the last sounding 20 km away and it is not fine
+    far = close[:]
+    far[-1].site_easting = float(far[-1].site_easting) + 20_000.0
+    note = _correlation_note(traverse_profile(far), reach)
+    assert "no measurement between them" in note
+    assert "times the" in note
+
+
+def test_the_note_is_silent_when_there_is_nothing_to_measure_it_against():
+    from groundwater.mapping.subsurface import _correlation_note
+
+    _soundings, interps = _traverse()
+    assert _correlation_note(traverse_profile(interps), 0.0) == ""

@@ -302,6 +302,17 @@ sitting in the right-hand half of its own figure with an empty gutter
 beside it. The credit wraps to the frame, and the scale bar is lifted
 clear of however many lines it wraps to.
 
+A cross-section stopped implying a traverse nobody walked. The
+geoelectric section divided the profile equally between its columns, so
+two Rokel soundings 20.7 km apart came out as two columns 8 km wide -
+each claiming to have measured 8 km of ground. A column is now as wide
+as the sounding's own lateral reach, and where the gap between adjacent
+soundings dwarfs that reach the figure says in red how many times over:
+at Rokel the widest gap is 259 times the 80 m the soundings reached, so
+the dashed correlations across it join two measurements with nothing
+between them, and the figure now says to read them as a proposal rather
+than as a traced horizon.
+
 Both zoomable unit maps now say what scale they were drawn at. The USGS
 and BGS layers are published at 1:5,000,000, where a 0.5 mm drafting
 line is 2.5 km on the ground, and the toolkit's own default window is

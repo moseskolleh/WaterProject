@@ -519,11 +519,47 @@ def geoelectric_section_along_traverse(
             title += (
                 f" (soundings up to {profile.max_offset_m:.0f} m off the line)"
             )
+    # A column stands for the ground the sounding sampled, which is about
+    # its largest electrode half-spacing either side of the peg - not for
+    # an equal share of the profile. Two Rokel soundings 20 km apart came
+    # out as two columns 8 km wide, which claims each sounding measured
+    # 8 km of ground.
+    reach = max(
+        (float(getattr(i, "investigation_depth_m", 0.0)) for i in ordered),
+        default=0.0,
+    )
     return plot_geoelectric_section(
         [interp.model for interp in ordered],
         positions=[float(x) for x in profile.chainage_m],
         labels=[interp.sounding_id or "VES" for interp in ordered],
         path=path, style=style, depth_max=depth_max, title=title,
+        half_width_m=reach or None,
+        note=_correlation_note(profile, reach),
+    )
+
+
+def _correlation_note(profile: "TraverseProfile", reach_m: float) -> str:
+    """What the dashed lines between two distant soundings do not mean.
+
+    A sounding sees the ground under it, to a lateral reach of roughly
+    its largest electrode half-spacing. Joining a layer boundary across
+    a gap many times that is drawing a line between two points and
+    calling it a horizon. The classic rule of thumb is that correlation
+    needs stations no more than a few times the depth of investigation
+    apart; beyond about ten times there is nothing between them at all.
+    """
+    if reach_m <= 0 or len(profile.chainage_m) < 2:
+        return ""
+    gaps = np.diff(np.sort(profile.chainage_m))
+    widest = float(gaps.max())
+    if widest <= reach_m * 10:
+        return ""
+    return (
+        f"The widest gap between adjacent soundings is {widest:,.0f} m, "
+        f"about {widest / reach_m:.0f} times the {reach_m:,.0f} m the "
+        "soundings reached. The dashed correlations across it join two "
+        "measurements with no measurement between them; read them as a "
+        "proposal, not as a traced horizon."
     )
 
 

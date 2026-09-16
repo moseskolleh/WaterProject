@@ -221,10 +221,18 @@ def test_area_maps_reach_every_report_kind(tmp_path):
     out = tmp_path / "area.docx"
     rb.save(out)
     doc = Document(out)
-    assert len(doc.inline_shapes) == 1
+    # the study area at a readable scale, then the national locator. The
+    # aquifer and geological settings only come with detail=True.
+    assert len(doc.inline_shapes) == 2
     text = "\n".join(p.text for p in doc.paragraphs)
     assert "Port Loko district" in text
     assert "No GPS position" in text
+
+    detailed = ReportBuilder(None, title="T")
+    add_area_section(detailed, site, tmp_path, detail=True)
+    detailed_out = tmp_path / "area_detail.docx"
+    detailed.save(detailed_out)
+    assert len(Document(detailed_out).inline_shapes) == 4
 
 
 def test_handover_report_embeds_location_map(tmp_path):
