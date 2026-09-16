@@ -673,8 +673,8 @@ def apparent_resistivity_pseudosection(
                 color=style.accent_color, annotation_clip=False,
             )
         notes = [
-            "AB/2 is the electrode half-spacing, not a depth: a deeper "
-            "reading is a wider spread, not a measured horizon."
+            ("AB/2 is the electrode half-spacing, not a depth: a deeper "
+             "reading is a wider spread, not a measured horizon."),
         ]
         if spaced_evenly:
             notes.append(

@@ -626,21 +626,21 @@ def _add_subsurface_figures(rb, soundings, interpretations, inputs, site) -> Non
     made: list[tuple[Path, str]] = []
     plan = (
         (depth_to_bedrock_map, "depth_to_bedrock",
-         "Depth to bedrock across the surveyed ground, from the layered "
-         "models. The surface is blanked outside the hull of the soundings."),
+         ("Depth to bedrock across the surveyed ground, from the layered "
+          "models. The surface is blanked outside the hull of the soundings.")),
         (aquifer_thickness_map, "aquifer_thickness",
-         "Interpreted thickness of the weathered and fractured zone - the "
-         "section a borehole is completed in."),
+         ("Interpreted thickness of the weathered and fractured zone - the "
+          "section a borehole is completed in.")),
         (bedrock_elevation_map, "bedrock_elevation",
-         "The bedrock surface as a landform, from the ground elevation "
-         "recorded at each sounding less its depth to basement. A low in "
-         "this surface is a buried valley, which basement groundwater "
-         "drains towards."),
+         ("The bedrock surface as a landform, from the ground elevation "
+          "recorded at each sounding less its depth to basement. A low in "
+          "this surface is a buried valley, which basement groundwater "
+          "drains towards.")),
         (protective_capacity_map, "protective_capacity",
-         "Protective capacity of the cover over the aquifer, from the "
-         "longitudinal conductance of the overlying layers. It rates how "
-         "well the ground above the aquifer resists downward contamination; "
-         "it says nothing about yield."),
+         ("Protective capacity of the cover over the aquifer, from the "
+          "longitudinal conductance of the overlying layers. It rates how "
+          "well the ground above the aquifer resists downward contamination; "
+          "it says nothing about yield.")),
     )
     for fn, name, caption in plan:
         try:
@@ -652,11 +652,11 @@ def _add_subsurface_figures(rb, soundings, interpretations, inputs, site) -> Non
         made.append((
             geoelectric_section_along_traverse(
                 placed, path=figures_dir / f"geoelectric_section_{slug}.png"),
-            "Interpreted geoelectric section along the traverse, with the "
-            "soundings at their surveyed spacing rather than evenly spaced. "
-            "Colour is layer resistivity; the dashed lines correlate "
-            "boundaries between neighbouring soundings and are an "
-            "interpretation, not a measured contact.",
+            ("Interpreted geoelectric section along the traverse, with the "
+             "soundings at their surveyed spacing rather than evenly spaced. "
+             "Colour is layer resistivity; the dashed lines correlate "
+             "boundaries between neighbouring soundings and are an "
+             "interpretation, not a measured contact."),
         ))
     except (ValueError, KeyError):
         pass
