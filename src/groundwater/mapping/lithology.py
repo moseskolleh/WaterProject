@@ -74,14 +74,22 @@ class Lithology:
     def legend_label(self, usgs_unit: str, usgs_code: str) -> str:
         """The name to put in a map key.
 
-        The formation first, because that is what the reader needs, then
-        the USGS class the polygon actually came from in brackets - so
-        the key can always be traced back to the layer it was drawn from.
+        The formation first, because that is the thing a reader needs,
+        then its own code, then the USGS code the polygon was actually
+        drawn from. The last of those is not decoration: a 1:600,000 name
+        sitting on a 1:5,000,000 line invites the reader to trust the line
+        at 1:600,000, and the key has to stay traceable to the layer that
+        drew it. The figure's footnote carries the rest of the argument.
         """
         if not self.formation_name:
             return usgs_unit
-        code = f" ({self.formation_code.replace(';', ', ')})" if self.formation_code else ""
-        return f"{self.formation_name}{code}"
+        parts = [self.formation_name]
+        codes = [c for c in (self.formation_code.replace(";", ", "), ) if c]
+        if usgs_code:
+            codes.append(f"USGS {usgs_code}")
+        if codes:
+            parts.append(f"({'; '.join(codes)})")
+        return " ".join(parts)
 
     def provenance_note(self, usgs_unit: str) -> str:
         """One line a figure can carry about this class, if it has earned one."""

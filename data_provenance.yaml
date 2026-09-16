@@ -142,8 +142,8 @@ datasets:
         bytes: 7671560
         sha256: 3228a3d0d12ea72cb4d2860d2244df0f4be7084376fbe4b86b029f1f4798f93c
       - path: src/groundwater/data/sl_lithology_usgs_crosswalk.csv
-        bytes: 5402
-        sha256: 6f9f2ed6d334ef19bee2efe101337c8a135326fd1c14f9a499862ff8ea91084f
+        bytes: 5895
+        sha256: 3f2a48b46ff6c90e73f0f2d76de47f3fc0e7b329b631f006d9470660a2cc82e5
         derived: true
     embedded_in:
       - docs/js/gwt-data.js
