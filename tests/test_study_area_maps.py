@@ -683,11 +683,18 @@ def test_the_coastal_plain_is_the_bullom_group():
 
 
 def test_a_class_annotated_for_one_region_is_not_applied_to_another():
-    """The Freetown gabbro is not under Kono, and must not be claimed to be."""
+    """The Freetown gabbro is not under Kono, and must not be claimed to be.
+
+    A named district is a claim about where the reader is, so a row scoped
+    to somewhere else cannot answer it. That is different from having no
+    district at all, which is a national map with no region to choose by;
+    test_a_national_map_still_names_the_freetown_gabbro covers that case.
+    """
     from groundwater.mapping.lithology import lithology_for
 
     assert lithology_for("Pi", "Kono") is None
-    assert lithology_for("Pi", None) is None
+    assert lithology_for("Pi", "Bombali") is None
+    assert lithology_for("Qe", "Koinadugu") is None
 
 
 def test_the_units_that_are_not_in_sierra_leone_are_left_unnamed():
@@ -731,3 +738,206 @@ def test_every_crosswalk_row_says_where_it_came_from():
     for row in rows:
         assert row.basis in {"legend", "published"}, row.usgs_code
         assert row.usgs_code and row.region
+
+
+def _national_grid(step=0.0125):
+    """Land points inside Sierra Leone, and the two bundled layers on them.
+
+    One cross-tabulation, shared by the tests below, because it takes a few
+    seconds and they all want the same table.
+    """
+    import numpy as np
+    from matplotlib.path import Path as MplPath
+
+    from groundwater.mapping.regional import (
+        load_admin, load_geology, load_hydrogeology,
+    )
+
+    country, _ = load_admin()
+    lons = np.concatenate([r[:, 0] for r in country.rings])
+    lats = np.concatenate([r[:, 1] for r in country.rings])
+    xx, yy = np.meshgrid(
+        np.arange(lons.min(), lons.max() + step, step),
+        np.arange(lats.min(), lats.max() + step, step),
+    )
+    pts = np.column_stack([xx.ravel(), yy.ravel()])
+    land = np.zeros(len(pts), dtype=bool)
+    for ring in country.rings:
+        land |= MplPath(ring).contains_points(pts)
+    for parts in country.holes:
+        for hole in parts:
+            land &= ~MplPath(hole).contains_points(pts)
+    pts = pts[land]
+
+    geo = np.full(len(pts), "", dtype=object)
+    for unit in load_geology():
+        geo[MplPath(unit.ring).contains_points(pts)] = unit.glg
+    hyd = np.full(len(pts), "", dtype=object)
+    for unit in load_hydrogeology():
+        hyd[MplPath(unit.ring).contains_points(pts)] = unit.glg
+    return pts, geo, hyd
+
+
+def test_the_holocene_class_really_is_the_bullom_group():
+    """The crosswalk calls USGS 'Qe' the Bullom Group. Check it against a
+    source that was not consulted when the row was written.
+
+    This one earns its runtime. An earlier pass proposed rewriting these
+    rows as "85% Bullom, 15% metasediment" on the strength of a nearest
+    label sample of the 2017 map's PDF text layer - a Voronoi over label
+    positions, not an overlay of mapped contacts. The BGS hydrogeology
+    layer is independent of the USGS one, at a different scale, from a
+    different publisher, and it puts the whole class on unconsolidated
+    ground. The qualification was wrong and the test is here so nobody
+    reintroduces it from the same artefact.
+    """
+    _, geo, hyd = _national_grid()
+    qe = hyd[geo == "Qe"]
+    assert len(qe) > 3000, "the grid got coarser; the fractions below move"
+    unconsolidated = (qe == "U-M/H").sum() / len(qe)
+    assert unconsolidated > 0.98, (
+        f"only {unconsolidated:.1%} of USGS Qe is BGS unconsolidated; the "
+        "Bullom Group attribution in the crosswalk needs revisiting"
+    )
+
+
+def test_the_precambrian_class_hides_the_rokel_river_metasediments():
+    """A ninth of 'Precambrian' is a different aquifer, and the row says so.
+
+    The BGS layer separates consolidated sedimentary fracture-flow ground
+    from basement; the USGS layer at 1:5,000,000 does not. The belt that
+    falls out is the Rokel River Group, and a driller who reads one colour
+    as one aquifer targets the wrong thing there.
+    """
+    from groundwater.mapping.lithology import lithology_for
+
+    pts, geo, hyd = _national_grid()
+    mask = geo == "pCm"
+    belt = hyd[mask] == "CSF-L/M"
+    share = belt.sum() / mask.sum()
+    assert 0.10 < share < 0.14, f"{share:.1%} of pCm is consolidated sedimentary"
+    # and it is a belt, not scattered noise: north-south across the middle
+    ground = pts[mask][belt]
+    assert ground[:, 1].max() - ground[:, 1].min() > 1.5
+    assert ground[:, 0].max() - ground[:, 0].min() < 1.2
+    assert "12%" in lithology_for("pCm", "Kono").lithology
+
+
+def test_the_geology_layer_leaves_the_coast_unmapped_and_the_key_says_so():
+    """2.5% of the country is in no USGS polygon, all of it coastal.
+
+    At 1:5,000,000 the coastal units stop short of the shore. That ground
+    used to be painted the same white as the ocean, so the Bullom shore and
+    the Sherbro estuaries read as sea on a map of a country whose coastal
+    aquifer is its most productive ground.
+    """
+    from groundwater.mapping.regional import district_of
+
+    pts, geo, _ = _national_grid()
+    gaps = pts[geo == ""]
+    share = len(gaps) / len(pts)
+    assert 0.02 < share < 0.035, f"{share:.2%} of the land is in no polygon"
+
+    coastal = {
+        "Bonthe", "Port Loko", "Moyamba", "Kambia", "Pujehun",
+        "Western Area Rural", "Western Area Urban",
+    }
+    # sample rather than test all of them; district_of is the slow part
+    for lon, lat in gaps[:: max(1, len(gaps) // 40)]:
+        assert district_of(float(lat), float(lon)) in coastal
+
+
+def test_the_key_names_the_unmapped_ground_only_where_it_shows():
+    """A legend entry for something not on the map is its own small lie."""
+    import numpy as np
+
+    from groundwater.mapping.regional import (
+        _unmapped_land_in_view, load_admin, load_geology,
+    )
+
+    outline, _ = load_admin()
+    units = load_geology()
+    whole = np.concatenate(outline.rings)
+    national = (whole[:, 0].min(), whole[:, 1].min(),
+                whole[:, 0].max(), whole[:, 1].max())
+    assert _unmapped_land_in_view(outline, units, national)
+    # Kono, deep in the basement interior, has no gaps in it
+    assert not _unmapped_land_in_view(outline, units, (-11.1, 8.5, -10.7, 8.9))
+
+
+def test_the_key_leaves_out_units_that_are_in_another_country():
+    """Ordovician and Silurian are masked away when the map is drawn.
+
+    They are inside the clip window but wholly across the Guinea border, so
+    the map shows nothing for them. A key entry for a colour that is not on
+    the map sends a reader hunting for it.
+    """
+    from groundwater.mapping.regional import (
+        _ring_meets_country, load_admin, load_geology,
+    )
+
+    outline, _ = load_admin()
+    units = load_geology()
+    kept = {u.glg for u in units if _ring_meets_country(u.ring, outline.rings)}
+    assert "O" not in kept and "S" not in kept
+    # and the test is not passing by rejecting everything
+    assert {"Qe", "pCm", "Pi", "Mi", "H2O"} <= kept
+
+
+def test_a_national_map_still_names_the_freetown_gabbro():
+    """With no district there is no region to choose by - but only one
+    answer exists, so refusing to give it just reprints the wrong age.
+
+    The national geological map passes no district. It used to key the
+    Freetown peninsula as "Paleozoic Igneous (Pi)": the one polygon in the
+    layer whose age is demonstrably wrong, shown with its wrong age, on the
+    map most likely to be read by somebody who does not know better.
+    """
+    from groundwater.mapping.lithology import lithology_for
+
+    rock = lithology_for("Pi")
+    assert rock is not None and rock.formation_name == "Freetown Layered Complex"
+    assert lithology_for("Qe").formation_name == "Bullom Group"
+    # but a named district that has neither still gets no answer
+    assert lithology_for("Pi", "Kono") is None
+    assert lithology_for("Qe", "Kono") is None
+    # and a class nobody has annotated stays unnamed either way
+    assert lithology_for("O") is None and lithology_for("S") is None
+
+
+def test_a_window_that_could_not_be_placed_does_not_claim_one():
+    """A radius the site cannot be placed in falls back to the national map.
+
+    The scale caveat was written from the radius that was asked for rather
+    than the window that was drawn, so a map of the whole country carried
+    "a boundary on this map is placed to roughly 2.5 km, which is 4% of
+    this 60 km window" - a measurement of a window that is not on the
+    figure, on the one figure where the data is at its published scale and
+    needs no apology at all.
+    """
+    from groundwater.mapping.regional import _scale_caveat, area_window
+    from groundwater.models import SiteMetadata
+
+    # "Western Area" is not a district in the boundary layer, which carries
+    # Western Area Urban and Western Area Rural, so no window resolves
+    site = SiteMetadata(community="Rokel", district="Western Area")
+    assert area_window(site, 30.0) is None
+    assert _scale_caveat(None, 5_000_000) == ""
+    assert "60 km window" in _scale_caveat(30.0, 5_000_000)
+
+
+def test_the_national_map_carries_no_window_caveat():
+    import matplotlib
+
+    matplotlib.use("Agg")
+    from groundwater.mapping.regional import plot_geological_map
+    from groundwater.models import SiteMetadata
+
+    fig = plot_geological_map(
+        site=SiteMetadata(community="Rokel", district="Western Area"),
+        radius_km=30.0,
+    )
+    text = " ".join(t.get_text() for t in fig.findobj(match=matplotlib.text.Text))
+    assert "km window" not in text, "the national map claims a window"
+    assert "Freetown Layered Complex" in text
+    assert "Not mapped at this scale" in text

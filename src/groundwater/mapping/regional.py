@@ -517,6 +517,72 @@ def _mark_site(ax, site: SiteMetadata, color: str) -> tuple[float, float] | None
     return lonlat
 
 
+def _ring_meets_country(ring: np.ndarray, country: list[np.ndarray]) -> bool:
+    """Does this unit polygon cover any ground inside Sierra Leone?
+
+    The bundled layers are clipped to a rectangle, not to the border, so
+    they carry polygons that lie wholly in Guinea or Liberia - the
+    Ordovician and Silurian of the Bove Basin are entirely across the
+    northern border, inside the window only because the clip box reaches
+    10.15 N. Everything outside the country is masked away when the map
+    is drawn, so those units are invisible; listing them in the key sends
+    a reader hunting the map for a colour that is not on it.
+
+    Cheap and symmetric: a unit vertex inside the country, or a border
+    vertex inside the unit. That misses only the case where the two
+    outlines cross without either carrying a vertex inside the other,
+    which no polygon pair in these layers does.
+    """
+    extent = (ring[:, 0].min(), ring[:, 1].min(),
+              ring[:, 0].max(), ring[:, 1].max())
+    unit_path = MplPath(ring)
+    for border in country:
+        if (border[:, 0].max() < extent[0] or border[:, 0].min() > extent[2]
+                or border[:, 1].max() < extent[1]
+                or border[:, 1].min() > extent[3]):
+            continue
+        if MplPath(border).contains_points(ring).any():
+            return True
+        if unit_path.contains_points(border).any():
+            return True
+    return False
+
+
+def _unmapped_land_in_view(
+    outline: AdminArea,
+    units: list[GeologyUnit],
+    box: tuple[float, float, float, float],
+    samples: int = 56,
+) -> bool:
+    """Is there ground in view that the source layer draws no polygon for?
+
+    The bundled layers stop short of the coast in places - the Bullom
+    shore and the Sherbro estuaries most of all - and that ground is
+    painted the not-mapped tint. Beige with nothing in the key leaves a
+    reader guessing whether it is sea, a gap, or a unit whose colour they
+    have misread, so the key has to carry it. Only when it is actually on
+    screen, though: a window over the interior has no gaps in it and a
+    legend entry for something not on the map is its own small lie.
+    """
+    xs = np.linspace(box[0], box[2], samples)
+    ys = np.linspace(box[1], box[3], samples)
+    grid = np.meshgrid(xs, ys)
+    pts = np.column_stack([grid[0].ravel(), grid[1].ravel()])
+    land = np.zeros(len(pts), dtype=bool)
+    for ring in outline.rings:
+        land |= MplPath(ring).contains_points(pts)
+    for parts in outline.holes:
+        for hole in parts:
+            land &= ~MplPath(hole).contains_points(pts)
+    if not land.any():
+        return False
+    for unit in units:
+        land &= ~MplPath(unit.ring).contains_points(pts)
+        if not land.any():
+            return False
+    return True
+
+
 def _plot_units_map(
     units: list[GeologyUnit],
     credit: str,
@@ -553,8 +619,12 @@ def _plot_units_map(
         all_pts = np.concatenate(outline.rings)
         box = (all_pts[:, 0].min() - 0.15, all_pts[:, 1].min() - 0.12,
                all_pts[:, 0].max() + 0.15, all_pts[:, 1].max() + 0.12)
-    in_view = [unit for unit in units if _ring_in_box(unit.ring, box)]
-    district = (site.district if site is not None else "") or ""
+    in_view = [unit for unit in units
+               if _ring_in_box(unit.ring, box)
+               and _ring_meets_country(unit.ring, outline.rings)]
+    # None, not "": an unknown district is not the interior, and the
+    # crosswalk treats the two differently
+    district = (site.district if site is not None else "") or None
 
     with figure_context(style):
         fig, ax = plt.subplots(figsize=(style.figure_width_in, 5.8))
@@ -593,6 +663,22 @@ def _plot_units_map(
             )
             legend_order.setdefault(label, (era_rank, unit.glg))
 
+        # ground the source draws nothing for, named in the key rather
+        # than left as an unexplained tint
+        if _unmapped_land_in_view(outline, in_view, box):
+            gap_label = "Not mapped at this scale"
+            legend_handles[gap_label] = plt.Polygon(
+                [[box[0], box[1]]], closed=True, facecolor=carto.NOT_MAPPED,
+                edgecolor=carto.LINES["contact"].color,
+                lw=carto.LINES["contact"].width,
+            )
+            legend_order[gap_label] = (100, "~")
+            notes.append(
+                "The not-mapped tint is land inside Sierra Leone that the "
+                "source layer draws no polygon for; at this scale its "
+                "coastal units stop short of the shore."
+            )
+
         _mark_site(ax, site, carto.SITE) if site else None
 
         _mask_outside_country(ax, outline, style, fill=carto.SEA)
@@ -628,7 +714,14 @@ def _plot_units_map(
             else:
                 title = f"{scope_word} map of Sierra Leone"
         ax.set_title(title)
-        caveat = _scale_caveat(radius_km, source_scale, publisher_note)
+        # the window that was drawn, not the one that was asked for: a
+        # radius the site could not be placed in falls back to the
+        # national map, and a national map carrying "4% of this 60 km
+        # window" is a figure asserting something that is not on it
+        caveat = _scale_caveat(
+            radius_km if window is not None else None,
+            source_scale, publisher_note,
+        )
         footnotes = [n for n in notes]
         if caveat:
             footnotes.append(caveat)

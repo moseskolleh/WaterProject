@@ -54,10 +54,43 @@
 # Jurassic dolerite north of Freetown, which is the same Central Atlantic
 # rifting event as the Freetown Complex the layer files as Paleozoic.
 #
+# WHERE THE PROPORTIONS IN THIS FILE COME FROM. Any figure quoted below is
+# a cross-tabulation of the bundled USGS layer against the bundled BGS
+# hydrogeology layer (sl_hydrogeology_bgs.geojson) on a 0.0125 degree
+# (~1.4 km) national grid, clipped to the geoBoundaries ADM0 rings. Both
+# layers are committed, so the numbers are reproducible from a checkout;
+# tests/test_study_area_maps.py pins them. The BGS layer is an independent
+# source at a different scale, which is the point: it can corroborate or
+# contradict the USGS class, and it does both.
+#
+# It corroborates 'Qe'. 99.4% of the Qe land area is BGS "unconsolidated
+# intergranular aquifer", which is the Bullom Group and nothing else; only
+# 0.2% sits on a basement class. An earlier pass at this file proposed
+# qualifying Qe as "85% Bullom, 15% metasediment" on the strength of a
+# nearest-label sample of the 2017 PDF's text layer. That sample is a
+# Voronoi over label positions, not an overlay of mapped contacts, and it
+# pulls a band of genuinely-Bullom ground onto the Magbele and Tapr labels
+# that sit along the inland edge of the coastal plain. The independent
+# layer says otherwise and the qualification was dropped. Do not put it
+# back without an actual polygon overlay.
+#
+# It contradicts 'pCm'. 12.0% of the pCm land area is BGS "consolidated
+# sedimentary, fracture flow", in a belt from 7.64 to 9.66 N between 12.88
+# and 12.05 W - Port Loko, Moyamba, Tonkolili and Kambia - which is the
+# Rokel River Group. That is a different aquifer inside one USGS colour,
+# and it is why the pCm row below refuses to name a single rock.
+#
+# THE LAYER ALSO HAS HOLES. 2.5% of Sierra Leone's land area falls in no
+# USGS polygon at all, every point of it in a coastal district (Bonthe,
+# Port Loko, Moyamba, Western Area, Kambia, Pujehun): at 1:5,000,000 the
+# coastal units stop short of the shore. The maps paint it in the
+# not-mapped tint and say so in the key rather than leaving it to read as
+# sea or as a misread colour.
+#
 usgs_code,region,formation_code,formation_name,lithology,aquifer_character,era_actual,usgs_era_wrong,basis
 Pi,Western Area,Jf,Freetown Layered Complex,"Layered gabbro, norite and anorthosite; a basic to ultrabasic intrusion forming the Freetown peninsula hills","Massive and crystalline, with negligible primary porosity. Groundwater is confined to the weathered mantle and to fracture and joint sets; yields are modest and highly site-dependent, so the fracture target is the whole of the siting problem",Jurassic (about 193 Ma),yes,legend
 Qe,Western Area,Q;Tb,Bullom Group,"Unconsolidated to poorly consolidated sands, clays, clayey sands and lignite, with beach sand and alluvium; estuarine and deltaic","Intergranular. The most productive ground in the country for its thickness, but the coastal strip carries a real risk of saline intrusion and of shallow contamination, because the same porosity that stores water passes it",Miocene to Recent,no,legend
 Qe,coastal plain,Q;Tb,Bullom Group,"Sands, clays, clayey sands and lignite over the coastal lowland; alluvium along the drainage","Intergranular, generally the best yields available without deep drilling. Shallow water tables mean the protective cover is thin, so siting must keep clear of latrines and surface drainage",Miocene to Recent,no,legend
-pCm,all,LG;Lg;PLg;LM;Er;Lkm;Lkt,"Precambrian basement, chiefly Leonean granite","Crystalline basement. Sampled against the 2017 map on a national grid this one USGS class resolves to at least ten formations: about two thirds Leonean granite (LG), a ninth Rokel River Group metasediments (Er), then Magbele and Tapr (Lkm, Lkt), Liberian granite (Lg), a mylonite zone and migmatitic gneiss","Mostly the crystalline basement aquifer this toolkit is built for: no primary porosity, water in the weathered and fractured zone above fresh rock, yield following regolith thickness and the fracture set at the weathered-fresh contact. But this class is not one rock, and where it covers the Rokel River metasediments the aquifer is fracture flow in indurated beds with shales acting as aquicludes - a different target. Read the aquifer map beside it: the BGS layer separates the two where this one does not",Archaean to Palaeoproterozoic,no,legend
+pCm,all,LG;Lg;PLg;LM;Er;Lkm;Lkt,"Precambrian basement, chiefly Leonean granite","Crystalline basement, but not one rock. Cross-tabbed against the bundled BGS hydrogeology on a 1.4 km national grid, 87% of this class is basement aquifer and 12% is consolidated sedimentary with fracture flow - the Rokel River Group belt through Port Loko, Kambia, Moyamba and Tonkolili. On the 2017 map the basement part is chiefly Leonean granite (LG), with Liberian granite (Lg), migmatitic gneiss (PLg, LM), the Magbele and Tapr formations (Lkm, Lkt) and a mylonite zone","Mostly the crystalline basement aquifer this toolkit is built for: no primary porosity, water in the weathered and fractured zone above fresh rock, yield following regolith thickness and the fracture set at the weathered-fresh contact. But this class is not one rock, and where it covers the Rokel River metasediments the aquifer is fracture flow in indurated beds with shales acting as aquicludes - a different target. Read the aquifer map beside it: the BGS layer separates the two where this one does not",Archaean to Palaeoproterozoic,no,legend
 Mi,all,Jd,Dolerite,"Dolerite, intruded as dykes and sheets cutting the basement","A dyke is usually a barrier rather than an aquifer, but its margins are commonly fractured and its contact with the country rock can concentrate flow. The dyke itself is the wrong target; the contact beside it may be the right one",Jurassic,no,legend
 H2O,all,,Surface water,"River, lake or estuary",Not an aquifer,,no,legend

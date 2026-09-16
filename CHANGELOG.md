@@ -394,14 +394,64 @@ name on another country's ground. The 2017 sheet does map Ordovician
 inside Sierra Leone; the USGS layer simply does not draw it, because at
 1:5,000,000 it is swallowed by "Precambrian".
 
-And "Precambrian", which covers most of the country, is not one rock:
-sampled against the 2017 sheet it is about two thirds Leonean granite,
-a ninth Rokel River Group metasediments, then Magbele, Tapr, Liberian
-granite, a mylonite zone and migmatitic gneiss. Its row says so, and
-says that where it covers the Rokel metasediments the aquifer is
-fracture flow in indurated beds rather than a weathered-zone aquifer -
-a different drilling target, which the BGS aquifer map beside it does
-separate.
+And "Precambrian", which covers most of the country, is not one rock.
+Cross-tabbed against the bundled BGS hydrogeology on a 1.4 km national
+grid, 87 per cent of it is basement aquifer and 12 per cent is
+consolidated sedimentary with fracture flow - a belt from 7.6 to 9.7
+degrees North through Port Loko, Kambia, Moyamba and Tonkolili, which is
+the Rokel River Group. That is a different drilling target inside one
+colour: fracture flow in indurated beds with shales acting as
+aquicludes, rather than a weathered-zone aquifer. Its row says so, and
+the BGS aquifer map beside it does separate the two.
+
+The proportions quoted in that row and in this note come from the two
+bundled layers and nothing else, so anyone with a checkout can rerun
+them; `tests/test_study_area_maps.py` pins them. That matters because an
+earlier pass at the crosswalk proposed qualifying the Holocene class as
+"85 per cent Bullom Group, 15 per cent metasediment" on the strength of
+a nearest-label sample of the 2017 map's PDF text layer. A Voronoi over
+label positions is not an overlay of mapped contacts, and it drags a
+band of genuinely Bullom ground onto the Magbele and Tapr labels that
+sit along the inland edge of the coastal plain. Checked against the BGS
+layer - independent, different scale, different publisher - the Holocene
+class is 99.4 per cent unconsolidated intergranular aquifer, which is
+the Bullom Group and nothing else. The qualification was wrong and was
+not made; the header of the crosswalk records why, so nobody
+reintroduces it from the same artefact.
+
+The layer also has holes, and the maps now admit it. Two and a half per
+cent of Sierra Leone's land area falls in no USGS polygon at all, every
+point of it in a coastal district - Bonthe, Port Loko, Moyamba, the
+Western Area, Kambia and Pujehun - because at 1:5,000,000 the coastal
+units stop short of the shore. That ground used to be painted the same
+colour as the ocean, so the Bullom shore and the Sherbro estuaries read
+as sea on maps of the country whose coastal aquifer is its most
+productive ground. It now carries its own tint and a key entry, "Not
+mapped at this scale", on both engines - and the key only carries the
+entry when unmapped ground is actually in the window.
+
+Two more things the key used to get wrong. It listed "Ordovician" and
+"Silurian", which are masked away when the map is drawn because they are
+wholly across the Guinea border: entries for colours that are not on the
+map, sending a reader hunting for them. Units that cover no ground inside
+the country are now dropped before the key is built. And the national
+geological map, which passes no district, refused the crosswalk and fell
+back to the source's own wording - so the one polygon in the layer whose
+age is demonstrably wrong was captioned "Paleozoic Igneous" on the map
+most likely to be read by somebody who does not know better. With no
+district there is no region to choose by, but where every row for a
+class agrees on the formation there is only one answer to give, and the
+lookup now gives it. A named district that has no row still gets
+nothing: the Freetown gabbro is not under Kono.
+
+The browser draws the same key. The crosswalk is bundled into
+`gwt-data.js` and `gwt-charts.js` mirrors the lookup, its two refusals
+and the wrong-age footnote, so the figure on screen and the figure in
+the report name the same rock. It also paints sea and unmapped ground
+apart, which it did not: the whole map frame was one tint, so a coverage
+gap and the Atlantic were indistinguishable. `data_provenance.yaml` had
+claimed the crosswalk was embedded in the browser bundle since it was
+written; it was not, and now is.
 
 Two defects the rebuild exposed. The boundary review tested whether it had
 already withheld a piece of ground by comparing the encoded geometry byte

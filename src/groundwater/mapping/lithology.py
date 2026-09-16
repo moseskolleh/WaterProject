@@ -159,16 +159,33 @@ def lithology_for(
     ``None`` when the crosswalk has nothing to say - which is the honest
     answer for a class nobody has annotated, and leaves the map showing
     the source's own wording rather than a guess.
+
+    With no district at all - a national map, which has no one region to
+    choose by - a regional row still applies if every row for the class
+    agrees on what the formation is. The layer's ``Pi`` has only ever been
+    the Freetown Complex and both ``Qe`` rows are the Bullom Group, so
+    naming them nationally is not a guess. Where the rows disagree, the
+    source's own wording is the only honest key entry. The prose then
+    comes from the first matching row, so ``describe`` without a district
+    gives one region's wording for a formation the rows agree on.
     """
     rows = load_crosswalk(path)
-    region = region_of(district)
-    for wanted in (region, "all"):
-        for row in rows:
-            if row.usgs_code == usgs_code and row.region == wanted:
-                return row
-    # a class annotated for somewhere else in the country: better to say
-    # nothing than to claim the Freetown gabbro is under Kono
-    return None
+    if district:
+        region = region_of(district)
+        for wanted in (region, "all"):
+            for row in rows:
+                if row.usgs_code == usgs_code and row.region == wanted:
+                    return row
+        # a class annotated for somewhere else in the country: better to
+        # say nothing than to claim the Freetown gabbro is under Kono
+        return None
+
+    matching = [row for row in rows if row.usgs_code == usgs_code]
+    for row in matching:
+        if row.region == "all":
+            return row
+    agreed = {(row.formation_name, row.formation_code) for row in matching}
+    return matching[0] if len(agreed) == 1 else None
 
 
 def describe(usgs_code: str, district: str | None = None) -> str:

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import base64
 import csv
+import io
 import json
 import sys
 from pathlib import Path
@@ -48,6 +49,10 @@ CSV_TABLES = {
     # what each bundled example file actually contains, so the browser's
     # certification gate can say so on the reports it writes from them
     "sampleProvenance": "sample_provenance.csv",
+    # what the coarse USGS geology classes are actually made of, so the
+    # browser's map key names the rock rather than repeating an age that is
+    # wrong for the one polygon anybody in this country reads first
+    "lithologyCrosswalk": "sl_lithology_usgs_crosswalk.csv",
 }
 
 # Map layers. Coordinates are rounded to 5 decimal places (about 1 m at the
@@ -210,8 +215,18 @@ def site_from_workbooks(sources: dict[str, Path], fallback: dict) -> dict:
 
 
 def read_csv_rows(name: str) -> list[dict]:
+    """Rows of a bundled CSV, with any ``#`` header block stripped.
+
+    The lithology crosswalk carries its argument in comments above the
+    header - which source says what, which classes are deliberately not
+    annotated and why. That belongs in the repository, not in a 900 KB
+    bundle the browser parses on every load, so it is dropped here.
+    """
     with open(DATA / name, "r", encoding="utf-8-sig", newline="") as fh:
-        return [dict(row) for row in csv.DictReader(fh)]
+        body = "".join(
+            line for line in fh if not line.lstrip().startswith("#")
+        )
+    return [dict(row) for row in csv.DictReader(io.StringIO(body))]
 
 
 def round_coords(node):

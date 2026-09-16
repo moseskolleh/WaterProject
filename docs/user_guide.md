@@ -259,7 +259,7 @@ the crosswalk says what each rock means for a borehole: the Freetown
 gabbro stores nothing and yields only from fractures, the Bullom sands
 yield well and are the easiest ground in the country to contaminate.
 
-Three things about that are worth knowing before you rely on it.
+Four things about that are worth knowing before you rely on it.
 
 It **annotates, it does not reclassify**. The polygon and its boundary
 are still the 1:5,000,000 ones and are no more accurate for being better
@@ -270,16 +270,29 @@ quietly picking one. The USGS layer dates the Freetown peninsula as
 Paleozoic; it is the Freetown Layered Complex, Jurassic, about 193
 million years old. The map states both.
 
-Two classes are deliberately **left unnamed**. "Ordovician" and
-"Silurian" have no vertices inside Sierra Leone at all - they are the
-Bove Basin in Guinea, inside the bundled window only because the clip box
-reaches 10.15 N - so putting a Sierra Leonean formation on them would be
-naming another country's ground. And "Precambrian", which covers most of
-the country, is named as what it mostly is (Leonean granite) with its own
-row saying plainly that it is at least ten formations, including the
-Rokel River metasediments, whose aquifer behaves differently. Where that
-matters, read the aquifer map beside it: the BGS layer separates the two
-where the USGS one does not.
+Two classes are deliberately **left unnamed**, and never appear in the
+key at all. "Ordovician" and "Silurian" have no vertices inside Sierra
+Leone - they are the Bove Basin in Guinea, inside the bundled window only
+because the clip box reaches 10.15 N - so putting a Sierra Leonean
+formation on them would be naming another country's ground, and because
+they are masked away when the map is drawn they are dropped from the key
+rather than sending you hunting for a colour that is not there. And
+"Precambrian", which covers most of the country, is named as what it
+mostly is (Leonean granite) with its own row saying plainly that it is
+not one rock: cross-tabbed against the BGS layer, 12 per cent of it is
+the Rokel River Group, a belt through Port Loko, Kambia, Moyamba and
+Tonkolili where the aquifer is fracture flow in indurated beds rather
+than a weathered zone. Where that matters, read the aquifer map beside
+it: the BGS layer separates the two where the USGS one does not.
+
+**Not everything is mapped.** Two and a half per cent of the country's
+land area falls in no USGS polygon at all, all of it coastal: at
+1:5,000,000 the coastal units stop short of the shore, across the Bullom
+shore and the Sherbro estuaries. That ground is drawn in its own tint and
+the key calls it "Not mapped at this scale" - it is not sea, and it is
+not a unit whose colour you have misread. The entry appears only when
+unmapped ground is actually in the window, so its absence means there is
+none, not that nobody checked.
 
 **Topography** - no elevation model is bundled with this toolkit and
 none is downloaded, so the topographic map is drawn from a file you

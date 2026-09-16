@@ -2177,6 +2177,13 @@
    */
 
   var MAP_NO_DATA = '#EFEDE6';
+  /* The Python engine holds the same two in groundwater/mapping/cartography.py
+   * as SEA and NOT_MAPPED; change one and change the other. They are kept
+   * apart on purpose: sea and a hole in the source layer are different
+   * things, and painting both the same tint is how a coverage gap along the
+   * Bullom shore reads as ocean. */
+  var MAP_SEA = '#D9E6EF';
+  var MAP_NOT_MAPPED = '#EDEBE7';
 
   /* A muted geological palette, keyed by the bundled USGS unit code. The
    * Python engine reads the same table in groundwater/mapping/cartography.py
@@ -2196,6 +2203,85 @@
   function unitColour(props, spec) {
     if (spec && spec.sourceColours) return props.color || palette().neutral;
     return GEOLOGY_COLOURS[props.glg] || props.color || palette().neutral;
+  }
+
+  /* Which crosswalk region a district belongs to. The Python engine holds
+   * the same table in groundwater/mapping/lithology.py as _REGIONS; a coarse
+   * USGS class covers different formations in different parts of the
+   * country, so a row applies only where its region says it does. */
+  var LITHOLOGY_REGIONS = {
+    'Western Area': ['western area', 'western area urban', 'western area rural'],
+    'coastal plain': ['bonthe', 'moyamba', 'port loko', 'kambia', 'pujehun'],
+    'north and centre': ['bombali', 'tonkolili', 'koinadugu', 'karene', 'falaba'],
+  };
+
+  function regionOf(district) {
+    var name = String(district || '').trim().toLowerCase();
+    var keys = Object.keys(LITHOLOGY_REGIONS);
+    for (var i = 0; i < keys.length; i++) {
+      if (LITHOLOGY_REGIONS[keys[i]].indexOf(name) >= 0) return keys[i];
+    }
+    return 'interior';   /* the default: everything the others do not claim */
+  }
+
+  /* What the ground is, for one USGS class in one district - or null, which
+   * is the honest answer for a class nobody has annotated and leaves the key
+   * showing the source's own wording rather than a guess.
+   *
+   * This mirrors lithology_for() in the Python engine, including its two
+   * refusals: a named district that has no row gets nothing rather than
+   * another region's rock, and with no district at all a regional row
+   * applies only if every row for the class agrees on the formation. */
+  function lithologyFor(glg, district) {
+    var rows = ((GWT.data || {}).lithologyCrosswalk) || [];
+    var mine = rows.filter(function (r) { return r.usgs_code === glg; });
+    if (!mine.length) return null;
+    if (district) {
+      var wanted = [regionOf(district), 'all'];
+      for (var w = 0; w < wanted.length; w++) {
+        for (var i = 0; i < mine.length; i++) {
+          if (mine[i].region === wanted[w]) return mine[i];
+        }
+      }
+      return null;
+    }
+    for (var j = 0; j < mine.length; j++) {
+      if (mine[j].region === 'all') return mine[j];
+    }
+    var agreed = mine.map(function (r) {
+      return r.formation_name + '\u0000' + r.formation_code;
+    });
+    var same = agreed.every(function (a) { return a === agreed[0]; });
+    return same ? mine[0] : null;
+  }
+
+  /* The name to put in a map key: the formation first, then its own code,
+   * then the USGS code the polygon was actually drawn from. The last is not
+   * decoration - a 1:600,000 name sitting on a 1:5,000,000 line invites the
+   * reader to trust the line at 1:600,000. Matches Lithology.legend_label. */
+  function unitLabel(props, spec) {
+    var fallback = String(props.unit || 'unclassified');
+    if (!spec || !spec.nameLithology) return fallback;
+    var rock = lithologyFor(props.glg, spec.district);
+    if (!rock || !rock.formation_name) return fallback;
+    var codes = [];
+    if (rock.formation_code) codes.push(rock.formation_code.replace(/;/g, ', '));
+    if (props.glg) codes.push('USGS ' + props.glg);
+    return rock.formation_name +
+      (codes.length ? ' (' + codes.join('; ') + ')' : '');
+  }
+
+  /* One line a figure carries about a class whose source age is wrong. The
+   * age is not quietly rewritten: both are shown and the note says which is
+   * which, because correcting somebody else's dataset in silence leaves a
+   * reader unable to tell what they are looking at. */
+  function lithologyNote(props, spec) {
+    if (!spec || !spec.nameLithology) return '';
+    var rock = lithologyFor(props.glg, spec.district);
+    if (!rock || String(rock.usgs_era_wrong).toLowerCase() !== 'yes') return '';
+    return 'The source layer dates this polygon as ' + props.unit + '; it is ' +
+      'the ' + rock.formation_name + ', ' + rock.era_actual + '. The boundary ' +
+      'is the 1:5,000,000 one either way.';
   }
 
   function featureBounds(features) {
@@ -2283,6 +2369,17 @@
 
   /* --------------------------------------------------------- point in shape */
 
+  /* Every exterior ring of a Polygon or MultiPolygon, holes dropped. Used
+   * where only the outline matters and a hole cannot change the answer. */
+  function ringsOf(geometry) {
+    if (!geometry) return [];
+    if (geometry.type === 'Polygon') return geometry.coordinates.slice(0, 1);
+    if (geometry.type === 'MultiPolygon') {
+      return geometry.coordinates.map(function (poly) { return poly[0]; });
+    }
+    return [];
+  }
+
   function pointInRing(lon, lat, ring) {
     var inside = false;
     for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -2293,6 +2390,42 @@
       }
     }
     return inside;
+  }
+
+  /* Does this polygon cover any ground inside the country outline?
+   *
+   * The bundled layers are clipped to a rectangle, not to the border, so
+   * they carry polygons lying wholly in Guinea or Liberia - the Ordovician
+   * and Silurian of the Bove Basin are entirely across the northern border.
+   * Listing them in the key sends a reader hunting the map for a colour
+   * that is not on it. Cheap and symmetric, the same test the Python engine
+   * uses in mapping/regional.py as _ring_meets_country: a unit vertex
+   * inside the country, or a border vertex inside the unit. */
+  function meetsOutline(geometry, outline) {
+    if (!outline || !outline.length) return true;
+    var rings = ringsOf(geometry);
+    for (var o = 0; o < outline.length; o++) {
+      var border = ringsOf(outline[o].geometry);
+      for (var b = 0; b < border.length; b++) {
+        for (var i = 0; i < rings.length; i++) {
+          for (var j = 0; j < rings[i].length; j++) {
+            if (pointInRing(rings[i][j][0], rings[i][j][1], border[b])) return true;
+          }
+        }
+        for (var k = 0; k < border[b].length; k++) {
+          if (pointInFeature(border[b][k][0], border[b][k][1], geometry)) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function onLand(lon, lat, outline) {
+    if (!outline || !outline.length) return true;
+    for (var i = 0; i < outline.length; i++) {
+      if (pointInFeature(lon, lat, outline[i].geometry)) return true;
+    }
+    return false;
   }
 
   function pointInFeature(lon, lat, geometry) {
@@ -2754,8 +2887,15 @@
    * across the country. */
   function thematicMap(spec) {
     var key = spec.key || 'unit';
-    var all = spec.features || [];
     var window_ = spec.window || null;
+    var outline = spec.outline || [];
+    /* Units wholly outside Sierra Leone are dropped before anything else:
+     * they are masked away when the map is drawn, so a key entry for one
+     * is a colour the reader cannot find. */
+    var all = (spec.features || []).filter(function (feature) {
+      return meetsOutline(feature.geometry, outline);
+    });
+    if (!all.length) all = spec.features || [];
 
     var features = all, clip = null;
     if (window_) {
@@ -2788,7 +2928,9 @@
       var seen = [], gaps = false;
       function note(feature) {
         var props = feature.properties || {};
-        var label = String(props[key] || 'unclassified');
+        var label = spec.nameLithology
+          ? unitLabel(props, spec)
+          : String(props[key] || 'unclassified');
         if (!seen.some(function (s) { return s.label === label; })) {
           seen.push({ label: label, colour: unitColour(props, spec) });
         }
@@ -2804,7 +2946,9 @@
               hit = features[f]; break;
             }
           }
-          if (!hit) { gaps = true; continue; }
+          /* A sample with no unit under it is only a gap in the data if
+           * it is on land; over the Atlantic it is just the sea. */
+          if (!hit) { gaps = gaps || onLand(lon, lat, outline); continue; }
           note(hit);
         }
       }
@@ -2814,7 +2958,10 @@
       });
       seen.sort(function (a, b) { return a.label.localeCompare(b.label); });
       var items = seen.slice();
-      if (gaps) items.push({ label: 'not mapped', colour: MAP_NO_DATA });
+      if (gaps) {
+        items.push({ label: 'Not mapped at this scale',
+          colour: MAP_NOT_MAPPED });
+      }
       (spec.points || []).forEach(function (point) {
         if (!point.label) return;
         items.push({
@@ -2825,7 +2972,21 @@
       return items;
     }
 
-    var canvas = mapCanvas(spec, legendFor, extent);
+    /* An age the source has wrong is said out loud rather than silently
+     * corrected, so it has to be in the credit block before mapCanvas
+     * measures it. Driven by the polygons that will be drawn, so a window
+     * that does not reach the Freetown peninsula carries no note about it. */
+    var notes = [];
+    features.forEach(function (feature) {
+      var n = lithologyNote(feature.properties || {}, spec);
+      if (n && notes.indexOf(n) < 0) notes.push(n);
+    });
+    var credited = Object.assign({}, spec);
+    if (notes.length) {
+      credited.credit = [spec.credit, notes.join('  ')].filter(Boolean).join('  ');
+    }
+
+    var canvas = mapCanvas(credited, legendFor, extent);
     var p = canvas.palette;
 
     clipSeq += 1;
@@ -2837,6 +2998,22 @@
     })]));
     canvas.svg.insertBefore(defs, canvas.svg.firstChild);
     canvas.layer.setAttribute('clip-path', 'url(#' + clipId + ')');
+
+    /* Sea first, then the land, then the units on top of it. What is left
+     * showing in the land tint is ground the source layer draws nothing
+     * for, and the key names it. */
+    if (outline.length) {
+      canvas.layer.appendChild(svgEl('rect', {
+        x: canvas.rect.x, y: canvas.rect.y,
+        width: canvas.rect.w, height: canvas.rect.h, fill: MAP_SEA,
+      }));
+      outline.forEach(function (feature) {
+        canvas.layer.appendChild(svgEl('path', {
+          d: geometryPath(feature.geometry, canvas.project),
+          fill: MAP_NOT_MAPPED, stroke: 'none',
+        }));
+      });
+    }
 
     features.forEach(function (feature) {
       var props = feature.properties || {};
