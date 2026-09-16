@@ -15,7 +15,17 @@ water quality guidelines.
 ## What it produces
 
 1. VES sounding curves, layered earth models and drilling preference tables
-2. Survey maps (site location, iso-resistivity, overburden thickness) and GIS layers
+2. Maps of the study area at four scales, and a section through the
+   ground beneath it: the study area itself with a national locator
+   inset; the regional geological and aquifer settings; a topographic
+   map with hillshade and contours, drawn from an elevation model the
+   operator supplies because none is bundled and none is downloaded;
+   and the survey's own subsurface - depth to bedrock, aquifer
+   thickness, bedrock surface elevation, aquifer protective capacity,
+   iso-resistivity at a measured electrode spacing, the interpreted
+   geoelectric section at the soundings' surveyed spacing and the
+   apparent-resistivity pseudo-section, which is the readings
+   themselves before any inversion has been believed. Plus GIS layers
 3. To-scale borehole design drawings with lithology and construction columns
 4. Pumping test analysis (Cooper-Jacob, Theis, recovery, step tests) with a
    recommended safe yield and pump setting depth

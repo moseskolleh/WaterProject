@@ -22,7 +22,16 @@ from typing import Any
 
 from ..config import Config
 from ..geo import infer_zone_for_sierra_leone
-from ..mapping import suitability_map
+from ..mapping import (
+    apparent_resistivity_pseudosection,
+    aquifer_thickness_map,
+    bedrock_elevation_map,
+    depth_to_bedrock_map,
+    geoelectric_section_along_traverse,
+    protective_capacity_map,
+    suitability_map,
+    traverse_profile,
+)
 from ..models import DataFlag, VESSounding
 from ..siting import assess_siting, suitability_map_points
 from ..utils import fmt_num, safe_slug
@@ -67,6 +76,21 @@ class GeophysicalReportInputs:
     interpretations: list[SiteInterpretation]
     figures_dir: Path
     site_map_path: Path | None = None
+    #: A real topographic map, drawn by
+    #: :func:`groundwater.mapping.terrain.plot_topographic_map` from an
+    #: elevation model the operator supplied. There is no default and none
+    #: is generated: the toolkit bundles no elevation data, and a report
+    #: that drew contours from nothing would be the worst figure in it.
+    topographic_map_path: Path | None = None
+    #: What the topographic map was drawn from, for its caption.
+    topographic_map_credit: str = ""
+    #: Ground surface along the traverse, from the levelled soundings.
+    ground_profile_path: Path | None = None
+    #: The study area at a readable scale, with its locator inset.
+    study_area_map_path: Path | None = None
+    #: Subsurface maps and sections built from this survey's own soundings,
+    #: as ``(path, caption)`` pairs in the order they should appear.
+    subsurface_figures: list[tuple[Path, str]] = field(default_factory=list)
     survey_photo_path: Path | None = None
     geology_text: str = ""
     reconnaissance_date: str = ""
@@ -150,8 +174,23 @@ def build_geophysical_report(
     # ---- 2 background / geology ---------------------------------------------
     rb.heading("2. Background and Geology of the Project Area", 1)
     rb.paragraph(_geology_for(district, inputs.geology_text), align="justify")
-    context_maps = context_map_figures(site, inputs.figures_dir, config.style)
+    # the soundings go on the study area map, so a reader can see the survey
+    # laid out in the area rather than having to hold two figures together
+    survey_overlay = [
+        {"lat": s.site.latlon[0], "lon": s.site.latlon[1],
+         "label": s.sounding_id, "kind": "VES point"}
+        for s in soundings if s.site.latlon is not None
+    ]
+    context_maps = context_map_figures(site, inputs.figures_dir, config.style,
+                                       points=survey_overlay)
     if context_maps:
+        if "study_area" in context_maps:
+            rb.figure(
+                context_maps["study_area"],
+                f"Study area at {community}, with the survey points and its "
+                "location in Sierra Leone inset. Boundaries from "
+                "geoBoundaries (CC BY 4.0).",
+            )
         rb.figure(
             context_maps["admin"],
             f"Location of {community}. Boundaries from geoBoundaries "
@@ -205,7 +244,29 @@ def build_geophysical_report(
         align="justify",
     )
     if inputs.site_map_path and Path(inputs.site_map_path).exists():
-        rb.figure(inputs.site_map_path, f"Topographic map of the project area at {community}.")
+        # Captioned for what it is. This said "Topographic map of the project
+        # area" over whatever figure a caller passed, and what callers pass is
+        # a survey point location map: no elevation, no contour, no relief.
+        # A reader looking for the valley on a topographic map and finding a
+        # scatter of pegs has been told something untrue about the evidence.
+        # A real topographic map needs an elevation model, which this toolkit
+        # does not carry; groundwater.mapping.terrain draws one from a model
+        # the operator supplies, and inputs.topographic_map_path is where it
+        # goes when there is one.
+        rb.figure(inputs.site_map_path,
+                  f"Survey point location map of the project area at {community}.")
+    if inputs.topographic_map_path and Path(inputs.topographic_map_path).exists():
+        rb.figure(
+            inputs.topographic_map_path,
+            f"Topographic map of the project area at {community}. "
+            f"{inputs.topographic_map_credit}".strip(),
+        )
+    if inputs.ground_profile_path and Path(inputs.ground_profile_path).exists():
+        rb.figure(
+            inputs.ground_profile_path,
+            "Ground surface along the survey traverse, from the elevation "
+            "recorded at each sounding.",
+        )
 
     rb.paragraph("Selection of traverse line for the geophysical survey", bold=True)
     rb.paragraph(
@@ -535,6 +596,103 @@ def _suitability_block(rb: ReportBuilder, inputs, site) -> None:
             "enclose no area - the figure says so on its own face when that "
             "happens.",
         )
+    _add_subsurface_figures(rb, inputs.soundings, inputs.interpretations,
+                            inputs, site)
+
+
+def _add_subsurface_figures(rb, soundings, interpretations, inputs, site) -> None:
+    """Maps of the ground under the site, from the soundings themselves.
+
+    Everything in this section is this survey's own measurement: the
+    regional geology and aquifer maps earlier in the report are national
+    datasets read at a point, and at 1:5,000,000 they cannot say what is
+    under one village. These can, within the ground the survey covered.
+
+    Each figure is attempted and skipped if the data will not support it,
+    because the reasons differ per figure and none of them should cost
+    the report the others: a survey whose curves never reached basement
+    has no depth-to-bedrock map but still has an aquifer thickness map,
+    and one that recorded no elevations has both but no bedrock surface.
+    """
+    figures_dir = Path(inputs.figures_dir)
+    placed = [i for i in interpretations if i.site_easting is not None
+              and i.site_northing is not None]
+    if len(placed) < 3 and not inputs.subsurface_figures:
+        return
+    zone = site.utm_zone or (
+        infer_zone_for_sierra_leone(placed[0].site_easting) if placed else 28
+    )
+    slug = _site_slug(site)
+    made: list[tuple[Path, str]] = []
+    plan = (
+        (depth_to_bedrock_map, "depth_to_bedrock",
+         ("Depth to bedrock across the surveyed ground, from the layered "
+          "models. The surface is blanked outside the hull of the soundings.")),
+        (aquifer_thickness_map, "aquifer_thickness",
+         ("Interpreted thickness of the weathered and fractured zone - the "
+          "section a borehole is completed in.")),
+        (bedrock_elevation_map, "bedrock_elevation",
+         ("The bedrock surface as a landform, from the ground elevation "
+          "recorded at each sounding less its depth to basement. A low in "
+          "this surface is a buried valley, which basement groundwater "
+          "drains towards.")),
+        (protective_capacity_map, "protective_capacity",
+         ("Protective capacity of the cover over the aquifer, from the "
+          "longitudinal conductance of the overlying layers. It rates how "
+          "well the ground above the aquifer resists downward contamination; "
+          "it says nothing about yield.")),
+    )
+    for fn, name, caption in plan:
+        try:
+            made.append((fn(placed, zone,
+                            path=figures_dir / f"{name}_{slug}.png"), caption))
+        except ValueError:
+            continue  # the reason is per-figure and the others still stand
+    try:
+        made.append((
+            geoelectric_section_along_traverse(
+                placed, path=figures_dir / f"geoelectric_section_{slug}.png"),
+            ("Interpreted geoelectric section along the traverse, with the "
+             "soundings at their surveyed spacing rather than evenly spaced. "
+             "Colour is layer resistivity; the dashed lines correlate "
+             "boundaries between neighbouring soundings and are an "
+             "interpretation, not a measured contact."),
+        ))
+    except (ValueError, KeyError):
+        pass
+    try:
+        profile = traverse_profile(placed)
+        pseudo = apparent_resistivity_pseudosection(
+            soundings, profile, path=figures_dir / f"pseudosection_{slug}.png")
+        caption = (
+            "Apparent resistivity along the traverse, as measured. Unlike "
+            "every other section in this report it involves no inversion: "
+            "each point is a reading at the station and electrode spacing "
+            "it was taken with. AB/2 is that spacing, not a depth."
+        )
+        if not profile.is_collinear:
+            caption += (
+                f" The soundings sit up to {profile.max_offset_m:.0f} m off "
+                "the profile line, so this section cuts across the survey "
+                "rather than along it."
+            )
+        made.append((pseudo, caption))
+    except (ValueError, KeyError):
+        pass
+    made.extend(inputs.subsurface_figures)
+    if not made:
+        return
+    rb.heading("Subsurface maps from the survey", 2)
+    rb.paragraph(
+        "The maps in this section are drawn from the soundings themselves "
+        "rather than from a national dataset, so they carry the survey's own "
+        "resolution. Each interpolated surface is blanked outside the ground "
+        "the soundings enclose: a contour beyond the last peg is the "
+        "interpolator continuing a trend, and a borehole gets sited on it.",
+        align="justify",
+    )
+    for path, caption in made:
+        rb.figure(path, caption)
 
 
 def _executive_summary(

@@ -188,7 +188,7 @@ def test_context_maps_for_reports(tmp_path):
     site = SiteMetadata(community="Kuntolo", district="Bombali",
                         easting=178000, northing=1000000, utm_zone=29)
     maps = context_map_figures(site, tmp_path)
-    assert set(maps) == {"admin", "geology", "hydrogeology"}
+    assert set(maps) == {"study_area", "admin", "geology", "hydrogeology"}
     assert all(p.exists() for p in maps.values())
 
 
@@ -203,7 +203,7 @@ def test_context_maps_fall_back_to_the_recorded_area(tmp_path):
     assert window.label == "Port Loko district"
 
     maps = context_map_figures(site, tmp_path)
-    assert set(maps) == {"admin", "geology", "hydrogeology"}
+    assert set(maps) == {"study_area", "admin", "geology", "hydrogeology"}
     assert all(p.exists() for p in maps.values())
 
 
@@ -217,14 +217,22 @@ def test_area_maps_reach_every_report_kind(tmp_path):
     site = SiteMetadata(community="Kuntoloh", district="Port Loko")
     rb = ReportBuilder(None, title="T")
     maps = add_area_section(rb, site, tmp_path)
-    assert set(maps) == {"admin", "geology", "hydrogeology"}
+    assert set(maps) == {"study_area", "admin", "geology", "hydrogeology"}
     out = tmp_path / "area.docx"
     rb.save(out)
     doc = Document(out)
-    assert len(doc.inline_shapes) == 1
+    # the study area at a readable scale, then the national locator. The
+    # aquifer and geological settings only come with detail=True.
+    assert len(doc.inline_shapes) == 2
     text = "\n".join(p.text for p in doc.paragraphs)
     assert "Port Loko district" in text
     assert "No GPS position" in text
+
+    detailed = ReportBuilder(None, title="T")
+    add_area_section(detailed, site, tmp_path, detail=True)
+    detailed_out = tmp_path / "area_detail.docx"
+    detailed.save(detailed_out)
+    assert len(Document(detailed_out).inline_shapes) == 4
 
 
 def test_handover_report_embeds_location_map(tmp_path):

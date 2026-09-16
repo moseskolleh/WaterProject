@@ -130,11 +130,51 @@ def test_handover_flow(app):
 
 
 def test_maps_flow(app):
+    """With no position and no area recorded, the national maps still draw."""
     app.button(key="run_maps").click()
     app.run()
     assert not app.exception
     paths = app.session_state["map_paths"]
-    assert len(paths) >= 2 and all(p.exists() for p in paths)
+    assert len(paths) >= 3 and all(p.exists() for p in paths)
+    # a study area needs somewhere to centre on, and the sidebar has
+    # recorded neither a position nor a district, so it is skipped rather
+    # than drawn over the whole country
+    assert not any("study_area" in p.name for p in paths)
+
+
+def test_a_recorded_district_is_enough_for_a_study_area_map(app):
+    """No GPS fix is not no map: the district is still an area worth drawing."""
+    app.session_state["meta_district"] = "Port Loko"
+    app.session_state["meta_community"] = "Kuntoloh"
+    app.run()
+    app.button(key="run_maps").click()
+    app.run()
+    assert not app.exception
+    paths = app.session_state["map_paths"]
+    study = [p for p in paths if "study_area" in p.name]
+    assert study and study[0].exists()
+
+
+def test_subsurface_maps_flow(app):
+    """The maps built from the survey's own soundings, not from a dataset."""
+    app.selectbox(key="sample_ves").select("rokel/rokel_ves.xlsx")
+    app.run()
+    assert not app.exception
+    app.button(key="run_subsurface").click()
+    app.run()
+    assert not app.exception
+    made = [Path(p) for p in app.session_state.get("subsurface_paths", [])]
+    assert made and all(p.exists() for p in made)
+    # Rokel has two soundings, so the interpolated surfaces cannot be
+    # built - they need three - and the page says so rather than failing.
+    # What two soundings do support is the survey point map and a section.
+    assert any("site_location" in p.name for p in made)
+    assert Path(app.session_state["section_path"]).exists()
+    traverse = app.session_state["traverse"]
+    assert {"length_m", "bearing_deg", "max_offset_m"} <= set(traverse)
+    # and the two Rokel points really are 20 km apart, which is what the
+    # consistency checker flags and what the section now has to show
+    assert traverse["length_m"] > 20_000
 
 
 def test_project_state_tracked(app):

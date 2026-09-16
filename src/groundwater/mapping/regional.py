@@ -471,6 +471,11 @@ def _mask_outside_country(ax, outline: AdminArea, style: HouseStyle) -> None:
     )
 
 
+def style_background(ax) -> str:
+    """The figure's own background colour, for text plates drawn over data."""
+    return ax.figure.get_facecolor()
+
+
 def _geo_axes_finish(ax, mean_lat: float, credit: str) -> None:
     """Aspect, scale bar, north arrow, grid and attribution."""
     ax.set_aspect(1.0 / math.cos(math.radians(mean_lat)))
@@ -490,7 +495,10 @@ def _geo_axes_finish(ax, mean_lat: float, credit: str) -> None:
             break
     bar_deg = nice / km_per_deg
     bx = x0 + (x1 - x0) * 0.06
-    by = y0 + (y1 - y0) * 0.05
+    # lifted clear of however many lines the attribution wraps to; a two-source
+    # credit is two lines, and the bar used to be struck through by them
+    credit_lines = textwrap.fill(credit, 104).count("\n") + 1
+    by = y0 + (y1 - y0) * (0.045 + 0.030 * credit_lines)
     ax.plot([bx, bx + bar_deg], [by, by], color="#222222", lw=3,
             solid_capstyle="butt", zorder=9)
     ax.plot([bx, bx + bar_deg / 2], [by, by], color="white", lw=1.4,
@@ -504,9 +512,20 @@ def _geo_axes_finish(ax, mean_lat: float, credit: str) -> None:
                 arrowprops=dict(arrowstyle="-|>", color="#222222", lw=1.6))
     ax.text(nx, ny + dy * 1.15, "N", ha="center", fontsize=10,
             fontweight="bold")
-    ax.text(0.99, 0.005, credit, transform=ax.transAxes, fontsize=6.0,
-            ha="right", va="bottom", color="#888888", style="italic",
-            zorder=9)
+    # Wrapped to the frame. A two-source credit is about 140 characters and
+    # runs a third of a figure-width past the left spine; the tight bounding
+    # box at save time then grows the canvas to hold it, which left every
+    # local geology and aquifer map sitting in the right-hand half of its own
+    # figure with an empty gutter beside it.
+    # On a white map the credit reads as grey italic against nothing. On a
+    # filled one - an aquifer map, a hypsometric tint - it lands on top of
+    # the data and neither can be read. A faint plate behind it costs the
+    # white maps nothing and makes the filled ones legible.
+    ax.text(0.99, 0.005, textwrap.fill(credit, 104), transform=ax.transAxes,
+            fontsize=6.0, ha="right", va="bottom", color="#666666",
+            style="italic", zorder=9, linespacing=1.35,
+            bbox=dict(boxstyle="square,pad=0.35", fc=style_background(ax),
+                      ec="none", alpha=0.82))
 
 
 def _mark_site(ax, site: SiteMetadata, color: str) -> tuple[float, float] | None:
@@ -534,15 +553,35 @@ def _plot_units_map(
     admin_path: str | Path | None,
     title: str | None,
     label_with_code: bool,
+    source_scale: int | None,
+    publisher_note: str = "",
 ):
     """Shared renderer for the unit-coloured maps (geology, hydrogeology)."""
     style = style or HouseStyle()
     outline, _ = load_admin(admin_path)
+    # The window is settled before anything is drawn, because it decides
+    # which units are on this map. Drawing them all first and zooming
+    # afterwards built the legend from the whole country: a 10 km window
+    # over the Freetown peninsula listed Ordovician, Silurian and
+    # Precambrian formations alongside the two units actually under the
+    # site, and a reader has no way to tell which two those were.
+    window = area_window(site, radius_km, admin_path) if radius_km else None
+    if window is not None:
+        dlat = window.radius_km / 111.32
+        dlon = window.radius_km / (111.32 * math.cos(math.radians(window.lat)))
+        box = (window.lon - dlon, window.lat - dlat,
+               window.lon + dlon, window.lat + dlat)
+    else:
+        all_pts = np.concatenate(outline.rings)
+        box = (all_pts[:, 0].min() - 0.15, all_pts[:, 1].min() - 0.12,
+               all_pts[:, 0].max() + 0.15, all_pts[:, 1].max() + 0.12)
+    in_view = [unit for unit in units if _ring_in_box(unit.ring, box)]
+
     with figure_context(style):
         fig, ax = plt.subplots(figsize=(style.figure_width_in, 5.6))
         legend_handles: dict[str, PathPatch] = {}
         legend_order: dict[str, tuple[int, str]] = {}
-        for unit in units:
+        for unit in in_view:
             patch = plt.Polygon(
                 unit.ring, closed=True, facecolor=unit.color,
                 edgecolor="#666666", lw=0.4, zorder=2,
@@ -559,17 +598,8 @@ def _plot_units_map(
             legend_order.setdefault(label, (era_rank, unit.glg))
 
         _mark_site(ax, site, "#C1272D") if site else None
-        window = area_window(site, radius_km, admin_path) if radius_km else None
-        if window is not None:
-            lon, lat = window.lon, window.lat
-            dlat = window.radius_km / 111.32
-            dlon = window.radius_km / (111.32 * math.cos(math.radians(lat)))
-            ax.set_xlim(lon - dlon, lon + dlon)
-            ax.set_ylim(lat - dlat, lat + dlat)
-        else:
-            all_pts = np.concatenate(outline.rings)
-            ax.set_xlim(all_pts[:, 0].min() - 0.15, all_pts[:, 0].max() + 0.15)
-            ax.set_ylim(all_pts[:, 1].min() - 0.12, all_pts[:, 1].max() + 0.12)
+        ax.set_xlim(box[0], box[2])
+        ax.set_ylim(box[1], box[3])
 
         _mask_outside_country(ax, outline, style)
         for ring in outline.rings:
@@ -598,6 +628,11 @@ def _plot_units_map(
             else:
                 title = f"{scope_word} map of Sierra Leone"
         ax.set_title(title)
+        caveat = _scale_caveat(radius_km, source_scale, publisher_note)
+        if caveat:
+            ax.text(0.5, -0.125, textwrap.fill(caveat, 96),
+                    transform=ax.transAxes, ha="center", va="top",
+                    fontsize=6.5, color="#8A5A00")
         fig.tight_layout()
         if path is not None:
             return save_figure(fig, path, style)
@@ -624,7 +659,7 @@ def plot_geological_map(
         "Geological units (USGS)",
         "Geological",
         site, path, style, radius_km, admin_path, title,
-        label_with_code=True,
+        label_with_code=True, source_scale=_USGS_SOURCE_SCALE,
     )
 
 
@@ -644,7 +679,8 @@ def plot_hydrogeology_map(
         "Aquifer type and productivity (BGS)",
         "Hydrogeological",
         site, path, style, radius_km, admin_path, title,
-        label_with_code=False,
+        label_with_code=False, source_scale=_BGS_SOURCE_SCALE,
+        publisher_note=_BGS_PUBLISHER_NOTE,
     )
 
 
@@ -843,3 +879,432 @@ def plot_coverage_choropleth(
         if path is not None:
             return save_figure(fig, path, style)
         return fig
+
+
+# Both bundled unit datasets are published at 1:5,000,000. At that scale a
+# 0.5 mm drafting line is 2.5 km wide on the ground, so a 40 km window - the
+# toolkit's own default - is reading a contact to a fortieth of the frame it
+# is drawn in. The zoom is still worth having: it is how a reader sees which
+# unit the site sits on. What it must not do is let a crisp polygon edge
+# imply a contact somebody walked, so below the threshold the figure says
+# what it is made of.
+_USGS_SOURCE_SCALE = 5_000_000
+_BGS_SOURCE_SCALE = 5_000_000
+_HONEST_WINDOW_KM = 60.0
+
+#: The BGS Africa Groundwater Atlas user guide (OR/21/063, section 2.2) on
+#: what its country maps are for. Quoted rather than paraphrased: it is the
+#: publisher's own limit on its own data, and it is more use to a reader
+#: deciding what to trust than any sentence this toolkit could write.
+_BGS_PUBLISHER_NOTE = (
+    'Its publisher states these maps are "not suitable for providing '
+    'detailed information on geology and hydrogeology at a sub-national '
+    '(e.g. catchment) scale".'
+)
+
+
+def _scale_caveat(
+    radius_km: float | None,
+    source_scale: int | None,
+    publisher_note: str = "",
+) -> str:
+    """The note a small window over a small-scale dataset has earned.
+
+    Returns an empty string for a national map, which is the scale the
+    data was published at and needs no apology.
+    """
+    if radius_km is None or source_scale is None or radius_km > _HONEST_WINDOW_KM:
+        return ""
+    line_km = source_scale * 0.0005 / 1000.0  # a 0.5 mm line on the sheet
+    share = line_km / (2 * radius_km) * 100
+    note = (
+        f"Drawn from a 1:{source_scale:,} dataset: a boundary on this map is "
+        f"placed to roughly {line_km:g} km, which is {share:.0f}% of this "
+        f"{2 * radius_km:g} km window. Read the contacts as regional "
+        "context, not as mapped ground."
+    )
+    return f"{note} {publisher_note}".strip()
+
+
+def _corner_occupancy(
+    ax, lonlats: list[tuple[float, float]]
+) -> dict[str, int]:
+    """How many drawn points fall in each corner of the axes.
+
+    The locator inset and the legend both sit on top of the map, so
+    where they go has to depend on where the data is not. Fixing them to
+    a corner drew a survey point underneath the inset on the first real
+    site this was tried on.
+    """
+    x0, x1 = ax.get_xlim()
+    y0, y1 = ax.get_ylim()
+    counts = {"lower right": 0, "upper left": 0, "lower left": 0, "upper right": 0}
+    for lon, lat in lonlats:
+        if not (x0 <= lon <= x1 and y0 <= lat <= y1):
+            continue
+        fx = (lon - x0) / (x1 - x0)
+        fy = (lat - y0) / (y1 - y0)
+        # the corner boxes the inset and legend actually occupy
+        if fx > 0.62 and fy < 0.42:
+            counts["lower right"] += 1
+        if fx < 0.38 and fy > 0.58:
+            counts["upper left"] += 1
+        if fx < 0.38 and fy < 0.42:
+            counts["lower left"] += 1
+        if fx > 0.62 and fy > 0.58:
+            counts["upper right"] += 1
+    return counts
+
+
+#: Where each corner's inset sits, in axes fractions.
+_INSET_BOXES = {
+    "lower right": (0.695, 0.02, 0.29, 0.34),
+    "upper left": (0.015, 0.63, 0.29, 0.34),
+    "lower left": (0.015, 0.02, 0.29, 0.34),
+    "upper right": (0.695, 0.63, 0.29, 0.34),
+}
+
+
+def _locator_inset(ax, outline: AdminArea, window: AreaWindow,
+                   districts: list[AdminArea], style: HouseStyle,
+                   corner: str = "lower right") -> None:
+    """A thumbnail of the country with the study area marked on it.
+
+    A study-area map at 20 km across is unreadable as a location unless
+    the reader already knows the district. The inset is what makes the
+    figure answer "where is this?" as well as "what is here?", and it is
+    the one piece of furniture the existing maps had no equivalent of.
+    """
+    inset = ax.inset_axes(_INSET_BOXES.get(corner, _INSET_BOXES["lower right"]))
+    for district in districts:
+        for ring in district.rings:
+            inset.add_patch(
+                plt.Polygon(ring, closed=True, facecolor="#EEF3F8",
+                            edgecolor="#B6C6D4", lw=0.3, zorder=2)
+            )
+    for ring in outline.rings:
+        inset.plot(ring[:, 0], ring[:, 1], color="#333333", lw=0.8, zorder=4)
+    # the study area as a box where it is big enough to see, a dot where not
+    dlat = window.radius_km / 111.32
+    dlon = window.radius_km / (111.32 * math.cos(math.radians(window.lat)))
+    if max(dlat, dlon) > 0.09:
+        inset.add_patch(
+            plt.Rectangle(
+                (window.lon - dlon, window.lat - dlat), 2 * dlon, 2 * dlat,
+                facecolor="none", edgecolor="#C1272D", lw=1.4, zorder=6,
+            )
+        )
+    else:
+        inset.plot(window.lon, window.lat, "o", ms=5, mfc="#C1272D",
+                   mec="white", mew=0.9, zorder=6)
+    pts = np.concatenate(outline.rings)
+    inset.set_xlim(pts[:, 0].min() - 0.1, pts[:, 0].max() + 0.1)
+    inset.set_ylim(pts[:, 1].min() - 0.1, pts[:, 1].max() + 0.1)
+    inset.set_aspect(1.0 / math.cos(math.radians(float(np.mean(inset.get_ylim())))))
+    inset.set_xticks([])
+    inset.set_yticks([])
+    inset.grid(False)
+    for spine in inset.spines.values():
+        spine.set_edgecolor("#888888")
+        spine.set_linewidth(0.8)
+    inset.patch.set_facecolor(style.background)
+    # opaque: at 0.95 the chiefdom names underneath showed through the
+    # thumbnail as ghost text across Sierra Leone
+    inset.patch.set_alpha(1.0)
+    inset.set_title("Sierra Leone", fontsize=6.5, pad=2.0)
+
+
+def plot_study_area_map(
+    site: SiteMetadata | None = None,
+    path: str | Path | None = None,
+    style: HouseStyle | None = None,
+    radius_km: float = 25.0,
+    points: list[dict] | None = None,
+    admin_path: str | Path | None = None,
+    chiefdom_path: str | Path | None = None,
+    title: str | None = None,
+    show_geology: bool = False,
+    geology_path: str | Path | None = None,
+):
+    """The study area at a readable scale, with a locator inset.
+
+    This is the map a report opens on. The national location map says
+    which district; this says what the study area itself contains - the
+    chiefdom boundaries around it, the site, the survey points, any
+    existing water points found nearby - at a scale where the distances
+    between them can be read off the scale bar.
+
+    ``points`` are dicts ``{lat, lon, label, kind}``. ``kind`` chooses
+    the marker: ``VES point``, ``borehole``, ``water point`` or
+    ``settlement``; anything else is drawn as a plain dot and named in
+    the legend under its own word, because a map that silently reuses one
+    marker for two things is a map that will be misread.
+
+    ``show_geology`` tints the area with the geological units behind
+    everything else. It is off by default: at 25 km the 1:5M units are
+    large flat washes, and the study-area map's job is the local
+    furniture, not the regional geology, which has its own figure.
+    """
+    style = style or HouseStyle()
+    window = area_window(site, radius_km, admin_path, chiefdom_path)
+    if window is None:
+        raise ValueError(
+            "a study area map needs somewhere to centre on: a GPS position, "
+            "a chiefdom or a district. None of the three is recorded for this "
+            "site, so there is no study area to draw."
+        )
+    outline, districts = load_admin(admin_path)
+    chiefdoms = load_chiefdoms(chiefdom_path)
+    dlat = window.radius_km / 111.32
+    dlon = window.radius_km / (111.32 * math.cos(math.radians(window.lat)))
+    box = (window.lon - dlon, window.lat - dlat,
+           window.lon + dlon, window.lat + dlat)
+
+    with figure_context(style):
+        fig, ax = plt.subplots(figsize=(style.figure_width_in, 5.8))
+        ax.set_xlim(box[0], box[2])
+        ax.set_ylim(box[1], box[3])
+
+        credit = ADMIN_CREDIT
+        if show_geology:
+            for unit in load_geology(geology_path):
+                if not _ring_in_box(unit.ring, box):
+                    continue
+                ax.add_patch(
+                    plt.Polygon(unit.ring, closed=True, facecolor=unit.color,
+                                edgecolor="none", alpha=0.45, zorder=1)
+                )
+            credit = f"{GEOLOGY_CREDIT}. {credit}"
+
+        # chiefdoms first: they are the boundaries a community is found by
+        placed_labels: list[tuple[float, float]] = []
+        for area in chiefdoms:
+            drawn = [r for r in area.rings if _ring_in_box(r, box)]
+            for ring in drawn:
+                ax.add_patch(
+                    plt.Polygon(ring, closed=True, facecolor="none",
+                                edgecolor="#7E93A6", lw=0.8, zorder=3)
+                )
+            spot = _label_spot(drawn, box)
+            if spot is not None and _clear_of(spot, placed_labels, box):
+                placed_labels.append(spot)
+                # one label per chiefdom, on the part of it that is in view.
+                # Labelling every ring wrote "Kaffu Bullom" five times across
+                # the top of the first map this drew: the chiefdom reaches the
+                # window as five islands, and each one asked for its own name.
+                ax.annotate(area.name, xy=spot, ha="center", va="center",
+                            fontsize=6.5, color="#5A6B7A", zorder=4,
+                            fontstyle="italic")
+        for district in districts:
+            for ring in district.rings:
+                if _ring_in_box(ring, box):
+                    ax.plot(ring[:, 0], ring[:, 1], color="#44586B", lw=1.3,
+                            zorder=5)
+        for ring in outline.rings:
+            if _ring_in_box(ring, box):
+                ax.plot(ring[:, 0], ring[:, 1], color="#222222", lw=1.8,
+                        zorder=6)
+
+        handles = _plot_area_points(ax, points or [], style)
+        if site is not None and window.exact:
+            _mark_site(ax, site, "#C1272D")
+
+        _geo_axes_finish(ax, window.lat, credit)
+        # the scale bar owns the lower left and the north arrow the upper
+        # right, so the inset and the legend share what is left, emptiest
+        # first
+        drawn_at = [
+            (p.get("lon"), p.get("lat")) for p in (points or [])
+            if p.get("lon") is not None and p.get("lat") is not None
+        ]
+        if site is not None and window.exact and site.latlon is not None:
+            drawn_at.append((site.latlon[1], site.latlon[0]))
+        # the chiefdom names count as occupancy too: a map with no survey
+        # points on it still has a corner full of writing, and the inset
+        # put itself on top of four district names on the first one drawn
+        occupancy = _corner_occupancy(ax, drawn_at + placed_labels)
+        free = sorted(("lower right", "upper left"), key=lambda c: occupancy[c])
+        _locator_inset(ax, outline, window, districts, style, corner=free[0])
+        if handles:
+            # lifted clear of the attribution line, which sits on the axes
+            # floor and which the legend box otherwise lands on top of
+            lift = 0.035 if free[1].startswith("lower") else 0.0
+            ax.legend(
+                handles.values(), handles.keys(), loc=free[1],
+                bbox_to_anchor=(0.0, lift, 1.0, 1.0 - lift),
+                fontsize=7, framealpha=0.95,
+            )
+        if title is None:
+            title = f"Study area - {window.label}"
+            if not window.exact:
+                title += " (no site position recorded)"
+        ax.set_title(title)
+        if show_geology:
+            note = _scale_caveat(radius_km, _USGS_SOURCE_SCALE)
+            if note:
+                # wrapped by hand: an unwrapped line under the axes is one
+                # long line, and the tight bounding box at save time grows
+                # the canvas sideways to hold it, leaving the map off-centre
+                # in its own figure
+                ax.text(0.5, -0.125, textwrap.fill(note, 96),
+                        transform=ax.transAxes, ha="center", va="top",
+                        fontsize=6.5, color="#8A5A00")
+        fig.tight_layout()
+        if path is not None:
+            return save_figure(fig, path, style)
+        return fig
+
+
+#: Marker and colour per point kind on the study-area map.
+_AREA_MARKERS = {
+    "VES point": ("^", "#1F5C8B"),
+    "borehole": ("o", "#0F7B3F"),
+    "water point": ("s", "#7B5AA6"),
+    "settlement": (".", "#555555"),
+}
+
+
+def _plot_area_points(ax, points: list[dict], style: HouseStyle) -> dict:
+    """Draw the study-area overlays, one legend entry per kind."""
+    handles: dict[str, object] = {}
+    for point in points:
+        lon, lat = point.get("lon"), point.get("lat")
+        if lon is None or lat is None:
+            continue
+        kind = str(point.get("kind") or "point")
+        marker, colour = _AREA_MARKERS.get(kind, ("D", style.secondary_color))
+        handle, = ax.plot(
+            lon, lat, marker, ms=8 if marker != "." else 10, mfc=colour,
+            mec="white", mew=0.9, zorder=7,
+        )
+        handles.setdefault(kind, handle)
+        label = point.get("label")
+        if label:
+            # below the marker, because the site star labels itself above
+            # its own point and the two collided wherever a sounding sat on
+            # the wellhead - which is most surveys
+            ax.annotate(str(label), xy=(lon, lat), xytext=(7, -11),
+                        textcoords="offset points", fontsize=7.5,
+                        color="#222222", zorder=8)
+    return handles
+
+
+def _clear_of(
+    spot: tuple[float, float],
+    placed: list[tuple[float, float]],
+    box: tuple[float, float, float, float],
+    min_sep_frac: float = 0.055,
+) -> bool:
+    """Is there room to write another name here?
+
+    Matplotlib will happily draw two labels through each other, and on a
+    window crossing the Western Area the chiefdoms are small enough that
+    three or four names landed in the same centimetre. A name that cannot
+    be read is worse than no name: the reader cannot tell which polygon
+    the legible one belongs to either.
+    """
+    gap = max(box[2] - box[0], box[3] - box[1]) * min_sep_frac
+    return all(
+        math.hypot(spot[0] - other[0], spot[1] - other[1]) > gap
+        for other in placed
+    )
+
+
+def _label_spot(
+    rings: list[np.ndarray], box: tuple[float, float, float, float]
+) -> tuple[float, float] | None:
+    """Where to write an area's name, given only the parts of it in view.
+
+    The centroid of the largest ring is the right answer for a whole
+    country and the wrong one for a chiefdom clipped by the window: it
+    lands outside the frame, and the name is either not drawn or drawn
+    on the edge pointing at nothing. The mean of the vertices that are
+    actually inside the window is inside the window by construction.
+    """
+    inside = [
+        v for ring in rings for v in ring
+        if box[0] < v[0] < box[2] and box[1] < v[1] < box[3]
+    ]
+    if len(inside) < 3:
+        return None
+    pts = np.asarray(inside, dtype=float)
+    return float(pts[:, 0].mean()), float(pts[:, 1].mean())
+
+
+def _ring_in_box(ring: np.ndarray, box: tuple[float, float, float, float]) -> bool:
+    """Does a ring actually reach into the window?
+
+    The extents are tested first because they reject almost everything
+    almost free - drawing all 166 chiefdoms and the whole geological map
+    into a 25 km window and letting matplotlib discard them costs a
+    second a figure, and the reports draw several.
+
+    What follows the extent test is the part that matters for the legend.
+    Two rectangles can overlap while the shapes inside them do not touch,
+    and a legend built on the cheap test alone named a consolidated
+    sedimentary aquifer on a map of the Freetown peninsula because that
+    unit's bounding box reaches across the country the polygon does not.
+    So: a vertex inside the window, a window corner inside the ring, or
+    an edge of one crossing an edge of the other. Those three are the
+    whole of it.
+    """
+    lon_min, lat_min, lon_max, lat_max = box
+    if not (
+        ring[:, 0].max() >= lon_min and ring[:, 0].min() <= lon_max
+        and ring[:, 1].max() >= lat_min and ring[:, 1].min() <= lat_max
+    ):
+        return False
+    inside = (
+        (ring[:, 0] >= lon_min) & (ring[:, 0] <= lon_max)
+        & (ring[:, 1] >= lat_min) & (ring[:, 1] <= lat_max)
+    )
+    if inside.any():
+        return True
+    corners = (
+        (lon_min, lat_min), (lon_max, lat_min),
+        (lon_max, lat_max), (lon_min, lat_max),
+    )
+    if any(_point_in_ring(lon, lat, ring) for lon, lat in corners):
+        return True
+    return _ring_crosses_box_edge(ring, box)
+
+
+def _ring_crosses_box_edge(
+    ring: np.ndarray, box: tuple[float, float, float, float]
+) -> bool:
+    """A ring that slices the window without a vertex landing in it.
+
+    The remaining case: a long thin polygon - a dyke, a river, a coastal
+    strip - passing clean through the frame. Its segments are tested
+    against the four sides of the window, vectorised, because a national
+    geology layer holds tens of thousands of segments and this runs once
+    per unit per figure.
+    """
+    lon_min, lat_min, lon_max, lat_max = box
+    p1 = ring[:-1]
+    p2 = ring[1:]
+    sides = (
+        ((lon_min, lat_min), (lon_max, lat_min)),
+        ((lon_max, lat_min), (lon_max, lat_max)),
+        ((lon_max, lat_max), (lon_min, lat_max)),
+        ((lon_min, lat_max), (lon_min, lat_min)),
+    )
+    for (ax_, ay), (bx, by) in sides:
+        q1 = np.array([ax_, ay])
+        q2 = np.array([bx, by])
+        d1 = _cross_sign(q1, q2, p1)
+        d2 = _cross_sign(q1, q2, p2)
+        d3 = _cross_sign(p1, p2, q1)
+        d4 = _cross_sign(p1, p2, q2)
+        if np.any((d1 * d2 < 0) & (d3 * d4 < 0)):
+            return True
+    return False
+
+
+def _cross_sign(a, b, c) -> np.ndarray:
+    """Which side of the line a-b each point c falls on."""
+    a = np.atleast_2d(np.asarray(a, dtype=float))
+    b = np.atleast_2d(np.asarray(b, dtype=float))
+    c = np.atleast_2d(np.asarray(c, dtype=float))
+    return ((b[:, 0] - a[:, 0]) * (c[:, 1] - a[:, 1])
+            - (b[:, 1] - a[:, 1]) * (c[:, 0] - a[:, 0]))

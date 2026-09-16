@@ -228,14 +228,63 @@ shows what is attached before you build it.
 
 ## 10. Site maps
 
-Generates report-ready context maps from the sidebar site details:
-an administrative location map (districts, with yours highlighted),
-the geological setting (USGS Geologic Map of Africa) and the aquifer
-type and productivity map (BGS Africa Groundwater Atlas), nationally
-or zoomed to the site. Enter the UTM coordinates in the sidebar to
-place the site star. Every figure carries its data attribution, and
-the same maps embed automatically into the geophysical survey and
-handover reports when the site has coordinates.
+Four tabs, from the country down to the rock under the borehole.
+Enter the UTM coordinates in the sidebar to place the site star; the
+window slider sets how much ground the local maps cover. Every figure
+carries its data attribution, and the study area, geological and
+aquifer maps embed automatically into the geophysical survey and
+handover reports.
+
+**Study area & setting** - the study area at a scale where the
+distances can be read off the scale bar, with the chiefdom boundaries
+around the site, the survey points, any water points already looked
+up, and a thumbnail of the country showing where in it this is. Beside
+it, the administrative location map, the geological setting (USGS
+Geologic Map of Africa) and the aquifer type and productivity map (BGS
+Africa Groundwater Atlas). Both of those datasets are published at
+1:5,000,000, so on a window smaller than 120 km across the figure says
+on its own face how far a boundary on it can be trusted - the BGS user
+guide's own words are that its maps are "not suitable for providing
+detailed information on geology and hydrogeology at a sub-national
+(e.g. catchment) scale". Zoom them for context, not for a contact.
+
+**Topography** - no elevation model is bundled with this toolkit and
+none is downloaded, so the topographic map is drawn from a file you
+supply and names its source on the figure. Three formats are read
+without GDAL: an SRTM tile (`.hgt`, free from NASA Earthdata; keep the
+filename, because the file carries no header saying where on Earth it
+is), an ESRI ASCII grid (`.asc`, what any GIS exports) or
+longitude/latitude/elevation columns (`.xyz`, `.csv`). A GeoTIFF
+converts with `gdal_translate -of AAIGrid`. You get a hypsometric
+tint, hillshade, labelled contours at an interval chosen for the
+relief, and your soundings as spot heights over it. Below that, the
+ground profile along the traverse, which needs no elevation model at
+all: it is the elevation recorded at each sounding, in order along the
+line, measured at the pegs and straight between them.
+
+**Subsurface** - maps of this site rather than of the country, every
+one drawn from the soundings themselves: depth to bedrock, interpreted
+aquifer thickness, the bedrock surface as a landform (a low in it is a
+buried valley, which basement groundwater drains towards), aquifer
+protective capacity in its standard longitudinal-conductance classes,
+transverse resistance, and an iso-resistivity map at whichever
+electrode spacing every sounding measured. Then two sections along the
+traverse: the interpreted geoelectric section, drawn at the soundings'
+surveyed spacing rather than evenly spaced, and the
+apparent-resistivity pseudo-section, which involves no inversion at
+all - each point is a reading at the station and spacing it was taken
+with, so it is still right if the inversion is wrong. Its vertical
+axis is AB/2, the electrode half-spacing, and is labelled as such
+rather than converted to a depth.
+
+Every interpolated surface is blanked outside the ground the soundings
+enclose. A contour past the last peg is the interpolator continuing a
+trend, and somebody will site a borehole on it. Where the soundings
+sit too far off the best-fit line to read as one section, the page and
+the figure both say so rather than letting the picture imply a
+traverse nobody walked.
+
+**Interactive** - the GeoLibre project file (see below).
 
 ## 10a. Area analysis: where to drill, and whether to drill at all
 

@@ -1160,6 +1160,17 @@
         el('p.muted', C.POPULATION_CREDIT),
       ]) : null,
 
+      studyAreaNode() ? card('Study area', [
+        el('p.muted', 'The study area at a scale where the distances can be ' +
+          'read off the scale bar: the chiefdom boundaries around the site, ' +
+          'the survey points and any water points already found, with a ' +
+          'thumbnail of the country showing where in it this is. It is the ' +
+          'map the geophysical survey and handover reports open on.'),
+        charts.figure(studyAreaNode(), 'Study area with its location in ' +
+          'Sierra Leone inset. Boundaries from geoBoundaries (CC BY 4.0).',
+          { filename: 'study_area_map' }),
+      ]) : null,
+
       card('Geology and aquifers', [
         el('p.muted', 'Report-ready context from freely licensed datasets: ' +
           'geology from the USGS Geologic Map of Africa, and aquifer type and ' +
@@ -1367,6 +1378,59 @@
       var props = feature.properties || {};
       return String(props.name || props.shapeName || '').trim().toLowerCase() === wanted;
     })[0] || null;
+  }
+
+  /* The study area map for the Site page and the reports. Everything it
+   * needs is already in the page: the window the local maps use, the
+   * bundled boundary layers, the soundings and any water points loaded. */
+  function studyAreaNode() {
+    var window_ = areaWindow(store.get('site.mapRadiusKm', 40));
+    if (!window_) return null;
+    var geo = GWT.data.geo || {};
+    var points = [];
+    (derived.interpretations || []).forEach(function (interp) {
+      var pos = soundingLatLon(interp);
+      if (pos) {
+        points.push({ lat: pos.lat, lon: pos.lon, label: interp.sounding_id,
+          kind: 'VES point' });
+      }
+    });
+    if (window_.exact) {
+      points.push({ lat: window_.lat, lon: window_.lon, label: siteLabel(),
+        kind: 'borehole' });
+    }
+    /* the water points the Water points page looked up, if it has run */
+    (derived.waterPoints || []).slice(0, 40).forEach(function (wp) {
+      if (typeof wp.lat === 'number' && typeof wp.lon === 'number') {
+        points.push({ lat: wp.lat, lon: wp.lon, kind: 'water point' });
+      }
+    });
+    return charts.studyAreaMap({
+      window: window_,
+      outline: ((geo.adminBoundaries || {}).features || []).filter(
+        function (f) { return (f.properties || {}).level === 'ADM0'; }),
+      districts: ((geo.adminBoundaries || {}).features || []).filter(
+        function (f) { return (f.properties || {}).level !== 'ADM0'; }),
+      areas: (geo.chiefdomBoundaries || {}).features || [],
+      points: points,
+      title: 'Study area — ' + window_.label +
+        (window_.exact ? '' : ' (no site position recorded)'),
+      credit: 'Boundaries: geoBoundaries, CC BY 4.0 (predates the 2017 ' +
+        'Karene and Falaba districts).',
+      legendTitle: 'ON THE MAP',
+      width: 620, height: 560,
+    });
+  }
+
+  /* A sounding carries its own position, which is not always the site's:
+   * a traverse is a line of pegs, and the map is the only place that shows
+   * which end of it the drill target sits at. */
+  function soundingLatLon(interp) {
+    if (interp.site_easting == null || interp.site_northing == null) return null;
+    var zone = (store.get('site') || {}).utm_zone ||
+      C.inferZoneForSierraLeone(interp.site_easting);
+    var pair = C.utmToGeographic(interp.site_easting, interp.site_northing, zone);
+    return { lat: pair.lat, lon: pair.lon };
   }
 
   function areaWindow(radiusKm) {

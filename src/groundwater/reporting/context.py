@@ -15,6 +15,7 @@ from ..mapping import (
     plot_admin_map,
     plot_geological_map,
     plot_hydrogeology_map,
+    plot_study_area_map,
 )
 from ..models import SiteMetadata
 
@@ -41,6 +42,7 @@ def context_map_figures(
     figures_dir: str | Path,
     style: HouseStyle | None = None,
     local_radius_km: float = 40.0,
+    points: list[dict] | None = None,
 ) -> dict[str, Path]:
     """Generate the context maps for a site.
 
@@ -51,11 +53,23 @@ def context_map_figures(
     map is a district rather than a point. Only a project that records
     neither a position nor an area gets nothing.
 
-    Returns paths keyed ``admin``, ``geology`` and ``hydrogeology``.
-    :func:`groundwater.mapping.area_window` gives the window they cover.
-    The maps are redrawn on every build. They are cheap, and a map that
-    was left on disk by an earlier run is a map of what the project used
-    to say: reusing it is the one way this function can be wrong.
+    Returns paths keyed ``study_area``, ``admin``, ``geology`` and
+    ``hydrogeology``. :func:`groundwater.mapping.area_window` gives the
+    window they cover. The maps are redrawn on every build. They are
+    cheap, and a map that was left on disk by an earlier run is a map of
+    what the project used to say: reusing it is the one way this function
+    can be wrong.
+
+    ``study_area`` is the one a reader needs first and the one these
+    reports had no equivalent of: the national location map answers
+    "which district", and the geology and aquifer maps answer "what is
+    the ground", but nothing showed the area itself at a scale where the
+    distance from the borehole to the next village could be read off a
+    scale bar.
+
+    ``points`` are overlays for the study area map, as dicts
+    ``{lat, lon, label, kind}``: the survey points, and any water points
+    already found nearby.
     """
     if site is None:
         return {}
@@ -68,6 +82,17 @@ def context_map_figures(
     # project keep their own maps rather than overwriting each other
     token = f"{window.lat:.4f}_{abs(window.lon):.4f}".replace(".", "p")
     out: dict[str, Path] = {}
+    study = figures / f"study_area_map_{token}.png"
+    try:
+        plot_study_area_map(site, path=study, style=style,
+                            radius_km=min(local_radius_km, 40.0),
+                            points=points or [])
+        out["study_area"] = study
+    except ValueError:
+        # area_window found a centre, so this should not happen; if the
+        # boundary layers cannot frame it the rest of the maps are still
+        # worth having, and a missing figure is better than a failed report
+        pass
     admin = figures / f"admin_map_{token}.png"
     plot_admin_map(site, path=admin, style=style)
     out["admin"] = admin
@@ -129,6 +154,7 @@ def add_area_section(
     level: int = 2,
     detail: bool = False,
     local_radius_km: float = 40.0,
+    points: list[dict] | None = None,
 ) -> dict[str, Path]:
     """Put a map of the area into a report.
 
@@ -145,12 +171,20 @@ def add_area_section(
         rb.heading(heading, level)
     rb.paragraph(area_map_note(site), align="justify")
     maps = context_map_figures(site, figures_dir, style,
-                               local_radius_km=local_radius_km)
+                               local_radius_km=local_radius_km,
+                               points=points)
     if not maps:
         return {}
     window = area_window(site, local_radius_km)
     where = (window.label if window is not None
              else ((site.community if site is not None else "") or "the site"))
+    if "study_area" in maps:
+        rb.figure(
+            maps["study_area"],
+            f"Study area at {where}, with its location in Sierra Leone "
+            "inset. Boundaries from geoBoundaries (CC BY 4.0).",
+            width_cm=14.0,
+        )
     rb.figure(
         maps["admin"],
         f"Location of {where}. Boundaries from geoBoundaries (CC BY 4.0).",
