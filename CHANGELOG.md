@@ -221,6 +221,97 @@ to prevent satisfied every clause in it. It now pins each fill to the
 colour the shared class table gives that value, over a third fixture
 that is deliberately not rank-equivalent.
 
+The mapping section now answers the question a report opens with. It
+had three maps - a national administrative locator and the geological
+and aquifer settings - and nothing between the country and the survey
+point. There is now a study area map: the chiefdom boundaries around
+the site at a scale where the distances can be read off the scale bar,
+the survey points and any water points already found on it, and a
+thumbnail of the country with the window boxed on it, so the figure
+answers "where is this?" as well as "what is here?". Every report that
+carries a map of the area carries this one first.
+
+Three of the survey-scale maps the package has always had were
+reachable from nothing. `site_location_map`, `iso_resistivity_map` and
+`overburden_thickness_map` were called by the test suite and by no
+application, report or example; the Maps page drew the three national
+context maps and stopped. They are on the Maps page now, alongside the
+subsurface maps built from the same interpretations: depth to bedrock,
+interpreted aquifer thickness, the bedrock surface as a landform,
+aquifer protective capacity in its standard longitudinal-conductance
+classes, and transverse resistance. The iso-resistivity map offers only
+the electrode spacings every sounding actually measured, because a map
+at a spacing two of five curves skipped is interpolated from three
+points and captioned as five.
+
+Two sections along the traverse, where there was one. The geoelectric
+section existed but had to be told where the soundings were, and its
+default was to space them 100 m apart in the order they were handed
+over - so a survey that walked 40 m between two pegs and 300 m to the
+next came out evenly spaced, which reads as a uniformly thickening
+weathered zone when what the ground did was thicken over 40 m and hold
+for 300. It is now drawn at the surveyed chainages, from the soundings'
+own positions projected onto the best-fit line through them. Beside it
+is an apparent-resistivity pseudo-section, which involves no inversion
+at all: each point is a reading at the station and electrode spacing it
+was taken with, so it is still right if the inversion is wrong. Its
+vertical axis is AB/2 and is labelled AB/2, not a depth - current does
+spread deeper as the electrodes spread, but the pseudo-depth
+conversions vary with the very layering the section is drawn to reveal,
+and calling a measurement geometry a depth is how a pseudo-section
+starts being read as a cross-section. Where the soundings sit too far
+off the line to read as one section, both figures say so on their own
+face.
+
+There are topographic maps, and there is no elevation model. None is
+bundled and none is downloaded: the map is drawn from a file the
+operator supplies and names that file's source on the figure. An SRTM
+`.hgt` tile, an ESRI ASCII `.asc` grid and plain
+longitude/latitude/elevation columns are all read with numpy alone,
+because a drilling supervisor with a laptop in Makeni can obtain any of
+them and cannot install GDAL. A void in any of them stays a void rather
+than becoming a hollow in the ground, and a scatter of heights is
+refused rather than gridded - an elevation surface interpolated from
+the spot heights a survey happens to record is a guess about the ground
+between the pegs, not a measurement of the landscape. What a survey can
+always draw is the ground profile along its own traverse, and that is
+drawn separately: measured at the pegs, straight between them, and
+saying which stations recorded no elevation.
+
+A caption stopped claiming what its figure did not show. The
+geophysical survey report captioned its site figure "Topographic map of
+the project area" over a scatter of survey pegs with no elevation,
+contour or relief anywhere in it. It is captioned as the survey point
+location map it is, and there is a slot beside it for a real
+topographic map when the operator supplies an elevation model. The
+figure it mis-captioned was, in the event, never drawn at all: nothing
+in the toolkit ever set the field it came from.
+
+Two defects in the existing maps, both visible in every report that
+carries one. A local geological or aquifer map legended every unit in
+the national dataset rather than the units on the map, so a 10 km
+window over the Freetown peninsula listed Ordovician, Silurian and
+Precambrian formations beside the two under the site, with nothing to
+say which two. The legend is now built from what the window actually
+holds, tested against the three ways a polygon can reach into a window
+- a vertex inside it, the window inside the polygon, or an edge
+slicing through. And a two-source attribution line ran a third of a
+figure-width past the left spine, which the tight bounding box then
+grew the canvas to hold: every local geology and aquifer map has been
+sitting in the right-hand half of its own figure with an empty gutter
+beside it. The credit wraps to the frame, and the scale bar is lifted
+clear of however many lines it wraps to.
+
+Both zoomable unit maps now say what scale they were drawn at. The USGS
+and BGS layers are published at 1:5,000,000, where a 0.5 mm drafting
+line is 2.5 km on the ground, and the toolkit's own default window is
+40 km - so a reader is being shown a contact placed to a sixteenth of
+the frame it is drawn in. Below 120 km across, the figure says so, and
+for the aquifer map it says it in the publisher's words: the BGS Africa
+Groundwater Atlas user guide states its country maps are "not suitable
+for providing detailed information on geology and hydrogeology at a
+sub-national (e.g. catchment) scale".
+
 ## A note on the sixteen districts
 
 The shipped district polygons are the pre-2017 fourteen, from

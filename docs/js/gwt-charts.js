@@ -2895,6 +2895,161 @@
     return canvas.finish();
   }
 
+  /* ------------------------------------------------------- study area map */
+
+  /* Marker and colour per kind of thing on a study area map. The Python
+   * engine reads the same table in groundwater/mapping/regional.py; change
+   * one and change the other, or the two engines draw the same survey with
+   * different symbols and a reader holding both reports cannot line them up. */
+  var AREA_MARKERS = {
+    'VES point': { kind: 'triangle', colour: '#1F5C8B' },
+    borehole: { kind: 'circle', colour: '#0F7B3F' },
+    'water point': { kind: 'square', colour: '#7B5AA6' },
+    settlement: { kind: 'circle', colour: '#555555' },
+  };
+
+  /* A thumbnail of the country with the study area boxed on it, drawn into
+   * the corner of the frame that carries the fewest points. A 20 km map is
+   * unreadable as a location unless the reader already knows the district;
+   * the inset is what makes the figure answer "where is this?" as well as
+   * "what is here?". */
+  function locatorInset(canvas, outline, window_, corner) {
+    var rect = canvas.rect;
+    var w = rect.w * 0.29, h = rect.h * 0.30;
+    var margin = 6;
+    var x = corner.indexOf('right') >= 0
+      ? rect.x + rect.w - w - margin : rect.x + margin;
+    var y = corner.indexOf('lower') >= 0
+      ? rect.y + rect.h - h - margin : rect.y + margin + 10;
+    var p = canvas.palette;
+    var group = svgEl('g');
+    group.appendChild(svgEl('rect', {
+      x: x, y: y, width: w, height: h, fill: p.surface, opacity: 0.95,
+      stroke: '#888888', 'stroke-width': 0.8,
+    }));
+    group.appendChild(svgEl('text', {
+      x: x + w / 2, y: y - 2, 'text-anchor': 'middle', 'font-size': 8,
+      'font-weight': 620, fill: p.ink, text: 'Sierra Leone',
+    }));
+    var project = projectionInto(outline, { x: x, y: y, w: w, h: h }, 4);
+    outline.forEach(function (feature) {
+      group.appendChild(svgEl('path', {
+        d: geometryPath(feature.geometry, project),
+        fill: '#EDF2F7', stroke: '#333333', 'stroke-width': 0.7,
+      }));
+    });
+    if (window_) {
+      var dLat = window_.radiusKm / 110.574;
+      var dLon = window_.radiusKm /
+        (111.320 * Math.max(Math.cos(window_.lat * Math.PI / 180), 1e-6));
+      var a = project(window_.lon - dLon, window_.lat + dLat);
+      var b = project(window_.lon + dLon, window_.lat - dLat);
+      var bw = Math.abs(b[0] - a[0]), bh = Math.abs(b[1] - a[1]);
+      /* below about four pixels a box is a smudge; a dot reads as a place */
+      if (bw > 4 && bh > 4) {
+        group.appendChild(svgEl('rect', {
+          x: a[0], y: a[1], width: bw, height: bh, fill: 'none',
+          stroke: '#C1272D', 'stroke-width': 1.4,
+        }));
+      } else {
+        var c = project(window_.lon, window_.lat);
+        group.appendChild(svgEl('circle', {
+          cx: c[0], cy: c[1], r: 3, fill: '#C1272D', stroke: p.surface,
+          'stroke-width': 0.9,
+        }));
+      }
+    }
+    canvas.svg.appendChild(group);
+  }
+
+  /* Which corner of the frame the inset can have: the one with the fewest
+   * points in it. Fixing it to a corner drew a survey point underneath the
+   * inset on the first real site this was tried on. */
+  function freeMapCorner(canvas, points) {
+    var rect = canvas.rect;
+    var counts = { 'lower right': 0, 'upper left': 0 };
+    (points || []).forEach(function (point) {
+      var pt = canvas.project(point.lon, point.lat);
+      var fx = (pt[0] - rect.x) / rect.w, fy = (pt[1] - rect.y) / rect.h;
+      if (fx > 0.62 && fy > 0.58) counts['lower right'] += 1;
+      if (fx < 0.38 && fy < 0.42) counts['upper left'] += 1;
+    });
+    return counts['upper left'] <= counts['lower right']
+      ? 'upper left' : 'lower right';
+  }
+
+  /* The study area at a readable scale: the chiefdom boundaries around the
+   * site, the survey points and any water points found nearby, with a
+   * thumbnail of the country showing where in it this is. */
+  function studyAreaMap(spec) {
+    var window_ = spec.window || null;
+    var outline = spec.outline || [];
+    var points = (spec.points || []).slice();
+    var dLat = window_ ? window_.radiusKm / 110.574 : 0.25;
+    var dLon = window_
+      ? window_.radiusKm /
+        (111.320 * Math.max(Math.cos(window_.lat * Math.PI / 180), 1e-6))
+      : 0.25;
+    var box = window_
+      ? [window_.lon - dLon, window_.lat - dLat,
+        window_.lon + dLon, window_.lat + dLat]
+      : null;
+    /* the window sets the extent, so a 25 km map is a 25 km map even when a
+     * chiefdom covering it runs half the length of the country */
+    var extent = box
+      ? [{ geometry: { type: 'Polygon', coordinates: [[
+        [box[0], box[1]], [box[2], box[1]], [box[2], box[3]], [box[0], box[3]],
+      ]] } }]
+      : (spec.areas || []);
+
+    var kinds = [];
+    points.forEach(function (point) {
+      var style = AREA_MARKERS[point.kind] || { kind: 'diamond', colour: '#C15A2A' };
+      point.kind_ = point.kind || 'point';
+      point.marker = style.kind;
+      point.colour = point.colour || style.colour;
+      if (!kinds.some(function (k) { return k.label === point.kind_; })) {
+        kinds.push({ label: point.kind_, colour: style.colour, kind: style.kind });
+      }
+    });
+
+    var canvas = mapCanvas(spec, kinds, extent);
+    var p = canvas.palette;
+
+    function inBox(feature) {
+      if (!box) return true;
+      var b = featureBounds([feature]);
+      return isFinite(b.lonMin) && b.lonMin <= box[2] && b.lonMax >= box[0] &&
+        b.latMin <= box[3] && b.latMax >= box[1];
+    }
+    (spec.areas || []).filter(inBox).forEach(function (feature) {
+      canvas.layer.appendChild(svgEl('path', {
+        d: geometryPath(feature.geometry, canvas.project),
+        fill: 'none', stroke: '#7E93A6', 'stroke-width': 0.8,
+      }, [svgEl('title', {
+        text: String((feature.properties || {}).name || ''),
+      })]));
+    });
+    (spec.districts || []).filter(inBox).forEach(function (feature) {
+      canvas.layer.appendChild(svgEl('path', {
+        d: geometryPath(feature.geometry, canvas.project),
+        fill: 'none', stroke: '#44586B', 'stroke-width': 1.3,
+      }));
+    });
+    outline.filter(inBox).forEach(function (feature) {
+      canvas.layer.appendChild(svgEl('path', {
+        d: geometryPath(feature.geometry, canvas.project),
+        fill: 'none', stroke: '#222222', 'stroke-width': 1.8,
+      }));
+    });
+
+    drawMapPoints(canvas, points.map(function (point) {
+      return Object.assign({}, point, { kind: point.marker, size: 6 });
+    }));
+    locatorInset(canvas, outline, window_, freeMapCorner(canvas, points));
+    return canvas.finish();
+  }
+
   /* ============================================================ export */
 
   /* Rasterise an SVG to a PNG data URL for embedding in the .docx reports.
@@ -2989,6 +3144,7 @@
     depthSpine: depthSpine, guidelineSpine: guidelineSpine,
     costBreakdown: costBreakdown, programmeGantt: programmeGantt,
     choropleth: choropleth, siteMap: siteMap, thematicMap: thematicMap,
+    studyAreaMap: studyAreaMap,
     mapProjection: mapProjection, projectionInto: projectionInto,
     geometryPath: geometryPath, quantileBreaks: quantileBreaks,
     pointInFeature: pointInFeature,
