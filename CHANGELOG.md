@@ -323,6 +323,149 @@ Groundwater Atlas user guide states its country maps are "not suitable
 for providing detailed information on geology and hydrogeology at a
 sub-national (e.g. catchment) scale".
 
+The maps were redrawn. They had no sea on them, which on the Freetown
+peninsula - where most of what this toolkit maps actually is - meant half
+of every window was blank paper and the coastline read as the edge of the
+data rather than the edge of the land. The mask that stops a geological
+unit running on across the Atlantic was painted the page colour, so it
+painted out anything drawn underneath it. There is now sea under every
+map, a hairline graticule labelled in degrees and minutes instead of a
+grey grid heavier than the data, an alternating-segment scale bar with a
+zero and divisions somebody can measure against, a compass needle instead
+of a line with a letter over it, halos behind every place name, and line
+weights that rank coastline over district over chiefdom over geological
+contact. All of it lives in one module, `mapping/cartography.py`, because
+it had been open-coded in three files with three sets of numbers and the
+same site came out looking like three different maps depending on which
+function drew it.
+
+The boundaries are the real ones now. They were the geoBoundaries
+_simplified_ release put through Douglas-Peucker again at 0.003 degrees
+and rounded to four decimal places - about 330 m of simplification on top
+of somebody else's, quantised to 11 m steps. On a 25 km study-area map
+that is more than a percent of the frame per step, which is why every
+coastline looked hand-traced. They are rebuilt from the full-resolution
+releases at 45 m for the national outline and districts and 90 m for the
+chiefdoms, which is finer than the eye can find at any window this toolkit
+draws. This is a real cost and worth stating plainly: the offline app's
+precache grows from 1,662 KB to 2,143 KB, on an app installed on phones in
+places where that is somebody's data allowance. (The last 12 KB of that is
+the lithology crosswalk, bundled so the browser's key can name the rock;
+its comment block, which is most of the file, is stripped on the way in.)
+It buys a coastline, an estuary and a river boundary that are where they
+actually are.
+
+What was NOT done, and deliberately: no curve smoothing at render time.
+Running a spline through a simplified boundary produces a confident line
+that no survey drew, and this toolkit does not draw confidence it does not
+have. The jaggedness was an artefact of simplification, so the fix was
+finer data, not a prettier curve over the same coarse data.
+
+The geology stopped being wrong. The bundled layer is the USGS Geologic
+Map of Africa at 1:5,000,000 and carries seven classes for the whole
+country, which are ages rather than rocks - and one of the ages is
+incorrect. The single polygon it calls "Paleozoic Igneous" is the Freetown
+peninsula, where the rock is the Freetown Layered Complex: Jurassic
+layered gabbro, norite and anorthosite, about 193 million years old. A
+driller told "Paleozoic Igneous" has been handed a wrong age and no rock
+at all, and the Western Area is exactly where this toolkit is used most.
+
+`sl_lithology_usgs_crosswalk.csv` now says what each class is made of,
+from the Geology of Sierra Leone map (Fileccia, Teatini, Walther and
+Mastrocola 2017, Hydro Nova for SALWACO and the Ministry of Water
+Resources, 1:600,000, 28 formations) - which this repository has committed
+all along and the geophysical report already cited in its prose while the
+figures beside it said "Precambrian". The key now reads "Freetown Layered
+Complex (Jf)" and "Bullom Group (Q, Tb)", and each row carries what it
+means for drilling: gabbro stores nothing and yields only from fractures;
+the Bullom sands yield well and are the easiest ground in the country to
+contaminate.
+
+It annotates rather than reclassifies. The polygon is still the 1:5M one
+and is no more accurate for being better named, every row records whether
+it is quoted from the committed 2017 map or taken from the wider
+literature, a class annotated for one region is not applied to another,
+and where the two sources disagree on age the figure states both rather
+than quietly correcting somebody else's dataset.
+
+Two of the seven classes are deliberately left unnamed, and that is the
+finding rather than an omission. "Ordovician" and "Silurian" have zero
+vertices inside Sierra Leone - all 94 and 28 of them are in the Bove
+Basin in Guinea, inside the bundled window only because the clip box
+reaches 10.15 N. Naming them for a Sierra Leonean formation would put a
+name on another country's ground. The 2017 sheet does map Ordovician
+inside Sierra Leone; the USGS layer simply does not draw it, because at
+1:5,000,000 it is swallowed by "Precambrian".
+
+And "Precambrian", which covers most of the country, is not one rock.
+Cross-tabbed against the bundled BGS hydrogeology on a 1.4 km national
+grid, 87 per cent of it is basement aquifer and 12 per cent is
+consolidated sedimentary with fracture flow - a belt from 7.6 to 9.7
+degrees North through Port Loko, Kambia, Moyamba and Tonkolili, which is
+the Rokel River Group. That is a different drilling target inside one
+colour: fracture flow in indurated beds with shales acting as
+aquicludes, rather than a weathered-zone aquifer. Its row says so, and
+the BGS aquifer map beside it does separate the two.
+
+The proportions quoted in that row and in this note come from the two
+bundled layers and nothing else, so anyone with a checkout can rerun
+them; `tests/test_study_area_maps.py` pins them. That matters because an
+earlier pass at the crosswalk proposed qualifying the Holocene class as
+"85 per cent Bullom Group, 15 per cent metasediment" on the strength of
+a nearest-label sample of the 2017 map's PDF text layer. A Voronoi over
+label positions is not an overlay of mapped contacts, and it drags a
+band of genuinely Bullom ground onto the Magbele and Tapr labels that
+sit along the inland edge of the coastal plain. Checked against the BGS
+layer - independent, different scale, different publisher - the Holocene
+class is 99.4 per cent unconsolidated intergranular aquifer, which is
+the Bullom Group and nothing else. The qualification was wrong and was
+not made; the header of the crosswalk records why, so nobody
+reintroduces it from the same artefact.
+
+The layer also has holes, and the maps now admit it. Two and a half per
+cent of Sierra Leone's land area falls in no USGS polygon at all, every
+point of it in a coastal district - Bonthe, Port Loko, Moyamba, the
+Western Area, Kambia and Pujehun - because at 1:5,000,000 the coastal
+units stop short of the shore. That ground used to be painted the same
+colour as the ocean, so the Bullom shore and the Sherbro estuaries read
+as sea on maps of the country whose coastal aquifer is its most
+productive ground. It now carries its own tint and a key entry, "Not
+mapped at this scale", on both engines - and the key only carries the
+entry when unmapped ground is actually in the window.
+
+Two more things the key used to get wrong. It listed "Ordovician" and
+"Silurian", which are masked away when the map is drawn because they are
+wholly across the Guinea border: entries for colours that are not on the
+map, sending a reader hunting for them. Units that cover no ground inside
+the country are now dropped before the key is built. And the national
+geological map, which passes no district, refused the crosswalk and fell
+back to the source's own wording - so the one polygon in the layer whose
+age is demonstrably wrong was captioned "Paleozoic Igneous" on the map
+most likely to be read by somebody who does not know better. With no
+district there is no region to choose by, but where every row for a
+class agrees on the formation there is only one answer to give, and the
+lookup now gives it. A named district that has no row still gets
+nothing: the Freetown gabbro is not under Kono.
+
+The browser draws the same key. The crosswalk is bundled into
+`gwt-data.js` and `gwt-charts.js` mirrors the lookup, its two refusals
+and the wrong-age footnote, so the figure on screen and the figure in
+the report name the same rock. It also paints sea and unmapped ground
+apart, which it did not: the whole map frame was one tint, so a coverage
+gap and the Atlantic were indistinguishable. `data_provenance.yaml` had
+claimed the crosswalk was embedded in the browser bundle since it was
+written; it was not, and now is.
+
+Two defects the rebuild exposed. The boundary review tested whether it had
+already withheld a piece of ground by comparing the encoded geometry byte
+for byte, which holds only while the layer's vertices never move -
+rebuilding at a finer tolerance moved every vertex, so the same Maforki
+fragment came back as a second, separate withholding and the file would
+have grown another duplicate on every rebuild. Identity is now the same
+chiefdom, the same district and centres within five kilometres. And the
+graticule labelled the tick just short of 13 degrees West as "12 deg 60'
+W", on every map of the Western Area.
+
 ## A note on the sixteen districts
 
 The shipped district polygons are the pre-2017 fourteen, from

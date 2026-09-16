@@ -1194,7 +1194,10 @@
               : 'Aquifer productivity, Sierra Leone',
             credit: 'BGS Africa Groundwater Atlas, CC BY-SA 4.0.',
             legendTitle: 'AQUIFER TYPE AND PRODUCTIVITY',
-            width: 560, height: 600,
+            // the BGS colours ARE the classification, so they stay
+            sourceColours: true,
+            outline: nationalOutline(GWT.data.geo),
+            width: 560, height: 680,
           }), 'Aquifer type and productivity (BGS Africa Groundwater Atlas, CC BY-SA 4.0)',
           { filename: 'aquifer_map' }),
           charts.figure(charts.thematicMap({
@@ -1204,9 +1207,12 @@
             window: latlon ? { lat: latlon.lat, lon: latlon.lon, radiusKm: mapRadius } : null,
             points: latlon ? [{ lon: latlon.lon, lat: latlon.lat, label: siteLabel() }] : [],
             title: latlon ? 'Geology around the site' : 'Geology, Sierra Leone',
-            credit: 'USGS Geologic Map of Africa.',
+            credit: 'USGS Geologic Map of Africa. Lithology: Geology of ' +
+              'Sierra Leone (Fileccia et al. 2017, MoWR/SALWACO, 1:600,000).',
             legendTitle: 'GEOLOGICAL UNIT',
-            width: 560, height: 600,
+            outline: nationalOutline(GWT.data.geo),
+            nameLithology: true, district: store.get('site.district') || '',
+            width: 560, height: 680,
           }), 'Geology (USGS Geologic Map of Africa)', { filename: 'geology_map' }),
         ]),
       ]),
@@ -1380,6 +1386,14 @@
     })[0] || null;
   }
 
+  /* The national outline on its own. The geology and aquifer maps need it
+   * to tell sea from a hole in the source layer, and to drop units that
+   * lie wholly across the border. */
+  function nationalOutline(geo) {
+    return (((geo || {}).adminBoundaries || {}).features || []).filter(
+      function (f) { return (f.properties || {}).level === 'ADM0'; });
+  }
+
   /* The study area map for the Site page and the reports. Everything it
    * needs is already in the page: the window the local maps use, the
    * bundled boundary layers, the soundings and any water points loaded. */
@@ -1407,8 +1421,7 @@
     });
     return charts.studyAreaMap({
       window: window_,
-      outline: ((geo.adminBoundaries || {}).features || []).filter(
-        function (f) { return (f.properties || {}).level === 'ADM0'; }),
+      outline: nationalOutline(geo),
       districts: ((geo.adminBoundaries || {}).features || []).filter(
         function (f) { return (f.properties || {}).level !== 'ADM0'; }),
       areas: (geo.chiefdomBoundaries || {}).features || [],
@@ -1534,8 +1547,10 @@
           points: latlon ? [{ lon: latlon.lon, lat: latlon.lat, label: siteLabel() }] : [],
           title: 'Aquifer productivity around ' + window_.label,
           legendTitle: 'AQUIFER TYPE AND PRODUCTIVITY',
+          sourceColours: true,
           credit: 'BGS Africa Groundwater Atlas, CC BY-SA 4.0.',
-          width: 620, height: 620,
+          outline: nationalOutline(geo),
+          width: 620, height: 700,
         })),
         caption: 'Aquifer type and productivity around ' + window_.label +
           ', from the BGS Africa Groundwater Atlas country map (CC BY-SA 4.0).',
@@ -1551,8 +1566,11 @@
           points: latlon ? [{ lon: latlon.lon, lat: latlon.lat, label: siteLabel() }] : [],
           title: 'Geology around ' + window_.label,
           legendTitle: 'GEOLOGICAL UNIT',
-          credit: 'USGS Geologic Map of Africa.',
-          width: 620, height: 620,
+          credit: 'USGS Geologic Map of Africa. Lithology: Geology of ' +
+            'Sierra Leone (Fileccia et al. 2017, MoWR/SALWACO, 1:600,000).',
+          outline: nationalOutline(geo),
+          nameLithology: true, district: store.get('site.district') || '',
+          width: 620, height: 700,
         })),
         caption: 'Geological setting around ' + window_.label +
           ', from the USGS Geologic Map of Africa (1:5,000,000).',

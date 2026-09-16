@@ -166,3 +166,42 @@ def test_the_boundary_review_survives_being_rebuilt():
         "the committed boundary review is stale; "
         "run: python web/build_boundary_review.py"
     )
+
+
+def test_the_review_does_not_withhold_the_same_ground_twice():
+    """A resimplified layer must not turn one fragment into two.
+
+    The carry-forward used to test identity by exact equality of the
+    encoded geometry, which holds only while the layer's vertices never
+    move. Rebuilding the chiefdoms at a finer simplification moves every
+    vertex, so the same Maforki fragment came back as a second, separate
+    withholding - the review reported two parts where the source has one,
+    and would have grown another duplicate on every rebuild.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "build_boundary_review", repo / "web" / "build_boundary_review.py"
+    )
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+
+    name, district, part = "Maforki", "Port Loko", [[
+        [-10.51, 8.68], [-10.50, 8.68], [-10.50, 8.69], [-10.51, 8.68],
+    ]]
+    # the same ground with every vertex nudged, as a resimplification does
+    moved = [[[x + 0.0004, y - 0.0003] for x, y in part[0]]]
+    assert builder._same_ground_as_any(
+        (name, district, moved), [(name, district, part)]
+    )
+    # a different chiefdom's fragment in the same place is not the same entry
+    assert not builder._same_ground_as_any(
+        ("Mafindor", "Kono", moved), [(name, district, part)]
+    )
+    # and neither is the same chiefdom's ground somewhere else entirely
+    far = [[[x + 2.0, y] for x, y in part[0]]]
+    assert not builder._same_ground_as_any(
+        (name, district, far), [(name, district, part)]
+    )

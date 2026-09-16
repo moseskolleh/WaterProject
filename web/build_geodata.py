@@ -51,10 +51,18 @@ download them into a working directory:
     Africa_Geological_Data.{shp,shx,dbf,prj} from
       https://github.com/Heed725/Africa_Geology_Data_Shapefile
       (mirror of the USGS data; also at pubs.usgs.gov OFR 97-470A)
-    geoBoundaries-SLE-ADM0_simplified.geojson and
-    geoBoundaries-SLE-ADM2_simplified.geojson from
+    geoBoundaries-SLE-ADM0.geojson, geoBoundaries-SLE-ADM2.geojson and
+    geoBoundaries-SLE-ADM3.geojson from
       https://github.com/wmgeolab/geoBoundaries
-      (releaseData/gbOpen/SLE/...; git-lfs content)
+      (releaseData/gbOpen/SLE/...). These are git-lfs content: the
+      raw.githubusercontent.com URL returns a 132-byte pointer file, and
+      the bytes themselves come from media.githubusercontent.com, e.g.
+        curl -L -o geoBoundaries-SLE-ADM3.geojson \\
+          https://media.githubusercontent.com/media/wmgeolab/geoBoundaries/\\
+main/releaseData/gbOpen/SLE/ADM3/geoBoundaries-SLE-ADM3.geojson
+      The full-resolution releases are used rather than the _simplified
+      ones, because simplifying an already-simplified line is what made
+      every boundary on these maps look hand-drawn.
 
 then run:
 
@@ -259,11 +267,21 @@ def build_geology(raw: Path, tol: float = 0.004, min_area: float = 2e-4) -> Path
     return out
 
 
-def build_admin(raw: Path, tol: float = 0.003) -> Path:
+def build_admin(raw: Path, tol: float = 0.0004) -> Path:
+    """The national outline and the district polygons.
+
+    ``tol`` is about 45 m. The old default was 0.003 - about 330 m -
+    applied on top of geoBoundaries' own simplified release, and the
+    result was a coastline that visibly stepped: on a 25 km study-area
+    map a 330 m step is more than a percent of the frame, which is what
+    made these look like they were traced by hand. The outline is drawn
+    on every map in the toolkit and is the line the eye judges first, so
+    it is the one worth spending bytes on.
+    """
     features = []
     for level, fname in (
-        ("ADM0", "geoBoundaries-SLE-ADM0_simplified.geojson"),
-        ("ADM2", "geoBoundaries-SLE-ADM2_simplified.geojson"),
+        ("ADM0", "geoBoundaries-SLE-ADM0.geojson"),
+        ("ADM2", "geoBoundaries-SLE-ADM2.geojson"),
     ):
         data = json.loads((raw / fname).read_text(encoding="utf-8"))
         for feature in data["features"]:
@@ -277,7 +295,10 @@ def build_admin(raw: Path, tol: float = 0.003) -> Path:
             for poly in polys:
                 outer = simplify_ring([tuple(p) for p in poly[0]], tol)
                 if len(outer) >= 4:
-                    rings.append([[round(x, 4), round(y, 4)] for x, y in outer])
+                    # five places is about a metre, which is finer than the
+                    # source; four was 11 m and quantised the coast into
+                    # visible steps of its own on a local map
+                    rings.append([[round(x, 5), round(y, 5)] for x, y in outer])
             if not rings:
                 continue
             features.append(
@@ -378,10 +399,10 @@ def _current_district(chiefdom: str) -> str:
     return ""
 
 
-def build_chiefdoms(raw: Path, tol: float = 0.004) -> Path:
+def build_chiefdoms(raw: Path, tol: float = 0.0008) -> Path:
     """Chiefdom (ADM3) polygons with their parent district.
 
-    Reads ``geoBoundaries-SLE-ADM3_simplified.geojson`` and the ADM2
+    Reads ``geoBoundaries-SLE-ADM3.geojson`` and the ADM2
     districts from ``raw`` (both from
     https://github.com/wmgeolab/geoBoundaries, gbOpen, CC BY 4.0; the
     real content lives on git-lfs / media.githubusercontent.com),
@@ -392,7 +413,7 @@ def build_chiefdoms(raw: Path, tol: float = 0.004) -> Path:
         coords = geom.get("coordinates", [])
         return coords if geom.get("type") == "MultiPolygon" else [coords]
 
-    adm2 = json.loads((raw / "geoBoundaries-SLE-ADM2_simplified.geojson").read_text())
+    adm2 = json.loads((raw / "geoBoundaries-SLE-ADM2.geojson").read_text())
     districts = [
         (f["properties"].get("shapeName"), poly[0])
         for f in adm2["features"]
@@ -410,7 +431,7 @@ def build_chiefdoms(raw: Path, tol: float = 0.004) -> Path:
         )
         return cx_cy[0]
 
-    adm3 = json.loads((raw / "geoBoundaries-SLE-ADM3_simplified.geojson").read_text())
+    adm3 = json.loads((raw / "geoBoundaries-SLE-ADM3.geojson").read_text())
     features = []
     for f in adm3["features"]:
         polys = rings_of(f["geometry"])

@@ -189,13 +189,44 @@ def measure(name: str, district: str, part: list, features: list) -> dict:
     }
 
 
+#: How far two withheld parts' centres may sit apart and still be the same
+#: piece of ground. A detached chiefdom fragment here is about 20 km2, so a
+#: few kilometres is well inside one and nowhere near the next.
+SAME_GROUND_KM = 5.0
+
+
+def _same_ground_as_any(entry: tuple, withheld: list) -> bool:
+    """Has this run already rediscovered the ground a past run withheld?
+
+    Identity used to be exact equality of the encoded geometry, which
+    holds only while the layer's vertices never move. Rebuilding the
+    chiefdoms at a finer simplification moved every vertex, so the same
+    Maforki fragment came back as a second, separate withholding: the
+    review reported two parts withheld where the source has one, and the
+    file grew a duplicate every time the boundaries were rebuilt.
+
+    Same chiefdom, same district, centres within a few kilometres is the
+    same ground at a different resolution.
+    """
+    name, district, part = entry
+    centre = ring_centre(part[0])
+    for other_name, other_district, other_part in withheld:
+        if other_name != name or other_district != district:
+            continue
+        if km_between(centre, ring_centre(other_part[0])) <= SAME_GROUND_KM:
+            return True
+    return False
+
+
 def review(features: list, already: list) -> tuple[list, list]:
     """Split the layer into the geometry to keep and the geometry to review.
 
     ``already`` is what a previous run withheld. It is carried forward and
     re-measured rather than rediscovered, because it is no longer in the layer
     to be found: the review file is the standing record of what was taken out,
-    and running this twice must not quietly empty it.
+    and running this twice must not quietly empty it - nor, per
+    :func:`_same_ground_as_any`, record the same ground twice because the
+    layer under it was resimplified.
     """
     kept, withheld = [], []
     for feature in features:
@@ -219,9 +250,8 @@ def review(features: list, already: list) -> tuple[list, list]:
 
     carried = [(f["properties"]["name"], f["properties"].get("district", ""),
                 f["geometry"]["coordinates"]) for f in already]
-    seen = {json.dumps(part) for _, _, part in withheld}
     for entry in carried:
-        if json.dumps(entry[2]) not in seen:
+        if not _same_ground_as_any(entry, withheld):
             withheld.append(entry)
     withheld.sort(key=lambda e: (e[0], -sq_km(e[2][0])))
     return kept, [measure(name, district, part, kept)
