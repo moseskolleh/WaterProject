@@ -2178,6 +2178,26 @@
 
   var MAP_NO_DATA = '#EFEDE6';
 
+  /* A muted geological palette, keyed by the bundled USGS unit code. The
+   * Python engine reads the same table in groundwater/mapping/cartography.py
+   * as GEOLOGY_COLOURS; change one and change the other, or a report figure
+   * and the screen figure of the same site come out different colours and a
+   * reader holding both cannot line them up.
+   *
+   * The colours carried in the data are the USGS sheet's own - pure blue,
+   * magenta, red - and three saturated hues fighting each other is what made
+   * these read as a school atlas. The aquifer layer keeps its source colours,
+   * because there the colour IS the classification. */
+  var GEOLOGY_COLOURS = {
+    pCm: '#DCC9D2', Pi: '#C98D7A', Mi: '#D4A190',
+    O: '#BFD2C4', S: '#CFDCCB', Qe: '#EFE4C4', H2O: '#BBD3E0',
+  };
+
+  function unitColour(props, spec) {
+    if (spec && spec.sourceColours) return props.color || palette().neutral;
+    return GEOLOGY_COLOURS[props.glg] || props.color || palette().neutral;
+  }
+
   function featureBounds(features) {
     var b = { lonMin: Infinity, lonMax: -Infinity, latMin: Infinity, latMax: -Infinity };
     function scan(coords) {
@@ -2770,7 +2790,7 @@
         var props = feature.properties || {};
         var label = String(props[key] || 'unclassified');
         if (!seen.some(function (s) { return s.label === label; })) {
-          seen.push({ label: label, colour: props.color || palette().neutral });
+          seen.push({ label: label, colour: unitColour(props, spec) });
         }
       }
       var STEPS = 22;
@@ -2822,7 +2842,7 @@
       var props = feature.properties || {};
       canvas.layer.appendChild(svgEl('path', {
         d: geometryPath(feature.geometry, canvas.project),
-        fill: props.color || p.neutral, 'fill-opacity': 0.85,
+        fill: unitColour(props, spec), 'fill-opacity': 0.85,
         stroke: p.surface, 'stroke-width': 0.5,
       }, [svgEl('title', { text: String(props[key] || 'unclassified') })]));
     });

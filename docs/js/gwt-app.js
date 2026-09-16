@@ -1194,6 +1194,9 @@
               : 'Aquifer productivity, Sierra Leone',
             credit: 'BGS Africa Groundwater Atlas, CC BY-SA 4.0.',
             legendTitle: 'AQUIFER TYPE AND PRODUCTIVITY',
+          sourceColours: true,
+            // the BGS colours ARE the classification, so they stay
+            sourceColours: true,
             width: 560, height: 600,
           }), 'Aquifer type and productivity (BGS Africa Groundwater Atlas, CC BY-SA 4.0)',
           { filename: 'aquifer_map' }),
@@ -1534,6 +1537,7 @@
           points: latlon ? [{ lon: latlon.lon, lat: latlon.lat, label: siteLabel() }] : [],
           title: 'Aquifer productivity around ' + window_.label,
           legendTitle: 'AQUIFER TYPE AND PRODUCTIVITY',
+          sourceColours: true,
           credit: 'BGS Africa Groundwater Atlas, CC BY-SA 4.0.',
           width: 620, height: 620,
         })),

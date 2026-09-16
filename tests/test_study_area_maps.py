@@ -644,3 +644,90 @@ def test_the_note_is_silent_when_there_is_nothing_to_measure_it_against():
 
     _soundings, interps = _traverse()
     assert _correlation_note(traverse_profile(interps), 0.0) == ""
+
+
+# ---------------------------------------------------------------------------
+# Lithology: what the geology polygons are made of
+# ---------------------------------------------------------------------------
+
+def test_the_freetown_peninsula_is_named_for_its_rock_not_its_age():
+    """The user's complaint, as a test.
+
+    The bundled USGS layer calls the one polygon over the Western Area
+    "Paleozoic Igneous". It is the Freetown Layered Complex - Jurassic
+    layered gabbro - and a driller told "Paleozoic Igneous" has been
+    given a wrong age and no rock at all.
+    """
+    from groundwater.mapping.lithology import lithology_for
+
+    rock = lithology_for("Pi", "Western Area")
+    assert rock is not None
+    assert rock.formation_name == "Freetown Layered Complex"
+    assert rock.formation_code == "Jf"
+    assert "gabbro" in rock.lithology
+    assert "Jurassic" in rock.era_actual
+    assert rock.usgs_era_wrong, "the source's age for this polygon is wrong"
+    note = rock.provenance_note("Paleozoic Igneous")
+    # both ages are stated: the source is not silently corrected
+    assert "Paleozoic Igneous" in note and "Jurassic" in note
+    assert "1:5,000,000 one either way" in note
+
+
+def test_the_coastal_plain_is_the_bullom_group():
+    from groundwater.mapping.lithology import lithology_for
+
+    rock = lithology_for("Qe", "Western Area")
+    assert rock.formation_name == "Bullom Group"
+    assert "sand" in rock.lithology and "clay" in rock.lithology
+    assert "saline" in rock.aquifer_character, "the coastal risk has to be said"
+
+
+def test_a_class_annotated_for_one_region_is_not_applied_to_another():
+    """The Freetown gabbro is not under Kono, and must not be claimed to be."""
+    from groundwater.mapping.lithology import lithology_for
+
+    assert lithology_for("Pi", "Kono") is None
+    assert lithology_for("Pi", None) is None
+
+
+def test_the_units_that_are_not_in_sierra_leone_are_left_unnamed():
+    """'Ordovician' and 'Silurian' are in Guinea, not Sierra Leone.
+
+    Every one of their vertices is in the Bove Basin, inside the bundled
+    window only because the clip box reaches 10.15 N. Naming them for a
+    Sierra Leonean formation would put a name on another country's ground.
+    """
+    from groundwater.mapping.lithology import lithology_for
+    from groundwater.mapping.regional import _point_in_ring, load_admin, load_geology
+
+    outline, _ = load_admin()
+    units = load_geology()
+    for code in ("O", "S"):
+        rings = [u.ring for u in units if u.glg == code]
+        assert rings, code
+        inside = sum(
+            1 for ring in rings for v in ring
+            if any(_point_in_ring(v[0], v[1], r) for r in outline.rings)
+        )
+        assert inside == 0, f"{code} now reaches Sierra Leone; revisit the crosswalk"
+        assert lithology_for(code, "Bombali") is None
+
+
+def test_the_basement_class_admits_it_is_not_one_rock():
+    """'Precambrian' covers most of the country and at least ten formations."""
+    from groundwater.mapping.lithology import lithology_for
+
+    rock = lithology_for("pCm", "Kono")
+    assert "Leonean granite" in rock.formation_name
+    assert "Rokel River" in rock.lithology, "the metasediments inside it are named"
+    assert "not one rock" in rock.aquifer_character
+
+
+def test_every_crosswalk_row_says_where_it_came_from():
+    from groundwater.mapping.lithology import load_crosswalk
+
+    rows = load_crosswalk()
+    assert rows
+    for row in rows:
+        assert row.basis in {"legend", "published"}, row.usgs_code
+        assert row.usgs_code and row.region

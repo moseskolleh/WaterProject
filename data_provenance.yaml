@@ -70,8 +70,8 @@ datasets:
       Karene and Falaba, so it carries 14 districts.
     files:
       - path: src/groundwater/data/sl_admin_geoboundaries.geojson
-        bytes: 82505
-        sha256: a5dc27992f5c02587b99caba7e912d0c3b731a48f9f33d6572abecd8aa067a98
+        bytes: 283018
+        sha256: 0e1e3496a9f320baf469996d356d21727962a3a7a367470d23d411457cc6a650
         derived: true
 
   - id: geoboundaries_chiefdoms
@@ -96,13 +96,58 @@ datasets:
       the measurements the decision rests on. Nothing is reassigned.
     files:
       - path: src/groundwater/data/sl_chiefdoms_geoboundaries.geojson
-        bytes: 155130
-        sha256: 04d97198b8ad692e6367089f30058ea0790be9dfaef416a990c414972ffa1277
+        bytes: 431439
+        sha256: 082d5a3a1e638019d819c977e9a10506cd6af2401e8dbce9e0f479cdc31c9178
         derived: true
       - path: src/groundwater/data/boundary_review.geojson
-        bytes: 1170
-        sha256: 5a530503e58ec276d881db4e9b8d8c6b578915d6e55a4732f21f109c82cd4d61
+        bytes: 1526
+        sha256: 4f1ba220ba547aad4b7e78045fac024ea29fa02653abcb4609e1ba30b10c9bcb
         derived: true
+
+  - id: mowr_salwaco_lithology
+    name: Geology of Sierra Leone lithology crosswalk
+    source: >-
+      Geology of Sierra Leone (2017), 1:600,000, 28 formations; committed
+      here as a PDF map sheet, not as vector data
+    reference: >-
+      Fileccia, A., Teatini, P., Walther, C. and Mastrocola, P. (2017).
+      Geology of Sierra Leone. Hydro Nova, New Braunfels, Texas, USA.
+      Produced for the Sierra Leone Water Company on behalf of the Ministry
+      of Water Resources. Base after Keyser and Mansaray (2004), 1:250,000.
+    url: http://www.salgrid.org/
+    version: "Version 1, June 2017"
+    retrieved: unrecorded
+    licence: unverified
+    licence_evidence: >-
+      The sheet states "(c) Government of Sierra Leone (Ministry of Water
+      Resources), 2017. With exception of the Sierra Leone Coat of Arms, all
+      material in this publication is provided under license by the Ministry
+      of Water Resources", without naming the licence. Nobody has checked what
+      that licence permits, so this must not be read as permission. What is
+      bundled is a crosswalk of formation names and lithologies read off the
+      sheet's own legend, not its geometry, and the sheet itself is committed
+      only as the reference document it came with.
+    attribution: >-
+      Formation names and lithologies after Fileccia et al. (2017), Geology of
+      Sierra Leone, Ministry of Water Resources / SALWACO, 1:600,000.
+    share_alike: false
+    changes_made: >-
+      Legend codes, formation names and lithologies transcribed into a CSV and
+      keyed to the coarse USGS classes the toolkit actually renders, with a
+      region qualifier and a note on what each rock means for drilling. No
+      geometry is taken from the sheet; the polygons remain the 1:5,000,000
+      USGS ones.
+    files:
+      - path: WaterProjectFiles/Geology of Sierra Leone (MoWR-SALWACO 2017).pdf
+        bytes: 7671560
+        sha256: 3228a3d0d12ea72cb4d2860d2244df0f4be7084376fbe4b86b029f1f4798f93c
+      - path: src/groundwater/data/sl_lithology_usgs_crosswalk.csv
+        bytes: 5402
+        sha256: 6f9f2ed6d334ef19bee2efe101337c8a135326fd1c14f9a499862ff8ea91084f
+        derived: true
+    embedded_in:
+      - docs/js/gwt-data.js
+      - docs/wasm/index.html
 
   - id: usgs_geology
     name: USGS Geologic Map of Africa

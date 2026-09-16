@@ -79,6 +79,26 @@ committed file so a silent substitution is detectable.
 | **Required attribution** | "Water Point Data Exchange (WPdx+), CC BY 4.0, https://www.waterpointdata.org" |
 | **Notes** | Nothing is redistributed, so there is no obligation on this repository; the notice is for downstream users of exported data. |
 
+### Geology of Sierra Leone lithology crosswalk
+
+`src/groundwater/data/sl_lithology_usgs_crosswalk.csv` carries the formation
+names and lithologies from the *Geology of Sierra Leone* map (Fileccia, A.,
+Teatini, P., Walther, C. and Mastrocola, P., 2017; Hydro Nova, New Braunfels,
+Texas, for the Sierra Leone Water Company on behalf of the Ministry of Water
+Resources; 1:600,000; base after Keyser and Mansaray 2004 at 1:250,000). The
+sheet is committed at
+`WaterProjectFiles/Geology of Sierra Leone (MoWR-SALWACO 2017).pdf`.
+
+The sheet states that its material "is provided under license by the Ministry
+of Water Resources" without naming the licence, so the licence here is
+recorded as **unverified**: nobody has checked what it permits, and that must
+not be read as permission. What the toolkit bundles is a transcription of the
+sheet's own legend - formation codes, names and lithologies - keyed to the
+coarse USGS classes the maps are actually drawn from. No geometry is taken
+from the sheet. The polygons on every map remain the USGS Geologic Map of
+Africa ones at 1:5,000,000, and the figures say so.
+
+
 ## Reference documents
 
 `WaterProjectFiles/` holds nine third-party publications (about 23 MB) that

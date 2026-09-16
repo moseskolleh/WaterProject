@@ -160,10 +160,12 @@ def declutter(
     is worse than no name: the reader cannot tell which polygon the
     legible one belongs to either.
 
-    Greedy, largest-first. ``priority`` (bigger is more important, the
-    polygon's area is the obvious choice) decides who wins a collision,
-    so the chiefdom filling the frame keeps its name and the sliver
-    clipped by the corner loses it.
+    Greedy, largest-first, over estimated text boxes rather than points.
+    ``priority`` (bigger is more important, the polygon's area is the
+    obvious choice) decides who wins a collision, so the chiefdom filling
+    the frame keeps its name and the sliver clipped by the corner loses
+    it. A label whose text would run off the frame is dropped too: a name
+    half outside the neatline points at nothing.
     """
     if not candidates:
         return []
@@ -171,15 +173,36 @@ def declutter(
         np.argsort(priority)[::-1] if priority is not None
         else np.arange(len(candidates))
     )
-    span = max(extent[2] - extent[0], extent[3] - extent[1])
-    gap = span * min_sep_frac
+    width = extent[2] - extent[0]
+    height = extent[3] - extent[1]
+    # A label is a box, not a dot. Testing centre-to-centre distance kept
+    # "Western Area Urban" and "Western Area Rural" because their centroids
+    # are far enough apart - while the words themselves, fifteen characters
+    # wide, ran straight through each other. Character width is estimated
+    # rather than measured because the renderer has not laid the text out
+    # yet, and an estimate that is roughly right for DejaVu Sans at these
+    # sizes is enough to separate the cases that actually collide.
+    char_w = width * min_sep_frac * 0.30
+    line_h = height * min_sep_frac * 0.62
     kept: list[tuple[float, float, str]] = []
+    boxes: list[tuple[float, float, float, float]] = []
     for i in order:
         lon, lat, text = candidates[int(i)]
+        half_w = len(text) * char_w / 2.0
+        half_h = line_h / 2.0
+        box = (lon - half_w, lat - half_h, lon + half_w, lat + half_h)
+        # a name whose word runs off the frame points at nothing
         if not (extent[0] < lon < extent[2] and extent[1] < lat < extent[3]):
             continue
-        if all(math.hypot(lon - x, lat - y) > gap for x, y, _ in kept):
-            kept.append((lon, lat, text))
+        if box[0] < extent[0] or box[2] > extent[2]:
+            continue
+        if any(
+            box[0] < b[2] and box[2] > b[0] and box[1] < b[3] and box[3] > b[1]
+            for b in boxes
+        ):
+            continue
+        kept.append((lon, lat, text))
+        boxes.append(box)
     return kept
 
 
@@ -208,7 +231,13 @@ def _dms(value: float, axis: str) -> str:
     value = abs(value)
     deg = int(value)
     minutes = (value - deg) * 60.0
-    if abs(minutes) < 0.05:
+    # 12.99999 is sixty minutes past twelve, which is thirteen degrees, not
+    # "12 deg 60'". Floating point put a tick just short of 13 W and the
+    # graticule on every map of the Western Area was labelled 12 deg 60' W.
+    if minutes >= 59.95:
+        deg += 1
+        minutes = 0.0
+    if minutes < 0.05:
         return f"{deg}°{hemi}"
     if abs(minutes - round(minutes)) < 0.05:
         return f"{deg}°{round(minutes):02d}′{hemi}"

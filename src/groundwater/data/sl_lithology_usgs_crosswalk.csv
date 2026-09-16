@@ -32,12 +32,24 @@
 # which, because quietly correcting somebody else's dataset leaves a reader
 # unable to tell what they are looking at.
 #
+# Two of the USGS classes are NOT annotated, and that is the finding rather
+# than an omission. 'O' (Ordovician) and 'S' (Silurian) have zero vertices
+# inside Sierra Leone - all 94 and 28 of them are in the Bove Basin in
+# Guinea, inside the bundled window only because the clip box reaches
+# 10.15 N. Giving them a Sierra Leonean formation would put a name on
+# ground in another country. The 2017 sheet does map Ordovician inside
+# Sierra Leone (Om Moria, Ow Waterfall), but the USGS layer does not draw
+# it: at 1:5,000,000 it is inside 'pCm'.
+#
+# 'Mi' is annotated but only 29 of its 282 vertices are inside the country;
+# the rest is Guinea. The three polygons that do reach Sierra Leone are the
+# Jurassic dolerite north of Freetown, which is the same Central Atlantic
+# rifting event as the Freetown Complex the layer files as Paleozoic.
+#
 usgs_code,region,formation_code,formation_name,lithology,aquifer_character,era_actual,usgs_era_wrong,basis
 Pi,Western Area,Jf,Freetown Layered Complex,"Layered gabbro, norite and anorthosite; a basic to ultrabasic intrusion forming the Freetown peninsula hills","Massive and crystalline, with negligible primary porosity. Groundwater is confined to the weathered mantle and to fracture and joint sets; yields are modest and highly site-dependent, so the fracture target is the whole of the siting problem",Jurassic (about 193 Ma),yes,legend
 Qe,Western Area,Q;Tb,Bullom Group,"Unconsolidated to poorly consolidated sands, clays, clayey sands and lignite, with beach sand and alluvium; estuarine and deltaic","Intergranular. The most productive ground in the country for its thickness, but the coastal strip carries a real risk of saline intrusion and of shallow contamination, because the same porosity that stores water passes it",Miocene to Recent,no,legend
 Qe,coastal plain,Q;Tb,Bullom Group,"Sands, clays, clayey sands and lignite over the coastal lowland; alluvium along the drainage","Intergranular, generally the best yields available without deep drilling. Shallow water tables mean the protective cover is thin, so siting must keep clear of latrines and surface drainage",Miocene to Recent,no,legend
-pCm,interior,PLg;LG;Lg;LM;LAn,"Precambrian basement: migmatitic gneiss and granitoid, Leonean and Liberian granite, migmatites and hybrid rocks","Crystalline basement - granite, granitoid, gneiss and migmatite, with metagabbro and amphibolite bodies","The classic crystalline basement aquifer this toolkit is built for: no primary porosity, water in the weathered and fractured zone above fresh rock. Yield follows regolith thickness and the fracture set at the weathered-fresh contact",Archaean to Palaeoproterozoic,no,legend
-O,north and centre,Er;Erk;Erm;Ert;Erte,Rokel River Group,"Metasediments - sandstone, siltstone, shale and conglomerate, with the Kasewe volcanic member","Fracture flow in the indurated members; the shales are aquicludes rather than aquifers. Yields vary sharply over short distances, so a sounding at the wellhead is worth more here than anywhere else",Neoproterozoic to Early Palaeozoic,no,published
-S,north and centre,Er;Erk;Erm;Ert;Erte,Rokel River Group,"Metasediments - sandstone, siltstone, shale and conglomerate","Fracture flow in the indurated members; the shales are aquicludes rather than aquifers",Neoproterozoic to Early Palaeozoic,no,published
+pCm,interior,LG;Lg;PLg;LM;Er;Lkm;Lkt,"Precambrian basement, chiefly Leonean granite","Crystalline basement. Sampled against the 2017 map on a national grid this one USGS class resolves to at least ten formations: about two thirds Leonean granite (LG), a ninth Rokel River Group metasediments (Er), then Magbele and Tapr (Lkm, Lkt), Liberian granite (Lg), a mylonite zone and migmatitic gneiss","Mostly the crystalline basement aquifer this toolkit is built for: no primary porosity, water in the weathered and fractured zone above fresh rock, yield following regolith thickness and the fracture set at the weathered-fresh contact. But this class is not one rock, and where it covers the Rokel River metasediments the aquifer is fracture flow in indurated beds with shales acting as aquicludes - a different target. Read the aquifer map beside it: the BGS layer separates the two where this one does not",Archaean to Palaeoproterozoic,no,legend
 Mi,all,Jd,Dolerite,"Dolerite, intruded as dykes and sheets cutting the basement","A dyke is usually a barrier rather than an aquifer, but its margins are commonly fractured and its contact with the country rock can concentrate flow. The dyke itself is the wrong target; the contact beside it may be the right one",Jurassic,no,legend
 H2O,all,,Surface water,"River, lake or estuary",Not an aquifer,,no,legend

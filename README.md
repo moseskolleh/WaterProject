@@ -43,7 +43,15 @@ water quality guidelines.
 9. Location, geology and aquifer maps from real open datasets
    (geoBoundaries districts CC BY 4.0, USGS Geologic Map of Africa,
    BGS Africa Groundwater Atlas aquifer productivity CC BY-SA 4.0),
-   embedded automatically into the survey and handover reports
+   embedded automatically into the survey and handover reports. The
+   geological key names the rock rather than its age: the USGS layer
+   carries seven classes for the whole country, one of which dates the
+   Freetown peninsula wrong, so a bundled crosswalk gives each the
+   formation and lithology the Geology of Sierra Leone map (MoWR/SALWACO
+   2017, 1:600,000) maps there - the Freetown Layered Complex, the Bullom
+   Group - and what that rock means for a borehole. It annotates rather
+   than reclassifies: the polygon is still the 1:5,000,000 one, and where
+   the two sources disagree the figure says both
 10. Ten documents: geophysical survey, borehole completion, pumping
     test, water quality, project handover, cost estimate, supervision
     checklist record, interim payment certificate, borehole asset record
