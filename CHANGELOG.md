@@ -348,7 +348,7 @@ coastline looked hand-traced. They are rebuilt from the full-resolution
 releases at 45 m for the national outline and districts and 90 m for the
 chiefdoms, which is finer than the eye can find at any window this toolkit
 draws. This is a real cost and worth stating plainly: the offline app's
-precache grows from 1,662 KB to 2,128 KB, on an app installed on phones in
+precache grows from 1,662 KB to 2,131 KB, on an app installed on phones in
 places where that is somebody's data allowance. It buys a coastline, an
 estuary and a river boundary that are where they actually are.
 
