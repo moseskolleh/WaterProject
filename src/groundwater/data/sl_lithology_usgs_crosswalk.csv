@@ -1,0 +1,43 @@
+# What the bundled geology polygons are actually made of.
+#
+# The bundled layer (sl_geology_usgs.geojson) is the USGS Geologic Map of
+# Africa at 1:5,000,000. It carries SEVEN classes for the whole of Sierra
+# Leone and they are AGES, not rocks: "Paleozoic Igneous", "Precambrian",
+# "Holocene". A driller cannot use an age. What decides whether a borehole
+# yields is the lithology - whether the rock weathers to a storing regolith,
+# whether it fractures, whether it is porous in itself.
+#
+# This table says, for each of those coarse classes, what the ground under
+# it is called and made of on the Geology of Sierra Leone map (Fileccia,
+# Teatini, Walther & Mastrocola, 2017; Hydro Nova for SALWACO / Ministry of
+# Water Resources; 1:600,000, 28 formations, after Keyser and Mansaray
+# 2004 at 1:250,000) - which is committed to this repository at
+# WaterProjectFiles/Geology of Sierra Leone (MoWR-SALWACO 2017).pdf and is
+# already cited in the geophysical report's prose.
+#
+# It is an ANNOTATION, not a reclassification. The polygon and its boundary
+# still come from the 1:5M USGS layer and are no more accurate for being
+# better named. `region` is the part of the country the row applies to,
+# because one coarse USGS class covers different formations in different
+# places; a row applies only where its region says it does.
+#
+# `basis` is the point of the file:
+#   legend     - quoted from the committed 2017 map's own legend
+#   published  - established regional geology, not from a source committed
+#                here, so read it as a stated basis and check it if it
+#                matters to a decision
+#
+# `usgs_era_wrong` marks a class whose USGS age is demonstrably incorrect.
+# Those are NOT silently rewritten: the figure shows both and says which is
+# which, because quietly correcting somebody else's dataset leaves a reader
+# unable to tell what they are looking at.
+#
+usgs_code,region,formation_code,formation_name,lithology,aquifer_character,era_actual,usgs_era_wrong,basis
+Pi,Western Area,Jf,Freetown Layered Complex,"Layered gabbro, norite and anorthosite; a basic to ultrabasic intrusion forming the Freetown peninsula hills","Massive and crystalline, with negligible primary porosity. Groundwater is confined to the weathered mantle and to fracture and joint sets; yields are modest and highly site-dependent, so the fracture target is the whole of the siting problem",Jurassic (about 193 Ma),yes,legend
+Qe,Western Area,Q;Tb,Bullom Group,"Unconsolidated to poorly consolidated sands, clays, clayey sands and lignite, with beach sand and alluvium; estuarine and deltaic","Intergranular. The most productive ground in the country for its thickness, but the coastal strip carries a real risk of saline intrusion and of shallow contamination, because the same porosity that stores water passes it",Miocene to Recent,no,legend
+Qe,coastal plain,Q;Tb,Bullom Group,"Sands, clays, clayey sands and lignite over the coastal lowland; alluvium along the drainage","Intergranular, generally the best yields available without deep drilling. Shallow water tables mean the protective cover is thin, so siting must keep clear of latrines and surface drainage",Miocene to Recent,no,legend
+pCm,interior,PLg;LG;Lg;LM;LAn,"Precambrian basement: migmatitic gneiss and granitoid, Leonean and Liberian granite, migmatites and hybrid rocks","Crystalline basement - granite, granitoid, gneiss and migmatite, with metagabbro and amphibolite bodies","The classic crystalline basement aquifer this toolkit is built for: no primary porosity, water in the weathered and fractured zone above fresh rock. Yield follows regolith thickness and the fracture set at the weathered-fresh contact",Archaean to Palaeoproterozoic,no,legend
+O,north and centre,Er;Erk;Erm;Ert;Erte,Rokel River Group,"Metasediments - sandstone, siltstone, shale and conglomerate, with the Kasewe volcanic member","Fracture flow in the indurated members; the shales are aquicludes rather than aquifers. Yields vary sharply over short distances, so a sounding at the wellhead is worth more here than anywhere else",Neoproterozoic to Early Palaeozoic,no,published
+S,north and centre,Er;Erk;Erm;Ert;Erte,Rokel River Group,"Metasediments - sandstone, siltstone, shale and conglomerate","Fracture flow in the indurated members; the shales are aquicludes rather than aquifers",Neoproterozoic to Early Palaeozoic,no,published
+Mi,all,Jd,Dolerite,"Dolerite, intruded as dykes and sheets cutting the basement","A dyke is usually a barrier rather than an aquifer, but its margins are commonly fractured and its contact with the country rock can concentrate flow. The dyke itself is the wrong target; the contact beside it may be the right one",Jurassic,no,legend
+H2O,all,,Surface water,"River, lake or estuary",Not an aquifer,,no,legend
