@@ -348,9 +348,12 @@ coastline looked hand-traced. They are rebuilt from the full-resolution
 releases at 45 m for the national outline and districts and 90 m for the
 chiefdoms, which is finer than the eye can find at any window this toolkit
 draws. This is a real cost and worth stating plainly: the offline app's
-precache grows from 1,662 KB to 2,131 KB, on an app installed on phones in
-places where that is somebody's data allowance. It buys a coastline, an
-estuary and a river boundary that are where they actually are.
+precache grows from 1,662 KB to 2,143 KB, on an app installed on phones in
+places where that is somebody's data allowance. (The last 12 KB of that is
+the lithology crosswalk, bundled so the browser's key can name the rock;
+its comment block, which is most of the file, is stripped on the way in.)
+It buys a coastline, an estuary and a river boundary that are where they
+actually are.
 
 What was NOT done, and deliberately: no curve smoothing at render time.
 Running a spline through a simplified boundary produces a confident line
