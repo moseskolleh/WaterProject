@@ -248,6 +248,39 @@ guide's own words are that its maps are "not suitable for providing
 detailed information on geology and hydrogeology at a sub-national
 (e.g. catchment) scale". Zoom them for context, not for a contact.
 
+The geological key names the rock, not its age. The USGS layer carries
+seven classes for the whole country and they are ages - "Paleozoic
+Igneous", "Precambrian", "Holocene" - which tell a driller nothing about
+whether the ground stores water. A bundled crosswalk gives each class the
+formation and lithology the *Geology of Sierra Leone* map (MoWR/SALWACO
+2017, 1:600,000, 28 formations) maps there, so the key reads "Freetown
+Layered Complex (Jf; USGS Pi)" and "Bullom Group (Q, Tb; USGS Qe)", and
+the crosswalk says what each rock means for a borehole: the Freetown
+gabbro stores nothing and yields only from fractures, the Bullom sands
+yield well and are the easiest ground in the country to contaminate.
+
+Three things about that are worth knowing before you rely on it.
+
+It **annotates, it does not reclassify**. The polygon and its boundary
+are still the 1:5,000,000 ones and are no more accurate for being better
+named - which is why the key keeps the USGS code beside the formation.
+
+Where the two sources **disagree**, the figure says so rather than
+quietly picking one. The USGS layer dates the Freetown peninsula as
+Paleozoic; it is the Freetown Layered Complex, Jurassic, about 193
+million years old. The map states both.
+
+Two classes are deliberately **left unnamed**. "Ordovician" and
+"Silurian" have no vertices inside Sierra Leone at all - they are the
+Bove Basin in Guinea, inside the bundled window only because the clip box
+reaches 10.15 N - so putting a Sierra Leonean formation on them would be
+naming another country's ground. And "Precambrian", which covers most of
+the country, is named as what it mostly is (Leonean granite) with its own
+row saying plainly that it is at least ten formations, including the
+Rokel River metasediments, whose aquifer behaves differently. Where that
+matters, read the aquifer map beside it: the BGS layer separates the two
+where the USGS one does not.
+
 **Topography** - no elevation model is bundled with this toolkit and
 none is downloaded, so the topographic map is drawn from a file you
 supply and names its source on the figure. Three formats are read
