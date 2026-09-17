@@ -190,10 +190,18 @@ def build_handover_report(
             if yr.safe_yield_m3_per_h:
                 rows.append([
                     f"Safe yield (safety factor {yr.safety_factor:g})",
-                    yr.yield_range_text,
+                    yr.yield_range_text
+                    + (" (indicative)" if yr.is_indicative else ""),
+                ])
+                rows.append([
+                    "Yield confidence",
+                    ("indicative: " + "; ".join(yr.confidence_reasons))
+                    if yr.is_indicative else "established",
                 ])
             if yr.pump_installation_depth_m:
-                rows.append(["Pump installation depth", fmt_num(yr.pump_installation_depth_m) + " m"])
+                rows.append(["Pump intake depth",
+                             fmt_num(yr.pump_installation_depth_m)
+                             + " m below the top of the casing"])
     if inputs.pump_type:
         rows.append(["Pump type", inputs.pump_type])
     rb.table(rows, header=["Item", "Value"], caption="Key borehole data.")
@@ -339,6 +347,8 @@ def _executive_summary(inputs: HandoverReportInputs) -> tuple[list[str], list[st
         bits.append(
             f"The recommended safe yield is {fmt_num(yr.safe_yield_m3_per_h)} m3/h."
         )
+        if yr.is_indicative:
+            bits.append(yr.confidence_text)
     if quality is not None:
         # Chosen on the full verdict state, not the health exceedances alone:
         # a national breach or an unevaluable panel used to read as suitable.
@@ -354,7 +364,10 @@ def _executive_summary(inputs: HandoverReportInputs) -> tuple[list[str], list[st
             + (f", {log.status}." if log.status else ".")
         )
     if yr is not None and yr.safe_yield_m3_per_h:
-        key.append(f"Safe yield: {fmt_num(yr.safe_yield_m3_per_h)} m3/h.")
+        key.append(
+            f"Safe yield: {fmt_num(yr.safe_yield_m3_per_h)} m3/h"
+            + (" (indicative)" if yr.is_indicative else "") + "."
+        )
     if quality is not None:
         key.append("Water safety: " + SUITABILITY_PHRASE[quality.verdict_state])
     key.append(

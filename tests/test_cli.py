@@ -39,7 +39,8 @@ def test_recompute_reports_every_source_and_writes_a_summary(sample_data, tmp_pa
     assert code == 0, printed
     assert "ok:" in printed
     summary = json.loads(out.read_text())
-    assert summary["pumping"]["transmissivity_source"] == "recovery"
+    # the best of Dr Timbo's poor fits; the recovery's intercept rules it out
+    assert summary["pumping"]["transmissivity_source"] == "cooper_jacob"
     assert summary["pumping"]["safe_yield_m3_per_h"] > 0
     assert summary["water_quality"]["verdict"] == "health_fail"
     assert summary["design"]["screens"]

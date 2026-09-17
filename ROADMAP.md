@@ -204,58 +204,73 @@ analysePumpingTest, `gwt-charts.js` testOverview and stepTestPlot,
 `gwt-docx.js`. Tests: `test_hydraulics.py`, `test_seasonal.py`,
 `test_readiness.py`, `test_examples.py`, `test_reporting_and_extraction.py`.
 
-- [ ] **C hydraulics-1. The adopted transmissivity of 1.4 m2/day comes from
+- [x] **C hydraulics-1. The adopted transmissivity of 1.4 m2/day comes from
   a recovery line with a 21.7 m intercept.** Theis residual-drawdown
   analysis requires the line through the origin; the intercept is stored
   for the figure and never checked. Cooper-Jacob gives 0.54, Theis 0.47,
   a through-origin recovery 0.37; the safe yield built on 1.4 would be
   0.39 m3/h, not 0.97.
-- [ ] **C hydraulics-2. There is no casing-storage check.** With a 5 inch
+  Done: the recovery line's intercept is checked against `recovery_intercept_max_fraction`; a line meeting t/t' = 1 at 66% of the starting residual drawdown is reported, flagged `recovery_intercept` and not adopted. Dr Timbo's yield now rests on the best of the poor fits (0.54 m2/day), stated as such: 0.39 m3/h, indicative.
+- [x] **C hydraulics-2. There is no casing-storage check.** With a 5 inch
   casing and T of 0.5-1.4 m2/day the storage period is 100-270 minutes; the
   Dr Timbo test pumped 30 minutes, entirely inside it, with the level still
   falling 0.9 m/min at the end and Theis returning S = 0.18. The u < 0.05
   check is a distance criterion and always passes for a pumped well.
-- [ ] **C hydraulics-3 / reports-1. The completion and handover reports
+  Done: `casing_storage_min` applies Schafer's rule from the casing and riser diameters (`PumpingConfig`) and the first step's specific capacity; a Cooper-Jacob window inside the period and a Theis fit over a test inside it are disqualified with a `casing_storage` warning, a storativity above 0.1 is flagged `storativity_implausible`, and the u check says it is a distance criterion a pumped well always meets.
+- [x] **C hydraulics-3 / reports-1. The completion and handover reports
   print the transmissivity, the safe yield, the pump depth and "successful
   and sustainable" from a 30-minute test without the analysis's own
   `short_test` warning or its "treat as indicative" basis,** which the
   pumping report does print. The readiness gate does not count it.
-- [ ] **C hydraulics-4 / borehole-design-4 / reports-2. The recommended
+  Done: `YieldRecommendation.confidence` is "indicative" with its reasons whenever the test is short, inside casing storage or no method fitted to standard; the pumping, completion and handover reports print the confidence beside the yield, "successful and sustainable" is reserved for an established yield, and the readiness gate holds `yield_established` unmet for an indicative one.
+- [x] **C hydraulics-4 / borehole-design-4 / reports-2. The recommended
   pump intake of 39 m is independent of the fitted transmissivity, sits
   3 m above the 42.3 m pumping level the test reached at three times the
   recommended rate, and spends the safety factor on raising the pump.**
   Available drawdown was computed to the 67 m test setting; the pump is
   then moved to 39 m where that drawdown does not exist. checked.
-- [ ] **H hydraulics-5. Three pump depths in one report** (67 m on the test
+  Done: the intake is set at the static level plus the dry-season reserve, the usable drawdown the long-term yield is projected to use and the submergence margin, never above the deepest level the test reached plus submergence, capped 3 m above the bottom; Dr Timbo goes from 39 m to 52 m and the basis says the safety factor stays on the rate.
+- [x] **H hydraulics-5. Three pump depths in one report** (67 m on the test
   overview, 39 m on the drawing, 39 m in the tables) and the test pump
   setting is otherwise never stated.
-- [ ] **H hydraulics-6. The pumping report with a seasonal projection says
+  Done: the overview and step figures label the line "test pump intake N m", every report table carries "Pump setting during the test" beside "Recommended pump intake".
+- [x] **H hydraulics-6. The pumping report with a seasonal projection says
   install at 39 m and, three paragraphs later, at 40 m.**
-- [ ] **H hydraulics-7. Cooper-Jacob is fitted to a step whose every
+  Done: `pump_intake_depth(analysis, seasonal)` gives the one depth (the deeper of the yield's and the drought scenario's) and every sentence in the report prints it.
+- [x] **H hydraulics-7. Cooper-Jacob is fitted to a step whose every
   drawdown is negative and adopted for the yield** (Kuntolo with discharges
   supplied: T 4.3 m2/day, safe yield 1.06 m3/h, pump 38 m) while the same
   run excludes that step from the step-test fit as a datum error.
-- [ ] **H hydraulics-8 / reports-11. The Kuntolo report certifies "the
+  Done: a first step that ends at or above static gets no Cooper-Jacob or Theis fit and a `first_step_above_static` warning; Kuntolo's yield rests on the recovery, flagged low confidence, at 0.41 m3/h rather than 1.06.
+- [x] **H hydraulics-8 / reports-11. The Kuntolo report certifies "the
   curves are valid" and quotes a 59.2 m maximum drawdown and 37.7 m of
   available drawdown** from levels 18 m below the pump intake and 8 m below
   the hole bottom; no flag exists for a level below the pump.
-- [ ] **M hydraulics-9. The step figure has no hole-bottom or intake
+  Done: the parser flags `level_below_pump`; a report whose levels are flagged says they are inconsistent with the stated static level, pump setting or borehole depth and that the drawdowns are as recorded, never that the curves are valid.
+- [x] **M hydraulics-9. The step figure has no hole-bottom or intake
   reference and no borehole in its title.**
-- [ ] **M hydraulics-10. The test overview labels only step 1, draws all
+  Done: intake and hole-bottom reference lines as drawdown, and the borehole and community in the title.
+- [x] **M hydraulics-10. The test overview labels only step 1, draws all
   steps in one colour and puts the legend over the data.** The browser
   chart already does this right; port it.
-- [ ] **M hydraulics-11. Hantush-Bierschenk on two steps prints R2 = 1.000
+  Done: every step labelled with its rate in its own colour, and the legend under the axes.
+- [x] **M hydraulics-11. Hantush-Bierschenk on two steps prints R2 = 1.000
   and efficiencies from a two-point line.**
-- [ ] **M hydraulics-12. Specific capacity is printed without its duration
+  Done: `StepTestResult.two_point`; the report prints "exact by construction" instead of R squared and marks the efficiencies indicative.
+- [x] **M hydraulics-12. Specific capacity is printed without its duration
   or rate, to false precision, and never used;** the browser runs the
   handpump rule on it, Python does not.
-- [ ] **M hydraulics-13. Recovery after a step test uses the last rate and
+  Done: `specific_capacity_basis` ("2.93 m3/h over 32.8 m of drawdown after 30 minutes") printed with the value to two significant figures.
+- [x] **M hydraulics-13. Recovery after a step test uses the last rate and
   the total pumping time** instead of an equivalent time.
-- [ ] **L hydraulics-14. "Below ground level" for levels measured below the
+  Done: `equivalent_pumping_time_min` (sum of Q dt over the last rate, 112 minutes for Kuntolo); the recovery result records the time it used and the report says which.
+- [x] **L hydraulics-14. "Below ground level" for levels measured below the
   measuring point,** with a 0.5 m stick-up never applied.
-- [ ] **L hydraulics-15 / reports-17. The raw "constant+recovery" token,
+  Done: every depth is "below the top of the casing, the datum the levels were measured from", and the test details say the stick-up is not recorded.
+- [x] **L hydraulics-15 / reports-17. The raw "constant+recovery" token,
   levels that do not add up on the page, and a flow rate in L/h beside
   everything else in m3/h.**
+  Done: `test_type_text` ("constant discharge test with recovery") everywhere the token was printed, the completion table prints the test discharge in m3/h.
 
 ## 4. Borehole design and drawing
 

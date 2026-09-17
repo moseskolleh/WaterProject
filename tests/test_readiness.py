@@ -29,9 +29,14 @@ from groundwater.readiness import REPORTS, REQUIREMENTS, assess_readiness
 @pytest.fixture(scope="module")
 def project(sample_data) -> dict:
     """A complete Dr Timbo project, with a position the sheets do not carry."""
+    from conftest import synthetic_constant_test
+
     d = Path(sample_data) / "dr_timbo"
     log = read_drilling_workbook(d / "dr_timbo_drilling_log.xlsx")
-    analysis = analyse_pumping_test(read_pumping_workbook(d / "dr_timbo_constant_test.xlsx"))
+    # Dr Timbo's own test pumped for thirty minutes inside its casing
+    # storage, so its yield is indicative and no certificate can rest on
+    # it; the complete project gets a six-hour test with recovery instead
+    analysis = analyse_pumping_test(synthetic_constant_test(recovery=True))
     sample = read_quality_workbook(d / "dr_timbo_water_quality.xlsx")
     return {
         "site": SiteMetadata(
@@ -122,6 +127,20 @@ def test_a_position_on_any_sheet_locates_the_project(project):
         assert "site_located" not in {r.key for r in readiness.unmet}
     finally:
         log.site.easting = log.site.northing = None
+
+
+def test_an_indicative_yield_is_not_established(project, sample_data):
+    """Dr Timbo's 30-minute test: the gate used to certify the number."""
+    d = Path(sample_data) / "dr_timbo"
+    analysis = analyse_pumping_test(read_pumping_workbook(d / "dr_timbo_constant_test.xlsx"))
+    assert analysis.yield_recommendation.is_indicative
+    state = dict(project, pump_analysis=analysis)
+    for report in ("completion", "handover", "pumping"):
+        readiness = assess_readiness(state, report)
+        unmet = {r.key: r.detail for r in readiness.unmet}
+        assert "yield_established" in unmet, report
+        assert "indicative, not established" in unmet["yield_established"]
+        assert "casing-storage" in unmet["yield_established"]
 
 
 def test_a_pumping_report_does_not_need_the_water_quality(project):

@@ -370,6 +370,14 @@ def _yield_established(state: dict) -> tuple[str, str]:
         return "unmet", rec.pending_reason
     if rec.safe_yield_m3_per_h is None:
         return "unmet", "The safe yield could not be derived from this test."
+    # A yield the analysis itself calls indicative is not established. The
+    # gate used to certify a 30-minute test inside its casing storage on
+    # the strength of the number alone.
+    if getattr(rec, "is_indicative", False):
+        return "unmet", (
+            f"The safe yield of {rec.yield_range_text} is indicative, not "
+            "established: " + "; ".join(rec.confidence_reasons) + "."
+        )
     return "met", f"Safe yield {rec.yield_range_text}."
 
 

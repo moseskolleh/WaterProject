@@ -50,6 +50,11 @@ from groundwater.costing import (
 )
 from groundwater.design import design_borehole, draw_borehole_design
 from groundwater.hydraulics import analyse_pumping_test
+from groundwater.hydraulics.analysis import (
+    METHOD_LABELS,
+    pump_intake_depth,
+    test_type_text,
+)
 from groundwater.hydraulics.plots import (
     plot_cooper_jacob,
     plot_recovery,
@@ -2437,7 +2442,7 @@ with tab_pump:
         )
     if path is not None and test is not None:
         st.success(
-            f"Parsed {test.test_type} test with {len(test.steps)} pumping series "
+            f"Parsed {test_type_text(test.test_type)} with {len(test.steps)} pumping series "
             f"and {'a' if test.recovery_time_min is not None else 'no'} recovery record."
         )
         show_flags(test.flags)
@@ -2489,7 +2494,8 @@ with tab_pump:
             if analysis.recovery is not None:
                 rec_path = workdir() / "rec.png"
                 plot_recovery(test.recovery_time_min, test.residual_drawdown(),
-                              test.pumping_duration_min, analysis.recovery, path=rec_path)
+                              analysis.recovery.pumping_time_min, analysis.recovery,
+                              path=rec_path)
                 st.image(str(rec_path))
         if test.test_type.startswith("step"):
             st_path = workdir() / "steps.png"
@@ -2506,7 +2512,7 @@ with tab_pump:
                 f"<div class='gw-big'>{fmt_num(yr.safe_yield_m3_per_h)} "
                 "<small>m³/h</small></div></div>"
                 + (
-                    "<div><span class='gw-cap'>Pump setting depth</span>"
+                    "<div><span class='gw-cap'>Pump intake, below the casing top</span>"
                     f"<div class='gw-big'>"
                     f"{fmt_num(yr.pump_installation_depth_m)} "
                     "<small>m</small></div></div>"
@@ -2515,6 +2521,10 @@ with tab_pump:
                 + "</div>",
                 unsafe_allow_html=True,
             )
+            if yr.is_indicative:
+                st.warning(yr.confidence_text, icon="⚠️")
+            else:
+                st.caption(yr.confidence_text)
         if yr is not None and yr.safe_yield_low_m3_per_h is not None:
             st.caption(
                 f"Plausible range **{yr.safe_yield_low_m3_per_h:.2g} to "
@@ -2564,12 +2574,23 @@ with tab_pump:
                     )
                 )
             cols[3].metric(
-                "Pump depth",
+                "Pump intake",
                 f"{fmt_num(yr.pump_installation_depth_m)} m"
                 if yr.pump_installation_depth_m
                 else "pending",
+                help="Below the top of the casing, the datum the levels were "
+                "measured from. Set where the drawdown the yield was computed "
+                "on exists, and never above the level the test itself reached.",
             )
             st.caption(yr.basis)
+            if yr.pump_depth_basis:
+                st.caption(yr.pump_depth_basis)
+        if analysis.disqualified:
+            st.caption(
+                "Not adopted for the yield: "
+                + "; ".join(f"{METHOD_LABELS[k]} ({v})" for k, v in analysis.disqualified.items())
+                + "."
+            )
 
         # --- through the year ------------------------------------------
         # A test measures one day; the borehole has to supply the village on
@@ -2627,13 +2648,13 @@ with tab_pump:
                     f"{_loss:.0f}% less than it did on the day of the test. "
                     "Size the supply on the dry-season figure."
                 )
-            if _seasonal.pump_installation_depth_m is not None:
+            _intake, _intake_why = pump_intake_depth(analysis, _seasonal)
+            if _intake is not None:
                 st.info(
-                    "Set the pump intake at "
-                    f"{fmt_num(_seasonal.pump_installation_depth_m)} m - deep "
-                    "enough for the drought case. The pump is fitted once, and "
-                    "one that draws air in a bad year loses the village its "
-                    "borehole in the year it is needed most."
+                    f"Set the pump intake at {fmt_num(_intake)} m below the top "
+                    f"of the casing, {_intake_why or 'deep enough for the drought case'}. "
+                    "The pump is fitted once, and one that draws air in a bad year "
+                    "loses the village its borehole in the year it is needed most."
                 )
             st.caption(
                 f"The annual range used is {_seasonal.annual_range_m:.1f} m - "

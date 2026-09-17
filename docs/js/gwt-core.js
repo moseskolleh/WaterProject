@@ -84,6 +84,17 @@
        * time to reach the design period, so its yield is flagged */
       min_constant_test_min: 240.0,
       min_step_length_min: 60.0,
+      /* Casing storage: Schafer's rule puts the end of the period the pump
+       * spends emptying the casing at 0.6 (dc^2 - dp^2) / (Q/s) minutes; the
+       * diameters default to the design rules' casing and a 1.25 inch riser */
+      casing_diameter_in: 5.0,
+      riser_diameter_in: 1.25,
+      /* a recovery line whose intercept at t/t' = 1 is more than this fraction
+       * of the drawdown the recovery started from is not a Theis recovery
+       * line: reported, but not adopted for the yield */
+      recovery_intercept_max_fraction: 0.25,
+      /* a Theis storativity above this is the casing, not the aquifer */
+      max_plausible_storativity: 0.1,
     },
     design: {
       borehole_diameter_in: 6.5,
@@ -1791,13 +1802,27 @@
     var rEff = obsRadius ? obsRadius : 0.1;
     var sEff = storativity ? storativity : (opts.assumedStorativity || 1e-3);
     var uStart = rEff * rEff * sEff / (4.0 * T * (fitWindow[0] / MIN_PER_DAY));
-    var uCheck = uStart < cfg.cooper_jacob_u_max
-      ? 'u = ' + expo(uStart, 2) + ' at the start of the fitted window, ' +
+    var noObservation = obsRadius === null || obsRadius === undefined;
+    var uCheck;
+    if (uStart < cfg.cooper_jacob_u_max && noObservation) {
+      /* In the pumped well r is the well radius, so u is tiny from the first
+       * minute whatever the data look like. The criterion is a distance
+       * criterion; it says the straight-line form applies, not that this
+       * line is a good one, and the report used to read it as a validation
+       * of the fit. */
+      uCheck = 'u = ' + expo(uStart, 2) + ' at the start of the fitted window, ' +
+        'below the ' + cfg.cooper_jacob_u_max + ' criterion. In the pumped well ' +
+        'itself this is a distance criterion met from the first minute; it ' +
+        'does not test the fit';
+    } else if (uStart < cfg.cooper_jacob_u_max) {
+      uCheck = 'u = ' + expo(uStart, 2) + ' at the start of the fitted window, ' +
         'below the ' + cfg.cooper_jacob_u_max + ' criterion; the straight line ' +
-        'approximation is valid'
-      : 'u = ' + expo(uStart, 2) + ' at the start of the fitted window ' +
+        'approximation is valid';
+    } else {
+      uCheck = 'u = ' + expo(uStart, 2) + ' at the start of the fitted window ' +
         'exceeds ' + cfg.cooper_jacob_u_max + '; early data were excluded or ' +
         'results should be treated with caution';
+    }
 
     return {
       transmissivity_m2_per_day: T,
@@ -1914,7 +1939,9 @@
    *   s' = 2.303 Q / (4 pi T) log10(t/t')
    * with t since pumping started and t' since it stopped. */
   function theisRecovery(recoveryTimeMin, residualDrawdownM, pumpingDurationMin,
-                         dischargeM3PerH) {
+                         dischargeM3PerH, equivalentTime) {
+    /* pumpingDurationMin is the time t/t' is formed with: after a step test
+     * pass the equivalent time from equivalentPumpingTimeMin and say so. */
     requireDischarge(dischargeM3PerH);
     var tp = [], sp = [], i;
     for (i = 0; i < recoveryTimeMin.length; i++) {
@@ -1931,6 +1958,7 @@
       throw new Error('Residual drawdown does not decrease; check the data');
     }
     var qDay = dischargeM3PerH * 24.0;
+    var start = arrMax(sp);
     return {
       transmissivity_m2_per_day: 2.303 * qDay / (4.0 * Math.PI * fit.slope),
       slope_m_per_log_cycle: fit.slope,
@@ -1941,6 +1969,15 @@
       /* theory puts the line through the origin at t/t' = 1; the fitted line
        * generally does not, and the figure has to draw the line that was fitted */
       intercept_m: fit.intercept,
+      /* the pumping time t/t' was formed with: the pumped duration of a
+       * constant test, or the discharge-weighted equivalent time after a
+       * step test */
+      pumping_time_min: Number(pumpingDurationMin),
+      equivalent_time: !!equivalentTime,
+      /* |intercept| as a fraction of the residual drawdown the recovery
+       * started from; theory says zero, and a large one says the line is not
+       * a Theis recovery line */
+      intercept_fraction: start > 0 ? Math.abs(fit.intercept) / start : 0.0,
     };
   }
 
@@ -2000,6 +2037,9 @@
       steps: steps,
       r_squared: r2,
       fit_note: fitNote,
+      /* a line through two points is exact by construction: R squared is
+       * 1.000 whatever the data, and B, C and the efficiencies are untested */
+      two_point: q.length === 2,
       drawdown_at: function (qDay) { return B * qDay + C * qDay * qDay; },
       efficiency_at: function (qDay) {
         var total = B * qDay + C * qDay * qDay;
@@ -2021,6 +2061,146 @@
     cooper_jacob: 'Cooper-Jacob',
     theis: 'Theis curve fit',
   };
+
+  /* Schafer's (1978) casing-storage rule, t_c = 0.6 (dc^2 - dp^2) / (Q/s)
+   * minutes with the diameters in inches and Q/s in gpm/ft, restated for
+   * diameters in metres and Q/s in m3/h per m: 0.6 x 39.37^2 / 1.342. */
+  var CASING_STORAGE_COEFFICIENT = 693.0;
+
+  /* The words for a field sheet's test type token. The sheets say "step" or
+   * "constant" and the parser appends "+recovery" when a recovery limb was
+   * recorded; a report prints the phrase, never the token. */
+  var TEST_TYPE_WORDS = {
+    step: 'step drawdown test',
+    constant: 'constant discharge test',
+  };
+
+  /* "constant+recovery" -> "constant discharge test with recovery" */
+  function testTypeText(testType) {
+    var text = String(testType === null || testType === undefined ? '' : testType);
+    var plus = text.indexOf('+');
+    var base = plus >= 0 ? text.slice(0, plus) : text;
+    var tail = plus >= 0 ? text.slice(plus + 1) : '';
+    var key = base.trim().toLowerCase();
+    var words = Object.prototype.hasOwnProperty.call(TEST_TYPE_WORDS, key)
+      ? TEST_TYPE_WORDS[key] : (base.trim() || 'pumping') + ' test';
+    return words + (tail ? ' with recovery' : '');
+  }
+
+  /* What a two-step Hantush-Bierschenk fit is worth, in the report's words. */
+  var TWO_POINT_NOTE = 'The line is fitted through two points, so it is exact ' +
+    'by construction: the R squared of 1.000 tests nothing, and B, C and the ' +
+    'efficiencies are indicative until a third step is pumped';
+
+  /* [minutes, isEquivalent]: the pumping time a recovery is read against.
+   * Theis recovery assumes one rate for the whole pumping time. After a step
+   * test the last rate was pumped for the last step only; using the last rate
+   * with the total time says the aquifer was stressed harder than it was and
+   * biases the transmissivity. The usual correction is the discharge-weighted
+   * equivalent time, sum(Q_i dt_i) / Q_last. A constant test, or a step test
+   * missing a rate, uses the recorded duration. */
+  function equivalentPumpingTimeMin(test) {
+    var steps = (test.steps || []).filter(function (s) {
+      return s.time_min && s.time_min.length;
+    });
+    var recorded = test.pumping_duration_min === undefined ? null : test.pumping_duration_min;
+    if (!steps.length) return [recorded, false];
+    var missingQ = steps.some(function (s) {
+      return s.discharge_m3_per_h === null || s.discharge_m3_per_h === undefined;
+    });
+    if (String(test.test_type || '').indexOf('step') !== 0 || steps.length < 2 || missingQ) {
+      return [recorded, false];
+    }
+    var qLast = Number(steps[steps.length - 1].discharge_m3_per_h);
+    var volume = 0.0, previousEnd = 0.0;
+    steps.forEach(function (step) {
+      var finite = step.time_min.filter(function (v) { return isFinite(v); });
+      if (!finite.length) return;
+      var end = arrMax(finite);
+      volume += Number(step.discharge_m3_per_h) * Math.max(end - previousEnd, 0.0);
+      previousEnd = end;
+    });
+    if (qLast <= 0 || volume <= 0) return [recorded, false];
+    return [volume / qLast, true];
+  }
+
+  /* How long casing storage controls the drawdown, in minutes. Early in a
+   * test the pump takes water standing in the casing before it takes much
+   * from the aquifer, and a drawdown curve read inside that period is the
+   * borehole emptying, not the ground responding. A 5 inch casing with a
+   * 1.25 inch riser and a specific capacity of 0.09 m3/h per m gives about
+   * two hours: a thirty-minute test on such a borehole never leaves the
+   * casing. */
+  function casingStorageMin(specificCapacity, config) {
+    var cfg = config || defaultConfig().pumping;
+    if (!specificCapacity || specificCapacity <= 0) return null;
+    var dc = cfg.casing_diameter_in * 0.0254;
+    var dp = cfg.riser_diameter_in * 0.0254;
+    var area = dc * dc - dp * dp;
+    if (area <= 0) return null;
+    return CASING_STORAGE_COEFFICIENT * area / specificCapacity;
+  }
+
+  /* The deepest water level any pumping step reached, metres below datum. */
+  function deepestPumpingLevel(test) {
+    var levels = [];
+    (test.steps || []).forEach(function (s) {
+      var finite = (s.water_level_m || []).filter(function (v) { return isFinite(v); });
+      if (finite.length) levels.push(arrMax(finite));
+    });
+    return levels.length ? arrMax(levels) : null;
+  }
+
+  /* The one pump intake depth a report prints, and why. A report with a
+   * seasonal projection used to say "install at 39 m" in its recommendation
+   * and "set the intake at 40 m" three paragraphs later. The deeper of the
+   * two is the depth, everywhere, and the reason travels with it. */
+  function pumpIntakeDepth(analysis, seasonal) {
+    var rec = analysis ? analysis.yield_recommendation : null;
+    var depth = rec ? rec.pump_installation_depth_m : null;
+    if (depth === null || depth === undefined) return [null, ''];
+    var seasonalDepth = null;
+    if (seasonal && seasonal.is_established) {
+      seasonalDepth = seasonal.pump_installation_depth_m === undefined
+        ? null : seasonal.pump_installation_depth_m;
+    }
+    if (seasonalDepth !== null && seasonalDepth > depth) {
+      return [Number(seasonalDepth),
+        'deep enough for the drought-year low in the seasonal projection'];
+    }
+    if (seasonalDepth !== null) {
+      return [Number(depth),
+        'which also covers the drought-year low in the seasonal projection'];
+    }
+    return [Number(depth), ''];
+  }
+
+  /* One sentence for a report: what the yield rests on. */
+  function confidenceText(rec) {
+    if (!rec || rec.safe_yield_m3_per_h === null || rec.safe_yield_m3_per_h === undefined) {
+      return '';
+    }
+    if (rec.confidence !== 'indicative') {
+      return 'The yield is established: the test ran long enough to show the ' +
+        "aquifer's late-time behaviour and the adopted transmissivity fit to " +
+        'standard.';
+    }
+    return 'The yield is indicative, not established: ' +
+      (rec.confidence_reasons || []).join('; ') +
+      '. Confirm it by a longer test or by monitoring the pumping level in ' +
+      'service before it is relied on.';
+  }
+
+  /* "established" or "indicative" and the sentence, as fields on the
+   * recommendation so a report reads them the way Python reads the
+   * properties. */
+  function settleConfidence(rec) {
+    if (!rec.confidence) rec.confidence = 'established';
+    if (!rec.confidence_reasons) rec.confidence_reasons = [];
+    rec.is_indicative = rec.confidence === 'indicative';
+    rec.confidence_text = confidenceText(rec);
+    return rec;
+  }
 
   /* Why the pump setting leaves nothing to draw on, in the sheet's numbers. */
   function noUsableDrawdownReason(test, cfg) {
@@ -2068,7 +2248,18 @@
         sEnd = last.water_level_m[last.water_level_m.length - 1] - swl;
       }
     }
-    var specificCapacity = (qLast && sEnd && sEnd > 0) ? qLast / sEnd : null;
+    var specificCapacity = null, specificCapacityBasis = '';
+    if (qLast && sEnd && sEnd > 0) {
+      specificCapacity = qLast / sEnd;
+      /* a specific capacity is a rate over a drawdown at a time: 0.09 m3/h
+       * per m after thirty minutes is not 0.09 after a day, and printed bare
+       * to three figures it read as a property of the borehole */
+      var lastFinite = (last.time_min || []).filter(function (v) { return isFinite(v); });
+      var minutes = lastFinite.length ? arrMax(lastFinite) : null;
+      specificCapacityBasis = formatG(qLast) + ' m3/h over ' + pyFixed(sEnd, 1) +
+        ' m of drawdown' + (minutes ? ' after ' + formatG(minutes) + ' minutes' : '');
+    }
+    var deepest = deepestPumpingLevel(test);
 
     /* available drawdown: static level to pump intake less a submergence margin */
     var available = null;
@@ -2092,7 +2283,7 @@
       : null;
 
     function pending(reason) {
-      return {
+      return settleConfidence({
         specific_capacity_m3hr_per_m: specificCapacity,
         available_drawdown_m: available,
         usable_drawdown_m: usable,
@@ -2107,7 +2298,12 @@
         safe_yield_low_m3_per_h: null,
         safe_yield_high_m3_per_h: null,
         envelope_basis: '',
-      };
+        confidence: 'established',
+        confidence_reasons: [],
+        specific_capacity_basis: specificCapacityBasis,
+        pump_depth_basis: '',
+        deepest_pumping_level_m: deepest,
+      });
     }
 
     if (transmissivity === null || transmissivity === undefined ||
@@ -2172,11 +2368,39 @@
     var safe = longTerm / cfg.safety_factor;
 
     var sAtSafe = projectedDrawdown(safe);
-    var pumpDepth = swl + sAtSafe + cfg.seasonal_allowance_m + cfg.pump_submergence_min_m;
-    if (test.borehole_depth_m) {
-      pumpDepth = Math.min(pumpDepth, test.borehole_depth_m - 3.0);
+    /* The intake goes where the drawdown the yield was computed on exists.
+     * The long-term yield was found by spending the usable drawdown, which
+     * was measured down to the test's pump setting; the intake used to be
+     * raised to just clear the drawdown at the safe rate instead, which put
+     * it 3 m above the level the test itself had reached and spent the
+     * safety factor on lifting the pump rather than on the rate. It is now
+     * set below the static level plus the dry-season reserve, the usable
+     * drawdown and the submergence margin, and never above the deepest
+     * level the test drew the water to, with the same submergence under it. */
+    var pumpDepth = swl + cfg.seasonal_allowance_m + usable + cfg.pump_submergence_min_m;
+    var reached = '';
+    if (deepest !== null && deepest !== undefined) {
+      var floor = deepest + cfg.pump_submergence_min_m;
+      reached = '; the test itself drew the level to ' + pyFixed(deepest, 1) + ' m' +
+        (qLast ? ' at ' + formatG(qLast) + ' m3/h' : '');
+      if (floor > pumpDepth) {
+        pumpDepth = floor;
+        reached += ', which sets the intake';
+      }
+    }
+    var capped = '';
+    if (test.borehole_depth_m && pumpDepth > test.borehole_depth_m - 3.0) {
+      pumpDepth = test.borehole_depth_m - 3.0;
+      capped = ', capped 3 m above the ' + formatG(test.borehole_depth_m) +
+        ' m bottom of the borehole';
     }
     pumpDepth = Math.ceil(pumpDepth);
+    var pumpDepthBasis = 'Pump intake at ' + formatG(pumpDepth) + ' m: the static ' +
+      'level ' + pyFixed(swl, 1) + ' m plus the ' + formatG(cfg.seasonal_allowance_m) +
+      ' m dry-season reserve, the ' + pyFixed(usable, 1) + ' m of drawdown the ' +
+      'long-term yield is projected to use and ' +
+      formatG(cfg.pump_submergence_min_m) + ' m of submergence' + reached + capped +
+      '. The safety factor is kept on the rate, not spent on raising the pump.';
 
     var method = METHOD_LABELS[opts.transmissivitySource || ''] || '';
     var pct = Math.round(cfg.available_drawdown_fraction * 100) + '%';
@@ -2193,7 +2417,7 @@
       '. A safety factor of ' + cfg.safety_factor + ' is applied to the long ' +
       'term yield.';
 
-    return {
+    return settleConfidence({
       specific_capacity_m3hr_per_m: specificCapacity,
       available_drawdown_m: available,
       usable_drawdown_m: usable,
@@ -2208,7 +2432,12 @@
       safe_yield_low_m3_per_h: null,
       safe_yield_high_m3_per_h: null,
       envelope_basis: '',
-    };
+      confidence: 'established',
+      confidence_reasons: [],
+      specific_capacity_basis: specificCapacityBasis,
+      pump_depth_basis: pumpDepthBasis,
+      deepest_pumping_level_m: deepest,
+    });
   }
 
   /* Storativity is never resolvable from a single pumped well, the effective
@@ -2284,23 +2513,54 @@
       ['theis', analysis.theis]].filter(function (f) { return !!f[1]; });
   }
 
-  /* {method, result, qualifies} for the transmissivity the yield rests on. */
+  /* {method, result, qualifies} for the transmissivity the yield rests on.
+   * The first method in order of preference whose straight line reaches
+   * min_fit_r_squared is adopted, skipping any the analysis disqualified;
+   * Theis is a curve fit with no R squared and is always eligible, which
+   * keeps it last. When nothing reaches the threshold the best of the poor
+   * fits is still adopted (the highest R squared among the straight lines,
+   * the curve fit only when it is all there is) so a yield is produced, and
+   * qualifies is false so the caller can flag it. */
   function adoptedFit(analysis) {
     var fits = fittedMethods(analysis);
+    var disqualified = analysis.disqualified || {};
     var minR2 = analysis.min_fit_r_squared === undefined
       ? defaultConfig().pumping.min_fit_r_squared : analysis.min_fit_r_squared;
     for (var i = 0; i < fits.length; i++) {
+      if (Object.prototype.hasOwnProperty.call(disqualified, fits[i][0])) continue;
       var r2 = fits[i][1].r_squared;
       if (r2 === undefined || r2 === null || r2 >= minR2) {
         return { method: fits[i][0], result: fits[i][1], qualifies: true };
       }
     }
     if (!fits.length) return { method: null, result: null, qualifies: false };
+    var score = function (fit) {
+      var r = fit[1].r_squared;
+      return (r === undefined || r === null || !r) ? -1.0 : r;
+    };
     var best = fits[0];
     for (var j = 1; j < fits.length; j++) {
-      if (fits[j][1].r_squared > best[1].r_squared) best = fits[j];
+      if (score(fits[j]) > score(best)) best = fits[j];
     }
     return { method: best[0], result: best[1], qualifies: false };
+  }
+
+  /* The reason a fitted method was passed over, or an empty string. */
+  function whyNotAdopted(analysis, name) {
+    var disqualified = analysis.disqualified || {};
+    if (Object.prototype.hasOwnProperty.call(disqualified, name)) {
+      return disqualified[name];
+    }
+    var result = null;
+    fittedMethods(analysis).forEach(function (f) { if (f[0] === name) result = f[1]; });
+    var r2 = result ? result.r_squared : null;
+    var minR2 = analysis.min_fit_r_squared === undefined
+      ? defaultConfig().pumping.min_fit_r_squared : analysis.min_fit_r_squared;
+    if (r2 !== null && r2 !== undefined && r2 < minR2) {
+      return 'R squared ' + r2.toFixed(3) + ' is below the ' + formatG(minR2) +
+        ' standard';
+    }
+    return '';
   }
 
   /* [minutes, kind]: how long the aquifer was stressed at one rate. A
@@ -2337,6 +2597,13 @@
       step_test: null, yield_recommendation: null,
       stabilised_level_m: null, max_drawdown_m: null, flags: [],
       min_fit_r_squared: cfg.min_fit_r_squared,
+      /* fits that ran but cannot be adopted, keyed by method, with the
+       * reason: a Cooper-Jacob window inside the casing-storage period, a
+       * recovery line nowhere near the origin, a Theis storativity no
+       * aquifer has */
+      disqualified: {},
+      /* how long casing storage controls the drawdown in this borehole */
+      casing_storage_min: null,
     };
 
     /* drop parse-time discharge flags the analyst has since resolved */
@@ -2431,11 +2698,32 @@
           var sv = step0.water_level_m[i] - swl;
           if (isFinite(tv) && isFinite(sv)) { t0.push(tv); s0.push(sv); }
         }
+        /* A step that ends above the stated static level has no drawdown to
+         * fit. It used to get a Cooper-Jacob line through negative
+         * drawdowns, adopted for the yield at R squared 0.99, while the
+         * step-test fit two lines below excluded the same step as a datum
+         * error. */
+        var sEnd0 = t0.length ? s0[s0.length - 1] : NaN;
+        var label0 = step0.label || ('step ' + step0.step_number);
+        var keepAny = t0.length > 0;
+        if (!(sEnd0 > 0)) {
+          flags.push({
+            level: 'warning', code: 'first_step_above_static',
+            message: label0 + ' ends at ' + (isFinite(sEnd0) ? sEnd0.toFixed(2) : 'nan') +
+              ' m drawdown, at or above the stated static level of ' +
+              swl.toFixed(2) + ' m, so no drawdown fit is made on it; check ' +
+              'the static level and the datum for that step.',
+            context: label0,
+          });
+          t0 = []; s0 = []; keepAny = false;
+        }
         try {
           analysis.cooper_jacob = cooperJacob(t0, s0, q0, cfg,
             { observationRadiusM: observationRadiusM });
         } catch (e) {
-          flags.push({ level: 'warning', code: 'cooper_jacob_failed', message: e.message });
+          if (keepAny) {
+            flags.push({ level: 'warning', code: 'cooper_jacob_failed', message: e.message });
+          }
         }
         try {
           analysis.theis = theisFit(t0, s0, q0, {
@@ -2443,7 +2731,9 @@
             radiusM: observationRadiusM || 0.1,
           });
         } catch (e2) {
-          flags.push({ level: 'warning', code: 'theis_failed', message: e2.message });
+          if (keepAny) {
+            flags.push({ level: 'warning', code: 'theis_failed', message: e2.message });
+          }
         }
       }
     }
@@ -2460,13 +2750,44 @@
           break;
         }
       }
-      if (qRec !== null && test.pumping_duration_min) {
+      var equivalentInfo = equivalentPumpingTimeMin(test);
+      var tPump = equivalentInfo[0], equivalent = equivalentInfo[1];
+      if (qRec !== null && tPump) {
         try {
           analysis.recovery = theisRecovery(test.recovery_time_min, residual,
-            test.pumping_duration_min, qRec);
+            tPump, qRec, equivalent);
         } catch (e3) {
           flags.push({ level: 'warning', code: 'recovery_failed', message: e3.message });
         }
+      }
+      var recFit = analysis.recovery;
+      if (recFit && equivalent) {
+        flags.push({
+          level: 'info', code: 'recovery_equivalent_time',
+          message: 'The recovery is read against an equivalent pumping time of ' +
+            pyFixed(tPump, 0) + ' minutes at the last rate of ' + formatG(qRec) +
+            ' m3/h (the volume pumped over all the steps at that rate), not ' +
+            'the ' + formatG(test.pumping_duration_min) + ' minutes the test ran.',
+        });
+      }
+      if (recFit && recFit.intercept_fraction > cfg.recovery_intercept_max_fraction) {
+        analysis.disqualified.recovery = "the recovery line meets t/t' = 1 at " +
+          recFit.intercept_m.toFixed(1) + ' m of residual drawdown, ' +
+          pyFixed(recFit.intercept_fraction * 100, 0) + '% of the drawdown the ' +
+          'recovery started from, where the method requires zero';
+        flags.push({
+          level: 'warning', code: 'recovery_intercept',
+          message: 'The recovery line does not pass through the origin: it meets ' +
+            "t/t' = 1 at " + recFit.intercept_m.toFixed(1) + ' m of residual ' +
+            'drawdown (' + pyFixed(recFit.intercept_fraction * 100, 0) + '% of the ' +
+            (recFit.intercept_m / Math.max(recFit.intercept_fraction, 1e-9)).toFixed(1) +
+            ' m the recovery started from), where Theis recovery requires zero. ' +
+            'The residual drawdown is dominated by something the method does ' +
+            'not model (casing storage, a changing static level or a wrong ' +
+            'pumping time), so its transmissivity of ' +
+            recFit.transmissivity_m2_per_day.toFixed(2) + ' m2/day is reported ' +
+            'but not adopted.',
+        });
       }
     }
 
@@ -2529,20 +2850,96 @@
      * no R squared and is always eligible, which keeps it last). Taking
      * recovery unconditionally adopted a 0.52 m2/day recovery at R squared
      * 0.69 over a 4.3 m2/day Cooper-Jacob at 0.99. */
+    /* Casing storage. The drawdown fits are on the first step, so the
+     * specific capacity that sets the casing-storage period is that step's
+     * end-of-step value. */
+    var qFirst = null, sFirst = null;
+    if (hasSwl && test.steps && test.steps.length) {
+      var firstStep = test.steps[0];
+      qFirst = firstStep.discharge_m3_per_h;
+      var firstLevels = (firstStep.water_level_m || []).filter(function (v) {
+        return isFinite(v);
+      });
+      sFirst = firstLevels.length ? firstLevels[firstLevels.length - 1] - swl : null;
+      if (qFirst && sFirst && sFirst > 0) {
+        analysis.casing_storage_min = casingStorageMin(qFirst / sFirst, cfg);
+      }
+    }
+    var tC = analysis.casing_storage_min;
+    if (tC) {
+      var inside = [];
+      var cjFit = analysis.cooper_jacob;
+      if (cjFit && cjFit.fit_window_min[1] <= tC) {
+        analysis.disqualified.cooper_jacob = 'its fitted window ' +
+          formatG(cjFit.fit_window_min[0]) + '-' + formatG(cjFit.fit_window_min[1]) +
+          ' minutes lies inside the ' + pyFixed(tC, 0) + '-minute casing-storage period';
+        inside.push('Cooper-Jacob');
+      } else if (cjFit && cjFit.fit_window_min[0] < tC) {
+        flags.push({
+          level: 'warning', code: 'casing_storage_window',
+          message: 'The Cooper-Jacob window starts at ' +
+            formatG(cjFit.fit_window_min[0]) + ' minutes, inside the ' +
+            pyFixed(tC, 0) + '-minute casing-storage period; the early part of ' +
+            'the line is the borehole emptying.',
+        });
+      }
+      var thFit = analysis.theis;
+      if (thFit && duration !== null && duration <= tC) {
+        analysis.disqualified.theis = 'the whole ' + formatG(duration) + '-minute ' +
+          'test lies inside the ' + pyFixed(tC, 0) + '-minute casing-storage period';
+        inside.push('Theis');
+      }
+      if (inside.length) {
+        flags.push({
+          level: 'warning', code: 'casing_storage',
+          message: 'With a ' + formatG(cfg.casing_diameter_in) + ' inch casing and a ' +
+            'specific capacity of ' + formatG(roundSig(qFirst / sFirst, 2), 2) +
+            ' m3/h per m, casing storage controls the drawdown for the first ' +
+            pyFixed(tC, 0) + " minutes (Schafer's rule)" +
+            (duration !== null && duration <= tC
+              ? '; this test pumped for ' + formatG(duration) + ' minutes, entirely inside it'
+              : '') +
+            '. The ' + inside.join(' and ') + ' fit' +
+            (inside.length > 1 ? 's see' : ' sees') +
+            ' the borehole emptying rather than the aquifer, so ' +
+            (inside.length > 1 ? 'their' : 'its') +
+            ' transmissivity is reported but not adopted.',
+        });
+      }
+    }
+    var thCheck = analysis.theis;
+    if (thCheck && thCheck.storativity > cfg.max_plausible_storativity) {
+      if (!Object.prototype.hasOwnProperty.call(analysis.disqualified, 'theis')) {
+        analysis.disqualified.theis = 'its storativity of ' +
+          formatG(roundSig(thCheck.storativity, 2), 2) + ' is above ' +
+          formatG(cfg.max_plausible_storativity) + ', which no aquifer has';
+      }
+      flags.push({
+        level: 'warning', code: 'storativity_implausible',
+        message: 'The Theis fit returns a storativity of ' +
+          formatG(roundSig(thCheck.storativity, 2), 2) + '; no aquifer stores more ' +
+          'than about ' + formatG(cfg.max_plausible_storativity) + ' of its volume, ' +
+          'and a value this size is the casing being emptied, not the aquifer ' +
+          'draining. The fit is not adopted.',
+      });
+    }
+
     var adopted = adoptedFit(analysis);
     analysis.transmissivity_source = adopted.method;
     analysis.transmissivity_m2_per_day = adopted.result
       ? adopted.result.transmissivity_m2_per_day : null;
     if (adopted.result && !adopted.qualifies) {
       var scored = fittedMethods(analysis).map(function (f) {
-        return METHOD_LABELS[f[0]] + ' ' + f[1].r_squared.toFixed(3);
-      }).join(', ');
+        return METHOD_LABELS[f[0]] + ' ' + f[1].transmissivity_m2_per_day.toFixed(2) +
+          ' m2/day, ' + (whyNotAdopted(analysis, f[0]) || 'usable');
+      }).join('; ');
       flags.push({
         level: 'warning', code: 'transmissivity_low_confidence',
-        message: 'No fit reached R squared ' + formatG(cfg.min_fit_r_squared) +
-          ' (' + scored + '); the ' + METHOD_LABELS[adopted.method] + ' value of ' +
+        message: 'No method fitted to standard (' + scored + '). The ' +
+          METHOD_LABELS[adopted.method] + ' value of ' +
           adopted.result.transmissivity_m2_per_day.toFixed(2) + ' m2/day is ' +
-          'adopted as the best available, so the yield rests on a poor fit.',
+          'adopted as the best available, so the yield rests on a fit that ' +
+          'does not meet it.',
       });
     }
 
@@ -2556,6 +2953,35 @@
     }
     analysis.yield_range_text = yieldRangeText(analysis.yield_recommendation);
 
+    /* What the yield is worth: one judgement, made here and printed by
+     * every report beside the yield. The pumping report used to carry these
+     * warnings in its data notes while the completion and handover reports
+     * printed the same yield as "successful and sustainable" without them. */
+    var recommendation = analysis.yield_recommendation;
+    var reasons = [];
+    if (duration !== null && duration > 0 && duration < threshold) {
+      reasons.push('the test pumped for ' + formatG(duration) + ' minutes, below ' +
+        'the ' + formatG(threshold) + ' needed to see late-time behaviour, so the ' +
+        'yield is extrapolated ' +
+        (Math.log(cfg.design_period_days * MIN_PER_DAY / duration) / Math.LN10).toFixed(1) +
+        ' log cycles of time');
+    }
+    if (tC && duration !== null && duration <= tC) {
+      reasons.push('the whole test lies inside the ' + pyFixed(tC, 0) + '-minute ' +
+        'casing-storage period, so its drawdown is the borehole emptying rather ' +
+        'than the aquifer responding');
+    }
+    if (adopted.result && !adopted.qualifies) {
+      reasons.push('no transmissivity method fitted to standard and the ' +
+        METHOD_LABELS[adopted.method] + ' value is adopted as the best available');
+    }
+    if (recommendation.safe_yield_m3_per_h !== null &&
+        recommendation.safe_yield_m3_per_h !== undefined && reasons.length) {
+      recommendation.confidence = 'indicative';
+      recommendation.confidence_reasons = reasons;
+    }
+    settleConfidence(recommendation);
+
     analysis.flags = flags;
     return analysis;
   }
@@ -2566,6 +2992,13 @@
     hantushBierschenk: hantushBierschenk, recommendYield: recommendYield,
     attachYieldEnvelope: attachYieldEnvelope, yieldRangeText: yieldRangeText,
     analysePumpingTest: analysePumpingTest,
+    METHOD_LABELS: METHOD_LABELS, TEST_TYPE_WORDS: TEST_TYPE_WORDS,
+    TWO_POINT_NOTE: TWO_POINT_NOTE,
+    CASING_STORAGE_COEFFICIENT: CASING_STORAGE_COEFFICIENT,
+    testTypeText: testTypeText, equivalentPumpingTimeMin: equivalentPumpingTimeMin,
+    casingStorageMin: casingStorageMin, deepestPumpingLevel: deepestPumpingLevel,
+    pumpIntakeDepth: pumpIntakeDepth, confidenceText: confidenceText,
+    adoptedFit: adoptedFit, whyNotAdopted: whyNotAdopted,
   });
 
   /* =============================================================== units
@@ -6318,6 +6751,22 @@
             ' m; check the sheet.' });
       }
     }
+    if (test.pump_setting_m && steps.length) {
+      /* A pump cannot draw the water below its own intake. Levels 18 m under
+       * the pump went into a report as 59 m of drawdown and 38 m of available
+       * drawdown, with nothing to say the sheet could not be right. */
+      var maxWlPump = arrMax(steps.map(function (s) {
+        return arrMax(s.water_level_m.filter(isFinite));
+      }));
+      if (maxWlPump > test.pump_setting_m) {
+        flags.push({ level: 'warning', code: 'level_below_pump',
+          message: 'Recorded water level ' + maxWlPump.toFixed(2) + ' m is below ' +
+            'the pump intake at ' + pyFixed(test.pump_setting_m, 0) + ' m. A pump ' +
+            'cannot draw the level below its own intake, so the pump setting, ' +
+            'the levels or the datum on the sheet is wrong; the drawdown ' +
+            'figures are as recorded and not to be relied on.' });
+      }
+    }
     test.flags = flags;
     return test;
   }
@@ -7852,6 +8301,14 @@
       if (rec.pending_reason) return ['unmet', rec.pending_reason];
       if (rec.safe_yield_m3_per_h === null || rec.safe_yield_m3_per_h === undefined) {
         return ['unmet', 'The safe yield could not be derived from this test.'];
+      }
+      /* A yield the analysis itself calls indicative is not established. The
+       * gate used to certify a 30-minute test inside its casing storage on
+       * the strength of the number alone. */
+      if (rec.confidence === 'indicative') {
+        return ['unmet', 'The safe yield of ' + yieldRangeText(rec) + ' is ' +
+          'indicative, not established: ' +
+          (rec.confidence_reasons || []).join('; ') + '.'];
       }
       return ['met', 'Safe yield ' + yieldRangeText(rec) + '.'];
     }],

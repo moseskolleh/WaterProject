@@ -2330,7 +2330,7 @@
             'projected to ' + y.designPeriodDays + ' days, safety factor ' +
             y.safetyFactor),
           S.stat('Transmissivity', y.transmissivity + ' m²/day', 'preferred method'),
-          S.stat('Pump setting', y.pumpDepthM + ' m', 'below ground level'),
+          S.stat('Pump intake', y.pumpDepthM + ' m', 'below the top of the casing'),
           S.stat('Specific capacity', y.specificCapacity + ' m³/h per m'),
         ]),
         y.methods && y.methods.length ? S.table([
@@ -2592,6 +2592,19 @@
 
   /* --- pumping test --------------------------------------------------------- */
 
+  /* What a fitted method is worth, for the note beside its transmissivity:
+   * the reason it was passed over, or that it was adopted only as the best
+   * available, or - for the one adopted to standard - the caller's own words
+   * (the recovery method's "preferred" used to be printed whether or not
+   * the yield rested on it). */
+  function methodStatus(analysis, method, adoptedText) {
+    var why = C.whyNotAdopted(analysis, method);
+    if (analysis.transmissivity_source === method) {
+      return why ? ' — adopted as the best available; ' + why : adoptedText;
+    }
+    return why ? ' — not adopted: ' + why : '';
+  }
+
   PAGES.pumping = function () {
     var nodes = [
       pageHead('Pumping test', 'Cooper-Jacob, Theis and recovery on the same ' +
@@ -2615,6 +2628,10 @@
     var test = derived.test, analysis = derived.analysis;
 
     nodes.push(card('Discharge per step', [
+      /* what was parsed, in the words a report uses for the test type */
+      el('p', 'Parsed ' + C.testTypeText(test.test_type) + ' with ' +
+        test.steps.length + ' pumping ' + S.plural(test.steps.length, 'series', 'series') +
+        ' and ' + (test.recovery_time_min ? 'a' : 'no') + ' recovery record.'),
       el('p.muted', 'Discharge is often left off the field sheet. Enter the ' +
         'bucket-and-stopwatch figures here and every pending result is computed ' +
         'immediately — the value belongs to the project, not to the file, so it ' +
@@ -2670,22 +2687,31 @@
           analysis.recovery ? {
             method: 'Theis recovery',
             T: S.sig(analysis.recovery.transmissivity_m2_per_day, 4),
+            /* "preferred" only when it was in fact adopted to standard */
             note: 'r² = ' + analysis.recovery.r_squared.toFixed(3) +
-              ' — least affected by well losses, so preferred',
+              methodStatus(analysis, 'recovery',
+                ' — least affected by well losses, so preferred'),
           } : null,
           analysis.cooper_jacob ? {
             method: 'Cooper-Jacob',
             T: S.sig(analysis.cooper_jacob.transmissivity_m2_per_day, 4),
-            note: analysis.cooper_jacob.u_check,
+            note: analysis.cooper_jacob.u_check +
+              methodStatus(analysis, 'cooper_jacob', ''),
           } : null,
           analysis.theis ? {
             method: 'Theis type curve',
             T: S.sig(analysis.theis.transmissivity_m2_per_day, 4),
             note: 'S = ' + S.sig(analysis.theis.storativity, 2) +
               (analysis.theis.storativity_reliable ? ''
-                : ' — not resolvable from a single pumped well'),
+                : ' — not resolvable from a single pumped well') +
+              methodStatus(analysis, 'theis', ''),
           } : null,
         ].filter(Boolean)),
+        Object.keys(analysis.disqualified || {}).length ? el('p.muted',
+          'Not adopted for the yield: ' +
+          Object.keys(analysis.disqualified).map(function (k) {
+            return C.METHOD_LABELS[k] + ' (' + analysis.disqualified[k] + ')';
+          }).join('; ') + '.') : null,
       ]));
     }
 
@@ -2698,13 +2724,24 @@
           rec2.long_term_yield_m3_per_h.toFixed(2) + ' m³/h',
           'before the ' + rec2.safety_factor + '× safety factor'),
         S.stat('Specific capacity', rec2.specific_capacity_m3hr_per_m
-          ? rec2.specific_capacity_m3hr_per_m.toFixed(2) + ' m³/h per m' : '—'),
-        S.stat('Pump setting', rec2.pump_installation_depth_m !== null
-          ? rec2.pump_installation_depth_m.toFixed(0) + ' m' : '—'),
+          ? C.formatG(C.roundSig(rec2.specific_capacity_m3hr_per_m, 2), 2) +
+            ' m³/h per m' : '—', rec2.specific_capacity_basis || ''),
+        S.stat('Pump intake', rec2.pump_installation_depth_m !== null
+          ? rec2.pump_installation_depth_m.toFixed(0) + ' m' : '—',
+        'below the top of the casing'),
       ]) : el('div.callout.callout-warn', el('p',
         'Yield recommendation pending: ' + rec2.pending_reason + '.')),
+      /* what the yield is worth, beside the number, as every report prints it */
+      rec2.safe_yield_m3_per_h
+        ? (rec2.is_indicative
+          ? el('div.callout.callout-warn', [
+            el('p', el('strong', 'Indicative, not established')),
+            el('p', rec2.confidence_text)])
+          : el('p.muted', rec2.confidence_text))
+        : null,
       el('p', rec2.basis),
       rec2.envelope_basis ? el('div.callout', el('p', rec2.envelope_basis)) : null,
+      rec2.pump_depth_basis ? el('p.muted', rec2.pump_depth_basis) : null,
       rec2.safe_yield_m3_per_h ? el('p.muted',
         'At 20 litres per person per day over an eight hour pumping day, the ' +
         'safe yield serves about ' +
@@ -2804,10 +2841,14 @@
         C.pyFixed(result.dry_season_loss_percent, 0) + '% less than it did on ' +
         'the day of the test. Size the supply on the dry-season figure.')));
     }
-    if (result.pump_installation_depth_m !== null) {
+    /* the one intake depth, the deeper of the recommendation's and the
+     * drought scenario's, with the reason */
+    var intake = C.pumpIntakeDepth(analysis, result);
+    if (intake[0] !== null) {
       nodes.push(el('div.callout', el('p', 'Set the pump intake at ' +
-        C.fmtNum(result.pump_installation_depth_m) + ' m — deep enough for ' +
-        'the drought case. The pump is fitted once, and one that draws air in ' +
+        C.fmtNum(intake[0]) + ' m below the top of the casing, ' +
+        (intake[1] || 'deep enough for the drought case') +
+        '. The pump is fitted once, and one that draws air in ' +
         'a bad year loses the village its borehole in the year it is needed ' +
         'most.')));
     }

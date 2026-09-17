@@ -513,3 +513,75 @@ def test_the_works_list_certifies_nothing_the_project_holds_no_record_of():
     built = HandoverReportInputs(
         site=site, works_completed=["Wellhead completion with apron."])
     assert built.works_completed == ["Wellhead completion with apron."]
+
+
+def test_the_reports_say_what_a_thirty_minute_test_is_worth(sample_data, tmp_path):
+    """Dr Timbo's completion and handover reports printed the yield and
+    "successful and sustainable" without the analysis's own warnings."""
+    d = sample_data / "dr_timbo"
+    log = read_drilling_workbook(d / "dr_timbo_drilling_log.xlsx")
+    analysis = analyse_pumping_test(read_pumping_workbook(d / "dr_timbo_constant_test.xlsx"))
+    assert analysis.yield_recommendation.is_indicative
+    completion = build_completion_report(
+        CompletionReportInputs(log=log, pumping=analysis, figures_dir=tmp_path),
+        tmp_path / "completion.docx",
+    )
+    text = _document_text(completion)
+    assert "indicative, not established" in text
+    assert "casing-storage" in text
+    assert "successful and sustainable" not in text
+    assert "Pump setting during the test" in text and "67 m" in text
+    assert "Recommended pump intake" in text and "52 m below the top of the casing" in text
+    assert "constant discharge test with recovery" in text
+    assert "constant+recovery" not in text
+    assert "L/h" not in text and "Test discharge" in text
+    handover = build_handover_report(
+        HandoverReportInputs(site=log.site, log=log, pumping=analysis, figures_dir=tmp_path),
+        tmp_path / "handover.docx",
+    )
+    text = _document_text(handover)
+    assert "Yield confidence" in text and "indicative" in text
+    assert "below the top of the casing" in text
+    pumping = build_pumping_report(
+        PumpingReportInputs(analysis=analysis, figures_dir=tmp_path),
+        tmp_path / "pumping.docx",
+    )
+    text = _document_text(pumping)
+    assert "below ground level" not in text
+    assert "Casing storage" in text and "117 minutes" in text
+    assert "Not adopted for the yield" in text
+    assert "Adopted as the best available" in text
+    assert "distance criterion" in text
+    assert "meets t/t' = 1 at 21.7 m" in text
+    assert "(2.93 m3/h over 32.8 m of drawdown after 30 minutes)" in text
+    assert "Confidence | indicative" in text or "indicative" in text
+
+
+def test_a_sheet_whose_levels_run_below_the_pump_is_not_called_valid(sample_data, tmp_path):
+    test = read_pumping_workbook(sample_data / "kuntolo" / "kuntolo_step_test.xlsx")
+    analysis = analyse_pumping_test(test)
+    path = build_pumping_report(
+        PumpingReportInputs(analysis=analysis, figures_dir=tmp_path),
+        tmp_path / "kuntolo.docx",
+    )
+    text = _document_text(path)
+    assert "curves are valid" not in text
+    assert "inconsistent with the stated static level, pump setting or borehole depth" in text
+    assert "level_below_pump" in text
+    assert "step drawdown test with recovery" in text
+
+
+def test_a_two_step_fit_says_it_is_exact_by_construction(sample_data, tmp_path):
+    test = read_pumping_workbook(sample_data / "kuntolo" / "kuntolo_step_test.xlsx")
+    for step, q in zip(test.steps, (1.5, 2.2, 3.0), strict=True):
+        step.discharge_m3_per_h = q
+    analysis = analyse_pumping_test(test)
+    path = build_pumping_report(
+        PumpingReportInputs(analysis=analysis, figures_dir=tmp_path),
+        tmp_path / "kuntolo_q.docx",
+    )
+    text = _document_text(path)
+    assert "exact by construction" in text
+    assert "R squared 1.000" not in text
+    assert "equivalent pumping time of 112 minutes" in text
+    assert "(indicative)" in text

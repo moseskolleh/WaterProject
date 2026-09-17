@@ -19,6 +19,7 @@ from ..config import Config
 from ..design.designer import BoreholeDesign
 from ..design.drawing import draw_borehole_design
 from ..hydraulics.analysis import PumpingTestAnalysis
+from ..hydraulics.analysis import METHOD_LABELS, test_type_text
 from ..hydraulics.plots import plot_test_overview
 from ..models import DrillingLog
 from ..quality.assess import (
@@ -92,8 +93,14 @@ def _executive_summary(inputs: CompletionReportInputs) -> tuple[list[str], list[
     if yr is not None and yr.safe_yield_m3_per_h:
         bits.append(
             f"The recommended safe yield is {fmt_num(yr.safe_yield_m3_per_h)} m3/h "
-            f"at a pump setting of {fmt_num(yr.pump_installation_depth_m)} m."
+            f"with the pump intake at {fmt_num(yr.pump_installation_depth_m)} m "
+            "below the top of the casing."
         )
+        # The pumping report carried the "treat as indicative" basis and its
+        # warnings; this one printed the same yield without them, and the
+        # handover certificate followed it.
+        if yr.is_indicative:
+            bits.append(yr.confidence_text)
     elif analysis is not None and not analysis.test.has_discharge:
         bits.append(
             "The pumping test discharge is pending, so the yield figures are not "
@@ -111,7 +118,10 @@ def _executive_summary(inputs: CompletionReportInputs) -> tuple[list[str], list[
             + (f", {status}." if status else ".")
         )
     if yr is not None and yr.safe_yield_m3_per_h:
-        key.append(f"Safe yield: {fmt_num(yr.safe_yield_m3_per_h)} m3/h.")
+        key.append(
+            f"Safe yield: {fmt_num(yr.safe_yield_m3_per_h)} m3/h"
+            + (" (indicative)" if yr.is_indicative else "") + "."
+        )
     if quality is not None:
         key.append("Water safety: " + SUITABILITY_PHRASE[quality.verdict_state])
     return [" ".join(bits)], key
@@ -287,17 +297,35 @@ def build_completion_report(
         q = test.steps[-1].discharge_m3_per_h if test.steps else None
         q_label = "Discharge (final step)" if len(test.steps) > 1 else "Discharge"
         rows = [
-            ["Test type", test.test_type],
+            ["Test type", test_type_text(test.test_type)],
             ["Duration", fmt_num(test.pumping_duration_min) + " min" if test.pumping_duration_min else ""],
             [q_label, fmt_num(q) + " m3/h" if q else "pending"],
             ["Static water level", fmt_num(test.static_water_level_m) + " m"],
+            ["Pump setting during the test",
+             fmt_num(test.pump_setting_m) + " m" if test.pump_setting_m else "not recorded"],
             ["Maximum drawdown", fmt_num(analysis.max_drawdown_m) + " m" if analysis.max_drawdown_m else ""],
         ]
         if analysis.transmissivity_m2_per_day:
-            rows.append(["Transmissivity", fmt_num(analysis.transmissivity_m2_per_day) + " m2/day"])
+            rows.append([
+                "Transmissivity",
+                fmt_num(analysis.transmissivity_m2_per_day) + " m2/day"
+                + (f" ({METHOD_LABELS[analysis.transmissivity_source]})"
+                   if analysis.transmissivity_source else ""),
+            ])
         yr = analysis.yield_recommendation
         if yr and yr.specific_capacity_m3hr_per_m:
-            rows.append(["Specific capacity", fmt_num(yr.specific_capacity_m3hr_per_m) + " m3/h per m"])
+            rows.append([
+                "Specific capacity",
+                (f"{yr.specific_capacity_m3hr_per_m:.2g} m3/h per m "
+                 f"({yr.specific_capacity_basis})"),
+            ])
+        if yr and yr.safe_yield_m3_per_h:
+            rows.append(["Safe yield", yr.yield_range_text])
+            rows.append([
+                "Yield confidence",
+                ("indicative: " + "; ".join(yr.confidence_reasons))
+                if yr.is_indicative else "established",
+            ])
         rb.table(rows, header=["Item", "Value"], caption="Pumping test summary.")
         section += 1
 
@@ -319,15 +347,19 @@ def build_completion_report(
         ("Borehole depth", fmt_num(log.total_depth_m) + " m"),
         ("Borehole diameter", f'{inputs.design.borehole_diameter_in:g}"' if inputs.design else ""),
         ("Static water level", fmt_num(swl) + " m" if swl is not None else ""),
-        ("Dynamic water level", fmt_num(dwl) + " m" if dwl is not None else ""),
+        ("Dynamic water level at the end of the test",
+         fmt_num(dwl) + " m" if dwl is not None else ""),
         ("Drawdown", fmt_num(dwl - swl) + " m" if (dwl is not None and swl is not None) else ""),
-        ("Flow rate", fmt_num(q * 1000) + " L/h" if q else "pending"),
+        # the same unit as every other rate on the page; 2,930 L/h beside
+        # 0.97 m3/h read as two different boreholes
+        ("Test discharge", fmt_num(q) + " m3/h" if q else "pending"),
         ("Pump type", inputs.pump_type),
-        ("Installation depth",
-         fmt_num(yr.pump_installation_depth_m) + " m"
-         if yr and yr.pump_installation_depth_m
-         else (fmt_num(inputs.pumping.test.pump_setting_m) + " m"
-               if inputs.pumping and inputs.pumping.test.pump_setting_m else "")),
+        ("Pump setting during the test",
+         fmt_num(inputs.pumping.test.pump_setting_m) + " m"
+         if inputs.pumping and inputs.pumping.test.pump_setting_m else "not recorded"),
+        ("Recommended pump intake",
+         fmt_num(yr.pump_installation_depth_m) + " m below the top of the casing"
+         if yr and yr.pump_installation_depth_m else "pending"),
     ]
     rb.header_block_table(pairs)
     section += 1
@@ -351,20 +383,36 @@ def build_completion_report(
     # ---- recommendations ----------------------------------------------------------
     rb.heading(f"{section}. Recommendations and Conclusions", 1)
     bullets = []
-    if (log.status or "").lower().startswith("success") or (
-        inputs.pumping and inputs.pumping.yield_recommendation
-        and inputs.pumping.yield_recommendation.safe_yield_m3_per_h
-    ):
-        bullets.append("The borehole is successful and sustainable when operated as recommended.")
     yr = inputs.pumping.yield_recommendation if inputs.pumping else None
+    successful = (log.status or "").lower().startswith("success")
+    # "Successful and sustainable" is two claims. The log supports the
+    # first; only an established yield supports the second, and a
+    # 30-minute test inside its casing storage used to be certified as both.
+    if yr and yr.safe_yield_m3_per_h and not yr.is_indicative:
+        bullets.append("The borehole is successful and sustainable when operated as recommended.")
+    elif yr and yr.safe_yield_m3_per_h:
+        bullets.append(
+            ("The borehole is recorded as successful. " if successful else "")
+            + "Whether it is sustainable at the recommended rate is indicative, "
+            "not established: " + "; ".join(yr.confidence_reasons)
+            + ". Confirm it by a longer test or by monitoring the pumping level "
+            "in service."
+        )
+    elif successful:
+        bullets.append(
+            "The borehole is recorded as successful; no sustainable yield has "
+            "been established from the pumping test."
+        )
     if yr and yr.safe_yield_m3_per_h:
         bullets.append(
             f"The recommended abstraction rate is {fmt_num(yr.safe_yield_m3_per_h)} m3/h "
-            f"(safety factor {yr.safety_factor:g} applied to the long term yield)."
+            f"(safety factor {yr.safety_factor:g} applied to the long term yield"
+            + (", indicative" if yr.is_indicative else "") + ")."
         )
         if yr.pump_installation_depth_m:
             bullets.append(
-                f"The pump installation depth is {fmt_num(yr.pump_installation_depth_m)} m."
+                f"The pump intake is set at {fmt_num(yr.pump_installation_depth_m)} m "
+                "below the top of the casing."
             )
         bullets.append(
             "The pump should rest for at least one hour in every pumping "

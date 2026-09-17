@@ -595,25 +595,124 @@
     "warning",
     "level_below_borehole",
     "Recorded water level 78.45 m exceeds the stated borehole depth 70 m; check the sheet."
+   ],
+   [
+    "warning",
+    "level_below_pump",
+    "Recorded water level 78.45 m is below the pump intake at 60 m. A pump cannot draw the level below its own intake, so the pump setting, the levels or the datum on the sheet is wrong; the drawdown figures are as recorded and not to be relied on."
    ]
   ]
  },
  "analysis": {
-  "T": 1.4021310045105808,
+  "T": 0.5358830353611498,
   "cj": 0.5358830353611498,
   "rec": 1.4021310045105808,
   "theis": 0.4690417877974611,
-  "safe": 0.9699565312279003,
+  "safe": 0.39096869216140506,
   "low": 0.28477100688409884,
   "high": 1.187620160960069,
-  "pump_depth": 39,
-  "range_text": "0.97 m3/h (0.28 to 1.2)",
+  "pump_depth": 52,
+  "range_text": "0.39 m3/h (0.28 to 1.2)",
   "flags": [
    [
     "warning",
     "short_test"
+   ],
+   [
+    "warning",
+    "recovery_intercept"
+   ],
+   [
+    "warning",
+    "casing_storage"
+   ],
+   [
+    "warning",
+    "storativity_implausible"
+   ],
+   [
+    "warning",
+    "transmissivity_low_confidence"
    ]
-  ]
+  ],
+  "source": "cooper_jacob",
+  "qualifies": false,
+  "disqualified": [
+   "cooper_jacob",
+   "recovery",
+   "theis"
+  ],
+  "casing_storage_min": 117.37697404223549,
+  "u_check": "u = 2.24e-03 at the start of the fitted window, below the 0.05 criterion. In the pumped well itself this is a distance criterion met from the first minute; it does not test the fit",
+  "rec_intercept": 21.66478430729821,
+  "rec_intercept_fraction": 0.66131820229848,
+  "rec_pumping_time": 30.0,
+  "theis_S": 0.1824350549667833,
+  "confidence": "indicative",
+  "confidence_reasons": [
+   "the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time",
+   "the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding",
+   "no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available"
+  ],
+  "confidence_text": "The yield is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available. Confirm it by a longer test or by monitoring the pumping level in service before it is relied on.",
+  "specific_capacity": 0.08927483241925656,
+  "specific_capacity_basis": "2.93 m3/h over 32.8 m of drawdown after 30 minutes",
+  "pump_depth_basis": "Pump intake at 52 m: the static level 9.4 m plus the 2 m dry-season reserve, the 36.8 m of drawdown the long-term yield is projected to use and 3 m of submergence; the test itself drew the level to 42.3 m at 2.93 m3/h. The safety factor is kept on the rate, not spent on raising the pump.",
+  "deepest_level": 42.26,
+  "basis": "Projected from a 30-minute test (4.2 log cycles to 365 days); treat as indicative. Transmissivity 0.5 m2/day from the Cooper-Jacob fit; drawdown projected to 365 days with storativity assumed 0.001 and effective radius 0.1 m; usable drawdown taken as 70% of the available drawdown 54.6 m (static level to pump intake less 3 m submergence), after reserving a 2 m dry-season water-table decline. A safety factor of 1.5 is applied to the long term yield.",
+  "type_text": "constant discharge test with recovery"
+ },
+ "step_analysis": {
+  "T": 0.5049478950866564,
+  "source": "recovery",
+  "qualifies": false,
+  "cj": null,
+  "theis": null,
+  "rec": 0.5049478950866564,
+  "rec_pumping_time": 112.0,
+  "rec_equivalent": true,
+  "B": 0.1150347222222215,
+  "C": 0.00981626157407409,
+  "two_point": true,
+  "safe": 0.41071772567909975,
+  "pump_depth": 67,
+  "confidence": "indicative",
+  "confidence_reasons": [
+   "no transmissivity method fitted to standard and the Theis recovery value is adopted as the best available"
+  ],
+  "pump_depth_basis": "Pump intake at 67 m: the static level 19.3 m plus the 2 m dry-season reserve, the 25.0 m of drawdown the long-term yield is projected to use and 3 m of submergence; the test itself drew the level to 78.5 m at 3 m3/h, which sets the intake, capped 3 m above the 70 m bottom of the borehole. The safety factor is kept on the rate, not spent on raising the pump.",
+  "specific_capacity_basis": "3 m3/h over 59.2 m of drawdown after 158 minutes",
+  "flags": [
+   [
+    "warning",
+    "water_level_above_static"
+   ],
+   [
+    "warning",
+    "level_below_borehole"
+   ],
+   [
+    "warning",
+    "level_below_pump"
+   ],
+   [
+    "warning",
+    "first_step_above_static"
+   ],
+   [
+    "info",
+    "recovery_equivalent_time"
+   ],
+   [
+    "warning",
+    "step_negative_drawdown"
+   ],
+   [
+    "warning",
+    "transmissivity_low_confidence"
+   ]
+  ],
+  "type_text": "step drawdown test with recovery"
  },
  "assessed": {
   "verdict": "The water does not meet the health based guideline value(s) for: Manganese, Total coliforms. Treatment or an alternative source is required before the water is used for drinking.",
@@ -1566,7 +1665,7 @@
    "stabilised": false,
    "maxDrawdown": 32.82,
    "pumpingLevel": 42.26,
-   "pumpIntake": 39.0
+   "pumpIntake": 52.0
   },
   "screen_limits": {
    "top": 0.0,
@@ -1593,9 +1692,9 @@
   ],
   "total_screen_m": 22.5,
   "screen_share": 32.1,
-  "yield_safe": 0.97,
-  "yield_range": "0.97 m3/h (0.28 to 1.2)",
-  "yield_pump_depth": 39.0,
+  "yield_safe": 0.39,
+  "yield_range": "0.39 m3/h (0.28 to 1.2)",
+  "yield_pump_depth": 52.0,
   "methods": [
    [
     "Cooper-Jacob",
@@ -1618,6 +1717,22 @@
    [
     "warning",
     "short_test"
+   ],
+   [
+    "warning",
+    "recovery_intercept"
+   ],
+   [
+    "warning",
+    "casing_storage"
+   ],
+   [
+    "warning",
+    "storativity_implausible"
+   ],
+   [
+    "warning",
+    "transmissivity_low_confidence"
    ]
   ],
   "cost_direct": 6359.67,
@@ -2419,8 +2534,8 @@
  "readiness": {
   "full": {
    "completion": {
-    "state": "ready",
-    "summary": "All certification requirements are met.",
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Yield established.",
     "requirements": [
      [
       "field_data",
@@ -2459,8 +2574,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -2496,8 +2611,8 @@
     "assumptions": []
    },
    "handover": {
-    "state": "ready",
-    "summary": "All certification requirements are met.",
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Yield established.",
     "requirements": [
      [
       "field_data",
@@ -2529,8 +2644,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -2601,8 +2716,8 @@
     "assumptions": []
    },
    "pumping": {
-    "state": "ready",
-    "summary": "All certification requirements are met.",
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Yield established.",
     "requirements": [
      [
       "field_data",
@@ -2634,8 +2749,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -2886,7 +3001,7 @@
   "no_site": {
    "completion": {
     "state": "not_ready",
-    "summary": "Not ready to certify - outstanding: Site position.",
+    "summary": "Not ready to certify - outstanding: Site position, Yield established.",
     "requirements": [
      [
       "field_data",
@@ -2925,8 +3040,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -2963,7 +3078,7 @@
    },
    "handover": {
     "state": "not_ready",
-    "summary": "Not ready to certify - outstanding: Site position.",
+    "summary": "Not ready to certify - outstanding: Site position, Yield established.",
     "requirements": [
      [
       "field_data",
@@ -2995,8 +3110,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -3068,7 +3183,7 @@
    },
    "pumping": {
     "state": "not_ready",
-    "summary": "Not ready to certify - outstanding: Site position.",
+    "summary": "Not ready to certify - outstanding: Site position, Yield established.",
     "requirements": [
      [
       "field_data",
@@ -3100,8 +3215,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -3119,7 +3234,7 @@
   "no_quality": {
    "completion": {
     "state": "not_ready",
-    "summary": "Not ready to certify - outstanding: Water quality panel, Water quality evaluable.",
+    "summary": "Not ready to certify - outstanding: Yield established, Water quality panel, Water quality evaluable.",
     "requirements": [
      [
       "field_data",
@@ -3158,8 +3273,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -3196,7 +3311,7 @@
    },
    "handover": {
     "state": "not_ready",
-    "summary": "Not ready to certify - outstanding: Water quality panel, Water quality evaluable.",
+    "summary": "Not ready to certify - outstanding: Yield established, Water quality panel, Water quality evaluable.",
     "requirements": [
      [
       "field_data",
@@ -3228,8 +3343,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -3300,8 +3415,8 @@
     "assumptions": []
    },
    "pumping": {
-    "state": "ready",
-    "summary": "All certification requirements are met.",
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Yield established.",
     "requirements": [
      [
       "field_data",
@@ -3333,8 +3448,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -3351,8 +3466,8 @@
   },
   "overridden": {
    "completion": {
-    "state": "ready_with_overrides",
-    "summary": "Issued on override: Water quality panel, Water quality evaluable.",
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Yield established.",
     "requirements": [
      [
       "field_data",
@@ -3391,8 +3506,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -3428,8 +3543,8 @@
     "assumptions": []
    },
    "handover": {
-    "state": "ready_with_overrides",
-    "summary": "Issued on override: Water quality panel, Water quality evaluable.",
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Yield established.",
     "requirements": [
      [
       "field_data",
@@ -3461,8 +3576,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -3533,8 +3648,8 @@
     "assumptions": []
    },
    "pumping": {
-    "state": "ready",
-    "summary": "All certification requirements are met.",
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Yield established.",
     "requirements": [
      [
       "field_data",
@@ -3566,8 +3681,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -3585,7 +3700,7 @@
   "synthetic_source": {
    "completion": {
     "state": "not_ready",
-    "summary": "Not ready to certify - outstanding: Field data.",
+    "summary": "Not ready to certify - outstanding: Field data, Yield established.",
     "requirements": [
      [
       "field_data",
@@ -3624,8 +3739,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -3662,7 +3777,7 @@
    },
    "handover": {
     "state": "not_ready",
-    "summary": "Not ready to certify - outstanding: Field data.",
+    "summary": "Not ready to certify - outstanding: Field data, Yield established.",
     "requirements": [
      [
       "field_data",
@@ -3694,8 +3809,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -3767,7 +3882,7 @@
    },
    "pumping": {
     "state": "not_ready",
-    "summary": "Not ready to certify - outstanding: Field data.",
+    "summary": "Not ready to certify - outstanding: Field data, Yield established.",
     "requirements": [
      [
       "field_data",
@@ -3799,8 +3914,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -3818,7 +3933,7 @@
   "bundled_source": {
    "completion": {
     "state": "not_ready",
-    "summary": "Not ready to certify - outstanding: Field data.",
+    "summary": "Not ready to certify - outstanding: Field data, Yield established.",
     "requirements": [
      [
       "field_data",
@@ -3857,8 +3972,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -3895,7 +4010,7 @@
    },
    "handover": {
     "state": "not_ready",
-    "summary": "Not ready to certify - outstanding: Field data.",
+    "summary": "Not ready to certify - outstanding: Field data, Yield established.",
     "requirements": [
      [
       "field_data",
@@ -3927,8 +4042,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4000,7 +4115,7 @@
    },
    "pumping": {
     "state": "not_ready",
-    "summary": "Not ready to certify - outstanding: Field data.",
+    "summary": "Not ready to certify - outstanding: Field data, Yield established.",
     "requirements": [
      [
       "field_data",
@@ -4032,8 +4147,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4051,7 +4166,7 @@
   "reconstructed_source": {
    "completion": {
     "state": "not_ready",
-    "summary": "Not ready to certify - outstanding: Field data.",
+    "summary": "Not ready to certify - outstanding: Field data, Yield established.",
     "requirements": [
      [
       "field_data",
@@ -4090,8 +4205,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4130,7 +4245,7 @@
    },
    "handover": {
     "state": "not_ready",
-    "summary": "Not ready to certify - outstanding: Field data.",
+    "summary": "Not ready to certify - outstanding: Field data, Yield established.",
     "requirements": [
      [
       "field_data",
@@ -4162,8 +4277,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4239,7 +4354,7 @@
    },
    "pumping": {
     "state": "not_ready",
-    "summary": "Not ready to certify - outstanding: Field data.",
+    "summary": "Not ready to certify - outstanding: Field data, Yield established.",
     "requirements": [
      [
       "field_data",
@@ -4271,8 +4386,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4292,7 +4407,7 @@
   "synthetic_by_name": {
    "completion": {
     "state": "not_ready",
-    "summary": "Not ready to certify - outstanding: Field data.",
+    "summary": "Not ready to certify - outstanding: Field data, Yield established.",
     "requirements": [
      [
       "field_data",
@@ -4331,8 +4446,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4369,7 +4484,7 @@
    },
    "handover": {
     "state": "not_ready",
-    "summary": "Not ready to certify - outstanding: Field data.",
+    "summary": "Not ready to certify - outstanding: Field data, Yield established.",
     "requirements": [
      [
       "field_data",
@@ -4401,8 +4516,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4474,7 +4589,7 @@
    },
    "pumping": {
     "state": "not_ready",
-    "summary": "Not ready to certify - outstanding: Field data.",
+    "summary": "Not ready to certify - outstanding: Field data, Yield established.",
     "requirements": [
      [
       "field_data",
@@ -4506,8 +4621,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4524,8 +4639,8 @@
   },
   "transcribed_by_name": {
    "completion": {
-    "state": "ready",
-    "summary": "All certification requirements are met.",
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Yield established.",
     "requirements": [
      [
       "field_data",
@@ -4564,8 +4679,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4601,8 +4716,8 @@
     "assumptions": []
    },
    "handover": {
-    "state": "ready",
-    "summary": "All certification requirements are met.",
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Yield established.",
     "requirements": [
      [
       "field_data",
@@ -4634,8 +4749,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4706,8 +4821,8 @@
     "assumptions": []
    },
    "pumping": {
-    "state": "ready",
-    "summary": "All certification requirements are met.",
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Yield established.",
     "requirements": [
      [
       "field_data",
@@ -4739,8 +4854,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4757,8 +4872,8 @@
   },
   "own_upload": {
    "completion": {
-    "state": "ready",
-    "summary": "All certification requirements are met.",
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Yield established.",
     "requirements": [
      [
       "field_data",
@@ -4797,8 +4912,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4834,8 +4949,8 @@
     "assumptions": []
    },
    "handover": {
-    "state": "ready",
-    "summary": "All certification requirements are met.",
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Yield established.",
     "requirements": [
      [
       "field_data",
@@ -4867,8 +4982,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4939,8 +5054,8 @@
     "assumptions": []
    },
    "pumping": {
-    "state": "ready",
-    "summary": "All certification requirements are met.",
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Yield established.",
     "requirements": [
      [
       "field_data",
@@ -4972,8 +5087,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4990,8 +5105,8 @@
   },
   "demonstration_override": {
    "completion": {
-    "state": "ready_with_overrides",
-    "summary": "Issued on override: Field data.",
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Yield established.",
     "requirements": [
      [
       "field_data",
@@ -5030,8 +5145,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -5067,8 +5182,8 @@
     "assumptions": []
    },
    "handover": {
-    "state": "ready_with_overrides",
-    "summary": "Issued on override: Field data.",
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Yield established.",
     "requirements": [
      [
       "field_data",
@@ -5100,8 +5215,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -5172,8 +5287,8 @@
     "assumptions": []
    },
    "pumping": {
-    "state": "ready_with_overrides",
-    "summary": "Issued on override: Field data.",
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Yield established.",
     "requirements": [
      [
       "field_data",
@@ -5205,8 +5320,8 @@
      ],
      [
       "yield_established",
-      "met",
-      "Safe yield 0.97 m3/h (0.28 to 1.2).",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -7576,10 +7691,10 @@
    "annual_range_m": 2.0,
    "range_source": "the configured dry-season allowance, not a measurement",
    "pending_reason": "",
-   "design_yield_m3_per_h": 0.9754928127988354,
-   "pump_installation_depth_m": 40,
-   "dry_season_loss_percent": 3.115835777126108,
-   "summary": "Sized on the end of the dry season: 0.98 m3/h, falling to 0.96 m3/h in a drought year. The test was run in August, the wet season.",
+   "design_yield_m3_per_h": 0.3932002486235134,
+   "pump_installation_depth_m": 52,
+   "dry_season_loss_percent": 3.115835777126119,
+   "summary": "Sized on the end of the dry season: 0.39 m3/h, falling to 0.39 m3/h in a drought year. The test was run in August, the wet season.",
    "scenarios": [
     {
      "key": "as_tested",
@@ -7587,8 +7702,8 @@
      "decline_m": 0.0,
      "static_water_level_m": 9.44,
      "available_drawdown_m": 54.56,
-     "safe_yield_m3_per_h": 1.0068650750341366,
-     "pump_installation_depth_m": 38,
+     "safe_yield_m3_per_h": 0.40584573524212814,
+     "pump_installation_depth_m": 51,
      "note": "The level on the day of the test. Not a design figure: unless the test was run at the end of the dry season the borehole will be lower than this for part of every year. The test was run in August, the wet season."
     },
     {
@@ -7597,8 +7712,8 @@
      "decline_m": 1.7,
      "static_water_level_m": 11.139999999999999,
      "available_drawdown_m": 52.86,
-     "safe_yield_m3_per_h": 0.9754928127988354,
-     "pump_installation_depth_m": 39,
+     "safe_yield_m3_per_h": 0.3932002486235134,
+     "pump_installation_depth_m": 52,
      "note": "The normal annual low, which the borehole reaches every year. This is the figure a design should be sized on."
     },
     {
@@ -7607,8 +7722,8 @@
      "decline_m": 2.7,
      "static_water_level_m": 12.14,
      "available_drawdown_m": 51.86,
-     "safe_yield_m3_per_h": 0.9570385408957174,
-     "pump_installation_depth_m": 40,
+     "safe_yield_m3_per_h": 0.38576172708315193,
+     "pump_installation_depth_m": 52,
      "note": "A low deeper than a normal year's, for a run of poor rains. The pump has to still be under water here, or the village loses the borehole in exactly the year it is needed most."
     }
    ]
@@ -7620,10 +7735,10 @@
    "annual_range_m": 2.0,
    "range_source": "the configured dry-season allowance, not a measurement",
    "pending_reason": "",
-   "design_yield_m3_per_h": 1.0068650750341366,
-   "pump_installation_depth_m": 39,
+   "design_yield_m3_per_h": 0.40584573524212814,
+   "pump_installation_depth_m": 51,
    "dry_season_loss_percent": 0.0,
-   "summary": "Sized on the end of the dry season: 1 m3/h, falling to 0.99 m3/h in a drought year. The test was run in May, the late dry season.",
+   "summary": "Sized on the end of the dry season: 0.41 m3/h, falling to 0.4 m3/h in a drought year. The test was run in May, the late dry season.",
    "scenarios": [
     {
      "key": "as_tested",
@@ -7631,8 +7746,8 @@
      "decline_m": 0.0,
      "static_water_level_m": 9.44,
      "available_drawdown_m": 54.56,
-     "safe_yield_m3_per_h": 1.0068650750341366,
-     "pump_installation_depth_m": 38,
+     "safe_yield_m3_per_h": 0.40584573524212814,
+     "pump_installation_depth_m": 51,
      "note": "The level on the day of the test. Not a design figure: unless the test was run at the end of the dry season the borehole will be lower than this for part of every year. The test was run in May, the late dry season."
     },
     {
@@ -7641,8 +7756,8 @@
      "decline_m": 0.0,
      "static_water_level_m": 9.44,
      "available_drawdown_m": 54.56,
-     "safe_yield_m3_per_h": 1.0068650750341366,
-     "pump_installation_depth_m": 38,
+     "safe_yield_m3_per_h": 0.40584573524212814,
+     "pump_installation_depth_m": 51,
      "note": "The normal annual low, which the borehole reaches every year. This is the figure a design should be sized on. No further decline is reserved: a test run in May is already at or below this level."
     },
     {
@@ -7651,8 +7766,8 @@
      "decline_m": 1.0,
      "static_water_level_m": 10.44,
      "available_drawdown_m": 53.56,
-     "safe_yield_m3_per_h": 0.9884108031310183,
-     "pump_installation_depth_m": 39,
+     "safe_yield_m3_per_h": 0.3984072137017665,
+     "pump_installation_depth_m": 51,
      "note": "A low deeper than a normal year's, for a run of poor rains. The pump has to still be under water here, or the village loses the borehole in exactly the year it is needed most."
     }
    ]
@@ -7664,10 +7779,10 @@
    "annual_range_m": 2.0,
    "range_source": "the configured dry-season allowance, not a measurement",
    "pending_reason": "",
-   "design_yield_m3_per_h": 0.9699565312279003,
-   "pump_installation_depth_m": 40,
-   "dry_season_loss_percent": 3.6656891495600807,
-   "summary": "Sized on the end of the dry season: 0.97 m3/h, falling to 0.95 m3/h in a drought year. The test was run in September, the wet season.",
+   "design_yield_m3_per_h": 0.39096869216140506,
+   "pump_installation_depth_m": 52,
+   "dry_season_loss_percent": 3.665689149560092,
+   "summary": "Sized on the end of the dry season: 0.39 m3/h, falling to 0.38 m3/h in a drought year. The test was run in September, the wet season.",
    "scenarios": [
     {
      "key": "as_tested",
@@ -7675,8 +7790,8 @@
      "decline_m": 0.0,
      "static_water_level_m": 9.44,
      "available_drawdown_m": 54.56,
-     "safe_yield_m3_per_h": 1.0068650750341366,
-     "pump_installation_depth_m": 38,
+     "safe_yield_m3_per_h": 0.40584573524212814,
+     "pump_installation_depth_m": 51,
      "note": "The level on the day of the test. Not a design figure: unless the test was run at the end of the dry season the borehole will be lower than this for part of every year. The test was run in September, the wet season."
     },
     {
@@ -7685,8 +7800,8 @@
      "decline_m": 2.0,
      "static_water_level_m": 11.44,
      "available_drawdown_m": 52.56,
-     "safe_yield_m3_per_h": 0.9699565312279003,
-     "pump_installation_depth_m": 39,
+     "safe_yield_m3_per_h": 0.39096869216140506,
+     "pump_installation_depth_m": 52,
      "note": "The normal annual low, which the borehole reaches every year. This is the figure a design should be sized on."
     },
     {
@@ -7695,8 +7810,8 @@
      "decline_m": 3.0,
      "static_water_level_m": 12.44,
      "available_drawdown_m": 51.56,
-     "safe_yield_m3_per_h": 0.9515022593247816,
-     "pump_installation_depth_m": 40,
+     "safe_yield_m3_per_h": 0.38353017062104344,
+     "pump_installation_depth_m": 52,
      "note": "A low deeper than a normal year's, for a run of poor rains. The pump has to still be under water here, or the village loses the borehole in exactly the year it is needed most."
     }
    ]
@@ -7708,10 +7823,10 @@
    "annual_range_m": 2.0,
    "range_source": "the configured dry-season allowance, not a measurement",
    "pending_reason": "",
-   "design_yield_m3_per_h": 0.9699565312279003,
-   "pump_installation_depth_m": 40,
-   "dry_season_loss_percent": 3.6656891495600807,
-   "summary": "Sized on the end of the dry season: 0.97 m3/h, falling to 0.95 m3/h in a drought year.",
+   "design_yield_m3_per_h": 0.39096869216140506,
+   "pump_installation_depth_m": 52,
+   "dry_season_loss_percent": 3.665689149560092,
+   "summary": "Sized on the end of the dry season: 0.39 m3/h, falling to 0.38 m3/h in a drought year.",
    "scenarios": [
     {
      "key": "as_tested",
@@ -7719,8 +7834,8 @@
      "decline_m": 0.0,
      "static_water_level_m": 9.44,
      "available_drawdown_m": 54.56,
-     "safe_yield_m3_per_h": 1.0068650750341366,
-     "pump_installation_depth_m": 38,
+     "safe_yield_m3_per_h": 0.40584573524212814,
+     "pump_installation_depth_m": 51,
      "note": "The level on the day of the test. Not a design figure: unless the test was run at the end of the dry season the borehole will be lower than this for part of every year."
     },
     {
@@ -7729,8 +7844,8 @@
      "decline_m": 2.0,
      "static_water_level_m": 11.44,
      "available_drawdown_m": 52.56,
-     "safe_yield_m3_per_h": 0.9699565312279003,
-     "pump_installation_depth_m": 39,
+     "safe_yield_m3_per_h": 0.39096869216140506,
+     "pump_installation_depth_m": 52,
      "note": "The normal annual low, which the borehole reaches every year. This is the figure a design should be sized on."
     },
     {
@@ -7739,8 +7854,8 @@
      "decline_m": 3.0,
      "static_water_level_m": 12.44,
      "available_drawdown_m": 51.56,
-     "safe_yield_m3_per_h": 0.9515022593247816,
-     "pump_installation_depth_m": 40,
+     "safe_yield_m3_per_h": 0.38353017062104344,
+     "pump_installation_depth_m": 52,
      "note": "A low deeper than a normal year's, for a run of poor rains. The pump has to still be under water here, or the village loses the borehole in exactly the year it is needed most."
     }
    ]
@@ -7752,10 +7867,10 @@
    "annual_range_m": 4.5,
    "range_source": "measured for this programme",
    "pending_reason": "",
-   "design_yield_m3_per_h": 0.9362774850047089,
-   "pump_installation_depth_m": 42,
-   "dry_season_loss_percent": 7.010630498533732,
-   "summary": "Sized on the end of the dry season: 0.94 m3/h, falling to 0.89 m3/h in a drought year. The test was run in August, the wet season.",
+   "design_yield_m3_per_h": 0.3773933903502451,
+   "pump_installation_depth_m": 53,
+   "dry_season_loss_percent": 7.010630498533709,
+   "summary": "Sized on the end of the dry season: 0.38 m3/h, falling to 0.36 m3/h in a drought year. The test was run in August, the wet season.",
    "scenarios": [
     {
      "key": "as_tested",
@@ -7763,8 +7878,8 @@
      "decline_m": 0.0,
      "static_water_level_m": 9.44,
      "available_drawdown_m": 54.56,
-     "safe_yield_m3_per_h": 1.0068650750341366,
-     "pump_installation_depth_m": 38,
+     "safe_yield_m3_per_h": 0.40584573524212814,
+     "pump_installation_depth_m": 51,
      "note": "The level on the day of the test. Not a design figure: unless the test was run at the end of the dry season the borehole will be lower than this for part of every year. The test was run in August, the wet season."
     },
     {
@@ -7773,8 +7888,8 @@
      "decline_m": 3.8249999999999997,
      "static_water_level_m": 13.264999999999999,
      "available_drawdown_m": 50.735,
-     "safe_yield_m3_per_h": 0.9362774850047089,
-     "pump_installation_depth_m": 40,
+     "safe_yield_m3_per_h": 0.3773933903502451,
+     "pump_installation_depth_m": 52,
      "note": "The normal annual low, which the borehole reaches every year. This is the figure a design should be sized on."
     },
     {
@@ -7783,8 +7898,8 @@
      "decline_m": 6.075,
      "static_water_level_m": 15.515,
      "available_drawdown_m": 48.485,
-     "safe_yield_m3_per_h": 0.8947553732226926,
-     "pump_installation_depth_m": 42,
+     "safe_yield_m3_per_h": 0.36065671688443146,
+     "pump_installation_depth_m": 53,
      "note": "A low deeper than a normal year's, for a run of poor rains. The pump has to still be under water here, or the village loses the borehole in exactly the year it is needed most."
     }
    ]
@@ -7796,10 +7911,10 @@
    "annual_range_m": 0.0,
    "range_source": "measured for this programme",
    "pending_reason": "",
-   "design_yield_m3_per_h": 1.0068650750341366,
-   "pump_installation_depth_m": 38,
+   "design_yield_m3_per_h": 0.40584573524212814,
+   "pump_installation_depth_m": 51,
    "dry_season_loss_percent": 0.0,
-   "summary": "Sized on the end of the dry season: 1 m3/h, falling to 1 m3/h in a drought year. The test was run in August, the wet season.",
+   "summary": "Sized on the end of the dry season: 0.41 m3/h, falling to 0.41 m3/h in a drought year. The test was run in August, the wet season.",
    "scenarios": [
     {
      "key": "as_tested",
@@ -7807,8 +7922,8 @@
      "decline_m": -0.0,
      "static_water_level_m": 9.44,
      "available_drawdown_m": 54.56,
-     "safe_yield_m3_per_h": 1.0068650750341366,
-     "pump_installation_depth_m": 38,
+     "safe_yield_m3_per_h": 0.40584573524212814,
+     "pump_installation_depth_m": 51,
      "note": "The level on the day of the test. Not a design figure: unless the test was run at the end of the dry season the borehole will be lower than this for part of every year. The test was run in August, the wet season."
     },
     {
@@ -7817,8 +7932,8 @@
      "decline_m": 0.0,
      "static_water_level_m": 9.44,
      "available_drawdown_m": 54.56,
-     "safe_yield_m3_per_h": 1.0068650750341366,
-     "pump_installation_depth_m": 38,
+     "safe_yield_m3_per_h": 0.40584573524212814,
+     "pump_installation_depth_m": 51,
      "note": "The normal annual low, which the borehole reaches every year. This is the figure a design should be sized on. No further decline is reserved: a test run in August is already at or below this level."
     },
     {
@@ -7827,8 +7942,8 @@
      "decline_m": 0.0,
      "static_water_level_m": 9.44,
      "available_drawdown_m": 54.56,
-     "safe_yield_m3_per_h": 1.0068650750341366,
-     "pump_installation_depth_m": 38,
+     "safe_yield_m3_per_h": 0.40584573524212814,
+     "pump_installation_depth_m": 51,
      "note": "A low deeper than a normal year's, for a run of poor rains. The pump has to still be under water here, or the village loses the borehole in exactly the year it is needed most. No further decline is reserved: a test run in August is already at or below this level."
     }
    ]

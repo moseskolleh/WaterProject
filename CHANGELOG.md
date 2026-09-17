@@ -103,6 +103,52 @@ models on the figure rather than clipped at fixed limits, and both
 Streamlit pages infer the UTM zone from the easting instead of assuming
 two different zones.
 
+A pumping test is now worth what it measured. Dr Timbo's constant test
+pumped for thirty minutes at 2.93 m3/h from a 5 inch casing and drew the
+level down 32.8 m; by Schafer's rule the water standing in the casing
+supplies such a pump for the first two hours, so the whole test was the
+borehole emptying rather than the aquifer responding, and the Theis fit
+duly returned a storativity of 0.18. The report adopted a transmissivity
+of 1.4 m2/day from a recovery line that met t/t' = 1 at 21.7 m of
+residual drawdown, where the method requires zero, and the completion
+and handover reports printed a safe yield of 0.97 m3/h and "successful
+and sustainable" without the pumping report's own "treat as indicative".
+The analysis now computes the casing-storage period from the casing and
+riser diameters, checks the recovery intercept, refuses a storativity no
+aquifer has, fits no drawdown line to a first step that ends above the
+stated static level, and reads the recovery after a step test against
+the discharge-weighted equivalent pumping time. A method that fails any
+of these is reported with its reason and not adopted; when nothing
+fits to standard the best of the poor fits is adopted and said to be.
+Every yield carries a confidence, established or indicative with its
+reasons, and every report that prints the yield prints that beside it:
+the completion report reserves "successful and sustainable" for an
+established yield, and the readiness gate holds "Yield established"
+unmet for an indicative one. Dr Timbo's yield is 0.39 m3/h, indicative,
+on a 0.54 m2/day Cooper-Jacob line adopted as the best available.
+
+The pump goes where the drawdown the yield was computed on exists. The
+intake used to be raised to just clear the drawdown at the safe rate,
+which put Dr Timbo's pump at 39 m, three metres above the 42.3 m the
+test itself had reached, and spent the safety factor on lifting the
+pump; it is now set below the static level plus the dry-season reserve,
+the usable drawdown and the submergence margin, never above the deepest
+level the test reached, so Dr Timbo's goes to 52 m and the basis says
+why. A report prints one pump depth, the deeper of the yield's and the
+drought scenario's, instead of 39 m in one paragraph and 40 m in the
+next; the test's own pump setting is stated beside it; every depth is
+below the top of the casing, the datum the sheet records levels from,
+rather than a ground level nobody measured the stick-up to. The
+parser flags a level recorded below the pump intake, and a report whose
+levels are flagged says they are inconsistent rather than that the
+curves are valid. The overview figure labels every step in its own
+colour with the legend under the axes, the step figure draws the intake
+and the hole bottom, a two-step Hantush-Bierschenk line says it is
+exact by construction instead of printing R squared 1.000, the specific
+capacity carries its rate, drawdown and time, the test type is written
+in words, and the browser engine mirrors all of it with the parity suite
+holding both engines to the same confidence, reasons and pump depth.
+
 An audit of the three worked examples, reading every figure and every
 report as a client or a ministry reviewer would, found real defects in
 the maps, the borehole design, the VES interpretation, the pumping-test

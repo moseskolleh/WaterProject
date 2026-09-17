@@ -865,6 +865,7 @@
     var b = new ReportBuilder({ style: context.style, title: 'Borehole Completion Report' });
     var site = context.site || {}, log = context.log || {}, design = context.design;
     var figures = context.figures || [];
+    var summaryRec = context.analysis ? context.analysis.yield_recommendation : null;
 
     b.cover(['Borehole Completion Report',
       (log.borehole_ref ? log.borehole_ref + ' — ' : '') + (site.community || '')],
@@ -889,11 +890,23 @@
         S.plural(design.screens.length, 'section') + ', gravel packed from ' +
         design.gravel_pack[0].toFixed(0) + ' m to the bottom and sealed with cement ' +
         'grout from surface to ' + design.sanitary_seal[1].toFixed(0) + ' m.' : '',
+      /* the pumping report carries the "treat as indicative" basis and its
+       * warnings; this one used to print the same yield without them, and
+       * the handover certificate followed it */
+      summaryRec && summaryRec.safe_yield_m3_per_h
+        ? 'The recommended safe yield is ' + C.fmtNum(summaryRec.safe_yield_m3_per_h) +
+          ' m3/h with the pump intake at ' + C.fmtNum(summaryRec.pump_installation_depth_m) +
+          ' m below the top of the casing.' +
+          (summaryRec.is_indicative ? ' ' + summaryRec.confidence_text : '')
+        : '',
     ], [
       log.status ? 'Outcome: ' + log.status : null,
       log.total_depth_m ? 'Total depth: ' + C.fmtNum(log.total_depth_m) + ' m' : null,
       design ? 'Screened interval(s): ' + design.screens.map(function (s) {
         return s.top_m.toFixed(1) + '–' + s.bottom_m.toFixed(1) + ' m'; }).join(', ') : null,
+      summaryRec && summaryRec.safe_yield_m3_per_h
+        ? 'Safe yield: ' + C.fmtNum(summaryRec.safe_yield_m3_per_h) + ' m3/h' +
+          (summaryRec.is_indicative ? ' (indicative)' : '') + '.' : null,
     ]);
 
     b.heading('1. Introduction', 1);
@@ -964,7 +977,7 @@
        * rate quoted beside it has to be that step's, not step one's */
       var q = last ? last.discharge_m3_per_h : null;
       var rows = [
-        ['Test type', (test && test.test_type) || '—'],
+        ['Test type', test ? C.testTypeText(test.test_type) : '—'],
         ['Duration', test && test.pumping_duration_min
           ? C.fmtNum(test.pumping_duration_min) + ' min' : '—'],
         [steps.length > 1 ? 'Discharge (final step)' : 'Discharge',
@@ -972,16 +985,27 @@
         ['Static water level', test && test.static_water_level_m !== null &&
           test.static_water_level_m !== undefined
           ? C.fmtNum(test.static_water_level_m) + ' m' : '—'],
+        ['Pump setting during the test', test && test.pump_setting_m
+          ? C.fmtNum(test.pump_setting_m) + ' m' : 'not recorded'],
         ['Maximum drawdown', analysis.max_drawdown_m
           ? C.fmtNum(analysis.max_drawdown_m) + ' m' : '—'],
       ];
       if (analysis.transmissivity_m2_per_day) {
         rows.push(['Transmissivity',
-          C.fmtNum(analysis.transmissivity_m2_per_day) + ' m2/day']);
+          C.fmtNum(analysis.transmissivity_m2_per_day) + ' m2/day' +
+          (analysis.transmissivity_source
+            ? ' (' + C.METHOD_LABELS[analysis.transmissivity_source] + ')' : '')]);
       }
       if (rec && rec.specific_capacity_m3hr_per_m) {
+        /* a rate over a drawdown at a time, not a property of the borehole */
         rows.push(['Specific capacity',
-          C.fmtNum(rec.specific_capacity_m3hr_per_m) + ' m3/h per m']);
+          C.formatG(C.roundSig(rec.specific_capacity_m3hr_per_m, 2), 2) +
+          ' m3/h per m (' + rec.specific_capacity_basis + ')']);
+      }
+      if (rec && rec.safe_yield_m3_per_h) {
+        rows.push(['Safe yield', C.yieldRangeText(rec)]);
+        rows.push(['Yield confidence', rec.is_indicative
+          ? 'indicative: ' + rec.confidence_reasons.join('; ') : 'established']);
       }
       b.table(rows, { header: ['Item', 'Value'], caption: 'Pumping test summary',
         colWidthsCm: [5.6, 10.0] });
@@ -1000,18 +1024,23 @@
       ['Borehole depth', log.total_depth_m ? C.fmtNum(log.total_depth_m) + ' m' : '—'],
       ['Borehole diameter', design ? C.formatG(design.borehole_diameter_in) + '"' : '—'],
       ['Static water level', swl !== null ? C.fmtNum(swl) + ' m' : '—'],
-      ['Dynamic water level', dwl !== null ? C.fmtNum(dwl) + ' m' : '—'],
+      ['Dynamic water level at the end of the test',
+        dwl !== null ? C.fmtNum(dwl) + ' m' : '—'],
       ['Drawdown', (dwl !== null && swl !== null)
         ? C.fmtNum(dwl - swl) + ' m' : '—'],
-      ['Flow rate', flow ? C.fmtNum(flow * 1000) + ' L/h' : 'pending'],
+      /* the same unit as every other rate on the page; 2,930 L/h beside
+       * 0.97 m3/h read as two different boreholes */
+      ['Test discharge', flow ? C.fmtNum(flow) + ' m3/h' : 'pending'],
       /* Blank, not 'Handpump'. Nothing in this app records which pump was
        * installed, so the fallback asserted one on every borehole it wrote a
        * completion report for - a claim about equipment nobody had entered.
        * Python prints inputs.pump_type and leaves it empty. */
       ['Pump type', context.pumpType || ''],
-      ['Installation depth', rec && rec.pump_installation_depth_m
-        ? C.fmtNum(rec.pump_installation_depth_m) + ' m'
-        : (test && test.pump_setting_m ? C.fmtNum(test.pump_setting_m) + ' m' : '—')],
+      ['Pump setting during the test', test && test.pump_setting_m
+        ? C.fmtNum(test.pump_setting_m) + ' m' : 'not recorded'],
+      ['Recommended pump intake', rec && rec.pump_installation_depth_m
+        ? C.fmtNum(rec.pump_installation_depth_m) + ' m below the top of the casing'
+        : 'pending'],
     ]);
     section += 1;
 
@@ -1034,18 +1063,30 @@
 
     b.heading(section + '. Recommendations and Conclusions', 1);
     var advice = [];
-    if (String(log.status || '').toLowerCase().indexOf('success') === 0 ||
-        (rec && rec.safe_yield_m3_per_h)) {
+    var successful = String(log.status || '').toLowerCase().indexOf('success') === 0;
+    /* "Successful and sustainable" is two claims. The log supports the
+     * first; only an established yield supports the second, and a
+     * 30-minute test inside its casing storage used to be certified as both. */
+    if (rec && rec.safe_yield_m3_per_h && !rec.is_indicative) {
       advice.push('The borehole is successful and sustainable when operated ' +
         'as recommended.');
+    } else if (rec && rec.safe_yield_m3_per_h) {
+      advice.push((successful ? 'The borehole is recorded as successful. ' : '') +
+        'Whether it is sustainable at the recommended rate is indicative, not ' +
+        'established: ' + rec.confidence_reasons.join('; ') + '. Confirm it by ' +
+        'a longer test or by monitoring the pumping level in service.');
+    } else if (successful) {
+      advice.push('The borehole is recorded as successful; no sustainable yield ' +
+        'has been established from the pumping test.');
     }
     if (rec && rec.safe_yield_m3_per_h) {
       advice.push('The recommended abstraction rate is ' +
         C.fmtNum(rec.safe_yield_m3_per_h) + ' m3/h (safety factor ' +
-        C.formatG(rec.safety_factor) + ' applied to the long term yield).');
+        C.formatG(rec.safety_factor) + ' applied to the long term yield' +
+        (rec.is_indicative ? ', indicative' : '') + ').');
       if (rec.pump_installation_depth_m) {
-        advice.push('The pump installation depth is ' +
-          C.fmtNum(rec.pump_installation_depth_m) + ' m.');
+        advice.push('The pump intake is set at ' +
+          C.fmtNum(rec.pump_installation_depth_m) + ' m below the top of the casing.');
       }
       advice.push('The pump should rest for at least one hour in every ' +
         'pumping cycle and the pumping water level should be checked routinely.');
@@ -1076,6 +1117,11 @@
 
   /* --- 3. pumping test ------------------------------------------------------- */
 
+  /* Where the levels are measured from. The sheets record depth to water
+   * from the top of the casing and never the casing's stick-up above ground,
+   * so "below ground level" was a claim the data did not support. */
+  var DATUM_TEXT = 'below the top of the casing, the datum the levels were measured from';
+
   async function pumpingReport(context) {
     var b = new ReportBuilder({ style: context.style, title: 'Pumping Test Report' });
     var analysis = context.analysis, test = analysis.test, site = test.site || {};
@@ -1094,37 +1140,63 @@
     b.provisionalStamp(context.readiness);
     b.tableOfContents();
 
+    /* The one pump intake depth this report prints, and why: the deeper of
+     * the day-of-test recommendation and the seasonal projection's. */
+    var seasonal = context.seasonal;
+    var intake = C.pumpIntakeDepth(analysis, seasonal);
+    var pumpDepth = intake[0], pumpDepthWhy = intake[1];
+    var adoptedInfo = C.adoptedFit(analysis);
+    var typeText = C.testTypeText(test.test_type);
+
     b.executiveSummary([
-      'A ' + (test.test_type || 'pumping') + ' test was carried out on borehole ' +
+      'A ' + typeText + ' was carried out on borehole ' +
         (test.borehole_ref || '') + ' at ' + (site.community || 'the site') + '.',
       analysis.transmissivity_m2_per_day
         ? 'The transmissivity of the aquifer is about ' +
-          S.sig(analysis.transmissivity_m2_per_day, 3) + ' m²/day. The recommended ' +
-          'safe yield is ' + C.yieldRangeText(rec) + ', with the pump set at ' +
-          (rec.pump_installation_depth_m !== null
-            ? rec.pump_installation_depth_m.toFixed(0) + ' m' : 'a depth to be confirmed') + '.'
+          S.sig(analysis.transmissivity_m2_per_day, 3) + ' m²/day' +
+          (analysis.transmissivity_source
+            ? ' (' + C.METHOD_LABELS[analysis.transmissivity_source] + ')' : '') +
+          '. The recommended safe yield is ' + C.yieldRangeText(rec) +
+          (rec.is_indicative ? ' (indicative)' : '') + ', with the pump intake set at ' +
+          (pumpDepth !== null
+            ? C.fmtNum(pumpDepth) + ' m ' + DATUM_TEXT +
+              (pumpDepthWhy ? ', ' + pumpDepthWhy : '')
+            : 'a depth to be confirmed') + '.' +
+          (rec.is_indicative ? ' ' + rec.confidence_text : '')
         : 'Yield results are pending: ' + (rec.pending_reason || 'inputs are missing') + '.',
     ], [
       analysis.transmissivity_m2_per_day
-        ? 'Transmissivity: ' + S.sig(analysis.transmissivity_m2_per_day, 3) + ' m²/day' : null,
+        ? 'Transmissivity: ' + S.sig(analysis.transmissivity_m2_per_day, 3) + ' m²/day' +
+          (analysis.transmissivity_source
+            ? ' (' + C.METHOD_LABELS[analysis.transmissivity_source] + ')' : '') : null,
       rec.specific_capacity_m3hr_per_m
-        ? 'Specific capacity: ' + rec.specific_capacity_m3hr_per_m.toFixed(2) + ' m³/h per m' : null,
-      rec.safe_yield_m3_per_h ? 'Safe yield: ' + C.yieldRangeText(rec) : null,
-      rec.pump_installation_depth_m !== null
-        ? 'Recommended pump setting: ' + rec.pump_installation_depth_m.toFixed(0) + ' m' : null,
+        ? 'Specific capacity: ' + C.formatG(C.roundSig(rec.specific_capacity_m3hr_per_m, 2), 2) +
+          ' m³/h per m (' + rec.specific_capacity_basis + ')' : null,
+      rec.safe_yield_m3_per_h ? 'Safe yield: ' + C.yieldRangeText(rec) +
+        (rec.is_indicative ? ' (indicative)' : '') : null,
+      pumpDepth !== null ? 'Pump installation depth: ' + C.fmtNum(pumpDepth) + ' m' : null,
+      rec.safe_yield_m3_per_h
+        ? (rec.is_indicative
+          ? 'Confidence: indicative - ' + rec.confidence_reasons[0] + '.'
+          : 'Confidence: established.') : null,
     ]);
 
     b.heading('1. Test Details', 1);
     b.keyValueTable([
       ['Borehole', test.borehole_ref || '—'],
-      ['Test type', test.test_type || '—'],
+      ['Test type', typeText],
       ['Static water level', test.static_water_level_m !== null
         ? test.static_water_level_m.toFixed(2) + ' m' : '—'],
-      ['Pump setting during test', test.pump_setting_m ? C.fmtNum(test.pump_setting_m) + ' m' : '—'],
+      ['Pump setting during test', test.pump_setting_m
+        ? C.fmtNum(test.pump_setting_m) + ' m' : 'not recorded'],
       ['Pumping duration', test.pumping_duration_min
         ? C.fmtNum(test.pumping_duration_min) + ' min' : '—'],
       ['Step length', test.step_length_min ? C.fmtNum(test.step_length_min) + ' min' : '—'],
     ]);
+    b.paragraph('Water levels are depths below the top of the casing, the datum ' +
+      'the field sheet records them from; the casing\'s stick-up above ground is ' +
+      'not recorded, so every depth in this report is to that datum.',
+      { italic: true });
 
     areaSection(b, context, '1.1 Location and setting');
 
@@ -1147,6 +1219,29 @@
       });
     });
 
+    /* One bold sentence under a method's paragraph when its T is passed over. */
+    function notAdopted(method) {
+      var why = C.whyNotAdopted(analysis, method);
+      if (!why) return;
+      if (analysis.transmissivity_source === method && !adoptedInfo.qualifies) {
+        b.paragraph('Adopted as the best available, not because it meets the ' +
+          'standard: ' + why + '.', { bold: true });
+      } else {
+        b.paragraph('Not adopted for the yield: ' + why + '.', { bold: true });
+      }
+    }
+
+    if (analysis.casing_storage_min) {
+      b.paragraph('Casing storage: with a ' +
+        C.formatG((context.config && context.config.pumping
+          ? context.config.pumping : C.defaultConfig().pumping).casing_diameter_in) +
+        ' inch casing and the specific capacity at the end of the first step, the ' +
+        'water standing in the casing supplies the pump for about the first ' +
+        C.pyFixed(analysis.casing_storage_min, 0) + " minutes (Schafer's rule). " +
+        'Drawdown inside that period is the borehole emptying, not the aquifer ' +
+        'responding, and no straight line is read from it.', { align: 'justify' });
+    }
+
     b.heading('3. Analysis', 1);
     if (analysis.cooper_jacob) {
       b.heading('Cooper-Jacob straight line', 2);
@@ -1157,14 +1252,29 @@
         'cycle, giving a transmissivity of ' +
         S.sig(analysis.cooper_jacob.transmissivity_m2_per_day, 3) + ' m²/day. ' +
         analysis.cooper_jacob.u_check + '.', { align: 'justify' });
+      notAdopted('cooper_jacob');
     }
     if (analysis.recovery) {
+      var recFit = analysis.recovery;
       b.heading('Theis recovery', 2);
-      b.paragraph('Residual drawdown against log(t/t\') gives a transmissivity ' +
-        'of ' + S.sig(analysis.recovery.transmissivity_m2_per_day, 3) + ' m²/day ' +
-        '(r² = ' + analysis.recovery.r_squared.toFixed(3) + '). Recovery is the ' +
-        'least affected by well losses and is the preferred estimate.',
+      var timeText = recFit.equivalent_time
+        ? 'an equivalent pumping time of ' + C.pyFixed(recFit.pumping_time_min, 0) +
+          ' minutes at the last rate of ' + C.fmtNum(recFit.discharge_m3_per_h) +
+          ' m³/h (the volume pumped over all the steps, at that rate)'
+        : 'the ' + C.formatG(recFit.pumping_time_min) + ' minutes pumped';
+      b.paragraph('With t/t\' formed from ' + timeText + ', the recovery slope is ' +
+        C.fmtNum(recFit.slope_m_per_log_cycle) + ' m per log cycle (r² = ' +
+        recFit.r_squared.toFixed(3) + '), giving a transmissivity of ' +
+        S.sig(recFit.transmissivity_m2_per_day, 3) + ' m²/day. The fitted line ' +
+        'meets t/t\' = 1 at ' + C.fmtNum(recFit.intercept_m) + ' m of residual ' +
+        'drawdown, where the method requires zero. Residual drawdown at the end ' +
+        'of monitoring was ' + C.fmtNum(recFit.residual_at_end_m) + ' m.' +
+        (C.whyNotAdopted(analysis, 'recovery') ? ''
+          : ' Recovery derived transmissivity is generally the most reliable ' +
+            'single well estimate because it is unaffected by pumping rate ' +
+            'fluctuations and well losses.'),
         { align: 'justify' });
+      notAdopted('recovery');
     }
     if (analysis.theis) {
       b.heading('Theis type curve', 2);
@@ -1174,17 +1284,24 @@
         (analysis.theis.storativity_reliable ? '.'
           : '. Storativity is not resolvable from a single pumped well and is ' +
             'reported for completeness only.'), { align: 'justify' });
+      notAdopted('theis');
     }
     if (analysis.step_test) {
+      var st = analysis.step_test;
       b.heading('Step drawdown analysis', 2);
       b.paragraph('The Hantush-Bierschenk analysis separates aquifer loss from ' +
-        'well loss: B = ' + S.sig(analysis.step_test.aquifer_loss_B, 3) +
-        ' day/m² and C = ' + S.sig(analysis.step_test.well_loss_C, 3) + ' day²/m⁵.',
+        'well loss: B = ' + S.sig(st.aquifer_loss_B, 3) +
+        ' day/m² and C = ' + S.sig(st.well_loss_C, 3) + ' day²/m⁵' +
+        (st.two_point
+          ? ', fitted through ' + st.steps.length + ' points. ' + C.TWO_POINT_NOTE + '.'
+          : ', fitted with r² = ' + st.r_squared.toFixed(3) + '.') +
+        (st.fit_note ? ' Note: ' + st.fit_note + '.' : ''),
         { align: 'justify' });
-      b.table(analysis.step_test.steps.map(function (s) {
+      b.table(st.steps.map(function (s) {
         return [String(s.step), S.sig(s.discharge_m3_per_h, 3),
           s.drawdown_end_m.toFixed(2), S.sig(s.sw_over_q_day_per_m2, 3),
-          s.efficiency_percent.toFixed(0) + '%'];
+          st.fit_note ? 'n/a' : s.efficiency_percent.toFixed(0) + '%' +
+            (st.two_point ? ' (indicative)' : '')];
       }), {
         header: ['Step', 'Q (m³/h)', 'Drawdown (m)', 's/Q (day/m²)', 'Well efficiency'],
         caption: 'Step test results',
@@ -1193,20 +1310,48 @@
     figures.forEach(function (f) { b.figure(f.image, f.caption, f.widthCm || 15); });
 
     b.heading('4. Results Summary', 1);
+    /* every method that fitted, what it gave and what it is worth */
+    var methodRows = [];
+    ['cooper_jacob', 'theis', 'recovery'].forEach(function (key) {
+      var result = analysis[key];
+      if (!result) return;
+      var status;
+      if (key === analysis.transmissivity_source) {
+        status = adoptedInfo.qualifies ? 'adopted'
+          : 'adopted as the best available; ' + C.whyNotAdopted(analysis, key);
+      } else {
+        status = C.whyNotAdopted(analysis, key) || 'not adopted';
+      }
+      methodRows.push([C.METHOD_LABELS[key],
+        S.sig(result.transmissivity_m2_per_day, 3),
+        status.charAt(0).toUpperCase() + status.slice(1)]);
+    });
+    if (methodRows.length) {
+      b.table(methodRows, {
+        header: ['Method', 'Transmissivity (m²/day)', 'Status'],
+        caption: 'Transmissivity estimates and what each is worth',
+        colWidthsCm: [3.6, 3.4, 8.6],
+      });
+    } else {
+      b.paragraph('Transmissivity: pending (discharge not recorded).', { bold: true });
+    }
     b.table([
-      ['Transmissivity (preferred)', analysis.transmissivity_m2_per_day
-        ? S.sig(analysis.transmissivity_m2_per_day, 3) + ' m²/day' : 'pending'],
-      ['Cooper-Jacob T', analysis.cooper_jacob
-        ? S.sig(analysis.cooper_jacob.transmissivity_m2_per_day, 3) + ' m²/day' : '—'],
-      ['Recovery T', analysis.recovery
-        ? S.sig(analysis.recovery.transmissivity_m2_per_day, 3) + ' m²/day' : '—'],
-      ['Theis T', analysis.theis
-        ? S.sig(analysis.theis.transmissivity_m2_per_day, 3) + ' m²/day' : '—'],
+      ['Transmissivity adopted for the yield', analysis.transmissivity_m2_per_day
+        ? S.sig(analysis.transmissivity_m2_per_day, 3) + ' m²/day (' +
+          C.METHOD_LABELS[analysis.transmissivity_source] + ')' : 'pending'],
       ['Maximum drawdown', analysis.max_drawdown_m !== null
         ? analysis.max_drawdown_m.toFixed(2) + ' m' : '—'],
       ['Specific capacity', rec.specific_capacity_m3hr_per_m
-        ? rec.specific_capacity_m3hr_per_m.toFixed(2) + ' m³/h per m' : '—'],
-    ], { header: ['Quantity', 'Value'], caption: 'Analysis results',
+        ? C.formatG(C.roundSig(rec.specific_capacity_m3hr_per_m, 2), 2) +
+          ' m³/h per m (' + rec.specific_capacity_basis + ')' : 'pending'],
+      ['Confidence', rec.safe_yield_m3_per_h
+        ? (rec.is_indicative ? 'indicative' : 'established') : 'pending'],
+      ['Recommended pump installation depth', pumpDepth !== null
+        ? C.fmtNum(pumpDepth) + ' m' + (pumpDepthWhy ? ', ' + pumpDepthWhy : '')
+        : 'pending'],
+      ['Pump setting during the test', test.pump_setting_m
+        ? C.fmtNum(test.pump_setting_m) + ' m' : 'not recorded'],
+    ], { header: ['Quantity', 'Value'], caption: 'Yield summary',
       colWidthsCm: [7.0, 8.6] });
 
     b.heading('5. Yield Recommendation', 1);
@@ -1220,17 +1365,27 @@
         ['Long term yield', rec.long_term_yield_m3_per_h.toFixed(2) + ' m³/h'],
         ['Safe yield (with safety factor ' + rec.safety_factor + ')',
           C.yieldRangeText(rec) ],
-        ['Recommended pump setting', rec.pump_installation_depth_m !== null
-          ? rec.pump_installation_depth_m.toFixed(0) + ' m' : '—'],
+        ['Confidence', rec.is_indicative ? 'indicative' : 'established'],
+        ['Recommended pump intake', pumpDepth !== null
+          ? C.fmtNum(pumpDepth) + ' m ' + DATUM_TEXT : '—'],
       ], { header: ['Quantity', 'Value'], caption: 'Yield recommendation',
         colWidthsCm: [7.0, 8.6] });
       if (rec.envelope_basis) b.paragraph(rec.envelope_basis, { align: 'justify' });
+      if (rec.pump_depth_basis) b.paragraph(rec.pump_depth_basis, { align: 'justify' });
+      b.paragraph(rec.confidence_text, { align: 'justify', bold: rec.is_indicative });
+      b.bullets([
+        'Operate the borehole at no more than ' + C.fmtNum(rec.safe_yield_m3_per_h) +
+          ' m³/h' + (rec.is_indicative ? ' (indicative; see above)' : '') + '.',
+        'Install the pump intake at ' + C.fmtNum(pumpDepth) + ' m ' + DATUM_TEXT +
+          (pumpDepthWhy ? ', ' + pumpDepthWhy : '') + '.',
+        'Monitor the pumping water level and re-assess the yield if the level ' +
+          'approaches the pump intake.',
+      ]);
     } else {
       b.paragraph('The yield recommendation is pending: ' +
         (rec.pending_reason || 'required inputs are missing') + '.', { bold: true });
     }
 
-    var seasonal = context.seasonal;
     if (seasonal && seasonal.is_established) {
       b.heading('5.1 Through the year', 2);
       b.paragraph('A pumping test measures one day. The borehole has to ' +
@@ -1268,12 +1423,12 @@
           'on the day of the test.', { bold: true });
       }
       b.bullets(seasonal.scenarios.map(function (sc) { return sc.note; }));
-      if (seasonal.pump_installation_depth_m !== null) {
-        b.paragraph('Set the pump intake at ' +
-          C.fmtNum(seasonal.pump_installation_depth_m) + ' m below ground ' +
-          'level: deep enough for the drought case, because the pump is ' +
-          'fitted once and a pump that draws air in a bad year loses the ' +
-          'village its borehole in the year it is needed most.', { bold: true });
+      /* the same depth the recommendation printed, not a second one */
+      if (pumpDepth !== null) {
+        b.paragraph('The pump intake recommended above, ' + C.fmtNum(pumpDepth) +
+          ' m ' + DATUM_TEXT + ', is set for the drought case: the pump is fitted ' +
+          'once, and one that draws air in a bad year loses the village its ' +
+          'borehole in the year it is needed most.', { bold: true });
       }
     }
 
@@ -1707,16 +1862,22 @@
         ' and is handed over to the community for operation and maintenance.',
       rec && rec.safe_yield_m3_per_h
         ? 'The source is rated at a safe yield of ' + C.yieldRangeText(rec) +
+          (rec.is_indicative ? ' (indicative)' : '') +
           ', which is sufficient for about ' +
           Math.round(rec.safe_yield_m3_per_h * 1000 * 8 / 20) +
-          ' people at 20 litres per person per day over an eight hour pumping day.'
+          ' people at 20 litres per person per day over an eight hour pumping day.' +
+          /* a 30-minute test inside its casing storage cannot become
+           * "sustainable" on the handover certificate */
+          (rec.is_indicative ? ' ' + rec.confidence_text : '')
         : '',
       assessment ? assessment.verdict : '',
     ], [
       log.total_depth_m ? 'Depth: ' + C.fmtNum(log.total_depth_m) + ' m' : null,
-      rec && rec.safe_yield_m3_per_h ? 'Safe yield: ' + C.yieldRangeText(rec) : null,
+      rec && rec.safe_yield_m3_per_h ? 'Safe yield: ' + C.yieldRangeText(rec) +
+        (rec.is_indicative ? ' (indicative)' : '') : null,
       rec && rec.pump_installation_depth_m !== null
-        ? 'Pump setting: ' + rec.pump_installation_depth_m.toFixed(0) + ' m' : null,
+        ? 'Pump intake: ' + rec.pump_installation_depth_m.toFixed(0) +
+          ' m below the top of the casing' : null,
       assessment
         ? 'Water quality: ' + C.VERDICT_LONG[assessment.verdict_state].toLowerCase()
         : null,
@@ -1736,9 +1897,14 @@
       ['Total depth', log.total_depth_m ? C.fmtNum(log.total_depth_m) + ' m' : '—'],
       ['Static water level', analysis && analysis.test.static_water_level_m !== null
         ? analysis.test.static_water_level_m.toFixed(2) + ' m' : '—'],
-      ['Safe yield', rec ? C.yieldRangeText(rec) : '—'],
-      ['Pump setting', rec && rec.pump_installation_depth_m !== null
-        ? rec.pump_installation_depth_m.toFixed(0) + ' m' : '—'],
+      ['Safe yield', rec ? C.yieldRangeText(rec) +
+        (rec.is_indicative ? ' (indicative)' : '') : '—'],
+      ['Yield confidence', rec && rec.safe_yield_m3_per_h
+        ? (rec.is_indicative ? 'indicative: ' + rec.confidence_reasons.join('; ')
+          : 'established') : '—'],
+      ['Pump intake depth', rec && rec.pump_installation_depth_m !== null
+        ? rec.pump_installation_depth_m.toFixed(0) + ' m below the top of the casing'
+        : '—'],
       ['Screened intervals', design ? design.screens.map(function (s) {
         return s.top_m.toFixed(1) + '–' + s.bottom_m.toFixed(1) + ' m'; }).join(', ') : '—'],
       ['Casing', design ? design.casing_diameter_in + '" ' + design.casing_material : '—'],

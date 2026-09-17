@@ -549,6 +549,24 @@ def _assemble(grid: list[list], source: str) -> PumpingTest:
                     f"borehole depth {test.borehole_depth_m:.0f} m; check the sheet.",
                 )
             )
+    if test.pump_setting_m and steps:
+        # A pump cannot draw the water below its own intake. Levels 18 m
+        # under the pump went into a report as 59 m of drawdown and 38 m of
+        # available drawdown, with nothing to say the sheet could not be
+        # right.
+        max_wl = max(float(np.nanmax(s.water_level_m)) for s in steps)
+        if max_wl > test.pump_setting_m:
+            flags.append(
+                DataFlag(
+                    "warning",
+                    "level_below_pump",
+                    f"Recorded water level {max_wl:.2f} m is below the pump "
+                    f"intake at {test.pump_setting_m:.0f} m. A pump cannot draw "
+                    "the level below its own intake, so the pump setting, the "
+                    "levels or the datum on the sheet is wrong; the drawdown "
+                    "figures are as recorded and not to be relied on.",
+                )
+            )
     test.flags = flags
     return test
 

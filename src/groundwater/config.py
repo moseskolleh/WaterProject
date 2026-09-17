@@ -113,6 +113,27 @@ class PumpingConfig:
     # to reach the design period, so its yield is flagged as indicative.
     min_constant_test_min: float = 240.0  # pumped duration of a constant test
     min_step_length_min: float = 60.0  # length of each step in a step test
+    # Casing storage. Early in a test the pump empties the water standing in
+    # the casing before the aquifer supplies much of anything, and the
+    # drawdown fits see the borehole emptying rather than the ground. Schafer
+    # (1978) puts the end of that period at 0.6 (dc^2 - dp^2) / (Q/s) minutes
+    # with the diameters in inches and Q/s in gpm/ft; the same rule in metres
+    # and m3/h per m is the constant CASING_STORAGE_COEFFICIENT in
+    # hydraulics.analysis. The diameters default to the design rules' casing
+    # and a 1.25 inch riser; a sheet that records neither uses them.
+    casing_diameter_in: float = 5.0
+    riser_diameter_in: float = 1.25
+    # A recovery line that does not pass near the origin is not a Theis
+    # recovery line: theory has s' = 0 at t/t' = 1, and an intercept that is
+    # a large fraction of the drawdown the recovery started from says the
+    # residual drawdown is dominated by something the method does not model
+    # (casing storage, a rising static level, a wrong pumping time). Such a
+    # fit is reported, but not adopted for the yield.
+    recovery_intercept_max_fraction: float = 0.25
+    # A Theis fit whose storativity comes out above this is fitting the
+    # casing, not the aquifer: no aquifer has a storage coefficient of 0.18,
+    # and a single pumped well cannot resolve S anyway.
+    max_plausible_storativity: float = 0.1
 
 
 # ---------------------------------------------------------------------------
