@@ -1165,6 +1165,7 @@ def plot_study_area_map(
     title: str | None = None,
     show_geology: bool = False,
     geology_path: str | Path | None = None,
+    mark_site: bool = True,
 ):
     """The study area at a readable scale, with a locator inset.
 
@@ -1184,6 +1185,12 @@ def plot_study_area_map(
     everything else. It is off by default: at 25 km the 1:5M units are
     large flat washes, and the study-area map's job is the local
     furniture, not the regional geology, which has its own figure.
+
+    ``mark_site`` draws the site star at the site's own position. A siting
+    survey's "site" is the first sounding's position, and the star drawn
+    over it read as "drill here" on the runner-up peg while the recommended
+    one was an undistinguished triangle 20 km away; such a report passes
+    False and marks the recommended sounding among ``points`` instead.
     """
     style = style or HouseStyle()
     window = area_window(site, radius_km, admin_path, chiefdom_path)
@@ -1244,7 +1251,7 @@ def plot_study_area_map(
             (pt.get("lon"), pt.get("lat")) for pt in (points or [])
             if pt.get("lon") is not None and pt.get("lat") is not None
         ]
-        if site is not None and window.exact and site.latlon is not None:
+        if site is not None and window.exact and site.latlon is not None and mark_site:
             drawn_at.append((site.latlon[1], site.latlon[0]))
         occupancy = _corner_occupancy(ax, drawn_at)
         free = sorted(("lower right", "upper left"), key=lambda c: occupancy[c])
@@ -1270,7 +1277,7 @@ def plot_study_area_map(
                         lw=carto.LINES["coast"].width, zorder=6)
 
         handles = _plot_area_points(ax, points or [], style)
-        if site is not None and window.exact:
+        if site is not None and window.exact and mark_site:
             _mark_site(ax, site, carto.SITE)
 
         below = _geo_axes_finish(ax, window.lat, credit)
@@ -1311,6 +1318,9 @@ def plot_study_area_map(
 #: Marker and colour per point kind on the study-area map.
 _AREA_MARKERS = {
     "VES point": ("^", "#1F5C8B"),
+    #: the sounding the survey recommends drilling at: the one marker on a
+    #: siting map that has to be unmistakable
+    "recommended point": ("*", "#B00020"),
     "borehole": ("o", "#0F7B3F"),
     "water point": ("s", "#7B5AA6"),
     "settlement": (".", "#555555"),
@@ -1326,9 +1336,10 @@ def _plot_area_points(ax, points: list[dict], style: HouseStyle) -> dict:
             continue
         kind = str(point.get("kind") or "point")
         marker, colour = _AREA_MARKERS.get(kind, ("D", style.secondary_color))
+        size = {"*": 15, ".": 10}.get(marker, 8)
         handle, = ax.plot(
-            lon, lat, marker, ms=8 if marker != "." else 10, mfc=colour,
-            mec="white", mew=0.9, zorder=7,
+            lon, lat, marker, ms=size, mfc=colour,
+            mec="white", mew=0.9, zorder=8 if marker == "*" else 7,
         )
         handles.setdefault(kind, handle)
         label = point.get("label")

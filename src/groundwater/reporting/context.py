@@ -62,6 +62,7 @@ def context_map_figures(
     style: HouseStyle | None = None,
     local_radius_km: float = 40.0,
     points: list[dict] | None = None,
+    mark_site: bool = True,
 ) -> dict[str, Path]:
     """Generate the context maps for a site.
 
@@ -103,7 +104,7 @@ def context_map_figures(
     try:
         plot_study_area_map(site, path=study, style=style,
                             radius_km=min(local_radius_km, 40.0),
-                            points=points or [])
+                            points=points or [], mark_site=mark_site)
         out["study_area"] = study
     except ValueError:
         # area_window found a centre, so this should not happen; if the

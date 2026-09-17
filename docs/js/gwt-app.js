@@ -1406,12 +1406,18 @@
       var pos = soundingLatLon(interp);
       if (pos) {
         points.push({ lat: pos.lat, lon: pos.lon, label: interp.sounding_id,
-          kind: 'VES point' });
+          kind: interp.rank === 1 ? 'recommended point' : 'VES point' });
       }
     });
-    if (window_.exact) {
+    /* the site marker, unless it would sit on a sounding: a siting survey's
+     * "site" is the first sounding's position, and a marker drawn over it
+     * read as "drill here" on whichever peg was first on the sheet */
+    var onASounding = points.some(function (p) {
+      return Math.abs(p.lat - window_.lat) < 1e-6 && Math.abs(p.lon - window_.lon) < 1e-6;
+    });
+    if (window_.exact && !onASounding) {
       points.push({ lat: window_.lat, lon: window_.lon, label: siteLabel(),
-        kind: 'borehole' });
+        kind: derived.log ? 'borehole' : 'site' });
     }
     /* the water points the Water points page looked up, if it has run */
     (derived.waterPoints || []).slice(0, 40).forEach(function (wp) {

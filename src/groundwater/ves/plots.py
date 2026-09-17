@@ -24,7 +24,26 @@ __all__ = [
     "plot_geoelectric_section",
 ]
 
+#: The house colour scale for layer resistivity when nothing better is
+#: known. A figure fits its own scale to the models it draws (see
+#: :func:`_rho_norm`): a fixed 10-5,000 ohm-m ramp coloured 3 ohm-m saline
+#: clay the same as 10 ohm-m fresh-water clay and 20,000 ohm-m basement
+#: the same as 5,000, with nothing on the bar to say it had clipped.
 _RHO_NORM = mcolors.LogNorm(vmin=10, vmax=5000)
+
+
+def _rho_norm(models: list[LayeredModel]) -> mcolors.LogNorm:
+    """A log colour scale spanning the decades the drawn models occupy."""
+    rho = np.concatenate([np.asarray(m.resistivities, float) for m in models]) \
+        if models else np.array([])
+    rho = rho[np.isfinite(rho) & (rho > 0)]
+    if not rho.size:
+        return _RHO_NORM
+    lo = 10 ** np.floor(np.log10(rho.min()))
+    hi = 10 ** np.ceil(np.log10(rho.max()))
+    if hi <= lo:
+        hi = lo * 10
+    return mcolors.LogNorm(vmin=float(lo), vmax=float(hi))
 
 
 def _model_step(model: LayeredModel, depth_max: float) -> tuple[np.ndarray, np.ndarray]:
@@ -203,10 +222,11 @@ def plot_model_pseudosection(
         if depth_max is None:
             depth_max = (tops[-1] if len(tops) > 1 else 10) * 1.35 + 3
         cmap = plt.get_cmap("viridis")
+        norm = _rho_norm([model])
         for i, rho in enumerate(model.resistivities):
             top = tops[i]
             bottom = tops[i + 1] if i + 1 < len(tops) else depth_max
-            ax.axhspan(top, bottom, color=cmap(_RHO_NORM(max(rho, _RHO_NORM.vmin))))
+            ax.axhspan(top, bottom, color=cmap(norm(max(rho, norm.vmin))))
             z_text = (top + min(bottom, depth_max)) / 2
             ax.text(
                 0.5, z_text, f"{fmt_num(rho, 4)} ohm-m",
@@ -222,7 +242,7 @@ def plot_model_pseudosection(
         ax.set_xticks([])
         ax.set_ylabel("Depth (m)")
         ax.set_title(title or f"{model.sounding_id or 'VES'} layer section")
-        sm = cm.ScalarMappable(norm=_RHO_NORM, cmap=cmap)
+        sm = cm.ScalarMappable(norm=norm, cmap=cmap)
         cbar = fig.colorbar(sm, ax=ax, pad=0.04)
         cbar.set_label("Resistivity (ohm-m)")
         ax.grid(False)
@@ -242,11 +262,15 @@ def plot_geoelectric_section(
     title: str = "Interpreted geoelectric cross-section",
     half_width_m: float | None = None,
     note: str = "",
+    correlate: list[bool] | None = None,
 ):
     """Cross-section through several soundings along a profile.
 
     Each sounding is drawn as a column at its chainage; layer
-    boundaries are connected between adjacent soundings.
+    boundaries are connected between adjacent soundings where
+    ``correlate`` (one flag per adjacent pair, all True by default) allows
+    it - a caller that knows two stations are too far apart to share a
+    horizon passes False for that gap and the columns stand alone.
 
     ``half_width_m`` is how much ground either side of the peg a column
     stands for. The default divides the profile between the soundings,
@@ -295,6 +319,14 @@ def plot_geoelectric_section(
     else:
         half_w = span / (len(models) * 2.6)
     cmap = plt.get_cmap("viridis")
+    norm = _rho_norm(models)
+    if correlate is None:
+        correlate = [True] * max(len(models) - 1, 0)
+    if len(correlate) != max(len(models) - 1, 0):
+        raise ValueError(
+            f"{len(models)} soundings have {max(len(models) - 1, 0)} gaps between "
+            f"them; got {len(correlate)} correlation flags"
+        )
 
     with figure_context(style):
         fig, ax = plt.subplots(figsize=(style.figure_width_in, 3.6))
@@ -305,12 +337,14 @@ def plot_geoelectric_section(
                 bottom = tops[i + 1] if i + 1 < len(tops) else depth_max
                 ax.fill_between(
                     [x - half_w, x + half_w], top, bottom,
-                    color=cmap(_RHO_NORM(max(rho, _RHO_NORM.vmin))), lw=0,
+                    color=cmap(norm(max(rho, norm.vmin))), lw=0,
                 )
             for z in tops[1:]:
                 ax.plot([x - half_w, x + half_w], [z, z], color="white", lw=1.0)
         # connect boundaries between neighbouring soundings
         for a in range(len(models) - 1):
+            if not correlate[a]:
+                continue
             m1, m2 = models[a], models[a + 1]
             n_shared = min(m1.n_layers, m2.n_layers) - 1
             for k in range(1, n_shared + 1):
@@ -337,7 +371,7 @@ def plot_geoelectric_section(
                     transform=ax.transAxes, ha="center", va="top",
                     fontsize=7, color="#B00020")
         ax.set_title(title)
-        sm = cm.ScalarMappable(norm=_RHO_NORM, cmap=cmap)
+        sm = cm.ScalarMappable(norm=norm, cmap=cmap)
         cbar = fig.colorbar(sm, ax=ax, pad=0.03)
         cbar.set_label("Resistivity (ohm-m)")
         ax.grid(False)

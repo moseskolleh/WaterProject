@@ -73,6 +73,36 @@ parity suite now holds the two engines to the interpretation's zones,
 flags, confidence and narrative and to the preference table word for
 word.
 
+The survey-scale figures now show what was measured and refuse what was
+not. Three soundings on a straight line, the standard field layout,
+used to crash the geophysical report and the Streamlit maps page with a
+Qhull "initial simplex is flat" error that no handler caught; a survey
+that encloses no area now gets its values drawn at the points under a
+note saying why there is no surface, and the report catches the error
+class Qhull actually raises. The Rokel example hard-coded its two
+soundings 60 m apart on the geoelectric section when their own
+coordinates put them 20.7 km apart; the section is now drawn from the
+recorded positions, no boundary is correlated across a gap wider than
+ten times the depth of investigation, and a survey with no closer pair
+gets no section and a sentence saying so ("20,751 m apart, about 519
+times the 40 m they resolve"). The apparent-resistivity pseudo-section,
+the one figure that shows the readings rather than an interpretation of
+them, is drawn from two placed soundings, paints no colour across a gap
+the correlation rule excludes, and keeps its station labels off the
+readings; the protective-capacity map is drawn from the same two. The
+report lists, under "Not drawn from this survey, and why", every figure
+it could not draw. The drill-target map can be walked to: the
+recommended point is a star with its grid coordinates printed beside
+it, every point is labelled by rank and score, a tie within three points
+is written on the map, the caption describes what was drawn rather than
+a surface that was not, and the study-area map stars the recommended
+sounding instead of hiding it under a marker for the runner-up. Maps of
+an elongated survey keep their proportions and at most five round
+grid labels an axis, the resistivity colour scale is fitted to the
+models on the figure rather than clipped at fixed limits, and both
+Streamlit pages infer the UTM zone from the easting instead of assuming
+two different zones.
+
 An audit of the three worked examples, reading every figure and every
 report as a client or a ministry reviewer would, found real defects in
 the maps, the borehole design, the VES interpretation, the pumping-test

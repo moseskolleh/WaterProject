@@ -50,3 +50,43 @@ def test_suitability_map_renders(sample_data, tmp_path):
     zone = 29
     out = suitability_map(points, zone, path=tmp_path / "suitability.png")
     assert out.exists() and out.stat().st_size > 0
+
+
+def test_the_map_stars_the_recommended_point_and_writes_its_coordinates(tmp_path):
+    """A drill-target map is walked to: the peg to drill at has to be the one
+    unmistakable mark on it, with the grid coordinates beside it."""
+    import matplotlib.pyplot as plt
+
+    from groundwater.mapping import MapPoint, suitability_map_state
+
+    points = [
+        MapPoint(label="A (1)", easting=708958.0, northing=926355.0, value=48.0,
+                 kind="Good", rank=1),
+        MapPoint(label="B (2)", easting=727012.0, northing=916125.0, value=29.0,
+                 kind="Good", rank=2),
+    ]
+    fig = suitability_map(points, zone=28)
+    try:
+        ax = fig.axes[0]
+        legend = [t.get_text() for t in ax.get_legend().get_texts()]
+        said = " ".join(t.get_text() for t in ax.texts)
+    finally:
+        plt.close(fig)
+    assert "recommended drill target" in legend
+    assert "E 708958" in said and "N 926355" in said
+    assert suitability_map_state(points) == {
+        "n_points": 2, "surface": False, "tie": False, "recommended": "A (1)",
+    }
+
+    # two points within three weighted points are a tie: neither is starred
+    points[1].value = 47.0
+    fig = suitability_map(points, zone=28)
+    try:
+        ax = fig.axes[0]
+        legend = [t.get_text() for t in ax.get_legend().get_texts()]
+        said = " ".join(t.get_text() for t in ax.texts)
+    finally:
+        plt.close(fig)
+    assert "recommended drill target" not in legend
+    assert "indistinguishable" in said
+    assert suitability_map_state(points)["tie"] is True

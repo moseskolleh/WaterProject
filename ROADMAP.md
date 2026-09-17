@@ -147,42 +147,52 @@ browser draws no section, no survey map and no subsurface figure at all,
 see 7). Tests: `test_study_area_maps.py`, `test_quality_design_mapping.py`,
 `test_siting.py`, `test_ves.py`.
 
-- [ ] **H maps-survey-1. Three soundings on a straight line crash the whole
+- [x] **H maps-survey-1. Three soundings on a straight line crash the whole
   geophysical report.** Pegs on one line are the standard field layout;
   `griddata` raises a Qhull "initial simplex is flat" error, which is a
   RuntimeError and passes every `except ValueError` in the report builder
   and the Streamlit maps page. verified, checked.
-- [ ] **H maps-survey-2. The Rokel example hard-codes the two soundings
+  Done: `points_enclose_an_area` tests the point set before any surface is fitted; a collinear survey draws its values at the points under a note instead of a surface, and the report and Streamlit catch RuntimeError as well as ValueError.
+- [x] **H maps-survey-2. The Rokel example hard-codes the two soundings
   60 m apart on the geoelectric section; by their own coordinates they are
   20.7 km apart.** `geoelectric_section_along_traverse` already computes
   real chainages and a correlation note, but the example bypasses it and
   the helper draws rather than refuses a section across a gap 260 times the
   depth of investigation. checked.
-- [ ] **H maps-survey-3 / reports-13. A single 1-D layer column is captioned
+  Done: the example calls `geoelectric_section_along_traverse`, which refuses a section when every gap exceeds ten times the depth of investigation (Rokel: 20,751 m, about 519 times 40 m) and leaves any narrower survey's wide gaps uncorrelated with a note naming them.
+- [x] **H maps-survey-3 / reports-13. A single 1-D layer column is captioned
   "Pseudo-section"** while the figure titles itself "Layer section"; the
   real apparent-resistivity pseudo-section never reaches a two-point report.
-- [ ] **H maps-survey-5 / maps-regional-1 / reports-14. The drill-target map
+  Done: the layer column is captioned as an interpreted one-dimensional layer section, and the apparent-resistivity pseudo-section and protective-capacity map are drawn from two placed soundings.
+- [x] **H maps-survey-5 / maps-regional-1 / reports-14. The drill-target map
   cannot be used to walk to the point.** Bare UTM axes, two identical
   "68 - Good" labels, no recommended-point marker, no village or boundary;
   the study-area map stars the runner-up sounding as "the site" and hides
   the recommended point under it; the caption describes an interpolated
   surface that was not drawn.
-- [ ] **M maps-survey-6. Every subsurface figure is silently omitted below
+  Done: the suitability map stars the rank-1 point with its grid coordinates, labels every point by rank and score, says when the top two are within three points, and its caption comes from what was drawn; the study-area map stars the recommended sounding and no longer buries it under a site marker.
+- [x] **M maps-survey-6. Every subsurface figure is silently omitted below
   three positioned soundings,** although the section and the pseudo-section
   need only two, and the report never says what was not drawn or why.
-- [ ] **M maps-survey-7. The pseudo-section fills colour across any gap
+  Done: the section and pseudo-section are attempted from two placed soundings, and the report lists under "Not drawn from this survey, and why" every figure it could not draw.
+- [x] **M maps-survey-7. The pseudo-section fills colour across any gap
   between stations** and its station labels overprint the readings.
-- [ ] **M maps-survey-8. Streamlit uses two different UTM zone fallbacks
+  Done: triangles wider than the correlation rule are masked, the figure says no colour is interpolated across them, and the station labels sit above the axes.
+- [x] **M maps-survey-8. Streamlit uses two different UTM zone fallbacks
   (29 on the geophysics page, 28 on the maps page)** instead of inferring the
   zone from the easting as the report builder does.
-- [ ] **M maps-survey-9. Interpolated maps of an elongated survey are
+  Done: both pages fall back to `infer_zone_for_sierra_leone`.
+- [x] **M maps-survey-9. Interpolated maps of an elongated survey are
   unreadable:** rotated seven-digit northing labels collide and the colour
   bar dwarfs a squashed map.
-- [ ] **L maps-survey-10. The fixed LogNorm(10, 5000) colour scale clips
+  Done: the figure height follows the survey's aspect and the grid keeps at most five round-number ticks per axis.
+- [x] **L maps-survey-10. The fixed LogNorm(10, 5000) colour scale clips
   silently** with no extend arrows: 3 ohm-m saline clay and 10 ohm-m clay
   get one colour, 5,000 and 20,000 ohm-m basement another.
-- [ ] **L maps-survey-11. The model panel's layer labels overprint the step
+  Done: the resistivity colour scale is fitted to the models on the figure.
+- [x] **L maps-survey-11. The model panel's layer labels overprint the step
   line and the half-space is labelled at an arbitrary depth.**
+  Done: labels are offset from the step line on a white backing and the half-space is labelled just under its top, which is the depth of investigation.
 
 ## 3. Pumping-test hydraulics
 

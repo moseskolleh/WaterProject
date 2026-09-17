@@ -263,8 +263,11 @@ def suitability_map_points(results: list[SitingSuitability]):
                 label=f"{r.sounding_id}",
                 easting=float(r.easting),
                 northing=float(r.northing),
-                value=r.suitability,
+                # the confidence-weighted score: the number the ranking is
+                # decided on, so the map colours agree with the table's order
+                value=round(r.weighted, 1),
                 kind=r.grade,
+                rank=r.rank,
             )
         )
     return points

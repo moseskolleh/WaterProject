@@ -21,6 +21,8 @@ from .maps import (
     iso_resistivity_map,
     overburden_thickness_map,
     suitability_map,
+    suitability_map_state,
+    points_enclose_an_area,
     MapPoint,
 )
 from .regional import (
@@ -89,6 +91,8 @@ __all__ = [
     "iso_resistivity_map",
     "overburden_thickness_map",
     "suitability_map",
+    "suitability_map_state",
+    "points_enclose_an_area",
     "MapPoint",
     "ADMIN_CREDIT",
     "GEOLOGY_CREDIT",

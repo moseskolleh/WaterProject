@@ -366,6 +366,20 @@
         fill: colour, stroke: ring, 'stroke-width': 1.6, 'stroke-linejoin': 'round',
       });
     }
+    if (kind === 'star') {
+      /* five points, outer radius r * 1.5, inner radius r * 0.6 */
+      var d = '', k;
+      for (k = 0; k < 10; k++) {
+        var radius = (k % 2 === 0) ? r * 1.5 : r * 0.6;
+        var angle = -Math.PI / 2 + k * Math.PI / 5;
+        d += (k === 0 ? 'M' : 'L') + (x + radius * Math.cos(angle)).toFixed(2) + ' ' +
+          (y + radius * Math.sin(angle)).toFixed(2);
+      }
+      return svgEl('path', {
+        d: d + 'Z', fill: colour, stroke: ring, 'stroke-width': 1.6,
+        'stroke-linejoin': 'round',
+      });
+    }
     return svgEl('circle', {
       cx: x, cy: y, r: r, fill: colour, stroke: ring, 'stroke-width': 1.6,
     });
@@ -3098,7 +3112,10 @@
    * engine reads the same table in groundwater/mapping/regional.py; change
    * one and change the other, or the two engines draw the same survey with
    * different symbols and a reader holding both reports cannot line them up. */
+  /* the sounding the survey recommends drilling at: the one marker on a
+   * siting map that has to be unmistakable */
   var AREA_MARKERS = {
+    'recommended point': { kind: 'star', colour: '#B00020', size: 8 },
     'VES point': { kind: 'triangle', colour: '#1F5C8B' },
     borehole: { kind: 'circle', colour: '#0F7B3F' },
     'water point': { kind: 'square', colour: '#7B5AA6' },

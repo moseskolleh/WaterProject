@@ -65,7 +65,12 @@ from groundwater.ingestion import (
     read_ves_workbook,
 )
 from groundwater.ingestion.templates import write_all_templates
-from groundwater.geo import geographic_to_utm, parse_latlon, utm_to_geographic
+from groundwater.geo import (
+    geographic_to_utm,
+    infer_zone_for_sierra_leone,
+    parse_latlon,
+    utm_to_geographic,
+)
 from groundwater.mapping import (
     MapPoint,
     apparent_resistivity_pseudosection,
@@ -2379,7 +2384,8 @@ with tab_ves:
             )
             map_points = suitability_map_points(suitability)
             if map_points:
-                zone = site_from_state().utm_zone or 29
+                zone = site_from_state().utm_zone or infer_zone_for_sierra_leone(
+                    map_points[0].easting)
                 smap = workdir() / "suitability_map.png"
                 suitability_map(map_points, zone, path=smap)
                 st.image(str(smap))
@@ -3830,7 +3836,8 @@ with tab_maps:
         if _placed and st.button("Generate subsurface maps",
                                  key="run_subsurface", type="primary"):
             style = app_config().style
-            zone = site.utm_zone or 28
+            zone = site.utm_zone or infer_zone_for_sierra_leone(
+                float(_placed[0].site_easting))
             made: list[Path] = []
             plan = [
                 ("depth_to_bedrock_map.png", depth_to_bedrock_map, {}),
@@ -3843,7 +3850,7 @@ with tab_maps:
                 try:
                     made.append(fn(_placed, zone,
                                    path=workdir() / name, style=style, **kwargs))
-                except ValueError as exc:
+                except (ValueError, RuntimeError) as exc:
                     st.caption(f"No {name.replace('_', ' ')[:-4]}: {exc}")
             # the site plan and the iso-resistivity surface, from the survey
             _pts = [
@@ -3887,7 +3894,7 @@ with tab_maps:
                     _placed, path=workdir() / "geoelectric_section.png",
                     style=style)
                 st.session_state["section_path"] = str(section)
-            except ValueError as exc:
+            except (ValueError, RuntimeError) as exc:
                 st.session_state.pop("section_path", None)
                 st.caption(f"No geoelectric section: {exc}")
         _traverse = st.session_state.get("traverse")

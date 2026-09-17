@@ -31,7 +31,7 @@ from groundwater.ves import (
     invert_sounding,
     read_ipi2win_models,
 )
-from groundwater.ves.plots import plot_geoelectric_section
+from groundwater.mapping import geoelectric_section_along_traverse
 
 HERE = Path(__file__).parent
 VES_FILE = HERE / "data" / "rokel" / "rokel_ves.xlsx"
@@ -112,13 +112,16 @@ def main(out_root: Path | None = None) -> None:
             writer.writerow({k: str(v).replace("\n", " | ") for k, v in row.items()})
 
     # ---- extra figure: geoelectric section along the traverse ----------------
-    plot_geoelectric_section(
-        [inv.model for inv in inversions],
-        positions=[0.0, 60.0],
-        labels=[s.sounding_id for s in soundings],
-        depth_max=45.0,
-        path=project.figure_path("geoelectric_section.png"),
-    )
+    # Drawn at the soundings' surveyed spacing, or not at all: these two are
+    # 20.7 km apart by their own coordinates, and a section that joined them
+    # would be a line between two points in different chiefdoms. The
+    # example used to hard-code them 60 m apart.
+    try:
+        geoelectric_section_along_traverse(
+            interpretations, path=project.figure_path("geoelectric_section.png"),
+        )
+    except ValueError as exc:
+        print(f"\nno geoelectric section: {exc}")
 
     # ---- report ---------------------------------------------------------------
     readiness = assess_readiness({"site": soundings[0].site}, "geophysical")
