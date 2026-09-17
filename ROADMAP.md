@@ -48,7 +48,7 @@ two engines never disagree on a client document (see "Cross-cutting").
 
 ## 0. Housekeeping
 
-- [ ] **Prune the orphaned figures.** Twenty-one committed figures are no
+- [x] **Prune the orphaned figures.** Twenty-one committed figures are no
   longer written by the example runs (Dr Timbo `*_8p3260_13p0991.png`,
   `borehole_design.png`, `piper.png`, `stiff.png`, `test_overview.png`;
   Kuntolo `*_8p7266_12p7423.png`, `step_test.png`, `test_overview.png`;
@@ -60,6 +60,10 @@ two engines never disagree on a client document (see "Cross-cutting").
   maps by a stable label rather than a floating centroid, and add a check
   (`examples/build_catalogue.py --check` or a test) that fails when a
   committed output is not what the current code writes. checked.
+  Done: `Project.clear_outputs()` runs at the start of every example,
+  area-centred maps are keyed by the area's name, and
+  `tests/test_examples.py` runs each example into a temporary folder
+  and holds the committed set of output files to it.
 
 ## 1. Depth of investigation and VES interpretation
 

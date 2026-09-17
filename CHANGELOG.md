@@ -33,6 +33,22 @@ is worse than none. What it claimed, and what is true:
 
 ## What changed
 
+An audit of the three worked examples, reading every figure and every
+report as a client or a ministry reviewer would, found real defects in
+the maps, the borehole design, the VES interpretation, the pumping-test
+recommendations and the report text. `ROADMAP.md` lists them by
+consequence in the order they are being fixed, with the files, the
+browser-engine mirrors and the tests each touches. The first step is
+done here: the example folders held twenty-nine figures that no script
+had written for months - maps keyed to a district centroid the boundary
+layer had since moved, drawings under file names a builder had stopped
+using - beside the current ones, with nothing in either name to say which
+a committed report embeds. Every example now clears its output folders
+before it runs, a map of an area with no GPS fix is named for the area
+(`study_area_map_port_loko_district.png`) rather than for a centroid
+that moves with every rebuild of the layer, and a test runs each example
+into a temporary folder and holds the committed set of files to it.
+
 Offline releases are now built rather than maintained by hand.
 `web/build_offline.py` reads the app shell the way a browser does and
 emits `docs/sw.js` with exactly the files the page loads; the release

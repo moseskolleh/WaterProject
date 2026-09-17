@@ -38,10 +38,10 @@ VES_FILE = HERE / "data" / "rokel" / "rokel_ves.xlsx"
 IPI_FILE = HERE / "data" / "rokel" / "rokel_ipi2win_models.xlsx"
 
 
-def main() -> None:
+def main(out_root: Path | None = None) -> None:
     # ---- project folder -----------------------------------------------------
     project = Project.create(
-        HERE / "projects" / "rokel",
+        (out_root or HERE / "projects") / "rokel",
         SiteMetadata(
             client="Living Water International",
             project="Geophysical Survey",
@@ -50,6 +50,9 @@ def main() -> None:
             date="8th December, 2015",
         ),
     )
+    # a run leaves exactly what it produced: a figure an earlier version of
+    # the code wrote is a map of what the project used to say
+    project.clear_outputs()
 
     # ---- parse and check ------------------------------------------------------
     soundings = read_ves_workbook(VES_FILE)

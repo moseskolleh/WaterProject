@@ -41,8 +41,9 @@ HERE = Path(__file__).parent
 DATA = HERE / "data" / "dr_timbo"
 
 
-def main() -> None:
-    project = Project.open(HERE / "projects" / "dr_timbo")
+def main(out_root: Path | None = None) -> None:
+    project = Project.open((out_root or HERE / "projects") / "dr_timbo")
+    project.clear_outputs()
 
     # ---- parse everything -----------------------------------------------------
     log = read_drilling_workbook(DATA / "dr_timbo_drilling_log.xlsx")

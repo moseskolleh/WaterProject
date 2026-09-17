@@ -7,6 +7,7 @@ maps, generated once into the report's figures directory.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from ..config import HouseStyle
@@ -35,6 +36,24 @@ def _figures_dir(figures_dir, out_path) -> Path:
         figures = Path(out_path).parent
     figures.mkdir(parents=True, exist_ok=True)
     return figures
+
+
+def _map_key(window) -> str:
+    """The token in a context map's file name.
+
+    A site with a GPS fix is keyed by its position, so two sites in one
+    project keep their own maps rather than overwriting each other. A site
+    without one is keyed by the area the map covers - "western_area_rural_
+    district" - and not by that area's centroid: the centroid is a
+    floating-point property of the boundary layer, and every rebuild of
+    that layer moved it by a few metres, which left a stale twin of every
+    area map beside the current one with nothing in either name to say
+    which the report used.
+    """
+    if window.exact:
+        return f"{window.lat:.4f}_{abs(window.lon):.4f}".replace(".", "p")
+    slug = re.sub(r"[^a-z0-9]+", "_", window.label.lower()).strip("_")
+    return slug or "area"
 
 
 def context_map_figures(
@@ -78,9 +97,7 @@ def context_map_figures(
         return {}
     figures = Path(figures_dir)
     figures.mkdir(parents=True, exist_ok=True)
-    # the file name carries the centre of the window, so two sites in one
-    # project keep their own maps rather than overwriting each other
-    token = f"{window.lat:.4f}_{abs(window.lon):.4f}".replace(".", "p")
+    token = _map_key(window)
     out: dict[str, Path] = {}
     study = figures / f"study_area_map_{token}.png"
     try:
