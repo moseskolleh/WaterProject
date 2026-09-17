@@ -647,8 +647,11 @@
     if (kind === 'ves') {
       return [shared, 'Resistivity models are not unique: different layer ' +
         'combinations can fit the same sounding curve almost equally well ' +
-        '(the equivalence and suppression problem), and the depth of ' +
-        'investigation is limited by the maximum electrode spacing used. The ' +
+        '(the equivalence and suppression problem), and a Schlumberger sounding ' +
+        'resolves the ground to roughly half of its largest AB/2, not to the ' +
+        'spacing itself: a layer that continues to that depth has no base in ' +
+        'these data. A model whose misfit is above the target does not describe ' +
+        'the curve closely, and the ranking discounts it for that. The ' +
         'interpretation is a guide to drilling, not a guarantee of water. Only ' +
         'drilling confirms the section.'];
     }
@@ -694,19 +697,34 @@
         ' were made and interpreted as layered earth models.',
       best ? 'The recommended drilling point is ' + best.sounding_id + ', where ' +
         (best.water_zones.length
-          ? 'possible water bearing zones are resolved between ' +
+          ? 'possible water bearing zones are resolved from ' +
             best.water_zones.map(function (z) {
-              return Math.trunc(z[0]) + ' m and ' + Math.trunc(z[1]) + ' m'; }).join(', ')
+              return C.zoneText(z[0], z[1], C.zoneIsOpen(best, z)); }).join(', ')
           : 'no clear water bearing zone was resolved') +
-        '. A maximum drilling depth of ' + best.max_drilling_depth_m.toFixed(0) +
-        ' m is recommended.' : '',
+        (best.basement_not_resolved
+          ? '. The base of the deepest zone is not resolved: the sounding sees to ' +
+            'about ' + C.fmtNum(best.investigation_depth_m) + ' m and the conductive ' +
+            'ground continues below that, so the thickness is a minimum'
+          : '') +
+        '. A drilling depth of ' + C.drillingDepthText(best) + ' is recommended.' +
+        (best.fit_quality === 'unreliable'
+          ? ' The model at this point reproduces the readings to ' +
+            C.pyFixed(best.fit_error_percent, 1) + ' percent (ERR), well above the ' +
+            'target: the layer depths are indicative only.'
+          : best.fit_quality === 'poor'
+            ? ' The model at this point reproduces the readings to ' +
+              C.pyFixed(best.fit_error_percent, 1) + ' percent (ERR), above the ' +
+              'target, so the layer depths are approximate.'
+            : '') : '',
     ], best ? [
       'Recommended VES point: ' + best.sounding_id,
       'Depth to bedrock: ' + (best.depth_to_basement_m !== null
         ? C.fmtNum(best.depth_to_basement_m) + ' m' : 'not resolved'),
-      'Total interpreted aquifer thickness: ' + C.fmtNum(best.aquifer_thickness_m) + ' m',
+      'Interpreted aquifer thickness: ' + (best.basement_not_resolved ? 'at least ' : '') +
+        C.fmtNum(best.aquifer_thickness_m) + ' m',
       'Aquifer protective capacity: ' + best.protective_capacity,
-      'Recommended maximum drilling depth: ' + best.max_drilling_depth_m.toFixed(0) + ' m',
+      'Recommended drilling depth: ' + C.drillingDepthText(best),
+      'Ranking confidence: ' + C.pyFixed(best.confidence === undefined ? 1 : best.confidence, 2),
     ] : []);
 
     b.heading('1. Introduction', 1);
@@ -746,8 +764,14 @@
     b.paragraph('Each sounding was expanded to a maximum AB/2 of ' +
       (interpretations.length
         ? C.fmtNum(Math.max.apply(null, interpretations.map(function (i) {
+            return i.max_spacing_m || 0; })))
+        : '—') + ' m. A Schlumberger sounding resolves the ground to roughly half ' +
+      'of that, so the depth of investigation is about ' +
+      (interpretations.length
+        ? C.fmtNum(Math.max.apply(null, interpretations.map(function (i) {
             return i.investigation_depth_m; })))
-        : '—') + ' m, which sets the depth of investigation.', { align: 'justify' });
+        : '—') + ' m; a layer that continues to that depth has no base in these data.',
+      { align: 'justify' });
 
     b.heading('4. Data Analysis and Interpretation', 1);
     b.paragraph('The sounding curves were inverted to layered earth models by ' +
@@ -785,12 +809,15 @@
       b.table(C.drillingPreferenceTable(interpretations, context.preferredOrder)
         .map(function (row) {
           return [row['No.'], row['VES Point'], row.Layer, row['Thickness (m)'],
-            row['Depth (m)'], row['Apparent Resistivity (Ohm-m)'],
+            row['Depth (m)'], row[C.LAYER_RESISTIVITY_COLUMN],
             row['Possible Water Zones (m)'], row['Max Drilling Depth (m)'], row.Ranking];
         }), {
         header: ['No.', 'VES Point', 'Layer', 'Thickness (m)', 'Depth (m)',
-          'Resistivity (Ω·m)', 'Possible water zones (m)', 'Max depth', 'Ranking'],
-        caption: 'Ranked drilling preference',
+          'Layer resistivity (Ω·m)', 'Possible water zones (m)', 'Drilling depth', 'Ranking'],
+        caption: 'Ranked drilling preference. The resistivities are those of the ' +
+          'fitted layers, not the apparent resistivities read in the field; a water ' +
+          'zone marked + continues below the depth the sounding resolves, so its ' +
+          'base and the drilling depth are minima.',
         fontSize: 8.5,
       });
     }
@@ -799,11 +826,16 @@
     if (best) {
       b.bullets([
         'Drill at ' + best.sounding_id + ' (ranked ' + C.ordinal(best.rank || 1) + ').',
-        'Recommended maximum drilling depth: ' + best.max_drilling_depth_m.toFixed(0) + ' m.',
+        'Recommended drilling depth: ' + C.drillingDepthText(best) + '.' +
+          (best.basement_not_resolved
+            ? ' The water-bearing zone continues below what the survey resolves: ' +
+              'drill on while the formation is water bearing, guided by the strikes ' +
+              'and the penetration rate, and stop in fresh rock.'
+            : ''),
         best.water_zones.length
           ? 'Target the interpreted water bearing zone(s) at ' +
             best.water_zones.map(function (z) {
-              return Math.trunc(z[0]) + '–' + Math.trunc(z[1]) + ' m'; }).join(', ') + '.'
+              return C.zoneCell(z[0], z[1], C.zoneIsOpen(best, z)) + ' m'; }).join(', ') + '.'
           : 'No clear water bearing zone was resolved; treat the hole as exploratory.',
         'Case and screen against the zones confirmed by the drill cuttings, not ' +
           'against this model alone.',

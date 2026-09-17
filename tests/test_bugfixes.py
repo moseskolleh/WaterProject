@@ -304,10 +304,11 @@ def test_app_survives_integer_meta_zone():
 # --- app: a deep sounding must not brick the guided start -------------------
 
 def test_guided_start_survives_depth_beyond_the_widget_range():
-    """A sounding that resolves no water zone recommends its investigated
-    depth (max AB/2), which on a deep survey exceeds the guided start's
-    300 m field. Streamlit raises on an out-of-range prefill, so the costing
-    step took the whole page down with a red traceback."""
+    """A sounding that resolves no water zone recommends the depth it
+    resolves (about half its largest AB/2), which on a deep survey exceeds
+    the guided start's 300 m field. Streamlit raises on an out-of-range
+    prefill, so the costing step took the whole page down with a red
+    traceback."""
     from pathlib import Path
 
     pytest.importorskip("streamlit")
@@ -319,7 +320,7 @@ def test_guided_start_survives_depth_beyond_the_widget_range():
 
     cfg = Config()
     ab2 = np.array([1, 2, 3, 5, 7, 10, 15, 20, 30, 40, 60, 80, 100, 150,
-                    200, 300, 400.0])
+                    200, 300, 400, 600, 800.0])
     # thin cover on fresh basement: nothing water bearing is resolved
     rho = forward_schlumberger((np.array([800.0, 4000.0]), np.array([4.0])), ab2)
     sounding = VESSounding(

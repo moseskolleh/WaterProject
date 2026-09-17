@@ -58,6 +58,12 @@
       laterite_min_rho: 800.0,
       max_drilling_margin_m: 10.0,
       round_drilling_depth_to_m: 5.0,
+      depth_of_investigation_factor: 0.5,
+      parsimony_fallback_ratio: 1.15,
+      unreliable_fit_percent: 20.0,
+      fit_confidence_floor: 0.5,
+      unresolved_basement_confidence: 0.85,
+      ranking_tie_points: 3.0,
     },
     pumping: {
       safety_factor: 1.5,
@@ -1028,7 +1034,9 @@
     }
     if (!chosen) {
       for (ci = 0; ci < candidates.length; ci++) {
-        if (candidates[ci].err <= 1.15 * bestErr) { chosen = candidates[ci]; break; }
+        if (candidates[ci].err <= cfg.parsimony_fallback_ratio * bestErr) {
+          chosen = candidates[ci]; break;
+        }
       }
     }
     if (!chosen) {
@@ -1154,9 +1162,53 @@
     }
     if (rho <= cfg.clay_max_rho) return ['clay rich saprolite (low permeability)', false];
     if (isBottom) {
-      return ['fractured bedrock, low resistivity indicative of groundwater in fractures', true];
+      /* A conductive half-space is the weathered zone the sounding did not
+       * get to the bottom of, not fractured bedrock: fractured fresh basement
+       * is hundreds to thousands of ohm-m. */
+      return ['weathered or fractured zone, potentially water bearing when ' +
+        'saturated; its base is not resolved within the depth of investigation', true];
     }
     return ['weathered / fractured zone, potentially water bearing when saturated', true];
+  }
+
+  /* How deep a sounding with this largest AB/2 actually resolves: one rule
+   * for the interpretation, every figure and the drilling-depth cap. */
+  function depthOfInvestigation(maxSpacing, cfg) {
+    var c = cfg || defaultConfig().ves;
+    return maxSpacing * c.depth_of_investigation_factor;
+  }
+
+  /* 1.0 at or under the target misfit, falling linearly to the floor at the
+   * unreliable level and staying there. */
+  function fitConfidence(err, cfg) {
+    var c = cfg || defaultConfig().ves;
+    if (err === null || err === undefined) return 1.0;
+    var target = c.target_fit_percent;
+    var unreliable = Math.max(c.unreliable_fit_percent, target + 1e-9);
+    if (err <= target) return 1.0;
+    var frac = Math.min((err - target) / (unreliable - target), 1.0);
+    return 1.0 - (1.0 - c.fit_confidence_floor) * frac;
+  }
+
+  /* "8 m to 40 m", or open-ended "8 m to at least 40 m". */
+  function zoneText(top, bottom, openEnded) {
+    return openEnded
+      ? Math.trunc(top) + ' m to at least ' + Math.trunc(bottom) + ' m'
+      : Math.trunc(top) + ' m to ' + Math.trunc(bottom) + ' m';
+  }
+
+  function zoneCell(top, bottom, openEnded) {
+    return Math.trunc(top) + '-' + Math.trunc(bottom) + (openEnded ? '+' : '');
+  }
+
+  function zoneIsOpen(interp, zone) {
+    var last = interp.water_zones[interp.water_zones.length - 1];
+    return !!interp.basement_not_resolved && last && zone[0] === last[0] && zone[1] === last[1];
+  }
+
+  function drillingDepthText(interp) {
+    var depth = pyFixed(interp.max_drilling_depth_m, 0) + ' m';
+    return (interp.basement_not_resolved ? 'at least ' : 'about ') + depth;
   }
 
   function darZarrouk(layers) {
@@ -1211,9 +1263,10 @@
     var tops = model.depths_top, bottoms = model.depths_bottom;
     var n = model.n_layers, i;
 
-    var investigation;
+    var investigation, maxSpacing = null;
     if (sounding && sounding.ab2 && sounding.ab2.length) {
-      investigation = arrMax(sounding.ab2);
+      maxSpacing = arrMax(sounding.ab2);
+      investigation = depthOfInvestigation(maxSpacing, cfg);
     } else if (n > 1) {
       investigation = bottoms[n - 2] * 2 + 20;
     } else {
@@ -1238,10 +1291,17 @@
 
     /* water zones: the top few metres are vadose, so a zone starts at 3 m */
     var zones = [];
+    var basementNotResolved = false;
     layers.forEach(function (layer) {
       if (!layer.water_bearing) return;
       var top = Math.max(layer.top_m, 3.0);
-      var bottom = isFinite(layer.bottom_m) ? layer.bottom_m : investigation;
+      var bottom;
+      if (isFinite(layer.bottom_m)) {
+        bottom = layer.bottom_m;
+      } else {
+        bottom = investigation;
+        basementNotResolved = bottom - top >= 1.0;
+      }
       if (bottom - top >= 1.0) zones.push([pyRound(top), pyRound(bottom)]);
     });
     zones.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
@@ -1289,6 +1349,37 @@
     });
     if (depthToBasement !== null && depthToBasement < 5 && !zones.length) score *= 0.5;
 
+    /* The misfit and the unresolved basement discount the score before any
+     * ranking reads it. */
+    var err = model.fit_error_percent === undefined ? null : model.fit_error_percent;
+    var confidence = fitConfidence(err, cfg);
+    if (basementNotResolved) confidence *= cfg.unresolved_basement_confidence;
+    score *= confidence;
+
+    var sid = model.sounding_id || (sounding ? sounding.sounding_id : '') || '';
+    var flags = [];
+    var fitQuality = 'ok';
+    if (err !== null && err > cfg.target_fit_percent) {
+      var unreliable = err > cfg.unreliable_fit_percent;
+      fitQuality = unreliable ? 'unreliable' : 'poor';
+      flags.push({ level: 'warning', code: 'poor_fit',
+        message: 'The layered model reproduces the readings to ' + pyFixed(err, 1) +
+          ' percent (ERR), above the ' + formatG(cfg.target_fit_percent) +
+          ' percent target' +
+          (unreliable
+            ? '; the model does not describe the curve and the layer depths are indicative only.'
+            : '; treat the layer depths as approximate.'),
+        context: sid });
+    }
+    if (basementNotResolved) {
+      flags.push({ level: 'info', code: 'basement_not_resolved',
+        message: 'The deepest water-bearing layer is the half-space: the sounding ' +
+          'did not reach its base within the ' + pyFixed(investigation, 0) +
+          ' m it resolves, so the zone is open-ended, the aquifer thickness is a ' +
+          'minimum and the drilling depth is a minimum.',
+        context: sid });
+    }
+
     var dz = darZarrouk(layers);
     var sCover = coverConductance(layers);
     var interp = {
@@ -1310,7 +1401,12 @@
       site_easting: sounding && sounding.site ? sounding.site.easting : null,
       site_northing: sounding && sounding.site ? sounding.site.northing : null,
       site_elevation_m: sounding && sounding.site ? sounding.site.elevation_m : null,
-      flags: [],
+      flags: flags,
+      basement_not_resolved: basementNotResolved,
+      confidence: confidence,
+      fit_error_percent: err,
+      fit_quality: fitQuality,
+      max_spacing_m: maxSpacing,
     };
     interp.narrative = interpretationNarrative(interp);
     return interp;
@@ -1453,14 +1549,31 @@
     });
     if (interp.water_zones.length) {
       var zonesText = interp.water_zones.map(function (z) {
-        return Math.trunc(z[0]) + ' m to ' + Math.trunc(z[1]) + ' m';
+        return zoneText(z[0], z[1], zoneIsOpen(interp, z));
       }).join(', ');
       parts.push('The unusually low resistivity within the interpreted fractured ' +
         'or weathered intervals is indicative of pore electrolyte, possibly ' +
         'groundwater. The possible water zones are ' + zonesText + '.');
+      if (interp.basement_not_resolved) {
+        parts.push('The base of the deepest zone is not resolved: the sounding sees ' +
+          'to about ' + fmtNum(interp.investigation_depth_m) + ' m, and the ' +
+          'conductive ground continues below that.');
+      }
     } else {
       parts.push('No clearly water bearing low resistivity zone is resolved at ' +
         'this point within the investigated depth.');
+    }
+    if (interp.fit_error_percent !== null && interp.fit_error_percent !== undefined) {
+      if (interp.fit_quality === 'unreliable') {
+        parts.push('The model reproduces the readings to ' +
+          fmtNum(interp.fit_error_percent, 3) + ' percent (ERR), well above the ' +
+          'target: it does not describe the curve closely, and the layer depths ' +
+          'are indicative only.');
+      } else if (interp.fit_quality === 'poor') {
+        parts.push('The model reproduces the readings to ' +
+          fmtNum(interp.fit_error_percent, 3) + ' percent (ERR), above the ' +
+          'target, so the layer depths are approximate.');
+      }
     }
     if (interp.depth_to_basement_m !== null) {
       parts.push('The depth to bedrock is estimated at about ' +
@@ -1488,7 +1601,20 @@
   /* Ranks in place, 1 = most preferred. Every caller reading `rank` must rank
    * first: an unranked set leaves every rank null and "best" then falls back to
    * whichever sounding happened to be parsed first. */
-  function rankInterpretations(interpretations, preferredOrder) {
+  /* The one number the points are ranked on: the suitability scorecard's
+   * geological score discounted by the interpretation's confidence, so the
+   * preference table, the summary and the suitability section agree. */
+  function rankingWeight(interp, cfg) {
+    var result = C.assessSiting([interp], cfg)[0];
+    return result.suitability * result.confidence;
+  }
+
+  function rankInterpretations(interpretations, preferredOrder, cfg) {
+    var weight = {};
+    interpretations.forEach(function (i) { weight[i.sounding_id] = rankingWeight(i, cfg); });
+    var byId = function (a, b) {
+      return a.sounding_id < b.sounding_id ? -1 : a.sounding_id > b.sounding_id ? 1 : 0;
+    };
     var ranked;
     if (preferredOrder && preferredOrder.length) {
       var position = {};
@@ -1498,20 +1624,21 @@
           ? preferredOrder.length : position[a.sounding_id];
         var pb = position[b.sounding_id] === undefined
           ? preferredOrder.length : position[b.sounding_id];
-        return pa - pb || b.score - a.score;
+        return pa - pb || weight[b.sounding_id] - weight[a.sounding_id] || byId(a, b);
       });
     } else {
       ranked = interpretations.slice().sort(function (a, b) {
-        return b.score - a.score ||
-          (a.sounding_id < b.sounding_id ? -1 : a.sounding_id > b.sounding_id ? 1 : 0);
+        return weight[b.sounding_id] - weight[a.sounding_id] || byId(a, b);
       });
     }
     ranked.forEach(function (interp, i) { interp.rank = i + 1; });
     return ranked;
   }
 
-  function drillingPreferenceTable(interpretations, preferredOrder) {
-    rankInterpretations(interpretations, preferredOrder);
+  var LAYER_RESISTIVITY_COLUMN = 'Layer resistivity (ohm-m)';
+
+  function drillingPreferenceTable(interpretations, preferredOrder, cfg) {
+    rankInterpretations(interpretations, preferredOrder, cfg);
     return interpretations.map(function (interp, i) {
       return {
         'No.': i + 1,
@@ -1523,13 +1650,13 @@
         'Depth (m)': interp.layers.map(function (l) {
           return isFinite(l.bottom_m) ? fmtNum(l.bottom_m) : '';
         }).join('\n'),
-        'Apparent Resistivity (Ohm-m)': interp.layers.map(function (l) {
+        'Layer resistivity (ohm-m)': interp.layers.map(function (l) {
           return fmtNum(l.rho, 4);
         }).join('\n'),
         'Possible Water Zones (m)': interp.water_zones.map(function (z) {
-          return Math.trunc(z[0]) + '-' + Math.trunc(z[1]);
+          return zoneCell(z[0], z[1], zoneIsOpen(interp, z));
         }).join('\n') || 'none resolved',
-        'Max Drilling Depth (m)': interp.max_drilling_depth_m.toFixed(0) + ' m',
+        'Max Drilling Depth (m)': drillingDepthText(interp),
         Ranking: ordinal(interp.rank),
       };
     });
@@ -1555,6 +1682,10 @@
     classifyCurve: classifyCurve, describeCurveType: describeCurveType,
     interpretModel: interpretModel, rankInterpretations: rankInterpretations,
     drillingPreferenceTable: drillingPreferenceTable,
+    depthOfInvestigation: depthOfInvestigation, fitConfidence: fitConfidence,
+    zoneText: zoneText, zoneCell: zoneCell, zoneIsOpen: zoneIsOpen,
+    drillingDepthText: drillingDepthText, rankingWeight: rankingWeight,
+    LAYER_RESISTIVITY_COLUMN: LAYER_RESISTIVITY_COLUMN,
     fmtNum: fmtNum, fmtRange: fmtRange, formatG: formatG,
     roundSig: roundSig, pyRound: pyRound, pyFixed: pyFixed, expo: expo,
     ordinal: ordinal,
@@ -5491,9 +5622,46 @@
       flags.push({ level: 'info', code: 'segment_overlap',
         message: dup + ' AB/2 value(s) repeated with different MN (segment ' +
           'changes); both readings kept.', context: soundingId });
+      var discrepant = overlapDiscrepancies(ab2, rho);
+      if (discrepant.length) {
+        flags.push({ level: 'warning', code: 'segment_overlap_discrepancy',
+          message: 'At an MN change the two readings at one AB/2 should agree ' +
+            'within a few percent; these differ by more than ' +
+            pyFixed((OVERLAP_DISCREPANCY_RATIO - 1) * 100, 0) + ' percent: ' +
+            discrepant.join('; ') +
+            '. That is a field problem (potential-electrode contact, lateral ' +
+            'inhomogeneity at the new MN) or a transcription slip, and the ' +
+            'inversion merges the pair by geometric mean, so part of the model ' +
+            'misfit is made by the splice. Check the sheet before relying on the ' +
+            'deep branch.',
+          context: soundingId });
+      }
     }
     sounding.flags = flags;
     return [sounding, ''];
+  }
+
+  /* Readings at one AB/2 taken with two MN spacings should agree closely; a
+   * ratio beyond this is not the segment shift the splice is built for. */
+  var OVERLAP_DISCREPANCY_RATIO = 1.2;
+
+  function overlapDiscrepancies(ab2, rho) {
+    var unique = ab2.slice().sort(function (a, b) { return a - b; })
+      .filter(function (v, k, a) { return k === 0 || v !== a[k - 1]; });
+    var out = [];
+    unique.forEach(function (value) {
+      var readings = [];
+      for (var k = 0; k < ab2.length; k++) {
+        if (ab2[k] === value && isFinite(rho[k]) && rho[k] > 0) readings.push(rho[k]);
+      }
+      if (readings.length < 2) return;
+      var ratio = Math.max.apply(null, readings) / Math.min.apply(null, readings);
+      if (ratio > OVERLAP_DISCREPANCY_RATIO) {
+        out.push('AB/2 ' + formatG(value) + ' m: ' + formatG(readings[0]) + ' and ' +
+          formatG(readings[1]) + ' ohm-m (ratio ' + pyFixed(ratio, 2) + ')');
+      }
+    });
+    return out;
   }
 
   /* One worksheet per sounding. */
@@ -7084,8 +7252,13 @@
         'depth, so the drilling prospect here is weak.';
     }
     var parts = [];
-    parts.push('about ' + interp.aquifer_thickness_m.toFixed(0) +
-      ' m of interpreted water-bearing thickness' +
+    var openEnded = !!interp.basement_not_resolved;
+    parts.push((openEnded
+      ? 'at least ' + pyFixed(interp.aquifer_thickness_m, 0) +
+        ' m of interpreted water-bearing thickness, the base of the zone being ' +
+        'below the depth the sounding resolves'
+      : 'about ' + pyFixed(interp.aquifer_thickness_m, 0) +
+        ' m of interpreted water-bearing thickness') +
       (comp.aquifer_thickness >= 0.7 ? ' (thick)'
         : comp.aquifer_thickness >= 0.4 ? ' (modest)' : ' (thin)'));
     if (comp.resistivity_fit >= 0.6) {
@@ -7103,7 +7276,37 @@
       parts.push('overburden of about ' + interp.depth_to_basement_m.toFixed(0) +
         ' m that limits the target');
     }
-    return 'Driven by ' + parts.join('; ') + '.';
+    var text = 'Driven by ' + parts.join('; ') + '.';
+    var confidence = interp.confidence === undefined ? 1.0 : interp.confidence;
+    if (confidence < 1.0) {
+      var reasons = [];
+      if ((interp.fit_quality || 'ok') !== 'ok') {
+        reasons.push('a model fit of ' + pyFixed(interp.fit_error_percent, 1) +
+          ' percent (ERR)');
+      }
+      if (openEnded) reasons.push('a basement the sounding did not reach');
+      text += ' Confidence ' + pyFixed(confidence, 2) + ': ' + reasons.join(' and ') +
+        ' discount the score before ranking.';
+    }
+    return text;
+  }
+
+  /* One sentence when the top two points cannot be told apart; '' otherwise. */
+  function rankingTie(results, withinPoints) {
+    var within = withinPoints === undefined ? 3.0 : withinPoints;
+    var ranked = results.slice().sort(function (a, b) {
+      return (a.rank === null || a.rank === undefined ? 99 : a.rank) -
+        (b.rank === null || b.rank === undefined ? 99 : b.rank);
+    });
+    if (ranked.length < 2) return '';
+    var first = ranked[0], second = ranked[1];
+    var w1 = first.suitability * first.confidence, w2 = second.suitability * second.confidence;
+    if (Math.abs(w1 - w2) >= within) return '';
+    return 'Points ' + first.sounding_id + ' and ' + second.sounding_id +
+      ' are indistinguishable on geophysical grounds (confidence-weighted suitability ' +
+      pyFixed(w1, 1) + ' and ' + pyFixed(w2, 1) + '); ' + first.sounding_id +
+      ' is listed first by name only, and the choice between them should be made ' +
+      'on access, sanitary distances and the community\'s preference.';
   }
 
   /* Score and rank candidate VES points, most suitable first (rank 1 = best),
@@ -7130,11 +7333,13 @@
         rationale: suitabilityRationale(interp, comp),
         easting: interp.site_easting, northing: interp.site_northing,
         rank: null,
+        confidence: pyRound(interp.confidence === undefined ? 1.0 : interp.confidence, 3),
       };
     });
-    /* highest suitability first, ties broken by sounding id for stability */
+    /* rank on the confidence-weighted score, highest first; ties broken by
+     * sounding id for stability, and said in words by rankingTie() */
     var ranked = results.slice().sort(function (a, b) {
-      return b.suitability - a.suitability ||
+      return (b.suitability * b.confidence) - (a.suitability * a.confidence) ||
         (a.sounding_id < b.sounding_id ? -1 : a.sounding_id > b.sounding_id ? 1 : 0);
     });
     ranked.forEach(function (result, i) { result.rank = i + 1; });
@@ -7144,6 +7349,7 @@
   Object.assign(C, {
     SUITABILITY_WEIGHTS: SUITABILITY_WEIGHTS, assessSiting: assessSiting,
     suitabilityGrade: suitabilityGrade, zoneGeomeanRho: zoneGeomeanRho,
+    rankingTie: rankingTie,
   });
 
   /* ================================================================ portfolio

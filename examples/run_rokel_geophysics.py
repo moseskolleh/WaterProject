@@ -134,6 +134,7 @@ def main(out_root: Path | None = None) -> None:
             geologist_phone="+232 00 000 000",
             flags=flags,
             include_qa_annex=True,
+            reference_models=ipi_models,
         ),
         project.report_path("Rokel_Geophysical_Survey_Report.docx"),
         project.config,

@@ -1734,9 +1734,10 @@
             ? C.fmtNum(interp.depth_to_basement_m) + ' m' : 'not resolved'),
           S.stat('Aquifer thickness', C.fmtNum(interp.aquifer_thickness_m) + ' m',
             interp.water_zones.length + ' zone(s)'),
-          S.stat('Max drilling depth',
-            interp.max_drilling_depth_m.toFixed(0) + ' m',
-            'capped at the investigated depth'),
+          S.stat('Max drilling depth', C.drillingDepthText(interp),
+            interp.basement_not_resolved
+              ? 'a minimum: the zone continues below the depth of investigation'
+              : 'capped at the depth of investigation'),
           S.stat('Protective capacity', interp.protective_capacity,
             'S = ' + C.fmtNum(interp.protective_conductance_s, 3) + ' S'),
         ]),
@@ -5403,8 +5404,11 @@
             });
             figures.push({
               soundingId: id,
-              image: await charts.toPng(charts.layeredModel(result.model)),
-              caption: 'Layered earth model for ' + id, widthCm: 9,
+              image: await charts.toPng(charts.layeredModel(result.model, {
+                maxDepth: Math.max(derived.interpretations[i].investigation_depth_m, 20),
+              })),
+              caption: 'Layered earth model for ' + id + ', drawn to the depth of ' +
+                'investigation', widthCm: 9,
             });
           }
           context.interpretations = derived.interpretations;

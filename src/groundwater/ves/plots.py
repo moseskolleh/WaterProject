@@ -49,12 +49,22 @@ def plot_sounding_curve(
     path: str | Path | None = None,
     style: HouseStyle | None = None,
     show_splice: bool = True,
+    depth_max: float | None = None,
+    reference_model: LayeredModel | None = None,
+    reference_label: str = "reference model",
 ):
     """Log-log sounding curve with optional fitted model panel.
 
     Left: apparent resistivity against AB/2 with the field segments,
     the spliced curve and the model response. Right: the layered model
     as a resistivity-depth step plot, annotated with the fit error.
+
+    ``depth_max`` is the depth of investigation the panel is drawn to;
+    left unset it is the toolkit's default fraction of the largest AB/2,
+    the same rule the interpretation uses, so the panel no longer runs to
+    the electrode spacing while the layer column beside it stops at half
+    of it. ``reference_model`` (an imported IPI2Win model, say) is drawn
+    dashed on both panels so the two interpretations can be read together.
     """
     style = style or HouseStyle()
     with figure_context(style):
@@ -103,16 +113,38 @@ def plot_sounding_curve(
                 ab2_calc, rho_calc, "-", color=style.secondary_color, lw=1.8,
                 label="model response",
             )
+        if reference_model is not None:
+            ab2_ref = np.geomspace(sounding.ab2.min(), sounding.ab2.max(), 60)
+            rho_ref = (
+                forward_wenner(reference_model, ab2_ref)
+                if sounding.array_type.startswith("wenner")
+                else forward_schlumberger(reference_model, ab2_ref)
+            )
+            ax.loglog(ab2_ref, rho_ref, "--", color="#777777", lw=1.2,
+                      label=reference_label)
         ax.set_xlabel("AB/2 (m)")
         ax.set_ylabel("Apparent resistivity (ohm-m)")
         ax.set_title(f"{sounding.label} sounding curve")
-        ax.legend(loc="best")
+        # the curve runs from top left to bottom right, so the lower left is
+        # the one corner the legend cannot cover data in
+        ax.legend(loc="lower left", fontsize=7)
         ax.grid(True, which="both")
 
         if axm is not None and model is not None:
-            depth_max = max(float(np.max(sounding.ab2)), model.depths_top[-1] * 1.5 + 5)
+            from .interpret import depth_of_investigation
+
+            if depth_max is None:
+                depth_max = depth_of_investigation(float(np.max(sounding.ab2)))
+            # the deepest interface must stay on the panel, or the model
+            # shown is not the model fitted
+            depth_max = max(float(depth_max), model.depths_top[-1] * 1.2 + 2.0)
             z, r = _model_step(model, depth_max)
-            axm.plot(r, z, color=style.secondary_color, lw=2.0)
+            axm.plot(r, z, color=style.secondary_color, lw=2.0, label="fitted model")
+            if reference_model is not None:
+                z_ref, r_ref = _model_step(reference_model, depth_max)
+                axm.plot(r_ref, z_ref, "--", color="#777777", lw=1.2,
+                         label=reference_label)
+                axm.legend(loc="lower right", fontsize=7)
             axm.set_xscale("log")
             axm.set_ylim(depth_max, 0)
             axm.set_xlabel("Layer resistivity (ohm-m)")
@@ -123,15 +155,26 @@ def plot_sounding_curve(
                 title += f" (ERR = {err:.1f}%)"
             axm.set_title(title)
             tops = model.depths_top
+            n = model.n_layers
             for i, row in enumerate(model.as_table()):
                 top = tops[i]
                 bottom = tops[i + 1] if i + 1 < len(tops) else depth_max
-                z_label = 0.5 * (top + min(bottom, depth_max))
+                # a label sits in the middle of its layer, but a thin top
+                # layer's middle is under the frame and the half-space has
+                # no middle: it is labelled just under its top, and said to
+                # be the half-space rather than a layer ending at the axis
+                if i == n - 1:
+                    z_label = top + 0.08 * depth_max
+                    text = f"{fmt_num(row['rho_ohm_m'], 4)} (half-space)"
+                else:
+                    z_label = max(0.5 * (top + min(bottom, depth_max)), 0.035 * depth_max)
+                    text = fmt_num(row["rho_ohm_m"], 4)
                 axm.annotate(
-                    f"{fmt_num(row['rho_ohm_m'], 4)}",
+                    text,
                     xy=(row["rho_ohm_m"], z_label),
-                    xytext=(3, 0), textcoords="offset points",
+                    xytext=(4, 0), textcoords="offset points",
                     fontsize=7.5, va="center", color="#333333",
+                    bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.85),
                 )
             axm.grid(True, which="both")
         fig.tight_layout()

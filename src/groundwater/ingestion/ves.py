@@ -204,8 +204,46 @@ def _sounding_or_reason(
                 sounding.sounding_id,
             )
         )
+        discrepant = _overlap_discrepancies(sounding.ab2, sounding.rho_app)
+        if discrepant:
+            flags.append(
+                DataFlag(
+                    "warning",
+                    "segment_overlap_discrepancy",
+                    "At an MN change the two readings at one AB/2 should agree "
+                    "within a few percent; these differ by more than "
+                    f"{(OVERLAP_DISCREPANCY_RATIO - 1) * 100:.0f} percent: "
+                    + "; ".join(discrepant)
+                    + ". That is a field problem (potential-electrode contact, "
+                    "lateral inhomogeneity at the new MN) or a transcription "
+                    "slip, and the inversion merges the pair by geometric "
+                    "mean, so part of the model misfit is made by the splice. "
+                    "Check the sheet before relying on the deep branch.",
+                    sounding.sounding_id,
+                )
+            )
     sounding.flags = flags
     return sounding, ""
+
+
+# Readings at one AB/2 taken with two MN spacings should agree closely; a
+# ratio beyond this is not the segment shift the splice is built for.
+OVERLAP_DISCREPANCY_RATIO = 1.2
+
+
+def _overlap_discrepancies(ab2: np.ndarray, rho: np.ndarray) -> list[str]:
+    """Overlap pairs whose readings disagree by more than the ratio, as
+    "AB/2 40 m: 156.1 and 78.7 ohm-m (ratio 1.98)"."""
+    out: list[str] = []
+    for value in np.unique(ab2):
+        readings = rho[(ab2 == value) & np.isfinite(rho) & (rho > 0)]
+        if len(readings) < 2:
+            continue
+        ratio = float(np.max(readings) / np.min(readings))
+        if ratio > OVERLAP_DISCREPANCY_RATIO:
+            pair = " and ".join(f"{r:g}" for r in readings[:2])
+            out.append(f"AB/2 {value:g} m: {pair} ohm-m (ratio {ratio:.2f})")
+    return out
 
 
 def _duplicate_ab2_count(ab2: np.ndarray) -> int:

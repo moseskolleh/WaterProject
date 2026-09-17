@@ -81,6 +81,11 @@
      "info",
      "segment_overlap",
      "4 AB/2 value(s) repeated with different MN (segment changes); both readings kept."
+    ],
+    [
+     "warning",
+     "segment_overlap_discrepancy",
+     "At an MN change the two readings at one AB/2 should agree within a few percent; these differ by more than 20 percent: AB/2 10 m: 1392 and 961 ohm-m (ratio 1.45); AB/2 40 m: 156.1 and 78.7 ohm-m (ratio 1.98). That is a field problem (potential-electrode contact, lateral inhomogeneity at the new MN) or a transcription slip, and the inversion merges the pair by geometric mean, so part of the model misfit is made by the splice. Check the sheet before relying on the deep branch."
     ]
    ]
   },
@@ -165,6 +170,11 @@
      "info",
      "segment_overlap",
      "4 AB/2 value(s) repeated with different MN (segment changes); both readings kept."
+    ],
+    [
+     "warning",
+     "segment_overlap_discrepancy",
+     "At an MN change the two readings at one AB/2 should agree within a few percent; these differ by more than 20 percent: AB/2 10 m: 1307 and 891.8 ohm-m (ratio 1.47); AB/2 40 m: 147.9 and 96.3 ohm-m (ratio 1.54); AB/2 70 m: 90.3 and 55.2 ohm-m (ratio 1.64). That is a field problem (potential-electrode contact, lateral inhomogeneity at the new MN) or a transcription slip, and the inversion merges the pair by geometric mean, so part of the model misfit is made by the splice. Check the sheet before relying on the deep branch."
     ]
    ]
   }
@@ -1861,30 +1871,112 @@
  },
  "siting": [
   {
-   "id": "B (2)",
+   "id": "A (1)",
    "rank": 1,
-   "suitability": 68.0,
+   "suitability": 67.7,
    "grade": "Good",
    "components": {
     "aquifer_thickness": 1.0,
-    "resistivity_fit": 0.5217968948080853,
+    "resistivity_fit": 0.5068734018196878,
     "overburden": 0.5,
     "basal_fracture": 0.5
    },
-   "rationale": "Driven by about 72 m of interpreted water-bearing thickness (thick); resistivities near the edge of the productive window."
+   "rationale": "Driven by at least 32 m of interpreted water-bearing thickness, the base of the zone being below the depth the sounding resolves (thick); resistivities near the edge of the productive window. Confidence 0.71: a model fit of 13.3 percent (ERR) and a basement the sounding did not reach discount the score before ranking."
   },
   {
-   "id": "A (1)",
+   "id": "B (2)",
    "rank": 2,
-   "suitability": 67.6,
+   "suitability": 68.2,
    "grade": "Good",
    "components": {
     "aquifer_thickness": 1.0,
-    "resistivity_fit": 0.5052783399518986,
+    "resistivity_fit": 0.5260464291170079,
     "overburden": 0.5,
     "basal_fracture": 0.5
    },
-   "rationale": "Driven by about 72 m of interpreted water-bearing thickness (thick); resistivities near the edge of the productive window."
+   "rationale": "Driven by at least 32 m of interpreted water-bearing thickness, the base of the zone being below the depth the sounding resolves (thick); resistivities near the edge of the productive window. Confidence 0.42: a model fit of 26.8 percent (ERR) and a basement the sounding did not reach discount the score before ranking."
+  }
+ ],
+ "interpretations": [
+  {
+   "id": "A (1)",
+   "water_zones": [
+    [
+     8,
+     40
+    ]
+   ],
+   "max_drilling_depth_m": 40.0,
+   "investigation_depth_m": 40.0,
+   "max_spacing_m": 80.0,
+   "basement_not_resolved": true,
+   "confidence": 0.7077588498167025,
+   "fit_quality": "poor",
+   "flags": [
+    [
+     "warning",
+     "poor_fit",
+     "The layered model reproduces the readings to 13.3 percent (ERR), above the 10 percent target; treat the layer depths as approximate."
+    ],
+    [
+     "info",
+     "basement_not_resolved",
+     "The deepest water-bearing layer is the half-space: the sounding did not reach its base within the 40 m it resolves, so the zone is open-ended, the aquifer thickness is a minimum and the drilling depth is a minimum."
+    ]
+   ],
+   "narrative": "The data at A (1) resolves a 3 layer subsurface (type K; a resistive layer between two more conductive layers, often dry laterite or duricrust over a conductive saprolite). Layer 1 from 0 m to 1.02 m (1.02 m thick) has a resistivity of about 1,106 ohm-m and is interpreted as dry lateritic topsoil / duricrust. Layer 2 from 1.02 m to 8.1 m (7.08 m thick) has a resistivity of about 1,638 ohm-m and is interpreted as compact or dry weathered rock (regolith). Layer 3 below 8.1 m has a resistivity of about 47.28 ohm-m and is interpreted as weathered or fractured zone, potentially water bearing when saturated; its base is not resolved within the depth of investigation. The unusually low resistivity within the interpreted fractured or weathered intervals is indicative of pore electrolyte, possibly groundwater. The possible water zones are 8 m to at least 40 m. The base of the deepest zone is not resolved: the sounding sees to about 40 m, and the conductive ground continues below that. The model reproduces the readings to 13.3 percent (ERR), above the target, so the layer depths are approximate. The Dar-Zarrouk longitudinal conductance of the section is 0.00525 siemens and the transverse resistance is 12,700 ohm m2. The cover overlying the water bearing zone has a longitudinal conductance of 0.00525 siemens, indicating a poor protective capacity against surface contamination."
+  },
+  {
+   "id": "B (2)",
+   "water_zones": [
+    [
+     8,
+     40
+    ]
+   ],
+   "max_drilling_depth_m": 40.0,
+   "investigation_depth_m": 40.0,
+   "max_spacing_m": 80.0,
+   "basement_not_resolved": true,
+   "confidence": 0.425,
+   "fit_quality": "unreliable",
+   "flags": [
+    [
+     "warning",
+     "poor_fit",
+     "The layered model reproduces the readings to 26.8 percent (ERR), above the 10 percent target; the model does not describe the curve and the layer depths are indicative only."
+    ],
+    [
+     "info",
+     "basement_not_resolved",
+     "The deepest water-bearing layer is the half-space: the sounding did not reach its base within the 40 m it resolves, so the zone is open-ended, the aquifer thickness is a minimum and the drilling depth is a minimum."
+    ]
+   ],
+   "narrative": "The data at B (2) resolves a 2 layer subsurface (a two layer response with resistivity decreasing at depth, consistent with weathered or fractured, possibly water bearing rock beneath a resistive surface layer). Layer 1 from 0 m to 8.28 m (8.28 m thick) has a resistivity of about 1,193 ohm-m and is interpreted as dry lateritic topsoil / duricrust. Layer 2 below 8.28 m has a resistivity of about 49.97 ohm-m and is interpreted as weathered or fractured zone, potentially water bearing when saturated; its base is not resolved within the depth of investigation. The unusually low resistivity within the interpreted fractured or weathered intervals is indicative of pore electrolyte, possibly groundwater. The possible water zones are 8 m to at least 40 m. The base of the deepest zone is not resolved: the sounding sees to about 40 m, and the conductive ground continues below that. The model reproduces the readings to 26.8 percent (ERR), well above the target: it does not describe the curve closely, and the layer depths are indicative only. The Dar-Zarrouk longitudinal conductance of the section is 0.00694 siemens and the transverse resistance is 9,880 ohm m2. The cover overlying the water bearing zone has a longitudinal conductance of 0.00694 siemens, indicating a poor protective capacity against surface contamination."
+  }
+ ],
+ "preference": [
+  {
+   "No.": 1,
+   "VES Point": "A (1)",
+   "Layer": "1\n2\n3",
+   "Thickness (m)": "1.02\n7.08\n",
+   "Depth (m)": "1.02\n8.1\n",
+   "Layer resistivity (ohm-m)": "1,106\n1,638\n47.28",
+   "Possible Water Zones (m)": "8-40+",
+   "Max Drilling Depth (m)": "at least 40 m",
+   "Ranking": "1st"
+  },
+  {
+   "No.": 2,
+   "VES Point": "B (2)",
+   "Layer": "1\n2",
+   "Thickness (m)": "8.28\n",
+   "Depth (m)": "8.28\n",
+   "Layer resistivity (ohm-m)": "1,193\n49.97",
+   "Possible Water Zones (m)": "8-40+",
+   "Max Drilling Depth (m)": "at least 40 m",
+   "Ranking": "2nd"
   }
  ],
  "geo": [

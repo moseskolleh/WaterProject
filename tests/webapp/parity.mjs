@@ -218,6 +218,18 @@ await withPage(async (page, base, consoleErrors) => {
       id: r.sounding_id, rank: r.rank, suitability: r.suitability,
       grade: r.grade, components: r.components, rationale: r.rationale,
     }));
+    // the interpretation itself and the preference table printed from it
+    out.interpretations = rokelInterps.map((i) => ({
+      id: i.sounding_id, water_zones: i.water_zones,
+      max_drilling_depth_m: i.max_drilling_depth_m,
+      investigation_depth_m: i.investigation_depth_m,
+      max_spacing_m: i.max_spacing_m,
+      basement_not_resolved: i.basement_not_resolved,
+      confidence: i.confidence, fit_quality: i.fit_quality,
+      flags: i.flags.map((f) => [f.level, f.code, f.message]),
+      narrative: i.narrative,
+    }));
+    out.preference = C.drillingPreferenceTable(rokelInterps);
 
     out.geo = [[8.4657, -13.2317], [8.7043, -11.4084], [7.9560, -11.7400]]
       .map(([lat, lon]) => {
@@ -762,6 +774,25 @@ await withPage(async (page, base, consoleErrors) => {
     check(`siting[${i}] ${s.id}: rationale`, s.rationale === R.siting[i].rationale,
       `js ${s.rationale}\n     py ${R.siting[i].rationale}`);
   });
+
+  // --- The interpretation and the preference table ---
+  parsed.interpretations.forEach((s, i) => {
+    const ref = R.interpretations[i];
+    check(`interpretation[${i}] ${s.id}: zones, depths and flags`,
+      JSON.stringify([s.water_zones, s.max_drilling_depth_m, s.investigation_depth_m,
+        s.max_spacing_m, s.basement_not_resolved, s.fit_quality, s.flags]) ===
+      JSON.stringify([ref.water_zones, ref.max_drilling_depth_m, ref.investigation_depth_m,
+        ref.max_spacing_m, ref.basement_not_resolved, ref.fit_quality, ref.flags]),
+      `js ${JSON.stringify([s.water_zones, s.max_drilling_depth_m, s.fit_quality, s.flags])}\n     ` +
+      `py ${JSON.stringify([ref.water_zones, ref.max_drilling_depth_m, ref.fit_quality, ref.flags])}`);
+    check(`interpretation[${i}] ${s.id}: confidence`,
+      close(s.confidence, ref.confidence, 1e-6), `js ${s.confidence} vs py ${ref.confidence}`);
+    check(`interpretation[${i}] ${s.id}: narrative`, s.narrative === ref.narrative,
+      `js ${s.narrative}\n     py ${ref.narrative}`);
+  });
+  check('preference table: the same rows, word for word',
+    JSON.stringify(parsed.preference) === JSON.stringify(R.preference),
+    `js ${JSON.stringify(parsed.preference)}\n     py ${JSON.stringify(R.preference)}`);
 
   // --- Geographic -> UTM ---
   parsed.geo.forEach((g, i) => {

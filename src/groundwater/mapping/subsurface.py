@@ -528,6 +528,15 @@ def geoelectric_section_along_traverse(
         (float(getattr(i, "investigation_depth_m", 0.0)) for i in ordered),
         default=0.0,
     )
+    if depth_max is None and reach > 0:
+        # the section is drawn to the depth the soundings resolve, the same
+        # rule as every other figure, and never so shallow that a fitted
+        # interface falls off the bottom of it
+        deepest_interface = max(
+            (float(i.model.depths_top[-1]) for i in ordered if i.model.n_layers > 1),
+            default=0.0,
+        )
+        depth_max = max(reach, deepest_interface * 1.2 + 2.0)
     return plot_geoelectric_section(
         [interp.model for interp in ordered],
         positions=[float(x) for x in profile.chainage_m],

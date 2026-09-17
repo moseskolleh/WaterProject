@@ -16,6 +16,7 @@ from .suitability import (
     SitingSuitability,
     SuitabilityComponents,
     assess_siting,
+    ranking_tie,
     suitability_map_points,
 )
 
@@ -23,5 +24,6 @@ __all__ = [
     "SitingSuitability",
     "SuitabilityComponents",
     "assess_siting",
+    "ranking_tie",
     "suitability_map_points",
 ]

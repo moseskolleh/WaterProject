@@ -57,6 +57,33 @@ class VESConfig:
     laterite_min_rho: float = 800.0  # dry laterite / duricrust near surface
     max_drilling_margin_m: float = 10.0  # added below deepest target zone
     round_drilling_depth_to_m: float = 5.0
+    # Depth of investigation as a fraction of the largest current-electrode
+    # half-spacing AB/2. A Schlumberger sounding resolves the ground to about
+    # a half to a third of its largest AB/2 (Roy and Apparao 1971; Barker
+    # 1989), not to the spacing itself. This one number sets how deep the
+    # interpretation, every figure and the drilling-depth cap reach: an 80 m
+    # spread used to put a "water zone" and a drilling depth at 80 m, which
+    # was the array length and nothing the data had seen.
+    depth_of_investigation_factor: float = 0.5
+    # When no candidate model reaches the target, the simplest model whose
+    # misfit is within this ratio of the best fit is kept: extra layers must
+    # earn their keep. It used to be an undocumented constant in the search.
+    parsimony_fallback_ratio: float = 1.15
+    # A misfit above the target is flagged as poor; above this it is
+    # unreliable and the layer depths are indicative only. IPI2Win users
+    # read ERR above about 10 percent as a poor fit and above 20 as one
+    # that does not describe the curve.
+    unreliable_fit_percent: float = 20.0
+    # Confidence weights applied to a point's suitability when ranking. A
+    # fit at the target keeps 1.0 and one at the unreliable level keeps the
+    # floor; a conductive half-space whose base the sounding never reached
+    # is discounted because its thickness is unknown, not measured.
+    fit_confidence_floor: float = 0.5
+    unresolved_basement_confidence: float = 0.85
+    # Two points whose confidence-weighted suitabilities differ by less than
+    # this are indistinguishable on geophysical grounds, and the report says
+    # so instead of printing 1st and 2nd.
+    ranking_tie_points: float = 3.0
 
 
 # ---------------------------------------------------------------------------

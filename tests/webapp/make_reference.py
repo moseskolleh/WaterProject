@@ -74,7 +74,7 @@ from groundwater.supervision.checklists import (
     load_checklists,
     migrate_response_keys,
 )
-from groundwater.ves.interpret import interpret_model
+from groundwater.ves.interpret import drilling_preference_table, interpret_model
 from groundwater.ves.inversion import invert_sounding
 
 REPO = Path(__file__).resolve().parents[2]
@@ -357,6 +357,26 @@ def build() -> dict:
         }
         for r in assess_siting(rokel_interps)
     ]
+    # The interpretation itself, and the preference table a report prints
+    # from it: the zones, the depth the survey resolves, the flags and the
+    # narrative are the sentences a siting decision is argued from, and
+    # they used to be held to nothing.
+    out["interpretations"] = [
+        {
+            "id": i.sounding_id,
+            "water_zones": [[clean(t), clean(b)] for t, b in i.water_zones],
+            "max_drilling_depth_m": clean(i.max_drilling_depth_m),
+            "investigation_depth_m": clean(i.investigation_depth_m),
+            "max_spacing_m": clean(i.max_spacing_m),
+            "basement_not_resolved": i.basement_not_resolved,
+            "confidence": clean(i.confidence),
+            "fit_quality": i.fit_quality,
+            "flags": [[f.level, f.code, f.message] for f in i.flags],
+            "narrative": i.narrative,
+        }
+        for i in rokel_interps
+    ]
+    out["preference"] = drilling_preference_table(rokel_interps)
 
     # Geographic -> UTM, the direction a pasted phone position takes.
     out["geo"] = [

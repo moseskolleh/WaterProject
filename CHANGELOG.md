@@ -33,6 +33,46 @@ is worse than none. What it claimed, and what is true:
 
 ## What changed
 
+A sounding is read to the depth it resolves, not to the length of its
+array. A Schlumberger sounding resolves the ground to about half of its
+largest AB/2; the interpretation used to take the spacing itself, so a
+conductive half-space below 8 m became a "water bearing zone 8 m to
+80 m", an aquifer 72 m thick and a recommendation to drill to 80 m, at
+both Rokel points, from data that had seen 40. One rule
+(`VESConfig.depth_of_investigation_factor`) now sets how deep the
+interpretation, the model panel, the layer column, the section and the
+drilling-depth cap reach. A water-bearing half-space is an open-ended
+zone: "8 m to at least 40 m", flagged `basement_not_resolved`, with the
+thickness a minimum and the drilling depth a minimum, and it is called
+what it is - a weathered zone whose base the sounding never reached -
+rather than "fractured bedrock with groundwater in fractures", which
+fresh gabbro at 47 ohm-m is not.
+
+The ranking can now see how well a model fits. Neither Rokel model
+reaches the 10 percent misfit target; the report preferred B (2), fitted
+to 26.8 percent, over A (1) at 13.3, on 2.7 ohm-m of half-space
+resistivity, and said nothing about either fit. A model above the target
+now carries a `poor_fit` flag and a sentence in its narrative, the
+points are ranked on their suitability discounted by a confidence that
+the misfit and an unresolved basement lower, the suitability table
+prints that confidence, and two points whose weighted scores are within
+three points are said to be indistinguishable rather than 1st and 2nd.
+The one ranking is assigned once and read everywhere, so the summary,
+the preference table and the scorecard cannot name different points.
+The sounding block lists the models tried, names a boundary the
+uncertainty factor shows to be unresolved, and, where an earlier
+interpretation is supplied, tables it beside the toolkit's with its
+reported misfit and the misfit this toolkit computes for it on the same
+readings (35.8 percent against the 21.5 reported for Rokel A (1)). Two
+readings at one AB/2 that disagree by more than a fifth at an MN change
+are a warning naming the pair, not an information note. The preference
+table's resistivity column is named for what it holds, the layer
+resistivities, and the layer column figure is captioned as one rather
+than as a pseudo-section. The browser engine mirrors all of it, and the
+parity suite now holds the two engines to the interpretation's zones,
+flags, confidence and narrative and to the preference table word for
+word.
+
 An audit of the three worked examples, reading every figure and every
 report as a client or a ministry reviewer would, found real defects in
 the maps, the borehole design, the VES interpretation, the pumping-test

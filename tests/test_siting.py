@@ -18,7 +18,10 @@ def test_assess_siting_ranks_and_bounds(sample_data):
     assert results, "expected at least one scored point"
     # ranked most suitable first, ranks are 1..n and dense
     assert [r.rank for r in results] == list(range(1, len(results) + 1))
-    assert results[0].suitability == max(r.suitability for r in results)
+    # ranked on suitability x confidence: a poor fit or an unresolved
+    # basement discounts a point before it is compared with the others
+    assert results[0].weighted == max(r.weighted for r in results)
+    assert all(0.0 < r.confidence <= 1.0 for r in results)
     for r in results:
         assert 0.0 <= r.suitability <= 100.0
         assert r.grade in ("Poor", "Moderate", "Good", "Very good")

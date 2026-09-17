@@ -198,3 +198,20 @@ def test_a_skipped_sheet_is_named_with_its_reason(tmp_path):
     assert any("'VES 2'" in r and "no numeric rows" in r for r in reasons)
     assert any("'Notes'" in r and "no data table" in r for r in reasons)
     assert all(f.code == "sheet_skipped" for f in skipped)
+
+
+def test_overlap_readings_that_disagree_are_a_warning_not_an_info(sample_data):
+    """At AB/2 = 40 m the Rokel A (1) sheet reads 156.1 and 78.7 ohm-m with
+    the two MN spacings: a factor of two, which is a field or transcription
+    problem, not the few-percent segment shift the splice is built for."""
+    from groundwater.ingestion import read_ves_workbook
+
+    soundings = read_ves_workbook(sample_data / "rokel" / "rokel_ves.xlsx")
+    a = soundings[0]
+    codes = [f.code for f in a.flags]
+    assert "segment_overlap" in codes
+    assert "segment_overlap_discrepancy" in codes
+    warning = next(f for f in a.flags if f.code == "segment_overlap_discrepancy")
+    assert warning.level == "warning"
+    assert "AB/2 40 m: 156.1 and 78.7 ohm-m (ratio 1.98)" in warning.message
+    assert "AB/2 3 m" not in warning.message  # 1303 vs 1317 agree

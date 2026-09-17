@@ -243,7 +243,9 @@ from groundwater.supervision import (
 from groundwater.utils import fmt_num
 from groundwater.ves import interpret_model, invert_sounding
 from groundwater.ves.interpret import (
+    drilling_depth_text,
     drilling_preference_table,
+    zone_cell,
     rank_interpretations,
 )
 from groundwater.ves.plots import plot_sounding_curve
@@ -1844,7 +1846,7 @@ with tab_overview:
                     if _best.max_drilling_depth_m:
                         _ves_rows.append((
                             "Recommended drilling depth",
-                            f"{_best.max_drilling_depth_m:.0f} m",
+                            drilling_depth_text(_best),
                         ))
                 st.markdown(
                     "<div class='gw-card'><span class='gw-cap'>Geophysics"
@@ -2105,7 +2107,7 @@ with tab_guide:
         if top_interp is not None:
             st.metric(
                 f"Recommended site: {top_interp.sounding_id}",
-                f"drill to {top_interp.max_drilling_depth_m:g} m",
+                f"drill to {drilling_depth_text(top_interp)}",
                 help="Best ranked sounding; see the Geophysics (VES) page for "
                 "curves, water zones and the full preference table.",
             )
@@ -2219,7 +2221,7 @@ with tab_guide:
         if top_interp is not None:
             summary.append(
                 f"**Siting**: drill at {top_interp.sounding_id} to "
-                f"{top_interp.max_drilling_depth_m:g} m"
+                f"{drilling_depth_text(top_interp)}"
             )
         if est is not None:
             summary.append(
@@ -2311,8 +2313,14 @@ with tab_ves:
                 )
                 col_txt.metric(
                     "Water bearing zones",
-                    ", ".join(f"{int(t)}-{int(b)} m" for t, b in interp.water_zones)
-                    or "none",
+                    ", ".join(
+                        zone_cell(t, b, open_ended=(interp.basement_not_resolved
+                                                    and (t, b) == interp.water_zones[-1]))
+                        + " m"
+                        for t, b in interp.water_zones
+                    ) or "none",
+                    help="A zone marked + continues below the depth the sounding "
+                    "resolves: its base and the drilling depth are minima.",
                 )
                 col_txt.write(interp.narrative)
         st.subheader("Drilling preference")
@@ -2324,14 +2332,16 @@ with tab_ves:
         ) if interps else None
         if _best_interp is not None and _best_interp.max_drilling_depth_m:
             _zones = ", ".join(
-                f"{int(t)}-{int(b)} m" for t, b in _best_interp.water_zones
+                zone_cell(t, b, open_ended=(_best_interp.basement_not_resolved
+                                            and (t, b) == _best_interp.water_zones[-1]))
+                + " m"
+                for t, b in _best_interp.water_zones
             )
             st.markdown(
                 "<div class='gw-callout'>"
                 "<span class='gw-cap'>Recommended drilling depth — "
                 f"{_html.escape(_best_interp.sounding_id)}</span>"
-                f"<div class='gw-big'>{_best_interp.max_drilling_depth_m:.0f} "
-                "<small>m</small></div>"
+                f"<div class='gw-big'>{_html.escape(drilling_depth_text(_best_interp))}</div>"
                 + (f"<p>Water bearing zones at {_html.escape(_zones)}.</p>"
                    if _zones else "")
                 + "</div>",
