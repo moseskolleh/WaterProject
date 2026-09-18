@@ -73,7 +73,9 @@ def test_pumping_level_is_labelled_as_unstabilised(dr_timbo):
 
 def test_quality_keeps_the_three_kinds_of_exceedance(dr_timbo):
     quality = build_view(dr_timbo)["quality"]
-    assert quality["healthExceedances"] == ["Manganese", "Total coliforms"]
+    # total coliforms fail the national limit, not a WHO health guideline
+    assert quality["healthExceedances"] == ["Manganese"]
+    assert "Total coliforms" in quality["nationalExceedances"]
     assert set(quality["aestheticExceedances"]) == {"pH", "Iron"}
     assert "does not meet the health based guideline" in quality["verdict"]
 
