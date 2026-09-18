@@ -149,6 +149,84 @@ capacity carries its rate, drawdown and time, the test type is written
 in words, and the browser engine mirrors all of it with the parity suite
 holding both engines to the same confidence, reasons and pump depth.
 
+The borehole design reads the driller's own words. Dr Timbo's log says
+"fracture zone 49-52 m" on the 45-50 m row and "fracture zone 60-62 m"
+on the 55-60 m row; the screens were set on the five-metre rows, so one
+covered a metre of the first zone and the second sat behind plain
+casing. A depth range named against a fracture phrase is now the
+target, with a metre of screen either side, and the lithology column
+draws the zone at those depths with the rock around it classed as what
+the driller called it, from one class table shared with the Depth Spine
+rather than three. The log records grouting to 20 m; the drawing showed
+a 6 m seal with a screen and a gravel pack inside the grouted interval.
+The recorded grout is now the seal, nothing is screened inside it, and
+the 12 m seepage in clayey laterite is cased off rather than screened,
+with the basis saying so. The drilled diameter comes from the log's
+diameter column, and the annular fill follows the annulus it leaves: a
+5 inch casing in a 6.5 inch hole leaves 19 mm a side, into which no
+gravel can be poured, so the drawing, the summary and the bill of
+quantities carry no pack instead of the 2-4 mm one the design's own
+flag said could not be placed, and the completion and handover reports
+print the design's warnings. A pump intake that the yield puts inside a
+screen is moved into plain casing beside it, and the reports print that
+depth. The drilling template gains a "Screens installed" field; a
+drawing built from it is captioned as built, and every other drawing
+is captioned as the design it is. Dr Timbo's screens are 25-35, 48-53
+and 59-63 m under a 20 m grout, with the pump at 54 m.
+
+The reports say what their inputs support. The geology paragraph was
+chosen by the substring "western" in the district name and said
+"Freetown Basic Complex" of a site the report's own maps placed on the
+Bullom Group; it is now written from the USGS and BGS polygons under
+the site, through the crosswalk the map legend uses, and the Western
+Area text is chosen by region. The field-work section asserted a
+reconnaissance dated the survey day, a geomorphological survey,
+traverse selection, pegs and a profiling method for every survey; it
+now prints the recorded reconnaissance date and notes when there are
+any and says there are none when there are not, states the array and
+the count of positioned soundings, says that no elevation model was
+supplied, and draws the ground profile the recorded levels support.
+Total coliforms were reported as a WHO health-guideline failure and
+"faecal contamination" with E. coli at zero: WHO sets no health
+guideline for them, so they are a national-limit failure that calls
+for disinfection and a sanitary inspection, and the remark, the
+verdict and the summary say so. The corrosivity paragraph stated the pH
+was within the acceptability range beside a value of 5.9; it now states
+the pH and which side of the range it is on. The table of contents
+carries the headings themselves rather than "right-click and choose
+Update Field", captions carry Word's Caption style, an empty table no
+longer crashes a build, the Piper diagram's base labels no longer meet
+as "HNO3+K" and the facies section says what the water is, a
+provisional report qualifies its own executive summary, the national
+standard is cited as unverified, every "(s)" is a noun that agrees with
+its count, grid coordinates print as coordinates, the model table
+writes "half-space" rather than "0/0", and the placeholder signatories
+and phone number are out of the worked examples.
+
+The regional maps show where things are at the scale they are drawn.
+The scale caveat quoted an 80 km window on maps drawn at 52 km and
+135 km; it now describes the window that was drawn. The same USGS
+polygon was named for the site's district rather than its own, so the
+Freetown Complex was "Paleozoic Igneous", the age the crosswalk itself
+calls wrong, on a Kuntolo map; each polygon is now placed by its own
+position. The bundled chiefdom layer truncates names to fifteen
+characters and those went onto client maps; the full names are carried
+beside them, printed, and accepted from an operator. Guinea and Liberia
+were painted the same blue as the Atlantic; the land across the border
+is now in the paper tone, told from the sea by the geology layer's own
+polygons. Graticule ticks placed past the frame grew every map and
+thirteen labels at a tenth of a degree collided; the ticks stay inside
+the frame at three to six per axis. The location map highlights the
+district the position resolves to, lights both halves of the Western
+Area and the chiefdoms of Karene and Falaba, and keeps the site star
+clear of the names; the geology tints are separated in greyscale; the
+study-area map is drawn at the scale its points need, so Rokel's shows
+both soundings 20.7 km apart on one sheet; a unit map over the coastal
+plain says that the Precambrian polygon spans the Rokel River Group belt
+the aquifer map shows as fracture flow; the Streamlit maps page draws
+the maps the reports embed; the national legends sit in the Atlantic
+corner and the scale bar's total carries its unit.
+
 An audit of the three worked examples, reading every figure and every
 report as a client or a ministry reviewer would, found real defects in
 the maps, the borehole design, the VES interpretation, the pumping-test

@@ -861,6 +861,52 @@
 
   /* --- 2. borehole completion ------------------------------------------------ */
 
+  /* Python's DataFlag.__str__: "[WARNING] code (context): message". */
+  function flagText(flag) {
+    return '[' + String(flag.level || '').toUpperCase() + '] ' + flag.code +
+      (flag.context ? ' (' + flag.context + ')' : '') + ': ' + flag.message;
+  }
+
+  /* The design's own warnings, in the client document (completion._design_notes
+   * and the same block in handover.py). A 19 mm annulus and a pump intake
+   * inside a screen were flagged on the design object and reached no report;
+   * the drawing went out clean. */
+  function designNotes(b, design) {
+    var notes = (design.flags || []).filter(function (f) {
+      return f.level === 'warning' || f.level === 'error';
+    }).map(flagText);
+    if (notes.length) {
+      b.paragraph('Design notes:', { bold: true });
+      b.bullets(notes);
+    }
+  }
+
+  /* The drawing of the design among the report's figures. The app tags it
+   * with design: true; older callers are recognised by the caption they gave
+   * it. The writer captions it itself, as Python does, so the words follow
+   * design.as_built rather than whatever the page passed. */
+  function designFigure(figures) {
+    var tagged = figures.filter(function (f) { return f && f.design; });
+    if (tagged.length) return tagged[0];
+    var byCaption = figures.filter(function (f) {
+      return f && /borehole (construction )?design|as-built borehole/i.test(f.caption || '');
+    });
+    return byCaption.length ? byCaption[0] : null;
+  }
+
+  /* The one intake depth the completion report prints (completion._pump_intake).
+   * The design may have moved the yield recommendation's intake out of a
+   * screen into plain casing; where a design exists its depth is the depth,
+   * so the drawing, the tables and the summary agree. */
+  function pumpIntake(context) {
+    var design = context.design;
+    if (design && design.pump_intake_m !== null && design.pump_intake_m !== undefined) {
+      return design.pump_intake_m;
+    }
+    var yr = context.analysis ? context.analysis.yield_recommendation : null;
+    return yr ? yr.pump_installation_depth_m : null;
+  }
+
   async function completionReport(context) {
     var b = new ReportBuilder({ style: context.style, title: 'Borehole Completion Report' });
     var site = context.site || {}, log = context.log || {}, design = context.design;
@@ -885,17 +931,24 @@
           ? ', with water struck at ' + log.water_strikes_m.map(function (w) {
               return C.fmtNum(w) + ' m'; }).join(' and ')
           : '') + '.',
-      design ? 'The borehole was completed with ' + C.fmtNum(design.total_screen_length_m) +
+      /* "completed with" only when the screens are the ones the log records
+       * as installed; otherwise this is the design. The annular fill is the
+       * engine's label, so a 19 mm annulus is no longer "gravel packed". */
+      design ? (design.as_built ? 'The borehole was completed with '
+          : 'The construction design provides ') +
+        C.fmtNum(design.total_screen_length_m) +
         ' m of screen in ' + design.screens.length + ' ' +
-        S.plural(design.screens.length, 'section') + ', gravel packed from ' +
-        design.gravel_pack[0].toFixed(0) + ' m to the bottom and sealed with cement ' +
-        'grout from surface to ' + design.sanitary_seal[1].toFixed(0) + ' m.' : '',
+        S.plural(design.screens.length, 'section') + '; the annulus below the ' +
+        'seal (' + C.formatG(design.gravel_pack[0]) + '-' +
+        C.formatG(design.gravel_pack[1]) + ' m) carries ' + design.annular_fill_label +
+        ', and the cement grout seal runs from surface to ' +
+        C.formatG(design.sanitary_seal[1]) + ' m.' : '',
       /* the pumping report carries the "treat as indicative" basis and its
        * warnings; this one used to print the same yield without them, and
        * the handover certificate followed it */
       summaryRec && summaryRec.safe_yield_m3_per_h
         ? 'The recommended safe yield is ' + C.fmtNum(summaryRec.safe_yield_m3_per_h) +
-          ' m3/h with the pump intake at ' + C.fmtNum(summaryRec.pump_installation_depth_m) +
+          ' m3/h with the pump intake at ' + C.fmtNum(pumpIntake(context)) +
           ' m below the top of the casing.' +
           (summaryRec.is_indicative ? ' ' + summaryRec.confidence_text : '')
         : '',
@@ -913,7 +966,8 @@
     b.paragraph('This report records the drilling and construction of borehole ' +
       (log.borehole_ref || '') + ' at ' + (site.community || 'the project site') +
       '. It presents the drilling log, the construction details and the ' +
-      'as-built design.', { align: 'justify' });
+      (design && design.as_built ? 'as-built construction.' : 'construction design.'),
+      { align: 'justify' });
 
     areaSection(b, context, '1.1 Location and setting');
 
@@ -948,15 +1002,38 @@
       caption: 'Drilling log', colWidthsCm: [2.6, 2.4, 8.6, 2.0],
     });
 
-    b.heading('5. Borehole Construction', 1);
+    /* completion.py: the heading, the note, the summary table, the drawing,
+     * the design basis and the design notes, in that order. */
+    var designFig = design ? designFigure(figures) : null;
     if (design) {
+      b.heading('5. Borehole Construction' + (design.as_built ? '' : ' Design'), 1);
+      /* The drilling template records the grout depth and, when the crew
+       * fills it in, the screens installed; without those the drawing is a
+       * design the rules generated from the log, and it used to be
+       * captioned "as-built" all the same. */
+      b.paragraph(design.construction_note, { align: 'justify', italic: true });
       b.table(C.designSummaryRows(design), {
-        header: ['Item', 'Detail'], caption: 'As-built construction summary',
+        header: ['Item', 'Detail'],
+        caption: design.as_built ? 'As-built construction summary.'
+          : 'Construction design summary.',
         colWidthsCm: [5.0, 10.6],
       });
-      b.bullets(design.design_basis);
+      if (designFig) {
+        b.figure(designFig.image, design.as_built
+          ? 'As-built borehole record with lithology and construction columns.'
+          : 'Borehole construction design generated from the drilling log, ' +
+            'with lithology and construction columns.',
+          designFig.widthCm || 13);
+      }
+      if (design.design_basis && design.design_basis.length) {
+        b.paragraph('Design basis:', { bold: true });
+        b.bullets(design.design_basis);
+      }
+      designNotes(b, design);
     }
-    figures.forEach(function (f) { b.figure(f.image, f.caption, f.widthCm || 13); });
+    figures.forEach(function (f) {
+      if (f !== designFig) b.figure(f.image, f.caption, f.widthCm || 13);
+    });
 
     /* Sections 6 to 9, which the Python builder has always written and this
      * one stopped short of. A completion report that ends at the casing
@@ -967,7 +1044,7 @@
     var assessment = context.assessment || null;
     var test = analysis ? analysis.test : null;
     var rec = analysis ? analysis.yield_recommendation : null;
-    var section = 6;
+    var section = design ? 6 : 5;
 
     if (analysis) {
       b.heading(section + '. Pumping Test', 1);
@@ -1038,8 +1115,8 @@
       ['Pump type', context.pumpType || ''],
       ['Pump setting during the test', test && test.pump_setting_m
         ? C.fmtNum(test.pump_setting_m) + ' m' : 'not recorded'],
-      ['Recommended pump intake', rec && rec.pump_installation_depth_m
-        ? C.fmtNum(rec.pump_installation_depth_m) + ' m below the top of the casing'
+      ['Recommended pump intake', pumpIntake(context)
+        ? C.fmtNum(pumpIntake(context)) + ' m below the top of the casing'
         : 'pending'],
     ]);
     section += 1;
@@ -1084,9 +1161,10 @@
         C.fmtNum(rec.safe_yield_m3_per_h) + ' m3/h (safety factor ' +
         C.formatG(rec.safety_factor) + ' applied to the long term yield' +
         (rec.is_indicative ? ', indicative' : '') + ').');
-      if (rec.pump_installation_depth_m) {
+      if (pumpIntake(context)) {
         advice.push('The pump intake is set at ' +
-          C.fmtNum(rec.pump_installation_depth_m) + ' m below the top of the casing.');
+          C.fmtNum(pumpIntake(context)) + ' m below the top of the casing' +
+          (design ? ', in plain casing clear of the screens' : '') + '.');
       }
       advice.push('The pump should rest for at least one hour in every ' +
         'pumping cycle and the pumping water level should be checked routinely.');
@@ -1377,7 +1455,9 @@
         'Operate the borehole at no more than ' + C.fmtNum(rec.safe_yield_m3_per_h) +
           ' m³/h' + (rec.is_indicative ? ' (indicative; see above)' : '') + '.',
         'Install the pump intake at ' + C.fmtNum(pumpDepth) + ' m ' + DATUM_TEXT +
-          (pumpDepthWhy ? ', ' + pumpDepthWhy : '') + '.',
+          (pumpDepthWhy ? ', ' + pumpDepthWhy : '') +
+          ', in plain casing: where that depth falls within a screen, ' +
+          'the borehole design sets it just below that screen.',
         'Monitor the pumping water level and re-assess the yield if the level ' +
           'approaches the pump intake.',
       ]);
@@ -1848,6 +1928,10 @@
     var analysis = context.analysis, assessment = context.assessment;
     var figures = context.figures || [];
     var rec = analysis ? analysis.yield_recommendation : null;
+    /* the design's intake where there is one: it may have moved the yield's
+     * depth out of a screen into plain casing (handover.py) */
+    var intake = design && design.pump_intake_m ? design.pump_intake_m
+      : (rec ? rec.pump_installation_depth_m : null);
 
     b.cover(['Project Handover Report', site.community || ''], [],
       siteDetails(site, [
@@ -1875,9 +1959,7 @@
       log.total_depth_m ? 'Depth: ' + C.fmtNum(log.total_depth_m) + ' m' : null,
       rec && rec.safe_yield_m3_per_h ? 'Safe yield: ' + C.yieldRangeText(rec) +
         (rec.is_indicative ? ' (indicative)' : '') : null,
-      rec && rec.pump_installation_depth_m !== null
-        ? 'Pump intake: ' + rec.pump_installation_depth_m.toFixed(0) +
-          ' m below the top of the casing' : null,
+      intake ? 'Pump intake: ' + C.fmtNum(intake) + ' m below the top of the casing' : null,
       assessment
         ? 'Water quality: ' + C.VERDICT_LONG[assessment.verdict_state].toLowerCase()
         : null,
@@ -1902,16 +1984,28 @@
       ['Yield confidence', rec && rec.safe_yield_m3_per_h
         ? (rec.is_indicative ? 'indicative: ' + rec.confidence_reasons.join('; ')
           : 'established') : '—'],
-      ['Pump intake depth', rec && rec.pump_installation_depth_m !== null
-        ? rec.pump_installation_depth_m.toFixed(0) + ' m below the top of the casing'
-        : '—'],
+      ['Pump intake depth', intake
+        ? C.fmtNum(intake) + ' m below the top of the casing' : '—'],
       ['Screened intervals', design ? design.screens.map(function (s) {
         return s.top_m.toFixed(1) + '–' + s.bottom_m.toFixed(1) + ' m'; }).join(', ') : '—'],
       ['Casing', design ? design.casing_diameter_in + '" ' + design.casing_material : '—'],
     ];
     b.table(dataRows, { header: ['Item', 'Value'],
       caption: 'Borehole data sheet', colWidthsCm: [6.0, 9.6] });
-    figures.forEach(function (f) { b.figure(f.image, f.caption, f.widthCm || 14); });
+    /* handover.py: the drawing is an as-built diagram only when the screens
+     * are the ones the log records as installed; then the design's warnings */
+    var designFig = design ? designFigure(figures) : null;
+    if (design && designFig) {
+      b.figure(designFig.image, design.as_built
+        ? 'As-built borehole diagram.'
+        : 'Borehole construction design generated from the drilling log; ' +
+          'the log records no casing string, so this is not an as-built record.',
+        designFig.widthCm || 14);
+    }
+    if (design) designNotes(b, design);
+    figures.forEach(function (f) {
+      if (f !== designFig) b.figure(f.image, f.caption, f.widthCm || 14);
+    });
 
     b.heading('4. Water Quality', 1);
     if (assessment) {
@@ -1934,7 +2028,7 @@
         'site a new latrine upgradient of it.',
       'Pump gently and steadily. Do not exceed the recommended pump setting ' +
         'depth or the safe yield.',
-      'Inspect the rising main and pump rods for corrosion at each service.',
+      'Inspect the rising main and the wetted metal parts of the pump for corrosion at each service.',
       'Report any change in taste, smell, colour or yield to the district water ' +
         'office immediately.',
       'Keep a record of every repair, with the date, the part replaced and the cost.',

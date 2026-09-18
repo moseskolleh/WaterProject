@@ -192,8 +192,8 @@ await withPage(async (page, base, consoleErrors) => {
   // checks. They used to carry the casing size in one engine and the screen
   // run in the other, and the seal in neither.
   check('the construction bullet carries the casing, the screen run and the seal',
-    said(works.full, 'Construction with 5 inch uPVC casing, 22.5 m of screen, ' +
-      'gravel pack and sanitary seal to 6 m.'),
+    said(works.full, 'Construction with 5 inch uPVC casing, 19 m of screen, ' +
+      'gravel pack and sanitary seal to 20 m.'),
     JSON.stringify(works.full));
   check('a siting survey is listed only where one was interpreted',
     !said(works.full, 'Geophysical siting survey') &&

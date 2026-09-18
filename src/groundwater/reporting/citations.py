@@ -19,7 +19,10 @@ CITATIONS: dict[str, str] = {
     ),
     "slsb": (
         "Sierra Leone Standards Bureau. Sierra Leone Standard for drinking "
-        "water quality (SLS). Freetown: SLSB."
+        "water quality (SLS). Freetown: SLSB. Edition and date not verified "
+        "against the issued specification: the national limits this toolkit "
+        "applies are provisional (WHO or regional figures carried across) "
+        "until confirmed against it."
     ),
     "rwsn_cost": (
         "Rural Water Supply Network (2010). Code of Practice for Cost "

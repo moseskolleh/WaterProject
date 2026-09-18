@@ -45,6 +45,7 @@ from .indices import (
     compute_wqi,
 )
 from .ionic import IonicBalanceResult, ionic_balance
+from ..utils import plural_noun
 from .standards import (
     StandardEntry,
     load_standards,
@@ -325,7 +326,8 @@ class WaterQualityAssessment:
         if state == "health_fail":
             names = ", ".join(r.parameter for r in health)
             return (
-                "The water does not meet the health based guideline value(s) "
+                "The water does not meet the health based guideline "
+                f"{plural_noun(len(health), 'value')} "
                 f"for: {names}. Treatment or an alternative source is required "
                 "before the water is used for drinking."
             )
@@ -343,7 +345,8 @@ class WaterQualityAssessment:
             )
             return (
                 "The water meets the WHO health based guideline values, but "
-                f"does not comply with the national standard limit(s) for: "
+                f"does not comply with the national standard "
+                f"{plural_noun(len(national), 'limit')} for: "
                 f"{names}.{extra} Treatment is required before the supply can "
                 "be accepted against the national standard; check whether the "
                 "limit exceeded is a health or an acceptability limit."
@@ -548,6 +551,7 @@ def _grade(
 ) -> None:
     """Apply the limit hierarchy to a converted value."""
     is_micro = (entry.category or "").strip().lower() == "microbiological"
+    is_faecal = entry.parameter.strip().lower() == "e. coli"
     if entry.who_health and entry.who_health.exceeded_by(value):
         row.status = "exceeds_health"
         row.remark = (
@@ -558,18 +562,29 @@ def _grade(
         (entry.sl_standard and entry.sl_standard.exceeded_by(value))
         or (entry.who_aesthetic and entry.who_aesthetic.exceeded_by(value))
     ):
-        # A microbiological indicator (E. coli, total coliforms) is a health
-        # concern, never an aesthetic one, even when its limit happens to be
-        # carried in the national/acceptability column rather than the
-        # WHO-health column. Treat any detection above the limit as a health
-        # exceedance so the verdict never calls faecally-indicated water
-        # "usable for drinking".
-        row.status = "exceeds_health"
+        # A microbiological indicator is never an aesthetic matter, even when
+        # its limit is carried in the national column. E. coli is the faecal
+        # indicator and any detection is a health exceedance. Total coliforms
+        # are not: WHO sets no health-based guideline for them and they
+        # indicate ingress or an unprotected wellhead, not faecal
+        # contamination, so they are a national-limit failure that calls for
+        # disinfection and a sanitary inspection. Three reports used to call a
+        # sample with E. coli 0 "faecal contamination" on total coliforms.
         limit = entry.sl_standard or entry.who_aesthetic
-        row.remark = (
-            f"microbiological indicator detected above the limit ({limit}); "
-            f"a health (faecal contamination) concern, not aesthetic{unit_note}"
-        )
+        if is_faecal:
+            row.status = "exceeds_health"
+            row.remark = (
+                f"faecal indicator detected above the limit ({limit}); a health "
+                f"concern, not aesthetic{unit_note}"
+            )
+        else:
+            row.status = "exceeds_national"
+            row.remark = (
+                f"detected above the national limit ({limit}); an indicator of "
+                "ingress or inadequate wellhead protection, not of faecal "
+                "contamination in itself, and WHO sets no health based guideline "
+                f"for it{unit_note}"
+            )
     elif entry.sl_standard and entry.sl_standard.exceeded_by(value):
         if entry.who_health:
             # WHO sets a health value and the national limit is stricter:

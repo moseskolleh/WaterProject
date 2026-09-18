@@ -457,7 +457,8 @@ def build_pumping_report(
                     + (" (indicative; see above)" if yr.is_indicative else "") + "."),
                     (f"Install the pump intake at {fmt_num(pump_depth)} m "
                     f"{DATUM_TEXT}" + (f", {pump_depth_why}" if pump_depth_why else "")
-                    + "."),
+                    + ", in plain casing: where that depth falls within a screen, "
+                    "the borehole design sets it just below that screen."),
                     ("Monitor the pumping water level and re-assess the yield if "
                     "the level approaches the pump intake."),
                 ]

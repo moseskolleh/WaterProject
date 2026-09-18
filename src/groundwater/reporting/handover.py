@@ -26,7 +26,9 @@ from ..quality.assess import (
 )
 from ..utils import fmt_num, safe_slug
 from .citations import GLOSSARY, references_for
-from .context import context_map_figures
+from ..quality.standards import PROVISIONAL_NATIONAL_NOTE, provisional_national_parameters
+from ..utils import utm_text
+from .context import add_area_section
 from .docx_utils import ReportBuilder
 
 _OM_GUIDANCE = [
@@ -65,6 +67,57 @@ _OM_GUIDANCE = [
         ],
     ),
 ]
+
+#: The same care for a submersible or solar pump, which has no pump rods
+#: and no strokes to count. The handpump list used to go out with a
+#: recorded submersible pump.
+_OM_GUIDANCE_MOTORISED = [
+    (
+        "Daily",
+        [
+            ("Keep the pump house, apron and surroundings clean; no washing or "
+            "animal watering at the tap stand."),
+            ("Check for leaks, unusual pump or motor noise, discoloured water "
+            "and a falling flow."),
+            "Keep the drainage channel and soakaway free flowing.",
+        ],
+    ),
+    (
+        "Weekly",
+        [
+            "Record the hours of pumping and the meter reading, if fitted.",
+            ("Check the control box, cables, starter and (for a solar pump) "
+            "the array for damage, loose connections and shading."),
+        ],
+    ),
+    (
+        "Monthly",
+        [
+            "Measure and record the water level where a dip access exists.",
+            "Collect the agreed user fees and update the cash book.",
+            ("Inspect the fence and the sanitary protection zone (no pit "
+            "latrine, refuse pit or animal pen within 30 m)."),
+            "Check the running current against the commissioning value.",
+        ],
+    ),
+    (
+        "Yearly",
+        [
+            ("Service the pump and motor according to the manufacturer "
+            "schedule; check the rising main and cable for corrosion and wear."),
+            "Repeat the physico-chemical and bacteriological water tests.",
+            "Review the tariff against the cost of spare parts and power.",
+        ],
+    ),
+]
+
+
+def om_guidance(pump_type: str) -> list:
+    """The care list for the pump that was actually installed."""
+    kind = (pump_type or "").lower()
+    if any(word in kind for word in ("submersible", "solar", "motor", "electric")):
+        return _OM_GUIDANCE_MOTORISED
+    return _OM_GUIDANCE
 
 
 @dataclass
@@ -145,21 +198,19 @@ def build_handover_report(
             ("Community", site.community), ("Chiefdom", site.chiefdom),
             ("District", site.district), ("Client", site.client),
             ("Contractor", site.contractor), ("Project reference", site.project_ref),
-            ("GPS East", fmt_num(site.easting, 7) if site.easting is not None else ""),
-            ("GPS North", fmt_num(site.northing, 7) if site.northing is not None else ""),
+            ("GPS East", utm_text(site, "easting")),
+            ("GPS North", utm_text(site, "northing")),
             ("Latitude / Longitude",
              f"{lat_lon[0]:.5f} N, {abs(lat_lon[1]):.5f} W" if lat_lon else ""),
             ("Elevation",
              fmt_num(site.elevation_m) + " m" if site.elevation_m is not None else ""),
         ]
     )
-    context_maps = context_map_figures(site, figures, config.style)
-    if context_maps:
-        rb.figure(
-            context_maps["admin"],
-            "Location of the water point. Boundaries from geoBoundaries "
-            "(CC BY 4.0).",
-        )
+    # the same maps and the same note as every other report: a site
+    # without a GPS fix gets the area map and the sentence saying the
+    # position is not recorded, not a marker-less map captioned as the
+    # water point's location
+    add_area_section(rb, site, figures, config.style, heading=None)
 
     # ---- 2 works completed ---------------------------------------------------------
     rb.heading("2. Works Completed", 1)
@@ -198,21 +249,40 @@ def build_handover_report(
                     ("indicative: " + "; ".join(yr.confidence_reasons))
                     if yr.is_indicative else "established",
                 ])
-            if yr.pump_installation_depth_m:
+            # the design's intake where there is one: it may have moved the
+            # yield's depth out of a screen into plain casing
+            intake = (inputs.design.pump_intake_m
+                      if inputs.design is not None and inputs.design.pump_intake_m
+                      else yr.pump_installation_depth_m)
+            if intake:
                 rows.append(["Pump intake depth",
-                             fmt_num(yr.pump_installation_depth_m)
-                             + " m below the top of the casing"])
+                             fmt_num(intake) + " m below the top of the casing"])
     if inputs.pump_type:
         rows.append(["Pump type", inputs.pump_type])
+    # one row per item: the log and the design both carry a total depth
+    # and a static level, and the sheet printed each twice
+    seen: set[str] = set()
+    rows = [row for row in rows if not (row[0] in seen or seen.add(row[0]))]
     rb.table(rows, header=["Item", "Value"], caption="Key borehole data.")
 
     if inputs.design is not None:
         design_fig = figures / f"borehole_design_{slug}.png"
         draw_borehole_design(
             inputs.design, log, path=design_fig, style=config.style,
-            title=f"Borehole design - {site.community}",
+            title=(f"As-built borehole record - {site.community}" if inputs.design.as_built
+                   else f"Borehole design - {site.community}"),
         )
-        rb.figure(design_fig, "As-built borehole diagram.", width_cm=13.0)
+        rb.figure(
+            design_fig,
+            ("As-built borehole diagram." if inputs.design.as_built
+             else "Borehole construction design generated from the drilling log; "
+             "the log records no casing string, so this is not an as-built record."),
+            width_cm=13.0,
+        )
+        notes = [str(f) for f in inputs.design.flags if f.level in ("warning", "error")]
+        if notes:
+            rb.paragraph("Design notes:", bold=True)
+            rb.bullets(notes)
 
     # ---- 4 water quality ------------------------------------------------------------
     rb.heading("4. Water Quality", 1)
@@ -227,6 +297,10 @@ def build_handover_report(
                 header=["Parameter", "Value", "Unit", "Remark"],
                 caption="Parameters above guideline or standard limits.",
             )
+            # a national limit the quality report calls provisional is
+            # provisional here too
+            if provisional_national_parameters():
+                rb.paragraph(PROVISIONAL_NATIONAL_NOTE, align="justify", italic=True)
     else:
         rb.paragraph("Water quality results are reported separately.")
 
@@ -238,7 +312,7 @@ def build_handover_report(
         "should keep a logbook of all maintenance, breakdowns and payments.",
         align="justify",
     )
-    for period, tasks in _OM_GUIDANCE:
+    for period, tasks in om_guidance(inputs.pump_type):
         rb.paragraph(period, bold=True)
         rb.bullets(tasks)
     yr = analysis.yield_recommendation if analysis else None

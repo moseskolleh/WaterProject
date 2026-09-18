@@ -44,15 +44,17 @@ def test_view_carries_the_toolkits_own_numbers(dr_timbo):
     assert section["waterStrikes"] == [12.0, 30.0]
     assert section["domain"] > section["totalDepth"]  # room for the TD line
 
-    # The design is generated, not typed: four screens against the strikes and
-    # the fractured intervals in the log.
+    # The design is generated, not typed: the fractured intervals, the 30 m
+    # strike and the two fracture zones the log names with their depths. The
+    # 12 m seepage in clayey laterite, inside the 20 m grout, is not screened.
     screens = payload["design"]["screens"]
     assert [(s["top"], s["base"]) for s in screens] == [
-        (14.5, 17.0),
         (25.0, 35.0),
-        (45.0, 50.0),
-        (55.0, 60.0),
+        (48.0, 53.0),
+        (59.0, 63.0),
     ]
+    assert section["sanitarySeal"] == [0.0, 20.0]
+    assert section["annularFill"] == "none"
 
     # A safe yield is never a bare number when it rests on assumptions.
     block = payload["design"]["yield"]
@@ -141,10 +143,9 @@ def test_generated_design_is_unchanged_when_no_override_is_given(sample_data):
     rules = Config().design
     generated = design_borehole(log=log, static_water_level_m=9.44, rules=rules)
     assert [(s.top_m, s.bottom_m) for s in generated.screens] == [
-        (14.5, 17.0),
         (25.0, 35.0),
-        (45.0, 50.0),
-        (55.0, 60.0),
+        (48.0, 53.0),
+        (59.0, 63.0),
     ]
 
 

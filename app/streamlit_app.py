@@ -3706,20 +3706,17 @@ with tab_maps:
             except ValueError as exc:
                 st.info(f"No study area map: {exc}")
             admin_path = workdir() / "admin_map.png"
-            plot_admin_map(marked, path=admin_path, style=style)
+            plot_admin_map(site, path=admin_path, style=style)
             paths.append(admin_path)
-            if marked is not None:
-                hydro_path = workdir() / "hydro_local_map.png"
-                plot_hydrogeology_map(marked, path=hydro_path, style=style,
-                                      radius_km=float(radius))
-                geo_path = workdir() / "geology_local_map.png"
-                plot_geological_map(marked, path=geo_path, style=style,
-                                    radius_km=float(radius))
-            else:
-                hydro_path = workdir() / "hydro_map.png"
-                plot_hydrogeology_map(None, path=hydro_path, style=style)
-                geo_path = workdir() / "geology_map.png"
-                plot_geological_map(None, path=geo_path, style=style)
+            # the same maps the reports embed: a site without a fix is
+            # centred on its chiefdom or district by area_window, and only
+            # a site with neither falls back to the national map
+            hydro_path = workdir() / "hydro_local_map.png"
+            plot_hydrogeology_map(site, path=hydro_path, style=style,
+                                  radius_km=float(radius))
+            geo_path = workdir() / "geology_local_map.png"
+            plot_geological_map(site, path=geo_path, style=style,
+                                radius_km=float(radius))
             paths += [hydro_path, geo_path]
             st.session_state.map_paths = paths
         for map_path in st.session_state.get("map_paths", []):

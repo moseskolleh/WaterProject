@@ -236,6 +236,9 @@ def inputs_from_design(design, *, mobilisation_distance_km: float = 0.0,
     )
     gravel_top, gravel_bottom = design.gravel_pack
     seal_top, seal_bottom = design.sanitary_seal
+    # an annulus too thin to take a pack is priced as none: the bill used
+    # to carry gravel the drawing's own flag said could not be placed
+    packed = getattr(design, "annular_fill", "gravel pack") != "none"
     return CostingInputs(
         total_depth_m=design.total_depth_m,
         overburden_m=overburden_m,
@@ -243,7 +246,7 @@ def inputs_from_design(design, *, mobilisation_distance_km: float = 0.0,
         screen_m=screen_m,
         borehole_diameter_in=design.borehole_diameter_in,
         casing_diameter_in=design.casing_diameter_in,
-        gravel_interval_m=max(0.0, gravel_bottom - gravel_top),
+        gravel_interval_m=max(0.0, gravel_bottom - gravel_top) if packed else 0.0,
         # the cement follows the drawing's seal, so the BoQ prices what the
         # completion report shows
         cement_bags=cement_bags_for_seal(

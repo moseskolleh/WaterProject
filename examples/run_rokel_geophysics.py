@@ -133,8 +133,7 @@ def main(out_root: Path | None = None) -> None:
             interpretations=interpretations,
             figures_dir=project.figures,
             readiness=readiness,
-            geologist_name="A. N. Geologist",
-            geologist_phone="+232 00 000 000",
+            # no signatory is invented: the sheet's supervisor signs
             flags=flags,
             include_qa_annex=True,
             reference_models=ipi_models,

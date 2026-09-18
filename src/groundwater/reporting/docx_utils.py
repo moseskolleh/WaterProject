@@ -45,9 +45,14 @@ def lint_text(text: str) -> list[str]:
     return problems
 
 
-def _clean(text: str) -> str:
-    """Apply the house language rules to outgoing text."""
-    return text.replace("—", " - ").replace("–", "-")
+def _clean(text) -> str:
+    """Apply the house language rules to outgoing text.
+
+    ``None`` is an empty cell, not the word "None".
+    """
+    if text is None:
+        return ""
+    return str(text).replace("—", " - ").replace("–", "-")
 
 
 def _hex_to_rgb(color: str) -> RGBColor:
@@ -64,6 +69,8 @@ class ReportBuilder:
         self.title = title
         self._figure_no = 0
         self._table_no = 0
+        # every heading, in order, for the table of contents
+        self._headings: list[tuple[int, str]] = []
         self._setup_styles()
         self._setup_page()
 
@@ -161,6 +168,10 @@ class ReportBuilder:
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             run = p.add_run(_clean(line))
             run.font.size = Pt(13)
+        # a detail nobody filled in is left off: "Project:" and "Date:"
+        # with nothing after them were two blank lines on the handover cover
+        details = [(label, value) for label, value in (details or [])
+                   if value is not None and str(value).strip()]
         if details:
             for _ in range(3):
                 self.doc.add_paragraph()
@@ -184,6 +195,9 @@ class ReportBuilder:
         """
         if readiness is None or readiness.is_certifiable:
             return
+        # remembered for the executive summary, which used to open with an
+        # unqualified verdict two pages after the stamp
+        self._readiness = readiness
         overridden = readiness.state == "ready_with_overrides"
         title = ("ISSUED ON OVERRIDE - NOT A CERTIFICATION" if overridden
                  else "PROVISIONAL - NOT FOR CERTIFICATION")
@@ -214,6 +228,15 @@ class ReportBuilder:
         self.page_break()
 
     def table_of_contents(self) -> None:
+        """A table of contents that reads before Word has updated anything.
+
+        python-docx cannot lay out pages, so the page numbers come from Word
+        updating the field (the document asks it to on opening). The field's
+        cached result, which is what every other viewer and every text
+        extraction shows, used to be the sentence "Right-click and choose
+        Update Field": it is now the list of headings, filled in when the
+        report is saved.
+        """
         self.heading("Table of Contents", level=1, numbered=False)
         para = self.doc.add_paragraph()
         run = para.add_run()
@@ -225,14 +248,40 @@ class ReportBuilder:
         fld_sep = OxmlElement("w:fldChar")
         fld_sep.set(qn("w:fldCharType"), "separate")
         placeholder = OxmlElement("w:t")
-        placeholder.text = (
-            "Right-click and choose Update Field to fill the table of contents."
-        )
+        placeholder.set(qn("xml:space"), "preserve")
+        placeholder.text = ""
         fld_end = OxmlElement("w:fldChar")
         fld_end.set(qn("w:fldCharType"), "end")
         for el in (fld_begin, instr, fld_sep, placeholder, fld_end):
             run._r.append(el)
+        self._toc_run = run
+        self._toc_placeholder = placeholder
         self.page_break()
+
+    def _fill_table_of_contents(self) -> None:
+        """Write the headings into the field's cached result and ask Word to
+        update the field on opening, so the page numbers appear there."""
+        placeholder = getattr(self, "_toc_placeholder", None)
+        if placeholder is None:
+            return
+        # one line per heading, indented by level, as the cached result;
+        # the breaks go inside the field result, before the placeholder,
+        # or the headings run into one line
+        first = True
+        for level, text in self._headings:
+            if not first:
+                placeholder.addprevious(OxmlElement("w:br"))
+            first = False
+            t = OxmlElement("w:t")
+            t.set(qn("xml:space"), "preserve")
+            t.text = ("    " * (level - 1)) + text
+            placeholder.addprevious(t)
+        placeholder.getparent().remove(placeholder)
+        settings = self.doc.settings.element
+        if settings.find(qn("w:updateFields")) is None:
+            update = OxmlElement("w:updateFields")
+            update.set(qn("w:val"), "true")
+            settings.append(update)
 
     def executive_summary(
         self, paragraphs: list[str], key_findings: list[str] | None = None
@@ -245,6 +294,23 @@ class ReportBuilder:
         tight bullet list under a bold label.
         """
         self.heading("Executive Summary", level=1, numbered=False)
+        readiness = getattr(self, "_readiness", None)
+        if readiness is not None and not readiness.is_certifiable:
+            # the summary is qualified the way the cover is: a reader who
+            # starts here is told what the figures below do not yet rest on
+            outstanding = [r.title for r in readiness.unmet]
+            overridden = [r.title for r in getattr(readiness, "overridden", [])]
+            what = []
+            if outstanding:
+                what.append("outstanding: " + ", ".join(outstanding))
+            if overridden:
+                what.append("issued on override: " + ", ".join(overridden))
+            self.paragraph(
+                "This report is provisional and not a certification ("
+                + "; ".join(what) + "). The findings below are those the "
+                "supplied records support; the cover says what is missing.",
+                bold=True, align="justify",
+            )
         for text in paragraphs:
             if not text:
                 continue
@@ -256,6 +322,8 @@ class ReportBuilder:
 
     def heading(self, text: str, level: int = 1, numbered: bool = True) -> None:
         self.doc.add_heading(_clean(text), level=level)
+        if numbered and level <= 3:
+            self._headings.append((level, _clean(text)))
 
     def paragraph(self, text: str, bold: bool = False, italic: bool = False,
                   align: str | None = None, size_pt: float | None = None):
@@ -307,12 +375,21 @@ class ReportBuilder:
         p = self.doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p.add_run().add_picture(str(image_path), width=Cm(width_cm))
-        cap = self.doc.add_paragraph()
+        cap = self._caption_paragraph()
         run = cap.add_run(f"Figure {self._figure_no}. {_clean(caption)}")
         run.font.size = Pt(9)
         run.font.bold = True
         cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
         return self._figure_no
+
+    def _caption_paragraph(self):
+        """A paragraph in Word's Caption style, so a list of figures and a
+        list of tables can be built from the captions; they used to be plain
+        bold paragraphs."""
+        try:
+            return self.doc.add_paragraph(style="Caption")
+        except KeyError:
+            return self.doc.add_paragraph()
 
     @property
     def next_figure_number(self) -> int:
@@ -337,10 +414,14 @@ class ReportBuilder:
         """
         self._table_no += 1
         if caption:
-            cap = self.doc.add_paragraph()
+            cap = self._caption_paragraph()
             run = cap.add_run(f"Table {self._table_no}. {_clean(caption)}")
             run.font.size = Pt(9)
             run.font.bold = True
+        # an empty table with no header used to crash the whole build on
+        # max() of nothing; it is one row saying there is nothing to show
+        if not rows and not header:
+            rows = [["(no entries)"]]
         n_cols = len(header) if header else max(len(r) for r in rows)
         table = self.doc.add_table(rows=0, cols=n_cols)
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -424,6 +505,7 @@ class ReportBuilder:
         core = self.doc.core_properties
         core.title = self.title
         core.author = self.style.organisation or "Groundwater Toolkit"
+        self._fill_table_of_contents()
         self.doc.save(path)
         _normalise_zip_timestamps(path)
         return path

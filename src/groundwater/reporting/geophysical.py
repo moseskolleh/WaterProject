@@ -35,7 +35,8 @@ from ..mapping import (
 )
 from ..models import DataFlag, VESSounding
 from ..siting import assess_siting, ranking_tie, suitability_map_points
-from ..utils import fmt_num, safe_slug
+from ..mapping.lithology import region_of
+from ..utils import fmt_num, plural, plural_noun, safe_slug, utm_text
 from ..ves.classify import classify_curve
 from ..ves.interpret import (
     SiteInterpretation,
@@ -121,10 +122,48 @@ class GeophysicalReportInputs:
     readiness: Any = None
 
 
-def _geology_for(district: str, override: str) -> str:
+def _geology_for(site, override: str) -> str:
+    """The geology paragraph, from the map under the site.
+
+    With a GPS fix the paragraph names the USGS unit the site sits on and
+    the BGS aquifer class, through the same crosswalk the map legend uses,
+    so the text and Figures 3 and 4 cannot disagree. Without a fix, the
+    district's region decides; the Western Area gets the Freetown Complex
+    paragraph because the whole peninsula is the Freetown Complex, not
+    because the word "western" appears.
+    """
     if override:
         return override
-    if "western" in (district or "").lower():
+    district = getattr(site, "district", "") or ""
+    latlon = getattr(site, "latlon", None)
+    if latlon is not None:
+        from ..mapping import aquifer_unit_at, geology_unit_at
+        from ..mapping.lithology import describe
+
+        lat, lon = latlon
+        unit = geology_unit_at(lat, lon)
+        aquifer = aquifer_unit_at(lat, lon)
+        parts = []
+        if unit is not None:
+            told = describe(unit.glg, district)
+            parts.append(
+                "The site lies on the unit the USGS Geologic Map of Africa "
+                f"maps as {unit.unit} ({unit.glg}). "
+                + (told if told else "")
+            )
+        if aquifer is not None:
+            parts.append(
+                "The BGS Africa Groundwater Atlas classes the aquifer here as "
+                f"{aquifer.unit}"
+                + (f" ({aquifer.era.lower()})" if aquifer.era else "") + "."
+            )
+        if parts:
+            return " ".join(p.strip() for p in parts) + (
+                " Groundwater potential depends on the thickness of the "
+                "weathered zone and the degree of fracturing beneath it, which "
+                "the soundings below resolve."
+            )
+    if region_of(district) == "Western Area":
         return _FREETOWN_GEOLOGY
     return _DEFAULT_GEOLOGY
 
@@ -193,7 +232,7 @@ def build_geophysical_report(
 
     # ---- 2 background / geology ---------------------------------------------
     rb.heading("2. Background and Geology of the Project Area", 1)
-    rb.paragraph(_geology_for(district, inputs.geology_text), align="justify")
+    rb.paragraph(_geology_for(site, inputs.geology_text), align="justify")
     # the soundings go on the study area map, so a reader can see the survey
     # laid out in the area rather than having to hold two figures together;
     # the recommended one gets the one marker on a siting map that has to
@@ -246,35 +285,36 @@ def build_geophysical_report(
     # ---- 3 field work -----------------------------------------------------------
     rb.heading("3. Field Work", 1)
     rb.heading("3.1 Reconnaissance Survey", 2)
-    recon_date = inputs.reconnaissance_date or site.date
+    # What this section says has to be evidenced by the inputs. It used to
+    # assert a reconnaissance dated the survey day, a geomorphological
+    # survey of slopes and streams, and a formation assessment, for every
+    # survey, whatever the sheets held: a client read a day of field work
+    # nobody had recorded. A recorded date or notes are printed; without
+    # them the section says so.
+    if inputs.reconnaissance_date or inputs.reconnaissance_notes:
+        rb.paragraph(
+            "The reconnaissance survey selected the points for the "
+            "geophysical survey"
+            + (f" and was conducted on {inputs.reconnaissance_date}"
+               if inputs.reconnaissance_date else "")
+            + ".",
+            align="justify",
+        )
+        if inputs.reconnaissance_notes:
+            rb.paragraph("Field observations", bold=True)
+            rb.paragraph(inputs.reconnaissance_notes, align="justify")
+    else:
+        rb.paragraph(
+            "No reconnaissance record (date or field observations) was "
+            "supplied with the sounding data, so none is reported here. The "
+            "sounding points were taken as recorded on the field sheets"
+            + (f", dated {site.date}" if site.date else "") + ".",
+            align="justify",
+        )
     rb.paragraph(
-        "The aim of the reconnaissance survey was to select suitable points "
-        "for the geophysical survey. Existing water points, environmental "
-        "and other physical conditions were also assessed."
-        + (f" The field reconnaissance survey was conducted on {recon_date}." if recon_date else ""),
-        align="justify",
-    )
-    rb.paragraph("Geomorphological survey of the area", bold=True)
-    rb.paragraph(
-        inputs.reconnaissance_notes
-        or (
-            "The landscape and other physical features of the area were "
-            "examined, including slopes, drainage lines and streams, since "
-            "there is normally hydraulic continuity between groundwater and "
-            "surface water."
-        ),
-        align="justify",
-    )
-    rb.paragraph(
-        "Geological and hydrogeological survey to determine the formation "
-        "of the area and identify possible features",
-        bold=True,
-    )
-    rb.paragraph(
-        "The weathered products overlying the bedrock were assessed as the "
-        "principal prospect for groundwater, since groundwater occurs mostly "
-        "in weathered and unconsolidated materials compared with "
-        "consolidated and crystalline rocks.",
+        "The weathered zone over the bedrock and the fractured rock beneath "
+        "it are the groundwater prospects in this ground, and the soundings "
+        "below are interpreted for both.",
         align="justify",
     )
     if inputs.site_map_path and Path(inputs.site_map_path).exists():
@@ -295,22 +335,36 @@ def build_geophysical_report(
             f"Topographic map of the project area at {community}. "
             f"{inputs.topographic_map_credit}".strip(),
         )
-    if inputs.ground_profile_path and Path(inputs.ground_profile_path).exists():
+    else:
+        # silent before: a report with no topographic map said nothing
+        # about why, and a reader took the survey point map for one
+        rb.paragraph(
+            "No elevation model was supplied with this survey, so no "
+            "topographic map is drawn: the toolkit bundles none and invents "
+            "none. The elevations the crew recorded at the soundings are "
+            "the ground levels this report has.",
+            align="justify",
+        )
+    profile_path = inputs.ground_profile_path
+    if not (profile_path and Path(profile_path).exists()):
+        profile_path = _ground_profile_figure(inputs, community)
+    if profile_path is not None:
         rb.figure(
-            inputs.ground_profile_path,
+            profile_path,
             "Ground surface along the survey traverse, from the elevation "
             "recorded at each sounding.",
         )
 
-    rb.paragraph("Selection of traverse line for the geophysical survey", bold=True)
+    rb.paragraph("Sounding positions", bold=True)
+    placed = [s for s in soundings if s.site.easting is not None and s.site.northing is not None]
     rb.paragraph(
-        "The traverse line for the resistivity survey was selected on the "
-        "basis of geomorphologic and geological/hydrogeological features as "
-        "well as the location of the project area. Points for the vertical "
-        "electrical soundings were selected considering the available space "
-        "and the environmental and other physical conditions, and the "
-        "proposed borehole locations were marked with pegs for "
-        "identification.",
+        f"{plural(len(placed), 'sounding')} of {len(soundings)} "
+        + ("carry" if len(placed) != 1 else "carries")
+        + " a recorded GPS position, plotted on the survey point map. "
+        + (inputs.profiling_note if inputs.profiling_note else
+           "How the points were chosen on the ground is not recorded on the "
+           "field sheets; where a traverse or profiling was run, its notes "
+           "belong in the reconnaissance record above."),
         align="justify",
     )
 
@@ -328,40 +382,18 @@ def build_geophysical_report(
             f"Geophysical survey using the {instrument} equipment.",
         )
 
-    rb.heading("3.2.1 Resistivity Profiling", 3)
-    rb.paragraph(
-        inputs.profiling_note
-        or (
-            "Electrical resistivity profiling is usually carried out along a "
-            "selected traverse of 50 m to 100 m length at 10 m intervals to "
-            "determine the lateral variation of subsurface resistivities and "
-            "delineate anomalous points with groundwater potential. Where "
-            "the available land extent does not permit profiling, the "
-            "vertical electrical soundings are carried out at the selected "
-            "points directly."
-        ),
-        align="justify",
-    )
-
-    rb.heading("3.2.2 Selection of VES Points", 3)
+    rb.heading("3.2.1 Vertical Electrical Sounding (VES)", 3)
     labels = ", ".join(s.sounding_id for s in soundings)
+    arrays = sorted({(s.array_type or "schlumberger").capitalize() for s in soundings})
     rb.paragraph(
-        f"{len(soundings)} vertical electrical sounding point(s) were "
-        "selected based on the available space and the location of the "
-        "project area, considering geological, hydrogeological and "
-        f"environmental conditions. The points are labelled {labels} in "
-        "this report.",
-        align="justify",
-    )
-
-    rb.heading("3.2.3 Vertical Electrical Sounding (VES)", 3)
-    rb.paragraph(
-        "Vertical electrical soundings were carried out with the aim of "
-        "determining the formation resistivities and the depth to bedrock, "
-        "as well as the possibility of finding water bearing fractures or "
-        "aquifers at depth with their corresponding thicknesses. The "
-        "Schlumberger electrode configuration and the required procedures "
-        "were used for the soundings.",
+        f"{plural(len(soundings), 'vertical electrical sounding')} "
+        f"({labels}) {'was' if len(soundings) == 1 else 'were'} recorded with "
+        f"the {' and '.join(arrays)} electrode configuration, to determine the "
+        "formation resistivities and the depth to bedrock, and whether water "
+        "bearing fractures or a saturated weathered zone are present at depth "
+        "and how thick they are. No resistivity profiling record was supplied"
+        + ("." if not inputs.profiling_note else
+           "; the profiling note above describes what was run."),
         align="justify",
     )
 
@@ -554,8 +586,8 @@ def _sounding_block(
         [
             ("Client", site.client), ("Community", site.community),
             ("Project", site.project or "Geophysical Survey"), ("Sounding Number", sid),
-            ("District", site.district), ("GPS Coordinate East", fmt_num(site.easting, 7)),
-            ("Date", site.date), ("GPS Coordinate North", fmt_num(site.northing, 7)),
+            ("District", site.district), ("GPS Coordinate East", utm_text(site, "easting")),
+            ("Date", site.date), ("GPS Coordinate North", utm_text(site, "northing")),
             ("Field Supervisor", site.supervisor),
             ("Elevation", fmt_num(site.elevation_m) + " m" if site.elevation_m else ""),
         ]
@@ -609,7 +641,7 @@ def _sounding_block(
                 row["N"],
                 rho_cell,
                 h_cell,
-                "0/0" if row["z_m"] == "0/0" else fmt_num(row["z_m"]),
+                "half-space" if row["z_m"] == "0/0" else fmt_num(row["z_m"]),
             ]
         )
     err = inversion.fit_error_percent
@@ -702,7 +734,7 @@ def _reference_model_block(rb, sid, inversion, reference_model, label,
     rows = [
         [row["N"], fmt_num(row["rho_ohm_m"], 4),
          "" if row["h_m"] is None else fmt_num(row["h_m"]),
-         "0" if row["z_m"] == "0/0" else fmt_num(row["z_m"])]
+         "half-space" if row["z_m"] == "0/0" else fmt_num(row["z_m"])]
         for row in reference_model.as_table()
     ]
     caption = f"{label[0].upper() + label[1:]} at point {sid}"
@@ -936,6 +968,36 @@ def _add_subsurface_figures(rb, soundings, interpretations, inputs, site) -> Non
         rb.bullets([_sentence(reason) for reason in not_drawn])
 
 
+def _ground_profile_figure(inputs: GeophysicalReportInputs, community: str):
+    """The ground profile the recorded levels support, or None.
+
+    Two soundings with positions and elevations are a profile; the report
+    used to leave it undrawn unless a caller drew it first.
+    """
+    from ..mapping.terrain import plot_ground_profile
+
+    levelled = [
+        i for i in inputs.interpretations
+        if getattr(i, "site_easting", None) is not None
+        and getattr(i, "site_northing", None) is not None
+        and getattr(i, "site_elevation_m", None) is not None
+    ]
+    if len(levelled) < 2:
+        return None
+    try:
+        profile = traverse_profile(levelled)
+        by_id = {i.sounding_id: i for i in levelled}
+        path = Path(inputs.figures_dir) / f"ground_profile_{safe_slug(community, 'site')}.png"
+        plot_ground_profile(
+            profile.chainage_m,
+            [by_id[label].site_elevation_m for label in profile.labels],
+            labels=list(profile.labels), path=path,
+        )
+        return path
+    except (ValueError, RuntimeError, KeyError):
+        return None
+
+
 def _sentence(text: str) -> str:
     text = text.strip()
     return text[0].upper() + text[1:] + ("" if text.endswith(".") else ".")
@@ -989,7 +1051,7 @@ def _executive_summary(
         f"Recommended drilling depth: {drilling_depth_text(best)}.",
     ]
     if zone_txt:
-        key.append(f"Target water zone(s): {zone_txt}.")
+        key.append(f"Target water {plural_noun(len(zones), 'zone')}: {zone_txt}.")
     if best.fit_error_percent is not None:
         fit = f"Model fit at the preferred point: ERR {best.fit_error_percent:.1f} percent"
         if best.fit_quality == "unreliable":
@@ -1015,7 +1077,7 @@ def _conclusions(
     interpretations: list[SiteInterpretation], district: str, community: str
 ) -> list[str]:
     items = []
-    if district and "western" in district.lower():
+    if district and region_of(district) == "Western Area":
         items.append(
             "The project area is part of the Freetown Basic Complex "
             "lithological formation."

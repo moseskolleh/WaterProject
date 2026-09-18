@@ -282,40 +282,49 @@ targetZones, assembleDesign, designSummaryRows, `gwt-charts.js`
 boreholeDesign, `gwt-docx.js`. Tests: `test_depth_spine.py`,
 `test_redesign.py`, `test_bugfixes.py`, `test_costing.py`.
 
-- [ ] **C borehole-design-1. Screens are set on the parsed 5 m interval and
+- [x] **C borehole-design-1. Screens are set on the parsed 5 m interval and
   miss the fracture zones the log names.** The log says "fracture zone
   49-52 m" on the 45-50 row and "fracture zone 60-62 m" on the 55-60 row;
   the screens are 45-50 m and 55-60 m, so one covers 1 m of a 3 m zone and
   the other none, and 60-62 m sits behind plain casing. checked.
-- [ ] **C borehole-design-2 / reports-3. The recorded grouting depth of 20 m
+  Done: `fracture_ranges` reads a depth range named against a fracture phrase and `_target_zones` screens it with `DesignRules.fracture_zone_margin_m` either side; Dr Timbo's screens are 25-35, 48-53 and 59-63 m.
+- [x] **C borehole-design-2 / reports-3. The recorded grouting depth of 20 m
   is ignored; the drawing captioned "As-built" shows a 6 m seal with a
   screen and a gravel pack inside the grouted interval.** The completion
   report prints "Grouting: 20 m" two paragraphs above "Sanitary seal 0-6 m".
   The drilling template has no fields for the casing string installed, so
   the "as-built" drawing is a rules-generated design. checked.
-- [ ] **H borehole-design-3. The strike rule screens 14.5-17 m in clayey
+  Done: `seal_depth_for` takes the recorded grout (20 m) as the seal and nothing is screened inside it; the template gains a "Screens installed (m)" field that `DrillingLog.installed_screens_m` carries, a design built from it is `as_built`, and every other drawing is captioned a design generated from the log. The Dr Timbo record is left blank.
+- [x] **H borehole-design-3. The strike rule screens 14.5-17 m in clayey
   laterite and clayey saprolite:** a "wet from 12 m" note in laterite is a
   seepage horizon that basement practice cases and grouts off, and this
   hole was grouted to 20 m.
-- [ ] **H borehole-design-5. The 19 mm annulus is flagged internally but the
+  Done: a strike in clayey ground or inside the grouted interval is not screened, and the design basis says which and why.
+- [x] **H borehole-design-5. The 19 mm annulus is flagged internally but the
   drawing, the summary and the bill of quantities still carry a 2-4 mm
   gravel pack that cannot be placed through it,** and no design flag ever
   reaches a client document.
-- [ ] **H borehole-design-6 / reports-7 / webapp-parity-2. The construction
+  Done: `BoreholeDesign.annular_fill` follows the annulus (none under 50 mm, formation stabiliser under 70 mm, gravel pack above); the drawing, the summary row, the basis and the bill of quantities follow it, and the completion and handover reports print the design's warnings under "Design notes".
+- [x] **H borehole-design-6 / reports-7 / webapp-parity-2. The construction
   table rounds 14.5 m to "14" and 12.5 m to "12" beside a drawing that says
   14.5 and 12.5;** the browser engine was made to reproduce the wrong
   rounding in one place and rounds the other way in another (13 m).
-- [ ] **M borehole-design-7. The drilled diameter comes from config, not
+  Done: every depth in `summary_rows` prints with `:g`.
+- [x] **M borehole-design-7. The drilled diameter comes from config, not
   from the log's diameter column.**
-- [ ] **M borehole-design-8. The lithology column labels saprolite "clay",
+  Done: `logged_diameter_in` takes the production diameter from the log's diameter column; the rule applies only when the log records none.
+- [x] **M borehole-design-8. The lithology column labels saprolite "clay",
   slightly weathered granite "fresh basement", and hatches the whole 5 m
   interval as fracture zone;** the browser and the Depth Spine use two other
   class tables for the same log.
-- [ ] **M borehole-design-9. Two of the four screens have no design-basis
+  Done: `design/lithology.py` is the one class table; `lithology_bands` draws a named fracture zone at its depths and the host rock around it, and the Depth Spine payload carries the same class and colour per interval.
+- [x] **M borehole-design-9. Two of the four screens have no design-basis
   sentence** (the lithology-derived ones).
-- [ ] **L borehole-design-10. Strike arrows are unlabelled, the pump label
+  Done: named zones, fractured intervals, strikes and every exclusion each get a basis sentence.
+- [x] **L borehole-design-10. Strike arrows are unlabelled, the pump label
   reads as installed, the depth axis runs past total depth, leader lines
   cross.**
+  Done: strikes are labelled "water strike", the pump reads "(recommended)" on a design, the depth axis ends at the hole bottom, and the header says whether the drawing is a design or as built.
 
 Steps: parse a depth range named in a description into the target
 (48-53, 59-63 m with a margin) and draw the band there; exclude clayey
@@ -335,29 +344,35 @@ Files: `reporting/*.py`, `quality/assess.py`, `quality/corrosivity.py`,
 `gwt-docx.js` (not a word-for-word mirror: prose fixes are made twice and
 `tests/webapp/review.mjs` is where document-level assertions belong).
 
-- [ ] **C reports-4 / ves-1. The executive summary, conclusions and
+- [x] **C reports-4 / ves-1. The executive summary, conclusions and
   recommendations turn the open half-space into "8 m to 80 m" and "drill to
   about 80 m".** Fixed by 1, then re-worded: "below 8 m, base not resolved
   within the depth of investigation".
-- [ ] **H reports-5 / maps-regional-6. The geology section is chosen by the
+  Done in workstream 1: the summary, conclusions and recommendations use `zone_text` and `drilling_depth_text` ("8 m to at least 40 m", "at least 40 m").
+- [x] **H reports-5 / maps-regional-6. The geology section is chosen by the
   substring "western" in the district name** and says "Freetown Basic
   Complex" while the report's own Figures 3 and 4 place the site on the
   Bullom Group and an unconsolidated intergranular aquifer.
-- [ ] **H reports-6. The field-work boilerplate asserts a reconnaissance
+  Done: `geology_unit_at` and `aquifer_unit_at` read the USGS and BGS polygons under the site; `_geology_for` writes the paragraph from them through the map's own crosswalk (Rokel: Bullom Group, intergranular aquifer), and the Western Area text is chosen by `region_of`, not a substring.
+- [x] **H reports-6. The field-work boilerplate asserts a reconnaissance
   dated the survey day, a geomorphological survey, traverse selection,
   pegs, a profiling method and compliance with unnamed guidelines,** none
   of it evidenced by the inputs.
+  Done: the field-work section prints the recorded reconnaissance date and notes when there are any and says there are none when there are not; the geomorphological survey, traverse selection, pegs and profiling boilerplate is gone, and the sounding paragraph states the array and the count of positioned points.
 - [ ] **H reports-8 / maps-regional-5. The handover report captions a
   marker-less district map "Location of the water point",** has blank
   "Project:" and "Date:" cover lines and duplicated data-sheet rows, and is
   the one report that omits the "no GPS position" note.
-- [ ] **H reports-9. Total coliforms are reported as exceeding a WHO
+- [x] **H reports-9. Total coliforms are reported as exceeding a WHO
   health-based guideline and as "faecal contamination"** in three documents;
   WHO sets no health guideline for total coliforms, and E. coli is 0.
-- [ ] **H reports-10. The corrosivity paragraph says the pH is "within the
+  Done: `_grade` treats E. coli as the faecal indicator and total coliforms as a national-limit failure that WHO sets no health guideline for; the remark, the verdict and the summary say so.
+- [x] **H reports-10. The corrosivity paragraph says the pH is "within the
   acceptability range"** for a sample the same report flags at 5.9.
-- [ ] **M reports-15. The table of contents is an un-updated field showing
+  Done: the corrosivity verdict states the pH and whether it is below, within or above the 6.5 to 8.5 range.
+- [x] **M reports-15. The table of contents is an un-updated field showing
   "Right-click and choose Update Field".**
+  Done: the field's cached result is the list of headings, filled at save, and the document asks Word to update fields on opening for the page numbers.
 - [ ] **M reports-16. An unverified, undated "Sierra Leone Standard" is
   cited in four reports** and national limits are stated in the completion
   and handover tables without the provisional note the quality report
@@ -367,18 +382,22 @@ Files: `reporting/*.py`, `quality/assess.py`, `quality/corrosivity.py`,
 - [ ] **M reports-19. "A total of two hours" of development above a
   one-hour development record** (the example passes free text the builder
   never reconciles).
-- [ ] **M reports-20. Piper diagram labels collide ("HNO3+K") and the
+- [x] **M reports-20. Piper diagram labels collide ("HNO3+K") and the
   hydrochemical facies section is empty.**
-- [ ] **M reports-21. The provisional stamp is contradicted by an
+  Done: the base labels sit under their own vertices with a wider gap, and `facies_of` writes the facies sentence ("mixed-cation-HCO3 type ...") above the diagrams.
+- [x] **M reports-21. The provisional stamp is contradicted by an
   unqualified executive summary and a "Status: Successful" cover.**
+  Done: the executive summary of a report that carries the stamp opens with the same qualification, naming what is outstanding or overridden.
 - [ ] **L reports-22. UTM coordinates with thousands separators and no
   zone.**
 - [ ] **L reports-23. "0/0" in the model table, "between 8 m to 80 m",
   "(s)" plurals.**
-- [ ] **L reports-24. `docx_utils`: an empty table without a header crashes
+- [x] **L reports-24. `docx_utils`: an empty table without a header crashes
   the build, None prints "None", captions are not Caption-styled.**
-- [ ] **L reports-25. Placeholder signatories and a dummy phone number in
+  Done: `_clean(None)` is empty, an empty table without a header prints one row, and captions carry Word's Caption style.
+- [x] **L reports-25. Placeholder signatories and a dummy phone number in
   the committed example reports.**
+  Done: the placeholder signatories and phone number are out of the examples; the signature blocks carry the sheet's supervisor or a line for a name.
 
 ## 6. Regional cartography and bundled data
 
@@ -390,47 +409,62 @@ featureWindow and areaFigures, `gwt-charts.js` thematicMap, studyAreaMap,
 graticule. Tests: `test_study_area_maps.py`, `test_programme_and_maps.py`,
 `test_chiefdoms.py`, `test_web_build.py`.
 
-- [ ] **H maps-regional-2. The scale caveat quotes "3 percent of this 80 km
+- [x] **H maps-regional-2. The scale caveat quotes "3 percent of this 80 km
   window" on maps drawn at 52 km and 135 km** because it is given the
   requested radius, not the window drawn.
-- [ ] **H maps-regional-3. The same USGS polygon is "Freetown Layered
+  Done: `_scale_caveat` is given the window that was drawn (`window.radius_km`), on the unit maps and the study-area map.
+- [x] **H maps-regional-3. The same USGS polygon is "Freetown Layered
   Complex (Jf; USGS Pi)" on the Rokel and Dr Timbo maps and "Paleozoic
   Igneous (Pi)", the age the crosswalk itself calls wrong, on the Kuntolo
   map,** because the crosswalk is scoped by the site's district instead of
   the polygon's location.
-- [ ] **H maps-regional-4. Chiefdom names are truncated to fifteen
+  Done: `_unit_district` places each polygon by its own centroid (or a vertex inside the country) and the crosswalk is scoped by that; the Freetown Complex is the Freetown Layered Complex on every map.
+- [x] **H maps-regional-4. Chiefdom names are truncated to fifteen
   characters in the bundled layer and printed on client maps** ("Sanda
   Magbolont", "Bureh Kasseh Ma"), and an operator typing the full name gets
   the district window instead of the chiefdom.
-- [ ] **M maps-regional-7. Guinea and Liberia are painted the same blue as
+  Done: `sl_chiefdom_names.csv` carries the full names the layer truncated; `AdminArea.display_name`/`label` is what maps print, `canonical_chiefdom` accepts either spelling for the window, and `chiefdom_of` returns the full name.
+- [x] **M maps-regional-7. Guinea and Liberia are painted the same blue as
   the Atlantic;** the foreign-land tone is defined and never used.
-- [ ] **M maps-regional-8. Graticule ticks placed beyond the limits enlarge
+  Done: `sea_and_neighbours` takes the land across the border (`foreign_land_rings`, from the USGS layer's polygons) and paints it in the paper tone; the unit maps put it back over the sea mask, clipped outside the country.
+- [x] **M maps-regional-8. Graticule ticks placed beyond the limits enlarge
   every map:** a white strip on the national maps, local windows no longer
   centred on the site and wider than the footnote claims.
-- [ ] **M maps-regional-9. Graticule labels collide** (thirteen at 0.1
+  Done: the graticule keeps only ticks inside the frame and restores the limits after setting them.
+- [x] **M maps-regional-9. Graticule labels collide** (thirteen at 0.1
   degree over a 1.2 degree window).
-- [ ] **M maps-regional-10. The declutter ignores vertical overrun and the
+  Done: `_nice_interval` aims at three to six lines and has a 0.2 degree step, so a 1.2 degree window gets six labels, not thirteen.
+- [x] **M maps-regional-10. The declutter ignores vertical overrun and the
   inset,** and the site star is drawn through the district label.
-- [ ] **M maps-regional-11. "Western Area", Karene and Falaba highlight no
+  Done: `declutter` drops a label that runs off the top or bottom and takes `reserved` boxes; the location map reserves the site and the study-area map reserves both furniture corners.
+- [x] **M maps-regional-11. "Western Area", Karene and Falaba highlight no
   district and a non-existent district goes in the title,** although the
   position resolves to Western Area Rural.
-- [ ] **M maps-regional-12. Geology tints are indistinguishable in
+  Done: `_home_district` resolves the district from the position when there is one, lights both halves for "Western Area", lights the crosswalk's chiefdoms for Karene and Falaba and names the district once over them; the title carries the resolved name.
+- [x] **M maps-regional-12. Geology tints are indistinguishable in
   greyscale** (the Bullom Group equals the sea) despite the palette's stated
   photocopy-safety.
-- [ ] **M maps-regional-14. The study-area window is hard-wired to 80 km,
+  Done: the geology tints are at least 0.05 of relative luminance apart from each other, the sea, the paper and the not-mapped tone (`relative_luminance`, held by a test).
+- [x] **M maps-regional-14. The study-area window is hard-wired to 80 km,
   so no report carries a map on which the village, the soundings and the
   recommended point can be told apart.**
-- [ ] **M maps-regional-15. "Chiefly Leonean granite" is printed over the
+  Done: `study_area_radius_km` sizes the window from the farthest overlay point (10 km either side by default, 40 km at most); Rokel's map shows both soundings 20.7 km apart at a 10 km scale bar.
+- [x] **M maps-regional-15. "Chiefly Leonean granite" is printed over the
   Rokel River Group belt in Port Loko** while the aquifer map beside it says
   fracture flow in indurated sediments, with no reconciliation.
-- [ ] **M maps-regional-16 / webapp-parity-10. The Streamlit maps page draws
+  Done: a unit map over the coastal plain or the north with the Precambrian polygon in view carries a note that it spans the Leonean granite-gneiss and the Rokel River Group belt, which the aquifer map shows as fracture flow in indurated sediments.
+- [x] **M maps-regional-16 / webapp-parity-10. The Streamlit maps page draws
   different maps from the ones the reports embed** for a site without a fix.
-- [ ] **L maps-regional-17. National legends sit on the LIBERIA label and
+  Done: the Streamlit maps page passes the site to the unit and location maps, so a site without a fix gets the chiefdom or district window the reports embed.
+- [x] **L maps-regional-17. National legends sit on the LIBERIA label and
   the Pujehun corner.**
-- [ ] **L maps-regional-18. The scale-bar total overprints its "km".**
-- [ ] **L maps-regional-19. The missing elevation model is silent in the
+  Done: the portfolio and coverage legends sit in the Atlantic corner.
+- [x] **L maps-regional-18. The scale-bar total overprints its "km".**
+  Done: the total is written with its unit ("50 km").
+- [x] **L maps-regional-19. The missing elevation model is silent in the
   report and the ground profile the survey's own levels support is never
   drawn.**
+  Done: the geophysical report says no elevation model was supplied and draws the ground profile from the recorded sounding levels itself (`_ground_profile_figure`).
 
 Verified correct and not defects: the UTM conversion (agrees with an
 independent implementation to under 1 mm), the scale-bar arithmetic, the

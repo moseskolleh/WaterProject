@@ -85,15 +85,27 @@ NOT_MAPPED = "#EDEBE7"
 #: and that survives a greyscale photocopy, which is how most of these
 #: reports are actually read in the field. The source colours stay in the
 #: GeoJSON and ``prefer_source_colours`` puts them back.
+# Each tint is at least 0.05 of relative luminance from every other and
+# from the sea, the paper and the not-mapped tone, so the units stay
+# apart in greyscale. The Bullom Group was 0.77 against a sea of 0.78 and
+# vanished into the Atlantic on a photocopy; tests/test_study_area_maps.py
+# holds the separation.
 GEOLOGY_COLOURS = {
-    "pCm": "#DCC9D2",   # Precambrian basement - the ground state, palest
-    "Pi": "#C98D7A",    # the Freetown layered gabbro: basic igneous, warm
-    "Mi": "#D4A190",    # dolerite, the same family a shade lighter
-    "O": "#BFD2C4",     # Rokel River Group metasediments
-    "S": "#CFDCCB",
-    "Qe": "#EFE4C4",    # Bullom Group sands and clays
-    "H2O": "#BBD3E0",   # surface water, the same family as the sea
+    "pCm": "#CDBAC6",   # Precambrian basement - the ground state
+    "Pi": "#B7715C",    # the Freetown layered gabbro: basic igneous, warm, dark
+    "Mi": "#CC9A86",    # dolerite, the same family a shade lighter
+    "O": "#9DB9A3",     # Rokel River Group metasediments
+    "S": "#BCCDB6",
+    "Qe": "#E6D5A6",    # Bullom Group sands and clays
+    "H2O": "#6F9BBF",   # surface water: a deep blue, well apart from the sea
 }
+
+
+def relative_luminance(colour: str) -> float:
+    """sRGB relative luminance, 0 (black) to 1 (white): what a photocopy keeps."""
+    rgb = [int(colour.lstrip("#")[i:i + 2], 16) / 255.0 for i in (0, 2, 4)]
+    lin = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in rgb]
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
 
 
 def geology_colour(code: str, source_colour: str, prefer_source: bool = False) -> str:
@@ -151,6 +163,7 @@ def declutter(
     extent: tuple[float, float, float, float],
     min_sep_frac: float = 0.052,
     priority: list[float] | None = None,
+    reserved: list[tuple[float, float, float, float]] | None = None,
 ) -> list[tuple[float, float, str]]:
     """Keep the labels that fit, drop the ones that would overlap.
 
@@ -185,16 +198,21 @@ def declutter(
     char_w = width * min_sep_frac * 0.30
     line_h = height * min_sep_frac * 0.62
     kept: list[tuple[float, float, str]] = []
-    boxes: list[tuple[float, float, float, float]] = []
+    # boxes nothing may be written over: the site marker, the inset, a
+    # legend. The site star used to be drawn through the district's name.
+    boxes: list[tuple[float, float, float, float]] = list(reserved or [])
     for i in order:
         lon, lat, text = candidates[int(i)]
         half_w = len(text) * char_w / 2.0
         half_h = line_h / 2.0
         box = (lon - half_w, lat - half_h, lon + half_w, lat + half_h)
-        # a name whose word runs off the frame points at nothing
+        # a name whose word runs off the frame, sideways or vertically,
+        # points at nothing
         if not (extent[0] < lon < extent[2] and extent[1] < lat < extent[3]):
             continue
         if box[0] < extent[0] or box[2] > extent[2]:
+            continue
+        if box[1] < extent[1] or box[3] > extent[3]:
             continue
         if any(
             box[0] < b[2] and box[2] > b[0] and box[1] < b[3] and box[3] > b[1]
@@ -211,10 +229,16 @@ def declutter(
 # ---------------------------------------------------------------------------
 
 def _nice_interval(span_deg: float) -> float:
-    """A round graticule interval giving four to eight lines across."""
-    target = span_deg / 5.0
-    for step in (5.0, 2.0, 1.0, 0.5, 0.25, 0.1, 0.05, 0.025, 0.01,
-                 0.005, 0.002, 0.001):
+    """A round graticule interval giving three to six lines across.
+
+    Five was the target and the steps are coarse, so a 1.2 degree window
+    fell to a 0.1 degree step and thirteen labels ran into each other
+    along the bottom edge. A degree-and-minute label is about a tenth of
+    the frame wide at this size; six across is the most that stay apart.
+    """
+    target = span_deg / 3.5
+    for step in (5.0, 2.0, 1.0, 0.5, 0.25, 0.2, 0.1, 0.05, 0.025, 0.02,
+                 0.01, 0.005, 0.002, 0.001):
         if step <= target:
             return step
     return 0.001
@@ -253,8 +277,14 @@ def graticule(ax, *, interval: float | None = None, label_size: float = 7.0):
     x0, x1 = ax.get_xlim()
     y0, y1 = ax.get_ylim()
     step = interval or _nice_interval(max(x1 - x0, y1 - y0))
-    xs = np.arange(math.ceil(x0 / step) * step, x1 + step / 2, step)
-    ys = np.arange(math.ceil(y0 / step) * step, y1 + step / 2, step)
+    # only ticks inside the frame: a tick placed past the limit made
+    # matplotlib grow the axes to include it, which put a white strip on
+    # the national maps and moved every local window off its site
+    eps = step * 1e-6
+    xs = np.array([x for x in np.arange(math.ceil(x0 / step) * step, x1 + step / 2, step)
+                   if x0 - eps <= x <= x1 + eps])
+    ys = np.array([y for y in np.arange(math.ceil(y0 / step) * step, y1 + step / 2, step)
+                   if y0 - eps <= y <= y1 + eps])
     for x in xs:
         ax.axvline(x, color=GRATICULE, lw=0.5, zorder=2.5)
     for y in ys:
@@ -266,6 +296,8 @@ def graticule(ax, *, interval: float | None = None, label_size: float = 7.0):
     ax.set_yticklabels([_dms(y, "lat") for y in ys], fontsize=label_size,
                        color=INK_MUTED)
     ax.tick_params(length=3, width=0.6, color=INK_FAINT, pad=2)
+    ax.set_xlim(x0, x1)
+    ax.set_ylim(y0, y1)
     ax.grid(False)
     for spine in ax.spines.values():
         spine.set_edgecolor(COAST)
@@ -318,19 +350,18 @@ def scale_bar(ax, mean_lat: float, *, segments: int = 4, frac_x: float = 0.055,
                 edgecolor=INK, lw=0.6, zorder=10.0,
             )
         )
-    # a zero, the midpoint and the total: enough to measure against
-    ticks = {0: "0", segments // 2: f"{total_km / 2:g}", segments: f"{total_km:g}"}
+    # a zero, the midpoint and the total with its unit: enough to measure
+    # against. The unit used to be a separate "km" beside the bar, which
+    # the total overprinted whenever it had two digits.
+    ticks = {0: "0", segments // 2: f"{total_km / 2:g}", segments: f"{total_km:g} km"}
     for i, text in ticks.items():
         ax.annotate(
-            text, xy=(bx + i * seg_deg, by + bh * 1.25), ha="center",
+            text, xy=(bx + i * seg_deg, by + bh * 1.25),
+            ha="center" if i < segments else "left",
+            xytext=(0, 0) if i < segments else (-4, 0), textcoords="offset points",
             va="bottom", fontsize=6.5, color=INK, zorder=10.0,
             path_effects=halo(2.0),
         )
-    ax.annotate(
-        "km", xy=(bx + bar_deg + (x1 - x0) * 0.012, by + bh * 0.5),
-        ha="left", va="center", fontsize=6.5, color=INK, zorder=10.0,
-        path_effects=halo(2.0),
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -367,7 +398,8 @@ def north_arrow(ax, *, frac_x: float = 0.945, frac_y: float = 0.9,
 # Sea, and the land across the border
 # ---------------------------------------------------------------------------
 
-def sea_and_neighbours(ax, outline_rings: list[np.ndarray], background: str):
+def sea_and_neighbours(ax, outline_rings: list[np.ndarray], background: str,
+                       foreign_rings: list[np.ndarray] | None = None):
     """Fill the frame as sea, then lay the country on top of it.
 
     Sierra Leone has 400 km of coast and this toolkit's busiest site is
@@ -388,12 +420,21 @@ def sea_and_neighbours(ax, outline_rings: list[np.ndarray], background: str):
         MplPolygon([(x0, y0), (x1, y0), (x1, y1), (x0, y1)], closed=True,
                    facecolor=SEA, edgecolor="none", zorder=0.4)
     )
+    # Guinea and Liberia, in the paper tone, laid over the sea and under
+    # the country. They were painted the same blue as the Atlantic on every
+    # map, so a site near the border looked like a site on the coast. The
+    # caller passes what it knows is land across the border; without it,
+    # everything outside the outline stays sea.
+    for ring in foreign_rings or []:
+        ax.add_patch(
+            MplPolygon(ring, closed=True, facecolor=FOREIGN_LAND,
+                       edgecolor="none", zorder=0.5)
+        )
     for ring in outline_rings:
         ax.add_patch(
             MplPolygon(ring, closed=True, facecolor=background,
                        edgecolor="none", zorder=0.6)
         )
-    _ = FOREIGN_LAND  # named for callers that distinguish border from shore
 
 
 def neatline(ax):

@@ -262,12 +262,29 @@ def build() -> dict:
         "ionic": clean(assessed.ionic.error_percent) if assessed.ionic else None,
     }
 
-    design = design_borehole(log=log, static_water_level_m=test.static_water_level_m)
+    design = design_borehole(log=log, static_water_level_m=test.static_water_level_m,
+                             pump_intake_m=52.0)
+    from groundwater.design import lithology_bands
     out["design"] = {
         "depth": clean(design.total_depth_m),
         "screens": [[clean(s.top_m), clean(s.bottom_m)] for s in design.screens],
         "gravel": clean(list(design.gravel_pack)),
         "screen_len": clean(design.total_screen_length_m),
+        # workstream 4: the log's own words decide the design
+        "backfill": clean(list(design.backfill)),
+        "annular_fill": design.annular_fill,
+        "annulus_mm": clean(design.annulus_mm),
+        "bore_in": clean(design.borehole_diameter_in),
+        "as_built": design.as_built,
+        "construction_note": design.construction_note,
+        "pump_intake": clean(design.pump_intake_m),
+        "basis": list(design.design_basis),
+        "flags": [[f.level, f.code] for f in design.flags],
+        "summary_rows": [list(r) for r in design.summary_rows()],
+        "gravel_interval": clean(inputs_from_design(design).gravel_interval_m),
+        "grout": clean(log.grouting_depth_m),
+        "installed_screens": [list(map(clean, s)) for s in log.installed_screens_m],
+        "bands": [[clean(t), clean(b), c.label] for t, b, c in lithology_bands(log.intervals)],
         # the seal the drawing shows is the seal the BoQ prices
         "seal": clean(list(design.sanitary_seal)),
         "cement_bags": clean(inputs_from_design(design).cement_bags),

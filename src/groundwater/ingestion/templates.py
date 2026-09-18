@@ -160,6 +160,10 @@ def write_drilling_template(path: str | Path, n_rows: int = 20) -> Path:
         ("A7", "GPS Coordinate East", "B7"), ("D7", "GPS Coordinate North", "E7"),
         ("A8", "UTM Zone (28N or 29N)", "B8"), ("D8", "Elevation (m)", "E8"),
         ("A9", "Grouting depth (m)", "B9"), ("D9", "Drill rig", "E9"),
+        # As built, when the crew records it: the screens actually set, as
+        # ranges ("25-35; 48-53"). Left blank, the toolkit draws a design
+        # from the log and says it is one.
+        ("A10", "Screens installed (m)", "B10"),
     ]
     for lab_cell, lab, val_cell in pairs:
         _label(ws, lab_cell, lab)
@@ -182,7 +186,9 @@ def write_drilling_template(path: str | Path, n_rows: int = 20) -> Path:
             ws.cell(row=r, column=c).border = BORDER
     ws.cell(row=13 + n_rows, column=1, value=(
         "Notes: write depth intervals as 0-5, 5-10 and so on. Enter a water strike "
-        "depth on the row of the interval where water was struck."
+        "depth on the row of the interval where water was struck. Name a fracture "
+        "zone with its depths in the description (fracture zone 49-52 m) and, "
+        "once the casing is set, the screens installed as ranges (25-35; 48-53)."
     )).font = Font(italic=True, size=9)
     for col, width in zip("ABCDEFG", (18, 10, 10, 20, 42, 18, 20), strict=True):
         ws.column_dimensions[col].width = width

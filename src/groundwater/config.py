@@ -161,6 +161,10 @@ class DesignRules:
     stickup_m: float = 0.5  # casing stick-up above ground
     min_screen_below_swl_m: float = 5.0  # keep screens well below static level
     apron_note: str = "concrete apron with drainage channel and soakaway"
+    # A fracture zone the driller names with its depths ("fracture zone
+    # 49-52 m") is screened with this much plain screen either side of it,
+    # rather than the whole logged interval it was written on.
+    fracture_zone_margin_m: float = 1.0
 
 
 # ---------------------------------------------------------------------------

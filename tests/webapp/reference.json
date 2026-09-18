@@ -728,30 +728,189 @@
   "depth": 70.0,
   "screens": [
    [
-    14.5,
-    17.0
-   ],
-   [
     25.0,
     35.0
    ],
    [
-    45.0,
-    50.0
+    48.0,
+    53.0
    ],
    [
-    55.0,
-    60.0
+    59.0,
+    63.0
    ]
   ],
   "gravel": [
-   12.5,
+   23.0,
    70.0
   ],
-  "screen_len": 22.5,
+  "screen_len": 19.0,
+  "backfill": [
+   20.0,
+   23.0
+  ],
+  "annular_fill": "none",
+  "annulus_mm": 19.049999999999997,
+  "bore_in": 6.5,
+  "as_built": false,
+  "construction_note": "Construction generated from the drilling log by the design rules. The log records no casing string, so this is a design, not an as-built record.",
+  "pump_intake": 54.0,
+  "basis": [
+   "screens positioned against the water strikes recorded in the drilling log (30 m)",
+   "screens positioned against the fracture zones the log names (49-52 m, 60-62 m), with 1 m of screen either side",
+   "screens positioned against the fractured or water-bearing intervals logged at 25-30 m, 30-35 m",
+   "the 12 m strike is not screened: it is in light yellow clayey laterites, wet from 12 m, a seepage horizon that is cased and grouted off rather than screened and it lies within the 20 m grouted interval",
+   "5 inch uPVC casing in a 6.5 inch hole as logged",
+   "no gravel pack: the 19 mm annulus between the 5 inch casing and the 6.5 inch hole is too thin to place one, so the annulus below the seal is left to the formation",
+   "cement grout from surface to 20 m as recorded on the drilling log (the rule's minimum is 6 m), with concrete apron with drainage channel and soakaway",
+   "screens kept at least 5 m below the static water level",
+   "pump intake at 54 m, in plain casing 1 m below the 48-53 m screen rather than the 52 m the yield recommendation asked for"
+  ],
+  "flags": [
+   [
+    "warning",
+    "thin_annulus"
+   ],
+   [
+    "info",
+    "pump_intake_moved"
+   ]
+  ],
+  "summary_rows": [
+   [
+    "Total depth",
+    "70 m"
+   ],
+   [
+    "Drilled diameter",
+    "6.5\""
+   ],
+   [
+    "Casing",
+    "5\" uPVC, stick-up 0.5 m"
+   ],
+   [
+    "Screens",
+    "25-35 m; 48-53 m; 59-63 m (slot 0.75 mm)"
+   ],
+   [
+    "Annular fill",
+    "23-70 m: no gravel pack: the 19 mm annulus is too thin to place one"
+   ],
+   [
+    "Backfill",
+    "20-23 m"
+   ],
+   [
+    "Sanitary seal",
+    "0-20 m cement grout"
+   ],
+   [
+    "Static water level",
+    "9.44 m"
+   ],
+   [
+    "Water strikes",
+    "12 m, 30 m"
+   ],
+   [
+    "Recommended pump intake",
+    "54 m"
+   ]
+  ],
+  "gravel_interval": 0.0,
+  "grout": 20.0,
+  "installed_screens": [],
+  "bands": [
+   [
+    0.0,
+    5.0,
+    "Topsoil"
+   ],
+   [
+    5.0,
+    10.0,
+    "Laterite"
+   ],
+   [
+    10.0,
+    15.0,
+    "Laterite"
+   ],
+   [
+    15.0,
+    20.0,
+    "Saprolite"
+   ],
+   [
+    20.0,
+    25.0,
+    "Saprolite"
+   ],
+   [
+    25.0,
+    30.0,
+    "Fracture zone"
+   ],
+   [
+    30.0,
+    35.0,
+    "Fracture zone"
+   ],
+   [
+    35.0,
+    40.0,
+    "Weathered rock"
+   ],
+   [
+    40.0,
+    45.0,
+    "Basement rock"
+   ],
+   [
+    45.0,
+    49.0,
+    "Basement rock"
+   ],
+   [
+    49.0,
+    50.0,
+    "Fracture zone"
+   ],
+   [
+    50.0,
+    52.0,
+    "Fracture zone"
+   ],
+   [
+    52.0,
+    55.0,
+    "Basement rock"
+   ],
+   [
+    55.0,
+    60.0,
+    "Basement rock"
+   ],
+   [
+    60.0,
+    62.0,
+    "Fracture zone"
+   ],
+   [
+    62.0,
+    65.0,
+    "Basement rock"
+   ],
+   [
+    65.0,
+    70.0,
+    "Basement rock"
+   ]
+  ],
   "seal": [
    0.0,
-   6.0
+   20.0
   ],
   "cement_bags": 4.0
  },
@@ -1612,16 +1771,6 @@
    [
     "plain",
     0.0,
-    14.5
-   ],
-   [
-    "screen",
-    14.5,
-    17.0
-   ],
-   [
-    "plain",
-    17.0,
     25.0
    ],
    [
@@ -1632,26 +1781,26 @@
    [
     "plain",
     35.0,
-    45.0
+    48.0
    ],
    [
     "screen",
-    45.0,
-    50.0
+    48.0,
+    53.0
    ],
    [
     "plain",
-    50.0,
-    55.0
+    53.0,
+    59.0
    ],
    [
     "screen",
-    55.0,
-    60.0
+    59.0,
+    63.0
    ],
    [
     "plain",
-    60.0,
+    63.0,
     68.0
    ],
    [
@@ -1665,7 +1814,7 @@
    "stabilised": false,
    "maxDrawdown": 32.82,
    "pumpingLevel": 42.26,
-   "pumpIntake": 52.0
+   "pumpIntake": 54.0
   },
   "screen_limits": {
    "top": 0.0,
@@ -1674,24 +1823,20 @@
   },
   "screens": [
    [
-    14.5,
-    17.0
-   ],
-   [
     25.0,
     35.0
    ],
    [
-    45.0,
-    50.0
+    48.0,
+    53.0
    ],
    [
-    55.0,
-    60.0
+    59.0,
+    63.0
    ]
   ],
-  "total_screen_m": 22.5,
-  "screen_share": 32.1,
+  "total_screen_m": 19.0,
+  "screen_share": 27.1,
   "yield_safe": 0.39,
   "yield_range": "0.39 m3/h (0.28 to 1.2)",
   "yield_pump_depth": 52.0,
@@ -1715,6 +1860,10 @@
     "thin_annulus"
    ],
    [
+    "info",
+    "pump_intake_moved"
+   ],
+   [
     "warning",
     "short_test"
    ],
@@ -1735,40 +1884,40 @@
     "transmissivity_low_confidence"
    ]
   ],
-  "cost_direct": 6359.67,
-  "cost_total": 7313.62,
-  "cost_price": 8776.34,
-  "cost_per_metre": 104.48,
+  "cost_direct": 6299.0,
+  "cost_total": 7243.85,
+  "cost_price": 8692.62,
+  "cost_per_metre": 103.48,
   "by_stage": [
    [
     "Mobilisation",
     1550.0,
-    24.4
+    24.6
    ],
    [
     "Wellhead",
     1330.0,
-    20.9
+    21.1
    ],
    [
     "Drilling",
     1160.0,
-    18.2
+    18.4
    ],
    [
     "Casing",
-    1150.67,
-    18.1
+    1090.0,
+    17.3
    ],
    [
     "Test pumping",
     480.0,
-    7.5
+    7.6
    ],
    [
     "Siting",
     400.0,
-    6.3
+    6.4
    ],
    [
     "Water quality",
@@ -1783,9 +1932,9 @@
   ],
   "quantity_basis": {
    "totalDepthM": 70.0,
-   "casingM": 48.0,
-   "screenM": 22.5,
-   "gravelIntervalM": 57.5,
+   "casingM": 51.5,
+   "screenM": 19.0,
+   "gravelIntervalM": 0.0,
    "overburdenM": 30.0
   },
   "quality_verdict": "The water does not meet the health based guideline value(s) for: Manganese, Total coliforms. Treatment or an alternative source is required before the water is used for drinking.",
@@ -1981,7 +2130,7 @@
     30.0
    ]
   ],
-  "edited_cost_direct": 6273.68,
+  "edited_cost_direct": 6243.0,
   "edited": true
  },
  "siting": [
@@ -2596,7 +2745,7 @@
      [
       "design_derived",
       "met",
-      "22.5 m of screen in 4 run(s).",
+      "19.0 m of screen in 3 run(s).",
       "",
       ""
      ],
@@ -3062,7 +3211,7 @@
      [
       "design_derived",
       "met",
-      "22.5 m of screen in 4 run(s).",
+      "19.0 m of screen in 3 run(s).",
       "",
       ""
      ],
@@ -3295,7 +3444,7 @@
      [
       "design_derived",
       "met",
-      "22.5 m of screen in 4 run(s).",
+      "19.0 m of screen in 3 run(s).",
       "",
       ""
      ],
@@ -3528,7 +3677,7 @@
      [
       "design_derived",
       "met",
-      "22.5 m of screen in 4 run(s).",
+      "19.0 m of screen in 3 run(s).",
       "",
       ""
      ],
@@ -3761,7 +3910,7 @@
      [
       "design_derived",
       "met",
-      "22.5 m of screen in 4 run(s).",
+      "19.0 m of screen in 3 run(s).",
       "",
       ""
      ],
@@ -3994,7 +4143,7 @@
      [
       "design_derived",
       "met",
-      "22.5 m of screen in 4 run(s).",
+      "19.0 m of screen in 3 run(s).",
       "",
       ""
      ],
@@ -4227,7 +4376,7 @@
      [
       "design_derived",
       "met",
-      "22.5 m of screen in 4 run(s).",
+      "19.0 m of screen in 3 run(s).",
       "",
       ""
      ],
@@ -4468,7 +4617,7 @@
      [
       "design_derived",
       "met",
-      "22.5 m of screen in 4 run(s).",
+      "19.0 m of screen in 3 run(s).",
       "",
       ""
      ],
@@ -4701,7 +4850,7 @@
      [
       "design_derived",
       "met",
-      "22.5 m of screen in 4 run(s).",
+      "19.0 m of screen in 3 run(s).",
       "",
       ""
      ],
@@ -4934,7 +5083,7 @@
      [
       "design_derived",
       "met",
-      "22.5 m of screen in 4 run(s).",
+      "19.0 m of screen in 3 run(s).",
       "",
       ""
      ],
@@ -5167,7 +5316,7 @@
      [
       "design_derived",
       "met",
-      "22.5 m of screen in 4 run(s).",
+      "19.0 m of screen in 3 run(s).",
       "",
       ""
      ],
@@ -5340,7 +5489,7 @@
  "handover_works": {
   "full": [
    "Drilling of the borehole to 70 m by Air rotary (DTH hammer).",
-   "Construction with 5 inch uPVC casing, 22.5 m of screen, gravel pack and sanitary seal to 6 m.",
+   "Construction with 5 inch uPVC casing, 19 m of screen, gravel pack and sanitary seal to 20 m.",
    "Development of the borehole by air lifting until clear.",
    "Pumping test and yield assessment.",
    "Water quality sampling and laboratory analysis."
@@ -5348,7 +5497,7 @@
   "sited": [
    "Geophysical siting survey and borehole location selection.",
    "Drilling of the borehole to 70 m by Air rotary (DTH hammer).",
-   "Construction with 5 inch uPVC casing, 22.5 m of screen, gravel pack and sanitary seal to 6 m.",
+   "Construction with 5 inch uPVC casing, 19 m of screen, gravel pack and sanitary seal to 20 m.",
    "Development of the borehole by air lifting until clear.",
    "Pumping test and yield assessment.",
    "Water quality sampling and laboratory analysis."

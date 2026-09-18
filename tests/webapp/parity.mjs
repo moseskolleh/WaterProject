@@ -151,10 +151,28 @@ await withPage(async (page, base, consoleErrors) => {
       ionic: assessed.ionic && assessed.ionic.error_percent,
     };
 
-    const design = C.designBorehole({ log: log, staticWaterLevelM: test.static_water_level_m });
+    const design = C.designBorehole({
+      log: log, staticWaterLevelM: test.static_water_level_m, pumpIntakeM: 52,
+    });
     out.design = {
       depth: design.total_depth_m, screens: design.screens.map((s) => [s.top_m, s.bottom_m]),
       gravel: design.gravel_pack, screen_len: design.total_screen_length_m,
+      // workstream 4: the log's own words decide the design
+      backfill: design.backfill,
+      annular_fill: design.annular_fill,
+      annulus_mm: design.annulus_mm,
+      bore_in: design.borehole_diameter_in,
+      as_built: design.as_built,
+      construction_note: design.construction_note,
+      pump_intake: design.pump_intake_m,
+      basis: design.design_basis.slice(),
+      flags: design.flags.map((f) => [f.level, f.code]),
+      summary_rows: C.designSummaryRows(design).map((r) => [r[0], r[1]]),
+      gravel_interval: C.inputsFromDesign(design).gravel_interval_m,
+      grout: log.grouting_depth_m,
+      installed_screens: log.installed_screens_m.map((s) => [s[0], s[1]]),
+      bands: C.lithologyBands(log.intervals).map((b) => [b.top_m, b.bottom_m, b.label]),
+      // the seal the drawing shows is the seal the BoQ prices
       seal: design.sanitary_seal,
       cement_bags: C.inputsFromDesign(design).cement_bags,
     };
@@ -792,6 +810,36 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify(parsed.design.seal) + ' vs ' + JSON.stringify(R.design.seal));
   check('design: cement for the seal', close(parsed.design.cement_bags, R.design.cement_bags),
     `js ${parsed.design.cement_bags} vs py ${R.design.cement_bags}`);
+  // workstream 4: the log's own words decide the design, and every document
+  // follows it word for word
+  for (const [key, label] of [
+    ['depth', 'total depth'], ['screen_len', 'total screen length'],
+    ['annulus_mm', 'annulus per side'], ['bore_in', 'bore diameter as logged'],
+    ['pump_intake', 'pump intake moved into plain casing'],
+    ['gravel_interval', 'gravel priced only where it can be placed'],
+    ['grout', 'grout depth from the log'],
+  ]) {
+    check(`design: ${label}`, close(parsed.design[key], R.design[key]),
+      `js ${parsed.design[key]} vs py ${R.design[key]}`);
+  }
+  for (const [key, label] of [
+    ['annular_fill', 'annular fill'], ['as_built', 'as built'],
+    ['construction_note', 'construction note'],
+  ]) {
+    check(`design: ${label}`, parsed.design[key] === R.design[key],
+      `js ${JSON.stringify(parsed.design[key])}\n     py ${JSON.stringify(R.design[key])}`);
+  }
+  for (const [key, label] of [
+    ['gravel', 'annular fill interval'], ['backfill', 'backfill'],
+    ['basis', 'basis sentences, word for word'], ['flags', 'flags'],
+    ['summary_rows', 'summary rows, word for word'],
+    ['installed_screens', 'installed screens from the log'],
+    ['bands', 'lithology bands'],
+  ]) {
+    check(`design: ${label}`,
+      JSON.stringify(parsed.design[key]) === JSON.stringify(R.design[key]),
+      `js ${JSON.stringify(parsed.design[key])}\n     py ${JSON.stringify(R.design[key])}`);
+  }
   check('costing: a manual estimate prices the seal it is given',
     close(parsed.costing_manual.cement_bags, R.costing_manual.cement_bags) &&
       parsed.costing_manual.seal_note === R.costing_manual.seal_note,

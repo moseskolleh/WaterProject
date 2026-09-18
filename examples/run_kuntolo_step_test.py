@@ -66,7 +66,7 @@ def main(out_root: Path | None = None) -> None:
         PumpingReportInputs(
             analysis=analysis,
             figures_dir=project.figures,
-            analyst_name="A. N. Analyst",
+            # no placeholder analyst: the signature block is left for a name
             readiness=readiness,
         ),
         project.report_path("Kuntolo_Pumping_Test_Report.docx"),

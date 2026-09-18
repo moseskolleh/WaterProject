@@ -33,6 +33,7 @@ from scipy.special import exp1
 
 from ..config import PumpingConfig
 from ..models import DataFlag, PumpingTest
+from ..utils import plural
 
 MIN_PER_DAY = 1440.0
 
@@ -1294,7 +1295,7 @@ def analyse_pumping_test(
                     DataFlag(
                         "warning",
                         "step_test_pending",
-                        f"Step test analysis pending: only {len(positive)} step(s) "
+                        f"Step test analysis pending: only {plural(len(positive), 'step')} "
                         "with discharge show positive drawdown, and the fit "
                         "needs at least two.",
                     )

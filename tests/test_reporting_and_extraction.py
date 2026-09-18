@@ -62,9 +62,8 @@ def test_geophysical_report_structure(geophysical_report):
         "1. Introduction",
         "2. Background and Geology of the Project Area",
         "3.1 Reconnaissance Survey",
-        "3.2.1 Resistivity Profiling",
-        "3.2.2 Selection of VES Points",
-        "3.2.3 Vertical Electrical Sounding (VES)",
+        "Sounding positions",
+        "3.2.1 Vertical Electrical Sounding (VES)",
         "4. Data Analysis and Interpretation",
         "order of preference for drilling",
         "5. Conclusions and Recommendations",
@@ -585,3 +584,44 @@ def test_a_two_step_fit_says_it_is_exact_by_construction(sample_data, tmp_path):
     assert "R squared 1.000" not in text
     assert "equivalent pumping time of 112 minutes" in text
     assert "(indicative)" in text
+
+
+def test_the_drawing_is_captioned_as_what_it_is(sample_data, tmp_path):
+    """Dr Timbo's log records no casing string; the drawing was "as-built"."""
+    d = sample_data / "dr_timbo"
+    log = read_drilling_workbook(d / "dr_timbo_drilling_log.xlsx")
+    design = design_borehole(log=log, static_water_level_m=9.44, pump_intake_m=52.0)
+    completion = build_completion_report(
+        CompletionReportInputs(log=log, design=design, figures_dir=tmp_path),
+        tmp_path / "completion.docx",
+    )
+    text = _document_text(completion)
+    assert "5. Borehole Construction Design" in text
+    assert "this is a design, not an as-built record" in text
+    assert "As-built" not in text
+    assert "Design notes:" in text and "thin_annulus" in text
+    assert "rather than the 52 m the yield recommendation asked for" in text
+    # the intake the design moved out of the screen is the one every table prints
+    assert "Recommended pump intake | 54 m" in text or "54 m" in text
+    assert "52 m below the top of the casing" not in text
+    assert "Annular fill" in text and "no gravel pack" in text
+    assert "0-20 m cement grout" in text
+    handover = build_handover_report(
+        HandoverReportInputs(site=log.site, log=log, design=design, figures_dir=tmp_path),
+        tmp_path / "handover.docx",
+    )
+    text = _document_text(handover)
+    assert "not an as-built record" in text
+    assert "Design notes:" in text
+    # with the screens recorded as installed the same reports say as built
+    log.installed_screens_m = [(25.0, 35.0), (48.0, 53.0), (59.0, 63.0)]
+    built = design_borehole(log=log, static_water_level_m=9.44)
+    assert built.as_built
+    completion = build_completion_report(
+        CompletionReportInputs(log=log, design=built, figures_dir=tmp_path),
+        tmp_path / "completion_built.docx",
+    )
+    text = _document_text(completion)
+    assert "5. Borehole Construction" in text and "Construction Design" not in text
+    assert "As-built construction summary" in text
+    assert "screens as installed, recorded on the drilling log" in text

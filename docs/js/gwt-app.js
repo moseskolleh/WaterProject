@@ -1894,7 +1894,9 @@
     var nodes = [
       pageHead('Borehole design', 'Screens against the aquifer and below the ' +
         'static level, plain casing, a sump, gravel pack, backfill and a cement ' +
-        'sanitary seal — assembled by the rules in Settings and drawn to scale.'),
+        'sanitary seal — assembled by the rules in Settings and drawn to scale. ' +
+        'When the log records the screens installed, the drawing is an as-built ' +
+        'record instead of a design.'),
     ];
 
     var suggestedDepth = (derived.log && derived.log.total_depth_m) ||
@@ -1932,23 +1934,44 @@
     }
 
     var design = derived.design;
-    nodes.push(card('Construction', [
+    /* The drawing is an as-built record only when the log records the
+     * screens the crew set (design.as_built); otherwise the rules generated
+     * it from the log and the page says so instead of calling it as-built.
+     * The diameters, the annular fill and the pump intake are read off the
+     * design object: the drilled diameter is the log's where it records one,
+     * the fill follows the annulus (a 19 mm annulus carries no gravel pack)
+     * and the intake may have been moved out of a screen into plain casing. */
+    var drawingTitle = design.as_built ? 'As-built borehole record'
+      : 'Borehole construction design';
+    var diameterLogged = !!(derived.log && (derived.log.intervals || []).some(
+      function (iv) { return iv.bit_diameter_in; }));
+    var hasIntake = design.pump_intake_m !== null && design.pump_intake_m !== undefined;
+    nodes.push(card(design.as_built ? 'Construction (as built)' : 'Construction', [
       S.statRow([
         S.stat('Total depth', C.fmtNum(design.total_depth_m) + ' m'),
-        S.stat('Screen', C.fmtNum(design.total_screen_length_m) + ' m',
+        S.stat(design.as_built ? 'Screen (as installed)' : 'Screen',
+          C.fmtNum(design.total_screen_length_m) + ' m',
           design.screens.length + ' section(s), slot ' +
           C.fmtNum(design.screen_slot_mm) + ' mm'),
-        S.stat('Casing', design.casing_diameter_in + '" ' + design.casing_material,
-          'in a ' + design.borehole_diameter_in + '" hole'),
-        S.stat('Gravel pack', design.gravel_pack[0].toFixed(0) + '–' +
-          design.gravel_pack[1].toFixed(0) + ' m'),
-      ]),
-      design.flags.length ? S.checkList(design.flags.map(function (f) {
-        return { level: f.level, message: f.message };
-      })) : null,
+        S.stat('Casing', C.formatG(design.casing_diameter_in) + '" ' +
+          design.casing_material,
+          'in a ' + C.formatG(design.borehole_diameter_in) + '" hole' +
+          (diameterLogged ? ' as logged' : '')),
+        S.stat('Annular fill', C.formatG(design.gravel_pack[0]) + '–' +
+          C.formatG(design.gravel_pack[1]) + ' m', design.annular_fill_label),
+        hasIntake ? S.stat('Pump intake', C.formatG(design.pump_intake_m) + ' m',
+          'below the top of the casing') : null,
+      ].filter(Boolean)),
+      /* every flag the design raised, warnings and errors included: the thin
+       * annulus and the moved pump intake used to reach no page */
+      design.flags.length ? flagList(design.flags) : null,
       el('div.split', [
-        charts.figure(charts.boreholeDesign(design, derived.log),
-          'Borehole construction design', { filename: 'borehole_design' }),
+        el('div', [
+          charts.figure(charts.boreholeDesign(design, derived.log),
+            drawingTitle, { filename: design.as_built ? 'as_built_record'
+              : 'borehole_design' }),
+          el('p.muted', design.construction_note),
+        ]),
         el('div', [
           S.table([
             { key: '0', label: 'Item' }, { key: '1', label: 'Detail' },
@@ -1994,7 +2017,8 @@
 
     nodes.push(reportCard('Borehole completion report', 'completion',
       'Introduction, methodology, drilling record, the borehole log table and ' +
-      'the as-built construction.'));
+      (design.as_built ? 'the as-built construction.'
+        : 'the borehole construction design generated from the drilling log.')));
     nodes.push(nextStep('Next, analyse the pumping test to get a yield.',
       'Pumping test', 'pumping'));
     return nodes;
@@ -2104,6 +2128,22 @@
           store.set('spine.overriding', spec.stage); render();
         }, { variant: 'ghost' }),
       ]),
+    ]);
+  }
+
+  /* Where a page prints the yield recommendation's pump intake and the
+   * borehole design has moved that depth out of a screen into plain casing,
+   * say so in the design's words: the design page, the drawing and the
+   * completion and handover reports all print design.pump_intake_m. */
+  function pumpIntakeMovedNote() {
+    var design = derived.design;
+    if (!design || !design.flags) return null;
+    var moved = design.flags.filter(function (f) { return f.code === 'pump_intake_moved'; });
+    if (!moved.length) return null;
+    return el('div.callout', [
+      el('p', moved[0].message),
+      el('p.muted', 'The borehole design and the completion and handover reports ' +
+        'print the intake at ' + C.formatG(design.pump_intake_m) + ' m.'),
     ]);
   }
 
@@ -2282,6 +2322,14 @@
   function spineDesignStage(view) {
     var section = view.section, design = view.design, y = design.yield;
     var errors = design.flags.filter(function (f) { return f.level === 'error'; });
+    /* the intake beside a design is the design's (section.levels.pumpIntake
+     * is design.pump_intake_m): it may have moved the yield recommendation's
+     * depth out of a screen into plain casing */
+    var levels = section.levels || {};
+    var intakeM = levels.pumpIntake !== null && levels.pumpIntake !== undefined
+      ? levels.pumpIntake : y.pumpDepthM;
+    var intakeMoved = intakeM !== y.pumpDepthM && y.pumpDepthM !== null &&
+      y.pumpDepthM !== undefined;
     var clean = !errors.length &&
       design.flags.every(function (f) { return f.level === 'info'; });
 
@@ -2330,7 +2378,9 @@
             'projected to ' + y.designPeriodDays + ' days, safety factor ' +
             y.safetyFactor),
           S.stat('Transmissivity', y.transmissivity + ' m²/day', 'preferred method'),
-          S.stat('Pump intake', y.pumpDepthM + ' m', 'below the top of the casing'),
+          S.stat('Pump intake', intakeM + ' m', 'below the top of the casing' +
+            (intakeMoved ? ', moved to plain casing from the ' + y.pumpDepthM +
+              ' m the yield recommendation asked for' : '')),
           S.stat('Specific capacity', y.specificCapacity + ' m³/h per m'),
         ]),
         y.methods && y.methods.length ? S.table([
@@ -2742,6 +2792,7 @@
       el('p', rec2.basis),
       rec2.envelope_basis ? el('div.callout', el('p', rec2.envelope_basis)) : null,
       rec2.pump_depth_basis ? el('p.muted', rec2.pump_depth_basis) : null,
+      pumpIntakeMovedNote(),
       rec2.safe_yield_m3_per_h ? el('p.muted',
         'At 20 litres per person per day over an eight hour pumping day, the ' +
         'safe yield serves about ' +
@@ -3691,7 +3742,7 @@
           ['Drilling Method', '', 'Drill Rig', ''],
           ['Start Date', '', 'Completion Date', ''],
           ['Total Depth', '', 'BH Status', ''],
-          ['Grouting Depth', '', '', ''],
+          ['Grouting Depth', '', 'Screens installed (m)', ''],
           [],
           ['Depth Interval (m)', 'From', 'To', 'Penetration rate (m/min)',
             'Sample description / lithology', 'Bit diameter (in)', 'Water strike (m)'],
@@ -3701,7 +3752,9 @@
         ] }];
       },
       note: 'Format the depth column as Text before typing "5-10", or Excel ' +
-        'converts it to a date and the row is skipped.',
+        'converts it to a date and the row is skipped. Fill "Screens installed" ' +
+        'as ranges ("25-35; 48-53") once the string is set: the drawing is then ' +
+        'an as-built record rather than a design.',
     },
     daily: {
       label: "Driller's daily report", file: 'daily_log_template.xlsx',
@@ -5465,9 +5518,15 @@
 
         } else if (kind === 'completion') {
           if (!derived.design) throw new Error('There is no borehole design yet.');
+          /* tagged design: true so the writer finds it whatever its caption;
+           * a drawing the rules generated is not captioned as-built */
           figures.push({
             image: await charts.toPng(charts.boreholeDesign(derived.design, derived.log)),
-            caption: 'Borehole construction design', widthCm: 12,
+            caption: derived.design.as_built
+              ? 'As-built borehole record with lithology and construction columns.'
+              : 'Borehole construction design generated from the drilling log, ' +
+                'with lithology and construction columns.',
+            widthCm: 12, design: true,
           });
           GWT.imageSlot.collect(store.get('photos.completion'), 'completion')
             .forEach(function (photo) {
@@ -5564,9 +5623,15 @@
 
         } else if (kind === 'handover') {
           if (derived.design) {
+            /* an as-built diagram only when the log records the screens
+             * installed; otherwise the design the rules generated */
             figures.push({
               image: await charts.toPng(charts.boreholeDesign(derived.design, derived.log)),
-              caption: 'As-built borehole design', widthCm: 11,
+              caption: derived.design.as_built
+                ? 'As-built borehole diagram.'
+                : 'Borehole construction design generated from the drilling log; ' +
+                  'the log records no casing string, so this is not an as-built record.',
+              widthCm: 11, design: true,
             });
           }
           GWT.imageSlot.collect(store.get('photos.handover'), 'handover')

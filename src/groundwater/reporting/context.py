@@ -7,6 +7,7 @@ maps, generated once into the report's figures directory.
 
 from __future__ import annotations
 
+import math
 import re
 from pathlib import Path
 
@@ -56,6 +57,42 @@ def _map_key(window) -> str:
     return slug or "area"
 
 
+#: A study-area map of a site with a GPS fix spans this much either side
+#: of it unless the overlay points need more: at 10 km the village, the
+#: soundings and the recommended point are told apart, which at the old
+#: fixed 40 km (an 80 km window) they never were.
+STUDY_AREA_RADIUS_KM = 10.0
+
+
+def study_area_radius_km(site: SiteMetadata | None, points: list[dict] | None,
+                         ceiling_km: float = 40.0) -> float:
+    """The half-width of the study-area map, from what has to fit on it."""
+    lats, lons = [], []
+    if site is not None and site.latlon is not None:
+        lats.append(site.latlon[0])
+        lons.append(site.latlon[1])
+    for point in points or []:
+        if point.get("lat") is not None and point.get("lon") is not None:
+            lats.append(float(point["lat"]))
+            lons.append(float(point["lon"]))
+    if len(lats) < 2:
+        return min(STUDY_AREA_RADIUS_KM, ceiling_km)
+    # the map is centred on the site (area_window), so what has to fit is
+    # the farthest point from it, not half the spread between the points
+    if site is not None and site.latlon is not None:
+        centre_lat, centre_lon = site.latlon
+    else:
+        centre_lat, centre_lon = sum(lats) / len(lats), sum(lons) / len(lons)
+    cos_lat = math.cos(math.radians(centre_lat))
+    farthest = max(
+        math.hypot((lat - centre_lat) * 111.32, (lon - centre_lon) * 111.32 * cos_lat)
+        for lat, lon in zip(lats, lons, strict=True)
+    )
+    # the farthest point with a quarter of the frame to spare beyond it
+    needed = farthest * 1.25 + 1.0
+    return float(min(max(STUDY_AREA_RADIUS_KM, needed), ceiling_km))
+
+
 def context_map_figures(
     site: SiteMetadata | None,
     figures_dir: str | Path,
@@ -102,8 +139,11 @@ def context_map_figures(
     out: dict[str, Path] = {}
     study = figures / f"study_area_map_{token}.png"
     try:
+        # a site with a fix is mapped at the scale its points need; an
+        # area without one is mapped at the area's own size by area_window
         plot_study_area_map(site, path=study, style=style,
-                            radius_km=min(local_radius_km, 40.0),
+                            radius_km=study_area_radius_km(
+                                site, points, ceiling_km=min(local_radius_km, 40.0)),
                             points=points or [], mark_site=mark_site)
         out["study_area"] = study
     except ValueError:
