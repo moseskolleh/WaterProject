@@ -46,19 +46,28 @@ def _health_panel() -> list[WaterQualityResult]:
 
 # --- water quality: microbiological classification --------------------------
 
-def test_total_coliform_is_a_health_exceedance_not_aesthetic():
-    """Faecal-indicator bacteria must never be reported as a taste problem."""
+def test_total_coliform_is_a_national_failure_not_aesthetic_nor_faecal():
+    """Coliforms are never a taste problem; nor are they faecal contamination.
+
+    WHO sets no health-based guideline for total coliforms: they indicate
+    ingress or an unprotected wellhead, and E. coli is the faecal indicator.
+    Three reports used to call a sample with E. coli 0 "faecal
+    contamination" and a WHO health failure on total coliforms.
+    """
     a = assess_sample(_quality_sample(
         WaterQualityResult("pH", 7.2),
         WaterQualityResult("Total coliforms", 40.0, unit="CFU/100mL"),
         WaterQualityResult("Chloride", 30.0),
         WaterQualityResult("TDS", 200.0),
     ))
-    names = {r.parameter for r in a.health_exceedances}
-    assert "Total coliforms" in names
+    assert "Total coliforms" in {r.parameter for r in a.national_exceedances}
+    assert "Total coliforms" not in {r.parameter for r in a.health_exceedances}
     assert "Total coliforms" not in {r.parameter for r in a.aesthetic_exceedances}
+    row = next(r for r in a.all_exceedances if r.parameter == "Total coliforms")
+    assert "not of faecal contamination" in row.remark
+    assert "WHO sets no health based guideline" in row.remark
     assert "usable for drinking" not in a.verdict
-    assert "health based guideline" in a.verdict
+    assert a.verdict_state == "national_fail"
 
 
 def test_ecoli_still_health_exceedance():
@@ -304,10 +313,11 @@ def test_app_survives_integer_meta_zone():
 # --- app: a deep sounding must not brick the guided start -------------------
 
 def test_guided_start_survives_depth_beyond_the_widget_range():
-    """A sounding that resolves no water zone recommends its investigated
-    depth (max AB/2), which on a deep survey exceeds the guided start's
-    300 m field. Streamlit raises on an out-of-range prefill, so the costing
-    step took the whole page down with a red traceback."""
+    """A sounding that resolves no water zone recommends the depth it
+    resolves (about half its largest AB/2), which on a deep survey exceeds
+    the guided start's 300 m field. Streamlit raises on an out-of-range
+    prefill, so the costing step took the whole page down with a red
+    traceback."""
     from pathlib import Path
 
     pytest.importorskip("streamlit")
@@ -319,7 +329,7 @@ def test_guided_start_survives_depth_beyond_the_widget_range():
 
     cfg = Config()
     ab2 = np.array([1, 2, 3, 5, 7, 10, 15, 20, 30, 40, 60, 80, 100, 150,
-                    200, 300, 400.0])
+                    200, 300, 400, 600, 800.0])
     # thin cover on fresh basement: nothing water bearing is resolved
     rho = forward_schlumberger((np.array([800.0, 4000.0]), np.array([4.0])), ab2)
     sounding = VESSounding(
@@ -822,8 +832,17 @@ def test_the_design_flags_its_own_annulus_and_an_impossible_pump_intake():
 
     too_deep = design_borehole(log=log, static_water_level_m=10.0, pump_intake_m=80.0)
     assert any(f.code == "pump_intake_below_hole" and f.level == "error" for f in too_deep.flags)
+    # an intake inside a screen is moved into plain casing when the string
+    # has any, and only flagged as unplaceable when it has none
     screened = design_borehole(log=log, static_water_level_m=10.0, pump_intake_m=27.0)
-    assert any(f.code == "pump_intake_in_screen" for f in screened.flags)
+    assert any(f.code == "pump_intake_moved" for f in screened.flags)
+    assert not any(f.code == "pump_intake_in_screen" for f in screened.flags)
+    assert screened.pump_intake_m == 19.0     # 1 m above the 20-48 m screen
+    assert any("rather than the 27 m" in b for b in screened.design_basis)
+    boxed = design_borehole(log=log, static_water_level_m=12.0, pump_intake_m=27.0,
+                            screens_m=[(13.0, 48.0)])
+    assert any(f.code == "pump_intake_in_screen" for f in boxed.flags)
+    assert boxed.pump_intake_m == 27.0
     dry = design_borehole(log=log, static_water_level_m=10.0, pump_intake_m=8.0)
     assert any(f.code == "pump_intake_above_swl" for f in dry.flags)
     fine = design_borehole(log=log, static_water_level_m=10.0, pump_intake_m=18.0)

@@ -192,8 +192,8 @@ await withPage(async (page, base, consoleErrors) => {
   // checks. They used to carry the casing size in one engine and the screen
   // run in the other, and the seal in neither.
   check('the construction bullet carries the casing, the screen run and the seal',
-    said(works.full, 'Construction with 5 inch uPVC casing, 22.5 m of screen, ' +
-      'gravel pack and sanitary seal to 6 m.'),
+    said(works.full, 'Construction with 5 inch uPVC casing, 19 m of screen, ' +
+      'gravel pack and sanitary seal to 20 m.'),
     JSON.stringify(works.full));
   check('a siting survey is listed only where one was interpreted',
     !said(works.full, 'Geophysical siting survey') &&
@@ -300,33 +300,58 @@ await withPage(async (page, base, consoleErrors) => {
   // data is the analyst's own now; supply the one record still missing and
   // the document stops hedging. Both were needed, which is the point: the
   // stamp comes off when the evidence is there, and not before.
+  //
+  // The sample's pumping test is 30 minutes inside its casing storage, so
+  // its yield is indicative and the handover keeps "Yield established"
+  // outstanding whatever the position says (the Python gate does the same,
+  // and tests/webapp/reference.json records it). Recording the position
+  // therefore clears the position gate and the hedge on the handover, and
+  // clears the stamp itself on the water quality report, whose gate has no
+  // yield requirement.
   await page.evaluate(() => {
     window.GWT.app.store.set('site.easting', 778000);
     window.GWT.app.store.set('site.northing', 946000);
   });
   const locatedText = await issued('handover');
-  const located = await page.evaluate((text) => {
+  const qualityText = await issued('quality');
+  const located = await page.evaluate(([text, qtext]) => {
     const r = window.GWT.app.reportReadiness('handover');
+    const q = window.GWT.app.reportReadiness('quality');
+    const position = r.requirements.find((x) => x.key === 'site_located');
     return {
       state: r.state,
-      certifiable: r.is_certifiable,
+      position: position ? position.state : null,
+      outstanding: r.unmet.map((u) => u.key),
       summary: r.summary,
-      stamped: text.includes('PROVISIONAL'),
       hedged: text.includes('No GPS position is recorded for it'),
+      quality_state: q.state,
+      quality_certifiable: q.is_certifiable,
+      quality_stamped: qtext.includes('PROVISIONAL'),
+      quality_hedged: qtext.includes('No GPS position is recorded for it'),
     };
-  }, locatedText);
+  }, [locatedText, qualityText]);
   check('recording the position is what clears the stamp',
-    located.certifiable === true && located.state === 'ready' &&
-    located.stamped === false && located.hedged === false,
+    located.position === 'met' && located.hedged === false &&
+    located.state === 'not_ready' &&
+    JSON.stringify(located.outstanding) === JSON.stringify(['yield_established']) &&
+    located.summary === 'Not ready to certify - outstanding: Yield established.' &&
+    located.quality_state === 'ready' && located.quality_certifiable === true &&
+    located.quality_stamped === false && located.quality_hedged === false,
     JSON.stringify(located));
 
   // --- an interim document says who issued it and why ------------------------
+  // Both outstanding requirements are overridden, each with its reason: an
+  // override on the position alone would leave the indicative yield unmet
+  // and the document provisional rather than an override issue.
   await page.evaluate(() => {
     window.GWT.app.store.set('site.easting', null);
     window.GWT.app.store.set('site.northing', null);
     window.GWT.app.store.set('overrides', {
-      handover: { site_located: { reason: 'GPS unit failed on the day',
-        by: 'M. Kolleh' } },
+      handover: {
+        site_located: { reason: 'GPS unit failed on the day', by: 'M. Kolleh' },
+        yield_established: { reason: 'yield to be confirmed by a longer test',
+          by: 'M. Kolleh' },
+      },
     });
   });
   const overrideText = await issued('handover');

@@ -30,11 +30,12 @@ HERE = Path(__file__).parent
 TEST_FILE = HERE / "data" / "kuntolo" / "kuntolo_step_test.xlsx"
 
 
-def main() -> None:
+def main(out_root: Path | None = None) -> None:
     project = Project.create(
-        HERE / "projects" / "kuntolo",
+        (out_root or HERE / "projects") / "kuntolo",
         SiteMetadata(client="ACF", community="Kuntoloh", district="Port Loko"),
     )
+    project.clear_outputs()
 
     test = read_pumping_workbook(TEST_FILE)
     print(f"test type: {test.test_type}, steps: {len(test.steps)}, "
@@ -65,7 +66,7 @@ def main() -> None:
         PumpingReportInputs(
             analysis=analysis,
             figures_dir=project.figures,
-            analyst_name="A. N. Analyst",
+            # no placeholder analyst: the signature block is left for a name
             readiness=readiness,
         ),
         project.report_path("Kuntolo_Pumping_Test_Report.docx"),

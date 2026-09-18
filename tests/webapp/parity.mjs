@@ -90,6 +90,56 @@ await withPage(async (page, base, consoleErrors) => {
       pump_depth: analysis.yield_recommendation.pump_installation_depth_m,
       range_text: analysis.yield_range_text,
       flags: analysis.flags.map((f) => [f.level, f.code]),
+      // workstream 3: what the yield is worth, and why each method was or
+      // was not adopted
+      source: analysis.transmissivity_source,
+      qualifies: C.adoptedFit(analysis).qualifies,
+      disqualified: Object.keys(analysis.disqualified).sort(),
+      casing_storage_min: analysis.casing_storage_min,
+      u_check: analysis.cooper_jacob ? analysis.cooper_jacob.u_check : null,
+      rec_intercept: analysis.recovery ? analysis.recovery.intercept_m : null,
+      rec_intercept_fraction: analysis.recovery ? analysis.recovery.intercept_fraction : null,
+      rec_pumping_time: analysis.recovery ? analysis.recovery.pumping_time_min : null,
+      theis_S: analysis.theis ? analysis.theis.storativity : null,
+      confidence: analysis.yield_recommendation.confidence,
+      confidence_reasons: analysis.yield_recommendation.confidence_reasons.slice(),
+      confidence_text: analysis.yield_recommendation.confidence_text,
+      specific_capacity: analysis.yield_recommendation.specific_capacity_m3hr_per_m,
+      specific_capacity_basis: analysis.yield_recommendation.specific_capacity_basis,
+      pump_depth_basis: analysis.yield_recommendation.pump_depth_basis,
+      deepest_level: analysis.yield_recommendation.deepest_pumping_level_m,
+      basis: analysis.yield_recommendation.basis,
+      type_text: C.testTypeText(test.test_type),
+    };
+
+    // The step test with the discharges an analyst would type in: the first
+    // step ends above static and gets no drawdown fit, the recovery is read
+    // against an equivalent time, and the two-step Hantush-Bierschenk line
+    // says it is exact by construction.
+    const stepQ = C.pumpingFromGrid(stepSheets[0].rows, 'kuntolo_step_test.xlsx');
+    [1.5, 2.2, 3.0].forEach((q, i) => { stepQ.steps[i].discharge_m3_per_h = q; });
+    const stepAnalysis = C.analysePumpingTest(stepQ);
+    const stepRec = stepAnalysis.yield_recommendation;
+    out.step_analysis = {
+      T: stepAnalysis.transmissivity_m2_per_day,
+      source: stepAnalysis.transmissivity_source,
+      qualifies: C.adoptedFit(stepAnalysis).qualifies,
+      cj: stepAnalysis.cooper_jacob ? stepAnalysis.cooper_jacob.transmissivity_m2_per_day : null,
+      theis: stepAnalysis.theis ? stepAnalysis.theis.transmissivity_m2_per_day : null,
+      rec: stepAnalysis.recovery ? stepAnalysis.recovery.transmissivity_m2_per_day : null,
+      rec_pumping_time: stepAnalysis.recovery ? stepAnalysis.recovery.pumping_time_min : null,
+      rec_equivalent: stepAnalysis.recovery ? stepAnalysis.recovery.equivalent_time : null,
+      B: stepAnalysis.step_test ? stepAnalysis.step_test.aquifer_loss_B : null,
+      C: stepAnalysis.step_test ? stepAnalysis.step_test.well_loss_C : null,
+      two_point: stepAnalysis.step_test ? stepAnalysis.step_test.two_point : null,
+      safe: stepRec.safe_yield_m3_per_h,
+      pump_depth: stepRec.pump_installation_depth_m,
+      confidence: stepRec.confidence,
+      confidence_reasons: stepRec.confidence_reasons.slice(),
+      pump_depth_basis: stepRec.pump_depth_basis,
+      specific_capacity_basis: stepRec.specific_capacity_basis,
+      flags: stepAnalysis.flags.map((f) => [f.level, f.code]),
+      type_text: C.testTypeText(stepQ.test_type),
     };
 
     const assessed = C.assessSample(sample);
@@ -101,10 +151,28 @@ await withPage(async (page, base, consoleErrors) => {
       ionic: assessed.ionic && assessed.ionic.error_percent,
     };
 
-    const design = C.designBorehole({ log: log, staticWaterLevelM: test.static_water_level_m });
+    const design = C.designBorehole({
+      log: log, staticWaterLevelM: test.static_water_level_m, pumpIntakeM: 52,
+    });
     out.design = {
       depth: design.total_depth_m, screens: design.screens.map((s) => [s.top_m, s.bottom_m]),
       gravel: design.gravel_pack, screen_len: design.total_screen_length_m,
+      // workstream 4: the log's own words decide the design
+      backfill: design.backfill,
+      annular_fill: design.annular_fill,
+      annulus_mm: design.annulus_mm,
+      bore_in: design.borehole_diameter_in,
+      as_built: design.as_built,
+      construction_note: design.construction_note,
+      pump_intake: design.pump_intake_m,
+      basis: design.design_basis.slice(),
+      flags: design.flags.map((f) => [f.level, f.code]),
+      summary_rows: C.designSummaryRows(design).map((r) => [r[0], r[1]]),
+      gravel_interval: C.inputsFromDesign(design).gravel_interval_m,
+      grout: log.grouting_depth_m,
+      installed_screens: log.installed_screens_m.map((s) => [s[0], s[1]]),
+      bands: C.lithologyBands(log.intervals).map((b) => [b.top_m, b.bottom_m, b.label]),
+      // the seal the drawing shows is the seal the BoQ prices
       seal: design.sanitary_seal,
       cement_bags: C.inputsFromDesign(design).cement_bags,
     };
@@ -218,6 +286,18 @@ await withPage(async (page, base, consoleErrors) => {
       id: r.sounding_id, rank: r.rank, suitability: r.suitability,
       grade: r.grade, components: r.components, rationale: r.rationale,
     }));
+    // the interpretation itself and the preference table printed from it
+    out.interpretations = rokelInterps.map((i) => ({
+      id: i.sounding_id, water_zones: i.water_zones,
+      max_drilling_depth_m: i.max_drilling_depth_m,
+      investigation_depth_m: i.investigation_depth_m,
+      max_spacing_m: i.max_spacing_m,
+      basement_not_resolved: i.basement_not_resolved,
+      confidence: i.confidence, fit_quality: i.fit_quality,
+      flags: i.flags.map((f) => [f.level, f.code, f.message]),
+      narrative: i.narrative,
+    }));
+    out.preference = C.drillingPreferenceTable(rokelInterps);
 
     out.geo = [[8.4657, -13.2317], [8.7043, -11.4084], [7.9560, -11.7400]]
       .map(([lat, lon]) => {
@@ -693,6 +773,31 @@ await withPage(async (page, base, consoleErrors) => {
   });
   check('analysis: range text', parsed.analysis.range_text === R.analysis.range_text,
     `js "${parsed.analysis.range_text}" vs py "${R.analysis.range_text}"`);
+  // what the yield is worth, and why each method was or was not adopted:
+  // numbers to tolerance, everything else word for word
+  const sameValue = (js, py) => {
+    if (typeof py === 'number' && typeof js === 'number') return close(js, py, 1e-4);
+    if (Array.isArray(py) || (py && typeof py === 'object')) {
+      return JSON.stringify(js) === JSON.stringify(py);
+    }
+    return js === py;
+  };
+  const describe = (v) => (typeof v === 'string' ? `"${v}"` : JSON.stringify(v));
+  ['casing_storage_min', 'rec_intercept', 'rec_intercept_fraction', 'rec_pumping_time',
+    'theis_S', 'specific_capacity', 'deepest_level', 'source', 'qualifies',
+    'disqualified', 'u_check', 'confidence', 'confidence_reasons', 'confidence_text',
+    'specific_capacity_basis', 'pump_depth_basis', 'basis', 'type_text', 'flags',
+  ].forEach((k) => {
+    check(`analysis: ${k}`, sameValue(parsed.analysis[k], R.analysis[k]),
+      `js ${describe(parsed.analysis[k])}\n     py ${describe(R.analysis[k])}`);
+  });
+  ['T', 'source', 'qualifies', 'cj', 'theis', 'rec', 'rec_pumping_time', 'rec_equivalent',
+    'B', 'C', 'two_point', 'safe', 'pump_depth', 'confidence', 'confidence_reasons',
+    'pump_depth_basis', 'specific_capacity_basis', 'flags', 'type_text',
+  ].forEach((k) => {
+    check(`step analysis: ${k}`, sameValue(parsed.step_analysis[k], R.step_analysis[k]),
+      `js ${describe(parsed.step_analysis[k])}\n     py ${describe(R.step_analysis[k])}`);
+  });
   check('assessment: verdict', parsed.assessed.verdict === R.assessed.verdict,
     `js "${parsed.assessed.verdict}"\n     py "${R.assessed.verdict}"`);
   check('assessment: wqi', close(parsed.assessed.wqi, R.assessed.wqi),
@@ -705,6 +810,36 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify(parsed.design.seal) + ' vs ' + JSON.stringify(R.design.seal));
   check('design: cement for the seal', close(parsed.design.cement_bags, R.design.cement_bags),
     `js ${parsed.design.cement_bags} vs py ${R.design.cement_bags}`);
+  // workstream 4: the log's own words decide the design, and every document
+  // follows it word for word
+  for (const [key, label] of [
+    ['depth', 'total depth'], ['screen_len', 'total screen length'],
+    ['annulus_mm', 'annulus per side'], ['bore_in', 'bore diameter as logged'],
+    ['pump_intake', 'pump intake moved into plain casing'],
+    ['gravel_interval', 'gravel priced only where it can be placed'],
+    ['grout', 'grout depth from the log'],
+  ]) {
+    check(`design: ${label}`, close(parsed.design[key], R.design[key]),
+      `js ${parsed.design[key]} vs py ${R.design[key]}`);
+  }
+  for (const [key, label] of [
+    ['annular_fill', 'annular fill'], ['as_built', 'as built'],
+    ['construction_note', 'construction note'],
+  ]) {
+    check(`design: ${label}`, parsed.design[key] === R.design[key],
+      `js ${JSON.stringify(parsed.design[key])}\n     py ${JSON.stringify(R.design[key])}`);
+  }
+  for (const [key, label] of [
+    ['gravel', 'annular fill interval'], ['backfill', 'backfill'],
+    ['basis', 'basis sentences, word for word'], ['flags', 'flags'],
+    ['summary_rows', 'summary rows, word for word'],
+    ['installed_screens', 'installed screens from the log'],
+    ['bands', 'lithology bands'],
+  ]) {
+    check(`design: ${label}`,
+      JSON.stringify(parsed.design[key]) === JSON.stringify(R.design[key]),
+      `js ${JSON.stringify(parsed.design[key])}\n     py ${JSON.stringify(R.design[key])}`);
+  }
   check('costing: a manual estimate prices the seal it is given',
     close(parsed.costing_manual.cement_bags, R.costing_manual.cement_bags) &&
       parsed.costing_manual.seal_note === R.costing_manual.seal_note,
@@ -762,6 +897,25 @@ await withPage(async (page, base, consoleErrors) => {
     check(`siting[${i}] ${s.id}: rationale`, s.rationale === R.siting[i].rationale,
       `js ${s.rationale}\n     py ${R.siting[i].rationale}`);
   });
+
+  // --- The interpretation and the preference table ---
+  parsed.interpretations.forEach((s, i) => {
+    const ref = R.interpretations[i];
+    check(`interpretation[${i}] ${s.id}: zones, depths and flags`,
+      JSON.stringify([s.water_zones, s.max_drilling_depth_m, s.investigation_depth_m,
+        s.max_spacing_m, s.basement_not_resolved, s.fit_quality, s.flags]) ===
+      JSON.stringify([ref.water_zones, ref.max_drilling_depth_m, ref.investigation_depth_m,
+        ref.max_spacing_m, ref.basement_not_resolved, ref.fit_quality, ref.flags]),
+      `js ${JSON.stringify([s.water_zones, s.max_drilling_depth_m, s.fit_quality, s.flags])}\n     ` +
+      `py ${JSON.stringify([ref.water_zones, ref.max_drilling_depth_m, ref.fit_quality, ref.flags])}`);
+    check(`interpretation[${i}] ${s.id}: confidence`,
+      close(s.confidence, ref.confidence, 1e-6), `js ${s.confidence} vs py ${ref.confidence}`);
+    check(`interpretation[${i}] ${s.id}: narrative`, s.narrative === ref.narrative,
+      `js ${s.narrative}\n     py ${ref.narrative}`);
+  });
+  check('preference table: the same rows, word for word',
+    JSON.stringify(parsed.preference) === JSON.stringify(R.preference),
+    `js ${JSON.stringify(parsed.preference)}\n     py ${JSON.stringify(R.preference)}`);
 
   // --- Geographic -> UTM ---
   parsed.geo.forEach((g, i) => {

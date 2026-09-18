@@ -20,7 +20,7 @@ Parse, consistency checks, inversion against the original IPI2Win models, hydrog
   - `rokel_ipi2win_models.xlsx` (ipi2win): 2 original model(s), 7 layer(s)
 - Reports:
   - `Rokel_Geophysical_Survey_Report.docx`: certifiable
-- Figures: 17; derived tables: 2
+- Figures: 12; derived tables: 2
 
 ## Kuntoloh - step drawdown test
 
@@ -30,10 +30,10 @@ The pending-yield path: curves and available drawdown now, transmissivity and yi
 
 - Site: Kuntoloh, Port Loko district (ACF)
 - Inputs:
-  - `kuntolo_step_test.xlsx` (pumping): step+recovery test, 92 water level reading(s), 3 step(s), no discharge on the sheet, 3 flag(s) raised by the reader
+  - `kuntolo_step_test.xlsx` (pumping): step+recovery test, 92 water level reading(s), 3 step(s), no discharge on the sheet, 4 flag(s) raised by the reader
 - Reports:
   - `Kuntolo_Pumping_Test_Report.docx`: provisional - outstanding: Pumping test measured, Site position, Yield established
-- Figures: 12
+- Figures: 6
 
 ## Dr Timbo - drilling to handover
 
@@ -47,10 +47,10 @@ Drilling log to borehole design and drawing, constant discharge test, water qual
   - `dr_timbo_constant_test.xlsx` (pumping): constant+recovery test, 11 water level reading(s), 1 step(s)
   - `dr_timbo_water_quality.xlsx` (quality): 28 determinand(s)
 - Reports:
-  - `Dr_Timbo_Borehole_Completion_Report.docx`: provisional - outstanding: Field data, Site position
-  - `Dr_Timbo_Handover_Report.docx`: provisional - outstanding: Field data, Site position
+  - `Dr_Timbo_Borehole_Completion_Report.docx`: provisional - outstanding: Field data, Site position, Yield established
+  - `Dr_Timbo_Handover_Report.docx`: provisional - outstanding: Field data, Site position, Yield established
   - `Dr_Timbo_Water_Quality_Report.docx`: provisional - outstanding: Field data, Site position
-- Figures: 17
+- Figures: 9
 
 ## Packs
 

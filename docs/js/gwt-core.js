@@ -58,6 +58,12 @@
       laterite_min_rho: 800.0,
       max_drilling_margin_m: 10.0,
       round_drilling_depth_to_m: 5.0,
+      depth_of_investigation_factor: 0.5,
+      parsimony_fallback_ratio: 1.15,
+      unreliable_fit_percent: 20.0,
+      fit_confidence_floor: 0.5,
+      unresolved_basement_confidence: 0.85,
+      ranking_tie_points: 3.0,
     },
     pumping: {
       safety_factor: 1.5,
@@ -78,6 +84,17 @@
        * time to reach the design period, so its yield is flagged */
       min_constant_test_min: 240.0,
       min_step_length_min: 60.0,
+      /* Casing storage: Schafer's rule puts the end of the period the pump
+       * spends emptying the casing at 0.6 (dc^2 - dp^2) / (Q/s) minutes; the
+       * diameters default to the design rules' casing and a 1.25 inch riser */
+      casing_diameter_in: 5.0,
+      riser_diameter_in: 1.25,
+      /* a recovery line whose intercept at t/t' = 1 is more than this fraction
+       * of the drawdown the recovery started from is not a Theis recovery
+       * line: reported, but not adopted for the yield */
+      recovery_intercept_max_fraction: 0.25,
+      /* a Theis storativity above this is the casing, not the aquifer */
+      max_plausible_storativity: 0.1,
     },
     design: {
       borehole_diameter_in: 6.5,
@@ -94,6 +111,10 @@
       stickup_m: 0.5,
       min_screen_below_swl_m: 5.0,
       apron_note: 'concrete apron with drainage channel and soakaway',
+      /* A fracture zone the driller names with its depths ("fracture zone
+       * 49-52 m") is screened with this much plain screen either side of
+       * it, rather than the whole logged interval it was written on. */
+      fracture_zone_margin_m: 1.0,
     },
   };
 
@@ -1028,7 +1049,9 @@
     }
     if (!chosen) {
       for (ci = 0; ci < candidates.length; ci++) {
-        if (candidates[ci].err <= 1.15 * bestErr) { chosen = candidates[ci]; break; }
+        if (candidates[ci].err <= cfg.parsimony_fallback_ratio * bestErr) {
+          chosen = candidates[ci]; break;
+        }
       }
     }
     if (!chosen) {
@@ -1154,9 +1177,53 @@
     }
     if (rho <= cfg.clay_max_rho) return ['clay rich saprolite (low permeability)', false];
     if (isBottom) {
-      return ['fractured bedrock, low resistivity indicative of groundwater in fractures', true];
+      /* A conductive half-space is the weathered zone the sounding did not
+       * get to the bottom of, not fractured bedrock: fractured fresh basement
+       * is hundreds to thousands of ohm-m. */
+      return ['weathered or fractured zone, potentially water bearing when ' +
+        'saturated; its base is not resolved within the depth of investigation', true];
     }
     return ['weathered / fractured zone, potentially water bearing when saturated', true];
+  }
+
+  /* How deep a sounding with this largest AB/2 actually resolves: one rule
+   * for the interpretation, every figure and the drilling-depth cap. */
+  function depthOfInvestigation(maxSpacing, cfg) {
+    var c = cfg || defaultConfig().ves;
+    return maxSpacing * c.depth_of_investigation_factor;
+  }
+
+  /* 1.0 at or under the target misfit, falling linearly to the floor at the
+   * unreliable level and staying there. */
+  function fitConfidence(err, cfg) {
+    var c = cfg || defaultConfig().ves;
+    if (err === null || err === undefined) return 1.0;
+    var target = c.target_fit_percent;
+    var unreliable = Math.max(c.unreliable_fit_percent, target + 1e-9);
+    if (err <= target) return 1.0;
+    var frac = Math.min((err - target) / (unreliable - target), 1.0);
+    return 1.0 - (1.0 - c.fit_confidence_floor) * frac;
+  }
+
+  /* "8 m to 40 m", or open-ended "8 m to at least 40 m". */
+  function zoneText(top, bottom, openEnded) {
+    return openEnded
+      ? Math.trunc(top) + ' m to at least ' + Math.trunc(bottom) + ' m'
+      : Math.trunc(top) + ' m to ' + Math.trunc(bottom) + ' m';
+  }
+
+  function zoneCell(top, bottom, openEnded) {
+    return Math.trunc(top) + '-' + Math.trunc(bottom) + (openEnded ? '+' : '');
+  }
+
+  function zoneIsOpen(interp, zone) {
+    var last = interp.water_zones[interp.water_zones.length - 1];
+    return !!interp.basement_not_resolved && last && zone[0] === last[0] && zone[1] === last[1];
+  }
+
+  function drillingDepthText(interp) {
+    var depth = pyFixed(interp.max_drilling_depth_m, 0) + ' m';
+    return (interp.basement_not_resolved ? 'at least ' : 'about ') + depth;
   }
 
   function darZarrouk(layers) {
@@ -1211,9 +1278,10 @@
     var tops = model.depths_top, bottoms = model.depths_bottom;
     var n = model.n_layers, i;
 
-    var investigation;
+    var investigation, maxSpacing = null;
     if (sounding && sounding.ab2 && sounding.ab2.length) {
-      investigation = arrMax(sounding.ab2);
+      maxSpacing = arrMax(sounding.ab2);
+      investigation = depthOfInvestigation(maxSpacing, cfg);
     } else if (n > 1) {
       investigation = bottoms[n - 2] * 2 + 20;
     } else {
@@ -1238,10 +1306,17 @@
 
     /* water zones: the top few metres are vadose, so a zone starts at 3 m */
     var zones = [];
+    var basementNotResolved = false;
     layers.forEach(function (layer) {
       if (!layer.water_bearing) return;
       var top = Math.max(layer.top_m, 3.0);
-      var bottom = isFinite(layer.bottom_m) ? layer.bottom_m : investigation;
+      var bottom;
+      if (isFinite(layer.bottom_m)) {
+        bottom = layer.bottom_m;
+      } else {
+        bottom = investigation;
+        basementNotResolved = bottom - top >= 1.0;
+      }
       if (bottom - top >= 1.0) zones.push([pyRound(top), pyRound(bottom)]);
     });
     zones.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
@@ -1289,6 +1364,37 @@
     });
     if (depthToBasement !== null && depthToBasement < 5 && !zones.length) score *= 0.5;
 
+    /* The misfit and the unresolved basement discount the score before any
+     * ranking reads it. */
+    var err = model.fit_error_percent === undefined ? null : model.fit_error_percent;
+    var confidence = fitConfidence(err, cfg);
+    if (basementNotResolved) confidence *= cfg.unresolved_basement_confidence;
+    score *= confidence;
+
+    var sid = model.sounding_id || (sounding ? sounding.sounding_id : '') || '';
+    var flags = [];
+    var fitQuality = 'ok';
+    if (err !== null && err > cfg.target_fit_percent) {
+      var unreliable = err > cfg.unreliable_fit_percent;
+      fitQuality = unreliable ? 'unreliable' : 'poor';
+      flags.push({ level: 'warning', code: 'poor_fit',
+        message: 'The layered model reproduces the readings to ' + pyFixed(err, 1) +
+          ' percent (ERR), above the ' + formatG(cfg.target_fit_percent) +
+          ' percent target' +
+          (unreliable
+            ? '; the model does not describe the curve and the layer depths are indicative only.'
+            : '; treat the layer depths as approximate.'),
+        context: sid });
+    }
+    if (basementNotResolved) {
+      flags.push({ level: 'info', code: 'basement_not_resolved',
+        message: 'The deepest water-bearing layer is the half-space: the sounding ' +
+          'did not reach its base within the ' + pyFixed(investigation, 0) +
+          ' m it resolves, so the zone is open-ended, the aquifer thickness is a ' +
+          'minimum and the drilling depth is a minimum.',
+        context: sid });
+    }
+
     var dz = darZarrouk(layers);
     var sCover = coverConductance(layers);
     var interp = {
@@ -1310,7 +1416,12 @@
       site_easting: sounding && sounding.site ? sounding.site.easting : null,
       site_northing: sounding && sounding.site ? sounding.site.northing : null,
       site_elevation_m: sounding && sounding.site ? sounding.site.elevation_m : null,
-      flags: [],
+      flags: flags,
+      basement_not_resolved: basementNotResolved,
+      confidence: confidence,
+      fit_error_percent: err,
+      fit_quality: fitQuality,
+      max_spacing_m: maxSpacing,
     };
     interp.narrative = interpretationNarrative(interp);
     return interp;
@@ -1453,14 +1564,31 @@
     });
     if (interp.water_zones.length) {
       var zonesText = interp.water_zones.map(function (z) {
-        return Math.trunc(z[0]) + ' m to ' + Math.trunc(z[1]) + ' m';
+        return zoneText(z[0], z[1], zoneIsOpen(interp, z));
       }).join(', ');
       parts.push('The unusually low resistivity within the interpreted fractured ' +
         'or weathered intervals is indicative of pore electrolyte, possibly ' +
         'groundwater. The possible water zones are ' + zonesText + '.');
+      if (interp.basement_not_resolved) {
+        parts.push('The base of the deepest zone is not resolved: the sounding sees ' +
+          'to about ' + fmtNum(interp.investigation_depth_m) + ' m, and the ' +
+          'conductive ground continues below that.');
+      }
     } else {
       parts.push('No clearly water bearing low resistivity zone is resolved at ' +
         'this point within the investigated depth.');
+    }
+    if (interp.fit_error_percent !== null && interp.fit_error_percent !== undefined) {
+      if (interp.fit_quality === 'unreliable') {
+        parts.push('The model reproduces the readings to ' +
+          fmtNum(interp.fit_error_percent, 3) + ' percent (ERR), well above the ' +
+          'target: it does not describe the curve closely, and the layer depths ' +
+          'are indicative only.');
+      } else if (interp.fit_quality === 'poor') {
+        parts.push('The model reproduces the readings to ' +
+          fmtNum(interp.fit_error_percent, 3) + ' percent (ERR), above the ' +
+          'target, so the layer depths are approximate.');
+      }
     }
     if (interp.depth_to_basement_m !== null) {
       parts.push('The depth to bedrock is estimated at about ' +
@@ -1488,7 +1616,20 @@
   /* Ranks in place, 1 = most preferred. Every caller reading `rank` must rank
    * first: an unranked set leaves every rank null and "best" then falls back to
    * whichever sounding happened to be parsed first. */
-  function rankInterpretations(interpretations, preferredOrder) {
+  /* The one number the points are ranked on: the suitability scorecard's
+   * geological score discounted by the interpretation's confidence, so the
+   * preference table, the summary and the suitability section agree. */
+  function rankingWeight(interp, cfg) {
+    var result = C.assessSiting([interp], cfg)[0];
+    return result.suitability * result.confidence;
+  }
+
+  function rankInterpretations(interpretations, preferredOrder, cfg) {
+    var weight = {};
+    interpretations.forEach(function (i) { weight[i.sounding_id] = rankingWeight(i, cfg); });
+    var byId = function (a, b) {
+      return a.sounding_id < b.sounding_id ? -1 : a.sounding_id > b.sounding_id ? 1 : 0;
+    };
     var ranked;
     if (preferredOrder && preferredOrder.length) {
       var position = {};
@@ -1498,20 +1639,21 @@
           ? preferredOrder.length : position[a.sounding_id];
         var pb = position[b.sounding_id] === undefined
           ? preferredOrder.length : position[b.sounding_id];
-        return pa - pb || b.score - a.score;
+        return pa - pb || weight[b.sounding_id] - weight[a.sounding_id] || byId(a, b);
       });
     } else {
       ranked = interpretations.slice().sort(function (a, b) {
-        return b.score - a.score ||
-          (a.sounding_id < b.sounding_id ? -1 : a.sounding_id > b.sounding_id ? 1 : 0);
+        return weight[b.sounding_id] - weight[a.sounding_id] || byId(a, b);
       });
     }
     ranked.forEach(function (interp, i) { interp.rank = i + 1; });
     return ranked;
   }
 
-  function drillingPreferenceTable(interpretations, preferredOrder) {
-    rankInterpretations(interpretations, preferredOrder);
+  var LAYER_RESISTIVITY_COLUMN = 'Layer resistivity (ohm-m)';
+
+  function drillingPreferenceTable(interpretations, preferredOrder, cfg) {
+    rankInterpretations(interpretations, preferredOrder, cfg);
     return interpretations.map(function (interp, i) {
       return {
         'No.': i + 1,
@@ -1523,13 +1665,13 @@
         'Depth (m)': interp.layers.map(function (l) {
           return isFinite(l.bottom_m) ? fmtNum(l.bottom_m) : '';
         }).join('\n'),
-        'Apparent Resistivity (Ohm-m)': interp.layers.map(function (l) {
+        'Layer resistivity (ohm-m)': interp.layers.map(function (l) {
           return fmtNum(l.rho, 4);
         }).join('\n'),
         'Possible Water Zones (m)': interp.water_zones.map(function (z) {
-          return Math.trunc(z[0]) + '-' + Math.trunc(z[1]);
+          return zoneCell(z[0], z[1], zoneIsOpen(interp, z));
         }).join('\n') || 'none resolved',
-        'Max Drilling Depth (m)': interp.max_drilling_depth_m.toFixed(0) + ' m',
+        'Max Drilling Depth (m)': drillingDepthText(interp),
         Ranking: ordinal(interp.rank),
       };
     });
@@ -1555,6 +1697,10 @@
     classifyCurve: classifyCurve, describeCurveType: describeCurveType,
     interpretModel: interpretModel, rankInterpretations: rankInterpretations,
     drillingPreferenceTable: drillingPreferenceTable,
+    depthOfInvestigation: depthOfInvestigation, fitConfidence: fitConfidence,
+    zoneText: zoneText, zoneCell: zoneCell, zoneIsOpen: zoneIsOpen,
+    drillingDepthText: drillingDepthText, rankingWeight: rankingWeight,
+    LAYER_RESISTIVITY_COLUMN: LAYER_RESISTIVITY_COLUMN,
     fmtNum: fmtNum, fmtRange: fmtRange, formatG: formatG,
     roundSig: roundSig, pyRound: pyRound, pyFixed: pyFixed, expo: expo,
     ordinal: ordinal,
@@ -1660,13 +1806,27 @@
     var rEff = obsRadius ? obsRadius : 0.1;
     var sEff = storativity ? storativity : (opts.assumedStorativity || 1e-3);
     var uStart = rEff * rEff * sEff / (4.0 * T * (fitWindow[0] / MIN_PER_DAY));
-    var uCheck = uStart < cfg.cooper_jacob_u_max
-      ? 'u = ' + expo(uStart, 2) + ' at the start of the fitted window, ' +
+    var noObservation = obsRadius === null || obsRadius === undefined;
+    var uCheck;
+    if (uStart < cfg.cooper_jacob_u_max && noObservation) {
+      /* In the pumped well r is the well radius, so u is tiny from the first
+       * minute whatever the data look like. The criterion is a distance
+       * criterion; it says the straight-line form applies, not that this
+       * line is a good one, and the report used to read it as a validation
+       * of the fit. */
+      uCheck = 'u = ' + expo(uStart, 2) + ' at the start of the fitted window, ' +
+        'below the ' + cfg.cooper_jacob_u_max + ' criterion. In the pumped well ' +
+        'itself this is a distance criterion met from the first minute; it ' +
+        'does not test the fit';
+    } else if (uStart < cfg.cooper_jacob_u_max) {
+      uCheck = 'u = ' + expo(uStart, 2) + ' at the start of the fitted window, ' +
         'below the ' + cfg.cooper_jacob_u_max + ' criterion; the straight line ' +
-        'approximation is valid'
-      : 'u = ' + expo(uStart, 2) + ' at the start of the fitted window ' +
+        'approximation is valid';
+    } else {
+      uCheck = 'u = ' + expo(uStart, 2) + ' at the start of the fitted window ' +
         'exceeds ' + cfg.cooper_jacob_u_max + '; early data were excluded or ' +
         'results should be treated with caution';
+    }
 
     return {
       transmissivity_m2_per_day: T,
@@ -1783,7 +1943,9 @@
    *   s' = 2.303 Q / (4 pi T) log10(t/t')
    * with t since pumping started and t' since it stopped. */
   function theisRecovery(recoveryTimeMin, residualDrawdownM, pumpingDurationMin,
-                         dischargeM3PerH) {
+                         dischargeM3PerH, equivalentTime) {
+    /* pumpingDurationMin is the time t/t' is formed with: after a step test
+     * pass the equivalent time from equivalentPumpingTimeMin and say so. */
     requireDischarge(dischargeM3PerH);
     var tp = [], sp = [], i;
     for (i = 0; i < recoveryTimeMin.length; i++) {
@@ -1800,6 +1962,7 @@
       throw new Error('Residual drawdown does not decrease; check the data');
     }
     var qDay = dischargeM3PerH * 24.0;
+    var start = arrMax(sp);
     return {
       transmissivity_m2_per_day: 2.303 * qDay / (4.0 * Math.PI * fit.slope),
       slope_m_per_log_cycle: fit.slope,
@@ -1810,6 +1973,15 @@
       /* theory puts the line through the origin at t/t' = 1; the fitted line
        * generally does not, and the figure has to draw the line that was fitted */
       intercept_m: fit.intercept,
+      /* the pumping time t/t' was formed with: the pumped duration of a
+       * constant test, or the discharge-weighted equivalent time after a
+       * step test */
+      pumping_time_min: Number(pumpingDurationMin),
+      equivalent_time: !!equivalentTime,
+      /* |intercept| as a fraction of the residual drawdown the recovery
+       * started from; theory says zero, and a large one says the line is not
+       * a Theis recovery line */
+      intercept_fraction: start > 0 ? Math.abs(fit.intercept) / start : 0.0,
     };
   }
 
@@ -1869,6 +2041,9 @@
       steps: steps,
       r_squared: r2,
       fit_note: fitNote,
+      /* a line through two points is exact by construction: R squared is
+       * 1.000 whatever the data, and B, C and the efficiencies are untested */
+      two_point: q.length === 2,
       drawdown_at: function (qDay) { return B * qDay + C * qDay * qDay; },
       efficiency_at: function (qDay) {
         var total = B * qDay + C * qDay * qDay;
@@ -1890,6 +2065,146 @@
     cooper_jacob: 'Cooper-Jacob',
     theis: 'Theis curve fit',
   };
+
+  /* Schafer's (1978) casing-storage rule, t_c = 0.6 (dc^2 - dp^2) / (Q/s)
+   * minutes with the diameters in inches and Q/s in gpm/ft, restated for
+   * diameters in metres and Q/s in m3/h per m: 0.6 x 39.37^2 / 1.342. */
+  var CASING_STORAGE_COEFFICIENT = 693.0;
+
+  /* The words for a field sheet's test type token. The sheets say "step" or
+   * "constant" and the parser appends "+recovery" when a recovery limb was
+   * recorded; a report prints the phrase, never the token. */
+  var TEST_TYPE_WORDS = {
+    step: 'step drawdown test',
+    constant: 'constant discharge test',
+  };
+
+  /* "constant+recovery" -> "constant discharge test with recovery" */
+  function testTypeText(testType) {
+    var text = String(testType === null || testType === undefined ? '' : testType);
+    var plus = text.indexOf('+');
+    var base = plus >= 0 ? text.slice(0, plus) : text;
+    var tail = plus >= 0 ? text.slice(plus + 1) : '';
+    var key = base.trim().toLowerCase();
+    var words = Object.prototype.hasOwnProperty.call(TEST_TYPE_WORDS, key)
+      ? TEST_TYPE_WORDS[key] : (base.trim() || 'pumping') + ' test';
+    return words + (tail ? ' with recovery' : '');
+  }
+
+  /* What a two-step Hantush-Bierschenk fit is worth, in the report's words. */
+  var TWO_POINT_NOTE = 'The line is fitted through two points, so it is exact ' +
+    'by construction: the R squared of 1.000 tests nothing, and B, C and the ' +
+    'efficiencies are indicative until a third step is pumped';
+
+  /* [minutes, isEquivalent]: the pumping time a recovery is read against.
+   * Theis recovery assumes one rate for the whole pumping time. After a step
+   * test the last rate was pumped for the last step only; using the last rate
+   * with the total time says the aquifer was stressed harder than it was and
+   * biases the transmissivity. The usual correction is the discharge-weighted
+   * equivalent time, sum(Q_i dt_i) / Q_last. A constant test, or a step test
+   * missing a rate, uses the recorded duration. */
+  function equivalentPumpingTimeMin(test) {
+    var steps = (test.steps || []).filter(function (s) {
+      return s.time_min && s.time_min.length;
+    });
+    var recorded = test.pumping_duration_min === undefined ? null : test.pumping_duration_min;
+    if (!steps.length) return [recorded, false];
+    var missingQ = steps.some(function (s) {
+      return s.discharge_m3_per_h === null || s.discharge_m3_per_h === undefined;
+    });
+    if (String(test.test_type || '').indexOf('step') !== 0 || steps.length < 2 || missingQ) {
+      return [recorded, false];
+    }
+    var qLast = Number(steps[steps.length - 1].discharge_m3_per_h);
+    var volume = 0.0, previousEnd = 0.0;
+    steps.forEach(function (step) {
+      var finite = step.time_min.filter(function (v) { return isFinite(v); });
+      if (!finite.length) return;
+      var end = arrMax(finite);
+      volume += Number(step.discharge_m3_per_h) * Math.max(end - previousEnd, 0.0);
+      previousEnd = end;
+    });
+    if (qLast <= 0 || volume <= 0) return [recorded, false];
+    return [volume / qLast, true];
+  }
+
+  /* How long casing storage controls the drawdown, in minutes. Early in a
+   * test the pump takes water standing in the casing before it takes much
+   * from the aquifer, and a drawdown curve read inside that period is the
+   * borehole emptying, not the ground responding. A 5 inch casing with a
+   * 1.25 inch riser and a specific capacity of 0.09 m3/h per m gives about
+   * two hours: a thirty-minute test on such a borehole never leaves the
+   * casing. */
+  function casingStorageMin(specificCapacity, config) {
+    var cfg = config || defaultConfig().pumping;
+    if (!specificCapacity || specificCapacity <= 0) return null;
+    var dc = cfg.casing_diameter_in * 0.0254;
+    var dp = cfg.riser_diameter_in * 0.0254;
+    var area = dc * dc - dp * dp;
+    if (area <= 0) return null;
+    return CASING_STORAGE_COEFFICIENT * area / specificCapacity;
+  }
+
+  /* The deepest water level any pumping step reached, metres below datum. */
+  function deepestPumpingLevel(test) {
+    var levels = [];
+    (test.steps || []).forEach(function (s) {
+      var finite = (s.water_level_m || []).filter(function (v) { return isFinite(v); });
+      if (finite.length) levels.push(arrMax(finite));
+    });
+    return levels.length ? arrMax(levels) : null;
+  }
+
+  /* The one pump intake depth a report prints, and why. A report with a
+   * seasonal projection used to say "install at 39 m" in its recommendation
+   * and "set the intake at 40 m" three paragraphs later. The deeper of the
+   * two is the depth, everywhere, and the reason travels with it. */
+  function pumpIntakeDepth(analysis, seasonal) {
+    var rec = analysis ? analysis.yield_recommendation : null;
+    var depth = rec ? rec.pump_installation_depth_m : null;
+    if (depth === null || depth === undefined) return [null, ''];
+    var seasonalDepth = null;
+    if (seasonal && seasonal.is_established) {
+      seasonalDepth = seasonal.pump_installation_depth_m === undefined
+        ? null : seasonal.pump_installation_depth_m;
+    }
+    if (seasonalDepth !== null && seasonalDepth > depth) {
+      return [Number(seasonalDepth),
+        'deep enough for the drought-year low in the seasonal projection'];
+    }
+    if (seasonalDepth !== null) {
+      return [Number(depth),
+        'which also covers the drought-year low in the seasonal projection'];
+    }
+    return [Number(depth), ''];
+  }
+
+  /* One sentence for a report: what the yield rests on. */
+  function confidenceText(rec) {
+    if (!rec || rec.safe_yield_m3_per_h === null || rec.safe_yield_m3_per_h === undefined) {
+      return '';
+    }
+    if (rec.confidence !== 'indicative') {
+      return 'The yield is established: the test ran long enough to show the ' +
+        "aquifer's late-time behaviour and the adopted transmissivity fit to " +
+        'standard.';
+    }
+    return 'The yield is indicative, not established: ' +
+      (rec.confidence_reasons || []).join('; ') +
+      '. Confirm it by a longer test or by monitoring the pumping level in ' +
+      'service before it is relied on.';
+  }
+
+  /* "established" or "indicative" and the sentence, as fields on the
+   * recommendation so a report reads them the way Python reads the
+   * properties. */
+  function settleConfidence(rec) {
+    if (!rec.confidence) rec.confidence = 'established';
+    if (!rec.confidence_reasons) rec.confidence_reasons = [];
+    rec.is_indicative = rec.confidence === 'indicative';
+    rec.confidence_text = confidenceText(rec);
+    return rec;
+  }
 
   /* Why the pump setting leaves nothing to draw on, in the sheet's numbers. */
   function noUsableDrawdownReason(test, cfg) {
@@ -1937,7 +2252,18 @@
         sEnd = last.water_level_m[last.water_level_m.length - 1] - swl;
       }
     }
-    var specificCapacity = (qLast && sEnd && sEnd > 0) ? qLast / sEnd : null;
+    var specificCapacity = null, specificCapacityBasis = '';
+    if (qLast && sEnd && sEnd > 0) {
+      specificCapacity = qLast / sEnd;
+      /* a specific capacity is a rate over a drawdown at a time: 0.09 m3/h
+       * per m after thirty minutes is not 0.09 after a day, and printed bare
+       * to three figures it read as a property of the borehole */
+      var lastFinite = (last.time_min || []).filter(function (v) { return isFinite(v); });
+      var minutes = lastFinite.length ? arrMax(lastFinite) : null;
+      specificCapacityBasis = formatG(qLast) + ' m3/h over ' + pyFixed(sEnd, 1) +
+        ' m of drawdown' + (minutes ? ' after ' + formatG(minutes) + ' minutes' : '');
+    }
+    var deepest = deepestPumpingLevel(test);
 
     /* available drawdown: static level to pump intake less a submergence margin */
     var available = null;
@@ -1961,7 +2287,7 @@
       : null;
 
     function pending(reason) {
-      return {
+      return settleConfidence({
         specific_capacity_m3hr_per_m: specificCapacity,
         available_drawdown_m: available,
         usable_drawdown_m: usable,
@@ -1976,7 +2302,12 @@
         safe_yield_low_m3_per_h: null,
         safe_yield_high_m3_per_h: null,
         envelope_basis: '',
-      };
+        confidence: 'established',
+        confidence_reasons: [],
+        specific_capacity_basis: specificCapacityBasis,
+        pump_depth_basis: '',
+        deepest_pumping_level_m: deepest,
+      });
     }
 
     if (transmissivity === null || transmissivity === undefined ||
@@ -2041,11 +2372,39 @@
     var safe = longTerm / cfg.safety_factor;
 
     var sAtSafe = projectedDrawdown(safe);
-    var pumpDepth = swl + sAtSafe + cfg.seasonal_allowance_m + cfg.pump_submergence_min_m;
-    if (test.borehole_depth_m) {
-      pumpDepth = Math.min(pumpDepth, test.borehole_depth_m - 3.0);
+    /* The intake goes where the drawdown the yield was computed on exists.
+     * The long-term yield was found by spending the usable drawdown, which
+     * was measured down to the test's pump setting; the intake used to be
+     * raised to just clear the drawdown at the safe rate instead, which put
+     * it 3 m above the level the test itself had reached and spent the
+     * safety factor on lifting the pump rather than on the rate. It is now
+     * set below the static level plus the dry-season reserve, the usable
+     * drawdown and the submergence margin, and never above the deepest
+     * level the test drew the water to, with the same submergence under it. */
+    var pumpDepth = swl + cfg.seasonal_allowance_m + usable + cfg.pump_submergence_min_m;
+    var reached = '';
+    if (deepest !== null && deepest !== undefined) {
+      var floor = deepest + cfg.pump_submergence_min_m;
+      reached = '; the test itself drew the level to ' + pyFixed(deepest, 1) + ' m' +
+        (qLast ? ' at ' + formatG(qLast) + ' m3/h' : '');
+      if (floor > pumpDepth) {
+        pumpDepth = floor;
+        reached += ', which sets the intake';
+      }
+    }
+    var capped = '';
+    if (test.borehole_depth_m && pumpDepth > test.borehole_depth_m - 3.0) {
+      pumpDepth = test.borehole_depth_m - 3.0;
+      capped = ', capped 3 m above the ' + formatG(test.borehole_depth_m) +
+        ' m bottom of the borehole';
     }
     pumpDepth = Math.ceil(pumpDepth);
+    var pumpDepthBasis = 'Pump intake at ' + formatG(pumpDepth) + ' m: the static ' +
+      'level ' + pyFixed(swl, 1) + ' m plus the ' + formatG(cfg.seasonal_allowance_m) +
+      ' m dry-season reserve, the ' + pyFixed(usable, 1) + ' m of drawdown the ' +
+      'long-term yield is projected to use and ' +
+      formatG(cfg.pump_submergence_min_m) + ' m of submergence' + reached + capped +
+      '. The safety factor is kept on the rate, not spent on raising the pump.';
 
     var method = METHOD_LABELS[opts.transmissivitySource || ''] || '';
     var pct = Math.round(cfg.available_drawdown_fraction * 100) + '%';
@@ -2062,7 +2421,7 @@
       '. A safety factor of ' + cfg.safety_factor + ' is applied to the long ' +
       'term yield.';
 
-    return {
+    return settleConfidence({
       specific_capacity_m3hr_per_m: specificCapacity,
       available_drawdown_m: available,
       usable_drawdown_m: usable,
@@ -2077,7 +2436,12 @@
       safe_yield_low_m3_per_h: null,
       safe_yield_high_m3_per_h: null,
       envelope_basis: '',
-    };
+      confidence: 'established',
+      confidence_reasons: [],
+      specific_capacity_basis: specificCapacityBasis,
+      pump_depth_basis: pumpDepthBasis,
+      deepest_pumping_level_m: deepest,
+    });
   }
 
   /* Storativity is never resolvable from a single pumped well, the effective
@@ -2153,23 +2517,54 @@
       ['theis', analysis.theis]].filter(function (f) { return !!f[1]; });
   }
 
-  /* {method, result, qualifies} for the transmissivity the yield rests on. */
+  /* {method, result, qualifies} for the transmissivity the yield rests on.
+   * The first method in order of preference whose straight line reaches
+   * min_fit_r_squared is adopted, skipping any the analysis disqualified;
+   * Theis is a curve fit with no R squared and is always eligible, which
+   * keeps it last. When nothing reaches the threshold the best of the poor
+   * fits is still adopted (the highest R squared among the straight lines,
+   * the curve fit only when it is all there is) so a yield is produced, and
+   * qualifies is false so the caller can flag it. */
   function adoptedFit(analysis) {
     var fits = fittedMethods(analysis);
+    var disqualified = analysis.disqualified || {};
     var minR2 = analysis.min_fit_r_squared === undefined
       ? defaultConfig().pumping.min_fit_r_squared : analysis.min_fit_r_squared;
     for (var i = 0; i < fits.length; i++) {
+      if (Object.prototype.hasOwnProperty.call(disqualified, fits[i][0])) continue;
       var r2 = fits[i][1].r_squared;
       if (r2 === undefined || r2 === null || r2 >= minR2) {
         return { method: fits[i][0], result: fits[i][1], qualifies: true };
       }
     }
     if (!fits.length) return { method: null, result: null, qualifies: false };
+    var score = function (fit) {
+      var r = fit[1].r_squared;
+      return (r === undefined || r === null || !r) ? -1.0 : r;
+    };
     var best = fits[0];
     for (var j = 1; j < fits.length; j++) {
-      if (fits[j][1].r_squared > best[1].r_squared) best = fits[j];
+      if (score(fits[j]) > score(best)) best = fits[j];
     }
     return { method: best[0], result: best[1], qualifies: false };
+  }
+
+  /* The reason a fitted method was passed over, or an empty string. */
+  function whyNotAdopted(analysis, name) {
+    var disqualified = analysis.disqualified || {};
+    if (Object.prototype.hasOwnProperty.call(disqualified, name)) {
+      return disqualified[name];
+    }
+    var result = null;
+    fittedMethods(analysis).forEach(function (f) { if (f[0] === name) result = f[1]; });
+    var r2 = result ? result.r_squared : null;
+    var minR2 = analysis.min_fit_r_squared === undefined
+      ? defaultConfig().pumping.min_fit_r_squared : analysis.min_fit_r_squared;
+    if (r2 !== null && r2 !== undefined && r2 < minR2) {
+      return 'R squared ' + r2.toFixed(3) + ' is below the ' + formatG(minR2) +
+        ' standard';
+    }
+    return '';
   }
 
   /* [minutes, kind]: how long the aquifer was stressed at one rate. A
@@ -2206,6 +2601,13 @@
       step_test: null, yield_recommendation: null,
       stabilised_level_m: null, max_drawdown_m: null, flags: [],
       min_fit_r_squared: cfg.min_fit_r_squared,
+      /* fits that ran but cannot be adopted, keyed by method, with the
+       * reason: a Cooper-Jacob window inside the casing-storage period, a
+       * recovery line nowhere near the origin, a Theis storativity no
+       * aquifer has */
+      disqualified: {},
+      /* how long casing storage controls the drawdown in this borehole */
+      casing_storage_min: null,
     };
 
     /* drop parse-time discharge flags the analyst has since resolved */
@@ -2300,11 +2702,32 @@
           var sv = step0.water_level_m[i] - swl;
           if (isFinite(tv) && isFinite(sv)) { t0.push(tv); s0.push(sv); }
         }
+        /* A step that ends above the stated static level has no drawdown to
+         * fit. It used to get a Cooper-Jacob line through negative
+         * drawdowns, adopted for the yield at R squared 0.99, while the
+         * step-test fit two lines below excluded the same step as a datum
+         * error. */
+        var sEnd0 = t0.length ? s0[s0.length - 1] : NaN;
+        var label0 = step0.label || ('step ' + step0.step_number);
+        var keepAny = t0.length > 0;
+        if (!(sEnd0 > 0)) {
+          flags.push({
+            level: 'warning', code: 'first_step_above_static',
+            message: label0 + ' ends at ' + (isFinite(sEnd0) ? sEnd0.toFixed(2) : 'nan') +
+              ' m drawdown, at or above the stated static level of ' +
+              swl.toFixed(2) + ' m, so no drawdown fit is made on it; check ' +
+              'the static level and the datum for that step.',
+            context: label0,
+          });
+          t0 = []; s0 = []; keepAny = false;
+        }
         try {
           analysis.cooper_jacob = cooperJacob(t0, s0, q0, cfg,
             { observationRadiusM: observationRadiusM });
         } catch (e) {
-          flags.push({ level: 'warning', code: 'cooper_jacob_failed', message: e.message });
+          if (keepAny) {
+            flags.push({ level: 'warning', code: 'cooper_jacob_failed', message: e.message });
+          }
         }
         try {
           analysis.theis = theisFit(t0, s0, q0, {
@@ -2312,7 +2735,9 @@
             radiusM: observationRadiusM || 0.1,
           });
         } catch (e2) {
-          flags.push({ level: 'warning', code: 'theis_failed', message: e2.message });
+          if (keepAny) {
+            flags.push({ level: 'warning', code: 'theis_failed', message: e2.message });
+          }
         }
       }
     }
@@ -2329,13 +2754,44 @@
           break;
         }
       }
-      if (qRec !== null && test.pumping_duration_min) {
+      var equivalentInfo = equivalentPumpingTimeMin(test);
+      var tPump = equivalentInfo[0], equivalent = equivalentInfo[1];
+      if (qRec !== null && tPump) {
         try {
           analysis.recovery = theisRecovery(test.recovery_time_min, residual,
-            test.pumping_duration_min, qRec);
+            tPump, qRec, equivalent);
         } catch (e3) {
           flags.push({ level: 'warning', code: 'recovery_failed', message: e3.message });
         }
+      }
+      var recFit = analysis.recovery;
+      if (recFit && equivalent) {
+        flags.push({
+          level: 'info', code: 'recovery_equivalent_time',
+          message: 'The recovery is read against an equivalent pumping time of ' +
+            pyFixed(tPump, 0) + ' minutes at the last rate of ' + formatG(qRec) +
+            ' m3/h (the volume pumped over all the steps at that rate), not ' +
+            'the ' + formatG(test.pumping_duration_min) + ' minutes the test ran.',
+        });
+      }
+      if (recFit && recFit.intercept_fraction > cfg.recovery_intercept_max_fraction) {
+        analysis.disqualified.recovery = "the recovery line meets t/t' = 1 at " +
+          recFit.intercept_m.toFixed(1) + ' m of residual drawdown, ' +
+          pyFixed(recFit.intercept_fraction * 100, 0) + '% of the drawdown the ' +
+          'recovery started from, where the method requires zero';
+        flags.push({
+          level: 'warning', code: 'recovery_intercept',
+          message: 'The recovery line does not pass through the origin: it meets ' +
+            "t/t' = 1 at " + recFit.intercept_m.toFixed(1) + ' m of residual ' +
+            'drawdown (' + pyFixed(recFit.intercept_fraction * 100, 0) + '% of the ' +
+            (recFit.intercept_m / Math.max(recFit.intercept_fraction, 1e-9)).toFixed(1) +
+            ' m the recovery started from), where Theis recovery requires zero. ' +
+            'The residual drawdown is dominated by something the method does ' +
+            'not model (casing storage, a changing static level or a wrong ' +
+            'pumping time), so its transmissivity of ' +
+            recFit.transmissivity_m2_per_day.toFixed(2) + ' m2/day is reported ' +
+            'but not adopted.',
+        });
       }
     }
 
@@ -2398,20 +2854,96 @@
      * no R squared and is always eligible, which keeps it last). Taking
      * recovery unconditionally adopted a 0.52 m2/day recovery at R squared
      * 0.69 over a 4.3 m2/day Cooper-Jacob at 0.99. */
+    /* Casing storage. The drawdown fits are on the first step, so the
+     * specific capacity that sets the casing-storage period is that step's
+     * end-of-step value. */
+    var qFirst = null, sFirst = null;
+    if (hasSwl && test.steps && test.steps.length) {
+      var firstStep = test.steps[0];
+      qFirst = firstStep.discharge_m3_per_h;
+      var firstLevels = (firstStep.water_level_m || []).filter(function (v) {
+        return isFinite(v);
+      });
+      sFirst = firstLevels.length ? firstLevels[firstLevels.length - 1] - swl : null;
+      if (qFirst && sFirst && sFirst > 0) {
+        analysis.casing_storage_min = casingStorageMin(qFirst / sFirst, cfg);
+      }
+    }
+    var tC = analysis.casing_storage_min;
+    if (tC) {
+      var inside = [];
+      var cjFit = analysis.cooper_jacob;
+      if (cjFit && cjFit.fit_window_min[1] <= tC) {
+        analysis.disqualified.cooper_jacob = 'its fitted window ' +
+          formatG(cjFit.fit_window_min[0]) + '-' + formatG(cjFit.fit_window_min[1]) +
+          ' minutes lies inside the ' + pyFixed(tC, 0) + '-minute casing-storage period';
+        inside.push('Cooper-Jacob');
+      } else if (cjFit && cjFit.fit_window_min[0] < tC) {
+        flags.push({
+          level: 'warning', code: 'casing_storage_window',
+          message: 'The Cooper-Jacob window starts at ' +
+            formatG(cjFit.fit_window_min[0]) + ' minutes, inside the ' +
+            pyFixed(tC, 0) + '-minute casing-storage period; the early part of ' +
+            'the line is the borehole emptying.',
+        });
+      }
+      var thFit = analysis.theis;
+      if (thFit && duration !== null && duration <= tC) {
+        analysis.disqualified.theis = 'the whole ' + formatG(duration) + '-minute ' +
+          'test lies inside the ' + pyFixed(tC, 0) + '-minute casing-storage period';
+        inside.push('Theis');
+      }
+      if (inside.length) {
+        flags.push({
+          level: 'warning', code: 'casing_storage',
+          message: 'With a ' + formatG(cfg.casing_diameter_in) + ' inch casing and a ' +
+            'specific capacity of ' + formatG(roundSig(qFirst / sFirst, 2), 2) +
+            ' m3/h per m, casing storage controls the drawdown for the first ' +
+            pyFixed(tC, 0) + " minutes (Schafer's rule)" +
+            (duration !== null && duration <= tC
+              ? '; this test pumped for ' + formatG(duration) + ' minutes, entirely inside it'
+              : '') +
+            '. The ' + inside.join(' and ') + ' fit' +
+            (inside.length > 1 ? 's see' : ' sees') +
+            ' the borehole emptying rather than the aquifer, so ' +
+            (inside.length > 1 ? 'their' : 'its') +
+            ' transmissivity is reported but not adopted.',
+        });
+      }
+    }
+    var thCheck = analysis.theis;
+    if (thCheck && thCheck.storativity > cfg.max_plausible_storativity) {
+      if (!Object.prototype.hasOwnProperty.call(analysis.disqualified, 'theis')) {
+        analysis.disqualified.theis = 'its storativity of ' +
+          formatG(roundSig(thCheck.storativity, 2), 2) + ' is above ' +
+          formatG(cfg.max_plausible_storativity) + ', which no aquifer has';
+      }
+      flags.push({
+        level: 'warning', code: 'storativity_implausible',
+        message: 'The Theis fit returns a storativity of ' +
+          formatG(roundSig(thCheck.storativity, 2), 2) + '; no aquifer stores more ' +
+          'than about ' + formatG(cfg.max_plausible_storativity) + ' of its volume, ' +
+          'and a value this size is the casing being emptied, not the aquifer ' +
+          'draining. The fit is not adopted.',
+      });
+    }
+
     var adopted = adoptedFit(analysis);
     analysis.transmissivity_source = adopted.method;
     analysis.transmissivity_m2_per_day = adopted.result
       ? adopted.result.transmissivity_m2_per_day : null;
     if (adopted.result && !adopted.qualifies) {
       var scored = fittedMethods(analysis).map(function (f) {
-        return METHOD_LABELS[f[0]] + ' ' + f[1].r_squared.toFixed(3);
-      }).join(', ');
+        return METHOD_LABELS[f[0]] + ' ' + f[1].transmissivity_m2_per_day.toFixed(2) +
+          ' m2/day, ' + (whyNotAdopted(analysis, f[0]) || 'usable');
+      }).join('; ');
       flags.push({
         level: 'warning', code: 'transmissivity_low_confidence',
-        message: 'No fit reached R squared ' + formatG(cfg.min_fit_r_squared) +
-          ' (' + scored + '); the ' + METHOD_LABELS[adopted.method] + ' value of ' +
+        message: 'No method fitted to standard (' + scored + '). The ' +
+          METHOD_LABELS[adopted.method] + ' value of ' +
           adopted.result.transmissivity_m2_per_day.toFixed(2) + ' m2/day is ' +
-          'adopted as the best available, so the yield rests on a poor fit.',
+          'adopted as the best available, so the yield rests on a fit that ' +
+          'does not meet it.',
       });
     }
 
@@ -2425,6 +2957,35 @@
     }
     analysis.yield_range_text = yieldRangeText(analysis.yield_recommendation);
 
+    /* What the yield is worth: one judgement, made here and printed by
+     * every report beside the yield. The pumping report used to carry these
+     * warnings in its data notes while the completion and handover reports
+     * printed the same yield as "successful and sustainable" without them. */
+    var recommendation = analysis.yield_recommendation;
+    var reasons = [];
+    if (duration !== null && duration > 0 && duration < threshold) {
+      reasons.push('the test pumped for ' + formatG(duration) + ' minutes, below ' +
+        'the ' + formatG(threshold) + ' needed to see late-time behaviour, so the ' +
+        'yield is extrapolated ' +
+        (Math.log(cfg.design_period_days * MIN_PER_DAY / duration) / Math.LN10).toFixed(1) +
+        ' log cycles of time');
+    }
+    if (tC && duration !== null && duration <= tC) {
+      reasons.push('the whole test lies inside the ' + pyFixed(tC, 0) + '-minute ' +
+        'casing-storage period, so its drawdown is the borehole emptying rather ' +
+        'than the aquifer responding');
+    }
+    if (adopted.result && !adopted.qualifies) {
+      reasons.push('no transmissivity method fitted to standard and the ' +
+        METHOD_LABELS[adopted.method] + ' value is adopted as the best available');
+    }
+    if (recommendation.safe_yield_m3_per_h !== null &&
+        recommendation.safe_yield_m3_per_h !== undefined && reasons.length) {
+      recommendation.confidence = 'indicative';
+      recommendation.confidence_reasons = reasons;
+    }
+    settleConfidence(recommendation);
+
     analysis.flags = flags;
     return analysis;
   }
@@ -2435,6 +2996,13 @@
     hantushBierschenk: hantushBierschenk, recommendYield: recommendYield,
     attachYieldEnvelope: attachYieldEnvelope, yieldRangeText: yieldRangeText,
     analysePumpingTest: analysePumpingTest,
+    METHOD_LABELS: METHOD_LABELS, TEST_TYPE_WORDS: TEST_TYPE_WORDS,
+    TWO_POINT_NOTE: TWO_POINT_NOTE,
+    CASING_STORAGE_COEFFICIENT: CASING_STORAGE_COEFFICIENT,
+    testTypeText: testTypeText, equivalentPumpingTimeMin: equivalentPumpingTimeMin,
+    casingStorageMin: casingStorageMin, deepestPumpingLevel: deepestPumpingLevel,
+    pumpIntakeDepth: pumpIntakeDepth, confidenceText: confidenceText,
+    adoptedFit: adoptedFit, whyNotAdopted: whyNotAdopted,
   });
 
   /* =============================================================== units
@@ -3239,8 +3807,8 @@
       assessment.materials_note = 'Specify uPVC or stainless steel (grade 304 or ' +
         '316) for the rising main and pump components, and avoid galvanised iron ' +
         'and mild steel, which corrode rapidly in this water and are a leading ' +
-        'cause of premature handpump failure. Inspect the rising main and pump ' +
-        'rods for corrosion at each service.';
+        'cause of premature pump failure. Inspect the rising main and the wetted ' +
+        'metal parts of the pump for corrosion at each service.';
       if (assessment.larson_skold !== null && assessment.larson_skold > 0.8) {
         assessment.materials_note += ' The Larson-Skold ratio (' +
           assessment.larson_skold.toFixed(1) + ') is elevated, so chloride and ' +
@@ -3974,12 +4542,178 @@
     stiffRows: stiffRows,
   });
 
+  /* ======================================================= lithology classes
+   * groundwater/design/lithology.py. One reading of the driller's words,
+   * shared by every drawing: the borehole drawing, the browser drawing and
+   * the Depth Spine each kept their own table of lithology keywords, so the
+   * same log was "clay" on one figure, "clay and saprolite" on another and
+   * "fresh basement" on a third for an interval the driller had called
+   * slightly weathered granite. A description is matched against the classes
+   * in order and the first match wins, except that a fracture zone named
+   * with a depth range inside a longer interval ("Light colour granite,
+   * fracture zone 49-52 m") is a band of its own: the range is the fracture
+   * zone, the rest of the interval is the rock it is in, and the drawing
+   * used to hatch the whole five metres.
+   */
+  var LITHOLOGY_RANGE_SOURCE =
+    '(\\d+(?:\\.\\d+)?)\\s*(?:-|–|to)\\s*(\\d+(?:\\.\\d+)?)\\s*m\\b';
+
+  /* "fracture zone 49-52 m", "fractured 60-62 m", "fractures at 30-31 m":
+   * a depth range named against a fracture phrase. */
+  var FRACTURE_RANGE_SOURCE =
+    'fracture[ds]?\\s*(?:zones?)?\\s*(?:at|from|between)?\\s*' + LITHOLOGY_RANGE_SOURCE;
+  var FRACTURE_RANGE_RE = new RegExp(FRACTURE_RANGE_SOURCE, 'i');
+
+  /* Any depth range written into a description. */
+  var ANY_RANGE_RE = new RegExp(LITHOLOGY_RANGE_SOURCE, 'i');
+
+  /* In matching order. The patterns are applied to the lowercased
+   * description. */
+  var LITHOLOGY_CLASSES = [
+    ['fracture', 'Fracture zone', '#9FB6CD', 'xx', 'fracture|fissure'],
+    ['topsoil', 'Topsoil', '#8B5A2B', '', 'topsoil|top soil'],
+    ['laterite', 'Laterite', '#C4703E', '', 'laterit|duricrust'],
+    ['saprolite', 'Saprolite', '#D2B48C', '..', 'saprolit|regolith'],
+    ['clay', 'Clay', '#B8860B', '--', '\\bclay'],
+    ['sand', 'Sand and gravel', '#E8D8A0', '..', '\\bsand|gravel'],
+    ['weathered', 'Weathered rock', '#A98F63', '//', 'weather'],
+    ['basement', 'Basement rock', '#A9A9A9', '++',
+      'granite|gneiss|schist|basement|bedrock|\\brock\\b|fresh'],
+  ].map(function (row) {
+    return { key: row[0], label: row[1], colour: row[2], hatch: row[3],
+      pattern: new RegExp(row[4], 'i') };
+  });
+
+  var LITHOLOGY_OTHER = { key: 'other', label: 'Other material',
+    colour: '#CCCCCC', hatch: '' };
+
+  /* Words that make an interval clayey ground: a seepage in it is cased and
+   * grouted off, not screened, whatever the strike column says. */
+  var CLAYEY_RE = /\bclay|laterit|topsoil|top soil/i;
+
+  /* The class of a description as a whole. */
+  function lithologyClass(description) {
+    var text = String(description || '').toLowerCase();
+    for (var i = 0; i < LITHOLOGY_CLASSES.length; i++) {
+      if (LITHOLOGY_CLASSES[i].pattern.test(text)) return LITHOLOGY_CLASSES[i];
+    }
+    return LITHOLOGY_OTHER;
+  }
+
+  function isClayey(description) {
+    return CLAYEY_RE.test(String(description || '').toLowerCase());
+  }
+
+  /* Depth ranges a description names as fractured, in metres. */
+  function fractureRanges(description) {
+    var re = new RegExp(FRACTURE_RANGE_SOURCE, 'gi');
+    var text = String(description || ''), out = [], match;
+    while ((match = re.exec(text)) !== null) {
+      var top = Number(match[1]), bottom = Number(match[2]);
+      if (bottom < top) { var swap = top; top = bottom; bottom = swap; }
+      if (bottom > top) out.push([top, bottom]);
+    }
+    return out;
+  }
+
+  /* The description with its named fracture ranges taken out: "Light colour
+   * granite, fracture zone 49-52 m" -> "Light colour granite", so the rock
+   * around a named zone is classed as what it is. */
+  function hostDescription(description) {
+    var text = String(description || '')
+      .replace(new RegExp(FRACTURE_RANGE_SOURCE, 'gi'), '')
+      .replace(/[\s,;]+$/, '');
+    return text.replace(/^[ ,;]+/, '').replace(/[ ,;]+$/, '');
+  }
+
+  /* The log split into bands, each with its class. A fracture zone named
+   * with its depths is a band of its own wherever those depths fall, which
+   * is not always the row it was written on: the driller logs "fracture zone
+   * 60-62 m" against the 55-60 m interval he was drilling when he saw it.
+   * The rest of every interval is the rock the description names once the
+   * zone is taken out of it. Pass one interval to band it alone (the named
+   * zones of the others are then unknown). */
+  function lithologyBands(intervals) {
+    var list = Array.isArray(intervals) ? intervals : (intervals ? [intervals] : []);
+    var named = [];
+    list.forEach(function (iv) {
+      fractureRanges(iv.description).forEach(function (zone) { named.push(zone); });
+    });
+    named.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
+    var fracture = lithologyClass('fracture');
+    var bands = [];
+    function band(top, bottom, klass) {
+      bands.push({ top_m: top, bottom_m: bottom, key: klass.key, label: klass.label,
+        colour: klass.colour, hatch: klass.hatch });
+    }
+    list.slice().sort(function (a, b) { return a.top_m - b.top_m; }).forEach(function (iv) {
+      var top = Number(iv.top_m), bottom = Number(iv.bottom_m);
+      /* the host rock: the description without the zone it names, so
+       * "Light colour granite, fracture zone 49-52 m" is granite here */
+      var host = lithologyClass(fractureRanges(iv.description).length
+        ? hostDescription(iv.description) : iv.description);
+      var cursor = top;
+      named.forEach(function (zone) {
+        var t = Math.max(zone[0], top), b = Math.min(zone[1], bottom);
+        if (b <= Math.max(t, cursor)) return;
+        if (t > cursor) band(cursor, t, host);
+        band(Math.max(t, cursor), b, fracture);
+        cursor = b;
+      });
+      if (cursor < bottom) band(cursor, bottom, host);
+    });
+    return bands;
+  }
+
   /* ========================================================= borehole design
    * groundwater/design/designer.py. Plain casing from surface, screens against
    * the aquifer zones and below the static level by a margin, a sump below the
    * lowest screen, gravel pack from the bottom to above the top screen,
    * backfill up to the sanitary seal, and cement from surface.
    */
+
+  /* The annular fill a design carries, decided by the annulus the hole and
+   * casing leave: a filter pack needs 70 mm a side, anything can be placed
+   * past 50 mm, and under that nothing can be poured without bridging. */
+  var ANNULUS_PACK_MIN_MM = 50.0;
+  var ANNULUS_FILTER_MIN_MM = 70.0;
+
+  /* How construction was arrived at, printed under every drawing. */
+  var DESIGN_NOTE = 'Construction generated from the drilling log by the design ' +
+    'rules. The log records no casing string, so this is a design, not an ' +
+    'as-built record.';
+  var AS_BUILT_NOTE = 'As built: the screens are those recorded as installed on ' +
+    'the drilling log; the rest of the string follows the design rules.';
+
+  /* The cement seal: the recorded grout depth, never less than the rule. Dr
+   * Timbo's log records grouting to 20 m; the drawing showed a 6 m seal
+   * with a screen and a gravel pack inside the grouted interval. */
+  function sealDepthFor(log, rules) {
+    var grout = log ? Number(log.grouting_depth_m || 0.0) : 0.0;
+    return Math.max(rules.sanitary_seal_depth_m, grout);
+  }
+
+  /* The drilled diameter the log records, from its diameter column. The
+   * deepest interval with a diameter is the production diameter; a hole
+   * reamed wider at the top is logged that way. */
+  function loggedDiameterIn(log) {
+    if (!log) return null;
+    var deepest = null;
+    (log.intervals || []).forEach(function (iv) {
+      if (!iv.bit_diameter_in) return;
+      if (deepest === null || iv.bottom_m > deepest.bottom_m) deepest = iv;
+    });
+    return deepest === null ? null : Number(deepest.bit_diameter_in);
+  }
+
+  function intervalAt(log, depth) {
+    if (!log) return null;
+    var intervals = log.intervals || [];
+    for (var i = 0; i < intervals.length; i++) {
+      if (intervals[i].top_m <= depth && depth < intervals[i].bottom_m) return intervals[i];
+    }
+    return null;
+  }
 
   /* Lithology phrases that mark an interval as a screening target, and phrases
    * that negate it, so "dry, no water struck" is not screened just because it
@@ -3996,7 +4730,13 @@
    * document beside "no aquifer intervals identified", and blocked the VES
    * fallback while contributing no screen. */
   function targetZones(log, interpretation, swl, totalDepth, rules) {
-    var floor = (swl || 0.0) + rules.min_screen_below_swl_m;
+    var seal = sealDepthFor(log, rules);
+    var margin = (rules.fracture_zone_margin_m === undefined ||
+                  rules.fracture_zone_margin_m === null)
+      ? DEFAULT_CONFIG.design.fracture_zone_margin_m : rules.fracture_zone_margin_m;
+    /* nothing is screened inside the grouted interval, whatever the log says
+     * is wet there: the grout is there to keep that water out */
+    var floor = Math.max((swl || 0.0) + rules.min_screen_below_swl_m, seal);
     function clip(candidates) {
       var out = [];
       candidates.forEach(function (z) {
@@ -4006,31 +4746,77 @@
       });
       return out;
     }
-    var basis = [], strikeZones = [], lithoZones = [];
-    var strikes = (log && log.water_strikes_m) ? log.water_strikes_m : [];
-    strikes.forEach(function (strike) {
-      strikeZones.push([Math.max(strike - 1.0, 0.0), strike + 5.0]);
-    });
-    if (log && log.intervals) {
-      log.intervals.forEach(function (interval) {
+    var basis = [], strikeZones = [], lithoZones = [], namedZones = [];
+    var namedText = [], fracturedIntervals = [], excluded = [], keptStrikes = [];
+    if (log) {
+      (log.water_strikes_m || []).forEach(function (strike) {
+        var host = intervalAt(log, strike);
+        var reasons = [];
+        if (host && isClayey(host.description)) {
+          reasons.push('it is in ' + String(host.description || '').toLowerCase() +
+            ', a seepage horizon that is cased and grouted off rather than screened');
+        }
+        if (strike < seal) {
+          reasons.push('it lies within the ' + formatG(seal) + ' m grouted interval');
+        }
+        if (reasons.length) {
+          excluded.push('the ' + formatG(strike) + ' m strike is not screened: ' +
+            reasons.join(' and '));
+          return;
+        }
+        var zone = [Math.max(strike - 1.0, 0.0), strike + 5.0];
+        if (clip([zone]).length) {
+          strikeZones.push(zone);
+          keptStrikes.push(strike);
+        }
+      });
+      (log.intervals || []).forEach(function (interval) {
         var text = String(interval.description || '').toLowerCase();
+        /* e.g. "dry, no water struck" is not an aquifer */
         if (NEGATION_PHRASES.some(function (n) { return text.indexOf(n) >= 0; })) return;
         var words = text.match(/[a-z]+/g) || [];
-        var hit = words.some(function (w) { return AQUIFER_WORDS.indexOf(w) >= 0; }) ||
+        var hinted = words.some(function (w) { return AQUIFER_WORDS.indexOf(w) >= 0; }) ||
           AQUIFER_PHRASES.some(function (p) { return text.indexOf(p) >= 0; });
-        if (hit) lithoZones.push([interval.top_m, interval.bottom_m]);
+        if (!hinted) return;
+        if (isClayey(interval.description)) {
+          excluded.push('the ' + formatG(interval.top_m) + '-' + formatG(interval.bottom_m) +
+            ' m interval is not screened: ' + text + ' is clayey ground');
+          return;
+        }
+        /* "fracture zone 49-52 m" on the 45-50 m row: the zone is the target,
+         * with a margin, not the five metres it was logged on. The screens
+         * used to cover one metre of that zone and none of the next, which
+         * sat behind plain casing. */
+        var ranges = fractureRanges(interval.description);
+        if (ranges.length) {
+          ranges.forEach(function (r) {
+            namedZones.push([r[0] - margin, r[1] + margin]);
+            namedText.push(formatG(r[0]) + '-' + formatG(r[1]) + ' m');
+          });
+        } else {
+          lithoZones.push([interval.top_m, interval.bottom_m]);
+          fracturedIntervals.push(formatG(interval.top_m) + '-' +
+            formatG(interval.bottom_m) + ' m');
+        }
       });
     }
-    var keptStrikes = strikes.filter(function (strike, i) {
-      return clip([strikeZones[i]]).length > 0;
-    });
-    var clipped = clip(strikeZones).concat(clip(lithoZones));
+    var clipped = clip(strikeZones).concat(clip(namedZones), clip(lithoZones));
     if (keptStrikes.length) {
       basis.push('screens positioned against the water strikes recorded in ' +
         'the drilling log (' + keptStrikes.map(function (w) {
           return formatG(w) + ' m';
         }).join(', ') + ')');
     }
+    if (namedZones.length && clip(namedZones).length) {
+      basis.push('screens positioned against the fracture zones the log names (' +
+        namedText.join(', ') + '), with ' + formatG(margin) +
+        ' m of screen either side');
+    }
+    if (lithoZones.length && clip(lithoZones).length) {
+      basis.push('screens positioned against the fractured or water-bearing ' +
+        'intervals logged at ' + fracturedIntervals.join(', '));
+    }
+    excluded.forEach(function (sentence) { basis.push(sentence); });
     if (!clipped.length && interpretation && interpretation.water_zones.length) {
       clipped = clip(interpretation.water_zones.map(function (z) { return [z[0], z[1]]; }));
       if (clipped.length) {
@@ -4094,9 +4880,11 @@
     };
   }
 
+  /* Build the casing string and annulus around a set of screen intervals. */
   function assembleDesign(spec) {
-    var screens = spec.screens, rules = spec.rules;
+    var screens = spec.screens, rules = spec.rules, log = spec.log || null;
     var totalDepthM = spec.totalDepthM, swl = spec.swl;
+    var asBuilt = !!spec.asBuilt;
     var segments = [], cursor = 0.0;
     var sumpTop = totalDepthM - rules.sump_length_m;
     screens.forEach(function (s) {
@@ -4109,25 +4897,83 @@
     segments.forEach(function (s) { s.length_m = s.bottom_m - s.top_m; });
 
     var topScreen = screens[0][0];
-    var gravelTop = Math.max(topScreen - rules.gravel_pack_above_top_screen_m,
-      rules.sanitary_seal_depth_m);
+    var sealDepth = sealDepthFor(log, rules);
+    var gravelTop = Math.max(topScreen - rules.gravel_pack_above_top_screen_m, sealDepth);
     var gravel = [gravelTop, totalDepthM];
-    var seal = [0.0, rules.sanitary_seal_depth_m];
-    var backfill = [rules.sanitary_seal_depth_m, gravelTop];
+    var seal = [0.0, sealDepth];
+    var backfill = [sealDepth, gravelTop];
 
+    /* the drilled diameter is what the log says was drilled, not the rule's
+     * default; the rule applies when the log records none */
+    var logged = loggedDiameterIn(log);
+    var boreIn = logged || rules.borehole_diameter_in;
+    var diameterSource = logged ? ' as logged' : '';
+
+    var flags = spec.flags;
+    /* The same annulus rule the field checks apply (50 mm per side to place
+     * gravel, 70 mm for it to filter). It used to raise a flag that reached
+     * no document while the drawing, the summary and the bill of quantities
+     * carried a 2-4 mm pack that cannot be poured through 19 mm. The fill
+     * now follows the annulus, and every document follows the fill. */
+    var annulusMm = (boreIn - rules.casing_diameter_in) * 25.4 / 2.0;
+    var fill, material;
+    if (annulusMm < ANNULUS_PACK_MIN_MM) {
+      fill = 'none';
+      material = '';
+      flags.push({
+        level: 'warning', code: 'thin_annulus',
+        message: 'A ' + formatG(rules.casing_diameter_in) + ' inch casing in a ' +
+          formatG(boreIn) + ' inch hole leaves ' + pyFixed(annulusMm, 0) +
+          ' mm of annulus per side, under the ' + formatG(ANNULUS_PACK_MIN_MM) +
+          ' mm needed to place gravel without bridging (' +
+          formatG(ANNULUS_FILTER_MIN_MM) + ' mm for a true filter pack), so no ' +
+          'gravel pack is drawn or priced and the screen slot must suit the ' +
+          'formation; use a larger bit or smaller casing to fit one.',
+      });
+    } else if (annulusMm < ANNULUS_FILTER_MIN_MM) {
+      fill = 'formation stabiliser';
+      material = rules.gravel_pack_material;
+      flags.push({
+        level: 'info', code: 'thin_annulus',
+        message: 'The ' + pyFixed(annulusMm, 0) + ' mm annulus meets the ' +
+          formatG(ANNULUS_PACK_MIN_MM) + ' mm placement minimum but is under ' +
+          formatG(ANNULUS_FILTER_MIN_MM) + ' mm, so the annular fill acts as a ' +
+          'formation stabiliser rather than a filter pack.',
+      });
+    } else {
+      fill = 'gravel pack';
+      material = rules.gravel_pack_material;
+    }
+
+    var fillSentence;
+    if (fill === 'none') {
+      fillSentence = 'no gravel pack: the ' + pyFixed(annulusMm, 0) + ' mm annulus ' +
+        'between the ' + formatG(rules.casing_diameter_in) + ' inch casing and the ' +
+        formatG(boreIn) + ' inch hole is too thin to place one, so the annulus ' +
+        'below the seal is left to the formation';
+    } else {
+      fillSentence = fill + ' (' + material + ') from ' + formatG(gravel[0]) +
+        ' m to the bottom, ' + formatG(rules.gravel_pack_above_top_screen_m) +
+        ' m above the top screen';
+    }
+    var sealSentence;
+    if (sealDepth > rules.sanitary_seal_depth_m) {
+      sealSentence = 'cement grout from surface to ' + formatG(sealDepth) +
+        ' m as recorded on the drilling log (the rule\'s minimum is ' +
+        formatG(rules.sanitary_seal_depth_m) + ' m), with ' + rules.apron_note;
+    } else {
+      sealSentence = 'cement sanitary seal from surface to ' + formatG(sealDepth) +
+        ' m with ' + rules.apron_note;
+    }
     var basis = spec.basis.concat([
       formatG(rules.casing_diameter_in) + ' inch ' + rules.casing_material +
-        ' casing in a ' + formatG(rules.borehole_diameter_in) + ' inch hole',
-      'gravel pack (' + rules.gravel_pack_material + ') from ' +
-        gravel[0].toFixed(0) + ' m to the bottom, ' +
-        formatG(rules.gravel_pack_above_top_screen_m) + ' m above the top screen',
-      'cement sanitary seal from surface to ' +
-        formatG(rules.sanitary_seal_depth_m) + ' m with ' + rules.apron_note,
+        ' casing in a ' + formatG(boreIn) + ' inch hole' + diameterSource,
+      fillSentence,
+      sealSentence,
       'screens kept at least ' + formatG(rules.min_screen_below_swl_m) +
         ' m below the static water level',
     ]);
 
-    var flags = spec.flags;
     if (swl !== null && swl !== undefined && topScreen < swl) {
       flags.push({
         level: 'warning', code: 'screen_above_swl',
@@ -4135,31 +4981,47 @@
       });
     }
 
-    /* the same annulus rule the field checks apply (50 mm per side to place
-     * gravel, 70 mm for it to filter), on the design itself */
-    var annulusMm = (rules.borehole_diameter_in - rules.casing_diameter_in) * 25.4 / 2.0;
-    if (annulusMm < 50.0) {
-      flags.push({
-        level: 'warning', code: 'thin_annulus',
-        message: 'A ' + formatG(rules.casing_diameter_in) + ' inch casing in a ' +
-          formatG(rules.borehole_diameter_in) + ' inch hole leaves ' +
-          annulusMm.toFixed(0) + ' mm of annulus per side, under the 50 mm needed ' +
-          'to place gravel without bridging (70 mm for a true filter pack); use a ' +
-          'larger bit or smaller casing.',
-      });
-    } else if (annulusMm < 70.0) {
-      flags.push({
-        level: 'info', code: 'thin_annulus',
-        message: 'The ' + annulusMm.toFixed(0) + ' mm annulus meets the 50 mm ' +
-          'placement minimum but is under 70 mm, so the annular fill acts as a ' +
-          'formation stabiliser rather than a filter pack.',
-      });
+    /* A pump intake inside a screen is moved into plain casing, downwards
+     * where the string allows it (deeper is more submergence) and upwards
+     * otherwise, by the same clearance the pumping rules use. The yield
+     * recommendation cannot know where the screens are; the design can. */
+    var intake = spec.pumpIntakeM === undefined ? null : spec.pumpIntakeM;
+    var inScreen = function (depth) {
+      return screens.some(function (s) { return s[0] <= depth && depth <= s[1]; });
+    };
+    if (intake !== null) {
+      var hit = null;
+      for (var h = 0; h < screens.length; h++) {
+        if (screens[h][0] <= intake && intake <= screens[h][1]) { hit = screens[h]; break; }
+      }
+      if (hit) {
+        var clearance = 1.0;
+        var below = hit[1] + clearance, above = hit[0] - clearance;
+        var plainBelow = below <= sumpTop && !inScreen(below);
+        var plainAbove = above > 0 &&
+          (swl === null || swl === undefined || above > swl) && !inScreen(above);
+        var moved = plainBelow ? below : (plainAbove ? above : null);
+        if (moved !== null) {
+          var direction = moved > intake ? 'below' : 'above';
+          flags.push({
+            level: 'info', code: 'pump_intake_moved',
+            message: 'The pump intake of ' + formatG(intake) + ' m from the yield ' +
+              'recommendation sits inside the ' + formatG(hit[0]) + '-' +
+              formatG(hit[1]) + ' m screen; it is set at ' + formatG(moved) + ' m, ' +
+              formatG(clearance) + ' m ' + direction + ' that screen in plain ' +
+              'casing, so the inflow is not drawn across the pump.',
+          });
+          basis.push('pump intake at ' + formatG(moved) + ' m, in plain casing ' +
+            formatG(clearance) + ' m ' + direction + ' the ' + formatG(hit[0]) + '-' +
+            formatG(hit[1]) + ' m screen rather than the ' + formatG(intake) +
+            ' m the yield recommendation asked for');
+          intake = moved;
+        }
+      }
     }
-
     /* a pump intake is written straight through from the caller; it used to
      * be accepted below the hole bottom, inside a screen or above the water */
-    var intake = spec.pumpIntakeM;
-    if (intake !== null && intake !== undefined) {
+    if (intake !== null) {
       if (intake > sumpTop) {
         flags.push({
           level: 'error', code: 'pump_intake_below_hole',
@@ -4167,7 +5029,7 @@
             'the sump at ' + formatG(sumpTop) + ' m in a ' + formatG(totalDepthM) +
             ' m hole; it cannot be set there.',
         });
-      } else if (screens.some(function (s) { return s[0] <= intake && intake <= s[1]; })) {
+      } else if (inScreen(intake)) {
         flags.push({
           level: 'warning', code: 'pump_intake_in_screen',
           message: 'The pump intake at ' + formatG(intake) + ' m sits inside a ' +
@@ -4186,7 +5048,7 @@
 
     var design = {
       total_depth_m: totalDepthM,
-      borehole_diameter_in: rules.borehole_diameter_in,
+      borehole_diameter_in: boreIn,
       casing_diameter_in: rules.casing_diameter_in,
       casing_material: rules.casing_material,
       segments: segments,
@@ -4195,40 +5057,66 @@
       sanitary_seal: seal,
       stickup_m: rules.stickup_m,
       screen_slot_mm: rules.screen_slot_mm,
-      water_strikes_m: spec.log && spec.log.water_strikes_m
-        ? spec.log.water_strikes_m.slice() : [],
+      water_strikes_m: log && log.water_strikes_m ? log.water_strikes_m.slice() : [],
       static_water_level_m: swl === undefined ? null : swl,
-      pump_intake_m: spec.pumpIntakeM === undefined ? null : spec.pumpIntakeM,
+      pump_intake_m: intake,
       design_basis: basis,
       flags: flags,
+      /* "gravel pack" (a filter pack, 70 mm or more a side), "formation
+       * stabiliser" (placeable but too thin to filter) or "none" (an annulus
+       * nothing can be poured into). The drawing, the summary and the bill
+       * of quantities all read this; a 19 mm annulus used to carry a 2-4 mm
+       * pack on every one of them. */
+      annular_fill: fill,
+      annular_fill_material: material,
+      annulus_mm: annulusMm,
+      /* true when the screens are the ones recorded as installed on the log */
+      as_built: asBuilt,
+      construction_note: asBuilt ? AS_BUILT_NOTE : DESIGN_NOTE,
     };
     design.screens = segments.filter(function (s) { return s.kind === 'screen'; });
     design.total_screen_length_m = design.screens.reduce(function (a, s) {
       return a + s.length_m;
     }, 0);
+    design.annular_fill_label = annularFillLabel(design);
     return design;
   }
 
+  /* What the annulus below the seal holds, for a drawing or a table. */
+  function annularFillLabel(design) {
+    var fill = design.annular_fill === undefined ? 'gravel pack' : design.annular_fill;
+    var mm = pyFixed(design.annulus_mm || 0.0, 0);
+    var material = design.annular_fill_material || '';
+    if (fill === 'none') {
+      return 'no gravel pack: the ' + mm + ' mm annulus is too thin to place one';
+    }
+    if (fill === 'formation stabiliser') {
+      return 'formation stabiliser (' + material + '); the ' + mm +
+        ' mm annulus is too thin for a filter pack';
+    }
+    return 'gravel pack (' + material + ')';
+  }
+
+  /* Depths print as written (14.5, not 14): the table used to round 14.5 m
+   * to "14" beside a drawing that said 14.5. */
   function designSummaryRows(design) {
-    /* pyFixed, not toFixed: a screen from 14.5 m is "15" to JavaScript and
-     * "14" to Python, so the browser report and the Python report disagreed
-     * by a metre on the same borehole. */
     var rows = [
-      ['Total depth', pyFixed(design.total_depth_m, 0) + ' m'],
+      ['Total depth', formatG(design.total_depth_m) + ' m'],
       ['Drilled diameter', formatG(design.borehole_diameter_in) + '"'],
       ['Casing', formatG(design.casing_diameter_in) + '" ' + design.casing_material +
-        ', stick-up ' + pyFixed(design.stickup_m, 1) + ' m'],
-      ['Screens', design.screens.map(function (s) {
-        return pyFixed(s.top_m, 0) + '-' + pyFixed(s.bottom_m, 0) + ' m';
-      }).join('; ') + ' (slot ' + formatG(design.screen_slot_mm) + ' mm)'],
-      ['Gravel pack', pyFixed(design.gravel_pack[0], 0) + '-' +
-        pyFixed(design.gravel_pack[1], 0) + ' m'],
-      ['Backfill', pyFixed(design.backfill[0], 0) + '-' +
-        pyFixed(design.backfill[1], 0) + ' m'],
-      ['Sanitary seal', pyFixed(design.sanitary_seal[0], 0) + '-' +
-        pyFixed(design.sanitary_seal[1], 0) + ' m cement grout'],
+        ', stick-up ' + formatG(design.stickup_m) + ' m'],
+      ['Screens' + (design.as_built ? ' (as installed)' : ''),
+        design.screens.map(function (s) {
+          return formatG(s.top_m) + '-' + formatG(s.bottom_m) + ' m';
+        }).join('; ') + ' (slot ' + formatG(design.screen_slot_mm) + ' mm)'],
+      ['Annular fill', formatG(design.gravel_pack[0]) + '-' +
+        formatG(design.gravel_pack[1]) + ' m: ' + annularFillLabel(design)],
+      ['Backfill', formatG(design.backfill[0]) + '-' +
+        formatG(design.backfill[1]) + ' m'],
+      ['Sanitary seal', formatG(design.sanitary_seal[0]) + '-' +
+        formatG(design.sanitary_seal[1]) + ' m cement grout'],
     ];
-    if (design.static_water_level_m !== null) {
+    if (design.static_water_level_m !== null && design.static_water_level_m !== undefined) {
       rows.push(['Static water level', pyFixed(design.static_water_level_m, 2) + ' m']);
     }
     if (design.water_strikes_m.length) {
@@ -4237,7 +5125,7 @@
       }).join(', ')]);
     }
     if (design.pump_intake_m !== null && design.pump_intake_m !== undefined) {
-      rows.push(['Recommended pump intake', design.pump_intake_m.toFixed(0) + ' m']);
+      rows.push(['Recommended pump intake', formatG(design.pump_intake_m) + ' m']);
     }
     return rows;
   }
@@ -4258,12 +5146,28 @@
     var swl = opts.staticWaterLevelM;
     if (swl === undefined) swl = null;
 
-    if (opts.screensM && opts.screensM.length) {
-      var chosen = analystScreens(opts.screensM, totalDepthM, rules, flags);
+    var asBuilt = false;
+    var screensM = opts.screensM;
+    if (!(screensM && screensM.length) && log && log.installed_screens_m &&
+        log.installed_screens_m.length) {
+      /* the sheet records the screens the crew set: those are the screens,
+       * and the drawing is an as-built record rather than a design */
+      screensM = log.installed_screens_m.map(function (s) { return [s[0], s[1]]; });
+      asBuilt = true;
+    }
+    if (screensM && screensM.length) {
+      var chosen = analystScreens(screensM, totalDepthM, rules, flags);
+      var chosenBasis = chosen.basis;
+      if (asBuilt) {
+        chosenBasis = ['screens as installed, recorded on the drilling log (' +
+          chosen.screens.map(function (s) {
+            return formatG(s[0]) + '-' + formatG(s[1]) + ' m';
+          }).join(', ') + ')'];
+      }
       return assembleDesign({
-        screens: chosen.screens, basis: chosen.basis, flags: flags,
+        screens: chosen.screens, basis: chosenBasis, flags: flags,
         totalDepthM: totalDepthM, swl: swl, pumpIntakeM: opts.pumpIntakeM,
-        rules: rules, log: log,
+        rules: rules, log: log, asBuilt: asBuilt,
       });
     }
 
@@ -4272,8 +5176,10 @@
     var screens = targeted.zones.map(function (z) { return [z[0], z[1]]; });
 
     if (!screens.length) {
-      /* fall back: screen the bottom third of the hole below the SWL margin */
-      var floor = (swl || 0.0) + rules.min_screen_below_swl_m;
+      /* fall back: screen the bottom third of the hole below the SWL margin,
+       * and never inside the grout */
+      var floor = Math.max((swl || 0.0) + rules.min_screen_below_swl_m,
+        sealDepthFor(log, rules));
       var sumpTop = Math.max(totalDepthM - rules.sump_length_m, 0.0);
       var bottom = sumpTop;
       /* rounded to 0.5 m like every other screen top */
@@ -4445,6 +5351,10 @@
   function inputsFromDesign(design, options) {
     var opts = options || {};
     var screenM = design.total_screen_length_m;
+    /* an annulus too thin to take a pack is priced as none: the bill used
+     * to carry gravel the drawing's own flag said could not be placed */
+    var packed = (design.annular_fill === undefined ? 'gravel pack'
+      : design.annular_fill) !== 'none';
     return costingInputs({
       total_depth_m: design.total_depth_m,
       overburden_m: opts.overburdenM === undefined ? null : opts.overburdenM,
@@ -4452,7 +5362,8 @@
       screen_m: screenM,
       borehole_diameter_in: design.borehole_diameter_in,
       casing_diameter_in: design.casing_diameter_in,
-      gravel_interval_m: Math.max(0.0, design.gravel_pack[1] - design.gravel_pack[0]),
+      gravel_interval_m: packed
+        ? Math.max(0.0, design.gravel_pack[1] - design.gravel_pack[0]) : 0.0,
       cement_bags: cementBagsForSeal(
         design.borehole_diameter_in, design.casing_diameter_in,
         Math.max(0.0, design.sanitary_seal[1] - design.sanitary_seal[0])
@@ -5068,7 +5979,26 @@
 
   Object.assign(C, {
     designBorehole: designBorehole, designSummaryRows: designSummaryRows,
-    targetZones: targetZones,
+    targetZones: targetZones, sealDepthFor: sealDepthFor,
+    loggedDiameterIn: loggedDiameterIn, intervalAt: intervalAt,
+    annularFillLabel: annularFillLabel,
+    DESIGN_NOTE: DESIGN_NOTE, AS_BUILT_NOTE: AS_BUILT_NOTE,
+    ANNULUS_PACK_MIN_MM: ANNULUS_PACK_MIN_MM,
+    ANNULUS_FILTER_MIN_MM: ANNULUS_FILTER_MIN_MM,
+    LITHOLOGY_CLASSES: LITHOLOGY_CLASSES, LITHOLOGY_OTHER: LITHOLOGY_OTHER,
+    FRACTURE_RANGE_RE: FRACTURE_RANGE_RE, ANY_RANGE_RE: ANY_RANGE_RE,
+    CLAYEY_RE: CLAYEY_RE,
+    lithologyClass: lithologyClass, isClayey: isClayey,
+    fractureRanges: fractureRanges, hostDescription: hostDescription,
+    lithologyBands: lithologyBands,
+    /* the same table under one name, for the drawings */
+    lithology: {
+      CLASSES: LITHOLOGY_CLASSES, OTHER: LITHOLOGY_OTHER,
+      FRACTURE_RANGE_RE: FRACTURE_RANGE_RE, ANY_RANGE_RE: ANY_RANGE_RE,
+      CLAYEY_RE: CLAYEY_RE, lithologyClass: lithologyClass, isClayey: isClayey,
+      fractureRanges: fractureRanges, hostDescription: hostDescription,
+      lithologyBands: lithologyBands,
+    },
     STAGES: STAGES, RESOURCE_CATEGORIES: RESOURCE_CATEGORIES,
     DEFAULT_EXCHANGE_RATE_SLE_PER_USD: DEFAULT_EXCHANGE_RATE_SLE_PER_USD,
     loadRates: loadRates, annulusVolumeM3: annulusVolumeM3,
@@ -5198,6 +6128,8 @@
     sample_date: ['^sample\\s*date', '^date\\s*sampled'],
     grouting_depth_m: ['^grout(ing)?\\b'],
     drill_rig: ['^drill\\s*rig'],
+    installed_screens: ['^screens?\\s*installed', '^installed\\s*screens?',
+                        '^screens?\\s*(set|as\\s*built)'],
   };
 
   var COMPILED_LABELS = (function () {
@@ -5491,9 +6423,46 @@
       flags.push({ level: 'info', code: 'segment_overlap',
         message: dup + ' AB/2 value(s) repeated with different MN (segment ' +
           'changes); both readings kept.', context: soundingId });
+      var discrepant = overlapDiscrepancies(ab2, rho);
+      if (discrepant.length) {
+        flags.push({ level: 'warning', code: 'segment_overlap_discrepancy',
+          message: 'At an MN change the two readings at one AB/2 should agree ' +
+            'within a few percent; these differ by more than ' +
+            pyFixed((OVERLAP_DISCREPANCY_RATIO - 1) * 100, 0) + ' percent: ' +
+            discrepant.join('; ') +
+            '. That is a field problem (potential-electrode contact, lateral ' +
+            'inhomogeneity at the new MN) or a transcription slip, and the ' +
+            'inversion merges the pair by geometric mean, so part of the model ' +
+            'misfit is made by the splice. Check the sheet before relying on the ' +
+            'deep branch.',
+          context: soundingId });
+      }
     }
     sounding.flags = flags;
     return [sounding, ''];
+  }
+
+  /* Readings at one AB/2 taken with two MN spacings should agree closely; a
+   * ratio beyond this is not the segment shift the splice is built for. */
+  var OVERLAP_DISCREPANCY_RATIO = 1.2;
+
+  function overlapDiscrepancies(ab2, rho) {
+    var unique = ab2.slice().sort(function (a, b) { return a - b; })
+      .filter(function (v, k, a) { return k === 0 || v !== a[k - 1]; });
+    var out = [];
+    unique.forEach(function (value) {
+      var readings = [];
+      for (var k = 0; k < ab2.length; k++) {
+        if (ab2[k] === value && isFinite(rho[k]) && rho[k] > 0) readings.push(rho[k]);
+      }
+      if (readings.length < 2) return;
+      var ratio = Math.max.apply(null, readings) / Math.min.apply(null, readings);
+      if (ratio > OVERLAP_DISCREPANCY_RATIO) {
+        out.push('AB/2 ' + formatG(value) + ' m: ' + formatG(readings[0]) + ' and ' +
+          formatG(readings[1]) + ' ohm-m (ratio ' + pyFixed(ratio, 2) + ')');
+      }
+    });
+    return out;
   }
 
   /* One worksheet per sounding. */
@@ -5544,6 +6513,22 @@
       if ('interval' in cols) return { row: r, cols: cols };
     }
     return null;
+  }
+
+  var SCREEN_RANGE_SOURCE = '(\\d+(?:\\.\\d+)?)\\s*(?:-|–|to)\\s*(\\d+(?:\\.\\d+)?)';
+
+  /* "25-35; 48-53 m" -> [[25, 35], [48, 53]]: the as-built screens a crew
+   * writes on the sheet, as ranges separated by anything. A cell with no
+   * range in it records no screens. */
+  function parseInstalledScreens(value) {
+    var text = cleanText(value), out = [], match;
+    var re = new RegExp(SCREEN_RANGE_SOURCE, 'g');
+    while ((match = re.exec(text)) !== null) {
+      var top = Number(match[1]), bottom = Number(match[2]);
+      if (bottom < top) { var swap = top; top = bottom; bottom = swap; }
+      if (bottom > top) out.push([top, bottom]);
+    }
+    return out.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
   }
 
   function drillingFromGrid(grid, source) {
@@ -5617,6 +6602,10 @@
       drilling_method: fields.drilling_method || '',
       intervals: intervals, water_strikes_m: strikes,
       grouting_depth_m: fields.grouting_depth_m === undefined ? null : fields.grouting_depth_m,
+      /* the screens the crew actually set, when the sheet records them:
+       * with these the drawing is an as-built record, without them it is a
+       * design generated by the rules, and says so */
+      installed_screens_m: parseInstalledScreens(fields.installed_screens || ''),
       start_date: String(fields.start_date || ''),
       completion_date: String(fields.completion_date || ''),
       status: fields.status || '', source: String(source || ''), flags: [],
@@ -6150,6 +7139,22 @@
             ' m; check the sheet.' });
       }
     }
+    if (test.pump_setting_m && steps.length) {
+      /* A pump cannot draw the water below its own intake. Levels 18 m under
+       * the pump went into a report as 59 m of drawdown and 38 m of available
+       * drawdown, with nothing to say the sheet could not be right. */
+      var maxWlPump = arrMax(steps.map(function (s) {
+        return arrMax(s.water_level_m.filter(isFinite));
+      }));
+      if (maxWlPump > test.pump_setting_m) {
+        flags.push({ level: 'warning', code: 'level_below_pump',
+          message: 'Recorded water level ' + maxWlPump.toFixed(2) + ' m is below ' +
+            'the pump intake at ' + pyFixed(test.pump_setting_m, 0) + ' m. A pump ' +
+            'cannot draw the level below its own intake, so the pump setting, ' +
+            'the levels or the datum on the sheet is wrong; the drawdown ' +
+            'figures are as recorded and not to be relied on.' });
+      }
+    }
     test.flags = flags;
     return test;
   }
@@ -6162,7 +7167,7 @@
     siteFromFields: siteFromFields, rowText: rowText,
     soundingFromGrid: soundingFromGrid, readVesSheets: readVesSheets,
     drillingFromGrid: drillingFromGrid, qualityFromGrid: qualityFromGrid,
-    pumpingFromGrid: pumpingFromGrid,
+    pumpingFromGrid: pumpingFromGrid, parseInstalledScreens: parseInstalledScreens,
     LABEL_PATTERNS: LABEL_PATTERNS,
   });
 
@@ -7084,8 +8089,13 @@
         'depth, so the drilling prospect here is weak.';
     }
     var parts = [];
-    parts.push('about ' + interp.aquifer_thickness_m.toFixed(0) +
-      ' m of interpreted water-bearing thickness' +
+    var openEnded = !!interp.basement_not_resolved;
+    parts.push((openEnded
+      ? 'at least ' + pyFixed(interp.aquifer_thickness_m, 0) +
+        ' m of interpreted water-bearing thickness, the base of the zone being ' +
+        'below the depth the sounding resolves'
+      : 'about ' + pyFixed(interp.aquifer_thickness_m, 0) +
+        ' m of interpreted water-bearing thickness') +
       (comp.aquifer_thickness >= 0.7 ? ' (thick)'
         : comp.aquifer_thickness >= 0.4 ? ' (modest)' : ' (thin)'));
     if (comp.resistivity_fit >= 0.6) {
@@ -7103,7 +8113,37 @@
       parts.push('overburden of about ' + interp.depth_to_basement_m.toFixed(0) +
         ' m that limits the target');
     }
-    return 'Driven by ' + parts.join('; ') + '.';
+    var text = 'Driven by ' + parts.join('; ') + '.';
+    var confidence = interp.confidence === undefined ? 1.0 : interp.confidence;
+    if (confidence < 1.0) {
+      var reasons = [];
+      if ((interp.fit_quality || 'ok') !== 'ok') {
+        reasons.push('a model fit of ' + pyFixed(interp.fit_error_percent, 1) +
+          ' percent (ERR)');
+      }
+      if (openEnded) reasons.push('a basement the sounding did not reach');
+      text += ' Confidence ' + pyFixed(confidence, 2) + ': ' + reasons.join(' and ') +
+        ' discount the score before ranking.';
+    }
+    return text;
+  }
+
+  /* One sentence when the top two points cannot be told apart; '' otherwise. */
+  function rankingTie(results, withinPoints) {
+    var within = withinPoints === undefined ? 3.0 : withinPoints;
+    var ranked = results.slice().sort(function (a, b) {
+      return (a.rank === null || a.rank === undefined ? 99 : a.rank) -
+        (b.rank === null || b.rank === undefined ? 99 : b.rank);
+    });
+    if (ranked.length < 2) return '';
+    var first = ranked[0], second = ranked[1];
+    var w1 = first.suitability * first.confidence, w2 = second.suitability * second.confidence;
+    if (Math.abs(w1 - w2) >= within) return '';
+    return 'Points ' + first.sounding_id + ' and ' + second.sounding_id +
+      ' are indistinguishable on geophysical grounds (confidence-weighted suitability ' +
+      pyFixed(w1, 1) + ' and ' + pyFixed(w2, 1) + '); ' + first.sounding_id +
+      ' is listed first by name only, and the choice between them should be made ' +
+      'on access, sanitary distances and the community\'s preference.';
   }
 
   /* Score and rank candidate VES points, most suitable first (rank 1 = best),
@@ -7130,11 +8170,13 @@
         rationale: suitabilityRationale(interp, comp),
         easting: interp.site_easting, northing: interp.site_northing,
         rank: null,
+        confidence: pyRound(interp.confidence === undefined ? 1.0 : interp.confidence, 3),
       };
     });
-    /* highest suitability first, ties broken by sounding id for stability */
+    /* rank on the confidence-weighted score, highest first; ties broken by
+     * sounding id for stability, and said in words by rankingTie() */
     var ranked = results.slice().sort(function (a, b) {
-      return b.suitability - a.suitability ||
+      return (b.suitability * b.confidence) - (a.suitability * a.confidence) ||
         (a.sounding_id < b.sounding_id ? -1 : a.sounding_id > b.sounding_id ? 1 : 0);
     });
     ranked.forEach(function (result, i) { result.rank = i + 1; });
@@ -7144,6 +8186,7 @@
   Object.assign(C, {
     SUITABILITY_WEIGHTS: SUITABILITY_WEIGHTS, assessSiting: assessSiting,
     suitabilityGrade: suitabilityGrade, zoneGeomeanRho: zoneGeomeanRho,
+    rankingTie: rankingTie,
   });
 
   /* ================================================================ portfolio
@@ -7647,6 +8690,14 @@
       if (rec.safe_yield_m3_per_h === null || rec.safe_yield_m3_per_h === undefined) {
         return ['unmet', 'The safe yield could not be derived from this test.'];
       }
+      /* A yield the analysis itself calls indicative is not established. The
+       * gate used to certify a 30-minute test inside its casing storage on
+       * the strength of the number alone. */
+      if (rec.confidence === 'indicative') {
+        return ['unmet', 'The safe yield of ' + yieldRangeText(rec) + ' is ' +
+          'indicative, not established: ' +
+          (rec.confidence_reasons || []).join('; ') + '.'];
+      }
       return ['met', 'Safe yield ' + yieldRangeText(rec) + '.'];
     }],
     water_quality_panel: ['Water quality panel', function (state) {
@@ -7893,9 +8944,14 @@
       totalDepth: totalDepth,
       domain: domain,
       lithology: ((log && log.intervals) || []).map(function (iv) {
+        /* one class table for every drawing: the class and colour ride with
+         * each interval so the workspace shades the log the way the report
+         * draws it */
+        var klass = lithologyClass(iv.description);
         return {
           top: iv.top_m, base: iv.bottom_m, description: iv.description,
           aquifer: looksLikeAquifer(iv.description),
+          'class': klass.label, colour: klass.colour,
         };
       }),
       waterStrikes: (design.water_strikes_m || []).slice(),
@@ -7903,6 +8959,7 @@
         return { kind: s.kind, top: s.top_m, base: s.bottom_m };
       }),
       gravelPack: (design.gravel_pack || []).slice(),
+      annularFill: design.annular_fill === undefined ? 'gravel pack' : design.annular_fill,
       backfill: (design.backfill || []).slice(),
       sanitarySeal: (design.sanitary_seal || []).slice(),
       levels: levels,

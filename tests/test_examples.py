@@ -89,3 +89,45 @@ def test_a_case_whose_sheets_carry_no_position_publishes_a_stamped_report():
     for report in reports:
         assert catalogue.verdict(report) == "provisional", report.name
         assert "Site position" in catalogue.outstanding(report), report.name
+
+
+def _run_example(script: Path, out_root: Path) -> None:
+    spec = importlib.util.spec_from_file_location(script.stem, script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.main(out_root=out_root)
+
+
+def _generated(root: Path) -> set[str]:
+    """Every file a case's folder holds, relative to it, apart from raw/."""
+    return {
+        str(path.relative_to(root))
+        for path in root.rglob("*")
+        if path.is_file() and path.relative_to(root).parts[0] != "raw"
+    }
+
+
+@pytest.mark.parametrize("case", [c["key"] for c in _load_catalogue().CASES])
+def test_the_committed_outputs_are_what_the_current_code_writes(case, tmp_path):
+    """The example folders hold what the scripts write today, no more, no less.
+
+    Twenty-one figures once sat in these folders that no script had written
+    for months - maps keyed to a district centroid the boundary layer had
+    since moved, drawings under a file name a builder had stopped using -
+    beside the current ones, with nothing in either name to say which the
+    committed report embeds. The scripts now clear their folders before
+    they run; this check holds the committed set of file names to the set a
+    fresh run produces, so an output nobody regenerated shows up as a diff
+    rather than as a second map somebody quotes. Names, not bytes: the
+    catalogue check and CONTRIBUTING's reproducibility rule cover content.
+    """
+    catalogue = _load_catalogue()
+    entry = next(c for c in catalogue.CASES if c["key"] == case)
+    _run_example(EXAMPLES / entry["script"], tmp_path)
+    fresh = _generated(tmp_path / case)
+    committed = _generated(EXAMPLES / "projects" / case)
+    assert fresh == committed, (
+        f"examples/projects/{case} does not match a fresh run of {entry['script']}: "
+        f"only committed {sorted(committed - fresh)}; only fresh {sorted(fresh - committed)}. "
+        f"Run: python examples/{entry['script']} && python examples/build_catalogue.py"
+    )

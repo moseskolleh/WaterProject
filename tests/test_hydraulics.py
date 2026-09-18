@@ -26,7 +26,12 @@ def test_cooper_jacob_recovers_transmissivity():
     result = cooper_jacob(T_MIN, synthetic_drawdown(), Q)
     assert abs(result.transmissivity_m2_per_day - T_TRUE) / T_TRUE < 0.02
     assert result.r_squared > 0.999
-    assert "valid" in result.u_check
+    # in the pumped well the u criterion is met from the first minute and
+    # says nothing about the fit; the report used to read it as validation
+    assert "distance criterion" in result.u_check
+    assert "does not test the fit" in result.u_check
+    observed = cooper_jacob(T_MIN, synthetic_drawdown(), Q, observation_radius_m=25.0)
+    assert "valid" in observed.u_check
 
 
 def test_theis_recovers_parameters():
@@ -141,16 +146,12 @@ def _theis_series(T=120.0, S=1e-3, Q=5.0, r=0.1):
     return t_min, (Q * 24.0) / (4 * np.pi * T) * exp1(u)
 
 
-def _constant_test(t_min, drawdown, swl=10.0, q=5.0, pump=40.0, depth=60.0):
-    from groundwater.models import PumpingStep, PumpingTest, SiteMetadata
+def _constant_test(t_min, drawdown, swl=10.0, q=5.0, pump=40.0, depth=60.0,
+                   recovery=None):
+    from conftest import synthetic_constant_test
 
-    step = PumpingStep(step_number=1, discharge_m3_per_h=q, time_min=t_min,
-                       water_level_m=swl + drawdown)
-    return PumpingTest(
-        site=SiteMetadata(community="synthetic"), test_type="constant",
-        static_water_level_m=swl, borehole_depth_m=depth, pump_setting_m=pump,
-        steps=[step], pumping_duration_min=float(t_min[-1]),
-    )
+    return synthetic_constant_test(t_min, drawdown, swl=swl, q=q, pump=pump,
+                                   depth=depth, recovery=recovery)
 
 
 def test_a_stabilised_tail_is_refused_by_cooper_jacob_and_flagged():
@@ -217,26 +218,171 @@ def test_a_short_test_is_flagged_with_its_extrapolation(sample_data):
     short = [f for f in analysis.flags if f.code == "short_test"]
     assert short and "30 minutes" in short[0].message and "4.2 log cycles" in short[0].message
     assert analysis.yield_recommendation.basis.startswith("Projected from a 30-minute test")
-    assert analysis.transmissivity_source == "recovery"   # R squared 0.885 still qualifies
+    # the recovery's R squared of 0.885 used to make it the adopted method;
+    # its 21.7 m intercept now rules it out, and nothing else qualifies
+    method, _, qualifies = analysis.adopted_fit()
+    assert method == "cooper_jacob" and not qualifies
+    assert analysis.yield_recommendation.is_indicative
     t_min, s = _theis_series()
     long_test = analyse_pumping_test(_constant_test(t_min, s))
     assert not any(f.code == "short_test" for f in long_test.flags)
 
 
-def test_a_poor_recovery_fit_does_not_override_a_good_cooper_jacob(sample_data):
-    """Kuntolo with discharges: recovery R squared 0.69 used to beat a
-    Cooper-Jacob at 0.99 simply by being first in the list."""
-    test = read_pumping_workbook(sample_data / "kuntolo" / "kuntolo_step_test.xlsx")
-    for step, q in zip(test.steps, (1.5, 2.2, 3.0), strict=True):
-        step.discharge_m3_per_h = q
-    analysis = analyse_pumping_test(test)
+def _recovery_of(test, T=120.0):
+    """The theoretical Theis recovery of the test's aquifer."""
+    q = test.steps[0].discharge_m3_per_h
+    t_rec = np.array([1, 2, 3, 5, 7, 10, 15, 20, 30, 45, 60, 90, 120], float)
+    slope = 2.303 * (q * 24.0) / (4 * np.pi * T)
+    return t_rec, slope * np.log10((test.pumping_duration_min + t_rec) / t_rec)
+
+
+def test_a_poor_recovery_fit_does_not_override_a_good_cooper_jacob():
+    """A recovery at R squared 0.47 used to beat a Cooper-Jacob at 0.99
+    simply by being first in the list."""
+    t_min, s = _theis_series()
+    base = _constant_test(t_min, s)
+    t_rec, residual = _recovery_of(base)
+    wiggle = 0.12 * np.array([1, -1] * 7)[:len(t_rec)]
+    analysis = analyse_pumping_test(_constant_test(t_min, s, recovery=(t_rec, residual + wiggle)))
     assert analysis.recovery is not None and analysis.recovery.r_squared < 0.8
     assert analysis.cooper_jacob is not None and analysis.cooper_jacob.r_squared > 0.9
     assert analysis.transmissivity_source == "cooper_jacob"
     assert analysis.transmissivity_m2_per_day == analysis.cooper_jacob.transmissivity_m2_per_day
-    assert any("recovery" in f.message for f in test.flags if f.code == "water_level_above_static")
-    strict = analyse_pumping_test(test, PumpingConfig(min_fit_r_squared=0.999))
-    assert any(f.code == "transmissivity_low_confidence" for f in strict.flags)
+    assert "R squared" in analysis.why_not_adopted("recovery")
+    strict = analyse_pumping_test(
+        _constant_test(t_min, s, recovery=(t_rec, residual + wiggle)),
+        PumpingConfig(min_fit_r_squared=1.0),
+    )
+    # with both straight lines below the bar, the curve fit (which has no R
+    # squared to fail) is what is left, and it is adopted as qualifying
+    assert strict.transmissivity_source == "theis" and strict.adopted_fit()[2]
+    assert not any(f.code == "transmissivity_low_confidence" for f in strict.flags)
+
+
+def test_a_long_test_outside_casing_storage_establishes_its_yield():
+    """The fixture every certificate rests on: nothing to flag."""
+    t_min, s = _theis_series()
+    base = _constant_test(t_min, s)
+    analysis = analyse_pumping_test(_constant_test(t_min, s, recovery=_recovery_of(base)))
+    yr = analysis.yield_recommendation
+    assert analysis.transmissivity_source == "recovery" and analysis.adopted_fit()[2]
+    assert analysis.casing_storage_min < analysis.cooper_jacob.fit_window_min[0]
+    assert analysis.disqualified == {}
+    assert yr.confidence == "established" and not yr.is_indicative
+    assert "established" in yr.confidence_text
+    assert not {"short_test", "casing_storage", "recovery_intercept"} & {f.code for f in analysis.flags}
+
+
+def test_a_thirty_minute_test_inside_casing_storage_is_indicative(sample_data):
+    """Dr Timbo: 5 inch casing, 0.09 m3/h per m, 30 minutes pumped. The
+    casing supplies the pump for the first two hours, the recovery line
+    meets t/t' = 1 at 21.7 m, and Theis returns a storativity of 0.18: the
+    report used to adopt the recovery's 1.4 m2/day and call the yield
+    sustainable."""
+    test = read_pumping_workbook(sample_data / "dr_timbo" / "dr_timbo_constant_test.xlsx")
+    analysis = analyse_pumping_test(test)
+    assert 100 < analysis.casing_storage_min < 130
+    assert set(analysis.disqualified) == {"recovery", "cooper_jacob", "theis"}
+    codes = {f.code for f in analysis.flags}
+    assert {"casing_storage", "recovery_intercept", "storativity_implausible",
+            "transmissivity_low_confidence"} <= codes
+    assert analysis.recovery.intercept_fraction > 0.5
+    assert analysis.theis.storativity > 0.1
+    # the best of the poor fits is adopted, and said to be
+    assert analysis.transmissivity_source == "cooper_jacob"
+    assert not analysis.adopted_fit()[2]
+    assert "casing-storage period" in analysis.why_not_adopted("cooper_jacob")
+    yr = analysis.yield_recommendation
+    assert yr.is_indicative and len(yr.confidence_reasons) == 3
+    assert "casing-storage" in yr.confidence_text and "30 minutes" in yr.confidence_text
+    assert 0.3 < yr.safe_yield_m3_per_h < 0.5          # not the 0.97 the 1.4 m2/day gave
+    assert "0.089" in f"{yr.specific_capacity_m3hr_per_m:.2g}"
+    assert yr.specific_capacity_basis == "2.93 m3/h over 32.8 m of drawdown after 30 minutes"
+
+
+def test_a_recovery_line_that_misses_the_origin_is_not_adopted():
+    t_min, s = _theis_series()
+    base = _constant_test(t_min, s)
+    t_rec, residual = _recovery_of(base)
+    analysis = analyse_pumping_test(_constant_test(t_min, s, recovery=(t_rec, residual + 0.3)))
+    assert analysis.recovery.intercept_fraction > 0.25
+    assert "recovery" in analysis.disqualified
+    assert analysis.transmissivity_source == "cooper_jacob" and analysis.adopted_fit()[2]
+    assert any(f.code == "recovery_intercept" for f in analysis.flags)
+    assert not analysis.yield_recommendation.is_indicative
+
+
+def test_the_pump_intake_sits_below_the_drawdown_the_yield_uses():
+    """The intake used to be raised to just clear the drawdown at the safe
+    rate, 3 m above the level the test itself had reached, spending the
+    safety factor on lifting the pump."""
+    t_min, s = _theis_series()
+    analysis = analyse_pumping_test(_constant_test(t_min, s))
+    yr = analysis.yield_recommendation
+    cfg = PumpingConfig()
+    expected = 10.0 + cfg.seasonal_allowance_m + yr.usable_drawdown_m + cfg.pump_submergence_min_m
+    assert yr.pump_installation_depth_m == np.ceil(expected)
+    assert yr.pump_installation_depth_m >= yr.deepest_pumping_level_m + cfg.pump_submergence_min_m
+    assert "kept on the rate" in yr.pump_depth_basis
+    # a test that drew the level deeper than that sets the intake itself
+    deep = _constant_test(t_min, s + 30.0, pump=55.0, depth=60.0)
+    yr_deep = analyse_pumping_test(deep).yield_recommendation
+    assert yr_deep.pump_installation_depth_m >= yr_deep.deepest_pumping_level_m + 3
+    assert "which sets the intake" in yr_deep.pump_depth_basis
+
+
+def test_a_first_step_above_static_gets_no_drawdown_fit(sample_data):
+    """Kuntolo with discharges: step 1 ends 4.3 m above the stated static
+    level. It used to get a Cooper-Jacob line at R squared 0.99, adopted for
+    the yield, while the step-test fit excluded it as a datum error."""
+    from groundwater.hydraulics import equivalent_pumping_time_min
+
+    test = read_pumping_workbook(sample_data / "kuntolo" / "kuntolo_step_test.xlsx")
+    for step, q in zip(test.steps, (1.5, 2.2, 3.0), strict=True):
+        step.discharge_m3_per_h = q
+    analysis = analyse_pumping_test(test)
+    assert analysis.cooper_jacob is None and analysis.theis is None
+    codes = [f.code for f in analysis.flags]
+    assert "first_step_above_static" in codes
+    assert "cooper_jacob_failed" not in codes and "theis_failed" not in codes
+    # the recovery after a step test is read against the equivalent time
+    assert equivalent_pumping_time_min(test) == (pytest.approx(112.0), True)
+    assert analysis.recovery.equivalent_time
+    assert analysis.recovery.pumping_time_min == pytest.approx(112.0)
+    assert "recovery_equivalent_time" in codes
+    # two steps make an exact line, and the result says so
+    assert analysis.step_test.two_point
+    # the sheet's levels run 18 m below the pump: a flag exists for it now
+    assert any(f.code == "level_below_pump" for f in test.flags)
+    yr = analysis.yield_recommendation
+    assert yr.pump_installation_depth_m == 67                 # capped 3 m above the bottom
+    assert "which sets the intake" in yr.pump_depth_basis
+    assert "capped 3 m above the 70 m bottom" in yr.pump_depth_basis
+
+
+def test_the_test_type_is_written_in_words():
+    from groundwater.hydraulics import test_type_text
+
+    assert test_type_text("constant+recovery") == "constant discharge test with recovery"
+    assert test_type_text("step") == "step drawdown test"
+    assert test_type_text("step+recovery") == "step drawdown test with recovery"
+    assert test_type_text("") == "pumping test"
+
+
+def test_one_pump_depth_per_report():
+    """A report with a seasonal projection said 39 m and then 40 m."""
+    from groundwater.hydraulics import pump_intake_depth
+    from groundwater.seasonal import seasonal_yield
+
+    t_min, s = _theis_series()
+    analysis = analyse_pumping_test(_constant_test(t_min, s))
+    seasonal = seasonal_yield(analysis, month=9)
+    depth, why = pump_intake_depth(analysis, seasonal)
+    assert depth == max(seasonal.pump_installation_depth_m,
+                        analysis.yield_recommendation.pump_installation_depth_m)
+    assert "drought" in why
+    alone, why_alone = pump_intake_depth(analysis)
+    assert alone == analysis.yield_recommendation.pump_installation_depth_m and why_alone == ""
 
 
 def test_a_pinned_step_fit_says_its_efficiencies_are_not_meaningful():

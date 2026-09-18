@@ -50,6 +50,11 @@ from groundwater.costing import (
 )
 from groundwater.design import design_borehole, draw_borehole_design
 from groundwater.hydraulics import analyse_pumping_test
+from groundwater.hydraulics.analysis import (
+    METHOD_LABELS,
+    pump_intake_depth,
+    test_type_text,
+)
 from groundwater.hydraulics.plots import (
     plot_cooper_jacob,
     plot_recovery,
@@ -65,7 +70,12 @@ from groundwater.ingestion import (
     read_ves_workbook,
 )
 from groundwater.ingestion.templates import write_all_templates
-from groundwater.geo import geographic_to_utm, parse_latlon, utm_to_geographic
+from groundwater.geo import (
+    geographic_to_utm,
+    infer_zone_for_sierra_leone,
+    parse_latlon,
+    utm_to_geographic,
+)
 from groundwater.mapping import (
     MapPoint,
     apparent_resistivity_pseudosection,
@@ -243,7 +253,9 @@ from groundwater.supervision import (
 from groundwater.utils import fmt_num
 from groundwater.ves import interpret_model, invert_sounding
 from groundwater.ves.interpret import (
+    drilling_depth_text,
     drilling_preference_table,
+    zone_cell,
     rank_interpretations,
 )
 from groundwater.ves.plots import plot_sounding_curve
@@ -1844,7 +1856,7 @@ with tab_overview:
                     if _best.max_drilling_depth_m:
                         _ves_rows.append((
                             "Recommended drilling depth",
-                            f"{_best.max_drilling_depth_m:.0f} m",
+                            drilling_depth_text(_best),
                         ))
                 st.markdown(
                     "<div class='gw-card'><span class='gw-cap'>Geophysics"
@@ -2105,7 +2117,7 @@ with tab_guide:
         if top_interp is not None:
             st.metric(
                 f"Recommended site: {top_interp.sounding_id}",
-                f"drill to {top_interp.max_drilling_depth_m:g} m",
+                f"drill to {drilling_depth_text(top_interp)}",
                 help="Best ranked sounding; see the Geophysics (VES) page for "
                 "curves, water zones and the full preference table.",
             )
@@ -2219,7 +2231,7 @@ with tab_guide:
         if top_interp is not None:
             summary.append(
                 f"**Siting**: drill at {top_interp.sounding_id} to "
-                f"{top_interp.max_drilling_depth_m:g} m"
+                f"{drilling_depth_text(top_interp)}"
             )
         if est is not None:
             summary.append(
@@ -2311,8 +2323,14 @@ with tab_ves:
                 )
                 col_txt.metric(
                     "Water bearing zones",
-                    ", ".join(f"{int(t)}-{int(b)} m" for t, b in interp.water_zones)
-                    or "none",
+                    ", ".join(
+                        zone_cell(t, b, open_ended=(interp.basement_not_resolved
+                                                    and (t, b) == interp.water_zones[-1]))
+                        + " m"
+                        for t, b in interp.water_zones
+                    ) or "none",
+                    help="A zone marked + continues below the depth the sounding "
+                    "resolves: its base and the drilling depth are minima.",
                 )
                 col_txt.write(interp.narrative)
         st.subheader("Drilling preference")
@@ -2324,14 +2342,16 @@ with tab_ves:
         ) if interps else None
         if _best_interp is not None and _best_interp.max_drilling_depth_m:
             _zones = ", ".join(
-                f"{int(t)}-{int(b)} m" for t, b in _best_interp.water_zones
+                zone_cell(t, b, open_ended=(_best_interp.basement_not_resolved
+                                            and (t, b) == _best_interp.water_zones[-1]))
+                + " m"
+                for t, b in _best_interp.water_zones
             )
             st.markdown(
                 "<div class='gw-callout'>"
                 "<span class='gw-cap'>Recommended drilling depth — "
                 f"{_html.escape(_best_interp.sounding_id)}</span>"
-                f"<div class='gw-big'>{_best_interp.max_drilling_depth_m:.0f} "
-                "<small>m</small></div>"
+                f"<div class='gw-big'>{_html.escape(drilling_depth_text(_best_interp))}</div>"
                 + (f"<p>Water bearing zones at {_html.escape(_zones)}.</p>"
                    if _zones else "")
                 + "</div>",
@@ -2369,7 +2389,8 @@ with tab_ves:
             )
             map_points = suitability_map_points(suitability)
             if map_points:
-                zone = site_from_state().utm_zone or 29
+                zone = site_from_state().utm_zone or infer_zone_for_sierra_leone(
+                    map_points[0].easting)
                 smap = workdir() / "suitability_map.png"
                 suitability_map(map_points, zone, path=smap)
                 st.image(str(smap))
@@ -2421,7 +2442,7 @@ with tab_pump:
         )
     if path is not None and test is not None:
         st.success(
-            f"Parsed {test.test_type} test with {len(test.steps)} pumping series "
+            f"Parsed {test_type_text(test.test_type)} with {len(test.steps)} pumping series "
             f"and {'a' if test.recovery_time_min is not None else 'no'} recovery record."
         )
         show_flags(test.flags)
@@ -2473,7 +2494,8 @@ with tab_pump:
             if analysis.recovery is not None:
                 rec_path = workdir() / "rec.png"
                 plot_recovery(test.recovery_time_min, test.residual_drawdown(),
-                              test.pumping_duration_min, analysis.recovery, path=rec_path)
+                              analysis.recovery.pumping_time_min, analysis.recovery,
+                              path=rec_path)
                 st.image(str(rec_path))
         if test.test_type.startswith("step"):
             st_path = workdir() / "steps.png"
@@ -2490,7 +2512,7 @@ with tab_pump:
                 f"<div class='gw-big'>{fmt_num(yr.safe_yield_m3_per_h)} "
                 "<small>m³/h</small></div></div>"
                 + (
-                    "<div><span class='gw-cap'>Pump setting depth</span>"
+                    "<div><span class='gw-cap'>Pump intake, below the casing top</span>"
                     f"<div class='gw-big'>"
                     f"{fmt_num(yr.pump_installation_depth_m)} "
                     "<small>m</small></div></div>"
@@ -2499,6 +2521,10 @@ with tab_pump:
                 + "</div>",
                 unsafe_allow_html=True,
             )
+            if yr.is_indicative:
+                st.warning(yr.confidence_text, icon="⚠️")
+            else:
+                st.caption(yr.confidence_text)
         if yr is not None and yr.safe_yield_low_m3_per_h is not None:
             st.caption(
                 f"Plausible range **{yr.safe_yield_low_m3_per_h:.2g} to "
@@ -2548,12 +2574,23 @@ with tab_pump:
                     )
                 )
             cols[3].metric(
-                "Pump depth",
+                "Pump intake",
                 f"{fmt_num(yr.pump_installation_depth_m)} m"
                 if yr.pump_installation_depth_m
                 else "pending",
+                help="Below the top of the casing, the datum the levels were "
+                "measured from. Set where the drawdown the yield was computed "
+                "on exists, and never above the level the test itself reached.",
             )
             st.caption(yr.basis)
+            if yr.pump_depth_basis:
+                st.caption(yr.pump_depth_basis)
+        if analysis.disqualified:
+            st.caption(
+                "Not adopted for the yield: "
+                + "; ".join(f"{METHOD_LABELS[k]} ({v})" for k, v in analysis.disqualified.items())
+                + "."
+            )
 
         # --- through the year ------------------------------------------
         # A test measures one day; the borehole has to supply the village on
@@ -2611,13 +2648,13 @@ with tab_pump:
                     f"{_loss:.0f}% less than it did on the day of the test. "
                     "Size the supply on the dry-season figure."
                 )
-            if _seasonal.pump_installation_depth_m is not None:
+            _intake, _intake_why = pump_intake_depth(analysis, _seasonal)
+            if _intake is not None:
                 st.info(
-                    "Set the pump intake at "
-                    f"{fmt_num(_seasonal.pump_installation_depth_m)} m - deep "
-                    "enough for the drought case. The pump is fitted once, and "
-                    "one that draws air in a bad year loses the village its "
-                    "borehole in the year it is needed most."
+                    f"Set the pump intake at {fmt_num(_intake)} m below the top "
+                    f"of the casing, {_intake_why or 'deep enough for the drought case'}. "
+                    "The pump is fitted once, and one that draws air in a bad year "
+                    "loses the village its borehole in the year it is needed most."
                 )
             st.caption(
                 f"The annual range used is {_seasonal.annual_range_m:.1f} m - "
@@ -3669,20 +3706,17 @@ with tab_maps:
             except ValueError as exc:
                 st.info(f"No study area map: {exc}")
             admin_path = workdir() / "admin_map.png"
-            plot_admin_map(marked, path=admin_path, style=style)
+            plot_admin_map(site, path=admin_path, style=style)
             paths.append(admin_path)
-            if marked is not None:
-                hydro_path = workdir() / "hydro_local_map.png"
-                plot_hydrogeology_map(marked, path=hydro_path, style=style,
-                                      radius_km=float(radius))
-                geo_path = workdir() / "geology_local_map.png"
-                plot_geological_map(marked, path=geo_path, style=style,
-                                    radius_km=float(radius))
-            else:
-                hydro_path = workdir() / "hydro_map.png"
-                plot_hydrogeology_map(None, path=hydro_path, style=style)
-                geo_path = workdir() / "geology_map.png"
-                plot_geological_map(None, path=geo_path, style=style)
+            # the same maps the reports embed: a site without a fix is
+            # centred on its chiefdom or district by area_window, and only
+            # a site with neither falls back to the national map
+            hydro_path = workdir() / "hydro_local_map.png"
+            plot_hydrogeology_map(site, path=hydro_path, style=style,
+                                  radius_km=float(radius))
+            geo_path = workdir() / "geology_local_map.png"
+            plot_geological_map(site, path=geo_path, style=style,
+                                radius_km=float(radius))
             paths += [hydro_path, geo_path]
             st.session_state.map_paths = paths
         for map_path in st.session_state.get("map_paths", []):
@@ -3820,7 +3854,8 @@ with tab_maps:
         if _placed and st.button("Generate subsurface maps",
                                  key="run_subsurface", type="primary"):
             style = app_config().style
-            zone = site.utm_zone or 28
+            zone = site.utm_zone or infer_zone_for_sierra_leone(
+                float(_placed[0].site_easting))
             made: list[Path] = []
             plan = [
                 ("depth_to_bedrock_map.png", depth_to_bedrock_map, {}),
@@ -3833,7 +3868,7 @@ with tab_maps:
                 try:
                     made.append(fn(_placed, zone,
                                    path=workdir() / name, style=style, **kwargs))
-                except ValueError as exc:
+                except (ValueError, RuntimeError) as exc:
                     st.caption(f"No {name.replace('_', ' ')[:-4]}: {exc}")
             # the site plan and the iso-resistivity surface, from the survey
             _pts = [
@@ -3877,7 +3912,7 @@ with tab_maps:
                     _placed, path=workdir() / "geoelectric_section.png",
                     style=style)
                 st.session_state["section_path"] = str(section)
-            except ValueError as exc:
+            except (ValueError, RuntimeError) as exc:
                 st.session_state.pop("section_path", None)
                 st.caption(f"No geoelectric section: {exc}")
         _traverse = st.session_state.get("traverse")

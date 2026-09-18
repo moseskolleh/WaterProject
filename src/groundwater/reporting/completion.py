@@ -19,6 +19,7 @@ from ..config import Config
 from ..design.designer import BoreholeDesign
 from ..design.drawing import draw_borehole_design
 from ..hydraulics.analysis import PumpingTestAnalysis
+from ..hydraulics.analysis import METHOD_LABELS, test_type_text
 from ..hydraulics.plots import plot_test_overview
 from ..models import DrillingLog
 from ..quality.assess import (
@@ -29,6 +30,7 @@ from ..quality.assess import (
 from ..utils import fmt_num, safe_slug
 from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
+from ..quality.standards import PROVISIONAL_NATIONAL_NOTE, provisional_national_parameters
 from .context import add_area_section
 
 
@@ -69,6 +71,20 @@ def _breached_limit(r) -> str:
     return r.who_health or r.sl_standard or r.who_aesthetic
 
 
+def _pump_intake(inputs: CompletionReportInputs):
+    """The one intake depth this report prints.
+
+    The design may have moved the yield recommendation's intake out of a
+    screen into plain casing; where a design exists its depth is the
+    depth, so the drawing, the tables and the summary agree.
+    """
+    design = inputs.design
+    if design is not None and design.pump_intake_m is not None:
+        return design.pump_intake_m
+    yr = inputs.pumping.yield_recommendation if inputs.pumping else None
+    return yr.pump_installation_depth_m if yr else None
+
+
 def _executive_summary(inputs: CompletionReportInputs) -> tuple[list[str], list[str]]:
     """Compose the completion executive summary from the drilling and test data."""
     log = inputs.log
@@ -92,8 +108,14 @@ def _executive_summary(inputs: CompletionReportInputs) -> tuple[list[str], list[
     if yr is not None and yr.safe_yield_m3_per_h:
         bits.append(
             f"The recommended safe yield is {fmt_num(yr.safe_yield_m3_per_h)} m3/h "
-            f"at a pump setting of {fmt_num(yr.pump_installation_depth_m)} m."
+            f"with the pump intake at {fmt_num(_pump_intake(inputs))} m "
+            "below the top of the casing."
         )
+        # The pumping report carried the "treat as indicative" basis and its
+        # warnings; this one printed the same yield without them, and the
+        # handover certificate followed it.
+        if yr.is_indicative:
+            bits.append(yr.confidence_text)
     elif analysis is not None and not analysis.test.has_discharge:
         bits.append(
             "The pumping test discharge is pending, so the yield figures are not "
@@ -111,10 +133,49 @@ def _executive_summary(inputs: CompletionReportInputs) -> tuple[list[str], list[
             + (f", {status}." if status else ".")
         )
     if yr is not None and yr.safe_yield_m3_per_h:
-        key.append(f"Safe yield: {fmt_num(yr.safe_yield_m3_per_h)} m3/h.")
+        key.append(
+            f"Safe yield: {fmt_num(yr.safe_yield_m3_per_h)} m3/h"
+            + (" (indicative)" if yr.is_indicative else "") + "."
+        )
     if quality is not None:
         key.append("Water safety: " + SUITABILITY_PHRASE[quality.verdict_state])
     return [" ".join(bits)], key
+
+
+def _record_span(record) -> str:
+    """``"The record covers 60 minutes (17:00 to 18:00)."`` from the times."""
+    import re
+
+    def minutes(text):
+        m = re.match(r"\s*(\d{1,2}):(\d{2})", str(text or ""))
+        return int(m.group(1)) * 60 + int(m.group(2)) if m else None
+
+    starts = [minutes(r[0]) for r in record if len(r) > 1]
+    ends = [minutes(r[1]) for r in record if len(r) > 1]
+    starts = [s for s in starts if s is not None]
+    ends = [e for e in ends if e is not None]
+    if not starts or not ends:
+        return ""
+    total = max(ends) - min(starts)
+    if total <= 0:
+        return ""
+    first = min(record, key=lambda r: minutes(r[0]) or 0)[0]
+    last = max(record, key=lambda r: minutes(r[1]) or 0)[1]
+    hours, mins = divmod(total, 60)
+    length = (f"{hours} h {mins:02d} min" if hours else f"{mins} minutes")
+    return f"The record covers {length} ({first} to {last})."
+
+
+def _design_notes(rb, design) -> None:
+    """The design's own warnings, in the client document.
+
+    A 19 mm annulus and a pump intake inside a screen were flagged on the
+    design object and reached no report; the drawing went out clean.
+    """
+    notes = [str(f) for f in design.flags if f.level in ("warning", "error")]
+    if notes:
+        rb.paragraph("Design notes:", bold=True)
+        rb.bullets(notes)
 
 
 def build_completion_report(
@@ -143,7 +204,10 @@ def build_completion_report(
             ("Contractor", site.contractor or ""),
             ("Borehole Ref. No.", log.borehole_ref or ""),
             ("Completion date", log.completion_date or ""),
-            ("Status", log.status or ""),
+            # the driller's word for the hole, not this report's verdict on
+            # it: "Status: Successful" on a cover stamped PROVISIONAL read
+            # as a contradiction
+            ("Status as recorded by the driller", log.status or ""),
         ],
     )
     rb.provisional_stamp(inputs.readiness)
@@ -240,7 +304,8 @@ def build_completion_report(
 
     # ---- construction / design ---------------------------------------------------
     if inputs.design is not None:
-        rb.heading("5. Borehole Construction", 1)
+        design = inputs.design
+        rb.heading("5. Borehole Construction" + ("" if design.as_built else " Design"), 1)
         design_fig = figures / f"borehole_design_{slug}.png"
         draw_borehole_design(
             inputs.design, log, path=design_fig, style=config.style,
@@ -250,15 +315,29 @@ def build_completion_report(
                 ("Method", log.drilling_method), ("Status", log.status),
             ],
         )
+        # The drilling template records the grout depth and, when the crew
+        # fills it in, the screens installed; without those the drawing is a
+        # design the rules generated from the log, and it used to be
+        # captioned "as-built" all the same.
+        rb.paragraph(design.construction_note, align="justify", italic=True)
         rb.table(
-            [[k, v] for k, v in inputs.design.summary_rows()],
+            [[k, v] for k, v in design.summary_rows()],
             header=["Item", "Detail"],
-            caption="Construction summary.",
+            caption=("As-built construction summary." if design.as_built
+                     else "Construction design summary."),
         )
-        rb.figure(design_fig, "As-built borehole design with lithology and construction columns.", width_cm=13.5)
-        if inputs.design.design_basis:
+        rb.figure(
+            design_fig,
+            ("As-built borehole record with lithology and construction columns."
+             if design.as_built
+             else "Borehole construction design generated from the drilling log, "
+             "with lithology and construction columns."),
+            width_cm=13.5,
+        )
+        if design.design_basis:
             rb.paragraph("Design basis:", bold=True)
-            rb.bullets(inputs.design.design_basis)
+            rb.bullets(design.design_basis)
+        _design_notes(rb, design)
 
     # ---- development ---------------------------------------------------------------
     section = 6 if inputs.design is not None else 5
@@ -272,6 +351,12 @@ def build_completion_report(
                 header=["From", "To", "Estimated yield (m3/h)", "Observation"],
                 caption="Borehole development by air lifting.",
             )
+            # the recorded duration, from the record itself; a note saying
+            # "two hours" over a record running 17:00 to 18:00 went out
+            # unreconciled
+            span = _record_span(inputs.development_record)
+            if span:
+                rb.paragraph(span)
         section += 1
 
     # ---- pumping test ---------------------------------------------------------------
@@ -287,17 +372,35 @@ def build_completion_report(
         q = test.steps[-1].discharge_m3_per_h if test.steps else None
         q_label = "Discharge (final step)" if len(test.steps) > 1 else "Discharge"
         rows = [
-            ["Test type", test.test_type],
+            ["Test type", test_type_text(test.test_type)],
             ["Duration", fmt_num(test.pumping_duration_min) + " min" if test.pumping_duration_min else ""],
             [q_label, fmt_num(q) + " m3/h" if q else "pending"],
             ["Static water level", fmt_num(test.static_water_level_m) + " m"],
+            ["Pump setting during the test",
+             fmt_num(test.pump_setting_m) + " m" if test.pump_setting_m else "not recorded"],
             ["Maximum drawdown", fmt_num(analysis.max_drawdown_m) + " m" if analysis.max_drawdown_m else ""],
         ]
         if analysis.transmissivity_m2_per_day:
-            rows.append(["Transmissivity", fmt_num(analysis.transmissivity_m2_per_day) + " m2/day"])
+            rows.append([
+                "Transmissivity",
+                fmt_num(analysis.transmissivity_m2_per_day) + " m2/day"
+                + (f" ({METHOD_LABELS[analysis.transmissivity_source]})"
+                   if analysis.transmissivity_source else ""),
+            ])
         yr = analysis.yield_recommendation
         if yr and yr.specific_capacity_m3hr_per_m:
-            rows.append(["Specific capacity", fmt_num(yr.specific_capacity_m3hr_per_m) + " m3/h per m"])
+            rows.append([
+                "Specific capacity",
+                (f"{yr.specific_capacity_m3hr_per_m:.2g} m3/h per m "
+                 f"({yr.specific_capacity_basis})"),
+            ])
+        if yr and yr.safe_yield_m3_per_h:
+            rows.append(["Safe yield", yr.yield_range_text])
+            rows.append([
+                "Yield confidence",
+                ("indicative: " + "; ".join(yr.confidence_reasons))
+                if yr.is_indicative else "established",
+            ])
         rb.table(rows, header=["Item", "Value"], caption="Pumping test summary.")
         section += 1
 
@@ -319,15 +422,19 @@ def build_completion_report(
         ("Borehole depth", fmt_num(log.total_depth_m) + " m"),
         ("Borehole diameter", f'{inputs.design.borehole_diameter_in:g}"' if inputs.design else ""),
         ("Static water level", fmt_num(swl) + " m" if swl is not None else ""),
-        ("Dynamic water level", fmt_num(dwl) + " m" if dwl is not None else ""),
+        ("Dynamic water level at the end of the test",
+         fmt_num(dwl) + " m" if dwl is not None else ""),
         ("Drawdown", fmt_num(dwl - swl) + " m" if (dwl is not None and swl is not None) else ""),
-        ("Flow rate", fmt_num(q * 1000) + " L/h" if q else "pending"),
+        # the same unit as every other rate on the page; 2,930 L/h beside
+        # 0.97 m3/h read as two different boreholes
+        ("Test discharge", fmt_num(q) + " m3/h" if q else "pending"),
         ("Pump type", inputs.pump_type),
-        ("Installation depth",
-         fmt_num(yr.pump_installation_depth_m) + " m"
-         if yr and yr.pump_installation_depth_m
-         else (fmt_num(inputs.pumping.test.pump_setting_m) + " m"
-               if inputs.pumping and inputs.pumping.test.pump_setting_m else "")),
+        ("Pump setting during the test",
+         fmt_num(inputs.pumping.test.pump_setting_m) + " m"
+         if inputs.pumping and inputs.pumping.test.pump_setting_m else "not recorded"),
+        ("Recommended pump intake",
+         fmt_num(_pump_intake(inputs)) + " m below the top of the casing"
+         if _pump_intake(inputs) else "pending"),
     ]
     rb.header_block_table(pairs)
     section += 1
@@ -346,25 +453,45 @@ def build_completion_report(
                 header=["Parameter", "Value", "Unit", "Limit", "Remark"],
                 caption="Parameters above guideline or standard limits.",
             )
+            if provisional_national_parameters():
+                rb.paragraph(PROVISIONAL_NATIONAL_NOTE, align="justify", italic=True)
         section += 1
 
     # ---- recommendations ----------------------------------------------------------
     rb.heading(f"{section}. Recommendations and Conclusions", 1)
     bullets = []
-    if (log.status or "").lower().startswith("success") or (
-        inputs.pumping and inputs.pumping.yield_recommendation
-        and inputs.pumping.yield_recommendation.safe_yield_m3_per_h
-    ):
-        bullets.append("The borehole is successful and sustainable when operated as recommended.")
     yr = inputs.pumping.yield_recommendation if inputs.pumping else None
+    successful = (log.status or "").lower().startswith("success")
+    # "Successful and sustainable" is two claims. The log supports the
+    # first; only an established yield supports the second, and a
+    # 30-minute test inside its casing storage used to be certified as both.
+    if yr and yr.safe_yield_m3_per_h and not yr.is_indicative:
+        bullets.append("The borehole is successful and sustainable when operated as recommended.")
+    elif yr and yr.safe_yield_m3_per_h:
+        bullets.append(
+            ("The borehole is recorded as successful. " if successful else "")
+            + "Whether it is sustainable at the recommended rate is indicative, "
+            "not established: " + "; ".join(yr.confidence_reasons)
+            + ". Confirm it by a longer test or by monitoring the pumping level "
+            "in service."
+        )
+    elif successful:
+        bullets.append(
+            "The borehole is recorded as successful; no sustainable yield has "
+            "been established from the pumping test."
+        )
     if yr and yr.safe_yield_m3_per_h:
         bullets.append(
             f"The recommended abstraction rate is {fmt_num(yr.safe_yield_m3_per_h)} m3/h "
-            f"(safety factor {yr.safety_factor:g} applied to the long term yield)."
+            f"(safety factor {yr.safety_factor:g} applied to the long term yield"
+            + (", indicative" if yr.is_indicative else "") + ")."
         )
-        if yr.pump_installation_depth_m:
+        if _pump_intake(inputs):
             bullets.append(
-                f"The pump installation depth is {fmt_num(yr.pump_installation_depth_m)} m."
+                f"The pump intake is set at {fmt_num(_pump_intake(inputs))} m "
+                "below the top of the casing"
+                + (", in plain casing clear of the screens" if inputs.design else "")
+                + "."
             )
         bullets.append(
             "The pump should rest for at least one hour in every pumping "

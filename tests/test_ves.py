@@ -227,27 +227,89 @@ def test_classify_types():
 
 
 def test_interpretation_and_preference(rokel_ves_a):
-    # interpret both report models: B should rank first, as in the report
+    """A conductive half-space is an open-ended zone, not an aquifer 72 m thick.
+
+    Both report models end in a 35-37 ohm-m half-space below about 8-10 m.
+    The sounding was expanded to AB/2 = 80 m, which resolves the ground to
+    about 40 m: the zone runs from 8 m to at least 40 m, the thickness is a
+    minimum, the drilling depth is a minimum, and the interpretation says so.
+    It used to run to 80 m, the array length, and recommend drilling there.
+    """
     model_a = LayeredModel(np.array([832.14, 2102.80, 36.71]), np.array([1.0, 7.37]),
                            sounding_id="A (1)")
     model_b = LayeredModel(np.array([1398.18, 703.0, 1912.4, 34.71]),
                            np.array([0.71, 0.87, 8.42]), sounding_id="B (2)")
     interp_a = interpret_model(rokel_ves_a, model_a)
     interp_b = interpret_model(rokel_ves_a, model_b)
-    assert interp_a.max_drilling_depth_m == 80  # capped at max AB/2
-    assert interp_a.water_zones and interp_a.water_zones[0][1] == 80
-    # both sites carry thick water zones; scores land within a few percent
-    assert abs(interp_a.score - interp_b.score) / interp_a.score < 0.2
+    assert interp_a.max_spacing_m == 80
+    assert interp_a.investigation_depth_m == 40  # half the largest AB/2
+    assert interp_a.max_drilling_depth_m == 40  # capped at the depth of investigation
+    assert interp_a.water_zones and interp_a.water_zones[0][1] == 40
+    assert interp_a.basement_not_resolved
+    assert any(f.code == "basement_not_resolved" for f in interp_a.flags)
+    assert "at least 40 m" in interp_a.narrative
+    assert "base is not resolved" in interp_a.narrative
+    assert "fractured bedrock" not in interp_a.layers[-1].unit
+    # neither transcribed model carries a misfit, so only the unresolved
+    # basement discounts them, equally
+    assert interp_a.confidence == interp_b.confidence == 0.85
+    assert interp_a.fit_quality == "ok"
 
     rows = drilling_preference_table([interp_a, interp_b])
     ranks = {r["VES Point"]: r["Ranking"] for r in rows}
     assert sorted(ranks.values()) == ["1st", "2nd"]
+    assert "Layer resistivity (ohm-m)" in rows[0]
+    assert "Apparent Resistivity (Ohm-m)" not in rows[0]
+    assert rows[0]["Possible Water Zones (m)"].endswith("+")
+    assert rows[0]["Max Drilling Depth (m)"] == "at least 40 m"
 
-    # near-ties are the analyst's call: the report preferred B, so the
-    # explicit order reproduces the published ranking
+    # near-ties are the analyst's call: preferred_order still sets the ranking
     rows = drilling_preference_table([interp_a, interp_b], preferred_order=["B (2)"])
     ranks = {r["VES Point"]: r["Ranking"] for r in rows}
-    assert ranks["B (2)"] == "1st" and ranks["A (1)"] == "2nd"
+    assert ranks["B (2)"] == "1st"
+
+
+def test_a_poor_fit_is_flagged_and_discounts_the_ranking(rokel_ves_a):
+    """The Rokel models never reach the 10 percent target; the report used to
+    prefer B (2), fitted to 26.8 percent, over A (1) at 13.3 percent, on a
+    2.7 ohm-m difference in half-space resistivity."""
+    from groundwater.ves.interpret import fit_confidence, rank_interpretations
+
+    assert fit_confidence(5.0) == 1.0
+    assert fit_confidence(10.0) == 1.0
+    assert abs(fit_confidence(15.0) - 0.75) < 1e-9
+    assert fit_confidence(20.0) == 0.5
+    assert fit_confidence(40.0) == 0.5
+
+    good = LayeredModel(np.array([1100.0, 1600.0, 47.0]), np.array([1.0, 7.0]),
+                        fit_error_percent=13.3, sounding_id="A (1)")
+    bad = LayeredModel(np.array([1190.0, 50.0]), np.array([8.3]),
+                       fit_error_percent=26.8, sounding_id="B (2)")
+    interp_good = interpret_model(rokel_ves_a, good)
+    interp_bad = interpret_model(rokel_ves_a, bad)
+    assert interp_good.fit_quality == "poor"
+    assert interp_bad.fit_quality == "unreliable"
+    assert [f.code for f in interp_bad.flags][:1] == ["poor_fit"]
+    assert "indicative only" in interp_bad.narrative
+    assert "approximate" in interp_good.narrative
+    assert interp_bad.confidence < interp_good.confidence < 1.0
+
+    ranked = rank_interpretations([interp_bad, interp_good])
+    assert [i.sounding_id for i in ranked] == ["A (1)", "B (2)"]
+
+
+def test_the_drilling_depth_is_a_minimum_when_the_base_was_never_reached():
+    from groundwater.ves.interpret import SiteInterpretation, drilling_depth_text
+
+    resolved = SiteInterpretation(
+        sounding_id="R", model=LayeredModel([1000.0, 50.0, 3000.0], [5.0, 20.0]),
+        curve_type="H", layers=[], water_zones=[(5, 25)], depth_to_basement_m=25.0,
+        aquifer_thickness_m=20.0, max_drilling_depth_m=35.0, investigation_depth_m=50.0,
+        score=1.0,
+    )
+    assert drilling_depth_text(resolved) == "about 35 m"
+    resolved.basement_not_resolved = True
+    assert drilling_depth_text(resolved) == "at least 35 m"
 
 
 def test_a_section_will_not_draw_a_sounding_it_was_not_given():

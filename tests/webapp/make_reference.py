@@ -44,7 +44,7 @@ import numpy as np
 from groundwater.depth_spine.view import SpineInputs, build_view
 from groundwater.costing import CostingInputs, inputs_from_design
 from groundwater.design import design_borehole
-from groundwater.hydraulics import analyse_pumping_test
+from groundwater.hydraulics import analyse_pumping_test, test_type_text
 from groundwater.ingestion import (
     read_drilling_workbook,
     read_pumping_workbook,
@@ -74,7 +74,7 @@ from groundwater.supervision.checklists import (
     load_checklists,
     migrate_response_keys,
 )
-from groundwater.ves.interpret import interpret_model
+from groundwater.ves.interpret import drilling_preference_table, interpret_model
 from groundwater.ves.inversion import invert_sounding
 
 REPO = Path(__file__).resolve().parents[2]
@@ -193,6 +193,64 @@ def build() -> dict:
         "pump_depth": clean(rec.pump_installation_depth_m),
         "range_text": rec.yield_range_text,
         "flags": [[f.level, f.code] for f in analysis.flags],
+        # workstream 3: what the yield is worth, and why each method was or
+        # was not adopted
+        "source": analysis.transmissivity_source,
+        "qualifies": analysis.adopted_fit()[2],
+        "disqualified": sorted(analysis.disqualified),
+        "casing_storage_min": clean(analysis.casing_storage_min),
+        "u_check": analysis.cooper_jacob.u_check if analysis.cooper_jacob else None,
+        "rec_intercept": clean(analysis.recovery.intercept_m) if analysis.recovery else None,
+        "rec_intercept_fraction": clean(analysis.recovery.intercept_fraction)
+                                  if analysis.recovery else None,
+        "rec_pumping_time": clean(analysis.recovery.pumping_time_min)
+                            if analysis.recovery else None,
+        "theis_S": clean(analysis.theis.storativity) if analysis.theis else None,
+        "confidence": rec.confidence,
+        "confidence_reasons": list(rec.confidence_reasons),
+        "confidence_text": rec.confidence_text,
+        "specific_capacity": clean(rec.specific_capacity_m3hr_per_m),
+        "specific_capacity_basis": rec.specific_capacity_basis,
+        "pump_depth_basis": rec.pump_depth_basis,
+        "deepest_level": clean(rec.deepest_pumping_level_m),
+        "basis": rec.basis,
+        "type_text": test_type_text(test.test_type),
+    }
+
+    # The step test with the discharges an analyst would type in: the first
+    # step ends above static and gets no drawdown fit, the recovery is read
+    # against an equivalent time, and the two-step Hantush-Bierschenk line
+    # says it is exact by construction.
+    step_q = read_pumping_workbook(DATA / "kuntolo" / "kuntolo_step_test.xlsx")
+    for step, q in zip(step_q.steps, (1.5, 2.2, 3.0), strict=True):
+        step.discharge_m3_per_h = q
+    step_analysis = analyse_pumping_test(step_q)
+    step_rec = step_analysis.yield_recommendation
+    out["step_analysis"] = {
+        "T": clean(step_analysis.transmissivity_m2_per_day),
+        "source": step_analysis.transmissivity_source,
+        "qualifies": step_analysis.adopted_fit()[2],
+        "cj": clean(step_analysis.cooper_jacob.transmissivity_m2_per_day)
+              if step_analysis.cooper_jacob else None,
+        "theis": clean(step_analysis.theis.transmissivity_m2_per_day)
+                 if step_analysis.theis else None,
+        "rec": clean(step_analysis.recovery.transmissivity_m2_per_day)
+               if step_analysis.recovery else None,
+        "rec_pumping_time": clean(step_analysis.recovery.pumping_time_min)
+                            if step_analysis.recovery else None,
+        "rec_equivalent": step_analysis.recovery.equivalent_time
+                          if step_analysis.recovery else None,
+        "B": clean(step_analysis.step_test.aquifer_loss_B) if step_analysis.step_test else None,
+        "C": clean(step_analysis.step_test.well_loss_C) if step_analysis.step_test else None,
+        "two_point": step_analysis.step_test.two_point if step_analysis.step_test else None,
+        "safe": clean(step_rec.safe_yield_m3_per_h),
+        "pump_depth": clean(step_rec.pump_installation_depth_m),
+        "confidence": step_rec.confidence,
+        "confidence_reasons": list(step_rec.confidence_reasons),
+        "pump_depth_basis": step_rec.pump_depth_basis,
+        "specific_capacity_basis": step_rec.specific_capacity_basis,
+        "flags": [[f.level, f.code] for f in step_analysis.flags],
+        "type_text": test_type_text(step_q.test_type),
     }
 
     assessed = assess_sample(sample)
@@ -204,12 +262,29 @@ def build() -> dict:
         "ionic": clean(assessed.ionic.error_percent) if assessed.ionic else None,
     }
 
-    design = design_borehole(log=log, static_water_level_m=test.static_water_level_m)
+    design = design_borehole(log=log, static_water_level_m=test.static_water_level_m,
+                             pump_intake_m=52.0)
+    from groundwater.design import lithology_bands
     out["design"] = {
         "depth": clean(design.total_depth_m),
         "screens": [[clean(s.top_m), clean(s.bottom_m)] for s in design.screens],
         "gravel": clean(list(design.gravel_pack)),
         "screen_len": clean(design.total_screen_length_m),
+        # workstream 4: the log's own words decide the design
+        "backfill": clean(list(design.backfill)),
+        "annular_fill": design.annular_fill,
+        "annulus_mm": clean(design.annulus_mm),
+        "bore_in": clean(design.borehole_diameter_in),
+        "as_built": design.as_built,
+        "construction_note": design.construction_note,
+        "pump_intake": clean(design.pump_intake_m),
+        "basis": list(design.design_basis),
+        "flags": [[f.level, f.code] for f in design.flags],
+        "summary_rows": [list(r) for r in design.summary_rows()],
+        "gravel_interval": clean(inputs_from_design(design).gravel_interval_m),
+        "grout": clean(log.grouting_depth_m),
+        "installed_screens": [list(map(clean, s)) for s in log.installed_screens_m],
+        "bands": [[clean(t), clean(b), c.label] for t, b, c in lithology_bands(log.intervals)],
         # the seal the drawing shows is the seal the BoQ prices
         "seal": clean(list(design.sanitary_seal)),
         "cement_bags": clean(inputs_from_design(design).cement_bags),
@@ -357,6 +432,26 @@ def build() -> dict:
         }
         for r in assess_siting(rokel_interps)
     ]
+    # The interpretation itself, and the preference table a report prints
+    # from it: the zones, the depth the survey resolves, the flags and the
+    # narrative are the sentences a siting decision is argued from, and
+    # they used to be held to nothing.
+    out["interpretations"] = [
+        {
+            "id": i.sounding_id,
+            "water_zones": [[clean(t), clean(b)] for t, b in i.water_zones],
+            "max_drilling_depth_m": clean(i.max_drilling_depth_m),
+            "investigation_depth_m": clean(i.investigation_depth_m),
+            "max_spacing_m": clean(i.max_spacing_m),
+            "basement_not_resolved": i.basement_not_resolved,
+            "confidence": clean(i.confidence),
+            "fit_quality": i.fit_quality,
+            "flags": [[f.level, f.code, f.message] for f in i.flags],
+            "narrative": i.narrative,
+        }
+        for i in rokel_interps
+    ]
+    out["preference"] = drilling_preference_table(rokel_interps)
 
     # Geographic -> UTM, the direction a pasted phone position takes.
     out["geo"] = [

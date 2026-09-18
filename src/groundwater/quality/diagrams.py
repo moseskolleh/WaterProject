@@ -55,8 +55,11 @@ def _triangle(ax, origin, size, labels, ticks=True):
             color="#DDDDDD", lw=0.6, zorder=0,
         )
     la, lb, lc = labels
-    ax.text(x0 - 0.03, y0 - 0.05, la, ha="right", va="top", fontsize=9)
-    ax.text(x0 + size + 0.03, y0 - 0.05, lb, ha="left", va="top", fontsize=9)
+    # The two base labels sit under their own vertex, centred, so the
+    # cation triangle's "Na+K" and the anion triangle's "HCO3" no longer
+    # meet in the gap between the triangles and print as "HNO3+K".
+    ax.text(x0, y0 - 0.05, la, ha="center", va="top", fontsize=9)
+    ax.text(x0 + size, y0 - 0.05, lb, ha="center", va="top", fontsize=9)
     ax.text(x0 + 0.5 * size, y0 + _SQ3 / 2 * size + 0.04, lc, ha="center", fontsize=9)
 
 
@@ -75,7 +78,7 @@ def plot_piper(
     """
     style = style or HouseStyle()
     size = 1.0
-    gap = 0.18
+    gap = 0.34
     cat_origin = (0.0, 0.0)
     an_origin = (size + gap, 0.0)
 
@@ -192,3 +195,66 @@ def plot_stiff(
         if path is not None:
             return save_figure(fig, path, style)
         return fig
+
+
+def facies_of(sample: WaterQualitySample) -> dict | None:
+    """The hydrochemical facies of a sample, from its major ions.
+
+    Returns ``None`` without a complete major-ion analysis. Otherwise the
+    dominant cation and anion (above half of the meq/L total, else
+    "mixed"), the milliequivalent percentages, and a sentence for the
+    report: the Piper diagram used to be the whole of a section headed
+    "Hydrochemical Facies", with nothing said about what it showed.
+    """
+    ionic = ionic_balance(sample)
+    if ionic is None:
+        return None
+    cat = ionic.cations_meq
+    an = ionic.anions_meq
+    ca, mg = cat.get("calcium", 0.0), cat.get("magnesium", 0.0)
+    nak = cat.get("sodium", 0.0) + cat.get("potassium", 0.0)
+    hco3 = an.get("bicarbonate", 0.0) + an.get("carbonate", 0.0)
+    cl, so4 = an.get("chloride", 0.0), an.get("sulfate", 0.0)
+    cat_total, an_total = ca + mg + nak, hco3 + cl + so4
+    if cat_total <= 0 or an_total <= 0:
+        return None
+    cations = {"Ca": ca / cat_total, "Mg": mg / cat_total, "Na+K": nak / cat_total}
+    anions = {"HCO3": hco3 / an_total, "Cl": cl / an_total, "SO4": so4 / an_total}
+    lead_cat = max(cations, key=cations.get)
+    lead_an = max(anions, key=anions.get)
+    cat_name = lead_cat if cations[lead_cat] >= 0.5 else "mixed-cation"
+    an_name = lead_an if anions[lead_an] >= 0.5 else "mixed-anion"
+    facies = f"{cat_name}-{an_name}"
+    pct = lambda d: ", ".join(f"{k} {v * 100:.0f}%" for k, v in d.items())  # noqa: E731
+    if an_name == "HCO3" and cat_name in ("Ca", "Mg"):
+        meaning = (
+            "a fresh, recently recharged water of the kind weathering of "
+            "silicate rock gives; typical of shallow basement groundwater"
+        )
+    elif an_name == "HCO3":
+        meaning = (
+            "a bicarbonate water in which sodium and potassium have replaced "
+            "calcium, which points to longer contact with the rock or to ion "
+            "exchange in a clayey weathered zone"
+        )
+    elif an_name == "Cl" and cat_name == "Na+K":
+        meaning = (
+            "a sodium chloride water, which in this setting points to "
+            "salinity from the coast, an estuary or evaporation rather than "
+            "to rock weathering"
+        )
+    elif an_name == "SO4":
+        meaning = (
+            "a sulfate water, which is unusual in basement ground and worth "
+            "checking against the sample's provenance"
+        )
+    else:
+        meaning = "a mixed water with no single dominant ion pair"
+    sentence = (
+        f"The water is a {facies} type ({pct(cations)}; {pct(anions)}, in "
+        f"milliequivalent percent): {meaning}."
+    )
+    return {
+        "facies": facies, "cations": cations, "anions": anions,
+        "sentence": sentence,
+    }

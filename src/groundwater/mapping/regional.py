@@ -36,7 +36,7 @@ from matplotlib.path import Path as MplPath
 from ..config import HouseStyle
 from ..coverage import load_service_classes, service_class_of
 from ..models import SiteMetadata
-from .lithology import LITHOLOGY_CREDIT, lithology_for  # noqa: F401
+from .lithology import LITHOLOGY_CREDIT, lithology_for, region_of  # noqa: F401
 from ..plotting import figure_context, save_figure
 from . import cartography as carto
 
@@ -70,6 +70,15 @@ class AdminArea:
     name: str
     rings: list[np.ndarray] = field(default_factory=list)
     district: str = ""  # parent district, for ADM3 chiefdoms
+    # The name as people write it. The bundled chiefdom layer truncates
+    # names to fifteen characters ("Sanda Magbolont", "Bureh Kasseh Ma"),
+    # and those went onto client maps; ``name`` stays the layer's key that
+    # every crosswalk joins on, and this is what is printed.
+    display_name: str = ""
+
+    @property
+    def label(self) -> str:
+        return self.display_name or self.name
     # interior rings per part, aligned with ``rings``. Only the point tests
     # use them: Nongowa encloses Kenema Town, and ignoring the hole labelled
     # every site in the town with the rural chiefdom around it.
@@ -240,12 +249,40 @@ def district_of(
     return ""
 
 
+@functools.lru_cache(maxsize=1)
+def chiefdom_full_names() -> dict[str, str]:
+    """Layer name -> full name, for the chiefdoms the layer truncated."""
+    text = (resources.files("groundwater") / "data"
+            / "sl_chiefdom_names.csv").read_text(encoding="utf-8")
+    return {
+        row["layer_name"].strip(): row["full_name"].strip()
+        for row in csv.DictReader(io.StringIO(text))
+    }
+
+
+def canonical_chiefdom(name: str) -> str:
+    """The layer's key for a chiefdom written either way.
+
+    An operator typing "Sanda Magbolontor", the chiefdom's name, used to
+    get the district window instead of the chiefdom, because the layer
+    only knew "Sanda Magbolont".
+    """
+    wanted = (name or "").strip().lower()
+    if not wanted:
+        return ""
+    for layer_name, full in chiefdom_full_names().items():
+        if wanted in (layer_name.lower(), full.lower()):
+            return layer_name
+    return (name or "").strip()
+
+
 def load_chiefdoms(path: str | Path | None = None) -> list[AdminArea]:
     """The chiefdom (ADM3) polygons, each carrying its parent district.
 
     From geoBoundaries (gbOpen, CC BY 4.0), simplified for bundling.
     """
     data = _read_geojson("sl_chiefdoms_geoboundaries.geojson", path)
+    full_names = chiefdom_full_names()
     areas: list[AdminArea] = []
     for feature in data.get("features", []):
         props = feature.get("properties", {})
@@ -267,6 +304,7 @@ def load_chiefdoms(path: str | Path | None = None) -> list[AdminArea]:
                     rings=rings,
                     district=props.get("district", ""),
                     holes=holes,
+                    display_name=full_names.get(props.get("name", ""), ""),
                 )
             )
     return areas
@@ -290,7 +328,7 @@ def chiefdom_of(
             inner = area.holes[i] if i < len(area.holes) else []
             if any(_point_in_ring(lon, lat, hole) for hole in inner):
                 continue  # inside an enclave: it belongs to the chiefdom there
-            return area.name, current.get(area.name, area.district)
+            return area.label, current.get(area.name, area.district)
     return "", ""
 
 
@@ -298,6 +336,69 @@ def chiefdom_of(
 def _cached_chiefdoms() -> tuple:
     """The bundled chiefdom areas, built once; callers only read them."""
     return tuple(load_chiefdoms())
+
+
+def geology_unit_at(lat: float, lon: float,
+                    path: str | Path | None = None) -> GeologyUnit | None:
+    """The USGS geology polygon under a point, or None outside the layer.
+
+    A report used to choose its geology paragraph by the substring
+    "western" in the district name, and said "Freetown Basic Complex" of a
+    site its own map placed on the Bullom Group.
+    """
+    for unit in load_geology(path):
+        if _point_in_ring(lon, lat, unit.ring):
+            return unit
+    return None
+
+
+def aquifer_unit_at(lat: float, lon: float,
+                    path: str | Path | None = None) -> GeologyUnit | None:
+    """The BGS aquifer type and productivity polygon under a point."""
+    for unit in load_hydrogeology(path):
+        if _point_in_ring(lon, lat, unit.ring):
+            return unit
+    return None
+
+
+@functools.lru_cache(maxsize=1)
+def _foreign_land_rings() -> tuple:
+    """Polygons of the geology layer that lie beyond the border.
+
+    The toolkit bundles no outline of Guinea or Liberia; the USGS layer
+    covers the whole window and has no polygon over the sea, so its
+    units are what tells land across the border from the Atlantic.
+    """
+    return tuple(unit.ring for unit in load_geology())
+
+
+def foreign_land_rings(box: tuple[float, float, float, float] | None = None) -> list[np.ndarray]:
+    """The land across the border that a window can see."""
+    rings = _foreign_land_rings()
+    if box is None:
+        return list(rings)
+    return [ring for ring in rings if _ring_in_box(ring, box)]
+
+
+def _unit_district(unit: GeologyUnit) -> str:
+    """The district a polygon lies in, for the crosswalk that names it.
+
+    The crosswalk used to be scoped by the site's district, so the same
+    Freetown Complex polygon was "Freetown Layered Complex" on a Rokel map
+    and "Paleozoic Igneous", the age the crosswalk itself calls wrong, on
+    a Kuntolo map 100 km away. A polygon is where it is.
+    """
+    lon, lat = _ring_centroid(unit.ring)
+    found = district_of(lat, lon)
+    if found:
+        return found
+    # a polygon straddling the border can have its centroid abroad; any
+    # vertex inside the country places it
+    for vlon, vlat in unit.ring[:: max(1, len(unit.ring) // 24)]:
+        found = district_of(float(vlat), float(vlon))
+        if found:
+            return found
+    return ""
 
 
 def _site_lonlat(site: SiteMetadata) -> tuple[float, float] | None:
@@ -410,14 +511,14 @@ def area_window(
     if lonlat is not None:
         return AreaWindow(lonlat[0], lonlat[1], radius_km or 40.0,
                           site.community or "the site", True)
-    name = (site.chiefdom or "").strip().lower()
+    name = canonical_chiefdom(site.chiefdom).lower()
     if name:
         for area in load_chiefdoms(chiefdom_path):
             if area.name.strip().lower() == name:
                 lon, lat = area.label_point
                 return AreaWindow(lon, lat,
                                   max(_ring_span_km(area.rings) * 1.35, 12.0),
-                                  f"{area.name} chiefdom", False)
+                                  f"{area.label} chiefdom", False)
     name = (site.district or "").strip().lower()
     if name:
         _, districts = load_admin(admin_path)
@@ -438,7 +539,7 @@ def area_window(
 
 
 def _mask_outside_country(ax, outline: AdminArea, style: HouseStyle,
-                          fill: str | None = None) -> None:
+                          fill: str | None = None):
     """White out everything beyond the national boundary.
 
     A compound path (a large rectangle with the country rings as
@@ -474,10 +575,24 @@ def _mask_outside_country(ax, outline: AdminArea, style: HouseStyle,
     # was painted the background colour it also painted out the sea drawn
     # underneath it - so every coastal map came back with the country in a
     # white void, which is what made them look unfinished.
-    ax.add_patch(
-        PathPatch(compound, facecolor=fill or style.background,
-                  edgecolor="none", zorder=4)
-    )
+    mask = PathPatch(compound, facecolor=fill or style.background,
+                     edgecolor="none", zorder=4)
+    ax.add_patch(mask)
+    return mask
+
+
+def _paint_foreign_land(ax, mask, box) -> None:
+    """Guinea and Liberia in the paper tone over the sea mask.
+
+    The mask paints everything outside the country as sea so that no
+    unit runs on across the Atlantic; the land across the border is then
+    put back, clipped to the mask so nothing lands inside the country.
+    """
+    for ring in foreign_land_rings(box):
+        patch = plt.Polygon(ring, closed=True, facecolor=carto.FOREIGN_LAND,
+                            edgecolor="none", zorder=4.2)
+        ax.add_patch(patch)
+        patch.set_clip_path(mask)
 
 
 def style_background(ax) -> str:
@@ -645,8 +760,10 @@ def _plot_units_map(
             ax.add_patch(patch)
             # what the rock is, where the crosswalk knows; the source's own
             # wording where it does not, because a guess in a key is worse
-            # than a coarse truth
-            rock = lithology_for(unit.glg, district) if name_lithology else None
+            # than a coarse truth. Scoped by where the polygon is, not by
+            # the site's district.
+            rock = (lithology_for(unit.glg, _unit_district(unit) or district)
+                    if name_lithology else None)
             if rock is not None:
                 label = rock.legend_label(unit.unit, unit.glg)
                 note = rock.provenance_note(unit.unit)
@@ -679,9 +796,25 @@ def _plot_units_map(
                 "coastal units stop short of the shore."
             )
 
+        # the Rokel River Group belt sits inside the USGS Precambrian
+        # polygon, which the 1:5M map does not separate from the granite
+        # around it; the aquifer map beside this one shows the belt as
+        # fracture flow in indurated sediments, and a reader comparing the
+        # two was given nothing to reconcile them with
+        if (name_lithology and any(u.glg == "pCm" for u in in_view)
+                and region_of(district) in ("coastal plain", "north and centre")):
+            notes.append(
+                "The Precambrian polygon here spans both the Leonean "
+                "granite-gneiss and the Rokel River Group belt (Port Loko, "
+                "Kambia, Moyamba, Tonkolili), which the 1:5,000,000 map does "
+                "not separate; the aquifer map shows the belt as fracture flow "
+                "in indurated sediments."
+            )
+
         _mark_site(ax, site, carto.SITE) if site else None
 
-        _mask_outside_country(ax, outline, style, fill=carto.SEA)
+        mask = _mask_outside_country(ax, outline, style, fill=carto.SEA)
+        _paint_foreign_land(ax, mask, box)
         for ring in outline.rings:
             ax.plot(ring[:, 0], ring[:, 1], color=carto.COAST,
                     lw=carto.LINES["coast"].width, zorder=5)
@@ -719,7 +852,7 @@ def _plot_units_map(
         # national map, and a national map carrying "4% of this 60 km
         # window" is a figure asserting something that is not on it
         caveat = _scale_caveat(
-            radius_km if window is not None else None,
+            window.radius_km if window is not None else None,
             source_scale, publisher_note,
         )
         footnotes = [n for n in notes]
@@ -806,7 +939,8 @@ def plot_portfolio_map(
         all_pts = np.concatenate(outline.rings)
         ax.set_xlim(all_pts[:, 0].min() - 0.25, all_pts[:, 0].max() + 0.2)
         ax.set_ylim(all_pts[:, 1].min() - 0.2, all_pts[:, 1].max() + 0.15)
-        carto.sea_and_neighbours(ax, outline.rings, carto.LAND)
+        carto.sea_and_neighbours(ax, outline.rings, carto.LAND,
+                                 foreign_rings=foreign_land_rings())
         for district in districts:
             for ring in district.rings:
                 ax.add_patch(
@@ -829,10 +963,11 @@ def plot_portfolio_map(
         _neighbour_labels(ax)
         _geo_axes_finish(ax, float(np.mean(ax.get_ylim())), ADMIN_CREDIT)
         if handles:
+            # the Atlantic corner: lower right is Liberia and Pujehun
             ax.legend(
                 list(handles.values()),
                 [STATUS_LABELS.get(s, s) for s in handles],
-                loc="lower right", fontsize=7, framealpha=0.95,
+                loc="upper left", fontsize=7, framealpha=0.95,
             )
         ax.set_title(title)
         fig.tight_layout()
@@ -851,17 +986,20 @@ def plot_admin_map(
     """Administrative location map from the geoBoundaries polygons."""
     style = style or HouseStyle()
     outline, districts = load_admin(admin_path)
-    highlight = (site.district or "").strip().lower() if site else ""
+    home_name, home_names, home_chiefdoms = _home_district(site, districts)
     with figure_context(style):
         fig, ax = plt.subplots(figsize=(style.figure_width_in, 5.8))
         all_pts = np.concatenate(outline.rings)
         ax.set_xlim(all_pts[:, 0].min() - 0.25, all_pts[:, 0].max() + 0.2)
         ax.set_ylim(all_pts[:, 1].min() - 0.2, all_pts[:, 1].max() + 0.15)
         # sea first, then the country laid on top of it
-        carto.sea_and_neighbours(ax, outline.rings, carto.LAND)
+        carto.sea_and_neighbours(ax, outline.rings, carto.LAND,
+                                 foreign_rings=foreign_land_rings(
+                                     (*ax.get_xlim()[:1], *ax.get_ylim()[:1],
+                                      ax.get_xlim()[1], ax.get_ylim()[1])))
         labels, weights = [], []
         for district in districts:
-            is_home = district.name.strip().lower() == highlight
+            is_home = district.name.strip().lower() in home_names
             for ring in district.rings:
                 ax.add_patch(
                     plt.Polygon(
@@ -876,12 +1014,34 @@ def plot_admin_map(
                 (2.0 if is_home else 1.0)
                 * max(abs(_ring_area(r)) for r in district.rings)
             )
+        # Karene and Falaba have no polygon of their own in the layer:
+        # their chiefdoms are lit instead, and the district named once
+        # over them
+        if home_chiefdoms:
+            for area in home_chiefdoms:
+                for ring in area.rings:
+                    ax.add_patch(
+                        plt.Polygon(ring, closed=True,
+                                    facecolor=carto.LAND_HIGHLIGHT,
+                                    edgecolor=carto.CHIEFDOM,
+                                    lw=carto.LINES["chiefdom"].width, zorder=2.5)
+                    )
+            pts = np.concatenate([r for a in home_chiefdoms for r in a.rings])
+            labels.append((float(pts[:, 0].mean()), float(pts[:, 1].mean()), home_name))
+            weights.append(3.0 * max(weights) if weights else 1.0)
+        # the site star is drawn last and must not go through a name
+        reserved = []
+        if site is not None and site.latlon is not None:
+            lat, lon = site.latlon
+            dx = (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.03
+            dy = (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.03
+            reserved.append((lon - dx, lat - dy, lon + dx, lat + dy))
         for lon, lat, name in carto.declutter(
             labels, (*ax.get_xlim()[:1], *ax.get_ylim()[:1],
                      ax.get_xlim()[1], ax.get_ylim()[1]),
-            min_sep_frac=0.045, priority=weights,
+            min_sep_frac=0.045, priority=weights, reserved=reserved,
         ):
-            is_home = name.strip().lower() == highlight
+            is_home = name.strip().lower() in home_names or name == home_name
             carto.place_label(
                 ax, lon, lat, name,
                 size=7.5 if is_home else 6.8,
@@ -899,7 +1059,7 @@ def plot_admin_map(
         if title is None:
             title = (
                 f"Location map - {site.community}"
-                + (f", {site.district} District" if site.district else "")
+                + (f", {home_name} District" if home_name else "")
                 if site and site.community
                 else "Administrative map of Sierra Leone"
             )
@@ -908,6 +1068,42 @@ def plot_admin_map(
         if path is not None:
             return save_figure(fig, path, style)
         return fig
+
+
+def _home_district(site, districts) -> tuple[str, set[str], list]:
+    """Which district a location map highlights, and under what name.
+
+    The position decides when there is one: "Western Area" written on a
+    sheet resolves to Western Area Rural from the coordinates, and used to
+    highlight nothing while the title named a district that does not
+    exist. Without a position the written name is used: "Western Area"
+    lights both halves of the peninsula, and Karene or Falaba, which the
+    boundary layer predates, light the chiefdoms the crosswalk assigns to
+    them. Returns ``(name for the title, polygon names to highlight,
+    chiefdom areas to highlight)``.
+    """
+    if site is None:
+        return "", set(), []
+    name = (site.district or "").strip()
+    if site.latlon is not None:
+        found = district_of(site.latlon[0], site.latlon[1])
+        if found:
+            name = found
+    if not name:
+        return "", set(), []
+    lower = name.lower()
+    known = {d.name.strip().lower() for d in districts}
+    if lower in known:
+        return name, {lower}, []
+    if lower == "western area":
+        halves = {d for d in known if d.startswith("western area")}
+        return name, halves, []
+    crosswalk = _current_district_of_chiefdom()
+    chiefdoms = [
+        area for area in load_chiefdoms()
+        if crosswalk.get(area.name, "").strip().lower() == lower
+    ]
+    return name, set(), chiefdoms
 
 
 #: Where the neighbours' names go, as fractions of the frame rather than
@@ -971,7 +1167,8 @@ def plot_coverage_choropleth(
         fig, ax = plt.subplots(figsize=(style.figure_width_in, 5.8))
         ax.set_xlim(all_pts[:, 0].min() - 0.25, all_pts[:, 0].max() + 0.2)
         ax.set_ylim(all_pts[:, 1].min() - 0.2, all_pts[:, 1].max() + 0.15)
-        carto.sea_and_neighbours(ax, outline.rings, carto.LAND)
+        carto.sea_and_neighbours(ax, outline.rings, carto.LAND,
+                                 foreign_rings=foreign_land_rings())
         label_pts: dict[str, list[tuple[float, float]]] = {}
         for area in areas:
             face = service_class_of(chiefdom_values.get(area.name), classes).colour
@@ -1012,7 +1209,7 @@ def plot_coverage_choropleth(
                 Patch(facecolor=c.colour, edgecolor="#8FA6B8", label=c.label)
                 for c in classes
             ],
-            loc="lower right", fontsize=7, framealpha=0.95, title=legend_label,
+            loc="upper left", fontsize=7, framealpha=0.95, title=legend_label,
         )
         ax.set_title(title)
         fig.tight_layout()
@@ -1165,6 +1362,7 @@ def plot_study_area_map(
     title: str | None = None,
     show_geology: bool = False,
     geology_path: str | Path | None = None,
+    mark_site: bool = True,
 ):
     """The study area at a readable scale, with a locator inset.
 
@@ -1184,6 +1382,12 @@ def plot_study_area_map(
     everything else. It is off by default: at 25 km the 1:5M units are
     large flat washes, and the study-area map's job is the local
     furniture, not the regional geology, which has its own figure.
+
+    ``mark_site`` draws the site star at the site's own position. A siting
+    survey's "site" is the first sounding's position, and the star drawn
+    over it read as "drill here" on the runner-up peg while the recommended
+    one was an undistinguished triangle 20 km away; such a report passes
+    False and marks the recommended sounding among ``points`` instead.
     """
     style = style or HouseStyle()
     window = area_window(site, radius_km, admin_path, chiefdom_path)
@@ -1204,7 +1408,8 @@ def plot_study_area_map(
         fig, ax = plt.subplots(figsize=(style.figure_width_in, 5.8))
         ax.set_xlim(box[0], box[2])
         ax.set_ylim(box[1], box[3])
-        carto.sea_and_neighbours(ax, outline.rings, carto.LAND)
+        carto.sea_and_neighbours(ax, outline.rings, carto.LAND,
+                                 foreign_rings=foreign_land_rings(box))
 
         credit = ADMIN_CREDIT
         if show_geology:
@@ -1234,7 +1439,7 @@ def plot_study_area_map(
             # as five islands, and each one asked for its own name.
             spot = _label_spot(drawn, box)
             if spot is not None:
-                candidates.append((*spot, area.name))
+                candidates.append((*spot, area.label))
                 weights.append(sum(abs(_ring_area(r)) for r in drawn))
         # Where the inset goes is settled before the names are placed, and
         # from the DATA only. Counting chiefdom names as occupancy put the
@@ -1244,14 +1449,19 @@ def plot_study_area_map(
             (pt.get("lon"), pt.get("lat")) for pt in (points or [])
             if pt.get("lon") is not None and pt.get("lat") is not None
         ]
-        if site is not None and window.exact and site.latlon is not None:
+        if site is not None and window.exact and site.latlon is not None and mark_site:
             drawn_at.append((site.latlon[1], site.latlon[0]))
         occupancy = _corner_occupancy(ax, drawn_at)
         free = sorted(("lower right", "upper left"), key=lambda c: occupancy[c])
-        reserved = _corner_box(ax, free[0])
+        # both furniture corners are kept clear of names: the inset takes
+        # one and the legend the other, and a chiefdom name under the
+        # legend read as part of it ("East I ecommended point")
+        reserved_boxes = [_corner_box(ax, free[0])]
+        if points:
+            reserved_boxes.append(_corner_box(ax, free[1]))
         visible = [
             (c, w) for c, w in zip(candidates, weights, strict=True)
-            if not _inside(c[0], c[1], reserved)
+            if not any(_inside(c[0], c[1], box) for box in reserved_boxes)
         ]
         for lon, lat, name in carto.declutter(
             [c for c, _ in visible], box, min_sep_frac=0.05,
@@ -1270,7 +1480,7 @@ def plot_study_area_map(
                         lw=carto.LINES["coast"].width, zorder=6)
 
         handles = _plot_area_points(ax, points or [], style)
-        if site is not None and window.exact:
+        if site is not None and window.exact and mark_site:
             _mark_site(ax, site, carto.SITE)
 
         below = _geo_axes_finish(ax, window.lat, credit)
@@ -1293,7 +1503,7 @@ def plot_study_area_map(
                 title += " (no site position recorded)"
         ax.set_title(title)
         if show_geology:
-            note = _scale_caveat(radius_km, _USGS_SOURCE_SCALE)
+            note = _scale_caveat(window.radius_km, _USGS_SOURCE_SCALE)
             if note:
                 # wrapped by hand: an unwrapped line under the axes is one
                 # long line, and the tight bounding box at save time grows
@@ -1311,6 +1521,9 @@ def plot_study_area_map(
 #: Marker and colour per point kind on the study-area map.
 _AREA_MARKERS = {
     "VES point": ("^", "#1F5C8B"),
+    #: the sounding the survey recommends drilling at: the one marker on a
+    #: siting map that has to be unmistakable
+    "recommended point": ("*", "#B00020"),
     "borehole": ("o", "#0F7B3F"),
     "water point": ("s", "#7B5AA6"),
     "settlement": (".", "#555555"),
@@ -1326,9 +1539,10 @@ def _plot_area_points(ax, points: list[dict], style: HouseStyle) -> dict:
             continue
         kind = str(point.get("kind") or "point")
         marker, colour = _AREA_MARKERS.get(kind, ("D", style.secondary_color))
+        size = {"*": 15, ".": 10}.get(marker, 8)
         handle, = ax.plot(
-            lon, lat, marker, ms=8 if marker != "." else 10, mfc=colour,
-            mec="white", mew=0.9, zorder=7,
+            lon, lat, marker, ms=size, mfc=colour,
+            mec="white", mew=0.9, zorder=8 if marker == "*" else 7,
         )
         handles.setdefault(kind, handle)
         label = point.get("label")

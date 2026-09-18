@@ -41,8 +41,9 @@ HERE = Path(__file__).parent
 DATA = HERE / "data" / "dr_timbo"
 
 
-def main() -> None:
-    project = Project.open(HERE / "projects" / "dr_timbo")
+def main(out_root: Path | None = None) -> None:
+    project = Project.open((out_root or HERE / "projects") / "dr_timbo")
+    project.clear_outputs()
 
     # ---- parse everything -----------------------------------------------------
     log = read_drilling_workbook(DATA / "dr_timbo_drilling_log.xlsx")
@@ -120,10 +121,10 @@ def main() -> None:
             ],
             development_note=(
                 "The borehole was developed by surging with compressed air and "
-                "air lifting for a total of two hours."
+                "air lifting."
             ),
             pump_type="Submersible pump",
-            preparer_name="A. N. Manager",
+            # no placeholder signatory: the sheet's supervisor signs
         ),
         project.report_path("Dr_Timbo_Borehole_Completion_Report.docx"),
         project.config,
@@ -134,7 +135,7 @@ def main() -> None:
         QualityReportInputs(
             assessment=assessment,
             figures_dir=project.figures,
-            analyst_name="A. N. Analyst",
+            # no placeholder analyst: the signature block is left for a name
             readiness=gates["quality"],
         ),
         project.report_path("Dr_Timbo_Water_Quality_Report.docx"),
