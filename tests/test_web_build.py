@@ -257,3 +257,37 @@ def test_the_worker_is_written_in_one_step(tmp_path):
     builder.write_atomically(target, "next release")
     assert target.read_text(encoding="utf-8") == "next release"
     assert not list(tmp_path.glob("*.tmp")), "the staging file was left behind"
+
+
+def test_the_build_groups_a_shape_s_rings_into_one_polygon_with_its_holes():
+    """Every ring used to be a filled polygon carrying the parent's code.
+
+    A shapefile writes an outer ring clockwise and the holes that cut it the
+    other way. Split into separate features, thirteen holes were drawn on
+    top of the unit they should have exposed.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "build_geodata", Path(__file__).resolve().parents[1] / "web" / "build_geodata.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    # clockwise outer square, counter-clockwise window inside it
+    outer = [(0.0, 0.0), (0.0, 10.0), (10.0, 10.0), (10.0, 0.0), (0.0, 0.0)]
+    hole = [(3.0, 3.0), (7.0, 3.0), (7.0, 7.0), (3.0, 7.0), (3.0, 3.0)]
+    assert module.signed_ring_area(outer) < 0, "an outer ring winds clockwise"
+    assert module.signed_ring_area(hole) > 0, "a hole winds the other way"
+
+    polygons = module.rings_to_polygons([outer, hole])
+    assert len(polygons) == 1
+    assert polygons[0][0] == outer and polygons[0][1] == hole
+
+    # two separate bodies each keep their own hole
+    far_outer = [(20.0, 0.0), (20.0, 10.0), (30.0, 10.0), (30.0, 0.0), (20.0, 0.0)]
+    far_hole = [(23.0, 3.0), (27.0, 3.0), (27.0, 7.0), (23.0, 7.0), (23.0, 3.0)]
+    grouped = module.rings_to_polygons([outer, far_outer, hole, far_hole])
+    assert len(grouped) == 2
+    assert all(len(poly) == 2 for poly in grouped)

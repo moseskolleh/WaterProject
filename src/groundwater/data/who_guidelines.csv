@@ -1,10 +1,10 @@
 parameter,unit,who_health_gv,who_aesthetic,sl_standard,sl_source,category,note
 pH,pH units,,6.5-8.5,6.5-8.5,provisional,physical,No health based guideline; operational range for corrosion control and disinfection
-Turbidity,NTU,,5,5,provisional,physical,Acceptability; should ideally be below 1 NTU where disinfection is practised
+Turbidity,NTU,,,5,provisional,physical,WHO sets no guideline value; it states turbidity should ideally be below 1 NTU where disinfection is practised. The 5 NTU limit here is the provisional national one
 Temperature,deg C,,,,,physical,No guideline value
 Electrical conductivity,uS/cm,,,2500,provisional,physical,No WHO guideline; national limit adopted from regional practice
 TDS,mg/L,,1000,1000,provisional,physical,Palatability deteriorates above about 1000 mg/L
-Total hardness,mg/L as CaCO3,,500,500,provisional,physical,No health based guideline; consumer acceptability
+Total hardness,mg/L as CaCO3,,,500,provisional,physical,"WHO sets no guideline value for hardness, health based or acceptability; the 500 limit here is the provisional national one"
 Alkalinity,mg/L as CaCO3,,,,,physical,No guideline value
 Calcium,mg/L,,,,,major ion,No guideline value
 Magnesium,mg/L,,,,,major ion,No guideline value
@@ -27,7 +27,7 @@ Chromium (total),mg/L,0.05,,0.05,provisional,metal,Provisional health based guid
 Cadmium,mg/L,0.003,,0.003,provisional,metal,Health based guideline
 Nickel,mg/L,0.07,,0.07,provisional,metal,Health based guideline
 Mercury,mg/L,0.006,,0.006,provisional,metal,Inorganic mercury health based guideline
-Aluminium,mg/L,0.9,0.2,0.2,provisional,metal,Health based value 0.9 mg/L; practicable acceptability 0.1 to 0.2 mg/L
+Aluminium,mg/L,,0.2,0.2,provisional,metal,"WHO sets no health based guideline value; a health based value of 0.9 mg/L is derived but not adopted as a guideline, and the practicable acceptability level is 0.1 to 0.2 mg/L"
 Selenium,mg/L,0.04,,0.04,provisional,metal,Provisional health based guideline
 Barium,mg/L,1.3,,1.3,provisional,metal,Health based guideline
 Boron,mg/L,2.4,,2.4,provisional,metal,Health based guideline
@@ -38,8 +38,8 @@ Total coliforms,CFU/100 mL,,0,0,provisional,microbiological,Indicator of treatme
 Colour,TCU,,15,15,provisional,physical,Acceptability; consumers notice colour above about 15 TCU
 Total suspended solids,mg/L,,,,,physical,No guideline value
 Carbonate,mg/L,,,,,major ion,No guideline value; carried for the ionic balance
-Nitrate (as N),mg/L,11,,11,provisional,inorganic,The 50 mg/L nitrate guideline expressed as nitrogen (divide by 4.43)
-Nitrite (as N),mg/L,0.9,,0.9,provisional,inorganic,The 3 mg/L nitrite guideline expressed as nitrogen (divide by 3.29)
+Nitrate (as N),mg/L,11.3,,11.3,provisional,inorganic,The 50 mg/L nitrate guideline expressed as nitrogen (divide by 4.43). Rounded down to 11 it failed samples that comply as nitrate
+Nitrite (as N),mg/L,0.91,,0.91,provisional,inorganic,The 3 mg/L nitrite guideline expressed as nitrogen (divide by 3.29). Rounded down to 0.9 it failed samples that comply as nitrite
 Phosphate,mg/L,,,,,inorganic,No guideline value
 Silica,mg/L,,,,,inorganic,No guideline value
 Free chlorine,mg/L,5,,5,provisional,inorganic,Health based guideline; 0.2 to 0.5 mg/L residual is the operational target at the point of delivery

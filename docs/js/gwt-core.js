@@ -1066,6 +1066,10 @@
         sounding_id: sounding.sounding_id || '',
       }),
       ab2: ab2,
+      /* which array the spacings are: a Wenner sounding's column is the
+       * spacing a, and labelling it AB/2 is a wrong label on a figure and
+       * in a table a client reads */
+      array_type: arrayType,
       rho_obs: rhoApp,
       rho_calc: chosen.calc,
       fit_error_percent: chosen.err,
@@ -1549,6 +1553,21 @@
     return String(n) + suffix;
   }
 
+  /* groundwater/utils.py plural / plural_noun. "1 point", "2 points": the
+   * noun agrees with the count. Readiness gates and flags printed "2 step(s)
+   * with discharge" and "1 lithological interval(s)", which is a form, not a
+   * sentence, and the browser has to say what the package says character for
+   * character. The third argument carries a plural that is not just +"s"
+   * ("series", "analyses"), as the Python helpers' plural_form does. */
+  function plural(count, singular, pluralForm) {
+    return String(count) + ' ' + pluralNoun(count, singular, pluralForm);
+  }
+
+  /* The noun alone, agreeing with a count the sentence already carries. */
+  function pluralNoun(count, singular, pluralForm) {
+    return count === 1 ? singular : (pluralForm || singular + 's');
+  }
+
   function interpretationNarrative(interp) {
     var parts = ['The data at ' + interp.sounding_id + ' resolves a ' +
       interp.model.n_layers + ' layer subsurface (' +
@@ -1703,7 +1722,7 @@
     LAYER_RESISTIVITY_COLUMN: LAYER_RESISTIVITY_COLUMN,
     fmtNum: fmtNum, fmtRange: fmtRange, formatG: formatG,
     roundSig: roundSig, pyRound: pyRound, pyFixed: pyFixed, expo: expo,
-    ordinal: ordinal,
+    ordinal: ordinal, plural: plural, pluralNoun: pluralNoun,
   });
 
   /* ============================================================= hydraulics
@@ -2835,9 +2854,9 @@
         } else {
           flags.push({
             level: 'warning', code: 'step_test_pending',
-            message: 'Step test analysis pending: only ' + positive.length +
-              ' step(s) with discharge show positive drawdown, and the fit ' +
-              'needs at least two.',
+            message: 'Step test analysis pending: only ' +
+              plural(positive.length, 'step') + ' with discharge show ' +
+              'positive drawdown, and the fit needs at least two.',
           });
         }
       } else {
@@ -3519,6 +3538,34 @@
     return null;
   }
 
+  /* What the balance needs, in the order a certificate lists them. */
+  var ION_LABELS = {
+    calcium: 'calcium', magnesium: 'magnesium', sodium: 'sodium',
+    potassium: 'potassium', chloride: 'chloride', sulfate: 'sulfate',
+    bicarbonate: 'bicarbonate (or alkalinity)',
+  };
+
+  /* The major ions the balance needs and the analysis does not carry.
+   *
+   * The balance is the one check that says whether a certificate's own
+   * numbers hang together, and it was skipped in silence whenever a major
+   * ion was missing: the report simply had no charge-balance line, which
+   * reads as "the analysis balanced" rather than "nobody could tell". */
+  function ionicBalanceGap(sample) {
+    var missing = [];
+    REQUIRED_CATIONS.forEach(function (key) {
+      if (sampleValue(sample, key) === null) {
+        missing.push(ION_LABELS[key] || key);
+      }
+    });
+    REQUIRED_ANIONS.forEach(function (key) {
+      if (sampleValue(sample, key) !== null) return;
+      if (key === 'bicarbonate' && sampleValue(sample, 'alkalinity') !== null) return;
+      missing.push(ION_LABELS[key] || key);
+    });
+    return missing;
+  }
+
   function ionicBalance(sample) {
     var cations = {}, anions = {};
     Object.keys(CATION_MEQ).forEach(function (key) {
@@ -3800,10 +3847,28 @@
 
     var signedLsi = (lsi >= 0 ? '+' : '') + lsi.toFixed(1);
     if (aggressive) {
+      /* The pH sentence used to say "within the acceptability range" for a
+       * sample the same report flagged at 5.9. It now says what the pH is.
+       * pyFixed, not toFixed: Python's "%.1f" sends a tie to the even digit,
+       * so a pH reported as 6.25 prints as 6.2 in both engines. */
+      var phNote;
+      if (ph < 6.5) {
+        phNote = 'The pH of ' + pyFixed(ph, 1) + ' is below the 6.5 to 8.5 ' +
+          'acceptability range, which adds to the attack on metal; soft, ' +
+          'low-alkalinity basement groundwater is aggressive even at a pH ' +
+          'inside that range.';
+      } else if (ph > 8.5) {
+        phNote = 'The pH of ' + pyFixed(ph, 1) + ' is above the 6.5 to 8.5 ' +
+          'acceptability range; the aggressiveness comes from the low calcium ' +
+          'and alkalinity.';
+      } else {
+        phNote = 'The pH of ' + pyFixed(ph, 1) + ' is within the 6.5 to 8.5 ' +
+          'acceptability range, and the water is aggressive all the same, ' +
+          'which is typical of soft basement groundwater.';
+      }
       assessment.verdict = 'The water is chemically aggressive (Ryznar index ' +
         rsi.toFixed(1) + ', Langelier index ' + signedLsi + '). It will corrode ' +
-        'metal fittings, and it can be aggressive even though the pH is within ' +
-        'the acceptability range, which is typical of soft basement groundwater.';
+        'metal fittings. ' + phNote;
       assessment.materials_note = 'Specify uPVC or stainless steel (grade 304 or ' +
         '316) for the rising main and pump components, and avoid galvanised iron ' +
         'and mild steel, which corrode rapidly in this water and are a leading ' +
@@ -3985,6 +4050,7 @@
 
   function gradeRow(row, entry, value, unitNote) {
     var isMicro = String(entry.category || '').trim().toLowerCase() === 'microbiological';
+    var isFaecal = String(entry.parameter || '').trim().toLowerCase() === 'e. coli';
     if (entry.who_health && limitExceededBy(entry.who_health, value)) {
       row.status = 'exceeds_health';
       row.remark = 'exceeds the WHO health based guideline (' +
@@ -3992,14 +4058,26 @@
     } else if (isMicro && (
         (entry.sl_standard && limitExceededBy(entry.sl_standard, value)) ||
         (entry.who_aesthetic && limitExceededBy(entry.who_aesthetic, value)))) {
-      /* A microbiological indicator is a health concern, never an aesthetic
-       * one, even when its limit sits in the national column. Otherwise the
-       * verdict calls faecally-indicated water "usable for drinking". */
-      row.status = 'exceeds_health';
+      /* A microbiological indicator is never an aesthetic matter, even when
+       * its limit is carried in the national column. E. coli is the faecal
+       * indicator and any detection is a health exceedance. Total coliforms
+       * are not: WHO sets no health-based guideline for them and they
+       * indicate ingress or an unprotected wellhead, not faecal
+       * contamination, so they are a national-limit failure that calls for
+       * disinfection and a sanitary inspection. Three reports used to call a
+       * sample with E. coli 0 "faecal contamination" on total coliforms. */
       var micro = entry.sl_standard || entry.who_aesthetic;
-      row.remark = 'microbiological indicator detected above the limit (' +
-        limitText(micro) + '); a health (faecal contamination) concern, ' +
-        'not aesthetic' + unitNote;
+      if (isFaecal) {
+        row.status = 'exceeds_health';
+        row.remark = 'faecal indicator detected above the limit (' +
+          limitText(micro) + '); a health concern, not aesthetic' + unitNote;
+      } else {
+        row.status = 'exceeds_national';
+        row.remark = 'detected above the national limit (' + limitText(micro) +
+          '); an indicator of ingress or inadequate wellhead protection, not ' +
+          'of faecal contamination in itself, and WHO sets no health based ' +
+          'guideline for it' + unitNote;
+      }
     } else if (entry.sl_standard && limitExceededBy(entry.sl_standard, value)) {
       if (entry.who_health) {
         /* A national limit stricter than the WHO health value is a
@@ -4010,9 +4088,20 @@
           'WHO health based guideline (' + limitText(entry.who_health) + ')' +
           unitNote;
       } else {
+        /* Every national value in the bundled table is provisional - a WHO
+         * or regional figure carried across, not a confirmed Standards
+         * Bureau one - so the remark says so rather than reporting a legal
+         * failure the toolkit cannot establish. */
         row.status = 'exceeds_aesthetic';
+        /* The WHO figure is what the national one was carried across from,
+         * and naming it is the only way a reader can tell a limit somebody
+         * set from a limit this toolkit assumed. */
+        var whoNote = entry.who_aesthetic
+          ? '; the WHO acceptability value is ' + limitText(entry.who_aesthetic)
+          : '; WHO sets no value for this determinand';
         row.remark = 'exceeds the national acceptability limit (' +
-          limitText(entry.sl_standard) + ')' + unitNote;
+          limitText(entry.sl_standard) + '), which is provisional' +
+          whoNote + unitNote;
       }
     } else if (entry.who_aesthetic && limitExceededBy(entry.who_aesthetic, value)) {
       row.status = 'exceeds_aesthetic';
@@ -4095,6 +4184,57 @@
     return row;
   }
 
+  /* A result the laboratory saw and did not put a number to.
+   *
+   * "TNTC", "Present" and "Positive" are a count above zero; ">50" is at
+   * least 50. All of them used to read as "not measured", so a sample with
+   * E. coli 0 and total coliforms TNTC was graded Safe, and a ">50" count
+   * was graded as exactly 50 - inside the limit whenever the limit is 50. */
+  function assessUnquantified(row, result, entry) {
+    var bound = Number(result.greater_than);
+    row.evaluable = true;
+    row.reason = 'detected_not_quantified';
+    var isFaecal = String(entry.parameter || '').trim().toLowerCase() === 'e. coli';
+    var stated = bound === 0
+      ? 'detected, count not quantified' : 'more than ' + formatG(bound);
+
+    function maximum(limit) {
+      return limit && limit.maximum !== null && limit.maximum !== undefined
+        ? limit.maximum : null;
+    }
+    var health = maximum(entry.who_health);
+    var national = maximum(entry.sl_standard);
+    if (national === null) national = maximum(entry.who_aesthetic);
+
+    var overHealth = health !== null && bound >= health;
+    var overNational = national !== null && bound >= national;
+
+    if (overHealth) {
+      row.status = 'exceeds_health';
+      row.remark = stated + ', which is above the WHO health based guideline (' +
+        limitText(entry.who_health) + '); the laboratory did not quantify it';
+    } else if (overNational && isFaecal) {
+      row.status = 'exceeds_health';
+      row.remark = 'faecal indicator ' + stated + ', above the limit (' +
+        limitText(entry.sl_standard || entry.who_aesthetic) +
+        '); a health concern, not aesthetic';
+    } else if (overNational) {
+      row.status = 'exceeds_national';
+      row.remark = stated + ', above the national limit (' +
+        limitText(entry.sl_standard || entry.who_aesthetic) + '); an indicator ' +
+        'of ingress or inadequate wellhead protection, not of faecal ' +
+        'contamination in itself, and WHO sets no health based guideline for it';
+    } else {
+      /* The bound is inside every limit, so the result is an open question
+       * rather than a pass: the true value is somewhere above it. */
+      row.status = 'indeterminate';
+      row.evaluable = false;
+      row.remark = stated + '; the laboratory did not quantify it, so it ' +
+        'cannot be shown to meet the limit';
+    }
+    return row;
+  }
+
   function assessResult(result, entry) {
     var guidelineUnit = entry ? (entry.unit || '') : '';
     var row = {
@@ -4117,7 +4257,12 @@
     };
 
     var missing = result.value === null || result.value === undefined;
-    if (missing && !result.below_detection) return row;
+    if (missing && !result.below_detection) {
+      if (result.greater_than !== null && result.greater_than !== undefined && entry) {
+        return assessUnquantified(row, result, entry);
+      }
+      return row;
+    }
 
     if (!entry) {
       /* An unrecognised determinand is an open question, not a clean bill. */
@@ -4247,7 +4392,7 @@
           message: "'" + result.parameter + "' is reported in '" +
             (result.unit || '') + "' but the guideline is written in '" +
             row.guideline_unit + "'. The values were taken as the same basis; " +
-            'confirm with the laboratory, since an "as CaCO3" figure is about ' +
+            "confirm with the laboratory, since an 'as CaCO3' figure is about " +
             '2.5 times the same concentration expressed as the element.',
         });
       } else if (row.status === 'indeterminate') {
@@ -4325,7 +4470,22 @@
     }
 
     var ionic = ionicBalance(sample);
-    if (ionic && ionic.flag) flags.push(ionic.flag);
+    if (ionic && ionic.flag) {
+      flags.push(ionic.flag);
+    } else if (!ionic) {
+      var ionGap = ionicBalanceGap(sample);
+      if (ionGap.length) {
+        flags.push({
+          level: 'warning',
+          code: 'ionic_balance_not_checked',
+          message: 'The charge balance could not be computed: the analysis ' +
+            'carries no ' + pluralNoun(ionGap.length, 'value') + ' for ' +
+            ionGap.join(', ') + '. Ask the laboratory for the major ions if ' +
+            'the analysis is to be relied on.',
+          context: '',
+        });
+      }
+    }
     var corrosivity = assessCorrosivity(sample);
     flags = flags.concat(corrosivity.flags);
     var wqi = computeWqi(sample, standardsRows);
@@ -4411,8 +4571,9 @@
       return list.map(function (r) { return r.parameter; }).join(', ');
     }
     if (state === 'health_fail') {
-      return 'The water does not meet the health based guideline value(s) for: ' +
-        names(health) + '. Treatment or an alternative source is required before ' +
+      return 'The water does not meet the health based guideline ' +
+        pluralNoun(health.length, 'value') + ' for: ' + names(health) +
+        '. Treatment or an alternative source is required before ' +
         'the water is used for drinking.';
     }
     if (state === 'national_fail') {
@@ -4421,7 +4582,8 @@
           names(acceptability) + '.'
         : '';
       return 'The water meets the WHO health based guideline values, but does ' +
-        'not comply with the national standard limit(s) for: ' + names(national) +
+        'not comply with the national standard ' +
+        pluralNoun(national.length, 'limit') + ' for: ' + names(national) +
         '.' + extra + ' Treatment is required before the supply can be accepted ' +
         'against the national standard; check whether the limit exceeded is a ' +
         'health or an acceptability limit.';
@@ -4507,6 +4669,84 @@
     return catName + '-' + anName + ' water type';
   }
 
+  /* groundwater/quality/diagrams.py facies_of. The Piper diagram used to be
+   * the whole of a section headed "Hydrochemical Facies", with nothing said
+   * about what it showed, so the sentence is built here, beside the geometry
+   * the diagram is drawn from, and the report only prints it. Null without a
+   * complete major-ion analysis, exactly as the Python returns None. */
+  function faciesOf(sample) {
+    var ionic = ionicBalance(sample);
+    if (!ionic) return null;
+    var cat = ionic.cations_meq, an = ionic.anions_meq;
+    var ca = cat.calcium || 0, mg = cat.magnesium || 0;
+    var nak = (cat.sodium || 0) + (cat.potassium || 0);
+    var hco3 = (an.bicarbonate || 0) + (an.carbonate || 0);
+    var cl = an.chloride || 0, so4 = an.sulfate || 0;
+    var catTotal = ca + mg + nak, anTotal = hco3 + cl + so4;
+    if (catTotal <= 0 || anTotal <= 0) return null;
+
+    /* Pairs, not an object: the order is the order the percentages are read
+     * out in, and it is also what settles a dead heat, because Python's
+     * max() over a dict keeps the first key of a tie and an object rebuilt
+     * from its keys would not promise that. */
+    var cations = [['Ca', ca / catTotal], ['Mg', mg / catTotal],
+      ['Na+K', nak / catTotal]];
+    var anions = [['HCO3', hco3 / anTotal], ['Cl', cl / anTotal],
+      ['SO4', so4 / anTotal]];
+
+    function lead(pairs) {
+      var best = pairs[0];
+      for (var i = 1; i < pairs.length; i++) {
+        if (pairs[i][1] > best[1]) best = pairs[i];
+      }
+      return best;
+    }
+    /* pyFixed, not toFixed: Python's "%.0f" sends a tie to the even digit,
+     * so an ion sitting on exactly 12.5 percent prints as 12 in both engines. */
+    function pct(pairs) {
+      return pairs.map(function (p) {
+        return p[0] + ' ' + pyFixed(p[1] * 100, 0) + '%';
+      }).join(', ');
+    }
+    function fractions(pairs) {
+      var out = {};
+      pairs.forEach(function (p) { out[p[0]] = p[1]; });
+      return out;
+    }
+
+    var leadCat = lead(cations), leadAn = lead(anions);
+    var catName = leadCat[1] >= 0.5 ? leadCat[0] : 'mixed-cation';
+    var anName = leadAn[1] >= 0.5 ? leadAn[0] : 'mixed-anion';
+    var facies = catName + '-' + anName;
+
+    var meaning;
+    if (anName === 'HCO3' && (catName === 'Ca' || catName === 'Mg')) {
+      meaning = 'a fresh, recently recharged water of the kind weathering of ' +
+        'silicate rock gives; typical of shallow basement groundwater';
+    } else if (anName === 'HCO3') {
+      meaning = 'a bicarbonate water in which sodium and potassium have ' +
+        'replaced calcium, which points to longer contact with the rock or ' +
+        'to ion exchange in a clayey weathered zone';
+    } else if (anName === 'Cl' && catName === 'Na+K') {
+      meaning = 'a sodium chloride water, which in this setting points to ' +
+        'salinity from the coast, an estuary or evaporation rather than to ' +
+        'rock weathering';
+    } else if (anName === 'SO4') {
+      meaning = 'a sulfate water, which is unusual in basement ground and ' +
+        'worth checking against the sample\'s provenance';
+    } else {
+      meaning = 'a mixed water with no single dominant ion pair';
+    }
+
+    return {
+      facies: facies,
+      cations: fractions(cations),
+      anions: fractions(anions),
+      sentence: 'The water is a ' + facies + ' type (' + pct(cations) + '; ' +
+        pct(anions) + ', in milliequivalent percent): ' + meaning + '.',
+    };
+  }
+
   /* Stiff polygon: Na+K / Ca / Mg on the left, Cl / HCO3 / SO4 on the right. */
   function stiffRows(sample) {
     var ionic = ionicBalance(sample);
@@ -4539,7 +4779,7 @@
     VERDICT_TONE: VERDICT_TONE,
     ESSENTIAL_HEALTH_PARAMETERS: ESSENTIAL_HEALTH_PARAMETERS,
     ternaryXy: ternaryXy, piperPoints: piperPoints, piperFacies: piperFacies,
-    stiffRows: stiffRows,
+    faciesOf: faciesOf, stiffRows: stiffRows,
   });
 
   /* ======================================================= lithology classes
@@ -6091,6 +6331,24 @@
     return bottom < top ? [bottom, top] : [top, bottom];
   }
 
+  /* Every dash a sheet can carry: the hyphen variants, the figure, en, em and
+   * horizontal dashes, the true minus sign and the full-width hyphen. */
+  var DASH_RE = /[\u2010-\u2015\u2212\ufe58\ufe63\uff0d]/g;
+
+  /* Replace every dash a text cell can carry with the plain hyphen.
+   *
+   * Word turns "5-10" into "5–10" as the crew types it and the en dash
+   * survives the copy into Excel, so a depth interval or a screen range
+   * written on a laptop reaches the range patterns as a character they do not
+   * list. The row was then dropped in silence and the only trace was an
+   * "interval_gap" flag blaming the log for a gap the crew never left. A
+   * value that is not text is handed back untouched, so a Date or a number
+   * still reaches its own parser as itself. */
+  function normaliseDashes(value) {
+    if (typeof value !== 'string') return value;
+    return value.replace(DASH_RE, '-');
+  }
+
   /* Canonical header keys and the label patterns that map to them. */
   var LABEL_PATTERNS = {
     client: ['^client\\b'],
@@ -6249,8 +6507,10 @@
   }
 
   function siteFromFields(fields, source) {
-    var zone = fields.utm_zone;
-    if (typeof zone === 'string') zone = parseNumber(zone);
+    /* The zone cell is read with parseUtmZone, which takes the number that
+     * follows a label and refuses anything naming no single zone. Read with
+     * parseNumber, the value cell "0708958" - an easting the header matcher
+     * had taken for the zone - became a zone of 708958. */
     return {
       client: fields.client || '', project: fields.project || '',
       community: fields.community || '', chiefdom: fields.chiefdom || '',
@@ -6258,7 +6518,7 @@
       project_ref: fields.project_ref || '',
       easting: fields.easting === undefined ? null : fields.easting,
       northing: fields.northing === undefined ? null : fields.northing,
-      utm_zone: zone ? Math.trunc(zone) : null,
+      utm_zone: parseUtmZone(fields.utm_zone),
       elevation_m: fields.elevation_m === undefined ? null : fields.elevation_m,
       date: fields.date === undefined ? '' : String(fields.date),
       supervisor: fields.supervisor || '', contractor: fields.contractor || '',
@@ -6277,6 +6537,117 @@
   /* "Resistance (ohm)", "R (ohm)", "V/I", "dV/I": a measured resistance */
   var RESISTANCE_RE = /resistance|^r\s*\(|v\s*\/\s*i/;
 
+  /* The array a sheet names, wherever on the sheet it names it: the title of a
+   * template ("SCHLUMBERGER ARRAY VES FIELD DATA"), the array field itself, or
+   * a note. "Wenner alpha" and "half-Schlumberger" are the same two arrays. */
+  var WENNER_RE = /wenner/;
+  var SCHLUMBERGER_RE = /schlum/;
+
+  /* "a" is the whole name of the Wenner spacing, so the column header is short
+   * and the reader has to accept the few ways a crew writes it out. */
+  var WENNER_A_HEADERS = [
+    'a', 'a (m)', 'a(m)', 'a m', 'a, m', 'a (metres)', 'a (meters)',
+    'a-spacing', 'a-spacing (m)', 'a spacing', 'a spacing (m)',
+    'spacing a', 'spacing a (m)', 'wenner a', 'wenner a (m)', 'a (wenner)',
+  ];
+
+  /* A Wenner array is A M N B at equal spacing a, so AB = 3a and a Wenner sheet
+   * that tabulates AB/2 has written 1.5 a in that column. */
+  var WENNER_AB2_PER_A = 1.5;
+
+  /* The array a piece of sheet text names, or null.
+   *
+   * null covers both the text that names no array and the text that names
+   * two: an unfilled "Schlumberger / Wenner" template choice settles nothing,
+   * and reading it as either would be a guess. */
+  function arrayNamedIn(text) {
+    var lowered = String(text || '').toLowerCase();
+    var wenner = WENNER_RE.test(lowered);
+    var schlumberger = SCHLUMBERGER_RE.test(lowered);
+    if (wenner === schlumberger) return null;
+    return wenner ? 'wenner' : 'schlumberger';
+  }
+
+  /* The array the wording above the data table names, if only one is named. */
+  function arrayNamedAboveTable(grid, headerRow) {
+    var found = [];
+    for (var r = 0; r < headerRow && r < grid.length; r++) {
+      var texts = rowText(grid[r]);
+      for (var c = 0; c < texts.length; c++) {
+        if (WENNER_RE.test(texts[c]) && found.indexOf('wenner') < 0) {
+          found.push('wenner');
+        }
+        if (SCHLUMBERGER_RE.test(texts[c]) && found.indexOf('schlumberger') < 0) {
+          found.push('schlumberger');
+        }
+      }
+    }
+    return found.length === 1 ? found[0] : null;
+  }
+
+  /* The array a sheet was run with, and the flags reading it raised.
+   *
+   * The forward model, the inversion, the splice and the curve plot all branch
+   * on array_type, but the reader never looked at the sheet for it beyond
+   * copying out the array field: a Wenner sounding had no ingestion path, and
+   * a Wenner sheet headed AB/2 was inverted with AB/2 for the spacing a
+   * (ROADMAP data-ingestion-11). That is wrong by tens of percent and nothing
+   * downstream can notice.
+   *
+   * The sheet is asked in the order its answers are worth trusting: the array
+   * field of the header block, then any other wording above the table (a
+   * template title is boilerplate, so it only speaks when the field is
+   * silent), then the table's own columns - a spacing column headed "a" is the
+   * Wenner spacing, and an MN column is the Schlumberger one. Where the sheet
+   * settles nothing, or contradicts itself, the Schlumberger default stands
+   * and a flag says what was assumed and why, because an assumption made in
+   * silence is how the wrong array reaches a client report. */
+  function detectArray(grid, headerRow, cols, fields) {
+    var flags = [];
+    var declaredText = cleanText(fields.array_type);
+    var declared = arrayNamedIn(declaredText);
+    var named = declared !== null ? declared
+      : arrayNamedAboveTable(grid, headerRow);
+    var fromColumns = ('a' in cols) ? 'wenner'
+      : (('mn' in cols) || ('mn_half' in cols)) ? 'schlumberger' : null;
+
+    var conflicted = named === 'schlumberger' && fromColumns === 'wenner';
+    var arrayType = conflicted ? 'schlumberger'
+      : (named || fromColumns || 'schlumberger');
+
+    if (conflicted) {
+      flags.push({ level: 'warning', code: 'array_type_conflict',
+        message: 'The sheet names the Schlumberger array but heads its ' +
+          'spacing column "a", which is the Wenner spacing; the two readings ' +
+          'of the same column differ by half again. The sounding was read as ' +
+          'Schlumberger, with that column taken as AB/2. Confirm the array ' +
+          'with the field crew before the model is used.' });
+    } else if (declaredText && declared === null) {
+      flags.push({ level: 'warning', code: 'array_type_unrecognised',
+        message: "The sheet's array field reads " + '"' + declaredText +
+          '", which does not name one of the two arrays this toolkit models ' +
+          '(Schlumberger and Wenner); the sounding was read as ' +
+          arrayType.charAt(0).toUpperCase() + arrayType.slice(1) +
+          '. Confirm the array with the field crew: the wrong forward model ' +
+          'is wrong by tens of percent.' });
+    } else if (named === null && fromColumns === null) {
+      flags.push({ level: 'warning', code: 'array_type_assumed',
+        message: 'The sheet does not say which electrode array was used, and ' +
+          'its columns do not settle it either: there is no MN column, which ' +
+          'a Schlumberger sheet carries, and no "a" column, which a Wenner ' +
+          "sheet carries. Schlumberger was assumed, as the toolkit's " +
+          'default. Confirm the array with the field crew: a Wenner sounding ' +
+          'inverted as Schlumberger is wrong by tens of percent and nothing ' +
+          'further down the chain can notice.' });
+    } else if (named === null && fromColumns === 'wenner') {
+      flags.push({ level: 'info', code: 'array_type_inferred',
+        message: 'No array is named on the sheet; its spacing column is ' +
+          'headed "a", which is the Wenner spacing, so the sounding was read ' +
+          'as Wenner.' });
+    }
+    return { array_type: arrayType, flags: flags };
+  }
+
   function findVesDataHeader(grid) {
     for (var r = 0; r < grid.length; r++) {
       var texts = rowText(grid[r]);
@@ -6286,6 +6657,11 @@
         if (!t) continue;
         if (t.indexOf('ab/2') >= 0 || t === 'ab2' || t.indexOf('ab / 2') >= 0) {
           cols.ab2 = c;
+        } else if (WENNER_A_HEADERS.indexOf(t) >= 0) {
+          /* The Wenner spacing column, headed "a" or "a (m)", meant nothing to
+           * the reader at all, so a Wenner sheet was dropped whole as having
+           * no data table (ROADMAP data-ingestion-11) */
+          cols.a = c;
         } else if (t.indexOf('mn') === 0 && MN_HALF_RE.test(t)) {
           /* half-MN first, and tolerant of the spaces a typed header carries:
            * "MN / 2 (m)" does not contain the literal "/2", so it would fall
@@ -6308,7 +6684,8 @@
           cols.no = c;
         }
       }
-      if ('ab2' in cols && ('rho' in cols || 'resistance' in cols)) {
+      if (('ab2' in cols || 'a' in cols) &&
+          ('rho' in cols || 'resistance' in cols)) {
         return { row: r, cols: cols };
       }
     }
@@ -6328,30 +6705,62 @@
     var site = siteFromFields(fields, source);
     var located = findVesDataHeader(grid);
     if (!located) {
-      return [null, 'no data table found: a header row needs an AB/2 column and ' +
-        'an apparent-resistivity column (Resistivity, Rho, ohm.m, \u03c1 or \u03a9)'];
+      return [null, 'no data table found: a header row needs an AB/2 column ' +
+        '(or the Wenner spacing column "a") and an apparent-resistivity ' +
+        'column (Resistivity, Rho, ohm.m, \u03c1 or \u03a9)'];
     }
     var cols = located.cols;
 
-    var ab2 = [], mn = [], rho = [], flags = [];
+    var detected = detectArray(grid, located.row, cols, fields);
+    var arrayType = detected.array_type;
+    var isWenner = arrayType.indexOf('wenner') === 0;
+
+    var ab2 = [], mn = [], rho = [], flags = detected.flags;
     var mnIsHalf = !('mn' in cols) && ('mn_half' in cols);
     var mnCol = 'mn' in cols ? cols.mn : cols.mn_half;
     var fromResistance = !('rho' in cols);
     var valueCol = fromResistance ? cols.resistance : cols.rho;
     var kCol = cols.k;
+    /* The spacing column. A Wenner sheet with its own "a" column is read from
+     * it as it stands; anything else is read from AB/2, which on a Wenner
+     * sheet is 1.5 a and has to be converted below. */
+    var spacingCol, wennerFromAb2;
+    if (isWenner && ('a' in cols)) {
+      spacingCol = cols.a; wennerFromAb2 = false;
+    } else if ('ab2' in cols) {
+      spacingCol = cols.ab2; wennerFromAb2 = isWenner;
+    } else {
+      spacingCol = cols.a; wennerFromAb2 = false;
+    }
     var blankRun = 0;
 
     for (var r = located.row + 1; r < grid.length; r++) {
       var row = grid[r] || [];
-      var a = cols.ab2 < row.length ? parseNumber(row[cols.ab2]) : null;
+      var a = spacingCol < row.length ? parseNumber(row[spacingCol]) : null;
       var rr = valueCol < row.length ? parseNumber(row[valueCol]) : null;
       var m = (mnCol !== undefined && mnCol < row.length) ? parseNumber(row[mnCol]) : null;
+      if (a !== null && wennerFromAb2) {
+        /* The sheet is Wenner but tabulates AB/2, and AB = 3a, so the column
+         * holds 1.5 a. Taken for the spacing a, as it used to be (ROADMAP
+         * data-ingestion-11), every reading sits at half again its true
+         * spacing and the whole curve shifts along the depth axis. Convert
+         * once, here, so ab2 means what the forward model, the inversion and
+         * the plots take it to mean for a Wenner sounding: the spacing a. */
+        a = a / WENNER_AB2_PER_A;
+      }
       if (fromResistance && a !== null && rr !== null) {
-        /* rho_a = K x (dV/I): the sheet's own K column when it has one,
-         * otherwise the Schlumberger factor from the spacings */
+        /* rho_a = K x (dV/I): use the sheet's own K column when it has one,
+         * otherwise the geometric factor of the array the sheet was run with.
+         * The Wenner factor is 2 pi a and needs no MN, which is as well: a
+         * Wenner sheet does not carry an MN column, so the Schlumberger
+         * factor left K unknown and the row was dropped. */
         var k = (kCol !== undefined && kCol < row.length) ? parseNumber(row[kCol]) : null;
-        var spacing = (m !== null && mnIsHalf) ? 2.0 * m : m;
-        if (k === null && spacing) k = geometricFactor('schlumberger', { ab2: a, mn: spacing });
+        if (k === null && isWenner) {
+          k = geometricFactor('wenner', { a: a });
+        } else if (k === null) {
+          var spacing = (m !== null && mnIsHalf) ? 2.0 * m : m;
+          if (spacing) k = geometricFactor('schlumberger', { ab2: a, mn: spacing });
+        }
         rr = k ? k * rr : null;
       }
       if (a === null && rr === null) {
@@ -6380,6 +6789,13 @@
         'cells hold formulas, open the workbook in Excel and save it so the ' +
         'values are stored'];
     }
+    if (wennerFromAb2) {
+      flags.push({ level: 'info', code: 'wenner_spacing_from_ab2',
+        message: 'The sheet is a Wenner sounding tabulated as AB/2. The ' +
+          'Wenner array has AB = 3a, so each spacing was read as a = two ' +
+          'thirds of the tabulated AB/2, which is the spacing the Wenner ' +
+          'geometric factor and forward model take.' });
+    }
     if (fromResistance) {
       flags.push({ level: 'info', code: 'rho_computed_from_resistance',
         message: 'The sheet records a resistance (V/I), not a resistivity; ' +
@@ -6391,8 +6807,7 @@
     var sounding = {
       site: site, sounding_id: soundingId,
       ab2: ab2, mn: mn, rho_app: rho,
-      array_type: String(fields.array_type || 'schlumberger').trim().toLowerCase() ||
-        'schlumberger',
+      array_type: arrayType,
       instrument: fields.instrument || '', source: String(source || ''), flags: [],
     };
 
@@ -6517,11 +6932,206 @@
 
   var SCREEN_RANGE_SOURCE = '(\\d+(?:\\.\\d+)?)\\s*(?:-|–|to)\\s*(\\d+(?:\\.\\d+)?)';
 
+  /* A clock time carries a colon or an "h" between the hour and the minutes
+   * ("14:30", "14h30"). A decimal point is deliberately not a clock separator
+   * here: "8.50" in a strike note is a depth far more often than it is ten to
+   * nine, and reading it as a time would lose the strike. */
+  var CLOCK_TIME_RE = /\b\d{1,2}\s*[:h]\s*\d{2}\b(?:\s*(?:am|pm|hrs?))?|\b\d{3,4}\s*(?:hrs?|hours?)\b/gi;
+
+  /* One depth, or a list of them sharing the unit written after the last
+   * ("12, 18 and 30 m"), in metres. The lookahead keeps the "m" of a rate
+   * ("0.5 m/min") from reading as a depth in metres. */
+  var DEPTH_LIST_RE = new RegExp(
+    /* A slash is not a list separator here. "1/2 m" is half a metre and
+     * "12/30" is as likely a date as a pair, and both used to come out as
+     * two strikes - which is the invention this parser exists to stop. */
+    '(?:\\d+(?:[.,]\\d+)?\\s*(?:,|&|\\+|and\\b)\\s*)*' +
+    '\\d+(?:[.,]\\d+)?\\s*(?:met(?:re|er)s?|m)\\b(?!\\s*/)', 'gi');
+
+  var NUMBER_TOKEN_RE = /\d+(?:[.,]\d+)?/g;
+
+  /* The unit a diameter cell carries, if it carries one at all. Bit sizes are
+   * quoted in halves and eighths of an inch, so the number may be a whole and
+   * a fraction ("6 1/2 in"): groups are number, numerator, denominator, unit. */
+  var DIAMETER_UNIT_RE = new RegExp('(\\d+(?:[.,]\\d+)?)' +
+    '(?:\\s*(\\d+)\\s*/\\s*(\\d+))?\\s*' +
+    '(millimet(?:re|er)s?|mms?|centimet(?:re|er)s?|cms?' +
+    '|inch(?:es)?|in|\'\'|"|”|″)(?![a-z])', 'gi');
+
+  /* The unit a penetration rate cell carries: metres per minute or hour, or
+   * the time per metre a driller times with a stopwatch and writes the other
+   * way up. The order of the alternatives is load-bearing. */
+  var METRE_SOURCE = '(?:met(?:re|er)s?|m)';
+  var RATE_UNIT_RE = new RegExp('(\\d+(?:[.,]\\d+)?)\\s*(' +
+    METRE_SOURCE + '\\s*(?:/|per)\\s*min(?:ute)?s?' +
+    '|' + METRE_SOURCE + '\\s*(?:/|per)\\s*(?:hrs?|hours?|h)' +
+    '|min(?:ute)?s?\\s*(?:/|per)\\s*' + METRE_SOURCE +
+    '|sec(?:ond)?s?\\s*(?:/|per)\\s*' + METRE_SOURCE +
+    '|s\\s*(?:/|per)\\s*' + METRE_SOURCE +
+    ')(?![a-z])', 'gi');
+
+  /* Python guards both unit patterns with a lookbehind, (?<![\d./,]), which
+   * keeps the denominator of "6 1/2" from being read as a number in its own
+   * right. Lookbehind reached Safari only in 2023 and this page runs on
+   * whatever handset a field office has, so the guard is applied by hand: a
+   * match preceded by one of those characters is rejected and the search
+   * resumes one character further on, which is what the Python engine does
+   * when the lookbehind fails. */
+  var UNIT_PREFIX_RE = /[\d./,]/;
+
+  function searchUnit(re, text) {
+    var match;
+    re.lastIndex = 0;
+    while ((match = re.exec(text)) !== null) {
+      var before = match.index > 0 ? text.charAt(match.index - 1) : '';
+      if (!UNIT_PREFIX_RE.test(before)) return match;
+      re.lastIndex = match.index + 1;
+    }
+    return null;
+  }
+
+  /* Read the strike depths a cell names, in metres: [depths, reason], the
+   * depths the cell can be read to name, or an empty list and the reason it
+   * cannot be read confidently, which the caller raises as a flag. Recording
+   * nothing and saying so is the right answer here, because a strike depth
+   * places the screens.
+   *
+   * A strike cell used to be read as the last number after the last colon, so
+   * "Water strike: 8 m at 14:30" recorded a 30 m strike - the minutes of the
+   * clock time - "at 12 m and 30 m" recorded only 12 m, and a 0 typed in the
+   * strike column to mean "no water on this row" recorded a strike at the
+   * surface, which then seeded a 0-5 m screen against the topsoil (ROADMAP
+   * data-ingestion-9). Clock times are removed before any number is read, a
+   * number that carries a metre unit is a depth, and a zero is an empty
+   * cell. */
+  /* Two numbers with a slash between them: a fraction, a date, or a run
+   * number, none of which is a depth. */
+  var FRACTION_RE = /\d\s*\/\s*\d/;
+
+  function parseWaterStrikeDepths(value) {
+    if (value === null || value === undefined) return [[], ''];
+    if (value instanceof Date) {
+      /* A cell typed as a time comes back as a Date, and reading it as a
+       * number recorded the year as a strike depth. */
+      return [[], 'the cell holds a date or a time rather than a depth'];
+    }
+    if (typeof value === 'boolean') return [[], ''];
+    if (typeof value === 'number') return [value > 0 ? [value] : [], ''];
+
+    var text = cleanText(value).replace(CLOCK_TIME_RE, ' ');
+    /* A fraction between two digits is half a metre, or a date, or a run
+     * number; it is not two depths and it is not its own denominator.
+     * "Water strike 1/2 m" read as a strike at 2 m, which would place a
+     * screen. Refusing it and saying so is the only honest answer. */
+    if (FRACTION_RE.test(text)) {
+      return [[], 'it writes a fraction or a date, which names no single depth'];
+    }
+    var depths = [], match, tokens, i, depth;
+    DEPTH_LIST_RE.lastIndex = 0;
+    while ((match = DEPTH_LIST_RE.exec(text)) !== null) {
+      tokens = match[0].match(NUMBER_TOKEN_RE) || [];
+      for (i = 0; i < tokens.length; i++) {
+        depth = parseNumber(tokens[i]);
+        if (depth !== null && depth > 0) depths.push(depth);
+      }
+    }
+    if (depths.length) return [depths, ''];
+
+    /* No number carries a unit. A single number is the depth the note is
+     * about ("First water strike: 12"); several are a sentence this parser
+     * cannot take apart, and guessing one of them is worse than refusing. */
+    var numbers = text.match(NUMBER_TOKEN_RE) || [];
+    if (!numbers.length) return [[], ''];
+    if (numbers.length > 1) {
+      return [[], 'it names several numbers and none of them carries a unit'];
+    }
+    depth = parseNumber(numbers[0]);
+    if (depth === null || depth <= 0) return [[], ''];
+    return [[depth], ''];
+  }
+
+  /* The flag raised for a strike cell that cannot be read as a depth.
+   * Refusing the cell costs the log a strike, so the flag names the cell it
+   * refused, why it refused it, and the wording that would have read. */
+  function unreadableStrikeFlag(text, reason) {
+    return { level: 'warning', code: 'water_strike_unreadable',
+      message: 'Water strike cell "' + text + '" was not read as a depth: ' +
+        reason + '. No strike was recorded from it; write each depth with ' +
+        'its unit, as "water strike at 12 m and 30 m".' };
+  }
+
+  /* The drilled diameter in inches, converting the unit the cell carries.
+   *
+   * Crews quote a bit in millimetres as often as in inches, and the column
+   * was read as a bare number, so "165 mm" was recorded as a 165 inch hole
+   * (ROADMAP data-ingestion-15) - a metre and a half of annulus in the bill
+   * of quantities and in the completion drawing. A cell with no unit at all
+   * is read as inches, which is the unit the template column asks for
+   * ("Drilling diameter (in)") and the unit the design rules are written in.
+   *
+   * A converted diameter is kept to two decimals: 165 mm is the metric name
+   * of a 6.5 in bit, and 6.5 in is what the completion log should print. */
+  function parseBitDiameterIn(value) {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'boolean') return null;
+    if (typeof value === 'number') return value;
+    var text = cleanText(value);
+    var match = searchUnit(DIAMETER_UNIT_RE, text);
+    if (match === null) return parseNumber(text);
+    var number = parseNumber(match[1]);
+    if (number === null) return null;
+    if (match[2] && Number(match[3]) !== 0) {
+      /* "6 1/2 in" is six and a half inches, which is how a bit is quoted. */
+      number += Number(match[2]) / Number(match[3]);
+    }
+    var unit = match[4].toLowerCase();
+    if (unit.indexOf('mm') === 0 || unit.indexOf('millim') === 0) {
+      return pyRound(number / 25.4, 2);
+    }
+    if (unit.indexOf('cm') === 0 || unit.indexOf('centim') === 0) {
+      return pyRound(number / 2.54, 2);
+    }
+    return number;
+  }
+
+  /* The penetration rate in metres per minute, whichever way up it is
+   * written.
+   *
+   * A driller times a rod with a stopwatch and writes what the watch says, so
+   * the cell carries "5 min/m" as readily as "0.2 m/min" and a rig sheet
+   * quotes metres per hour. The column was read as a bare number, so a hole
+   * advancing at five minutes to the metre was recorded as five metres a
+   * minute (ROADMAP data-ingestion-15), twenty-five times too fast. A cell
+   * with no unit is read as metres per minute, which is the unit the template
+   * column asks for ("Penetration rate (m/min)"). */
+  function parsePenetrationRateMPerMin(value) {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'boolean') return null;
+    if (typeof value === 'number') return value;
+    var text = cleanText(value);
+    var match = searchUnit(RATE_UNIT_RE, text);
+    if (match === null) return parseNumber(text);
+    var number = parseNumber(match[1]);
+    if (number === null) return null;
+    var unit = match[2].replace(/\s+/g, '').toLowerCase().replace(/per/g, '/');
+    if (unit.indexOf('min') === 0) {
+      /* minutes per metre: the reciprocal, and a zero is not a rate at all */
+      return number > 0 ? 1.0 / number : null;
+    }
+    if (unit.indexOf('s') === 0) {                    /* seconds per metre */
+      return number > 0 ? 60.0 / number : null;
+    }
+    if (unit.indexOf('/h') >= 0) return number / 60.0;
+    return number;
+  }
+
   /* "25-35; 48-53 m" -> [[25, 35], [48, 53]]: the as-built screens a crew
    * writes on the sheet, as ranges separated by anything. A cell with no
-   * range in it records no screens. */
+   * range in it records no screens. The dashes are normalised first so a
+   * range typed with an en or em dash is read as the range it is rather than
+   * dropped (ROADMAP data-ingestion-8). */
   function parseInstalledScreens(value) {
-    var text = cleanText(value), out = [], match;
+    var text = normaliseDashes(cleanText(value)), out = [], match;
     var re = new RegExp(SCREEN_RANGE_SOURCE, 'g');
     while ((match = re.exec(text)) !== null) {
       var top = Number(match[1]), bottom = Number(match[2]);
@@ -6534,7 +7144,7 @@
   function drillingFromGrid(grid, source) {
     var fields = extractHeaderFields(grid, grid.length);
     var site = siteFromFields(fields, source);
-    var flags = [], intervals = [], strikes = [];
+    var flags = [], intervals = [], strikes = [], zeroStrikeRows = 0;
     var located = findLogHeader(grid);
 
     if (located) {
@@ -6560,29 +7170,64 @@
           });
           continue;
         }
-        var interval = parseDepthInterval(rawInterval);
+        /* Word turns "5-10" into "5–10" as the crew types the sheet and the
+         * en dash survives the copy into Excel, but the interval pattern
+         * lists only the plain hyphen, so the row was dropped without a word
+         * and the gap it left was reported as a gap in the crew's own log
+         * (ROADMAP data-ingestion-8). Normalising the dashes reads the
+         * interval as it was written, whichever dash was typed. */
+        var interval = parseDepthInterval(normaliseDashes(rawInterval));
         if (!interval) continue;
         intervals.push({
           top_m: interval[0], bottom_m: interval[1],
           description: cleanText(cell('description')),
           from_time: cleanText(cell('from_time')),
           to_time: cleanText(cell('to_time')),
-          penetration_rate_m_per_min: parseNumber(cell('rate')),
-          bit_diameter_in: parseNumber(cell('diameter')),
+          penetration_rate_m_per_min: parsePenetrationRateMPerMin(cell('rate')),
+          bit_diameter_in: parseBitDiameterIn(cell('diameter')),
         });
-        var strike = parseNumber(cell('strike'));
-        if (strike !== null) strikes.push(strike);
+        var rawStrike = cell('strike');
+        var readStrike = parseWaterStrikeDepths(rawStrike);
+        readStrike[0].forEach(function (depth) { strikes.push(depth); });
+        if (readStrike[1]) {
+          flags.push(unreadableStrikeFlag(cleanText(rawStrike), readStrike[1]));
+        } else if (!readStrike[0].length && parseNumber(rawStrike) === 0) {
+          /* A crew fills the strike column with 0 to mean "no water on this
+           * row". Read as a number it was a strike at 0 m, which seeded a
+           * screen against the topsoil (ROADMAP data-ingestion-9); it is
+           * counted here so the refusal is visible rather than silent. */
+          zeroStrikeRows += 1;
+        }
+      }
+
+      if (zeroStrikeRows) {
+        flags.push({ level: 'info', code: 'water_strike_zero_ignored',
+          message: 'The water strike column holds 0 on ' + zeroStrikeRows +
+            ' row(s); a zero there is read as no strike on that row, not as ' +
+            'a strike at 0 m.' });
       }
     }
 
-    /* Water strikes noted as text lines ("First water strike: 12m") */
+    /* Water strikes noted as text lines ("First water strike: 12m"). The note
+     * used to be read as the last number after the last colon, so
+     * "Water strike: 8 m at 14:30" recorded a 30 m strike and a note naming
+     * two strikes recorded only the first (ROADMAP data-ingestion-9). */
     grid.forEach(function (row) {
       (row || []).forEach(function (c) {
-        var text = cleanText(c).toLowerCase();
+        var raw = cleanText(c);
+        var text = raw.toLowerCase();
         if (text.indexOf('water strike') >= 0 && text.indexOf('note') !== 0) {
-          var value = parseNumber(text.split(':').pop());
-          if (value !== null && value > 0 && strikes.indexOf(value) < 0) {
-            strikes.push(value);
+          var read = parseWaterStrikeDepths(raw);
+          read[0].forEach(function (value) {
+            if (strikes.indexOf(value) < 0) strikes.push(value);
+          });
+          if (read[1]) {
+            /* A cell in the strike column that is also a note has already
+             * been refused once by the loop above, and one refusal of one
+             * cell is one flag. */
+            var flag = unreadableStrikeFlag(raw, read[1]);
+            var told = flags.some(function (f) { return f.message === flag.message; });
+            if (!told) flags.push(flag);
           }
         }
       });
@@ -6595,6 +7240,25 @@
 
     intervals.sort(function (a, b) { return a.top_m - b.top_m; });
     strikes.sort(function (a, b) { return a - b; });
+
+    /* A strike below the bottom of the hole is a number the drilling never
+     * reached. It survives only as a figure printed to the client - the
+     * handover report lists the strikes - because the screen designer clips
+     * it out, so nothing else in the toolkit ever contradicts it. */
+    if (total !== null && total !== undefined) {
+      var tooDeep = strikes.filter(function (v) { return v > Number(total); });
+      if (tooDeep.length) {
+        strikes = strikes.filter(function (v) { return v <= Number(total); });
+        flags.push({
+          level: 'warning',
+          code: 'water_strike_below_total_depth',
+          message: 'Water ' + plural(tooDeep.length, 'strike') + ' at ' +
+            tooDeep.map(function (v) { return formatG(v) + ' m'; }).join(', ') +
+            ' below the recorded total depth of ' + formatG(Number(total)) +
+            ' m, so it was not recorded; check the cell it came from.',
+        });
+      }
+    }
 
     var log = {
       site: site, borehole_ref: String(fields.borehole_ref || ''),
@@ -6674,6 +7338,32 @@
     'none detected', 'bdl', 'below detection', 'below detection limit', '<dl',
     'negative', 'neg'];
 
+  /* The same words with the laboratory's limit written after them:
+   * "ND (<0.05)", "BDL (0.02)", "ND<0.1", "Not detected (<0.001)". Only an
+   * exact match counted, so every one of these was read as a measured
+   * concentration and graded as exceeding a health guideline - the arsenic a
+   * laboratory reported as absent came out as the worst reading on the
+   * sheet. */
+  var ABSENCE_WITH_LIMIT = /^([a-z][a-z.\s/]*?)\s*[([]?\s*<?\s*(\d+(?:[.,]\d+)?)\s*[)\]]?\.?$/;
+
+  /* What a laboratory writes when it saw the determinand and put no number
+   * to it. For a determinand whose limit is zero that is the whole finding:
+   * a sample with E. coli 0 and total coliforms TNTC was graded "Safe"
+   * because the count read as "not measured". */
+  var PRESENCE_TOKENS = ['tntc', 't.n.t.c', 'too numerous to count', 'confluent',
+    'confluent growth', 'present', 'positive', 'pos', '+ve', 'detected'];
+
+  /* at least this much, not exactly this much: ">50" was read as 50 */
+  var GREATER_THAN_RE = /^(?:>|>=|\u2265|more than|greater than)\s*(\d+(?:[.,]\d+)?)\s*\+?$/;
+
+  function absenceLimit(text) {
+    var match = ABSENCE_WITH_LIMIT.exec(String(text || '').toLowerCase().trim());
+    if (!match) return null;
+    var word = match[1].replace(/[\s.]+$/, '').trim();
+    if (ABSENCE_TOKENS.indexOf(word) < 0) return null;
+    return parseNumber(match[2]);
+  }
+
   function qualityFromGrid(grid, source) {
     var fields = extractHeaderFields(grid);
     var site = siteFromFields(fields, source);
@@ -6694,11 +7384,27 @@
       if (!parameter || parameter.toLowerCase().indexOf('note') === 0) continue;
       var rawValue = cell('value');
       var textValue = cleanText(rawValue);
-      /* "<1", and the words a certificate uses for the same thing */
-      var absent = ABSENCE_TOKENS.indexOf(textValue.toLowerCase().replace(/\.+$/, '')) >= 0;
-      var belowDetection = textValue.indexOf('<') === 0 || absent;
-      var value = absent ? null : parseNumber(rawValue);
+      /* "<1", the words a certificate uses for the same thing, and those
+       * same words with the limit written after them ("ND (<0.05)") */
+      var plain = textValue.toLowerCase().replace(/\.+$/, '');
+      var absent = ABSENCE_TOKENS.indexOf(plain) >= 0;
+      var wordedLimit = absenceLimit(textValue);
+      var belowDetection = textValue.indexOf('<') === 0 || absent || wordedLimit !== null;
+      /* a count the laboratory saw and did not quantify, and a ">50" that
+       * used to be read as exactly 50 */
+      var greaterThan = null;
+      if (!belowDetection) {
+        if (PRESENCE_TOKENS.indexOf(plain) >= 0) {
+          greaterThan = 0;
+        } else {
+          var gt = GREATER_THAN_RE.exec(plain);
+          if (gt) greaterThan = parseNumber(gt[1]);
+        }
+      }
+      var value = (absent || wordedLimit !== null || greaterThan !== null)
+        ? null : parseNumber(rawValue);
       var dl = parseNumber(cell('dl'));
+      if (wordedLimit !== null && dl === null) dl = wordedLimit;
       if (belowDetection) {
         /* A "<X" marker means the true concentration is unknown, bounded above
          * by X. The measured value must be cleared so the assessment treats
@@ -6712,6 +7418,7 @@
         detection_limit: dl,
         below_detection: belowDetection || (value === null && dl !== null),
         method: cleanText(cell('method')),
+        greater_than: greaterThan,
       });
     }
 
@@ -6753,6 +7460,106 @@
 
   var STEP_LABEL_RE = /^\s*step\s*\d*\s*q\b/i;
 
+  /* The heading a sheet prints over a column group - "Constant discharge
+   * 61-120 min", "Recovery" - is the sheet's own statement of what the block
+   * holds and which minutes of the test it covers, so both readings below
+   * take the block's place in the test from it rather than from an
+   * assumption. */
+  var BLOCK_SPAN_RE = /(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)\s*([a-z]{1,8})?/i;
+
+  /* What a column's own header says the column holds.
+   *
+   * "Recovery" is tested before "water level" so a column headed "Recovery
+   * water level" is read as the recovery column it says it is, and "drawdown"
+   * before "level" so an increment column is never taken for a level. */
+  function columnRole(text) {
+    if (!text) return '';
+    if (text.indexOf('reco') >= 0) return 'recovery';
+    if (text.indexOf('drawdown') >= 0 || text.indexOf('draw down') >= 0) {
+      return 'drawdown';
+    }
+    if (text.indexOf('water') >= 0 || text.indexOf('level') === 0) return 'level';
+    return '';
+  }
+
+  /* The minutes a block heading says the block covers, e.g. [61, 120].
+   *
+   * null when the heading names no span, or names one in a unit that cannot
+   * be read: an offset applied to every reading in a block has to come from
+   * the sheet, never from a guess at what "1-2" might mean. */
+  function blockSpanMin(heading) {
+    var match = BLOCK_SPAN_RE.exec(normaliseDashes(String(heading || '')));
+    if (!match) return null;
+    var first = parseFloat(match[1]);
+    var last = parseFloat(match[2]);
+    var written = (match[3] || '').trim();
+    if (written) {
+      first = convertUnit(first, written, 'min', 'time');
+      last = convertUnit(last, written, 'min', 'time');
+    }
+    if (first === null || last === null || last <= first) return null;
+    return [first, last];
+  }
+
+  /* The heading the sheet prints above a column group ("" when there is none).
+   *
+   * Only the two rows immediately above the column headers are read - on the
+   * template the block headings sit directly over the group's own first
+   * column - and only a heading the reader can act on is returned: one naming
+   * the recovery block, or the minutes the block covers. Anything else
+   * standing above the table belongs to the sheet's header block ("Discharge
+   * per step (m3/h)" sits there on the template), and carrying that into a
+   * flag as if the crew had written it over the readings would say more than
+   * the sheet does. */
+  function blockHeading(grid, headerRow, start, end) {
+    for (var r = headerRow - 1; r > Math.max(headerRow - 3, -1); r--) {
+      var row = (r < grid.length ? grid[r] : null) || [];
+      for (var cc = start; cc < Math.min(end, row.length); cc++) {
+        var text = cleanText(row[cc]);
+        if (!text) continue;
+        if (text.toLowerCase().indexOf('recover') >= 0 ||
+            blockSpanMin(text) !== null) {
+          return text;
+        }
+      }
+    }
+    return '';
+  }
+
+  /* One column group: the base fields the whole block shares, plus its own. */
+  function pumpingGroup(base, level, kind) {
+    return {
+      time: base.time, time_header: base.time_header,
+      block_heading: base.block_heading, level: level, kind: kind,
+    };
+  }
+
+  /* Find the header row of Time / Water Level / ... column groups.
+   *
+   * Returns {row, groups}. Each group carries its column indices, the header
+   * its time column declares, the heading printed above the block, and a
+   * kind:
+   *
+   *   "pumping"             time and water level while the pump ran.
+   *   "recovery"            time and water level after it stopped. A recovery
+   *                         block's Drawdown and Recovery columns are
+   *                         increments between readings, so the water level
+   *                         column is the one read: a block laid out Time /
+   *                         Level / Drawdown / Recovery used to have its
+   *                         fourth column read as the levels, which made the
+   *                         recovery curve the increment between readings
+   *                         rather than the water level (ROADMAP
+   *                         data-ingestion-10).
+   *   "recovery_unreadable" a recovery column the sheet never explains.
+   *                         pumpingFromGrid flags it and reads no curve from
+   *                         it.
+   *
+   * A block is a recovery block when its heading or its time column says
+   * "recovery", or when its columns run Time, Water Level[, Drawdown],
+   * Recovery with nothing else between them. A recovery column that says it
+   * holds water levels ("Recovery water level") is instead read as a second
+   * series against the shared time column, which is the other layout the
+   * sheets use. */
   function findGroups(grid) {
     var best = null;
     for (var r = 0; r < grid.length; r++) {
@@ -6766,38 +7573,74 @@
       for (var gi = 0; gi < timeCols.length; gi++) {
         var start = timeCols[gi];
         var end = gi + 1 < timeCols.length ? timeCols[gi + 1] : texts.length;
-        var levelCol = null, recoCol = null;
+        var roles = {};
         for (var cc = start + 1; cc < end; cc++) {
-          var t = texts[cc];
-          if (!t) continue;
-          if ((t.indexOf('water') >= 0 || t.indexOf('level') === 0) && levelCol === null) {
-            levelCol = cc;
-          } else if (t.indexOf('reco') >= 0 && recoCol === null) {
-            recoCol = cc;
-          }
+          var role = columnRole(texts[cc]);
+          if (role && !(role in roles)) roles[role] = cc;
         }
+        var levelCol = 'level' in roles ? roles.level : null;
+        var drawCol = 'drawdown' in roles ? roles.drawdown : null;
+        var recoCol = 'recovery' in roles ? roles.recovery : null;
         if (levelCol === null && recoCol === null) continue;
         /* The header text travels with the group so the time unit it declares
-         * is read rather than assumed. */
+         * - "Time (min)", "Time (h)" - is read rather than assumed, and the
+         * block heading travels with it so a constant test's hourly blocks
+         * can be put back in the order the sheet gives them. */
         var header = texts[start];
-        if (recoCol !== null && levelCol !== null) {
-          if (recoCol - start <= 2) {
-            /* Kuntolo style triplet: Time, Water Level, Recovery increment */
-            groups.push({ time: start, level: levelCol, kind: 'recovery',
-              time_header: header });
-          } else {
-            /* Dr Timbo style: shared time column; recovery column holds levels */
-            groups.push({ time: start, level: levelCol, kind: 'pumping',
-              time_header: header });
-            groups.push({ time: start, level: recoCol, kind: 'recovery',
-              time_header: header });
-          }
-        } else if (recoCol !== null) {
-          groups.push({ time: start, level: recoCol, kind: 'recovery',
-            time_header: header });
+        var heading = blockHeading(grid, r, start, end);
+        var base = { time: start, time_header: header, block_heading: heading };
+        var saysRecovery = heading.toLowerCase().indexOf('recover') >= 0 ||
+          header.indexOf('recover') >= 0;
+        var recoSaysLevel = recoCol !== null &&
+          (texts[recoCol].indexOf('level') >= 0 ||
+           texts[recoCol].indexOf('water') >= 0);
+
+        if (recoCol === null) {
+          groups.push(pumpingGroup(base, levelCol,
+            saysRecovery ? 'recovery' : 'pumping'));
+        } else if (saysRecovery) {
+          /* The sheet names the block, so its level column is the level and
+           * its recovery column is an increment, as the drawdown column is on
+           * a pumping block. */
+          groups.push(pumpingGroup(base,
+            levelCol === null ? recoCol : levelCol, 'recovery'));
+        } else if (levelCol === null) {
+          /* Nothing else in the block can be a water level, so the recovery
+           * column is read as one. */
+          groups.push(pumpingGroup(base, recoCol, 'recovery'));
+        } else if (recoSaysLevel &&
+            (timeCols.length === 1 || Math.max(levelCol, recoCol) - start > 2)) {
+          /* A shared time column with a recovery column that says it holds
+           * levels: two series read against the same times. A block with its
+           * own time column and the recovery column beside it is a recovery
+           * block, not a pumping block with a second series; read the other
+           * way, its water levels were joined onto the drawdown curve as the
+           * next hour. */
+          groups.push(pumpingGroup(base, levelCol, 'pumping'));
+          groups.push(pumpingGroup(base, recoCol, 'recovery'));
+        } else if (Math.max(levelCol, recoCol) - start <= 2) {
+          /* Time, Water Level, Recovery: the recovery block the bundled
+           * template prints. */
+          groups.push(pumpingGroup(base, levelCol, 'recovery'));
+        } else if (levelCol === start + 1 && drawCol === start + 2 &&
+                   recoCol === start + 3 && timeCols.length > 1) {
+          /* Time, Level, Drawdown, Recovery: a recovery block written with
+           * both increment columns. Reading its fourth column as the levels
+           * made the recovery curve the rise between readings rather than the
+           * water level (ROADMAP data-ingestion-10). It is read this way only
+           * when another group holds the pumping readings; alone on a sheet
+           * the same four columns could be a whole test against one time
+           * column, which is refused below. */
+          groups.push(pumpingGroup(base, levelCol, 'recovery'));
         } else {
-          groups.push({ time: start, level: levelCol, kind: 'pumping',
-            time_header: header });
+          /* A recovery column standing apart from the block's own columns: it
+           * may hold levels or increments and the sheet does not say which,
+           * so the pumping pair is read and the recovery column is refused by
+           * name. */
+          groups.push(pumpingGroup(base, levelCol, 'pumping'));
+          var refused = pumpingGroup(base, recoCol, 'recovery_unreadable');
+          refused.recovery_header = cleanText((grid[r] || [])[recoCol]);
+          groups.push(refused);
         }
       }
       if (groups.length && (best === null || groups.length > best.groups.length)) {
@@ -6920,6 +7763,86 @@
     return '';
   }
 
+  /* Join the hourly blocks of a constant discharge test into one series.
+   *
+   * A constant discharge sheet is written in hourly column groups side by
+   * side and each group's elapsed time is often counted within its own hour:
+   * 1, 2, 3 in the first block and 1, 2, 3 again in the second. Concatenating
+   * the groups and sorting the result interleaved them into a sawtooth -
+   * minute 1 of every hour, then minute 2 of every hour - and every drawdown
+   * curve and every transmissivity fitted to it was wrong (ROADMAP
+   * data-ingestion-10).
+   *
+   * Each block's place in the test is read off the sheet: the minutes its own
+   * heading names ("Constant discharge 61-120 min"), or, when the heading
+   * names none, the last reading of the block before it, which is what a
+   * block whose times go backwards continues from. A block that is neither -
+   * one starting inside the readings already taken and running past them - is
+   * left out and named, because a block placed at a minute nobody can check
+   * produces a curve nobody can trust.
+   *
+   * Returns {times, levels, joined, dropped}; joined and dropped are
+   * sentences naming what was done, for the caller to raise as flags. */
+  function joinConstantBlocks(blocks) {
+    var times = [], levels = [], joined = [], dropped = [], end = null;
+    blocks.forEach(function (block, index) {
+      var number = index + 1;
+      var t = block.times, wl = block.levels;
+      var heading = String(block.group && block.group.block_heading || '');
+      var span = blockSpanMin(heading);
+      var first = t[0];
+      var last = arrMax(t);
+      var offset = 0;
+      /* The note is held until the block is actually kept. Pushed here, a
+       * block that the backwards guard below then drops was named twice:
+       * the warning said it was left out and the info flag said how many
+       * minutes had been added to it. */
+      var note = '';
+      if (span !== null && first < span[0]) {
+        offset = span[0] - first;
+        note = 'block ' + number + ' counts its time within its own hour ' +
+          'from ' + formatG(first) + " min and its heading '" + heading +
+          "' covers " + formatG(span[0]) + ' to ' + formatG(span[1]) +
+          ' min, so ' + formatG(offset) + ' min were added to it';
+      } else if (span !== null || end === null || first > end) {
+        offset = 0;
+      } else if (last <= end) {
+        offset = end;
+        note = 'block ' + number + ' restarts its time at ' +
+          formatG(first) + ' min, inside the ' + formatG(end) + ' min already ' +
+          'read, and its heading names no minutes, so it was read as ' +
+          'continuing from the last reading before it and ' + formatG(offset) +
+          ' min were added to it';
+      } else {
+        dropped.push('Block ' + number + ' of the constant discharge readings ' +
+          'starts at ' + formatG(first) + ' min, inside the ' + formatG(end) +
+          ' min already read, and runs past them to ' + formatG(last) +
+          ' min, so the sheet does not say whether its times count from the ' +
+          'start of the test or from the start of the block.');
+        return;
+      }
+      var shifted = t.map(function (v) { return v + offset; });
+      if (end !== null && shifted[0] < end) {
+        dropped.push('Block ' + number + ' of the constant discharge readings ' +
+          'still starts at ' + formatG(shifted[0]) + ' min once placed, ' +
+          'before the ' + formatG(end) + ' min already read, so its readings ' +
+          'would run backwards into the block before it.');
+        return;
+      }
+      if (note) joined.push(note);
+      times = times.concat(shifted);
+      levels = levels.concat(wl);
+      end = arrMax(shifted);
+    });
+    var order = times.map(function (v, i) { return i; })
+      .sort(function (a, b) { return times[a] - times[b] || a - b; });
+    return {
+      times: order.map(function (i) { return times[i]; }),
+      levels: order.map(function (i) { return levels[i]; }),
+      joined: joined, dropped: dropped,
+    };
+  }
+
   function pumpingFromGrid(grid, source) {
     var fields = extractHeaderFields(grid, grid.length);
     var site = siteFromFields(fields, source);
@@ -6928,6 +7851,24 @@
     if (!located) {
       throw new Error('No Time/Water Level column groups found in ' + (source || 'the sheet'));
     }
+
+    /* The sheet carries a recovery column but never says what is in it, and a
+     * recovery curve drawn from increments is wrong by the whole depth to
+     * water. Refusing it and naming it is the only honest answer (ROADMAP
+     * data-ingestion-10). */
+    located.groups.forEach(function (g) {
+      if (g.kind !== 'recovery_unreadable') return;
+      var where = g.block_heading
+        ? " in the '" + g.block_heading + "' block" : '';
+      flags.push({
+        level: 'warning', code: 'recovery_layout_unreadable',
+        message: "A column headed '" + (g.recovery_header || '') + "' stands " +
+          'apart from the water level column' + where + ', and nothing on the ' +
+          'sheet says whether it holds water levels or the rise between ' +
+          'readings, so no recovery curve was read from it. Head the recovery ' +
+          "block 'Recovery', or the column 'Recovery water level (m)'.",
+      });
+    });
 
     /* A time column whose unit cannot be read is dropped rather than taken as
      * minutes: reading hours as minutes would rescale every drawdown curve
@@ -6967,7 +7908,13 @@
               }).join(', ') + '). Put notes outside the reading columns.',
           });
         }
-        if (series.times.length) out.push(series);
+        /* Each block is handed back with the group it came from, because a
+         * constant test's blocks are placed by the heading the sheet prints
+         * over them before they are joined into one series. */
+        if (series.times.length) {
+          series.group = g;
+          out.push(series);
+        }
       });
       return out;
     }
@@ -6991,17 +7938,31 @@
     }
 
     if (testType.indexOf('constant') === 0 && pumpingSeries.length > 1) {
-      /* hourly column groups are one continuous series on constant tests */
-      var allT = [], allW = [];
-      pumpingSeries.forEach(function (s) {
-        allT = allT.concat(s.times); allW = allW.concat(s.levels);
+      /* The hourly column groups are one continuous series on a constant
+       * test, but each block's times are often counted within its own hour,
+       * so every block is put back in its place before they are joined. */
+      var blockCount = pumpingSeries.length;
+      var joinedBlocks = joinConstantBlocks(pumpingSeries);
+      joinedBlocks.dropped.forEach(function (note) {
+        flags.push({
+          level: 'warning', code: 'constant_block_unreadable',
+          message: note + ' The block was left out of the series rather than ' +
+            'joined at a minute nobody can check. Head each block with the ' +
+            "minutes it covers, as in 'Constant discharge 121-180 min'.",
+        });
       });
-      var order = allT.map(function (v, i) { return i; })
-        .sort(function (a, b) { return allT[a] - allT[b] || a - b; });
-      pumpingSeries = [{
-        times: order.map(function (i) { return allT[i]; }),
-        levels: order.map(function (i) { return allW[i]; }),
-      }];
+      if (joinedBlocks.joined.length && joinedBlocks.times.length) {
+        flags.push({
+          level: 'info', code: 'constant_blocks_joined',
+          message: 'The constant discharge readings are written in ' +
+            blockCount + ' blocks: ' + joinedBlocks.joined.join('; ') +
+            '. The blocks have been joined into one series running ' +
+            formatG(arrMin(joinedBlocks.times)) + ' to ' +
+            formatG(arrMax(joinedBlocks.times)) + ' min.',
+        });
+      }
+      pumpingSeries = joinedBlocks.times.length
+        ? [{ times: joinedBlocks.times, levels: joinedBlocks.levels }] : [];
     }
 
     var discharges = findStepDischarges(grid);
@@ -7168,6 +8129,10 @@
     soundingFromGrid: soundingFromGrid, readVesSheets: readVesSheets,
     drillingFromGrid: drillingFromGrid, qualityFromGrid: qualityFromGrid,
     pumpingFromGrid: pumpingFromGrid, parseInstalledScreens: parseInstalledScreens,
+    normaliseDashes: normaliseDashes,
+    parseWaterStrikeDepths: parseWaterStrikeDepths,
+    parseBitDiameterIn: parseBitDiameterIn,
+    parsePenetrationRateMPerMin: parsePenetrationRateMPerMin,
     LABEL_PATTERNS: LABEL_PATTERNS,
   });
 
@@ -7253,11 +8218,137 @@
     return false;
   }
 
+  /* How far outside every chiefdom a point may fall and still be placed on the
+   * chiefdom whose ring it is nearest to, in metres.
+   *
+   * Each ring of the bundled layer was simplified on its own, so two rings
+   * that were once one shared border no longer meet exactly, and the thin
+   * slivers between them - about 37 km2 of ground nationally - are inside no
+   * chiefdom at all (ROADMAP data-ingestion-7). A point in one of those seams
+   * is metres from the border it belongs on, and which side of that border it
+   * fell on is below the resolution of the layer, so it is resolved to the
+   * nearest ring. Nearly every seam in the bundled layer is far narrower than
+   * this; the few places that are wider are where three chiefdoms meet, and a
+   * point there is left unplaced rather than given one of the three.
+   *
+   * The number is metres and not kilometres on purpose. Beyond it a point is
+   * not on a border at all but in a real hole in the layer - the Maforki wedge
+   * withheld pending review is 20 km2 of such ground - and there every lookup
+   * answers with nothing rather than with the name of whatever lies nearest,
+   * because an unplaced point is a flag on a report while a placed one is a
+   * district on a document somebody signs. The same number as
+   * coverage.CHIEFDOM_EDGE_TOLERANCE_M, so the two engines snap at one
+   * distance and not at two. */
+  var CHIEFDOM_EDGE_TOLERANCE_M = 50.0;
+
+  /* Metres per degree of latitude, and per degree of longitude at the equator
+   * (shrunk by the cosine of the latitude where it is used). What they convert
+   * is a few tens of metres between a point and a ring it is all but touching,
+   * so the local flat-earth distance below is ample and a projection would be
+   * false precision. */
+  var M_PER_DEG_LAT = 110600.0;
+  var M_PER_DEG_LON = 111320.0;
+
+  /* Metres from a point to the nearest segment of a ring.
+   *
+   * Distance to the ring as a line, not to its vertices: a simplified ring can
+   * run hundreds of metres between two vertices, and a point in the seam
+   * beside that stretch is metres from the border and far from either end of
+   * it. haversineM is point to point and cannot answer this. */
+  function ringDistanceM(lon, lat, ring) {
+    var scale = M_PER_DEG_LON * Math.cos(lat * Math.PI / 180);
+    var best = Infinity;
+    for (var i = 0; i < ring.length - 1; i++) {
+      var ax = (ring[i][0] - lon) * scale;
+      var ay = (ring[i][1] - lat) * M_PER_DEG_LAT;
+      var dx = (ring[i + 1][0] - lon) * scale - ax;
+      var dy = (ring[i + 1][1] - lat) * M_PER_DEG_LAT - ay;
+      var length2 = dx * dx + dy * dy;
+      /* where on the segment the perpendicular falls, clamped to its ends; a
+       * segment of zero length (a vertex repeated by the simplification) would
+       * divide by zero, and its own end point is the answer there. */
+      var t = 0;
+      if (length2 > 0) {
+        t = -(ax * dx + ay * dy) / length2;
+        if (t < 0) t = 0; else if (t > 1) t = 1;
+      }
+      var px = ax + t * dx, py = ay + t * dy;
+      var metres = Math.sqrt(px * px + py * py);
+      if (metres < best) best = metres;
+    }
+    return best;
+  }
+
+  /* Which of the areas a point in none of them is nearest to, if any is near.
+   *
+   * ringSets is each area's outer rings, in the layer's own order. Returns the
+   * index of the area whose ring is nearest, when that ring is closer than
+   * toleranceM, and null when nothing is that close - the point is then in no
+   * chiefdom and is left in none.
+   *
+   * Ties go to the earlier area, which is the rule the containment walk
+   * already follows. Interior rings are not candidates: a point in the seam
+   * between an enclave and the chiefdom around it (Kenema Town inside Nongowa)
+   * belongs to the enclave it is touching, not to the hole it fell in.
+   * coverage.nearest_chiefdom_index. */
+  function nearestChiefdomIndex(lon, lat, ringSets, toleranceM) {
+    var tolerance = toleranceM === undefined ? CHIEFDOM_EDGE_TOLERANCE_M : toleranceM;
+    /* the ring's bounding box grown by the tolerance: a point outside that box
+     * is further than the tolerance from every point of the ring, so the
+     * distance need not be computed at all. A national water-point pull asks
+     * this of every point it could not place. */
+    var dLat = tolerance / M_PER_DEG_LAT;
+    var dLon = tolerance /
+      (M_PER_DEG_LON * Math.max(Math.cos(lat * Math.PI / 180), 1e-6));
+    var bestIndex = null, bestM = tolerance;
+    for (var i = 0; i < ringSets.length; i++) {
+      var rings = ringSets[i] || [];
+      for (var j = 0; j < rings.length; j++) {
+        var ring = rings[j];
+        if (!ring || ring.length < 2) continue;  // a replacement layer can carry a degenerate ring
+        var minLon = Infinity, maxLon = -Infinity;
+        var minLat = Infinity, maxLat = -Infinity;
+        for (var k = 0; k < ring.length; k++) {
+          if (ring[k][0] < minLon) minLon = ring[k][0];
+          if (ring[k][0] > maxLon) maxLon = ring[k][0];
+          if (ring[k][1] < minLat) minLat = ring[k][1];
+          if (ring[k][1] > maxLat) maxLat = ring[k][1];
+        }
+        if (lon < minLon - dLon || lon > maxLon + dLon ||
+            lat < minLat - dLat || lat > maxLat + dLat) continue;
+        var metres = ringDistanceM(lon, lat, ring);
+        if (metres < bestM) { bestIndex = i; bestM = metres; }
+      }
+    }
+    return bestIndex;
+  }
+
+  /* The outer rings of each polygon, in the layer's order, as
+   * nearestChiefdomIndex takes them. */
+  function outerRingSets(polys) {
+    return polys.map(function (poly) { return poly.rings; });
+  }
+
+  /* The chiefdom polygon holding a point, or "" when no chiefdom is near it.
+   *
+   * A point no polygon contains is placed on the chiefdom whose ring is
+   * nearest, when that ring is within CHIEFDOM_EDGE_TOLERANCE_M - the seams
+   * the independently simplified rings leave along their shared borders are
+   * that wide, and a point in one is on the border rather than outside the
+   * country. Further out than that it stays unplaced, because the ground the
+   * layer does not carry - the withheld Maforki wedge in Kono is 20 km2 of it
+   * - is ground this toolkit cannot place, and saying so is the honest answer
+   * (ROADMAP data-ingestion-7).
+   *
+   * Every count and grouping below goes through this one function, so the
+   * browser closes a seam at one distance and in one place, as the Python
+   * does. */
   function chiefdomOfPoint(lat, lon, polys) {
     for (var i = 0; i < polys.length; i++) {
       if (polyContains(polys[i], lon, lat)) return polys[i].name;
     }
-    return '';
+    var near = nearestChiefdomIndex(lon, lat, outerRingSets(polys));
+    return near === null ? '' : polys[near].name;
   }
 
   function loadDistrictPopulation(rows) {
@@ -7294,6 +8385,145 @@
       out[String(row.chiefdom).trim()] = String(row.district).trim();
     });
     return out;
+  }
+
+  /* --- reading a district name off a sheet ---------------------------------
+   *
+   * groundwater/ingestion/checks.py. The browser has no port of
+   * check_site_consistency; what it has is the site page's callout comparing
+   * the district on the sheet against the district the chiefdom polygons put
+   * the coordinates in. Reading the name is the part both engines must agree
+   * on, and it used to be a substring test in each of them.
+   */
+
+  /* "Western Area" is a region, not one of the sixteen districts: it is the
+   * peninsula's two districts together. Field sheets write it constantly, so
+   * it is read as both of them - a site anywhere in either satisfies it -
+   * rather than as Western Area Urban, which is what taking the first
+   * substring hit did, flagging every correctly labelled site on the
+   * southern peninsula (ROADMAP data-ingestion-5). */
+  var DISTRICT_REGIONS = {
+    'western area': ['Western Area Urban', 'Western Area Rural'],
+  };
+
+  /* The sixteen districts, spelled as the boundary lookups spell them: taken
+   * from the chiefdom -> current-district crosswalk rather than from a list
+   * written out here, so the names this reading accepts are exactly the names
+   * the point lookup can return. */
+  function districtNames() {
+    var crosswalk = loadChiefdomDistrict(), seen = {}, out = [];
+    Object.keys(crosswalk).forEach(function (chiefdom) {
+      var district = crosswalk[chiefdom];
+      if (district && !own(seen, district)) {
+        seen[district] = true;
+        out.push(district);
+      }
+    });
+    return out.sort();
+  }
+
+  /* A stated name reduced to what can be compared: case, spacing, and a
+   * trailing "district" the sheet added ("Port Loko District"). */
+  function districtKey(name) {
+    var words = String(name === null || name === undefined ? '' : name)
+      .replace(/\./g, ' ').split(/\s+/).filter(Boolean);
+    if (words.length > 1) {
+      var last = words[words.length - 1].toLowerCase().replace(/,+$/, '');
+      if (last === 'district' || last === 'districts') {
+        words = words.slice(0, words.length - 1);
+      }
+    }
+    return words.join(' ').toLowerCase();
+  }
+
+  /* Every administrative name read here -> the districts it covers. */
+  function namedAreas() {
+    var areas = {};
+    districtNames().forEach(function (name) { areas[districtKey(name)] = [name]; });
+    Object.keys(DISTRICT_REGIONS).forEach(function (key) {
+      areas[key] = DISTRICT_REGIONS[key].slice();
+    });
+    return areas;
+  }
+
+  function districtPrefixHit(key, candidate) {
+    return candidate.indexOf(key) === 0;
+  }
+
+  /* True when every word of the stated name begins a word of the candidate,
+   * in order: "Western Urban" for Western Area Urban. Each word is consumed
+   * as it is matched, so one candidate word cannot answer for two. */
+  function districtWordsHit(key, candidate) {
+    var words = candidate.split(' '), parts = key.split(' '), index = 0;
+    for (var p = 0; p < parts.length; p++) {
+      var hit = false;
+      while (index < words.length) {
+        var word = words[index];
+        index += 1;
+        if (word.indexOf(parts[p]) === 0) { hit = true; break; }
+      }
+      if (!hit) return false;
+    }
+    return true;
+  }
+
+  function sameDistrictSet(a, b) {
+    return a.slice().sort().join('|') === b.slice().sort().join('|');
+  }
+
+  /* Read a district name off a sheet: [resolved, candidates].
+   *
+   * resolved is the districts the name can only mean - one district, or the
+   * two of the Western Area for a name that means the region. It is empty
+   * when the name matches nothing, and empty when it matches more than one
+   * district, in which case candidates lists what it could have meant. An
+   * exact name wins; then a name that prefixes exactly one ("Bomb" for
+   * Bombali); then one whose words begin the words of exactly one ("Western
+   * Urban"). Matching on the first substring hit, which is what this did,
+   * read "Ko" as Port Loko and "Western Area" as Western Area Urban; a name
+   * that could be two districts is worth refusing, and saying which two,
+   * rather than silently picking one of them. */
+  function matchDistrict(name) {
+    var key = districtKey(name);
+    if (!key) return [[], []];
+    var areas = namedAreas();
+    if (own(areas, key)) return [areas[key].slice(), areas[key].slice()];
+    var tiers = [districtPrefixHit, districtWordsHit];
+    for (var t = 0; t < tiers.length; t++) {
+      var names = Object.keys(areas).filter(function (known) {
+        return tiers[t](key, known);
+      });
+      if (!names.length) continue;
+      var covered = [], seen = {};
+      names.forEach(function (known) {
+        areas[known].forEach(function (district) {
+          if (!own(seen, district)) { seen[district] = true; covered.push(district); }
+        });
+      });
+      covered.sort();
+      for (var i = 0; i < names.length; i++) {
+        /* "Western" matches both halves of the Western Area and the region
+         * over them, and the region is a single answer; "Ko" matches
+         * Koinadugu and Kono, and there is no such answer. */
+        if (sameDistrictSet(areas[names[i]], covered)) {
+          return [areas[names[i]].slice(), areas[names[i]].slice()];
+        }
+      }
+      return [[], covered];
+    }
+    return [[], []];
+  }
+
+  /* The districts a district name written on a sheet can only mean. */
+  function districtsNamed(name) {
+    return matchDistrict(name)[0];
+  }
+
+  /* A list an operator reads as a sentence: "Koinadugu or Kono". */
+  function orList(names) {
+    var list = (names || []).slice();
+    if (list.length < 2) return list.join('');
+    return list.slice(0, list.length - 1).join(', ') + ' or ' + list[list.length - 1];
   }
 
   /* Population per chiefdom polygon, aggregated from the census through the
@@ -7798,8 +9028,13 @@
     WPDX_CREDIT: WPDX_CREDIT, POPULATION_CREDIT: POPULATION_CREDIT,
     haversineM: haversineM, pointInRing: pointInRing, loadPolygons: loadPolygons,
     polyContains: polyContains, chiefdomOfPoint: chiefdomOfPoint,
+    CHIEFDOM_EDGE_TOLERANCE_M: CHIEFDOM_EDGE_TOLERANCE_M,
+    ringDistanceM: ringDistanceM, nearestChiefdomIndex: nearestChiefdomIndex,
+    outerRingSets: outerRingSets,
     loadDistrictPopulation: loadDistrictPopulation,
     loadChiefdomDistrict: loadChiefdomDistrict,
+    districtNames: districtNames, matchDistrict: matchDistrict,
+    districtsNamed: districtsNamed, orList: orList,
     chiefdomPopulation: chiefdomPopulation,
     countPointsByChiefdom: countPointsByChiefdom,
     countPointsByDistrict: countPointsByDistrict,
@@ -8000,10 +9235,283 @@
     return geodesicDistanceM(p.lat, p.lon, q.lat, q.lon);
   }
 
+  /* Sierra Leone's own extent, in degrees: about 6.9 to 10.0 north, and 10.3
+   * to 13.3 WEST. These bands recognise a longitude typed without its western
+   * sign; nothing here moves a coordinate that carries a sign or a letter. */
+  var SIERRA_LEONE_LAT_BAND = [6.9, 10.0];
+  var SIERRA_LEONE_LON_BAND = [-13.3, -10.3];
+
+  var ZONE_NUMBER_RE = /\d+/g;
+
+  /* The UTM zone a cell states, or null when it states no single zone.
+   *
+   * Sheets write the zone as "28N", "28", "zone 28" or - when the operator
+   * copies the label into the value cell - "Zone 28". Reading such a cell
+   * means taking the number that follows the label and nothing else. A value
+   * cell mistaken for a label let the neighbouring easting through as the
+   * zone, so a site recorded in zone 28N was carried as "zone 708958" and
+   * projected tens of degrees from the survey.
+   *
+   * A cell naming more than one number states no single zone - "28N or 29N"
+   * is the sheet's own instruction, not an answer - and neither does a number
+   * outside the 1 to 60 a UTM zone can be. Both are refused rather than
+   * guessed at, so the caller can say the zone is unrecorded and fall back to
+   * the easting. */
+  function parseUtmZone(value) {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'boolean') return null;
+    var numbers;
+    if (typeof value === 'number') {
+      if (!isFinite(value) || Math.trunc(value) !== value) return null;
+      numbers = [value];
+    } else {
+      ZONE_NUMBER_RE.lastIndex = 0;
+      var found = String(value).match(ZONE_NUMBER_RE);
+      numbers = (found || []).map(Number);
+    }
+    if (numbers.length !== 1) return null;
+    if (!(numbers[0] >= 1 && numbers[0] <= 60)) return null;
+    return numbers[0];
+  }
+
+  /* --- a pasted "lat, lon", as a field crew writes it ----------------------
+   *
+   * Every longitude in Sierra Leone is west, and a handheld GPS writes that
+   * as a W rather than a minus sign. Discarding the letter and taking the
+   * number at face value puts the site 26 degrees east of where it is -
+   * silently, on the wrong side of the continent - so the letter is read as a
+   * sign. A letter that contradicts an explicit sign ("-13.2317 E") is
+   * refused rather than guessed at, and an explicit E/W on the first value
+   * means the pair was written longitude first. */
+
+  var LATLON_TOKEN_RE = /^([+-]?\d*\.?\d+)\s*([NSEWnsew])?$/;
+  var HEMISPHERES = ['N', 'S', 'E', 'W'];
+
+  /* Degree, minute and second marks as a phone, a handheld GPS or a sheet
+   * writes them; they separate the parts of a coordinate rather than
+   * belonging to any of them, so they are read as spaces. */
+  var SEXAGESIMAL_MARKS_RE =
+    /[\u00b0\u00ba\u2218\u0027\u2019\u2032\u0022\u201d\u2033]/g;
+
+  var LATLON_UNREADABLE = 'Could not read those coordinates.';
+  var LATLON_AMBIGUOUS = 'Two numbers with nothing between them are either ' +
+    'a decimal pair or one degrees-and-minutes value. Separate a pair with ' +
+    'a comma (8.4657, -13.2317), or mark the hemispheres ' +
+    '(8 27.942 N, 13 13.902 W).';
+
+  /* A coordinate the parser will not read, carrying the reason why. Thrown
+   * rather than returned so the token loop can refuse from where it stands,
+   * the way the Python parser raises. */
+  function coordinateRefused(code, message) {
+    var refusal = new Error(message);
+    refusal.refusedCoordinate = true;
+    refusal.code = code;
+    return refusal;
+  }
+
+  /* Split a pasted coordinate into its two components. Numbers accumulate
+   * into the component being read. A hemisphere letter, a comma or
+   * semicolon, or an explicit sign ends that component and starts the next,
+   * because a number of minutes or seconds is never signed and never carries
+   * a hemisphere of its own. */
+  function latLonComponents(raw) {
+    var components = [];
+    var current = null;
+
+    function openComponent(letter) {
+      current = { numbers: [], letter: letter === undefined ? null : letter,
+        signed: false, negative: false };
+      components.push(current);
+      return current;
+    }
+
+    var segments = raw.replace(SEXAGESIMAL_MARKS_RE, ' ').split(/[,;]/);
+    for (var s = 0; s < segments.length; s++) {
+      if (s) current = null;
+      var tokens = segments[s].split(/\s+/).filter(Boolean);
+      for (var t = 0; t < tokens.length; t++) {
+        var token = tokens[t];
+        if (token.length === 1 && HEMISPHERES.indexOf(token.toUpperCase()) >= 0) {
+          var bare = token.toUpperCase();
+          if (current !== null && current.letter === null && current.numbers.length) {
+            current.letter = bare;                 /* trailing "8.4657 N" */
+            current = null;
+          } else {
+            current = null;
+            openComponent(bare);                   /* leading "N 8.4657" */
+          }
+          continue;
+        }
+        var match = LATLON_TOKEN_RE.exec(token);
+        if (match === null) {
+          throw coordinateRefused('latlon_unreadable', LATLON_UNREADABLE);
+        }
+        var number = Number(match[1]);
+        if (!isFinite(number)) {
+          throw coordinateRefused('latlon_unreadable', LATLON_UNREADABLE);
+        }
+        var signed = match[1].charAt(0) === '+' || match[1].charAt(0) === '-';
+        if (signed && current !== null && current.numbers.length) {
+          current = null;                          /* "8 -13.2317" is a pair */
+        }
+        var component = current !== null ? current : openComponent();
+        if (!component.numbers.length) {
+          component.signed = signed;
+          component.negative = match[1].charAt(0) === '-';
+        }
+        component.numbers.push(number);
+        if (match[2]) {
+          component.letter = match[2].toUpperCase();          /* "13.2317W" */
+          current = null;
+        }
+      }
+    }
+
+    if (components.length === 1 && components[0].letter === null &&
+        components[0].numbers.length === 2) {
+      /* Nothing separates the two numbers, so they are either a decimal pair
+       * or one degrees-and-minutes value. Where they could be either,
+       * refusing is the only honest reading: "8 27.942" read as a pair lands
+       * 2000 km from the same text read as degrees and minutes. */
+      var only = components[0];
+      var degrees = only.numbers[0], rest = only.numbers[1];
+      if (degrees === Math.floor(degrees) && rest >= 0 && rest < 60) {
+        throw coordinateRefused('latlon_unreadable', LATLON_AMBIGUOUS);
+      }
+      components = [
+        { numbers: [degrees], letter: null,
+          signed: only.signed, negative: only.negative },
+        { numbers: [rest], letter: null, signed: false, negative: false },
+      ];
+    }
+    return components;
+  }
+
+  /* One component of a pasted pair as signed decimal degrees. Read as decimal
+   * degrees, "8 27.942 N" came back as latitude 27.942 and longitude 8: the
+   * sheet's own numbers, in the wrong units and the wrong order. */
+  function latLonComponentDegrees(component, what) {
+    var numbers = component.numbers;
+    if (!numbers.length || numbers.length > 3) {
+      throw coordinateRefused('latlon_unreadable', LATLON_UNREADABLE);
+    }
+    var magnitude = Math.abs(numbers[0]);
+    if (numbers.length > 1) {
+      var minutes = numbers[1];
+      if (magnitude !== Math.floor(magnitude)) {
+        throw coordinateRefused('latlon_unreadable', 'Read the ' + what +
+          ' as degrees and minutes, but ' + formatG(numbers[0]) +
+          ' is not a whole number of degrees.');
+      }
+      if (!(minutes >= 0 && minutes < 60)) {
+        throw coordinateRefused('latlon_unreadable', 'Read the ' + what +
+          ' as degrees and minutes, but ' + formatG(minutes) +
+          ' is not a number of minutes (0 up to 60).');
+      }
+      magnitude += minutes / 60.0;
+      if (numbers.length === 3) {
+        var seconds = numbers[2];
+        if (minutes !== Math.floor(minutes)) {
+          throw coordinateRefused('latlon_unreadable', 'Read the ' + what +
+            ' as degrees, minutes and seconds, but ' + formatG(minutes) +
+            ' is not a whole number of minutes.');
+        }
+        if (!(seconds >= 0 && seconds < 60)) {
+          throw coordinateRefused('latlon_unreadable', 'Read the ' + what +
+            ' as degrees, minutes and seconds, but ' + formatG(seconds) +
+            ' is not a number of seconds (0 up to 60).');
+        }
+        magnitude += seconds / 3600.0;
+      }
+    }
+    var negative = component.negative;
+    var letter = component.letter;
+    if (letter) {
+      var letterNegative = letter === 'S' || letter === 'W';
+      if (negative && !letterNegative) {
+        throw coordinateRefused('latlon_sign_contradiction', 'The ' + what +
+          ' is written both as a negative number and as ' + letter +
+          ', which contradict each other.');
+      }
+      negative = negative || letterNegative;
+    }
+    return negative ? -magnitude : magnitude;
+  }
+
+  /* Read "lat, lon" as a field crew writes it, saying what was assumed:
+   * { lat, lon, code, message } with lat and lon null when the text was
+   * refused and message then saying why, in a sentence an operator can act
+   * on. A reading that succeeded carries a code and a message only when
+   * something was assumed rather than read.
+   *
+   * A positive longitude between 10.3 and 13.3 degrees, carrying neither a
+   * sign nor a letter and paired with a latitude inside Sierra Leone's own
+   * band, is a western longitude whose minus sign was never typed:
+   * "8.4657, 13.2317" is Freetown short of a sign, not a site 2,900 km east
+   * in central Africa. That reading is taken - the country is what this
+   * toolkit is for, and read as written the pair used to be stored as a
+   * zone-33 position under the zone the browser wrote beside it - but it is
+   * the parser's reading rather than the sheet's, so it comes back under the
+   * longitude_west_assumed code with a sentence saying what was assumed.
+   * Nothing downstream may present it as read. */
+  function readLatLon(text) {
+    var raw = String(text === null || text === undefined ? '' : text).trim();
+    if (!raw) {
+      return { lat: null, lon: null, code: 'latlon_unreadable',
+        message: LATLON_UNREADABLE };
+    }
+    var first, second, lat, lon;
+    try {
+      var components = latLonComponents(raw);
+      if (!components.length) {
+        throw coordinateRefused('latlon_unreadable', LATLON_UNREADABLE);
+      }
+      if (components.length < 2) {
+        throw coordinateRefused('latlon_incomplete', 'Read one coordinate ' +
+          'where a latitude and a longitude are both needed.');
+      }
+      if (components.length > 2) {
+        throw coordinateRefused('latlon_incomplete', 'Read more than two ' +
+          'values where only a latitude and a longitude are expected.');
+      }
+      first = components[0];
+      second = components[1];
+      if (first.letter === 'E' || first.letter === 'W' ||
+          second.letter === 'N' || second.letter === 'S') {
+        var swap = first; first = second; second = swap;
+      }
+      lat = latLonComponentDegrees(first, 'latitude');
+      lon = latLonComponentDegrees(second, 'longitude');
+    } catch (err) {
+      if (!err || !err.refusedCoordinate) throw err;
+      return { lat: null, lon: null, code: err.code, message: err.message };
+    }
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+      return { lat: null, lon: null, code: 'latlon_out_of_range',
+        message: 'A latitude runs to 90 degrees and a longitude to 180; ' +
+          'these do not.' };
+    }
+    if (lon > 0 && !second.signed && second.letter === null &&
+        lat >= SIERRA_LEONE_LAT_BAND[0] && lat <= SIERRA_LEONE_LAT_BAND[1] &&
+        -lon >= SIERRA_LEONE_LON_BAND[0] && -lon <= SIERRA_LEONE_LON_BAND[1]) {
+      var written = formatG(lon);
+      return { lat: lat, lon: -lon, code: 'longitude_west_assumed',
+        message: 'Longitude ' + written + ' was read as ' + written + ' W: ' +
+          'every longitude in Sierra Leone is west, and ' + written +
+          ' east is some 2,900 km away in central Africa. Type -' + written +
+          ' or ' + written + ' W to record the sign rather than leave it ' +
+          'assumed.' };
+    }
+    return { lat: lat, lon: lon, code: '', message: '' };
+  }
+
   Object.assign(C, {
     inferZoneForSierraLeone: inferZoneForSierraLeone,
     utmToGeographic: utmToGeographic, geographicToUtm: geographicToUtm,
-    utmZoneFromLon: utmZoneFromLon,
+    utmZoneFromLon: utmZoneFromLon, parseUtmZone: parseUtmZone,
+    readLatLon: readLatLon,
+    SIERRA_LEONE_LAT_BAND: SIERRA_LEONE_LAT_BAND,
+    SIERRA_LEONE_LON_BAND: SIERRA_LEONE_LON_BAND,
     geodesicDistanceM: geodesicDistanceM, utmDistanceM: utmDistanceM,
   });
 
@@ -8646,7 +10154,7 @@
         return ['unmet', 'The drilling log records no lithology.'];
       }
       return ['met', 'Logged to ' + log.total_depth_m.toFixed(0) + ' m with ' +
-        log.intervals.length + ' lithological interval(s).'];
+        plural(log.intervals.length, 'lithological interval') + '.'];
     }],
     readings_usable: ['Readable units', function (state) {
       var analysis = state.pump_analysis;
@@ -8674,11 +10182,12 @@
           'transmissivity and yield stay pending.'];
       }
       if (missing.length) {
-        return ['unmet', 'Discharge is missing for step(s) ' +
+        return ['unmet', 'Discharge is missing for ' +
+          pluralNoun(missing.length, 'step') + ' ' +
           missing.map(function (s) { return s.step_number; }).join(', ') + '.'];
       }
-      return ['met', test.steps.length + ' step(s) with discharge, static ' +
-        'water level ' + test.static_water_level_m.toFixed(2) + ' m.'];
+      return ['met', plural(test.steps.length, 'step') + ' with discharge, ' +
+        'static water level ' + test.static_water_level_m.toFixed(2) + ' m.'];
     }],
     yield_established: ['Yield established', function (state) {
       var analysis = state.pump_analysis;
@@ -8725,8 +10234,8 @@
       if (!(a.evaluated_rows || []).length) {
         return ['unmet', 'No result in the sample could be graded.'];
       }
-      return ['met', a.evaluated_rows.length + ' determinand(s) graded; ' +
-        'verdict ' + a.verdict_state + '.'];
+      return ['met', plural(a.evaluated_rows.length, 'determinand') +
+        ' graded; verdict ' + a.verdict_state + '.'];
     }],
     design_derived: ['Borehole design', function (state) {
       var design = state.borehole_design;
@@ -8735,7 +10244,7 @@
       if (errors.length) return ['unmet', errors[0].message];
       if (!(design.screens || []).length) return ['unmet', 'The design places no screen.'];
       return ['met', Number(design.total_screen_length_m).toFixed(1) +
-        ' m of screen in ' + design.screens.length + ' run(s).'];
+        ' m of screen in ' + plural(design.screens.length, 'run') + '.'];
     }],
     cost_basis: ['Cost estimate', function (state) {
       var estimate = state.cost_estimate;
@@ -12131,6 +13640,1740 @@
     money0: money0
   });
 
+
+  /* ============================================================== subsurface
+   * groundwater/mapping/subsurface.py and groundwater/mapping/maps.py: the
+   * survey's own geometry, and the interpolation the subsurface figures are
+   * drawn from.
+   *
+   * The browser report drew no study-area map, no suitability map and no
+   * survey-derived figure at all - no section, no pseudo-section, no
+   * subsurface map - while the Python engine drew every one of them
+   * (webapp-parity-5). This section is the arithmetic half of closing that:
+   * the chainage of each station along the traverse, the gaps too wide to
+   * correlate a horizon across, the interpolated surface, and the hull the
+   * surface is blanked outside of. Nothing here draws anything.
+   *
+   * The refusals are as load-bearing as the numbers. Where the Python raises,
+   * these return a `reason` string rather than throwing, because
+   * reporting/geophysical.py catches ValueError and RuntimeError per figure
+   * and keeps the rest of the report: one missing GPS position must not cost
+   * the document the other figures. A caller that finds `reason` set draws
+   * nothing and prints it, the way the report's "not drawn" list does; a
+   * refusal that quietly drew something anyway would be worse than no figure.
+   */
+
+  /* mapping/subsurface.py PROTECTIVE_CLASSES: lower bound, upper bound, name,
+   * colour. The map, its key and the word in the report all read this one
+   * table, so a point's colour and the sentence beside it cannot disagree. */
+  var PROTECTIVE_CLASSES = [
+    [0.0, 0.1, 'poor', '#B2182B'],
+    [0.1, 0.2, 'weak', '#EF8A62'],
+    [0.2, 0.7, 'moderate', '#FDDBC7'],
+    [0.7, 5.0, 'good', '#92C5DE'],
+    [5.0, Infinity, 'very good', '#2166AC'],
+  ];
+
+  var SUBSURFACE_CREDIT = 'Subsurface interpretation from this survey\'s ' +
+    'vertical electrical soundings; no external dataset';
+
+  /* subsurface.py CORRELATION_REACH_MULTIPLE. Stations further apart than
+   * this many times the depth of investigation have nothing measured between
+   * them: no boundary is correlated across such a gap, and a survey with no
+   * closer pair gets no section at all. */
+  var CORRELATION_REACH_MULTIPLE = 10.0;
+
+  /* subsurface.py TraverseProfile.is_collinear: a tenth of the traverse
+   * length is the working rule, which on a 400 m line is 40 m - inside the
+   * positional error of a handheld GPS under canopy. */
+  var COLLINEAR_STRAIGHTNESS = 0.10;
+
+  /* maps.py points_enclose_an_area's tolerance. */
+  var AREA_TOLERANCE = 1e-6;
+
+  /* Math.log10, not Math.log(x) / Math.LN10, which is what formatG's comment
+   * is warning about: in V8 that division returns 2.9999999999999996 for a
+   * thousand, where Math.log10 and numpy's log10 both return exactly 3. A
+   * decade boundary is precisely where these scales are read, and taking the
+   * floor of the wrong side of one put the colour bar of a section whose
+   * lowest layer was 1,000 ohm-m at 100, a whole decade below the Python's,
+   * with every layer drawn in the wrong half of the ramp. */
+  function log10Of(value) { return Math.log10(value); }
+
+  /* Python's "{:,.0f}". Rounded through pyRound first, because toLocaleString
+   * rounds a tie away from zero where Python rounds it to even, and these
+   * numbers are printed inside sentences the two engines are compared on. */
+  function commaFixed0(value) {
+    return thousandsFixed(pyRound(Number(value), 0), 0);
+  }
+
+  function linspace(a, b, n) {
+    var out = [], i;
+    if (n <= 1) return [a];
+    for (i = 0; i < n; i += 1) out.push(a + (b - a) * i / (n - 1));
+    return out;
+  }
+
+  function diffs(values) {
+    var out = [], i;
+    for (i = 1; i < values.length; i += 1) out.push(values[i] - values[i - 1]);
+    return out;
+  }
+
+  /* subsurface.py _positioned: a sounding with no recorded position cannot be
+   * put on a map or on a line, and is dropped rather than placed at a guess. */
+  function positionedSoundings(interpretations) {
+    return (interpretations || []).filter(function (item) {
+      return item && item.site_easting !== null && item.site_easting !== undefined &&
+        item.site_northing !== null && item.site_northing !== undefined;
+    });
+  }
+
+  /* --- the linear algebra numpy would have done ---------------------------
+   *
+   * Two of the rules below are singular-value tests on an N-by-2 matrix of
+   * centred positions: the principal axis the traverse is projected onto, and
+   * whether the points enclose any area at all. numpy.linalg.svd is not in
+   * the browser, but with two columns the answer is closed form.
+   */
+
+  /* Both singular values of the centred positions.
+   *
+   * Taken from a QR factorisation rather than from the normal matrix: the
+   * normal matrix squares the condition number, and the smaller singular
+   * value of a nearly straight traverse is exactly the quantity that decides
+   * whether a surface is drawn. The re-orthogonalisation is the classic
+   * "twice is enough": one pass of Gram-Schmidt loses the residual to
+   * cancellation precisely when the second column is nearly parallel to the
+   * first, which is the straight-traverse case this test exists for.
+   */
+  function singularValues2(x, y) {
+    var n = x.length, i, r11 = 0.0, r12 = 0.0, r22 = 0.0, correction = 0.0;
+    for (i = 0; i < n; i += 1) r11 += x[i] * x[i];
+    r11 = Math.sqrt(r11);
+    if (r11 === 0.0) {
+      for (i = 0; i < n; i += 1) r22 += y[i] * y[i];
+      return [Math.sqrt(r22), 0.0];
+    }
+    var q = [], w = [];
+    for (i = 0; i < n; i += 1) q.push(x[i] / r11);
+    for (i = 0; i < n; i += 1) r12 += q[i] * y[i];
+    for (i = 0; i < n; i += 1) w.push(y[i] - r12 * q[i]);
+    for (i = 0; i < n; i += 1) correction += q[i] * w[i];
+    for (i = 0; i < n; i += 1) {
+      w[i] -= correction * q[i];
+      r22 += w[i] * w[i];
+    }
+    r22 = Math.sqrt(r22);
+    r12 += correction;
+    /* the singular values of [[r11, r12], [0, r22]], the stable pair: the
+     * larger from the sum of the two hypotenuses, the smaller from the
+     * determinant, so it is never a difference of two near-equal numbers */
+    var big = (Math.sqrt((r11 - r22) * (r11 - r22) + r12 * r12) +
+      Math.sqrt((r11 + r22) * (r11 + r22) + r12 * r12)) / 2.0;
+    var small = big > 0 ? Math.abs(r11 * r22) / big : 0.0;
+    return [big, small];
+  }
+
+  /* The first right singular vector of the centred positions: the direction
+   * of the best-fit line by total least squares, which is the eigenvector of
+   * the 2-by-2 normal matrix for its larger eigenvalue. The direction, unlike
+   * the smaller singular value, is well conditioned whenever there is a line
+   * to find at all, so the normal matrix is good enough for it. */
+  function principalAxis(x, y) {
+    var sxx = 0.0, sxy = 0.0, syy = 0.0, i;
+    for (i = 0; i < x.length; i += 1) {
+      sxx += x[i] * x[i];
+      sxy += x[i] * y[i];
+      syy += y[i] * y[i];
+    }
+    var half = (sxx + syy) / 2.0;
+    var disc = Math.sqrt(Math.max(half * half - (sxx * syy - sxy * sxy), 0.0));
+    var larger = half + disc;
+    var vx, vy;
+    if (sxy !== 0.0) {
+      vx = larger - syy;
+      vy = sxy;
+    } else if (sxx >= syy) {
+      vx = 1.0;
+      vy = 0.0;
+    } else {
+      vx = 0.0;
+      vy = 1.0;
+    }
+    var norm = Math.sqrt(vx * vx + vy * vy) || 1.0;
+    return [vx / norm, vy / norm];
+  }
+
+  /* maps.py points_enclose_an_area.
+   *
+   * Three pegs on one line - the standard VES layout, and what a
+   * tape-and-compass traverse or chainages typed by hand produce exactly -
+   * enclose no area. Handed to a triangulation they are a precision error,
+   * which in the Python is a RuntimeError that walked past every
+   * "except ValueError" between the map and the report and took the whole
+   * geophysical report down. The test is the smaller singular value of the
+   * centred coordinates against the larger: below the tolerance the points
+   * are a line to numerical precision. */
+  function pointsEncloseAnArea(eastings, northings, tolerance) {
+    var tol = tolerance === undefined ? AREA_TOLERANCE : tolerance;
+    if (eastings.length < 3) return false;
+    var ce = arrMean(eastings), cn = arrMean(northings);
+    var dx = eastings.map(function (v) { return v - ce; });
+    var dy = northings.map(function (v) { return v - cn; });
+    var singular = singularValues2(dx, dy);
+    if (singular[0] <= 0) return false;
+    return singular[1] / singular[0] > tol;
+  }
+
+  /* --- the traverse ------------------------------------------------------- */
+
+  /* subsurface.py traverse_profile: the soundings projected onto the best-fit
+   * line through their recorded positions.
+   *
+   * The line is the principal axis of the positions, not the line joining the
+   * first and last sounding: a traverse with a dog-leg in the middle has no
+   * reason to be summarised by its endpoints, and the endpoints are the two
+   * stations most likely to have been added last and placed loosely.
+   *
+   * Returns `reason` instead of raising when fewer than two soundings carry a
+   * position, because every figure built on the traverse is skipped with that
+   * reason printed rather than the report ending there.
+   */
+  function traverseProfile(interpretations) {
+    var all = interpretations || [];
+    var positioned = positionedSoundings(all);
+    if (positioned.length < 2) {
+      return {
+        reason: positioned.length + ' of ' + all.length + ' soundings carry a ' +
+          'position. A traverse needs at least two: record the GPS position ' +
+          'of every sounding on the field sheet.',
+      };
+    }
+    var e = positioned.map(function (item) { return Number(item.site_easting); });
+    var n = positioned.map(function (item) { return Number(item.site_northing); });
+    var labels = positioned.map(function (item, k) {
+      return item.sounding_id || 'VES ' + (k + 1);
+    });
+    var ce = arrMean(e), cn = arrMean(n);
+    var dx = e.map(function (v) { return v - ce; });
+    var dy = n.map(function (v) { return v - cn; });
+    var direction = principalAxis(dx, dy);
+    /* The sign of a singular vector is arbitrary, so the same five soundings
+     * handed over in a different order came back as a section drawn the other
+     * way round - the same ground, mirrored, with the chainages reversed. The
+     * line is made to run eastwards, or northwards where it is exactly
+     * north-south, so a survey has one section rather than two. */
+    if (direction[0] < 0 || (direction[0] === 0 && direction[1] < 0)) {
+      direction = [-direction[0], -direction[1]];
+    }
+    var normal = [-direction[1], direction[0]];
+    var along = [], across = [], k;
+    for (k = 0; k < dx.length; k += 1) {
+      along.push(dx[k] * direction[0] + dy[k] * direction[1]);
+      across.push(dx[k] * normal[0] + dy[k] * normal[1]);
+    }
+    /* Soundings are returned in order along the line, which is the order a
+     * section draws them in. That is not always field order, and where it
+     * differs, field order was drawing the section back on itself. */
+    var order = along.map(function (value, index) { return index; })
+      .sort(function (a, b) { return along[a] - along[b] || a - b; });
+    var pick = function (values) {
+      return order.map(function (index) { return values[index]; });
+    };
+    var sortedAlong = pick(along);
+    var offset = pick(across);
+    var base = arrMin(sortedAlong);
+    var chainage = sortedAlong.map(function (v) { return v - base; });
+    var length = arrMax(chainage) || 1.0;
+    var maxOffset = arrMax(offset.map(function (v) { return Math.abs(v); }));
+    var bearing = ((Math.atan2(direction[0], direction[1]) * 180.0 / Math.PI) %
+      180.0 + 180.0) % 180.0;
+    return {
+      reason: null,
+      labels: pick(labels),
+      chainage_m: chainage,
+      offset_m: offset,
+      max_offset_m: maxOffset,
+      /* max offset as a fraction of the traverse length: soundings scattered
+       * 300 m either side of a line are not a section, they are a map drawn
+       * edge-on, and this says so rather than leaving the figure to imply
+       * otherwise */
+      straightness: maxOffset / length,
+      bearing_deg: bearing,
+      eastings: pick(e),
+      northings: pick(n),
+      is_collinear: maxOffset / length <= COLLINEAR_STRAIGHTNESS,
+      length_m: arrMax(chainage) - arrMin(chainage),
+      gaps_m: diffs(chainage),
+    };
+  }
+
+  /* subsurface.py _wide_gaps: which gaps between neighbouring stations are too
+   * wide to correlate a horizon across. */
+  function wideGaps(profile, reachM) {
+    if (!profile || profile.reason) return [];
+    if (!(reachM > 0) || profile.chainage_m.length < 2) return [];
+    return profile.gaps_m.map(function (gap) {
+      return gap > reachM * CORRELATION_REACH_MULTIPLE;
+    });
+  }
+
+  /* subsurface.py _correlation_note: what is not correlated on the section,
+   * and why. A sounding sees the ground under it, to a lateral reach of
+   * roughly its largest electrode half-spacing; joining a layer boundary
+   * across a gap many times that is drawing a line between two points and
+   * calling it a horizon. */
+  function correlationNote(profile, reachM, wide) {
+    if (!profile || profile.reason) return '';
+    if (!(reachM > 0) || profile.chainage_m.length < 2) return '';
+    var flags = wide === undefined || wide === null ? wideGaps(profile, reachM) : wide;
+    var any = flags.some(function (flag) { return flag; });
+    if (!any) return '';
+    var parts = [];
+    flags.forEach(function (isWide, k) {
+      if (!isWide) return;
+      parts.push(profile.labels[k] + ' to ' + profile.labels[k + 1] + ' (' +
+        commaFixed0(profile.gaps_m[k]) + ' m, about ' +
+        pyFixed(profile.gaps_m[k] / reachM, 0) + ' times the ' +
+        commaFixed0(reachM) + ' m the soundings reached)');
+    });
+    return 'No boundary is correlated across the gap ' + parts.join('; ') +
+      ': there is no measurement between those stations, and a dashed line ' +
+      'across them would be a proposal drawn as a horizon.';
+  }
+
+  /* ves/plots.py _rho_norm: the log colour scale spanning the decades the
+   * drawn models occupy. The fixed 10-5,000 ohm-m ramp it replaced coloured
+   * 3 ohm-m saline clay the same as 10 ohm-m fresh-water clay and 20,000
+   * ohm-m basement the same as 5,000, with nothing on the bar to say it had
+   * clipped. */
+  function rhoColourRange(models) {
+    var rho = [];
+    (models || []).forEach(function (model) {
+      (model.resistivities || []).forEach(function (value) {
+        if (isFinite(value) && value > 0) rho.push(Number(value));
+      });
+    });
+    if (!rho.length) return [10.0, 5000.0];
+    var lo = Math.pow(10, Math.floor(log10Of(arrMin(rho))));
+    var hi = Math.pow(10, Math.ceil(log10Of(arrMax(rho))));
+    if (hi <= lo) hi = lo * 10;
+    return [lo, hi];
+  }
+
+  /* subsurface.py geoelectric_section_along_traverse, plus the geometry
+   * ves/plots.py plot_geoelectric_section derives from what it is handed.
+   *
+   * Everything the section needs and nothing it draws: the stations at their
+   * surveyed chainage rather than evenly spaced, the depth the figure runs
+   * to, how much ground a column stands for, which gaps carry a correlated
+   * boundary, the note that says which do not, and the title.
+   *
+   * options: {title, depthMaxM} - the Python's two overridable arguments.
+   */
+  function geoelectricSectionGeometry(interpretations, options) {
+    var opts = options || {};
+    var all = interpretations || [];
+    var profile = traverseProfile(all);
+    if (profile.reason) return { reason: profile.reason, profile: null };
+    var byId = {};
+    all.forEach(function (item, k) {
+      byId[item.sounding_id || 'VES ' + (k + 1)] = item;
+    });
+    var ordered = [];
+    profile.labels.forEach(function (label) {
+      if (own(byId, label)) ordered.push(byId[label]);
+    });
+    if (ordered.length < 2) {
+      return {
+        reason: 'the traverse and the interpretations share fewer than two ' +
+          'sounding identifiers, so the section cannot be placed',
+        profile: profile,
+      };
+    }
+    /* A column stands for the ground the sounding sampled, which is about its
+     * largest electrode half-spacing either side of the peg - not for an equal
+     * share of the profile. Two Rokel soundings 20 km apart came out as two
+     * columns 8 km wide, which claims each sounding measured 8 km of ground. */
+    var reaches = ordered.map(function (item) {
+      return Number(item.investigation_depth_m || 0.0);
+    });
+    var reach = reaches.length ? arrMax(reaches) : 0.0;
+    var title = opts.title;
+    if (title === undefined || title === null) {
+      title = 'Interpreted geoelectric section, ' + pyFixed(profile.length_m, 0) +
+        ' m along bearing ' + pyFixed(profile.bearing_deg, 0) + ' degrees';
+      if (!profile.is_collinear) {
+        title += ' (soundings up to ' + pyFixed(profile.max_offset_m, 0) +
+          ' m off the line)';
+      }
+    }
+    var depthMax = opts.depthMaxM === undefined || opts.depthMaxM === null
+      ? null : Number(opts.depthMaxM);
+    if (depthMax === null && reach > 0) {
+      /* the section is drawn to the depth the soundings resolve, the same rule
+       * as every other figure, and never so shallow that a fitted interface
+       * falls off the bottom of it */
+      var interfaces = [];
+      ordered.forEach(function (item) {
+        var model = item.model;
+        if (model && model.n_layers > 1) {
+          interfaces.push(Number(model.depths_top[model.depths_top.length - 1]));
+        }
+      });
+      var deepest = interfaces.length ? arrMax(interfaces) : 0.0;
+      depthMax = Math.max(reach, deepest * 1.2 + 2.0);
+    }
+    /* A boundary is correlated between two stations only when they are within
+     * the correlation rule of each other. Two Rokel soundings 20.7 km apart
+     * used to come out as a 60 m section with a dashed horizon joining them: a
+     * line between two points in different chiefdoms, called a section. Where
+     * no pair of neighbours is within reach there is no section to draw and
+     * the caller is told why. */
+    var wide = wideGaps(profile, reach);
+    if (wide.length && wide.every(function (flag) { return flag; })) {
+      var widest = arrMax(profile.gaps_m);
+      return {
+        reason: 'the soundings are ' + commaFixed0(widest) + ' m apart, about ' +
+          pyFixed(widest / reach, 0) + ' times the ' + commaFixed0(reach) +
+          ' m they resolve; a section between them would join two measurements ' +
+          'with no measurement between, so none is drawn. A section needs ' +
+          'stations within a few times the depth of investigation of each other.',
+        profile: profile,
+      };
+    }
+    var positions = profile.chainage_m.slice();
+    var labels = ordered.map(function (item) { return item.sounding_id || 'VES'; });
+    var models = ordered.map(function (item) { return item.model; });
+    /* The three lists are read as one column per sounding, so they have to
+     * agree. A caller that derives them separately can desynchronise them: a
+     * sounding whose identifier the traverse does not share leaves the models
+     * one short of the chainages, which draws the section with a sounding
+     * silently dropped or the labels off by one - neither visible in the
+     * finished figure, and both of which reach a signed survey report. */
+    if (positions.length !== models.length || labels.length !== models.length) {
+      return {
+        reason: models.length + ' soundings need ' + models.length +
+          ' positions and ' + models.length + ' labels; got ' + positions.length +
+          ' and ' + labels.length,
+        profile: profile,
+      };
+    }
+    if (depthMax === null) {
+      var depths = models.map(function (model) {
+        return (model.n_layers > 1
+          ? model.depths_top[model.depths_top.length - 1] : 10) * 1.35 + 5;
+      });
+      depthMax = arrMax(depths);
+    }
+    var span = (arrMax(positions) - arrMin(positions)) || 100.0;
+    var halfWidth;
+    if (reach > 0) {
+      /* never wider than the ground to the next peg, or the columns overlap
+       * and the section reads as one continuous exposure */
+      var stepGaps = diffs(positions.slice().sort(function (a, b) { return a - b; }));
+      var limit = stepGaps.length ? arrMin(stepGaps) / 2.2 : span;
+      halfWidth = Math.max(Math.min(reach, limit), span * 0.004);
+    } else {
+      halfWidth = span / (models.length * 2.6);
+    }
+    var correlate = wide.map(function (flag) { return !flag; });
+    if (!correlate.length) {
+      for (var k = 0; k < Math.max(models.length - 1, 0); k += 1) correlate.push(true);
+    }
+    if (correlate.length !== Math.max(models.length - 1, 0)) {
+      return {
+        reason: models.length + ' soundings have ' +
+          Math.max(models.length - 1, 0) + ' gaps between them; got ' +
+          correlate.length + ' correlation flags',
+        profile: profile,
+      };
+    }
+    return {
+      reason: null,
+      profile: profile,
+      interpretations: ordered,
+      models: models,
+      labels: labels,
+      positions_m: positions,
+      reach_m: reach,
+      depth_max_m: depthMax,
+      half_width_m: halfWidth,
+      gaps_m: profile.gaps_m,
+      wide_gaps: wide,
+      correlate: correlate,
+      note: correlationNote(profile, reach, wide),
+      title: title,
+      rho_range: rhoColourRange(models),
+      x_label: 'Distance along profile (m)',
+      y_label: 'Depth (m)',
+      cbar_label: 'Resistivity (ohm-m)',
+    };
+  }
+
+  /* subsurface.py apparent_resistivity_pseudosection: the measurements
+   * themselves, laid out along the traverse, before any inversion has been
+   * believed. The vertical axis is AB/2 - the electrode half-spacing - and is
+   * left as such rather than converted to a depth, because the pseudo-depth
+   * conversions vary with the very layering the figure is drawn to reveal,
+   * and calling a measurement geometry a depth is how a pseudo-section starts
+   * being read as a cross-section.
+   *
+   * `profile` places the stations; without one the soundings are laid out in
+   * the order given, evenly spaced, and the note says so.
+   */
+  function pseudosectionGeometry(soundings, profile) {
+    var list = soundings || [];
+    /* A profile that failed is not the same as no profile at all, and the
+     * difference is a figure. The report builds the traverse first and skips
+     * the pseudo-section altogether when that raises, printing its reason;
+     * only a caller with no positions to offer passes none and gets the evenly
+     * spaced fallback. Treating a failed profile as "no positions recorded"
+     * drew an evenly spaced pseudo-section, under a note saying no sounding
+     * positions were recorded, for a survey that recorded one - a figure the
+     * package refuses to draw, captioned with something untrue. The check
+     * comes first because the report's does: the traverse is built before the
+     * pseudo-section is attempted, so its reason is the one printed. */
+    if (profile && profile.reason) return { reason: profile.reason };
+    if (list.length < 2) {
+      return {
+        reason: 'a pseudo-section needs at least two soundings; got ' +
+          list.length,
+      };
+    }
+    var byId = {};
+    list.forEach(function (sounding, k) {
+      byId[sounding.sounding_id || 'VES ' + (k + 1)] = sounding;
+    });
+    var ordered = [], stations = [], xLabel, spacedEvenly;
+    if (profile) {
+      profile.labels.forEach(function (label, k) {
+        if (!own(byId, label)) return;
+        ordered.push(byId[label]);
+        stations.push(Number(profile.chainage_m[k]));
+      });
+      xLabel = 'Distance along traverse (m)';
+      spacedEvenly = false;
+    } else {
+      ordered = list.slice();
+      stations = ordered.map(function (sounding, k) { return k * 100.0; });
+      xLabel = 'Station (evenly spaced; no positions recorded)';
+      spacedEvenly = true;
+    }
+    if (ordered.length < 2) {
+      return {
+        reason: 'the traverse profile and the soundings share fewer than two ' +
+          'sounding identifiers, so the stations cannot be placed',
+      };
+    }
+    var xs = [], ys = [], vs = [];
+    ordered.forEach(function (sounding, k) {
+      var ab2 = sounding.ab2 || [], rho = sounding.rho_app || [];
+      var count = Math.min(ab2.length, rho.length), i;
+      for (i = 0; i < count; i += 1) {
+        if (!isFinite(ab2[i]) || !isFinite(rho[i]) || rho[i] <= 0) continue;
+        xs.push(stations[k]);
+        ys.push(Number(ab2[i]));
+        vs.push(Number(rho[i]));
+      }
+    });
+    if (vs.length < 4) {
+      return {
+        reason: vs.length + ' usable readings across ' + ordered.length +
+          ' soundings; a pseudo-section needs a curve at each station.',
+      };
+    }
+    /* Colour is interpolated between two stations only when they are within
+     * the correlation rule of each other; between a pair further apart there
+     * is no measurement, and a continuous banded fill across 20 km reads as a
+     * 20 km resistivity cross-section. */
+    var maxGap = arrMax(ys) * 0.5 * CORRELATION_REACH_MULTIPLE;
+    var uncorrelated = [];
+    var k;
+    for (k = 0; k < stations.length - 1; k += 1) {
+      var gap = stations[k + 1] - stations[k];
+      if (gap > maxGap) {
+        uncorrelated.push([ordered[k].sounding_id || 'VES',
+          ordered[k + 1].sounding_id || 'VES', gap]);
+      }
+    }
+    var vmin = Math.max(arrMin(vs), 1.0);
+    var vmax = Math.max(arrMax(vs), vmin * 1.05);
+    /* Levels spaced the way the colours are. Asking for a plain level count
+     * under a log scale gets evenly spaced levels in ohm-m, which a log ramp
+     * then squeezes into two bands: a section spanning 60 to 900 ohm-m came
+     * out one flat colour with a stripe through it, and the fill disagreed
+     * with the very readings drawn on top of it. */
+    var levels = geomspace(vmin, vmax, 14);
+    /* a triangulated fill between the readings, in the coordinates the figure
+     * is drawn in - station against log AB/2 - with any triangle spanning
+     * more ground than the correlation rule allows left out */
+    var logY = ys.map(function (v) { return log10Of(v); });
+    var triangles = delaunayTriangles(xs, logY).filter(function (tri) {
+      var lo = Math.min(xs[tri[0]], xs[tri[1]], xs[tri[2]]);
+      var hi = Math.max(xs[tri[0]], xs[tri[1]], xs[tri[2]]);
+      return hi - lo <= maxGap;
+    });
+    /* decade ticks, but only the ones the readings reach: an 80 m spread does
+     * not get a 100 m tick */
+    var decades = {}, ticks = [];
+    logY.forEach(function (value) { decades[pyRound(value, 0)] = true; });
+    Object.keys(decades).map(Number).sort(function (a, b) { return a - b; })
+      .forEach(function (tick) {
+        var spacing = Math.pow(10, tick);
+        if (arrMin(ys) / 1.5 <= spacing && spacing <= arrMax(ys) * 1.5) {
+          ticks.push([tick, formatG(spacing)]);
+        }
+      });
+    var notes = ['AB/2 is the electrode half-spacing, not a depth: a deeper ' +
+      'reading is a wider spread, not a measured horizon.'];
+    if (uncorrelated.length) {
+      notes.push('No colour is interpolated across ' +
+        uncorrelated.map(function (pair) {
+          return pair[0] + ' to ' + pair[1] + ' (' + commaFixed0(pair[2]) + ' m)';
+        }).join('; ') + ': nothing was measured between those stations.');
+    }
+    if (spacedEvenly) {
+      notes.push('Stations are drawn evenly spaced because no sounding ' +
+        'positions were recorded; the horizontal scale is not ground distance.');
+    } else if (profile && !profile.reason && !profile.is_collinear) {
+      notes.push('The soundings sit up to ' + pyFixed(profile.max_offset_m, 0) +
+        ' m off the profile line (' + pyFixed(profile.straightness * 100, 0) +
+        '% of its ' + pyFixed(profile.length_m, 0) + ' m length), so this ' +
+        'section cuts across the survey rather than along it.');
+    }
+    return {
+      reason: null,
+      soundings: ordered,
+      labels: ordered.map(function (sounding) {
+        return sounding.sounding_id || 'VES';
+      }),
+      stations_m: stations,
+      readings: { x: xs, ab2: ys, log_ab2: logY, rho: vs },
+      triangles: triangles,
+      max_gap_m: maxGap,
+      uncorrelated: uncorrelated,
+      range: [vmin, vmax],
+      levels: levels,
+      ticks: ticks,
+      notes: notes,
+      note: notes.join('  '),
+      spaced_evenly: spacedEvenly,
+      title: 'Apparent resistivity pseudo-section along the traverse',
+      x_label: xLabel,
+      y_label: 'AB/2 (m)',
+      cbar_label: 'Apparent resistivity (ohm-m)',
+    };
+  }
+
+  /* --- the interpolated surface -------------------------------------------
+   *
+   * scipy's griddata is a Delaunay triangulation, a linear interpolant inside
+   * it and a nearest-neighbour fill outside; matplotlib's hull clip then
+   * blanks whatever sits outside the ground the survey covered. All three are
+   * below, because the browser has none of them.
+   */
+
+  /* A Delaunay triangulation of the points, as index triples.
+   *
+   * Bowyer-Watson, which is enough for the dozens of points a survey has. The
+   * coordinates are shifted and scaled by ONE factor for both axes before
+   * triangulating: a similarity transform leaves a Delaunay triangulation
+   * unchanged, where scaling the axes separately would quietly produce a
+   * different triangulation from the Python's - and UTM eastings squared lose
+   * the precision the circumcircle test needs. */
+  function delaunayTriangles(xs, ys) {
+    var count = xs.length, i;
+    if (count < 3) return [];
+    var minX = arrMin(xs), maxX = arrMax(xs);
+    var minY = arrMin(ys), maxY = arrMax(ys);
+    var scale = Math.max(maxX - minX, maxY - minY) || 1.0;
+    var px = [], py = [];
+    for (i = 0; i < count; i += 1) {
+      px.push((xs[i] - minX) / scale);
+      py.push((ys[i] - minY) / scale);
+    }
+    /* A super-triangle far outside the unit box the points now sit in - far
+     * enough to hold every circumcircle those points can generate, which a
+     * hundred was not. A traverse with a couple of metres of GPS wobble either
+     * side of the line is the commonest survey layout there is, and its
+     * triangles have circumcircles hundreds of thousands of times as wide as
+     * the traverse itself; every such triangle reached past a super-triangle
+     * a hundred units out and was never formed. Three soundings on such a line
+     * came back with no triangulation at all, so the map printed "the survey
+     * points lie on one line and enclose no area" and drew nothing where the
+     * Python drew the surface, and four or more lost the linear interpolant
+     * over part of the hull to the nearest-neighbour fill. Measured against
+     * qhull on 268 layouts, a hundred disagreed on 78 of them and this agrees
+     * on all of them. A surface is only drawn at all above a singular ratio of
+     * 1e-6 (pointsEncloseAnArea), whose flattest triangle has a circumcircle
+     * of order 1e5 unit boxes, so 1e8 clears it by three orders of magnitude. */
+    px.push(-1e8, 1e8, 0.0);
+    py.push(-1e8, -1e8, 1e8);
+    var triangles = [[count, count + 1, count + 2]];
+    for (i = 0; i < count; i += 1) {
+      var kept = [], edges = [], t;
+      for (t = 0; t < triangles.length; t += 1) {
+        if (inCircumcircle(px, py, triangles[t], px[i], py[i])) {
+          edges.push([triangles[t][0], triangles[t][1]],
+            [triangles[t][1], triangles[t][2]],
+            [triangles[t][2], triangles[t][0]]);
+        } else {
+          kept.push(triangles[t]);
+        }
+      }
+      /* the cavity's boundary is the edges that only one bad triangle had */
+      edges.forEach(function (edge, k) {
+        var shared = edges.some(function (other, m) {
+          return m !== k && other[0] === edge[1] && other[1] === edge[0];
+        });
+        if (!shared) kept.push([edge[0], edge[1], i]);
+      });
+      triangles = kept;
+    }
+    var out = [];
+    triangles.forEach(function (tri) {
+      if (tri[0] >= count || tri[1] >= count || tri[2] >= count) return;
+      var area = (px[tri[1]] - px[tri[0]]) * (py[tri[2]] - py[tri[0]]) -
+        (py[tri[1]] - py[tri[0]]) * (px[tri[2]] - px[tri[0]]);
+      /* a triangle with no area interpolates nothing and divides by zero */
+      if (Math.abs(area) <= 1e-12) return;
+      out.push([tri[0], tri[1], tri[2]]);
+    });
+    return out;
+  }
+
+  function inCircumcircle(px, py, tri, x, y) {
+    var ax = px[tri[0]] - x, ay = py[tri[0]] - y;
+    var bx = px[tri[1]] - x, by = py[tri[1]] - y;
+    var cx = px[tri[2]] - x, cy = py[tri[2]] - y;
+    var det = (ax * ax + ay * ay) * (bx * cy - cx * by) -
+      (bx * bx + by * by) * (ax * cy - cx * ay) +
+      (cx * cx + cy * cy) * (ax * by - bx * ay);
+    var orientation = (px[tri[1]] - px[tri[0]]) * (py[tri[2]] - py[tri[0]]) -
+      (py[tri[1]] - py[tri[0]]) * (px[tri[2]] - px[tri[0]]);
+    return orientation >= 0 ? det > 0 : det < 0;
+  }
+
+  /* The convex hull of the points, counter-clockwise, by monotone chain. */
+  function convexHull(eastings, northings) {
+    var order = eastings.map(function (value, index) { return index; })
+      .sort(function (a, b) {
+        return eastings[a] - eastings[b] || northings[a] - northings[b];
+      });
+    var cross = function (o, a, b) {
+      return (eastings[a] - eastings[o]) * (northings[b] - northings[o]) -
+        (northings[a] - northings[o]) * (eastings[b] - eastings[o]);
+    };
+    var build = function (sequence) {
+      var chain = [];
+      sequence.forEach(function (index) {
+        while (chain.length >= 2 &&
+          cross(chain[chain.length - 2], chain[chain.length - 1], index) <= 0) {
+          chain.pop();
+        }
+        chain.push(index);
+      });
+      chain.pop();
+      return chain;
+    };
+    var lower = build(order);
+    var upper = build(order.slice().reverse());
+    return lower.concat(upper).map(function (index) {
+      return [eastings[index], northings[index]];
+    });
+  }
+
+  /* The crossing test matplotlib's Path.contains_points uses, written its way
+   * on purpose: the divisions of the textbook version answer differently for
+   * a grid point sitting exactly on a hull edge, and a square four-peg survey
+   * puts a whole diagonal of grid points exactly on one. Multiplying instead
+   * of dividing keeps the comparison exact, so the browser blanks the same
+   * cells the Python does rather than a line of them more or fewer. */
+  function pointInPolygon(polygon, x, y) {
+    var inside = false, i;
+    var x0 = polygon[polygon.length - 1][0], y0 = polygon[polygon.length - 1][1];
+    var above0 = y0 >= y;
+    for (i = 0; i < polygon.length; i += 1) {
+      var x1 = polygon[i][0], y1 = polygon[i][1];
+      var above1 = y1 >= y;
+      if (above0 !== above1 &&
+        (((y1 - y) * (x0 - x1) >= (x1 - x) * (y0 - y1)) === above1)) {
+        inside = !inside;
+      }
+      above0 = above1;
+      x0 = x1;
+      y0 = y1;
+    }
+    return inside;
+  }
+
+  /* The grid the surfaces are sampled on: a rectangle of nx by ny points,
+   * with the values row-major, z[j * nx + i] for x[i], y[j], and null where
+   * nothing is drawn. */
+  function gridFrom(x0, x1, y0, y1, n) {
+    return { nx: n, ny: n, x: linspace(x0, x1, n), y: linspace(y0, y1, n), z: null };
+  }
+
+  /* maps.py _surface: the interpolated surface, or null when the points
+   * cannot support one.
+   *
+   * The linear interpolant needs a triangulation, which needs an area; the
+   * nearest-neighbour fill outside it is what the maps show at the edges. Any
+   * triangulation failure is reported as "no surface" rather than as an
+   * exception, because the figure is one of several in a report and none of
+   * them should cost the document the others. */
+  function surfaceGrid(eastings, northings, values, grid) {
+    if (!pointsEncloseAnArea(eastings, northings)) return null;
+    var z = [], i, j;
+    for (i = 0; i < grid.nx * grid.ny; i += 1) z.push(null);
+    var triangles;
+    try {
+      triangles = delaunayTriangles(eastings, northings);
+    } catch (err) {
+      return null;
+    }
+    if (!triangles.length) return null;
+    var dx = grid.nx > 1 ? (grid.x[grid.nx - 1] - grid.x[0]) / (grid.nx - 1) : 1.0;
+    var dy = grid.ny > 1 ? (grid.y[grid.ny - 1] - grid.y[0]) / (grid.ny - 1) : 1.0;
+    triangles.forEach(function (tri) {
+      var ax = eastings[tri[0]], ay = northings[tri[0]];
+      var bx = eastings[tri[1]], by = northings[tri[1]];
+      var cx = eastings[tri[2]], cy = northings[tri[2]];
+      var det = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
+      if (det === 0) return;
+      var i0 = Math.max(0, Math.ceil((Math.min(ax, bx, cx) - grid.x[0]) / dx));
+      var i1 = Math.min(grid.nx - 1,
+        Math.floor((Math.max(ax, bx, cx) - grid.x[0]) / dx));
+      var j0 = Math.max(0, Math.ceil((Math.min(ay, by, cy) - grid.y[0]) / dy));
+      var j1 = Math.min(grid.ny - 1,
+        Math.floor((Math.max(ay, by, cy) - grid.y[0]) / dy));
+      var gi, gj;
+      for (gj = j0; gj <= j1; gj += 1) {
+        for (gi = i0; gi <= i1; gi += 1) {
+          var x = grid.x[gi], y = grid.y[gj];
+          var w0 = ((by - cy) * (x - cx) + (cx - bx) * (y - cy)) / det;
+          var w1 = ((cy - ay) * (x - cx) + (ax - cx) * (y - cy)) / det;
+          var w2 = 1.0 - w0 - w1;
+          /* the cell belongs to this triangle when it is inside it, with no
+           * tolerance either way: a cell a rounding error outside every
+           * triangle is left for the nearest-neighbour fill below, which is
+           * what griddata does with the NaN its linear interpolant returns
+           * there, and a looser test put a linear value where the Python has
+           * the value at the nearest peg */
+          if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
+            z[gj * grid.nx + gi] = w0 * values[tri[0]] + w1 * values[tri[1]] +
+              w2 * values[tri[2]];
+          }
+        }
+      }
+    });
+    for (j = 0; j < grid.ny; j += 1) {
+      for (i = 0; i < grid.nx; i += 1) {
+        if (z[j * grid.nx + i] !== null) continue;
+        var best = 0, bestD = Infinity, p;
+        for (p = 0; p < eastings.length; p += 1) {
+          var ex = grid.x[i] - eastings[p], ny2 = grid.y[j] - northings[p];
+          var d = ex * ex + ny2 * ny2;
+          if (d < bestD) { bestD = d; best = p; }
+        }
+        z[j * grid.nx + i] = values[best];
+      }
+    }
+    return z;
+  }
+
+  /* maps.py _clip_to_surveyed_ground: blank the interpolated surface outside
+   * the ground the survey covered.
+   *
+   * An interpolated resistivity or thickness surface is read as data: a
+   * hydrogeologist looking at a contour 400 m from the nearest sounding will
+   * site a borehole on it. Outside the hull of the points there is no
+   * measurement behind the colour at all - it is the interpolator continuing a
+   * trend - so the surface is blanked there rather than drawn in a shade that
+   * looks like every other shade on the map. Points that enclose no area have
+   * no hull to clip to: that is an ordinary survey, not an error, so the
+   * surface stands and the figure says on its own face that the values away
+   * from the line are extrapolated. */
+  function clipToSurveyedGround(z, eastings, northings, grid) {
+    var hull = convexHull(eastings, northings);
+    if (hull.length < 3) {
+      return {
+        z: z, clipped: false, hull: null,
+        note: 'Surface not clipped: the survey points enclose no area, so ' +
+          'values away from them are extrapolated.',
+      };
+    }
+    var masked = [], i, j;
+    for (j = 0; j < grid.ny; j += 1) {
+      for (i = 0; i < grid.nx; i += 1) {
+        masked.push(pointInPolygon(hull, grid.x[i], grid.y[j])
+          ? z[j * grid.nx + i] : null);
+      }
+    }
+    return { z: masked, clipped: true, hull: hull, note: '' };
+  }
+
+  /* maps.py _no_surface_note: said on the map itself, because a caption can be
+   * skipped and a line across the middle of the figure cannot. */
+  function noSurfaceNote(nPoints) {
+    return nPoints >= 3
+      ? 'Surface not drawn: the survey points lie on one line and enclose no ' +
+        'area, so only the values at the points are shown.'
+      : 'Surface not drawn: fewer than three points carry a value.';
+  }
+
+  /* The banded levels a filled contour is drawn at.
+   *
+   * contourf(levels=12) does not draw twelve bands of its own choosing: it
+   * asks matplotlib's MaxNLocator for at most thirteen round numbers spanning
+   * the data, then keeps the one level below the data and the one above it.
+   * The colour bar is labelled with those numbers, so they are not decoration
+   * - a browser that picked its own round numbers would print a different
+   * scale beside the same map - and the ticker is ported here rather than
+   * approximated: its step table runs 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10 times
+   * a power of ten, not the shorter list its docstring suggests.
+   */
+  var LOCATOR_STEPS = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+
+  /* ticker._staircase: the step table extended a decade either side. */
+  function staircase(steps) {
+    var out = [], i;
+    for (i = 0; i < steps.length - 1; i += 1) out.push(steps[i] / 10);
+    for (i = 0; i < steps.length; i += 1) out.push(steps[i]);
+    out.push(10 * steps[1]);
+    return out;
+  }
+
+  /* floor(log10(x)) without the trap Math.log10 has at exact powers of ten,
+   * which formatG documents: the decimal exponent of the shortest round-trip
+   * representation is the exponent, exactly. */
+  function decimalExponent(value) {
+    return Number(Math.abs(value).toExponential().split('e')[1]);
+  }
+
+  /* Python's divmod for floats, which is floor division and not truncation:
+   * the ticker's tick indices are counted from it, and JS's % keeps the sign
+   * of the dividend where Python's keeps the sign of the divisor. */
+  function pyDivmod(x, step) {
+    var mod = x % step;
+    if (mod !== 0 && (mod < 0) !== (step < 0)) mod += step;
+    var div = (x - mod) / step;
+    var floordiv = 0;
+    if (div !== 0) {
+      floordiv = Math.floor(div);
+      if (div - floordiv > 0.5) floordiv += 1;
+    }
+    return [floordiv, mod];
+  }
+
+  /* ticker._Edge_integer: the tick index either side of a value, with the
+   * slop the ticker allows so a value already on a tick does not gain one. */
+  function edgeTolerance(step, offset) {
+    if (!(Math.abs(offset) > 0)) return 1e-10;
+    var digits = log10Of(Math.abs(offset) / step);
+    return Math.min(0.4999, Math.max(1e-10, Math.pow(10, digits - 12)));
+  }
+
+  function edgeLe(x, step, offset) {
+    var parts = pyDivmod(x, step);
+    if (Math.abs(parts[1] / step - 1) < edgeTolerance(step, offset)) return parts[0] + 1;
+    return parts[0];
+  }
+
+  function edgeGe(x, step, offset) {
+    var parts = pyDivmod(x, step);
+    if (Math.abs(parts[1] / step) < edgeTolerance(step, offset)) return parts[0];
+    return parts[0] + 1;
+  }
+
+  /* ticker.scale_range. */
+  function locatorScaleRange(vmin, vmax, n) {
+    var span = Math.abs(vmax - vmin);
+    var middle = (vmax + vmin) / 2.0;
+    var offset = 0.0;
+    if (span > 0 && Math.abs(middle) / span >= 100) {
+      offset = Math.pow(10, decimalExponent(middle));
+      if (middle < 0) offset = -offset;
+    }
+    return [Math.pow(10, decimalExponent(span / n)), offset];
+  }
+
+  /* ticker.MaxNLocator.tick_values, for the contour's parameters: at most
+   * `nbins` intervals, and one tick is enough (min_n_ticks is 1 here, where
+   * an axis would want two). */
+  function locatorTicks(vmin, vmax, nbins, steps, minTicks) {
+    var table = steps || LOCATOR_STEPS;
+    var wanted = minTicks === undefined ? 1 : minTicks;
+    var lo = vmin, hi = vmax;
+    /* transforms.nonsingular: a surface with one value everywhere still has
+     * to be banded, and a zero-width range would divide by zero below */
+    var biggest = Math.max(Math.abs(lo), Math.abs(hi));
+    if (hi - lo <= biggest * 1e-14) {
+      if (lo === 0 && hi === 0) {
+        lo = -1e-13;
+        hi = 1e-13;
+      } else {
+        lo -= 1e-13 * Math.abs(lo);
+        hi += 1e-13 * Math.abs(hi);
+      }
+    }
+    var range = locatorScaleRange(lo, hi, nbins);
+    var scale = range[0], offset = range[1];
+    var shiftedLo = lo - offset, shiftedHi = hi - offset;
+    var scaled = staircase(table).map(function (s) { return s * scale; });
+    var rawStep = (shiftedHi - shiftedLo) / nbins;
+    var istep = scaled.length - 1, i;
+    for (i = 0; i < scaled.length; i += 1) {
+      if (scaled[i] >= rawStep) { istep = i; break; }
+    }
+    var ticks = [];
+    for (i = istep; i >= 0; i -= 1) {
+      var step = scaled[i];
+      var base = pyDivmod(shiftedLo, step)[0] * step;
+      var low = edgeLe(shiftedLo - base, step, offset);
+      var high = edgeGe(shiftedHi - base, step, offset);
+      ticks = [];
+      var shown = 0, k;
+      for (k = low; k <= high; k += 1) {
+        var tick = k * step + base;
+        ticks.push(tick);
+        if (tick <= shiftedHi && tick >= shiftedLo) shown += 1;
+      }
+      if (shown >= wanted) break;
+    }
+    return ticks.map(function (tick) { return tick + offset; });
+  }
+
+  /* maps.py _format_grid: at most five or six round-numbered grid lines an
+   * axis. A seven-digit northing labelled every 25 m printed nine of them on
+   * top of one another, which is why the axis asks for round numbers rather
+   * than an even division of the extent. An axis wants two ticks where a
+   * contour is content with one. */
+  function mapGridTicks(lo, hi) {
+    return locatorTicks(lo, hi, 5, [1, 2, 2.5, 5, 10], 2);
+  }
+
+  /* contour.ContourSet._autolev: the ticks trimmed to one level below the
+   * data and one above, unless that leaves fewer than three, in which case
+   * the whole set stands. */
+  function contourLevels(vmin, vmax, count) {
+    if (!isFinite(vmin) || !isFinite(vmax)) return [];
+    var levels = locatorTicks(vmin, vmax, (count || 12) + 1, LOCATOR_STEPS, 1);
+    var first = 0, last = levels.length, i;
+    for (i = 0; i < levels.length; i += 1) if (levels[i] < vmin) first = i;
+    for (i = 0; i < levels.length; i += 1) {
+      if (levels[i] > vmax) { last = i + 1; break; }
+    }
+    if (last - first < 3) {
+      first = 0;
+      last = levels.length;
+    }
+    return levels.slice(first, last);
+  }
+
+  /* maps.py _extent: the padded ground the map covers. */
+  function mapExtent(points, padFrac, minPad) {
+    var frac = padFrac === undefined ? 0.25 : padFrac;
+    var floorPad = minPad === undefined ? 150.0 : minPad;
+    var e = points.map(function (p) { return p.easting; });
+    var n = points.map(function (p) { return p.northing; });
+    var padE = Math.max((arrMax(e) - arrMin(e)) * frac, floorPad);
+    var padN = Math.max((arrMax(n) - arrMin(n)) * frac, floorPad);
+    var pad = Math.max(padE, padN);
+    return [arrMin(e) - pad, arrMax(e) + pad, arrMin(n) - pad, arrMax(n) + pad];
+  }
+
+  /* maps.py _figsize: a figure shaped like the ground it shows. A fixed
+   * height squashed a traverse three times longer than it is wide into a strip
+   * a third of the figure tall, beside a colour bar that ran the full height. */
+  function mapFigureHeightIn(widthIn, x0, x1, y0, y1) {
+    var aspect = (y1 - y0) / Math.max(x1 - x0, 1e-9);
+    return Math.min(Math.max(widthIn * 0.82 * aspect + 0.9, 3.4), 6.6);
+  }
+
+  /* maps.py _format_grid's axis labels: every map says which UTM zone its
+   * metres are in, because two eastings in different zones are not comparable
+   * numbers. */
+  function mapAxisLabels(zone) {
+    return {
+      x: 'Easting (m), UTM zone ' + zone + 'N / WGS84',
+      y: 'Northing (m)',
+    };
+  }
+
+  /* --- the subsurface maps ------------------------------------------------ */
+
+  /* subsurface.py subsurface_map_points: one quantity at every sounding that
+   * carries a position and a value.
+   *
+   * Soundings without a position are dropped - they cannot be put on a map -
+   * and so are those whose value the interpretation left unset, because a
+   * sounding whose curve never reached basement has no depth to basement and
+   * plotting a zero there would draw basement at the surface. */
+  function subsurfaceMapPoints(interpretations, attribute) {
+    var points = [];
+    positionedSoundings(interpretations).forEach(function (item) {
+      var value = own(item, attribute) ? item[attribute] : null;
+      if (value === null || value === undefined || !isFinite(Number(value))) return;
+      points.push({
+        label: item.sounding_id || 'VES',
+        easting: Number(item.site_easting),
+        northing: Number(item.site_northing),
+        value: Number(value),
+        kind: 'VES point',
+      });
+    });
+    return points;
+  }
+
+  /* subsurface.py bedrock_elevation_points: ground level less the depth to
+   * basement, which needs both numbers at the same sounding. A survey that
+   * recorded no elevations gives an empty list rather than a bedrock surface
+   * at sea level, which is what subtracting a depth from nothing amounts to. */
+  function bedrockElevationPoints(interpretations) {
+    var points = [];
+    positionedSoundings(interpretations).forEach(function (item) {
+      var ground = item.site_elevation_m;
+      var depth = item.depth_to_basement_m;
+      if (ground === null || ground === undefined) return;
+      if (depth === null || depth === undefined) return;
+      points.push({
+        label: item.sounding_id || 'VES',
+        easting: Number(item.site_easting),
+        northing: Number(item.site_northing),
+        value: Number(ground) - Number(depth),
+        kind: 'VES point',
+      });
+    });
+    return points;
+  }
+
+  /* subsurface.py _require_points, as the sentence rather than the exception. */
+  function requirePointsReason(points, what, need) {
+    var wanted = need === undefined ? 3 : need;
+    if (points.length >= wanted) return null;
+    return ('aeiou'.indexOf(what.charAt(0)) >= 0 ? 'an' : 'a') + ' ' + what +
+      ' needs at least ' + wanted + ' soundings that carry both a position ' +
+      'and the value; ' + points.length + ' do. Record the GPS position of ' +
+      'every sounding on the field sheet.';
+  }
+
+  /* maps.py _interpolated_map, without the drawing: the grid, the range the
+   * colours span, the levels they are banded at and the value at every
+   * station - or the reason the Python would have raised instead.
+   *
+   * options: {logScale, gridN}. gridN defaults to the Python's 220.
+   */
+  function interpolatedMapData(points, options) {
+    var opts = options || {};
+    var valued = (points || []).filter(function (p) {
+      return p && p.value !== null && p.value !== undefined;
+    });
+    if (valued.length < 3) {
+      return {
+        reason: 'Interpolated maps need at least three points with values; ' +
+          'got ' + valued.length + '. Produce a site location map instead.',
+      };
+    }
+    var e = valued.map(function (p) { return Number(p.easting); });
+    var n = valued.map(function (p) { return Number(p.northing); });
+    var raw = valued.map(function (p) { return Number(p.value); });
+    var v = opts.logScale ? raw.map(function (value) { return log10Of(value); }) : raw;
+    var pad = Math.max(Math.max(arrMax(e) - arrMin(e), arrMax(n) - arrMin(n)) *
+      0.25, 100.0);
+    var grid = gridFrom(arrMin(e) - pad, arrMax(e) + pad, arrMin(n) - pad,
+      arrMax(n) + pad, opts.gridN || 220);
+    var z = surfaceGrid(e, n, v, grid);
+    var clipped = false, hull = null, note = '';
+    if (z) {
+      var clip = clipToSurveyedGround(z, e, n, grid);
+      z = clip.z;
+      clipped = clip.clipped;
+      hull = clip.hull;
+      note = clip.note;
+    } else {
+      /* a line of pegs: the values are printed at the points instead */
+      note = noSurfaceNote(valued.length);
+    }
+    var drawn = [];
+    if (z) {
+      z.forEach(function (value) { if (value !== null) drawn.push(value); });
+    }
+    var vmin = drawn.length ? arrMin(drawn) : arrMin(v);
+    var vmax = drawn.length ? arrMax(drawn) : arrMax(v);
+    var levels = z ? contourLevels(vmin, vmax, 12) : [];
+    grid.z = z;
+    return {
+      reason: null,
+      points: valued.map(function (p, k) {
+        var text = p.label;
+        if (!z) {
+          /* the value is written beside the peg when no surface carries it */
+          text += '\n' + formatG(opts.logScale ? Math.pow(10, v[k]) : p.value, 3);
+        }
+        return {
+          label: p.label, easting: p.easting, northing: p.northing,
+          value: p.value, plot_value: v[k], kind: p.kind || 'VES point',
+          text: text,
+        };
+      }),
+      grid: z ? grid : null,
+      surface: !!z,
+      clipped: clipped,
+      hull: hull,
+      note: note,
+      log_scale: !!opts.logScale,
+      range: [vmin, vmax],
+      data_range: [arrMin(raw), arrMax(raw)],
+      levels: levels,
+      /* under a log scale the grid holds log10 values and the bar is labelled
+       * with the resistivities they stand for */
+      level_labels: opts.logScale ? levels.map(function (t) {
+        return pyFixed(Math.pow(10, t), 0);
+      }) : null,
+      extent: [grid.x[0], grid.x[grid.nx - 1], grid.y[0], grid.y[grid.ny - 1]],
+    };
+  }
+
+  /* subsurface.py _protective_colour. */
+  function protectiveColour(conductance) {
+    if (conductance === null || conductance === undefined) return '#BBBBBB';
+    for (var k = 0; k < PROTECTIVE_CLASSES.length; k += 1) {
+      if (PROTECTIVE_CLASSES[k][0] <= conductance &&
+        conductance < PROTECTIVE_CLASSES[k][1]) {
+        return PROTECTIVE_CLASSES[k][3];
+      }
+    }
+    return PROTECTIVE_CLASSES[PROTECTIVE_CLASSES.length - 1][3];
+  }
+
+  /* subsurface.py protective_capacity_map, without the drawing.
+   *
+   * Drawn in classes rather than on a continuous ramp, because the decision
+   * this map informs is categorical - is this aquifer protected enough to site
+   * a borehole near a latrine or a cattle crossing - and a smooth ramp invites
+   * reading a difference between 0.68 and 0.71 siemens that the method does
+   * not support. Unlike the other three it draws with one point: the class of
+   * a single sounding is still a finding. */
+  function protectiveCapacityMapData(points, options) {
+    var opts = options || {};
+    var valued = (points || []).filter(function (p) {
+      return p && p.value !== null && p.value !== undefined;
+    });
+    var short = requirePointsReason(valued, 'protective capacity map', 1);
+    if (short) return { reason: short };
+    var bounds = PROTECTIVE_CLASSES.map(function (klass) { return klass[0]; });
+    /* the top class is unbounded; a banded fill needs a finite ceiling, so use
+     * the largest value on this map or the class floor, whichever is bigger */
+    bounds.push(Math.max(arrMax(valued.map(function (p) { return Number(p.value); })),
+      5.0) * 1.05);
+    var extent = mapExtent(valued);
+    var grid = gridFrom(extent[0], extent[1], extent[2], extent[3],
+      opts.gridN || 200);
+    var z = null, clipped = false, hull = null, note = '';
+    if (valued.length >= 3) {
+      var e = valued.map(function (p) { return Number(p.easting); });
+      var n = valued.map(function (p) { return Number(p.northing); });
+      var v = valued.map(function (p) { return Number(p.value); });
+      z = surfaceGrid(e, n, v, grid);
+      if (z) {
+        var clip = clipToSurveyedGround(z, e, n, grid);
+        z = clip.z;
+        clipped = clip.clipped;
+        hull = clip.hull;
+        note = clip.note;
+      } else {
+        note = noSurfaceNote(valued.length);
+      }
+    }
+    /* No note below three points, because the Python draws none: this map is
+     * the one that draws with a single sounding, so "surface not drawn" is not
+     * news there, it is the figure working as intended. The browser printed it
+     * anyway, which put a red line under a two-sounding map that the package
+     * leaves clean. */
+    grid.z = z;
+    return {
+      reason: null,
+      points: valued.map(function (p) {
+        return {
+          label: p.label, easting: p.easting, northing: p.northing,
+          value: p.value, plot_value: p.value, kind: p.kind || 'VES point',
+          colour: protectiveColour(p.value),
+          text: p.label + '\n' + pyFixed(p.value, 2) + ' S',
+        };
+      }),
+      grid: z ? grid : null,
+      surface: !!z,
+      clipped: clipped,
+      hull: hull,
+      note: note,
+      classed: true,
+      classes: PROTECTIVE_CLASSES,
+      levels: bounds,
+      range: [bounds[0], bounds[bounds.length - 1]],
+      legend_title: 'Longitudinal conductance of the cover',
+      legend: PROTECTIVE_CLASSES.map(function (klass) {
+        return {
+          label: klass[2] + ' (' + formatG(klass[0]) +
+            (isFinite(klass[1]) ? '-' + formatG(klass[1]) + ' S)' : '+ S)'),
+          colour: klass[3],
+        };
+      }),
+      extent: extent,
+    };
+  }
+
+  /* The four subsurface maps reporting/geophysical.py plans, in the order it
+   * plans them. `name` is the wording that report puts in front of the reason
+   * when a figure is not drawn ("depth to bedrock map: ..."), so the browser's
+   * list reads the same as the Python's. */
+  var SUBSURFACE_MAP_SPECS = [
+    {
+      key: 'depth_to_bedrock', name: 'depth to bedrock map',
+      attribute: 'depth_to_basement_m', title: 'Depth to bedrock',
+      cbar_label: 'Depth to bedrock (m)', cmap: 'YlOrBr',
+      log_scale: false, classed: false, need: 3,
+    },
+    {
+      key: 'aquifer_thickness', name: 'aquifer thickness map',
+      attribute: 'aquifer_thickness_m', title: 'Interpreted aquifer thickness',
+      cbar_label: 'Interpreted aquifer thickness (m)', cmap: 'GnBu',
+      log_scale: false, classed: false, need: 3,
+    },
+    {
+      key: 'bedrock_elevation', name: 'bedrock elevation map',
+      attribute: null, title: 'Bedrock surface elevation',
+      cbar_label: 'Bedrock surface elevation (m)', cmap: 'terrain',
+      log_scale: false, classed: false, need: 3,
+    },
+    {
+      key: 'protective_capacity', name: 'protective capacity map',
+      attribute: 'protective_conductance_s', title: 'Aquifer protective capacity',
+      /* no colour bar: this map is drawn in classes, and its key is the
+       * legend protectiveCapacityMapData carries */
+      cbar_label: null, cmap: null,
+      log_scale: false, classed: true, need: 1,
+    },
+  ];
+
+  function subsurfaceMapSpec(key) {
+    var found = null;
+    SUBSURFACE_MAP_SPECS.forEach(function (spec) {
+      if (spec.key === key) found = spec;
+    });
+    return found;
+  }
+
+  /* One of the four maps: its points, its surface and its strings, or the
+   * reason the Python would have refused to draw it. The refusal is kept per
+   * figure, the way the report keeps it: a survey whose curves never reached
+   * basement has no depth-to-bedrock map but still has an aquifer thickness
+   * map, and one that recorded no elevations has both but no bedrock surface. */
+  function subsurfaceMapData(interpretations, key, options) {
+    var spec = subsurfaceMapSpec(key);
+    if (!spec) return { key: key, reason: 'no such subsurface map: ' + key };
+    var placed = positionedSoundings(interpretations);
+    var points = spec.key === 'bedrock_elevation'
+      ? bedrockElevationPoints(placed)
+      : subsurfaceMapPoints(placed, spec.attribute);
+    var head = {
+      key: spec.key, name: spec.name, title: spec.title,
+      cbar_label: spec.cbar_label, cmap: spec.cmap,
+      log_scale: spec.log_scale, classed: spec.classed, points: points,
+    };
+    var reason = requirePointsReason(points, spec.name, spec.need);
+    if (reason) return Object.assign(head, { reason: reason });
+    var data = spec.classed
+      ? protectiveCapacityMapData(points, options)
+      : interpolatedMapData(points, Object.assign({}, options || {},
+        { logScale: spec.log_scale }));
+    return Object.assign(head, data);
+  }
+
+  /* reporting/geophysical.py _add_subsurface_figures' own gate, which comes
+   * before any of the four maps and before the section: with fewer than two
+   * positioned soundings the whole section of the report is skipped - no
+   * figure, and no "not drawn" line either, because a survey that recorded one
+   * GPS position has nothing to say about the ground between soundings. The
+   * protective capacity map is the one that draws from a single sounding, so a
+   * report that does not ask this first prints one under a heading the package
+   * never writes at all. */
+  function subsurfaceFiguresApply(interpretations) {
+    return positionedSoundings(interpretations).length >= 2;
+  }
+
+  /* All four, in the report's order, each either drawable or carrying its
+   * reason. The caller draws the ones with no reason and lists the others as
+   * "<name>: <reason>", which is what _add_subsurface_figures does - after
+   * subsurfaceFiguresApply, which decides whether the section is written. */
+  function subsurfaceMapSet(interpretations, options) {
+    return SUBSURFACE_MAP_SPECS.map(function (spec) {
+      return subsurfaceMapData(interpretations, spec.key, options);
+    });
+  }
+
+  /* --- the drill-target suitability map ------------------------------------ */
+
+  /* maps.py suitability_map's own tie test, which is not siting's.
+   *
+   * ranking_tie() reads config.ranking_tie_points off the unrounded weighted
+   * scores; the map reads a fixed three points off the values it prints, and
+   * the two can differ on the same survey. The map's number belongs to the
+   * map: a figure that stars one of two pegs it has drawn with the same
+   * colour and the same printed score is claiming a preference the reader
+   * cannot see any basis for. */
+  var SUITABILITY_TIE_POINTS = 3.0;
+
+  /* siting/suitability.py suitability_map_points: the scored points that can
+   * go on a map, valued by the number the ranking was decided on.
+   *
+   * A point with no recorded position is dropped rather than placed at a
+   * guess. The value is the confidence-weighted score, so the colours on the
+   * map and the order in the ranked table cannot tell two different stories
+   * about which peg to drill. */
+  function suitabilityMapPoints(results) {
+    var points = [];
+    (results || []).forEach(function (result) {
+      if (!result) return;
+      if (result.easting === null || result.easting === undefined) return;
+      if (result.northing === null || result.northing === undefined) return;
+      var confidence = (result.confidence === null || result.confidence === undefined)
+        ? 1.0 : Number(result.confidence);
+      points.push({
+        label: String(result.sounding_id),
+        easting: Number(result.easting),
+        northing: Number(result.northing),
+        /* SitingSuitability.weighted, rounded where the Python rounds it: the
+         * tie below is decided on these rounded values, so rounding later
+         * would settle it on a number the figure never shows */
+        value: pyRound(Number(result.suitability) * confidence, 1),
+        kind: result.grade,
+        rank: (result.rank === undefined) ? null : result.rank,
+      });
+    });
+    return points;
+  }
+
+  /* The valued points in rank order: what maps.py reads the recommended
+   * target and the runner-up off. A point carrying no rank was never ranked
+   * and is left out rather than sorted to the front, which is what
+   * `if p.rank is not None` does in the Python. */
+  function rankedMapPoints(points) {
+    return (points || []).filter(function (p) {
+      return p && p.value !== null && p.value !== undefined &&
+        p.rank !== null && p.rank !== undefined;
+    }).map(function (p, k) {
+      return { point: p, index: k };
+    }).sort(function (a, b) {
+      return a.point.rank - b.point.rank || a.index - b.index;
+    }).map(function (entry) {
+      return entry.point;
+    });
+  }
+
+  /* maps.py suitability_map_state: what a suitability map of these points
+   * will show, for its caption.
+   *
+   * A caption used to promise "the interpolated surface is blanked outside
+   * the ground the survey covered" over a figure of two dots with no surface
+   * on it at all. The rules are the figure's - three valued points, an area
+   * between them, and two leading scores far enough apart to separate - so
+   * the report asks for them here instead of restating them and drifting. */
+  function suitabilityMapState(points) {
+    var valued = (points || []).filter(function (p) {
+      return p && p.value !== null && p.value !== undefined;
+    });
+    var e = valued.map(function (p) { return Number(p.easting); });
+    var n = valued.map(function (p) { return Number(p.northing); });
+    var ranked = rankedMapPoints(valued);
+    return {
+      n_points: valued.length,
+      surface: valued.length >= 3 && pointsEncloseAnArea(e, n),
+      tie: ranked.length >= 2 && Math.abs(Number(ranked[0].value) -
+        Number(ranked[1].value)) < SUITABILITY_TIE_POINTS,
+      recommended: ranked.length ? ranked[0].label : null,
+    };
+  }
+
+  var SUITABILITY_MAP_CAPTION = 'Drill-target suitability of the surveyed ' +
+    'points, coloured by the confidence-weighted score; greener is more ' +
+    'suitable.';
+
+  /* reporting/geophysical.py _suitability_block's caption, in its four
+   * branches.
+   *
+   * Each clause is a claim about the figure underneath it: that a star marks
+   * the target, or that no star does because the two best points cannot be
+   * separated; that the colour between the pegs is interpolated ground, or
+   * that there is no colour between them at all. Written from anything but
+   * the state the figure was drawn from, a caption promises a reader
+   * something the figure does not show, and the reader believes the caption. */
+  function suitabilityMapCaption(state) {
+    var caption = SUITABILITY_MAP_CAPTION;
+    if (state.tie) {
+      caption += ' The two highest-ranked points cannot be told apart on ' +
+        'geophysical grounds, so neither is starred.';
+    } else if (state.recommended) {
+      caption += ' The star is the recommended target, ' + state.recommended +
+        ', with its grid coordinates.';
+    }
+    if (state.surface) {
+      caption += ' The surface between the points is interpolated and blanked ' +
+        'outside the ground they enclose.';
+    } else if (state.n_points >= 3) {
+      caption += ' The points lie on one line and enclose no area, so no ' +
+        'surface is interpolated between them.';
+    }
+    return caption;
+  }
+
+  /* maps.py suitability_map without the drawing, plus the caption the report
+   * earns from it: the scored pegs, the interpolated surface where the survey
+   * supports one, the star on the recommended target and the words that go
+   * under the figure.
+   *
+   * Returns null where reporting/geophysical.py draws no map at all - no
+   * scored point, or no scored point carrying a position - because there the
+   * Python adds no figure and no line saying one is missing. The subsurface
+   * maps list their refusals; this one is silent, and a browser that printed
+   * "drill-target map: ..." under this heading would be inventing a sentence
+   * the package never writes.
+   *
+   * options: {results, ves, zone, gridN}. `results` is an assessSiting()
+   * scorecard the caller has already built, so the map and the ranked table
+   * are scored once and cannot disagree; `ves` is the VESConfig used when it
+   * has to score them here. */
+  function suitabilityMapData(interpretations, options) {
+    var opts = options || {};
+    var results = opts.results || assessSiting(interpretations, opts.ves);
+    if (!results.length) return null;
+    var points = suitabilityMapPoints(results);
+    if (!points.length) return null;
+    var valued = points.filter(function (p) {
+      return p.value !== null && p.value !== undefined;
+    });
+    var state = suitabilityMapState(points);
+    /* _extent(points), over every point and not only the valued ones: a peg
+     * that could not be scored was still surveyed, and a map that frames it
+     * out has lost a station the reader walked to. */
+    var extent = mapExtent(points);
+    var grid = null, clipped = false, hull = null, note = '';
+    if (valued.length >= 3) {
+      var e = valued.map(function (p) { return Number(p.easting); });
+      var n = valued.map(function (p) { return Number(p.northing); });
+      var v = valued.map(function (p) { return Number(p.value); });
+      /* the surface is gridded over the axes, which are the padded extent,
+       * so it fills the frame the way contourf fills the Python's */
+      var candidate = gridFrom(extent[0], extent[1], extent[2], extent[3],
+        opts.gridN || 200);
+      var z = surfaceGrid(e, n, v, candidate);
+      if (z) {
+        var clip = clipToSurveyedGround(z, e, n, candidate);
+        candidate.z = clip.z;
+        clipped = clip.clipped;
+        hull = clip.hull;
+        note = clip.note;
+        grid = candidate;
+      } else {
+        note = noSurfaceNote(valued.length);
+      }
+    }
+    /* Below three valued points there is no note, because the Python writes
+     * none: a two-point survey has nothing to interpolate and saying
+     * "surface not drawn" over two dots reads as a failure rather than as
+     * the figure working as intended. */
+    var ranked = rankedMapPoints(points);
+    var tie = state.tie;
+    var drawn = points.map(function (p) {
+      /* the star is the point of this map - somebody walks to that peg and
+       * not to the other one - so it is drawn only where the ranking can
+       * carry it, and a tie takes it off both points rather than giving it
+       * to whichever sorted first */
+      var recommended = p.rank === 1 && !tie;
+      var text = p.label;
+      if (p.value !== null && p.value !== undefined) {
+        text += '\n' + pyFixed(p.value, 0) + ' - ' + p.kind;
+      }
+      if (recommended) {
+        text += '\nE ' + pyFixed(p.easting, 0) + '  N ' + pyFixed(p.northing, 0);
+      }
+      return {
+        label: p.label, easting: p.easting, northing: p.northing,
+        value: (p.value === undefined) ? null : p.value, kind: p.kind,
+        rank: p.rank, recommended: recommended, text: text,
+      };
+    });
+    var seen = {}, legend = [];
+    drawn.forEach(function (p) {
+      var label = p.recommended ? 'recommended drill target' : 'surveyed point';
+      if (own(seen, label)) return;
+      seen[label] = true;
+      /* the value of the point that registered the entry, so the key can be
+       * drawn in that peg's own colour the way a matplotlib legend handle
+       * carries the marker it was taken from */
+      legend.push({
+        label: label, kind: p.recommended ? 'star' : 'circle', value: p.value,
+      });
+    });
+    return {
+      reason: null,
+      title: 'Drill-target suitability',
+      cbar_label: 'Drilling suitability, confidence weighted (0-100)',
+      cmap: 'RdYlGn',
+      points: drawn,
+      legend: legend,
+      state: state,
+      caption: suitabilityMapCaption(state),
+      tie: tie,
+      /* said on the figure as well as in the caption, because a reader who
+       * sees two pegs and no star has to be told why there is no star */
+      tie_note: tie ? ranked[0].label + ' and ' + ranked[1].label +
+        ' are indistinguishable on geophysical grounds; choose between them ' +
+        'on access and sanitary distances.' : '',
+      grid: grid,
+      surface: !!grid,
+      clipped: clipped,
+      hull: hull,
+      note: note,
+      /* np.linspace(0, 100, 11), with vmin and vmax pinned to the ends of the
+       * score: the colour of a peg means the same thing on every survey's
+       * map, which a scale stretched to each survey's own range would not */
+      levels: linspace(0.0, 100.0, 11),
+      range: [0.0, 100.0],
+      extent: extent,
+      zone: (opts.zone === null || opts.zone === undefined)
+        ? inferZoneForSierraLeone(points[0].easting) : opts.zone,
+    };
+  }
+
+  /* --- the ground surface along the traverse ------------------------------- */
+
+  var GROUND_PROFILE_CAPTION = 'Ground surface along the survey traverse, ' +
+    'from the elevation recorded at each sounding.';
+
+  /* reporting/geophysical.py _ground_profile_figure's filter: the soundings
+   * that carry a position and a recorded ground level. A position without a
+   * level has no height to draw and a level without a position has no
+   * chainage to draw it at. */
+  function levelledSoundings(interpretations) {
+    return positionedSoundings(interpretations).filter(function (item) {
+      return item.site_elevation_m !== null && item.site_elevation_m !== undefined;
+    });
+  }
+
+  /* mapping/terrain.py plot_ground_profile as reporting/geophysical.py
+   * _ground_profile_figure calls it: the land surface along the traverse,
+   * from the survey's own levels, against chainage.
+   *
+   * Returns null where the Python draws nothing, and null is the whole of the
+   * answer: _ground_profile_figure omits the figure silently - fewer than two
+   * levelled soundings, a traverse that cannot be placed, a label the lookup
+   * has no sounding for, or fewer than two finite elevations once the array
+   * is built - and the report says nothing about it either. Anything drawn
+   * from one levelled station, or from a station whose level nobody recorded,
+   * would be a ground surface the survey did not measure.
+   */
+  function groundProfileData(interpretations) {
+    var levelled = levelledSoundings(interpretations);
+    if (levelled.length < 2) return null;
+    var profile = traverseProfile(levelled);
+    /* traverse_profile raises where it cannot place the soundings, and
+     * _ground_profile_figure catches it and draws nothing */
+    if (profile.reason) return null;
+    var byId = {};
+    levelled.forEach(function (item) { byId[item.sounding_id] = item; });
+    var elevation = [], missing = false;
+    profile.labels.forEach(function (label) {
+      /* by_id[label] is a KeyError in the Python for a sounding with no id,
+       * which traverse_profile labelled positionally; the figure is dropped
+       * rather than drawn against a level belonging to another station */
+      if (!own(byId, label)) {
+        missing = true;
+        elevation.push(null);
+        return;
+      }
+      var value = Number(byId[label].site_elevation_m);
+      elevation.push(isFinite(value) ? value : null);
+    });
+    if (missing) return null;
+    var known = elevation.filter(function (value) { return value !== null; });
+    /* plot_ground_profile's own refusal: two levelled points are a profile
+     * and one is a spot height. A level recorded as a blank cell reaches here
+     * as a non-finite number and is not a level. */
+    if (known.length < 2) return null;
+    var stations = profile.labels.map(function (label, k) {
+      return {
+        label: label,
+        chainage_m: profile.chainage_m[k],
+        elevation_m: elevation[k],
+      };
+    });
+    return {
+      reason: null,
+      title: 'Ground surface along the survey traverse',
+      x_label: 'Distance along traverse (m)',
+      y_label: 'Elevation (m)',
+      series_label: 'Levelled at the station',
+      caption: GROUND_PROFILE_CAPTION,
+      labels: profile.labels,
+      chainage_m: profile.chainage_m,
+      elevation_m: elevation,
+      stations: stations,
+      /* fill_between drops to nanmin(elevation) - 2.0: the ground is drawn as
+       * a solid, not as a line floating on the axis, and the base is below
+       * the lowest level so the lowest station is not drawn on the floor */
+      baseline_m: arrMin(known) - 2.0,
+      /* a station that reaches the figure with no level is not drawn, and
+       * the figure says so rather than closing the gap silently and showing
+       * a straight slope across ground nobody levelled */
+      note: known.length < elevation.length
+        ? (elevation.length - known.length) + ' of ' + elevation.length +
+          ' stations recorded no elevation and are not drawn.'
+        : '',
+    };
+  }
+
+  Object.assign(C, {
+    PROTECTIVE_CLASSES: PROTECTIVE_CLASSES,
+    SUBSURFACE_CREDIT: SUBSURFACE_CREDIT,
+    CORRELATION_REACH_MULTIPLE: CORRELATION_REACH_MULTIPLE,
+    COLLINEAR_STRAIGHTNESS: COLLINEAR_STRAIGHTNESS,
+    SUBSURFACE_MAP_SPECS: SUBSURFACE_MAP_SPECS,
+    subsurfaceMapSpec: subsurfaceMapSpec,
+    pointsEncloseAnArea: pointsEncloseAnArea,
+    singularValues2: singularValues2, principalAxis: principalAxis,
+    traverseProfile: traverseProfile, wideGaps: wideGaps,
+    correlationNote: correlationNote, rhoColourRange: rhoColourRange,
+    geoelectricSectionGeometry: geoelectricSectionGeometry,
+    pseudosectionGeometry: pseudosectionGeometry,
+    delaunayTriangles: delaunayTriangles, convexHull: convexHull,
+    pointInPolygon: pointInPolygon, surfaceGrid: surfaceGrid,
+    clipToSurveyedGround: clipToSurveyedGround, noSurfaceNote: noSurfaceNote,
+    contourLevels: contourLevels, locatorTicks: locatorTicks,
+    mapGridTicks: mapGridTicks, gridFrom: gridFrom, linspace: linspace,
+    mapExtent: mapExtent, mapFigureHeightIn: mapFigureHeightIn,
+    mapAxisLabels: mapAxisLabels,
+    subsurfaceMapPoints: subsurfaceMapPoints,
+    bedrockElevationPoints: bedrockElevationPoints,
+    requirePointsReason: requirePointsReason,
+    interpolatedMapData: interpolatedMapData,
+    protectiveCapacityMapData: protectiveCapacityMapData,
+    protectiveColour: protectiveColour,
+    subsurfaceMapData: subsurfaceMapData, subsurfaceMapSet: subsurfaceMapSet,
+    subsurfaceFiguresApply: subsurfaceFiguresApply,
+    SUITABILITY_TIE_POINTS: SUITABILITY_TIE_POINTS,
+    SUITABILITY_MAP_CAPTION: SUITABILITY_MAP_CAPTION,
+    GROUND_PROFILE_CAPTION: GROUND_PROFILE_CAPTION,
+    suitabilityMapPoints: suitabilityMapPoints,
+    rankedMapPoints: rankedMapPoints,
+    suitabilityMapState: suitabilityMapState,
+    suitabilityMapCaption: suitabilityMapCaption,
+    suitabilityMapData: suitabilityMapData,
+    levelledSoundings: levelledSoundings,
+    groundProfileData: groundProfileData,
+  });
 
   /* __SECTION_MARK__ */
 }(typeof window !== 'undefined' ? window : globalThis));

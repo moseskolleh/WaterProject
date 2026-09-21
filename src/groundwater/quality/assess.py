@@ -44,7 +44,7 @@ from .indices import (
     assess_health_risk,
     compute_wqi,
 )
-from .ionic import IonicBalanceResult, ionic_balance
+from .ionic import IonicBalanceResult, ionic_balance, ionic_balance_gap
 from ..utils import plural_noun
 from .standards import (
     StandardEntry,
@@ -417,6 +417,8 @@ def _assess_result(result, entry: Optional[StandardEntry]) -> ParameterAssessmen
     )
 
     if result.value is None and not result.below_detection:
+        if result.greater_than is not None and entry is not None:
+            return _assess_unquantified(row, result, entry)
         return row
 
     if entry is None:
@@ -461,6 +463,68 @@ def _assess_result(result, entry: Optional[StandardEntry]) -> ParameterAssessmen
     else:
         unit_note = ""
     _grade(row, entry, converted, unit_note)
+    return row
+
+
+def _assess_unquantified(
+    row: ParameterAssessment, result, entry: StandardEntry
+) -> ParameterAssessment:
+    """A result the laboratory saw and did not put a number to.
+
+    "TNTC", "Present" and "Positive" are a count above zero; ">50" is at
+    least 50. All of them used to read as "not measured", so a sample with
+    E. coli 0 and total coliforms TNTC was graded Safe, and a ">50" count
+    was graded as exactly 50 - inside the limit whenever the limit is 50.
+    """
+    bound = float(result.greater_than)
+    row.evaluable = True
+    row.reason = "detected_not_quantified"
+    is_faecal = entry.parameter.strip().lower() == "e. coli"
+    stated = "detected, count not quantified" if bound == 0 else f"more than {bound:g}"
+
+    def maximum(limit):
+        return limit.maximum if limit is not None else None
+
+    health = maximum(entry.who_health)
+    national = maximum(entry.sl_standard)
+    if national is None:
+        national = maximum(entry.who_aesthetic)
+    # The bound settles it whenever the bound is already over the limit; a
+    # zero limit is over as soon as anything is detected.
+    over_health = health is not None and bound >= health
+    over_national = national is not None and bound >= national
+
+    if over_health:
+        row.status = "exceeds_health"
+        row.remark = (
+            f"{stated}, which is above the WHO health based guideline "
+            f"({entry.who_health}); the laboratory did not quantify it"
+        )
+    elif over_national and is_faecal:
+        row.status = "exceeds_health"
+        row.remark = (
+            f"faecal indicator {stated}, above the limit "
+            f"({entry.sl_standard or entry.who_aesthetic}); a health concern, "
+            "not aesthetic"
+        )
+    elif over_national:
+        row.status = "exceeds_national"
+        row.remark = (
+            f"{stated}, above the national limit "
+            f"({entry.sl_standard or entry.who_aesthetic}); an indicator of "
+            "ingress or inadequate wellhead protection, not of faecal "
+            "contamination in itself, and WHO sets no health based guideline "
+            "for it"
+        )
+    else:
+        # The bound is inside every limit, so the result is an open question
+        # rather than a pass: the true value is somewhere above it.
+        row.status = "indeterminate"
+        row.evaluable = False
+        row.remark = (
+            f"{stated}; the laboratory did not quantify it, so it cannot be "
+            "shown to meet the limit"
+        )
     return row
 
 
@@ -599,11 +663,22 @@ def _grade(
         else:
             # No WHO health value exists for this parameter, so the national
             # limit is an acceptability one (iron staining, chloride taste,
-            # turbidity).
+            # turbidity). Every national value in the bundled table is
+            # provisional - a WHO or regional figure carried across, not a
+            # confirmed Standards Bureau one - so the remark says so rather
+            # than reporting a legal failure the toolkit cannot establish.
             row.status = "exceeds_aesthetic"
+            # The WHO figure is what the national one was carried across
+            # from, and naming it is the only way a reader can tell a limit
+            # somebody set from a limit this toolkit assumed.
+            who_note = (
+                f"; the WHO acceptability value is {entry.who_aesthetic}"
+                if entry.who_aesthetic
+                else "; WHO sets no value for this determinand"
+            )
             row.remark = (
                 f"exceeds the national acceptability limit "
-                f"({entry.sl_standard}){unit_note}"
+                f"({entry.sl_standard}), which is provisional{who_note}{unit_note}"
             )
     elif entry.who_aesthetic and entry.who_aesthetic.exceeded_by(value):
         row.status = "exceeds_aesthetic"
@@ -781,6 +856,24 @@ def assess_sample(
     ionic = ionic_balance(sample)
     if ionic is not None and ionic.flag is not None:
         flags.append(ionic.flag)
+    elif ionic is None:
+        # The balance is the one check that says whether a certificate's own
+        # numbers hang together, and it was skipped in silence: a report with
+        # no charge-balance line reads as an analysis that balanced, rather
+        # than as one nobody could check.
+        gap = ionic_balance_gap(sample)
+        if gap:
+            flags.append(
+                DataFlag(
+                    "warning",
+                    "ionic_balance_not_checked",
+                    "The charge balance could not be computed: the analysis "
+                    f"carries no {plural_noun(len(gap), 'value')} for "
+                    + ", ".join(gap)
+                    + ". Ask the laboratory for the major ions if the "
+                    "analysis is to be relied on.",
+                )
+            )
 
     corrosivity = assess_corrosivity(sample)
     flags.extend(corrosivity.flags)

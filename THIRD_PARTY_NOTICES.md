@@ -99,6 +99,53 @@ from the sheet. The polygons on every map remain the USGS Geologic Map of
 Africa ones at 1:5,000,000, and the figures say so.
 
 
+### RWSN water well drilling practice guides - costing and supervision tables · **unverified — needs confirmation**
+
+`src/groundwater/data/borehole_cost_items.csv` and
+`src/groundwater/data/supervision_checklists.csv` were built from the Rural
+Water Supply Network guides committed under `WaterProjectFiles/`: the costing
+and pricing guide's worked example became a unit-rate table with a quantity
+basis the toolkit can compute against, and the supervision and procurement
+guides became one checklist row per check.
+
+No redistribution grant has been established for those guides, and none is
+claimed for these tables; the licence is recorded as **unverified**. The unit
+costs are the guides' example figures, not a market survey of Sierra Leone. A
+project should replace them with quoted rates before they reach a tender.
+
+### Sphere Handbook - water supply service levels · **unverified — needs confirmation**
+
+`src/groundwater/data/coverage_service_classes.csv` holds the people-per-point
+class boundaries the coverage map is coloured by, attributed to the Sphere
+Handbook. The handbook is not bundled here and the figures have not been
+checked against it in this repository; the table's own basis column says so.
+Treat the boundaries as indicative until somebody confirms them.
+
+### Toolkit-authored reference tables · **this repository's own licence**
+
+`sample_provenance.csv`, `sl_districts.csv` and
+`site_separation_distances.csv` in `src/groundwater/data/` were written here.
+No external dataset stands behind them, and they are listed so that a reader
+can tell which bundled numbers are somebody's published dataset and which are
+the toolkit's own working assumptions.
+
+One of them carries a warning. The separation distances have **no recorded
+source at all** - they are common field practice as written down here, not a
+cited standard - so a project should replace them with its regulator's
+figures. The district file is now just the sixteen districts and their
+provinces; it used to carry hand-drawn longitude and latitude boxes that the
+district consistency check was judged against, and that check reads the
+geoBoundaries polygons now.
+
+### Chiefdom name crosswalk - boundary layer to census spelling · **CC BY 4.0 / unverified**
+
+`src/groundwater/data/sl_chiefdom_names.csv` maps the ten chiefdom names that
+the geoBoundaries ADM3 layer truncates to fifteen characters onto the
+spellings the 2015 census tables use, so a map label reads "Wara Wara Yagala"
+rather than "Wara Wara Yagal". The crosswalk is written here; the two datasets
+it maps between carry their own licences, recorded above.
+
+
 ## Reference documents
 
 `WaterProjectFiles/` holds nine third-party publications (about 23 MB) that

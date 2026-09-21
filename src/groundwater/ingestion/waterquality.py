@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from ..models import DataFlag, WaterQualityResult, WaterQualitySample
@@ -40,6 +41,40 @@ ABSENCE_TOKENS = frozenset({
     "bdl", "below detection", "below detection limit", "<dl", "negative", "neg",
 })
 
+#: The same words with the laboratory's detection limit written after them:
+#: "ND (<0.05)", "BDL (0.02)", "ND<0.1", "Not detected (<0.001)". Only an
+#: exact match counted before, so every one of these was read as a measured
+#: concentration and graded EXCEEDS HEALTH GUIDELINE - the arsenic a
+#: laboratory reported as absent came out as the worst reading on the sheet.
+_ABSENCE_WITH_LIMIT = re.compile(
+    r"^(?P<word>[a-z][a-z.\s/]*?)\s*[(\[]?\s*<?\s*"
+    r"(?P<limit>\d+(?:[.,]\d+)?)\s*[)\]]?\.?$"
+)
+
+#: What a laboratory writes when it saw the determinand and put no number to
+#: it. For a determinand whose limit is zero that is the whole finding: a
+#: sample with E. coli 0 and total coliforms TNTC was graded "Safe" because
+#: the count read as "not measured".
+PRESENCE_TOKENS = frozenset({
+    "tntc", "t.n.t.c", "too numerous to count", "confluent", "confluent growth",
+    "present", "positive", "pos", "+ve", "detected",
+})
+
+#: "greater than" results: at least this much, not exactly this much.
+_GREATER_THAN = re.compile(r"^(?:>|>=|\u2265|more than|greater than)\s*"
+                           r"(?P<value>\d+(?:[.,]\d+)?)\s*\+?$")
+
+
+def _absence_limit(text: str) -> float | None:
+    """The detection limit an absence phrase carries, if it carries one."""
+    match = _ABSENCE_WITH_LIMIT.match(text.lower().strip())
+    if not match:
+        return None
+    word = re.sub(r"[\s.]+$", "", match.group("word")).strip()
+    if word not in ABSENCE_TOKENS:
+        return None
+    return parse_number(match.group("limit"))
+
 
 def read_quality_workbook(path: str | Path) -> WaterQualitySample:
     grid, _ = common.load_grid(path)
@@ -63,12 +98,34 @@ def read_quality_workbook(path: str | Path) -> WaterQualitySample:
             continue
         raw_value = cell("value")
         text_value = clean_text(raw_value)
-        # "<1", and the words a certificate uses for the same thing
-        below_detection = text_value.startswith("<") or (
-            text_value.lower().rstrip(".") in ABSENCE_TOKENS
+        plain = text_value.lower().rstrip(".")
+        # "<1", the words a certificate uses for the same thing, and those
+        # same words with the limit written after them ("ND (<0.05)")
+        worded_limit = _absence_limit(text_value)
+        below_detection = (
+            text_value.startswith("<")
+            or plain in ABSENCE_TOKENS
+            or worded_limit is not None
         )
-        value = None if text_value.lower().rstrip(".") in ABSENCE_TOKENS else parse_number(raw_value)
+        # A count the laboratory saw and did not quantify, and a ">50" that
+        # used to be read as exactly 50.
+        greater_than = None
+        if not below_detection:
+            if plain in PRESENCE_TOKENS:
+                greater_than = 0.0
+            else:
+                match = _GREATER_THAN.match(plain)
+                if match:
+                    greater_than = parse_number(match.group("value"))
+        value = (
+            None
+            if plain in ABSENCE_TOKENS or worded_limit is not None
+            or greater_than is not None
+            else parse_number(raw_value)
+        )
         dl = parse_number(cell("dl"))
+        if worded_limit is not None and dl is None:
+            dl = worded_limit
         if below_detection:
             # A "<X" marker means the true concentration is unknown, bounded
             # above by X. The measured value must be cleared so downstream
@@ -85,6 +142,7 @@ def read_quality_workbook(path: str | Path) -> WaterQualitySample:
                 detection_limit=dl,
                 below_detection=below_detection or (value is None and dl is not None),
                 method=clean_text(cell("method")),
+                greater_than=greater_than,
             )
         )
 

@@ -8,6 +8,14 @@ zeros (for example ``078.7`` or GPS ``0708958``) parse cleanly.
 
 Duplicate AB/2 values with different MN mark Schlumberger segment
 changes; both readings are kept.
+
+Both of the arrays the toolkit models are read. Which one a sheet was
+run with is worked out from the sheet itself - the array field in the
+header block, the wording above the table, a spacing column headed
+"a", and whether there is an MN column at all - and a Wenner sounding
+is stored the way ``array_type == "wenner"`` means everywhere else:
+``ab2`` holds the Wenner spacing a. Where the sheet settles none of
+that the Schlumberger default stands and a flag says it was assumed.
 """
 
 from __future__ import annotations
@@ -28,11 +36,129 @@ _MN_HALF_RE = re.compile(r"mn\s*/\s*2")
 # "Resistance (ohm)", "R (ohm)", "V/I", "dV/I", "ΔV/I": a measured resistance
 _RESISTANCE_RE = re.compile(r"resistance|^r\s*\(|v\s*/\s*i")
 
+# The array a sheet names, wherever on the sheet it names it: the title of a
+# template ("SCHLUMBERGER ARRAY VES FIELD DATA"), the array field itself, or
+# a note. "Wenner alpha" and "half-Schlumberger" are the same two arrays.
+_WENNER_RE = re.compile(r"wenner")
+_SCHLUMBERGER_RE = re.compile(r"schlum")
+
+# "a" is the whole name of the Wenner spacing, so the column header is short
+# and the reader has to accept the few ways a crew writes it out.
+_WENNER_A_HEADERS = frozenset({
+    "a", "a (m)", "a(m)", "a m", "a, m", "a (metres)", "a (meters)",
+    "a-spacing", "a-spacing (m)", "a spacing", "a spacing (m)",
+    "spacing a", "spacing a (m)", "wenner a", "wenner a (m)", "a (wenner)",
+})
+
+# A Wenner array is A M N B at equal spacing a, so AB = 3a and a Wenner sheet
+# that tabulates AB/2 has written 1.5 a in that column.
+_WENNER_AB2_PER_A = 1.5
+
+
+def _array_named_in(text: str) -> str | None:
+    """The array a piece of sheet text names, or ``None``.
+
+    ``None`` covers both the text that names no array and the text that
+    names two: an unfilled "Schlumberger / Wenner" template choice settles
+    nothing, and reading it as either would be a guess.
+    """
+    lowered = text.lower()
+    wenner = bool(_WENNER_RE.search(lowered))
+    schlumberger = bool(_SCHLUMBERGER_RE.search(lowered))
+    if wenner == schlumberger:
+        return None
+    return "wenner" if wenner else "schlumberger"
+
+
+def _array_named_above_table(grid: list[list], header_row: int) -> str | None:
+    """The array the wording above the data table names, if only one is named."""
+    found: set[str] = set()
+    for row in grid[:header_row]:
+        for text in common.row_text(row):
+            if _WENNER_RE.search(text):
+                found.add("wenner")
+            if _SCHLUMBERGER_RE.search(text):
+                found.add("schlumberger")
+    return next(iter(found)) if len(found) == 1 else None
+
+
+def _detect_array(
+    grid: list[list], header_row: int, cols: dict, fields: dict
+) -> tuple[str, list[DataFlag]]:
+    """The array a sheet was run with, and the flags reading it raised.
+
+    The forward model, the inversion, the splice and the curve plot all
+    branch on ``array_type``, but the reader never looked at the sheet for
+    it beyond copying out the array field: a Wenner sounding had no
+    ingestion path, and a Wenner sheet headed AB/2 was inverted with AB/2
+    for the spacing a (ROADMAP data-ingestion-11). That is wrong by tens of
+    percent and nothing downstream can notice.
+
+    The sheet is asked in the order its answers are worth trusting: the
+    array field of the header block, then any other wording above the table
+    (a template title is boilerplate, so it only speaks when the field is
+    silent), then the table's own columns - a spacing column headed "a" is
+    the Wenner spacing, and an MN column is the Schlumberger one. Where the
+    sheet settles nothing, or contradicts itself, the Schlumberger default
+    stands and a flag says what was assumed and why, because an assumption
+    made in silence is how the wrong array reaches a client report.
+    """
+    flags: list[DataFlag] = []
+    declared_text = clean_text(fields.get("array_type", ""))
+    declared = _array_named_in(declared_text)
+    named = declared if declared is not None else _array_named_above_table(grid, header_row)
+    from_columns = (
+        "wenner" if "a" in cols
+        else "schlumberger" if ("mn" in cols or "mn_half" in cols)
+        else None
+    )
+
+    conflicted = named == "schlumberger" and from_columns == "wenner"
+    array_type = "schlumberger" if conflicted else (named or from_columns or "schlumberger")
+
+    if conflicted:
+        flags.append(DataFlag(
+            "warning", "array_type_conflict",
+            "The sheet names the Schlumberger array but heads its spacing "
+            "column \"a\", which is the Wenner spacing; the two readings of "
+            "the same column differ by half again. The sounding was read as "
+            "Schlumberger, with that column taken as AB/2. Confirm the array "
+            "with the field crew before the model is used.",
+        ))
+    elif declared_text and declared is None:
+        flags.append(DataFlag(
+            "warning", "array_type_unrecognised",
+            f"The sheet's array field reads \"{declared_text}\", which does "
+            "not name one of the two arrays this toolkit models "
+            "(Schlumberger and Wenner); the sounding was read as "
+            f"{array_type.capitalize()}. Confirm the array with the field "
+            "crew: the wrong forward model is wrong by tens of percent.",
+        ))
+    elif named is None and from_columns is None:
+        flags.append(DataFlag(
+            "warning", "array_type_assumed",
+            "The sheet does not say which electrode array was used, and its "
+            "columns do not settle it either: there is no MN column, which a "
+            "Schlumberger sheet carries, and no \"a\" column, which a Wenner "
+            "sheet carries. Schlumberger was assumed, as the toolkit's "
+            "default. Confirm the array with the field crew: a Wenner "
+            "sounding inverted as Schlumberger is wrong by tens of percent "
+            "and nothing further down the chain can notice.",
+        ))
+    elif named is None and from_columns == "wenner":
+        flags.append(DataFlag(
+            "info", "array_type_inferred",
+            "No array is named on the sheet; its spacing column is headed "
+            "\"a\", which is the Wenner spacing, so the sounding was read as "
+            "Wenner.",
+        ))
+    return array_type, flags
+
 
 def _find_data_header(grid: list[list]) -> tuple[int, dict] | None:
     """Locate the data table header row and map columns.
 
-    Returns (row_index, {"no": c, "ab2": c, "mn": c, "rho": c}).
+    Returns (row_index, {"no": c, "ab2": c, "a": c, "mn": c, "rho": c}).
     """
     for r, row in enumerate(grid):
         texts = common.row_text(row)
@@ -42,6 +168,11 @@ def _find_data_header(grid: list[list]) -> tuple[int, dict] | None:
                 continue
             if "ab/2" in t or t == "ab2" or "ab / 2" in t:
                 cols["ab2"] = c
+            # The Wenner spacing column, headed "a" or "a (m)", meant nothing
+            # to the reader at all, so a Wenner sheet was dropped whole as
+            # having no data table (ROADMAP data-ingestion-11)
+            elif t in _WENNER_A_HEADERS:
+                cols["a"] = c
             # half-MN first, and tolerant of the spaces a typed header carries:
             # "MN / 2 (m)" does not contain the literal "/2", so it used to fall
             # through to the full-MN branch and halve every potential spacing
@@ -63,7 +194,7 @@ def _find_data_header(grid: list[list]) -> tuple[int, dict] | None:
                 cols["k"] = c
             elif t in ("no.", "no", "reading", "n"):
                 cols["no"] = c
-        if "ab2" in cols and ("rho" in cols or "resistance" in cols):
+        if ("ab2" in cols or "a" in cols) and ("rho" in cols or "resistance" in cols):
             return r, cols
     return None
 
@@ -89,34 +220,61 @@ def _sounding_or_reason(
     located = _find_data_header(grid)
     if located is None:
         return None, (
-            "no data table found: a header row needs an AB/2 column and an "
-            "apparent-resistivity column (Resistivity, Rho, ohm.m, ρ or Ω)"
+            "no data table found: a header row needs an AB/2 column (or the "
+            "Wenner spacing column \"a\") and an apparent-resistivity column "
+            "(Resistivity, Rho, ohm.m, ρ or Ω)"
         )
     header_row, cols = located
 
+    array_type, flags = _detect_array(grid, header_row, cols, fields)
+    is_wenner = array_type.startswith("wenner")
+
     ab2, mn, rho = [], [], []
-    flags: list[DataFlag] = []
     mn_is_half = "mn" not in cols and "mn_half" in cols
     mn_col = cols.get("mn", cols.get("mn_half"))
     from_resistance = "rho" not in cols
     value_col = cols["rho"] if not from_resistance else cols["resistance"]
     k_col = cols.get("k")
+    # The spacing column. A Wenner sheet with its own "a" column is read from
+    # it as it stands; anything else is read from AB/2, which on a Wenner
+    # sheet is 1.5 a and has to be converted below.
+    if is_wenner and "a" in cols:
+        spacing_col, wenner_from_ab2 = cols["a"], False
+    elif "ab2" in cols:
+        spacing_col, wenner_from_ab2 = cols["ab2"], is_wenner
+    else:
+        spacing_col, wenner_from_ab2 = cols["a"], False
     blank_run = 0
     for row in grid[header_row + 1 :]:
-        a = parse_number(row[cols["ab2"]]) if cols["ab2"] < len(row) else None
+        a = parse_number(row[spacing_col]) if spacing_col < len(row) else None
         r = parse_number(row[value_col]) if value_col < len(row) else None
         m = (
             parse_number(row[mn_col])
             if mn_col is not None and mn_col < len(row)
             else None
         )
+        if a is not None and wenner_from_ab2:
+            # The sheet is Wenner but tabulates AB/2, and AB = 3a, so the
+            # column holds 1.5 a. Taken for the spacing a, as it used to be
+            # (ROADMAP data-ingestion-11), every reading sits at half again
+            # its true spacing and the whole curve shifts along the depth
+            # axis. Convert once, here, so ab2 means what the forward model,
+            # the inversion and the plots take it to mean for a Wenner
+            # sounding: the spacing a.
+            a = a / _WENNER_AB2_PER_A
         if from_resistance and a is not None and r is not None:
             # rho_a = K * (dV/I): use the sheet's own K column when it has
-            # one, otherwise the Schlumberger factor from the spacings
+            # one, otherwise the geometric factor of the array the sheet was
+            # run with. The Wenner factor is 2 pi a and needs no MN, which is
+            # as well: a Wenner sheet does not carry an MN column, so the
+            # Schlumberger factor left K unknown and the row was dropped.
             k = parse_number(row[k_col]) if k_col is not None and k_col < len(row) else None
-            spacing = 2.0 * m if (m is not None and mn_is_half) else m
-            if k is None and spacing:
-                k = float(geometric_factor("schlumberger", ab2=a, mn=spacing))
+            if k is None and is_wenner:
+                k = float(geometric_factor("wenner", a=a))
+            elif k is None:
+                spacing = 2.0 * m if (m is not None and mn_is_half) else m
+                if spacing:
+                    k = float(geometric_factor("schlumberger", ab2=a, mn=spacing))
             r = k * r if k else None
         if a is None and r is None:
             fully_blank = all(v is None or clean_text(v) == "" for v in row)
@@ -144,6 +302,14 @@ def _sounding_or_reason(
             "hold formulas, open the workbook in Excel and save it so the "
             "values are stored"
         )
+    if wenner_from_ab2:
+        flags.append(DataFlag(
+            "info", "wenner_spacing_from_ab2",
+            "The sheet is a Wenner sounding tabulated as AB/2. The Wenner "
+            "array has AB = 3a, so each spacing was read as a = two thirds of "
+            "the tabulated AB/2, which is the spacing the Wenner geometric "
+            "factor and forward model take.",
+        ))
     if from_resistance:
         flags.append(DataFlag(
             "info", "rho_computed_from_resistance",
@@ -159,7 +325,7 @@ def _sounding_or_reason(
         ab2=np.array(ab2),
         mn=np.array(mn),
         rho_app=np.array(rho),
-        array_type=str(fields.get("array_type", "schlumberger")).lower() or "schlumberger",
+        array_type=array_type,
         instrument=fields.get("instrument", ""),
         source=str(source),
     )

@@ -34,7 +34,12 @@ from matplotlib.patches import PathPatch
 from matplotlib.path import Path as MplPath
 
 from ..config import HouseStyle
-from ..coverage import load_service_classes, service_class_of
+from ..coverage import (
+    CHIEFDOM_EDGE_TOLERANCE_M,
+    load_service_classes,
+    nearest_chiefdom_index,
+    service_class_of,
+)
 from ..models import SiteMetadata
 from .lithology import LITHOLOGY_CREDIT, lithology_for, region_of  # noqa: F401
 from ..plotting import figure_context, save_figure
@@ -62,6 +67,12 @@ class GeologyUnit:
     era: str
     color: str
     ring: np.ndarray  # (n, 2) lon/lat outer ring
+    #: The interior rings this polygon is cut by, if any. A hole used to be
+    #: emitted as a filled polygon of its own carrying the parent's code, so
+    #: it was painted over the unit it should have exposed: the dolerite
+    #: dykes in Kono, Koinadugu and Falaba disappeared under the Precambrian
+    #: they cut (ROADMAP data-ingestion-6).
+    holes: tuple = ()
 
 
 @dataclass
@@ -147,6 +158,9 @@ def load_geology(path: str | Path | None = None) -> list[GeologyUnit]:
                     era=props.get("era", ""),
                     color=props.get("color", "#CCCCCC"),
                     ring=np.asarray(poly[0], dtype=float),
+                    holes=tuple(
+                        np.asarray(hole, dtype=float) for hole in poly[1:]
+                    ),
                 )
             )
     return units
@@ -179,6 +193,9 @@ def load_hydrogeology(path: str | Path | None = None) -> list[GeologyUnit]:
                     era=props.get("geology", ""),
                     color=props.get("color", "#CCCCCC"),
                     ring=np.asarray(poly[0], dtype=float),
+                    holes=tuple(
+                        np.asarray(hole, dtype=float) for hole in poly[1:]
+                    ),
                 )
             )
     return units
@@ -227,20 +244,28 @@ def district_of(
 ) -> str:
     """The district containing a point, as the districts are today.
 
-    The bundled district polygons predate the 2017 creation of Karene and
-    Falaba, so a point is placed in its chiefdom first and the chiefdom's
-    current district read from the crosswalk; only a point inside no
-    chiefdom polygon (a boundary gap in the simplified layer) falls back to
-    the district polygons. Kamakwie used to come back as Bombali, and the
-    app pre-filled that district and its province without a word.
+    The answer is the chiefdom's, from :func:`chiefdom_of`: the point is
+    placed in its chiefdom - in the seam beside one, if that is where it
+    fell - and the chiefdom's current district read from the crosswalk.
+    Kamakwie used to come back as Bombali, and the app pre-filled that
+    district and its province without a word.
 
-    Returns an empty string when the point falls outside every district
-    (offshore, across the border, or wrong coordinates).
+    A point no chiefdom holds no longer falls back to the bundled district
+    polygons. Those predate the 2017 split, so the fallback answered with a
+    district that no longer exists where the point was - Koinadugu for
+    ground that is now Falaba - or with the district on the wrong side of a
+    seam, while the coverage lookups answered the same point with nothing
+    (ROADMAP data-ingestion-7). One lookup, one answer, and where there is
+    no basis for one, none.
+
+    Returns an empty string when no chiefdom is near enough to place the
+    point (offshore, across the border, wrong coordinates, or ground the
+    layer does not carry). A replacement district layer passed as
+    ``admin_path`` is still read as given: it is the caller's own layer and
+    the crosswalk says nothing about it.
     """
     if admin_path is None:
-        _, district = chiefdom_of(lat, lon)
-        if district:
-            return district
+        return chiefdom_of(lat, lon)[1]
     _, districts = load_admin(admin_path)
     for district in districts:
         for ring in district.rings:
@@ -315,13 +340,24 @@ def chiefdom_of(
 ) -> tuple[str, str]:
     """The chiefdom and its district containing a point.
 
-    Returns ``(chiefdom, district)`` or ``("", "")`` when the point falls
-    outside every chiefdom. The district is the current one from the
-    crosswalk (Karene and Falaba included), not the pre-2017 parent the
-    boundary release carried.
+    Returns ``(chiefdom, district)`` or ``("", "")`` when no chiefdom is
+    near the point. The district is the current one from the crosswalk
+    (Karene and Falaba included), not the pre-2017 parent the boundary
+    release carried.
+
+    A point inside no ring is placed on the chiefdom whose ring is nearest,
+    when that ring is within :data:`CHIEFDOM_EDGE_TOLERANCE_M`. The rings
+    were simplified one at a time, so two that were one shared border no
+    longer meet and leave a seam of ground in no chiefdom at all; a point
+    there is on a border, metres from the chiefdom it is being refused.
+    Anything further out gets nothing: the ground the layer does not carry -
+    the withheld Maforki wedge in Kono is 20 km2 of it - is ground this
+    toolkit cannot place, and saying so is the honest answer (ROADMAP
+    data-ingestion-7).
     """
     current = _current_district_of_chiefdom() if path is None else {}
-    for area in _cached_chiefdoms() if path is None else load_chiefdoms(path):
+    areas = _cached_chiefdoms() if path is None else load_chiefdoms(path)
+    for area in areas:
         for i, ring in enumerate(area.rings):
             if not _point_in_ring(lon, lat, ring):
                 continue
@@ -329,13 +365,63 @@ def chiefdom_of(
             if any(_point_in_ring(lon, lat, hole) for hole in inner):
                 continue  # inside an enclave: it belongs to the chiefdom there
             return area.label, current.get(area.name, area.district)
-    return "", ""
+    near = nearest_chiefdom_index(
+        lon, lat, (area.rings for area in areas), CHIEFDOM_EDGE_TOLERANCE_M
+    )
+    if near is None:
+        return "", ""
+    area = areas[near]
+    return area.label, current.get(area.name, area.district)
 
 
 @functools.lru_cache(maxsize=1)
 def _cached_chiefdoms() -> tuple:
     """The bundled chiefdom areas, built once; callers only read them."""
     return tuple(load_chiefdoms())
+
+
+def _unit_patch(unit: "GeologyUnit", **kwargs):
+    """The polygon, with the ground its holes cut left unpainted.
+
+    A hole used to be a filled polygon of its own carrying the parent's
+    code, drawn over the unit it should have exposed. Now it is a hole, and
+    a compound path is what makes it one: the interior rings wind against
+    the outer one so matplotlib leaves them open instead of filling them.
+    """
+    if not unit.holes:
+        return plt.Polygon(unit.ring, closed=True, **kwargs)
+    vertices = [np.asarray(unit.ring, dtype=float)]
+    codes = [
+        [MplPath.MOVETO]
+        + [MplPath.LINETO] * (len(unit.ring) - 2)
+        + [MplPath.CLOSEPOLY]
+    ]
+    outer_sign = _ring_area(unit.ring)
+    for hole in unit.holes:
+        ring = np.asarray(hole, dtype=float)
+        if len(ring) < 3:
+            continue
+        # a hole must wind against its outer ring or it fills solid
+        if (_ring_area(ring) > 0) == (outer_sign > 0):
+            ring = ring[::-1]
+        vertices.append(ring)
+        codes.append(
+            [MplPath.MOVETO] + [MplPath.LINETO] * (len(ring) - 2) + [MplPath.CLOSEPOLY]
+        )
+    path = MplPath(np.concatenate(vertices), np.concatenate(codes).tolist())
+    return PathPatch(path, **kwargs)
+
+
+def _point_in_unit(lon: float, lat: float, unit: "GeologyUnit") -> bool:
+    """Inside the polygon, and not in a hole that cuts it.
+
+    A hole is ground the unit does not cover - a dyke cutting the country
+    rock, a window of something else - so a point in one is not on this
+    unit, whatever the outer ring says.
+    """
+    if not _point_in_ring(lon, lat, unit.ring):
+        return False
+    return not any(_point_in_ring(lon, lat, hole) for hole in unit.holes)
 
 
 def geology_unit_at(lat: float, lon: float,
@@ -347,7 +433,7 @@ def geology_unit_at(lat: float, lon: float,
     site its own map placed on the Bullom Group.
     """
     for unit in load_geology(path):
-        if _point_in_ring(lon, lat, unit.ring):
+        if _point_in_unit(lon, lat, unit):
             return unit
     return None
 
@@ -356,7 +442,7 @@ def aquifer_unit_at(lat: float, lon: float,
                     path: str | Path | None = None) -> GeologyUnit | None:
     """The BGS aquifer type and productivity polygon under a point."""
     for unit in load_hydrogeology(path):
-        if _point_in_ring(lon, lat, unit.ring):
+        if _point_in_unit(lon, lat, unit):
             return unit
     return None
 
@@ -692,7 +778,12 @@ def _unmapped_land_in_view(
     if not land.any():
         return False
     for unit in units:
-        land &= ~MplPath(unit.ring).contains_points(pts)
+        covered = MplPath(unit.ring).contains_points(pts)
+        # ground a hole cuts out is not covered by this unit, so it stays in
+        # the running as ground the layer maps nothing for
+        for hole in unit.holes:
+            covered &= ~MplPath(hole).contains_points(pts)
+        land &= ~covered
         if not land.any():
             return False
     return True
@@ -750,8 +841,8 @@ def _plot_units_map(
         legend_order: dict[str, tuple[int, str]] = {}
         notes: list[str] = []
         for unit in in_view:
-            patch = plt.Polygon(
-                unit.ring, closed=True,
+            patch = _unit_patch(
+                unit,
                 facecolor=carto.geology_colour(unit.glg, unit.color,
                                                prefer_source_colours),
                 edgecolor=carto.LINES["contact"].color,

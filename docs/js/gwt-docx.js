@@ -47,6 +47,10 @@
     this.accent = String(style.accent_color || '#1F5C8B').replace('#', '');
     this.font = style.font_name || 'Calibri';
     this.baseSize = style.base_font_size_pt || 11;
+    /* Set by provisionalStamp and read by executiveSummary, which used to
+     * open with an unqualified verdict two pages after the stamp said the
+     * evidence was incomplete. */
+    this.stampedReadiness = null;
   }
 
   ReportBuilder.prototype.run = function (text, attrs) {
@@ -143,8 +147,18 @@
       self.paragraph(line, { size: 12, align: 'center' });
     });
     this.spacer();
-    if (details && details.length) {
-      this.keyValueTable(details);
+    /* A detail nobody filled in is left off rather than printed as a label
+     * with nothing after it: the handover cover carried a bare "Project:"
+     * and a bare "Date:", which read as two blank lines on the first page of
+     * a signed document (docx_utils.ReportBuilder.cover). An em dash is how
+     * the rest of this file writes "no value recorded", so it is as unfilled
+     * here as an empty string. */
+    var filled = (details || []).filter(function (pair) {
+      var value = pair[1] === null || pair[1] === undefined ? '' : String(pair[1]).trim();
+      return value !== '' && value !== '—';
+    });
+    if (filled.length) {
+      this.keyValueTable(filled);
     }
     this.pageBreak();
     return this;
@@ -160,6 +174,9 @@
   ReportBuilder.prototype.provisionalStamp = function (readiness) {
     if (!readiness || readiness.is_certifiable) return this;
     var self = this;
+    /* remembered for the executive summary, which is two pages on and used
+     * to give the verdict with no hint that the cover had qualified it */
+    this.stampedReadiness = readiness;
     var overridden = readiness.state === 'ready_with_overrides';
     this.paragraph(overridden
       ? 'ISSUED ON OVERRIDE - NOT A CERTIFICATION'
@@ -188,6 +205,23 @@
   ReportBuilder.prototype.executiveSummary = function (paragraphs, keyFindings) {
     var self = this;
     this.heading('Executive Summary', 1);
+    /* The summary is qualified the way the cover is. A provisional stamp on
+     * page one and an unhedged "the source is rated at ..." on page three is
+     * a contradiction a reader who starts at the summary never sees resolved,
+     * so the same qualification is repeated here, naming what is outstanding
+     * or overridden (docx_utils.ReportBuilder.executive_summary). */
+    var readiness = this.stampedReadiness;
+    if (readiness && !readiness.is_certifiable) {
+      var what = [];
+      var outstanding = (readiness.unmet || []).map(function (req) { return req.title; });
+      var overridden = (readiness.overridden || []).map(function (req) { return req.title; });
+      if (outstanding.length) what.push('outstanding: ' + outstanding.join(', '));
+      if (overridden.length) what.push('issued on override: ' + overridden.join(', '));
+      this.paragraph('This report is provisional and not a certification (' +
+        what.join('; ') + '). The findings below are those the supplied ' +
+        'records support; the cover says what is missing.',
+        { bold: true, align: 'justify' });
+    }
     (paragraphs || []).filter(Boolean).forEach(function (text) {
       self.paragraph(text, { align: 'justify' });
     });
@@ -366,7 +400,7 @@
     }), {
       header: ['Stage', 'Decision', 'Certified value', 'Signed'],
       colWidthsCm: [3.6, 2.6, 4.4, 5.0], fontSize: 9.5,
-      caption: 'Decisions recorded against this borehole',
+      caption: 'Decisions recorded against this borehole.',
     });
     list.forEach(function (record) {
       if (record.status === 'overridden') {
@@ -568,6 +602,14 @@
       'Atlas Country Hydrogeology Maps. British Geological Survey Open Report OR/21/063.',
     stop_the_rot: 'RWSN (2021). Stop the Rot: Handpump Corrosion and Premature ' +
       'Failure in Sub-Saharan Africa. Rural Water Supply Network, St Gallen.',
+    /* The browser printed 'the national acceptability limit' in three reports
+     * and named no standard at all, while the Python reports cited this and
+     * said in the citation what the limits are worth. */
+    slsb: 'Sierra Leone Standards Bureau. Sierra Leone Standard for drinking ' +
+      'water quality (SLS). Freetown: SLSB. Edition and date not verified ' +
+      'against the issued specification: the national limits this toolkit ' +
+      'applies are provisional (WHO or regional figures carried across) ' +
+      'until confirmed against it.',
   };
 
   var GLOSSARY = [
@@ -589,6 +631,26 @@
    * in the browser and one built by the Python package read the same way.
    */
 
+  /* One grid ordinate as a coordinate, not as a quantity: "778000 m E (UTM
+   * zone 28N)". Mirrors groundwater/utils.py utm_text. The reports printed
+   * it through fmtNum, which gave "778,000" - a thousands separator and no
+   * zone, which is a number nobody can type into a GPS, and which in a
+   * country straddling zones 28N and 29N does not even say which grid it
+   * belongs to. The zone rides on the easting only, and only where both
+   * ordinates are present, because that is the pair that fixes a position. */
+  function utmText(site, axis) {
+    if (!site) return '';
+    var value = site[axis];
+    if (value === null || value === undefined || value === '') return '';
+    var located = site.easting !== null && site.easting !== undefined &&
+      site.northing !== null && site.northing !== undefined;
+    var zone = (located && axis === 'easting')
+      ? ' (UTM zone ' + (site.utm_zone ||
+        C.inferZoneForSierraLeone(Number(site.easting))) + 'N)' : '';
+    return C.pyFixed(Number(value), 0) + ' m ' +
+      (axis === 'easting' ? 'E' : 'N') + zone;
+  }
+
   function siteDetails(site, extra) {
     var pairs = [
       ['Client', site.client || '—'],
@@ -599,8 +661,8 @@
       ['Project reference', site.project_ref || '—'],
     ];
     if (site.easting !== null && site.easting !== undefined) {
-      pairs.push(['GPS easting', C.fmtNum(site.easting, 7)]);
-      pairs.push(['GPS northing', C.fmtNum(site.northing, 7)]);
+      pairs.push(['GPS easting', utmText(site, 'easting')]);
+      pairs.push(['GPS northing', utmText(site, 'northing')]);
     }
     if (site.elevation_m !== null && site.elevation_m !== undefined) {
       pairs.push(['Elevation', C.fmtNum(site.elevation_m) + ' m']);
@@ -670,6 +732,51 @@
         'periodically thereafter.'];
     }
     return [shared];
+  }
+
+  /* A reason raised as an exception message starts lower case and carries no
+   * full stop; the report prints it as a sentence. Mirrors
+   * reporting/geophysical.py _sentence. */
+  function sentence(text) {
+    var trimmed = String(text === null || text === undefined ? '' : text).trim();
+    if (!trimmed) return trimmed;
+    return trimmed.charAt(0).toUpperCase() + trimmed.slice(1) +
+      (trimmed.charAt(trimmed.length - 1) === '.' ? '' : '.');
+  }
+
+  /* The maps and sections built from the survey's own soundings, and the list
+   * of the ones it could not support. Mirrors
+   * reporting/geophysical.py _add_subsurface_figures: the figures are the
+   * caller's (the app draws them, inside the report build, on the print
+   * palette), and this places them, heads them and writes down what was not
+   * drawn and why. A report that quietly prints four figures where six were
+   * planned tells a reviewer nothing about the two that are missing, and the
+   * reason is usually a GPS position nobody recorded - which a reviewer can
+   * ask for. */
+  function subsurfaceSection(b, context) {
+    var subsurface = context.subsurface || {};
+    var figures = subsurface.figures || [];
+    var notDrawn = subsurface.notDrawn || [];
+    if (!figures.length && !notDrawn.length) return;
+    b.heading('Subsurface maps from the survey', 2);
+    if (figures.length) {
+      b.paragraph('The maps in this section are drawn from the soundings ' +
+        'themselves rather than from a national dataset, so they carry the ' +
+        'survey\'s own resolution. Each interpolated surface is blanked ' +
+        'outside the ground the soundings enclose: a contour beyond the last ' +
+        'peg is the interpolator continuing a trend, and a borehole gets ' +
+        'sited on it.', { align: 'justify' });
+    }
+    figures.forEach(function (fig) {
+      b.figure(fig.image, fig.caption, fig.widthCm);
+    });
+    if (notDrawn.length) {
+      b.paragraph(figures.length
+        ? 'Not drawn from this survey, and why:'
+        : 'No subsurface map or section could be drawn from this survey:',
+      { bold: true });
+      b.bullets(notDrawn.map(sentence));
+    }
   }
 
   /* --- 1. geophysical survey ------------------------------------------------- */
@@ -752,6 +859,25 @@
     b.paragraph('The site was walked with the community to identify candidate ' +
       'points clear of latrines, graveyards, refuse pits and flood paths, and ' +
       'accessible to a drilling rig.', { align: 'justify' });
+    /* The browser can never have an elevation model, and the Python report
+     * always says so here. Silent, a reader took the survey point map for a
+     * topographic one; and this is the sentence that explains why the ground
+     * profile below is the only ground-level figure in the document. */
+    b.paragraph('No elevation model was supplied with this survey, so no ' +
+      'topographic map is drawn: the toolkit bundles none and invents none. ' +
+      'The elevations the crew recorded at the soundings are the ground ' +
+      'levels this report has.', { align: 'justify' });
+    /* The ground surface along the traverse, in the position
+     * reporting/geophysical.py gives it: at the end of the reconnaissance
+     * section, where the reader has just been told where the points are and
+     * before the survey itself is described. The caption is the engine's,
+     * word for word with the Python's; the figure is absent, with no line
+     * said about it, whenever the recorded levels will not support one, which
+     * is how the Python omits it. */
+    if (context.groundProfile) {
+      b.figure(context.groundProfile.image, context.groundProfile.caption,
+        context.groundProfile.widthCm);
+    }
     b.heading('3.2 Geophysical Survey', 2);
     b.heading('3.2.1 Resistivity Profiling', 3);
     b.paragraph('Resistivity measurements were made with a Schlumberger array. ' +
@@ -795,7 +921,7 @@
       }), {
         header: ['Layer', 'Resistivity (Ω·m)', 'Thickness (m)', 'Top (m)',
           'Bottom (m)', 'Interpretation'],
-        caption: 'Layered model for ' + interp.sounding_id,
+        caption: 'Layered model for ' + interp.sounding_id + '.',
         colWidthsCm: [1.4, 2.6, 2.2, 1.8, 1.8, 6.2],
       });
       var fig = figures.filter(function (f) { return f.soundingId === interp.sounding_id; });
@@ -806,7 +932,7 @@
 
     if (interpretations.length) {
       b.heading('Drill-target suitability', 2);
-      b.table(C.drillingPreferenceTable(interpretations, context.preferredOrder)
+      b.table(C.drillingPreferenceTable(interpretations, context.preferredOrder, context.ves)
         .map(function (row) {
           return [row['No.'], row['VES Point'], row.Layer, row['Thickness (m)'],
             row['Depth (m)'], row[C.LAYER_RESISTIVITY_COLUMN],
@@ -820,7 +946,24 @@
           'base and the drilling depth are minima.',
         fontSize: 8.5,
       });
+      /* The drill-target map, where reporting/geophysical.py _suitability_block
+       * puts it: under the ranked table, above the subsurface maps. It is
+       * written inside this heading rather than beside the call to
+       * subsurfaceSection below so that the figure cannot come out from under
+       * the heading that says what it ranks. Its caption changes with what
+       * the figure shows - whether a star marks the recommended target, and
+       * whether a surface is interpolated between the pegs - so it is taken
+       * from the engine that drew it rather than written again here. A
+       * survey with no scored point, or none carrying a position, sets
+       * nothing here and the report says nothing: the Python writes no "not
+       * drawn" line for this figure. */
+      if (context.suitabilityMap) {
+        b.figure(context.suitabilityMap.image, context.suitabilityMap.caption,
+          context.suitabilityMap.widthCm);
+      }
     }
+
+    subsurfaceSection(b, context);
 
     b.heading('5. Conclusions and Recommendations', 1);
     if (best) {
@@ -833,7 +976,8 @@
               'and the penetration rate, and stop in fresh rock.'
             : ''),
         best.water_zones.length
-          ? 'Target the interpreted water bearing zone(s) at ' +
+          ? 'Target the interpreted water bearing ' +
+            S.plural(best.water_zones.length, 'zone') + ' at ' +
             best.water_zones.map(function (z) {
               return C.zoneCell(z[0], z[1], C.zoneIsOpen(best, z)) + ' m'; }).join(', ') + '.'
           : 'No clear water bearing zone was resolved; treat the hole as exploratory.',
@@ -916,10 +1060,13 @@
     b.cover(['Borehole Completion Report',
       (log.borehole_ref ? log.borehole_ref + ' — ' : '') + (site.community || '')],
       [], siteDetails(site, [
-        ['Borehole reference', log.borehole_ref || '—'],
-        ['Total depth', log.total_depth_m ? C.fmtNum(log.total_depth_m) + ' m' : '—'],
-        ['Drilling method', log.drilling_method || '—'],
-        ['Status', log.status || '—'],
+        ['Borehole reference', log.borehole_ref || ''],
+        ['Total depth', log.total_depth_m ? C.fmtNum(log.total_depth_m) + ' m' : ''],
+        ['Drilling method', log.drilling_method || ''],
+        /* The driller's word for the hole, not this report's verdict on it.
+         * A bare "Status: Successful" on a cover stamped PROVISIONAL reads
+         * as the document contradicting itself (completion.py). */
+        ['Status as recorded by the driller', log.status || ''],
       ]));
     b.provisionalStamp(context.readiness);
     b.tableOfContents();
@@ -955,8 +1102,12 @@
     ], [
       log.status ? 'Outcome: ' + log.status : null,
       log.total_depth_m ? 'Total depth: ' + C.fmtNum(log.total_depth_m) + ' m' : null,
-      design ? 'Screened interval(s): ' + design.screens.map(function (s) {
-        return s.top_m.toFixed(1) + '–' + s.bottom_m.toFixed(1) + ' m'; }).join(', ') : null,
+      design ? 'Screened ' + S.plural(design.screens.length, 'interval') + ': ' +
+        design.screens.map(function (s) {
+          // the construction table in this same report prints "25-35 m" from
+          // the design's own summary rows; a key finding that said
+          // "25.0-35.0 m" made one document give two readings of one screen
+          return C.formatG(s.top_m) + '-' + C.formatG(s.bottom_m) + ' m'; }).join('; ') : null,
       summaryRec && summaryRec.safe_yield_m3_per_h
         ? 'Safe yield: ' + C.fmtNum(summaryRec.safe_yield_m3_per_h) + ' m3/h' +
           (summaryRec.is_indicative ? ' (indicative)' : '') + '.' : null,
@@ -999,7 +1150,7 @@
       ];
     }), {
       header: ['Depth (m)', 'Thickness (m)', 'Lithology', 'Bit'],
-      caption: 'Drilling log', colWidthsCm: [2.6, 2.4, 8.6, 2.0],
+      caption: 'Drilling log.', colWidthsCm: [2.6, 2.4, 8.6, 2.0],
     });
 
     /* completion.py: the heading, the note, the summary table, the drawing,
@@ -1084,7 +1235,7 @@
         rows.push(['Yield confidence', rec.is_indicative
           ? 'indicative: ' + rec.confidence_reasons.join('; ') : 'established']);
       }
-      b.table(rows, { header: ['Item', 'Value'], caption: 'Pumping test summary',
+      b.table(rows, { header: ['Item', 'Value'], caption: 'Pumping test summary.',
         colWidthsCm: [5.6, 10.0] });
       section += 1;
     }
@@ -1131,9 +1282,17 @@
             breachedLimit(r), r.remark || ''];
         }), {
           header: ['Parameter', 'Value', 'Unit', 'Limit', 'Remark'],
-          caption: 'Parameters above guideline or standard limits',
+          caption: 'Parameters above guideline or standard limits.',
           fontSize: 9, colWidthsCm: [3.8, 1.8, 1.8, 2.2, 6.0],
         });
+        /* A national limit the quality report calls provisional is
+         * provisional here too. This table states the limit a parameter
+         * breached without the column the quality report carries, so a
+         * reader met the words "national standard" with nothing to say the
+         * edition behind them is unverified (completion.py). */
+        if (C.provisionalNationalParameters().length) {
+          b.paragraph(C.PROVISIONAL_NATIONAL_NOTE, { align: 'justify', italic: true });
+        }
       }
       section += 1;
     }
@@ -1188,7 +1347,8 @@
     b.bullets(advice);
 
     b.signOff(context.signOff);
-    b.references([REFERENCES.rwsn_professional, REFERENCES.rwsn_supervision]);
+    b.references([REFERENCES.rwsn_professional, REFERENCES.rwsn_supervision,
+      REFERENCES.who, REFERENCES.slsb]);
     b.glossary(GLOSSARY);
     return b;
   }
@@ -1382,7 +1542,7 @@
             (st.two_point ? ' (indicative)' : '')];
       }), {
         header: ['Step', 'Q (m³/h)', 'Drawdown (m)', 's/Q (day/m²)', 'Well efficiency'],
-        caption: 'Step test results',
+        caption: 'Step test results.',
       });
     }
     figures.forEach(function (f) { b.figure(f.image, f.caption, f.widthCm || 15); });
@@ -1407,7 +1567,7 @@
     if (methodRows.length) {
       b.table(methodRows, {
         header: ['Method', 'Transmissivity (m²/day)', 'Status'],
-        caption: 'Transmissivity estimates and what each is worth',
+        caption: 'Transmissivity estimates and what each is worth.',
         colWidthsCm: [3.6, 3.4, 8.6],
       });
     } else {
@@ -1429,7 +1589,7 @@
         : 'pending'],
       ['Pump setting during the test', test.pump_setting_m
         ? C.fmtNum(test.pump_setting_m) + ' m' : 'not recorded'],
-    ], { header: ['Quantity', 'Value'], caption: 'Yield summary',
+    ], { header: ['Quantity', 'Value'], caption: 'Yield summary.',
       colWidthsCm: [7.0, 8.6] });
 
     b.heading('5. Yield Recommendation', 1);
@@ -1446,7 +1606,7 @@
         ['Confidence', rec.is_indicative ? 'indicative' : 'established'],
         ['Recommended pump intake', pumpDepth !== null
           ? C.fmtNum(pumpDepth) + ' m ' + DATUM_TEXT : '—'],
-      ], { header: ['Quantity', 'Value'], caption: 'Yield recommendation',
+      ], { header: ['Quantity', 'Value'], caption: 'Yield recommendation.',
         colWidthsCm: [7.0, 8.6] });
       if (rec.envelope_basis) b.paragraph(rec.envelope_basis, { align: 'justify' });
       if (rec.pump_depth_basis) b.paragraph(rec.pump_depth_basis, { align: 'justify' });
@@ -1491,7 +1651,7 @@
       }), {
         header: ['Scenario', 'Further decline (m)', 'Static level (m)',
           'Available drawdown (m)', 'Safe yield (m³/h)', 'Pump intake (m)'],
-        caption: 'Safe yield and pump setting at each seasonal water level',
+        caption: 'Safe yield and pump setting at each seasonal water level.',
       });
       b.paragraph('The annual range used is ' +
         C.pyFixed(seasonal.annual_range_m, 1) + ' m — ' + seasonal.range_source +
@@ -1574,7 +1734,7 @@
         statusLabel(row.status), row.remark || ''];
     }), {
       header: ['Parameter', 'Result', 'Unit', 'WHO health', 'National', 'Status', 'Remark'],
-      caption: 'Laboratory results against WHO and national standards',
+      caption: 'Laboratory results against WHO and national standards.',
       fontSize: 8.5, colWidthsCm: [3.0, 1.6, 1.4, 1.8, 1.8, 1.9, 4.1],
     });
 
@@ -1612,7 +1772,7 @@
           ['Aggressive Index (AI)', String(cor.aggressive_index)],
           ['Larson-Skold ratio', cor.larson_skold === null ? '—' : String(cor.larson_skold)],
           ['Classification', cor.classification],
-        ], { header: ['Index', 'Value'], caption: 'Corrosivity indices',
+        ], { header: ['Index', 'Value'], caption: 'Corrosivity indices.',
           colWidthsCm: [8.0, 7.6] });
       }
       b.paragraph(cor.materials_note, { align: 'justify' });
@@ -1620,10 +1780,23 @@
     }
 
     b.heading('5. Hydrochemical Facies', 1);
+    /* The section used to be two figures and no words: a reader who cannot
+     * read a Piper diagram was told nothing at all by the section named
+     * after what it shows. faciesOf names the water type and says what it
+     * means, above the diagrams (reporting/quality.py). */
+    var facies = C.faciesOf(sample);
+    if (facies) b.paragraph(facies.sentence, { align: 'justify' });
     figures.forEach(function (f) { b.figure(f.image, f.caption, f.widthCm || 14); });
 
     b.heading('6. Recommendations', 1);
     var recommendations = [];
+    /* The assessment's own note, rather than a paraphrase of it written
+     * here: the two had already drifted apart, and only this copy still
+     * spoke of a handpump's rods where the borehole may carry a
+     * submersible (reporting/quality.py puts corr.materials_note first). */
+    if (assessment.corrosivity && assessment.corrosivity.is_aggressive) {
+      recommendations.push(assessment.corrosivity.materials_note);
+    }
     if (assessment.health_exceedances.length) {
       recommendations.push('Treat or replace the source before it is used for ' +
         'drinking: ' + assessment.health_exceedances.map(function (r) {
@@ -1639,10 +1812,6 @@
         'the results are complete: ' +
         (assessment.uncertainties || []).join('; ') + '.');
     }
-    if (assessment.corrosivity && assessment.corrosivity.is_aggressive) {
-      recommendations.push('Specify uPVC or stainless steel rising main and pump ' +
-        'components; avoid galvanised iron.');
-    }
     recommendations.push('Disinfect the borehole after any maintenance and ' +
       're-test microbiological quality before the source is returned to use.');
     recommendations.push('Repeat the analysis at least annually, and after any ' +
@@ -1654,7 +1823,7 @@
       b.paragraph(text, { align: 'justify' });
     });
     b.signOff(context.signOff);
-    b.references([REFERENCES.who, REFERENCES.stop_the_rot]);
+    b.references([REFERENCES.who, REFERENCES.slsb, REFERENCES.stop_the_rot]);
     b.glossary(GLOSSARY);
     return b;
   }
@@ -1729,7 +1898,7 @@
       ['Crew time', C.fmtNum(estimate.inputs.crew_days) + ' days'],
       ['Mobilisation distance', C.fmtNum(estimate.inputs.mobilisation_distance_km) +
         ' km one way'],
-    ], { header: ['Quantity', 'Value'], caption: 'Quantities driving the estimate',
+    ], { header: ['Quantity', 'Value'], caption: 'Quantities driving the estimate.',
       colWidthsCm: [7.0, 8.6] });
     if (estimate.assumptions.length) {
       b.paragraph('Assumptions where a figure was not supplied:', { bold: true });
@@ -1744,13 +1913,13 @@
     }).concat([['', '', 'Direct works cost', '', '', '',
       S.thousands(estimate.direct_cost_usd, 2)]]), {
       header: ['Code', 'Stage', 'Item', 'Unit', 'Qty', 'Rate (US$)', 'Amount (US$)'],
-      caption: 'Bill of quantities', fontSize: 8.5,
+      caption: 'Bill of quantities.', fontSize: 8.5,
       colWidthsCm: [1.3, 1.9, 5.6, 1.5, 1.5, 1.9, 1.9],
     });
 
     b.heading('4. Cost Summary', 1);
     b.table(C.costSummaryRows(estimate), {
-      header: ['Item', 'US$', 'SLE'], caption: 'Cost and price summary',
+      header: ['Item', 'US$', 'SLE'], caption: 'Cost and price summary.',
       colWidthsCm: [7.0, 4.3, 4.3],
     });
     figures.forEach(function (f) { b.figure(f.image, f.caption, f.widthCm || 15); });
@@ -1771,7 +1940,7 @@
         'village has any.', { align: 'justify' });
       b.table(C.programmeSummaryRows(programme), {
         header: ['Item', 'US$', 'SLE'],
-        caption: 'Programme roll-up, carrying the expected dry attempts',
+        caption: 'Programme roll-up, carrying the expected dry attempts.',
         colWidthsCm: [7.0, 4.3, 4.3],
       });
       if (programme.assumptions && programme.assumptions.length) {
@@ -1823,7 +1992,7 @@
     }), {
       header: ['Stage', 'Items', 'Answered', 'Satisfied', 'Failed', 'Critical failed',
         'Progress'],
-      caption: 'Checklist progress by stage', fontSize: 9,
+      caption: 'Checklist progress by stage.', fontSize: 9,
     });
 
     areaSection(b, context, '1.1 Location and setting');
@@ -1853,7 +2022,7 @@
           check.status.toUpperCase(), check.message];
       }), {
         header: ['Check', 'Measured', 'Acceptance limit', 'Result', 'Note'],
-        caption: 'Field acceptance checks', fontSize: 8.5,
+        caption: 'Field acceptance checks.', fontSize: 8.5,
         colWidthsCm: [3.0, 2.8, 3.4, 1.6, 4.8],
       });
     }
@@ -1875,6 +2044,75 @@
   }
 
   /* --- 7. project handover --------------------------------------------------- */
+
+  /* The care a handpump needs: rods to tighten, strokes to count, a pump
+   * head to inspect. groundwater/reporting/handover.py _OM_GUIDANCE. */
+  var OM_GUIDANCE = [
+    ['Daily', [
+      'Keep the apron and surroundings clean; no washing or animal watering ' +
+        'on the apron.',
+      'Check for leaks, unusual pump noise and discoloured water.',
+      'Keep the drainage channel and soakaway free flowing.',
+    ]],
+    ['Weekly', [
+      'Tighten loose bolts on the pump head and inspect the apron for cracks.',
+      'Record the approximate hours of use or strokes per day.',
+    ]],
+    ['Monthly', [
+      'Measure and record the water level where a dip access exists.',
+      'Collect the agreed user fees and update the cash book.',
+      'Inspect the fence and the sanitary protection zone (no pit latrine, ' +
+        'refuse pit or animal pen within 30 m).',
+    ]],
+    ['Yearly', [
+      'Service the pump according to the manufacturer schedule and replace ' +
+        'fast wearing parts.',
+      'Repeat the physico-chemical and bacteriological water tests.',
+      'Review the tariff against the cost of spare parts.',
+    ]],
+  ];
+
+  /* The same care for a submersible or solar pump, which has no pump rods
+   * and no strokes to count. The handpump list used to go out with a
+   * recorded submersible pump. _OM_GUIDANCE_MOTORISED in handover.py. */
+  var OM_GUIDANCE_MOTORISED = [
+    ['Daily', [
+      'Keep the pump house, apron and surroundings clean; no washing or ' +
+        'animal watering at the tap stand.',
+      'Check for leaks, unusual pump or motor noise, discoloured water and ' +
+        'a falling flow.',
+      'Keep the drainage channel and soakaway free flowing.',
+    ]],
+    ['Weekly', [
+      'Record the hours of pumping and the meter reading, if fitted.',
+      'Check the control box, cables, starter and (for a solar pump) the ' +
+        'array for damage, loose connections and shading.',
+    ]],
+    ['Monthly', [
+      'Measure and record the water level where a dip access exists.',
+      'Collect the agreed user fees and update the cash book.',
+      'Inspect the fence and the sanitary protection zone (no pit latrine, ' +
+        'refuse pit or animal pen within 30 m).',
+      'Check the running current against the commissioning value.',
+    ]],
+    ['Yearly', [
+      'Service the pump and motor according to the manufacturer schedule; ' +
+        'check the rising main and cable for corrosion and wear.',
+      'Repeat the physico-chemical and bacteriological water tests.',
+      'Review the tariff against the cost of spare parts and power.',
+    ]],
+  ];
+
+  /* The care list for the pump that was actually installed, by the same
+   * words handover.py om_guidance matches on. */
+  function omGuidance(pumpType) {
+    var kind = String(pumpType || '').toLowerCase();
+    var motorised = ['submersible', 'solar', 'motor', 'electric'];
+    for (var i = 0; i < motorised.length; i++) {
+      if (kind.indexOf(motorised[i]) >= 0) return OM_GUIDANCE_MOTORISED;
+    }
+    return OM_GUIDANCE;
+  }
 
   /* The works list, built only from the records the project actually holds.
    *
@@ -1974,24 +2212,55 @@
     b.bullets(handoverWorks(context).concat(context.worksNotes || []));
 
     b.heading('3. Borehole Data Sheet', 1);
-    var dataRows = [
-      ['Borehole reference', log.borehole_ref || context.boreholeRef || '—'],
-      ['Total depth', log.total_depth_m ? C.fmtNum(log.total_depth_m) + ' m' : '—'],
-      ['Static water level', analysis && analysis.test.static_water_level_m !== null
-        ? analysis.test.static_water_level_m.toFixed(2) + ' m' : '—'],
-      ['Safe yield', rec ? C.yieldRangeText(rec) +
-        (rec.is_indicative ? ' (indicative)' : '') : '—'],
-      ['Yield confidence', rec && rec.safe_yield_m3_per_h
-        ? (rec.is_indicative ? 'indicative: ' + rec.confidence_reasons.join('; ')
-          : 'established') : '—'],
-      ['Pump intake depth', intake
-        ? C.fmtNum(intake) + ' m below the top of the casing' : '—'],
-      ['Screened intervals', design ? design.screens.map(function (s) {
-        return s.top_m.toFixed(1) + '–' + s.bottom_m.toFixed(1) + ' m'; }).join(', ') : '—'],
-      ['Casing', design ? design.casing_diameter_in + '" ' + design.casing_material : '—'],
-    ];
+    /* Assembled from the records themselves rather than from a fixed list,
+     * as handover.py does, so the sheet carries the drilling method, the
+     * strikes, the whole construction summary and the pump that was
+     * installed instead of a handful of headline figures. */
+    var dataRows = [];
+    if (context.log) {
+      dataRows.push(['Borehole reference', log.borehole_ref || context.boreholeRef || '—']);
+      dataRows.push(['Total depth',
+        log.total_depth_m ? C.fmtNum(log.total_depth_m) + ' m' : '—']);
+      dataRows.push(['Drilling method', log.drilling_method || '—']);
+      dataRows.push(['Water strikes', (log.water_strikes_m || []).length
+        ? log.water_strikes_m.map(function (w) { return C.formatG(w) + ' m'; }).join(', ')
+        : 'n/a']);
+      dataRows.push(['Completion date', log.completion_date || '—']);
+      dataRows.push(['Status', log.status || '—']);
+    }
+    if (design) dataRows = dataRows.concat(C.designSummaryRows(design));
+    if (analysis) {
+      if (analysis.transmissivity_m2_per_day) {
+        dataRows.push(['Transmissivity',
+          C.fmtNum(analysis.transmissivity_m2_per_day) + ' m2/day']);
+      }
+      /* handover.py nests both inside "if yr is not None": an intake with no
+       * yield recommendation behind it is a depth the test never supported. */
+      if (rec) {
+        if (rec.safe_yield_m3_per_h) {
+          dataRows.push(['Safe yield (safety factor ' + C.formatG(rec.safety_factor) + ')',
+            C.yieldRangeText(rec) + (rec.is_indicative ? ' (indicative)' : '')]);
+          dataRows.push(['Yield confidence', rec.is_indicative
+            ? 'indicative: ' + rec.confidence_reasons.join('; ') : 'established']);
+        }
+        if (intake) {
+          dataRows.push(['Pump intake depth',
+            C.fmtNum(intake) + ' m below the top of the casing']);
+        }
+      }
+    }
+    if (context.pumpType) dataRows.push(['Pump type', context.pumpType]);
+    /* One row per item: the log and the design both carry a total depth, a
+     * static level and the strikes, and the sheet printed each of them
+     * twice, a metre apart, for a reader to reconcile. */
+    var seenRows = {};
+    dataRows = dataRows.filter(function (row) {
+      if (seenRows[row[0]]) return false;
+      seenRows[row[0]] = true;
+      return true;
+    });
     b.table(dataRows, { header: ['Item', 'Value'],
-      caption: 'Borehole data sheet', colWidthsCm: [6.0, 9.6] });
+      caption: 'Borehole data sheet.', colWidthsCm: [6.0, 9.6] });
     /* handover.py: the drawing is an as-built diagram only when the screens
      * are the ones the log records as installed; then the design's warnings */
     var designFig = design ? designFigure(figures) : null;
@@ -2010,8 +2279,23 @@
     b.heading('4. Water Quality', 1);
     if (assessment) {
       b.paragraph(assessment.verdict, { align: 'justify' });
-      if (assessment.corrosivity) {
-        b.paragraph(assessment.corrosivity.materials_note, { align: 'justify' });
+      /* Every exceedance, national ones included: a national breach is a
+       * compliance failure and belongs in the document that hands the
+       * source over, not only in the quality report (handover.py). */
+      var breaches = assessment.all_exceedances || [];
+      if (breaches.length) {
+        b.table(breaches.map(function (r) {
+          return [r.parameter, C.fmtNum(r.value), r.unit || '', r.remark || ''];
+        }), {
+          header: ['Parameter', 'Value', 'Unit', 'Remark'],
+          caption: 'Parameters above guideline or standard limits.',
+          fontSize: 9, colWidthsCm: [3.8, 1.8, 1.8, 8.2],
+        });
+        /* A national limit the quality report calls provisional is
+         * provisional on the handover certificate too. */
+        if (C.provisionalNationalParameters().length) {
+          b.paragraph(C.PROVISIONAL_NATIONAL_NOTE, { align: 'justify', italic: true });
+        }
       }
     } else {
       b.paragraph('No water quality analysis was available at handover. Sample ' +
@@ -2020,26 +2304,33 @@
     }
 
     b.heading('5. Operation and Maintenance Guidance', 1);
-    b.bullets([
-      'Keep the apron, drainage channel and soakaway clean and in good repair; ' +
-        'standing water beside the headworks is the commonest route for ' +
-        'contamination to reach the borehole.',
-      'Keep animals and latrines at least 30 m from the borehole, and never ' +
-        'site a new latrine upgradient of it.',
-      'Pump gently and steadily. Do not exceed the recommended pump setting ' +
-        'depth or the safe yield.',
-      'Inspect the rising main and the wetted metal parts of the pump for corrosion at each service.',
-      'Report any change in taste, smell, colour or yield to the district water ' +
-        'office immediately.',
-      'Keep a record of every repair, with the date, the part replaced and the cost.',
-    ].concat(context.omNotes || []));
+    b.paragraph('The lifetime of the borehole depends on routine care. The ' +
+      'tasks below follow standard rural water supply practice; the community ' +
+      'should keep a logbook of all maintenance, breakdowns and payments.',
+      { align: 'justify' });
+    /* The tasks follow the pump that was installed. This section used to
+     * hard-code handpump care - bolts on the pump head, strokes per day -
+     * and went out unchanged over a data sheet recording a submersible,
+     * which has neither (handover.py om_guidance). */
+    omGuidance(context.pumpType).forEach(function (period) {
+      b.paragraph(period[0], { bold: true });
+      b.bullets(period[1]);
+    });
+    if (rec && rec.safe_yield_m3_per_h) {
+      b.paragraph('Operate the pump at no more than ' +
+        C.fmtNum(rec.safe_yield_m3_per_h) + ' m3/h and allow the recommended ' +
+        'rest periods. If the water level reaches the pump intake, stop ' +
+        'pumping and let the borehole recover.', { bold: true });
+    }
+    if (context.tariffNote) b.paragraph('Tariff arrangement: ' + context.tariffNote);
+    if ((context.omNotes || []).length) b.bullets(context.omNotes);
 
     b.heading('6. Community / WASH Committee', 1);
     if ((context.committee || []).length) {
       b.table(context.committee.map(function (member) {
         return [member.name || '', member.role || '', member.contact || ''];
       }), { header: ['Name', 'Role', 'Contact'],
-        caption: 'Water and sanitation committee', colWidthsCm: [5.5, 5.0, 5.1] });
+        caption: 'Water and sanitation committee.', colWidthsCm: [5.5, 5.0, 5.1] });
     } else {
       b.paragraph('The water and sanitation committee members are to be recorded ' +
         'at handover.', { align: 'justify' });
@@ -2059,7 +2350,8 @@
     b.signatures(['Client representative', 'Community / committee chair',
       'Contractor', 'District water office']);
     b.signOff(context.signOff);
-    b.references([REFERENCES.rwsn_professional, REFERENCES.who, REFERENCES.unicef_toolkit]);
+    b.references([REFERENCES.rwsn_professional, REFERENCES.who, REFERENCES.slsb,
+      REFERENCES.unicef_toolkit]);
     b.glossary(GLOSSARY);
     return b;
   }
@@ -2086,7 +2378,7 @@
         'no network and no application installed.', 7.0);
     }
     b.table(C.placardLines(asset, state), {
-      header: ['', ''], caption: 'Borehole details', colWidthsCm: [5.0, 10.0] });
+      header: ['', ''], caption: 'Borehole details.', colWidthsCm: [5.0, 10.0] });
     b.paragraph('Report a breakdown or a change to this borehole against the ' +
       'identifier above. Quote it in full, including the last character — ' +
       'it is a check character, and it is what stops a repair being recorded ' +
@@ -2113,7 +2405,9 @@
         'the community went back to whatever they used before.', { bold: true });
     }
     if (state.undated_events) {
-      b.paragraph(state.undated_events + ' record(s) carry a date that could ' +
+      b.paragraph(state.undated_events + ' ' +
+        S.plural(state.undated_events, 'record') + ' ' +
+        (state.undated_events === 1 ? 'carries' : 'carry') + ' a date that could ' +
         'not be read. They are listed below with the date as written, but they ' +
         'establish nothing about when anything last happened.');
     }
@@ -2153,7 +2447,7 @@
           e.by || '', e.photo ? 'yes' : ''];
       }), {
         header: ['Date', 'Event', 'Note', 'Recorded by', 'Photo'],
-        caption: 'Everything recorded against this borehole',
+        caption: 'Everything recorded against this borehole.',
         colWidthsCm: [2.4, 3.2, 6.0, 2.4, 1.5],
       });
       b.paragraph('This history is append-only: a mistake is corrected by ' +
@@ -2218,7 +2512,7 @@
     }), {
       header: ['Code', 'Item', 'Unit', 'Contract', 'Varied', 'Measured',
         'Payable', 'Rate (USD)', 'Amount (USD)'],
-      caption: 'Work measured to date and what is payable on it',
+      caption: 'Work measured to date and what is payable on it.',
       colWidthsCm: [1.6, 4.2, 1.2, 1.6, 1.4, 1.6, 1.5, 1.6, 1.8],
       fontSize: 8.5,
     });

@@ -73,7 +73,7 @@
         rateOverrides: {},
       },
       supervision: { responses: {}, notes: [], checks: {} },
-      handover: { committee: [], notes: [], date: '' },
+      handover: { committee: [], notes: [], date: '', pumpType: '', tariffNote: '' },
       photos: {},
       coverage: { level: 'district' },
       waterpoints: { radius: 1000 },
@@ -801,7 +801,8 @@
       ['Water quality', 'quality', pageDone('quality'),
         derived.assessment
           ? (derived.assessment.health_exceedances.length
-            ? derived.assessment.health_exceedances.length + ' health exceedance(s)'
+            ? derived.assessment.health_exceedances.length + ' health ' +
+              S.plural(derived.assessment.health_exceedances.length, 'exceedance')
             : C.VERDICT_LONG[derived.assessment.verdict_state])
           : 'No analysis loaded'],
       ['Cost', 'costing', pageDone('costing'),
@@ -827,7 +828,8 @@
                 'with the stated range') : null,
             derived.design
               ? S.stat('Total depth', C.fmtNum(derived.design.total_depth_m) + ' m',
-                derived.design.screens.length + ' screened section(s)') : null,
+                derived.design.screens.length + ' screened ' +
+                S.plural(derived.design.screens.length, 'section')) : null,
             derived.assessment && derived.assessment.wqi
               ? S.stat('Water quality index', String(derived.assessment.wqi.value),
                 derived.assessment.wqi.rating) : null,
@@ -967,67 +969,20 @@
    * value cannot be converted after the input has visibly reset. */
   var latLonEntry = { text: '' };
 
-  /* "lat, lon" as a field crew writes it.
+  /* "lat, lon" as a field crew writes it: the pair, or null where the text
+   * was refused.
    *
-   * Every longitude in Sierra Leone is west, and a handheld GPS writes that
-   * as a W rather than a minus sign. Dropping the letter and taking the
-   * number at face value puts the site 26 degrees east of where it is —
-   * silently, on the wrong side of the continent — so the hemisphere letter
-   * is a sign, and a letter that contradicts an explicit sign is rejected
-   * rather than guessed at. */
+   * The reading itself is the engine's - C.readLatLon, a port of geo.py - so
+   * that the browser and the Python toolkit make the same sense of the same
+   * pasted string, including when they refuse it. It reads a hemisphere
+   * letter as a sign, reads degrees and minutes as degrees and minutes, and
+   * carries the reason for a refusal and the assumption behind a reading
+   * back with the numbers. Anything an operator sees uses that reading; this
+   * wrapper is for the callers that want only the pair. */
   function parseLatLon(text) {
-    var raw = String(text === null || text === undefined ? '' : text).trim();
-    if (!raw) return null;
-    /* split on commas, semicolons and whitespace, but keep a letter attached
-     * to the number it qualifies ("13.2317W" is one token) */
-    var tokens = raw.replace(/[;]/g, ',').split(/[,\s]+/).filter(Boolean);
-    var values = [];
-    var pending = null;                 /* a leading N/S/E/W awaiting its number */
-    for (var i = 0; i < tokens.length; i++) {
-      var token = tokens[i];
-      var bare = /^[NSEWnsew]$/.test(token);
-      if (bare) {
-        var letter = token.toUpperCase();
-        if (values.length && values[values.length - 1].letter === null) {
-          values[values.length - 1].letter = letter;   /* trailing "8.4657 N" */
-        } else {
-          pending = letter;                            /* leading "N 8.4657" */
-        }
-        continue;
-      }
-      var match = /^([+-]?\d*\.?\d+)\s*([NSEWnsew])?$/.exec(token);
-      if (!match) return null;
-      values.push({
-        value: Number(match[1]),
-        letter: match[2] ? match[2].toUpperCase() : pending,
-      });
-      pending = null;
-    }
-    if (values.length !== 2) return null;
-
-    function signed(entry) {
-      if (!isFinite(entry.value)) return null;
-      if (!entry.letter) return entry.value;
-      var negative = entry.letter === 'S' || entry.letter === 'W';
-      /* "-13.2317 W" is contradictory: the sign and the letter disagree
-       * about magnitude, so refuse rather than pick one */
-      if (entry.value < 0 && !negative) return null;
-      if (entry.value < 0 && negative) return entry.value;
-      return negative ? -entry.value : entry.value;
-    }
-
-    /* the pair is normally lat then lon; an explicit E/W on the first token
-     * says otherwise */
-    var first = values[0], second = values[1];
-    if (first.letter === 'E' || first.letter === 'W' ||
-        second.letter === 'N' || second.letter === 'S') {
-      var swap = first; first = second; second = swap;
-    }
-    var lat = signed(first), lon = signed(second);
-    if (lat === null || lon === null) return null;
-    if (!isFinite(lat) || !isFinite(lon)) return null;
-    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
-    return { lat: lat, lon: lon };
+    var reading = C.readLatLon(text);
+    if (reading.lat === null || reading.lon === null) return null;
+    return { lat: reading.lat, lon: reading.lon };
   }
 
   PAGES.site = function () {
@@ -1050,6 +1005,7 @@
       .map(function (row) { return row.chiefdom; });
 
     var latlon = siteLatLon();
+    var districtWarning = districtNote(site, latlon);
     var mapNode = null;
     if (GWT.data.geo && GWT.data.geo.adminBoundaries) {
       var boundaries = GWT.data.geo.adminBoundaries.features || [];
@@ -1064,6 +1020,11 @@
       legendItems.push({ label: 'other districts', colour: '#EDEAE3' });
       mapNode = charts.siteMap({
         context: boundaries,
+        /* the bundled layer is geoBoundaries; the credit named a dataset this
+         * repository does not carry, and the map had no sea or neighbours to
+         * tell the Atlantic from unmapped ground */
+        outline: nationalOutline(GWT.data.geo),
+        labelContext: true,
         contextFill: function (feature) {
           var name = (feature.properties || {}).name || (feature.properties || {}).shapeName;
           return name === site.district ? '#CFE0D6' : '#EDEAE3';
@@ -1074,7 +1035,7 @@
         }] : [],
         title: 'Site location',
         legendItems: legendItems,
-        credit: 'District boundaries: Sierra Leone Statistics / OCHA COD-AB.',
+        credit: 'District boundaries: geoBoundaries (CC BY 4.0).',
         width: 620, height: 560,
       });
     }
@@ -1122,19 +1083,43 @@
             S.textInput('', function (value) { latLonEntry.text = value; },
               { placeholder: '8.4657, -13.2317' }),
             button('Convert to UTM', function () {
-              var pair = parseLatLon(latLonEntry.text);
-              if (!pair) {
-                S.toast('Could not read those coordinates. Enter "lat, lon" in ' +
-                  'decimal degrees — 8.4657, -13.2317 or 8.4657 N, 13.2317 W.',
-                'error');
+              var reading = C.readLatLon(latLonEntry.text);
+              if (reading.lat === null || reading.lon === null) {
+                /* What the parser refused, and why, is what the operator
+                 * needs: "8 27.942" is two readings 2000 km apart and the
+                 * sentence says so, where a single generic line said only
+                 * that something was wrong. */
+                S.toast(reading.message + " Enter 'lat, lon' in decimal " +
+                  'degrees - 8.4657, -13.2317 or 8.4657 N, 13.2317 W - or in ' +
+                  'degrees and minutes, 8 27.942 N, 13 13.902 W.', 'error');
                 return;
               }
-              var lat = pair.lat, lon = pair.lon;
+              var lat = reading.lat, lon = reading.lon;
               var utm = C.geographicToUtm(lat, lon);
+              if ((utm.zone !== 28 && utm.zone !== 29) || utm.hemisphere !== 'N') {
+                /* The site fields hold Sierra Leone's two zones. Writing this
+                 * easting down beside 28N or 29N would relabel the position
+                 * rather than convert it, and land the site inside the
+                 * country: an unsigned 13.2317 projected in zone 33 was
+                 * stored here as a zone-33 easting, 270 km east of Freetown,
+                 * with nothing said (ROADMAP data-ingestion-3). */
+                S.toast(C.pyFixed(lat, 4) + ', ' + C.pyFixed(lon, 4) +
+                  ' falls in UTM zone ' + utm.zone + utm.hemisphere +
+                  ", outside Sierra Leone's 28N and 29N, so it cannot be " +
+                  'stored as a site position. Check the coordinates - a ' +
+                  'western longitude needs its minus sign or its W.', 'error');
+                return;
+              }
               store.set('site.easting', S.round(utm.easting, 1));
               store.set('site.northing', S.round(utm.northing, 1));
               store.set('site.utm_zone', utm.zone);
               S.toast('Converted to UTM zone ' + utm.zone + 'N.', 'ok');
+              if (reading.message) {
+                /* The position was converted, but on a sign the parser
+                 * supplied rather than one the crew typed, so it is said out
+                 * loud rather than left inside the reading. */
+                S.toast(reading.message, 'warn');
+              }
               render();
             }, { variant: 'ghost' }),
           ])),
@@ -1146,12 +1131,8 @@
               ' district' : '') : '')) : null,
         /* the commonest copy-over error on a field sheet is a district that
          * does not contain the recorded position, so say so where it is seen */
-        latlon && latlon.chiefdom && site.district &&
-          districtOf(latlon.chiefdom) && districtOf(latlon.chiefdom) !== site.district
-          ? el('div.callout.callout-warn', el('p',
-            'The recorded district (' + site.district + ') does not contain ' +
-            'these coordinates, which fall in ' + districtOf(latlon.chiefdom) +
-            '. Check the sheet before the reports carry it.')) : null,
+        districtWarning
+          ? el('div.callout.callout-warn', el('p', districtWarning)) : null,
       ]),
 
       mapNode ? card('Where the site sits', [
@@ -1193,6 +1174,8 @@
             title: latlon ? 'Aquifer productivity around the site'
               : 'Aquifer productivity, Sierra Leone',
             credit: 'BGS Africa Groundwater Atlas, CC BY-SA 4.0.',
+            sourceScale: charts.bgsSourceScale,
+            publisherNote: charts.bgsPublisherNote,
             legendTitle: 'AQUIFER TYPE AND PRODUCTIVITY',
             // the BGS colours ARE the classification, so they stay
             sourceColours: true,
@@ -1210,6 +1193,7 @@
             credit: 'USGS Geologic Map of Africa. Lithology: Geology of ' +
               'Sierra Leone (Fileccia et al. 2017, MoWR/SALWACO, 1:600,000).',
             legendTitle: 'GEOLOGICAL UNIT',
+            sourceScale: charts.usgsSourceScale,
             outline: nationalOutline(GWT.data.geo),
             nameLithology: true, district: store.get('site.district') || '',
             width: 560, height: 680,
@@ -1397,7 +1381,16 @@
   /* The study area map for the Site page and the reports. Everything it
    * needs is already in the page: the window the local maps use, the
    * bundled boundary layers, the soundings and any water points loaded. */
-  function studyAreaNode() {
+  /* `surveyOnly` draws the figure the geophysical report carries: the
+   * soundings and the star, and nothing else. reporting/geophysical.py builds
+   * its own overlay from the soundings alone and passes mark_site=False, on
+   * the reasoning that a siting map must carry one unmistakable marker - the
+   * recommended point. The page's own map still shows the site and any water
+   * points that have been looked up; the report's did too, so an operator who
+   * had run the Water points page got up to forty of them scattered over
+   * Figure 1 of a survey report. */
+  function studyAreaNode(options) {
+    var surveyOnly = (options || {}).surveyOnly;
     var window_ = areaWindow(store.get('site.mapRadiusKm', 40));
     if (!window_) return null;
     var geo = GWT.data.geo || {};
@@ -1415,12 +1408,12 @@
     var onASounding = points.some(function (p) {
       return Math.abs(p.lat - window_.lat) < 1e-6 && Math.abs(p.lon - window_.lon) < 1e-6;
     });
-    if (window_.exact && !onASounding) {
+    if (window_.exact && !onASounding && !surveyOnly) {
       points.push({ lat: window_.lat, lon: window_.lon, label: siteLabel(),
         kind: derived.log ? 'borehole' : 'site' });
     }
     /* the water points the Water points page looked up, if it has run */
-    (derived.waterPoints || []).slice(0, 40).forEach(function (wp) {
+    (surveyOnly ? [] : (derived.waterPoints || [])).slice(0, 40).forEach(function (wp) {
       if (typeof wp.lat === 'number' && typeof wp.lon === 'number') {
         points.push({ lat: wp.lat, lon: wp.lon, kind: 'water point' });
       }
@@ -1555,6 +1548,8 @@
           legendTitle: 'AQUIFER TYPE AND PRODUCTIVITY',
           sourceColours: true,
           credit: 'BGS Africa Groundwater Atlas, CC BY-SA 4.0.',
+          sourceScale: charts.bgsSourceScale,
+          publisherNote: charts.bgsPublisherNote,
           outline: nationalOutline(geo),
           width: 620, height: 700,
         })),
@@ -1574,6 +1569,7 @@
           legendTitle: 'GEOLOGICAL UNIT',
           credit: 'USGS Geologic Map of Africa. Lithology: Geology of ' +
             'Sierra Leone (Fileccia et al. 2017, MoWR/SALWACO, 1:600,000).',
+          sourceScale: charts.usgsSourceScale,
           outline: nationalOutline(geo),
           nameLithology: true, district: store.get('site.district') || '',
           width: 620, height: 700,
@@ -1628,6 +1624,58 @@
   function districtOf(chiefdom) {
     if (!chiefdom) return '';
     return (C.loadChiefdomDistrict() || {})[chiefdom] || '';
+  }
+
+  /* Human-readable coordinates with correct hemisphere letters. Sierra Leone
+   * is in the western hemisphere, so longitudes are negative and must read
+   * 'W', not 'E'. */
+  function fmtLatLon(lat, lon) {
+    return C.pyFixed(Math.abs(lat), 4) + ' ' + (lat >= 0 ? 'N' : 'S') + ', ' +
+      C.pyFixed(Math.abs(lon), 4) + ' ' + (lon >= 0 ? 'E' : 'W');
+  }
+
+  /* The district the sheet states, judged against the district the boundary
+   * polygons put the coordinates in: the browser's share of
+   * check_site_consistency, which is not otherwise ported here.
+   *
+   * The stated name is read with the engine's matchDistrict rather than
+   * compared as a string, so "Western Area" is the region it names - a site
+   * in either of its two districts satisfies it - instead of a mismatch with
+   * both of them, and a name that could be two districts is refused and says
+   * which two rather than being silently taken for one of them (ROADMAP
+   * data-ingestion-5). The sentences are the ones the Python check writes, so
+   * a sheet read in the browser and the same sheet read by the toolkit say
+   * the same thing about it. */
+  function districtNote(site, latlon) {
+    var stated = (site && site.district) || '';
+    if (!stated || !latlon) return '';
+    var matched = C.matchDistrict(stated);
+    var resolved = matched[0], candidates = matched[1];
+    if (!resolved.length) {
+      if (candidates.length > 1) {
+        return "District '" + stated + "' could be " + C.orList(candidates) +
+          '; it is not read as any of them. Write the district out in full.';
+      }
+      return "District '" + stated + "' is not a recognised Sierra Leone " +
+        'district name, so the coordinates were not checked against it.';
+    }
+    var where = fmtLatLon(latlon.lat, latlon.lon);
+    var found = latlon.chiefdom ? districtOf(latlon.chiefdom) : '';
+    if (!found) {
+      /* The chiefdom polygons are the only lookup in both engines now: a
+       * point no chiefdom holds, and none is within the seam tolerance of,
+       * is a point neither engine can place. The Python used to fall back
+       * to the pre-2017 district polygons and answer with a district that
+       * no longer exists. */
+      return 'The boundary polygons place the coordinates (' + where +
+        ") in no district, so district '" + stated + "' could not be checked " +
+        'against them; the point may be offshore, over the border, or in a ' +
+        'gap between the boundaries.';
+    }
+    if (resolved.indexOf(found) >= 0) return '';
+    return "Stated district '" + stated + "' does not contain the " +
+      'coordinates (' + where + '), which fall in ' + latlon.chiefdom +
+      ' chiefdom, ' + found + ' district. Verify against the field notes.';
   }
 
   function chiefdomAt(lat, lon) {
@@ -1739,7 +1787,8 @@
           S.stat('Depth to bedrock', interp.depth_to_basement_m !== null
             ? C.fmtNum(interp.depth_to_basement_m) + ' m' : 'not resolved'),
           S.stat('Aquifer thickness', C.fmtNum(interp.aquifer_thickness_m) + ' m',
-            interp.water_zones.length + ' zone(s)'),
+            interp.water_zones.length + ' ' +
+            S.plural(interp.water_zones.length, 'zone')),
           S.stat('Max drilling depth', C.drillingDepthText(interp),
             interp.basement_not_resolved
               ? 'a minimum: the zone continues below the depth of investigation'
@@ -1752,7 +1801,10 @@
             filename: 'ves_' + S.slug(soundingId),
             table: function () {
               return S.table([
-                { key: 'ab2', label: 'AB/2 (m)', align: 'right' },
+                { key: 'ab2',
+                  label: String(result.array_type || '').indexOf('wenner') === 0
+                    ? 'a (m)' : 'AB/2 (m)',
+                  align: 'right' },
                 { key: 'obs', label: 'Measured (Ω·m)', align: 'right' },
                 { key: 'calc', label: 'Model (Ω·m)', align: 'right' },
               ], result.ab2.map(function (v, k) {
@@ -1951,7 +2003,8 @@
         S.stat('Total depth', C.fmtNum(design.total_depth_m) + ' m'),
         S.stat(design.as_built ? 'Screen (as installed)' : 'Screen',
           C.fmtNum(design.total_screen_length_m) + ' m',
-          design.screens.length + ' section(s), slot ' +
+          design.screens.length + ' ' +
+          S.plural(design.screens.length, 'section') + ', slot ' +
           C.fmtNum(design.screen_slot_mm) + ' mm'),
         S.stat('Casing', C.formatG(design.casing_diameter_in) + '" ' +
           design.casing_material,
@@ -2483,8 +2536,11 @@
           ['Larson-Skold', cor.larsonSkold],
           ['Classification', cor.classification],
         ]),
+        /* Not "Handpump materials": the note underneath is about the rising
+         * main and the wetted metal parts of whatever pump goes in, which on
+         * a motorised installation is a pump nobody would call a handpump. */
         el('div.callout' + (cor.isAggressive ? '.callout-warn' : '.callout-ok'), [
-          el('p', el('strong', 'Handpump materials')),
+          el('p', el('strong', 'Pump and rising main materials')),
           el('p', cor.materialsNote || cor.verdict),
         ]),
         cor.assumptions.length
@@ -2492,13 +2548,18 @@
       ]) : null,
 
       q.piper ? card('Hydrochemical facies', [
+        /* A Piper diagram on its own tells a reader who cannot read one
+         * nothing at all, which is what this card used to be. faciesOf names
+         * the water type and says what it means, as the quality report now
+         * does above the same figures. */
+        faciesSentence(derived.sample),
         el('div.grid.grid-2', [
           charts.figure(charts.piper([derived.sample]), 'Piper diagram',
             { filename: 'piper' }),
           charts.figure(charts.stiff(derived.sample), 'Stiff diagram',
             { filename: 'stiff' }),
         ]),
-      ]) : null,
+      ].filter(Boolean)) : null,
 
       card('Exceedances', [
         S.table([
@@ -3139,6 +3200,7 @@
     nodes.push(el('div.btn-row', [
       button('Interim payment certificate (.docx)', async function (event) {
         var host = event.target.closest('.card');
+        charts.usePrintPalette(true);
         try {
           await S.withBusy(host, 'Building the certificate…', async function () {
             var builder = await GWT.docx.paymentCertificate({
@@ -3155,6 +3217,8 @@
           S.toast('Certificate ready.', 'ok');
         } catch (err) {
           S.toast('Could not build the certificate: ' + err.message, 'error');
+        } finally {
+          charts.usePrintPalette(false);
         }
       }),
     ]));
@@ -3162,6 +3226,15 @@
   }
 
   /* --- water quality -------------------------------------------------------- */
+
+  /* The sentence that says what the Piper and Stiff diagrams show: the water
+   * type, the milliequivalent percentages behind it and what that composition
+   * means for where the water came from. Null without a complete major-ion
+   * analysis, because there is then no facies to name. */
+  function faciesSentence(sample) {
+    var facies = sample ? C.faciesOf(sample) : null;
+    return facies ? el('p', facies.sentence) : null;
+  }
 
   PAGES.quality = function () {
     var nodes = [
@@ -3269,13 +3342,14 @@
     var stiffNode = charts.stiff(derived.sample);
     if (piperNode || stiffNode) {
       nodes.push(card('Hydrochemical facies', [
+        faciesSentence(derived.sample),
         el('div.split', [
           piperNode ? charts.figure(piperNode, 'Piper trilinear diagram',
             { filename: 'piper' }) : null,
           stiffNode ? charts.figure(stiffNode, 'Stiff diagram',
             { filename: 'stiff' }) : null,
         ]),
-      ]));
+      ].filter(Boolean)));
     }
 
     nodes.push(photoCard('quality', 'Sampling photographs'));
@@ -3664,6 +3738,21 @@
           field('Handover date', S.textInput(handover.date, function (v) {
             store.set('handover.date', v);
           })),
+          /* The handover report's maintenance section follows this: a
+           * submersible or solar pump has no rods to tighten and no strokes
+           * to count, and the community used to be handed handpump care
+           * whatever was installed. Left blank it asserts nothing, and the
+           * data sheet omits the row rather than naming a pump nobody
+           * recorded. */
+          field('Pump installed', S.textInput(handover.pumpType, function (v) {
+            store.set('handover.pumpType', v);
+          }), 'e.g. India Mark II, submersible, solar'),
+          /* handoverReport prints a tariff arrangement the browser had no way
+           * to set, so the paragraph was unreachable here and present in every
+           * Python handover. */
+          field('Tariff arrangement', S.textInput(handover.tariffNote, function (v) {
+            store.set('handover.tariffNote', v);
+          }), 'how the committee collects and holds the user fees'),
         ]),
         el('h4', 'Water and sanitation committee'),
         S.editableTable([
@@ -4404,6 +4493,7 @@
         features: features, value: valueFor, name: nameFor,
         title: title, legendTitle: 'people per functional water point',
         classes: C.loadServiceClasses(),
+        outline: nationalOutline(GWT.data.geo),
         width: 640, height: 600,
       }), title, { filename: 'coverage_' + level }),
       el('p.muted', projection.note),
@@ -4526,11 +4616,15 @@
     ];
     if (stats.n_stale_areas) {
       nodes.push(el('div.callout.callout-warn', el('p',
-        stats.n_stale_areas + ' ' + unit + '(s) rest on surveys more than ' +
+        stats.n_stale_areas + ' ' + S.plural(stats.n_stale_areas, unit) +
+        (stats.n_stale_areas === 1 ? ' rests' : ' rest') + ' on surveys more than ' +
         C.AGEING_YEARS + ' years old: ' +
         stats.stale_areas.slice(0, 8).join(', ') +
-        (stats.n_stale_areas > 8 ? '…' : '') + '. Their coverage figures ' +
-        'describe the year they were surveyed, not this one.')));
+        (stats.n_stale_areas > 8 ? '…' : '') +
+        (stats.n_stale_areas === 1
+          ? '. Its coverage figures describe the year it was surveyed, not this one.'
+          : '. Their coverage figures describe the year they were surveyed, ' +
+            'not this one.'))));
     }
     if (!stats.n_seasonality_recorded) {
       nodes.push(el('div.callout', el('p', 'None of these ' +
@@ -4871,8 +4965,12 @@
     }
     if (stats.n_unknown) {
       nodes.push(el('div.callout.callout-warn', el('p', stats.n_unknown +
-        ' borehole(s) have nothing recorded against them at all. That is not ' +
-        'the same as nothing having happened to them.')));
+        ' ' + S.plural(stats.n_unknown, 'borehole') +
+        (stats.n_unknown === 1 ? ' has' : ' have') +
+        ' nothing recorded against ' +
+        (stats.n_unknown === 1 ? 'it' : 'them') + ' at all. That is not ' +
+        'the same as nothing having happened to ' +
+        (stats.n_unknown === 1 ? 'it.' : 'them.'))));
     }
     if (stats.n_overdue_inspection + stats.n_overdue_sample) {
       nodes.push(el('p', stats.n_overdue_inspection + ' overdue a sanitary ' +
@@ -4898,6 +4996,7 @@
 
   async function buildAssetDoc(kind, asset, node) {
     var host = node ? node.closest('.card') : $('#page-host');
+    charts.usePrintPalette(true);
     try {
       await S.withBusy(host, 'Building the document…', async function () {
         var cfg = config();
@@ -4924,6 +5023,8 @@
       S.toast('Document ready.', 'ok');
     } catch (err) {
       S.toast('Could not build the document: ' + err.message, 'error');
+    } finally {
+      charts.usePrintPalette(false);
     }
   }
 
@@ -5011,8 +5112,11 @@
       ]),
       stats.n_status_unrecognised
         ? el('div.callout.callout-warn', el('p', stats.n_status_unrecognised +
-          ' project(s) carry a status this toolkit does not recognise; they ' +
-          'are counted as neither successful nor dry. Correct the status on ' +
+          ' ' + S.plural(stats.n_status_unrecognised, 'project') +
+          (stats.n_status_unrecognised === 1 ? ' carries' : ' carry') +
+          ' a status this toolkit does not recognise; ' +
+          (stats.n_status_unrecognised === 1 ? 'it is' : 'they are') +
+          ' counted as neither successful nor dry. Correct the status on ' +
           'the drilling log.'))
         : null,
     ].filter(Boolean)));
@@ -5453,6 +5557,240 @@
     return el('div', nodes.filter(Boolean));
   }
 
+  /* ----------------------------------------- the survey's own report figures */
+
+  /* The point the whole report argues for: reporting/geophysical.py
+   * _preferred, which is the lowest rank, then the highest score, then the
+   * identifier. The study-area caption names it, and a caption naming a
+   * different peg from the one the conclusions recommend is a rig sent to the
+   * wrong place. */
+  function preferredInterpretation(interpretations) {
+    var best = null;
+    (interpretations || []).forEach(function (interp) {
+      if (best === null) { best = interp; return; }
+      var rank = interp.rank || 99, bestRank = best.rank || 99;
+      if (rank !== bestRank) {
+        if (rank < bestRank) best = interp;
+        return;
+      }
+      var score = Number(interp.score) || 0, bestScore = Number(best.score) || 0;
+      if (score !== bestScore) {
+        if (score > bestScore) best = interp;
+        return;
+      }
+      if (String(interp.sounding_id) < String(best.sounding_id)) best = interp;
+    });
+    return best;
+  }
+
+  /* The largest distance between any two positioned soundings, in km:
+   * reporting/geophysical.py _survey_spread_km. Pegs kilometres apart are not
+   * one site, and the caption says so rather than leaving a reader to measure
+   * it off the scale bar. */
+  function surveySpreadKm(interpretations) {
+    var points = [], a, b, widest = 0;
+    (interpretations || []).forEach(function (interp) {
+      var pos = soundingLatLon(interp);
+      if (pos) points.push(pos);
+    });
+    for (a = 0; a < points.length; a += 1) {
+      for (b = a + 1; b < points.length; b += 1) {
+        widest = Math.max(widest, C.geodesicDistanceM(
+          points[a].lat, points[a].lon, points[b].lat, points[b].lon));
+      }
+    }
+    return widest / 1000.0;
+  }
+
+  /* The study-area map that opens the Python geophysical report, with the
+   * caption reporting/geophysical.py gives it. The browser drew this map for
+   * the Site page but no report carried it, so the browser's geophysical
+   * report opened on a district locator and never showed the reader the
+   * ground the survey actually covered, or which peg the star is on. */
+  async function studyAreaFigure(interpretations) {
+    var node = studyAreaNode({ surveyOnly: true });
+    if (!node) return null;
+    var site = store.get('site') || {};
+    var preferred = preferredInterpretation(interpretations);
+    var caption = 'Study area at ' + (site.community || 'the project area') +
+      ', with the survey points and its location in Sierra Leone inset.' +
+      (preferred ? ' The star is the recommended drilling point, ' +
+        preferred.sounding_id + '.' : '');
+    var spread = surveySpreadKm(interpretations);
+    if (spread > 5.0) {
+      caption += ' The survey points are up to ' + C.pyFixed(spread, 1) +
+        ' km apart, which is unusually far for one site; the positions should ' +
+        'be checked against the field notes.';
+    }
+    caption += ' Boundaries from geoBoundaries (CC BY 4.0).';
+    return { image: await charts.toPng(node), caption: caption, widthCm: 14 };
+  }
+
+  /* The captions reporting/geophysical.py gives the four subsurface maps and
+   * the two sections, word for word. Each says what the figure is and what it
+   * is not; an interpreted surface that travels without its caption is read
+   * as measured ground. */
+  var SUBSURFACE_CAPTIONS = {
+    depth_to_bedrock: 'Depth to bedrock across the surveyed ground, from the ' +
+      'layered models. The surface is blanked outside the hull of the soundings.',
+    aquifer_thickness: 'Interpreted thickness of the weathered and fractured ' +
+      'zone - the section a borehole is completed in.',
+    bedrock_elevation: 'The bedrock surface as a landform, from the ground ' +
+      'elevation recorded at each sounding less its depth to basement. A low ' +
+      'in this surface is a buried valley, which basement groundwater drains ' +
+      'towards.',
+    protective_capacity: 'Protective capacity of the cover over the aquifer, ' +
+      'from the longitudinal conductance of the overlying layers. It rates how ' +
+      'well the ground above the aquifer resists downward contamination; it ' +
+      'says nothing about yield.',
+  };
+
+  var GEOELECTRIC_SECTION_CAPTION = 'Interpreted geoelectric section along the ' +
+    'traverse, with the soundings at their surveyed spacing rather than evenly ' +
+    'spaced and drawn to the depth of investigation. Colour is layer ' +
+    'resistivity; the dashed lines correlate boundaries between neighbouring ' +
+    'soundings within reach of each other and are an interpretation, not a ' +
+    'measured contact.';
+
+  var PSEUDOSECTION_CAPTION = 'Apparent resistivity along the traverse, as ' +
+    'measured. Unlike every other section in this report it involves no ' +
+    'inversion: each point is a reading at the station and electrode spacing ' +
+    'it was taken with. AB/2 is that spacing, not a depth. Colour is ' +
+    'interpolated only between stations within reach of each other.';
+
+  /* A figure the chart layer returned nothing for, with no reason from the
+   * engine, is a defect in the drawing rather than a refusal the survey
+   * earned. It is still named in the "not drawn" list, because a figure that
+   * disappears without a word reads as one nobody attempted. */
+  function figureRefusal(reason) {
+    return reason || 'the figure could not be drawn from these data';
+  }
+
+  /* The maps and sections built from this survey's own soundings, mirroring
+   * reporting/geophysical.py _add_subsurface_figures: the four subsurface
+   * maps, the geoelectric section and the apparent-resistivity
+   * pseudo-section, in that order, each attempted on its own so that none of
+   * them costs the report the others - a survey whose curves never reached
+   * basement has no depth-to-bedrock map but still has an aquifer thickness
+   * map. What could not be drawn is carried back with it: the reason is
+   * usually a GPS position nobody recorded, which a reviewer can ask for,
+   * and a figure missing without a word reads as "the survey did not attempt
+   * this". Returns null where the Python writes no section at all: with
+   * fewer than two positioned soundings there is nothing to say about the
+   * ground between them. */
+  async function subsurfaceFigures(interpretations, soundings) {
+    if (!C.subsurfaceFiguresApply(interpretations)) return null;
+    var placed = (interpretations || []).filter(function (interp) {
+      return interp.site_easting !== null && interp.site_easting !== undefined &&
+        interp.site_northing !== null && interp.site_northing !== undefined;
+    });
+    var site = store.get('site') || {};
+    var zone = site.utm_zone ||
+      (placed.length ? C.inferZoneForSierraLeone(placed[0].site_easting) : 28);
+    var made = [], notDrawn = [], i, svg;
+
+    var maps = charts.subsurfaceMaps(placed, { zone: zone });
+    for (i = 0; i < maps.length; i += 1) {
+      if (maps[i].reason || !maps[i].svg) {
+        notDrawn.push(maps[i].name + ': ' + figureRefusal(maps[i].reason));
+      } else {
+        made.push({
+          image: await charts.toPng(maps[i].svg),
+          caption: SUBSURFACE_CAPTIONS[maps[i].key],
+        });
+      }
+    }
+
+    var section = C.geoelectricSectionGeometry(placed, {});
+    svg = section.reason ? null : charts.geoelectricSection(section);
+    if (svg) {
+      made.push({ image: await charts.toPng(svg),
+        caption: GEOELECTRIC_SECTION_CAPTION });
+    } else {
+      notDrawn.push('geoelectric section: ' + figureRefusal(section.reason));
+    }
+
+    /* the traverse is built before the pseudo-section, as the report builds
+     * it, so a traverse that cannot be placed is the reason printed against
+     * the pseudo-section rather than an evenly spaced section drawn under a
+     * note saying no positions were recorded */
+    var profile = C.traverseProfile(placed);
+    var pseudo = C.pseudosectionGeometry(soundings || [], profile);
+    svg = pseudo.reason ? null : charts.apparentPseudosection(pseudo);
+    if (svg) {
+      var caption = PSEUDOSECTION_CAPTION;
+      if (!profile.reason && !profile.is_collinear) {
+        caption += ' The soundings sit up to ' +
+          C.pyFixed(profile.max_offset_m, 0) + ' m off the profile line, so ' +
+          'this section cuts across the survey rather than along it.';
+      }
+      made.push({ image: await charts.toPng(svg), caption: caption });
+    } else {
+      notDrawn.push('apparent-resistivity pseudo-section: ' +
+        figureRefusal(pseudo.reason));
+    }
+
+    return { figures: made, notDrawn: notDrawn };
+  }
+
+  /* The drill-target suitability map, mirroring the figure path of
+   * reporting/geophysical.py _suitability_block: the scored points on the
+   * ground they were surveyed on, coloured by the confidence-weighted score,
+   * with the recommended target starred and its grid coordinates beside it,
+   * and the caption the state of the figure earns.
+   *
+   * The engine scores the points from the same assess_siting() the ranked
+   * table is built from, so the colour of a peg and the row that ranks it
+   * cannot tell a reader two different stories about which peg to drill.
+   *
+   * Returns null exactly where the Python draws no map - no scored point, or
+   * no scored point carrying a recorded position - and the report then says
+   * nothing at all, because _suitability_block writes no "not drawn" line for
+   * this figure. The subsurface maps below list their refusals; naming this
+   * one among them would put a sentence in a client document that the
+   * package never writes. A null from the chart layer is the same silence for
+   * the same reason: it can only mean a defect in the drawing, and there is
+   * no wording for that here which would not read as a refusal the survey
+   * earned. */
+  async function suitabilityMapFigure(interpretations) {
+    var site = store.get('site') || {};
+    var data = C.suitabilityMapData(interpretations, {
+      ves: config().ves,
+      /* site.utm_zone or infer_zone_for_sierra_leone(map_points[0].easting),
+       * which is what the engine does for a null zone: two eastings in
+       * different zones are not comparable numbers, and a map that does not
+       * say which zone it is in cannot be walked back to. */
+      zone: site.utm_zone || null,
+    });
+    if (!data) return null;
+    var svg = charts.suitabilityMap(data);
+    if (!svg) return null;
+    /* the caption travels with the figure because it is a claim about this
+     * figure: whether a star marks the target, and whether the colour between
+     * the pegs is interpolated ground or no ground at all */
+    return { image: await charts.toPng(svg), caption: data.caption };
+  }
+
+  /* The ground surface along the traverse, from the level the crew recorded
+   * at each sounding: reporting/geophysical.py _ground_profile_figure, drawn
+   * with mapping/terrain.py plot_ground_profile.
+   *
+   * Omitted in silence wherever the Python omits it - fewer than two
+   * soundings carrying an easting, a northing and an elevation, a traverse
+   * that cannot be placed, or fewer than two finite levels - because the
+   * Python report writes no line about a profile it did not draw. It is not
+   * added to any "not drawn" list for the same reason. Ground drawn from one
+   * levelled station, or across a station nobody levelled, is relief this
+   * survey did not measure, and a reader takes a profile for measured
+   * ground. */
+  async function groundProfileFigure(interpretations) {
+    var data = C.groundProfileData(interpretations);
+    if (!data) return null;
+    var svg = charts.groundProfile(data);
+    if (!svg) return null;
+    return { image: await charts.toPng(svg), caption: data.caption };
+  }
+
   function reportCard(title, kind, description, extra) {
     return card(title, [
       el('p.muted', description),
@@ -5467,6 +5805,10 @@
 
   async function buildReport(kind, extra, node) {
     var host = node ? node.closest('.card') : $('#page-host');
+    /* Every figure this builds goes into a .docx, so it is painted for paper
+     * rather than for the theme the app happens to be in; the default theme
+     * is dark, and clients were sent maps and drawings on a black ground. */
+    charts.usePrintPalette(true);
     try {
       await S.withBusy(host, 'Building the report…', async function () {
         var cfg = config();
@@ -5510,10 +5852,68 @@
               caption: 'Layered earth model for ' + id + ', drawn to the depth of ' +
                 'investigation', widthCm: 9,
             });
+            /* The interpreted layer column, which _sounding_block draws with
+             * ves/plots.py plot_model_pseudosection. The staircase above
+             * plots resistivity against depth; this is the same model drawn
+             * as ground, to scale and coloured on the resistivity bar, and
+             * the browser's report had no figure a reader could lay two
+             * soundings side by side on. A model with no layers has no column
+             * to draw, and the chart layer says so by returning nothing. */
+            var layerSection = charts.modelPseudosection(result.model, {
+              depthMax: derived.interpretations[i].investigation_depth_m || null,
+              title: 'Layer section at ' + id,
+            });
+            if (layerSection) {
+              figures.push({
+                soundingId: id,
+                image: await charts.toPng(layerSection),
+                caption: 'Interpreted one-dimensional layer section at point ' +
+                  id + ': the resistivity and thickness of each fitted layer, ' +
+                  'drawn to the depth of investigation (' +
+                  C.fmtNum(derived.interpretations[i].investigation_depth_m) +
+                  ' m).',
+              });
+            }
           }
+          /* The study-area map the Python report opens on, ahead of the
+           * district locator: it is the only figure in the document that
+           * shows the survey points on the ground they were shot on. */
+          var studyArea = await studyAreaFigure(derived.interpretations);
+          if (studyArea) {
+            context.areaMaps = [studyArea].concat(context.areaMaps || []);
+          }
+          /* The ground the survey was shot on, from the levels the crew
+           * recorded: section 3.1 carries it in the Python report, and the
+           * browser's report had no figure showing whether the traverse runs
+           * up a slope or along a valley floor. Null where the Python draws
+           * nothing, and the writer then prints nothing. */
+          context.groundProfile = await groundProfileFigure(derived.interpretations);
+          /* The drill-target map: the one figure in the document that shows
+           * which peg the recommendation is on, rather than naming it. */
+          context.suitabilityMap = await suitabilityMapFigure(derived.interpretations);
+          /* The soundings this report covers are the ones that inverted,
+           * which is the list the Python report holds: inputs.soundings is
+           * zipped with the inversions. A sounding that would not invert has
+           * no block in the document, so its readings do not belong in the
+           * document's pseudo-section either. */
+          var interpreted = {};
+          derived.interpretations.forEach(function (interp) {
+            interpreted[interp.sounding_id] = true;
+          });
+          context.subsurface = await subsurfaceFigures(derived.interpretations,
+            (derived.soundings || []).filter(function (sounding) {
+              return interpreted[sounding.sounding_id] === true;
+            }));
           context.interpretations = derived.interpretations;
           context.figures = figures;
           context.preferredOrder = store.get('ves.preferredOrder');
+          /* the ranked table and the suitability map beside it are scored
+           * with the same settings, as reporting/geophysical.py scores them:
+           * with the table on the defaults and the figure on the project's,
+           * a project carrying a custom fractured-zone resistivity got a
+           * table calling one peg first and a star on another, under one
+           * heading */
+          context.ves = cfg.ves;
           builder = await docx.geophysicalReport(context);
 
         } else if (kind === 'completion') {
@@ -5638,12 +6038,21 @@
             .forEach(function (photo) {
               figures.push({ image: photo, caption: photo.caption, widthCm: 11 });
             });
-          context.log = derived.log || {};
+          /* The record itself, or nothing: the data sheet omits the log
+           * block entirely when no drilling log was read, as handover.py
+           * does. An empty object here made that guard unfalsifiable, so
+           * a project with no log still printed a reference, a depth, a
+           * method and a status as six em-dash rows. */
+          context.log = derived.log;
           context.design = derived.design;
           context.analysis = derived.analysis;
           context.assessment = derived.assessment;
           context.committee = store.get('handover.committee') || [];
           context.handoverDate = store.get('handover.date') || '';
+          /* the maintenance section and the data sheet both follow the pump
+           * that was actually installed, so the report has to be told which */
+          context.pumpType = store.get('handover.pumpType') || '';
+          context.tariffNote = store.get('handover.tariffNote') || '';
           /* the works list names a siting survey only if one was interpreted */
           context.interpretations = derived.interpretations;
           context.figures = figures;
@@ -5657,6 +6066,8 @@
     } catch (e) {
       S.toast('Could not build the report: ' + e.message, 'error');
       console.error(e);
+    } finally {
+      charts.usePrintPalette(false);
     }
   }
 

@@ -148,6 +148,9 @@ await withPage(async (page, base, consoleErrors) => {
       health: assessed.health_exceedances.map((r) => r.parameter),
       wqi: assessed.wqi && assessed.wqi.value,
       corros: assessed.corrosivity.classification,
+      corros_verdict: assessed.corrosivity.verdict,
+      corros_materials: assessed.corrosivity.materials_note,
+      national: assessed.national_exceedances.map((r) => r.parameter),
       ionic: assessed.ionic && assessed.ionic.error_percent,
     };
 
@@ -299,6 +302,17 @@ await withPage(async (page, base, consoleErrors) => {
     }));
     out.preference = C.drillingPreferenceTable(rokelInterps);
 
+    // a siting survey with no borehole yet: the design comes from the
+    // interpretation alone, which is where the degenerate zone used to put
+    // 48 m of screen in an 80 m hole
+    const vesOnly = C.designBorehole({ interpretation: rokelInterps[0] });
+    out.ves_only_design = {
+      depth: vesOnly.total_depth_m,
+      screens: vesOnly.screens.map((x) => [x.top_m, x.bottom_m]),
+      screen_len: vesOnly.total_screen_length_m,
+      basis: vesOnly.design_basis,
+    };
+
     out.geo = [[8.4657, -13.2317], [8.7043, -11.4084], [7.9560, -11.7400]]
       .map(([lat, lon]) => {
         const utm = C.geographicToUtm(lat, lon);
@@ -340,8 +354,16 @@ await withPage(async (page, base, consoleErrors) => {
       empty: wq(),
       pass: wq(...panel, { parameter: 'pH', value: 7.2, unit: 'pH units' }),
       aesthetic: wq(...panel, { parameter: 'Iron', value: 0.5, unit: 'mg/L' }),
+      // Aluminium used to be this case, on a WHO health value of 0.9 mg/L
+      // that WHO does not set. Total coliforms above zero is the real one.
       national_fail: wq(...panel,
-        { parameter: 'Aluminium', value: 0.5, unit: 'mg/L' }),
+        { parameter: 'Total coliforms', value: 5.0, unit: 'CFU/100 mL' }),
+      // a count the laboratory saw and did not put a number to, and a
+      // ">100" inside its limit: both used to read as "not measured"
+      unquantified_count: wq(...panel, { parameter: 'Total coliforms',
+        value: null, unit: 'CFU/100 mL', greater_than: 0 }),
+      greater_than_inside_limit: wq(...panel, { parameter: 'Sulfate',
+        value: null, unit: 'mg/L', greater_than: 100 }),
       health_fail: wq(...panel, { parameter: 'Arsenic', value: 0.5, unit: 'mg/L' }),
       micrograms: wq(...panel, { parameter: 'Lead', value: 5.0, unit: 'ug/L' }),
       bad_unit: wq(...panel, { parameter: 'Iron', value: 0.1, unit: 'wibbles' }),
@@ -349,6 +371,8 @@ await withPage(async (page, base, consoleErrors) => {
         detection_limit: 0.05, below_detection: true }),
       unknown_parameter: wq(...panel,
         { parameter: 'Glyphosate', value: 0.4, unit: 'mg/L' }),
+      // the charge balance cannot be computed, and used to say nothing
+      no_ionic_balance: wq({ parameter: 'Calcium', value: 40.0, unit: 'mg/L' }),
     };
     out.verdicts = {};
     Object.keys(verdictCases).forEach((name) => {
@@ -361,6 +385,7 @@ await withPage(async (page, base, consoleErrors) => {
         uncertainties: a.uncertainties,
         missing_essential: a.missing_essential,
         verdict: a.verdict,
+        flags: a.flags.map((f) => [f.level, f.code, f.message]),
       };
     });
 
@@ -804,6 +829,15 @@ await withPage(async (page, base, consoleErrors) => {
     `js ${parsed.assessed.wqi} vs py ${R.assessed.wqi}`);
   check('assessment: corrosivity', parsed.assessed.corros === R.assessed.corros,
     `js ${parsed.assessed.corros} vs py ${R.assessed.corros}`);
+  check('assessment: corrosivity verdict',
+    parsed.assessed.corros_verdict === R.assessed.corros_verdict,
+    `js "${parsed.assessed.corros_verdict}"\n     py "${R.assessed.corros_verdict}"`);
+  check('assessment: corrosivity materials note',
+    parsed.assessed.corros_materials === R.assessed.corros_materials,
+    `js "${parsed.assessed.corros_materials}"\n     py "${R.assessed.corros_materials}"`);
+  check('assessment: national exceedances',
+    JSON.stringify(parsed.assessed.national) === JSON.stringify(R.assessed.national),
+    `js ${JSON.stringify(parsed.assessed.national)} py ${JSON.stringify(R.assessed.national)}`);
   check('design: screens', JSON.stringify(parsed.design.screens) === JSON.stringify(R.design.screens),
     JSON.stringify(parsed.design.screens) + ' vs ' + JSON.stringify(R.design.screens));
   check('design: sanitary seal', JSON.stringify(parsed.design.seal) === JSON.stringify(R.design.seal),
@@ -1263,6 +1297,42 @@ await withPage(async (page, base, consoleErrors) => {
   check('pdf sheet: the same cells held back for review',
     pdf.uncertain === R.pdf_sheet.uncertain,
     `js ${pdf.uncertain} py ${R.pdf_sheet.uncertain}`);
+
+  // --- quantities both engines carried but nothing held them to ---
+  // Eight groups were collected into the reference and read out of the
+  // browser and then never compared, so a divergence in any of them passed
+  // every run. A number worth computing twice is worth checking once.
+  // The reference is what Python asserts, so a browser object may legitimately
+  // carry keys Python never records (the site's country, its UTM zone). Compare
+  // the JS value projected onto the Python shape: every field Python states has
+  // to match, and a field it does not state is not a divergence.
+  const onto = (js, py) => {
+    if (Array.isArray(py)) {
+      return Array.isArray(js) ? py.map((v, i) => onto(js[i], v)) : js;
+    }
+    if (py && typeof py === 'object') {
+      if (!js || typeof js !== 'object') return js;
+      const out = {};
+      Object.keys(py).forEach((k) => { out[k] = onto(js[k], py[k]); });
+      return out;
+    }
+    return js;
+  };
+  const deep = (name, a, b) => check(name, JSON.stringify(onto(a, b)) === JSON.stringify(b),
+    `js ${JSON.stringify(onto(a, b)).slice(0, 500)}\n     py ${JSON.stringify(b).slice(0, 500)}`);
+
+  deep('drilling: site fields', parsed.drilling.site, R.drilling.site);
+  check('pumping: duration', close(parsed.pumping.duration, R.pumping.duration),
+    `js ${parsed.pumping.duration} vs py ${R.pumping.duration}`);
+  deep('pumping: recovery levels', parsed.pumping.rec_wl, R.pumping.rec_wl);
+  deep('spine: levels', parsed.spine.levels, R.spine.levels);
+  deep('spine: piper percentages', parsed.spine.piper_percent, R.spine.piper_percent);
+  deep('spine: quantity basis', parsed.spine.quantity_basis, R.spine.quantity_basis);
+  deep('portfolio: statistics', parsed.portfolio.stats, R.portfolio.stats);
+  deep('planning: census statistics', parsed.planning.census, R.planning.census);
+
+  deep('VES-only design: from the interpretation alone',
+    parsed.ves_only_design, R.ves_only_design);
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, {});

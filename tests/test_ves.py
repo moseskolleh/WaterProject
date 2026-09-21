@@ -362,3 +362,166 @@ def test_the_layer_search_does_not_stop_at_a_good_enough_two_layer_fit():
     assert abs(float(np.sum(result.model.thicknesses)) - 19.0) / 19.0 < 0.25
     assert result.fit_error_percent < 1.0
     assert [n for n, _ in result.trials][:2] == [2, 3]
+
+
+# --- reading the array from the sheet (ROADMAP data-ingestion-11) -----------
+
+def _ves_sheet(path, header_block, columns, rows):
+    """Write a VES field sheet as CSV: a header block, then the data table."""
+    lines = [",".join(str(cell) for cell in row) for row in header_block]
+    lines.append("")
+    lines.append(",".join(columns))
+    lines += [",".join(str(value) for value in row) for row in rows]
+    path.write_text("\n".join(lines) + "\n")
+    return path
+
+
+def test_a_wenner_sheet_headed_ab_over_two_is_read_at_its_own_spacing(tmp_path):
+    """A Wenner sounding headed AB/2 was inverted with AB/2 for the spacing a.
+
+    The Wenner array is A M N B at one spacing a, so AB = 3a and the AB/2
+    column of a Wenner sheet holds 1.5 a. Read as a, every reading sat at
+    half again its true spacing: the curve shifted bodily along the depth
+    axis, and since the array was never established from the sheet the
+    Schlumberger kernel was often used on it as well.
+    """
+    from groundwater.ingestion.ves import read_ves_csv
+
+    model = (np.array([300.0, 30.0, 900.0]), np.array([3.0, 12.0]))
+    a = np.array([1.0, 2.0, 3.0, 5.0, 8.0, 12.0, 20.0, 30.0])
+    rho = forward_wenner(model, a)
+    path = _ves_sheet(
+        tmp_path / "wenner_ab2.csv",
+        [["Community", "Rokel"], ["Sounding Number", "W 1"], ["Array", "Wenner"]],
+        ["No.", "AB/2 (m)", "Apparent Resistivity (ohm-m)"],
+        [[i + 1, 1.5 * spacing, value]
+         for i, (spacing, value) in enumerate(zip(a, rho, strict=True))],
+    )
+
+    sounding = read_ves_csv(path)
+    assert sounding.array_type == "wenner"
+    assert np.allclose(sounding.ab2, a)  # a, not the tabulated 1.5 a
+    # so the sounding reproduces the model it was synthesised from
+    assert np.allclose(forward_for_sounding(model, sounding), rho)
+    assert [f.code for f in sounding.flags] == ["wenner_spacing_from_ab2"]
+    assert "two thirds" in sounding.flags[0].message
+
+
+def test_a_column_headed_a_is_the_wenner_spacing_not_a_sheet_without_a_table(tmp_path):
+    """A column headed "a" had no meaning to the reader at all.
+
+    A Wenner sheet that tabulates its spacing the way Wenner sheets do was
+    dropped whole, as a sheet with no data table, so the sounding never
+    reached the report and the only trace was a skipped-sheet warning.
+    """
+    from groundwater.ingestion.ves import read_ves_csv
+
+    a = [1.0, 2.0, 3.0, 5.0, 8.0]
+    rho = [420.0, 400.0, 350.0, 190.0, 96.0]
+    path = _ves_sheet(
+        tmp_path / "wenner_a.csv",
+        [["Community", "Rokel"], ["Sounding Number", "W 2"]],
+        ["No.", "a (m)", "Apparent Resistivity (ohm-m)"],
+        [[i + 1, s, r] for i, (s, r) in enumerate(zip(a, rho, strict=True))],
+    )
+
+    sounding = read_ves_csv(path)
+    assert sounding.array_type == "wenner"
+    assert list(sounding.ab2) == a  # the a column is the spacing as it stands
+    assert list(sounding.rho_app) == rho
+    assert [f.code for f in sounding.flags] == ["array_type_inferred"]
+
+
+def test_a_wenner_resistance_sheet_uses_the_wenner_geometric_factor(tmp_path):
+    """A sheet that records V/I needs K to become a resistivity, and the
+    reader knew only the Schlumberger factor, which needs an MN spacing a
+    Wenner sheet does not carry: K stayed unknown and every row was dropped.
+    The Wenner factor is 2 pi a and needs nothing but the spacing."""
+    from groundwater.ingestion.ves import read_ves_csv
+
+    a = [1.0, 2.0, 5.0, 10.0]
+    resistance = [66.8, 31.8, 11.1, 3.05]
+    path = _ves_sheet(
+        tmp_path / "wenner_resistance.csv",
+        [["Sounding Number", "W 3"], ["Array", "Wenner alpha"]],
+        ["No.", "a (m)", "R (ohm)"],
+        [[i + 1, s, r] for i, (s, r) in enumerate(zip(a, resistance, strict=True))],
+    )
+
+    sounding = read_ves_csv(path)
+    assert sounding.array_type == "wenner"
+    assert sounding.n_readings == 4
+    expected = [float(geometric_factor("wenner", a=s)) * r
+                for s, r in zip(a, resistance, strict=True)]
+    assert np.allclose(sounding.rho_app, expected)
+    assert [f.code for f in sounding.flags] == ["rho_computed_from_resistance"]
+
+
+def test_an_unnamed_array_is_recorded_as_assumed_not_chosen_in_silence(tmp_path):
+    """Schlumberger was the default for every sheet, whatever the sheet said
+    or failed to say. A sheet that names no array and carries no MN column
+    settles nothing, and a Wenner sounding inverted as Schlumberger is wrong
+    by tens of percent, so the assumption now goes on the record."""
+    from groundwater.ingestion.ves import read_ves_csv
+
+    rows = [[1, 1.0, 420.0], [2, 2.0, 400.0], [3, 5.0, 190.0], [4, 10.0, 96.0]]
+    path = _ves_sheet(
+        tmp_path / "silent.csv", [["Sounding Number", "S 1"]],
+        ["No.", "AB/2 (m)", "Apparent Resistivity (ohm-m)"], rows,
+    )
+    sounding = read_ves_csv(path)
+    assert sounding.array_type == "schlumberger"
+    assert [f.code for f in sounding.flags] == ["array_type_assumed"]
+    assert sounding.flags[0].level == "warning"
+    assert "Schlumberger was assumed" in sounding.flags[0].message
+
+    # an MN column is the Schlumberger construct, and settles it: the sheets
+    # the toolkit has always read are not now flagged for saying nothing
+    with_mn = _ves_sheet(
+        tmp_path / "schlumberger.csv", [["Sounding Number", "S 2"]],
+        ["No.", "AB/2 (m)", "MN (m)", "Apparent Resistivity (ohm-m)"],
+        [[i + 1, ab2, 0.5, rho] for i, (_n, ab2, rho) in enumerate(rows)],
+    )
+    assert read_ves_csv(with_mn).flags == []
+
+
+def test_a_sheet_that_contradicts_itself_about_the_array_is_not_guessed_at(tmp_path):
+    """The header block says Schlumberger and the table heads its spacing
+    column "a", the Wenner spacing. The two readings of that one column
+    differ by half again, so the reader keeps the default and says what it
+    assumed rather than picking the array it likes."""
+    from groundwater.ingestion.ves import read_ves_csv
+
+    path = _ves_sheet(
+        tmp_path / "conflict.csv",
+        [["Sounding Number", "S 3"], ["Array", "Schlumberger"]],
+        ["No.", "a (m)", "Apparent Resistivity (ohm-m)"],
+        [[1, 1.0, 420.0], [2, 2.0, 400.0], [3, 5.0, 190.0], [4, 10.0, 96.0]],
+    )
+
+    sounding = read_ves_csv(path)
+    assert sounding.array_type == "schlumberger"
+    assert list(sounding.ab2) == [1.0, 2.0, 5.0, 10.0]  # taken as AB/2, unconverted
+    assert [f.code for f in sounding.flags] == ["array_type_conflict"]
+    assert sounding.flags[0].level == "warning"
+
+
+def test_an_array_the_reader_cannot_place_is_named_in_the_flag(tmp_path):
+    """"Dipole-dipole" in the array field was read straight into array_type,
+    where every downstream startswith("wenner") test failed and the sounding
+    was inverted as Schlumberger without a word. The toolkit models two
+    arrays; a sheet naming a third has to say so on the face of the report."""
+    from groundwater.ingestion.ves import read_ves_csv
+
+    path = _ves_sheet(
+        tmp_path / "dipole.csv",
+        [["Sounding Number", "S 4"], ["Array", "Dipole-dipole"]],
+        ["No.", "AB/2 (m)", "MN (m)", "Apparent Resistivity (ohm-m)"],
+        [[1, 1.0, 0.5, 420.0], [2, 2.0, 0.5, 400.0],
+         [3, 5.0, 0.5, 190.0], [4, 10.0, 0.5, 96.0]],
+    )
+
+    sounding = read_ves_csv(path)
+    assert sounding.array_type == "schlumberger"
+    assert [f.code for f in sounding.flags] == ["array_type_unrecognised"]
+    assert "Dipole-dipole" in sounding.flags[0].message

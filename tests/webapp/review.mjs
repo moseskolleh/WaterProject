@@ -203,6 +203,113 @@ await withPage(async (page, base, consoleErrors) => {
     !said(works.full, 'Handpump') && !said(works.full, 'soakaway'),
     JSON.stringify(works.full));
 
+  // --- the care instructions follow the pump that is there ------------------
+  // Section 5 is the part of the handover a caretaker actually uses, and it
+  // used to be handpump boilerplate whatever the project recorded: bolts on
+  // the pump head, strokes to count per day, rods to inspect. A submersible
+  // has none of those and has a control box, a starter and a running current
+  // that nothing told anyone to check.
+  const om = await page.evaluate(async () => {
+    const section = (text) => text.slice(
+      text.indexOf('5. Operation and Maintenance Guidance'),
+      text.indexOf('6. Community / WASH Committee'));
+    return {
+      unrecorded: section(await window.__handover()),
+      submersible: section(await window.__handover({
+        pumpType: 'Grundfos SQFlex submersible' })),
+      solar: section(await window.__handover({ pumpType: 'Solar pump, 1.2 kW array' })),
+    };
+  });
+  check('maintenance guidance follows the pump that was installed',
+    om.unrecorded.includes('strokes per day') &&
+    !om.submersible.includes('strokes per day') &&
+    !om.submersible.includes('pump rods') &&
+    !om.submersible.includes('bolts on the pump head') &&
+    om.submersible.includes('Check the running current against the commissioning value.') &&
+    om.solar.includes('the array for damage, loose connections and shading'),
+    om.submersible);
+
+  // --- the data sheet states a thing once -----------------------------------
+  // The log and the construction record both carry a depth, a static level
+  // and the strikes. Printed twice a metre apart they are two claims for a
+  // reader to reconcile, and a pump nobody recorded is not a row at all.
+  const sheet = await page.evaluate(async () => {
+    const text = await window.__handover();
+    return text.slice(text.indexOf('3. Borehole Data Sheet'),
+      text.indexOf('4. Water Quality'))
+      .split('\n').map((s) => s.trim()).filter(Boolean);
+  });
+  const rows = (label) => sheet.filter((line) => line === label).length;
+  check('the borehole data sheet states each item once, and invents no pump',
+    rows('Total depth') === 1 && rows('Water strikes') === 1 &&
+    rows('Static water level') <= 1 && rows('Pump type') === 0,
+    JSON.stringify(sheet));
+
+  // --- the cover is filled in or silent -------------------------------------
+  // A label with nothing after it is a blank line on the first page of a
+  // signed document. The handover cover carried two.
+  const cover = stamped.slice(0, stamped.indexOf('PROVISIONAL - NOT FOR CERTIFICATION'));
+  check('no cover line is a label with nothing after it',
+    cover.includes('Borehole reference') && !cover.includes('Handover date') &&
+    !cover.includes('—'), cover);
+
+  // --- the summary is qualified the way the cover is ------------------------
+  // A stamp on page one and an unhedged verdict on page three is a
+  // contradiction the reader who starts at the summary never sees resolved.
+  const qualified = 'This report is provisional and not a certification (outstanding: ';
+  check('a provisional report says so where its verdict is given',
+    stamped.includes(qualified) &&
+    stamped.includes('). The findings below are those the supplied records ' +
+      'support; the cover says what is missing.') &&
+    stamped.indexOf(qualified) > stamped.indexOf('Executive Summary') &&
+    stamped.indexOf(qualified) < stamped.indexOf('Key findings:'),
+    stamped.slice(stamped.indexOf('Executive Summary'),
+      stamped.indexOf('Executive Summary') + 400));
+
+  // --- what the water result is called --------------------------------------
+  // WHO sets no health based guideline for total coliforms and E. coli is 0
+  // here, so a coliform count is a national-limit failure and an indicator of
+  // wellhead ingress. Three documents called it a health guideline breach and
+  // faecal contamination, which is a different finding with a different
+  // remedy.
+  //
+  // Each table cell is its own paragraph in the extracted text, so a row is
+  // the parameter's line and the three that follow it: value, unit, remark.
+  const lines = stamped.split('\n').map((line) => line.trim());
+  const coliformAt = lines.indexOf('Total coliforms');
+  const coliformRow = lines.slice(coliformAt, coliformAt + 4).join(' | ');
+  const healthSentence = lines.find(
+    (line) => line.includes('health based guideline value for:')) || '';
+  check('total coliforms are reported as a national-limit failure, not a health one',
+    coliformAt > 0 && !/coliform/i.test(healthSentence) &&
+    /national limit/i.test(coliformRow) &&
+    !/exceeds the WHO health based guideline/i.test(coliformRow),
+    JSON.stringify([healthSentence, coliformRow]));
+
+  // --- a provisional limit is called provisional wherever it is printed -----
+  // The national column has not been confirmed against the Standards Bureau
+  // specification, and a national exceedance reads as a compliance failure.
+  // The quality report said so; the completion and handover tables printed
+  // the same judgement bare.
+  const provisional = 'The national column in the standards table is provisional';
+  const completionDoc = await issued('completion');
+  check('a national limit in a report table carries the provisional note',
+    stamped.includes('Total coliforms') && stamped.includes(provisional) &&
+    completionDoc.includes('Total coliforms') && completionDoc.includes(provisional),
+    JSON.stringify([stamped.includes(provisional), completionDoc.includes(provisional)]));
+
+  // --- the facies section says what its diagram shows ------------------------
+  // It used to be two figures under a heading naming something neither of
+  // them spelled out, which tells a reader who cannot read a Piper diagram
+  // nothing whatever.
+  const qualityDoc = await issued('quality');
+  const faciesAt = qualityDoc.indexOf('5. Hydrochemical Facies');
+  const piperAt = qualityDoc.indexOf('Piper trilinear diagram');
+  check('the facies section names the water type above the diagram',
+    faciesAt >= 0 && piperAt > faciesAt &&
+    /The water is a [-\w+]+ type \(/.test(qualityDoc.slice(faciesAt, piperAt)),
+    qualityDoc.slice(faciesAt, faciesAt + 400));
+
   // --- missing GPS stays missing, everywhere it shows ------------------------
   check('the report says the maps cover the area, not the borehole',
     stamped.includes('No GPS position is recorded for it'), '');
@@ -338,6 +445,15 @@ await withPage(async (page, base, consoleErrors) => {
     located.quality_state === 'ready' && located.quality_certifiable === true &&
     located.quality_stamped === false && located.quality_hedged === false,
     JSON.stringify(located));
+
+  // A grid reference is a position somebody has to type into a GPS to stand
+  // where the borehole is. Printed with a thousands separator and no zone it
+  // is a quantity instead, and in a country straddling zones 28N and 29N it
+  // does not even say which grid it belongs to.
+  check('a grid coordinate prints with its zone and no thousands separator',
+    locatedText.includes('778000 m E (UTM zone 28N)') &&
+    locatedText.includes('946000 m N') && !locatedText.includes('778,000'),
+    locatedText.slice(0, 600));
 
   // --- an interim document says who issued it and why ------------------------
   // Both outstanding requirements are overridden, each with its reason: an
@@ -709,6 +825,31 @@ await withPage(async (page, base, consoleErrors) => {
     /no usable latitude and longitude/i.test(allBad.text),
     JSON.stringify({ loaded: allBad.loaded, codes: allBad.codes,
       text: allBad.text.slice(0, 260) }));
+
+  /* A report figure is painted for paper, not for the screen it was built
+   * on. The app's default theme is dark and every chart reads the live CSS
+   * tokens as it is constructed, so clients were sent maps, sections and
+   * borehole drawings rasterised white on black. */
+  const printed = await page.evaluate(async () => {
+    const charts = window.GWT.charts;
+    document.documentElement.setAttribute('data-theme', 'dark');
+    const onScreen = charts.palette().surface;
+    charts.usePrintPalette(true);
+    const forPaper = charts.palette();
+    charts.usePrintPalette(false);
+    const backOnScreen = charts.palette().surface;
+    return { onScreen, surface: forPaper.surface, ink: forPaper.ink, backOnScreen };
+  });
+  const light = (hex) => {
+    const v = String(hex || '').trim().replace('#', '');
+    if (v.length !== 6) return false;
+    const n = [0, 2, 4].map((i) => parseInt(v.slice(i, i + 2), 16) / 255);
+    return (0.2126 * n[0] + 0.7152 * n[1] + 0.0722 * n[2]) > 0.8;
+  };
+  check('a report figure is rasterised for paper, whatever theme the app is in',
+    light(printed.surface) && !light(printed.ink) &&
+    printed.backOnScreen === printed.onScreen,
+    JSON.stringify(printed));
 
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));

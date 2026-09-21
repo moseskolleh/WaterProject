@@ -259,6 +259,13 @@ def build() -> dict:
         "health": [r.parameter for r in assessed.health_exceedances],
         "wqi": clean(assessed.wqi.value) if assessed.wqi else None,
         "corros": assessed.corrosivity.classification,
+        # The classification alone let the corrosivity sentences drift: the
+        # browser went on saying the pH was "within the acceptability range"
+        # for a sample flagged at 5.9 while the class it was checked on still
+        # read "Strongly corrosive" on both sides.
+        "corros_verdict": assessed.corrosivity.verdict,
+        "corros_materials": assessed.corrosivity.materials_note,
+        "national": [r.parameter for r in assessed.national_exceedances],
         "ionic": clean(assessed.ionic.error_percent) if assessed.ionic else None,
     }
 
@@ -453,6 +460,18 @@ def build() -> dict:
     ]
     out["preference"] = drilling_preference_table(rokel_interps)
 
+    # A siting survey with no borehole yet: the design comes from the
+    # interpretation alone. The degenerate half-space used to make this an
+    # 80 m hole with 48 m of screen at both Rokel points, from soundings that
+    # resolve 40 m, and the browser built it from the same zone.
+    ves_only = design_borehole(interpretation=rokel_interps[0])
+    out["ves_only_design"] = {
+        "depth": clean(ves_only.total_depth_m),
+        "screens": [[clean(x.top_m), clean(x.bottom_m)] for x in ves_only.screens],
+        "screen_len": clean(ves_only.total_screen_length_m),
+        "basis": list(ves_only.design_basis),
+    }
+
     # Geographic -> UTM, the direction a pasted phone position takes.
     out["geo"] = [
         {"lat": lat, "lon": lon,
@@ -512,7 +531,18 @@ def build() -> dict:
         "empty": _wq(),
         "pass": _wq(*_panel, WaterQualityResult("pH", 7.2, "pH units")),
         "aesthetic": _wq(*_panel, WaterQualityResult("Iron", 0.5, "mg/L")),
-        "national_fail": _wq(*_panel, WaterQualityResult("Aluminium", 0.5, "mg/L")),
+        # Aluminium used to be the national_fail case, on a WHO health value
+        # of 0.9 mg/L that WHO does not set. Total coliforms above zero is
+        # the real one: a national limit failure that is not a health
+        # guideline failure and not faecal contamination.
+        "national_fail": _wq(*_panel,
+                             WaterQualityResult("Total coliforms", 5.0, "CFU/100 mL")),
+        # a count the laboratory saw and did not put a number to, and a
+        # ">100" inside its limit: both used to read as "not measured"
+        "unquantified_count": _wq(*_panel, WaterQualityResult(
+            "Total coliforms", None, "CFU/100 mL", greater_than=0.0)),
+        "greater_than_inside_limit": _wq(*_panel, WaterQualityResult(
+            "Sulfate", None, "mg/L", greater_than=100.0)),
         "health_fail": _wq(*_panel, WaterQualityResult("Arsenic", 0.5, "mg/L")),
         "micrograms": _wq(*_panel, WaterQualityResult("Lead", 5.0, "ug/L")),
         "bad_unit": _wq(*_panel, WaterQualityResult("Iron", 0.1, "wibbles")),
@@ -520,6 +550,8 @@ def build() -> dict:
             "Cadmium", None, "mg/L", detection_limit=0.05, below_detection=True)),
         "unknown_parameter": _wq(
             *_panel, WaterQualityResult("Glyphosate", 0.4, "mg/L")),
+        # the charge balance cannot be computed, and used to say nothing
+        "no_ionic_balance": _wq(WaterQualityResult("Calcium", 40.0, "mg/L")),
     }
     out["verdicts"] = {}
     for name, sample in _cases.items():
@@ -532,6 +564,7 @@ def build() -> dict:
             "uncertainties": list(a.uncertainties),
             "missing_essential": list(a.missing_essential),
             "verdict": a.verdict,
+            "flags": [[f.level, f.code, f.message] for f in a.flags],
         }
 
     # The Depth Spine's guideline chart over units that are NOT the

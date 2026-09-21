@@ -575,10 +575,21 @@ def _sounding_block(
 
     # data table with the field sheet header block
     table_no = rb.next_table_number
+    # A Wenner sounding reaches this table now that the reader can take one,
+    # and the table was hard-coded Schlumberger: the spacing column was
+    # headed AB/2 although it held a, and the MN column printed "n/a" on
+    # every row of a sounding that has no MN by construction.
+    is_wenner = sounding.array_type.startswith("wenner")
+    array_name = "Wenner" if is_wenner else "Schlumberger"
+    spacing_text = (
+        "the electrode spacing a"
+        if is_wenner
+        else "half the current electrode spacing (AB/2)"
+    )
     rb.paragraph(
-        f"Table {table_no} presents the Schlumberger array VES data recorded "
+        f"Table {table_no} presents the {array_name} array VES data recorded "
         f"at point {sid}, from which the sounding curve of apparent "
-        "resistivity against half the current electrode spacing (AB/2) in "
+        f"resistivity against {spacing_text} in "
         f"Figure {rb.next_figure_number} is plotted.",
         align="justify",
     )
@@ -592,18 +603,23 @@ def _sounding_block(
             ("Elevation", fmt_num(site.elevation_m) + " m" if site.elevation_m else ""),
         ]
     )
-    rows = [
-        [i + 1, fmt_num(a), fmt_num(m), fmt_num(r, 4)]
-        # the parser appends AB/2, MN and rho per row (blank MN becomes NaN),
-        # so a length mismatch means a hand-built sounding, not a short sheet
-        for i, (a, m, r) in enumerate(
-            zip(sounding.ab2, sounding.mn, sounding.rho_app, strict=True))
-    ]
+    # the parser appends AB/2, MN and rho per row (blank MN becomes NaN),
+    # so a length mismatch means a hand-built sounding, not a short sheet
+    triples = list(zip(sounding.ab2, sounding.mn, sounding.rho_app, strict=True))
+    if is_wenner:
+        rows = [[i + 1, fmt_num(a), fmt_num(r, 4)] for i, (a, _m, r) in enumerate(triples)]
+        header = ["No.", "a (m)", "Apparent Resistivity (ohm-m)"]
+        widths = [1.5, 3.0, 7.0]
+    else:
+        rows = [[i + 1, fmt_num(a), fmt_num(m), fmt_num(r, 4)]
+                for i, (a, m, r) in enumerate(triples)]
+        header = ["No.", "AB/2 (m)", "MN (m)", "Apparent Resistivity (ohm-m)"]
+        widths = [1.5, 3.0, 3.0, 7.0]
     rb.table(
         rows,
-        header=["No.", "AB/2 (m)", "MN (m)", "Apparent Resistivity (ohm-m)"],
-        caption=f"Schlumberger array VES data at point {sid}.",
-        col_widths_cm=[1.5, 3.0, 3.0, 7.0],
+        header=header,
+        caption=f"{array_name} array VES data at point {sid}.",
+        col_widths_cm=widths,
     )
 
     # curve + model figure, drawn to the depth of investigation, with the

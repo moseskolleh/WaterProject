@@ -607,7 +607,7 @@ def test_two_boreholes_do_not_share_report_figures(tmp_path):
     assert len(digests) == 2, "the second report reused the first one's figure"
 
 
-def test_a_national_standard_failure_is_not_reported_as_a_taste_problem():
+def test_a_national_standard_failure_is_not_reported_as_a_taste_problem(tmp_path):
     """A national limit can be stricter than the WHO health guideline.
 
     Exceeding it was folded into the aesthetic bucket, and the report then
@@ -615,13 +615,24 @@ def test_a_national_standard_failure_is_not_reported_as_a_taste_problem():
     for a supply that fails the national standard. QUESTIONS.md asks the
     user to replace the national column with the real Standards Bureau
     values, so this is the column most likely to tighten.
+
+    The case is built here rather than taken from the bundled table, which
+    no longer contains one: aluminium was the only row where the national
+    limit undercut a WHO health guideline, and it did so on a guideline
+    value of 0.9 mg/L that WHO does not set.
     """
-    # Aluminium: WHO health 0.9 mg/L, national 0.2 mg/L
+    standards = tmp_path / "standards.csv"
+    standards.write_text(
+        "parameter,unit,who_health_gv,who_aesthetic,sl_standard,sl_source,category,note\n"
+        "pH,pH units,,6.5-8.5,6.5-8.5,provisional,physical,\n"
+        "Manganese,mg/L,0.4,0.1,0.08,provisional,metal,national stricter\n",
+        encoding="utf-8",
+    )
     strict = assess_sample(_quality_sample(
         WaterQualityResult("pH", 7.2),
-        WaterQualityResult("Aluminium", 0.5),
-    ))
-    assert [r.parameter for r in strict.national_exceedances] == ["Aluminium"]
+        WaterQualityResult("Manganese", 0.2),
+    ), standards_path=standards)
+    assert [r.parameter for r in strict.national_exceedances] == ["Manganese"]
     assert not strict.health_exceedances
     assert "does not comply with the national standard" in strict.verdict
     assert "usable for drinking" not in strict.verdict

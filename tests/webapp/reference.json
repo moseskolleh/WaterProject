@@ -715,13 +715,17 @@
   "type_text": "step drawdown test with recovery"
  },
  "assessed": {
-  "verdict": "The water does not meet the health based guideline value(s) for: Manganese, Total coliforms. Treatment or an alternative source is required before the water is used for drinking.",
+  "verdict": "The water does not meet the health based guideline value for: Manganese. Treatment or an alternative source is required before the water is used for drinking.",
   "health": [
-   "Manganese",
-   "Total coliforms"
+   "Manganese"
   ],
   "wqi": 224.1,
   "corros": "Strongly corrosive",
+  "corros_verdict": "The water is chemically aggressive (Ryznar index 11.4, Langelier index -2.7). It will corrode metal fittings. The pH of 5.9 is below the 6.5 to 8.5 acceptability range, which adds to the attack on metal; soft, low-alkalinity basement groundwater is aggressive even at a pH inside that range.",
+  "corros_materials": "Specify uPVC or stainless steel (grade 304 or 316) for the rising main and pump components, and avoid galvanised iron and mild steel, which corrode rapidly in this water and are a leading cause of premature pump failure. Inspect the rising main and the wetted metal parts of the pump for corrosion at each service.",
+  "national": [
+   "Total coliforms"
+  ],
   "ionic": 2.147849978872537
  },
  "design": {
@@ -1937,10 +1941,9 @@
    "gravelIntervalM": 0.0,
    "overburdenM": 30.0
   },
-  "quality_verdict": "The water does not meet the health based guideline value(s) for: Manganese, Total coliforms. Treatment or an alternative source is required before the water is used for drinking.",
+  "quality_verdict": "The water does not meet the health based guideline value for: Manganese. Treatment or an alternative source is required before the water is used for drinking.",
   "quality_health": [
-   "Manganese",
-   "Total coliforms"
+   "Manganese"
   ],
   "quality_aesthetic": [
    "pH",
@@ -1968,7 +1971,7 @@
    [
     "Turbidity",
     0.64,
-    "WHO acceptability",
+    "national",
     "max"
    ],
    [
@@ -1980,7 +1983,7 @@
    [
     "Total hardness",
     0.116,
-    "WHO acceptability",
+    "national",
     "max"
    ],
    [
@@ -2243,6 +2246,23 @@
    "Ranking": "2nd"
   }
  ],
+ "ves_only_design": {
+  "depth": 40.0,
+  "screens": [
+   [
+    14.0,
+    38.0
+   ]
+  ],
+  "screen_len": 24.0,
+  "basis": [
+   "screens positioned against the low resistivity zones of the VES interpretation (8-40 m)",
+   "5 inch uPVC casing in a 6.5 inch hole",
+   "no gravel pack: the 19 mm annulus between the 5 inch casing and the 6.5 inch hole is too thin to place one, so the annulus below the seal is left to the formation",
+   "cement sanitary seal from surface to 6 m with concrete apron with drainage channel and soakaway",
+   "screens kept at least 5 m below the static water level"
+  ]
+ },
  "geo": [
   {
    "lat": 8.4657,
@@ -2398,7 +2418,24 @@
     "Fluoride",
     "Nitrate (as NO3)"
    ],
-   "verdict": "The water cannot be declared suitable for drinking on these results: the sample carries no laboratory results; the health panel is incomplete: no evaluable result for E. coli, Arsenic, Fluoride, Nitrate (as NO3). Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off."
+   "verdict": "The water cannot be declared suitable for drinking on these results: the sample carries no laboratory results; the health panel is incomplete: no evaluable result for E. coli, Arsenic, Fluoride, Nitrate (as NO3). Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off.",
+   "flags": [
+    [
+     "warning",
+     "incomplete_health_panel",
+     "No evaluable result for E. coli, Arsenic, Fluoride, Nitrate (as NO3). The sample cannot show the water is safe to drink until the health panel is complete."
+    ],
+    [
+     "error",
+     "nothing_evaluable",
+     "No result in this sample could be graded against a guideline value, so no suitability verdict can be given."
+    ],
+    [
+     "warning",
+     "ionic_balance_not_checked",
+     "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+    ]
+   ]
   },
   "pass": {
    "state": "pass",
@@ -2425,7 +2462,14 @@
    ],
    "uncertainties": [],
    "missing_essential": [],
-   "verdict": "All measured parameters comply with the WHO guideline values and the national standard limits applied. The water is suitable for drinking on the basis of the parameters tested."
+   "verdict": "All measured parameters comply with the WHO guideline values and the national standard limits applied. The water is suitable for drinking on the basis of the parameters tested.",
+   "flags": [
+    [
+     "warning",
+     "ionic_balance_not_checked",
+     "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+    ]
+   ]
   },
   "aesthetic": {
    "state": "aesthetic",
@@ -2452,7 +2496,14 @@
    ],
    "uncertainties": [],
    "missing_essential": [],
-   "verdict": "The water meets all health based guideline values. Acceptability (aesthetic) limits are exceeded for: Iron. The water is usable for drinking, although taste, odour or staining complaints may arise; simple treatment is advisable."
+   "verdict": "The water meets all health based guideline values. Acceptability (aesthetic) limits are exceeded for: Iron. The water is usable for drinking, although taste, odour or staining complaints may arise; simple treatment is advisable.",
+   "flags": [
+    [
+     "warning",
+     "ionic_balance_not_checked",
+     "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+    ]
+   ]
   },
   "national_fail": {
    "state": "national_fail",
@@ -2475,11 +2526,93 @@
     0.001,
     0.3,
     5.0,
-    0.5
+    5.0
    ],
    "uncertainties": [],
    "missing_essential": [],
-   "verdict": "The water meets the WHO health based guideline values, but does not comply with the national standard limit(s) for: Aluminium. Treatment is required before the supply can be accepted against the national standard; check whether the limit exceeded is a health or an acceptability limit."
+   "verdict": "The water meets the WHO health based guideline values, but does not comply with the national standard limit for: Total coliforms. Treatment is required before the supply can be accepted against the national standard; check whether the limit exceeded is a health or an acceptability limit.",
+   "flags": [
+    [
+     "warning",
+     "ionic_balance_not_checked",
+     "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+    ]
+   ]
+  },
+  "unquantified_count": {
+   "state": "national_fail",
+   "statuses": [
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "exceeds_national"
+   ],
+   "reasons": [
+    "",
+    "",
+    "",
+    "",
+    "detected_not_quantified"
+   ],
+   "converted": [
+    0.0,
+    0.001,
+    0.3,
+    5.0,
+    null
+   ],
+   "uncertainties": [],
+   "missing_essential": [],
+   "verdict": "The water meets the WHO health based guideline values, but does not comply with the national standard limit for: Total coliforms. Treatment is required before the supply can be accepted against the national standard; check whether the limit exceeded is a health or an acceptability limit.",
+   "flags": [
+    [
+     "warning",
+     "ionic_balance_not_checked",
+     "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+    ]
+   ]
+  },
+  "greater_than_inside_limit": {
+   "state": "indeterminate",
+   "statuses": [
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "indeterminate"
+   ],
+   "reasons": [
+    "",
+    "",
+    "",
+    "",
+    "detected_not_quantified"
+   ],
+   "converted": [
+    0.0,
+    0.001,
+    0.3,
+    5.0,
+    null
+   ],
+   "uncertainties": [
+    "Sulfate could not be assessed: it could not be evaluated"
+   ],
+   "missing_essential": [],
+   "verdict": "The water cannot be declared suitable for drinking on these results: Sulfate could not be assessed: it could not be evaluated. Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off.",
+   "flags": [
+    [
+     "error",
+     "indeterminate_detected_not_quantified",
+     "'Sulfate' could not be assessed: more than 100; the laboratory did not quantify it, so it cannot be shown to meet the limit"
+    ],
+    [
+     "warning",
+     "ionic_balance_not_checked",
+     "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+    ]
+   ]
   },
   "health_fail": {
    "state": "health_fail",
@@ -2506,7 +2639,24 @@
    ],
    "uncertainties": [],
    "missing_essential": [],
-   "verdict": "The water does not meet the health based guideline value(s) for: Arsenic. Treatment or an alternative source is required before the water is used for drinking."
+   "verdict": "The water does not meet the health based guideline value for: Arsenic. Treatment or an alternative source is required before the water is used for drinking.",
+   "flags": [
+    [
+     "warning",
+     "ionic_balance_not_checked",
+     "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+    ],
+    [
+     "warning",
+     "hazard_index",
+     "Non-carcinogenic Hazard Index 47.8 is at or above 1 (dominated by arsenic); chronic ingestion poses a potential health concern."
+    ],
+    [
+     "warning",
+     "cancer_risk",
+     "Estimated lifetime arsenic cancer risk 2.1e-02 exceeds the 1e-4 screening level."
+    ]
+   ]
   },
   "micrograms": {
    "state": "pass",
@@ -2533,7 +2683,14 @@
    ],
    "uncertainties": [],
    "missing_essential": [],
-   "verdict": "All measured parameters comply with the WHO guideline values and the national standard limits applied. The water is suitable for drinking on the basis of the parameters tested."
+   "verdict": "All measured parameters comply with the WHO guideline values and the national standard limits applied. The water is suitable for drinking on the basis of the parameters tested.",
+   "flags": [
+    [
+     "warning",
+     "ionic_balance_not_checked",
+     "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+    ]
+   ]
   },
   "bad_unit": {
    "state": "indeterminate",
@@ -2562,7 +2719,19 @@
     "Iron could not be assessed: the reported unit could not be read"
    ],
    "missing_essential": [],
-   "verdict": "The water cannot be declared suitable for drinking on these results: Iron could not be assessed: the reported unit could not be read. Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off."
+   "verdict": "The water cannot be declared suitable for drinking on these results: Iron could not be assessed: the reported unit could not be read. Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off.",
+   "flags": [
+    [
+     "error",
+     "indeterminate_unit_unreadable",
+     "'Iron' could not be assessed: reported in 'wibbles' but the guideline is in 'mg/L': the reported unit could not be read. The value was not compared against any limit."
+    ],
+    [
+     "warning",
+     "ionic_balance_not_checked",
+     "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+    ]
+   ]
   },
   "shallow_dl": {
    "state": "indeterminate",
@@ -2591,7 +2760,19 @@
     "Cadmium could not be assessed: the detection limit is above the limit being checked"
    ],
    "missing_essential": [],
-   "verdict": "The water cannot be declared suitable for drinking on these results: Cadmium could not be assessed: the detection limit is above the limit being checked. Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off."
+   "verdict": "The water cannot be declared suitable for drinking on these results: Cadmium could not be assessed: the detection limit is above the limit being checked. Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off.",
+   "flags": [
+    [
+     "error",
+     "indeterminate_detection_limit_above_guideline",
+     "'Cadmium' could not be assessed: below a detection limit of 0.05 mg/L, which is above the limit of 0.003 mg/L. The method cannot see the guideline value, so the result does not show compliance; re-test with a more sensitive method."
+    ],
+    [
+     "warning",
+     "ionic_balance_not_checked",
+     "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+    ]
+   ]
   },
   "unknown_parameter": {
    "state": "indeterminate",
@@ -2620,7 +2801,54 @@
     "Glyphosate has no entry in the standards table, so it was not checked against any limit"
    ],
    "missing_essential": [],
-   "verdict": "The water cannot be declared suitable for drinking on these results: Glyphosate has no entry in the standards table, so it was not checked against any limit. Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off."
+   "verdict": "The water cannot be declared suitable for drinking on these results: Glyphosate has no entry in the standards table, so it was not checked against any limit. Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off.",
+   "flags": [
+    [
+     "warning",
+     "unknown_parameter",
+     "No guideline entry for 'Glyphosate'; it was not checked against any limit and keeps the sample out of a 'suitable for drinking' verdict. Add it to the standards CSV if a limit applies."
+    ],
+    [
+     "warning",
+     "ionic_balance_not_checked",
+     "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+    ]
+   ]
+  },
+  "no_ionic_balance": {
+   "state": "indeterminate",
+   "statuses": [
+    "no_guideline"
+   ],
+   "reasons": [
+    ""
+   ],
+   "converted": [
+    40.0
+   ],
+   "uncertainties": [
+    "no result in the sample could be graded against a guideline value",
+    "the health panel is incomplete: no evaluable result for E. coli, Arsenic, Fluoride, Nitrate (as NO3)"
+   ],
+   "missing_essential": [
+    "E. coli",
+    "Arsenic",
+    "Fluoride",
+    "Nitrate (as NO3)"
+   ],
+   "verdict": "The water cannot be declared suitable for drinking on these results: no result in the sample could be graded against a guideline value; the health panel is incomplete: no evaluable result for E. coli, Arsenic, Fluoride, Nitrate (as NO3). Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off.",
+   "flags": [
+    [
+     "warning",
+     "incomplete_health_panel",
+     "No evaluable result for E. coli, Arsenic, Fluoride, Nitrate (as NO3). The sample cannot show the water is safe to drink until the health panel is complete."
+    ],
+    [
+     "warning",
+     "ionic_balance_not_checked",
+     "The charge balance could not be computed: the analysis carries no values for magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+    ]
+   ]
   }
  },
  "spine_quality": [
@@ -2703,7 +2931,7 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
@@ -2717,7 +2945,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -2738,14 +2966,14 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
      [
       "design_derived",
       "met",
-      "19.0 m of screen in 3 run(s).",
+      "19.0 m of screen in 3 runs.",
       "",
       ""
      ],
@@ -2780,14 +3008,14 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -2808,7 +3036,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -2850,7 +3078,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -2892,7 +3120,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3169,7 +3397,7 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
@@ -3183,7 +3411,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3204,14 +3432,14 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
      [
       "design_derived",
       "met",
-      "19.0 m of screen in 3 run(s).",
+      "19.0 m of screen in 3 runs.",
       "",
       ""
      ],
@@ -3246,14 +3474,14 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3274,7 +3502,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -3316,7 +3544,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -3358,7 +3586,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3402,7 +3630,7 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
@@ -3416,7 +3644,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3444,7 +3672,7 @@
      [
       "design_derived",
       "met",
-      "19.0 m of screen in 3 run(s).",
+      "19.0 m of screen in 3 runs.",
       "",
       ""
      ],
@@ -3479,14 +3707,14 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3591,7 +3819,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3635,7 +3863,7 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
@@ -3649,7 +3877,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3677,7 +3905,7 @@
      [
       "design_derived",
       "met",
-      "19.0 m of screen in 3 run(s).",
+      "19.0 m of screen in 3 runs.",
       "",
       ""
      ],
@@ -3712,14 +3940,14 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3824,7 +4052,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3868,7 +4096,7 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
@@ -3882,7 +4110,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3903,14 +4131,14 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
      [
       "design_derived",
       "met",
-      "19.0 m of screen in 3 run(s).",
+      "19.0 m of screen in 3 runs.",
       "",
       ""
      ],
@@ -3945,14 +4173,14 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3973,7 +4201,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -4015,7 +4243,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -4057,7 +4285,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4101,7 +4329,7 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
@@ -4115,7 +4343,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4136,14 +4364,14 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
      [
       "design_derived",
       "met",
-      "19.0 m of screen in 3 run(s).",
+      "19.0 m of screen in 3 runs.",
       "",
       ""
      ],
@@ -4178,14 +4406,14 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4206,7 +4434,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -4248,7 +4476,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -4290,7 +4518,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4334,7 +4562,7 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
@@ -4348,7 +4576,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4369,14 +4597,14 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
      [
       "design_derived",
       "met",
-      "19.0 m of screen in 3 run(s).",
+      "19.0 m of screen in 3 runs.",
       "",
       ""
      ],
@@ -4413,14 +4641,14 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4441,7 +4669,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -4485,7 +4713,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -4529,7 +4757,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4575,7 +4803,7 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
@@ -4589,7 +4817,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4610,14 +4838,14 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
      [
       "design_derived",
       "met",
-      "19.0 m of screen in 3 run(s).",
+      "19.0 m of screen in 3 runs.",
       "",
       ""
      ],
@@ -4652,14 +4880,14 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4680,7 +4908,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -4722,7 +4950,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -4764,7 +4992,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4808,7 +5036,7 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
@@ -4822,7 +5050,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4843,14 +5071,14 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
      [
       "design_derived",
       "met",
-      "19.0 m of screen in 3 run(s).",
+      "19.0 m of screen in 3 runs.",
       "",
       ""
      ],
@@ -4885,14 +5113,14 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4913,7 +5141,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -4955,7 +5183,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -4997,7 +5225,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -5041,7 +5269,7 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
@@ -5055,7 +5283,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -5076,14 +5304,14 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
      [
       "design_derived",
       "met",
-      "19.0 m of screen in 3 run(s).",
+      "19.0 m of screen in 3 runs.",
       "",
       ""
      ],
@@ -5118,14 +5346,14 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -5146,7 +5374,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -5188,7 +5416,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -5230,7 +5458,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -5274,7 +5502,7 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
@@ -5288,7 +5516,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -5309,14 +5537,14 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
      [
       "design_derived",
       "met",
-      "19.0 m of screen in 3 run(s).",
+      "19.0 m of screen in 3 runs.",
       "",
       ""
      ],
@@ -5351,14 +5579,14 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -5379,7 +5607,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -5421,7 +5649,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -5463,7 +5691,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],

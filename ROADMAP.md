@@ -359,10 +359,11 @@ Files: `reporting/*.py`, `quality/assess.py`, `quality/corrosivity.py`,
   pegs, a profiling method and compliance with unnamed guidelines,** none
   of it evidenced by the inputs.
   Done: the field-work section prints the recorded reconnaissance date and notes when there are any and says there are none when there are not; the geomorphological survey, traverse selection, pegs and profiling boilerplate is gone, and the sounding paragraph states the array and the count of positioned points.
-- [ ] **H reports-8 / maps-regional-5. The handover report captions a
+- [x] **H reports-8 / maps-regional-5. The handover report captions a
   marker-less district map "Location of the water point",** has blank
   "Project:" and "Date:" cover lines and duplicated data-sheet rows, and is
   the one report that omits the "no GPS position" note.
+  Done: the handover report draws its area figures through `add_area_section`, so each map carries the caption the map itself earns; the cover skips a detail it has no value for; the data-sheet rows are deduplicated; and the "no GPS position is recorded" note is printed here as it is in the other reports.
 - [x] **H reports-9. Total coliforms are reported as exceeding a WHO
   health-based guideline and as "faecal contamination"** in three documents;
   WHO sets no health guideline for total coliforms, and E. coli is 0.
@@ -373,25 +374,30 @@ Files: `reporting/*.py`, `quality/assess.py`, `quality/corrosivity.py`,
 - [x] **M reports-15. The table of contents is an un-updated field showing
   "Right-click and choose Update Field".**
   Done: the field's cached result is the list of headings, filled at save, and the document asks Word to update fields on opening for the page numbers.
-- [ ] **M reports-16. An unverified, undated "Sierra Leone Standard" is
+- [x] **M reports-16. An unverified, undated "Sierra Leone Standard" is
   cited in four reports** and national limits are stated in the completion
   and handover tables without the provisional note the quality report
   carries.
-- [ ] **M reports-18. Handpump maintenance boilerplate ("pump rods",
+  Done: the citation states that the edition and date are unverified and that the limits are provisional, and the completion and handover tables carry `PROVISIONAL_NATIONAL_NOTE` wherever they print a provisional national value.
+- [x] **M reports-18. Handpump maintenance boilerplate ("pump rods",
   "strokes per day") for a recorded submersible pump.**
-- [ ] **M reports-19. "A total of two hours" of development above a
+  Done: `om_guidance(pump_type)` returns the care list for the pump that was installed, with a motorised list for a submersible or solar pump, and the corrosivity note speaks of the wetted metal parts of the pump rather than pump rods.
+- [x] **M reports-19. "A total of two hours" of development above a
   one-hour development record** (the example passes free text the builder
   never reconciles).
+  Done: `_record_span` states the span the record itself covers ("The record covers 1 h 00 min (17:00 to 18:00)."), and the example no longer passes a free-text duration for the builder to contradict.
 - [x] **M reports-20. Piper diagram labels collide ("HNO3+K") and the
   hydrochemical facies section is empty.**
   Done: the base labels sit under their own vertices with a wider gap, and `facies_of` writes the facies sentence ("mixed-cation-HCO3 type ...") above the diagrams.
 - [x] **M reports-21. The provisional stamp is contradicted by an
   unqualified executive summary and a "Status: Successful" cover.**
   Done: the executive summary of a report that carries the stamp opens with the same qualification, naming what is outstanding or overridden.
-- [ ] **L reports-22. UTM coordinates with thousands separators and no
+- [x] **L reports-22. UTM coordinates with thousands separators and no
   zone.**
-- [ ] **L reports-23. "0/0" in the model table, "between 8 m to 80 m",
+  Done: `utm_text` prints an easting or northing with its zone and no separators ("778000 m E (UTM zone 28N)"), and the reports use it wherever they print a grid coordinate.
+- [x] **L reports-23. "0/0" in the model table, "between 8 m to 80 m",
   "(s)" plurals.**
+  Done: a half-space row is named "half-space" rather than "0/0"; the depth wording came right in workstream 1; and `plural` and `plural_noun` put a real plural wherever a count meets a noun.
 - [x] **L reports-24. `docx_utils`: an empty table without a header crashes
   the build, None prints "None", captions are not Caption-styled.**
   Done: `_clean(None)` is empty, an empty table without a header prints one row, and captions carry Word's Caption style.
@@ -481,32 +487,43 @@ rebuildDesign, buildReport; `docs/js/gwt-core.js` assembleDesign;
 `make_reference.py`, `review.mjs`. The subsystem-to-mirror map with line
 numbers is kept with the audit notes.
 
-- [ ] **C webapp-parity-1. Every figure the browser embeds in a .docx is
+- [x] **C webapp-parity-1. Every figure the browser embeds in a .docx is
   rasterised on the dark theme:** the default theme is dark and every chart
   paints its surface from the live CSS tokens, so clients get maps and
   drawings on a black background.
-- [ ] **H webapp-parity-3. The browser study-area map has no sea, no
+  Done: `usePrintPalette` makes `token` read the stylesheet's light values, and the three paths that build a document - the reports, the interim payment certificate and the asset record and placard - turn it on around the figure building and off again in a `finally`. It is set where the figures are built, not where they are rasterised, because the colours are in the SVG by then. `review.mjs` holds it: on a dark app, a figure's surface is light, its ink is not, and the screen palette is back afterwards.
+- [x] **H webapp-parity-3. The browser study-area map has no sea, no
   chiefdom names, draws the site as a "borehole" on a siting survey and
   hides sounding A under it.**
-- [ ] **H webapp-parity-4. The browser location map credits the boundaries
+  Done: the map paints sea, the country and foreign land as the Python one does; it draws chiefdom names, through the bundled `chiefdomNames` table so a truncated layer name is not what the reader sees; the site marker is a borehole only where a drilling log exists, and it is not drawn at all where it would sit on a sounding, which is what hid sounding A.
+- [x] **H webapp-parity-4. The browser location map credits the boundaries
   to OCHA COD-AB,** which is not the bundled dataset (geoBoundaries, CC BY),
   and has no sea, district names or neighbours.
-- [ ] **H webapp-parity-5. The browser geophysical report omits the
+  Done: the credit names geoBoundaries under CC BY 4.0, which is what the repository actually carries; the map draws sea and neighbouring land; and the districts carry their names, decluttered as the study-area map's are, rather than a hover title a printed report cannot show.
+- [x] **H webapp-parity-5. The browser geophysical report omits the
   study-area map, the suitability map and every survey-derived figure;**
   no section, pseudo-section or subsurface map exists in the browser.
-- [ ] **H webapp-parity-6 / ves-1. The browser builds an 80 m hole with 48 m
+  Done. The browser draws the study-area map (from the survey alone, as the Python figure does), the geoelectric section, the model and apparent-resistivity pseudo-sections, the four subsurface maps (depth to bedrock, aquifer thickness, bedrock elevation, protective capacity), the drill-target suitability map with its interpolated surface and all four of its caption states, and the ground surface along the traverse - each with the caption the Python report gives it. It lists what it could not draw and why rather than printing a shorter report, and it says why no topographic map is drawn.
+  The refusals are mirrored, which is the part that matters: no correlation across a gap too wide for one horizon to span, no subsurface section at all where fewer than two soundings carry a position, and the ground profile silently omitted where fewer than two carry an elevation, exactly as the Python omits it. The ranked drill-target table and the suitability map beside it are scored with the same settings, so the table's first place and the star on the figure cannot disagree.
+  Two divergences are known and are not drift: a layout whose positions are exactly symmetric has no unique principal axis, so the browser and LAPACK can choose different ones; and the pseudo-section triangulates a station-by-spacing lattice whose cells are all ties, so about half of them split on the other diagonal. Every number agrees in both cases.
+- [x] **H webapp-parity-6 / ves-1. The browser builds an 80 m hole with 48 m
   of screen for a VES-only project** from the degenerate zone.
-- [ ] **M webapp-parity-7. The browser thematic-map key lists a unit that is
+  Done by workstream 1 in both engines, and now held: the reference and the parity suite carry the design built from the Rokel interpretation alone, which is a 40 m hole with 24 m of screen at 14-38 m, from a sounding that resolves 40 m. Nothing checked that design before, so the two engines could have drifted on it unseen.
+- [x] **M webapp-parity-7. The browser thematic-map key lists a unit that is
   nowhere in the frame.**
-- [ ] **M webapp-parity-8. The browser geology and aquifer maps omit the
+  Done: the key is scoped to the window that was drawn rather than to the whole letterboxed frame, and the not-mapped test runs once on that same box, so the entry and the footnote that explains it cannot disagree. The national maps are framed on the country's own bounds, as `_plot_units_map` frames them, instead of on polygons that run into Guinea and Liberia.
+- [x] **M webapp-parity-8. The browser geology and aquifer maps omit the
   scale caveat and the BGS publisher statement.**
-- [ ] **M webapp-parity-9. The Streamlit design page ignores the pumping
+  Done: `scaleCaveat` mirrors `_scale_caveat` string for string, and the four map calls pass the source scale the Python plots pass, with the BGS publisher note on the aquifer maps, so the caveat is printed rather than merely computable.
+- [x] **M webapp-parity-9. The Streamlit design page ignores the pumping
   test:** no pump intake, a static-level box defaulting to 0, so the
   intake checks never run on the design that page's completion report
   carries.
-- [ ] **M webapp-parity-11. `parity.mjs` collects quantities it never
+  Done: the page prefills the static water level from the project's pumping test and says where the figure came from, and passes that test's recommended pump intake into `design_borehole`, so the intake checks run on the design this page hands to the drawing, the bill of quantities and the completion report.
+- [x] **M webapp-parity-11. `parity.mjs` collects quantities it never
   compares, and `reference.json` holds none of the VES or design prose;**
   the 12 m / 13 m divergence passed 528 of 528 checks.
+  Done: the interpretation's zones, flags and narrative went into the reference in workstream 1 and the design's basis, construction note and summary rows in workstream 4; and the eight groups that were collected on both sides and then compared on neither - the log's site fields, the test duration and recovery levels, the Depth Spine's levels, Piper percentages and quantity basis, the portfolio statistics and the census statistics - are now checked, on the shape the Python states, so a field the browser adds is not a divergence but a field Python states must match.
 
 ## 8. Data, geodesy and parsers
 
@@ -521,63 +538,81 @@ the browser too), `gwt-app.js` parseLatLon. Tests: `test_ingestion.py`,
 `test_geo_and_checks.py`, `test_chiefdoms.py`, `test_quality_verdict.py`,
 `test_provenance.py`, `test_web_build.py`.
 
-- [ ] **C data-ingestion-1. Non-detects written "ND (<0.05)", "BDL (0.02)",
+- [x] **C data-ingestion-1. Non-detects written "ND (<0.05)", "BDL (0.02)",
   "ND<0.1" or "Not detected (<0.001)" are read as measured concentrations
   and graded EXCEEDS HEALTH GUIDELINE.** Only a cell beginning with "<" or
   exactly matching an absence token is a non-detect.
-- [ ] **C data-ingestion-3. `parse_latlon` accepts an unsigned longitude and
+  Done in both engines: an absence word followed by nothing but a limit is an absence, and the limit it carries becomes the detection limit where the sheet has no separate column. A cell that merely contains a number and a word ("Nitrate 0.5") is untouched, so the rule does not reach beyond the forms it names.
+- [x] **C data-ingestion-3. `parse_latlon` accepts an unsigned longitude and
   a degrees-decimal-minutes coordinate, and the Streamlit zone relabel then
   lands the site inside Sierra Leone 250 km from where it is, with no
   flag.** "8.4657, 13.2317" becomes a zone-33 position relabelled "29N";
   the browser stores zone 33 instead, so the two engines disagree.
-- [ ] **H data-ingestion-2. "TNTC", "Present" and "Positive" become "not
+  Done in both engines: `read_latlon` returns the reading or the reason it cannot be read, degrees-decimal-minutes is parsed as what it is rather than as decimal degrees, and a longitude typed without its western sign is read as western with a note saying so. A position outside the two Sierra Leone zones is refused with a message rather than relabelled into one, so the page no longer moves a site 250 km to make it fit.
+- [x] **H data-ingestion-2. "TNTC", "Present" and "Positive" become "not
   measured"** (E. coli 0 with total coliforms TNTC gives "Safe") **and ">50"
   becomes exactly 50.**
-- [ ] **H data-ingestion-4. The district consistency check is judged against
+  Done in both engines: a result carries a lower bound where the laboratory gave one, and the assessment grades against it. A count above zero fails a limit of zero, so E. coli 0 with total coliforms TNTC is a national limit failure rather than "Safe", and ">50" is at least 50 rather than exactly 50. Where the bound is inside every limit the result is an open question, not a pass: the true value is somewhere above it. The reference carries both cases, so the two engines are held to them.
+- [x] **H data-ingestion-4. The district consistency check is judged against
   hand-drawn bounding boxes** that overlap on half the country, miss twelve
   percent of it, falsely flag a correct district on seven percent and give
   double answers ("Western Area Rural, Moyamba"), while the polygons are
   bundled and used everywhere else.
-- [ ] **H data-ingestion-6. `build_geodata` emits every interior (hole) ring
+  Done: the check reads the point-in-polygon lookup the rest of the toolkit already uses, and the box table and the functions that read it are gone. The cross-sheet check groups district names by what they can mean rather than by how they are typed, so one project spelling the same ground "Western Area" and "Western Area Rural" is no longer reported as disagreeing with itself.
+- [x] **H data-ingestion-6. `build_geodata` emits every interior (hole) ring
   as a filled polygon carrying the parent's code:** 34 of 92 geology and 10
   of 40 hydrogeology features are holes, and thirteen of them are drawn on
   top of the unit they should cut, so the dolerite dykes in Kono, Koinadugu
   and Falaba and the igneous aquifer around Kamakwie vanish from the maps.
-- [ ] **H data-ingestion-8. A drilling-log interval written with an en or em
+  Done in the build and in both renderers: a shape's rings are grouped by their winding, each outer ring with the holes that fall inside it, and the smallest containing ring wins so a hole in an island is cut from the island. A unit carries its interior rings, draws them as a compound path that leaves them open, and a point in a hole is not on the unit - on the maps, in the not-mapped test and in the lookup the geology paragraph is written from.
+  Not yet regenerated: the raw shapefiles are about 40 MB and are not committed, so `data/sl_geology_usgs.geojson` and `data/sl_hydrogeology_bgs.geojson` still carry the flattened holes. Run `python web/build_geodata.py --raw <dir>` with the sources listed at the top of that script, then `python web/build_webapp_data.py` and `python web/build_offline.py`, and the dykes come back.
+- [x] **H data-ingestion-8. A drilling-log interval written with an en or em
   dash ("5–10") is dropped without a word;** the only trace is an
   "interval_gap" flag blaming the log.
-- [ ] **H data-ingestion-9. Water-strike text is parsed as the last number
+  Done in both engines: every dash a sheet can carry is read as a hyphen before the interval is parsed, so the interval is read as written instead of vanishing behind a flag that blamed the driller.
+- [x] **H data-ingestion-9. Water-strike text is parsed as the last number
   after the last colon:** "Water strike: 8 m at 14:30" records a 30 m
   strike, "at 12 m and 30 m" records only 12 m, and a 0 in the strike column
   seeds a 0-5 m screen.
-- [ ] **M data-ingestion-5. `_normalise_district` maps "Western Area" to
+  Done in both engines: clock times are removed first, whether or not they carry a separator, a number that carries a metre unit is a depth and every one of them is read, a zero is an empty cell, and a fraction or a date names no depth at all. A cell that cannot be read confidently records nothing and raises a flag saying so, because a strike depth places a screen. A strike below the bottom of the hole is dropped with its own flag: the designer clipped it out, so it survived only as a figure printed to the client.
+- [x] **M data-ingestion-5. `_normalise_district` maps "Western Area" to
   Western Area Urban by substring order** (every correctly labelled
   southern-peninsula site is flagged) and "Ko" to Port Loko.
-- [ ] **M data-ingestion-7. Independently simplified chiefdom rings leave
+  Done: `match_district` takes an exact name, then a name that prefixes exactly one district, then one whose words begin the words of exactly one, and refuses a name that could be two - naming both - rather than picking the first substring hit. "Western Area" names the region, so it resolves to the two districts it can mean.
+- [x] **M data-ingestion-7. Independently simplified chiefdom rings leave
   about 37 km2 of cracks;** a point in one gets a pre-2017 district from one
   lookup, an empty district from another, and the withheld Maforki wedge is
   confidently placed in Kono by the fallback.
-- [ ] **M data-ingestion-10. Constant-test hourly groups whose times restart
+  Done in both engines: a point in no chiefdom is resolved to the nearest ring within one named tolerance, `CHIEFDOM_EDGE_TOLERANCE_M`, because a seam between two independently simplified rings is metres wide and not kilometres. Beyond it the lookup returns nothing rather than a confident wrong answer, and the several lookups give the same answer as each other.
+- [x] **M data-ingestion-10. Constant-test hourly groups whose times restart
   at 1 are interleaved into a sawtooth, and a recovery block laid out
   Time/Level/Drawdown/Recovery reads the increment column as levels.**
-- [ ] **M data-ingestion-11. Wenner soundings have no ingestion path;** a
+  Done in both engines: a block whose times restart is placed from its own heading where the heading names the minutes, and from the reading before it where it does not, with an info flag saying how many minutes were added and to which block. A block the sheet does not place unambiguously is left out with a warning rather than interleaved. The columns are identified by their headers, so a recovery block laid out Time/Level/Drawdown/Recovery is read as levels and not as the increment, and a block with its own time column beside a recovery column is a recovery block rather than a second series on the drawdown curve.
+- [x] **M data-ingestion-11. Wenner soundings have no ingestion path;** a
   Wenner sheet headed AB/2 is inverted with AB/2 used as the spacing a.
-- [ ] **M data-ingestion-12. `who_guidelines.csv` carries values the WHO
+  Done in both engines: the array is read from the sheet - a named array field, the header wording, or a column headed "a" - and recorded as the rest of the toolkit expects it, with a flag whenever it was assumed or the sheet contradicts itself. A Wenner sounding is no longer inverted as a Schlumberger one, which was wrong by tens of percent with nothing downstream to notice. The report table, its caption and the curve's axis follow the array too, so a Wenner sounding is not tabled under an AB/2 heading beside a column of "n/a".
+- [x] **M data-ingestion-12. `who_guidelines.csv` carries values the WHO
   guidelines do not set** (aluminium 0.9 as a health value, hardness,
   turbidity) **and rounds the nitrogen-basis limits down** (nitrate as N 11
   for 11.3), so compliant samples are graded as exceeding.
-- [ ] **M data-ingestion-13. Every national value is provisional, yet the
+  Done: aluminium carries no WHO health guideline, because WHO derives a health based value of 0.9 mg/L and declines to adopt it; hardness and turbidity carry no WHO value at all, only the provisional national one; and the nitrogen-basis limits are the conversions rather than the floor of them (nitrate as N 11.3, nitrite as N 0.91), so a sample that complies as nitrate is no longer failed as nitrogen. Aluminium was the only row whose national limit undercut a WHO health guideline, so the two tests that rested on it now build that case explicitly instead. The remark on a national acceptability limit says the limit is provisional.
+- [x] **M data-ingestion-13. Every national value is provisional, yet the
   remark says "exceeds the national acceptability limit"** and the WHO value
   is never cited.
-- [ ] **L data-ingestion-14. A value cell that looks like a label is taken
+  Done in both engines: the remark says the limit is provisional and names the WHO acceptability value it was carried across from, or says WHO sets none. It is the only way a reader can tell a limit somebody set from a limit this toolkit assumed. The citation that goes with it says the same, and the completion and handover tables carry the provisional note.
+- [x] **L data-ingestion-14. A value cell that looks like a label is taken
   as one:** "Zone 28" in the zone cell yields a zone of 708958.
-- [ ] **L data-ingestion-15. Diameter and penetration rate are read without
+  Done in both engines: `parse_utm_zone` takes the number that follows a label and refuses anything naming no single zone, so an easting that the header matcher had taken for the zone is read as no zone at all rather than as zone 708958.
+- [x] **L data-ingestion-15. Diameter and penetration rate are read without
   units:** "165 mm" becomes 165 inches, "5 min/m" becomes 5 m/min.
-- [ ] **L data-ingestion-16. Six bundled tables are outside the provenance
+  Done in both engines: both cells are read with the unit they carry, including the abbreviations with their plurals and the metre spelled out, and a rate written as time per metre is inverted. The diameter matters twice over: it sizes the casing and it decides whether a gravel pack will fit the annulus.
+- [x] **L data-ingestion-16. Six bundled tables are outside the provenance
   record,** two with no stated source at all (the district boxes and the
   separation distances).
-- [ ] **L data-ingestion-17. The ionic balance is silently skipped when a
+  Done: the costing and supervision tables are recorded against the RWSN guides they were built from, the coverage classes against the Sphere figures they quote, and the rest as toolkit-authored, with the district boxes marked as not a survey product and the separation distances marked as having no recorded source; `THIRD_PARTY_NOTICES.md` says the same in prose, and a test fails if a bundled table is ever added outside the record.
+- [x] **L data-ingestion-17. The ionic balance is silently skipped when a
   major ion is missing,** with no flag naming it.
+  Done: `ionic_balance_gap` names the major ions the analysis does not carry, and the assessment raises a warning that lists them and asks for them. A report with no charge-balance line used to read as an analysis that balanced rather than as one nobody could check.
 
 Verified correct and not defects: the provenance checksums, the census to
 chiefdom aggregation (every district total conserved), the UTM zone
