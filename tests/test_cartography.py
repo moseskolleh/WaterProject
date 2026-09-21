@@ -154,3 +154,39 @@ def test_the_study_area_is_drawn_at_the_scale_its_points_need():
     # B (2) is 20.7 km from the site the map is centred on: it has to fit
     assert 26.0 < radius < 30.0
     assert study_area_radius_km(site, far, ceiling_km=12.0) == 12.0
+
+
+def test_a_hole_is_cut_out_of_its_unit_not_painted_over_it(tmp_path):
+    """Every ring became a filled polygon carrying the parent's code.
+
+    34 of the 92 geology features and 10 of the 40 hydrogeology ones were
+    interior rings, and thirteen of them were drawn on top of the unit they
+    should have cut, so the dolerite dykes in Kono, Koinadugu and Falaba and
+    the igneous aquifer around Kamakwie vanished from the maps behind the
+    ground that was supposed to expose them.
+    """
+    import json
+
+    from groundwater.mapping.regional import geology_unit_at, load_geology
+
+    # a square unit with a square window cut out of its middle
+    outer = [[-13.0, 8.0], [-12.0, 8.0], [-12.0, 9.0], [-13.0, 9.0], [-13.0, 8.0]]
+    hole = [[-12.7, 8.3], [-12.3, 8.3], [-12.3, 8.7], [-12.7, 8.7], [-12.7, 8.3]]
+    path = tmp_path / "sl_geology_usgs.geojson"
+    path.write_text(json.dumps({
+        "type": "FeatureCollection",
+        "features": [{
+            "type": "Feature",
+            "properties": {"glg": "pCm", "unit": "Precambrian",
+                           "era": "Precambrian", "color": "#CCCCCC"},
+            "geometry": {"type": "Polygon", "coordinates": [outer, hole]},
+        }],
+    }), encoding="utf-8")
+
+    units = load_geology(path)
+    assert len(units) == 1, "the hole is not a unit of its own"
+    assert len(units[0].holes) == 1
+
+    # a point in the body of the unit is on it; a point in the window is not
+    assert geology_unit_at(8.1, -12.9, path) is not None
+    assert geology_unit_at(8.5, -12.5, path) is None

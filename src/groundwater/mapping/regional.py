@@ -62,6 +62,12 @@ class GeologyUnit:
     era: str
     color: str
     ring: np.ndarray  # (n, 2) lon/lat outer ring
+    #: The interior rings this polygon is cut by, if any. A hole used to be
+    #: emitted as a filled polygon of its own carrying the parent's code, so
+    #: it was painted over the unit it should have exposed: the dolerite
+    #: dykes in Kono, Koinadugu and Falaba disappeared under the Precambrian
+    #: they cut (ROADMAP data-ingestion-6).
+    holes: tuple = ()
 
 
 @dataclass
@@ -147,6 +153,9 @@ def load_geology(path: str | Path | None = None) -> list[GeologyUnit]:
                     era=props.get("era", ""),
                     color=props.get("color", "#CCCCCC"),
                     ring=np.asarray(poly[0], dtype=float),
+                    holes=tuple(
+                        np.asarray(hole, dtype=float) for hole in poly[1:]
+                    ),
                 )
             )
     return units
@@ -179,6 +188,9 @@ def load_hydrogeology(path: str | Path | None = None) -> list[GeologyUnit]:
                     era=props.get("geology", ""),
                     color=props.get("color", "#CCCCCC"),
                     ring=np.asarray(poly[0], dtype=float),
+                    holes=tuple(
+                        np.asarray(hole, dtype=float) for hole in poly[1:]
+                    ),
                 )
             )
     return units
@@ -338,6 +350,50 @@ def _cached_chiefdoms() -> tuple:
     return tuple(load_chiefdoms())
 
 
+def _unit_patch(unit: "GeologyUnit", **kwargs):
+    """The polygon, with the ground its holes cut left unpainted.
+
+    A hole used to be a filled polygon of its own carrying the parent's
+    code, drawn over the unit it should have exposed. Now it is a hole, and
+    a compound path is what makes it one: the interior rings wind against
+    the outer one so matplotlib leaves them open instead of filling them.
+    """
+    if not unit.holes:
+        return plt.Polygon(unit.ring, closed=True, **kwargs)
+    vertices = [np.asarray(unit.ring, dtype=float)]
+    codes = [
+        [MplPath.MOVETO]
+        + [MplPath.LINETO] * (len(unit.ring) - 2)
+        + [MplPath.CLOSEPOLY]
+    ]
+    outer_sign = _ring_area(unit.ring)
+    for hole in unit.holes:
+        ring = np.asarray(hole, dtype=float)
+        if len(ring) < 3:
+            continue
+        # a hole must wind against its outer ring or it fills solid
+        if (_ring_area(ring) > 0) == (outer_sign > 0):
+            ring = ring[::-1]
+        vertices.append(ring)
+        codes.append(
+            [MplPath.MOVETO] + [MplPath.LINETO] * (len(ring) - 2) + [MplPath.CLOSEPOLY]
+        )
+    path = MplPath(np.concatenate(vertices), np.concatenate(codes).tolist())
+    return PathPatch(path, **kwargs)
+
+
+def _point_in_unit(lon: float, lat: float, unit: "GeologyUnit") -> bool:
+    """Inside the polygon, and not in a hole that cuts it.
+
+    A hole is ground the unit does not cover - a dyke cutting the country
+    rock, a window of something else - so a point in one is not on this
+    unit, whatever the outer ring says.
+    """
+    if not _point_in_ring(lon, lat, unit.ring):
+        return False
+    return not any(_point_in_ring(lon, lat, hole) for hole in unit.holes)
+
+
 def geology_unit_at(lat: float, lon: float,
                     path: str | Path | None = None) -> GeologyUnit | None:
     """The USGS geology polygon under a point, or None outside the layer.
@@ -347,7 +403,7 @@ def geology_unit_at(lat: float, lon: float,
     site its own map placed on the Bullom Group.
     """
     for unit in load_geology(path):
-        if _point_in_ring(lon, lat, unit.ring):
+        if _point_in_unit(lon, lat, unit):
             return unit
     return None
 
@@ -356,7 +412,7 @@ def aquifer_unit_at(lat: float, lon: float,
                     path: str | Path | None = None) -> GeologyUnit | None:
     """The BGS aquifer type and productivity polygon under a point."""
     for unit in load_hydrogeology(path):
-        if _point_in_ring(lon, lat, unit.ring):
+        if _point_in_unit(lon, lat, unit):
             return unit
     return None
 
@@ -692,7 +748,12 @@ def _unmapped_land_in_view(
     if not land.any():
         return False
     for unit in units:
-        land &= ~MplPath(unit.ring).contains_points(pts)
+        covered = MplPath(unit.ring).contains_points(pts)
+        # ground a hole cuts out is not covered by this unit, so it stays in
+        # the running as ground the layer maps nothing for
+        for hole in unit.holes:
+            covered &= ~MplPath(hole).contains_points(pts)
+        land &= ~covered
         if not land.any():
             return False
     return True
@@ -750,8 +811,8 @@ def _plot_units_map(
         legend_order: dict[str, tuple[int, str]] = {}
         notes: list[str] = []
         for unit in in_view:
-            patch = plt.Polygon(
-                unit.ring, closed=True,
+            patch = _unit_patch(
+                unit,
                 facecolor=carto.geology_colour(unit.glg, unit.color,
                                                prefer_source_colours),
                 edgecolor=carto.LINES["contact"].color,

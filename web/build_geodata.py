@@ -199,13 +199,70 @@ def clip_ring_to_bbox(points: list[tuple[float, float]]) -> list[tuple[float, fl
     return ring
 
 
-def ring_area(points: list[tuple[float, float]]) -> float:
-    """Absolute shoelace area in square degrees."""
+def signed_ring_area(points: list[tuple[float, float]]) -> float:
+    """Shoelace area in square degrees, keeping its sign.
+
+    The sign is the winding, and the winding is what tells an outer ring
+    from a hole. A shapefile writes outer rings clockwise and the holes
+    that cut them counter-clockwise, which in the usual x-right, y-up
+    reading makes an outer ring negative and a hole positive.
+    """
     total = 0.0
     # points[1:] is one shorter by design: each vertex pairs with its successor.
     for (x1, y1), (x2, y2) in zip(points, points[1:], strict=False):
         total += x1 * y2 - x2 * y1
-    return abs(total) / 2.0
+    return total / 2.0
+
+
+def ring_area(points: list[tuple[float, float]]) -> float:
+    """Absolute shoelace area in square degrees."""
+    return abs(signed_ring_area(points))
+
+
+def point_in_ring(point: tuple[float, float], ring: list[tuple[float, float]]) -> bool:
+    """Ray casting, used only to decide which outer ring a hole cuts."""
+    x, y = point
+    inside = False
+    for (x1, y1), (x2, y2) in zip(ring, ring[1:], strict=False):
+        if (y1 > y) != (y2 > y):
+            crossing = x1 + (y - y1) * (x2 - x1) / (y2 - y1)
+            if x < crossing:
+                inside = not inside
+    return inside
+
+
+def rings_to_polygons(
+    rings: list[list[tuple[float, float]]],
+) -> list[list[list[tuple[float, float]]]]:
+    """Group a shape's rings into polygons, each outer ring with its holes.
+
+    Every ring used to become a filled polygon of its own, carrying the
+    parent's unit code: 34 of the 92 geology features and 10 of the 40
+    hydrogeology ones were holes, and thirteen of them were drawn on top of
+    the unit they should have cut. The dolerite dykes in Kono, Koinadugu and
+    Falaba, and the igneous aquifer around Kamakwie, vanished from the maps
+    behind the hole that should have exposed them (ROADMAP
+    data-ingestion-6).
+    """
+    outers = [r for r in rings if signed_ring_area(r) <= 0]
+    holes = [r for r in rings if signed_ring_area(r) > 0]
+    if not outers:
+        # A shape whose every ring winds the other way is one this rule
+        # cannot read; treat each ring as its own polygon rather than drop it.
+        return [[r] for r in rings]
+    polygons: list[list[list[tuple[float, float]]]] = [[r] for r in outers]
+    for hole in holes:
+        probe = hole[0]
+        # the smallest outer ring that contains it, so a hole inside a hole's
+        # island is cut from the island and not from the continent
+        candidates = [
+            i for i, poly in enumerate(polygons) if point_in_ring(probe, poly[0])
+        ]
+        if not candidates:
+            continue
+        best = min(candidates, key=lambda i: ring_area(polygons[i][0]))
+        polygons[best].append(hole)
+    return polygons
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +283,7 @@ def build_geology(raw: Path, tol: float = 0.004, min_area: float = 2e-4) -> Path
         if rec["GLG"] in ("SEA",):
             continue
         parts = list(shape.parts) + [len(shape.points)]
+        kept = []
         for start, end in zip(parts[:-1], parts[1:], strict=True):
             ring = clip_ring_to_bbox(shape.points[start:end])
             if len(ring) < 4:
@@ -233,6 +291,10 @@ def build_geology(raw: Path, tol: float = 0.004, min_area: float = 2e-4) -> Path
             ring = simplify_ring(ring, tol)
             if len(ring) < 4 or ring_area(ring) < min_area:
                 continue
+            kept.append(ring)
+        # A hole is a hole, not another polygon of the same unit laid on top
+        # of the one it cuts.
+        for polygon in rings_to_polygons(kept):
             features.append(
                 {
                     "type": "Feature",
@@ -244,7 +306,10 @@ def build_geology(raw: Path, tol: float = 0.004, min_area: float = 2e-4) -> Path
                     },
                     "geometry": {
                         "type": "Polygon",
-                        "coordinates": [[[round(x, 4), round(y, 4)] for x, y in ring]],
+                        "coordinates": [
+                            [[round(x, 4), round(y, 4)] for x, y in ring]
+                            for ring in polygon
+                        ],
                     },
                 }
             )
@@ -342,10 +407,14 @@ def build_hydrogeology(tol: float = 0.002, min_area: float = 1e-4) -> Path:
             code, (f"{rec.get('SLGLG', 'unit')} ({code})", "#CCCCCC")
         )
         parts = list(shape.parts) + [len(shape.points)]
+        kept = []
         for start, end in zip(parts[:-1], parts[1:], strict=True):
             ring = simplify_ring([tuple(p) for p in shape.points[start:end]], tol)
             if len(ring) < 4 or ring_area(ring) < min_area:
                 continue
+            kept.append(ring)
+        # as in the geology build: a hole cuts its unit, it does not cover it
+        for polygon in rings_to_polygons(kept):
             features.append(
                 {
                     "type": "Feature",
@@ -357,7 +426,10 @@ def build_hydrogeology(tol: float = 0.002, min_area: float = 1e-4) -> Path:
                     },
                     "geometry": {
                         "type": "Polygon",
-                        "coordinates": [[[round(x, 4), round(y, 4)] for x, y in ring]],
+                        "coordinates": [
+                            [[round(x, 4), round(y, 4)] for x, y in ring]
+                            for ring in polygon
+                        ],
                     },
                 }
             )

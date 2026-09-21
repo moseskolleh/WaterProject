@@ -3500,6 +3500,7 @@
       else fill = ramp[Math.min(cls, ramp.length - 1)];
       canvas.layer.appendChild(svgEl('path', {
         d: geometryPath(feature.geometry, canvas.project),
+        'fill-rule': 'evenodd',
         fill: fill,
         stroke: canvas.palette.surface, 'stroke-width': 0.8,
         'aria-label': (spec.name ? spec.name(feature) : '') +
@@ -3789,6 +3790,10 @@
       var props = feature.properties || {};
       canvas.layer.appendChild(svgEl('path', {
         d: geometryPath(feature.geometry, canvas.project),
+        /* A hole is ground the unit does not cover - a dyke cutting the
+         * country rock, a window of something else. evenodd leaves it open
+         * whichever way the interior ring winds. */
+        'fill-rule': 'evenodd',
         fill: unitColour(props, spec), 'fill-opacity': 0.85,
         stroke: p.surface, 'stroke-width': 0.5,
       }, [svgEl('title', { text: String(props[key] || 'unclassified') })]));
@@ -3863,6 +3868,7 @@
     context.forEach(function (feature) {
       canvas.layer.appendChild(svgEl('path', {
         d: geometryPath(feature.geometry, canvas.project),
+        'fill-rule': 'evenodd',
         fill: spec.contextFill ? spec.contextFill(feature) : '#EDEAE3',
         stroke: p.axis, 'stroke-width': 0.7,
       }, [svgEl('title', {

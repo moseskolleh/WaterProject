@@ -559,11 +559,13 @@ the browser too), `gwt-app.js` parseLatLon. Tests: `test_ingestion.py`,
   double answers ("Western Area Rural, Moyamba"), while the polygons are
   bundled and used everywhere else.
   Done: the check reads the point-in-polygon lookup the rest of the toolkit already uses, and the box table and the functions that read it are gone. The cross-sheet check groups district names by what they can mean rather than by how they are typed, so one project spelling the same ground "Western Area" and "Western Area Rural" is no longer reported as disagreeing with itself.
-- [ ] **H data-ingestion-6. `build_geodata` emits every interior (hole) ring
+- [x] **H data-ingestion-6. `build_geodata` emits every interior (hole) ring
   as a filled polygon carrying the parent's code:** 34 of 92 geology and 10
   of 40 hydrogeology features are holes, and thirteen of them are drawn on
   top of the unit they should cut, so the dolerite dykes in Kono, Koinadugu
   and Falaba and the igneous aquifer around Kamakwie vanish from the maps.
+  Done in the build and in both renderers: a shape's rings are grouped by their winding, each outer ring with the holes that fall inside it, and the smallest containing ring wins so a hole in an island is cut from the island. A unit carries its interior rings, draws them as a compound path that leaves them open, and a point in a hole is not on the unit - on the maps, in the not-mapped test and in the lookup the geology paragraph is written from.
+  Not yet regenerated: the raw shapefiles are about 40 MB and are not committed, so `data/sl_geology_usgs.geojson` and `data/sl_hydrogeology_bgs.geojson` still carry the flattened holes. Run `python web/build_geodata.py --raw <dir>` with the sources listed at the top of that script, then `python web/build_webapp_data.py` and `python web/build_offline.py`, and the dykes come back.
 - [x] **H data-ingestion-8. A drilling-log interval written with an en or em
   dash ("5–10") is dropped without a word;** the only trace is an
   "interval_gap" flag blaming the log.
