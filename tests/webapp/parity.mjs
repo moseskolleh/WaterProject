@@ -371,6 +371,8 @@ await withPage(async (page, base, consoleErrors) => {
         detection_limit: 0.05, below_detection: true }),
       unknown_parameter: wq(...panel,
         { parameter: 'Glyphosate', value: 0.4, unit: 'mg/L' }),
+      // the charge balance cannot be computed, and used to say nothing
+      no_ionic_balance: wq({ parameter: 'Calcium', value: 40.0, unit: 'mg/L' }),
     };
     out.verdicts = {};
     Object.keys(verdictCases).forEach((name) => {
@@ -383,6 +385,7 @@ await withPage(async (page, base, consoleErrors) => {
         uncertainties: a.uncertainties,
         missing_essential: a.missing_essential,
         verdict: a.verdict,
+        flags: a.flags.map((f) => [f.level, f.code, f.message]),
       };
     });
 

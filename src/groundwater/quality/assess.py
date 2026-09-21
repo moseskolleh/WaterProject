@@ -44,7 +44,7 @@ from .indices import (
     assess_health_risk,
     compute_wqi,
 )
-from .ionic import IonicBalanceResult, ionic_balance
+from .ionic import IonicBalanceResult, ionic_balance, ionic_balance_gap
 from ..utils import plural_noun
 from .standards import (
     StandardEntry,
@@ -848,6 +848,24 @@ def assess_sample(
     ionic = ionic_balance(sample)
     if ionic is not None and ionic.flag is not None:
         flags.append(ionic.flag)
+    elif ionic is None:
+        # The balance is the one check that says whether a certificate's own
+        # numbers hang together, and it was skipped in silence: a report with
+        # no charge-balance line reads as an analysis that balanced, rather
+        # than as one nobody could check.
+        gap = ionic_balance_gap(sample)
+        if gap:
+            flags.append(
+                DataFlag(
+                    "warning",
+                    "ionic_balance_not_checked",
+                    "The charge balance could not be computed: the analysis "
+                    f"carries no {plural_noun(len(gap), 'value')} for "
+                    + ", ".join(gap)
+                    + ". Ask the laboratory for the major ions if the "
+                    "analysis is to be relied on.",
+                )
+            )
 
     corrosivity = assess_corrosivity(sample)
     flags.extend(corrosivity.flags)

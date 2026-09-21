@@ -3534,6 +3534,34 @@
     return null;
   }
 
+  /* What the balance needs, in the order a certificate lists them. */
+  var ION_LABELS = {
+    calcium: 'calcium', magnesium: 'magnesium', sodium: 'sodium',
+    potassium: 'potassium', chloride: 'chloride', sulfate: 'sulfate',
+    bicarbonate: 'bicarbonate (or alkalinity)',
+  };
+
+  /* The major ions the balance needs and the analysis does not carry.
+   *
+   * The balance is the one check that says whether a certificate's own
+   * numbers hang together, and it was skipped in silence whenever a major
+   * ion was missing: the report simply had no charge-balance line, which
+   * reads as "the analysis balanced" rather than "nobody could tell". */
+  function ionicBalanceGap(sample) {
+    var missing = [];
+    REQUIRED_CATIONS.forEach(function (key) {
+      if (sampleValue(sample, key) === null) {
+        missing.push(ION_LABELS[key] || key);
+      }
+    });
+    REQUIRED_ANIONS.forEach(function (key) {
+      if (sampleValue(sample, key) !== null) return;
+      if (key === 'bicarbonate' && sampleValue(sample, 'alkalinity') !== null) return;
+      missing.push(ION_LABELS[key] || key);
+    });
+    return missing;
+  }
+
   function ionicBalance(sample) {
     var cations = {}, anions = {};
     Object.keys(CATION_MEQ).forEach(function (key) {
@@ -4431,7 +4459,22 @@
     }
 
     var ionic = ionicBalance(sample);
-    if (ionic && ionic.flag) flags.push(ionic.flag);
+    if (ionic && ionic.flag) {
+      flags.push(ionic.flag);
+    } else if (!ionic) {
+      var ionGap = ionicBalanceGap(sample);
+      if (ionGap.length) {
+        flags.push({
+          level: 'warning',
+          code: 'ionic_balance_not_checked',
+          message: 'The charge balance could not be computed: the analysis ' +
+            'carries no ' + pluralNoun(ionGap.length, 'value') + ' for ' +
+            ionGap.join(', ') + '. Ask the laboratory for the major ions if ' +
+            'the analysis is to be relied on.',
+          context: '',
+        });
+      }
+    }
     var corrosivity = assessCorrosivity(sample);
     flags = flags.concat(corrosivity.flags);
     var wqi = computeWqi(sample, standardsRows);

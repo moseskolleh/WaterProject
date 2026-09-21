@@ -487,3 +487,34 @@ def test_a_greater_than_inside_the_limit_is_an_open_question():
     assert row.status == "indeterminate"
     assert row.evaluable is False
     assert "more than 100" in row.remark
+
+
+def test_a_balance_that_could_not_be_computed_says_which_ions_are_missing():
+    """It was skipped in silence, which reads as an analysis that balanced.
+
+    The charge balance is the one check that says whether a certificate's
+    own numbers hang together. With a major ion missing the report simply
+    had no charge-balance line and no flag either, so nothing told the
+    reader that nobody could tell.
+    """
+    a = assess_sample(_sample(
+        WaterQualityResult("pH", 7.2, "pH units"),
+        WaterQualityResult("Calcium", 40.0, "mg/L"),
+    ))
+    assert a.ionic is None
+    flag = next(f for f in a.flags if f.code == "ionic_balance_not_checked")
+    assert "magnesium" in flag.message and "sulfate" in flag.message
+    assert flag.level == "warning"
+
+
+def test_a_complete_analysis_still_balances_without_the_new_flag():
+    a = assess_sample(_sample(
+        WaterQualityResult("Calcium", 40.0, "mg/L"),
+        WaterQualityResult("Magnesium", 10.0, "mg/L"),
+        WaterQualityResult("Sodium", 20.0, "mg/L"),
+        WaterQualityResult("Chloride", 30.0, "mg/L"),
+        WaterQualityResult("Sulfate", 15.0, "mg/L"),
+        WaterQualityResult("Bicarbonate", 150.0, "mg/L"),
+    ))
+    assert a.ionic is not None
+    assert not [f for f in a.flags if f.code == "ionic_balance_not_checked"]

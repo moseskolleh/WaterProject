@@ -550,6 +550,8 @@ def build() -> dict:
             "Cadmium", None, "mg/L", detection_limit=0.05, below_detection=True)),
         "unknown_parameter": _wq(
             *_panel, WaterQualityResult("Glyphosate", 0.4, "mg/L")),
+        # the charge balance cannot be computed, and used to say nothing
+        "no_ionic_balance": _wq(WaterQualityResult("Calcium", 40.0, "mg/L")),
     }
     out["verdicts"] = {}
     for name, sample in _cases.items():
@@ -562,6 +564,7 @@ def build() -> dict:
             "uncertainties": list(a.uncertainties),
             "missing_essential": list(a.missing_essential),
             "verdict": a.verdict,
+            "flags": [[f.level, f.code, f.message] for f in a.flags],
         }
 
     # The Depth Spine's guideline chart over units that are NOT the

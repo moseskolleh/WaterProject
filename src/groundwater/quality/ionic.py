@@ -129,3 +129,32 @@ def ionic_balance(sample: WaterQualitySample) -> Optional[IonicBalanceResult]:
         used_alkalinity_for_bicarbonate=used_alk,
         flag=flag,
     )
+
+
+#: What the balance needs, in the order a certificate lists them.
+_ION_LABELS = {
+    "calcium": "calcium", "magnesium": "magnesium", "sodium": "sodium",
+    "potassium": "potassium", "chloride": "chloride", "sulfate": "sulfate",
+    "bicarbonate": "bicarbonate (or alkalinity)",
+}
+
+
+def ionic_balance_gap(sample: WaterQualitySample) -> list[str]:
+    """The major ions the balance needs and the analysis does not carry.
+
+    The balance is the one check that says whether a certificate's own
+    numbers hang together, and it was skipped in silence whenever a major
+    ion was missing: the report simply had no charge-balance line, which
+    reads as "the analysis balanced" rather than "nobody could tell".
+    """
+    missing = []
+    for key in _REQUIRED_CATIONS:
+        if _value(sample, key) is None:
+            missing.append(_ION_LABELS.get(key, key))
+    for key in _REQUIRED_ANIONS:
+        if _value(sample, key) is not None:
+            continue
+        if key == "bicarbonate" and _value(sample, "alkalinity") is not None:
+            continue
+        missing.append(_ION_LABELS.get(key, key))
+    return missing

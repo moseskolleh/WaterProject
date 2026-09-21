@@ -597,8 +597,9 @@ the browser too), `gwt-app.js` parseLatLon. Tests: `test_ingestion.py`,
   record,** two with no stated source at all (the district boxes and the
   separation distances).
   Done: the costing and supervision tables are recorded against the RWSN guides they were built from, the coverage classes against the Sphere figures they quote, and the rest as toolkit-authored, with the district boxes marked as not a survey product and the separation distances marked as having no recorded source; `THIRD_PARTY_NOTICES.md` says the same in prose, and a test fails if a bundled table is ever added outside the record.
-- [ ] **L data-ingestion-17. The ionic balance is silently skipped when a
+- [x] **L data-ingestion-17. The ionic balance is silently skipped when a
   major ion is missing,** with no flag naming it.
+  Done: `ionic_balance_gap` names the major ions the analysis does not carry, and the assessment raises a warning that lists them and asks for them. A report with no charge-balance line used to read as an analysis that balanced rather than as one nobody could check.
 
 Verified correct and not defects: the provenance checksums, the census to
 chiefdom aggregation (every district total conserved), the UTM zone
