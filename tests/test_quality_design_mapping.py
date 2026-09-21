@@ -220,3 +220,23 @@ def test_the_iso_map_actually_clips(monkeypatch, tmp_path):
     ]
     mapping.iso_resistivity_map(points, zone=28, ab2=40, path=tmp_path / "iso.png")
     assert calls == [3], "the iso-resistivity surface is drawn without a clip"
+
+
+def test_a_log_scale_map_labels_the_resistivity_it_was_given(tmp_path):
+    """Soundings on one line get labels, not 10 to the power of the reading.
+
+    With too few points to interpolate a surface, the map falls back to
+    labelling each station. On a log-scale map the label exponentiated the
+    value as measured, although only the gridded array was ever log10'd: a
+    250 ohm-m point read "1e+250", and a 1000 ohm-m point raised
+    OverflowError - which is neither ValueError nor RuntimeError, so it
+    walked past the geophysical report's per-figure guard and took the
+    whole document down.
+    """
+    points = [
+        MapPoint("V1", 780000.0, 946000.0, 250.0),
+        MapPoint("V2", 780100.0, 946000.0, 1000.0),
+        MapPoint("V3", 780200.0, 946000.0, 600.0),
+    ]
+    path = iso_resistivity_map(points, 28, 10.0, path=tmp_path / "iso.png")
+    assert path.exists() and path.stat().st_size > 0

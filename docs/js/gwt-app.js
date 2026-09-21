@@ -1407,7 +1407,16 @@
   /* The study area map for the Site page and the reports. Everything it
    * needs is already in the page: the window the local maps use, the
    * bundled boundary layers, the soundings and any water points loaded. */
-  function studyAreaNode() {
+  /* `surveyOnly` draws the figure the geophysical report carries: the
+   * soundings and the star, and nothing else. reporting/geophysical.py builds
+   * its own overlay from the soundings alone and passes mark_site=False, on
+   * the reasoning that a siting map must carry one unmistakable marker - the
+   * recommended point. The page's own map still shows the site and any water
+   * points that have been looked up; the report's did too, so an operator who
+   * had run the Water points page got up to forty of them scattered over
+   * Figure 1 of a survey report. */
+  function studyAreaNode(options) {
+    var surveyOnly = (options || {}).surveyOnly;
     var window_ = areaWindow(store.get('site.mapRadiusKm', 40));
     if (!window_) return null;
     var geo = GWT.data.geo || {};
@@ -1425,12 +1434,12 @@
     var onASounding = points.some(function (p) {
       return Math.abs(p.lat - window_.lat) < 1e-6 && Math.abs(p.lon - window_.lon) < 1e-6;
     });
-    if (window_.exact && !onASounding) {
+    if (window_.exact && !onASounding && !surveyOnly) {
       points.push({ lat: window_.lat, lon: window_.lon, label: siteLabel(),
         kind: derived.log ? 'borehole' : 'site' });
     }
     /* the water points the Water points page looked up, if it has run */
-    (derived.waterPoints || []).slice(0, 40).forEach(function (wp) {
+    (surveyOnly ? [] : (derived.waterPoints || [])).slice(0, 40).forEach(function (wp) {
       if (typeof wp.lat === 'number' && typeof wp.lon === 'number') {
         points.push({ lat: wp.lat, lon: wp.lon, kind: 'water point' });
       }
@@ -5519,6 +5528,182 @@
     return el('div', nodes.filter(Boolean));
   }
 
+  /* ----------------------------------------- the survey's own report figures */
+
+  /* The point the whole report argues for: reporting/geophysical.py
+   * _preferred, which is the lowest rank, then the highest score, then the
+   * identifier. The study-area caption names it, and a caption naming a
+   * different peg from the one the conclusions recommend is a rig sent to the
+   * wrong place. */
+  function preferredInterpretation(interpretations) {
+    var best = null;
+    (interpretations || []).forEach(function (interp) {
+      if (best === null) { best = interp; return; }
+      var rank = interp.rank || 99, bestRank = best.rank || 99;
+      if (rank !== bestRank) {
+        if (rank < bestRank) best = interp;
+        return;
+      }
+      var score = Number(interp.score) || 0, bestScore = Number(best.score) || 0;
+      if (score !== bestScore) {
+        if (score > bestScore) best = interp;
+        return;
+      }
+      if (String(interp.sounding_id) < String(best.sounding_id)) best = interp;
+    });
+    return best;
+  }
+
+  /* The largest distance between any two positioned soundings, in km:
+   * reporting/geophysical.py _survey_spread_km. Pegs kilometres apart are not
+   * one site, and the caption says so rather than leaving a reader to measure
+   * it off the scale bar. */
+  function surveySpreadKm(interpretations) {
+    var points = [], a, b, widest = 0;
+    (interpretations || []).forEach(function (interp) {
+      var pos = soundingLatLon(interp);
+      if (pos) points.push(pos);
+    });
+    for (a = 0; a < points.length; a += 1) {
+      for (b = a + 1; b < points.length; b += 1) {
+        widest = Math.max(widest, C.geodesicDistanceM(
+          points[a].lat, points[a].lon, points[b].lat, points[b].lon));
+      }
+    }
+    return widest / 1000.0;
+  }
+
+  /* The study-area map that opens the Python geophysical report, with the
+   * caption reporting/geophysical.py gives it. The browser drew this map for
+   * the Site page but no report carried it, so the browser's geophysical
+   * report opened on a district locator and never showed the reader the
+   * ground the survey actually covered, or which peg the star is on. */
+  async function studyAreaFigure(interpretations) {
+    var node = studyAreaNode({ surveyOnly: true });
+    if (!node) return null;
+    var site = store.get('site') || {};
+    var preferred = preferredInterpretation(interpretations);
+    var caption = 'Study area at ' + (site.community || 'the project area') +
+      ', with the survey points and its location in Sierra Leone inset.' +
+      (preferred ? ' The star is the recommended drilling point, ' +
+        preferred.sounding_id + '.' : '');
+    var spread = surveySpreadKm(interpretations);
+    if (spread > 5.0) {
+      caption += ' The survey points are up to ' + C.pyFixed(spread, 1) +
+        ' km apart, which is unusually far for one site; the positions should ' +
+        'be checked against the field notes.';
+    }
+    caption += ' Boundaries from geoBoundaries (CC BY 4.0).';
+    return { image: await charts.toPng(node), caption: caption, widthCm: 14 };
+  }
+
+  /* The captions reporting/geophysical.py gives the four subsurface maps and
+   * the two sections, word for word. Each says what the figure is and what it
+   * is not; an interpreted surface that travels without its caption is read
+   * as measured ground. */
+  var SUBSURFACE_CAPTIONS = {
+    depth_to_bedrock: 'Depth to bedrock across the surveyed ground, from the ' +
+      'layered models. The surface is blanked outside the hull of the soundings.',
+    aquifer_thickness: 'Interpreted thickness of the weathered and fractured ' +
+      'zone - the section a borehole is completed in.',
+    bedrock_elevation: 'The bedrock surface as a landform, from the ground ' +
+      'elevation recorded at each sounding less its depth to basement. A low ' +
+      'in this surface is a buried valley, which basement groundwater drains ' +
+      'towards.',
+    protective_capacity: 'Protective capacity of the cover over the aquifer, ' +
+      'from the longitudinal conductance of the overlying layers. It rates how ' +
+      'well the ground above the aquifer resists downward contamination; it ' +
+      'says nothing about yield.',
+  };
+
+  var GEOELECTRIC_SECTION_CAPTION = 'Interpreted geoelectric section along the ' +
+    'traverse, with the soundings at their surveyed spacing rather than evenly ' +
+    'spaced and drawn to the depth of investigation. Colour is layer ' +
+    'resistivity; the dashed lines correlate boundaries between neighbouring ' +
+    'soundings within reach of each other and are an interpretation, not a ' +
+    'measured contact.';
+
+  var PSEUDOSECTION_CAPTION = 'Apparent resistivity along the traverse, as ' +
+    'measured. Unlike every other section in this report it involves no ' +
+    'inversion: each point is a reading at the station and electrode spacing ' +
+    'it was taken with. AB/2 is that spacing, not a depth. Colour is ' +
+    'interpolated only between stations within reach of each other.';
+
+  /* A figure the chart layer returned nothing for, with no reason from the
+   * engine, is a defect in the drawing rather than a refusal the survey
+   * earned. It is still named in the "not drawn" list, because a figure that
+   * disappears without a word reads as one nobody attempted. */
+  function figureRefusal(reason) {
+    return reason || 'the figure could not be drawn from these data';
+  }
+
+  /* The maps and sections built from this survey's own soundings, mirroring
+   * reporting/geophysical.py _add_subsurface_figures: the four subsurface
+   * maps, the geoelectric section and the apparent-resistivity
+   * pseudo-section, in that order, each attempted on its own so that none of
+   * them costs the report the others - a survey whose curves never reached
+   * basement has no depth-to-bedrock map but still has an aquifer thickness
+   * map. What could not be drawn is carried back with it: the reason is
+   * usually a GPS position nobody recorded, which a reviewer can ask for,
+   * and a figure missing without a word reads as "the survey did not attempt
+   * this". Returns null where the Python writes no section at all: with
+   * fewer than two positioned soundings there is nothing to say about the
+   * ground between them. */
+  async function subsurfaceFigures(interpretations, soundings) {
+    if (!C.subsurfaceFiguresApply(interpretations)) return null;
+    var placed = (interpretations || []).filter(function (interp) {
+      return interp.site_easting !== null && interp.site_easting !== undefined &&
+        interp.site_northing !== null && interp.site_northing !== undefined;
+    });
+    var site = store.get('site') || {};
+    var zone = site.utm_zone ||
+      (placed.length ? C.inferZoneForSierraLeone(placed[0].site_easting) : 28);
+    var made = [], notDrawn = [], i, svg;
+
+    var maps = charts.subsurfaceMaps(placed, { zone: zone });
+    for (i = 0; i < maps.length; i += 1) {
+      if (maps[i].reason || !maps[i].svg) {
+        notDrawn.push(maps[i].name + ': ' + figureRefusal(maps[i].reason));
+      } else {
+        made.push({
+          image: await charts.toPng(maps[i].svg),
+          caption: SUBSURFACE_CAPTIONS[maps[i].key],
+        });
+      }
+    }
+
+    var section = C.geoelectricSectionGeometry(placed, {});
+    svg = section.reason ? null : charts.geoelectricSection(section);
+    if (svg) {
+      made.push({ image: await charts.toPng(svg),
+        caption: GEOELECTRIC_SECTION_CAPTION });
+    } else {
+      notDrawn.push('geoelectric section: ' + figureRefusal(section.reason));
+    }
+
+    /* the traverse is built before the pseudo-section, as the report builds
+     * it, so a traverse that cannot be placed is the reason printed against
+     * the pseudo-section rather than an evenly spaced section drawn under a
+     * note saying no positions were recorded */
+    var profile = C.traverseProfile(placed);
+    var pseudo = C.pseudosectionGeometry(soundings || [], profile);
+    svg = pseudo.reason ? null : charts.apparentPseudosection(pseudo);
+    if (svg) {
+      var caption = PSEUDOSECTION_CAPTION;
+      if (!profile.reason && !profile.is_collinear) {
+        caption += ' The soundings sit up to ' +
+          C.pyFixed(profile.max_offset_m, 0) + ' m off the profile line, so ' +
+          'this section cuts across the survey rather than along it.';
+      }
+      made.push({ image: await charts.toPng(svg), caption: caption });
+    } else {
+      notDrawn.push('apparent-resistivity pseudo-section: ' +
+        figureRefusal(pseudo.reason));
+    }
+
+    return { figures: made, notDrawn: notDrawn };
+  }
+
   function reportCard(title, kind, description, extra) {
     return card(title, [
       el('p.muted', description),
@@ -5580,7 +5765,49 @@
               caption: 'Layered earth model for ' + id + ', drawn to the depth of ' +
                 'investigation', widthCm: 9,
             });
+            /* The interpreted layer column, which _sounding_block draws with
+             * ves/plots.py plot_model_pseudosection. The staircase above
+             * plots resistivity against depth; this is the same model drawn
+             * as ground, to scale and coloured on the resistivity bar, and
+             * the browser's report had no figure a reader could lay two
+             * soundings side by side on. A model with no layers has no column
+             * to draw, and the chart layer says so by returning nothing. */
+            var layerSection = charts.modelPseudosection(result.model, {
+              depthMax: derived.interpretations[i].investigation_depth_m || null,
+              title: 'Layer section at ' + id,
+            });
+            if (layerSection) {
+              figures.push({
+                soundingId: id,
+                image: await charts.toPng(layerSection),
+                caption: 'Interpreted one-dimensional layer section at point ' +
+                  id + ': the resistivity and thickness of each fitted layer, ' +
+                  'drawn to the depth of investigation (' +
+                  C.fmtNum(derived.interpretations[i].investigation_depth_m) +
+                  ' m).',
+              });
+            }
           }
+          /* The study-area map the Python report opens on, ahead of the
+           * district locator: it is the only figure in the document that
+           * shows the survey points on the ground they were shot on. */
+          var studyArea = await studyAreaFigure(derived.interpretations);
+          if (studyArea) {
+            context.areaMaps = [studyArea].concat(context.areaMaps || []);
+          }
+          /* The soundings this report covers are the ones that inverted,
+           * which is the list the Python report holds: inputs.soundings is
+           * zipped with the inversions. A sounding that would not invert has
+           * no block in the document, so its readings do not belong in the
+           * document's pseudo-section either. */
+          var interpreted = {};
+          derived.interpretations.forEach(function (interp) {
+            interpreted[interp.sounding_id] = true;
+          });
+          context.subsurface = await subsurfaceFigures(derived.interpretations,
+            (derived.soundings || []).filter(function (sounding) {
+              return interpreted[sounding.sounding_id] === true;
+            }));
           context.interpretations = derived.interpretations;
           context.figures = figures;
           context.preferredOrder = store.get('ves.preferredOrder');

@@ -332,7 +332,13 @@ def _interpolated_map(
                     mec="#222222", mew=1.2, zorder=5)
             text = p.label
             if grid is None:
-                shown = 10 ** p.value if log_scale and p.value is not None else p.value
+                # p.value is the value as measured; only the gridded array was
+                # ever log10'd. Exponentiating it again labelled a 250 ohm-m
+                # point "1e+250", and a 1000 ohm-m point raised OverflowError,
+                # which is neither ValueError nor RuntimeError and so walked
+                # past the geophysical report's per-figure guard and took the
+                # whole document down.
+                shown = p.value
                 text += f"\n{shown:.3g}" if shown is not None else ""
             ax.annotate(
                 text, xy=(p.easting, p.northing), xytext=(6, 6),

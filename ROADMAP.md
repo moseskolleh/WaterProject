@@ -503,6 +503,9 @@ numbers is kept with the audit notes.
 - [ ] **H webapp-parity-5. The browser geophysical report omits the
   study-area map, the suitability map and every survey-derived figure;**
   no section, pseudo-section or subsurface map exists in the browser.
+  Mostly done. The browser now draws the study-area map (from the survey alone, as the Python figure does), the geoelectric section, the model and apparent-resistivity pseudo-sections, and the four subsurface maps (depth to bedrock, aquifer thickness, bedrock elevation, protective capacity), each with the Python's caption, and it lists what it could not draw and why rather than printing a shorter report. The refusals are mirrored: the section is not drawn across a gap too wide to correlate across, and the subsurface section is not written at all where fewer than two soundings carry a position.
+  Still missing: the suitability map, with its four state-dependent caption clauses, and the ground-surface profile along the traverse. Neither has a chart mirror yet, and neither should be stood in for by a map that carries a different picture under the Python's caption.
+  Two divergences are known and are not drift: a layout whose positions are exactly symmetric has no unique principal axis, so the browser and LAPACK can choose different ones; and the pseudo-section triangulates a station-by-spacing lattice whose cells are all ties, so about half of them split on the other diagonal. Every number agrees in both cases.
 - [x] **H webapp-parity-6 / ves-1. The browser builds an 80 m hole with 48 m
   of screen for a VES-only project** from the degenerate zone.
   Done by workstream 1 in both engines, and now held: the reference and the parity suite carry the design built from the Rokel interpretation alone, which is a 40 m hole with 24 m of screen at 14-38 m, from a sounding that resolves 40 m. Nothing checked that design before, so the two engines could have drifted on it unseen.

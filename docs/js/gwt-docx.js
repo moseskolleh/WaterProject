@@ -734,6 +734,51 @@
     return [shared];
   }
 
+  /* A reason raised as an exception message starts lower case and carries no
+   * full stop; the report prints it as a sentence. Mirrors
+   * reporting/geophysical.py _sentence. */
+  function sentence(text) {
+    var trimmed = String(text === null || text === undefined ? '' : text).trim();
+    if (!trimmed) return trimmed;
+    return trimmed.charAt(0).toUpperCase() + trimmed.slice(1) +
+      (trimmed.charAt(trimmed.length - 1) === '.' ? '' : '.');
+  }
+
+  /* The maps and sections built from the survey's own soundings, and the list
+   * of the ones it could not support. Mirrors
+   * reporting/geophysical.py _add_subsurface_figures: the figures are the
+   * caller's (the app draws them, inside the report build, on the print
+   * palette), and this places them, heads them and writes down what was not
+   * drawn and why. A report that quietly prints four figures where six were
+   * planned tells a reviewer nothing about the two that are missing, and the
+   * reason is usually a GPS position nobody recorded - which a reviewer can
+   * ask for. */
+  function subsurfaceSection(b, context) {
+    var subsurface = context.subsurface || {};
+    var figures = subsurface.figures || [];
+    var notDrawn = subsurface.notDrawn || [];
+    if (!figures.length && !notDrawn.length) return;
+    b.heading('Subsurface maps from the survey', 2);
+    if (figures.length) {
+      b.paragraph('The maps in this section are drawn from the soundings ' +
+        'themselves rather than from a national dataset, so they carry the ' +
+        'survey\'s own resolution. Each interpolated surface is blanked ' +
+        'outside the ground the soundings enclose: a contour beyond the last ' +
+        'peg is the interpolator continuing a trend, and a borehole gets ' +
+        'sited on it.', { align: 'justify' });
+    }
+    figures.forEach(function (fig) {
+      b.figure(fig.image, fig.caption, fig.widthCm);
+    });
+    if (notDrawn.length) {
+      b.paragraph(figures.length
+        ? 'Not drawn from this survey, and why:'
+        : 'No subsurface map or section could be drawn from this survey:',
+      { bold: true });
+      b.bullets(notDrawn.map(sentence));
+    }
+  }
+
   /* --- 1. geophysical survey ------------------------------------------------- */
 
   async function geophysicalReport(context) {
@@ -883,6 +928,8 @@
         fontSize: 8.5,
       });
     }
+
+    subsurfaceSection(b, context);
 
     b.heading('5. Conclusions and Recommendations', 1);
     if (best) {

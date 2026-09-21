@@ -178,6 +178,17 @@
 
   var FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 
+  /* A frame's title, and how much wider it is than textWidth() thinks.
+   *
+   * textWidth models the regular weight and a title is drawn at weight 600.
+   * Measured against the browser over the titles these figures actually
+   * carry, the semi-bold line runs a fifth to a quarter past the estimate, so
+   * a title wrapped against the plain estimate still ran off the page. A
+   * title measured at this multiple wraps early rather than late, which costs
+   * a line of white space and never loses a word. */
+  var TITLE_SIZE = 13;
+  var TITLE_BOLD_WIDTH = 1.25;
+
   /* A plot frame with linear or logarithmic scales. Returns the <svg>, the
    * plotting group and the x/y mapping functions the callers draw into. */
   function frame(spec) {
@@ -221,10 +232,17 @@
     xTicks.forEach(function (t) {
       var x = fx(t.value === undefined ? t : t.value);
       if (!isFinite(x)) return;
-      grid.appendChild(svgEl('line', {
-        x1: x, y1: margin.top, x2: x, y2: margin.top + plotH,
-        stroke: p.grid, 'stroke-width': 1,
-      }));
+      /* A figure whose fill carries the reading rules its own grid off: the
+       * geoelectric section and the layer pseudo-section call ax.grid(False)
+       * in the Python because a rule across a coloured layer column reads as
+       * a layer boundary, and the one thing a section may not do is invent a
+       * boundary. The tick numbers stay either way. */
+      if (spec.grid !== false) {
+        grid.appendChild(svgEl('line', {
+          x1: x, y1: margin.top, x2: x, y2: margin.top + plotH,
+          stroke: p.grid, 'stroke-width': 1,
+        }));
+      }
       /* a tick label centred on the last tick hangs off the right edge of the
        * viewBox; the outermost ones are anchored inwards instead */
       var label = t.label === undefined ? tickLabel(t) : t.label;
@@ -242,10 +260,12 @@
     yTicks.forEach(function (t) {
       var y = fy(t.value === undefined ? t : t.value);
       if (!isFinite(y)) return;
-      grid.appendChild(svgEl('line', {
-        x1: margin.left, y1: y, x2: margin.left + plotW, y2: y,
-        stroke: p.grid, 'stroke-width': 1,
-      }));
+      if (spec.grid !== false) {
+        grid.appendChild(svgEl('line', {
+          x1: margin.left, y1: y, x2: margin.left + plotW, y2: y,
+          stroke: p.grid, 'stroke-width': 1,
+        }));
+      }
       grid.appendChild(svgEl('text', {
         x: margin.left - 8, y: y + 4, 'text-anchor': 'end',
         'font-size': 11, fill: p.muted,
@@ -264,10 +284,25 @@
     }));
 
     if (spec.title) {
-      svg.appendChild(svgEl('text', {
-        x: margin.left, y: 18, 'font-size': 13, 'font-weight': 600,
-        fill: p.ink, text: spec.title,
-      }));
+      /* A title wider than the figure is cut off at the edge of the viewBox,
+       * and what is cut off is the end of the sentence. The geoelectric
+       * section builds its title out of the survey and carries the caveat on
+       * the tail of it - "(soundings up to 65 m off the line)" - so the
+       * browser printed a section that claimed to be along a line and
+       * silently dropped the words saying it was not. matplotlib grows the
+       * figure until the whole title fits; a viewBox cannot grow, so a caller
+       * whose title comes from the data passes titleWidth and the title wraps
+       * onto as many lines as it needs. The caller leaves room for them: this
+       * draws from y=18 down, into the top margin it was given. */
+      var titleLines = spec.titleWidth
+        ? wrapText(spec.title, spec.titleWidth, TITLE_SIZE * TITLE_BOLD_WIDTH)
+        : [spec.title];
+      titleLines.forEach(function (line, i) {
+        svg.appendChild(svgEl('text', {
+          x: margin.left, y: 18 + i * 16, 'font-size': TITLE_SIZE,
+          'font-weight': 600, fill: p.ink, text: line,
+        }));
+      });
     }
     if (spec.xLabel) {
       svg.appendChild(svgEl('text', {
@@ -4158,6 +4193,1008 @@
     return canvas.finish();
   }
 
+  /* =================================== survey sections and subsurface maps */
+
+  /* The browser geophysical report drew no figure the survey itself produced:
+   * no geoelectric section, no layer pseudo-section and none of the four
+   * subsurface maps, while the Python engine drew every one of them
+   * (ROADMAP webapp-parity-5). A client reading the browser's report of the
+   * same survey got the text of a geophysical investigation with none of its
+   * pictures. The geometry, the interpolation and the refusals are mirrored in
+   * gwt-core.js; these are the figures drawn from them.
+   *
+   * Every one of these functions returns null where the engine handed back a
+   * reason instead of geometry, and the report layer prints that reason. That
+   * is the point of the pairing: a section drawn between two soundings 20 km
+   * apart, or a surface interpolated through two points, is worse than no
+   * figure at all, because a figure is read as a measurement.
+   */
+
+  /* config.py HouseStyle.figure_width_in. The Python figures are 6.3 in wide
+   * and maps.py _figsize gives every map its height from the ground it covers,
+   * so the browser figure is shaped like the report's rather than being a
+   * fixed rectangle the same survey is squashed into. */
+  var FIGURE_WIDTH_IN = 6.3;
+
+  /* ---------------------------------------------------------- colour ramps */
+
+  /* matplotlib's colour ramps, as the anchors they are interpolated from.
+   *
+   * The Python names a colormap per figure and the browser has to arrive at
+   * the same picture: a depth-to-bedrock map whose deep ground is pale beside
+   * a matplotlib one whose deep ground is dark are two different findings to
+   * anybody holding both reports. These are not theme colours and must not
+   * come from palette() - they are the data scale itself, the thing the
+   * colour bar is drawn from - which is why they are written out here the way
+   * PROTECTIVE_CLASSES and GEOLOGY_COLOURS are.
+   *
+   * YlOrBr and GnBu are ColorBrewer's nine-colour ramps and these are their
+   * exact anchors; terrain is matplotlib's own piecewise definition, kinks
+   * and all; viridis is a 256-entry table sampled at seventeen points, which
+   * holds it to under 5 of 255 on any channel. */
+  var COLOUR_RAMPS = {
+    viridis: {
+      colours: ['#440154', '#48186A', '#472D7B', '#424086', '#3B528B',
+        '#33638D', '#2C728E', '#26828E', '#21918C', '#1FA088', '#28AE80',
+        '#3FBC73', '#5EC962', '#84D44B', '#ADDC30', '#D8E219', '#FDE725'],
+    },
+    YlOrBr: {
+      colours: ['#FFFFE5', '#FFF7BC', '#FEE390', '#FEC34F', '#FE9829',
+        '#EB6F14', '#CB4B02', '#983404', '#662506'],
+    },
+    GnBu: {
+      colours: ['#F7FCF0', '#E0F3DB', '#CCEBC5', '#A7DDB5', '#7ACCC4',
+        '#4DB2D3', '#2A8BBE', '#0867AB', '#084081'],
+    },
+    terrain: {
+      colours: ['#333399', '#0099FF', '#00CC66', '#FFFF99', '#805C54', '#FFFFFF'],
+      positions: [0, 0.15, 0.25, 0.5, 0.75, 1],
+    },
+  };
+
+  function hexChannels(hex) {
+    var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || '').trim());
+    if (!m) return [0, 0, 0];
+    return [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
+  }
+
+  function mixHex(a, b, f) {
+    var ca = hexChannels(a), cb = hexChannels(b), out = '#', i, v;
+    for (i = 0; i < 3; i += 1) {
+      v = Math.round(ca[i] + (cb[i] - ca[i]) * f);
+      v = Math.max(0, Math.min(255, v));
+      out += (v < 16 ? '0' : '') + v.toString(16).toUpperCase();
+    }
+    return out;
+  }
+
+  /* The ramp `name` at position `t`, clamped to its ends the way matplotlib
+   * clamps a Normalize: a value under vmin takes the first colour on the bar
+   * rather than dropping out of the figure. */
+  function rampColour(name, t) {
+    var ramp = COLOUR_RAMPS[name] || COLOUR_RAMPS.viridis;
+    var cols = ramp.colours, n = cols.length, i;
+    var x = (typeof t === 'number' && isFinite(t)) ? Math.max(0, Math.min(1, t)) : 0;
+    /* matplotlib does not interpolate its ramps continuously: it builds a
+     * 256-entry lookup table and picks entry min(floor(t * 256), 255), which
+     * stands for position i/255. Skipping that step put the browser up to 5
+     * of 255 off matplotlib on the steep leg of the terrain ramp, where a
+     * bedrock elevation map changes from blue to green; mirroring it holds
+     * every banded ramp here to one part in 255 of the Python's. */
+    x = Math.min(Math.floor(x * 256), 255) / 255;
+    var pos = ramp.positions;
+    if (!pos) {
+      pos = [];
+      for (i = 0; i < n; i += 1) pos.push(i / (n - 1));
+    }
+    for (i = 0; i < n - 1; i += 1) {
+      if (x <= pos[i + 1] || i === n - 2) {
+        var width = pos[i + 1] - pos[i];
+        return mixHex(cols[i], cols[i + 1], width > 0 ? (x - pos[i]) / width : 0);
+      }
+    }
+    return cols[n - 1];
+  }
+
+  /* ves/plots.py _rho_norm, applied: where one layer resistivity sits on the
+   * log scale spanning the decades the drawn models occupy. The Python clamps
+   * at the bottom of the scale - norm(max(rho, norm.vmin)) - so a layer under
+   * the scale takes the darkest colour on the bar instead of a blank column. */
+  function rhoRampColour(range, rho) {
+    var lo = range[0], hi = range[1];
+    var span = Math.log(hi) - Math.log(lo);
+    var v = Math.max(Number(rho), lo);
+    return rampColour('viridis', span > 0 ? (Math.log(v) - Math.log(lo)) / span : 0);
+  }
+
+  /* The white rule matplotlib draws along a layer boundary, along a contour
+   * and around a reading. It is ink on a data-coloured fill rather than ink
+   * on the page, so it is not a theme token: a token that followed the theme
+   * would vanish into the dark end of the viridis ramp the moment the reader
+   * switched to the dark theme, which is exactly where the boundary between a
+   * 4 ohm-m clay and a 9 ohm-m clay has to stay visible. */
+  var ON_RAMP_INK = '#FFFFFF';
+
+  /* ------------------------------------------------------------ colour bar */
+
+  /* The colour bar, drawn as the thing it stands for.
+   *
+   * A banded fill gets a banded bar labelled at the contour levels
+   * themselves, because that is what matplotlib's colorbar does for a
+   * contourf and the numbers beside the browser's bar have to be the numbers
+   * beside the report's. A continuous log scale gets a smooth ramp with
+   * decade ticks. Returns the width it used, so the caller can put the axis
+   * label beyond it.
+   *
+   * spec: {x, top, height, w, label, levels, colours, labels} for bands, or
+   * {x, top, height, w, label, range, ramp} for a log ramp.
+   */
+  function colourBar(f, spec) {
+    var p = f.palette;
+    var x = spec.x, w = spec.w === undefined ? 13 : spec.w;
+    var top = spec.top, height = spec.height;
+    var g = svgEl('g');
+    var lo, hi, logScale = !spec.levels;
+    if (logScale) { lo = Math.log(spec.range[0]); hi = Math.log(spec.range[1]); }
+    else { lo = spec.levels[0]; hi = spec.levels[spec.levels.length - 1]; }
+    var span = hi - lo;
+    function barY(value) {
+      var a = logScale ? Math.log(value) : value;
+      return top + height * (span > 0 ? (hi - a) / span : 0);
+    }
+
+    var i;
+    if (logScale) {
+      /* a stack of thin bands rather than an SVG gradient: a gradient needs
+       * an id, and two figures on one page with the same id paint each other */
+      var steps = 64;
+      for (i = 0; i < steps; i += 1) {
+        var y0 = top + height * (1 - (i + 1) / steps);
+        g.appendChild(svgEl('rect', {
+          x: x, y: y0, width: w, height: height / steps + 0.5,
+          fill: rampColour(spec.ramp || 'viridis', (i + 0.5) / steps),
+        }));
+      }
+    } else {
+      for (i = 0; i < spec.levels.length - 1; i += 1) {
+        var yb = barY(spec.levels[i + 1]), yt = barY(spec.levels[i]);
+        g.appendChild(svgEl('rect', {
+          x: x, y: yb, width: w, height: Math.max(yt - yb, 0.5),
+          fill: spec.colours[i],
+        }));
+      }
+    }
+    g.appendChild(svgEl('rect', {
+      x: x, y: top, width: w, height: height, fill: 'none',
+      stroke: p.axis, 'stroke-width': 0.8,
+    }));
+
+    var ticks = [];
+    if (logScale) {
+      logTicks(spec.range).forEach(function (value) {
+        ticks.push({ value: value, label: tickLabel(value) });
+      });
+    } else {
+      /* Every band bound is labelled unless they would print on top of one
+       * another, in which case every second or third one is: a bar whose
+       * numbers overlap is not a scale, and the end of the range always
+       * carries a number. */
+      var step = Math.max(1, Math.ceil(spec.levels.length * 11 / Math.max(height, 1)));
+      for (i = 0; i < spec.levels.length; i += 1) {
+        if (i % step !== 0 && i !== spec.levels.length - 1) continue;
+        ticks.push({
+          value: spec.levels[i],
+          label: spec.labels ? spec.labels[i] : C.formatG(spec.levels[i]),
+        });
+      }
+    }
+    var widest = 0;
+    ticks.forEach(function (tick) {
+      var y = barY(tick.value);
+      if (!isFinite(y)) return;
+      g.appendChild(svgEl('line', {
+        x1: x + w, y1: y, x2: x + w + 3, y2: y, stroke: p.axis, 'stroke-width': 0.8,
+      }));
+      g.appendChild(svgEl('text', {
+        x: x + w + 6, y: y + 3.4, 'font-size': 9.5, fill: p.muted, text: tick.label,
+      }));
+      widest = Math.max(widest, textWidth(tick.label, 9.5));
+    });
+
+    var used = w + 6 + widest;
+    if (spec.label) {
+      var lx = x + used + 12;
+      var ly = top + height / 2;
+      g.appendChild(svgEl('text', {
+        x: lx, y: ly, 'font-size': 10.5, fill: p.inkSoft, 'text-anchor': 'middle',
+        transform: 'rotate(-90 ' + lx + ' ' + ly + ')', text: spec.label,
+      }));
+      used += 24;
+    }
+    f.svg.appendChild(g);
+    return used;
+  }
+
+  /* The horizontal axis label, and under it the note the Python prints below
+   * the axes. frame() writes its xLabel on the last line of the figure, which
+   * is where a note of two or three lines has to go, so a figure carrying
+   * both places them here in the Python's order instead. */
+  function axisLabelBelow(f, text) {
+    if (!text) return;
+    f.svg.appendChild(svgEl('text', {
+      x: f.margin.left + f.plotW / 2, y: f.margin.top + f.plotH + 34,
+      'text-anchor': 'middle', 'font-size': 11.5, fill: f.palette.inkSoft,
+      text: text,
+    }));
+  }
+
+  function noteBelow(f, lines, colour, size, leading) {
+    lines.forEach(function (line, i) {
+      f.svg.appendChild(svgEl('text', {
+        x: f.margin.left + f.plotW / 2,
+        y: f.margin.top + f.plotH + 46 + i * leading,
+        'text-anchor': 'middle', 'font-size': size, fill: colour, text: line,
+      }));
+    });
+  }
+
+  /* ------------------------------------------------- the geoelectric section */
+
+  /* ves/plots.py plot_geoelectric_section: the layer columns at the chainage
+   * the soundings were actually surveyed at, boundaries joined only across the
+   * gaps the engine says may be correlated, and the note that says which are
+   * not. `section` is what C.geoelectricSectionGeometry returned; a section
+   * carrying a reason is not drawn at all. */
+  function geoelectricSection(section, options) {
+    if (!section || section.reason) return null;
+    var opts = options || {};
+    var models = section.models || [];
+    var positions = section.positions_m || [];
+    if (!models.length || models.length !== positions.length) return null;
+
+    var depthMax = section.depth_max_m;
+    var halfW = section.half_width_m;
+    var lo = Math.min.apply(null, positions) - halfW;
+    var hi = Math.max.apply(null, positions) + halfW;
+    /* matplotlib autoscales a fill_between with a 5% margin either side, so
+     * the outermost column does not stand against the frame */
+    var airX = (hi - lo) * 0.05 || 1;
+    var width = opts.width || 760;
+    var noteLines = section.note ? wrapText(section.note, width - 170, 9) : [];
+    var base = Math.round(width * 3.6 / FIGURE_WIDTH_IN);
+    /* This is the one figure here whose title is built from the survey rather
+     * than fixed, and it is the longest: "Interpreted geoelectric section,
+     * 20,700 m along bearing 312 degrees (soundings up to 1,240 m off the
+     * line)" is half as wide again as the figure. Drawn on one line it was
+     * cut off at the viewBox and the reader lost the bracket - the words that
+     * say the soundings are not on the line the section is drawn along. The
+     * title is wrapped instead, and the top margin grows to hold it. */
+    var titleText = opts.title || section.title;
+    var titleWidth = width - 74;
+    var titleLines = wrapText(titleText, titleWidth,
+      TITLE_SIZE * TITLE_BOLD_WIDTH).length;
+    var height = (opts.height || base) + noteLines.length * 12 +
+      (titleLines - 1) * 16;
+
+    /* The note is printed under the axis label, where the Python puts it, so
+     * the axis label is drawn here rather than by frame(), which would put it
+     * on the last line of the note at the foot of the figure. */
+    var f = frame({
+      width: width, height: height,
+      margin: {
+        top: 30 + (titleLines - 1) * 16, right: 104,
+        bottom: 46 + noteLines.length * 12, left: 66,
+      },
+      title: titleText, titleWidth: titleWidth,
+      yLabel: section.y_label, yDown: true, grid: false,
+      xDomain: [lo - airX, hi + airX], yDomain: [0, depthMax],
+    });
+    axisLabelBelow(f, section.x_label);
+    var p = f.palette;
+    var range = section.rho_range;
+
+    models.forEach(function (model, k) {
+      var x = positions[k];
+      var xa = f.fx(x - halfW), xb = f.fx(x + halfW);
+      var tops = model.depths_top || [];
+      (model.resistivities || []).forEach(function (rho, i) {
+        var top = Number(tops[i]);
+        if (!(top < depthMax)) return;
+        var bottom = i + 1 < tops.length ? Number(tops[i + 1]) : depthMax;
+        bottom = Math.min(bottom, depthMax);
+        var ya = f.fy(top), yb = f.fy(bottom);
+        f.plot.appendChild(svgEl('rect', {
+          x: xa, y: ya, width: Math.max(xb - xa, 1), height: Math.max(yb - ya, 0),
+          fill: rhoRampColour(range, rho),
+        }, [svgEl('title', {
+          text: section.labels[k] + ': ' + C.fmtNum(rho, 4) + ' ohm-m, ' +
+            C.formatG(top) + '-' + C.formatG(bottom) + ' m',
+        })]));
+      });
+      tops.slice(1).forEach(function (z) {
+        if (!(z < depthMax)) return;
+        f.plot.appendChild(svgEl('line', {
+          x1: xa, y1: f.fy(z), x2: xb, y2: f.fy(z),
+          stroke: ON_RAMP_INK, 'stroke-width': 1.2,
+        }));
+      });
+    });
+
+    /* A boundary is joined between two neighbouring stations only where the
+     * engine's correlation flag allows it. Two soundings too far apart to
+     * share a horizon stand as separate columns, because a dashed line drawn
+     * between them is a line between two points, not a horizon anybody
+     * traced, and it is read as one. */
+    var correlate = section.correlate || [];
+    var a;
+    for (a = 0; a < models.length - 1; a += 1) {
+      if (!correlate[a]) continue;
+      var m1 = models[a], m2 = models[a + 1];
+      var shared = Math.min(m1.n_layers, m2.n_layers) - 1;
+      var kk;
+      for (kk = 1; kk <= shared; kk += 1) {
+        var z1 = m1.depths_top[kk], z2 = m2.depths_top[kk];
+        if (z1 === undefined || z2 === undefined) continue;
+        if (!(z1 < depthMax) && !(z2 < depthMax)) continue;
+        f.plot.appendChild(svgEl('line', {
+          x1: f.fx(positions[a] + halfW), y1: f.fy(Math.min(z1, depthMax)),
+          x2: f.fx(positions[a + 1] - halfW), y2: f.fy(Math.min(z2, depthMax)),
+          stroke: p.muted, 'stroke-width': 1, 'stroke-dasharray': '5 4',
+        }));
+      }
+    }
+
+    (section.labels || []).forEach(function (label, k) {
+      f.svg.appendChild(svgEl('text', {
+        x: f.fx(positions[k]), y: f.fy(depthMax * 0.035) + 8,
+        'text-anchor': 'middle', 'font-size': 10, 'font-weight': 700,
+        fill: p.accent, stroke: p.surface, 'stroke-width': 3.2,
+        'paint-order': 'stroke', text: label,
+      }));
+    });
+
+    colourBar(f, {
+      x: f.margin.left + f.plotW + 14, top: f.margin.top,
+      height: f.plotH, range: range, ramp: 'viridis',
+      label: section.cbar_label,
+    });
+
+    /* The note says what the figure cannot, so it is on the figure and not in
+     * a caption a reader can skip: chiefly that a boundary drawn across a gap
+     * much larger than the depth of investigation was not traced. */
+    noteBelow(f, noteLines, p.critical, 9, 12);
+    return f.svg;
+  }
+
+  /* ------------------------------------------------- the layer pseudo-section */
+
+  /* ves/plots.py plot_model_pseudosection: one sounding's layer column to
+   * scale, coloured on the same logarithmic resistivity bar the section uses.
+   * The "pseudo-section showing apparent resistivity and layer thicknesses"
+   * figure of the survey reports. */
+  function modelPseudosection(model, options) {
+    if (!model || !model.resistivities || !model.resistivities.length) return null;
+    var opts = options || {};
+    var tops = model.depths_top || [];
+    var depthMax = opts.depthMax === undefined || opts.depthMax === null
+      ? (tops.length > 1 ? Number(tops[tops.length - 1]) : 10) * 1.35 + 3
+      : Number(opts.depthMax);
+    var width = opts.width || 420;
+    var height = opts.height || Math.round(width * 3.6 / (FIGURE_WIDTH_IN * 0.72));
+
+    var f = frame({
+      width: width, height: height,
+      margin: { top: 30, right: 108, bottom: 34, left: 60 },
+      title: opts.title || ((model.sounding_id || 'VES') + ' layer section'),
+      yLabel: 'Depth (m)', yDown: true, grid: false,
+      xDomain: [0, 1], yDomain: [0, depthMax], xTicks: [],
+    });
+    var p = f.palette;
+    var range = C.rhoColourRange([model]);
+
+    model.resistivities.forEach(function (rho, i) {
+      var top = Number(tops[i]);
+      if (!(top < depthMax)) return;
+      var bottom = i + 1 < tops.length ? Number(tops[i + 1]) : depthMax;
+      bottom = Math.min(bottom, depthMax);
+      var ya = f.fy(top), yb = f.fy(bottom);
+      f.plot.appendChild(svgEl('rect', {
+        x: f.margin.left, y: ya, width: f.plotW, height: Math.max(yb - ya, 0),
+        fill: rhoRampColour(range, rho),
+      }, [svgEl('title', {
+        text: C.fmtNum(rho, 4) + ' ohm-m, ' + C.formatG(top) + '-' +
+          C.formatG(bottom) + ' m',
+      })]));
+      /* the resistivity is written on its own band, on a plate dark enough to
+       * read against every colour on the ramp */
+      var text = C.fmtNum(rho, 4) + ' ohm-m';
+      var cx = f.margin.left + f.plotW / 2, cy = (ya + yb) / 2;
+      var tw = textWidth(text, 10);
+      f.plot.appendChild(svgEl('rect', {
+        x: cx - tw / 2 - 5, y: cy - 9, width: tw + 10, height: 18, rx: 4,
+        fill: '#000000', 'fill-opacity': 0.33,
+      }));
+      f.plot.appendChild(svgEl('text', {
+        x: cx, y: cy + 3.6, 'text-anchor': 'middle', 'font-size': 10,
+        fill: ON_RAMP_INK, text: text,
+      }));
+    });
+    tops.slice(1).forEach(function (z) {
+      if (!(z < depthMax)) return;
+      f.plot.appendChild(svgEl('line', {
+        x1: f.margin.left, y1: f.fy(z), x2: f.margin.left + f.plotW, y2: f.fy(z),
+        stroke: ON_RAMP_INK, 'stroke-width': 1.2,
+      }));
+    });
+
+    colourBar(f, {
+      x: f.margin.left + f.plotW + 14, top: f.margin.top, height: f.plotH,
+      range: range, ramp: 'viridis', label: 'Resistivity (ohm-m)',
+    });
+    return f.svg;
+  }
+
+  /* -------------------------------------- the apparent-resistivity section */
+
+  /* Sutherland-Hodgman against a linear field: the part of a convex polygon
+   * where the interpolated value is above (or below) `level`.
+   *
+   * A triangle's value varies linearly across it, so a level cuts it along a
+   * straight line and each clip leaves a convex polygon. Two clips give the
+   * band between two levels exactly, which is what tricontourf fills - not an
+   * approximation of it. Vertices carry {x, y, value}. */
+  function clipPolygonByValue(poly, keepAbove, level) {
+    var out = [], i;
+    for (i = 0; i < poly.length; i += 1) {
+      var a = poly[i], b = poly[(i + 1) % poly.length];
+      var inA = keepAbove ? a[2] >= level : a[2] <= level;
+      var inB = keepAbove ? b[2] >= level : b[2] <= level;
+      if (inA) out.push(a);
+      if (inA !== inB && b[2] !== a[2]) {
+        var t = (level - a[2]) / (b[2] - a[2]);
+        out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, level]);
+      }
+    }
+    return out;
+  }
+
+  /* mapping/subsurface.py apparent_resistivity_pseudosection: the readings
+   * themselves laid out along the traverse, before any inversion has been
+   * believed. The vertical axis is AB/2 - the electrode half-spacing - and is
+   * labelled as such rather than converted to a depth, because the
+   * pseudo-depth conversions vary with the very layering the figure is drawn
+   * to reveal, and calling a measurement geometry a depth is how a
+   * pseudo-section starts being read as a cross-section.
+   *
+   * `geometry` is what C.pseudosectionGeometry returned: the triangles it
+   * hands over already have any pair of stations too far apart to correlate
+   * left out, so no colour is drawn across ground nothing was measured on. */
+  function apparentPseudosection(geometry, options) {
+    if (!geometry || geometry.reason) return null;
+    var opts = options || {};
+    var xs = geometry.readings.x;
+    var logY = geometry.readings.log_ab2;
+    var rho = geometry.readings.rho;
+    var levels = geometry.levels || [];
+    var range = geometry.range || [1, 10];
+    if (!xs.length || levels.length < 2) return null;
+
+    var width = opts.width || 760;
+    var noteLines = geometry.note ? wrapText(geometry.note, width - 150, 8.5) : [];
+    var base = Math.round(width * 3.4 / FIGURE_WIDTH_IN);
+    var height = (opts.height || base) + noteLines.length * 11;
+    var ticks = (geometry.ticks || []).map(function (tick) {
+      return { value: tick[0], label: tick[1] };
+    });
+    /* A filled contour pins its own axes to the data - matplotlib calls them
+     * sticky edges - so the Python section runs edge to edge with no margin,
+     * and the decade ticks then widen the vertical axis to whichever decades
+     * it labels. Padding the browser's axes instead would leave a strip of
+     * blank paper at each end of a section drawn to the same readings, which
+     * reads as ground the survey covered and measured nothing on. With no
+     * triangles to fill there is no contour and the ordinary 5% margin is
+     * what matplotlib gives the readings. */
+    var filled = (geometry.triangles || []).length > 0;
+    var yValues = logY.concat(ticks.map(function (tick) { return tick.value; }));
+    var f = frame({
+      width: width, height: height,
+      margin: { top: 32, right: 104, bottom: 46 + noteLines.length * 11, left: 62 },
+      title: opts.title || geometry.title,
+      yLabel: geometry.y_label, yDown: true,
+      xDomain: filled ? [Math.min.apply(null, xs), Math.max.apply(null, xs)]
+        : padDomain(xs, false, 0.05),
+      yDomain: filled ? [Math.min.apply(null, yValues), Math.max.apply(null, yValues)]
+        : padDomain(yValues, false, 0.05),
+      yTicks: ticks,
+    });
+    axisLabelBelow(f, geometry.x_label);
+    var p = f.palette;
+    var logLo = Math.log(range[0]), logHi = Math.log(range[1]);
+    function colourFor(value) {
+      return rampColour('viridis',
+        logHi > logLo ? (Math.log(value) - logLo) / (logHi - logLo) : 0);
+    }
+
+    /* The banded fill between the readings. The two end bands are the ramp's
+     * own ends rather than a midpoint, which is what extend="both" paints a
+     * reading outside the level range: the colour says "off the scale", and a
+     * midpoint colour would say it was an ordinary value. */
+    /* One translucent group - `opacity`, which composites the group once, not
+     * `fill-opacity`, which each child would apply on its own - so a piece
+     * can be outlined in its own colour to close the anti-aliased seam
+     * against its neighbour without the overlap printing as a darker line. */
+    var fill = svgEl('g', { opacity: 0.85 });
+    f.plot.appendChild(fill);
+    function fillPiece(piece, colour) {
+      if (piece.length < 3) return;
+      /* A triangle with an edge lying exactly on a level - which is the
+       * ordinary case here, because the outermost levels are the smallest and
+       * largest readings themselves - clips to a polygon of no area. Drawing
+       * it adds an invisible path per triangle per level and nothing else. */
+      var twice = 0, j;
+      for (j = 0; j < piece.length; j += 1) {
+        var u = piece[j], w = piece[(j + 1) % piece.length];
+        twice += u[0] * w[1] - w[0] * u[1];
+      }
+      if (Math.abs(twice) < 1e-12) return;
+      var d = '', i;
+      for (i = 0; i < piece.length; i += 1) {
+        d += (i ? 'L' : 'M') + f.fx(piece[i][0]).toFixed(2) + ' ' +
+          f.fy(piece[i][1]).toFixed(2);
+      }
+      fill.appendChild(svgEl('path', {
+        d: d + 'Z', fill: colour, stroke: colour, 'stroke-width': 0.6,
+        'stroke-linejoin': 'round',
+      }));
+    }
+    (geometry.triangles || []).forEach(function (tri) {
+      var poly = tri.map(function (idx) { return [xs[idx], logY[idx], rho[idx]]; });
+      fillPiece(clipPolygonByValue(poly, false, levels[0]), rampColour('viridis', 0));
+      var k;
+      for (k = 0; k < levels.length - 1; k += 1) {
+        /* A band takes the colour of the value halfway along it *on the
+         * scale it is drawn on*, which here is logarithmic: contour.py's
+         * _process_levels sets layers to sqrt(l[k]) * sqrt(l[k+1]) when the
+         * norm is a LogNorm, not to the arithmetic mean. Taking the
+         * arithmetic mean put every band up the ramp from the one matplotlib
+         * paints - six parts in 255 on a four-decade section, which is more
+         * than the whole error of the ramp table itself - and a pseudo-section
+         * is read by matching a colour against the bar beside it. */
+        fillPiece(
+          clipPolygonByValue(clipPolygonByValue(poly, true, levels[k]),
+            false, levels[k + 1]),
+          colourFor(Math.sqrt(levels[k]) * Math.sqrt(levels[k + 1])));
+      }
+      fillPiece(clipPolygonByValue(poly, true, levels[levels.length - 1]),
+        rampColour('viridis', 1));
+    });
+
+    /* and the readings themselves on top: the colour between two stations is
+     * interpolation, the dots are where the instrument actually was */
+    xs.forEach(function (x, i) {
+      f.plot.appendChild(marker(f.fx(x), f.fy(logY[i]), 'circle',
+        colourFor(rho[i]), ON_RAMP_INK, 3.6));
+    });
+
+    /* Station names above the shallowest reading, the end ones leaning
+     * inwards so they stay on the page. */
+    var top = Math.min.apply(null, logY);
+    (geometry.stations_m || []).forEach(function (station, k) {
+      var anchor = 'middle';
+      if (geometry.stations_m.length > 1 && k === 0) anchor = 'start';
+      else if (geometry.stations_m.length > 1 &&
+        k === geometry.stations_m.length - 1) anchor = 'end';
+      f.svg.appendChild(svgEl('text', {
+        x: f.fx(station), y: f.fy(top) - 6, 'text-anchor': anchor,
+        'font-size': 9, 'font-weight': 700, fill: p.accent,
+        stroke: p.surface, 'stroke-width': 3, 'paint-order': 'stroke',
+        text: geometry.labels[k],
+      }));
+    });
+
+    colourBar(f, {
+      x: f.margin.left + f.plotW + 14, top: f.margin.top, height: f.plotH,
+      range: range, ramp: 'viridis', label: geometry.cbar_label,
+    });
+
+    noteBelow(f, noteLines, p.muted, 8.5, 11);
+    return f.svg;
+  }
+
+  /* ------------------------------------------------------- subsurface maps */
+
+  /* maps.py _format_grid's tick labels: plain metres, no thousands separator
+   * and no offset, because a grid reference is copied off the axis onto a
+   * field sheet and 793,500 is not what a GPS will accept. */
+  function utmTickLabel(value) {
+    return Math.abs(value - Math.round(value)) < 1e-6
+      ? String(Math.round(value)) : C.formatG(value);
+  }
+
+  /* Which band of `levels` a value falls in.
+   *
+   * contourf draws nothing outside its outermost levels. The engine's levels
+   * always span the data - that is what ContourSet._autolev guarantees and
+   * what contourLevels mirrors - so this only ever bites on a rounding error
+   * at the very edge of the range, and there a blank cell in the middle of a
+   * surface would read as "not surveyed", which is a worse lie than the end
+   * band's colour. */
+  function bandIndex(value, levels) {
+    var k;
+    for (k = levels.length - 2; k > 0; k -= 1) {
+      if (value >= levels[k]) return k;
+    }
+    return 0;
+  }
+
+  /* The banded surface, as one rectangle per run of cells sharing a band.
+   *
+   * The grid is 220 cells square, which is 48,400 rectangles drawn one at a
+   * time and an SVG no reader would wait for. Cells in a row that fall in the
+   * same band are one rectangle instead, which a smooth interpolated surface
+   * reduces to a couple of dozen a row. Cells the hull clip blanked are left
+   * out entirely, so the page shows through exactly where the Python's mask
+   * shows the page. */
+  function drawSurfaceBands(parent, f, grid, levels, colours, opacity) {
+    /* The alpha goes on the group, not on each cell, and neighbouring cells
+     * are grown a half pixel so they overlap. Abutting SVG rectangles are
+     * anti-aliased against the page and leave a pale seam along every join,
+     * which drew a hatched surface of white hairlines across the map; making
+     * them overlap at full alpha inside one translucent group closes the
+     * seam without the overlap printing as a darker line.
+     *
+     * The attribute has to be `opacity` and not `fill-opacity`: a group's
+     * fill-opacity is inherited by each child and applied to each shape on
+     * its own, so every overlap composited twice and the hairlines came back
+     * as darker ones. `opacity` composites the group once, which is what
+     * contourf's one tessellated polygon per band amounts to. */
+    var group = svgEl('g', { opacity: opacity });
+    parent.appendChild(group);
+    var dx = grid.nx > 1 ? (grid.x[grid.nx - 1] - grid.x[0]) / (grid.nx - 1) : 1;
+    var dy = grid.ny > 1 ? (grid.y[grid.ny - 1] - grid.y[0]) / (grid.ny - 1) : 1;
+    var bleed = 0.5, j, i;
+    for (j = 0; j < grid.ny; j += 1) {
+      var yTop = f.fy(Math.min(grid.y[j] + dy / 2, grid.y[grid.ny - 1]));
+      var yBot = f.fy(Math.max(grid.y[j] - dy / 2, grid.y[0]));
+      var runStart = -1, runBand = -1;
+      for (i = 0; i <= grid.nx; i += 1) {
+        var value = i < grid.nx ? grid.z[j * grid.nx + i] : null;
+        var band = value === null || value === undefined
+          ? -1 : bandIndex(value, levels);
+        if (band === runBand) continue;
+        if (runBand >= 0) {
+          var xa = f.fx(Math.max(grid.x[runStart] - dx / 2, grid.x[0]));
+          var xb = f.fx(Math.min(grid.x[i - 1] + dx / 2, grid.x[grid.nx - 1]));
+          /* the run being closed is coloured by the band it held, not by the
+           * band of the cell that ended it: painting it with `band` shifted
+           * every run one band along the ramp and left the last run of each
+           * row with no colour at all */
+          group.appendChild(svgEl('rect', {
+            x: xa - bleed, y: yTop - bleed,
+            width: Math.max(xb - xa, 0.6) + 2 * bleed,
+            height: Math.max(yBot - yTop, 0.6) + 2 * bleed,
+            fill: colours[runBand],
+          }));
+        }
+        runBand = band;
+        runStart = i;
+      }
+    }
+  }
+
+  /* The white contour lines matplotlib draws over the bands.
+   *
+   * ax.contour(levels=cs.levels, colors="white") is not decoration on these
+   * maps: it is what makes a band boundary a line a reader can follow across
+   * the sheet, and what a depth is read off. Marching squares over the same
+   * grid, one path per level, with any cell the hull clip blanked left out -
+   * a contour has to stop where the measurements do. */
+  function contourLinePaths(grid, levels) {
+    var paths = [], li;
+    for (li = 0; li < levels.length; li += 1) paths.push([]);
+    var nx = grid.nx, z = grid.z, j, i;
+    for (j = 0; j < grid.ny - 1; j += 1) {
+      for (i = 0; i < nx - 1; i += 1) {
+        var bl = z[j * nx + i], br = z[j * nx + i + 1];
+        var tl = z[(j + 1) * nx + i], tr = z[(j + 1) * nx + i + 1];
+        if (bl === null || br === null || tl === null || tr === null) continue;
+        var lo = Math.min(bl, br, tl, tr), hi = Math.max(bl, br, tl, tr);
+        var x0 = grid.x[i], x1 = grid.x[i + 1];
+        var y0 = grid.y[j], y1 = grid.y[j + 1];
+        for (li = 0; li < levels.length; li += 1) {
+          var level = levels[li];
+          if (level <= lo || level > hi) continue;
+          /* the four edge crossings, in the order bottom, right, top, left */
+          var pts = [];
+          if ((bl > level) !== (br > level)) {
+            pts.push([x0 + (x1 - x0) * (level - bl) / (br - bl), y0]);
+          } else { pts.push(null); }
+          if ((br > level) !== (tr > level)) {
+            pts.push([x1, y0 + (y1 - y0) * (level - br) / (tr - br)]);
+          } else { pts.push(null); }
+          if ((tl > level) !== (tr > level)) {
+            pts.push([x0 + (x1 - x0) * (level - tl) / (tr - tl), y1]);
+          } else { pts.push(null); }
+          if ((bl > level) !== (tl > level)) {
+            pts.push([x0, y0 + (y1 - y0) * (level - bl) / (tl - bl)]);
+          } else { pts.push(null); }
+          var present = [];
+          var e;
+          for (e = 0; e < 4; e += 1) if (pts[e]) present.push(e);
+          if (present.length === 2) {
+            paths[li].push([pts[present[0]], pts[present[1]]]);
+          } else if (present.length === 4) {
+            /* A saddle: the same four crossings join up two different ways
+             * and the cell centre decides which, the way matplotlib's own
+             * contour generator decides it. Pairing them the other way puts
+             * a cross through the cell instead of two corners cut off. */
+            var mean = (bl + br + tl + tr) / 4;
+            if ((mean > level) === (bl > level)) {
+              paths[li].push([pts[0], pts[1]]);
+              paths[li].push([pts[2], pts[3]]);
+            } else {
+              paths[li].push([pts[0], pts[3]]);
+              paths[li].push([pts[1], pts[2]]);
+            }
+          }
+        }
+      }
+    }
+    return paths;
+  }
+
+  /* maps.py _scale_bar: a bar a round number of metres long, near a quarter of
+   * the width of the map.
+   *
+   * `floorY` is how far down the bar may be drawn. A survey on one line gets
+   * a two-line note across the foot of the axes, and the Python's fixed 5%
+   * of the height puts the bar straight through it - the one figure where
+   * the bar matters most, because the map has no surface on it to read. */
+  function utmScaleBar(f, extent, floorY) {
+    var p = f.palette;
+    var x0 = extent[0], x1 = extent[1], y0 = extent[2], y1 = extent[3];
+    var span = x1 - x0;
+    var nice = Math.pow(10, Math.floor(Math.log(span / 4.0) / Math.LN10));
+    var mults = [5, 2, 1], m;
+    for (m = 0; m < mults.length; m += 1) {
+      if (nice * mults[m] <= span / 4.0) { nice *= mults[m]; break; }
+    }
+    var bx = x0 + span * 0.06;
+    var by = y0 + (y1 - y0) * 0.05;
+    var py = floorY === undefined ? f.fy(by) : Math.min(f.fy(by), floorY);
+    f.svg.appendChild(svgEl('line', {
+      x1: f.fx(bx), y1: py, x2: f.fx(bx + nice), y2: py,
+      stroke: p.ink, 'stroke-width': 3.2, 'stroke-linecap': 'butt',
+    }));
+    f.svg.appendChild(svgEl('line', {
+      x1: f.fx(bx), y1: py, x2: f.fx(bx + nice / 2), y2: py,
+      stroke: p.surface, 'stroke-width': 1.5, 'stroke-linecap': 'butt',
+    }));
+    f.svg.appendChild(svgEl('text', {
+      x: f.fx(bx + nice / 2), y: py - 5,
+      'text-anchor': 'middle', 'font-size': 9, fill: p.ink,
+      stroke: p.surface, 'stroke-width': 2.6, 'paint-order': 'stroke',
+      text: nice >= 1000 ? C.formatG(nice / 1000) + ' km' : C.formatG(nice) + ' m',
+    }));
+  }
+
+  /* maps.py _north_arrow. */
+  function utmNorthArrow(f, extent) {
+    var p = f.palette;
+    var x0 = extent[0], x1 = extent[1], y0 = extent[2], y1 = extent[3];
+    var x = x1 - (x1 - x0) * 0.07;
+    var y = y1 - (y1 - y0) * 0.16;
+    var dy = (y1 - y0) * 0.09;
+    var px = f.fx(x), pyBase = f.fy(y), pyTip = f.fy(y + dy);
+    f.svg.appendChild(svgEl('line', {
+      x1: px, y1: pyBase, x2: px, y2: pyTip + 5,
+      stroke: p.ink, 'stroke-width': 1.6,
+    }));
+    f.svg.appendChild(svgEl('path', {
+      d: 'M' + px + ' ' + pyTip + 'L' + (px - 4) + ' ' + (pyTip + 8) +
+        'L' + (px + 4) + ' ' + (pyTip + 8) + 'Z',
+      fill: p.ink,
+    }));
+    f.svg.appendChild(svgEl('text', {
+      x: px, y: pyTip - 4, 'text-anchor': 'middle', 'font-size': 10,
+      'font-weight': 700, fill: p.ink, stroke: p.surface, 'stroke-width': 2.6,
+      'paint-order': 'stroke', text: 'N',
+    }));
+  }
+
+  /* One of the four subsurface maps of mapping/subsurface.py: depth to
+   * bedrock, interpreted aquifer thickness, bedrock surface elevation and
+   * aquifer protective capacity. `data` is one entry of C.subsurfaceMapSet, so
+   * the grid, the levels, the class table, the station text and the on-figure
+   * note are all the Python's; this draws them.
+   *
+   * The three continuous maps are a banded fill on their own colour ramp with
+   * a bar beside them; protective capacity is drawn in its five standard
+   * classes with a key instead, because the decision it informs is
+   * categorical and a smooth ramp invites reading a difference between 0.68
+   * and 0.71 siemens that the method does not support.
+   *
+   * options: {width, zone} - the UTM zone goes on the axis, because two
+   * eastings in different zones are not comparable numbers.
+   */
+  function subsurfaceMap(data, options) {
+    if (!data || data.reason) return null;
+    var opts = options || {};
+    var extent = data.extent;
+    if (!extent) return null;
+    var x0 = extent[0], x1 = extent[1], y0 = extent[2], y1 = extent[3];
+
+    var width = opts.width || 680;
+    var height = Math.round(width *
+      C.mapFigureHeightIn(FIGURE_WIDTH_IN, x0, x1, y0, y1) / FIGURE_WIDTH_IN);
+    /* the classed map keys itself in a legend inside the frame, so it needs
+     * no room beside the axes for a bar */
+    var margin = { top: 30, right: data.classed ? 22 : 104, bottom: 52, left: 74 };
+    var availW = width - margin.left - margin.right;
+    var availH = height - margin.top - margin.bottom;
+    /* _format_grid's set_aspect("equal"): a metre east is a metre north, so
+     * the box shrinks to the shape of the ground rather than stretching it. A
+     * map whose two axes are drawn at different scales is not a map, and a
+     * scale bar on one is wrong in one direction. */
+    var want = (y1 - y0) / Math.max(x1 - x0, 1e-9);
+    var boxW = availW, boxH = availW * want;
+    if (boxH > availH) { boxH = availH; boxW = availH / Math.max(want, 1e-9); }
+    margin.left += (availW - boxW) / 2;
+    margin.right += (availW - boxW) / 2;
+    margin.top += (availH - boxH) / 2;
+    margin.bottom += (availH - boxH) / 2;
+
+    var labels = (opts.zone === null || opts.zone === undefined)
+      ? { x: 'Easting (m)', y: 'Northing (m)' } : C.mapAxisLabels(opts.zone);
+    function tickSet(lo, hi) {
+      return C.mapGridTicks(lo, hi).filter(function (v) {
+        return v >= lo && v <= hi;
+      }).map(function (v) {
+        return { value: v, label: utmTickLabel(v) };
+      });
+    }
+    var f = frame({
+      width: width, height: height, margin: margin,
+      title: opts.title || data.title,
+      xLabel: labels.x, yLabel: labels.y,
+      xDomain: [x0, x1], yDomain: [y0, y1],
+      xTicks: tickSet(x0, x1), yTicks: tickSet(y0, y1),
+    });
+    var p = f.palette;
+
+    var levels = data.levels || [];
+    var colours = [];
+    var k;
+    if (data.classed) {
+      (data.classes || []).forEach(function (klass) { colours.push(klass[3]); });
+    } else {
+      for (k = 0; k < levels.length - 1; k += 1) {
+        var mid = (levels[k] + levels[k + 1]) / 2;
+        var spread = levels[levels.length - 1] - levels[0];
+        colours.push(rampColour(data.cmap,
+          spread > 0 ? (mid - levels[0]) / spread : 0.5));
+      }
+    }
+
+    if (data.grid && levels.length > 1) {
+      /* the same alpha the Python fills with, so the coordinate grid reads
+       * through the surface on both figures */
+      drawSurfaceBands(f.plot, f, data.grid, levels, colours,
+        data.classed ? 0.8 : 0.9);
+      if (!data.classed) {
+        contourLinePaths(data.grid, levels).forEach(function (segments) {
+          if (!segments.length) return;
+          var d = '';
+          segments.forEach(function (seg) {
+            d += 'M' + f.fx(seg[0][0]).toFixed(1) + ' ' + f.fy(seg[0][1]).toFixed(1) +
+              'L' + f.fx(seg[1][0]).toFixed(1) + ' ' + f.fy(seg[1][1]).toFixed(1);
+          });
+          f.plot.appendChild(svgEl('path', {
+            d: d, fill: 'none', stroke: ON_RAMP_INK, 'stroke-width': 0.7,
+          }));
+        });
+      }
+    }
+
+    /* The stations, as _interpolated_map draws them: a white-faced ring at
+     * every peg, its label beside it, and the value under the label only when
+     * no surface was drawn to carry it. The station is the measurement; the
+     * surface between the stations is an interpolation, and the figure has to
+     * let a reader tell the two apart. */
+    (data.points || []).forEach(function (point) {
+      var px = f.fx(point.easting), py = f.fy(point.northing);
+      f.svg.appendChild(marker(px, py, 'circle',
+        point.colour || p.surface, p.ink, point.colour ? 7 : 4.5));
+      var lines = String(point.text === undefined ? point.label : point.text)
+        .split('\n');
+      /* a label on the right-hand edge runs off the frame, so it is written
+       * back into the map instead - the same rule drawMapPoints follows */
+      var offset = point.colour ? 9 : 6;
+      var widest = lines.reduce(function (m, line) {
+        return Math.max(m, textWidth(line, 9));
+      }, 0);
+      var flip = px + offset + widest > f.margin.left + f.plotW;
+      lines.forEach(function (line, i) {
+        f.svg.appendChild(svgEl('text', {
+          x: px + (flip ? -offset : offset), y: py - 6 + i * 11,
+          'text-anchor': flip ? 'end' : 'start', 'font-size': 9,
+          'font-weight': 700, fill: p.ink, stroke: p.surface,
+          'stroke-width': 2.8, 'paint-order': 'stroke', text: line,
+        }));
+      });
+    });
+
+    /* The note is on the figure, not in a caption: a caption can be skipped,
+     * and "the survey points lie on one line and enclose no area" is the
+     * difference between a map and a row of numbers. */
+    var noteLines = data.note ? wrapText(data.note, f.plotW - 16, 9) : [];
+    noteLines.forEach(function (line, i) {
+      f.svg.appendChild(svgEl('text', {
+        x: f.margin.left + f.plotW / 2,
+        y: f.margin.top + f.plotH - 6 - (noteLines.length - 1 - i) * 11,
+        'text-anchor': 'middle', 'font-size': 9, fill: p.critical,
+        stroke: p.surface, 'stroke-width': 2.8, 'paint-order': 'stroke',
+        text: line,
+      }));
+    });
+
+    utmScaleBar(f, extent, f.margin.top + f.plotH - 6 - noteLines.length * 11 - 6);
+    utmNorthArrow(f, extent);
+
+    if (data.classed) {
+      /* PROTECTIVE_CLASSES is one table: the class a sounding is rated
+       * against, the colour of its peg and the words in this key all read
+       * from it, so the map and the report cannot disagree about what
+       * "moderate" means. */
+      var entries = (data.legend || []).map(function (item) {
+        return { label: item.label, kind: 'square', colour: item.colour };
+      });
+      if (entries.length) {
+        var boxWide = 30 + entries.reduce(function (m, e) {
+          return Math.max(m, textWidth(e.label, 11));
+        }, 0) + 7;
+        /* the corner is chosen for a box that already includes the title
+         * line, or the key lands on the pegs it is meant to explain */
+        var spot = freeCorner(f, (data.points || []).map(function (point) {
+          return { px: f.fx(point.easting), py: f.fy(point.northing) };
+        }), boxWide, entries.length * 17 + 6 + (data.legend_title ? 18 : 0));
+        /* in a top corner the key starts at a fixed inset, so the title line
+         * has to make its own room or it is written across the figure's */
+        var legendY = spot.y + (spot.cy === 0 && data.legend_title ? 18 : 0);
+        legend(f, entries, { x: spot.x, y: legendY });
+        if (data.legend_title) {
+          f.svg.appendChild(svgEl('text', {
+            x: spot.x - 7, y: legendY - 18, 'font-size': 9, fill: p.muted,
+            'letter-spacing': '0.04em', text: data.legend_title,
+          }));
+        }
+      }
+    } else if (data.grid && levels.length > 1) {
+      colourBar(f, {
+        x: f.margin.left + f.plotW + Math.max(10, f.plotW * 0.02),
+        top: f.margin.top + f.plotH * 0.075, height: f.plotH * 0.85,
+        levels: levels, colours: colours, labels: data.level_labels,
+        label: data.cbar_label,
+      });
+    }
+
+    return f.svg;
+  }
+
+  /* All four maps in the order reporting/geophysical.py plans them, each
+   * either an <svg> or null with the reason beside it, so the report layer can
+   * write "<name>: <reason>" for the ones the survey cannot support without
+   * losing the ones it can. */
+  function subsurfaceMaps(interpretations, options) {
+    return C.subsurfaceMapSet(interpretations, options).map(function (data) {
+      return {
+        key: data.key, name: data.name, title: data.title,
+        reason: data.reason || null, data: data,
+        svg: data.reason ? null : subsurfaceMap(data, options),
+      };
+    });
+  }
+
   /* ============================================================ export */
 
   /* Rasterise an SVG to a PNG data URL for embedding in the .docx reports.
@@ -4245,6 +5282,14 @@
     palette: palette, frame: frame, marker: marker, legend: legend,
     polyline: polyline, padDomain: padDomain, freeCorner: freeCorner, linTicks: linTicks, logTicks: logTicks,
     vesCurve: vesCurve, layeredModel: layeredModel,
+    /* The survey's own figures. Each takes what gwt-core.js mirrored out of
+     * the Python and returns null where the Python refused to draw, so the
+     * report prints the engine's reason instead of an empty frame. */
+    geoelectricSection: geoelectricSection,
+    modelPseudosection: modelPseudosection,
+    apparentPseudosection: apparentPseudosection,
+    subsurfaceMap: subsurfaceMap, subsurfaceMaps: subsurfaceMaps,
+    rampColour: rampColour, colourRamps: COLOUR_RAMPS, colourBar: colourBar,
     testOverview: testOverview, cooperJacob: cooperJacob,
     recovery: recoveryPlot, stepTest: stepTestPlot,
     piper: piper, stiff: stiff, boreholeDesign: boreholeDesign,
