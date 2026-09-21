@@ -1662,9 +1662,11 @@
     var where = fmtLatLon(latlon.lat, latlon.lon);
     var found = latlon.chiefdom ? districtOf(latlon.chiefdom) : '';
     if (!found) {
-      /* The browser carries the chiefdom polygons alone, so a point no
-       * chiefdom holds has no district here at all; the pre-2017 district
-       * polygons the Python check falls back to are not in the page. */
+      /* The chiefdom polygons are the only lookup in both engines now: a
+       * point no chiefdom holds, and none is within the seam tolerance of,
+       * is a point neither engine can place. The Python used to fall back
+       * to the pre-2017 district polygons and answer with a district that
+       * no longer exists. */
       return 'The boundary polygons place the coordinates (' + where +
         ") in no district, so district '" + stated + "' could not be checked " +
         'against them; the point may be offshore, over the border, or in a ' +
@@ -1799,7 +1801,10 @@
             filename: 'ves_' + S.slug(soundingId),
             table: function () {
               return S.table([
-                { key: 'ab2', label: 'AB/2 (m)', align: 'right' },
+                { key: 'ab2',
+                  label: String(result.array_type || '').indexOf('wenner') === 0
+                    ? 'a (m)' : 'AB/2 (m)',
+                  align: 'right' },
                 { key: 'obs', label: 'Measured (Ω·m)', align: 'right' },
                 { key: 'calc', label: 'Model (Ω·m)', align: 'right' },
               ], result.ab2.map(function (v, k) {

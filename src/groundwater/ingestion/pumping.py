@@ -26,13 +26,27 @@ nothing assumes uniform sampling.
 
 Two recovery layouts occur on real sheets and both are handled:
 
-* A dedicated recovery group with its own Time, Water Level and
-  Recovery columns (Kuntolo sheet). Water level is read; the recovery
-  increment column is ignored.
-* A single shared time column with a Recovery column holding water
-  levels during recovery (Dr. Timbo sheet). The recovery column is
-  read against the shared times, interpreted as minutes since the pump
-  stopped.
+* A dedicated recovery block with its own Time and Water Level columns,
+  followed by a Recovery column and sometimes by a Drawdown column as
+  well (Time / Level / Drawdown / Recovery, Kuntolo sheet). The water
+  level column is read; the Drawdown and Recovery columns are increments
+  between readings and are ignored, exactly as on a pumping block.
+* A single shared time column with a Recovery column that says it holds
+  water levels ("Recovery water level"). That column is read against the
+  shared times, interpreted as minutes since the pump stopped.
+
+A recovery column the sheet never explains - one sitting apart from the
+block's own columns and headed only "Recovery" - is refused with a flag
+rather than read as a curve: read as levels, an increment column makes a
+recovery that climbs a few centimetres out of a borehole tens of metres
+deep.
+
+A constant discharge test is written in hourly blocks side by side and
+each block's elapsed time is often counted within its own hour, restarting
+at 1. The blocks are joined into one series that runs forwards, each
+block's start taken from its own heading ("Constant discharge 61-120 min")
+or, failing that, from the last reading of the block before it. Read as
+one column those restarts interleave into a sawtooth.
 """
 
 from __future__ import annotations
@@ -61,14 +75,108 @@ _DISCHARGE_TEXT_RE = re.compile(
 # Locating the column groups
 # ---------------------------------------------------------------------------
 
+# The heading a sheet prints over a column group - "Constant discharge
+# 61-120 min", "Recovery" - is the sheet's own statement of what the block
+# holds and which minutes of the test it covers, so both readings below take
+# the block's place in the test from it rather than from an assumption.
+_BLOCK_SPAN_RE = re.compile(
+    r"(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)\s*([a-z]{1,8})?",
+    re.IGNORECASE,
+)
+
+
+def _column_role(text: str) -> str:
+    """What a column's own header says the column holds.
+
+    "Recovery" is tested before "water level" so a column headed "Recovery
+    water level" is read as the recovery column it says it is, and "drawdown"
+    before "level" so an increment column is never taken for a level.
+    """
+    if not text:
+        return ""
+    if "reco" in text:
+        return "recovery"
+    if "drawdown" in text or "draw down" in text:
+        return "drawdown"
+    if "water" in text or text.startswith("level"):
+        return "level"
+    return ""
+
+
+def _block_span_min(heading: str) -> tuple[float, float] | None:
+    """The minutes a block heading says the block covers, e.g. ``(61.0, 120.0)``.
+
+    ``None`` when the heading names no span, or names one in a unit that
+    cannot be read: an offset applied to every reading in a block has to come
+    from the sheet, never from a guess at what "1-2" might mean.
+    """
+    match = _BLOCK_SPAN_RE.search(common.normalise_dashes(heading or ""))
+    if match is None:
+        return None
+    first: float | None = float(match.group(1))
+    last: float | None = float(match.group(2))
+    written = (match.group(3) or "").strip()
+    if written:
+        first = convert(first, written, "min", dimension="time")
+        last = convert(last, written, "min", dimension="time")
+    if first is None or last is None or last <= first:
+        return None
+    return first, last
+
+
+def _block_heading(grid: list[list], header_row: int, start: int, end: int) -> str:
+    """The heading the sheet prints above a column group ("" when there is none).
+
+    Only the two rows immediately above the column headers are read - on the
+    template the block headings sit directly over the group's own first column -
+    and only a heading the reader can act on is returned: one naming the
+    recovery block, or the minutes the block covers. Anything else standing
+    above the table belongs to the sheet's header block ("Discharge per step
+    (m3/h)" sits there on the template), and carrying that into a flag as if
+    the crew had written it over the readings would say more than the sheet
+    does.
+    """
+    for r in range(header_row - 1, max(header_row - 3, -1), -1):
+        row = grid[r] if r < len(grid) else []
+        for cc in range(start, min(end, len(row))):
+            text = clean_text(row[cc])
+            if not text:
+                continue
+            if "recover" in text.lower() or _block_span_min(text) is not None:
+                return text
+    return ""
+
+
+def _group(base: dict, level: int, kind: str, **extra) -> dict:
+    """One column group: the base fields the whole block shares, plus its own."""
+    return {**base, "level": level, "kind": kind, **extra}
+
+
 def _find_groups(grid: list[list]) -> tuple[int, list[dict]] | None:
     """Find the header row of Time / Water Level / ... column groups.
 
-    Returns ``(row_index, groups)``. Each group has column indices and
-    ``kind`` of "pumping" or "recovery". A "reco" column adjacent to a
-    time column forms a recovery triplet (level read from its own water
-    level column); a distant "reco" column shares the pumping time
-    column and holds water levels itself.
+    Returns ``(row_index, groups)``. Each group carries its column indices, the
+    header its time column declares, the heading printed above the block, and a
+    ``kind``:
+
+    ``"pumping"``
+        time and water level while the pump ran.
+    ``"recovery"``
+        time and water level after it stopped. A recovery block's Drawdown and
+        Recovery columns are increments between readings, so the water level
+        column is the one read: a block laid out Time / Level / Drawdown /
+        Recovery used to have its fourth column read as the levels, which made
+        the recovery curve the increment rather than the water level (ROADMAP
+        data-ingestion-10).
+    ``"recovery_unreadable"``
+        a recovery column the sheet never explains. ``_assemble`` flags it and
+        reads no curve from it.
+
+    A block is a recovery block when its heading or its time column says
+    "recovery", or when its columns run Time, Water Level[, Drawdown], Recovery
+    with nothing else between them. A recovery column that says it holds water
+    levels ("Recovery water level") is instead read as a second series against
+    the shared time column, which is the other layout the sheets use.
     """
     best: tuple[int, list[dict]] | None = None
     for r, row in enumerate(grid):
@@ -79,38 +187,75 @@ def _find_groups(grid: list[list]) -> tuple[int, list[dict]] | None:
         groups: list[dict] = []
         for gi, c in enumerate(time_cols):
             end = time_cols[gi + 1] if gi + 1 < len(time_cols) else len(texts)
-            level_col = None
-            reco_col = None
+            roles: dict[str, int] = {}
             for cc in range(c + 1, end):
-                t = texts[cc]
-                if not t:
-                    continue
-                if ("water" in t or t.startswith("level")) and level_col is None:
-                    level_col = cc
-                elif "reco" in t and reco_col is None:
-                    reco_col = cc
+                role = _column_role(texts[cc])
+                if role and role not in roles:
+                    roles[role] = cc
+            level_col = roles.get("level")
+            draw_col = roles.get("drawdown")
+            reco_col = roles.get("recovery")
             if level_col is None and reco_col is None:
                 continue
             # The header text travels with the group so the time unit it
-            # declares - "Time (min)", "Time (h)" - is read rather than assumed.
+            # declares - "Time (min)", "Time (h)" - is read rather than assumed,
+            # and the block heading travels with it so a constant test's hourly
+            # blocks can be put back in the order the sheet gives them.
             header = texts[c]
-            if reco_col is not None and level_col is not None:
-                if reco_col - c <= 2:
-                    # Kuntolo style triplet: Time, Water Level, Recovery increment
-                    groups.append({"time": c, "level": level_col,
-                                   "kind": "recovery", "time_header": header})
-                else:
-                    # Dr. Timbo style: shared time column; recovery column holds levels
-                    groups.append({"time": c, "level": level_col,
-                                   "kind": "pumping", "time_header": header})
-                    groups.append({"time": c, "level": reco_col,
-                                   "kind": "recovery", "time_header": header})
-            elif reco_col is not None:
-                groups.append({"time": c, "level": reco_col,
-                               "kind": "recovery", "time_header": header})
+            heading = _block_heading(grid, r, c, end)
+            base = {"time": c, "time_header": header, "block_heading": heading}
+            says_recovery = "recover" in heading.lower() or "recover" in header
+            reco_says_level = reco_col is not None and (
+                "level" in texts[reco_col] or "water" in texts[reco_col]
+            )
+
+            if reco_col is None:
+                groups.append(_group(base, level_col,
+                                     "recovery" if says_recovery else "pumping"))
+            elif says_recovery:
+                # The sheet names the block, so its level column is the level
+                # and its recovery column is an increment, as the drawdown
+                # column is on a pumping block.
+                groups.append(_group(
+                    base, level_col if level_col is not None else reco_col,
+                    "recovery"))
+            elif level_col is None:
+                # Nothing else in the block can be a water level, so the
+                # recovery column is read as one.
+                groups.append(_group(base, reco_col, "recovery"))
+            elif reco_says_level and (
+                len(time_cols) == 1 or max(level_col, reco_col) - c > 2
+            ):
+                # A shared time column with a recovery column that says it
+                # holds levels: two series read against the same times. A
+                # block with its own time column and the recovery column
+                # beside it is a recovery block, not a pumping block with a
+                # second series; read the other way, its water levels were
+                # joined onto the drawdown curve as the next hour.
+                groups.append(_group(base, level_col, "pumping"))
+                groups.append(_group(base, reco_col, "recovery"))
+            elif max(level_col, reco_col) - c <= 2:
+                # Time, Water Level, Recovery: the recovery block the bundled
+                # template prints.
+                groups.append(_group(base, level_col, "recovery"))
+            elif (level_col == c + 1 and draw_col == c + 2 and reco_col == c + 3
+                  and len(time_cols) > 1):
+                # Time, Level, Drawdown, Recovery: a recovery block written
+                # with both increment columns. Reading its fourth column as the
+                # levels made the recovery curve the rise between readings
+                # rather than the water level (ROADMAP data-ingestion-10). It
+                # is read this way only when another group holds the pumping
+                # readings; alone on a sheet the same four columns could be a
+                # whole test against one time column, which is refused below.
+                groups.append(_group(base, level_col, "recovery"))
             else:
-                groups.append({"time": c, "level": level_col,
-                               "kind": "pumping", "time_header": header})
+                # A recovery column standing apart from the block's own
+                # columns: it may hold levels or increments and the sheet does
+                # not say which, so the pumping pair is read and the recovery
+                # column is refused by name.
+                groups.append(_group(base, level_col, "pumping"))
+                groups.append(_group(base, reco_col, "recovery_unreadable",
+                                     recovery_header=clean_text(row[reco_col])))
         if groups and (best is None or len(groups) > len(best[1])):
             best = (r, groups)
     return best
@@ -278,6 +423,95 @@ def _sheet_test_type(grid: list[list]) -> str:
 # Assembling the PumpingTest
 # ---------------------------------------------------------------------------
 
+def _join_constant_blocks(
+    blocks: list[tuple[np.ndarray, np.ndarray, dict]],
+) -> tuple[np.ndarray, np.ndarray, list[str], list[str]]:
+    """Join the hourly blocks of a constant discharge test into one series.
+
+    A constant discharge sheet is written in hourly column groups side by side
+    and each group's elapsed time is often counted within its own hour: 1, 2, 3
+    in the first block and 1, 2, 3 again in the second. Concatenating the
+    groups and sorting the result interleaved them into a sawtooth - minute 1
+    of every hour, then minute 2 of every hour - and every drawdown curve and
+    every transmissivity fitted to it was wrong (ROADMAP data-ingestion-10).
+
+    Each block's place in the test is read off the sheet: the minutes its own
+    heading names ("Constant discharge 61-120 min"), or, when the heading names
+    none, the last reading of the block before it, which is what a block whose
+    times go backwards continues from. A block that is neither - one starting
+    inside the readings already taken and running past them - is left out and
+    named, because a block placed at a minute nobody can check produces a curve
+    nobody can trust.
+
+    Returns ``(times_min, levels, joined, dropped)``. ``joined`` and ``dropped``
+    are sentences naming what was done, for the caller to raise as flags.
+    """
+    times: list[np.ndarray] = []
+    levels: list[np.ndarray] = []
+    joined: list[str] = []
+    dropped: list[str] = []
+    end: float | None = None
+    for number, (t, wl, group) in enumerate(blocks, start=1):
+        heading = str(group.get("block_heading", "") or "")
+        span = _block_span_min(heading)
+        first = float(t[0])
+        offset = 0.0
+        # The sentence describing the shift is held back until the block has
+        # actually been kept. Appended where the offset is worked out, a block
+        # that the backwards check below then drops was named in both flags at
+        # once, and the report said in one sentence that the block had been
+        # joined with so many minutes added and in the next that it had been
+        # left out (ROADMAP data-ingestion-10).
+        note = ""
+        if span is not None and first < span[0]:
+            offset = span[0] - first
+            note = (
+                f"block {number} counts its time within its own hour from "
+                f"{first:g} min and its heading '{heading}' covers {span[0]:g} "
+                f"to {span[1]:g} min, so {offset:g} min were added to it"
+            )
+        elif span is not None or end is None or first > end:
+            offset = 0.0
+        elif float(t.max()) <= end:
+            offset = end
+            note = (
+                f"block {number} restarts its time at {first:g} min, inside the "
+                f"{end:g} min already read, and its heading names no minutes, so "
+                f"it was read as continuing from the last reading before it and "
+                f"{offset:g} min were added to it"
+            )
+        else:
+            dropped.append(
+                f"Block {number} of the constant discharge readings starts at "
+                f"{first:g} min, inside the {end:g} min already read, and runs "
+                f"past them to {float(t.max()):g} min, so the sheet does not say "
+                "whether its times count from the start of the test or from the "
+                "start of the block."
+            )
+            continue
+        shifted = t + offset
+        if end is not None and float(shifted[0]) < end:
+            dropped.append(
+                f"Block {number} of the constant discharge readings still starts "
+                f"at {float(shifted[0]):g} min once placed, before the {end:g} "
+                "min already read, so its readings would run backwards into the "
+                "block before it."
+            )
+            continue
+        if note:
+            joined.append(note)
+        times.append(shifted)
+        levels.append(wl)
+        end = float(shifted.max())
+    if not times:
+        empty = np.array([], dtype=float)
+        return empty, empty, joined, dropped
+    all_t = np.concatenate(times)
+    all_wl = np.concatenate(levels)
+    order = np.argsort(all_t, kind="stable")
+    return all_t[order], all_wl[order], joined, dropped
+
+
 def _assemble(grid: list[list], source: str) -> PumpingTest:
     fields = common.extract_header_fields(grid, max_rows=len(grid))
     site = common.site_from_fields(fields, source=source)
@@ -288,12 +522,38 @@ def _assemble(grid: list[list], source: str) -> PumpingTest:
         raise ValueError(f"No Time/Water Level column groups found in {source}")
     header_row, groups = located
 
-    def _series(kind: str) -> list[tuple[np.ndarray, np.ndarray]]:
+    for group in groups:
+        if group["kind"] != "recovery_unreadable":
+            continue
+        # The sheet carries a recovery column but never says what is in it, and
+        # a recovery curve drawn from increments is wrong by the whole depth to
+        # water. Refusing it and naming it is the only honest answer (ROADMAP
+        # data-ingestion-10).
+        where = (f" in the '{group['block_heading']}' block"
+                 if group["block_heading"] else "")
+        flags.append(
+            DataFlag(
+                "warning",
+                "recovery_layout_unreadable",
+                f"A column headed '{group.get('recovery_header', '')}' stands "
+                f"apart from the water level column{where}, and nothing on the "
+                "sheet says whether it holds water levels or the rise between "
+                "readings, so no recovery curve was read from it. Head the "
+                "recovery block 'Recovery', or the column 'Recovery water "
+                "level (m)'.",
+            )
+        )
+
+    def _series(kind: str) -> list[tuple[np.ndarray, np.ndarray, dict]]:
         """Read every column group of one kind, dropping unreadable-unit ones.
 
         A time column whose unit cannot be read is dropped rather than taken
         as minutes: reading hours as minutes would rescale every drawdown
         curve and every transmissivity fitted to it, silently.
+
+        Each block is handed back with the group it came from, because a
+        constant test's blocks are placed by the heading the sheet prints over
+        them before they are joined into one series.
         """
         out = []
         for group in groups:
@@ -335,11 +595,13 @@ def _assemble(grid: list[list], source: str) -> PumpingTest:
                     )
                 )
             if len(t):
-                out.append((t, wl))
+                out.append((t, wl, group))
         return out
 
-    pumping_series = _series("pumping")
-    recovery_series = _series("recovery")
+    pumping_blocks = _series("pumping")
+    recovery_blocks = _series("recovery")
+    pumping_series = [(t, wl) for t, wl, _ in pumping_blocks]
+    recovery_series = [(t, wl) for t, wl, _ in recovery_blocks]
 
     test_type = str(fields.get("test_type", "")).strip().lower()
     stated = bool(test_type)
@@ -360,12 +622,34 @@ def _assemble(grid: list[list], source: str) -> PumpingTest:
             )
         )
 
-    if test_type.startswith("constant") and len(pumping_series) > 1:
-        # hourly column groups are one continuous series on constant tests
-        t = np.concatenate([s[0] for s in pumping_series])
-        wl = np.concatenate([s[1] for s in pumping_series])
-        order = np.argsort(t, kind="stable")
-        pumping_series = [(t[order], wl[order])]
+    if test_type.startswith("constant") and len(pumping_blocks) > 1:
+        # The hourly column groups are one continuous series on a constant
+        # test, but each block's times are often counted within its own hour,
+        # so every block is put back in its place before they are joined.
+        t, wl, joined, dropped = _join_constant_blocks(pumping_blocks)
+        for note in dropped:
+            flags.append(
+                DataFlag(
+                    "warning",
+                    "constant_block_unreadable",
+                    note + " The block was left out of the series rather than "
+                    "joined at a minute nobody can check. Head each block with "
+                    "the minutes it covers, as in 'Constant discharge 121-180 "
+                    "min'.",
+                )
+            )
+        if joined and len(t):
+            flags.append(
+                DataFlag(
+                    "info",
+                    "constant_blocks_joined",
+                    f"The constant discharge readings are written in "
+                    f"{len(pumping_blocks)} blocks: " + "; ".join(joined)
+                    + f". The blocks have been joined into one series running "
+                    f"{t.min():g} to {t.max():g} min.",
+                )
+            )
+        pumping_series = [(t, wl)] if len(t) else []
 
     step_length = fields.get("step_length_min")
     discharges = _find_step_discharges(grid)

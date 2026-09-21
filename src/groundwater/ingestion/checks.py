@@ -165,8 +165,11 @@ def district_at(lat: float, lon: float) -> tuple[str, str, bool]:
     chiefdom, district = chiefdom_of(lat, lon)
     if district:
         return chiefdom, district, True
-    # No chiefdom polygon holds the point. district_of falls back to the
-    # ADM2 polygons for exactly this case, and that answer is pre-2017.
+    # No chiefdom holds the point, and none is within the seam tolerance of
+    # it either. district_of is asked next, and with the bundled layer it
+    # now resolves through the same chiefdom polygons, so in practice it
+    # answers nothing here: a caller that supplies its own district layer is
+    # the only way this returns a name, and that name may be pre-2017.
     return "", district_of(lat, lon), False
 
 

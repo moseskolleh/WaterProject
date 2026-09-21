@@ -581,7 +581,9 @@
     var f = frame({
       width: opts.width || 720, height: opts.height || 430,
       title: opts.title || ('Sounding curve - ' + (result.model.sounding_id || 'VES')),
-      xLabel: 'AB/2 (m)', yLabel: 'Apparent resistivity (ohm-m)',
+      xLabel: String(result.array_type || '').indexOf('wenner') === 0
+        ? 'a (m)' : 'AB/2 (m)',
+      yLabel: 'Apparent resistivity (ohm-m)',
       xLog: true, yLog: true,
       xDomain: padDomain(ab2, true), yDomain: padDomain(obs.concat(calc), true),
     });
@@ -2488,8 +2490,20 @@
    * does in the Python engine: the bundled district polygons are
    * geoBoundaries as released, which predates the 2017 creation of Karene
    * and Falaba, so a point in one of those two has no district polygon to
-   * fall in. Only a point inside no chiefdom at all - a gap in the
-   * simplified layer - falls back to the district polygons. */
+   * fall in.
+   *
+   * A point inside no ring at all is placed on the chiefdom whose ring is
+   * nearest, when that ring is within C.CHIEFDOM_EDGE_TOLERANCE_M: the rings
+   * were simplified one at a time, so two that were one shared border no
+   * longer meet and leave a seam of ground in no chiefdom, and a point there
+   * is on a border rather than nowhere. It no longer falls back to the
+   * district polygons. That fallback answered with a district that no longer
+   * exists where the point was - Koinadugu for ground that is now Falaba - or
+   * with the district on the wrong side of a seam, while the chiefdom lookup
+   * answered the same point with nothing (ROADMAP data-ingestion-7). One
+   * lookup, one answer, and where there is no basis for one, none: a point
+   * further out than the tolerance is off the layer, and "" is what this
+   * returns for it. */
   function districtAtPoint(lat, lon) {
     var crosswalk = C.loadChiefdomDistrict() || {};
     var polys = chiefdomPolys();
@@ -2498,15 +2512,9 @@
         return crosswalk[polys[i].name] || polys[i].district || '';
       }
     }
-    var districts = (((GWT.data || {}).geo || {}).adminBoundaries || {}).features || [];
-    for (var d = 0; d < districts.length; d++) {
-      var props = districts[d].properties || {};
-      if (props.level === 'ADM0') continue;
-      if (pointInFeature(lon, lat, districts[d].geometry)) {
-        return String(props.name || props.shapeName || '');
-      }
-    }
-    return '';
+    var near = C.nearestChiefdomIndex(lon, lat, C.outerRingSets(polys));
+    if (near === null) return '';
+    return crosswalk[polys[near].name] || polys[near].district || '';
   }
 
   /* Centroid of a ring, by the shoelace formula. */

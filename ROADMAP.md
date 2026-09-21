@@ -579,15 +579,18 @@ the browser too), `gwt-app.js` parseLatLon. Tests: `test_ingestion.py`,
   Western Area Urban by substring order** (every correctly labelled
   southern-peninsula site is flagged) and "Ko" to Port Loko.
   Done: `match_district` takes an exact name, then a name that prefixes exactly one district, then one whose words begin the words of exactly one, and refuses a name that could be two - naming both - rather than picking the first substring hit. "Western Area" names the region, so it resolves to the two districts it can mean.
-- [ ] **M data-ingestion-7. Independently simplified chiefdom rings leave
+- [x] **M data-ingestion-7. Independently simplified chiefdom rings leave
   about 37 km2 of cracks;** a point in one gets a pre-2017 district from one
   lookup, an empty district from another, and the withheld Maforki wedge is
   confidently placed in Kono by the fallback.
-- [ ] **M data-ingestion-10. Constant-test hourly groups whose times restart
+  Done in both engines: a point in no chiefdom is resolved to the nearest ring within one named tolerance, `CHIEFDOM_EDGE_TOLERANCE_M`, because a seam between two independently simplified rings is metres wide and not kilometres. Beyond it the lookup returns nothing rather than a confident wrong answer, and the several lookups give the same answer as each other.
+- [x] **M data-ingestion-10. Constant-test hourly groups whose times restart
   at 1 are interleaved into a sawtooth, and a recovery block laid out
   Time/Level/Drawdown/Recovery reads the increment column as levels.**
-- [ ] **M data-ingestion-11. Wenner soundings have no ingestion path;** a
+  Done in both engines: a block whose times restart is placed from its own heading where the heading names the minutes, and from the reading before it where it does not, with an info flag saying how many minutes were added and to which block. A block the sheet does not place unambiguously is left out with a warning rather than interleaved. The columns are identified by their headers, so a recovery block laid out Time/Level/Drawdown/Recovery is read as levels and not as the increment, and a block with its own time column beside a recovery column is a recovery block rather than a second series on the drawdown curve.
+- [x] **M data-ingestion-11. Wenner soundings have no ingestion path;** a
   Wenner sheet headed AB/2 is inverted with AB/2 used as the spacing a.
+  Done in both engines: the array is read from the sheet - a named array field, the header wording, or a column headed "a" - and recorded as the rest of the toolkit expects it, with a flag whenever it was assumed or the sheet contradicts itself. A Wenner sounding is no longer inverted as a Schlumberger one, which was wrong by tens of percent with nothing downstream to notice. The report table, its caption and the curve's axis follow the array too, so a Wenner sounding is not tabled under an AB/2 heading beside a column of "n/a".
 - [x] **M data-ingestion-12. `who_guidelines.csv` carries values the WHO
   guidelines do not set** (aluminium 0.9 as a health value, hardness,
   turbidity) **and rounds the nitrogen-basis limits down** (nitrate as N 11

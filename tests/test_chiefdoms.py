@@ -138,6 +138,103 @@ def test_no_chiefdom_claims_ground_it_is_nowhere_near():
     assert "not authority for reassigning ground" in held["decision"]
 
 
+def test_a_point_in_a_crack_between_two_rings_is_placed_on_the_border_it_fell_on():
+    """Every chiefdom ring was simplified on its own, so two rings that were
+    one shared border no longer meet exactly and thin slivers of ground - about
+    37 km2 of them nationally - are inside no chiefdom at all. A point that
+    landed in one used to get a different answer from every lookup that saw it.
+
+    Take the point 21 m inside Paki Masabong on the Bombali/Tonkolili border:
+    ``chiefdom_of`` said it was in no chiefdom, ``district_of`` fell through to
+    the pre-2017 district polygons and said Tonkolili - the district on the
+    other side of the line - and the coverage lookups said nothing at all. A
+    crack is metres wide, so a point in one is on a border, not off the map,
+    and every lookup now places it on the ring it is nearest to.
+    """
+    from groundwater.coverage import (
+        assign_chiefdoms,
+        chiefdom_of_point,
+        district_of_point,
+        load_chiefdom_district,
+        load_chiefdom_polys,
+    )
+    from groundwater.mapping.regional import district_of
+    from groundwater.waterpoints import WaterPoint
+
+    polys = load_chiefdom_polys()
+    crosswalk = load_chiefdom_district()
+
+    # 21 m from Paki Masabong (Bombali), 42 m from Kholifa Rowala (Tonkolili)
+    lat, lon = 8.8109, -11.8840
+    assert chiefdom_of(lat, lon) == ("Paki Masabong", "Bombali")
+    assert district_of(lat, lon) == "Bombali"          # was "Tonkolili"
+    assert chiefdom_of_point(lat, lon, polys) == "Paki Masabong"
+    assert district_of_point(lat, lon, polys, crosswalk) == "Bombali"
+
+    # and the district is the one that exists today. This crack is 23 m from
+    # Neya, which is in Falaba; the district polygons predate that district
+    # and could only answer Koinadugu, which is what Falaba was split from.
+    lat, lon = 8.9609, -10.8840
+    assert chiefdom_of(lat, lon) == ("Neya", "Falaba")
+    assert district_of(lat, lon) == "Falaba"           # was "Koinadugu"
+    assert district_of_point(lat, lon, polys, crosswalk) == "Falaba"
+
+    # the counting walk that places a national pull of water points agrees
+    # with the one-point lookups, crack and all
+    point = WaterPoint(row_id="", lat=lat, lon=lon, functional=True, status="",
+                       source="Borehole", technology="", install_year=None,
+                       adm2="")
+    assert assign_chiefdoms([point], polys) == ["Neya"]
+
+
+def test_ground_no_ring_is_near_is_left_unplaced_by_every_lookup():
+    """Closing the cracks must not fill the holes.
+
+    A crack is metres wide. The Maforki wedge is 20 km2 of Kono withheld from
+    the layer pending review (see above), and the nearest ring to the point
+    below is 78 m away - too far to be a seam between two rings that were
+    meant to touch. ``district_of`` used to fall through to the pre-2017
+    district polygons there and report the wedge as Kono, which is a district
+    on a client document arrived at by having nowhere else to look.
+
+    One tolerance governs this, and it is the width of a crack rather than of a
+    chiefdom: a point outside every ring by more than that is ground this
+    toolkit cannot place, and it says so.
+    """
+    from groundwater.coverage import (
+        CHIEFDOM_EDGE_TOLERANCE_M,
+        chiefdom_of_point,
+        district_of_point,
+        load_chiefdom_district,
+        load_chiefdom_polys,
+        nearest_chiefdom_index,
+    )
+    from groundwater.mapping import regional
+    from groundwater.mapping.regional import district_of
+
+    polys = load_chiefdom_polys()
+    crosswalk = load_chiefdom_district()
+    rings = [poly.rings for poly in polys]
+
+    for lat, lon in ((8.673, -10.51),    # inside the withheld Maforki wedge
+                     (8.0, -14.0),       # offshore
+                     (9.4, -10.2)):      # across the Guinea border
+        assert chiefdom_of(lat, lon) == ("", "")
+        assert district_of(lat, lon) == ""
+        assert chiefdom_of_point(lat, lon, polys) == ""
+        assert district_of_point(lat, lon, polys, crosswalk) == ""
+        assert nearest_chiefdom_index(lon, lat, rings) is None
+
+    # there is a chiefdom near the wedge - 78 m from that point, and the whole
+    # of Mafindor within 10 km of it. Being able to find one is not a reason
+    # to answer with it.
+    assert nearest_chiefdom_index(-10.51, 8.673, rings, 10_000.0) is not None
+    assert CHIEFDOM_EDGE_TOLERANCE_M < 78.0
+    # the number is one number: the mapping lookups use the coverage constant
+    # rather than keeping a second copy of it that could drift.
+    assert regional.CHIEFDOM_EDGE_TOLERANCE_M is CHIEFDOM_EDGE_TOLERANCE_M
+
+
 def test_the_boundary_review_survives_being_rebuilt():
     """Running the repair twice must not quietly empty the review.
 

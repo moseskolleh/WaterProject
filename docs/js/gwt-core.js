@@ -1066,6 +1066,10 @@
         sounding_id: sounding.sounding_id || '',
       }),
       ab2: ab2,
+      /* which array the spacings are: a Wenner sounding's column is the
+       * spacing a, and labelling it AB/2 is a wrong label on a figure and
+       * in a table a client reads */
+      array_type: arrayType,
       rho_obs: rhoApp,
       rho_calc: chosen.calc,
       fit_error_percent: chosen.err,
@@ -6533,6 +6537,117 @@
   /* "Resistance (ohm)", "R (ohm)", "V/I", "dV/I": a measured resistance */
   var RESISTANCE_RE = /resistance|^r\s*\(|v\s*\/\s*i/;
 
+  /* The array a sheet names, wherever on the sheet it names it: the title of a
+   * template ("SCHLUMBERGER ARRAY VES FIELD DATA"), the array field itself, or
+   * a note. "Wenner alpha" and "half-Schlumberger" are the same two arrays. */
+  var WENNER_RE = /wenner/;
+  var SCHLUMBERGER_RE = /schlum/;
+
+  /* "a" is the whole name of the Wenner spacing, so the column header is short
+   * and the reader has to accept the few ways a crew writes it out. */
+  var WENNER_A_HEADERS = [
+    'a', 'a (m)', 'a(m)', 'a m', 'a, m', 'a (metres)', 'a (meters)',
+    'a-spacing', 'a-spacing (m)', 'a spacing', 'a spacing (m)',
+    'spacing a', 'spacing a (m)', 'wenner a', 'wenner a (m)', 'a (wenner)',
+  ];
+
+  /* A Wenner array is A M N B at equal spacing a, so AB = 3a and a Wenner sheet
+   * that tabulates AB/2 has written 1.5 a in that column. */
+  var WENNER_AB2_PER_A = 1.5;
+
+  /* The array a piece of sheet text names, or null.
+   *
+   * null covers both the text that names no array and the text that names
+   * two: an unfilled "Schlumberger / Wenner" template choice settles nothing,
+   * and reading it as either would be a guess. */
+  function arrayNamedIn(text) {
+    var lowered = String(text || '').toLowerCase();
+    var wenner = WENNER_RE.test(lowered);
+    var schlumberger = SCHLUMBERGER_RE.test(lowered);
+    if (wenner === schlumberger) return null;
+    return wenner ? 'wenner' : 'schlumberger';
+  }
+
+  /* The array the wording above the data table names, if only one is named. */
+  function arrayNamedAboveTable(grid, headerRow) {
+    var found = [];
+    for (var r = 0; r < headerRow && r < grid.length; r++) {
+      var texts = rowText(grid[r]);
+      for (var c = 0; c < texts.length; c++) {
+        if (WENNER_RE.test(texts[c]) && found.indexOf('wenner') < 0) {
+          found.push('wenner');
+        }
+        if (SCHLUMBERGER_RE.test(texts[c]) && found.indexOf('schlumberger') < 0) {
+          found.push('schlumberger');
+        }
+      }
+    }
+    return found.length === 1 ? found[0] : null;
+  }
+
+  /* The array a sheet was run with, and the flags reading it raised.
+   *
+   * The forward model, the inversion, the splice and the curve plot all branch
+   * on array_type, but the reader never looked at the sheet for it beyond
+   * copying out the array field: a Wenner sounding had no ingestion path, and
+   * a Wenner sheet headed AB/2 was inverted with AB/2 for the spacing a
+   * (ROADMAP data-ingestion-11). That is wrong by tens of percent and nothing
+   * downstream can notice.
+   *
+   * The sheet is asked in the order its answers are worth trusting: the array
+   * field of the header block, then any other wording above the table (a
+   * template title is boilerplate, so it only speaks when the field is
+   * silent), then the table's own columns - a spacing column headed "a" is the
+   * Wenner spacing, and an MN column is the Schlumberger one. Where the sheet
+   * settles nothing, or contradicts itself, the Schlumberger default stands
+   * and a flag says what was assumed and why, because an assumption made in
+   * silence is how the wrong array reaches a client report. */
+  function detectArray(grid, headerRow, cols, fields) {
+    var flags = [];
+    var declaredText = cleanText(fields.array_type);
+    var declared = arrayNamedIn(declaredText);
+    var named = declared !== null ? declared
+      : arrayNamedAboveTable(grid, headerRow);
+    var fromColumns = ('a' in cols) ? 'wenner'
+      : (('mn' in cols) || ('mn_half' in cols)) ? 'schlumberger' : null;
+
+    var conflicted = named === 'schlumberger' && fromColumns === 'wenner';
+    var arrayType = conflicted ? 'schlumberger'
+      : (named || fromColumns || 'schlumberger');
+
+    if (conflicted) {
+      flags.push({ level: 'warning', code: 'array_type_conflict',
+        message: 'The sheet names the Schlumberger array but heads its ' +
+          'spacing column "a", which is the Wenner spacing; the two readings ' +
+          'of the same column differ by half again. The sounding was read as ' +
+          'Schlumberger, with that column taken as AB/2. Confirm the array ' +
+          'with the field crew before the model is used.' });
+    } else if (declaredText && declared === null) {
+      flags.push({ level: 'warning', code: 'array_type_unrecognised',
+        message: "The sheet's array field reads " + '"' + declaredText +
+          '", which does not name one of the two arrays this toolkit models ' +
+          '(Schlumberger and Wenner); the sounding was read as ' +
+          arrayType.charAt(0).toUpperCase() + arrayType.slice(1) +
+          '. Confirm the array with the field crew: the wrong forward model ' +
+          'is wrong by tens of percent.' });
+    } else if (named === null && fromColumns === null) {
+      flags.push({ level: 'warning', code: 'array_type_assumed',
+        message: 'The sheet does not say which electrode array was used, and ' +
+          'its columns do not settle it either: there is no MN column, which ' +
+          'a Schlumberger sheet carries, and no "a" column, which a Wenner ' +
+          "sheet carries. Schlumberger was assumed, as the toolkit's " +
+          'default. Confirm the array with the field crew: a Wenner sounding ' +
+          'inverted as Schlumberger is wrong by tens of percent and nothing ' +
+          'further down the chain can notice.' });
+    } else if (named === null && fromColumns === 'wenner') {
+      flags.push({ level: 'info', code: 'array_type_inferred',
+        message: 'No array is named on the sheet; its spacing column is ' +
+          'headed "a", which is the Wenner spacing, so the sounding was read ' +
+          'as Wenner.' });
+    }
+    return { array_type: arrayType, flags: flags };
+  }
+
   function findVesDataHeader(grid) {
     for (var r = 0; r < grid.length; r++) {
       var texts = rowText(grid[r]);
@@ -6542,6 +6657,11 @@
         if (!t) continue;
         if (t.indexOf('ab/2') >= 0 || t === 'ab2' || t.indexOf('ab / 2') >= 0) {
           cols.ab2 = c;
+        } else if (WENNER_A_HEADERS.indexOf(t) >= 0) {
+          /* The Wenner spacing column, headed "a" or "a (m)", meant nothing to
+           * the reader at all, so a Wenner sheet was dropped whole as having
+           * no data table (ROADMAP data-ingestion-11) */
+          cols.a = c;
         } else if (t.indexOf('mn') === 0 && MN_HALF_RE.test(t)) {
           /* half-MN first, and tolerant of the spaces a typed header carries:
            * "MN / 2 (m)" does not contain the literal "/2", so it would fall
@@ -6564,7 +6684,8 @@
           cols.no = c;
         }
       }
-      if ('ab2' in cols && ('rho' in cols || 'resistance' in cols)) {
+      if (('ab2' in cols || 'a' in cols) &&
+          ('rho' in cols || 'resistance' in cols)) {
         return { row: r, cols: cols };
       }
     }
@@ -6584,30 +6705,62 @@
     var site = siteFromFields(fields, source);
     var located = findVesDataHeader(grid);
     if (!located) {
-      return [null, 'no data table found: a header row needs an AB/2 column and ' +
-        'an apparent-resistivity column (Resistivity, Rho, ohm.m, \u03c1 or \u03a9)'];
+      return [null, 'no data table found: a header row needs an AB/2 column ' +
+        '(or the Wenner spacing column "a") and an apparent-resistivity ' +
+        'column (Resistivity, Rho, ohm.m, \u03c1 or \u03a9)'];
     }
     var cols = located.cols;
 
-    var ab2 = [], mn = [], rho = [], flags = [];
+    var detected = detectArray(grid, located.row, cols, fields);
+    var arrayType = detected.array_type;
+    var isWenner = arrayType.indexOf('wenner') === 0;
+
+    var ab2 = [], mn = [], rho = [], flags = detected.flags;
     var mnIsHalf = !('mn' in cols) && ('mn_half' in cols);
     var mnCol = 'mn' in cols ? cols.mn : cols.mn_half;
     var fromResistance = !('rho' in cols);
     var valueCol = fromResistance ? cols.resistance : cols.rho;
     var kCol = cols.k;
+    /* The spacing column. A Wenner sheet with its own "a" column is read from
+     * it as it stands; anything else is read from AB/2, which on a Wenner
+     * sheet is 1.5 a and has to be converted below. */
+    var spacingCol, wennerFromAb2;
+    if (isWenner && ('a' in cols)) {
+      spacingCol = cols.a; wennerFromAb2 = false;
+    } else if ('ab2' in cols) {
+      spacingCol = cols.ab2; wennerFromAb2 = isWenner;
+    } else {
+      spacingCol = cols.a; wennerFromAb2 = false;
+    }
     var blankRun = 0;
 
     for (var r = located.row + 1; r < grid.length; r++) {
       var row = grid[r] || [];
-      var a = cols.ab2 < row.length ? parseNumber(row[cols.ab2]) : null;
+      var a = spacingCol < row.length ? parseNumber(row[spacingCol]) : null;
       var rr = valueCol < row.length ? parseNumber(row[valueCol]) : null;
       var m = (mnCol !== undefined && mnCol < row.length) ? parseNumber(row[mnCol]) : null;
+      if (a !== null && wennerFromAb2) {
+        /* The sheet is Wenner but tabulates AB/2, and AB = 3a, so the column
+         * holds 1.5 a. Taken for the spacing a, as it used to be (ROADMAP
+         * data-ingestion-11), every reading sits at half again its true
+         * spacing and the whole curve shifts along the depth axis. Convert
+         * once, here, so ab2 means what the forward model, the inversion and
+         * the plots take it to mean for a Wenner sounding: the spacing a. */
+        a = a / WENNER_AB2_PER_A;
+      }
       if (fromResistance && a !== null && rr !== null) {
-        /* rho_a = K x (dV/I): the sheet's own K column when it has one,
-         * otherwise the Schlumberger factor from the spacings */
+        /* rho_a = K x (dV/I): use the sheet's own K column when it has one,
+         * otherwise the geometric factor of the array the sheet was run with.
+         * The Wenner factor is 2 pi a and needs no MN, which is as well: a
+         * Wenner sheet does not carry an MN column, so the Schlumberger
+         * factor left K unknown and the row was dropped. */
         var k = (kCol !== undefined && kCol < row.length) ? parseNumber(row[kCol]) : null;
-        var spacing = (m !== null && mnIsHalf) ? 2.0 * m : m;
-        if (k === null && spacing) k = geometricFactor('schlumberger', { ab2: a, mn: spacing });
+        if (k === null && isWenner) {
+          k = geometricFactor('wenner', { a: a });
+        } else if (k === null) {
+          var spacing = (m !== null && mnIsHalf) ? 2.0 * m : m;
+          if (spacing) k = geometricFactor('schlumberger', { ab2: a, mn: spacing });
+        }
         rr = k ? k * rr : null;
       }
       if (a === null && rr === null) {
@@ -6636,6 +6789,13 @@
         'cells hold formulas, open the workbook in Excel and save it so the ' +
         'values are stored'];
     }
+    if (wennerFromAb2) {
+      flags.push({ level: 'info', code: 'wenner_spacing_from_ab2',
+        message: 'The sheet is a Wenner sounding tabulated as AB/2. The ' +
+          'Wenner array has AB = 3a, so each spacing was read as a = two ' +
+          'thirds of the tabulated AB/2, which is the spacing the Wenner ' +
+          'geometric factor and forward model take.' });
+    }
     if (fromResistance) {
       flags.push({ level: 'info', code: 'rho_computed_from_resistance',
         message: 'The sheet records a resistance (V/I), not a resistivity; ' +
@@ -6647,8 +6807,7 @@
     var sounding = {
       site: site, sounding_id: soundingId,
       ab2: ab2, mn: mn, rho_app: rho,
-      array_type: String(fields.array_type || 'schlumberger').trim().toLowerCase() ||
-        'schlumberger',
+      array_type: arrayType,
       instrument: fields.instrument || '', source: String(source || ''), flags: [],
     };
 
@@ -7301,6 +7460,106 @@
 
   var STEP_LABEL_RE = /^\s*step\s*\d*\s*q\b/i;
 
+  /* The heading a sheet prints over a column group - "Constant discharge
+   * 61-120 min", "Recovery" - is the sheet's own statement of what the block
+   * holds and which minutes of the test it covers, so both readings below
+   * take the block's place in the test from it rather than from an
+   * assumption. */
+  var BLOCK_SPAN_RE = /(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)\s*([a-z]{1,8})?/i;
+
+  /* What a column's own header says the column holds.
+   *
+   * "Recovery" is tested before "water level" so a column headed "Recovery
+   * water level" is read as the recovery column it says it is, and "drawdown"
+   * before "level" so an increment column is never taken for a level. */
+  function columnRole(text) {
+    if (!text) return '';
+    if (text.indexOf('reco') >= 0) return 'recovery';
+    if (text.indexOf('drawdown') >= 0 || text.indexOf('draw down') >= 0) {
+      return 'drawdown';
+    }
+    if (text.indexOf('water') >= 0 || text.indexOf('level') === 0) return 'level';
+    return '';
+  }
+
+  /* The minutes a block heading says the block covers, e.g. [61, 120].
+   *
+   * null when the heading names no span, or names one in a unit that cannot
+   * be read: an offset applied to every reading in a block has to come from
+   * the sheet, never from a guess at what "1-2" might mean. */
+  function blockSpanMin(heading) {
+    var match = BLOCK_SPAN_RE.exec(normaliseDashes(String(heading || '')));
+    if (!match) return null;
+    var first = parseFloat(match[1]);
+    var last = parseFloat(match[2]);
+    var written = (match[3] || '').trim();
+    if (written) {
+      first = convertUnit(first, written, 'min', 'time');
+      last = convertUnit(last, written, 'min', 'time');
+    }
+    if (first === null || last === null || last <= first) return null;
+    return [first, last];
+  }
+
+  /* The heading the sheet prints above a column group ("" when there is none).
+   *
+   * Only the two rows immediately above the column headers are read - on the
+   * template the block headings sit directly over the group's own first
+   * column - and only a heading the reader can act on is returned: one naming
+   * the recovery block, or the minutes the block covers. Anything else
+   * standing above the table belongs to the sheet's header block ("Discharge
+   * per step (m3/h)" sits there on the template), and carrying that into a
+   * flag as if the crew had written it over the readings would say more than
+   * the sheet does. */
+  function blockHeading(grid, headerRow, start, end) {
+    for (var r = headerRow - 1; r > Math.max(headerRow - 3, -1); r--) {
+      var row = (r < grid.length ? grid[r] : null) || [];
+      for (var cc = start; cc < Math.min(end, row.length); cc++) {
+        var text = cleanText(row[cc]);
+        if (!text) continue;
+        if (text.toLowerCase().indexOf('recover') >= 0 ||
+            blockSpanMin(text) !== null) {
+          return text;
+        }
+      }
+    }
+    return '';
+  }
+
+  /* One column group: the base fields the whole block shares, plus its own. */
+  function pumpingGroup(base, level, kind) {
+    return {
+      time: base.time, time_header: base.time_header,
+      block_heading: base.block_heading, level: level, kind: kind,
+    };
+  }
+
+  /* Find the header row of Time / Water Level / ... column groups.
+   *
+   * Returns {row, groups}. Each group carries its column indices, the header
+   * its time column declares, the heading printed above the block, and a
+   * kind:
+   *
+   *   "pumping"             time and water level while the pump ran.
+   *   "recovery"            time and water level after it stopped. A recovery
+   *                         block's Drawdown and Recovery columns are
+   *                         increments between readings, so the water level
+   *                         column is the one read: a block laid out Time /
+   *                         Level / Drawdown / Recovery used to have its
+   *                         fourth column read as the levels, which made the
+   *                         recovery curve the increment between readings
+   *                         rather than the water level (ROADMAP
+   *                         data-ingestion-10).
+   *   "recovery_unreadable" a recovery column the sheet never explains.
+   *                         pumpingFromGrid flags it and reads no curve from
+   *                         it.
+   *
+   * A block is a recovery block when its heading or its time column says
+   * "recovery", or when its columns run Time, Water Level[, Drawdown],
+   * Recovery with nothing else between them. A recovery column that says it
+   * holds water levels ("Recovery water level") is instead read as a second
+   * series against the shared time column, which is the other layout the
+   * sheets use. */
   function findGroups(grid) {
     var best = null;
     for (var r = 0; r < grid.length; r++) {
@@ -7314,38 +7573,74 @@
       for (var gi = 0; gi < timeCols.length; gi++) {
         var start = timeCols[gi];
         var end = gi + 1 < timeCols.length ? timeCols[gi + 1] : texts.length;
-        var levelCol = null, recoCol = null;
+        var roles = {};
         for (var cc = start + 1; cc < end; cc++) {
-          var t = texts[cc];
-          if (!t) continue;
-          if ((t.indexOf('water') >= 0 || t.indexOf('level') === 0) && levelCol === null) {
-            levelCol = cc;
-          } else if (t.indexOf('reco') >= 0 && recoCol === null) {
-            recoCol = cc;
-          }
+          var role = columnRole(texts[cc]);
+          if (role && !(role in roles)) roles[role] = cc;
         }
+        var levelCol = 'level' in roles ? roles.level : null;
+        var drawCol = 'drawdown' in roles ? roles.drawdown : null;
+        var recoCol = 'recovery' in roles ? roles.recovery : null;
         if (levelCol === null && recoCol === null) continue;
         /* The header text travels with the group so the time unit it declares
-         * is read rather than assumed. */
+         * - "Time (min)", "Time (h)" - is read rather than assumed, and the
+         * block heading travels with it so a constant test's hourly blocks
+         * can be put back in the order the sheet gives them. */
         var header = texts[start];
-        if (recoCol !== null && levelCol !== null) {
-          if (recoCol - start <= 2) {
-            /* Kuntolo style triplet: Time, Water Level, Recovery increment */
-            groups.push({ time: start, level: levelCol, kind: 'recovery',
-              time_header: header });
-          } else {
-            /* Dr Timbo style: shared time column; recovery column holds levels */
-            groups.push({ time: start, level: levelCol, kind: 'pumping',
-              time_header: header });
-            groups.push({ time: start, level: recoCol, kind: 'recovery',
-              time_header: header });
-          }
-        } else if (recoCol !== null) {
-          groups.push({ time: start, level: recoCol, kind: 'recovery',
-            time_header: header });
+        var heading = blockHeading(grid, r, start, end);
+        var base = { time: start, time_header: header, block_heading: heading };
+        var saysRecovery = heading.toLowerCase().indexOf('recover') >= 0 ||
+          header.indexOf('recover') >= 0;
+        var recoSaysLevel = recoCol !== null &&
+          (texts[recoCol].indexOf('level') >= 0 ||
+           texts[recoCol].indexOf('water') >= 0);
+
+        if (recoCol === null) {
+          groups.push(pumpingGroup(base, levelCol,
+            saysRecovery ? 'recovery' : 'pumping'));
+        } else if (saysRecovery) {
+          /* The sheet names the block, so its level column is the level and
+           * its recovery column is an increment, as the drawdown column is on
+           * a pumping block. */
+          groups.push(pumpingGroup(base,
+            levelCol === null ? recoCol : levelCol, 'recovery'));
+        } else if (levelCol === null) {
+          /* Nothing else in the block can be a water level, so the recovery
+           * column is read as one. */
+          groups.push(pumpingGroup(base, recoCol, 'recovery'));
+        } else if (recoSaysLevel &&
+            (timeCols.length === 1 || Math.max(levelCol, recoCol) - start > 2)) {
+          /* A shared time column with a recovery column that says it holds
+           * levels: two series read against the same times. A block with its
+           * own time column and the recovery column beside it is a recovery
+           * block, not a pumping block with a second series; read the other
+           * way, its water levels were joined onto the drawdown curve as the
+           * next hour. */
+          groups.push(pumpingGroup(base, levelCol, 'pumping'));
+          groups.push(pumpingGroup(base, recoCol, 'recovery'));
+        } else if (Math.max(levelCol, recoCol) - start <= 2) {
+          /* Time, Water Level, Recovery: the recovery block the bundled
+           * template prints. */
+          groups.push(pumpingGroup(base, levelCol, 'recovery'));
+        } else if (levelCol === start + 1 && drawCol === start + 2 &&
+                   recoCol === start + 3 && timeCols.length > 1) {
+          /* Time, Level, Drawdown, Recovery: a recovery block written with
+           * both increment columns. Reading its fourth column as the levels
+           * made the recovery curve the rise between readings rather than the
+           * water level (ROADMAP data-ingestion-10). It is read this way only
+           * when another group holds the pumping readings; alone on a sheet
+           * the same four columns could be a whole test against one time
+           * column, which is refused below. */
+          groups.push(pumpingGroup(base, levelCol, 'recovery'));
         } else {
-          groups.push({ time: start, level: levelCol, kind: 'pumping',
-            time_header: header });
+          /* A recovery column standing apart from the block's own columns: it
+           * may hold levels or increments and the sheet does not say which,
+           * so the pumping pair is read and the recovery column is refused by
+           * name. */
+          groups.push(pumpingGroup(base, levelCol, 'pumping'));
+          var refused = pumpingGroup(base, recoCol, 'recovery_unreadable');
+          refused.recovery_header = cleanText((grid[r] || [])[recoCol]);
+          groups.push(refused);
         }
       }
       if (groups.length && (best === null || groups.length > best.groups.length)) {
@@ -7468,6 +7763,86 @@
     return '';
   }
 
+  /* Join the hourly blocks of a constant discharge test into one series.
+   *
+   * A constant discharge sheet is written in hourly column groups side by
+   * side and each group's elapsed time is often counted within its own hour:
+   * 1, 2, 3 in the first block and 1, 2, 3 again in the second. Concatenating
+   * the groups and sorting the result interleaved them into a sawtooth -
+   * minute 1 of every hour, then minute 2 of every hour - and every drawdown
+   * curve and every transmissivity fitted to it was wrong (ROADMAP
+   * data-ingestion-10).
+   *
+   * Each block's place in the test is read off the sheet: the minutes its own
+   * heading names ("Constant discharge 61-120 min"), or, when the heading
+   * names none, the last reading of the block before it, which is what a
+   * block whose times go backwards continues from. A block that is neither -
+   * one starting inside the readings already taken and running past them - is
+   * left out and named, because a block placed at a minute nobody can check
+   * produces a curve nobody can trust.
+   *
+   * Returns {times, levels, joined, dropped}; joined and dropped are
+   * sentences naming what was done, for the caller to raise as flags. */
+  function joinConstantBlocks(blocks) {
+    var times = [], levels = [], joined = [], dropped = [], end = null;
+    blocks.forEach(function (block, index) {
+      var number = index + 1;
+      var t = block.times, wl = block.levels;
+      var heading = String(block.group && block.group.block_heading || '');
+      var span = blockSpanMin(heading);
+      var first = t[0];
+      var last = arrMax(t);
+      var offset = 0;
+      /* The note is held until the block is actually kept. Pushed here, a
+       * block that the backwards guard below then drops was named twice:
+       * the warning said it was left out and the info flag said how many
+       * minutes had been added to it. */
+      var note = '';
+      if (span !== null && first < span[0]) {
+        offset = span[0] - first;
+        note = 'block ' + number + ' counts its time within its own hour ' +
+          'from ' + formatG(first) + " min and its heading '" + heading +
+          "' covers " + formatG(span[0]) + ' to ' + formatG(span[1]) +
+          ' min, so ' + formatG(offset) + ' min were added to it';
+      } else if (span !== null || end === null || first > end) {
+        offset = 0;
+      } else if (last <= end) {
+        offset = end;
+        note = 'block ' + number + ' restarts its time at ' +
+          formatG(first) + ' min, inside the ' + formatG(end) + ' min already ' +
+          'read, and its heading names no minutes, so it was read as ' +
+          'continuing from the last reading before it and ' + formatG(offset) +
+          ' min were added to it';
+      } else {
+        dropped.push('Block ' + number + ' of the constant discharge readings ' +
+          'starts at ' + formatG(first) + ' min, inside the ' + formatG(end) +
+          ' min already read, and runs past them to ' + formatG(last) +
+          ' min, so the sheet does not say whether its times count from the ' +
+          'start of the test or from the start of the block.');
+        return;
+      }
+      var shifted = t.map(function (v) { return v + offset; });
+      if (end !== null && shifted[0] < end) {
+        dropped.push('Block ' + number + ' of the constant discharge readings ' +
+          'still starts at ' + formatG(shifted[0]) + ' min once placed, ' +
+          'before the ' + formatG(end) + ' min already read, so its readings ' +
+          'would run backwards into the block before it.');
+        return;
+      }
+      if (note) joined.push(note);
+      times = times.concat(shifted);
+      levels = levels.concat(wl);
+      end = arrMax(shifted);
+    });
+    var order = times.map(function (v, i) { return i; })
+      .sort(function (a, b) { return times[a] - times[b] || a - b; });
+    return {
+      times: order.map(function (i) { return times[i]; }),
+      levels: order.map(function (i) { return levels[i]; }),
+      joined: joined, dropped: dropped,
+    };
+  }
+
   function pumpingFromGrid(grid, source) {
     var fields = extractHeaderFields(grid, grid.length);
     var site = siteFromFields(fields, source);
@@ -7476,6 +7851,24 @@
     if (!located) {
       throw new Error('No Time/Water Level column groups found in ' + (source || 'the sheet'));
     }
+
+    /* The sheet carries a recovery column but never says what is in it, and a
+     * recovery curve drawn from increments is wrong by the whole depth to
+     * water. Refusing it and naming it is the only honest answer (ROADMAP
+     * data-ingestion-10). */
+    located.groups.forEach(function (g) {
+      if (g.kind !== 'recovery_unreadable') return;
+      var where = g.block_heading
+        ? " in the '" + g.block_heading + "' block" : '';
+      flags.push({
+        level: 'warning', code: 'recovery_layout_unreadable',
+        message: "A column headed '" + (g.recovery_header || '') + "' stands " +
+          'apart from the water level column' + where + ', and nothing on the ' +
+          'sheet says whether it holds water levels or the rise between ' +
+          'readings, so no recovery curve was read from it. Head the recovery ' +
+          "block 'Recovery', or the column 'Recovery water level (m)'.",
+      });
+    });
 
     /* A time column whose unit cannot be read is dropped rather than taken as
      * minutes: reading hours as minutes would rescale every drawdown curve
@@ -7515,7 +7908,13 @@
               }).join(', ') + '). Put notes outside the reading columns.',
           });
         }
-        if (series.times.length) out.push(series);
+        /* Each block is handed back with the group it came from, because a
+         * constant test's blocks are placed by the heading the sheet prints
+         * over them before they are joined into one series. */
+        if (series.times.length) {
+          series.group = g;
+          out.push(series);
+        }
       });
       return out;
     }
@@ -7539,17 +7938,31 @@
     }
 
     if (testType.indexOf('constant') === 0 && pumpingSeries.length > 1) {
-      /* hourly column groups are one continuous series on constant tests */
-      var allT = [], allW = [];
-      pumpingSeries.forEach(function (s) {
-        allT = allT.concat(s.times); allW = allW.concat(s.levels);
+      /* The hourly column groups are one continuous series on a constant
+       * test, but each block's times are often counted within its own hour,
+       * so every block is put back in its place before they are joined. */
+      var blockCount = pumpingSeries.length;
+      var joinedBlocks = joinConstantBlocks(pumpingSeries);
+      joinedBlocks.dropped.forEach(function (note) {
+        flags.push({
+          level: 'warning', code: 'constant_block_unreadable',
+          message: note + ' The block was left out of the series rather than ' +
+            'joined at a minute nobody can check. Head each block with the ' +
+            "minutes it covers, as in 'Constant discharge 121-180 min'.",
+        });
       });
-      var order = allT.map(function (v, i) { return i; })
-        .sort(function (a, b) { return allT[a] - allT[b] || a - b; });
-      pumpingSeries = [{
-        times: order.map(function (i) { return allT[i]; }),
-        levels: order.map(function (i) { return allW[i]; }),
-      }];
+      if (joinedBlocks.joined.length && joinedBlocks.times.length) {
+        flags.push({
+          level: 'info', code: 'constant_blocks_joined',
+          message: 'The constant discharge readings are written in ' +
+            blockCount + ' blocks: ' + joinedBlocks.joined.join('; ') +
+            '. The blocks have been joined into one series running ' +
+            formatG(arrMin(joinedBlocks.times)) + ' to ' +
+            formatG(arrMax(joinedBlocks.times)) + ' min.',
+        });
+      }
+      pumpingSeries = joinedBlocks.times.length
+        ? [{ times: joinedBlocks.times, levels: joinedBlocks.levels }] : [];
     }
 
     var discharges = findStepDischarges(grid);
@@ -7805,11 +8218,137 @@
     return false;
   }
 
+  /* How far outside every chiefdom a point may fall and still be placed on the
+   * chiefdom whose ring it is nearest to, in metres.
+   *
+   * Each ring of the bundled layer was simplified on its own, so two rings
+   * that were once one shared border no longer meet exactly, and the thin
+   * slivers between them - about 37 km2 of ground nationally - are inside no
+   * chiefdom at all (ROADMAP data-ingestion-7). A point in one of those seams
+   * is metres from the border it belongs on, and which side of that border it
+   * fell on is below the resolution of the layer, so it is resolved to the
+   * nearest ring. Nearly every seam in the bundled layer is far narrower than
+   * this; the few places that are wider are where three chiefdoms meet, and a
+   * point there is left unplaced rather than given one of the three.
+   *
+   * The number is metres and not kilometres on purpose. Beyond it a point is
+   * not on a border at all but in a real hole in the layer - the Maforki wedge
+   * withheld pending review is 20 km2 of such ground - and there every lookup
+   * answers with nothing rather than with the name of whatever lies nearest,
+   * because an unplaced point is a flag on a report while a placed one is a
+   * district on a document somebody signs. The same number as
+   * coverage.CHIEFDOM_EDGE_TOLERANCE_M, so the two engines snap at one
+   * distance and not at two. */
+  var CHIEFDOM_EDGE_TOLERANCE_M = 50.0;
+
+  /* Metres per degree of latitude, and per degree of longitude at the equator
+   * (shrunk by the cosine of the latitude where it is used). What they convert
+   * is a few tens of metres between a point and a ring it is all but touching,
+   * so the local flat-earth distance below is ample and a projection would be
+   * false precision. */
+  var M_PER_DEG_LAT = 110600.0;
+  var M_PER_DEG_LON = 111320.0;
+
+  /* Metres from a point to the nearest segment of a ring.
+   *
+   * Distance to the ring as a line, not to its vertices: a simplified ring can
+   * run hundreds of metres between two vertices, and a point in the seam
+   * beside that stretch is metres from the border and far from either end of
+   * it. haversineM is point to point and cannot answer this. */
+  function ringDistanceM(lon, lat, ring) {
+    var scale = M_PER_DEG_LON * Math.cos(lat * Math.PI / 180);
+    var best = Infinity;
+    for (var i = 0; i < ring.length - 1; i++) {
+      var ax = (ring[i][0] - lon) * scale;
+      var ay = (ring[i][1] - lat) * M_PER_DEG_LAT;
+      var dx = (ring[i + 1][0] - lon) * scale - ax;
+      var dy = (ring[i + 1][1] - lat) * M_PER_DEG_LAT - ay;
+      var length2 = dx * dx + dy * dy;
+      /* where on the segment the perpendicular falls, clamped to its ends; a
+       * segment of zero length (a vertex repeated by the simplification) would
+       * divide by zero, and its own end point is the answer there. */
+      var t = 0;
+      if (length2 > 0) {
+        t = -(ax * dx + ay * dy) / length2;
+        if (t < 0) t = 0; else if (t > 1) t = 1;
+      }
+      var px = ax + t * dx, py = ay + t * dy;
+      var metres = Math.sqrt(px * px + py * py);
+      if (metres < best) best = metres;
+    }
+    return best;
+  }
+
+  /* Which of the areas a point in none of them is nearest to, if any is near.
+   *
+   * ringSets is each area's outer rings, in the layer's own order. Returns the
+   * index of the area whose ring is nearest, when that ring is closer than
+   * toleranceM, and null when nothing is that close - the point is then in no
+   * chiefdom and is left in none.
+   *
+   * Ties go to the earlier area, which is the rule the containment walk
+   * already follows. Interior rings are not candidates: a point in the seam
+   * between an enclave and the chiefdom around it (Kenema Town inside Nongowa)
+   * belongs to the enclave it is touching, not to the hole it fell in.
+   * coverage.nearest_chiefdom_index. */
+  function nearestChiefdomIndex(lon, lat, ringSets, toleranceM) {
+    var tolerance = toleranceM === undefined ? CHIEFDOM_EDGE_TOLERANCE_M : toleranceM;
+    /* the ring's bounding box grown by the tolerance: a point outside that box
+     * is further than the tolerance from every point of the ring, so the
+     * distance need not be computed at all. A national water-point pull asks
+     * this of every point it could not place. */
+    var dLat = tolerance / M_PER_DEG_LAT;
+    var dLon = tolerance /
+      (M_PER_DEG_LON * Math.max(Math.cos(lat * Math.PI / 180), 1e-6));
+    var bestIndex = null, bestM = tolerance;
+    for (var i = 0; i < ringSets.length; i++) {
+      var rings = ringSets[i] || [];
+      for (var j = 0; j < rings.length; j++) {
+        var ring = rings[j];
+        if (!ring || ring.length < 2) continue;  // a replacement layer can carry a degenerate ring
+        var minLon = Infinity, maxLon = -Infinity;
+        var minLat = Infinity, maxLat = -Infinity;
+        for (var k = 0; k < ring.length; k++) {
+          if (ring[k][0] < minLon) minLon = ring[k][0];
+          if (ring[k][0] > maxLon) maxLon = ring[k][0];
+          if (ring[k][1] < minLat) minLat = ring[k][1];
+          if (ring[k][1] > maxLat) maxLat = ring[k][1];
+        }
+        if (lon < minLon - dLon || lon > maxLon + dLon ||
+            lat < minLat - dLat || lat > maxLat + dLat) continue;
+        var metres = ringDistanceM(lon, lat, ring);
+        if (metres < bestM) { bestIndex = i; bestM = metres; }
+      }
+    }
+    return bestIndex;
+  }
+
+  /* The outer rings of each polygon, in the layer's order, as
+   * nearestChiefdomIndex takes them. */
+  function outerRingSets(polys) {
+    return polys.map(function (poly) { return poly.rings; });
+  }
+
+  /* The chiefdom polygon holding a point, or "" when no chiefdom is near it.
+   *
+   * A point no polygon contains is placed on the chiefdom whose ring is
+   * nearest, when that ring is within CHIEFDOM_EDGE_TOLERANCE_M - the seams
+   * the independently simplified rings leave along their shared borders are
+   * that wide, and a point in one is on the border rather than outside the
+   * country. Further out than that it stays unplaced, because the ground the
+   * layer does not carry - the withheld Maforki wedge in Kono is 20 km2 of it
+   * - is ground this toolkit cannot place, and saying so is the honest answer
+   * (ROADMAP data-ingestion-7).
+   *
+   * Every count and grouping below goes through this one function, so the
+   * browser closes a seam at one distance and in one place, as the Python
+   * does. */
   function chiefdomOfPoint(lat, lon, polys) {
     for (var i = 0; i < polys.length; i++) {
       if (polyContains(polys[i], lon, lat)) return polys[i].name;
     }
-    return '';
+    var near = nearestChiefdomIndex(lon, lat, outerRingSets(polys));
+    return near === null ? '' : polys[near].name;
   }
 
   function loadDistrictPopulation(rows) {
@@ -8489,6 +9028,9 @@
     WPDX_CREDIT: WPDX_CREDIT, POPULATION_CREDIT: POPULATION_CREDIT,
     haversineM: haversineM, pointInRing: pointInRing, loadPolygons: loadPolygons,
     polyContains: polyContains, chiefdomOfPoint: chiefdomOfPoint,
+    CHIEFDOM_EDGE_TOLERANCE_M: CHIEFDOM_EDGE_TOLERANCE_M,
+    ringDistanceM: ringDistanceM, nearestChiefdomIndex: nearestChiefdomIndex,
+    outerRingSets: outerRingSets,
     loadDistrictPopulation: loadDistrictPopulation,
     loadChiefdomDistrict: loadChiefdomDistrict,
     districtNames: districtNames, matchDistrict: matchDistrict,

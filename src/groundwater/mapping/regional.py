@@ -34,7 +34,12 @@ from matplotlib.patches import PathPatch
 from matplotlib.path import Path as MplPath
 
 from ..config import HouseStyle
-from ..coverage import load_service_classes, service_class_of
+from ..coverage import (
+    CHIEFDOM_EDGE_TOLERANCE_M,
+    load_service_classes,
+    nearest_chiefdom_index,
+    service_class_of,
+)
 from ..models import SiteMetadata
 from .lithology import LITHOLOGY_CREDIT, lithology_for, region_of  # noqa: F401
 from ..plotting import figure_context, save_figure
@@ -239,20 +244,28 @@ def district_of(
 ) -> str:
     """The district containing a point, as the districts are today.
 
-    The bundled district polygons predate the 2017 creation of Karene and
-    Falaba, so a point is placed in its chiefdom first and the chiefdom's
-    current district read from the crosswalk; only a point inside no
-    chiefdom polygon (a boundary gap in the simplified layer) falls back to
-    the district polygons. Kamakwie used to come back as Bombali, and the
-    app pre-filled that district and its province without a word.
+    The answer is the chiefdom's, from :func:`chiefdom_of`: the point is
+    placed in its chiefdom - in the seam beside one, if that is where it
+    fell - and the chiefdom's current district read from the crosswalk.
+    Kamakwie used to come back as Bombali, and the app pre-filled that
+    district and its province without a word.
 
-    Returns an empty string when the point falls outside every district
-    (offshore, across the border, or wrong coordinates).
+    A point no chiefdom holds no longer falls back to the bundled district
+    polygons. Those predate the 2017 split, so the fallback answered with a
+    district that no longer exists where the point was - Koinadugu for
+    ground that is now Falaba - or with the district on the wrong side of a
+    seam, while the coverage lookups answered the same point with nothing
+    (ROADMAP data-ingestion-7). One lookup, one answer, and where there is
+    no basis for one, none.
+
+    Returns an empty string when no chiefdom is near enough to place the
+    point (offshore, across the border, wrong coordinates, or ground the
+    layer does not carry). A replacement district layer passed as
+    ``admin_path`` is still read as given: it is the caller's own layer and
+    the crosswalk says nothing about it.
     """
     if admin_path is None:
-        _, district = chiefdom_of(lat, lon)
-        if district:
-            return district
+        return chiefdom_of(lat, lon)[1]
     _, districts = load_admin(admin_path)
     for district in districts:
         for ring in district.rings:
@@ -327,13 +340,24 @@ def chiefdom_of(
 ) -> tuple[str, str]:
     """The chiefdom and its district containing a point.
 
-    Returns ``(chiefdom, district)`` or ``("", "")`` when the point falls
-    outside every chiefdom. The district is the current one from the
-    crosswalk (Karene and Falaba included), not the pre-2017 parent the
-    boundary release carried.
+    Returns ``(chiefdom, district)`` or ``("", "")`` when no chiefdom is
+    near the point. The district is the current one from the crosswalk
+    (Karene and Falaba included), not the pre-2017 parent the boundary
+    release carried.
+
+    A point inside no ring is placed on the chiefdom whose ring is nearest,
+    when that ring is within :data:`CHIEFDOM_EDGE_TOLERANCE_M`. The rings
+    were simplified one at a time, so two that were one shared border no
+    longer meet and leave a seam of ground in no chiefdom at all; a point
+    there is on a border, metres from the chiefdom it is being refused.
+    Anything further out gets nothing: the ground the layer does not carry -
+    the withheld Maforki wedge in Kono is 20 km2 of it - is ground this
+    toolkit cannot place, and saying so is the honest answer (ROADMAP
+    data-ingestion-7).
     """
     current = _current_district_of_chiefdom() if path is None else {}
-    for area in _cached_chiefdoms() if path is None else load_chiefdoms(path):
+    areas = _cached_chiefdoms() if path is None else load_chiefdoms(path)
+    for area in areas:
         for i, ring in enumerate(area.rings):
             if not _point_in_ring(lon, lat, ring):
                 continue
@@ -341,7 +365,13 @@ def chiefdom_of(
             if any(_point_in_ring(lon, lat, hole) for hole in inner):
                 continue  # inside an enclave: it belongs to the chiefdom there
             return area.label, current.get(area.name, area.district)
-    return "", ""
+    near = nearest_chiefdom_index(
+        lon, lat, (area.rings for area in areas), CHIEFDOM_EDGE_TOLERANCE_M
+    )
+    if near is None:
+        return "", ""
+    area = areas[near]
+    return area.label, current.get(area.name, area.district)
 
 
 @functools.lru_cache(maxsize=1)

@@ -141,7 +141,10 @@ def plot_sounding_curve(
             )
             ax.loglog(ab2_ref, rho_ref, "--", color="#777777", lw=1.2,
                       label=reference_label)
-        ax.set_xlabel("AB/2 (m)")
+        # a Wenner sounding's x axis is the spacing a, not half AB
+        ax.set_xlabel(
+            "a (m)" if sounding.array_type.startswith("wenner") else "AB/2 (m)"
+        )
         ax.set_ylabel("Apparent resistivity (ohm-m)")
         ax.set_title(f"{sounding.label} sounding curve")
         # the curve runs from top left to bottom right, so the lower left is

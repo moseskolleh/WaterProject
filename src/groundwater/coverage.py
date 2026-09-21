@@ -20,9 +20,12 @@ across. It joins three bundled, verifiable inputs:
 
 Pure and matplotlib-free (only the choropleth in ``mapping.regional``
 draws), so the join, the ranking and the division-by-zero handling are
-fully unit-testable offline. Border points that fall outside every chiefdom
-are returned as ``unassigned`` - counted and surfaced, never silently
-dropped.
+fully unit-testable offline. A point that falls in the seam two
+independently simplified chiefdom rings leave along one border is placed on
+the chiefdom it is nearest to, within ``CHIEFDOM_EDGE_TOLERANCE_M``; a point
+further out than that is returned as ``unassigned`` - counted and surfaced,
+never silently dropped and never given the nearest name for want of a
+better one.
 """
 
 from __future__ import annotations
@@ -43,6 +46,35 @@ from .waterpoints import WaterPoint
 POPULATION_CREDIT = (
     "Population: Statistics Sierra Leone, 2015 Population and Housing Census"
 )
+
+#: How far outside every chiefdom a point may fall and still be placed on the
+#: chiefdom whose ring it is nearest to, in metres.
+#:
+#: Each ring of the bundled layer was simplified on its own, so two rings that
+#: were once one shared border no longer meet exactly, and the thin slivers
+#: between them - about 37 km2 of ground nationally - are inside no chiefdom at
+#: all (ROADMAP data-ingestion-7). A point in one of those seams is metres from
+#: the border it belongs on, and which side of that border it fell on is below
+#: the resolution of the layer, so it is resolved to the nearest ring. Nearly
+#: every seam in the bundled layer is far narrower than this; the few places
+#: that are wider are where three chiefdoms meet, and a point there is left
+#: unplaced rather than given one of the three.
+#:
+#: The number is metres and not kilometres on purpose. Beyond it a point is not
+#: on a border at all but in a real hole in the layer - the Maforki wedge
+#: withheld pending review is 20 km2 of such ground - and there every lookup
+#: answers with nothing rather than with the name of whatever lies nearest,
+#: because an unplaced point is a flag on a report while a placed one is a
+#: district on a document somebody signs.
+CHIEFDOM_EDGE_TOLERANCE_M = 50.0
+
+# Metres per degree of latitude, and per degree of longitude at the equator
+# (shrunk by the cosine of the latitude where it is used). What they convert is
+# a few tens of metres between a point and a ring it is all but touching, so
+# the local flat-earth distance below is ample and a projection would be false
+# precision.
+_M_PER_DEG_LAT = 110_600.0
+_M_PER_DEG_LON = 111_320.0
 
 
 @dataclass
@@ -96,6 +128,78 @@ def _poly_contains(poly: "ChiefdomPoly", lon: float, lat: float) -> bool:
     return False
 
 
+def _ring_distances_m(xy: np.ndarray, ring: np.ndarray) -> np.ndarray:
+    """Metres from each point of ``xy`` to the nearest segment of ``ring``.
+
+    Distance to the ring as a line, not to its vertices: a simplified ring
+    can run hundreds of metres between two vertices, and a point in the seam
+    beside that stretch is metres from the border and far from either end of
+    it.
+    """
+    lon = xy[:, 0][:, None]
+    lat = xy[:, 1][:, None]
+    x = (ring[None, :, 0] - lon) * _M_PER_DEG_LON * np.cos(np.radians(lat))
+    y = (ring[None, :, 1] - lat) * _M_PER_DEG_LAT
+    ax, ay = x[:, :-1], y[:, :-1]
+    dx, dy = x[:, 1:] - ax, y[:, 1:] - ay
+    length2 = dx * dx + dy * dy
+    # where on each segment the perpendicular falls, clamped to its ends; a
+    # segment of zero length (a vertex repeated by the simplification) would
+    # divide by zero, and its own end point is the answer there.
+    safe = np.where(length2 > 0.0, length2, 1.0)
+    t = np.where(length2 > 0.0, np.clip(-(ax * dx + ay * dy) / safe, 0.0, 1.0), 0.0)
+    px, py = ax + t * dx, ay + t * dy
+    return np.sqrt(px * px + py * py).min(axis=1)
+
+
+def nearest_chiefdom_index(
+    lon: float,
+    lat: float,
+    ring_sets: Iterable[list[np.ndarray]],
+    tolerance_m: float = CHIEFDOM_EDGE_TOLERANCE_M,
+) -> int | None:
+    """Which of the areas a point in none of them is nearest to, if any is near.
+
+    ``ring_sets`` is each area's outer rings, in the layer's own order.
+    Returns the index of the area whose ring is nearest, when that ring is
+    closer than ``tolerance_m``, and ``None`` when nothing is that close -
+    the point is then in no chiefdom and is left in none.
+
+    Ties go to the earlier area, which is the rule the containment walk
+    already follows. Interior rings are not candidates: a point in the seam
+    between an enclave and the chiefdom around it (Kenema Town inside
+    Nongowa) belongs to the enclave it is touching, not to the hole it fell
+    in.
+
+    ``mapping.regional`` resolves its own chiefdom lookups through this
+    function, so the toolkit closes a seam at one distance rather than at
+    two - the point of ROADMAP data-ingestion-7 is that the lookups used to
+    answer the same point three different ways.
+    """
+    # the ring's bounding box grown by the tolerance: a point outside that box
+    # is further than the tolerance from every point of the ring, so the
+    # distance need not be computed at all. A national water-point pull asks
+    # this of every point it could not place.
+    d_lat = tolerance_m / _M_PER_DEG_LAT
+    d_lon = tolerance_m / (_M_PER_DEG_LON * max(math.cos(math.radians(lat)), 1e-6))
+    xy = np.array([[lon, lat]], dtype=float)
+    best_index: int | None = None
+    best_m = tolerance_m
+    for index, rings in enumerate(ring_sets):
+        for ring in rings:
+            if len(ring) < 2:
+                continue  # a replacement layer can carry a degenerate ring
+            if (
+                lon < ring[:, 0].min() - d_lon or lon > ring[:, 0].max() + d_lon
+                or lat < ring[:, 1].min() - d_lat or lat > ring[:, 1].max() + d_lat
+            ):
+                continue
+            metres = float(_ring_distances_m(xy, ring)[0])
+            if metres < best_m:
+                best_index, best_m = index, metres
+    return best_index
+
+
 def load_district_population(path: str | Path | None = None) -> dict[str, float]:
     """District -> resident population (2015 census)."""
     text = _resource_text("sl_population_district.csv", path)
@@ -145,14 +249,19 @@ def load_chiefdom_polys(path: str | Path | None = None) -> list[ChiefdomPoly]:
 def assign_chiefdoms(
     points: Iterable[WaterPoint], polys: list[ChiefdomPoly]
 ) -> list[str]:
-    """Chiefdom name per point, "" for a point inside no chiefdom.
+    """Chiefdom name per point, "" for a point no chiefdom is near.
 
     The same answer as ``chiefdom_of_point`` for each point (first polygon
-    in file order that contains it, enclaves honoured), computed for all
-    the points at once: a national pull is fifty thousand points, and the
-    per-point ray cast took about ten seconds on every rerun of the coverage
-    page. The bounding-box reject is kept per ring, and the points already
-    placed drop out of the candidate set for the next ring.
+    in file order that contains it, enclaves honoured, then the nearest ring
+    within :data:`CHIEFDOM_EDGE_TOLERANCE_M`), computed for all the points at
+    once: a national pull is fifty thousand points, and the per-point ray
+    cast took about ten seconds on every rerun of the coverage page. The
+    bounding-box reject is kept per ring, and the points already placed drop
+    out of the candidate set for the next ring.
+
+    The seam pass is the per-point one, not a vectorised twin of it, because
+    only the handful of points the containment pass could not place reach it
+    and two implementations of one rule are two rules waiting to disagree.
     """
     from matplotlib.path import Path as MplPath
 
@@ -183,6 +292,14 @@ def assign_chiefdoms(
             pending[hit] = False
         if not pending.any():
             break
+    # Whatever is left is inside no chiefdom: either in a seam between two
+    # simplified rings, which is a border and is placed on it, or genuinely
+    # off the layer, which stays unplaced and is counted as unassigned.
+    ring_sets = [poly.rings for poly in polys]
+    for j in np.flatnonzero(pending):
+        near = nearest_chiefdom_index(float(xy[j, 0]), float(xy[j, 1]), ring_sets)
+        if near is not None:
+            names[j] = polys[near].name
     return names
 
 
@@ -207,13 +324,13 @@ def district_of_point(
 ) -> str:
     """District containing a point via point -> chiefdom -> district.
 
-    Returns "" when the point falls outside every chiefdom (border, offshore,
-    or a bad coordinate).
+    The chiefdom is :func:`chiefdom_of_point`'s, seams included, so the two
+    never disagree about where a point is; returns "" when no chiefdom is
+    near enough to place it (offshore, across the border, a bad coordinate,
+    or ground the layer does not carry at all).
     """
-    for poly in polys:
-        if _poly_contains(poly, lon, lat):
-            return chiefdom_district.get(poly.name, "")
-    return ""
+    chiefdom = chiefdom_of_point(lat, lon, polys)
+    return chiefdom_district.get(chiefdom, "") if chiefdom else ""
 
 
 def count_points_by_district(
@@ -495,11 +612,19 @@ def chiefdom_population(
 def chiefdom_of_point(
     lat: float, lon: float, polys: list[ChiefdomPoly]
 ) -> str:
-    """Chiefdom polygon containing a point, or "" when outside every chiefdom."""
+    """Chiefdom polygon holding a point, or "" when no chiefdom is near it.
+
+    A point no polygon contains is placed on the chiefdom whose ring is
+    nearest, when that ring is within :data:`CHIEFDOM_EDGE_TOLERANCE_M` -
+    the seams the independently simplified rings leave along their shared
+    borders are that wide, and a point in one is on the border rather than
+    outside the country. Further out than that it stays unplaced.
+    """
     for poly in polys:
         if _poly_contains(poly, lon, lat):
             return poly.name
-    return ""
+    near = nearest_chiefdom_index(lon, lat, (poly.rings for poly in polys))
+    return polys[near].name if near is not None else ""
 
 
 def count_points_by_chiefdom(

@@ -542,3 +542,213 @@ def test_a_strike_below_the_bottom_of_the_hole_is_not_recorded(tmp_path):
     assert log.water_strikes_m == [8.0]
     flag = next(f for f in log.flags if f.code == "water_strike_below_total_depth")
     assert "1430 m" in flag.message and "30 m" in flag.message
+
+
+def _pumping_workbook(path, headings, headers, rows, *, test_type="constant"):
+    """A pumping sheet as the reader sees it: the header block the template
+    prints, the heading over each column block, then the column headers and
+    the readings."""
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Pumping Test"
+    ws.append(["PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)"])
+    ws.append(["Community", "Testville", None, "Date", "1st April, 2017"])
+    ws.append(["Client", "Living Water", None, "Depth of Borehole (m)", 70])
+    ws.append(["Borehole Ref. No.", "BH-1", None, "Pump setting (m)", 67])
+    ws.append(["Static water level (m)", 9.44, None, "District", "Port Loko"])
+    ws.append(["Test type (step or constant)", test_type])
+    ws.append([])
+    ws.append(["Discharge per step (m3/h)", "Step 1 Q", 2.93])
+    ws.append(headings)
+    ws.append(headers)
+    for row in rows:
+        ws.append(row)
+    wb.save(path)
+    return path
+
+
+# One hour of readings as a crew takes them: close together at first, then
+# every fifteen minutes, closing the hour on the sixtieth minute.
+_HOUR_TIMES = [1, 2, 3, 5, 10, 20, 30, 45, 60]
+_HOUR_LEVELS = [
+    [12.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0],
+    [21.2, 21.4, 21.6, 21.8, 22.0, 22.2, 22.4, 22.6, 22.8],
+    [23.0, 23.1, 23.2, 23.3, 23.4, 23.5, 23.6, 23.7, 23.8],
+]
+
+
+def _hourly_rows(levels_by_block, times_by_block=None):
+    """Side by side hourly blocks of Time / Water Level / Drawdown."""
+    times_by_block = times_by_block or [_HOUR_TIMES] * len(levels_by_block)
+    rows = []
+    for i in range(len(times_by_block[0])):
+        row = []
+        for times, levels in zip(times_by_block, levels_by_block, strict=True):
+            increment = 0 if i == 0 else round(levels[i] - levels[i - 1], 2)
+            row += [times[i], levels[i], increment]
+        rows.append(row)
+    return rows
+
+
+def test_hourly_blocks_that_count_from_one_are_joined_not_interleaved(tmp_path):
+    """Three hours of a constant test, each block counting 1, 2, 3 within its
+    own hour, were read as one column and sorted into a sawtooth: minute 1 of
+    every hour, then minute 2 of every hour, so the levels jumped between the
+    three hours at every point and the drawdown curve - and the transmissivity
+    fitted to it - belonged to no test that was ever run.
+    """
+    headings = ["Constant discharge 0-60 min", None, None,
+                "Constant discharge 61-120 min", None, None,
+                "Constant discharge 121-180 min", None, None]
+    headers = ["Time (min)", "Water Level (m)", "Drawdown (m)"] * 3
+    path = _pumping_workbook(tmp_path / "hourly.xlsx", headings, headers,
+                             _hourly_rows(_HOUR_LEVELS))
+
+    test = read_pumping_workbook(path)
+    assert len(test.steps) == 1
+    step = test.steps[0]
+    assert list(step.time_min) == [
+        1, 2, 3, 5, 10, 20, 30, 45, 60,
+        61, 62, 63, 65, 70, 80, 90, 105, 120,
+        121, 122, 123, 125, 130, 140, 150, 165, 180,
+    ]
+    assert list(step.water_level_m) == sum(_HOUR_LEVELS, [])
+    # the level only ever deepens on this sheet; the sawtooth had it rise and
+    # fall between the three hours at every minute
+    assert np.all(np.diff(step.water_level_m) > 0)
+    assert not any(f.code == "time_not_increasing" for f in test.flags)
+
+    joined = next(f for f in test.flags if f.code == "constant_blocks_joined")
+    assert joined.level == "info"
+    assert "Constant discharge 61-120 min" in joined.message
+    assert "1 to 180 min" in joined.message
+
+    # the same sheet with nothing written over the blocks: the restart itself
+    # says the block is a fresh count, and it continues from the last reading
+    plain = _pumping_workbook(tmp_path / "unheaded.xlsx", [], headers,
+                              _hourly_rows(_HOUR_LEVELS))
+    unheaded = read_pumping_workbook(plain)
+    assert list(unheaded.steps[0].time_min) == list(step.time_min)
+    note = next(f for f in unheaded.flags if f.code == "constant_blocks_joined")
+    assert "continuing from the last reading before it" in note.message
+
+
+def test_a_block_whose_place_in_the_test_is_unreadable_is_left_out_and_named(tmp_path):
+    """A block that starts inside the hour already read and runs past it is
+    neither the test's own elapsed time nor a fresh count within the block,
+    and joining it at a guessed minute would put readings on the drawdown
+    curve at times nobody can check."""
+    headers = ["Time (min)", "Water Level (m)", "Drawdown (m)"] * 2
+    straddling = [30, 40, 50, 60, 70, 75, 80, 85, 90]
+    path = _pumping_workbook(
+        tmp_path / "straddle.xlsx", [], headers,
+        _hourly_rows(_HOUR_LEVELS[:2], [_HOUR_TIMES, straddling]))
+
+    test = read_pumping_workbook(path)
+    assert list(test.steps[0].time_min) == _HOUR_TIMES
+    assert list(test.steps[0].water_level_m) == _HOUR_LEVELS[0]
+    flag = next(f for f in test.flags if f.code == "constant_block_unreadable")
+    assert flag.level == "warning"
+    assert "Block 2" in flag.message and "30 min" in flag.message
+    assert "60 min already read" in flag.message
+
+
+# A recovery block written with both increment columns, as crews do when the
+# sheet is retyped: Time / Level / Drawdown / Recovery.
+_RECOVERY_TIMES = [0, 1, 2, 3, 5, 10, 20, 30]
+_RECOVERY_LEVELS = [42.26, 42.2, 41.78, 41.39, 30.0, 20.0, 12.0, 9.5]
+
+
+def _recovery_rows(pumping_levels, recovery_levels):
+    rows = []
+    for i in range(len(_HOUR_TIMES)):
+        row = [_HOUR_TIMES[i], pumping_levels[i],
+               0 if i == 0 else round(pumping_levels[i] - pumping_levels[i - 1], 2)]
+        if i < len(recovery_levels):
+            level = recovery_levels[i]
+            rise = 0 if i == 0 else round(recovery_levels[i - 1] - level, 2)
+            row += [_RECOVERY_TIMES[i], level, round(level - 9.44, 2), rise]
+        rows.append(row)
+    return rows
+
+
+def test_a_recovery_block_with_a_drawdown_column_reads_the_level_as_the_level(tmp_path):
+    """A recovery block laid out Time / Level / Drawdown / Recovery had its
+    fourth column read as the water level, so a recovery that climbed from
+    42.26 m back to 9.5 m was reported as a handful of centimetre increments -
+    a borehole that never recovered, and a recovery transmissivity fitted to
+    the rise between readings."""
+    headings = ["Constant discharge 0-60 min", None, None, "Recovery"]
+    headers = ["Time (min)", "Water Level (m)", "Drawdown (m)",
+               "Time (min)", "Level (m)", "Drawdown (m)", "Recovery (m)"]
+    path = _pumping_workbook(tmp_path / "recovery.xlsx", headings, headers,
+                             _recovery_rows(_HOUR_LEVELS[0], _RECOVERY_LEVELS))
+
+    test = read_pumping_workbook(path)
+    assert test.recovery_level_m is not None
+    assert list(test.recovery_level_m) == _RECOVERY_LEVELS
+    assert list(test.recovery_time_min) == _RECOVERY_TIMES
+    # the pumping block is still read as the pumping block
+    assert len(test.steps) == 1
+    assert list(test.steps[0].water_level_m) == _HOUR_LEVELS[0]
+    assert not any(f.code == "recovery_layout_unreadable" for f in test.flags)
+
+    # and the same layout with nothing written over the blocks: the headers
+    # name the columns, so the level is read as the level either way
+    plain = _pumping_workbook(tmp_path / "recovery_unheaded.xlsx", [], headers,
+                              _recovery_rows(_HOUR_LEVELS[0], _RECOVERY_LEVELS))
+    assert list(read_pumping_workbook(plain).recovery_level_m) == _RECOVERY_LEVELS
+
+
+def test_a_recovery_column_the_sheet_never_explains_is_refused_not_guessed(tmp_path):
+    """A recovery column standing apart from the water level column may hold
+    levels or the rise between readings, and read as levels an increment
+    column gives a recovery that climbs a few centimetres out of a borehole
+    tens of metres deep. The reader used to take it for the levels in silence.
+    """
+    headers = ["Time (min)", "Water Level (m)", "Drawdown (m)", "Remarks",
+               "Recovery (m)"]
+    rows = [[t, wl, 0, None, 0.1]
+            for t, wl in zip(_HOUR_TIMES, _HOUR_LEVELS[0], strict=True)]
+    test = read_pumping_workbook(
+        _pumping_workbook(tmp_path / "apart.xlsx", [], headers, rows))
+
+    assert test.recovery_time_min is None
+    assert list(test.steps[0].water_level_m) == _HOUR_LEVELS[0]
+    flag = next(f for f in test.flags if f.code == "recovery_layout_unreadable")
+    assert flag.level == "warning"
+    assert "Recovery (m)" in flag.message
+
+    # a Time / Level / Drawdown / Recovery block alone on a sheet is the same
+    # question: with no other block holding the pumping readings, nothing says
+    # whether it is a recovery block or a whole test against one time column
+    alone = ["Time (min)", "Level (m)", "Drawdown (m)", "Recovery (m)"]
+    rows = [[t, wl, 0, 0.1] for t, wl in zip(_HOUR_TIMES, _HOUR_LEVELS[0], strict=True)]
+    single = read_pumping_workbook(
+        _pumping_workbook(tmp_path / "alone.xlsx", [], alone, rows))
+    assert single.recovery_time_min is None
+    assert list(single.steps[0].water_level_m) == _HOUR_LEVELS[0]
+    assert any(f.code == "recovery_layout_unreadable" for f in single.flags)
+
+
+def test_a_block_that_was_left_out_is_not_also_reported_as_joined(tmp_path):
+    """A block placed by its own heading and then found to run backwards into
+    the block before it was named in both flags at once: the warning said it
+    had been left out of the series, and the very next sentence of the info
+    flag said it had been joined with twenty-nine minutes added to it. A
+    reader had no way to tell which of the two the curve was drawn from.
+    """
+    headings = ["Constant discharge 1-60 min", None, None,
+                "Constant discharge 30-90 min", None, None]
+    headers = ["Time (min)", "Water Level (m)", "Drawdown (m)"] * 2
+    path = _pumping_workbook(tmp_path / "backwards.xlsx", headings, headers,
+                             _hourly_rows(_HOUR_LEVELS[:2]))
+
+    test = read_pumping_workbook(path)
+    assert list(test.steps[0].time_min) == _HOUR_TIMES
+    dropped = next(f for f in test.flags if f.code == "constant_block_unreadable")
+    assert "still starts at 30 min once placed" in dropped.message
+    # the block was left out, so nothing says it was joined
+    assert not any(f.code == "constant_blocks_joined" for f in test.flags)
