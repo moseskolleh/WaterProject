@@ -259,6 +259,13 @@ def build() -> dict:
         "health": [r.parameter for r in assessed.health_exceedances],
         "wqi": clean(assessed.wqi.value) if assessed.wqi else None,
         "corros": assessed.corrosivity.classification,
+        # The classification alone let the corrosivity sentences drift: the
+        # browser went on saying the pH was "within the acceptability range"
+        # for a sample flagged at 5.9 while the class it was checked on still
+        # read "Strongly corrosive" on both sides.
+        "corros_verdict": assessed.corrosivity.verdict,
+        "corros_materials": assessed.corrosivity.materials_note,
+        "national": [r.parameter for r in assessed.national_exceedances],
         "ionic": clean(assessed.ionic.error_percent) if assessed.ionic else None,
     }
 

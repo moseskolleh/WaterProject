@@ -491,21 +491,25 @@ numbers is kept with the audit notes.
   rasterised on the dark theme:** the default theme is dark and every chart
   paints its surface from the live CSS tokens, so clients get maps and
   drawings on a black background.
-- [ ] **H webapp-parity-3. The browser study-area map has no sea, no
+- [x] **H webapp-parity-3. The browser study-area map has no sea, no
   chiefdom names, draws the site as a "borehole" on a siting survey and
   hides sounding A under it.**
-- [ ] **H webapp-parity-4. The browser location map credits the boundaries
+  Done: the map paints sea, the country and foreign land as the Python one does; it draws chiefdom names, through the bundled `chiefdomNames` table so a truncated layer name is not what the reader sees; the site marker is a borehole only where a drilling log exists, and it is not drawn at all where it would sit on a sounding, which is what hid sounding A.
+- [x] **H webapp-parity-4. The browser location map credits the boundaries
   to OCHA COD-AB,** which is not the bundled dataset (geoBoundaries, CC BY),
   and has no sea, district names or neighbours.
+  Done: the credit names geoBoundaries under CC BY 4.0, which is what the repository actually carries; the map draws sea and neighbouring land; and the districts carry their names, decluttered as the study-area map's are, rather than a hover title a printed report cannot show.
 - [ ] **H webapp-parity-5. The browser geophysical report omits the
   study-area map, the suitability map and every survey-derived figure;**
   no section, pseudo-section or subsurface map exists in the browser.
 - [ ] **H webapp-parity-6 / ves-1. The browser builds an 80 m hole with 48 m
   of screen for a VES-only project** from the degenerate zone.
-- [ ] **M webapp-parity-7. The browser thematic-map key lists a unit that is
+- [x] **M webapp-parity-7. The browser thematic-map key lists a unit that is
   nowhere in the frame.**
-- [ ] **M webapp-parity-8. The browser geology and aquifer maps omit the
+  Done: the key is scoped to the window that was drawn rather than to the whole letterboxed frame, and the not-mapped test runs once on that same box, so the entry and the footnote that explains it cannot disagree. The national maps are framed on the country's own bounds, as `_plot_units_map` frames them, instead of on polygons that run into Guinea and Liberia.
+- [x] **M webapp-parity-8. The browser geology and aquifer maps omit the
   scale caveat and the BGS publisher statement.**
+  Done: `scaleCaveat` mirrors `_scale_caveat` string for string, and the four map calls pass the source scale the Python plots pass, with the BGS publisher note on the aquifer maps, so the caveat is printed rather than merely computable.
 - [x] **M webapp-parity-9. The Streamlit design page ignores the pumping
   test:** no pump intake, a static-level box defaulting to 0, so the
   intake checks never run on the design that page's completion report

@@ -1549,6 +1549,21 @@
     return String(n) + suffix;
   }
 
+  /* groundwater/utils.py plural / plural_noun. "1 point", "2 points": the
+   * noun agrees with the count. Readiness gates and flags printed "2 step(s)
+   * with discharge" and "1 lithological interval(s)", which is a form, not a
+   * sentence, and the browser has to say what the package says character for
+   * character. The third argument carries a plural that is not just +"s"
+   * ("series", "analyses"), as the Python helpers' plural_form does. */
+  function plural(count, singular, pluralForm) {
+    return String(count) + ' ' + pluralNoun(count, singular, pluralForm);
+  }
+
+  /* The noun alone, agreeing with a count the sentence already carries. */
+  function pluralNoun(count, singular, pluralForm) {
+    return count === 1 ? singular : (pluralForm || singular + 's');
+  }
+
   function interpretationNarrative(interp) {
     var parts = ['The data at ' + interp.sounding_id + ' resolves a ' +
       interp.model.n_layers + ' layer subsurface (' +
@@ -1703,7 +1718,7 @@
     LAYER_RESISTIVITY_COLUMN: LAYER_RESISTIVITY_COLUMN,
     fmtNum: fmtNum, fmtRange: fmtRange, formatG: formatG,
     roundSig: roundSig, pyRound: pyRound, pyFixed: pyFixed, expo: expo,
-    ordinal: ordinal,
+    ordinal: ordinal, plural: plural, pluralNoun: pluralNoun,
   });
 
   /* ============================================================= hydraulics
@@ -2835,9 +2850,9 @@
         } else {
           flags.push({
             level: 'warning', code: 'step_test_pending',
-            message: 'Step test analysis pending: only ' + positive.length +
-              ' step(s) with discharge show positive drawdown, and the fit ' +
-              'needs at least two.',
+            message: 'Step test analysis pending: only ' +
+              plural(positive.length, 'step') + ' with discharge show ' +
+              'positive drawdown, and the fit needs at least two.',
           });
         }
       } else {
@@ -3800,10 +3815,28 @@
 
     var signedLsi = (lsi >= 0 ? '+' : '') + lsi.toFixed(1);
     if (aggressive) {
+      /* The pH sentence used to say "within the acceptability range" for a
+       * sample the same report flagged at 5.9. It now says what the pH is.
+       * pyFixed, not toFixed: Python's "%.1f" sends a tie to the even digit,
+       * so a pH reported as 6.25 prints as 6.2 in both engines. */
+      var phNote;
+      if (ph < 6.5) {
+        phNote = 'The pH of ' + pyFixed(ph, 1) + ' is below the 6.5 to 8.5 ' +
+          'acceptability range, which adds to the attack on metal; soft, ' +
+          'low-alkalinity basement groundwater is aggressive even at a pH ' +
+          'inside that range.';
+      } else if (ph > 8.5) {
+        phNote = 'The pH of ' + pyFixed(ph, 1) + ' is above the 6.5 to 8.5 ' +
+          'acceptability range; the aggressiveness comes from the low calcium ' +
+          'and alkalinity.';
+      } else {
+        phNote = 'The pH of ' + pyFixed(ph, 1) + ' is within the 6.5 to 8.5 ' +
+          'acceptability range, and the water is aggressive all the same, ' +
+          'which is typical of soft basement groundwater.';
+      }
       assessment.verdict = 'The water is chemically aggressive (Ryznar index ' +
         rsi.toFixed(1) + ', Langelier index ' + signedLsi + '). It will corrode ' +
-        'metal fittings, and it can be aggressive even though the pH is within ' +
-        'the acceptability range, which is typical of soft basement groundwater.';
+        'metal fittings. ' + phNote;
       assessment.materials_note = 'Specify uPVC or stainless steel (grade 304 or ' +
         '316) for the rising main and pump components, and avoid galvanised iron ' +
         'and mild steel, which corrode rapidly in this water and are a leading ' +
@@ -3985,6 +4018,7 @@
 
   function gradeRow(row, entry, value, unitNote) {
     var isMicro = String(entry.category || '').trim().toLowerCase() === 'microbiological';
+    var isFaecal = String(entry.parameter || '').trim().toLowerCase() === 'e. coli';
     if (entry.who_health && limitExceededBy(entry.who_health, value)) {
       row.status = 'exceeds_health';
       row.remark = 'exceeds the WHO health based guideline (' +
@@ -3992,14 +4026,26 @@
     } else if (isMicro && (
         (entry.sl_standard && limitExceededBy(entry.sl_standard, value)) ||
         (entry.who_aesthetic && limitExceededBy(entry.who_aesthetic, value)))) {
-      /* A microbiological indicator is a health concern, never an aesthetic
-       * one, even when its limit sits in the national column. Otherwise the
-       * verdict calls faecally-indicated water "usable for drinking". */
-      row.status = 'exceeds_health';
+      /* A microbiological indicator is never an aesthetic matter, even when
+       * its limit is carried in the national column. E. coli is the faecal
+       * indicator and any detection is a health exceedance. Total coliforms
+       * are not: WHO sets no health-based guideline for them and they
+       * indicate ingress or an unprotected wellhead, not faecal
+       * contamination, so they are a national-limit failure that calls for
+       * disinfection and a sanitary inspection. Three reports used to call a
+       * sample with E. coli 0 "faecal contamination" on total coliforms. */
       var micro = entry.sl_standard || entry.who_aesthetic;
-      row.remark = 'microbiological indicator detected above the limit (' +
-        limitText(micro) + '); a health (faecal contamination) concern, ' +
-        'not aesthetic' + unitNote;
+      if (isFaecal) {
+        row.status = 'exceeds_health';
+        row.remark = 'faecal indicator detected above the limit (' +
+          limitText(micro) + '); a health concern, not aesthetic' + unitNote;
+      } else {
+        row.status = 'exceeds_national';
+        row.remark = 'detected above the national limit (' + limitText(micro) +
+          '); an indicator of ingress or inadequate wellhead protection, not ' +
+          'of faecal contamination in itself, and WHO sets no health based ' +
+          'guideline for it' + unitNote;
+      }
     } else if (entry.sl_standard && limitExceededBy(entry.sl_standard, value)) {
       if (entry.who_health) {
         /* A national limit stricter than the WHO health value is a
@@ -4247,7 +4293,7 @@
           message: "'" + result.parameter + "' is reported in '" +
             (result.unit || '') + "' but the guideline is written in '" +
             row.guideline_unit + "'. The values were taken as the same basis; " +
-            'confirm with the laboratory, since an "as CaCO3" figure is about ' +
+            "confirm with the laboratory, since an 'as CaCO3' figure is about " +
             '2.5 times the same concentration expressed as the element.',
         });
       } else if (row.status === 'indeterminate') {
@@ -4411,8 +4457,9 @@
       return list.map(function (r) { return r.parameter; }).join(', ');
     }
     if (state === 'health_fail') {
-      return 'The water does not meet the health based guideline value(s) for: ' +
-        names(health) + '. Treatment or an alternative source is required before ' +
+      return 'The water does not meet the health based guideline ' +
+        pluralNoun(health.length, 'value') + ' for: ' + names(health) +
+        '. Treatment or an alternative source is required before ' +
         'the water is used for drinking.';
     }
     if (state === 'national_fail') {
@@ -4421,7 +4468,8 @@
           names(acceptability) + '.'
         : '';
       return 'The water meets the WHO health based guideline values, but does ' +
-        'not comply with the national standard limit(s) for: ' + names(national) +
+        'not comply with the national standard ' +
+        pluralNoun(national.length, 'limit') + ' for: ' + names(national) +
         '.' + extra + ' Treatment is required before the supply can be accepted ' +
         'against the national standard; check whether the limit exceeded is a ' +
         'health or an acceptability limit.';
@@ -4507,6 +4555,84 @@
     return catName + '-' + anName + ' water type';
   }
 
+  /* groundwater/quality/diagrams.py facies_of. The Piper diagram used to be
+   * the whole of a section headed "Hydrochemical Facies", with nothing said
+   * about what it showed, so the sentence is built here, beside the geometry
+   * the diagram is drawn from, and the report only prints it. Null without a
+   * complete major-ion analysis, exactly as the Python returns None. */
+  function faciesOf(sample) {
+    var ionic = ionicBalance(sample);
+    if (!ionic) return null;
+    var cat = ionic.cations_meq, an = ionic.anions_meq;
+    var ca = cat.calcium || 0, mg = cat.magnesium || 0;
+    var nak = (cat.sodium || 0) + (cat.potassium || 0);
+    var hco3 = (an.bicarbonate || 0) + (an.carbonate || 0);
+    var cl = an.chloride || 0, so4 = an.sulfate || 0;
+    var catTotal = ca + mg + nak, anTotal = hco3 + cl + so4;
+    if (catTotal <= 0 || anTotal <= 0) return null;
+
+    /* Pairs, not an object: the order is the order the percentages are read
+     * out in, and it is also what settles a dead heat, because Python's
+     * max() over a dict keeps the first key of a tie and an object rebuilt
+     * from its keys would not promise that. */
+    var cations = [['Ca', ca / catTotal], ['Mg', mg / catTotal],
+      ['Na+K', nak / catTotal]];
+    var anions = [['HCO3', hco3 / anTotal], ['Cl', cl / anTotal],
+      ['SO4', so4 / anTotal]];
+
+    function lead(pairs) {
+      var best = pairs[0];
+      for (var i = 1; i < pairs.length; i++) {
+        if (pairs[i][1] > best[1]) best = pairs[i];
+      }
+      return best;
+    }
+    /* pyFixed, not toFixed: Python's "%.0f" sends a tie to the even digit,
+     * so an ion sitting on exactly 12.5 percent prints as 12 in both engines. */
+    function pct(pairs) {
+      return pairs.map(function (p) {
+        return p[0] + ' ' + pyFixed(p[1] * 100, 0) + '%';
+      }).join(', ');
+    }
+    function fractions(pairs) {
+      var out = {};
+      pairs.forEach(function (p) { out[p[0]] = p[1]; });
+      return out;
+    }
+
+    var leadCat = lead(cations), leadAn = lead(anions);
+    var catName = leadCat[1] >= 0.5 ? leadCat[0] : 'mixed-cation';
+    var anName = leadAn[1] >= 0.5 ? leadAn[0] : 'mixed-anion';
+    var facies = catName + '-' + anName;
+
+    var meaning;
+    if (anName === 'HCO3' && (catName === 'Ca' || catName === 'Mg')) {
+      meaning = 'a fresh, recently recharged water of the kind weathering of ' +
+        'silicate rock gives; typical of shallow basement groundwater';
+    } else if (anName === 'HCO3') {
+      meaning = 'a bicarbonate water in which sodium and potassium have ' +
+        'replaced calcium, which points to longer contact with the rock or ' +
+        'to ion exchange in a clayey weathered zone';
+    } else if (anName === 'Cl' && catName === 'Na+K') {
+      meaning = 'a sodium chloride water, which in this setting points to ' +
+        'salinity from the coast, an estuary or evaporation rather than to ' +
+        'rock weathering';
+    } else if (anName === 'SO4') {
+      meaning = 'a sulfate water, which is unusual in basement ground and ' +
+        'worth checking against the sample\'s provenance';
+    } else {
+      meaning = 'a mixed water with no single dominant ion pair';
+    }
+
+    return {
+      facies: facies,
+      cations: fractions(cations),
+      anions: fractions(anions),
+      sentence: 'The water is a ' + facies + ' type (' + pct(cations) + '; ' +
+        pct(anions) + ', in milliequivalent percent): ' + meaning + '.',
+    };
+  }
+
   /* Stiff polygon: Na+K / Ca / Mg on the left, Cl / HCO3 / SO4 on the right. */
   function stiffRows(sample) {
     var ionic = ionicBalance(sample);
@@ -4539,7 +4665,7 @@
     VERDICT_TONE: VERDICT_TONE,
     ESSENTIAL_HEALTH_PARAMETERS: ESSENTIAL_HEALTH_PARAMETERS,
     ternaryXy: ternaryXy, piperPoints: piperPoints, piperFacies: piperFacies,
-    stiffRows: stiffRows,
+    faciesOf: faciesOf, stiffRows: stiffRows,
   });
 
   /* ======================================================= lithology classes
@@ -8646,7 +8772,7 @@
         return ['unmet', 'The drilling log records no lithology.'];
       }
       return ['met', 'Logged to ' + log.total_depth_m.toFixed(0) + ' m with ' +
-        log.intervals.length + ' lithological interval(s).'];
+        plural(log.intervals.length, 'lithological interval') + '.'];
     }],
     readings_usable: ['Readable units', function (state) {
       var analysis = state.pump_analysis;
@@ -8674,11 +8800,12 @@
           'transmissivity and yield stay pending.'];
       }
       if (missing.length) {
-        return ['unmet', 'Discharge is missing for step(s) ' +
+        return ['unmet', 'Discharge is missing for ' +
+          pluralNoun(missing.length, 'step') + ' ' +
           missing.map(function (s) { return s.step_number; }).join(', ') + '.'];
       }
-      return ['met', test.steps.length + ' step(s) with discharge, static ' +
-        'water level ' + test.static_water_level_m.toFixed(2) + ' m.'];
+      return ['met', plural(test.steps.length, 'step') + ' with discharge, ' +
+        'static water level ' + test.static_water_level_m.toFixed(2) + ' m.'];
     }],
     yield_established: ['Yield established', function (state) {
       var analysis = state.pump_analysis;
@@ -8725,8 +8852,8 @@
       if (!(a.evaluated_rows || []).length) {
         return ['unmet', 'No result in the sample could be graded.'];
       }
-      return ['met', a.evaluated_rows.length + ' determinand(s) graded; ' +
-        'verdict ' + a.verdict_state + '.'];
+      return ['met', plural(a.evaluated_rows.length, 'determinand') +
+        ' graded; verdict ' + a.verdict_state + '.'];
     }],
     design_derived: ['Borehole design', function (state) {
       var design = state.borehole_design;
@@ -8735,7 +8862,7 @@
       if (errors.length) return ['unmet', errors[0].message];
       if (!(design.screens || []).length) return ['unmet', 'The design places no screen.'];
       return ['met', Number(design.total_screen_length_m).toFixed(1) +
-        ' m of screen in ' + design.screens.length + ' run(s).'];
+        ' m of screen in ' + plural(design.screens.length, 'run') + '.'];
     }],
     cost_basis: ['Cost estimate', function (state) {
       var estimate = state.cost_estimate;

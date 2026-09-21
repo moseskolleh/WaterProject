@@ -250,7 +250,7 @@ from groundwater.supervision import (
     stage_title,
     verticality_check,
 )
-from groundwater.utils import fmt_num
+from groundwater.utils import fmt_num, plural
 from groundwater.ves import interpret_model, invert_sounding
 from groundwater.ves.interpret import (
     drilling_depth_text,
@@ -4325,13 +4325,20 @@ with tab_coverage:
                  "assumption in the one on the left.",
         )
         if _plan_stats["n_stale_areas"]:
+            _n_stale = _plan_stats["n_stale_areas"]
             st.warning(
-                f"{_plan_stats['n_stale_areas']} {unit}(s) rest on surveys "
+                f"{plural(_n_stale, unit)} "
+                f"{'rests' if _n_stale == 1 else 'rest'} on surveys "
                 f"more than {AGEING_YEARS} years old: "
                 + ", ".join(_plan_stats["stale_areas"][:8])
-                + ("..." if _plan_stats["n_stale_areas"] > 8 else "")
-                + ". Their coverage figures describe the year they were "
-                "surveyed, not this one."
+                + ("..." if _n_stale > 8 else "")
+                + (
+                    ". Its coverage figures describe the year it was "
+                    "surveyed, not this one."
+                    if _n_stale == 1
+                    else ". Their coverage figures describe the year they were "
+                    "surveyed, not this one."
+                )
             )
         if not _plan_stats["n_seasonality_recorded"]:
             st.info(

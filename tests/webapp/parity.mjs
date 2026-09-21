@@ -148,6 +148,9 @@ await withPage(async (page, base, consoleErrors) => {
       health: assessed.health_exceedances.map((r) => r.parameter),
       wqi: assessed.wqi && assessed.wqi.value,
       corros: assessed.corrosivity.classification,
+      corros_verdict: assessed.corrosivity.verdict,
+      corros_materials: assessed.corrosivity.materials_note,
+      national: assessed.national_exceedances.map((r) => r.parameter),
       ionic: assessed.ionic && assessed.ionic.error_percent,
     };
 
@@ -804,6 +807,15 @@ await withPage(async (page, base, consoleErrors) => {
     `js ${parsed.assessed.wqi} vs py ${R.assessed.wqi}`);
   check('assessment: corrosivity', parsed.assessed.corros === R.assessed.corros,
     `js ${parsed.assessed.corros} vs py ${R.assessed.corros}`);
+  check('assessment: corrosivity verdict',
+    parsed.assessed.corros_verdict === R.assessed.corros_verdict,
+    `js "${parsed.assessed.corros_verdict}"\n     py "${R.assessed.corros_verdict}"`);
+  check('assessment: corrosivity materials note',
+    parsed.assessed.corros_materials === R.assessed.corros_materials,
+    `js "${parsed.assessed.corros_materials}"\n     py "${R.assessed.corros_materials}"`);
+  check('assessment: national exceedances',
+    JSON.stringify(parsed.assessed.national) === JSON.stringify(R.assessed.national),
+    `js ${JSON.stringify(parsed.assessed.national)} py ${JSON.stringify(R.assessed.national)}`);
   check('design: screens', JSON.stringify(parsed.design.screens) === JSON.stringify(R.design.screens),
     JSON.stringify(parsed.design.screens) + ' vs ' + JSON.stringify(R.design.screens));
   check('design: sanitary seal', JSON.stringify(parsed.design.seal) === JSON.stringify(R.design.seal),

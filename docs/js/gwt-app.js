@@ -73,7 +73,7 @@
         rateOverrides: {},
       },
       supervision: { responses: {}, notes: [], checks: {} },
-      handover: { committee: [], notes: [], date: '' },
+      handover: { committee: [], notes: [], date: '', pumpType: '', tariffNote: '' },
       photos: {},
       coverage: { level: 'district' },
       waterpoints: { radius: 1000 },
@@ -801,7 +801,8 @@
       ['Water quality', 'quality', pageDone('quality'),
         derived.assessment
           ? (derived.assessment.health_exceedances.length
-            ? derived.assessment.health_exceedances.length + ' health exceedance(s)'
+            ? derived.assessment.health_exceedances.length + ' health ' +
+              S.plural(derived.assessment.health_exceedances.length, 'exceedance')
             : C.VERDICT_LONG[derived.assessment.verdict_state])
           : 'No analysis loaded'],
       ['Cost', 'costing', pageDone('costing'),
@@ -827,7 +828,8 @@
                 'with the stated range') : null,
             derived.design
               ? S.stat('Total depth', C.fmtNum(derived.design.total_depth_m) + ' m',
-                derived.design.screens.length + ' screened section(s)') : null,
+                derived.design.screens.length + ' screened ' +
+                S.plural(derived.design.screens.length, 'section')) : null,
             derived.assessment && derived.assessment.wqi
               ? S.stat('Water quality index', String(derived.assessment.wqi.value),
                 derived.assessment.wqi.rating) : null,
@@ -1064,6 +1066,11 @@
       legendItems.push({ label: 'other districts', colour: '#EDEAE3' });
       mapNode = charts.siteMap({
         context: boundaries,
+        /* the bundled layer is geoBoundaries; the credit named a dataset this
+         * repository does not carry, and the map had no sea or neighbours to
+         * tell the Atlantic from unmapped ground */
+        outline: nationalOutline(GWT.data.geo),
+        labelContext: true,
         contextFill: function (feature) {
           var name = (feature.properties || {}).name || (feature.properties || {}).shapeName;
           return name === site.district ? '#CFE0D6' : '#EDEAE3';
@@ -1074,7 +1081,7 @@
         }] : [],
         title: 'Site location',
         legendItems: legendItems,
-        credit: 'District boundaries: Sierra Leone Statistics / OCHA COD-AB.',
+        credit: 'District boundaries: geoBoundaries (CC BY 4.0).',
         width: 620, height: 560,
       });
     }
@@ -1193,6 +1200,8 @@
             title: latlon ? 'Aquifer productivity around the site'
               : 'Aquifer productivity, Sierra Leone',
             credit: 'BGS Africa Groundwater Atlas, CC BY-SA 4.0.',
+            sourceScale: charts.bgsSourceScale,
+            publisherNote: charts.bgsPublisherNote,
             legendTitle: 'AQUIFER TYPE AND PRODUCTIVITY',
             // the BGS colours ARE the classification, so they stay
             sourceColours: true,
@@ -1210,6 +1219,7 @@
             credit: 'USGS Geologic Map of Africa. Lithology: Geology of ' +
               'Sierra Leone (Fileccia et al. 2017, MoWR/SALWACO, 1:600,000).',
             legendTitle: 'GEOLOGICAL UNIT',
+            sourceScale: charts.usgsSourceScale,
             outline: nationalOutline(GWT.data.geo),
             nameLithology: true, district: store.get('site.district') || '',
             width: 560, height: 680,
@@ -1555,6 +1565,8 @@
           legendTitle: 'AQUIFER TYPE AND PRODUCTIVITY',
           sourceColours: true,
           credit: 'BGS Africa Groundwater Atlas, CC BY-SA 4.0.',
+          sourceScale: charts.bgsSourceScale,
+          publisherNote: charts.bgsPublisherNote,
           outline: nationalOutline(geo),
           width: 620, height: 700,
         })),
@@ -1574,6 +1586,7 @@
           legendTitle: 'GEOLOGICAL UNIT',
           credit: 'USGS Geologic Map of Africa. Lithology: Geology of ' +
             'Sierra Leone (Fileccia et al. 2017, MoWR/SALWACO, 1:600,000).',
+          sourceScale: charts.usgsSourceScale,
           outline: nationalOutline(geo),
           nameLithology: true, district: store.get('site.district') || '',
           width: 620, height: 700,
@@ -1739,7 +1752,8 @@
           S.stat('Depth to bedrock', interp.depth_to_basement_m !== null
             ? C.fmtNum(interp.depth_to_basement_m) + ' m' : 'not resolved'),
           S.stat('Aquifer thickness', C.fmtNum(interp.aquifer_thickness_m) + ' m',
-            interp.water_zones.length + ' zone(s)'),
+            interp.water_zones.length + ' ' +
+            S.plural(interp.water_zones.length, 'zone')),
           S.stat('Max drilling depth', C.drillingDepthText(interp),
             interp.basement_not_resolved
               ? 'a minimum: the zone continues below the depth of investigation'
@@ -1951,7 +1965,8 @@
         S.stat('Total depth', C.fmtNum(design.total_depth_m) + ' m'),
         S.stat(design.as_built ? 'Screen (as installed)' : 'Screen',
           C.fmtNum(design.total_screen_length_m) + ' m',
-          design.screens.length + ' section(s), slot ' +
+          design.screens.length + ' ' +
+          S.plural(design.screens.length, 'section') + ', slot ' +
           C.fmtNum(design.screen_slot_mm) + ' mm'),
         S.stat('Casing', C.formatG(design.casing_diameter_in) + '" ' +
           design.casing_material,
@@ -2483,8 +2498,11 @@
           ['Larson-Skold', cor.larsonSkold],
           ['Classification', cor.classification],
         ]),
+        /* Not "Handpump materials": the note underneath is about the rising
+         * main and the wetted metal parts of whatever pump goes in, which on
+         * a motorised installation is a pump nobody would call a handpump. */
         el('div.callout' + (cor.isAggressive ? '.callout-warn' : '.callout-ok'), [
-          el('p', el('strong', 'Handpump materials')),
+          el('p', el('strong', 'Pump and rising main materials')),
           el('p', cor.materialsNote || cor.verdict),
         ]),
         cor.assumptions.length
@@ -2492,13 +2510,18 @@
       ]) : null,
 
       q.piper ? card('Hydrochemical facies', [
+        /* A Piper diagram on its own tells a reader who cannot read one
+         * nothing at all, which is what this card used to be. faciesOf names
+         * the water type and says what it means, as the quality report now
+         * does above the same figures. */
+        faciesSentence(derived.sample),
         el('div.grid.grid-2', [
           charts.figure(charts.piper([derived.sample]), 'Piper diagram',
             { filename: 'piper' }),
           charts.figure(charts.stiff(derived.sample), 'Stiff diagram',
             { filename: 'stiff' }),
         ]),
-      ]) : null,
+      ].filter(Boolean)) : null,
 
       card('Exceedances', [
         S.table([
@@ -3163,6 +3186,15 @@
 
   /* --- water quality -------------------------------------------------------- */
 
+  /* The sentence that says what the Piper and Stiff diagrams show: the water
+   * type, the milliequivalent percentages behind it and what that composition
+   * means for where the water came from. Null without a complete major-ion
+   * analysis, because there is then no facies to name. */
+  function faciesSentence(sample) {
+    var facies = sample ? C.faciesOf(sample) : null;
+    return facies ? el('p', facies.sentence) : null;
+  }
+
   PAGES.quality = function () {
     var nodes = [
       pageHead('Water quality', 'Laboratory results against WHO and national ' +
@@ -3269,13 +3301,14 @@
     var stiffNode = charts.stiff(derived.sample);
     if (piperNode || stiffNode) {
       nodes.push(card('Hydrochemical facies', [
+        faciesSentence(derived.sample),
         el('div.split', [
           piperNode ? charts.figure(piperNode, 'Piper trilinear diagram',
             { filename: 'piper' }) : null,
           stiffNode ? charts.figure(stiffNode, 'Stiff diagram',
             { filename: 'stiff' }) : null,
         ]),
-      ]));
+      ].filter(Boolean)));
     }
 
     nodes.push(photoCard('quality', 'Sampling photographs'));
@@ -3664,6 +3697,21 @@
           field('Handover date', S.textInput(handover.date, function (v) {
             store.set('handover.date', v);
           })),
+          /* The handover report's maintenance section follows this: a
+           * submersible or solar pump has no rods to tighten and no strokes
+           * to count, and the community used to be handed handpump care
+           * whatever was installed. Left blank it asserts nothing, and the
+           * data sheet omits the row rather than naming a pump nobody
+           * recorded. */
+          field('Pump installed', S.textInput(handover.pumpType, function (v) {
+            store.set('handover.pumpType', v);
+          }), 'e.g. India Mark II, submersible, solar'),
+          /* handoverReport prints a tariff arrangement the browser had no way
+           * to set, so the paragraph was unreachable here and present in every
+           * Python handover. */
+          field('Tariff arrangement', S.textInput(handover.tariffNote, function (v) {
+            store.set('handover.tariffNote', v);
+          }), 'how the committee collects and holds the user fees'),
         ]),
         el('h4', 'Water and sanitation committee'),
         S.editableTable([
@@ -4404,6 +4452,7 @@
         features: features, value: valueFor, name: nameFor,
         title: title, legendTitle: 'people per functional water point',
         classes: C.loadServiceClasses(),
+        outline: nationalOutline(GWT.data.geo),
         width: 640, height: 600,
       }), title, { filename: 'coverage_' + level }),
       el('p.muted', projection.note),
@@ -4526,11 +4575,15 @@
     ];
     if (stats.n_stale_areas) {
       nodes.push(el('div.callout.callout-warn', el('p',
-        stats.n_stale_areas + ' ' + unit + '(s) rest on surveys more than ' +
+        stats.n_stale_areas + ' ' + S.plural(stats.n_stale_areas, unit) +
+        (stats.n_stale_areas === 1 ? ' rests' : ' rest') + ' on surveys more than ' +
         C.AGEING_YEARS + ' years old: ' +
         stats.stale_areas.slice(0, 8).join(', ') +
-        (stats.n_stale_areas > 8 ? '…' : '') + '. Their coverage figures ' +
-        'describe the year they were surveyed, not this one.')));
+        (stats.n_stale_areas > 8 ? '…' : '') +
+        (stats.n_stale_areas === 1
+          ? '. Its coverage figures describe the year it was surveyed, not this one.'
+          : '. Their coverage figures describe the year they were surveyed, ' +
+            'not this one.'))));
     }
     if (!stats.n_seasonality_recorded) {
       nodes.push(el('div.callout', el('p', 'None of these ' +
@@ -4871,8 +4924,12 @@
     }
     if (stats.n_unknown) {
       nodes.push(el('div.callout.callout-warn', el('p', stats.n_unknown +
-        ' borehole(s) have nothing recorded against them at all. That is not ' +
-        'the same as nothing having happened to them.')));
+        ' ' + S.plural(stats.n_unknown, 'borehole') +
+        (stats.n_unknown === 1 ? ' has' : ' have') +
+        ' nothing recorded against ' +
+        (stats.n_unknown === 1 ? 'it' : 'them') + ' at all. That is not ' +
+        'the same as nothing having happened to ' +
+        (stats.n_unknown === 1 ? 'it.' : 'them.'))));
     }
     if (stats.n_overdue_inspection + stats.n_overdue_sample) {
       nodes.push(el('p', stats.n_overdue_inspection + ' overdue a sanitary ' +
@@ -5011,8 +5068,11 @@
       ]),
       stats.n_status_unrecognised
         ? el('div.callout.callout-warn', el('p', stats.n_status_unrecognised +
-          ' project(s) carry a status this toolkit does not recognise; they ' +
-          'are counted as neither successful nor dry. Correct the status on ' +
+          ' ' + S.plural(stats.n_status_unrecognised, 'project') +
+          (stats.n_status_unrecognised === 1 ? ' carries' : ' carry') +
+          ' a status this toolkit does not recognise; ' +
+          (stats.n_status_unrecognised === 1 ? 'it is' : 'they are') +
+          ' counted as neither successful nor dry. Correct the status on ' +
           'the drilling log.'))
         : null,
     ].filter(Boolean)));
@@ -5638,12 +5698,21 @@
             .forEach(function (photo) {
               figures.push({ image: photo, caption: photo.caption, widthCm: 11 });
             });
-          context.log = derived.log || {};
+          /* The record itself, or nothing: the data sheet omits the log
+           * block entirely when no drilling log was read, as handover.py
+           * does. An empty object here made that guard unfalsifiable, so
+           * a project with no log still printed a reference, a depth, a
+           * method and a status as six em-dash rows. */
+          context.log = derived.log;
           context.design = derived.design;
           context.analysis = derived.analysis;
           context.assessment = derived.assessment;
           context.committee = store.get('handover.committee') || [];
           context.handoverDate = store.get('handover.date') || '';
+          /* the maintenance section and the data sheet both follow the pump
+           * that was actually installed, so the report has to be told which */
+          context.pumpType = store.get('handover.pumpType') || '';
+          context.tariffNote = store.get('handover.tariffNote') || '';
           /* the works list names a siting survey only if one was interpreted */
           context.interpretations = derived.interpretations;
           context.figures = figures;

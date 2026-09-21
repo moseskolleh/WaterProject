@@ -53,6 +53,10 @@ CSV_TABLES = {
     # browser's map key names the rock rather than repeating an age that is
     # wrong for the one polygon anybody in this country reads first
     "lithologyCrosswalk": "sl_lithology_usgs_crosswalk.csv",
+    # the full names of the chiefdoms whose names the boundary layer truncates
+    # to fifteen characters, so a browser map label reads "Wara Wara Yagala"
+    # rather than the "Wara Wara Yagal" the layer's own name field carries
+    "chiefdomNames": "sl_chiefdom_names.csv",
 }
 
 # Map layers. Coordinates are rounded to 5 decimal places (about 1 m at the

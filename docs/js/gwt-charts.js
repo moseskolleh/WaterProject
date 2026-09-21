@@ -2305,6 +2305,12 @@
    * Bullom shore reads as ocean. */
   var MAP_SEA = '#D9E6EF';
   var MAP_NOT_MAPPED = '#EDEBE7';
+  /* The land across the border, and the neutral fill under an administrative
+   * map: carto.FOREIGN_LAND and carto.LAND in the Python engine. Guinea and
+   * Liberia used to take the same blue as the Atlantic on every map, so a
+   * site near the northern border looked like a site on the coast. */
+  var MAP_FOREIGN_LAND = '#F2F0EC';
+  var MAP_LAND = '#FBFAF8';
 
   /* A muted geological palette, keyed by the bundled USGS unit code. The
    * Python engine reads the same table in groundwater/mapping/cartography.py
@@ -2315,15 +2321,54 @@
    * The colours carried in the data are the USGS sheet's own - pure blue,
    * magenta, red - and three saturated hues fighting each other is what made
    * these read as a school atlas. The aquifer layer keeps its source colours,
-   * because there the colour IS the classification. */
+   * because there the colour IS the classification.
+   *
+   * Each tint is at least 0.05 of relative luminance from every other and
+   * from the sea, the paper and the not-mapped tone, so the units stay apart
+   * in greyscale. The Bullom Group was 0.77 against a sea of 0.78 and
+   * vanished into the Atlantic on a photocopy, which is how most of these
+   * reports are actually read in the field. */
   var GEOLOGY_COLOURS = {
-    pCm: '#DCC9D2', Pi: '#C98D7A', Mi: '#D4A190',
-    O: '#BFD2C4', S: '#CFDCCB', Qe: '#EFE4C4', H2O: '#BBD3E0',
+    pCm: '#CDBAC6', Pi: '#B7715C', Mi: '#CC9A86',
+    O: '#9DB9A3', S: '#BCCDB6', Qe: '#E6D5A6', H2O: '#6F9BBF',
   };
+
+  /* sRGB relative luminance, 0 (black) to 1 (white): what a photocopy keeps.
+   * The same arithmetic as relative_luminance in the Python engine, so the
+   * separation above can be held to the same figure on either side. */
+  function relativeLuminance(colour) {
+    var hex = String(colour).replace('#', '');
+    var lin = [0, 2, 4].map(function (i) {
+      var c = parseInt(hex.substr(i, 2), 16) / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+  }
 
   function unitColour(props, spec) {
     if (spec && spec.sourceColours) return props.color || palette().neutral;
     return GEOLOGY_COLOURS[props.glg] || props.color || palette().neutral;
+  }
+
+  /* Youngest first, oldest last, and the things that are not rocks after
+   * both: the order a map key is read in, and _ERA_ORDER in the Python
+   * engine. Anything the list does not name ranks after all of it. */
+  var ERA_ORDER = ['Cenozoic', 'Mesozoic', 'Paleozoic', 'Precambrian',
+    'Non-geological'];
+
+  /* The era and the source code one key entry is ranked by. The geology
+   * layer carries them as `era` and `glg`; the aquifer layer carries the
+   * same two as `geology` and `code`, which is where load_hydrogeology reads
+   * them from in the Python engine. Sorting the key alphabetically by label
+   * instead put "Surface water" between two aquifer classes on the national
+   * aquifer map, where the Python key ends on it. */
+  function eraRank(props) {
+    var found = ERA_ORDER.indexOf(props.era || props.geology || '');
+    return found < 0 ? 99 : found;
+  }
+
+  function unitCode(props) {
+    return String(props.glg || props.code || '');
   }
 
   /* Which crosswalk region a district belongs to. The Python engine holds
@@ -2376,14 +2421,101 @@
     return same ? mine[0] : null;
   }
 
+  /* The chiefdom polygons, built once: the join that places a point in a
+   * district, and 166 polygons to rebuild on every redraw otherwise. */
+  var _chiefdomPolys = null;
+
+  function chiefdomPolys() {
+    if (!_chiefdomPolys) _chiefdomPolys = C.loadPolygons();
+    return _chiefdomPolys;
+  }
+
+  /* The district a point is in today.
+   *
+   * Through the chiefdom first and the crosswalk after it, as district_of
+   * does in the Python engine: the bundled district polygons are
+   * geoBoundaries as released, which predates the 2017 creation of Karene
+   * and Falaba, so a point in one of those two has no district polygon to
+   * fall in. Only a point inside no chiefdom at all - a gap in the
+   * simplified layer - falls back to the district polygons. */
+  function districtAtPoint(lat, lon) {
+    var crosswalk = C.loadChiefdomDistrict() || {};
+    var polys = chiefdomPolys();
+    for (var i = 0; i < polys.length; i++) {
+      if (C.polyContains(polys[i], lon, lat)) {
+        return crosswalk[polys[i].name] || polys[i].district || '';
+      }
+    }
+    var districts = (((GWT.data || {}).geo || {}).adminBoundaries || {}).features || [];
+    for (var d = 0; d < districts.length; d++) {
+      var props = districts[d].properties || {};
+      if (props.level === 'ADM0') continue;
+      if (pointInFeature(lon, lat, districts[d].geometry)) {
+        return String(props.name || props.shapeName || '');
+      }
+    }
+    return '';
+  }
+
+  /* Centroid of a ring, by the shoelace formula. */
+  function ringCentroid(ring) {
+    var area = 0, cx = 0, cy = 0, sx = 0, sy = 0;
+    for (var i = 0; i < ring.length - 1; i++) {
+      var cross = ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+      area += cross;
+      cx += (ring[i][0] + ring[i + 1][0]) * cross;
+      cy += (ring[i][1] + ring[i + 1][1]) * cross;
+    }
+    ring.forEach(function (v) { sx += v[0]; sy += v[1]; });
+    area /= 2;
+    if (Math.abs(area) < 1e-12) return [sx / ring.length, sy / ring.length];
+    return [cx / (6 * area), cy / (6 * area)];
+  }
+
+  /* The district a polygon lies in, for the crosswalk that names it.
+   *
+   * The crosswalk used to be scoped by the site's district, so the same
+   * Freetown Complex polygon was "Freetown Layered Complex" on a Rokel map
+   * and "Paleozoic Igneous", the age the crosswalk itself calls wrong, on a
+   * Kuntolo map 100 km away. A polygon is where it is. _unit_district in the
+   * Python engine. */
+  function unitDistrict(geometry) {
+    var rings = ringsOf(geometry);
+    if (!rings.length) return '';
+    var ring = rings[0];
+    var centre = ringCentroid(ring);
+    var found = districtAtPoint(centre[1], centre[0]);
+    if (found) return found;
+    /* a polygon straddling the border can have its centroid abroad; any
+     * vertex inside the country places it */
+    var stride = Math.max(1, Math.floor(ring.length / 24));
+    for (var i = 0; i < ring.length; i += stride) {
+      found = districtAtPoint(ring[i][1], ring[i][0]);
+      if (found) return found;
+    }
+    return '';
+  }
+
   /* The name to put in a map key: the formation first, then its own code,
    * then the USGS code the polygon was actually drawn from. The last is not
    * decoration - a 1:600,000 name sitting on a 1:5,000,000 line invites the
-   * reader to trust the line at 1:600,000. Matches Lithology.legend_label. */
-  function unitLabel(props, spec) {
-    var fallback = String(props.unit || 'unclassified');
-    if (!spec || !spec.nameLithology) return fallback;
-    var rock = lithologyFor(props.glg, spec.district);
+   * reader to trust the line at 1:600,000. Matches Lithology.legend_label.
+   *
+   * `district` is where the polygon is, which the caller works out; the
+   * site's own district is only the fallback for a polygon that could not
+   * be placed. */
+  function unitLabel(props, spec, district) {
+    var source = String(props.unit || 'unclassified');
+    if (!spec || !spec.nameLithology) return source;
+    /* A class the crosswalk has nothing to say about keeps the source's own
+     * wording, and on these maps it keeps the code beside it - label_with_code
+     * in the Python engine, which the unit maps that name lithology pass and
+     * the aquifer map does not. Dropping the code left a key entry reading
+     * "Holocene" where the Python one reads "Holocene (Qe)", with nothing on
+     * the figure tying the colour back to the layer it was drawn from. */
+    var fallback = props.glg ? source + ' (' + props.glg + ')' : source;
+    var rock = lithologyFor(props.glg,
+      district === undefined ? spec.district : district);
     if (!rock || !rock.formation_name) return fallback;
     var codes = [];
     if (rock.formation_code) codes.push(rock.formation_code.replace(/;/g, ', '));
@@ -2396,9 +2528,10 @@
    * age is not quietly rewritten: both are shown and the note says which is
    * which, because correcting somebody else's dataset in silence leaves a
    * reader unable to tell what they are looking at. */
-  function lithologyNote(props, spec) {
+  function lithologyNote(props, spec, district) {
     if (!spec || !spec.nameLithology) return '';
-    var rock = lithologyFor(props.glg, spec.district);
+    var rock = lithologyFor(props.glg,
+      district === undefined ? spec.district : district);
     if (!rock || String(rock.usgs_era_wrong).toLowerCase() !== 'yes') return '';
     return 'The source layer dates this polygon as ' + props.unit + '; it is ' +
       'the ' + rock.formation_name + ', ' + rock.era_actual + '. The boundary ' +
@@ -2565,39 +2698,158 @@
     return false;
   }
 
-  /* A polygon can cover a corner of the window without any sample point
-   * landing on it. Its own vertices give it away. */
-  function anyVertexInside(geometry, box) {
-    var found = false;
-    function scan(coords) {
-      if (found) return;
-      if (typeof coords[0] === 'number') {
-        if (coords[0] >= box[0] && coords[0] <= box[2] &&
-            coords[1] >= box[1] && coords[1] <= box[3]) found = true;
-        return;
-      }
-      coords.forEach(scan);
+  /* Does this polygon actually reach into the window?
+   *
+   * The same three tests as _ring_in_box in the Python engine, and for the
+   * same reason: two rectangles can overlap while the shapes inside them do
+   * not touch, and a key built on the bounding boxes alone named a
+   * consolidated sedimentary aquifer on a map of the Freetown peninsula
+   * because that unit's box reaches across a country the polygon does not.
+   * So: a vertex inside the window, a window corner inside the ring, or an
+   * edge of one crossing an edge of the other. Those three are the whole of
+   * it. The first is answered by the same pass that measures the ring, and
+   * the extents reject the rest of the layer before the expensive tests run:
+   * a national geology layer is 92 polygons and the reports draw several
+   * figures each. */
+  function ringInBox(geometry, box) {
+    return ringsOf(geometry).some(function (ring) {
+      return ringReachesBox(ring, box);
+    });
+  }
+
+  function ringReachesBox(ring, box) {
+    var lonMin = Infinity, lonMax = -Infinity, latMin = Infinity, latMax = -Infinity;
+    for (var i = 0; i < ring.length; i++) {
+      if (ring[i][0] < lonMin) lonMin = ring[i][0];
+      if (ring[i][0] > lonMax) lonMax = ring[i][0];
+      if (ring[i][1] < latMin) latMin = ring[i][1];
+      if (ring[i][1] > latMax) latMax = ring[i][1];
+      if (ring[i][0] >= box[0] && ring[i][0] <= box[2] &&
+          ring[i][1] >= box[1] && ring[i][1] <= box[3]) return true;
     }
-    if (geometry && geometry.coordinates) scan(geometry.coordinates);
-    return found;
+    if (!(lonMax >= box[0] && lonMin <= box[2] &&
+          latMax >= box[1] && latMin <= box[3])) return false;
+    var corners = [[box[0], box[1]], [box[2], box[1]],
+      [box[2], box[3]], [box[0], box[3]]];
+    for (var c = 0; c < corners.length; c++) {
+      if (pointInRing(corners[c][0], corners[c][1], ring)) return true;
+    }
+    return ringCrossesBoxEdge(ring, box);
+  }
+
+  /* The remaining case: a long thin polygon - a dyke, a river, a coastal
+   * strip - slicing clean through the window without a vertex landing in it
+   * and without swallowing a corner. */
+  function ringCrossesBoxEdge(ring, box) {
+    var sides = [
+      [[box[0], box[1]], [box[2], box[1]]],
+      [[box[2], box[1]], [box[2], box[3]]],
+      [[box[2], box[3]], [box[0], box[3]]],
+      [[box[0], box[3]], [box[0], box[1]]],
+    ];
+    function side(a, b, c) {
+      return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    }
+    for (var i = 0; i < ring.length - 1; i++) {
+      for (var s = 0; s < sides.length; s++) {
+        var q1 = sides[s][0], q2 = sides[s][1];
+        var d1 = side(q1, q2, ring[i]), d2 = side(q1, q2, ring[i + 1]);
+        var d3 = side(ring[i], ring[i + 1], q1);
+        var d4 = side(ring[i], ring[i + 1], q2);
+        if (d1 * d2 < 0 && d3 * d4 < 0) return true;
+      }
+    }
+    return false;
+  }
+
+  /* Shoelace area, unsigned: which part of a chiefdom is the one worth
+   * writing the name on when several are in view. */
+  function ringArea(ring) {
+    var sum = 0;
+    for (var i = 0; i < ring.length - 1; i++) {
+      sum += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+    }
+    return Math.abs(sum / 2);
+  }
+
+  /* Where to write an area's name, given only the parts of it in view.
+   *
+   * The centroid of the largest ring is the right answer for a whole country
+   * and the wrong one for a chiefdom clipped by the window: it lands outside
+   * the frame, and the name is either not drawn or drawn on the edge
+   * pointing at nothing. The mean of the vertices that are actually inside
+   * the window is inside the window by construction. _label_spot in the
+   * Python engine. */
+  function labelSpot(rings, box) {
+    var lon = 0, lat = 0, n = 0;
+    rings.forEach(function (ring) {
+      ring.forEach(function (v) {
+        if (v[0] > box[0] && v[0] < box[2] && v[1] > box[1] && v[1] < box[3]) {
+          lon += v[0]; lat += v[1]; n += 1;
+        }
+      });
+    });
+    return n < 3 ? null : [lon / n, lat / n];
   }
 
   /* ------------------------------------------------------------- furniture */
 
-  var GRATICULE_STEPS = [0.02, 0.05, 0.1, 0.25, 0.5, 1, 2, 5];
+  /* Coarsest first, the ladder _nice_interval walks in the Python engine. */
+  var GRATICULE_STEPS = [5, 2, 1, 0.5, 0.25, 0.2, 0.1, 0.05, 0.025, 0.02,
+    0.01, 0.005, 0.002, 0.001];
 
+  /* A round graticule interval giving three to six lines across.
+   *
+   * Five was the target and the steps were coarse, so a 1.2 degree window
+   * fell to a 0.1 degree step and thirteen labels ran into each other along
+   * the bottom edge. A degree label is about a tenth of the frame wide at
+   * this size; six across is the most that stay apart. */
   function graticuleStep(span) {
+    var target = span / 3.5;
     for (var i = 0; i < GRATICULE_STEPS.length; i++) {
-      if (span / GRATICULE_STEPS[i] <= 5) return GRATICULE_STEPS[i];
+      if (GRATICULE_STEPS[i] <= target) return GRATICULE_STEPS[i];
     }
     return GRATICULE_STEPS[GRATICULE_STEPS.length - 1];
   }
 
+  /* The ticks of one axis: every round multiple of the step that falls
+   * inside the frame, and nothing beyond it. A tick placed past the limit
+   * made the Python engine grow its axes to include it, which put a white
+   * strip on the national maps and moved every local window off its site;
+   * here the frame cannot grow, so the tick would simply be drawn outside
+   * the neatline, over the labels of the other axis. */
+  function graticuleTicks(lo, hi, step) {
+    var eps = step * 1e-6;
+    var ticks = [];
+    for (var v = Math.ceil(lo / step) * step; v <= hi + step / 2; v += step) {
+      if (v >= lo - eps && v <= hi + eps) ticks.push(v);
+    }
+    return ticks;
+  }
+
+  /* A coordinate as degrees and minutes, the way a map writes them.
+   *
+   * -13.5 is how a spreadsheet writes a longitude. A map writes 13 degrees
+   * 30 minutes West, and a hydrogeologist reading a GPS in the field is
+   * reading degrees and minutes. Written as a decimal to one place the ticks
+   * of a 0.05 degree graticule came out as "13.3°W" twice running, two lines
+   * three minutes apart carrying the same label. _dms in the Python engine. */
   function degreeLabel(value, axis) {
     var hemi = axis === 'lat' ? (value < 0 ? 'S' : 'N') : (value < 0 ? 'W' : 'E');
     var v = Math.abs(value);
-    var text = v >= 10 ? v.toFixed(1) : v.toFixed(2);
-    return text.replace(/\.?0+$/, '') + '°' + hemi;
+    var deg = Math.floor(v);
+    var minutes = (v - deg) * 60;
+    /* 12.99999 is sixty minutes past twelve, which is thirteen degrees, not
+     * "12°60'". Floating point put a tick just short of 13 W and the
+     * graticule on every map of the Western Area was labelled 12°60'W. */
+    if (minutes >= 59.95) { deg += 1; minutes = 0; }
+    if (minutes < 0.05) return deg + '°' + hemi;
+    var whole = C.pyRound(minutes, 0);
+    if (Math.abs(minutes - whole) < 0.05) {
+      return deg + '°' + (whole < 10 ? '0' + whole : String(whole)) + '′' + hemi;
+    }
+    var text = C.pyFixed(minutes, 1);
+    return deg + '°' + (text.length < 4 ? '0' + text : text) + '′' + hemi;
   }
 
   var SCALE_STEPS_KM = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
@@ -2606,15 +2858,32 @@
     var opts = options || {};
     var b = project.bounds;
 
-    /* graticule, labelled where it meets the neatline */
+    /* graticule, labelled where it meets the neatline. The ticks are spaced
+     * across the frame rather than across the data: the projection
+     * letterboxes the extent, so a window is drawn with a margin of real
+     * ground either side of it, and ticks laid out over the extent alone
+     * stopped short of the neatline with map still to go. */
     if (opts.graticule !== false) {
       var g = svgEl('g', { 'aria-hidden': 'true' });
-      var lonStep = graticuleStep(b.lonMax - b.lonMin);
-      var latStep = graticuleStep(b.latMax - b.latMin);
-      var lon = Math.ceil(b.lonMin / lonStep) * lonStep;
-      for (; lon <= b.lonMax + 1e-9; lon += lonStep) {
+      var frame = project.visibleBox();
+      /* One interval for both axes, taken from the wider span of the extent
+       * the map was asked for: carto.graticule calls _nice_interval on
+       * max(x1 - x0, y1 - y0) of its axis limits and rules both axes with
+       * the answer. A step worked out per axis from the letterboxed frame
+       * instead ruled the two edges differently - a 4.5 km window came out
+       * with a 1.2 minute graticule along the bottom and a 1.5 minute one up
+       * the side - and, because the frame is the wider of the two, it also
+       * stepped a 48 km window at 15 minutes where the Python one steps 12.
+       * The ticks are still laid across the frame rather than the extent,
+       * because the projection letterboxes the window and ticks spaced over
+       * the extent alone stopped short of the neatline with map still to go. */
+      var step = graticuleStep(Math.max(b.lonMax - b.lonMin, b.latMax - b.latMin));
+      graticuleTicks(frame[0], frame[2], step).forEach(function (lon) {
         var x = project(lon, b.latMax)[0];
-        if (x < rect.x + 14 || x > rect.x + rect.w - 14) continue;
+        /* clamped to the frame, and no label where its text would run off
+         * the neatline: a name half outside the frame points at nothing */
+        if (x < rect.x || x > rect.x + rect.w) return;
+        if (x < rect.x + 14 || x > rect.x + rect.w - 14) return;
         g.appendChild(svgEl('line', {
           x1: x, y1: rect.y, x2: x, y2: rect.y + rect.h,
           stroke: p.grid, 'stroke-width': 0.7, 'stroke-dasharray': '2 4',
@@ -2623,11 +2892,11 @@
           x: x, y: rect.y + rect.h + 11, 'text-anchor': 'middle',
           'font-size': 8.5, fill: p.muted, text: degreeLabel(lon, 'lon'),
         }));
-      }
-      var lat = Math.ceil(b.latMin / latStep) * latStep;
-      for (; lat <= b.latMax + 1e-9; lat += latStep) {
+      });
+      graticuleTicks(frame[1], frame[3], step).forEach(function (lat) {
         var y = project(b.lonMin, lat)[1];
-        if (y < rect.y + 12 || y > rect.y + rect.h - 12) continue;
+        if (y < rect.y || y > rect.y + rect.h) return;
+        if (y < rect.y + 12 || y > rect.y + rect.h - 12) return;
         g.appendChild(svgEl('line', {
           x1: rect.x, y1: y, x2: rect.x + rect.w, y2: y,
           stroke: p.grid, 'stroke-width': 0.7, 'stroke-dasharray': '2 4',
@@ -2636,7 +2905,7 @@
           x: rect.x - 4, y: y + 3, 'text-anchor': 'end',
           'font-size': 8.5, fill: p.muted, text: degreeLabel(lat, 'lat'),
         }));
-      }
+      });
       svg.appendChild(g);
     }
 
@@ -2695,6 +2964,246 @@
         'font-weight': 620, fill: p.inkSoft, text: 'N',
       }));
     }
+  }
+
+  /* ------------------------------------------- sea, and the land beyond it */
+
+  /* The land across the border that a window can see.
+   *
+   * The toolkit bundles no outline of Guinea or Liberia; the USGS layer
+   * covers the whole clip window and has no polygon over the sea, so its
+   * units are what tells land across the border from the Atlantic. The
+   * Python engine takes the same rings in foreign_land_rings(). */
+  function foreignLandFeatures(box) {
+    var layer = ((GWT.data || {}).geo || {}).geology || {};
+    var features = layer.features || [];
+    if (!box) return features;
+    return features.filter(function (feature) {
+      return ringInBox(feature.geometry, box);
+    });
+  }
+
+  /* Fill the frame as sea, then lay the country on top of it.
+   *
+   * Sierra Leone has 400 km of coast and this toolkit's busiest site is on
+   * the Freetown peninsula, where half of every window is Atlantic. Drawn as
+   * the page it read as blank paper, so the coastline looked like the edge
+   * of the data rather than the edge of the land.
+   *
+   * Everything outside the national outline is filled, and across the land
+   * border that is Guinea or Liberia, not ocean: those are painted in the
+   * paper tone between the two, which is what sea_and_neighbours does in the
+   * Python engine. The land across the border is passed in by the caller,
+   * which knows what it is; without it everything outside the outline stays
+   * sea. The country's own ground is painted over them again, so a foreign
+   * polygon reaching across the border cannot tint the inside. */
+  function seaAndNeighbours(canvas, outline, background, foreign) {
+    if (!outline || !outline.length) return;
+    canvas.layer.appendChild(svgEl('rect', {
+      x: canvas.rect.x, y: canvas.rect.y,
+      width: canvas.rect.w, height: canvas.rect.h, fill: MAP_SEA,
+    }));
+    (foreign || []).forEach(function (feature) {
+      canvas.layer.appendChild(svgEl('path', {
+        d: geometryPath(feature.geometry, canvas.project),
+        fill: MAP_FOREIGN_LAND, stroke: 'none',
+      }));
+    });
+    outline.forEach(function (feature) {
+      canvas.layer.appendChild(svgEl('path', {
+        d: geometryPath(feature.geometry, canvas.project),
+        fill: background, stroke: 'none',
+      }));
+    });
+  }
+
+  /* One counter for every clip path this file mints, because an id that
+   * repeats on a page silently makes two figures share one shape. */
+  var clipSeq = 0;
+
+  /* Everything beyond the national boundary, painted out as sea, with the
+   * land across the border put back on top of it.
+   *
+   * The unit layers are clipped to a rectangle, not to the border, so a
+   * polygon that straddles it runs on across Guinea and across the Atlantic;
+   * this is what stops it, and it is the reason the key can promise that
+   * every colour in it is findable inside the country. A rectangle with the
+   * country rings punched out of it, even-odd filled - the compound path
+   * _mask_outside_country builds in the Python engine - then the foreign
+   * polygons clipped to that same shape, so nothing lands inside. */
+  function maskOutsideCountry(canvas, outline, box) {
+    if (!outline || !outline.length) return;
+    var r = canvas.rect;
+    var d = 'M' + r.x + ' ' + r.y + 'L' + (r.x + r.w) + ' ' + r.y +
+      'L' + (r.x + r.w) + ' ' + (r.y + r.h) + 'L' + r.x + ' ' + (r.y + r.h) + 'Z';
+    outline.forEach(function (feature) {
+      d += ' ' + geometryPath(feature.geometry, canvas.project);
+    });
+    clipSeq += 1;
+    var maskId = 'gwt-sea-' + clipSeq;
+    var defs = svgEl('defs');
+    defs.appendChild(svgEl('clipPath', { id: maskId }, [svgEl('path', {
+      d: d, 'clip-rule': 'evenodd',
+    })]));
+    canvas.svg.insertBefore(defs, canvas.svg.firstChild);
+    canvas.layer.appendChild(svgEl('path', {
+      d: d, 'fill-rule': 'evenodd', fill: MAP_SEA, stroke: 'none',
+    }));
+    var neighbours = svgEl('g', { 'clip-path': 'url(#' + maskId + ')' });
+    foreignLandFeatures(box).forEach(function (feature) {
+      neighbours.appendChild(svgEl('path', {
+        d: geometryPath(feature.geometry, canvas.project),
+        fill: MAP_FOREIGN_LAND, stroke: 'none',
+      }));
+    });
+    canvas.layer.appendChild(neighbours);
+  }
+
+  /* Everything the caller draws into the layer is held inside the neatline.
+   * A chiefdom boundary or a geological contact that leaves the window runs
+   * on over the title and the key otherwise, and the frame stops meaning
+   * anything. */
+  function clipToFrame(canvas) {
+    clipSeq += 1;
+    var clipId = 'gwt-clip-' + clipSeq;
+    var defs = svgEl('defs');
+    defs.appendChild(svgEl('clipPath', { id: clipId }, [svgEl('rect', {
+      x: canvas.rect.x, y: canvas.rect.y,
+      width: canvas.rect.w, height: canvas.rect.h,
+    })]));
+    canvas.svg.insertBefore(defs, canvas.svg.firstChild);
+    canvas.layer.setAttribute('clip-path', 'url(#' + clipId + ')');
+  }
+
+  /* --------------------------------------------------------- place names */
+
+  /* Where each corner's furniture sits, in fractions of the frame measured
+   * from its lower left, as _INSET_BOXES in the Python engine. One table, so
+   * the plate that is drawn and the box the names are kept out of are the
+   * same rectangle. */
+  var INSET_BOXES = {
+    'lower right': [0.695, 0.02, 0.29, 0.34],
+    'upper left': [0.015, 0.63, 0.29, 0.34],
+    'lower left': [0.015, 0.02, 0.29, 0.34],
+    'upper right': [0.695, 0.63, 0.29, 0.34],
+  };
+
+  /* The same rectangle in pixels. SVG counts y downwards and the table
+   * upwards, so the top edge is what is left above the box. */
+  function insetRect(rect, corner) {
+    var f = INSET_BOXES[corner] || INSET_BOXES['lower right'];
+    return {
+      x: rect.x + rect.w * f[0], y: rect.y + rect.h * (1 - f[1] - f[3]),
+      w: rect.w * f[2], h: rect.h * f[3],
+    };
+  }
+
+  /* And the same plate in lon/lat, for the label placement, which works in
+   * map units. Read back through the projection rather than worked out from
+   * the window: the frame is letterboxed around the window, so the corner of
+   * one is not the corner of the other, and a name is only safe if the box
+   * it is kept out of is the rectangle the plate really covers. */
+  function furnitureBox(canvas, corner) {
+    var r = insetRect(canvas.rect, corner);
+    var sw = canvas.project.invert(r.x, r.y + r.h);
+    var ne = canvas.project.invert(r.x + r.w, r.y);
+    return [sw[0], sw[1], ne[0], ne[1]];
+  }
+
+  function insideBox(lon, lat, box) {
+    return box[0] <= lon && lon <= box[2] && box[1] <= lat && lat <= box[3];
+  }
+
+  /* Keep the labels that fit, drop the ones that would overlap.
+   *
+   * A name nobody can read is worse than no name: the reader cannot tell
+   * which polygon the legible one belongs to either. Greedy, largest-first,
+   * over estimated text boxes rather than points - testing centre-to-centre
+   * distance kept "Western Area Urban" and "Western Area Rural" because
+   * their centroids are far enough apart, while the words themselves,
+   * fifteen characters wide, ran straight through each other. `priority`
+   * (bigger wins a collision, the polygon's area is the obvious choice)
+   * keeps the name of the chiefdom filling the frame and drops the sliver
+   * clipped by the corner. `reserved` are boxes nothing may be written
+   * over: the locator inset, the key. carto.declutter in the Python engine,
+   * with the same estimates, so the two engines print the same names. */
+  function declutter(candidates, extent, minSepFrac, priority, reserved) {
+    if (!candidates.length) return [];
+    var sep = minSepFrac || 0.052;
+    var width = extent[2] - extent[0], height = extent[3] - extent[1];
+    var charW = width * sep * 0.30, lineH = height * sep * 0.62;
+    var order = candidates.map(function (c, i) { return i; });
+    if (priority) {
+      order.sort(function (a, b) { return priority[b] - priority[a]; });
+    }
+    var kept = [], boxes = (reserved || []).slice();
+    order.forEach(function (i) {
+      var lon = candidates[i][0], lat = candidates[i][1], text = candidates[i][2];
+      var halfW = text.length * charW / 2, halfH = lineH / 2;
+      var box = [lon - halfW, lat - halfH, lon + halfW, lat + halfH];
+      /* a name whose word runs off the frame, sideways or vertically,
+       * points at nothing */
+      if (!(extent[0] < lon && lon < extent[2] &&
+            extent[1] < lat && lat < extent[3])) return;
+      if (box[0] < extent[0] || box[2] > extent[2]) return;
+      if (box[1] < extent[1] || box[3] > extent[3]) return;
+      var clash = boxes.some(function (b) {
+        return box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1];
+      });
+      if (clash) return;
+      kept.push(candidates[i]);
+      boxes.push(box);
+    });
+    return kept;
+  }
+
+  /* A place name with a cut-out behind it, so it reads over any fill.
+   * Without the halo the name takes the colour of whatever it landed on and
+   * a third of the labels become unreadable. */
+  function placeMapLabel(svg, x, y, text, p, options) {
+    var opts = options || {};
+    svg.appendChild(svgEl('text', {
+      x: x, y: y, 'text-anchor': 'middle', 'font-size': opts.size || 8,
+      'font-style': opts.style || 'italic', fill: opts.fill || p.muted,
+      stroke: p.surface, 'stroke-width': 2.6, 'paint-order': 'stroke',
+      text: text,
+    }));
+  }
+
+  /* -------------------------------------------------------- scale caveat */
+
+  /* Both bundled layers are published at 1:5,000,000. */
+  var USGS_SOURCE_SCALE = 5000000;
+  var BGS_SOURCE_SCALE = 5000000;
+  var HONEST_WINDOW_KM = 60;
+
+  /* The BGS Africa Groundwater Atlas user guide (OR/21/063, section 2.2) on
+   * what its country maps are for. Quoted rather than paraphrased: it is the
+   * publisher's own limit on its own data, and it is more use to a reader
+   * deciding what to trust than any sentence this toolkit could write. */
+  var BGS_PUBLISHER_NOTE = 'Its publisher states these maps are "not ' +
+    'suitable for providing detailed information on geology and ' +
+    'hydrogeology at a sub-national (e.g. catchment) scale".';
+
+  /* The note a small window over a small-scale dataset has earned.
+   *
+   * Empty for a national map, which is the scale the data was published at
+   * and needs no apology. `radiusKm` is the half-width of the window that
+   * was actually drawn, never the one that was asked for: a radius the site
+   * could not be placed in falls back to the national map, and a national
+   * map carrying "4% of this 60 km window" asserts something that is not on
+   * it. _scale_caveat in the Python engine, word for word. */
+  function scaleCaveat(radiusKm, sourceScale, publisherNote) {
+    if (radiusKm === null || radiusKm === undefined || !sourceScale ||
+        radiusKm > HONEST_WINDOW_KM) return '';
+    var lineKm = sourceScale * 0.0005 / 1000;   /* a 0.5 mm line on the sheet */
+    var share = lineKm / (2 * radiusKm) * 100;
+    var note = 'Drawn from a 1:' + Number(sourceScale).toLocaleString('en-US') +
+      ' dataset: a boundary on this map is placed to roughly ' +
+      C.formatG(lineKm) + ' km, which is ' + C.pyFixed(share, 0) +
+      '% of this ' + C.formatG(2 * radiusKm) + ' km window. Read the ' +
+      'contacts as regional context, not as mapped ground.';
+    return (note + ' ' + (publisherNote || '')).trim();
   }
 
   /* The legend is measured before the map is laid out, because how many rows
@@ -2923,6 +3432,13 @@
     }
 
     var canvas = mapCanvas(spec, legendItems, features);
+    /* plot_coverage_choropleth paints sea and neighbouring land before the
+     * areas (regional.py:1170), as the portfolio map does. The browser's
+     * coverage map drew the country on blank paper, so the Atlantic and a
+     * country with no figures looked the same. */
+    clipToFrame(canvas);
+    seaAndNeighbours(canvas, spec.outline || [], MAP_LAND,
+      foreignLandFeatures(canvas.project.visibleBox()));
     features.forEach(function (feature) {
       var v = spec.value(feature);
       var cls = classify(v, breaks);
@@ -2993,7 +3509,47 @@
 
   /* ---------------------------------------------------------- thematic map */
 
-  var clipSeq = 0;
+  /* The districts whose ground the Rokel River Group belt runs under, as
+   * the crosswalk's regions name them. The Python engine tests
+   * region_of(district) against the same two. */
+  var ROKEL_BELT_REGIONS = ['coastal plain', 'north and centre'];
+
+  /* The extent a whole-country map covers: the national outline's own bounds
+   * with the margin the Python engine puts round them, 0.15 degrees east and
+   * west and 0.12 north and south. Null when no outline was supplied. */
+  function countryBox(outline) {
+    if (!outline || !outline.length) return null;
+    var b = featureBounds(outline);
+    if (!isFinite(b.lonMin)) return null;
+    return [b.lonMin - 0.15, b.latMin - 0.12, b.lonMax + 0.15, b.latMax + 0.12];
+  }
+
+  /* Is there ground in the window that the source layer draws no polygon
+   * for?
+   *
+   * The bundled layers stop short of the coast in places - the Bullom shore
+   * and the Sherbro estuaries most of all - and that ground is painted the
+   * not-mapped tint. Only when it is actually on screen, though: a window
+   * over the interior has no gaps in it, and a key entry for something not
+   * on the map is its own small lie. The same 56 by 56 grid as
+   * _unmapped_land_in_view in the Python engine, so the two engines agree
+   * on whether the entry has been earned. */
+  function unmappedLandInWindow(outline, units, box, samples) {
+    if (!outline || !outline.length) return false;
+    var n = samples || 56;
+    for (var i = 0; i < n; i++) {
+      var lon = box[0] + (box[2] - box[0]) * i / (n - 1);
+      for (var j = 0; j < n; j++) {
+        var lat = box[1] + (box[3] - box[1]) * j / (n - 1);
+        if (!onLand(lon, lat, outline)) continue;
+        var covered = units.some(function (unit) {
+          return pointInFeature(lon, lat, unit.geometry);
+        });
+        if (!covered) return true;
+      }
+    }
+    return false;
+  }
 
   /* A categorical polygon layer - geology or aquifer productivity - clipped
    * to a window around the site when there is one.
@@ -3001,11 +3557,11 @@
    * The layers carry their own published colours, so the map reads the same
    * way the source sheet does rather than being recoloured here.
    *
-   * The legend names the units that actually cover ground inside the window,
-   * found by sampling the window on a grid. Selecting by bounding box, which
-   * is how the polygons are chosen for drawing, would put a unit in the
-   * legend whose only claim on the window is that its bounding box reaches
-   * across the country. */
+   * The legend names the units that cover ground inside the window that was
+   * drawn, by the same three tests the Python engine uses in _ring_in_box.
+   * Selecting by bounding box, which is the cheap first pass, would put a
+   * unit in the legend whose only claim on the window is that its box
+   * reaches across a country its polygon does not. */
   function thematicMap(spec) {
     var key = spec.key || 'unit';
     var window_ = spec.window || null;
@@ -3020,7 +3576,7 @@
 
     var features = all, clip = null;
     if (window_) {
-      var dLat = window_.radiusKm / 110.574;
+      var dLat = window_.radiusKm / 111.320;
       var dLon = window_.radiusKm /
         (111.320 * Math.max(Math.cos(window_.lat * Math.PI / 180), 1e-6));
       clip = [window_.lon - dLon, window_.lat - dLat,
@@ -3033,53 +3589,83 @@
       if (!features.length) features = all;
     }
 
-    /* the window itself sets the extent, so a 40 km map is a 40 km map even
-     * when the polygon covering it runs the length of the country */
-    var extent = clip
-      ? [{ geometry: { type: 'Polygon', coordinates: [[
-        [clip[0], clip[1]], [clip[2], clip[1]], [clip[2], clip[3]], [clip[0], clip[3]],
-      ]] } }]
-      : features;
+    /* The window itself sets the extent, so a 40 km map is a 40 km map even
+     * when the polygon covering it runs the length of the country. With no
+     * window, the country sets it: _plot_units_map frames on the outline's
+     * own bounds with a fixed margin (regional.py:735-737), where taking the
+     * extent from the unit polygons framed the national maps on ground that
+     * runs into Guinea and Liberia and drew them at a wider scale than the
+     * Python ones, down to ruling the graticule a step coarser. */
+    var nationalBox = clip ? null : countryBox(outline);
+    var boxExtent = function (bx) {
+      return [{ geometry: { type: 'Polygon', coordinates: [[
+        [bx[0], bx[1]], [bx[2], bx[1]], [bx[2], bx[3]], [bx[0], bx[3]],
+      ]] } }];
+    };
+    var extent = clip ? boxExtent(clip)
+      : (nationalBox ? boxExtent(nationalBox) : features);
 
-    /* Which units are really in view. The frame shows more than the window
-     * asked for - the projection letterboxes it - so the box to sample is
-     * the one the frame actually covers, which mapCanvas works out. */
-    function legendFor(project) {
-      var box = project.visibleBox();
-      var seen = [], gaps = false;
-      function note(feature) {
-        var props = feature.properties || {};
+    /* Which units are really in the window, and where each of them is.
+     *
+     * The key is scoped to the window that was drawn - the box the title and
+     * the scale caveat describe - and not to the whole frame: the projection
+     * letterboxes the window, so the frame shows a few kilometres of ground
+     * beyond it either side, and a unit that reaches no further than that
+     * margin is a colour the reader is sent hunting the map for. The Python
+     * engine keys on the same box, its axes being the window exactly.
+     *
+     * Each polygon carries the district it is in rather than the site's,
+     * because the crosswalk that names the rock is a regional table: scoped
+     * by the site, the same Freetown Complex polygon came out as the
+     * Freetown Layered Complex on one map and as "Paleozoic Igneous", the
+     * age the crosswalk itself calls wrong, on another 100 km away. */
+    var inWindow = (clip ? features.filter(function (feature) {
+      return ringInBox(feature.geometry, clip);
+    }) : features).map(function (feature) {
+      return {
+        feature: feature,
+        district: unitDistrict(feature.geometry) || spec.district,
+      };
+    });
+
+    /* Is any of the ground in the key's box unmapped? Settled here rather
+     * than inside legendFor because the entry has a note to go with it, and
+     * the note has to be written before mapCanvas measures the credit
+     * block. Without a window the box is the national extent the Python
+     * engine's axes carry - the country's own bounds with its margin round
+     * them - because the frame is not laid out yet. */
+    var keyBox = clip || countryBox(outline);
+    var gapInView = !!keyBox && unmappedLandInWindow(
+      outline, inWindow.map(function (placed) { return placed.feature; }),
+      keyBox);
+
+    function legendFor() {
+      var seen = [];
+      inWindow.forEach(function (placed) {
+        var props = placed.feature.properties || {};
         var label = spec.nameLithology
-          ? unitLabel(props, spec)
+          ? unitLabel(props, spec, placed.district)
           : String(props[key] || 'unclassified');
         if (!seen.some(function (s) { return s.label === label; })) {
-          seen.push({ label: label, colour: unitColour(props, spec) });
+          seen.push({ label: label, colour: unitColour(props, spec),
+            era: eraRank(props), code: unitCode(props) });
         }
-      }
-      var STEPS = 22;
-      for (var i = 0; i <= STEPS; i++) {
-        for (var j = 0; j <= STEPS; j++) {
-          var lon = box[0] + (box[2] - box[0]) * i / STEPS;
-          var lat = box[1] + (box[3] - box[1]) * j / STEPS;
-          var hit = null;
-          for (var f = 0; f < features.length; f++) {
-            if (pointInFeature(lon, lat, features[f].geometry)) {
-              hit = features[f]; break;
-            }
-          }
-          /* A sample with no unit under it is only a gap in the data if
-           * it is on land; over the Atlantic it is just the sea. */
-          if (!hit) { gaps = gaps || onLand(lon, lat, outline); continue; }
-          note(hit);
-        }
-      }
-      /* a unit can cross a corner without a sample landing on it */
-      features.forEach(function (feature) {
-        if (anyVertexInside(feature.geometry, box)) note(feature);
       });
-      seen.sort(function (a, b) { return a.label.localeCompare(b.label); });
+      /* Era first and the source's own code after it, which is how the
+       * Python engine orders a key: youngest at the top, the basement under
+       * it, the non-geological classes last. The code is compared as Python
+       * compares strings, by code point, rather than by the locale's
+       * collation. */
+      seen.sort(function (a, b) {
+        if (a.era !== b.era) return a.era - b.era;
+        return a.code < b.code ? -1 : (a.code > b.code ? 1 : 0);
+      });
       var items = seen.slice();
-      if (gaps) {
+      /* ground the source draws nothing for, named in the key rather than
+       * left as an unexplained tint: beige with nothing beside it leaves a
+       * reader guessing whether it is sea, a gap, or a unit whose colour
+       * they have misread */
+      if (gapInView) {
         items.push({ label: 'Not mapped at this scale',
           colour: MAP_NOT_MAPPED });
       }
@@ -3095,13 +3681,43 @@
 
     /* An age the source has wrong is said out loud rather than silently
      * corrected, so it has to be in the credit block before mapCanvas
-     * measures it. Driven by the polygons that will be drawn, so a window
+     * measures it. Driven by the polygons the key will name, so a window
      * that does not reach the Freetown peninsula carries no note about it. */
     var notes = [];
-    features.forEach(function (feature) {
-      var n = lithologyNote(feature.properties || {}, spec);
+    inWindow.forEach(function (placed) {
+      var n = lithologyNote(placed.feature.properties || {}, spec, placed.district);
       if (n && notes.indexOf(n) < 0) notes.push(n);
     });
+    /* the gap entry says what the tint is; this says why there is one, so a
+     * reader is not left deciding for themselves whether the beige is sea,
+     * a hole in the data, or a colour they have misread */
+    if (gapInView) {
+      notes.push('The not-mapped tint is land inside Sierra Leone that the ' +
+        'source layer draws no polygon for; at this scale its coastal units ' +
+        'stop short of the shore.');
+    }
+    /* The Rokel River Group belt sits inside the USGS Precambrian polygon,
+     * which the 1:5,000,000 map does not separate from the granite around
+     * it. The aquifer map beside this one shows the belt as fracture flow in
+     * indurated sediments, and a reader comparing the two figures was given
+     * nothing to reconcile them with. */
+    if (spec.nameLithology &&
+        ROKEL_BELT_REGIONS.indexOf(regionOf(spec.district)) >= 0 &&
+        inWindow.some(function (placed) {
+          return (placed.feature.properties || {}).glg === 'pCm';
+        })) {
+      notes.push('The Precambrian polygon here spans both the Leonean ' +
+        'granite-gneiss and the Rokel River Group belt (Port Loko, Kambia, ' +
+        'Moyamba, Tonkolili), which the 1:5,000,000 map does not separate; ' +
+        'the aquifer map shows the belt as fracture flow in indurated ' +
+        'sediments.');
+    }
+    /* the window that was drawn, not the one that was asked for: without a
+     * position there is no window and the national map is the scale the
+     * data was published at, which needs no apology */
+    var caveat = scaleCaveat(window_ ? window_.radiusKm : null,
+      spec.sourceScale, spec.publisherNote);
+    if (caveat) notes.push(caveat);
     var credited = Object.assign({}, spec);
     if (notes.length) {
       credited.credit = [spec.credit, notes.join('  ')].filter(Boolean).join('  ');
@@ -3110,31 +3726,12 @@
     var canvas = mapCanvas(credited, legendFor, extent);
     var p = canvas.palette;
 
-    clipSeq += 1;
-    var clipId = 'gwt-clip-' + clipSeq;
-    var defs = svgEl('defs');
-    defs.appendChild(svgEl('clipPath', { id: clipId }, [svgEl('rect', {
-      x: canvas.rect.x, y: canvas.rect.y,
-      width: canvas.rect.w, height: canvas.rect.h,
-    })]));
-    canvas.svg.insertBefore(defs, canvas.svg.firstChild);
-    canvas.layer.setAttribute('clip-path', 'url(#' + clipId + ')');
+    clipToFrame(canvas);
 
-    /* Sea first, then the land, then the units on top of it. What is left
-     * showing in the land tint is ground the source layer draws nothing
-     * for, and the key names it. */
-    if (outline.length) {
-      canvas.layer.appendChild(svgEl('rect', {
-        x: canvas.rect.x, y: canvas.rect.y,
-        width: canvas.rect.w, height: canvas.rect.h, fill: MAP_SEA,
-      }));
-      outline.forEach(function (feature) {
-        canvas.layer.appendChild(svgEl('path', {
-          d: geometryPath(feature.geometry, canvas.project),
-          fill: MAP_NOT_MAPPED, stroke: 'none',
-        }));
-      });
-    }
+    /* Sea first, then the country, then the units on top of it. What is
+     * left showing in the land tint is ground the source layer draws
+     * nothing for, and the key names it. */
+    seaAndNeighbours(canvas, outline, MAP_NOT_MAPPED);
 
     features.forEach(function (feature) {
       var props = feature.properties || {};
@@ -3144,6 +3741,9 @@
         stroke: p.surface, 'stroke-width': 0.5,
       }, [svgEl('title', { text: String(props[key] || 'unclassified') })]));
     });
+    /* and the units stop at the border: what runs on past it is sea, or
+     * Guinea and Liberia in the paper tone */
+    maskOutsideCountry(canvas, outline, clip || canvas.project.visibleBox());
     (spec.context || []).forEach(function (feature) {
       canvas.layer.appendChild(svgEl('path', {
         d: geometryPath(feature.geometry, canvas.project), fill: 'none',
@@ -3197,6 +3797,17 @@
 
     var canvas = mapCanvas(spec, legendItems, extent);
     var p = canvas.palette;
+    clipToFrame(canvas);
+    /* A location map of a coastal district is half Atlantic and the rest of
+     * the frame is Guinea; drawn as the page, both read as blank paper and
+     * the coastline looked like the edge of the data. The national outline
+     * is taken from the context layer when the caller has not named it,
+     * because that is how the boundary layers arrive. */
+    var outline = spec.outline || context.filter(function (feature) {
+      return (feature.properties || {}).level === 'ADM0';
+    });
+    seaAndNeighbours(canvas, outline, MAP_LAND,
+      foreignLandFeatures(canvas.project.visibleBox()));
     context.forEach(function (feature) {
       canvas.layer.appendChild(svgEl('path', {
         d: geometryPath(feature.geometry, canvas.project),
@@ -3207,6 +3818,29 @@
           (feature.properties || {}).shapeName || ''),
       })]));
     });
+    /* The districts were drawn as shapes with a hover title and nothing
+     * written on them, so a printed location map named no district at all.
+     * The same declutter the study-area map uses keeps a name off its
+     * neighbours and off the frame. */
+    if (spec.labelContext) {
+      var nameBox = canvas.project.visibleBox();
+      var nameCandidates = [];
+      context.forEach(function (feature) {
+        var props = feature.properties || {};
+        var text = String(props.name || props.shapeName || '');
+        if (!text) return;
+        var rings = ringsOf(feature.geometry);
+        if (!rings.length) return;
+        var centre = ringCentroid(rings[0]);
+        nameCandidates.push([centre[0], centre[1], text]);
+      });
+      declutter(nameCandidates, nameBox, 0.06).forEach(function (candidate) {
+        var at = canvas.project(candidate[0], candidate[1]);
+        placeMapLabel(canvas.layer, at[0], at[1], candidate[2], p,
+          { size: 7.5, fill: p.muted });
+      });
+    }
+
     drawMapPoints(canvas, points.map(function (pt) {
       return Object.assign({ kind: 'diamond', size: 6.5 }, pt);
     }));
@@ -3235,13 +3869,11 @@
    * the inset is what makes the figure answer "where is this?" as well as
    * "what is here?". */
   function locatorInset(canvas, outline, window_, corner) {
-    var rect = canvas.rect;
-    var w = rect.w * 0.29, h = rect.h * 0.30;
-    var margin = 6;
-    var x = corner.indexOf('right') >= 0
-      ? rect.x + rect.w - w - margin : rect.x + margin;
-    var y = corner.indexOf('lower') >= 0
-      ? rect.y + rect.h - h - margin : rect.y + margin;
+    /* the plate and the box the place names are kept out of are one
+     * rectangle, read from the same table, so a name cannot be dropped for
+     * furniture that turns out to sit somewhere else */
+    var plate = insetRect(canvas.rect, corner);
+    var x = plate.x, y = plate.y, w = plate.w, h = plate.h;
     var p = canvas.palette;
     var titleH = 12;
     var group = svgEl('g');
@@ -3264,7 +3896,7 @@
       }));
     });
     if (window_) {
-      var dLat = window_.radiusKm / 110.574;
+      var dLat = window_.radiusKm / 111.320;
       var dLon = window_.radiusKm /
         (111.320 * Math.max(Math.cos(window_.lat * Math.PI / 180), 1e-6));
       var a = project(window_.lon - dLon, window_.lat + dLat);
@@ -3287,10 +3919,17 @@
     canvas.svg.appendChild(group);
   }
 
-  /* Which corner of the frame the inset can have: the one with the fewest
-   * points in it. Fixing it to a corner drew a survey point underneath the
-   * inset on the first real site this was tried on. */
-  function freeMapCorner(canvas, points) {
+  /* The two corners the furniture can have, emptiest first: the inset takes
+   * the first and the key the second. Fixing them to a corner drew a survey
+   * point underneath the inset on the first real site this was tried on.
+   *
+   * Counted from the DATA alone, as _corner_occupancy does in the Python
+   * engine: counting place names as occupancy put the inset on top of a
+   * survey point, because three droppable labels in one corner outvoted the
+   * one thing on the map that cannot move. The scale bar owns the lower
+   * left and the north arrow the upper right, so these two are what is
+   * left, and on a tie the inset keeps the lower right. */
+  function freeMapCorners(canvas, points) {
     var rect = canvas.rect;
     var counts = { 'lower right': 0, 'upper left': 0 };
     (points || []).forEach(function (point) {
@@ -3299,8 +3938,69 @@
       if (fx > 0.62 && fy > 0.58) counts['lower right'] += 1;
       if (fx < 0.38 && fy < 0.42) counts['upper left'] += 1;
     });
-    return counts['upper left'] <= counts['lower right']
-      ? 'upper left' : 'lower right';
+    return counts['lower right'] <= counts['upper left']
+      ? ['lower right', 'upper left'] : ['upper left', 'lower right'];
+  }
+
+  /* The chiefdoms the bundled boundary layer truncated to fifteen
+   * characters. "Sanda Magbolont" and "Bureh Kasseh Ma" went onto client
+   * maps that way; the layer name stays the key every crosswalk joins on,
+   * and this is what is printed. The table is bundled as chiefdomNames, and
+   * a bundle built before it existed simply leaves the layer's own spelling
+   * on the map rather than dropping the name. chiefdom_full_names in the
+   * Python engine. */
+  function chiefdomFullNames() {
+    var rows = ((GWT.data || {}).chiefdomNames) || [];
+    var out = {};
+    rows.forEach(function (row) {
+      var layer = String(row.layer_name || '').trim();
+      if (layer) out[layer] = String(row.full_name || '').trim() || layer;
+    });
+    return out;
+  }
+
+  function chiefdomLabel(name) {
+    var layer = String(name || '').trim();
+    return chiefdomFullNames()[layer] || layer;
+  }
+
+  /* A study-area map of a site with a fix spans this much either side of it
+   * unless the overlay points need more: at 10 km the village, the
+   * soundings and the recommended point are told apart, which at the old
+   * fixed 40 km (an 80 km window) they never were. */
+  var STUDY_AREA_RADIUS_KM = 10;
+  var STUDY_AREA_CEILING_KM = 40;
+
+  /* The half-width of the study-area map, from what has to fit on it.
+   * study_area_radius_km in the Python engine, which the reports size their
+   * window with; the ceiling is the local-window setting the caller asked
+   * for, never the figure worked out here. */
+  function studyAreaRadiusKm(centre, points, ceilingKm) {
+    var ceiling = ceilingKm || STUDY_AREA_CEILING_KM;
+    var lats = [], lons = [];
+    function add(lat, lon) {
+      if (lat === null || lat === undefined || lon === null || lon === undefined) return;
+      lats.push(Number(lat)); lons.push(Number(lon));
+    }
+    if (centre) add(centre.lat, centre.lon);
+    (points || []).forEach(function (point) { add(point.lat, point.lon); });
+    if (lats.length < 2) return Math.min(STUDY_AREA_RADIUS_KM, ceiling);
+    /* the map is centred on the site, so what has to fit is the farthest
+     * point from it, not half the spread between the points */
+    var cLat = centre ? Number(centre.lat) : 0, cLon = centre ? Number(centre.lon) : 0;
+    if (!centre) {
+      cLat = lats.reduce(function (a, b) { return a + b; }, 0) / lats.length;
+      cLon = lons.reduce(function (a, b) { return a + b; }, 0) / lons.length;
+    }
+    var cos = Math.cos(cLat * Math.PI / 180);
+    var farthest = 0;
+    for (var i = 0; i < lats.length; i++) {
+      farthest = Math.max(farthest, Math.sqrt(
+        Math.pow((lats[i] - cLat) * 111.32, 2) +
+        Math.pow((lons[i] - cLon) * 111.32 * cos, 2)));
+    }
+    /* the farthest point with a quarter of the frame to spare beyond it */
+    return Math.min(Math.max(STUDY_AREA_RADIUS_KM, farthest * 1.25 + 1), ceiling);
   }
 
   /* The study area at a readable scale: the chiefdom boundaries around the
@@ -3310,7 +4010,18 @@
     var window_ = spec.window || null;
     var outline = spec.outline || [];
     var points = (spec.points || []).slice();
-    var dLat = window_ ? window_.radiusKm / 110.574 : 0.25;
+    /* A site with a fix is mapped at the scale its own points need. The
+     * window was hard-wired wide, so no report carried a map on which the
+     * village, the soundings and the recommended point could be told
+     * apart. An area window without a fix is already the size of the area
+     * it is centred on and is left alone. */
+    if (window_ && window_.exact) {
+      window_ = Object.assign({}, window_, {
+        radiusKm: studyAreaRadiusKm(window_, points,
+          Math.min(window_.radiusKm, STUDY_AREA_CEILING_KM)),
+      });
+    }
+    var dLat = window_ ? window_.radiusKm / 111.320 : 0.25;
     var dLon = window_
       ? window_.radiusKm /
         (111.320 * Math.max(Math.cos(window_.lat * Math.PI / 180), 1e-6))
@@ -3340,6 +4051,9 @@
 
     var canvas = mapCanvas(spec, kinds, extent);
     var p = canvas.palette;
+    clipToFrame(canvas);
+    var frame = box || canvas.project.visibleBox();
+    seaAndNeighbours(canvas, outline, MAP_LAND, foreignLandFeatures(frame));
 
     function inBox(feature) {
       if (!box) return true;
@@ -3347,13 +4061,32 @@
       return isFinite(b.lonMin) && b.lonMin <= box[2] && b.lonMax >= box[0] &&
         b.latMin <= box[3] && b.latMax >= box[1];
     }
+    /* chiefdoms first: they are the boundaries a community is found by, and
+     * their names are the only thing on this map that tells a reader which
+     * side of a boundary the site is on */
+    var named = [];
     (spec.areas || []).filter(inBox).forEach(function (feature) {
+      var label = chiefdomLabel((feature.properties || {}).name);
       canvas.layer.appendChild(svgEl('path', {
         d: geometryPath(feature.geometry, canvas.project),
         fill: 'none', stroke: '#7E93A6', 'stroke-width': 0.8,
-      }, [svgEl('title', {
-        text: String((feature.properties || {}).name || ''),
-      })]));
+      }, [svgEl('title', { text: label })]));
+      if (!box || !label) return;
+      var drawn = ringsOf(feature.geometry).filter(function (ring) {
+        return ringReachesBox(ring, box);
+      });
+      /* one label per chiefdom, on the part of it that is in view.
+       * Labelling every ring wrote "Kaffu Bullom" five times across the top
+       * of the first map this drew: the chiefdom reaches the window as five
+       * islands, and each one asked for its own name. */
+      var spot = labelSpot(drawn, box);
+      if (!spot) return;
+      named.push({
+        candidate: [spot[0], spot[1], label],
+        weight: drawn.reduce(function (sum, ring) {
+          return sum + ringArea(ring);
+        }, 0),
+      });
     });
     (spec.districts || []).filter(inBox).forEach(function (feature) {
       canvas.layer.appendChild(svgEl('path', {
@@ -3368,10 +4101,43 @@
       }));
     });
 
+    /* Where the furniture goes is settled before the names are placed, and
+     * from the data alone. Both corners are kept clear of names: the inset
+     * takes one, and the other is the key's - the browser prints the key
+     * under the frame and the reports print it inside, and a name kept here
+     * and dropped there is a pair of figures a reader cannot line up. */
+    /* A point off the window does not occupy a corner of it. _corner_occupancy
+     * skips anything outside the axis limits, and the frame is letterboxed
+     * around the window here, so a water point a few kilometres past the
+     * edge still lands in the margin the frame shows and would otherwise
+     * vote the inset out of the corner it belongs in. */
+    var located = points.filter(function (point) {
+      return point.lon !== null && point.lon !== undefined &&
+        point.lat !== null && point.lat !== undefined &&
+        (!box || insideBox(point.lon, point.lat, box));
+    });
+    var free = freeMapCorners(canvas, located);
+    var reserved = [furnitureBox(canvas, free[0])];
+    if (points.length) reserved.push(furnitureBox(canvas, free[1]));
+    var clear = named.filter(function (item) {
+      return !reserved.some(function (r) {
+        return insideBox(item.candidate[0], item.candidate[1], r);
+      });
+    });
+    if (box) {
+      declutter(clear.map(function (item) { return item.candidate; }), box, 0.05,
+        clear.map(function (item) { return item.weight; })
+      ).forEach(function (candidate) {
+        var at = canvas.project(candidate[0], candidate[1]);
+        placeMapLabel(canvas.layer, at[0], at[1] + 3, candidate[2], p,
+          { size: 8, fill: p.muted });
+      });
+    }
+
     drawMapPoints(canvas, points.map(function (point) {
       return Object.assign({}, point, { kind: point.marker, size: 6 });
     }));
-    locatorInset(canvas, outline, window_, freeMapCorner(canvas, points));
+    locatorInset(canvas, outline, window_, free[0]);
     return canvas.finish();
   }
 
@@ -3469,10 +4235,21 @@
     depthSpine: depthSpine, guidelineSpine: guidelineSpine,
     costBreakdown: costBreakdown, programmeGantt: programmeGantt,
     choropleth: choropleth, siteMap: siteMap, thematicMap: thematicMap,
-    studyAreaMap: studyAreaMap,
+    studyAreaMap: studyAreaMap, studyAreaRadiusKm: studyAreaRadiusKm,
+    chiefdomLabel: chiefdomLabel, relativeLuminance: relativeLuminance,
+    geologyColours: GEOLOGY_COLOURS, mapTones: {
+      sea: MAP_SEA, land: MAP_LAND, foreignLand: MAP_FOREIGN_LAND,
+      notMapped: MAP_NOT_MAPPED, noData: MAP_NO_DATA,
+    },
+    /* the caller says which sheet the layer came off; both bundled layers
+     * are 1:5,000,000, and the aquifer map carries its publisher's own
+     * limit on it as well */
+    scaleCaveat: scaleCaveat, usgsSourceScale: USGS_SOURCE_SCALE,
+    bgsSourceScale: BGS_SOURCE_SCALE, bgsPublisherNote: BGS_PUBLISHER_NOTE,
     mapProjection: mapProjection, projectionInto: projectionInto,
     geometryPath: geometryPath, quantileBreaks: quantileBreaks,
-    pointInFeature: pointInFeature,
+    pointInFeature: pointInFeature, ringInBox: ringInBox,
+    declutter: declutter, graticuleStep: graticuleStep,
     textWidth: textWidth, wrapText: wrapText, ellipsise: ellipsise,
     stackLabels: stackLabels,
     toPng: toPng, downloadSvg: download, figure: figure,

@@ -715,13 +715,17 @@
   "type_text": "step drawdown test with recovery"
  },
  "assessed": {
-  "verdict": "The water does not meet the health based guideline value(s) for: Manganese, Total coliforms. Treatment or an alternative source is required before the water is used for drinking.",
+  "verdict": "The water does not meet the health based guideline value for: Manganese. Treatment or an alternative source is required before the water is used for drinking.",
   "health": [
-   "Manganese",
-   "Total coliforms"
+   "Manganese"
   ],
   "wqi": 224.1,
   "corros": "Strongly corrosive",
+  "corros_verdict": "The water is chemically aggressive (Ryznar index 11.4, Langelier index -2.7). It will corrode metal fittings. The pH of 5.9 is below the 6.5 to 8.5 acceptability range, which adds to the attack on metal; soft, low-alkalinity basement groundwater is aggressive even at a pH inside that range.",
+  "corros_materials": "Specify uPVC or stainless steel (grade 304 or 316) for the rising main and pump components, and avoid galvanised iron and mild steel, which corrode rapidly in this water and are a leading cause of premature pump failure. Inspect the rising main and the wetted metal parts of the pump for corrosion at each service.",
+  "national": [
+   "Total coliforms"
+  ],
   "ionic": 2.147849978872537
  },
  "design": {
@@ -1937,10 +1941,9 @@
    "gravelIntervalM": 0.0,
    "overburdenM": 30.0
   },
-  "quality_verdict": "The water does not meet the health based guideline value(s) for: Manganese, Total coliforms. Treatment or an alternative source is required before the water is used for drinking.",
+  "quality_verdict": "The water does not meet the health based guideline value for: Manganese. Treatment or an alternative source is required before the water is used for drinking.",
   "quality_health": [
-   "Manganese",
-   "Total coliforms"
+   "Manganese"
   ],
   "quality_aesthetic": [
    "pH",
@@ -2479,7 +2482,7 @@
    ],
    "uncertainties": [],
    "missing_essential": [],
-   "verdict": "The water meets the WHO health based guideline values, but does not comply with the national standard limit(s) for: Aluminium. Treatment is required before the supply can be accepted against the national standard; check whether the limit exceeded is a health or an acceptability limit."
+   "verdict": "The water meets the WHO health based guideline values, but does not comply with the national standard limit for: Aluminium. Treatment is required before the supply can be accepted against the national standard; check whether the limit exceeded is a health or an acceptability limit."
   },
   "health_fail": {
    "state": "health_fail",
@@ -2506,7 +2509,7 @@
    ],
    "uncertainties": [],
    "missing_essential": [],
-   "verdict": "The water does not meet the health based guideline value(s) for: Arsenic. Treatment or an alternative source is required before the water is used for drinking."
+   "verdict": "The water does not meet the health based guideline value for: Arsenic. Treatment or an alternative source is required before the water is used for drinking."
   },
   "micrograms": {
    "state": "pass",
@@ -2703,7 +2706,7 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
@@ -2717,7 +2720,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -2738,14 +2741,14 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
      [
       "design_derived",
       "met",
-      "19.0 m of screen in 3 run(s).",
+      "19.0 m of screen in 3 runs.",
       "",
       ""
      ],
@@ -2780,14 +2783,14 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -2808,7 +2811,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -2850,7 +2853,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -2892,7 +2895,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3169,7 +3172,7 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
@@ -3183,7 +3186,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3204,14 +3207,14 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
      [
       "design_derived",
       "met",
-      "19.0 m of screen in 3 run(s).",
+      "19.0 m of screen in 3 runs.",
       "",
       ""
      ],
@@ -3246,14 +3249,14 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3274,7 +3277,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -3316,7 +3319,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -3358,7 +3361,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3402,7 +3405,7 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
@@ -3416,7 +3419,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3444,7 +3447,7 @@
      [
       "design_derived",
       "met",
-      "19.0 m of screen in 3 run(s).",
+      "19.0 m of screen in 3 runs.",
       "",
       ""
      ],
@@ -3479,14 +3482,14 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3591,7 +3594,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3635,7 +3638,7 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
@@ -3649,7 +3652,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3677,7 +3680,7 @@
      [
       "design_derived",
       "met",
-      "19.0 m of screen in 3 run(s).",
+      "19.0 m of screen in 3 runs.",
       "",
       ""
      ],
@@ -3712,14 +3715,14 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3824,7 +3827,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3868,7 +3871,7 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
@@ -3882,7 +3885,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3903,14 +3906,14 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
      [
       "design_derived",
       "met",
-      "19.0 m of screen in 3 run(s).",
+      "19.0 m of screen in 3 runs.",
       "",
       ""
      ],
@@ -3945,14 +3948,14 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -3973,7 +3976,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -4015,7 +4018,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -4057,7 +4060,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4101,7 +4104,7 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
@@ -4115,7 +4118,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4136,14 +4139,14 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
      [
       "design_derived",
       "met",
-      "19.0 m of screen in 3 run(s).",
+      "19.0 m of screen in 3 runs.",
       "",
       ""
      ],
@@ -4178,14 +4181,14 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4206,7 +4209,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -4248,7 +4251,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -4290,7 +4293,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4334,7 +4337,7 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
@@ -4348,7 +4351,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4369,14 +4372,14 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
      [
       "design_derived",
       "met",
-      "19.0 m of screen in 3 run(s).",
+      "19.0 m of screen in 3 runs.",
       "",
       ""
      ],
@@ -4413,14 +4416,14 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4441,7 +4444,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -4485,7 +4488,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -4529,7 +4532,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4575,7 +4578,7 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
@@ -4589,7 +4592,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4610,14 +4613,14 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
      [
       "design_derived",
       "met",
-      "19.0 m of screen in 3 run(s).",
+      "19.0 m of screen in 3 runs.",
       "",
       ""
      ],
@@ -4652,14 +4655,14 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4680,7 +4683,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -4722,7 +4725,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -4764,7 +4767,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4808,7 +4811,7 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
@@ -4822,7 +4825,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4843,14 +4846,14 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
      [
       "design_derived",
       "met",
-      "19.0 m of screen in 3 run(s).",
+      "19.0 m of screen in 3 runs.",
       "",
       ""
      ],
@@ -4885,14 +4888,14 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -4913,7 +4916,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -4955,7 +4958,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -4997,7 +5000,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -5041,7 +5044,7 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
@@ -5055,7 +5058,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -5076,14 +5079,14 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
      [
       "design_derived",
       "met",
-      "19.0 m of screen in 3 run(s).",
+      "19.0 m of screen in 3 runs.",
       "",
       ""
      ],
@@ -5118,14 +5121,14 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -5146,7 +5149,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -5188,7 +5191,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -5230,7 +5233,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -5274,7 +5277,7 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
@@ -5288,7 +5291,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -5309,14 +5312,14 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
      [
       "design_derived",
       "met",
-      "19.0 m of screen in 3 run(s).",
+      "19.0 m of screen in 3 runs.",
       "",
       ""
      ],
@@ -5351,14 +5354,14 @@
      [
       "borehole_logged",
       "met",
-      "Logged to 70 m with 14 lithological interval(s).",
+      "Logged to 70 m with 14 lithological intervals.",
       "",
       ""
      ],
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
@@ -5379,7 +5382,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -5421,7 +5424,7 @@
      [
       "water_quality_evaluable",
       "met",
-      "22 determinand(s) graded; verdict health_fail.",
+      "22 determinands graded; verdict health_fail.",
       "",
       ""
      ],
@@ -5463,7 +5466,7 @@
      [
       "pumping_measured",
       "met",
-      "1 step(s) with discharge, static water level 9.44 m.",
+      "1 step with discharge, static water level 9.44 m.",
       "",
       ""
      ],
