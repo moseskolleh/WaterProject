@@ -129,12 +129,13 @@ No external dataset stands behind them, and they are listed so that a reader
 can tell which bundled numbers are somebody's published dataset and which are
 the toolkit's own working assumptions.
 
-Two of them carry a warning. The district file is hand-drawn longitude and
-latitude boxes: a coarse plausibility check, not a survey product, and the
-bundled geoBoundaries polygons are the authority for anything positional. The
-separation distances have **no recorded source at all** - they are common
-field practice as written down here, not a cited standard - so a project
-should replace them with its regulator's figures.
+One of them carries a warning. The separation distances have **no recorded
+source at all** - they are common field practice as written down here, not a
+cited standard - so a project should replace them with its regulator's
+figures. The district file is now just the sixteen districts and their
+provinces; it used to carry hand-drawn longitude and latitude boxes that the
+district consistency check was judged against, and that check reads the
+geoBoundaries polygons now.
 
 ### Chiefdom name crosswalk - boundary layer to census spelling · **CC BY 4.0 / unverified**
 

@@ -362,13 +362,14 @@ datasets:
           was produced, so the certification gate can refuse to write a
           client report from a synthetic sheet.
       - path: src/groundwater/data/sl_districts.csv
-        bytes: 711
-        sha256: af3a555a0e0ed4ebad0e9e5f42419421deb52fd0fc7376cfa7ae52dc91f12bc1
+        bytes: 294
+        sha256: 7e1a0e897acdc603064ef67264961eb84bd858257b1f9e617ab2ff94b671d10b
         note: >-
-          Hand-drawn longitude and latitude boxes per district, written here
-          as a coarse plausibility check. They are not a survey product,
-          they overlap, and the bundled geoBoundaries polygons are the
-          authority for anything positional.
+          The sixteen districts and the province each belongs to, used for
+          the pickers and the codes. It carried hand-drawn longitude and
+          latitude boxes as well, which the district check was judged
+          against; that check reads the geoBoundaries polygons now and the
+          boxes are gone.
       - path: src/groundwater/data/site_separation_distances.csv
         bytes: 404
         sha256: 13edd2ecc8fb1b6dd22db9f2fa7ea8693877129bc50224ec666b405bcc4b8c6f
