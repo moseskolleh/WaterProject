@@ -859,6 +859,25 @@
     b.paragraph('The site was walked with the community to identify candidate ' +
       'points clear of latrines, graveyards, refuse pits and flood paths, and ' +
       'accessible to a drilling rig.', { align: 'justify' });
+    /* The browser can never have an elevation model, and the Python report
+     * always says so here. Silent, a reader took the survey point map for a
+     * topographic one; and this is the sentence that explains why the ground
+     * profile below is the only ground-level figure in the document. */
+    b.paragraph('No elevation model was supplied with this survey, so no ' +
+      'topographic map is drawn: the toolkit bundles none and invents none. ' +
+      'The elevations the crew recorded at the soundings are the ground ' +
+      'levels this report has.', { align: 'justify' });
+    /* The ground surface along the traverse, in the position
+     * reporting/geophysical.py gives it: at the end of the reconnaissance
+     * section, where the reader has just been told where the points are and
+     * before the survey itself is described. The caption is the engine's,
+     * word for word with the Python's; the figure is absent, with no line
+     * said about it, whenever the recorded levels will not support one, which
+     * is how the Python omits it. */
+    if (context.groundProfile) {
+      b.figure(context.groundProfile.image, context.groundProfile.caption,
+        context.groundProfile.widthCm);
+    }
     b.heading('3.2 Geophysical Survey', 2);
     b.heading('3.2.1 Resistivity Profiling', 3);
     b.paragraph('Resistivity measurements were made with a Schlumberger array. ' +
@@ -913,7 +932,7 @@
 
     if (interpretations.length) {
       b.heading('Drill-target suitability', 2);
-      b.table(C.drillingPreferenceTable(interpretations, context.preferredOrder)
+      b.table(C.drillingPreferenceTable(interpretations, context.preferredOrder, context.ves)
         .map(function (row) {
           return [row['No.'], row['VES Point'], row.Layer, row['Thickness (m)'],
             row['Depth (m)'], row[C.LAYER_RESISTIVITY_COLUMN],
@@ -927,6 +946,21 @@
           'base and the drilling depth are minima.',
         fontSize: 8.5,
       });
+      /* The drill-target map, where reporting/geophysical.py _suitability_block
+       * puts it: under the ranked table, above the subsurface maps. It is
+       * written inside this heading rather than beside the call to
+       * subsurfaceSection below so that the figure cannot come out from under
+       * the heading that says what it ranks. Its caption changes with what
+       * the figure shows - whether a star marks the recommended target, and
+       * whether a surface is interpolated between the pegs - so it is taken
+       * from the engine that drew it rather than written again here. A
+       * survey with no scored point, or none carrying a position, sets
+       * nothing here and the report says nothing: the Python writes no "not
+       * drawn" line for this figure. */
+      if (context.suitabilityMap) {
+        b.figure(context.suitabilityMap.image, context.suitabilityMap.caption,
+          context.suitabilityMap.widthCm);
+      }
     }
 
     subsurfaceSection(b, context);

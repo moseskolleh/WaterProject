@@ -4264,6 +4264,15 @@
       colours: ['#333399', '#0099FF', '#00CC66', '#FFFF99', '#805C54', '#FFFFFF'],
       positions: [0, 0.15, 0.25, 0.5, 0.75, 1],
     },
+    /* ColorBrewer's eleven-colour RdYlGn, which is matplotlib's own anchor
+     * table for it. The suitability map is read as a traffic light - red is
+     * a poor drilling target and green is a good one - so a browser ramp
+     * that merely looked similar would put a peg the report calls moderate
+     * in the green the reader takes for good. */
+    RdYlGn: {
+      colours: ['#A50026', '#D73027', '#F46D43', '#FDAE61', '#FEE08B',
+        '#FFFFBF', '#D9EF8B', '#A6D96A', '#66BD63', '#1A9850', '#006837'],
+    },
   };
 
   function hexChannels(hex) {
@@ -5209,6 +5218,290 @@
     });
   }
 
+  /* ------------------------------------------ the drill-target suitability map */
+
+  /* maps.py suitability_map: the scored VES points on the ground they were
+   * surveyed on, coloured by the confidence-weighted score. `data` is what
+   * C.suitabilityMapData returned, so the pegs, the surface, the star, the
+   * legend wording and the tie note are all the Python's; this draws them.
+   *
+   * The figure exists so that somebody walks to one peg and not to the other,
+   * which is why the recommended target is a star with its grid coordinates
+   * beside it and why a tie takes the star off both points and says on the
+   * face of the map why it is not there.
+   *
+   * options: {width, zone, title} - the zone defaults to the one the engine
+   * inferred, because two eastings in different zones are not comparable
+   * numbers and a map that does not say which zone it is in cannot be walked
+   * back to.
+   */
+  function suitabilityMap(data, options) {
+    if (!data || data.reason) return null;
+    var opts = options || {};
+    var extent = data.extent;
+    if (!extent) return null;
+    var x0 = extent[0], x1 = extent[1], y0 = extent[2], y1 = extent[3];
+
+    var width = opts.width || 680;
+    var height = Math.round(width *
+      C.mapFigureHeightIn(FIGURE_WIDTH_IN, x0, x1, y0, y1) / FIGURE_WIDTH_IN);
+    /* room on the right for the colour bar only where a surface was drawn;
+     * a two-point survey has no bar and no reason to lose the width to one */
+    var margin = { top: 30, right: data.surface ? 104 : 22, bottom: 52, left: 74 };
+    var availW = width - margin.left - margin.right;
+    var availH = height - margin.top - margin.bottom;
+    /* _format_grid's set_aspect("equal"): a metre east is a metre north. A
+     * map whose axes are drawn at different scales is not a map, and the
+     * scale bar on it is wrong in one direction. */
+    var want = (y1 - y0) / Math.max(x1 - x0, 1e-9);
+    var boxW = availW, boxH = availW * want;
+    if (boxH > availH) { boxH = availH; boxW = availH / Math.max(want, 1e-9); }
+    margin.left += (availW - boxW) / 2;
+    margin.right += (availW - boxW) / 2;
+    margin.top += (availH - boxH) / 2;
+    margin.bottom += (availH - boxH) / 2;
+
+    var zone = (opts.zone === null || opts.zone === undefined) ? data.zone : opts.zone;
+    var labels = (zone === null || zone === undefined)
+      ? { x: 'Easting (m)', y: 'Northing (m)' } : C.mapAxisLabels(zone);
+    function tickSet(lo, hi) {
+      return C.mapGridTicks(lo, hi).filter(function (v) {
+        return v >= lo && v <= hi;
+      }).map(function (v) {
+        return { value: v, label: utmTickLabel(v) };
+      });
+    }
+    var f = frame({
+      width: width, height: height, margin: margin,
+      title: opts.title || data.title,
+      xLabel: labels.x, yLabel: labels.y,
+      xDomain: [x0, x1], yDomain: [y0, y1],
+      xTicks: tickSet(x0, x1), yTicks: tickSet(y0, y1),
+    });
+    var p = f.palette;
+
+    var levels = data.levels || [];
+    var lo = levels.length ? levels[0] : 0;
+    var span = levels.length ? levels[levels.length - 1] - lo : 1;
+    var colours = [], k;
+    for (k = 0; k < levels.length - 1; k += 1) {
+      var mid = (levels[k] + levels[k + 1]) / 2;
+      colours.push(rampColour(data.cmap || 'RdYlGn', span > 0 ? (mid - lo) / span : 0.5));
+    }
+
+    if (data.grid && levels.length > 1) {
+      /* the same alpha contourf fills with, so the coordinate grid reads
+       * through the surface on both figures. No white contour lines: the
+       * Python draws none on this map, and a line drawn where it draws none
+       * would read as a boundary between two suitabilities rather than as
+       * the smooth interpolation it is. */
+      drawSurfaceBands(f.plot, f, data.grid, levels, colours, 0.75);
+    }
+
+    /* The pegs. Every surveyed point is drawn, scored or not, and the one
+     * the report recommends is the star: a point the scorecard could not
+     * value is still a station somebody occupied, and leaving it off the map
+     * would hide it from the reader deciding where to drill. */
+    (data.points || []).forEach(function (point) {
+      var px = f.fx(point.easting), py = f.fy(point.northing);
+      var colour = (point.value === null || point.value === undefined)
+        ? p.muted : rampColour(data.cmap || 'RdYlGn', Number(point.value) / 100.0);
+      f.svg.appendChild(marker(px, py, point.recommended ? 'star' : 'circle',
+        colour, p.ink, point.recommended ? 9 : 8));
+      var lines = String(point.text === undefined ? point.label : point.text)
+        .split('\n');
+      /* a label on the right-hand edge runs off the frame, so it is written
+       * back into the map instead - the same rule subsurfaceMap follows */
+      var offset = point.recommended ? 15 : 11;
+      var widest = lines.reduce(function (m, line) {
+        return Math.max(m, textWidth(line, 9));
+      }, 0);
+      var flip = px + offset + widest > f.margin.left + f.plotW;
+      lines.forEach(function (line, i) {
+        f.svg.appendChild(svgEl('text', {
+          x: px + (flip ? -offset : offset), y: py - 6 + i * 11,
+          'text-anchor': flip ? 'end' : 'start', 'font-size': 9,
+          'font-weight': point.recommended ? 700 : 400, fill: p.ink,
+          stroke: p.surface, 'stroke-width': 2.8, 'paint-order': 'stroke',
+          text: line,
+        }));
+      });
+    });
+
+    /* Why there is no star, across the top of the map. It belongs on the
+     * figure and not only in the caption: a reader who sees two pegs of the
+     * same colour and no star reads the omission as an oversight unless the
+     * map says the two cannot be told apart. */
+    var tieLines = data.tie_note ? wrapText(data.tie_note, f.plotW - 16, 9) : [];
+    tieLines.forEach(function (line, i) {
+      f.svg.appendChild(svgEl('text', {
+        x: f.margin.left + f.plotW / 2,
+        y: f.margin.top + f.plotH * 0.035 + 9 + i * 11,
+        'text-anchor': 'middle', 'font-size': 9, fill: p.critical,
+        stroke: p.surface, 'stroke-width': 2.8, 'paint-order': 'stroke',
+        text: line,
+      }));
+    });
+
+    /* and, at the foot, that there is no surface between the pegs at all */
+    var noteLines = data.note ? wrapText(data.note, f.plotW - 16, 9) : [];
+    noteLines.forEach(function (line, i) {
+      f.svg.appendChild(svgEl('text', {
+        x: f.margin.left + f.plotW / 2,
+        y: f.margin.top + f.plotH - 6 - (noteLines.length - 1 - i) * 11,
+        'text-anchor': 'middle', 'font-size': 9, fill: p.critical,
+        stroke: p.surface, 'stroke-width': 2.8, 'paint-order': 'stroke',
+        text: line,
+      }));
+    });
+
+    /* Everything that sits along the foot of the map is lifted clear of the
+     * note, scale bar and legend alike. On the one figure where the note
+     * matters most - a survey on one line, with no surface on the map to
+     * read - the legend was printed across the end of the sentence saying
+     * there is no surface. */
+    var floorY = f.margin.top + f.plotH - 6 - noteLines.length * 11;
+    utmScaleBar(f, extent, floorY - 6);
+    utmNorthArrow(f, extent);
+
+    /* loc="lower right", where the Python pins it: the scale bar has the
+     * lower left and the north arrow the upper right, and the tie note runs
+     * across the top. */
+    var entries = (data.legend || []).map(function (item) {
+      /* the swatch is the marker of the point that registered the entry, as
+       * matplotlib's legend handle is: a key drawn in a colour no peg on the
+       * map carries says the colour means nothing */
+      return {
+        label: item.label, kind: item.kind || 'circle',
+        colour: (item.value === null || item.value === undefined) ? p.muted
+          : rampColour(data.cmap || 'RdYlGn', Number(item.value) / 100.0),
+      };
+    });
+    if (entries.length) {
+      var legendW = 30 + entries.reduce(function (m, entry) {
+        return Math.max(m, textWidth(entry.label, 11));
+      }, 0) + 7;
+      legend(f, entries, {
+        x: f.margin.left + f.plotW - legendW + 3,
+        y: floorY - 5 - entries.length * 17,
+      });
+    }
+
+    if (data.grid && levels.length > 1) {
+      colourBar(f, {
+        x: f.margin.left + f.plotW + Math.max(10, f.plotW * 0.02),
+        top: f.margin.top + f.plotH * 0.075, height: f.plotH * 0.85,
+        levels: levels, colours: colours, label: data.cbar_label,
+      });
+    }
+
+    return f.svg;
+  }
+
+  /* --------------------------------------------------- the ground profile */
+
+  /* mapping/terrain.py plot_ground_profile: the land surface along the
+   * traverse, from the elevation the crew recorded at each sounding, against
+   * chainage. `data` is what C.groundProfileData returned; a survey that
+   * cannot support the figure returns null there and nothing is drawn here,
+   * because reporting/geophysical.py omits this figure silently rather than
+   * drawing a ground surface it did not measure.
+   *
+   * The line between two stations is drawn straight and the figure says so:
+   * the elevations are measured at the pegs and nothing was levelled between
+   * them.
+   */
+  function groundProfile(data, options) {
+    if (!data || data.reason) return null;
+    var opts = options || {};
+    var stations = data.stations || [];
+    var known = stations.filter(function (station) {
+      return station.elevation_m !== null && station.elevation_m !== undefined;
+    });
+    if (known.length < 2) return null;
+
+    var width = opts.width || 680;
+    /* figsize=(figure_width_in, 2.6): a profile is a strip, and drawn any
+     * taller it exaggerates a metre of relief over 200 m of traverse into a
+     * hillside */
+    var height = opts.height || Math.round(width * 2.6 / FIGURE_WIDTH_IN);
+    var elevations = known.map(function (station) { return station.elevation_m; });
+    var baseline = data.baseline_m;
+    /* matplotlib autoscales with a 5 per cent margin either side, and the
+     * fill reaches below the lowest level, so the axis has to hold it */
+    var f = frame({
+      width: width, height: height, margin: { top: 30, right: 22, bottom: 46, left: 66 },
+      title: opts.title || data.title,
+      xLabel: data.x_label, yLabel: data.y_label,
+      /* the drawn stations set the span, as matplotlib's autoscale does:
+       * plot_ground_profile plots and fills over the levelled stations only,
+       * so a station with no recorded elevation adds no empty axis beside
+       * the profile */
+      xDomain: padDomain(known.map(function (station) {
+        return station.chainage_m;
+      }), false, 0.05),
+      yDomain: padDomain(elevations.concat([baseline]), false, 0.05),
+    });
+    var p = f.palette;
+
+    var pts = known.map(function (station) {
+      return [f.fx(station.chainage_m), f.fy(station.elevation_m)];
+    });
+    /* the ground drawn as a solid rather than as a line floating on the
+     * axis: fill_between(chainage, elevation, nanmin(elevation) - 2) */
+    var base = f.fy(baseline);
+    var fill = 'M' + pts[0][0].toFixed(2) + ' ' + base.toFixed(2);
+    pts.forEach(function (pt) {
+      fill += 'L' + pt[0].toFixed(2) + ' ' + pt[1].toFixed(2);
+    });
+    fill += 'L' + pts[pts.length - 1][0].toFixed(2) + ' ' + base.toFixed(2) + 'Z';
+    f.plot.appendChild(svgEl('path', {
+      d: fill, fill: p.accent, 'fill-opacity': 0.08, stroke: 'none',
+    }));
+    f.plot.appendChild(polyline(pts, { stroke: p.accent, 'stroke-width': 1.8 }));
+    known.forEach(function (station, k) {
+      var mark = marker(pts[k][0], pts[k][1], 'circle', p.surface, p.accent, 4);
+      mark.appendChild(svgEl('title', {
+        text: station.label + ': ' + C.formatG(station.elevation_m) + ' m at ' +
+          C.formatG(station.chainage_m) + ' m',
+      }));
+      f.plot.appendChild(mark);
+    });
+
+    /* the station names on the figure: a profile with no names on it cannot
+     * be compared with the section or the map drawn from the same traverse */
+    stations.forEach(function (station, k) {
+      if (station.elevation_m === null || station.elevation_m === undefined) return;
+      if (!station.label) return;
+      f.svg.appendChild(svgEl('text', {
+        x: f.fx(station.chainage_m), y: f.fy(station.elevation_m) - 11,
+        'text-anchor': 'middle', 'font-size': 7.5, 'font-weight': 700,
+        fill: p.ink, stroke: p.surface, 'stroke-width': 2.6,
+        'paint-order': 'stroke', text: station.label,
+      }));
+    });
+
+    /* A station whose level nobody recorded is not drawn, and the figure
+     * says how many, inside the axes where the Python puts it: the line runs
+     * straight across that ground, and without the note it reads as a slope
+     * somebody levelled. */
+    var noteLines = data.note ? wrapText(data.note, f.plotW - 16, 7) : [];
+    noteLines.forEach(function (line, i) {
+      f.svg.appendChild(svgEl('text', {
+        x: f.margin.left + f.plotW / 2,
+        y: f.margin.top + f.plotH - 4 - (noteLines.length - 1 - i) * 9,
+        'text-anchor': 'middle', 'font-size': 7, fill: p.critical,
+        stroke: p.surface, 'stroke-width': 2.4, 'paint-order': 'stroke',
+        text: line,
+      }));
+    });
+
+    legend(f, [{ label: data.series_label, kind: 'line', colour: p.accent }], {
+      avoid: pts.map(function (pt) { return { px: pt[0], py: pt[1] }; }),
+    });
+    return f.svg;
+  }
+
   /* ============================================================ export */
 
   /* Rasterise an SVG to a PNG data URL for embedding in the .docx reports.
@@ -5303,6 +5596,7 @@
     modelPseudosection: modelPseudosection,
     apparentPseudosection: apparentPseudosection,
     subsurfaceMap: subsurfaceMap, subsurfaceMaps: subsurfaceMaps,
+    suitabilityMap: suitabilityMap, groundProfile: groundProfile,
     rampColour: rampColour, colourRamps: COLOUR_RAMPS, colourBar: colourBar,
     testOverview: testOverview, cooperJacob: cooperJacob,
     recovery: recoveryPlot, stepTest: stepTestPlot,

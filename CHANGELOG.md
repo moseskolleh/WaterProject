@@ -706,6 +706,64 @@ divergence once passed 528 of 528 checks. They are compared on the shape
 the Python states: a field the browser adds of its own is not a divergence,
 and a field Python states has to match.
 
+The browser writes the same reports as the package. It had no figure
+derived from the survey at all - no section, no pseudo-section, no
+subsurface map, not even the study-area map the report opens on - so a
+reader holding the two reports for one survey saw two different documents.
+It now draws all of them, the drill-target suitability map with its four
+caption states, and the ground surface along the traverse, each with the
+caption the Python gives it, and it lists what it could not draw and why.
+The refusals are the part that matters: no correlation across a gap too
+wide for one horizon to span, no subsurface section where fewer than two
+soundings carry a position, and the ground profile omitted in silence where
+fewer than two carry an elevation, exactly as the package omits it.
+
+Figures bound for a report are painted for paper. Every chart took its
+colours from the live CSS tokens as it was built, and the app's default
+theme is dark, so clients opening a report got maps and borehole drawings
+rasterised white on black.
+
+The parsers read a field sheet the way a driller fills one in. A non-detect
+written with its limit - "ND (<0.05)" - was read as a measured
+concentration, so the arsenic a laboratory reported as absent was graded
+the worst reading on the sheet. A count nobody quantified - "TNTC",
+"Present" - read as "not measured", so a sample with E. coli 0 and total
+coliforms too numerous to count was graded Safe, and ">50" was read as
+exactly 50, which passes a limit of 50. A longitude typed without its
+western sign was taken at face value and the page then relabelled the zone,
+moving the site 250 km to fit it inside the country. An interval written
+with an en dash was dropped without a word. A water strike was read as the
+last number after the last colon, so "8 m at 14:30" recorded a strike 30 m
+down. A diameter read without its unit made "165 mm" a 165 inch hole - and
+that diameter is what sizes the casing and decides whether a gravel pack
+will fit. A Wenner sounding had no ingestion path and was inverted as a
+Schlumberger one, wrong by tens of percent with nothing downstream to
+notice.
+
+The guideline table no longer carries values WHO does not set. Aluminium
+had a health guideline of 0.9 mg/L, which WHO derives and declines to
+adopt; hardness and turbidity had WHO acceptability values WHO does not
+set; and the nitrogen-basis limits were the floor of their conversions, so
+a sample complying as nitrate was failed as nitrogen. A national limit is
+reported as provisional, with the WHO figure it was carried across from
+named beside it.
+
+The district consistency check reads the boundary polygons. It was judged
+against hand-drawn boxes that overlap on half the country and miss a tenth
+of it, while the polygons every other part of the toolkit uses sat in the
+same package; the boxes are deleted. A seam between two independently
+simplified chiefdom rings no longer swallows a point: one named tolerance
+closes it, and beyond that the lookup answers nothing rather than placing
+the withheld Maforki wedge confidently in Kono.
+
+A hole in a map unit is cut out of it rather than painted over it. Every
+interior ring became a filled polygon carrying its parent's code, and
+thirteen of them were drawn on top of the unit they should have exposed:
+the dolerite dykes in Kono, Koinadugu and Falaba, and the igneous aquifer
+around Kamakwie, disappeared behind the ground meant to reveal them. The
+two bundled layers still carry the flattened holes, because the raw
+shapefiles are not committed; the roadmap says how to regenerate them.
+
 ## A note on the sixteen districts
 
 The shipped district polygons are the pre-2017 fourteen, from

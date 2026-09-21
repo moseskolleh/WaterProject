@@ -5733,6 +5733,64 @@
     return { figures: made, notDrawn: notDrawn };
   }
 
+  /* The drill-target suitability map, mirroring the figure path of
+   * reporting/geophysical.py _suitability_block: the scored points on the
+   * ground they were surveyed on, coloured by the confidence-weighted score,
+   * with the recommended target starred and its grid coordinates beside it,
+   * and the caption the state of the figure earns.
+   *
+   * The engine scores the points from the same assess_siting() the ranked
+   * table is built from, so the colour of a peg and the row that ranks it
+   * cannot tell a reader two different stories about which peg to drill.
+   *
+   * Returns null exactly where the Python draws no map - no scored point, or
+   * no scored point carrying a recorded position - and the report then says
+   * nothing at all, because _suitability_block writes no "not drawn" line for
+   * this figure. The subsurface maps below list their refusals; naming this
+   * one among them would put a sentence in a client document that the
+   * package never writes. A null from the chart layer is the same silence for
+   * the same reason: it can only mean a defect in the drawing, and there is
+   * no wording for that here which would not read as a refusal the survey
+   * earned. */
+  async function suitabilityMapFigure(interpretations) {
+    var site = store.get('site') || {};
+    var data = C.suitabilityMapData(interpretations, {
+      ves: config().ves,
+      /* site.utm_zone or infer_zone_for_sierra_leone(map_points[0].easting),
+       * which is what the engine does for a null zone: two eastings in
+       * different zones are not comparable numbers, and a map that does not
+       * say which zone it is in cannot be walked back to. */
+      zone: site.utm_zone || null,
+    });
+    if (!data) return null;
+    var svg = charts.suitabilityMap(data);
+    if (!svg) return null;
+    /* the caption travels with the figure because it is a claim about this
+     * figure: whether a star marks the target, and whether the colour between
+     * the pegs is interpolated ground or no ground at all */
+    return { image: await charts.toPng(svg), caption: data.caption };
+  }
+
+  /* The ground surface along the traverse, from the level the crew recorded
+   * at each sounding: reporting/geophysical.py _ground_profile_figure, drawn
+   * with mapping/terrain.py plot_ground_profile.
+   *
+   * Omitted in silence wherever the Python omits it - fewer than two
+   * soundings carrying an easting, a northing and an elevation, a traverse
+   * that cannot be placed, or fewer than two finite levels - because the
+   * Python report writes no line about a profile it did not draw. It is not
+   * added to any "not drawn" list for the same reason. Ground drawn from one
+   * levelled station, or across a station nobody levelled, is relief this
+   * survey did not measure, and a reader takes a profile for measured
+   * ground. */
+  async function groundProfileFigure(interpretations) {
+    var data = C.groundProfileData(interpretations);
+    if (!data) return null;
+    var svg = charts.groundProfile(data);
+    if (!svg) return null;
+    return { image: await charts.toPng(svg), caption: data.caption };
+  }
+
   function reportCard(title, kind, description, extra) {
     return card(title, [
       el('p.muted', description),
@@ -5824,6 +5882,15 @@
           if (studyArea) {
             context.areaMaps = [studyArea].concat(context.areaMaps || []);
           }
+          /* The ground the survey was shot on, from the levels the crew
+           * recorded: section 3.1 carries it in the Python report, and the
+           * browser's report had no figure showing whether the traverse runs
+           * up a slope or along a valley floor. Null where the Python draws
+           * nothing, and the writer then prints nothing. */
+          context.groundProfile = await groundProfileFigure(derived.interpretations);
+          /* The drill-target map: the one figure in the document that shows
+           * which peg the recommendation is on, rather than naming it. */
+          context.suitabilityMap = await suitabilityMapFigure(derived.interpretations);
           /* The soundings this report covers are the ones that inverted,
            * which is the list the Python report holds: inputs.soundings is
            * zipped with the inversions. A sounding that would not invert has
@@ -5840,6 +5907,13 @@
           context.interpretations = derived.interpretations;
           context.figures = figures;
           context.preferredOrder = store.get('ves.preferredOrder');
+          /* the ranked table and the suitability map beside it are scored
+           * with the same settings, as reporting/geophysical.py scores them:
+           * with the table on the defaults and the figure on the project's,
+           * a project carrying a custom fractured-zone resistivity got a
+           * table calling one peg first and a star on another, under one
+           * heading */
+          context.ves = cfg.ves;
           builder = await docx.geophysicalReport(context);
 
         } else if (kind === 'completion') {

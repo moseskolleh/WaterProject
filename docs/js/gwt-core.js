@@ -15014,6 +15014,327 @@
     });
   }
 
+  /* --- the drill-target suitability map ------------------------------------ */
+
+  /* maps.py suitability_map's own tie test, which is not siting's.
+   *
+   * ranking_tie() reads config.ranking_tie_points off the unrounded weighted
+   * scores; the map reads a fixed three points off the values it prints, and
+   * the two can differ on the same survey. The map's number belongs to the
+   * map: a figure that stars one of two pegs it has drawn with the same
+   * colour and the same printed score is claiming a preference the reader
+   * cannot see any basis for. */
+  var SUITABILITY_TIE_POINTS = 3.0;
+
+  /* siting/suitability.py suitability_map_points: the scored points that can
+   * go on a map, valued by the number the ranking was decided on.
+   *
+   * A point with no recorded position is dropped rather than placed at a
+   * guess. The value is the confidence-weighted score, so the colours on the
+   * map and the order in the ranked table cannot tell two different stories
+   * about which peg to drill. */
+  function suitabilityMapPoints(results) {
+    var points = [];
+    (results || []).forEach(function (result) {
+      if (!result) return;
+      if (result.easting === null || result.easting === undefined) return;
+      if (result.northing === null || result.northing === undefined) return;
+      var confidence = (result.confidence === null || result.confidence === undefined)
+        ? 1.0 : Number(result.confidence);
+      points.push({
+        label: String(result.sounding_id),
+        easting: Number(result.easting),
+        northing: Number(result.northing),
+        /* SitingSuitability.weighted, rounded where the Python rounds it: the
+         * tie below is decided on these rounded values, so rounding later
+         * would settle it on a number the figure never shows */
+        value: pyRound(Number(result.suitability) * confidence, 1),
+        kind: result.grade,
+        rank: (result.rank === undefined) ? null : result.rank,
+      });
+    });
+    return points;
+  }
+
+  /* The valued points in rank order: what maps.py reads the recommended
+   * target and the runner-up off. A point carrying no rank was never ranked
+   * and is left out rather than sorted to the front, which is what
+   * `if p.rank is not None` does in the Python. */
+  function rankedMapPoints(points) {
+    return (points || []).filter(function (p) {
+      return p && p.value !== null && p.value !== undefined &&
+        p.rank !== null && p.rank !== undefined;
+    }).map(function (p, k) {
+      return { point: p, index: k };
+    }).sort(function (a, b) {
+      return a.point.rank - b.point.rank || a.index - b.index;
+    }).map(function (entry) {
+      return entry.point;
+    });
+  }
+
+  /* maps.py suitability_map_state: what a suitability map of these points
+   * will show, for its caption.
+   *
+   * A caption used to promise "the interpolated surface is blanked outside
+   * the ground the survey covered" over a figure of two dots with no surface
+   * on it at all. The rules are the figure's - three valued points, an area
+   * between them, and two leading scores far enough apart to separate - so
+   * the report asks for them here instead of restating them and drifting. */
+  function suitabilityMapState(points) {
+    var valued = (points || []).filter(function (p) {
+      return p && p.value !== null && p.value !== undefined;
+    });
+    var e = valued.map(function (p) { return Number(p.easting); });
+    var n = valued.map(function (p) { return Number(p.northing); });
+    var ranked = rankedMapPoints(valued);
+    return {
+      n_points: valued.length,
+      surface: valued.length >= 3 && pointsEncloseAnArea(e, n),
+      tie: ranked.length >= 2 && Math.abs(Number(ranked[0].value) -
+        Number(ranked[1].value)) < SUITABILITY_TIE_POINTS,
+      recommended: ranked.length ? ranked[0].label : null,
+    };
+  }
+
+  var SUITABILITY_MAP_CAPTION = 'Drill-target suitability of the surveyed ' +
+    'points, coloured by the confidence-weighted score; greener is more ' +
+    'suitable.';
+
+  /* reporting/geophysical.py _suitability_block's caption, in its four
+   * branches.
+   *
+   * Each clause is a claim about the figure underneath it: that a star marks
+   * the target, or that no star does because the two best points cannot be
+   * separated; that the colour between the pegs is interpolated ground, or
+   * that there is no colour between them at all. Written from anything but
+   * the state the figure was drawn from, a caption promises a reader
+   * something the figure does not show, and the reader believes the caption. */
+  function suitabilityMapCaption(state) {
+    var caption = SUITABILITY_MAP_CAPTION;
+    if (state.tie) {
+      caption += ' The two highest-ranked points cannot be told apart on ' +
+        'geophysical grounds, so neither is starred.';
+    } else if (state.recommended) {
+      caption += ' The star is the recommended target, ' + state.recommended +
+        ', with its grid coordinates.';
+    }
+    if (state.surface) {
+      caption += ' The surface between the points is interpolated and blanked ' +
+        'outside the ground they enclose.';
+    } else if (state.n_points >= 3) {
+      caption += ' The points lie on one line and enclose no area, so no ' +
+        'surface is interpolated between them.';
+    }
+    return caption;
+  }
+
+  /* maps.py suitability_map without the drawing, plus the caption the report
+   * earns from it: the scored pegs, the interpolated surface where the survey
+   * supports one, the star on the recommended target and the words that go
+   * under the figure.
+   *
+   * Returns null where reporting/geophysical.py draws no map at all - no
+   * scored point, or no scored point carrying a position - because there the
+   * Python adds no figure and no line saying one is missing. The subsurface
+   * maps list their refusals; this one is silent, and a browser that printed
+   * "drill-target map: ..." under this heading would be inventing a sentence
+   * the package never writes.
+   *
+   * options: {results, ves, zone, gridN}. `results` is an assessSiting()
+   * scorecard the caller has already built, so the map and the ranked table
+   * are scored once and cannot disagree; `ves` is the VESConfig used when it
+   * has to score them here. */
+  function suitabilityMapData(interpretations, options) {
+    var opts = options || {};
+    var results = opts.results || assessSiting(interpretations, opts.ves);
+    if (!results.length) return null;
+    var points = suitabilityMapPoints(results);
+    if (!points.length) return null;
+    var valued = points.filter(function (p) {
+      return p.value !== null && p.value !== undefined;
+    });
+    var state = suitabilityMapState(points);
+    /* _extent(points), over every point and not only the valued ones: a peg
+     * that could not be scored was still surveyed, and a map that frames it
+     * out has lost a station the reader walked to. */
+    var extent = mapExtent(points);
+    var grid = null, clipped = false, hull = null, note = '';
+    if (valued.length >= 3) {
+      var e = valued.map(function (p) { return Number(p.easting); });
+      var n = valued.map(function (p) { return Number(p.northing); });
+      var v = valued.map(function (p) { return Number(p.value); });
+      /* the surface is gridded over the axes, which are the padded extent,
+       * so it fills the frame the way contourf fills the Python's */
+      var candidate = gridFrom(extent[0], extent[1], extent[2], extent[3],
+        opts.gridN || 200);
+      var z = surfaceGrid(e, n, v, candidate);
+      if (z) {
+        var clip = clipToSurveyedGround(z, e, n, candidate);
+        candidate.z = clip.z;
+        clipped = clip.clipped;
+        hull = clip.hull;
+        note = clip.note;
+        grid = candidate;
+      } else {
+        note = noSurfaceNote(valued.length);
+      }
+    }
+    /* Below three valued points there is no note, because the Python writes
+     * none: a two-point survey has nothing to interpolate and saying
+     * "surface not drawn" over two dots reads as a failure rather than as
+     * the figure working as intended. */
+    var ranked = rankedMapPoints(points);
+    var tie = state.tie;
+    var drawn = points.map(function (p) {
+      /* the star is the point of this map - somebody walks to that peg and
+       * not to the other one - so it is drawn only where the ranking can
+       * carry it, and a tie takes it off both points rather than giving it
+       * to whichever sorted first */
+      var recommended = p.rank === 1 && !tie;
+      var text = p.label;
+      if (p.value !== null && p.value !== undefined) {
+        text += '\n' + pyFixed(p.value, 0) + ' - ' + p.kind;
+      }
+      if (recommended) {
+        text += '\nE ' + pyFixed(p.easting, 0) + '  N ' + pyFixed(p.northing, 0);
+      }
+      return {
+        label: p.label, easting: p.easting, northing: p.northing,
+        value: (p.value === undefined) ? null : p.value, kind: p.kind,
+        rank: p.rank, recommended: recommended, text: text,
+      };
+    });
+    var seen = {}, legend = [];
+    drawn.forEach(function (p) {
+      var label = p.recommended ? 'recommended drill target' : 'surveyed point';
+      if (own(seen, label)) return;
+      seen[label] = true;
+      /* the value of the point that registered the entry, so the key can be
+       * drawn in that peg's own colour the way a matplotlib legend handle
+       * carries the marker it was taken from */
+      legend.push({
+        label: label, kind: p.recommended ? 'star' : 'circle', value: p.value,
+      });
+    });
+    return {
+      reason: null,
+      title: 'Drill-target suitability',
+      cbar_label: 'Drilling suitability, confidence weighted (0-100)',
+      cmap: 'RdYlGn',
+      points: drawn,
+      legend: legend,
+      state: state,
+      caption: suitabilityMapCaption(state),
+      tie: tie,
+      /* said on the figure as well as in the caption, because a reader who
+       * sees two pegs and no star has to be told why there is no star */
+      tie_note: tie ? ranked[0].label + ' and ' + ranked[1].label +
+        ' are indistinguishable on geophysical grounds; choose between them ' +
+        'on access and sanitary distances.' : '',
+      grid: grid,
+      surface: !!grid,
+      clipped: clipped,
+      hull: hull,
+      note: note,
+      /* np.linspace(0, 100, 11), with vmin and vmax pinned to the ends of the
+       * score: the colour of a peg means the same thing on every survey's
+       * map, which a scale stretched to each survey's own range would not */
+      levels: linspace(0.0, 100.0, 11),
+      range: [0.0, 100.0],
+      extent: extent,
+      zone: (opts.zone === null || opts.zone === undefined)
+        ? inferZoneForSierraLeone(points[0].easting) : opts.zone,
+    };
+  }
+
+  /* --- the ground surface along the traverse ------------------------------- */
+
+  var GROUND_PROFILE_CAPTION = 'Ground surface along the survey traverse, ' +
+    'from the elevation recorded at each sounding.';
+
+  /* reporting/geophysical.py _ground_profile_figure's filter: the soundings
+   * that carry a position and a recorded ground level. A position without a
+   * level has no height to draw and a level without a position has no
+   * chainage to draw it at. */
+  function levelledSoundings(interpretations) {
+    return positionedSoundings(interpretations).filter(function (item) {
+      return item.site_elevation_m !== null && item.site_elevation_m !== undefined;
+    });
+  }
+
+  /* mapping/terrain.py plot_ground_profile as reporting/geophysical.py
+   * _ground_profile_figure calls it: the land surface along the traverse,
+   * from the survey's own levels, against chainage.
+   *
+   * Returns null where the Python draws nothing, and null is the whole of the
+   * answer: _ground_profile_figure omits the figure silently - fewer than two
+   * levelled soundings, a traverse that cannot be placed, a label the lookup
+   * has no sounding for, or fewer than two finite elevations once the array
+   * is built - and the report says nothing about it either. Anything drawn
+   * from one levelled station, or from a station whose level nobody recorded,
+   * would be a ground surface the survey did not measure.
+   */
+  function groundProfileData(interpretations) {
+    var levelled = levelledSoundings(interpretations);
+    if (levelled.length < 2) return null;
+    var profile = traverseProfile(levelled);
+    /* traverse_profile raises where it cannot place the soundings, and
+     * _ground_profile_figure catches it and draws nothing */
+    if (profile.reason) return null;
+    var byId = {};
+    levelled.forEach(function (item) { byId[item.sounding_id] = item; });
+    var elevation = [], missing = false;
+    profile.labels.forEach(function (label) {
+      /* by_id[label] is a KeyError in the Python for a sounding with no id,
+       * which traverse_profile labelled positionally; the figure is dropped
+       * rather than drawn against a level belonging to another station */
+      if (!own(byId, label)) {
+        missing = true;
+        elevation.push(null);
+        return;
+      }
+      var value = Number(byId[label].site_elevation_m);
+      elevation.push(isFinite(value) ? value : null);
+    });
+    if (missing) return null;
+    var known = elevation.filter(function (value) { return value !== null; });
+    /* plot_ground_profile's own refusal: two levelled points are a profile
+     * and one is a spot height. A level recorded as a blank cell reaches here
+     * as a non-finite number and is not a level. */
+    if (known.length < 2) return null;
+    var stations = profile.labels.map(function (label, k) {
+      return {
+        label: label,
+        chainage_m: profile.chainage_m[k],
+        elevation_m: elevation[k],
+      };
+    });
+    return {
+      reason: null,
+      title: 'Ground surface along the survey traverse',
+      x_label: 'Distance along traverse (m)',
+      y_label: 'Elevation (m)',
+      series_label: 'Levelled at the station',
+      caption: GROUND_PROFILE_CAPTION,
+      labels: profile.labels,
+      chainage_m: profile.chainage_m,
+      elevation_m: elevation,
+      stations: stations,
+      /* fill_between drops to nanmin(elevation) - 2.0: the ground is drawn as
+       * a solid, not as a line floating on the axis, and the base is below
+       * the lowest level so the lowest station is not drawn on the floor */
+      baseline_m: arrMin(known) - 2.0,
+      /* a station that reaches the figure with no level is not drawn, and
+       * the figure says so rather than closing the gap silently and showing
+       * a straight slope across ground nobody levelled */
+      note: known.length < elevation.length
+        ? (elevation.length - known.length) + ' of ' + elevation.length +
+          ' stations recorded no elevation and are not drawn.'
+        : '',
+    };
+  }
+
   Object.assign(C, {
     PROTECTIVE_CLASSES: PROTECTIVE_CLASSES,
     SUBSURFACE_CREDIT: SUBSURFACE_CREDIT,
@@ -15042,6 +15363,16 @@
     protectiveColour: protectiveColour,
     subsurfaceMapData: subsurfaceMapData, subsurfaceMapSet: subsurfaceMapSet,
     subsurfaceFiguresApply: subsurfaceFiguresApply,
+    SUITABILITY_TIE_POINTS: SUITABILITY_TIE_POINTS,
+    SUITABILITY_MAP_CAPTION: SUITABILITY_MAP_CAPTION,
+    GROUND_PROFILE_CAPTION: GROUND_PROFILE_CAPTION,
+    suitabilityMapPoints: suitabilityMapPoints,
+    rankedMapPoints: rankedMapPoints,
+    suitabilityMapState: suitabilityMapState,
+    suitabilityMapCaption: suitabilityMapCaption,
+    suitabilityMapData: suitabilityMapData,
+    levelledSoundings: levelledSoundings,
+    groundProfileData: groundProfileData,
   });
 
   /* __SECTION_MARK__ */
