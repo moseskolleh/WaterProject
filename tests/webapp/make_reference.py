@@ -460,6 +460,18 @@ def build() -> dict:
     ]
     out["preference"] = drilling_preference_table(rokel_interps)
 
+    # A siting survey with no borehole yet: the design comes from the
+    # interpretation alone. The degenerate half-space used to make this an
+    # 80 m hole with 48 m of screen at both Rokel points, from soundings that
+    # resolve 40 m, and the browser built it from the same zone.
+    ves_only = design_borehole(interpretation=rokel_interps[0])
+    out["ves_only_design"] = {
+        "depth": clean(ves_only.total_depth_m),
+        "screens": [[clean(x.top_m), clean(x.bottom_m)] for x in ves_only.screens],
+        "screen_len": clean(ves_only.total_screen_length_m),
+        "basis": list(ves_only.design_basis),
+    }
+
     # Geographic -> UTM, the direction a pasted phone position takes.
     out["geo"] = [
         {"lat": lat, "lon": lon,

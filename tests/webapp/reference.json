@@ -2246,6 +2246,23 @@
    "Ranking": "2nd"
   }
  ],
+ "ves_only_design": {
+  "depth": 40.0,
+  "screens": [
+   [
+    14.0,
+    38.0
+   ]
+  ],
+  "screen_len": 24.0,
+  "basis": [
+   "screens positioned against the low resistivity zones of the VES interpretation (8-40 m)",
+   "5 inch uPVC casing in a 6.5 inch hole",
+   "no gravel pack: the 19 mm annulus between the 5 inch casing and the 6.5 inch hole is too thin to place one, so the annulus below the seal is left to the formation",
+   "cement sanitary seal from surface to 6 m with concrete apron with drainage channel and soakaway",
+   "screens kept at least 5 m below the static water level"
+  ]
+ },
  "geo": [
   {
    "lat": 8.4657,

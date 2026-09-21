@@ -302,6 +302,17 @@ await withPage(async (page, base, consoleErrors) => {
     }));
     out.preference = C.drillingPreferenceTable(rokelInterps);
 
+    // a siting survey with no borehole yet: the design comes from the
+    // interpretation alone, which is where the degenerate zone used to put
+    // 48 m of screen in an 80 m hole
+    const vesOnly = C.designBorehole({ interpretation: rokelInterps[0] });
+    out.ves_only_design = {
+      depth: vesOnly.total_depth_m,
+      screens: vesOnly.screens.map((x) => [x.top_m, x.bottom_m]),
+      screen_len: vesOnly.total_screen_length_m,
+      basis: vesOnly.design_basis,
+    };
+
     out.geo = [[8.4657, -13.2317], [8.7043, -11.4084], [7.9560, -11.7400]]
       .map(([lat, lon]) => {
         const utm = C.geographicToUtm(lat, lon);
@@ -1308,6 +1319,9 @@ await withPage(async (page, base, consoleErrors) => {
   deep('spine: quantity basis', parsed.spine.quantity_basis, R.spine.quantity_basis);
   deep('portfolio: statistics', parsed.portfolio.stats, R.portfolio.stats);
   deep('planning: census statistics', parsed.planning.census, R.planning.census);
+
+  deep('VES-only design: from the interpretation alone',
+    parsed.ves_only_design, R.ves_only_design);
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, {});

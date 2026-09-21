@@ -503,8 +503,9 @@ numbers is kept with the audit notes.
 - [ ] **H webapp-parity-5. The browser geophysical report omits the
   study-area map, the suitability map and every survey-derived figure;**
   no section, pseudo-section or subsurface map exists in the browser.
-- [ ] **H webapp-parity-6 / ves-1. The browser builds an 80 m hole with 48 m
+- [x] **H webapp-parity-6 / ves-1. The browser builds an 80 m hole with 48 m
   of screen for a VES-only project** from the degenerate zone.
+  Done by workstream 1 in both engines, and now held: the reference and the parity suite carry the design built from the Rokel interpretation alone, which is a 40 m hole with 24 m of screen at 14-38 m, from a sounding that resolves 40 m. Nothing checked that design before, so the two engines could have drifted on it unseen.
 - [x] **M webapp-parity-7. The browser thematic-map key lists a unit that is
   nowhere in the frame.**
   Done: the key is scoped to the window that was drawn rather than to the whole letterboxed frame, and the not-mapped test runs once on that same box, so the entry and the footnote that explains it cannot disagree. The national maps are framed on the country's own bounds, as `_plot_units_map` frames them, instead of on polygons that run into Guinea and Liberia.
