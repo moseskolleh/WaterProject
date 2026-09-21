@@ -354,8 +354,16 @@ await withPage(async (page, base, consoleErrors) => {
       empty: wq(),
       pass: wq(...panel, { parameter: 'pH', value: 7.2, unit: 'pH units' }),
       aesthetic: wq(...panel, { parameter: 'Iron', value: 0.5, unit: 'mg/L' }),
+      // Aluminium used to be this case, on a WHO health value of 0.9 mg/L
+      // that WHO does not set. Total coliforms above zero is the real one.
       national_fail: wq(...panel,
-        { parameter: 'Aluminium', value: 0.5, unit: 'mg/L' }),
+        { parameter: 'Total coliforms', value: 5.0, unit: 'CFU/100 mL' }),
+      // a count the laboratory saw and did not put a number to, and a
+      // ">100" inside its limit: both used to read as "not measured"
+      unquantified_count: wq(...panel, { parameter: 'Total coliforms',
+        value: null, unit: 'CFU/100 mL', greater_than: 0 }),
+      greater_than_inside_limit: wq(...panel, { parameter: 'Sulfate',
+        value: null, unit: 'mg/L', greater_than: 100 }),
       health_fail: wq(...panel, { parameter: 'Arsenic', value: 0.5, unit: 'mg/L' }),
       micrograms: wq(...panel, { parameter: 'Lead', value: 5.0, unit: 'ug/L' }),
       bad_unit: wq(...panel, { parameter: 'Iron', value: 0.1, unit: 'wibbles' }),

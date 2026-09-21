@@ -535,18 +535,20 @@ the browser too), `gwt-app.js` parseLatLon. Tests: `test_ingestion.py`,
 `test_geo_and_checks.py`, `test_chiefdoms.py`, `test_quality_verdict.py`,
 `test_provenance.py`, `test_web_build.py`.
 
-- [ ] **C data-ingestion-1. Non-detects written "ND (<0.05)", "BDL (0.02)",
+- [x] **C data-ingestion-1. Non-detects written "ND (<0.05)", "BDL (0.02)",
   "ND<0.1" or "Not detected (<0.001)" are read as measured concentrations
   and graded EXCEEDS HEALTH GUIDELINE.** Only a cell beginning with "<" or
   exactly matching an absence token is a non-detect.
+  Done in both engines: an absence word followed by nothing but a limit is an absence, and the limit it carries becomes the detection limit where the sheet has no separate column. A cell that merely contains a number and a word ("Nitrate 0.5") is untouched, so the rule does not reach beyond the forms it names.
 - [ ] **C data-ingestion-3. `parse_latlon` accepts an unsigned longitude and
   a degrees-decimal-minutes coordinate, and the Streamlit zone relabel then
   lands the site inside Sierra Leone 250 km from where it is, with no
   flag.** "8.4657, 13.2317" becomes a zone-33 position relabelled "29N";
   the browser stores zone 33 instead, so the two engines disagree.
-- [ ] **H data-ingestion-2. "TNTC", "Present" and "Positive" become "not
+- [x] **H data-ingestion-2. "TNTC", "Present" and "Positive" become "not
   measured"** (E. coli 0 with total coliforms TNTC gives "Safe") **and ">50"
   becomes exactly 50.**
+  Done in both engines: a result carries a lower bound where the laboratory gave one, and the assessment grades against it. A count above zero fails a limit of zero, so E. coli 0 with total coliforms TNTC is a national limit failure rather than "Safe", and ">50" is at least 50 rather than exactly 50. Where the bound is inside every limit the result is an open question, not a pass: the true value is somewhere above it. The reference carries both cases, so the two engines are held to them.
 - [ ] **H data-ingestion-4. The district consistency check is judged against
   hand-drawn bounding boxes** that overlap on half the country, miss twelve
   percent of it, falsely flag a correct district on seven percent and give
@@ -576,10 +578,11 @@ the browser too), `gwt-app.js` parseLatLon. Tests: `test_ingestion.py`,
   Time/Level/Drawdown/Recovery reads the increment column as levels.**
 - [ ] **M data-ingestion-11. Wenner soundings have no ingestion path;** a
   Wenner sheet headed AB/2 is inverted with AB/2 used as the spacing a.
-- [ ] **M data-ingestion-12. `who_guidelines.csv` carries values the WHO
+- [x] **M data-ingestion-12. `who_guidelines.csv` carries values the WHO
   guidelines do not set** (aluminium 0.9 as a health value, hardness,
   turbidity) **and rounds the nitrogen-basis limits down** (nitrate as N 11
   for 11.3), so compliant samples are graded as exceeding.
+  Done: aluminium carries no WHO health guideline, because WHO derives a health based value of 0.9 mg/L and declines to adopt it; hardness and turbidity carry no WHO value at all, only the provisional national one; and the nitrogen-basis limits are the conversions rather than the floor of them (nitrate as N 11.3, nitrite as N 0.91), so a sample that complies as nitrate is no longer failed as nitrogen. Aluminium was the only row whose national limit undercut a WHO health guideline, so the two tests that rested on it now build that case explicitly instead. The remark on a national acceptability limit says the limit is provisional.
 - [ ] **M data-ingestion-13. Every national value is provisional, yet the
   remark says "exceeds the national acceptability limit"** and the WHO value
   is never cited.

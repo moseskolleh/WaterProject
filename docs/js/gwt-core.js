@@ -4056,9 +4056,13 @@
           'WHO health based guideline (' + limitText(entry.who_health) + ')' +
           unitNote;
       } else {
+        /* Every national value in the bundled table is provisional - a WHO
+         * or regional figure carried across, not a confirmed Standards
+         * Bureau one - so the remark says so rather than reporting a legal
+         * failure the toolkit cannot establish. */
         row.status = 'exceeds_aesthetic';
         row.remark = 'exceeds the national acceptability limit (' +
-          limitText(entry.sl_standard) + ')' + unitNote;
+          limitText(entry.sl_standard) + '), which is provisional' + unitNote;
       }
     } else if (entry.who_aesthetic && limitExceededBy(entry.who_aesthetic, value)) {
       row.status = 'exceeds_aesthetic';
@@ -4141,6 +4145,57 @@
     return row;
   }
 
+  /* A result the laboratory saw and did not put a number to.
+   *
+   * "TNTC", "Present" and "Positive" are a count above zero; ">50" is at
+   * least 50. All of them used to read as "not measured", so a sample with
+   * E. coli 0 and total coliforms TNTC was graded Safe, and a ">50" count
+   * was graded as exactly 50 - inside the limit whenever the limit is 50. */
+  function assessUnquantified(row, result, entry) {
+    var bound = Number(result.greater_than);
+    row.evaluable = true;
+    row.reason = 'detected_not_quantified';
+    var isFaecal = String(entry.parameter || '').trim().toLowerCase() === 'e. coli';
+    var stated = bound === 0
+      ? 'detected, count not quantified' : 'more than ' + formatG(bound);
+
+    function maximum(limit) {
+      return limit && limit.maximum !== null && limit.maximum !== undefined
+        ? limit.maximum : null;
+    }
+    var health = maximum(entry.who_health);
+    var national = maximum(entry.sl_standard);
+    if (national === null) national = maximum(entry.who_aesthetic);
+
+    var overHealth = health !== null && bound >= health;
+    var overNational = national !== null && bound >= national;
+
+    if (overHealth) {
+      row.status = 'exceeds_health';
+      row.remark = stated + ', which is above the WHO health based guideline (' +
+        limitText(entry.who_health) + '); the laboratory did not quantify it';
+    } else if (overNational && isFaecal) {
+      row.status = 'exceeds_health';
+      row.remark = 'faecal indicator ' + stated + ', above the limit (' +
+        limitText(entry.sl_standard || entry.who_aesthetic) +
+        '); a health concern, not aesthetic';
+    } else if (overNational) {
+      row.status = 'exceeds_national';
+      row.remark = stated + ', above the national limit (' +
+        limitText(entry.sl_standard || entry.who_aesthetic) + '); an indicator ' +
+        'of ingress or inadequate wellhead protection, not of faecal ' +
+        'contamination in itself, and WHO sets no health based guideline for it';
+    } else {
+      /* The bound is inside every limit, so the result is an open question
+       * rather than a pass: the true value is somewhere above it. */
+      row.status = 'indeterminate';
+      row.evaluable = false;
+      row.remark = stated + '; the laboratory did not quantify it, so it ' +
+        'cannot be shown to meet the limit';
+    }
+    return row;
+  }
+
   function assessResult(result, entry) {
     var guidelineUnit = entry ? (entry.unit || '') : '';
     var row = {
@@ -4163,7 +4218,12 @@
     };
 
     var missing = result.value === null || result.value === undefined;
-    if (missing && !result.below_detection) return row;
+    if (missing && !result.below_detection) {
+      if (result.greater_than !== null && result.greater_than !== undefined && entry) {
+        return assessUnquantified(row, result, entry);
+      }
+      return row;
+    }
 
     if (!entry) {
       /* An unrecognised determinand is an open question, not a clean bill. */
@@ -6800,6 +6860,32 @@
     'none detected', 'bdl', 'below detection', 'below detection limit', '<dl',
     'negative', 'neg'];
 
+  /* The same words with the laboratory's limit written after them:
+   * "ND (<0.05)", "BDL (0.02)", "ND<0.1", "Not detected (<0.001)". Only an
+   * exact match counted, so every one of these was read as a measured
+   * concentration and graded as exceeding a health guideline - the arsenic a
+   * laboratory reported as absent came out as the worst reading on the
+   * sheet. */
+  var ABSENCE_WITH_LIMIT = /^([a-z][a-z.\s/]*?)\s*[([]?\s*<?\s*(\d+(?:[.,]\d+)?)\s*[)\]]?\.?$/;
+
+  /* What a laboratory writes when it saw the determinand and put no number
+   * to it. For a determinand whose limit is zero that is the whole finding:
+   * a sample with E. coli 0 and total coliforms TNTC was graded "Safe"
+   * because the count read as "not measured". */
+  var PRESENCE_TOKENS = ['tntc', 't.n.t.c', 'too numerous to count', 'confluent',
+    'confluent growth', 'present', 'positive', 'pos', '+ve', 'detected'];
+
+  /* at least this much, not exactly this much: ">50" was read as 50 */
+  var GREATER_THAN_RE = /^(?:>|>=|\u2265|more than|greater than)\s*(\d+(?:[.,]\d+)?)\s*\+?$/;
+
+  function absenceLimit(text) {
+    var match = ABSENCE_WITH_LIMIT.exec(String(text || '').toLowerCase().trim());
+    if (!match) return null;
+    var word = match[1].replace(/[\s.]+$/, '').trim();
+    if (ABSENCE_TOKENS.indexOf(word) < 0) return null;
+    return parseNumber(match[2]);
+  }
+
   function qualityFromGrid(grid, source) {
     var fields = extractHeaderFields(grid);
     var site = siteFromFields(fields, source);
@@ -6820,11 +6906,27 @@
       if (!parameter || parameter.toLowerCase().indexOf('note') === 0) continue;
       var rawValue = cell('value');
       var textValue = cleanText(rawValue);
-      /* "<1", and the words a certificate uses for the same thing */
-      var absent = ABSENCE_TOKENS.indexOf(textValue.toLowerCase().replace(/\.+$/, '')) >= 0;
-      var belowDetection = textValue.indexOf('<') === 0 || absent;
-      var value = absent ? null : parseNumber(rawValue);
+      /* "<1", the words a certificate uses for the same thing, and those
+       * same words with the limit written after them ("ND (<0.05)") */
+      var plain = textValue.toLowerCase().replace(/\.+$/, '');
+      var absent = ABSENCE_TOKENS.indexOf(plain) >= 0;
+      var wordedLimit = absenceLimit(textValue);
+      var belowDetection = textValue.indexOf('<') === 0 || absent || wordedLimit !== null;
+      /* a count the laboratory saw and did not quantify, and a ">50" that
+       * used to be read as exactly 50 */
+      var greaterThan = null;
+      if (!belowDetection) {
+        if (PRESENCE_TOKENS.indexOf(plain) >= 0) {
+          greaterThan = 0;
+        } else {
+          var gt = GREATER_THAN_RE.exec(plain);
+          if (gt) greaterThan = parseNumber(gt[1]);
+        }
+      }
+      var value = (absent || wordedLimit !== null || greaterThan !== null)
+        ? null : parseNumber(rawValue);
       var dl = parseNumber(cell('dl'));
+      if (wordedLimit !== null && dl === null) dl = wordedLimit;
       if (belowDetection) {
         /* A "<X" marker means the true concentration is unknown, bounded above
          * by X. The measured value must be cleared so the assessment treats
@@ -6838,6 +6940,7 @@
         detection_limit: dl,
         below_detection: belowDetection || (value === null && dl !== null),
         method: cleanText(cell('method')),
+        greater_than: greaterThan,
       });
     }
 
@@ -12258,6 +12361,1409 @@
     money0: money0
   });
 
+
+  /* ============================================================== subsurface
+   * groundwater/mapping/subsurface.py and groundwater/mapping/maps.py: the
+   * survey's own geometry, and the interpolation the subsurface figures are
+   * drawn from.
+   *
+   * The browser report drew no study-area map, no suitability map and no
+   * survey-derived figure at all - no section, no pseudo-section, no
+   * subsurface map - while the Python engine drew every one of them
+   * (webapp-parity-5). This section is the arithmetic half of closing that:
+   * the chainage of each station along the traverse, the gaps too wide to
+   * correlate a horizon across, the interpolated surface, and the hull the
+   * surface is blanked outside of. Nothing here draws anything.
+   *
+   * The refusals are as load-bearing as the numbers. Where the Python raises,
+   * these return a `reason` string rather than throwing, because
+   * reporting/geophysical.py catches ValueError and RuntimeError per figure
+   * and keeps the rest of the report: one missing GPS position must not cost
+   * the document the other figures. A caller that finds `reason` set draws
+   * nothing and prints it, the way the report's "not drawn" list does; a
+   * refusal that quietly drew something anyway would be worse than no figure.
+   */
+
+  /* mapping/subsurface.py PROTECTIVE_CLASSES: lower bound, upper bound, name,
+   * colour. The map, its key and the word in the report all read this one
+   * table, so a point's colour and the sentence beside it cannot disagree. */
+  var PROTECTIVE_CLASSES = [
+    [0.0, 0.1, 'poor', '#B2182B'],
+    [0.1, 0.2, 'weak', '#EF8A62'],
+    [0.2, 0.7, 'moderate', '#FDDBC7'],
+    [0.7, 5.0, 'good', '#92C5DE'],
+    [5.0, Infinity, 'very good', '#2166AC'],
+  ];
+
+  var SUBSURFACE_CREDIT = 'Subsurface interpretation from this survey\'s ' +
+    'vertical electrical soundings; no external dataset';
+
+  /* subsurface.py CORRELATION_REACH_MULTIPLE. Stations further apart than
+   * this many times the depth of investigation have nothing measured between
+   * them: no boundary is correlated across such a gap, and a survey with no
+   * closer pair gets no section at all. */
+  var CORRELATION_REACH_MULTIPLE = 10.0;
+
+  /* subsurface.py TraverseProfile.is_collinear: a tenth of the traverse
+   * length is the working rule, which on a 400 m line is 40 m - inside the
+   * positional error of a handheld GPS under canopy. */
+  var COLLINEAR_STRAIGHTNESS = 0.10;
+
+  /* maps.py points_enclose_an_area's tolerance. */
+  var AREA_TOLERANCE = 1e-6;
+
+  /* Math.log10, not Math.log(x) / Math.LN10, which is what formatG's comment
+   * is warning about: in V8 that division returns 2.9999999999999996 for a
+   * thousand, where Math.log10 and numpy's log10 both return exactly 3. A
+   * decade boundary is precisely where these scales are read, and taking the
+   * floor of the wrong side of one put the colour bar of a section whose
+   * lowest layer was 1,000 ohm-m at 100, a whole decade below the Python's,
+   * with every layer drawn in the wrong half of the ramp. */
+  function log10Of(value) { return Math.log10(value); }
+
+  /* Python's "{:,.0f}". Rounded through pyRound first, because toLocaleString
+   * rounds a tie away from zero where Python rounds it to even, and these
+   * numbers are printed inside sentences the two engines are compared on. */
+  function commaFixed0(value) {
+    return thousandsFixed(pyRound(Number(value), 0), 0);
+  }
+
+  function linspace(a, b, n) {
+    var out = [], i;
+    if (n <= 1) return [a];
+    for (i = 0; i < n; i += 1) out.push(a + (b - a) * i / (n - 1));
+    return out;
+  }
+
+  function diffs(values) {
+    var out = [], i;
+    for (i = 1; i < values.length; i += 1) out.push(values[i] - values[i - 1]);
+    return out;
+  }
+
+  /* subsurface.py _positioned: a sounding with no recorded position cannot be
+   * put on a map or on a line, and is dropped rather than placed at a guess. */
+  function positionedSoundings(interpretations) {
+    return (interpretations || []).filter(function (item) {
+      return item && item.site_easting !== null && item.site_easting !== undefined &&
+        item.site_northing !== null && item.site_northing !== undefined;
+    });
+  }
+
+  /* --- the linear algebra numpy would have done ---------------------------
+   *
+   * Two of the rules below are singular-value tests on an N-by-2 matrix of
+   * centred positions: the principal axis the traverse is projected onto, and
+   * whether the points enclose any area at all. numpy.linalg.svd is not in
+   * the browser, but with two columns the answer is closed form.
+   */
+
+  /* Both singular values of the centred positions.
+   *
+   * Taken from a QR factorisation rather than from the normal matrix: the
+   * normal matrix squares the condition number, and the smaller singular
+   * value of a nearly straight traverse is exactly the quantity that decides
+   * whether a surface is drawn. The re-orthogonalisation is the classic
+   * "twice is enough": one pass of Gram-Schmidt loses the residual to
+   * cancellation precisely when the second column is nearly parallel to the
+   * first, which is the straight-traverse case this test exists for.
+   */
+  function singularValues2(x, y) {
+    var n = x.length, i, r11 = 0.0, r12 = 0.0, r22 = 0.0, correction = 0.0;
+    for (i = 0; i < n; i += 1) r11 += x[i] * x[i];
+    r11 = Math.sqrt(r11);
+    if (r11 === 0.0) {
+      for (i = 0; i < n; i += 1) r22 += y[i] * y[i];
+      return [Math.sqrt(r22), 0.0];
+    }
+    var q = [], w = [];
+    for (i = 0; i < n; i += 1) q.push(x[i] / r11);
+    for (i = 0; i < n; i += 1) r12 += q[i] * y[i];
+    for (i = 0; i < n; i += 1) w.push(y[i] - r12 * q[i]);
+    for (i = 0; i < n; i += 1) correction += q[i] * w[i];
+    for (i = 0; i < n; i += 1) {
+      w[i] -= correction * q[i];
+      r22 += w[i] * w[i];
+    }
+    r22 = Math.sqrt(r22);
+    r12 += correction;
+    /* the singular values of [[r11, r12], [0, r22]], the stable pair: the
+     * larger from the sum of the two hypotenuses, the smaller from the
+     * determinant, so it is never a difference of two near-equal numbers */
+    var big = (Math.sqrt((r11 - r22) * (r11 - r22) + r12 * r12) +
+      Math.sqrt((r11 + r22) * (r11 + r22) + r12 * r12)) / 2.0;
+    var small = big > 0 ? Math.abs(r11 * r22) / big : 0.0;
+    return [big, small];
+  }
+
+  /* The first right singular vector of the centred positions: the direction
+   * of the best-fit line by total least squares, which is the eigenvector of
+   * the 2-by-2 normal matrix for its larger eigenvalue. The direction, unlike
+   * the smaller singular value, is well conditioned whenever there is a line
+   * to find at all, so the normal matrix is good enough for it. */
+  function principalAxis(x, y) {
+    var sxx = 0.0, sxy = 0.0, syy = 0.0, i;
+    for (i = 0; i < x.length; i += 1) {
+      sxx += x[i] * x[i];
+      sxy += x[i] * y[i];
+      syy += y[i] * y[i];
+    }
+    var half = (sxx + syy) / 2.0;
+    var disc = Math.sqrt(Math.max(half * half - (sxx * syy - sxy * sxy), 0.0));
+    var larger = half + disc;
+    var vx, vy;
+    if (sxy !== 0.0) {
+      vx = larger - syy;
+      vy = sxy;
+    } else if (sxx >= syy) {
+      vx = 1.0;
+      vy = 0.0;
+    } else {
+      vx = 0.0;
+      vy = 1.0;
+    }
+    var norm = Math.sqrt(vx * vx + vy * vy) || 1.0;
+    return [vx / norm, vy / norm];
+  }
+
+  /* maps.py points_enclose_an_area.
+   *
+   * Three pegs on one line - the standard VES layout, and what a
+   * tape-and-compass traverse or chainages typed by hand produce exactly -
+   * enclose no area. Handed to a triangulation they are a precision error,
+   * which in the Python is a RuntimeError that walked past every
+   * "except ValueError" between the map and the report and took the whole
+   * geophysical report down. The test is the smaller singular value of the
+   * centred coordinates against the larger: below the tolerance the points
+   * are a line to numerical precision. */
+  function pointsEncloseAnArea(eastings, northings, tolerance) {
+    var tol = tolerance === undefined ? AREA_TOLERANCE : tolerance;
+    if (eastings.length < 3) return false;
+    var ce = arrMean(eastings), cn = arrMean(northings);
+    var dx = eastings.map(function (v) { return v - ce; });
+    var dy = northings.map(function (v) { return v - cn; });
+    var singular = singularValues2(dx, dy);
+    if (singular[0] <= 0) return false;
+    return singular[1] / singular[0] > tol;
+  }
+
+  /* --- the traverse ------------------------------------------------------- */
+
+  /* subsurface.py traverse_profile: the soundings projected onto the best-fit
+   * line through their recorded positions.
+   *
+   * The line is the principal axis of the positions, not the line joining the
+   * first and last sounding: a traverse with a dog-leg in the middle has no
+   * reason to be summarised by its endpoints, and the endpoints are the two
+   * stations most likely to have been added last and placed loosely.
+   *
+   * Returns `reason` instead of raising when fewer than two soundings carry a
+   * position, because every figure built on the traverse is skipped with that
+   * reason printed rather than the report ending there.
+   */
+  function traverseProfile(interpretations) {
+    var all = interpretations || [];
+    var positioned = positionedSoundings(all);
+    if (positioned.length < 2) {
+      return {
+        reason: positioned.length + ' of ' + all.length + ' soundings carry a ' +
+          'position. A traverse needs at least two: record the GPS position ' +
+          'of every sounding on the field sheet.',
+      };
+    }
+    var e = positioned.map(function (item) { return Number(item.site_easting); });
+    var n = positioned.map(function (item) { return Number(item.site_northing); });
+    var labels = positioned.map(function (item, k) {
+      return item.sounding_id || 'VES ' + (k + 1);
+    });
+    var ce = arrMean(e), cn = arrMean(n);
+    var dx = e.map(function (v) { return v - ce; });
+    var dy = n.map(function (v) { return v - cn; });
+    var direction = principalAxis(dx, dy);
+    /* The sign of a singular vector is arbitrary, so the same five soundings
+     * handed over in a different order came back as a section drawn the other
+     * way round - the same ground, mirrored, with the chainages reversed. The
+     * line is made to run eastwards, or northwards where it is exactly
+     * north-south, so a survey has one section rather than two. */
+    if (direction[0] < 0 || (direction[0] === 0 && direction[1] < 0)) {
+      direction = [-direction[0], -direction[1]];
+    }
+    var normal = [-direction[1], direction[0]];
+    var along = [], across = [], k;
+    for (k = 0; k < dx.length; k += 1) {
+      along.push(dx[k] * direction[0] + dy[k] * direction[1]);
+      across.push(dx[k] * normal[0] + dy[k] * normal[1]);
+    }
+    /* Soundings are returned in order along the line, which is the order a
+     * section draws them in. That is not always field order, and where it
+     * differs, field order was drawing the section back on itself. */
+    var order = along.map(function (value, index) { return index; })
+      .sort(function (a, b) { return along[a] - along[b] || a - b; });
+    var pick = function (values) {
+      return order.map(function (index) { return values[index]; });
+    };
+    var sortedAlong = pick(along);
+    var offset = pick(across);
+    var base = arrMin(sortedAlong);
+    var chainage = sortedAlong.map(function (v) { return v - base; });
+    var length = arrMax(chainage) || 1.0;
+    var maxOffset = arrMax(offset.map(function (v) { return Math.abs(v); }));
+    var bearing = ((Math.atan2(direction[0], direction[1]) * 180.0 / Math.PI) %
+      180.0 + 180.0) % 180.0;
+    return {
+      reason: null,
+      labels: pick(labels),
+      chainage_m: chainage,
+      offset_m: offset,
+      max_offset_m: maxOffset,
+      /* max offset as a fraction of the traverse length: soundings scattered
+       * 300 m either side of a line are not a section, they are a map drawn
+       * edge-on, and this says so rather than leaving the figure to imply
+       * otherwise */
+      straightness: maxOffset / length,
+      bearing_deg: bearing,
+      eastings: pick(e),
+      northings: pick(n),
+      is_collinear: maxOffset / length <= COLLINEAR_STRAIGHTNESS,
+      length_m: arrMax(chainage) - arrMin(chainage),
+      gaps_m: diffs(chainage),
+    };
+  }
+
+  /* subsurface.py _wide_gaps: which gaps between neighbouring stations are too
+   * wide to correlate a horizon across. */
+  function wideGaps(profile, reachM) {
+    if (!profile || profile.reason) return [];
+    if (!(reachM > 0) || profile.chainage_m.length < 2) return [];
+    return profile.gaps_m.map(function (gap) {
+      return gap > reachM * CORRELATION_REACH_MULTIPLE;
+    });
+  }
+
+  /* subsurface.py _correlation_note: what is not correlated on the section,
+   * and why. A sounding sees the ground under it, to a lateral reach of
+   * roughly its largest electrode half-spacing; joining a layer boundary
+   * across a gap many times that is drawing a line between two points and
+   * calling it a horizon. */
+  function correlationNote(profile, reachM, wide) {
+    if (!profile || profile.reason) return '';
+    if (!(reachM > 0) || profile.chainage_m.length < 2) return '';
+    var flags = wide === undefined || wide === null ? wideGaps(profile, reachM) : wide;
+    var any = flags.some(function (flag) { return flag; });
+    if (!any) return '';
+    var parts = [];
+    flags.forEach(function (isWide, k) {
+      if (!isWide) return;
+      parts.push(profile.labels[k] + ' to ' + profile.labels[k + 1] + ' (' +
+        commaFixed0(profile.gaps_m[k]) + ' m, about ' +
+        pyFixed(profile.gaps_m[k] / reachM, 0) + ' times the ' +
+        commaFixed0(reachM) + ' m the soundings reached)');
+    });
+    return 'No boundary is correlated across the gap ' + parts.join('; ') +
+      ': there is no measurement between those stations, and a dashed line ' +
+      'across them would be a proposal drawn as a horizon.';
+  }
+
+  /* ves/plots.py _rho_norm: the log colour scale spanning the decades the
+   * drawn models occupy. The fixed 10-5,000 ohm-m ramp it replaced coloured
+   * 3 ohm-m saline clay the same as 10 ohm-m fresh-water clay and 20,000
+   * ohm-m basement the same as 5,000, with nothing on the bar to say it had
+   * clipped. */
+  function rhoColourRange(models) {
+    var rho = [];
+    (models || []).forEach(function (model) {
+      (model.resistivities || []).forEach(function (value) {
+        if (isFinite(value) && value > 0) rho.push(Number(value));
+      });
+    });
+    if (!rho.length) return [10.0, 5000.0];
+    var lo = Math.pow(10, Math.floor(log10Of(arrMin(rho))));
+    var hi = Math.pow(10, Math.ceil(log10Of(arrMax(rho))));
+    if (hi <= lo) hi = lo * 10;
+    return [lo, hi];
+  }
+
+  /* subsurface.py geoelectric_section_along_traverse, plus the geometry
+   * ves/plots.py plot_geoelectric_section derives from what it is handed.
+   *
+   * Everything the section needs and nothing it draws: the stations at their
+   * surveyed chainage rather than evenly spaced, the depth the figure runs
+   * to, how much ground a column stands for, which gaps carry a correlated
+   * boundary, the note that says which do not, and the title.
+   *
+   * options: {title, depthMaxM} - the Python's two overridable arguments.
+   */
+  function geoelectricSectionGeometry(interpretations, options) {
+    var opts = options || {};
+    var all = interpretations || [];
+    var profile = traverseProfile(all);
+    if (profile.reason) return { reason: profile.reason, profile: null };
+    var byId = {};
+    all.forEach(function (item, k) {
+      byId[item.sounding_id || 'VES ' + (k + 1)] = item;
+    });
+    var ordered = [];
+    profile.labels.forEach(function (label) {
+      if (own(byId, label)) ordered.push(byId[label]);
+    });
+    if (ordered.length < 2) {
+      return {
+        reason: 'the traverse and the interpretations share fewer than two ' +
+          'sounding identifiers, so the section cannot be placed',
+        profile: profile,
+      };
+    }
+    /* A column stands for the ground the sounding sampled, which is about its
+     * largest electrode half-spacing either side of the peg - not for an equal
+     * share of the profile. Two Rokel soundings 20 km apart came out as two
+     * columns 8 km wide, which claims each sounding measured 8 km of ground. */
+    var reaches = ordered.map(function (item) {
+      return Number(item.investigation_depth_m || 0.0);
+    });
+    var reach = reaches.length ? arrMax(reaches) : 0.0;
+    var title = opts.title;
+    if (title === undefined || title === null) {
+      title = 'Interpreted geoelectric section, ' + pyFixed(profile.length_m, 0) +
+        ' m along bearing ' + pyFixed(profile.bearing_deg, 0) + ' degrees';
+      if (!profile.is_collinear) {
+        title += ' (soundings up to ' + pyFixed(profile.max_offset_m, 0) +
+          ' m off the line)';
+      }
+    }
+    var depthMax = opts.depthMaxM === undefined || opts.depthMaxM === null
+      ? null : Number(opts.depthMaxM);
+    if (depthMax === null && reach > 0) {
+      /* the section is drawn to the depth the soundings resolve, the same rule
+       * as every other figure, and never so shallow that a fitted interface
+       * falls off the bottom of it */
+      var interfaces = [];
+      ordered.forEach(function (item) {
+        var model = item.model;
+        if (model && model.n_layers > 1) {
+          interfaces.push(Number(model.depths_top[model.depths_top.length - 1]));
+        }
+      });
+      var deepest = interfaces.length ? arrMax(interfaces) : 0.0;
+      depthMax = Math.max(reach, deepest * 1.2 + 2.0);
+    }
+    /* A boundary is correlated between two stations only when they are within
+     * the correlation rule of each other. Two Rokel soundings 20.7 km apart
+     * used to come out as a 60 m section with a dashed horizon joining them: a
+     * line between two points in different chiefdoms, called a section. Where
+     * no pair of neighbours is within reach there is no section to draw and
+     * the caller is told why. */
+    var wide = wideGaps(profile, reach);
+    if (wide.length && wide.every(function (flag) { return flag; })) {
+      var widest = arrMax(profile.gaps_m);
+      return {
+        reason: 'the soundings are ' + commaFixed0(widest) + ' m apart, about ' +
+          pyFixed(widest / reach, 0) + ' times the ' + commaFixed0(reach) +
+          ' m they resolve; a section between them would join two measurements ' +
+          'with no measurement between, so none is drawn. A section needs ' +
+          'stations within a few times the depth of investigation of each other.',
+        profile: profile,
+      };
+    }
+    var positions = profile.chainage_m.slice();
+    var labels = ordered.map(function (item) { return item.sounding_id || 'VES'; });
+    var models = ordered.map(function (item) { return item.model; });
+    /* The three lists are read as one column per sounding, so they have to
+     * agree. A caller that derives them separately can desynchronise them: a
+     * sounding whose identifier the traverse does not share leaves the models
+     * one short of the chainages, which draws the section with a sounding
+     * silently dropped or the labels off by one - neither visible in the
+     * finished figure, and both of which reach a signed survey report. */
+    if (positions.length !== models.length || labels.length !== models.length) {
+      return {
+        reason: models.length + ' soundings need ' + models.length +
+          ' positions and ' + models.length + ' labels; got ' + positions.length +
+          ' and ' + labels.length,
+        profile: profile,
+      };
+    }
+    if (depthMax === null) {
+      var depths = models.map(function (model) {
+        return (model.n_layers > 1
+          ? model.depths_top[model.depths_top.length - 1] : 10) * 1.35 + 5;
+      });
+      depthMax = arrMax(depths);
+    }
+    var span = (arrMax(positions) - arrMin(positions)) || 100.0;
+    var halfWidth;
+    if (reach > 0) {
+      /* never wider than the ground to the next peg, or the columns overlap
+       * and the section reads as one continuous exposure */
+      var stepGaps = diffs(positions.slice().sort(function (a, b) { return a - b; }));
+      var limit = stepGaps.length ? arrMin(stepGaps) / 2.2 : span;
+      halfWidth = Math.max(Math.min(reach, limit), span * 0.004);
+    } else {
+      halfWidth = span / (models.length * 2.6);
+    }
+    var correlate = wide.map(function (flag) { return !flag; });
+    if (!correlate.length) {
+      for (var k = 0; k < Math.max(models.length - 1, 0); k += 1) correlate.push(true);
+    }
+    if (correlate.length !== Math.max(models.length - 1, 0)) {
+      return {
+        reason: models.length + ' soundings have ' +
+          Math.max(models.length - 1, 0) + ' gaps between them; got ' +
+          correlate.length + ' correlation flags',
+        profile: profile,
+      };
+    }
+    return {
+      reason: null,
+      profile: profile,
+      interpretations: ordered,
+      models: models,
+      labels: labels,
+      positions_m: positions,
+      reach_m: reach,
+      depth_max_m: depthMax,
+      half_width_m: halfWidth,
+      gaps_m: profile.gaps_m,
+      wide_gaps: wide,
+      correlate: correlate,
+      note: correlationNote(profile, reach, wide),
+      title: title,
+      rho_range: rhoColourRange(models),
+      x_label: 'Distance along profile (m)',
+      y_label: 'Depth (m)',
+      cbar_label: 'Resistivity (ohm-m)',
+    };
+  }
+
+  /* subsurface.py apparent_resistivity_pseudosection: the measurements
+   * themselves, laid out along the traverse, before any inversion has been
+   * believed. The vertical axis is AB/2 - the electrode half-spacing - and is
+   * left as such rather than converted to a depth, because the pseudo-depth
+   * conversions vary with the very layering the figure is drawn to reveal,
+   * and calling a measurement geometry a depth is how a pseudo-section starts
+   * being read as a cross-section.
+   *
+   * `profile` places the stations; without one the soundings are laid out in
+   * the order given, evenly spaced, and the note says so.
+   */
+  function pseudosectionGeometry(soundings, profile) {
+    var list = soundings || [];
+    /* A profile that failed is not the same as no profile at all, and the
+     * difference is a figure. The report builds the traverse first and skips
+     * the pseudo-section altogether when that raises, printing its reason;
+     * only a caller with no positions to offer passes none and gets the evenly
+     * spaced fallback. Treating a failed profile as "no positions recorded"
+     * drew an evenly spaced pseudo-section, under a note saying no sounding
+     * positions were recorded, for a survey that recorded one - a figure the
+     * package refuses to draw, captioned with something untrue. The check
+     * comes first because the report's does: the traverse is built before the
+     * pseudo-section is attempted, so its reason is the one printed. */
+    if (profile && profile.reason) return { reason: profile.reason };
+    if (list.length < 2) {
+      return {
+        reason: 'a pseudo-section needs at least two soundings; got ' +
+          list.length,
+      };
+    }
+    var byId = {};
+    list.forEach(function (sounding, k) {
+      byId[sounding.sounding_id || 'VES ' + (k + 1)] = sounding;
+    });
+    var ordered = [], stations = [], xLabel, spacedEvenly;
+    if (profile) {
+      profile.labels.forEach(function (label, k) {
+        if (!own(byId, label)) return;
+        ordered.push(byId[label]);
+        stations.push(Number(profile.chainage_m[k]));
+      });
+      xLabel = 'Distance along traverse (m)';
+      spacedEvenly = false;
+    } else {
+      ordered = list.slice();
+      stations = ordered.map(function (sounding, k) { return k * 100.0; });
+      xLabel = 'Station (evenly spaced; no positions recorded)';
+      spacedEvenly = true;
+    }
+    if (ordered.length < 2) {
+      return {
+        reason: 'the traverse profile and the soundings share fewer than two ' +
+          'sounding identifiers, so the stations cannot be placed',
+      };
+    }
+    var xs = [], ys = [], vs = [];
+    ordered.forEach(function (sounding, k) {
+      var ab2 = sounding.ab2 || [], rho = sounding.rho_app || [];
+      var count = Math.min(ab2.length, rho.length), i;
+      for (i = 0; i < count; i += 1) {
+        if (!isFinite(ab2[i]) || !isFinite(rho[i]) || rho[i] <= 0) continue;
+        xs.push(stations[k]);
+        ys.push(Number(ab2[i]));
+        vs.push(Number(rho[i]));
+      }
+    });
+    if (vs.length < 4) {
+      return {
+        reason: vs.length + ' usable readings across ' + ordered.length +
+          ' soundings; a pseudo-section needs a curve at each station.',
+      };
+    }
+    /* Colour is interpolated between two stations only when they are within
+     * the correlation rule of each other; between a pair further apart there
+     * is no measurement, and a continuous banded fill across 20 km reads as a
+     * 20 km resistivity cross-section. */
+    var maxGap = arrMax(ys) * 0.5 * CORRELATION_REACH_MULTIPLE;
+    var uncorrelated = [];
+    var k;
+    for (k = 0; k < stations.length - 1; k += 1) {
+      var gap = stations[k + 1] - stations[k];
+      if (gap > maxGap) {
+        uncorrelated.push([ordered[k].sounding_id || 'VES',
+          ordered[k + 1].sounding_id || 'VES', gap]);
+      }
+    }
+    var vmin = Math.max(arrMin(vs), 1.0);
+    var vmax = Math.max(arrMax(vs), vmin * 1.05);
+    /* Levels spaced the way the colours are. Asking for a plain level count
+     * under a log scale gets evenly spaced levels in ohm-m, which a log ramp
+     * then squeezes into two bands: a section spanning 60 to 900 ohm-m came
+     * out one flat colour with a stripe through it, and the fill disagreed
+     * with the very readings drawn on top of it. */
+    var levels = geomspace(vmin, vmax, 14);
+    /* a triangulated fill between the readings, in the coordinates the figure
+     * is drawn in - station against log AB/2 - with any triangle spanning
+     * more ground than the correlation rule allows left out */
+    var logY = ys.map(function (v) { return log10Of(v); });
+    var triangles = delaunayTriangles(xs, logY).filter(function (tri) {
+      var lo = Math.min(xs[tri[0]], xs[tri[1]], xs[tri[2]]);
+      var hi = Math.max(xs[tri[0]], xs[tri[1]], xs[tri[2]]);
+      return hi - lo <= maxGap;
+    });
+    /* decade ticks, but only the ones the readings reach: an 80 m spread does
+     * not get a 100 m tick */
+    var decades = {}, ticks = [];
+    logY.forEach(function (value) { decades[pyRound(value, 0)] = true; });
+    Object.keys(decades).map(Number).sort(function (a, b) { return a - b; })
+      .forEach(function (tick) {
+        var spacing = Math.pow(10, tick);
+        if (arrMin(ys) / 1.5 <= spacing && spacing <= arrMax(ys) * 1.5) {
+          ticks.push([tick, formatG(spacing)]);
+        }
+      });
+    var notes = ['AB/2 is the electrode half-spacing, not a depth: a deeper ' +
+      'reading is a wider spread, not a measured horizon.'];
+    if (uncorrelated.length) {
+      notes.push('No colour is interpolated across ' +
+        uncorrelated.map(function (pair) {
+          return pair[0] + ' to ' + pair[1] + ' (' + commaFixed0(pair[2]) + ' m)';
+        }).join('; ') + ': nothing was measured between those stations.');
+    }
+    if (spacedEvenly) {
+      notes.push('Stations are drawn evenly spaced because no sounding ' +
+        'positions were recorded; the horizontal scale is not ground distance.');
+    } else if (profile && !profile.reason && !profile.is_collinear) {
+      notes.push('The soundings sit up to ' + pyFixed(profile.max_offset_m, 0) +
+        ' m off the profile line (' + pyFixed(profile.straightness * 100, 0) +
+        '% of its ' + pyFixed(profile.length_m, 0) + ' m length), so this ' +
+        'section cuts across the survey rather than along it.');
+    }
+    return {
+      reason: null,
+      soundings: ordered,
+      labels: ordered.map(function (sounding) {
+        return sounding.sounding_id || 'VES';
+      }),
+      stations_m: stations,
+      readings: { x: xs, ab2: ys, log_ab2: logY, rho: vs },
+      triangles: triangles,
+      max_gap_m: maxGap,
+      uncorrelated: uncorrelated,
+      range: [vmin, vmax],
+      levels: levels,
+      ticks: ticks,
+      notes: notes,
+      note: notes.join('  '),
+      spaced_evenly: spacedEvenly,
+      title: 'Apparent resistivity pseudo-section along the traverse',
+      x_label: xLabel,
+      y_label: 'AB/2 (m)',
+      cbar_label: 'Apparent resistivity (ohm-m)',
+    };
+  }
+
+  /* --- the interpolated surface -------------------------------------------
+   *
+   * scipy's griddata is a Delaunay triangulation, a linear interpolant inside
+   * it and a nearest-neighbour fill outside; matplotlib's hull clip then
+   * blanks whatever sits outside the ground the survey covered. All three are
+   * below, because the browser has none of them.
+   */
+
+  /* A Delaunay triangulation of the points, as index triples.
+   *
+   * Bowyer-Watson, which is enough for the dozens of points a survey has. The
+   * coordinates are shifted and scaled by ONE factor for both axes before
+   * triangulating: a similarity transform leaves a Delaunay triangulation
+   * unchanged, where scaling the axes separately would quietly produce a
+   * different triangulation from the Python's - and UTM eastings squared lose
+   * the precision the circumcircle test needs. */
+  function delaunayTriangles(xs, ys) {
+    var count = xs.length, i;
+    if (count < 3) return [];
+    var minX = arrMin(xs), maxX = arrMax(xs);
+    var minY = arrMin(ys), maxY = arrMax(ys);
+    var scale = Math.max(maxX - minX, maxY - minY) || 1.0;
+    var px = [], py = [];
+    for (i = 0; i < count; i += 1) {
+      px.push((xs[i] - minX) / scale);
+      py.push((ys[i] - minY) / scale);
+    }
+    /* A super-triangle far outside the unit box the points now sit in - far
+     * enough to hold every circumcircle those points can generate, which a
+     * hundred was not. A traverse with a couple of metres of GPS wobble either
+     * side of the line is the commonest survey layout there is, and its
+     * triangles have circumcircles hundreds of thousands of times as wide as
+     * the traverse itself; every such triangle reached past a super-triangle
+     * a hundred units out and was never formed. Three soundings on such a line
+     * came back with no triangulation at all, so the map printed "the survey
+     * points lie on one line and enclose no area" and drew nothing where the
+     * Python drew the surface, and four or more lost the linear interpolant
+     * over part of the hull to the nearest-neighbour fill. Measured against
+     * qhull on 268 layouts, a hundred disagreed on 78 of them and this agrees
+     * on all of them. A surface is only drawn at all above a singular ratio of
+     * 1e-6 (pointsEncloseAnArea), whose flattest triangle has a circumcircle
+     * of order 1e5 unit boxes, so 1e8 clears it by three orders of magnitude. */
+    px.push(-1e8, 1e8, 0.0);
+    py.push(-1e8, -1e8, 1e8);
+    var triangles = [[count, count + 1, count + 2]];
+    for (i = 0; i < count; i += 1) {
+      var kept = [], edges = [], t;
+      for (t = 0; t < triangles.length; t += 1) {
+        if (inCircumcircle(px, py, triangles[t], px[i], py[i])) {
+          edges.push([triangles[t][0], triangles[t][1]],
+            [triangles[t][1], triangles[t][2]],
+            [triangles[t][2], triangles[t][0]]);
+        } else {
+          kept.push(triangles[t]);
+        }
+      }
+      /* the cavity's boundary is the edges that only one bad triangle had */
+      edges.forEach(function (edge, k) {
+        var shared = edges.some(function (other, m) {
+          return m !== k && other[0] === edge[1] && other[1] === edge[0];
+        });
+        if (!shared) kept.push([edge[0], edge[1], i]);
+      });
+      triangles = kept;
+    }
+    var out = [];
+    triangles.forEach(function (tri) {
+      if (tri[0] >= count || tri[1] >= count || tri[2] >= count) return;
+      var area = (px[tri[1]] - px[tri[0]]) * (py[tri[2]] - py[tri[0]]) -
+        (py[tri[1]] - py[tri[0]]) * (px[tri[2]] - px[tri[0]]);
+      /* a triangle with no area interpolates nothing and divides by zero */
+      if (Math.abs(area) <= 1e-12) return;
+      out.push([tri[0], tri[1], tri[2]]);
+    });
+    return out;
+  }
+
+  function inCircumcircle(px, py, tri, x, y) {
+    var ax = px[tri[0]] - x, ay = py[tri[0]] - y;
+    var bx = px[tri[1]] - x, by = py[tri[1]] - y;
+    var cx = px[tri[2]] - x, cy = py[tri[2]] - y;
+    var det = (ax * ax + ay * ay) * (bx * cy - cx * by) -
+      (bx * bx + by * by) * (ax * cy - cx * ay) +
+      (cx * cx + cy * cy) * (ax * by - bx * ay);
+    var orientation = (px[tri[1]] - px[tri[0]]) * (py[tri[2]] - py[tri[0]]) -
+      (py[tri[1]] - py[tri[0]]) * (px[tri[2]] - px[tri[0]]);
+    return orientation >= 0 ? det > 0 : det < 0;
+  }
+
+  /* The convex hull of the points, counter-clockwise, by monotone chain. */
+  function convexHull(eastings, northings) {
+    var order = eastings.map(function (value, index) { return index; })
+      .sort(function (a, b) {
+        return eastings[a] - eastings[b] || northings[a] - northings[b];
+      });
+    var cross = function (o, a, b) {
+      return (eastings[a] - eastings[o]) * (northings[b] - northings[o]) -
+        (northings[a] - northings[o]) * (eastings[b] - eastings[o]);
+    };
+    var build = function (sequence) {
+      var chain = [];
+      sequence.forEach(function (index) {
+        while (chain.length >= 2 &&
+          cross(chain[chain.length - 2], chain[chain.length - 1], index) <= 0) {
+          chain.pop();
+        }
+        chain.push(index);
+      });
+      chain.pop();
+      return chain;
+    };
+    var lower = build(order);
+    var upper = build(order.slice().reverse());
+    return lower.concat(upper).map(function (index) {
+      return [eastings[index], northings[index]];
+    });
+  }
+
+  /* The crossing test matplotlib's Path.contains_points uses, written its way
+   * on purpose: the divisions of the textbook version answer differently for
+   * a grid point sitting exactly on a hull edge, and a square four-peg survey
+   * puts a whole diagonal of grid points exactly on one. Multiplying instead
+   * of dividing keeps the comparison exact, so the browser blanks the same
+   * cells the Python does rather than a line of them more or fewer. */
+  function pointInPolygon(polygon, x, y) {
+    var inside = false, i;
+    var x0 = polygon[polygon.length - 1][0], y0 = polygon[polygon.length - 1][1];
+    var above0 = y0 >= y;
+    for (i = 0; i < polygon.length; i += 1) {
+      var x1 = polygon[i][0], y1 = polygon[i][1];
+      var above1 = y1 >= y;
+      if (above0 !== above1 &&
+        (((y1 - y) * (x0 - x1) >= (x1 - x) * (y0 - y1)) === above1)) {
+        inside = !inside;
+      }
+      above0 = above1;
+      x0 = x1;
+      y0 = y1;
+    }
+    return inside;
+  }
+
+  /* The grid the surfaces are sampled on: a rectangle of nx by ny points,
+   * with the values row-major, z[j * nx + i] for x[i], y[j], and null where
+   * nothing is drawn. */
+  function gridFrom(x0, x1, y0, y1, n) {
+    return { nx: n, ny: n, x: linspace(x0, x1, n), y: linspace(y0, y1, n), z: null };
+  }
+
+  /* maps.py _surface: the interpolated surface, or null when the points
+   * cannot support one.
+   *
+   * The linear interpolant needs a triangulation, which needs an area; the
+   * nearest-neighbour fill outside it is what the maps show at the edges. Any
+   * triangulation failure is reported as "no surface" rather than as an
+   * exception, because the figure is one of several in a report and none of
+   * them should cost the document the others. */
+  function surfaceGrid(eastings, northings, values, grid) {
+    if (!pointsEncloseAnArea(eastings, northings)) return null;
+    var z = [], i, j;
+    for (i = 0; i < grid.nx * grid.ny; i += 1) z.push(null);
+    var triangles;
+    try {
+      triangles = delaunayTriangles(eastings, northings);
+    } catch (err) {
+      return null;
+    }
+    if (!triangles.length) return null;
+    var dx = grid.nx > 1 ? (grid.x[grid.nx - 1] - grid.x[0]) / (grid.nx - 1) : 1.0;
+    var dy = grid.ny > 1 ? (grid.y[grid.ny - 1] - grid.y[0]) / (grid.ny - 1) : 1.0;
+    triangles.forEach(function (tri) {
+      var ax = eastings[tri[0]], ay = northings[tri[0]];
+      var bx = eastings[tri[1]], by = northings[tri[1]];
+      var cx = eastings[tri[2]], cy = northings[tri[2]];
+      var det = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
+      if (det === 0) return;
+      var i0 = Math.max(0, Math.ceil((Math.min(ax, bx, cx) - grid.x[0]) / dx));
+      var i1 = Math.min(grid.nx - 1,
+        Math.floor((Math.max(ax, bx, cx) - grid.x[0]) / dx));
+      var j0 = Math.max(0, Math.ceil((Math.min(ay, by, cy) - grid.y[0]) / dy));
+      var j1 = Math.min(grid.ny - 1,
+        Math.floor((Math.max(ay, by, cy) - grid.y[0]) / dy));
+      var gi, gj;
+      for (gj = j0; gj <= j1; gj += 1) {
+        for (gi = i0; gi <= i1; gi += 1) {
+          var x = grid.x[gi], y = grid.y[gj];
+          var w0 = ((by - cy) * (x - cx) + (cx - bx) * (y - cy)) / det;
+          var w1 = ((cy - ay) * (x - cx) + (ax - cx) * (y - cy)) / det;
+          var w2 = 1.0 - w0 - w1;
+          /* the cell belongs to this triangle when it is inside it, with no
+           * tolerance either way: a cell a rounding error outside every
+           * triangle is left for the nearest-neighbour fill below, which is
+           * what griddata does with the NaN its linear interpolant returns
+           * there, and a looser test put a linear value where the Python has
+           * the value at the nearest peg */
+          if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
+            z[gj * grid.nx + gi] = w0 * values[tri[0]] + w1 * values[tri[1]] +
+              w2 * values[tri[2]];
+          }
+        }
+      }
+    });
+    for (j = 0; j < grid.ny; j += 1) {
+      for (i = 0; i < grid.nx; i += 1) {
+        if (z[j * grid.nx + i] !== null) continue;
+        var best = 0, bestD = Infinity, p;
+        for (p = 0; p < eastings.length; p += 1) {
+          var ex = grid.x[i] - eastings[p], ny2 = grid.y[j] - northings[p];
+          var d = ex * ex + ny2 * ny2;
+          if (d < bestD) { bestD = d; best = p; }
+        }
+        z[j * grid.nx + i] = values[best];
+      }
+    }
+    return z;
+  }
+
+  /* maps.py _clip_to_surveyed_ground: blank the interpolated surface outside
+   * the ground the survey covered.
+   *
+   * An interpolated resistivity or thickness surface is read as data: a
+   * hydrogeologist looking at a contour 400 m from the nearest sounding will
+   * site a borehole on it. Outside the hull of the points there is no
+   * measurement behind the colour at all - it is the interpolator continuing a
+   * trend - so the surface is blanked there rather than drawn in a shade that
+   * looks like every other shade on the map. Points that enclose no area have
+   * no hull to clip to: that is an ordinary survey, not an error, so the
+   * surface stands and the figure says on its own face that the values away
+   * from the line are extrapolated. */
+  function clipToSurveyedGround(z, eastings, northings, grid) {
+    var hull = convexHull(eastings, northings);
+    if (hull.length < 3) {
+      return {
+        z: z, clipped: false, hull: null,
+        note: 'Surface not clipped: the survey points enclose no area, so ' +
+          'values away from them are extrapolated.',
+      };
+    }
+    var masked = [], i, j;
+    for (j = 0; j < grid.ny; j += 1) {
+      for (i = 0; i < grid.nx; i += 1) {
+        masked.push(pointInPolygon(hull, grid.x[i], grid.y[j])
+          ? z[j * grid.nx + i] : null);
+      }
+    }
+    return { z: masked, clipped: true, hull: hull, note: '' };
+  }
+
+  /* maps.py _no_surface_note: said on the map itself, because a caption can be
+   * skipped and a line across the middle of the figure cannot. */
+  function noSurfaceNote(nPoints) {
+    return nPoints >= 3
+      ? 'Surface not drawn: the survey points lie on one line and enclose no ' +
+        'area, so only the values at the points are shown.'
+      : 'Surface not drawn: fewer than three points carry a value.';
+  }
+
+  /* The banded levels a filled contour is drawn at.
+   *
+   * contourf(levels=12) does not draw twelve bands of its own choosing: it
+   * asks matplotlib's MaxNLocator for at most thirteen round numbers spanning
+   * the data, then keeps the one level below the data and the one above it.
+   * The colour bar is labelled with those numbers, so they are not decoration
+   * - a browser that picked its own round numbers would print a different
+   * scale beside the same map - and the ticker is ported here rather than
+   * approximated: its step table runs 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10 times
+   * a power of ten, not the shorter list its docstring suggests.
+   */
+  var LOCATOR_STEPS = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+
+  /* ticker._staircase: the step table extended a decade either side. */
+  function staircase(steps) {
+    var out = [], i;
+    for (i = 0; i < steps.length - 1; i += 1) out.push(steps[i] / 10);
+    for (i = 0; i < steps.length; i += 1) out.push(steps[i]);
+    out.push(10 * steps[1]);
+    return out;
+  }
+
+  /* floor(log10(x)) without the trap Math.log10 has at exact powers of ten,
+   * which formatG documents: the decimal exponent of the shortest round-trip
+   * representation is the exponent, exactly. */
+  function decimalExponent(value) {
+    return Number(Math.abs(value).toExponential().split('e')[1]);
+  }
+
+  /* Python's divmod for floats, which is floor division and not truncation:
+   * the ticker's tick indices are counted from it, and JS's % keeps the sign
+   * of the dividend where Python's keeps the sign of the divisor. */
+  function pyDivmod(x, step) {
+    var mod = x % step;
+    if (mod !== 0 && (mod < 0) !== (step < 0)) mod += step;
+    var div = (x - mod) / step;
+    var floordiv = 0;
+    if (div !== 0) {
+      floordiv = Math.floor(div);
+      if (div - floordiv > 0.5) floordiv += 1;
+    }
+    return [floordiv, mod];
+  }
+
+  /* ticker._Edge_integer: the tick index either side of a value, with the
+   * slop the ticker allows so a value already on a tick does not gain one. */
+  function edgeTolerance(step, offset) {
+    if (!(Math.abs(offset) > 0)) return 1e-10;
+    var digits = log10Of(Math.abs(offset) / step);
+    return Math.min(0.4999, Math.max(1e-10, Math.pow(10, digits - 12)));
+  }
+
+  function edgeLe(x, step, offset) {
+    var parts = pyDivmod(x, step);
+    if (Math.abs(parts[1] / step - 1) < edgeTolerance(step, offset)) return parts[0] + 1;
+    return parts[0];
+  }
+
+  function edgeGe(x, step, offset) {
+    var parts = pyDivmod(x, step);
+    if (Math.abs(parts[1] / step) < edgeTolerance(step, offset)) return parts[0];
+    return parts[0] + 1;
+  }
+
+  /* ticker.scale_range. */
+  function locatorScaleRange(vmin, vmax, n) {
+    var span = Math.abs(vmax - vmin);
+    var middle = (vmax + vmin) / 2.0;
+    var offset = 0.0;
+    if (span > 0 && Math.abs(middle) / span >= 100) {
+      offset = Math.pow(10, decimalExponent(middle));
+      if (middle < 0) offset = -offset;
+    }
+    return [Math.pow(10, decimalExponent(span / n)), offset];
+  }
+
+  /* ticker.MaxNLocator.tick_values, for the contour's parameters: at most
+   * `nbins` intervals, and one tick is enough (min_n_ticks is 1 here, where
+   * an axis would want two). */
+  function locatorTicks(vmin, vmax, nbins, steps, minTicks) {
+    var table = steps || LOCATOR_STEPS;
+    var wanted = minTicks === undefined ? 1 : minTicks;
+    var lo = vmin, hi = vmax;
+    /* transforms.nonsingular: a surface with one value everywhere still has
+     * to be banded, and a zero-width range would divide by zero below */
+    var biggest = Math.max(Math.abs(lo), Math.abs(hi));
+    if (hi - lo <= biggest * 1e-14) {
+      if (lo === 0 && hi === 0) {
+        lo = -1e-13;
+        hi = 1e-13;
+      } else {
+        lo -= 1e-13 * Math.abs(lo);
+        hi += 1e-13 * Math.abs(hi);
+      }
+    }
+    var range = locatorScaleRange(lo, hi, nbins);
+    var scale = range[0], offset = range[1];
+    var shiftedLo = lo - offset, shiftedHi = hi - offset;
+    var scaled = staircase(table).map(function (s) { return s * scale; });
+    var rawStep = (shiftedHi - shiftedLo) / nbins;
+    var istep = scaled.length - 1, i;
+    for (i = 0; i < scaled.length; i += 1) {
+      if (scaled[i] >= rawStep) { istep = i; break; }
+    }
+    var ticks = [];
+    for (i = istep; i >= 0; i -= 1) {
+      var step = scaled[i];
+      var base = pyDivmod(shiftedLo, step)[0] * step;
+      var low = edgeLe(shiftedLo - base, step, offset);
+      var high = edgeGe(shiftedHi - base, step, offset);
+      ticks = [];
+      var shown = 0, k;
+      for (k = low; k <= high; k += 1) {
+        var tick = k * step + base;
+        ticks.push(tick);
+        if (tick <= shiftedHi && tick >= shiftedLo) shown += 1;
+      }
+      if (shown >= wanted) break;
+    }
+    return ticks.map(function (tick) { return tick + offset; });
+  }
+
+  /* maps.py _format_grid: at most five or six round-numbered grid lines an
+   * axis. A seven-digit northing labelled every 25 m printed nine of them on
+   * top of one another, which is why the axis asks for round numbers rather
+   * than an even division of the extent. An axis wants two ticks where a
+   * contour is content with one. */
+  function mapGridTicks(lo, hi) {
+    return locatorTicks(lo, hi, 5, [1, 2, 2.5, 5, 10], 2);
+  }
+
+  /* contour.ContourSet._autolev: the ticks trimmed to one level below the
+   * data and one above, unless that leaves fewer than three, in which case
+   * the whole set stands. */
+  function contourLevels(vmin, vmax, count) {
+    if (!isFinite(vmin) || !isFinite(vmax)) return [];
+    var levels = locatorTicks(vmin, vmax, (count || 12) + 1, LOCATOR_STEPS, 1);
+    var first = 0, last = levels.length, i;
+    for (i = 0; i < levels.length; i += 1) if (levels[i] < vmin) first = i;
+    for (i = 0; i < levels.length; i += 1) {
+      if (levels[i] > vmax) { last = i + 1; break; }
+    }
+    if (last - first < 3) {
+      first = 0;
+      last = levels.length;
+    }
+    return levels.slice(first, last);
+  }
+
+  /* maps.py _extent: the padded ground the map covers. */
+  function mapExtent(points, padFrac, minPad) {
+    var frac = padFrac === undefined ? 0.25 : padFrac;
+    var floorPad = minPad === undefined ? 150.0 : minPad;
+    var e = points.map(function (p) { return p.easting; });
+    var n = points.map(function (p) { return p.northing; });
+    var padE = Math.max((arrMax(e) - arrMin(e)) * frac, floorPad);
+    var padN = Math.max((arrMax(n) - arrMin(n)) * frac, floorPad);
+    var pad = Math.max(padE, padN);
+    return [arrMin(e) - pad, arrMax(e) + pad, arrMin(n) - pad, arrMax(n) + pad];
+  }
+
+  /* maps.py _figsize: a figure shaped like the ground it shows. A fixed
+   * height squashed a traverse three times longer than it is wide into a strip
+   * a third of the figure tall, beside a colour bar that ran the full height. */
+  function mapFigureHeightIn(widthIn, x0, x1, y0, y1) {
+    var aspect = (y1 - y0) / Math.max(x1 - x0, 1e-9);
+    return Math.min(Math.max(widthIn * 0.82 * aspect + 0.9, 3.4), 6.6);
+  }
+
+  /* maps.py _format_grid's axis labels: every map says which UTM zone its
+   * metres are in, because two eastings in different zones are not comparable
+   * numbers. */
+  function mapAxisLabels(zone) {
+    return {
+      x: 'Easting (m), UTM zone ' + zone + 'N / WGS84',
+      y: 'Northing (m)',
+    };
+  }
+
+  /* --- the subsurface maps ------------------------------------------------ */
+
+  /* subsurface.py subsurface_map_points: one quantity at every sounding that
+   * carries a position and a value.
+   *
+   * Soundings without a position are dropped - they cannot be put on a map -
+   * and so are those whose value the interpretation left unset, because a
+   * sounding whose curve never reached basement has no depth to basement and
+   * plotting a zero there would draw basement at the surface. */
+  function subsurfaceMapPoints(interpretations, attribute) {
+    var points = [];
+    positionedSoundings(interpretations).forEach(function (item) {
+      var value = own(item, attribute) ? item[attribute] : null;
+      if (value === null || value === undefined || !isFinite(Number(value))) return;
+      points.push({
+        label: item.sounding_id || 'VES',
+        easting: Number(item.site_easting),
+        northing: Number(item.site_northing),
+        value: Number(value),
+        kind: 'VES point',
+      });
+    });
+    return points;
+  }
+
+  /* subsurface.py bedrock_elevation_points: ground level less the depth to
+   * basement, which needs both numbers at the same sounding. A survey that
+   * recorded no elevations gives an empty list rather than a bedrock surface
+   * at sea level, which is what subtracting a depth from nothing amounts to. */
+  function bedrockElevationPoints(interpretations) {
+    var points = [];
+    positionedSoundings(interpretations).forEach(function (item) {
+      var ground = item.site_elevation_m;
+      var depth = item.depth_to_basement_m;
+      if (ground === null || ground === undefined) return;
+      if (depth === null || depth === undefined) return;
+      points.push({
+        label: item.sounding_id || 'VES',
+        easting: Number(item.site_easting),
+        northing: Number(item.site_northing),
+        value: Number(ground) - Number(depth),
+        kind: 'VES point',
+      });
+    });
+    return points;
+  }
+
+  /* subsurface.py _require_points, as the sentence rather than the exception. */
+  function requirePointsReason(points, what, need) {
+    var wanted = need === undefined ? 3 : need;
+    if (points.length >= wanted) return null;
+    return ('aeiou'.indexOf(what.charAt(0)) >= 0 ? 'an' : 'a') + ' ' + what +
+      ' needs at least ' + wanted + ' soundings that carry both a position ' +
+      'and the value; ' + points.length + ' do. Record the GPS position of ' +
+      'every sounding on the field sheet.';
+  }
+
+  /* maps.py _interpolated_map, without the drawing: the grid, the range the
+   * colours span, the levels they are banded at and the value at every
+   * station - or the reason the Python would have raised instead.
+   *
+   * options: {logScale, gridN}. gridN defaults to the Python's 220.
+   */
+  function interpolatedMapData(points, options) {
+    var opts = options || {};
+    var valued = (points || []).filter(function (p) {
+      return p && p.value !== null && p.value !== undefined;
+    });
+    if (valued.length < 3) {
+      return {
+        reason: 'Interpolated maps need at least three points with values; ' +
+          'got ' + valued.length + '. Produce a site location map instead.',
+      };
+    }
+    var e = valued.map(function (p) { return Number(p.easting); });
+    var n = valued.map(function (p) { return Number(p.northing); });
+    var raw = valued.map(function (p) { return Number(p.value); });
+    var v = opts.logScale ? raw.map(function (value) { return log10Of(value); }) : raw;
+    var pad = Math.max(Math.max(arrMax(e) - arrMin(e), arrMax(n) - arrMin(n)) *
+      0.25, 100.0);
+    var grid = gridFrom(arrMin(e) - pad, arrMax(e) + pad, arrMin(n) - pad,
+      arrMax(n) + pad, opts.gridN || 220);
+    var z = surfaceGrid(e, n, v, grid);
+    var clipped = false, hull = null, note = '';
+    if (z) {
+      var clip = clipToSurveyedGround(z, e, n, grid);
+      z = clip.z;
+      clipped = clip.clipped;
+      hull = clip.hull;
+      note = clip.note;
+    } else {
+      /* a line of pegs: the values are printed at the points instead */
+      note = noSurfaceNote(valued.length);
+    }
+    var drawn = [];
+    if (z) {
+      z.forEach(function (value) { if (value !== null) drawn.push(value); });
+    }
+    var vmin = drawn.length ? arrMin(drawn) : arrMin(v);
+    var vmax = drawn.length ? arrMax(drawn) : arrMax(v);
+    var levels = z ? contourLevels(vmin, vmax, 12) : [];
+    grid.z = z;
+    return {
+      reason: null,
+      points: valued.map(function (p, k) {
+        var text = p.label;
+        if (!z) {
+          /* the value is written beside the peg when no surface carries it */
+          text += '\n' + formatG(opts.logScale ? Math.pow(10, v[k]) : p.value, 3);
+        }
+        return {
+          label: p.label, easting: p.easting, northing: p.northing,
+          value: p.value, plot_value: v[k], kind: p.kind || 'VES point',
+          text: text,
+        };
+      }),
+      grid: z ? grid : null,
+      surface: !!z,
+      clipped: clipped,
+      hull: hull,
+      note: note,
+      log_scale: !!opts.logScale,
+      range: [vmin, vmax],
+      data_range: [arrMin(raw), arrMax(raw)],
+      levels: levels,
+      /* under a log scale the grid holds log10 values and the bar is labelled
+       * with the resistivities they stand for */
+      level_labels: opts.logScale ? levels.map(function (t) {
+        return pyFixed(Math.pow(10, t), 0);
+      }) : null,
+      extent: [grid.x[0], grid.x[grid.nx - 1], grid.y[0], grid.y[grid.ny - 1]],
+    };
+  }
+
+  /* subsurface.py _protective_colour. */
+  function protectiveColour(conductance) {
+    if (conductance === null || conductance === undefined) return '#BBBBBB';
+    for (var k = 0; k < PROTECTIVE_CLASSES.length; k += 1) {
+      if (PROTECTIVE_CLASSES[k][0] <= conductance &&
+        conductance < PROTECTIVE_CLASSES[k][1]) {
+        return PROTECTIVE_CLASSES[k][3];
+      }
+    }
+    return PROTECTIVE_CLASSES[PROTECTIVE_CLASSES.length - 1][3];
+  }
+
+  /* subsurface.py protective_capacity_map, without the drawing.
+   *
+   * Drawn in classes rather than on a continuous ramp, because the decision
+   * this map informs is categorical - is this aquifer protected enough to site
+   * a borehole near a latrine or a cattle crossing - and a smooth ramp invites
+   * reading a difference between 0.68 and 0.71 siemens that the method does
+   * not support. Unlike the other three it draws with one point: the class of
+   * a single sounding is still a finding. */
+  function protectiveCapacityMapData(points, options) {
+    var opts = options || {};
+    var valued = (points || []).filter(function (p) {
+      return p && p.value !== null && p.value !== undefined;
+    });
+    var short = requirePointsReason(valued, 'protective capacity map', 1);
+    if (short) return { reason: short };
+    var bounds = PROTECTIVE_CLASSES.map(function (klass) { return klass[0]; });
+    /* the top class is unbounded; a banded fill needs a finite ceiling, so use
+     * the largest value on this map or the class floor, whichever is bigger */
+    bounds.push(Math.max(arrMax(valued.map(function (p) { return Number(p.value); })),
+      5.0) * 1.05);
+    var extent = mapExtent(valued);
+    var grid = gridFrom(extent[0], extent[1], extent[2], extent[3],
+      opts.gridN || 200);
+    var z = null, clipped = false, hull = null, note = '';
+    if (valued.length >= 3) {
+      var e = valued.map(function (p) { return Number(p.easting); });
+      var n = valued.map(function (p) { return Number(p.northing); });
+      var v = valued.map(function (p) { return Number(p.value); });
+      z = surfaceGrid(e, n, v, grid);
+      if (z) {
+        var clip = clipToSurveyedGround(z, e, n, grid);
+        z = clip.z;
+        clipped = clip.clipped;
+        hull = clip.hull;
+        note = clip.note;
+      } else {
+        note = noSurfaceNote(valued.length);
+      }
+    }
+    /* No note below three points, because the Python draws none: this map is
+     * the one that draws with a single sounding, so "surface not drawn" is not
+     * news there, it is the figure working as intended. The browser printed it
+     * anyway, which put a red line under a two-sounding map that the package
+     * leaves clean. */
+    grid.z = z;
+    return {
+      reason: null,
+      points: valued.map(function (p) {
+        return {
+          label: p.label, easting: p.easting, northing: p.northing,
+          value: p.value, plot_value: p.value, kind: p.kind || 'VES point',
+          colour: protectiveColour(p.value),
+          text: p.label + '\n' + pyFixed(p.value, 2) + ' S',
+        };
+      }),
+      grid: z ? grid : null,
+      surface: !!z,
+      clipped: clipped,
+      hull: hull,
+      note: note,
+      classed: true,
+      classes: PROTECTIVE_CLASSES,
+      levels: bounds,
+      range: [bounds[0], bounds[bounds.length - 1]],
+      legend_title: 'Longitudinal conductance of the cover',
+      legend: PROTECTIVE_CLASSES.map(function (klass) {
+        return {
+          label: klass[2] + ' (' + formatG(klass[0]) +
+            (isFinite(klass[1]) ? '-' + formatG(klass[1]) + ' S)' : '+ S)'),
+          colour: klass[3],
+        };
+      }),
+      extent: extent,
+    };
+  }
+
+  /* The four subsurface maps reporting/geophysical.py plans, in the order it
+   * plans them. `name` is the wording that report puts in front of the reason
+   * when a figure is not drawn ("depth to bedrock map: ..."), so the browser's
+   * list reads the same as the Python's. */
+  var SUBSURFACE_MAP_SPECS = [
+    {
+      key: 'depth_to_bedrock', name: 'depth to bedrock map',
+      attribute: 'depth_to_basement_m', title: 'Depth to bedrock',
+      cbar_label: 'Depth to bedrock (m)', cmap: 'YlOrBr',
+      log_scale: false, classed: false, need: 3,
+    },
+    {
+      key: 'aquifer_thickness', name: 'aquifer thickness map',
+      attribute: 'aquifer_thickness_m', title: 'Interpreted aquifer thickness',
+      cbar_label: 'Interpreted aquifer thickness (m)', cmap: 'GnBu',
+      log_scale: false, classed: false, need: 3,
+    },
+    {
+      key: 'bedrock_elevation', name: 'bedrock elevation map',
+      attribute: null, title: 'Bedrock surface elevation',
+      cbar_label: 'Bedrock surface elevation (m)', cmap: 'terrain',
+      log_scale: false, classed: false, need: 3,
+    },
+    {
+      key: 'protective_capacity', name: 'protective capacity map',
+      attribute: 'protective_conductance_s', title: 'Aquifer protective capacity',
+      /* no colour bar: this map is drawn in classes, and its key is the
+       * legend protectiveCapacityMapData carries */
+      cbar_label: null, cmap: null,
+      log_scale: false, classed: true, need: 1,
+    },
+  ];
+
+  function subsurfaceMapSpec(key) {
+    var found = null;
+    SUBSURFACE_MAP_SPECS.forEach(function (spec) {
+      if (spec.key === key) found = spec;
+    });
+    return found;
+  }
+
+  /* One of the four maps: its points, its surface and its strings, or the
+   * reason the Python would have refused to draw it. The refusal is kept per
+   * figure, the way the report keeps it: a survey whose curves never reached
+   * basement has no depth-to-bedrock map but still has an aquifer thickness
+   * map, and one that recorded no elevations has both but no bedrock surface. */
+  function subsurfaceMapData(interpretations, key, options) {
+    var spec = subsurfaceMapSpec(key);
+    if (!spec) return { key: key, reason: 'no such subsurface map: ' + key };
+    var placed = positionedSoundings(interpretations);
+    var points = spec.key === 'bedrock_elevation'
+      ? bedrockElevationPoints(placed)
+      : subsurfaceMapPoints(placed, spec.attribute);
+    var head = {
+      key: spec.key, name: spec.name, title: spec.title,
+      cbar_label: spec.cbar_label, cmap: spec.cmap,
+      log_scale: spec.log_scale, classed: spec.classed, points: points,
+    };
+    var reason = requirePointsReason(points, spec.name, spec.need);
+    if (reason) return Object.assign(head, { reason: reason });
+    var data = spec.classed
+      ? protectiveCapacityMapData(points, options)
+      : interpolatedMapData(points, Object.assign({}, options || {},
+        { logScale: spec.log_scale }));
+    return Object.assign(head, data);
+  }
+
+  /* reporting/geophysical.py _add_subsurface_figures' own gate, which comes
+   * before any of the four maps and before the section: with fewer than two
+   * positioned soundings the whole section of the report is skipped - no
+   * figure, and no "not drawn" line either, because a survey that recorded one
+   * GPS position has nothing to say about the ground between soundings. The
+   * protective capacity map is the one that draws from a single sounding, so a
+   * report that does not ask this first prints one under a heading the package
+   * never writes at all. */
+  function subsurfaceFiguresApply(interpretations) {
+    return positionedSoundings(interpretations).length >= 2;
+  }
+
+  /* All four, in the report's order, each either drawable or carrying its
+   * reason. The caller draws the ones with no reason and lists the others as
+   * "<name>: <reason>", which is what _add_subsurface_figures does - after
+   * subsurfaceFiguresApply, which decides whether the section is written. */
+  function subsurfaceMapSet(interpretations, options) {
+    return SUBSURFACE_MAP_SPECS.map(function (spec) {
+      return subsurfaceMapData(interpretations, spec.key, options);
+    });
+  }
+
+  Object.assign(C, {
+    PROTECTIVE_CLASSES: PROTECTIVE_CLASSES,
+    SUBSURFACE_CREDIT: SUBSURFACE_CREDIT,
+    CORRELATION_REACH_MULTIPLE: CORRELATION_REACH_MULTIPLE,
+    COLLINEAR_STRAIGHTNESS: COLLINEAR_STRAIGHTNESS,
+    SUBSURFACE_MAP_SPECS: SUBSURFACE_MAP_SPECS,
+    subsurfaceMapSpec: subsurfaceMapSpec,
+    pointsEncloseAnArea: pointsEncloseAnArea,
+    singularValues2: singularValues2, principalAxis: principalAxis,
+    traverseProfile: traverseProfile, wideGaps: wideGaps,
+    correlationNote: correlationNote, rhoColourRange: rhoColourRange,
+    geoelectricSectionGeometry: geoelectricSectionGeometry,
+    pseudosectionGeometry: pseudosectionGeometry,
+    delaunayTriangles: delaunayTriangles, convexHull: convexHull,
+    pointInPolygon: pointInPolygon, surfaceGrid: surfaceGrid,
+    clipToSurveyedGround: clipToSurveyedGround, noSurfaceNote: noSurfaceNote,
+    contourLevels: contourLevels, locatorTicks: locatorTicks,
+    mapGridTicks: mapGridTicks, gridFrom: gridFrom, linspace: linspace,
+    mapExtent: mapExtent, mapFigureHeightIn: mapFigureHeightIn,
+    mapAxisLabels: mapAxisLabels,
+    subsurfaceMapPoints: subsurfaceMapPoints,
+    bedrockElevationPoints: bedrockElevationPoints,
+    requirePointsReason: requirePointsReason,
+    interpolatedMapData: interpolatedMapData,
+    protectiveCapacityMapData: protectiveCapacityMapData,
+    protectiveColour: protectiveColour,
+    subsurfaceMapData: subsurfaceMapData, subsurfaceMapSet: subsurfaceMapSet,
+    subsurfaceFiguresApply: subsurfaceFiguresApply,
+  });
 
   /* __SECTION_MARK__ */
 }(typeof window !== 'undefined' ? window : globalThis));

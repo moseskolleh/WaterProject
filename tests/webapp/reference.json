@@ -1971,7 +1971,7 @@
    [
     "Turbidity",
     0.64,
-    "WHO acceptability",
+    "national",
     "max"
    ],
    [
@@ -1983,7 +1983,7 @@
    [
     "Total hardness",
     0.116,
-    "WHO acceptability",
+    "national",
     "max"
    ],
    [
@@ -2495,11 +2495,67 @@
     0.001,
     0.3,
     5.0,
-    0.5
+    5.0
    ],
    "uncertainties": [],
    "missing_essential": [],
-   "verdict": "The water meets the WHO health based guideline values, but does not comply with the national standard limit for: Aluminium. Treatment is required before the supply can be accepted against the national standard; check whether the limit exceeded is a health or an acceptability limit."
+   "verdict": "The water meets the WHO health based guideline values, but does not comply with the national standard limit for: Total coliforms. Treatment is required before the supply can be accepted against the national standard; check whether the limit exceeded is a health or an acceptability limit."
+  },
+  "unquantified_count": {
+   "state": "national_fail",
+   "statuses": [
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "exceeds_national"
+   ],
+   "reasons": [
+    "",
+    "",
+    "",
+    "",
+    "detected_not_quantified"
+   ],
+   "converted": [
+    0.0,
+    0.001,
+    0.3,
+    5.0,
+    null
+   ],
+   "uncertainties": [],
+   "missing_essential": [],
+   "verdict": "The water meets the WHO health based guideline values, but does not comply with the national standard limit for: Total coliforms. Treatment is required before the supply can be accepted against the national standard; check whether the limit exceeded is a health or an acceptability limit."
+  },
+  "greater_than_inside_limit": {
+   "state": "indeterminate",
+   "statuses": [
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "indeterminate"
+   ],
+   "reasons": [
+    "",
+    "",
+    "",
+    "",
+    "detected_not_quantified"
+   ],
+   "converted": [
+    0.0,
+    0.001,
+    0.3,
+    5.0,
+    null
+   ],
+   "uncertainties": [
+    "Sulfate could not be assessed: it could not be evaluated"
+   ],
+   "missing_essential": [],
+   "verdict": "The water cannot be declared suitable for drinking on these results: Sulfate could not be assessed: it could not be evaluated. Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off."
   },
   "health_fail": {
    "state": "health_fail",

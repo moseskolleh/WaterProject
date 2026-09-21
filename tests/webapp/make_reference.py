@@ -531,7 +531,18 @@ def build() -> dict:
         "empty": _wq(),
         "pass": _wq(*_panel, WaterQualityResult("pH", 7.2, "pH units")),
         "aesthetic": _wq(*_panel, WaterQualityResult("Iron", 0.5, "mg/L")),
-        "national_fail": _wq(*_panel, WaterQualityResult("Aluminium", 0.5, "mg/L")),
+        # Aluminium used to be the national_fail case, on a WHO health value
+        # of 0.9 mg/L that WHO does not set. Total coliforms above zero is
+        # the real one: a national limit failure that is not a health
+        # guideline failure and not faecal contamination.
+        "national_fail": _wq(*_panel,
+                             WaterQualityResult("Total coliforms", 5.0, "CFU/100 mL")),
+        # a count the laboratory saw and did not put a number to, and a
+        # ">100" inside its limit: both used to read as "not measured"
+        "unquantified_count": _wq(*_panel, WaterQualityResult(
+            "Total coliforms", None, "CFU/100 mL", greater_than=0.0)),
+        "greater_than_inside_limit": _wq(*_panel, WaterQualityResult(
+            "Sulfate", None, "mg/L", greater_than=100.0)),
         "health_fail": _wq(*_panel, WaterQualityResult("Arsenic", 0.5, "mg/L")),
         "micrograms": _wq(*_panel, WaterQualityResult("Lead", 5.0, "ug/L")),
         "bad_unit": _wq(*_panel, WaterQualityResult("Iron", 0.1, "wibbles")),

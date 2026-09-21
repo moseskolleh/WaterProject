@@ -176,17 +176,51 @@ def test_a_complete_clean_panel_does_pass():
     assert "suitable for drinking" in a.verdict
 
 
-def test_a_national_exceedance_is_not_an_aesthetic_one():
-    """It is a legal compliance failure, and it used to be counted as taste."""
+def test_a_national_exceedance_is_not_an_aesthetic_one(tmp_path):
+    """It is a compliance failure, and it used to be counted as taste.
+
+    The case is a national limit stricter than the WHO health guideline. No
+    row in the bundled table is one: aluminium used to be, on a WHO health
+    value of 0.9 mg/L that WHO does not set, so the case is built here
+    rather than resting on a figure that should never have been in the
+    table.
+    """
+    standards = tmp_path / "standards.csv"
+    standards.write_text(
+        "parameter,unit,who_health_gv,who_aesthetic,sl_standard,sl_source,category,note\n"
+        "E. coli,CFU/100 mL,0,,0,provisional,microbiological,\n"
+        "Arsenic,mg/L,0.01,,0.01,provisional,inorganic,\n"
+        "Fluoride,mg/L,1.5,,1.5,provisional,inorganic,\n"
+        "Nitrate (as NO3),mg/L,50,,50,provisional,inorganic,\n"
+        "Manganese,mg/L,0.4,0.1,0.08,provisional,metal,national stricter\n",
+        encoding="utf-8",
+    )
     a = assess_sample(_sample(
         *_health_panel(),
-        WaterQualityResult("Aluminium", 0.5, "mg/L"),   # WHO 0.9, national 0.2
-    ))
+        WaterQualityResult("Manganese", 0.2, "mg/L"),   # WHO 0.4, national 0.08
+    ), standards_path=standards)
     assert a.verdict_state == "national_fail"
-    assert [r.parameter for r in a.national_exceedances] == ["Aluminium"]
+    assert [r.parameter for r in a.national_exceedances] == ["Manganese"]
     assert a.aesthetic_exceedances == []          # no longer folded in here
-    assert [r.parameter for r in a.all_exceedances] == ["Aluminium"]
+    assert [r.parameter for r in a.all_exceedances] == ["Manganese"]
     assert a.is_potable is False
+
+
+def test_a_limit_who_sets_no_health_value_for_is_reported_as_provisional():
+    """Aluminium had a WHO health guideline of 0.9 mg/L in the table.
+
+    WHO sets none: 0.9 is a health-based value the guidelines derive and
+    explicitly decline to adopt. A sample at 0.5 mg/L was therefore graded
+    against a guideline that does not exist.
+    """
+    a = assess_sample(_sample(
+        *_health_panel(),
+        WaterQualityResult("Aluminium", 0.5, "mg/L"),
+    ))
+    assert not a.health_exceedances
+    row = next(r for r in a.rows if r.parameter == "Aluminium")
+    assert row.who_health == ""
+    assert "provisional" in row.remark
 
 
 def test_a_health_exceedance_outranks_an_open_question():
@@ -412,3 +446,44 @@ def test_missing_sulfate_is_an_incomplete_analysis_not_an_unreliable_one():
     assert ionic_balance(ions()) is None
     with_sulfate = ionic_balance(ions(Sulfate=20.0))
     assert with_sulfate is not None and abs(with_sulfate.error_percent) < 5
+
+
+def test_a_count_that_was_not_quantified_is_not_a_pass():
+    """E. coli 0 with total coliforms TNTC used to be graded "Safe".
+
+    The count read as "not measured", so the verdict rested on the one
+    determinand that was clean and said nothing about the one that was not.
+    """
+    a = assess_sample(_sample(
+        *_health_panel(),
+        WaterQualityResult("Total coliforms", None, "CFU/100 mL", greater_than=0.0),
+    ))
+    assert a.verdict_state == "national_fail"
+    assert [r.parameter for r in a.national_exceedances] == ["Total coliforms"]
+    assert a.is_potable is False
+    row = next(r for r in a.rows if r.parameter == "Total coliforms")
+    assert "did not quantify" in row.remark or "not quantified" in row.remark
+
+
+def test_a_faecal_indicator_that_was_not_quantified_is_a_health_failure():
+    a = assess_sample(_sample(
+        WaterQualityResult("E. coli", None, "CFU/100 mL", greater_than=0.0),
+    ))
+    row = next(r for r in a.rows if r.parameter == "E. coli")
+    assert row.status == "exceeds_health"
+
+
+def test_a_greater_than_inside_the_limit_is_an_open_question():
+    """">20" is at least 20, not exactly 20, and the limit is 50.
+
+    Read as exactly 20 it passed; the true value is somewhere above it, so
+    the honest answer is that it cannot be shown to meet the limit.
+    """
+    a = assess_sample(_sample(
+        *_health_panel(),
+        WaterQualityResult("Sulfate", None, "mg/L", greater_than=100.0),
+    ))
+    row = next(r for r in a.rows if r.parameter == "Sulfate")
+    assert row.status == "indeterminate"
+    assert row.evaluable is False
+    assert "more than 100" in row.remark

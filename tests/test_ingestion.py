@@ -215,3 +215,69 @@ def test_overlap_readings_that_disagree_are_a_warning_not_an_info(sample_data):
     assert warning.level == "warning"
     assert "AB/2 40 m: 156.1 and 78.7 ohm-m (ratio 1.98)" in warning.message
     assert "AB/2 3 m" not in warning.message  # 1303 vs 1317 agree
+
+
+def _quality_workbook(path, rows):
+    """A minimal laboratory certificate: header block, then the results."""
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Results"
+    ws.append(["Community", "Test"])
+    ws.append(["Sample ID", "WQ-1"])
+    ws.append([])
+    ws.append(["Parameter", "Unit", "Value", "Detection limit"])
+    for row in rows:
+        ws.append(row)
+    wb.save(path)
+    return path
+
+
+def test_a_non_detect_written_with_its_limit_is_a_non_detect(tmp_path):
+    """"ND (<0.05)" is absence, and it was read as a measured 0.05.
+
+    Only an exact match against the absence words counted, so every one of
+    these forms came through as a concentration and was graded as exceeding
+    a health guideline - the arsenic a laboratory reported as absent was
+    the worst reading on the sheet.
+    """
+    from groundwater.ingestion import read_quality_workbook
+
+    sample = read_quality_workbook(_quality_workbook(tmp_path / "nd.xlsx", [
+        ["Arsenic", "mg/L", "ND (<0.05)", None],
+        ["Lead", "mg/L", "BDL (0.02)", None],
+        ["Cadmium", "mg/L", "ND<0.1", None],
+        ["Mercury", "mg/L", "Not detected (<0.001)", None],
+        ["Nitrate (as NO3)", "mg/L", "12.5", None],
+    ]))
+    by_name = {r.parameter: r for r in sample.results}
+    for name, limit in (("Arsenic", 0.05), ("Lead", 0.02),
+                        ("Cadmium", 0.1), ("Mercury", 0.001)):
+        row = by_name[name]
+        assert row.value is None, name
+        assert row.below_detection, name
+        assert row.detection_limit == pytest.approx(limit), name
+    # a real number is still a real number
+    assert by_name["Nitrate (as NO3)"].value == pytest.approx(12.5)
+
+
+def test_a_count_the_laboratory_did_not_quantify_is_not_absence(tmp_path):
+    """"TNTC" and ">50" used to read as "not measured" and as exactly 50."""
+    from groundwater.ingestion import read_quality_workbook
+
+    sample = read_quality_workbook(_quality_workbook(tmp_path / "tntc.xlsx", [
+        ["Total coliforms", "CFU/100 mL", "TNTC", None],
+        ["E. coli", "CFU/100 mL", "0", None],
+        ["Faecal streptococci", "CFU/100 mL", ">50", None],
+        ["Salmonella", "per 100 mL", "Present", None],
+    ]))
+    by_name = {r.parameter: r for r in sample.results}
+    assert by_name["Total coliforms"].value is None
+    assert by_name["Total coliforms"].greater_than == 0.0
+    assert by_name["Total coliforms"].detected_not_quantified
+    assert not by_name["Total coliforms"].below_detection
+    assert by_name["Faecal streptococci"].greater_than == pytest.approx(50.0)
+    assert by_name["Faecal streptococci"].value is None
+    assert by_name["Salmonella"].greater_than == 0.0
+    assert by_name["E. coli"].value == pytest.approx(0.0)

@@ -334,6 +334,18 @@ class WaterQualityResult:
     detection_limit: Optional[float] = None
     below_detection: bool = False
     method: str = ""
+    #: A lower bound on a result the laboratory did not quantify. ">50" is
+    #: at least 50, and "TNTC", "Present" and "Positive" are more than
+    #: nothing, which for a determinand whose limit is zero is the whole
+    #: finding. These used to be read as "not measured", so a sample with
+    #: E. coli 0 and total coliforms TNTC came out as safe, and ">50" was
+    #: read as exactly 50.
+    greater_than: Optional[float] = None
+
+    @property
+    def detected_not_quantified(self) -> bool:
+        """The laboratory saw it and did not put a number to it."""
+        return self.value is None and self.greater_than is not None
 
 
 @dataclass
