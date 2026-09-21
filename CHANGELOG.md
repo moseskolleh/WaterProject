@@ -676,6 +676,36 @@ chiefdom, the same district and centres within five kilometres. And the
 graticule labelled the tick just short of 13 degrees West as "12 deg 60'
 W", on every map of the Western Area.
 
+The Streamlit design page now designs against the pumping test. It asked
+for a static water level with nothing in the box and passed no pump intake
+at all, so the intake checks never ran on the design that page hands to the
+drawing, the bill of quantities and the completion report: two pages of the
+same app disagreed about the same borehole. It prefills the level from the
+project's test, says where the figure came from, and passes the intake that
+test recommends into the designer.
+
+Every bundled table is now in the provenance record. Six were outside it,
+two of them with no stated source at all, so nothing told a reader which
+bundled numbers are somebody's published dataset and which are the
+toolkit's own working assumptions. The costing and supervision tables are
+recorded against the practice guides they were built from, the coverage
+classes against the Sphere figures they quote, and the rest as authored
+here - with the district boxes marked as a coarse plausibility check and
+not a survey product, and the separation distances marked as having no
+recorded source at all, which is the honest thing to say about them.
+`THIRD_PARTY_NOTICES.md` says the same in prose, and a test now fails if a
+bundled table is ever added outside the record.
+
+The parity suite compares what it had only been collecting. Eight groups
+were read out of the browser, written into the reference and then held to
+nothing: the drilling log's site fields, the pumping test's duration and
+recovery levels, the Depth Spine's levels, Piper percentages and quantity
+basis, the portfolio statistics and the census statistics. A disagreement
+in any of them passed every run, which is how a 12 m against 13 m
+divergence once passed 528 of 528 checks. They are compared on the shape
+the Python states: a field the browser adds of its own is not a divergence,
+and a field Python states has to match.
+
 ## A note on the sixteen districts
 
 The shipped district polygons are the pre-2017 fourteen, from
