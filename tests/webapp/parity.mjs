@@ -1264,6 +1264,39 @@ await withPage(async (page, base, consoleErrors) => {
     pdf.uncertain === R.pdf_sheet.uncertain,
     `js ${pdf.uncertain} py ${R.pdf_sheet.uncertain}`);
 
+  // --- quantities both engines carried but nothing held them to ---
+  // Eight groups were collected into the reference and read out of the
+  // browser and then never compared, so a divergence in any of them passed
+  // every run. A number worth computing twice is worth checking once.
+  // The reference is what Python asserts, so a browser object may legitimately
+  // carry keys Python never records (the site's country, its UTM zone). Compare
+  // the JS value projected onto the Python shape: every field Python states has
+  // to match, and a field it does not state is not a divergence.
+  const onto = (js, py) => {
+    if (Array.isArray(py)) {
+      return Array.isArray(js) ? py.map((v, i) => onto(js[i], v)) : js;
+    }
+    if (py && typeof py === 'object') {
+      if (!js || typeof js !== 'object') return js;
+      const out = {};
+      Object.keys(py).forEach((k) => { out[k] = onto(js[k], py[k]); });
+      return out;
+    }
+    return js;
+  };
+  const deep = (name, a, b) => check(name, JSON.stringify(onto(a, b)) === JSON.stringify(b),
+    `js ${JSON.stringify(onto(a, b)).slice(0, 500)}\n     py ${JSON.stringify(b).slice(0, 500)}`);
+
+  deep('drilling: site fields', parsed.drilling.site, R.drilling.site);
+  check('pumping: duration', close(parsed.pumping.duration, R.pumping.duration),
+    `js ${parsed.pumping.duration} vs py ${R.pumping.duration}`);
+  deep('pumping: recovery levels', parsed.pumping.rec_wl, R.pumping.rec_wl);
+  deep('spine: levels', parsed.spine.levels, R.spine.levels);
+  deep('spine: piper percentages', parsed.spine.piper_percent, R.spine.piper_percent);
+  deep('spine: quantity basis', parsed.spine.quantity_basis, R.spine.quantity_basis);
+  deep('portfolio: statistics', parsed.portfolio.stats, R.portfolio.stats);
+  deep('planning: census statistics', parsed.planning.census, R.planning.census);
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, {});
 

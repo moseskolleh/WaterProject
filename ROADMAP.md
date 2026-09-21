@@ -511,9 +511,10 @@ numbers is kept with the audit notes.
   intake checks never run on the design that page's completion report
   carries.
   Done: the page prefills the static water level from the project's pumping test and says where the figure came from, and passes that test's recommended pump intake into `design_borehole`, so the intake checks run on the design this page hands to the drawing, the bill of quantities and the completion report.
-- [ ] **M webapp-parity-11. `parity.mjs` collects quantities it never
+- [x] **M webapp-parity-11. `parity.mjs` collects quantities it never
   compares, and `reference.json` holds none of the VES or design prose;**
   the 12 m / 13 m divergence passed 528 of 528 checks.
+  Done: the interpretation's zones, flags and narrative went into the reference in workstream 1 and the design's basis, construction note and summary rows in workstream 4; and the eight groups that were collected on both sides and then compared on neither - the log's site fields, the test duration and recovery levels, the Depth Spine's levels, Piper percentages and quantity basis, the portfolio statistics and the census statistics - are now checked, on the shape the Python states, so a field the browser adds is not a divergence but a field Python states must match.
 
 ## 8. Data, geodesy and parsers
 
