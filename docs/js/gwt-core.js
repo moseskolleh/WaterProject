@@ -4093,7 +4093,7 @@
          * and naming it is the only way a reader can tell a limit somebody
          * set from a limit this toolkit assumed. */
         var whoNote = entry.who_aesthetic
-          ? "; WHO's acceptability value is " + limitText(entry.who_aesthetic)
+          ? '; the WHO acceptability value is ' + limitText(entry.who_aesthetic)
           : '; WHO sets no value for this determinand';
         row.remark = 'exceeds the national acceptability limit (' +
           limitText(entry.sl_standard) + '), which is provisional' +

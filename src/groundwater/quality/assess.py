@@ -672,7 +672,7 @@ def _grade(
             # from, and naming it is the only way a reader can tell a limit
             # somebody set from a limit this toolkit assumed.
             who_note = (
-                f"; WHO's acceptability value is {entry.who_aesthetic}"
+                f"; the WHO acceptability value is {entry.who_aesthetic}"
                 if entry.who_aesthetic
                 else "; WHO sets no value for this determinand"
             )
