@@ -593,9 +593,10 @@ the browser too), `gwt-app.js` parseLatLon. Tests: `test_ingestion.py`,
   turbidity) **and rounds the nitrogen-basis limits down** (nitrate as N 11
   for 11.3), so compliant samples are graded as exceeding.
   Done: aluminium carries no WHO health guideline, because WHO derives a health based value of 0.9 mg/L and declines to adopt it; hardness and turbidity carry no WHO value at all, only the provisional national one; and the nitrogen-basis limits are the conversions rather than the floor of them (nitrate as N 11.3, nitrite as N 0.91), so a sample that complies as nitrate is no longer failed as nitrogen. Aluminium was the only row whose national limit undercut a WHO health guideline, so the two tests that rested on it now build that case explicitly instead. The remark on a national acceptability limit says the limit is provisional.
-- [ ] **M data-ingestion-13. Every national value is provisional, yet the
+- [x] **M data-ingestion-13. Every national value is provisional, yet the
   remark says "exceeds the national acceptability limit"** and the WHO value
   is never cited.
+  Done in both engines: the remark says the limit is provisional and names the WHO acceptability value it was carried across from, or says WHO sets none. It is the only way a reader can tell a limit somebody set from a limit this toolkit assumed. The citation that goes with it says the same, and the completion and handover tables carry the provisional note.
 - [x] **L data-ingestion-14. A value cell that looks like a label is taken
   as one:** "Zone 28" in the zone cell yields a zone of 708958.
   Done in both engines: `parse_utm_zone` takes the number that follows a label and refuses anything naming no single zone, so an easting that the header matcher had taken for the zone is read as no zone at all rather than as zone 708958.

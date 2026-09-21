@@ -4089,8 +4089,15 @@
          * Bureau one - so the remark says so rather than reporting a legal
          * failure the toolkit cannot establish. */
         row.status = 'exceeds_aesthetic';
+        /* The WHO figure is what the national one was carried across from,
+         * and naming it is the only way a reader can tell a limit somebody
+         * set from a limit this toolkit assumed. */
+        var whoNote = entry.who_aesthetic
+          ? "; WHO's acceptability value is " + limitText(entry.who_aesthetic)
+          : '; WHO sets no value for this determinand';
         row.remark = 'exceeds the national acceptability limit (' +
-          limitText(entry.sl_standard) + '), which is provisional' + unitNote;
+          limitText(entry.sl_standard) + '), which is provisional' +
+          whoNote + unitNote;
       }
     } else if (entry.who_aesthetic && limitExceededBy(entry.who_aesthetic, value)) {
       row.status = 'exceeds_aesthetic';

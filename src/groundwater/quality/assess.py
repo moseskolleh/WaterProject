@@ -668,9 +668,17 @@ def _grade(
             # confirmed Standards Bureau one - so the remark says so rather
             # than reporting a legal failure the toolkit cannot establish.
             row.status = "exceeds_aesthetic"
+            # The WHO figure is what the national one was carried across
+            # from, and naming it is the only way a reader can tell a limit
+            # somebody set from a limit this toolkit assumed.
+            who_note = (
+                f"; WHO's acceptability value is {entry.who_aesthetic}"
+                if entry.who_aesthetic
+                else "; WHO sets no value for this determinand"
+            )
             row.remark = (
                 f"exceeds the national acceptability limit "
-                f"({entry.sl_standard}), which is provisional{unit_note}"
+                f"({entry.sl_standard}), which is provisional{who_note}{unit_note}"
             )
     elif entry.who_aesthetic and entry.who_aesthetic.exceeded_by(value):
         row.status = "exceeds_aesthetic"
