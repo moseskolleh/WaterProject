@@ -87,6 +87,29 @@ def test_design_flow_with_sample(app):
     assert not app.exception
 
 
+def test_the_design_page_designs_against_the_pumping_test(app):
+    """The design this page hands on is the one the completion report carries.
+
+    It used to ask for a static water level with nothing in the box and pass
+    no pump intake at all, so the intake checks never ran here and the two
+    pages disagreed about the same borehole.
+    """
+    app.selectbox(key="sample_pump").select("dr_timbo/dr_timbo_constant_test.xlsx")
+    app.run()
+    app.selectbox(key="sample_log").select("dr_timbo/dr_timbo_drilling_log.xlsx")
+    app.run()
+    assert not app.exception
+
+    analysis = app.session_state["pump_analysis"]
+    design = app.session_state["borehole_design"]
+    assert design.static_water_level_m == pytest.approx(
+        analysis.test.static_water_level_m, abs=0.01
+    )
+    # the intake the test supports, not a level nobody typed
+    assert design.pump_intake_m is not None
+    assert design.pump_intake_m > analysis.test.static_water_level_m
+
+
 def test_costing_flow(app):
     app.button(key="run_cost").click()
     app.run()

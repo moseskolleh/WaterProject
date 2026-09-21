@@ -257,6 +257,157 @@ datasets:
 # Third-party publications under WaterProjectFiles/. None of these carries a
 # redistribution grant that has been established. Being the source of a method
 # is provenance, not permission - see THIRD_PARTY_NOTICES.md for the options.
+  - id: rwsn_practice_tables
+    name: RWSN water well drilling practice guides - costing and supervision tables
+    source: >-
+      Rural Water Supply Network guidance on costing, procurement and
+      supervision of drilled water wells, bundled under Reference documents
+      below.
+    reference: >-
+      Danert, K. et al. Costing and Pricing: A Guide for Water Well Drilling
+      Enterprises; Supervising Water Well Drilling: A Guide for Supervisors;
+      Procurement and Contract Management of Drilled Well Construction.
+    url: https://rural-water-supply.net/
+    version: unrecorded
+    retrieved: unrecorded
+    licence: unverified
+    licence_evidence: >-
+      No redistribution grant has been established for the guides these
+      tables were built from, and none is claimed for the tables. The figures
+      are short factual line items, not the guides' prose, but nobody has
+      checked whether that distinction holds here.
+    attribution: >-
+      Rural Water Supply Network practice guides; see Reference documents.
+    share_alike: false
+    changes_made: >-
+      The worked examples were reduced to a unit-rate table with a quantity
+      basis this toolkit can compute against, and the supervision text to
+      one checklist row per item with a critical flag. Unit costs are the
+      guides' example figures, not a market survey of Sierra Leone, and a
+      project should replace them with quoted rates before they are used in
+      a tender.
+    files:
+      - path: src/groundwater/data/borehole_cost_items.csv
+        bytes: 3253
+        sha256: bd74954d96877a643b9d4cf89121f5c296ad133dbd81b056e3132afc0b1087f7
+        note: >-
+          Unit rates and quantity bases for a borehole bill of quantities,
+          built from the costing guide's worked example. Example figures,
+          not quoted Sierra Leone rates.
+      - path: src/groundwater/data/supervision_checklists.csv
+        bytes: 14502
+        sha256: 1c080962f5368d53067bb0116f4e68eccd638849d9233afa0e01304a0ec45e8e
+        note: >-
+          Procurement, drilling and handover checklist items drawn from the
+          supervision and procurement guides, one row per check, with the
+          items those guides treat as go/no-go marked critical.
+
+  - id: sphere_service_classes
+    name: Sphere Handbook - water supply service levels
+    source: >-
+      The Sphere Handbook's figures for people per water point, used as the
+      fixed scale the coverage map is coloured by.
+    reference: >-
+      Sphere Association. The Sphere Handbook: Humanitarian Charter and
+      Minimum Standards in Humanitarian Response.
+    url: https://spherestandards.org/handbook/
+    version: unrecorded
+    retrieved: unrecorded
+    licence: unverified
+    licence_evidence: >-
+      The handbook is not bundled here and the figures were not checked
+      against it in this repository; the table says so in its own basis
+      column. Treat the class boundaries as indicative until somebody
+      confirms them against the published standard.
+    attribution: Sphere Association, The Sphere Handbook.
+    share_alike: false
+    changes_made: >-
+      Transcribed as four class boundaries with the map colour each is drawn
+      in, so both engines class the same number the same way rather than
+      each rescaling to its own figure.
+    files:
+      - path: src/groundwater/data/coverage_service_classes.csv
+        bytes: 604
+        sha256: 4456a5cdfe3a2253789f9dc32f966649e46b5ef76fe0d0c26dea318dac80b4cf
+        note: >-
+          Four people-per-point class boundaries and the colour each is
+          drawn in. The basis column records that the figures are the Sphere
+          handbook's and are not evidenced in this repository.
+
+  - id: toolkit_authored_tables
+    name: Toolkit-authored reference tables
+    source: This repository. No external dataset stands behind these files.
+    reference: "Groundwater Investigation Toolkit, src/groundwater/data/"
+    url: ""
+    version: "1"
+    retrieved: unrecorded
+    licence: same-as-repository
+    licence_evidence: >-
+      Written here, so this repository's own licence applies. They are
+      recorded in this file because a reader is entitled to know which
+      bundled numbers are somebody's published dataset and which are the
+      toolkit's own working assumptions: these are the latter.
+    attribution: >-
+      Groundwater Investigation Toolkit. Cite the toolkit, not a standard.
+    share_alike: false
+    changes_made: >-
+      Authored, not derived. Each file's own note says what it rests on and
+      what it does not.
+    files:
+      - path: src/groundwater/data/sample_provenance.csv
+        bytes: 1659
+        sha256: 0462387d30f07d0ecd570cbd6a465f4e53ea42c002e406bd5f3463fc77f6d947
+        note: >-
+          What each bundled example workbook actually contains and how it
+          was produced, so the certification gate can refuse to write a
+          client report from a synthetic sheet.
+      - path: src/groundwater/data/sl_districts.csv
+        bytes: 711
+        sha256: af3a555a0e0ed4ebad0e9e5f42419421deb52fd0fc7376cfa7ae52dc91f12bc1
+        note: >-
+          Hand-drawn longitude and latitude boxes per district, written here
+          as a coarse plausibility check. They are not a survey product,
+          they overlap, and the bundled geoBoundaries polygons are the
+          authority for anything positional.
+      - path: src/groundwater/data/site_separation_distances.csv
+        bytes: 404
+        sha256: 13edd2ecc8fb1b6dd22db9f2fa7ea8693877129bc50224ec666b405bcc4b8c6f
+        note: >-
+          Minimum separation between a water point and a contamination
+          source. NO SOURCE IS RECORDED for these distances: they are common
+          field practice as written down here, not a cited standard, and a
+          project should replace them with its regulator's figures.
+
+  - id: chiefdom_name_crosswalk
+    name: Chiefdom name crosswalk - boundary layer to census spelling
+    source: >-
+      A crosswalk between two datasets already recorded here: the truncated
+      name field of the geoBoundaries ADM3 layer and the chiefdom spellings
+      used in the 2015 census tables.
+    reference: "Derived from geoboundaries_chiefdoms and statssl_census_2015."
+    url: https://www.geoboundaries.org/
+    version: "1"
+    retrieved: unrecorded
+    licence: same-as-repository
+    licence_evidence: >-
+      The crosswalk itself is written here; the two datasets it maps between
+      carry their own licences, recorded above.
+    attribution: >-
+      geoBoundaries (CC BY 4.0) and Statistics Sierra Leone 2015 census.
+    share_alike: false
+    changes_made: >-
+      One row per chiefdom whose name the boundary layer truncates to
+      fifteen characters, giving the census spelling to draw instead.
+    files:
+      - path: src/groundwater/data/sl_chiefdom_names.csv
+        bytes: 366
+        sha256: 7ed3cbcc4294f8c52ea157ff31bce95c422c6ed656ff1fb06fabb84b8154a684
+        note: >-
+          Ten chiefdoms whose names the boundary layer truncates to fifteen
+          characters, with the census spelling a map label should carry
+          instead.
+
+
 documents:
   - path: WaterProjectFiles/Borehole Drilling – Planning, Contracting & Management- Introduction  .pdf
     publisher: RWSN / Skat

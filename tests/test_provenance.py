@@ -109,3 +109,24 @@ def test_the_notices_file_covers_every_recorded_dataset(provenance):
         # the headline name, not the id, is what a reader looks for
         head = dataset["name"].split(" - ")[0].strip()
         assert head in notices, f"{dataset['id']} is not described in the notices"
+
+
+def test_every_bundled_table_is_in_the_record(provenance):
+    """A table nobody can trace is a number nobody should quote.
+
+    Six of the bundled tables were outside this record, two of them with no
+    stated source at all, so a reader had no way to tell the costing figures
+    (a practice guide's worked example) from the separation distances
+    (field practice written down here and never cited).
+    """
+    recorded = {
+        entry["path"]
+        for dataset in provenance["datasets"]
+        for entry in dataset["files"]
+    }
+    bundled = {
+        f"src/groundwater/data/{path.name}"
+        for path in (REPO / "src" / "groundwater" / "data").glob("*.csv")
+    }
+    assert bundled, "no bundled tables were found; has the data moved?"
+    assert not bundled - recorded, sorted(bundled - recorded)

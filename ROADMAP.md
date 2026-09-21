@@ -359,10 +359,11 @@ Files: `reporting/*.py`, `quality/assess.py`, `quality/corrosivity.py`,
   pegs, a profiling method and compliance with unnamed guidelines,** none
   of it evidenced by the inputs.
   Done: the field-work section prints the recorded reconnaissance date and notes when there are any and says there are none when there are not; the geomorphological survey, traverse selection, pegs and profiling boilerplate is gone, and the sounding paragraph states the array and the count of positioned points.
-- [ ] **H reports-8 / maps-regional-5. The handover report captions a
+- [x] **H reports-8 / maps-regional-5. The handover report captions a
   marker-less district map "Location of the water point",** has blank
   "Project:" and "Date:" cover lines and duplicated data-sheet rows, and is
   the one report that omits the "no GPS position" note.
+  Done: the handover report draws its area figures through `add_area_section`, so each map carries the caption the map itself earns; the cover skips a detail it has no value for; the data-sheet rows are deduplicated; and the "no GPS position is recorded" note is printed here as it is in the other reports.
 - [x] **H reports-9. Total coliforms are reported as exceeding a WHO
   health-based guideline and as "faecal contamination"** in three documents;
   WHO sets no health guideline for total coliforms, and E. coli is 0.
@@ -373,25 +374,30 @@ Files: `reporting/*.py`, `quality/assess.py`, `quality/corrosivity.py`,
 - [x] **M reports-15. The table of contents is an un-updated field showing
   "Right-click and choose Update Field".**
   Done: the field's cached result is the list of headings, filled at save, and the document asks Word to update fields on opening for the page numbers.
-- [ ] **M reports-16. An unverified, undated "Sierra Leone Standard" is
+- [x] **M reports-16. An unverified, undated "Sierra Leone Standard" is
   cited in four reports** and national limits are stated in the completion
   and handover tables without the provisional note the quality report
   carries.
-- [ ] **M reports-18. Handpump maintenance boilerplate ("pump rods",
+  Done: the citation states that the edition and date are unverified and that the limits are provisional, and the completion and handover tables carry `PROVISIONAL_NATIONAL_NOTE` wherever they print a provisional national value.
+- [x] **M reports-18. Handpump maintenance boilerplate ("pump rods",
   "strokes per day") for a recorded submersible pump.**
-- [ ] **M reports-19. "A total of two hours" of development above a
+  Done: `om_guidance(pump_type)` returns the care list for the pump that was installed, with a motorised list for a submersible or solar pump, and the corrosivity note speaks of the wetted metal parts of the pump rather than pump rods.
+- [x] **M reports-19. "A total of two hours" of development above a
   one-hour development record** (the example passes free text the builder
   never reconciles).
+  Done: `_record_span` states the span the record itself covers ("The record covers 1 h 00 min (17:00 to 18:00)."), and the example no longer passes a free-text duration for the builder to contradict.
 - [x] **M reports-20. Piper diagram labels collide ("HNO3+K") and the
   hydrochemical facies section is empty.**
   Done: the base labels sit under their own vertices with a wider gap, and `facies_of` writes the facies sentence ("mixed-cation-HCO3 type ...") above the diagrams.
 - [x] **M reports-21. The provisional stamp is contradicted by an
   unqualified executive summary and a "Status: Successful" cover.**
   Done: the executive summary of a report that carries the stamp opens with the same qualification, naming what is outstanding or overridden.
-- [ ] **L reports-22. UTM coordinates with thousands separators and no
+- [x] **L reports-22. UTM coordinates with thousands separators and no
   zone.**
-- [ ] **L reports-23. "0/0" in the model table, "between 8 m to 80 m",
+  Done: `utm_text` prints an easting or northing with its zone and no separators ("778000 m E (UTM zone 28N)"), and the reports use it wherever they print a grid coordinate.
+- [x] **L reports-23. "0/0" in the model table, "between 8 m to 80 m",
   "(s)" plurals.**
+  Done: a half-space row is named "half-space" rather than "0/0"; the depth wording came right in workstream 1; and `plural` and `plural_noun` put a real plural wherever a count meets a noun.
 - [x] **L reports-24. `docx_utils`: an empty table without a header crashes
   the build, None prints "None", captions are not Caption-styled.**
   Done: `_clean(None)` is empty, an empty table without a header prints one row, and captions carry Word's Caption style.
@@ -500,10 +506,11 @@ numbers is kept with the audit notes.
   nowhere in the frame.**
 - [ ] **M webapp-parity-8. The browser geology and aquifer maps omit the
   scale caveat and the BGS publisher statement.**
-- [ ] **M webapp-parity-9. The Streamlit design page ignores the pumping
+- [x] **M webapp-parity-9. The Streamlit design page ignores the pumping
   test:** no pump intake, a static-level box defaulting to 0, so the
   intake checks never run on the design that page's completion report
   carries.
+  Done: the page prefills the static water level from the project's pumping test and says where the figure came from, and passes that test's recommended pump intake into `design_borehole`, so the intake checks run on the design this page hands to the drawing, the bill of quantities and the completion report.
 - [ ] **M webapp-parity-11. `parity.mjs` collects quantities it never
   compares, and `reference.json` holds none of the VES or design prose;**
   the 12 m / 13 m divergence passed 528 of 528 checks.
@@ -573,9 +580,10 @@ the browser too), `gwt-app.js` parseLatLon. Tests: `test_ingestion.py`,
   as one:** "Zone 28" in the zone cell yields a zone of 708958.
 - [ ] **L data-ingestion-15. Diameter and penetration rate are read without
   units:** "165 mm" becomes 165 inches, "5 min/m" becomes 5 m/min.
-- [ ] **L data-ingestion-16. Six bundled tables are outside the provenance
+- [x] **L data-ingestion-16. Six bundled tables are outside the provenance
   record,** two with no stated source at all (the district boxes and the
   separation distances).
+  Done: the costing and supervision tables are recorded against the RWSN guides they were built from, the coverage classes against the Sphere figures they quote, and the rest as toolkit-authored, with the district boxes marked as not a survey product and the separation distances marked as having no recorded source; `THIRD_PARTY_NOTICES.md` says the same in prose, and a test fails if a bundled table is ever added outside the record.
 - [ ] **L data-ingestion-17. The ionic balance is silently skipped when a
   major ion is missing,** with no flag naming it.
 

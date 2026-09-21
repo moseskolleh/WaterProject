@@ -2781,13 +2781,35 @@ with tab_design:
         "Drilling log (standard template)", "log", ["xlsx"],
         ["dr_timbo/dr_timbo_drilling_log.xlsx"],
     )
+    # The pumping test, when the Pumping test page has run one, is what the
+    # completion report's design is built from; this page used to ask for a
+    # static water level with nothing in the box and pass no pump intake at
+    # all, so the intake checks never ran on the design this page hands on and
+    # the two pages disagreed about the same borehole.
+    _design_analysis = st.session_state.get("pump_analysis")
+    _test_swl = (
+        _design_analysis.test.static_water_level_m if _design_analysis else None
+    )
+    if _test_swl is not None and "design_swl" not in st.session_state:
+        st.session_state["design_swl"] = round(float(_test_swl), 2)
     swl_input = st.number_input("Static water level (m)", min_value=0.0, step=0.1,
                                 key="design_swl")
+    if _test_swl is not None:
+        st.caption(
+            f"Prefilled from the pumping test on this project "
+            f"({fmt_num(_test_swl)} m). Type over it to design against another level."
+        )
+    _design_intake = (
+        _design_analysis.yield_recommendation.pump_installation_depth_m
+        if _design_analysis and _design_analysis.yield_recommendation
+        else None
+    )
     if path is not None and (log := parse_upload(read_drilling_workbook, path)) is not None:
         show_flags(log.flags)
         design = design_borehole(
             log=log,
-            static_water_level_m=swl_input or None,
+            static_water_level_m=swl_input or _test_swl,
+            pump_intake_m=_design_intake,
             rules=CONFIG.design,
         )
         st.session_state.borehole_design = design
