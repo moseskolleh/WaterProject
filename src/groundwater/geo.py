@@ -262,16 +262,226 @@ def infer_zone_for_sierra_leone(easting: float) -> int:
     return 28 if easting > 550000 else 29
 
 
+# Sierra Leone's own extent, in degrees: about 6.9 to 10.0 north, and 10.3
+# to 13.3 WEST. These bands recognise a longitude typed without its western
+# sign; nothing here moves a coordinate that carries a sign or a letter.
+SIERRA_LEONE_LAT_BAND = (6.9, 10.0)
+SIERRA_LEONE_LON_BAND = (-13.3, -10.3)
+
+_ZONE_NUMBER_RE = re.compile(r"\d+")
+
+
+def parse_utm_zone(value) -> int | None:
+    """The UTM zone a cell states, or ``None`` when it states no single zone.
+
+    Sheets write the zone as ``28N``, ``28``, ``zone 28`` or - when the
+    operator copies the label into the value cell - ``Zone 28``. Reading
+    such a cell means taking the number that follows the label and nothing
+    else. A value cell mistaken for a label let the neighbouring easting
+    through as the zone, so a site recorded in zone 28N was carried as
+    "zone 708958" and projected tens of degrees from the survey.
+
+    A cell naming more than one number states no single zone - "28N or 29N"
+    is the sheet's own instruction, not an answer - and neither does a
+    number outside the 1 to 60 a UTM zone can be. Both are refused rather
+    than guessed at, so the caller can say the zone is unrecorded and fall
+    back to the easting.
+
+    >>> parse_utm_zone("28N")
+    28
+    >>> parse_utm_zone("Zone 28")
+    28
+    >>> parse_utm_zone("708958") is None
+    True
+    >>> parse_utm_zone("UTM Zone (28N or 29N)") is None
+    True
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        if not math.isfinite(value) or float(value) != int(value):
+            return None
+        numbers = [int(value)]
+    else:
+        numbers = [int(found) for found in _ZONE_NUMBER_RE.findall(str(value))]
+    if len(numbers) != 1 or not 1 <= numbers[0] <= 60:
+        return None
+    return numbers[0]
+
+
 _LATLON_TOKEN = re.compile(r"^([+-]?\d*\.?\d+)\s*([NSEWnsew])?$")
+_HEMISPHERES = ("N", "S", "E", "W")
+
+# Degree, minute and second marks as a phone, a handheld GPS or a sheet
+# writes them; they separate the parts of a coordinate rather than belonging
+# to any of them, so they are read as spaces.
+_SEXAGESIMAL_MARKS = str.maketrans({
+    "°": " ", "º": " ", "∘": " ",
+    "'": " ", "’": " ", "′": " ",
+    '"': " ", "”": " ", "″": " ",
+})
+
+_UNREADABLE = "Could not read those coordinates."
+_AMBIGUOUS = (
+    "Two numbers with nothing between them are either a decimal pair or one "
+    "degrees-and-minutes value. Separate a pair with a comma "
+    "(8.4657, -13.2317), or mark the hemispheres (8 27.942 N, 13 13.902 W)."
+)
 
 
-def parse_latlon(text: str) -> tuple[float, float] | None:
-    """Parse "lat, lon" as a field crew writes it, or None if unreadable.
+@dataclass(frozen=True)
+class LatLonReading:
+    """What :func:`read_latlon` made of a pasted coordinate.
+
+    ``lat`` and ``lon`` are ``None`` when the text was refused, and
+    ``message`` then says why, in a sentence an operator can act on. A
+    reading that succeeded carries a ``code`` and a ``message`` only when
+    something was assumed rather than read, so whatever shows the position
+    can show the assumption with it.
+    """
+
+    lat: float | None = None
+    lon: float | None = None
+    code: str = ""
+    message: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return self.lat is not None and self.lon is not None
+
+
+class _CoordinateRefused(Exception):
+    """A coordinate the parser will not read, carrying the reason why."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+def _latlon_components(raw: str) -> list[dict]:
+    """Split a pasted coordinate into its two components.
+
+    Numbers accumulate into the component being read. A hemisphere letter, a
+    comma or semicolon, or an explicit sign ends that component and starts
+    the next, because a number of minutes or seconds is never signed and
+    never carries a hemisphere of its own.
+    """
+    components: list[dict] = []
+    current: dict | None = None
+
+    def open_component(letter: str | None = None) -> dict:
+        nonlocal current
+        current = {"numbers": [], "letter": letter, "signed": False,
+                   "negative": False}
+        components.append(current)
+        return current
+
+    segments = re.split(r"[,;]", raw.translate(_SEXAGESIMAL_MARKS))
+    for index, segment in enumerate(segments):
+        if index:
+            current = None
+        for token in segment.split():
+            if len(token) == 1 and token.upper() in _HEMISPHERES:
+                letter = token.upper()
+                if (current is not None and current["letter"] is None
+                        and current["numbers"]):
+                    current["letter"] = letter       # trailing "8.4657 N"
+                    current = None
+                else:
+                    current = None
+                    open_component(letter)           # leading "N 8.4657"
+                continue
+            match = _LATLON_TOKEN.match(token)
+            if match is None:
+                raise _CoordinateRefused("latlon_unreadable", _UNREADABLE)
+            number = float(match.group(1))
+            if not math.isfinite(number):
+                raise _CoordinateRefused("latlon_unreadable", _UNREADABLE)
+            signed = match.group(1)[0] in "+-"
+            if signed and current is not None and current["numbers"]:
+                current = None                       # "8 -13.2317" is a pair
+            component = current if current is not None else open_component()
+            if not component["numbers"]:
+                component["signed"] = signed
+                component["negative"] = match.group(1).startswith("-")
+            component["numbers"].append(number)
+            if match.group(2):
+                component["letter"] = match.group(2).upper()   # "13.2317W"
+                current = None
+
+    if (len(components) == 1 and components[0]["letter"] is None
+            and len(components[0]["numbers"]) == 2):
+        # Nothing separates the two numbers, so they are either a decimal
+        # pair or one degrees-and-minutes value. Where they could be either,
+        # refusing is the only honest reading: "8 27.942" read as a pair
+        # lands 2000 km from the same text read as degrees and minutes.
+        only = components[0]
+        degrees, rest = only["numbers"]
+        if degrees == math.floor(degrees) and 0 <= rest < 60:
+            raise _CoordinateRefused("latlon_unreadable", _AMBIGUOUS)
+        components = [
+            {"numbers": [degrees], "letter": None,
+             "signed": only["signed"], "negative": only["negative"]},
+            {"numbers": [rest], "letter": None,
+             "signed": False, "negative": False},
+        ]
+    return components
+
+
+def _component_degrees(component: dict, what: str) -> float:
+    """One component of a pasted pair as signed decimal degrees."""
+    numbers = component["numbers"]
+    if not numbers or len(numbers) > 3:
+        raise _CoordinateRefused("latlon_unreadable", _UNREADABLE)
+    magnitude = abs(numbers[0])
+    if len(numbers) > 1:
+        # Degrees and decimal minutes, or degrees, minutes and seconds.
+        # Read as decimal degrees, "8 27.942 N" came back as latitude 27.942
+        # and longitude 8: the sheet's own numbers, in the wrong units and
+        # the wrong order.
+        minutes = numbers[1]
+        if magnitude != math.floor(magnitude):
+            raise _CoordinateRefused("latlon_unreadable", (
+                f"Read the {what} as degrees and minutes, but "
+                f"{numbers[0]:g} is not a whole number of degrees."))
+        if not 0 <= minutes < 60:
+            raise _CoordinateRefused("latlon_unreadable", (
+                f"Read the {what} as degrees and minutes, but {minutes:g} "
+                "is not a number of minutes (0 up to 60)."))
+        magnitude += minutes / 60.0
+        if len(numbers) == 3:
+            seconds = numbers[2]
+            if minutes != math.floor(minutes):
+                raise _CoordinateRefused("latlon_unreadable", (
+                    f"Read the {what} as degrees, minutes and seconds, but "
+                    f"{minutes:g} is not a whole number of minutes."))
+            if not 0 <= seconds < 60:
+                raise _CoordinateRefused("latlon_unreadable", (
+                    f"Read the {what} as degrees, minutes and seconds, but "
+                    f"{seconds:g} is not a number of seconds (0 up to 60)."))
+            magnitude += seconds / 3600.0
+    negative = component["negative"]
+    letter = component["letter"]
+    if letter:
+        letter_negative = letter in ("S", "W")
+        if negative and not letter_negative:
+            raise _CoordinateRefused("latlon_sign_contradiction", (
+                f"The {what} is written both as a negative number and as "
+                f"{letter}, which contradict each other."))
+        negative = negative or letter_negative
+    return -magnitude if negative else magnitude
+
+
+def read_latlon(text: str) -> LatLonReading:
+    """Read "lat, lon" as a field crew writes it, saying what was assumed.
 
     Accepts a signed decimal pair (``8.4657, -13.2317``), hemisphere letters
     trailing (``8.4657 N, 13.2317 W``) or attached (``13.2317W``), letters
-    leading (``N 8.4657, W 13.2317``), and comma, semicolon or whitespace
-    separators.
+    leading (``N 8.4657, W 13.2317``), degrees and decimal minutes
+    (``8 27.942 N, 13 13.902 W``), degrees, minutes and seconds
+    (``8 27 56.5 N, 13 13 54.1 W``), with or without degree marks, and
+    comma, semicolon or whitespace separators.
 
     Every longitude in Sierra Leone is west, and a handheld GPS writes that
     as a W rather than a minus sign. Discarding the letter and taking the
@@ -280,53 +490,70 @@ def parse_latlon(text: str) -> tuple[float, float] | None:
     a sign. A letter that contradicts an explicit sign (``-13.2317 E``) is
     refused rather than guessed at, and an explicit E/W on the first value
     means the pair was written longitude first.
+
+    A positive longitude between 10.3 and 13.3 degrees, carrying neither a
+    sign nor a letter and paired with a latitude inside Sierra Leone's own
+    band, is a western longitude whose minus sign was never typed:
+    "8.4657, 13.2317" is Freetown short of a sign, not a site 2,900 km east
+    in central Africa. That reading is taken - the country is what this
+    toolkit is for, and read as written the pair used to become a zone-33
+    position relabelled 29N, landing 270 km inside Sierra Leone from where
+    the site is - but it is the parser's reading rather than the sheet's, so
+    it comes back under the ``longitude_west_assumed`` code with a sentence
+    saying what was assumed. Nothing downstream may present it as read.
+
+    Where two numbers could be either a decimal pair or one
+    degrees-and-minutes value ("8 27.942"), the text is refused rather than
+    read as a guess.
     """
     raw = (text or "").strip()
     if not raw:
-        return None
-    tokens = [t for t in re.split(r"[,;\s]+", raw) if t]
-
-    values: list[dict] = []
-    pending: str | None = None          # a leading N/S/E/W awaiting its number
-    for token in tokens:
-        if len(token) == 1 and token.upper() in ("N", "S", "E", "W"):
-            letter = token.upper()
-            if values and values[-1]["letter"] is None:
-                values[-1]["letter"] = letter      # trailing "8.4657 N"
-            else:
-                pending = letter                   # leading "N 8.4657"
-            continue
-        match = _LATLON_TOKEN.match(token)
-        if match is None:
-            return None
-        values.append({
-            "value": float(match.group(1)),
-            "letter": match.group(2).upper() if match.group(2) else pending,
-        })
-        pending = None
-
-    if len(values) != 2:
-        return None
-
-    def signed(entry: dict) -> float | None:
-        value, letter = entry["value"], entry["letter"]
-        if not math.isfinite(value):
-            return None
-        if letter is None:
-            return value
-        negative = letter in ("S", "W")
-        if value < 0 and not negative:
-            return None                 # "-13.2317 E" contradicts itself
-        if value < 0:
-            return value
-        return -value if negative else value
-
-    first, second = values
-    if first["letter"] in ("E", "W") or second["letter"] in ("N", "S"):
-        first, second = second, first
-    lat, lon = signed(first), signed(second)
-    if lat is None or lon is None:
-        return None
+        return LatLonReading(code="latlon_unreadable", message=_UNREADABLE)
+    try:
+        components = _latlon_components(raw)
+        if not components:
+            raise _CoordinateRefused("latlon_unreadable", _UNREADABLE)
+        if len(components) < 2:
+            raise _CoordinateRefused("latlon_incomplete", (
+                "Read one coordinate where a latitude and a longitude are "
+                "both needed."))
+        if len(components) > 2:
+            raise _CoordinateRefused("latlon_incomplete", (
+                "Read more than two values where only a latitude and a "
+                "longitude are expected."))
+        first, second = components
+        if first["letter"] in ("E", "W") or second["letter"] in ("N", "S"):
+            first, second = second, first
+        lat = _component_degrees(first, "latitude")
+        lon = _component_degrees(second, "longitude")
+    except _CoordinateRefused as refused:
+        return LatLonReading(code=refused.code, message=refused.message)
     if abs(lat) > 90 or abs(lon) > 180:
-        return None
-    return lat, lon
+        return LatLonReading(code="latlon_out_of_range", message=(
+            "A latitude runs to 90 degrees and a longitude to 180; these "
+            "do not."))
+    if (lon > 0 and not second["signed"] and second["letter"] is None
+            and SIERRA_LEONE_LAT_BAND[0] <= lat <= SIERRA_LEONE_LAT_BAND[1]
+            and SIERRA_LEONE_LON_BAND[0] <= -lon <= SIERRA_LEONE_LON_BAND[1]):
+        return LatLonReading(lat=lat, lon=-lon, code="longitude_west_assumed",
+                             message=(
+                                 f"Longitude {lon:g} was read as {lon:g} W: "
+                                 "every longitude in Sierra Leone is west, "
+                                 f"and {lon:g} east is some 2,900 km away in "
+                                 f"central Africa. Type -{lon:g} or {lon:g} W "
+                                 "to record the sign rather than leave it "
+                                 "assumed."))
+    return LatLonReading(lat=lat, lon=lon)
+
+
+def parse_latlon(text: str) -> tuple[float, float] | None:
+    """The pasted pair as ``(lat, lon)``, or ``None`` if it was refused.
+
+    :func:`read_latlon` returns the same reading together with the reason a
+    text was refused, or the assumption a reading rests on. Anything that
+    shows a coordinate to an operator should use that instead, so a refusal
+    reaches them as a sentence and an assumption is never presented as
+    something the sheet said.
+    """
+    reading = read_latlon(text)
+    return (reading.lat, reading.lon) if reading.ok else None

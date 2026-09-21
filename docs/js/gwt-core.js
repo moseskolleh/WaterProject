@@ -6320,6 +6320,24 @@
     return bottom < top ? [bottom, top] : [top, bottom];
   }
 
+  /* Every dash a sheet can carry: the hyphen variants, the figure, en, em and
+   * horizontal dashes, the true minus sign and the full-width hyphen. */
+  var DASH_RE = /[\u2010-\u2015\u2212\ufe58\ufe63\uff0d]/g;
+
+  /* Replace every dash a text cell can carry with the plain hyphen.
+   *
+   * Word turns "5-10" into "5–10" as the crew types it and the en dash
+   * survives the copy into Excel, so a depth interval or a screen range
+   * written on a laptop reaches the range patterns as a character they do not
+   * list. The row was then dropped in silence and the only trace was an
+   * "interval_gap" flag blaming the log for a gap the crew never left. A
+   * value that is not text is handed back untouched, so a Date or a number
+   * still reaches its own parser as itself. */
+  function normaliseDashes(value) {
+    if (typeof value !== 'string') return value;
+    return value.replace(DASH_RE, '-');
+  }
+
   /* Canonical header keys and the label patterns that map to them. */
   var LABEL_PATTERNS = {
     client: ['^client\\b'],
@@ -6478,8 +6496,10 @@
   }
 
   function siteFromFields(fields, source) {
-    var zone = fields.utm_zone;
-    if (typeof zone === 'string') zone = parseNumber(zone);
+    /* The zone cell is read with parseUtmZone, which takes the number that
+     * follows a label and refuses anything naming no single zone. Read with
+     * parseNumber, the value cell "0708958" - an easting the header matcher
+     * had taken for the zone - became a zone of 708958. */
     return {
       client: fields.client || '', project: fields.project || '',
       community: fields.community || '', chiefdom: fields.chiefdom || '',
@@ -6487,7 +6507,7 @@
       project_ref: fields.project_ref || '',
       easting: fields.easting === undefined ? null : fields.easting,
       northing: fields.northing === undefined ? null : fields.northing,
-      utm_zone: zone ? Math.trunc(zone) : null,
+      utm_zone: parseUtmZone(fields.utm_zone),
       elevation_m: fields.elevation_m === undefined ? null : fields.elevation_m,
       date: fields.date === undefined ? '' : String(fields.date),
       supervisor: fields.supervisor || '', contractor: fields.contractor || '',
@@ -6746,11 +6766,206 @@
 
   var SCREEN_RANGE_SOURCE = '(\\d+(?:\\.\\d+)?)\\s*(?:-|–|to)\\s*(\\d+(?:\\.\\d+)?)';
 
+  /* A clock time carries a colon or an "h" between the hour and the minutes
+   * ("14:30", "14h30"). A decimal point is deliberately not a clock separator
+   * here: "8.50" in a strike note is a depth far more often than it is ten to
+   * nine, and reading it as a time would lose the strike. */
+  var CLOCK_TIME_RE = /\b\d{1,2}\s*[:h]\s*\d{2}\b(?:\s*(?:am|pm|hrs?))?|\b\d{3,4}\s*(?:hrs?|hours?)\b/gi;
+
+  /* One depth, or a list of them sharing the unit written after the last
+   * ("12, 18 and 30 m"), in metres. The lookahead keeps the "m" of a rate
+   * ("0.5 m/min") from reading as a depth in metres. */
+  var DEPTH_LIST_RE = new RegExp(
+    /* A slash is not a list separator here. "1/2 m" is half a metre and
+     * "12/30" is as likely a date as a pair, and both used to come out as
+     * two strikes - which is the invention this parser exists to stop. */
+    '(?:\\d+(?:[.,]\\d+)?\\s*(?:,|&|\\+|and\\b)\\s*)*' +
+    '\\d+(?:[.,]\\d+)?\\s*(?:met(?:re|er)s?|m)\\b(?!\\s*/)', 'gi');
+
+  var NUMBER_TOKEN_RE = /\d+(?:[.,]\d+)?/g;
+
+  /* The unit a diameter cell carries, if it carries one at all. Bit sizes are
+   * quoted in halves and eighths of an inch, so the number may be a whole and
+   * a fraction ("6 1/2 in"): groups are number, numerator, denominator, unit. */
+  var DIAMETER_UNIT_RE = new RegExp('(\\d+(?:[.,]\\d+)?)' +
+    '(?:\\s*(\\d+)\\s*/\\s*(\\d+))?\\s*' +
+    '(millimet(?:re|er)s?|mms?|centimet(?:re|er)s?|cms?' +
+    '|inch(?:es)?|in|\'\'|"|”|″)(?![a-z])', 'gi');
+
+  /* The unit a penetration rate cell carries: metres per minute or hour, or
+   * the time per metre a driller times with a stopwatch and writes the other
+   * way up. The order of the alternatives is load-bearing. */
+  var METRE_SOURCE = '(?:met(?:re|er)s?|m)';
+  var RATE_UNIT_RE = new RegExp('(\\d+(?:[.,]\\d+)?)\\s*(' +
+    METRE_SOURCE + '\\s*(?:/|per)\\s*min(?:ute)?s?' +
+    '|' + METRE_SOURCE + '\\s*(?:/|per)\\s*(?:hrs?|hours?|h)' +
+    '|min(?:ute)?s?\\s*(?:/|per)\\s*' + METRE_SOURCE +
+    '|sec(?:ond)?s?\\s*(?:/|per)\\s*' + METRE_SOURCE +
+    '|s\\s*(?:/|per)\\s*' + METRE_SOURCE +
+    ')(?![a-z])', 'gi');
+
+  /* Python guards both unit patterns with a lookbehind, (?<![\d./,]), which
+   * keeps the denominator of "6 1/2" from being read as a number in its own
+   * right. Lookbehind reached Safari only in 2023 and this page runs on
+   * whatever handset a field office has, so the guard is applied by hand: a
+   * match preceded by one of those characters is rejected and the search
+   * resumes one character further on, which is what the Python engine does
+   * when the lookbehind fails. */
+  var UNIT_PREFIX_RE = /[\d./,]/;
+
+  function searchUnit(re, text) {
+    var match;
+    re.lastIndex = 0;
+    while ((match = re.exec(text)) !== null) {
+      var before = match.index > 0 ? text.charAt(match.index - 1) : '';
+      if (!UNIT_PREFIX_RE.test(before)) return match;
+      re.lastIndex = match.index + 1;
+    }
+    return null;
+  }
+
+  /* Read the strike depths a cell names, in metres: [depths, reason], the
+   * depths the cell can be read to name, or an empty list and the reason it
+   * cannot be read confidently, which the caller raises as a flag. Recording
+   * nothing and saying so is the right answer here, because a strike depth
+   * places the screens.
+   *
+   * A strike cell used to be read as the last number after the last colon, so
+   * "Water strike: 8 m at 14:30" recorded a 30 m strike - the minutes of the
+   * clock time - "at 12 m and 30 m" recorded only 12 m, and a 0 typed in the
+   * strike column to mean "no water on this row" recorded a strike at the
+   * surface, which then seeded a 0-5 m screen against the topsoil (ROADMAP
+   * data-ingestion-9). Clock times are removed before any number is read, a
+   * number that carries a metre unit is a depth, and a zero is an empty
+   * cell. */
+  /* Two numbers with a slash between them: a fraction, a date, or a run
+   * number, none of which is a depth. */
+  var FRACTION_RE = /\d\s*\/\s*\d/;
+
+  function parseWaterStrikeDepths(value) {
+    if (value === null || value === undefined) return [[], ''];
+    if (value instanceof Date) {
+      /* A cell typed as a time comes back as a Date, and reading it as a
+       * number recorded the year as a strike depth. */
+      return [[], 'the cell holds a date or a time rather than a depth'];
+    }
+    if (typeof value === 'boolean') return [[], ''];
+    if (typeof value === 'number') return [value > 0 ? [value] : [], ''];
+
+    var text = cleanText(value).replace(CLOCK_TIME_RE, ' ');
+    /* A fraction between two digits is half a metre, or a date, or a run
+     * number; it is not two depths and it is not its own denominator.
+     * "Water strike 1/2 m" read as a strike at 2 m, which would place a
+     * screen. Refusing it and saying so is the only honest answer. */
+    if (FRACTION_RE.test(text)) {
+      return [[], 'it writes a fraction or a date, which names no single depth'];
+    }
+    var depths = [], match, tokens, i, depth;
+    DEPTH_LIST_RE.lastIndex = 0;
+    while ((match = DEPTH_LIST_RE.exec(text)) !== null) {
+      tokens = match[0].match(NUMBER_TOKEN_RE) || [];
+      for (i = 0; i < tokens.length; i++) {
+        depth = parseNumber(tokens[i]);
+        if (depth !== null && depth > 0) depths.push(depth);
+      }
+    }
+    if (depths.length) return [depths, ''];
+
+    /* No number carries a unit. A single number is the depth the note is
+     * about ("First water strike: 12"); several are a sentence this parser
+     * cannot take apart, and guessing one of them is worse than refusing. */
+    var numbers = text.match(NUMBER_TOKEN_RE) || [];
+    if (!numbers.length) return [[], ''];
+    if (numbers.length > 1) {
+      return [[], 'it names several numbers and none of them carries a unit'];
+    }
+    depth = parseNumber(numbers[0]);
+    if (depth === null || depth <= 0) return [[], ''];
+    return [[depth], ''];
+  }
+
+  /* The flag raised for a strike cell that cannot be read as a depth.
+   * Refusing the cell costs the log a strike, so the flag names the cell it
+   * refused, why it refused it, and the wording that would have read. */
+  function unreadableStrikeFlag(text, reason) {
+    return { level: 'warning', code: 'water_strike_unreadable',
+      message: 'Water strike cell "' + text + '" was not read as a depth: ' +
+        reason + '. No strike was recorded from it; write each depth with ' +
+        'its unit, as "water strike at 12 m and 30 m".' };
+  }
+
+  /* The drilled diameter in inches, converting the unit the cell carries.
+   *
+   * Crews quote a bit in millimetres as often as in inches, and the column
+   * was read as a bare number, so "165 mm" was recorded as a 165 inch hole
+   * (ROADMAP data-ingestion-15) - a metre and a half of annulus in the bill
+   * of quantities and in the completion drawing. A cell with no unit at all
+   * is read as inches, which is the unit the template column asks for
+   * ("Drilling diameter (in)") and the unit the design rules are written in.
+   *
+   * A converted diameter is kept to two decimals: 165 mm is the metric name
+   * of a 6.5 in bit, and 6.5 in is what the completion log should print. */
+  function parseBitDiameterIn(value) {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'boolean') return null;
+    if (typeof value === 'number') return value;
+    var text = cleanText(value);
+    var match = searchUnit(DIAMETER_UNIT_RE, text);
+    if (match === null) return parseNumber(text);
+    var number = parseNumber(match[1]);
+    if (number === null) return null;
+    if (match[2] && Number(match[3]) !== 0) {
+      /* "6 1/2 in" is six and a half inches, which is how a bit is quoted. */
+      number += Number(match[2]) / Number(match[3]);
+    }
+    var unit = match[4].toLowerCase();
+    if (unit.indexOf('mm') === 0 || unit.indexOf('millim') === 0) {
+      return pyRound(number / 25.4, 2);
+    }
+    if (unit.indexOf('cm') === 0 || unit.indexOf('centim') === 0) {
+      return pyRound(number / 2.54, 2);
+    }
+    return number;
+  }
+
+  /* The penetration rate in metres per minute, whichever way up it is
+   * written.
+   *
+   * A driller times a rod with a stopwatch and writes what the watch says, so
+   * the cell carries "5 min/m" as readily as "0.2 m/min" and a rig sheet
+   * quotes metres per hour. The column was read as a bare number, so a hole
+   * advancing at five minutes to the metre was recorded as five metres a
+   * minute (ROADMAP data-ingestion-15), twenty-five times too fast. A cell
+   * with no unit is read as metres per minute, which is the unit the template
+   * column asks for ("Penetration rate (m/min)"). */
+  function parsePenetrationRateMPerMin(value) {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'boolean') return null;
+    if (typeof value === 'number') return value;
+    var text = cleanText(value);
+    var match = searchUnit(RATE_UNIT_RE, text);
+    if (match === null) return parseNumber(text);
+    var number = parseNumber(match[1]);
+    if (number === null) return null;
+    var unit = match[2].replace(/\s+/g, '').toLowerCase().replace(/per/g, '/');
+    if (unit.indexOf('min') === 0) {
+      /* minutes per metre: the reciprocal, and a zero is not a rate at all */
+      return number > 0 ? 1.0 / number : null;
+    }
+    if (unit.indexOf('s') === 0) {                    /* seconds per metre */
+      return number > 0 ? 60.0 / number : null;
+    }
+    if (unit.indexOf('/h') >= 0) return number / 60.0;
+    return number;
+  }
+
   /* "25-35; 48-53 m" -> [[25, 35], [48, 53]]: the as-built screens a crew
    * writes on the sheet, as ranges separated by anything. A cell with no
-   * range in it records no screens. */
+   * range in it records no screens. The dashes are normalised first so a
+   * range typed with an en or em dash is read as the range it is rather than
+   * dropped (ROADMAP data-ingestion-8). */
   function parseInstalledScreens(value) {
-    var text = cleanText(value), out = [], match;
+    var text = normaliseDashes(cleanText(value)), out = [], match;
     var re = new RegExp(SCREEN_RANGE_SOURCE, 'g');
     while ((match = re.exec(text)) !== null) {
       var top = Number(match[1]), bottom = Number(match[2]);
@@ -6763,7 +6978,7 @@
   function drillingFromGrid(grid, source) {
     var fields = extractHeaderFields(grid, grid.length);
     var site = siteFromFields(fields, source);
-    var flags = [], intervals = [], strikes = [];
+    var flags = [], intervals = [], strikes = [], zeroStrikeRows = 0;
     var located = findLogHeader(grid);
 
     if (located) {
@@ -6789,29 +7004,64 @@
           });
           continue;
         }
-        var interval = parseDepthInterval(rawInterval);
+        /* Word turns "5-10" into "5–10" as the crew types the sheet and the
+         * en dash survives the copy into Excel, but the interval pattern
+         * lists only the plain hyphen, so the row was dropped without a word
+         * and the gap it left was reported as a gap in the crew's own log
+         * (ROADMAP data-ingestion-8). Normalising the dashes reads the
+         * interval as it was written, whichever dash was typed. */
+        var interval = parseDepthInterval(normaliseDashes(rawInterval));
         if (!interval) continue;
         intervals.push({
           top_m: interval[0], bottom_m: interval[1],
           description: cleanText(cell('description')),
           from_time: cleanText(cell('from_time')),
           to_time: cleanText(cell('to_time')),
-          penetration_rate_m_per_min: parseNumber(cell('rate')),
-          bit_diameter_in: parseNumber(cell('diameter')),
+          penetration_rate_m_per_min: parsePenetrationRateMPerMin(cell('rate')),
+          bit_diameter_in: parseBitDiameterIn(cell('diameter')),
         });
-        var strike = parseNumber(cell('strike'));
-        if (strike !== null) strikes.push(strike);
+        var rawStrike = cell('strike');
+        var readStrike = parseWaterStrikeDepths(rawStrike);
+        readStrike[0].forEach(function (depth) { strikes.push(depth); });
+        if (readStrike[1]) {
+          flags.push(unreadableStrikeFlag(cleanText(rawStrike), readStrike[1]));
+        } else if (!readStrike[0].length && parseNumber(rawStrike) === 0) {
+          /* A crew fills the strike column with 0 to mean "no water on this
+           * row". Read as a number it was a strike at 0 m, which seeded a
+           * screen against the topsoil (ROADMAP data-ingestion-9); it is
+           * counted here so the refusal is visible rather than silent. */
+          zeroStrikeRows += 1;
+        }
+      }
+
+      if (zeroStrikeRows) {
+        flags.push({ level: 'info', code: 'water_strike_zero_ignored',
+          message: 'The water strike column holds 0 on ' + zeroStrikeRows +
+            ' row(s); a zero there is read as no strike on that row, not as ' +
+            'a strike at 0 m.' });
       }
     }
 
-    /* Water strikes noted as text lines ("First water strike: 12m") */
+    /* Water strikes noted as text lines ("First water strike: 12m"). The note
+     * used to be read as the last number after the last colon, so
+     * "Water strike: 8 m at 14:30" recorded a 30 m strike and a note naming
+     * two strikes recorded only the first (ROADMAP data-ingestion-9). */
     grid.forEach(function (row) {
       (row || []).forEach(function (c) {
-        var text = cleanText(c).toLowerCase();
+        var raw = cleanText(c);
+        var text = raw.toLowerCase();
         if (text.indexOf('water strike') >= 0 && text.indexOf('note') !== 0) {
-          var value = parseNumber(text.split(':').pop());
-          if (value !== null && value > 0 && strikes.indexOf(value) < 0) {
-            strikes.push(value);
+          var read = parseWaterStrikeDepths(raw);
+          read[0].forEach(function (value) {
+            if (strikes.indexOf(value) < 0) strikes.push(value);
+          });
+          if (read[1]) {
+            /* A cell in the strike column that is also a note has already
+             * been refused once by the loop above, and one refusal of one
+             * cell is one flag. */
+            var flag = unreadableStrikeFlag(raw, read[1]);
+            var told = flags.some(function (f) { return f.message === flag.message; });
+            if (!told) flags.push(flag);
           }
         }
       });
@@ -6824,6 +7074,25 @@
 
     intervals.sort(function (a, b) { return a.top_m - b.top_m; });
     strikes.sort(function (a, b) { return a - b; });
+
+    /* A strike below the bottom of the hole is a number the drilling never
+     * reached. It survives only as a figure printed to the client - the
+     * handover report lists the strikes - because the screen designer clips
+     * it out, so nothing else in the toolkit ever contradicts it. */
+    if (total !== null && total !== undefined) {
+      var tooDeep = strikes.filter(function (v) { return v > Number(total); });
+      if (tooDeep.length) {
+        strikes = strikes.filter(function (v) { return v <= Number(total); });
+        flags.push({
+          level: 'warning',
+          code: 'water_strike_below_total_depth',
+          message: 'Water ' + plural(tooDeep.length, 'strike') + ' at ' +
+            tooDeep.map(function (v) { return formatG(v) + ' m'; }).join(', ') +
+            ' below the recorded total depth of ' + formatG(Number(total)) +
+            ' m, so it was not recorded; check the cell it came from.',
+        });
+      }
+    }
 
     var log = {
       site: site, borehole_ref: String(fields.borehole_ref || ''),
@@ -7440,6 +7709,10 @@
     soundingFromGrid: soundingFromGrid, readVesSheets: readVesSheets,
     drillingFromGrid: drillingFromGrid, qualityFromGrid: qualityFromGrid,
     pumpingFromGrid: pumpingFromGrid, parseInstalledScreens: parseInstalledScreens,
+    normaliseDashes: normaliseDashes,
+    parseWaterStrikeDepths: parseWaterStrikeDepths,
+    parseBitDiameterIn: parseBitDiameterIn,
+    parsePenetrationRateMPerMin: parsePenetrationRateMPerMin,
     LABEL_PATTERNS: LABEL_PATTERNS,
   });
 
@@ -7566,6 +7839,145 @@
       out[String(row.chiefdom).trim()] = String(row.district).trim();
     });
     return out;
+  }
+
+  /* --- reading a district name off a sheet ---------------------------------
+   *
+   * groundwater/ingestion/checks.py. The browser has no port of
+   * check_site_consistency; what it has is the site page's callout comparing
+   * the district on the sheet against the district the chiefdom polygons put
+   * the coordinates in. Reading the name is the part both engines must agree
+   * on, and it used to be a substring test in each of them.
+   */
+
+  /* "Western Area" is a region, not one of the sixteen districts: it is the
+   * peninsula's two districts together. Field sheets write it constantly, so
+   * it is read as both of them - a site anywhere in either satisfies it -
+   * rather than as Western Area Urban, which is what taking the first
+   * substring hit did, flagging every correctly labelled site on the
+   * southern peninsula (ROADMAP data-ingestion-5). */
+  var DISTRICT_REGIONS = {
+    'western area': ['Western Area Urban', 'Western Area Rural'],
+  };
+
+  /* The sixteen districts, spelled as the boundary lookups spell them: taken
+   * from the chiefdom -> current-district crosswalk rather than from a list
+   * written out here, so the names this reading accepts are exactly the names
+   * the point lookup can return. */
+  function districtNames() {
+    var crosswalk = loadChiefdomDistrict(), seen = {}, out = [];
+    Object.keys(crosswalk).forEach(function (chiefdom) {
+      var district = crosswalk[chiefdom];
+      if (district && !own(seen, district)) {
+        seen[district] = true;
+        out.push(district);
+      }
+    });
+    return out.sort();
+  }
+
+  /* A stated name reduced to what can be compared: case, spacing, and a
+   * trailing "district" the sheet added ("Port Loko District"). */
+  function districtKey(name) {
+    var words = String(name === null || name === undefined ? '' : name)
+      .replace(/\./g, ' ').split(/\s+/).filter(Boolean);
+    if (words.length > 1) {
+      var last = words[words.length - 1].toLowerCase().replace(/,+$/, '');
+      if (last === 'district' || last === 'districts') {
+        words = words.slice(0, words.length - 1);
+      }
+    }
+    return words.join(' ').toLowerCase();
+  }
+
+  /* Every administrative name read here -> the districts it covers. */
+  function namedAreas() {
+    var areas = {};
+    districtNames().forEach(function (name) { areas[districtKey(name)] = [name]; });
+    Object.keys(DISTRICT_REGIONS).forEach(function (key) {
+      areas[key] = DISTRICT_REGIONS[key].slice();
+    });
+    return areas;
+  }
+
+  function districtPrefixHit(key, candidate) {
+    return candidate.indexOf(key) === 0;
+  }
+
+  /* True when every word of the stated name begins a word of the candidate,
+   * in order: "Western Urban" for Western Area Urban. Each word is consumed
+   * as it is matched, so one candidate word cannot answer for two. */
+  function districtWordsHit(key, candidate) {
+    var words = candidate.split(' '), parts = key.split(' '), index = 0;
+    for (var p = 0; p < parts.length; p++) {
+      var hit = false;
+      while (index < words.length) {
+        var word = words[index];
+        index += 1;
+        if (word.indexOf(parts[p]) === 0) { hit = true; break; }
+      }
+      if (!hit) return false;
+    }
+    return true;
+  }
+
+  function sameDistrictSet(a, b) {
+    return a.slice().sort().join('|') === b.slice().sort().join('|');
+  }
+
+  /* Read a district name off a sheet: [resolved, candidates].
+   *
+   * resolved is the districts the name can only mean - one district, or the
+   * two of the Western Area for a name that means the region. It is empty
+   * when the name matches nothing, and empty when it matches more than one
+   * district, in which case candidates lists what it could have meant. An
+   * exact name wins; then a name that prefixes exactly one ("Bomb" for
+   * Bombali); then one whose words begin the words of exactly one ("Western
+   * Urban"). Matching on the first substring hit, which is what this did,
+   * read "Ko" as Port Loko and "Western Area" as Western Area Urban; a name
+   * that could be two districts is worth refusing, and saying which two,
+   * rather than silently picking one of them. */
+  function matchDistrict(name) {
+    var key = districtKey(name);
+    if (!key) return [[], []];
+    var areas = namedAreas();
+    if (own(areas, key)) return [areas[key].slice(), areas[key].slice()];
+    var tiers = [districtPrefixHit, districtWordsHit];
+    for (var t = 0; t < tiers.length; t++) {
+      var names = Object.keys(areas).filter(function (known) {
+        return tiers[t](key, known);
+      });
+      if (!names.length) continue;
+      var covered = [], seen = {};
+      names.forEach(function (known) {
+        areas[known].forEach(function (district) {
+          if (!own(seen, district)) { seen[district] = true; covered.push(district); }
+        });
+      });
+      covered.sort();
+      for (var i = 0; i < names.length; i++) {
+        /* "Western" matches both halves of the Western Area and the region
+         * over them, and the region is a single answer; "Ko" matches
+         * Koinadugu and Kono, and there is no such answer. */
+        if (sameDistrictSet(areas[names[i]], covered)) {
+          return [areas[names[i]].slice(), areas[names[i]].slice()];
+        }
+      }
+      return [[], covered];
+    }
+    return [[], []];
+  }
+
+  /* The districts a district name written on a sheet can only mean. */
+  function districtsNamed(name) {
+    return matchDistrict(name)[0];
+  }
+
+  /* A list an operator reads as a sentence: "Koinadugu or Kono". */
+  function orList(names) {
+    var list = (names || []).slice();
+    if (list.length < 2) return list.join('');
+    return list.slice(0, list.length - 1).join(', ') + ' or ' + list[list.length - 1];
   }
 
   /* Population per chiefdom polygon, aggregated from the census through the
@@ -8072,6 +8484,8 @@
     polyContains: polyContains, chiefdomOfPoint: chiefdomOfPoint,
     loadDistrictPopulation: loadDistrictPopulation,
     loadChiefdomDistrict: loadChiefdomDistrict,
+    districtNames: districtNames, matchDistrict: matchDistrict,
+    districtsNamed: districtsNamed, orList: orList,
     chiefdomPopulation: chiefdomPopulation,
     countPointsByChiefdom: countPointsByChiefdom,
     countPointsByDistrict: countPointsByDistrict,
@@ -8272,10 +8686,283 @@
     return geodesicDistanceM(p.lat, p.lon, q.lat, q.lon);
   }
 
+  /* Sierra Leone's own extent, in degrees: about 6.9 to 10.0 north, and 10.3
+   * to 13.3 WEST. These bands recognise a longitude typed without its western
+   * sign; nothing here moves a coordinate that carries a sign or a letter. */
+  var SIERRA_LEONE_LAT_BAND = [6.9, 10.0];
+  var SIERRA_LEONE_LON_BAND = [-13.3, -10.3];
+
+  var ZONE_NUMBER_RE = /\d+/g;
+
+  /* The UTM zone a cell states, or null when it states no single zone.
+   *
+   * Sheets write the zone as "28N", "28", "zone 28" or - when the operator
+   * copies the label into the value cell - "Zone 28". Reading such a cell
+   * means taking the number that follows the label and nothing else. A value
+   * cell mistaken for a label let the neighbouring easting through as the
+   * zone, so a site recorded in zone 28N was carried as "zone 708958" and
+   * projected tens of degrees from the survey.
+   *
+   * A cell naming more than one number states no single zone - "28N or 29N"
+   * is the sheet's own instruction, not an answer - and neither does a number
+   * outside the 1 to 60 a UTM zone can be. Both are refused rather than
+   * guessed at, so the caller can say the zone is unrecorded and fall back to
+   * the easting. */
+  function parseUtmZone(value) {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'boolean') return null;
+    var numbers;
+    if (typeof value === 'number') {
+      if (!isFinite(value) || Math.trunc(value) !== value) return null;
+      numbers = [value];
+    } else {
+      ZONE_NUMBER_RE.lastIndex = 0;
+      var found = String(value).match(ZONE_NUMBER_RE);
+      numbers = (found || []).map(Number);
+    }
+    if (numbers.length !== 1) return null;
+    if (!(numbers[0] >= 1 && numbers[0] <= 60)) return null;
+    return numbers[0];
+  }
+
+  /* --- a pasted "lat, lon", as a field crew writes it ----------------------
+   *
+   * Every longitude in Sierra Leone is west, and a handheld GPS writes that
+   * as a W rather than a minus sign. Discarding the letter and taking the
+   * number at face value puts the site 26 degrees east of where it is -
+   * silently, on the wrong side of the continent - so the letter is read as a
+   * sign. A letter that contradicts an explicit sign ("-13.2317 E") is
+   * refused rather than guessed at, and an explicit E/W on the first value
+   * means the pair was written longitude first. */
+
+  var LATLON_TOKEN_RE = /^([+-]?\d*\.?\d+)\s*([NSEWnsew])?$/;
+  var HEMISPHERES = ['N', 'S', 'E', 'W'];
+
+  /* Degree, minute and second marks as a phone, a handheld GPS or a sheet
+   * writes them; they separate the parts of a coordinate rather than
+   * belonging to any of them, so they are read as spaces. */
+  var SEXAGESIMAL_MARKS_RE =
+    /[\u00b0\u00ba\u2218\u0027\u2019\u2032\u0022\u201d\u2033]/g;
+
+  var LATLON_UNREADABLE = 'Could not read those coordinates.';
+  var LATLON_AMBIGUOUS = 'Two numbers with nothing between them are either ' +
+    'a decimal pair or one degrees-and-minutes value. Separate a pair with ' +
+    'a comma (8.4657, -13.2317), or mark the hemispheres ' +
+    '(8 27.942 N, 13 13.902 W).';
+
+  /* A coordinate the parser will not read, carrying the reason why. Thrown
+   * rather than returned so the token loop can refuse from where it stands,
+   * the way the Python parser raises. */
+  function coordinateRefused(code, message) {
+    var refusal = new Error(message);
+    refusal.refusedCoordinate = true;
+    refusal.code = code;
+    return refusal;
+  }
+
+  /* Split a pasted coordinate into its two components. Numbers accumulate
+   * into the component being read. A hemisphere letter, a comma or
+   * semicolon, or an explicit sign ends that component and starts the next,
+   * because a number of minutes or seconds is never signed and never carries
+   * a hemisphere of its own. */
+  function latLonComponents(raw) {
+    var components = [];
+    var current = null;
+
+    function openComponent(letter) {
+      current = { numbers: [], letter: letter === undefined ? null : letter,
+        signed: false, negative: false };
+      components.push(current);
+      return current;
+    }
+
+    var segments = raw.replace(SEXAGESIMAL_MARKS_RE, ' ').split(/[,;]/);
+    for (var s = 0; s < segments.length; s++) {
+      if (s) current = null;
+      var tokens = segments[s].split(/\s+/).filter(Boolean);
+      for (var t = 0; t < tokens.length; t++) {
+        var token = tokens[t];
+        if (token.length === 1 && HEMISPHERES.indexOf(token.toUpperCase()) >= 0) {
+          var bare = token.toUpperCase();
+          if (current !== null && current.letter === null && current.numbers.length) {
+            current.letter = bare;                 /* trailing "8.4657 N" */
+            current = null;
+          } else {
+            current = null;
+            openComponent(bare);                   /* leading "N 8.4657" */
+          }
+          continue;
+        }
+        var match = LATLON_TOKEN_RE.exec(token);
+        if (match === null) {
+          throw coordinateRefused('latlon_unreadable', LATLON_UNREADABLE);
+        }
+        var number = Number(match[1]);
+        if (!isFinite(number)) {
+          throw coordinateRefused('latlon_unreadable', LATLON_UNREADABLE);
+        }
+        var signed = match[1].charAt(0) === '+' || match[1].charAt(0) === '-';
+        if (signed && current !== null && current.numbers.length) {
+          current = null;                          /* "8 -13.2317" is a pair */
+        }
+        var component = current !== null ? current : openComponent();
+        if (!component.numbers.length) {
+          component.signed = signed;
+          component.negative = match[1].charAt(0) === '-';
+        }
+        component.numbers.push(number);
+        if (match[2]) {
+          component.letter = match[2].toUpperCase();          /* "13.2317W" */
+          current = null;
+        }
+      }
+    }
+
+    if (components.length === 1 && components[0].letter === null &&
+        components[0].numbers.length === 2) {
+      /* Nothing separates the two numbers, so they are either a decimal pair
+       * or one degrees-and-minutes value. Where they could be either,
+       * refusing is the only honest reading: "8 27.942" read as a pair lands
+       * 2000 km from the same text read as degrees and minutes. */
+      var only = components[0];
+      var degrees = only.numbers[0], rest = only.numbers[1];
+      if (degrees === Math.floor(degrees) && rest >= 0 && rest < 60) {
+        throw coordinateRefused('latlon_unreadable', LATLON_AMBIGUOUS);
+      }
+      components = [
+        { numbers: [degrees], letter: null,
+          signed: only.signed, negative: only.negative },
+        { numbers: [rest], letter: null, signed: false, negative: false },
+      ];
+    }
+    return components;
+  }
+
+  /* One component of a pasted pair as signed decimal degrees. Read as decimal
+   * degrees, "8 27.942 N" came back as latitude 27.942 and longitude 8: the
+   * sheet's own numbers, in the wrong units and the wrong order. */
+  function latLonComponentDegrees(component, what) {
+    var numbers = component.numbers;
+    if (!numbers.length || numbers.length > 3) {
+      throw coordinateRefused('latlon_unreadable', LATLON_UNREADABLE);
+    }
+    var magnitude = Math.abs(numbers[0]);
+    if (numbers.length > 1) {
+      var minutes = numbers[1];
+      if (magnitude !== Math.floor(magnitude)) {
+        throw coordinateRefused('latlon_unreadable', 'Read the ' + what +
+          ' as degrees and minutes, but ' + formatG(numbers[0]) +
+          ' is not a whole number of degrees.');
+      }
+      if (!(minutes >= 0 && minutes < 60)) {
+        throw coordinateRefused('latlon_unreadable', 'Read the ' + what +
+          ' as degrees and minutes, but ' + formatG(minutes) +
+          ' is not a number of minutes (0 up to 60).');
+      }
+      magnitude += minutes / 60.0;
+      if (numbers.length === 3) {
+        var seconds = numbers[2];
+        if (minutes !== Math.floor(minutes)) {
+          throw coordinateRefused('latlon_unreadable', 'Read the ' + what +
+            ' as degrees, minutes and seconds, but ' + formatG(minutes) +
+            ' is not a whole number of minutes.');
+        }
+        if (!(seconds >= 0 && seconds < 60)) {
+          throw coordinateRefused('latlon_unreadable', 'Read the ' + what +
+            ' as degrees, minutes and seconds, but ' + formatG(seconds) +
+            ' is not a number of seconds (0 up to 60).');
+        }
+        magnitude += seconds / 3600.0;
+      }
+    }
+    var negative = component.negative;
+    var letter = component.letter;
+    if (letter) {
+      var letterNegative = letter === 'S' || letter === 'W';
+      if (negative && !letterNegative) {
+        throw coordinateRefused('latlon_sign_contradiction', 'The ' + what +
+          ' is written both as a negative number and as ' + letter +
+          ', which contradict each other.');
+      }
+      negative = negative || letterNegative;
+    }
+    return negative ? -magnitude : magnitude;
+  }
+
+  /* Read "lat, lon" as a field crew writes it, saying what was assumed:
+   * { lat, lon, code, message } with lat and lon null when the text was
+   * refused and message then saying why, in a sentence an operator can act
+   * on. A reading that succeeded carries a code and a message only when
+   * something was assumed rather than read.
+   *
+   * A positive longitude between 10.3 and 13.3 degrees, carrying neither a
+   * sign nor a letter and paired with a latitude inside Sierra Leone's own
+   * band, is a western longitude whose minus sign was never typed:
+   * "8.4657, 13.2317" is Freetown short of a sign, not a site 2,900 km east
+   * in central Africa. That reading is taken - the country is what this
+   * toolkit is for, and read as written the pair used to be stored as a
+   * zone-33 position under the zone the browser wrote beside it - but it is
+   * the parser's reading rather than the sheet's, so it comes back under the
+   * longitude_west_assumed code with a sentence saying what was assumed.
+   * Nothing downstream may present it as read. */
+  function readLatLon(text) {
+    var raw = String(text === null || text === undefined ? '' : text).trim();
+    if (!raw) {
+      return { lat: null, lon: null, code: 'latlon_unreadable',
+        message: LATLON_UNREADABLE };
+    }
+    var first, second, lat, lon;
+    try {
+      var components = latLonComponents(raw);
+      if (!components.length) {
+        throw coordinateRefused('latlon_unreadable', LATLON_UNREADABLE);
+      }
+      if (components.length < 2) {
+        throw coordinateRefused('latlon_incomplete', 'Read one coordinate ' +
+          'where a latitude and a longitude are both needed.');
+      }
+      if (components.length > 2) {
+        throw coordinateRefused('latlon_incomplete', 'Read more than two ' +
+          'values where only a latitude and a longitude are expected.');
+      }
+      first = components[0];
+      second = components[1];
+      if (first.letter === 'E' || first.letter === 'W' ||
+          second.letter === 'N' || second.letter === 'S') {
+        var swap = first; first = second; second = swap;
+      }
+      lat = latLonComponentDegrees(first, 'latitude');
+      lon = latLonComponentDegrees(second, 'longitude');
+    } catch (err) {
+      if (!err || !err.refusedCoordinate) throw err;
+      return { lat: null, lon: null, code: err.code, message: err.message };
+    }
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+      return { lat: null, lon: null, code: 'latlon_out_of_range',
+        message: 'A latitude runs to 90 degrees and a longitude to 180; ' +
+          'these do not.' };
+    }
+    if (lon > 0 && !second.signed && second.letter === null &&
+        lat >= SIERRA_LEONE_LAT_BAND[0] && lat <= SIERRA_LEONE_LAT_BAND[1] &&
+        -lon >= SIERRA_LEONE_LON_BAND[0] && -lon <= SIERRA_LEONE_LON_BAND[1]) {
+      var written = formatG(lon);
+      return { lat: lat, lon: -lon, code: 'longitude_west_assumed',
+        message: 'Longitude ' + written + ' was read as ' + written + ' W: ' +
+          'every longitude in Sierra Leone is west, and ' + written +
+          ' east is some 2,900 km away in central Africa. Type -' + written +
+          ' or ' + written + ' W to record the sign rather than leave it ' +
+          'assumed.' };
+    }
+    return { lat: lat, lon: lon, code: '', message: '' };
+  }
+
   Object.assign(C, {
     inferZoneForSierraLeone: inferZoneForSierraLeone,
     utmToGeographic: utmToGeographic, geographicToUtm: geographicToUtm,
-    utmZoneFromLon: utmZoneFromLon,
+    utmZoneFromLon: utmZoneFromLon, parseUtmZone: parseUtmZone,
+    readLatLon: readLatLon,
+    SIERRA_LEONE_LAT_BAND: SIERRA_LEONE_LAT_BAND,
+    SIERRA_LEONE_LON_BAND: SIERRA_LEONE_LON_BAND,
     geodesicDistanceM: geodesicDistanceM, utmDistanceM: utmDistanceM,
   });
 

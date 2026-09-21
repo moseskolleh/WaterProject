@@ -543,35 +543,40 @@ the browser too), `gwt-app.js` parseLatLon. Tests: `test_ingestion.py`,
   and graded EXCEEDS HEALTH GUIDELINE.** Only a cell beginning with "<" or
   exactly matching an absence token is a non-detect.
   Done in both engines: an absence word followed by nothing but a limit is an absence, and the limit it carries becomes the detection limit where the sheet has no separate column. A cell that merely contains a number and a word ("Nitrate 0.5") is untouched, so the rule does not reach beyond the forms it names.
-- [ ] **C data-ingestion-3. `parse_latlon` accepts an unsigned longitude and
+- [x] **C data-ingestion-3. `parse_latlon` accepts an unsigned longitude and
   a degrees-decimal-minutes coordinate, and the Streamlit zone relabel then
   lands the site inside Sierra Leone 250 km from where it is, with no
   flag.** "8.4657, 13.2317" becomes a zone-33 position relabelled "29N";
   the browser stores zone 33 instead, so the two engines disagree.
+  Done in both engines: `read_latlon` returns the reading or the reason it cannot be read, degrees-decimal-minutes is parsed as what it is rather than as decimal degrees, and a longitude typed without its western sign is read as western with a note saying so. A position outside the two Sierra Leone zones is refused with a message rather than relabelled into one, so the page no longer moves a site 250 km to make it fit.
 - [x] **H data-ingestion-2. "TNTC", "Present" and "Positive" become "not
   measured"** (E. coli 0 with total coliforms TNTC gives "Safe") **and ">50"
   becomes exactly 50.**
   Done in both engines: a result carries a lower bound where the laboratory gave one, and the assessment grades against it. A count above zero fails a limit of zero, so E. coli 0 with total coliforms TNTC is a national limit failure rather than "Safe", and ">50" is at least 50 rather than exactly 50. Where the bound is inside every limit the result is an open question, not a pass: the true value is somewhere above it. The reference carries both cases, so the two engines are held to them.
-- [ ] **H data-ingestion-4. The district consistency check is judged against
+- [x] **H data-ingestion-4. The district consistency check is judged against
   hand-drawn bounding boxes** that overlap on half the country, miss twelve
   percent of it, falsely flag a correct district on seven percent and give
   double answers ("Western Area Rural, Moyamba"), while the polygons are
   bundled and used everywhere else.
+  Done: the check reads the point-in-polygon lookup the rest of the toolkit already uses, and the box table and the functions that read it are gone. The cross-sheet check groups district names by what they can mean rather than by how they are typed, so one project spelling the same ground "Western Area" and "Western Area Rural" is no longer reported as disagreeing with itself.
 - [ ] **H data-ingestion-6. `build_geodata` emits every interior (hole) ring
   as a filled polygon carrying the parent's code:** 34 of 92 geology and 10
   of 40 hydrogeology features are holes, and thirteen of them are drawn on
   top of the unit they should cut, so the dolerite dykes in Kono, Koinadugu
   and Falaba and the igneous aquifer around Kamakwie vanish from the maps.
-- [ ] **H data-ingestion-8. A drilling-log interval written with an en or em
+- [x] **H data-ingestion-8. A drilling-log interval written with an en or em
   dash ("5–10") is dropped without a word;** the only trace is an
   "interval_gap" flag blaming the log.
-- [ ] **H data-ingestion-9. Water-strike text is parsed as the last number
+  Done in both engines: every dash a sheet can carry is read as a hyphen before the interval is parsed, so the interval is read as written instead of vanishing behind a flag that blamed the driller.
+- [x] **H data-ingestion-9. Water-strike text is parsed as the last number
   after the last colon:** "Water strike: 8 m at 14:30" records a 30 m
   strike, "at 12 m and 30 m" records only 12 m, and a 0 in the strike column
   seeds a 0-5 m screen.
-- [ ] **M data-ingestion-5. `_normalise_district` maps "Western Area" to
+  Done in both engines: clock times are removed first, whether or not they carry a separator, a number that carries a metre unit is a depth and every one of them is read, a zero is an empty cell, and a fraction or a date names no depth at all. A cell that cannot be read confidently records nothing and raises a flag saying so, because a strike depth places a screen. A strike below the bottom of the hole is dropped with its own flag: the designer clipped it out, so it survived only as a figure printed to the client.
+- [x] **M data-ingestion-5. `_normalise_district` maps "Western Area" to
   Western Area Urban by substring order** (every correctly labelled
   southern-peninsula site is flagged) and "Ko" to Port Loko.
+  Done: `match_district` takes an exact name, then a name that prefixes exactly one district, then one whose words begin the words of exactly one, and refuses a name that could be two - naming both - rather than picking the first substring hit. "Western Area" names the region, so it resolves to the two districts it can mean.
 - [ ] **M data-ingestion-7. Independently simplified chiefdom rings leave
   about 37 km2 of cracks;** a point in one gets a pre-2017 district from one
   lookup, an empty district from another, and the withheld Maforki wedge is
@@ -589,10 +594,12 @@ the browser too), `gwt-app.js` parseLatLon. Tests: `test_ingestion.py`,
 - [ ] **M data-ingestion-13. Every national value is provisional, yet the
   remark says "exceeds the national acceptability limit"** and the WHO value
   is never cited.
-- [ ] **L data-ingestion-14. A value cell that looks like a label is taken
+- [x] **L data-ingestion-14. A value cell that looks like a label is taken
   as one:** "Zone 28" in the zone cell yields a zone of 708958.
-- [ ] **L data-ingestion-15. Diameter and penetration rate are read without
+  Done in both engines: `parse_utm_zone` takes the number that follows a label and refuses anything naming no single zone, so an easting that the header matcher had taken for the zone is read as no zone at all rather than as zone 708958.
+- [x] **L data-ingestion-15. Diameter and penetration rate are read without
   units:** "165 mm" becomes 165 inches, "5 min/m" becomes 5 m/min.
+  Done in both engines: both cells are read with the unit they carry, including the abbreviations with their plurals and the metre spelled out, and a rate written as time per metre is inverted. The diameter matters twice over: it sizes the casing and it decides whether a gravel pack will fit the annulus.
 - [x] **L data-ingestion-16. Six bundled tables are outside the provenance
   record,** two with no stated source at all (the district boxes and the
   separation distances).

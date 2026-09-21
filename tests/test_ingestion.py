@@ -281,3 +281,264 @@ def test_a_count_the_laboratory_did_not_quantify_is_not_absence(tmp_path):
     assert by_name["Faecal streptococci"].value is None
     assert by_name["Salmonella"].greater_than == 0.0
     assert by_name["E. coli"].value == pytest.approx(0.0)
+
+
+def _drilling_grid(rows):
+    """A drilling sheet as the reader sees it: header block, then the log table.
+
+    The column headings are the ones the bundled template writes, so a test
+    row is read exactly as a crew's row is.
+    """
+    return [
+        ["BOREHOLE DRILLING LOG"],
+        ["Community", "Testville", None, "Client", "Living Water"],
+        ["Borehole Ref. No.", "BH-1", None, "Total depth (m)", 30],
+        [],
+        ["Depth interval (m)", "From time", "To time", "Penetration rate (m/min)",
+         "Sample / lithology description", "Drilling diameter (in)",
+         "Water strike depth (m)"],
+        *rows,
+    ]
+
+
+def test_a_depth_interval_typed_with_an_en_dash_is_read_not_dropped():
+    """A row written "5–10" was dropped without a word, and the only trace
+    was an interval_gap flag blaming the crew for a gap they never left.
+
+    Word turns the hyphen into an en dash as the sheet is typed and the dash
+    survives the copy into Excel, so the loss is invisible to the crew: the
+    log simply came back one interval short of what they drilled.
+    """
+    from groundwater.ingestion.drilling import drilling_from_grid
+
+    log = drilling_from_grid(_drilling_grid([
+        ["0-5", "13:30", "13:35", 1, "Lateritic topsoil", 6.5, None],
+        ["5\u201310", "13:36", "13:41", 1, "Clayey laterite", 6.5, None],
+        ["10\u201415", "13:55", "14:10", 0.33, "Saprolite", 6.5, None],
+        ["15\u221220", "14:14", "14:26", 0.42, "Weathered granite", 6.5, None],
+        ["20-30", "14:30", "14:38", 0.63, "Granite", 6.5, None],
+    ]))
+    assert [(iv.top_m, iv.bottom_m) for iv in log.intervals] == [
+        (0.0, 5.0), (5.0, 10.0), (10.0, 15.0), (15.0, 20.0), (20.0, 30.0)
+    ]
+    assert not any(f.code == "interval_gap" for f in log.flags)
+    # the same dash in a screens cell is the same typing, and the same loss
+    from groundwater.ingestion.drilling import parse_installed_screens
+
+    assert parse_installed_screens("25\u201335; 48\u201453 m") == [(25.0, 35.0), (48.0, 53.0)]
+
+
+def test_a_clock_time_in_a_water_strike_note_is_not_a_strike_depth():
+    """"Water strike: 8 m at 14:30" recorded a strike at 30 m - the minutes of
+    the clock - because the note was read as the last number after the last
+    colon, and a note naming two strikes recorded only the first."""
+    from groundwater.ingestion.drilling import drilling_from_grid
+
+    grid = _drilling_grid([
+        ["0-5", None, None, None, "Lateritic topsoil", 6.5, None],
+        ["5-30", None, None, None, "Granite", 6.5, None],
+        ["Water strike: 8 m at 14:30"],
+    ])
+    assert drilling_from_grid(grid).water_strikes_m == [8.0]
+
+    grid[-1] = ["Water strikes at 12 m and 30 m"]
+    assert drilling_from_grid(grid).water_strikes_m == [12.0, 30.0]
+
+    # one unit at the end of a list carries the whole list
+    grid[-1] = ["Water strikes: 12, 18 and 30 m"]
+    assert drilling_from_grid(grid).water_strikes_m == [12.0, 18.0, 30.0]
+
+
+def test_a_zero_in_the_water_strike_column_is_an_empty_cell_not_a_strike():
+    """A crew writes 0 in the strike column for a dry run of rods; it was read
+    as a strike at 0 m, which seeded a 0-5 m screen against the topsoil."""
+    from groundwater.ingestion.drilling import drilling_from_grid
+
+    log = drilling_from_grid(_drilling_grid([
+        ["0-5", None, None, None, "Lateritic topsoil", 6.5, 0],
+        ["5-10", None, None, None, "Clayey laterite", 6.5, 0],
+        ["10-30", None, None, None, "Fractured granite", 6.5, 12],
+    ]))
+    assert log.water_strikes_m == [12.0]
+    zero = next(f for f in log.flags if f.code == "water_strike_zero_ignored")
+    assert zero.level == "info" and "0 on 2 row(s)" in zero.message
+
+
+def test_a_water_strike_note_that_cannot_be_read_is_flagged_not_guessed():
+    """A strike depth places the screens, so a note that does not say which of
+    its numbers are depths is refused and named rather than guessed at."""
+    from groundwater.ingestion.drilling import drilling_from_grid
+
+    log = drilling_from_grid(_drilling_grid([
+        ["0-30", None, None, None, "Granite", 6.5, None],
+        ["Water strikes at 12 and 30"],
+    ]))
+    assert log.water_strikes_m == []
+    flag = next(f for f in log.flags if f.code == "water_strike_unreadable")
+    assert flag.level == "warning"
+    assert "Water strikes at 12 and 30" in flag.message
+    assert "none of them carries a unit" in flag.message
+
+
+def test_a_diameter_in_millimetres_is_not_a_diameter_in_inches():
+    """"165 mm" was recorded as a 165 inch hole and "5 min/m" as five metres a
+    minute, because both columns were read as bare numbers whatever unit the
+    crew had written in the cell."""
+    from groundwater.ingestion.drilling import drilling_from_grid
+
+    log = drilling_from_grid(_drilling_grid([
+        ["0-5", None, None, "5 min/m", "Lateritic topsoil", "165 mm", None],
+        ["5-20", None, None, "30 m/hr", "Saprolite", '6 1/2"', None],
+        ["20-30", None, None, 0.63, "Granite", 6.5, None],
+    ]))
+    assert [iv.bit_diameter_in for iv in log.intervals] == [6.5, 6.5, 6.5]
+    assert [iv.penetration_rate_m_per_min for iv in log.intervals] == [0.2, 0.5, 0.63]
+
+
+def test_a_zone_cell_that_looks_like_a_label_does_not_become_the_easting():
+    """A sheet whose zone cell reads "Zone 28" carried a zone of 708958.
+
+    "Zone 28" typed as the value matches the same ``^zone`` pattern the label
+    does, so the header scan took the value cell for a second label, looked
+    below it for a value of its own, and found the easting sitting in the row
+    beneath. The site was then carried as "zone 708958", which projects to a
+    longitude of four million degrees - a position no map can draw and no
+    report should print. A zone that cannot be read is left unrecorded and
+    inferred from the easting, with the assumption stated.
+    """
+    from groundwater.ingestion.checks import check_site_consistency
+    from groundwater.ingestion.common import extract_header_fields, site_from_fields
+
+    grid = [
+        ["UTM Zone (28N or 29N)", "Zone 28"],
+        ["GPS Coordinate East", "0708958"],
+        ["GPS Coordinate North", "0926355"],
+        ["District", "Western Area"],
+    ]
+    site = site_from_fields(extract_header_fields(grid), "sheet.xlsx")
+    assert site.utm_zone is None
+    assert site.utm.zone == 28
+    lat, lon = site.latlon
+    assert 6.9 <= lat <= 10.0 and -13.3 <= lon <= -10.3
+    assert [f.code for f in check_site_consistency(site)] == ["utm_zone_assumed"]
+
+    # a zone cell that states one zone is still read as that zone
+    plain = [["UTM Zone", "29N"], ["GPS Coordinate East", 178000],
+             ["GPS Coordinate North", 1000000]]
+    assert site_from_fields(extract_header_fields(plain)).utm_zone == 29
+
+
+def test_a_clock_time_written_without_a_colon_is_not_a_strike_depth():
+    """"Water strike at 1430 hrs" recorded a water strike at 1430 m.
+
+    The colon form was read as a time, but the form a driller more often
+    writes - the hour with no separator and the word after it - was not, so
+    the only number in the note went through as a depth. A thirty metre
+    borehole was handed to the client recording a strike twenty times deeper
+    than the hole, with no flag against it, because nothing in the reader
+    knew that a four-digit number carrying "hrs" is a time of day.
+    """
+    from groundwater.ingestion.drilling import drilling_from_grid
+
+    log = drilling_from_grid(_drilling_grid([
+        ["0-30", None, None, None, "Fractured granite", 6.5,
+         "Water strike at 1430 hrs"],
+    ]))
+    assert log.water_strikes_m == []
+    assert log.total_depth_m == 30
+
+    # the depth beside such a time is still read, and an elapsed time in
+    # hours is too short a number to be a clock and is left where it is
+    grid = _drilling_grid([
+        ["0-30", None, None, None, "Fractured granite", 6.5,
+         "Water strike 12 m at 1430 hrs"],
+    ])
+    assert drilling_from_grid(grid).water_strikes_m == [12.0]
+    grid[-1][6] = "Water strike 8 m after 2 hrs"
+    assert drilling_from_grid(grid).water_strikes_m == [8.0]
+
+
+def test_a_unit_spelled_out_or_pluralised_is_still_the_unit_it_names():
+    """"165 mms" was a 165 inch hole and "30 metres/hour" thirty metres a minute.
+
+    The unit patterns listed the abbreviations without their plurals and the
+    metre only as "m", so a sheet one character away from a spelling they did
+    know - "mms" for "mm", "m/hrs" for "m/hr", "metres/hour" for "m/hr" -
+    fell past them to the bare number and was read in the column's default
+    unit. The bit diameter is what sizes the casing and the gravel pack, so
+    that reading reaches the bill of quantities.
+    """
+    from groundwater.ingestion.drilling import (parse_bit_diameter_in,
+                                                parse_penetration_rate_m_per_min)
+
+    for text in ("165 mm", "165 mms", "165 millimetres"):
+        assert parse_bit_diameter_in(text) == 6.5, text
+    for text in ("16.5 cm", "16.5 cms"):
+        assert parse_bit_diameter_in(text) == 6.5, text
+
+    for text in ("30 m/hr", "30 m/hrs", "30 m/h", "30 metres/hour",
+                 "30 meters/hour", "30 metres per hour"):
+        assert parse_penetration_rate_m_per_min(text) == 0.5, text
+    for text in ("5 min/m", "5 min/metre", "5 minutes per metre"):
+        assert parse_penetration_rate_m_per_min(text) == 0.2, text
+    for text in ("12 s/m", "12 s/metre", "12 seconds per metre"):
+        assert parse_penetration_rate_m_per_min(text) == 5.0, text
+    # and a cell with no unit still reads in the unit its column asks for
+    assert parse_bit_diameter_in("6.5") == 6.5
+    assert parse_penetration_rate_m_per_min("0.33") == 0.33
+
+
+def test_a_fraction_in_a_strike_cell_names_no_depth():
+    """"Water strike 1/2 m" is half a metre, and it read as a strike at 2 m.
+
+    The slash was a list separator, so the cell first came out as two
+    strikes and then, with the separator tightened, as its own denominator.
+    A depth places a screen, so the honest answer is to record none and say
+    why.
+    """
+    from groundwater.ingestion.drilling import parse_water_strike_depths
+
+    depths, reason = parse_water_strike_depths("Water strike 1/2 m")
+    assert depths == []
+    assert "fraction" in reason
+    # a real list is still read
+    assert parse_water_strike_depths("strikes at 12, 18 and 30 m")[0] == [12.0, 18.0, 30.0]
+
+
+def test_a_clock_written_without_a_separator_is_not_a_depth():
+    """"1430 hrs" recorded a strike 1430 m down."""
+    from groundwater.ingestion.drilling import parse_water_strike_depths
+
+    assert parse_water_strike_depths("Water strike at 1430 hrs")[0] == []
+    assert parse_water_strike_depths("Water strike 8 m at 1430 hrs")[0] == [8.0]
+
+
+def test_a_strike_below_the_bottom_of_the_hole_is_not_recorded(tmp_path):
+    """It is a depth the drilling never reached, printed to the client.
+
+    The screen designer clips it out, so nothing else in the toolkit ever
+    contradicted it; the handover report simply listed it.
+    """
+    from openpyxl import Workbook
+
+    from groundwater.ingestion import read_drilling_workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Log"
+    ws.append(["BOREHOLE DRILLING LOG"])
+    ws.append(["Community", "Test", None, "Client", "Test"])
+    ws.append([None, None, None, "Total depth (m)", 30])
+    ws.append([])
+    ws.append(["Depth interval (m)", "From time", "To time",
+               "Penetration rate (m/min)", "Sample / lithology description",
+               "Water strike (m)"])
+    ws.append(["0-15", None, None, 1, "Weathered granite", None])
+    ws.append(["15-30", None, None, 1, "Fresh granite", "8 m and 1430 m"])
+    path = tmp_path / "deep.xlsx"
+    wb.save(path)
+
+    log = read_drilling_workbook(path)
+    assert log.water_strikes_m == [8.0]
+    flag = next(f for f in log.flags if f.code == "water_strike_below_total_depth")
+    assert "1430 m" in flag.message and "30 m" in flag.message

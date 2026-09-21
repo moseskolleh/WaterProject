@@ -205,3 +205,19 @@ def test_the_review_does_not_withhold_the_same_ground_twice():
     assert not builder._same_ground_as_any(
         (name, district, far), [(name, district, part)]
     )
+
+
+def test_the_consistency_check_judges_sheets_against_the_layer_s_districts():
+    """The names a field sheet is judged by are the layer's own sixteen.
+
+    The ingestion check held its own table of district names and bounding
+    boxes, so the districts a sheet could be judged against and the districts
+    the point lookup could return were two lists that had already drifted:
+    the boxes overlapped, missed ground and answered with two districts at
+    once. The check now reads its names from the chiefdom crosswalk, which is
+    what the lookup answers from.
+    """
+    from groundwater.ingestion.checks import district_names
+
+    assert set(district_names()) == _DISTRICTS
+    assert len(district_names()) == 16

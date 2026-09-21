@@ -17,6 +17,7 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
+from ..geo import parse_utm_zone
 from ..models import SiteMetadata
 from ..utils import clean_text, parse_number
 
@@ -96,6 +97,30 @@ def sheet_names(path: str | Path) -> list[str]:
     names = list(wb.sheetnames)
     wb.close()
     return names
+
+
+# Every dash a sheet can carry: the hyphen variants, the figure, en, em and
+# horizontal dashes, the true minus sign and the full-width hyphen.
+_DASH_RE = re.compile("[\u2010-\u2015\u2212\ufe58\ufe63\uff0d]")
+
+
+def normalise_dashes(value):
+    """Replace every dash a text cell can carry with the plain hyphen.
+
+    Word turns "5-10" into "5\u201310" as the crew types it and the en dash
+    survives the copy into Excel, so a depth interval or a screen range
+    written on a laptop reaches the range patterns as a character they do
+    not list. The row was then dropped in silence and the only trace was an
+    "interval_gap" flag blaming the log for a gap the crew never left
+    (ROADMAP data-ingestion-8). A value that is not text is handed back
+    untouched, so a date or a number still reaches its own parser as itself.
+
+    >>> normalise_dashes("5\u201310")
+    '5-10'
+    """
+    if not isinstance(value, str):
+        return value
+    return _DASH_RE.sub("-", value)
 
 
 def match_label(text: str) -> str | None:
@@ -221,10 +246,23 @@ def _date_text(value):
 
 
 def site_from_fields(fields: dict, source: str = "") -> SiteMetadata:
-    """Build SiteMetadata from extracted header fields."""
-    zone = fields.get("utm_zone")
-    if isinstance(zone, str):
-        zone = parse_number(zone)
+    """Build SiteMetadata from extracted header fields.
+
+    The zone cell is read with :func:`groundwater.geo.parse_utm_zone`, which
+    takes the number that follows a label and refuses anything that names no
+    single zone. It used to be read with ``parse_number``, which takes the
+    first number in the cell whatever that number is. On a sheet whose zone
+    pair sits directly above the GPS pair, the value cell "Zone 28" matches
+    the ``^zone`` label pattern, so ``extract_header_fields`` treats it as a
+    label of its own and hunts for a value below it - and what is below it is
+    the easting. The site was then carried as "zone 708958" and projected
+    tens of degrees out of the country (ROADMAP data-ingestion-14). A zone
+    that cannot be read is left unrecorded, which ``SiteMetadata.utm`` infers
+    from the easting and ``check_site_consistency`` reports as
+    ``utm_zone_assumed``; naming no zone and saying so is safe where guessing
+    one is not, because the same easting in the next zone is a site 660 km
+    away.
+    """
     return SiteMetadata(
         client=fields.get("client", ""),
         project=fields.get("project", ""),
@@ -234,7 +272,7 @@ def site_from_fields(fields: dict, source: str = "") -> SiteMetadata:
         project_ref=fields.get("project_ref", ""),
         easting=fields.get("easting"),
         northing=fields.get("northing"),
-        utm_zone=int(zone) if zone else None,
+        utm_zone=parse_utm_zone(fields.get("utm_zone")),
         elevation_m=fields.get("elevation_m"),
         date=str(fields.get("date", "")),
         supervisor=fields.get("supervisor", ""),

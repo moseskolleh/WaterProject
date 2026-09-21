@@ -73,7 +73,8 @@ from groundwater.ingestion.templates import write_all_templates
 from groundwater.geo import (
     geographic_to_utm,
     infer_zone_for_sierra_leone,
-    parse_latlon,
+    parse_utm_zone,
+    read_latlon,
     utm_to_geographic,
 )
 from groundwater.mapping import (
@@ -896,7 +897,12 @@ def site_from_state() -> SiteMetadata:
         date=get("meta_date", "") or "",
         easting=num("meta_easting"),
         northing=num("meta_northing"),
-        utm_zone=int(str(get("meta_zone", "29N")).rstrip("N") or "29"),
+        # "Zone 28" copied into the zone cell is the zone 28, and a cell this
+        # cannot read leaves the zone unrecorded - SiteMetadata.utm then
+        # infers it from the easting and the checks say so - rather than
+        # defaulting to 29N. A zone relabelled instead of read keeps the
+        # easting and moves the site 660 km into the next zone.
+        utm_zone=parse_utm_zone(get("meta_zone", "29N")),
     )
 
 
@@ -1048,28 +1054,52 @@ def _apply_latlon() -> None:
     raw = (st.session_state.get("latlon_paste", "") or "").strip()
     lat = st.session_state.get("latlon_lat", 0.0)
     lon = st.session_state.get("latlon_lon", 0.0)
+    assumed = ""
     if raw:
-        # parse_latlon reads N/S/E/W as signs. Discarding them and taking the
-        # number at face value put every W longitude 26 degrees east of the
-        # site, silently and on the wrong side of the continent.
-        parsed = parse_latlon(raw)
-        if parsed is None:
+        # read_latlon reads N/S/E/W as signs and degrees and minutes as
+        # degrees and minutes. Discarding the letter and taking the number at
+        # face value put every W longitude 26 degrees east of the site,
+        # silently and on the wrong side of the continent, and "8 27.942 N"
+        # came back as latitude 27.942. What it refuses, and what it assumed
+        # where it read a longitude as west, comes back as a sentence, which
+        # is shown rather than dropped.
+        reading = read_latlon(raw)
+        if not reading.ok:
             st.session_state["latlon_error"] = (
-                "Could not read those coordinates. Enter 'lat, lon' in decimal "
-                "degrees - 8.4657, -13.2317 or 8.4657 N, 13.2317 W."
+                f"{reading.message} Enter 'lat, lon' in decimal degrees - "
+                "8.4657, -13.2317 or 8.4657 N, 13.2317 W - or in degrees and "
+                "minutes, 8 27.942 N, 13 13.902 W."
             )
+            st.session_state["latlon_assumed"] = ""
             return
-        lat, lon = parsed
+        lat, lon = reading.lat, reading.lon
+        assumed = reading.message
     if not lat or not lon:
         st.session_state["latlon_error"] = (
             "Enter a latitude and longitude (or paste them) first."
         )
+        st.session_state["latlon_assumed"] = ""
         return
     utm = geographic_to_utm(lat, lon)
+    if utm.zone not in (28, 29) or utm.hemisphere != "N":
+        # The site fields hold Sierra Leone's two zones. Labelling this
+        # easting 28N or 29N would relabel the position rather than convert
+        # it, and land the site inside the country: an unsigned 13.2317
+        # projected in zone 33 and relabelled 29N used to come out 270 km
+        # east of Freetown with nothing said.
+        st.session_state["latlon_error"] = (
+            f"{lat:.4f}, {lon:.4f} falls in UTM zone {utm.zone}"
+            f"{utm.hemisphere}, outside Sierra Leone's 28N and 29N, so it "
+            "cannot be stored as a site position. Check the coordinates - a "
+            "western longitude needs its minus sign or its W."
+        )
+        st.session_state["latlon_assumed"] = ""
+        return
     st.session_state["meta_easting"] = float(round(utm.easting))
     st.session_state["meta_northing"] = float(round(utm.northing))
-    st.session_state["meta_zone"] = f"{28 if utm.zone <= 28 else 29}N"
+    st.session_state["meta_zone"] = f"{utm.zone}N"
     st.session_state["latlon_error"] = ""
+    st.session_state["latlon_assumed"] = assumed
 
 
 # ---------------------------------------------------------------------------
@@ -1401,7 +1431,11 @@ with st.sidebar:
     _e = st.session_state.get("meta_easting", 0.0)
     _n = st.session_state.get("meta_northing", 0.0)
     if _e and _n:
-        _zone = int(str(st.session_state.get("meta_zone", "29N")).rstrip("N"))
+        # A zone the state cannot be read for is inferred from the easting,
+        # as SiteMetadata.utm infers it, rather than read as 29N: the same
+        # easting in the other zone is a site 660 km away, in Guinea.
+        _zone = (parse_utm_zone(st.session_state.get("meta_zone", "29N"))
+                 or infer_zone_for_sierra_leone(_e))
         _lat, _lon = utm_to_geographic(_e, _n, _zone)
         detected_latlon = (_lat, _lon)
         detected_district = district_of(_lat, _lon)
@@ -1497,13 +1531,25 @@ with st.sidebar:
                            key="meta_easting", format="%.0f")
         col_n.number_input("GPS North (UTM m)", min_value=0.0, step=100.0,
                            key="meta_northing", format="%.0f")
-        # A loaded project may carry meta_zone as a bare int/str (e.g. 29);
-        # coerce it to the "NN N" option and drop anything unrecognised so the
-        # selectbox never raises on a value outside its options.
+        # A loaded project may carry meta_zone as a bare int/str (e.g. 29) or
+        # with the label the sheet used ("Zone 28"): read the number that
+        # follows the label and coerce it to the "NN N" option, so the
+        # selectbox never raises on a value outside its options. A zone that
+        # cannot be read has to show one of the two options, but relabelling
+        # it keeps the easting and moves the site 660 km into the next zone,
+        # so the relabel is said out loud rather than done quietly.
         _zone_val = st.session_state.get("meta_zone")
         if _zone_val is not None and _zone_val not in ("28N", "29N"):
-            _z = str(_zone_val).upper().rstrip("N").strip()
-            st.session_state["meta_zone"] = f"{_z}N" if _z in ("28", "29") else "29N"
+            _z = parse_utm_zone(_zone_val)
+            st.session_state["meta_zone"] = f"{_z}N" if _z in (28, 29) else "29N"
+            if _z not in (28, 29):
+                st.warning(
+                    f"The saved UTM zone ({_zone_val}) is not 28N or 29N and "
+                    "could not be read, so the zone below shows 29N. Check it "
+                    "against the easting and northing before a report carries "
+                    "them - the same easting in the other zone is a different "
+                    "site, 660 km away."
+                )
         st.selectbox("UTM zone", ["28N", "29N"], index=1, key="meta_zone",
                      help="28N west of 12 degrees W (Freetown, Port Loko), "
                      "29N further east.")
@@ -1525,6 +1571,10 @@ with st.sidebar:
                   width="stretch")
         if st.session_state.get("latlon_error"):
             st.warning(st.session_state["latlon_error"])
+        elif st.session_state.get("latlon_assumed"):
+            # the position was converted, but on a sign the parser supplied
+            # rather than one the crew typed, so it is shown with the site
+            st.warning(st.session_state["latlon_assumed"])
         if detected_latlon is not None:
             lat, lon = detected_latlon
             if detected_district:
@@ -1816,10 +1866,14 @@ with tab_overview:
             if _ov_site.chiefdom:
                 _site_rows.append(("Chiefdom", _ov_site.chiefdom))
             if _ov_site.easting and _ov_site.northing:
+                # an unrecorded zone is inferred from the easting here too,
+                # so the card prints a zone rather than the word None
+                _ov_zone = (_ov_site.utm_zone
+                            or infer_zone_for_sierra_leone(_ov_site.easting))
                 _site_rows.append((
                     "UTM",
                     (f"{_ov_site.easting:.0f} E · {_ov_site.northing:.0f} N "
-                    f"({_ov_site.utm_zone}N)"),
+                    f"({_ov_zone}N)"),
                 ))
             _wp = st.session_state.get("wp_result")
             if _wp and _wp.get("decision"):
@@ -4535,7 +4589,11 @@ with tab_portfolio:
                 "district": updates.get("meta_district"),
                 "easting": updates.get("meta_easting"),
                 "northing": updates.get("meta_northing"),
-                "utm_zone": int(str(updates.get("meta_zone") or "29N").rstrip("N")),
+                # a hand-edited zone that is not a zone ("Zone 28" reads as
+                # 28, "708958" reads as nothing) leaves the field unrecorded,
+                # where portfolio_stats infers it from the easting, rather
+                # than taking the page down or standing in a default 29N
+                "utm_zone": parse_utm_zone(updates.get("meta_zone")),
             }
         summaries.append(summary)
     if skipped:

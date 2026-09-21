@@ -969,67 +969,20 @@
    * value cannot be converted after the input has visibly reset. */
   var latLonEntry = { text: '' };
 
-  /* "lat, lon" as a field crew writes it.
+  /* "lat, lon" as a field crew writes it: the pair, or null where the text
+   * was refused.
    *
-   * Every longitude in Sierra Leone is west, and a handheld GPS writes that
-   * as a W rather than a minus sign. Dropping the letter and taking the
-   * number at face value puts the site 26 degrees east of where it is —
-   * silently, on the wrong side of the continent — so the hemisphere letter
-   * is a sign, and a letter that contradicts an explicit sign is rejected
-   * rather than guessed at. */
+   * The reading itself is the engine's - C.readLatLon, a port of geo.py - so
+   * that the browser and the Python toolkit make the same sense of the same
+   * pasted string, including when they refuse it. It reads a hemisphere
+   * letter as a sign, reads degrees and minutes as degrees and minutes, and
+   * carries the reason for a refusal and the assumption behind a reading
+   * back with the numbers. Anything an operator sees uses that reading; this
+   * wrapper is for the callers that want only the pair. */
   function parseLatLon(text) {
-    var raw = String(text === null || text === undefined ? '' : text).trim();
-    if (!raw) return null;
-    /* split on commas, semicolons and whitespace, but keep a letter attached
-     * to the number it qualifies ("13.2317W" is one token) */
-    var tokens = raw.replace(/[;]/g, ',').split(/[,\s]+/).filter(Boolean);
-    var values = [];
-    var pending = null;                 /* a leading N/S/E/W awaiting its number */
-    for (var i = 0; i < tokens.length; i++) {
-      var token = tokens[i];
-      var bare = /^[NSEWnsew]$/.test(token);
-      if (bare) {
-        var letter = token.toUpperCase();
-        if (values.length && values[values.length - 1].letter === null) {
-          values[values.length - 1].letter = letter;   /* trailing "8.4657 N" */
-        } else {
-          pending = letter;                            /* leading "N 8.4657" */
-        }
-        continue;
-      }
-      var match = /^([+-]?\d*\.?\d+)\s*([NSEWnsew])?$/.exec(token);
-      if (!match) return null;
-      values.push({
-        value: Number(match[1]),
-        letter: match[2] ? match[2].toUpperCase() : pending,
-      });
-      pending = null;
-    }
-    if (values.length !== 2) return null;
-
-    function signed(entry) {
-      if (!isFinite(entry.value)) return null;
-      if (!entry.letter) return entry.value;
-      var negative = entry.letter === 'S' || entry.letter === 'W';
-      /* "-13.2317 W" is contradictory: the sign and the letter disagree
-       * about magnitude, so refuse rather than pick one */
-      if (entry.value < 0 && !negative) return null;
-      if (entry.value < 0 && negative) return entry.value;
-      return negative ? -entry.value : entry.value;
-    }
-
-    /* the pair is normally lat then lon; an explicit E/W on the first token
-     * says otherwise */
-    var first = values[0], second = values[1];
-    if (first.letter === 'E' || first.letter === 'W' ||
-        second.letter === 'N' || second.letter === 'S') {
-      var swap = first; first = second; second = swap;
-    }
-    var lat = signed(first), lon = signed(second);
-    if (lat === null || lon === null) return null;
-    if (!isFinite(lat) || !isFinite(lon)) return null;
-    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
-    return { lat: lat, lon: lon };
+    var reading = C.readLatLon(text);
+    if (reading.lat === null || reading.lon === null) return null;
+    return { lat: reading.lat, lon: reading.lon };
   }
 
   PAGES.site = function () {
@@ -1052,6 +1005,7 @@
       .map(function (row) { return row.chiefdom; });
 
     var latlon = siteLatLon();
+    var districtWarning = districtNote(site, latlon);
     var mapNode = null;
     if (GWT.data.geo && GWT.data.geo.adminBoundaries) {
       var boundaries = GWT.data.geo.adminBoundaries.features || [];
@@ -1129,19 +1083,43 @@
             S.textInput('', function (value) { latLonEntry.text = value; },
               { placeholder: '8.4657, -13.2317' }),
             button('Convert to UTM', function () {
-              var pair = parseLatLon(latLonEntry.text);
-              if (!pair) {
-                S.toast('Could not read those coordinates. Enter "lat, lon" in ' +
-                  'decimal degrees — 8.4657, -13.2317 or 8.4657 N, 13.2317 W.',
-                'error');
+              var reading = C.readLatLon(latLonEntry.text);
+              if (reading.lat === null || reading.lon === null) {
+                /* What the parser refused, and why, is what the operator
+                 * needs: "8 27.942" is two readings 2000 km apart and the
+                 * sentence says so, where a single generic line said only
+                 * that something was wrong. */
+                S.toast(reading.message + " Enter 'lat, lon' in decimal " +
+                  'degrees - 8.4657, -13.2317 or 8.4657 N, 13.2317 W - or in ' +
+                  'degrees and minutes, 8 27.942 N, 13 13.902 W.', 'error');
                 return;
               }
-              var lat = pair.lat, lon = pair.lon;
+              var lat = reading.lat, lon = reading.lon;
               var utm = C.geographicToUtm(lat, lon);
+              if ((utm.zone !== 28 && utm.zone !== 29) || utm.hemisphere !== 'N') {
+                /* The site fields hold Sierra Leone's two zones. Writing this
+                 * easting down beside 28N or 29N would relabel the position
+                 * rather than convert it, and land the site inside the
+                 * country: an unsigned 13.2317 projected in zone 33 was
+                 * stored here as a zone-33 easting, 270 km east of Freetown,
+                 * with nothing said (ROADMAP data-ingestion-3). */
+                S.toast(C.pyFixed(lat, 4) + ', ' + C.pyFixed(lon, 4) +
+                  ' falls in UTM zone ' + utm.zone + utm.hemisphere +
+                  ", outside Sierra Leone's 28N and 29N, so it cannot be " +
+                  'stored as a site position. Check the coordinates - a ' +
+                  'western longitude needs its minus sign or its W.', 'error');
+                return;
+              }
               store.set('site.easting', S.round(utm.easting, 1));
               store.set('site.northing', S.round(utm.northing, 1));
               store.set('site.utm_zone', utm.zone);
               S.toast('Converted to UTM zone ' + utm.zone + 'N.', 'ok');
+              if (reading.message) {
+                /* The position was converted, but on a sign the parser
+                 * supplied rather than one the crew typed, so it is said out
+                 * loud rather than left inside the reading. */
+                S.toast(reading.message, 'warn');
+              }
               render();
             }, { variant: 'ghost' }),
           ])),
@@ -1153,12 +1131,8 @@
               ' district' : '') : '')) : null,
         /* the commonest copy-over error on a field sheet is a district that
          * does not contain the recorded position, so say so where it is seen */
-        latlon && latlon.chiefdom && site.district &&
-          districtOf(latlon.chiefdom) && districtOf(latlon.chiefdom) !== site.district
-          ? el('div.callout.callout-warn', el('p',
-            'The recorded district (' + site.district + ') does not contain ' +
-            'these coordinates, which fall in ' + districtOf(latlon.chiefdom) +
-            '. Check the sheet before the reports carry it.')) : null,
+        districtWarning
+          ? el('div.callout.callout-warn', el('p', districtWarning)) : null,
       ]),
 
       mapNode ? card('Where the site sits', [
@@ -1650,6 +1624,56 @@
   function districtOf(chiefdom) {
     if (!chiefdom) return '';
     return (C.loadChiefdomDistrict() || {})[chiefdom] || '';
+  }
+
+  /* Human-readable coordinates with correct hemisphere letters. Sierra Leone
+   * is in the western hemisphere, so longitudes are negative and must read
+   * 'W', not 'E'. */
+  function fmtLatLon(lat, lon) {
+    return C.pyFixed(Math.abs(lat), 4) + ' ' + (lat >= 0 ? 'N' : 'S') + ', ' +
+      C.pyFixed(Math.abs(lon), 4) + ' ' + (lon >= 0 ? 'E' : 'W');
+  }
+
+  /* The district the sheet states, judged against the district the boundary
+   * polygons put the coordinates in: the browser's share of
+   * check_site_consistency, which is not otherwise ported here.
+   *
+   * The stated name is read with the engine's matchDistrict rather than
+   * compared as a string, so "Western Area" is the region it names - a site
+   * in either of its two districts satisfies it - instead of a mismatch with
+   * both of them, and a name that could be two districts is refused and says
+   * which two rather than being silently taken for one of them (ROADMAP
+   * data-ingestion-5). The sentences are the ones the Python check writes, so
+   * a sheet read in the browser and the same sheet read by the toolkit say
+   * the same thing about it. */
+  function districtNote(site, latlon) {
+    var stated = (site && site.district) || '';
+    if (!stated || !latlon) return '';
+    var matched = C.matchDistrict(stated);
+    var resolved = matched[0], candidates = matched[1];
+    if (!resolved.length) {
+      if (candidates.length > 1) {
+        return "District '" + stated + "' could be " + C.orList(candidates) +
+          '; it is not read as any of them. Write the district out in full.';
+      }
+      return "District '" + stated + "' is not a recognised Sierra Leone " +
+        'district name, so the coordinates were not checked against it.';
+    }
+    var where = fmtLatLon(latlon.lat, latlon.lon);
+    var found = latlon.chiefdom ? districtOf(latlon.chiefdom) : '';
+    if (!found) {
+      /* The browser carries the chiefdom polygons alone, so a point no
+       * chiefdom holds has no district here at all; the pre-2017 district
+       * polygons the Python check falls back to are not in the page. */
+      return 'The boundary polygons place the coordinates (' + where +
+        ") in no district, so district '" + stated + "' could not be checked " +
+        'against them; the point may be offshore, over the border, or in a ' +
+        'gap between the boundaries.';
+    }
+    if (resolved.indexOf(found) >= 0) return '';
+    return "Stated district '" + stated + "' does not contain the " +
+      'coordinates (' + where + '), which fall in ' + latlon.chiefdom +
+      ' chiefdom, ' + found + ' district. Verify against the field notes.';
   }
 
   function chiefdomAt(lat, lon) {
