@@ -23,7 +23,24 @@
 
   /* ------------------------------------------------------------ palette */
 
+  /* A figure bound for a .docx is painted for paper, not for the screen it
+   * was built on.
+   *
+   * Every chart takes its colours from the live CSS tokens at the moment it
+   * is constructed, and the app's default theme is dark, so a client opening
+   * a report got maps, sections and borehole drawings rasterised white on
+   * black. The fallbacks below are the stylesheet's own light values, so a
+   * chart built while this flag is set is a chart built for print, whatever
+   * the reader of the app is looking at. Set it around the figure building,
+   * not around the rasterising: the colours are already in the SVG by then. */
+  var printPalette = false;
+
+  function usePrintPalette(on) {
+    printPalette = !!on;
+  }
+
   function token(name, fallback) {
+    if (printPalette) return fallback;
     if (typeof getComputedStyle === 'undefined') return fallback;
     var value = getComputedStyle(document.documentElement)
       .getPropertyValue('--' + name);
@@ -4244,6 +4261,7 @@
     /* the caller says which sheet the layer came off; both bundled layers
      * are 1:5,000,000, and the aquifer map carries its publisher's own
      * limit on it as well */
+    usePrintPalette: usePrintPalette,
     scaleCaveat: scaleCaveat, usgsSourceScale: USGS_SOURCE_SCALE,
     bgsSourceScale: BGS_SOURCE_SCALE, bgsPublisherNote: BGS_PUBLISHER_NOTE,
     mapProjection: mapProjection, projectionInto: projectionInto,

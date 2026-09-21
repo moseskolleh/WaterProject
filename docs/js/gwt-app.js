@@ -3162,6 +3162,7 @@
     nodes.push(el('div.btn-row', [
       button('Interim payment certificate (.docx)', async function (event) {
         var host = event.target.closest('.card');
+        charts.usePrintPalette(true);
         try {
           await S.withBusy(host, 'Building the certificate…', async function () {
             var builder = await GWT.docx.paymentCertificate({
@@ -3178,6 +3179,8 @@
           S.toast('Certificate ready.', 'ok');
         } catch (err) {
           S.toast('Could not build the certificate: ' + err.message, 'error');
+        } finally {
+          charts.usePrintPalette(false);
         }
       }),
     ]));
@@ -4955,6 +4958,7 @@
 
   async function buildAssetDoc(kind, asset, node) {
     var host = node ? node.closest('.card') : $('#page-host');
+    charts.usePrintPalette(true);
     try {
       await S.withBusy(host, 'Building the document…', async function () {
         var cfg = config();
@@ -4981,6 +4985,8 @@
       S.toast('Document ready.', 'ok');
     } catch (err) {
       S.toast('Could not build the document: ' + err.message, 'error');
+    } finally {
+      charts.usePrintPalette(false);
     }
   }
 
@@ -5527,6 +5533,10 @@
 
   async function buildReport(kind, extra, node) {
     var host = node ? node.closest('.card') : $('#page-host');
+    /* Every figure this builds goes into a .docx, so it is painted for paper
+     * rather than for the theme the app happens to be in; the default theme
+     * is dark, and clients were sent maps and drawings on a black ground. */
+    charts.usePrintPalette(true);
     try {
       await S.withBusy(host, 'Building the report…', async function () {
         var cfg = config();
@@ -5726,6 +5736,8 @@
     } catch (e) {
       S.toast('Could not build the report: ' + e.message, 'error');
       console.error(e);
+    } finally {
+      charts.usePrintPalette(false);
     }
   }
 

@@ -487,10 +487,11 @@ rebuildDesign, buildReport; `docs/js/gwt-core.js` assembleDesign;
 `make_reference.py`, `review.mjs`. The subsystem-to-mirror map with line
 numbers is kept with the audit notes.
 
-- [ ] **C webapp-parity-1. Every figure the browser embeds in a .docx is
+- [x] **C webapp-parity-1. Every figure the browser embeds in a .docx is
   rasterised on the dark theme:** the default theme is dark and every chart
   paints its surface from the live CSS tokens, so clients get maps and
   drawings on a black background.
+  Done: `usePrintPalette` makes `token` read the stylesheet's light values, and the three paths that build a document - the reports, the interim payment certificate and the asset record and placard - turn it on around the figure building and off again in a `finally`. It is set where the figures are built, not where they are rasterised, because the colours are in the SVG by then. `review.mjs` holds it: on a dark app, a figure's surface is light, its ink is not, and the screen palette is back afterwards.
 - [x] **H webapp-parity-3. The browser study-area map has no sea, no
   chiefdom names, draws the site as a "borehole" on a siting survey and
   hides sounding A under it.**

@@ -826,6 +826,31 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify({ loaded: allBad.loaded, codes: allBad.codes,
       text: allBad.text.slice(0, 260) }));
 
+  /* A report figure is painted for paper, not for the screen it was built
+   * on. The app's default theme is dark and every chart reads the live CSS
+   * tokens as it is constructed, so clients were sent maps, sections and
+   * borehole drawings rasterised white on black. */
+  const printed = await page.evaluate(async () => {
+    const charts = window.GWT.charts;
+    document.documentElement.setAttribute('data-theme', 'dark');
+    const onScreen = charts.palette().surface;
+    charts.usePrintPalette(true);
+    const forPaper = charts.palette();
+    charts.usePrintPalette(false);
+    const backOnScreen = charts.palette().surface;
+    return { onScreen, surface: forPaper.surface, ink: forPaper.ink, backOnScreen };
+  });
+  const light = (hex) => {
+    const v = String(hex || '').trim().replace('#', '');
+    if (v.length !== 6) return false;
+    const n = [0, 2, 4].map((i) => parseInt(v.slice(i, i + 2), 16) / 255);
+    return (0.2126 * n[0] + 0.7152 * n[1] + 0.0722 * n[2]) > 0.8;
+  };
+  check('a report figure is rasterised for paper, whatever theme the app is in',
+    light(printed.surface) && !light(printed.ink) &&
+    printed.backOnScreen === printed.onScreen,
+    JSON.stringify(printed));
+
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));
 });
