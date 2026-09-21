@@ -16,6 +16,8 @@ it says plainly when the answer is that nobody knows.
 
 from __future__ import annotations
 
+from ..utils import plural
+
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -128,7 +130,8 @@ def build_asset_record(inputs: AssetReportInputs, out_path: str | Path,
             bold=True)
     if state.undated_events:
         rb.paragraph(
-            f"{state.undated_events} record(s) carry a date that could not be "
+            f"{plural(state.undated_events, 'record')} "
+            f"{'carries' if state.undated_events == 1 else 'carry'} a date that could not be "
             "read. They are listed below with the date as written, but they "
             "establish nothing about when anything last happened.")
 

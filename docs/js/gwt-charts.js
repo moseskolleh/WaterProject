@@ -366,6 +366,20 @@
         fill: colour, stroke: ring, 'stroke-width': 1.6, 'stroke-linejoin': 'round',
       });
     }
+    if (kind === 'star') {
+      /* five points, outer radius r * 1.5, inner radius r * 0.6 */
+      var d = '', k;
+      for (k = 0; k < 10; k++) {
+        var radius = (k % 2 === 0) ? r * 1.5 : r * 0.6;
+        var angle = -Math.PI / 2 + k * Math.PI / 5;
+        d += (k === 0 ? 'M' : 'L') + (x + radius * Math.cos(angle)).toFixed(2) + ' ' +
+          (y + radius * Math.sin(angle)).toFixed(2);
+      }
+      return svgEl('path', {
+        d: d + 'Z', fill: colour, stroke: ring, 'stroke-width': 1.6,
+        'stroke-linejoin': 'round',
+      });
+    }
     return svgEl('circle', {
       cx: x, cy: y, r: r, fill: colour, stroke: ring, 'stroke-width': 1.6,
     });
@@ -633,6 +647,18 @@
     var duration = test.pumping_duration_min || (allT.length ? Math.max.apply(null, allT) : 0);
     var recShift = recT.map(function (t) { return duration + t; });
     var recWl = test.recovery_level_m || [];
+    /* the intake and the hole bottom, so a level past either is seen to be:
+     * the pump setting is named as the test's, not a recommendation */
+    var refs = [];
+    if (test.pump_setting_m) {
+      refs.push({ y: test.pump_setting_m, dash: '2 3', colour: null,
+        text: 'test pump intake ' + C.pyFixed(test.pump_setting_m, 0) + ' m' });
+    }
+    if (test.borehole_depth_m) {
+      refs.push({ y: test.borehole_depth_m, dash: '6 3 2 3', colour: '#7A5C3A',
+        text: 'borehole bottom ' + C.pyFixed(test.borehole_depth_m, 0) + ' m' });
+    }
+    var refLevels = refs.map(function (r) { return r.y; });
 
     var f = frame({
       width: opts.width || 760, height: opts.height || 420,
@@ -640,7 +666,8 @@
       xLabel: 'Time since start (min)', yLabel: 'Water level below datum (m)',
       yDown: true,
       xDomain: [0, Math.max.apply(null, [1].concat(allT, recShift)) * 1.02],
-      yDomain: padDomain((swl !== null ? [swl] : []).concat(allWl, recWl), false, 0.08),
+      yDomain: padDomain((swl !== null ? [swl] : []).concat(allWl, recWl, refLevels),
+        false, 0.08),
     });
     var p = f.palette;
 
@@ -654,6 +681,16 @@
         text: 'static water level ' + swl.toFixed(2) + ' m',
       }));
     }
+    refs.forEach(function (ref) {
+      f.plot.appendChild(svgEl('line', {
+        x1: f.margin.left, y1: f.fy(ref.y), x2: f.margin.left + f.plotW, y2: f.fy(ref.y),
+        stroke: ref.colour || p.neutral, 'stroke-width': 1.2, 'stroke-dasharray': ref.dash,
+      }));
+      f.plot.appendChild(svgEl('text', {
+        x: f.margin.left + f.plotW - 6, y: f.fy(ref.y) - 5, 'font-size': 10.5,
+        'text-anchor': 'end', fill: p.inkSoft, text: ref.text,
+      }));
+    });
 
     var series = [], entries = [];
     (test.steps || []).forEach(function (step, i) {
@@ -772,10 +809,13 @@
     if (!rec) return null;
     var test = analysis.test, swl = test.static_water_level_m;
     var tp = test.recovery_time_min || [], levels = test.recovery_level_m || [];
+    /* t/t' is formed with the pumping time the fit used: the pumped duration
+     * of a constant test, or the equivalent time after a step test */
+    var pumpingTime = rec.pumping_time_min || test.pumping_duration_min;
     var ratio = [], residual = [];
     tp.forEach(function (v, i) {
       if (v > 0) {
-        ratio.push((test.pumping_duration_min + v) / v);
+        ratio.push((pumpingTime + v) / v);
         residual.push(levels[i] - swl);
       }
     });
@@ -786,7 +826,7 @@
       xLabel: "t / t' (log scale)", yLabel: "Residual drawdown s' (m)",
       xLog: true, yDown: true,
       xDomain: padDomain(ratio.concat([1]), true),
-      yDomain: padDomain([0].concat(residual), false, 0.1),
+      yDomain: padDomain([0, rec.intercept_m].concat(residual), false, 0.1),
     });
     var p = f.palette;
     var dom = padDomain(ratio.concat([1]), true);
@@ -801,9 +841,19 @@
       f.plot.appendChild(marker(px, py, 'circle', p.accent, p.surface));
       pts.push({ px: px, py: py, x: x, y: residual[i] });
     });
+    /* where theory says the line meets t/t' = 1, and where this one does */
+    f.plot.appendChild(svgEl('line', {
+      x1: f.fx(1), y1: f.margin.top, x2: f.fx(1), y2: f.margin.top + f.plotH,
+      stroke: p.neutral, 'stroke-width': 1, 'stroke-dasharray': '2 3',
+    }));
+    f.plot.appendChild(marker(f.fx(1), f.fy(rec.intercept_m), 'diamond',
+      p.secondary, p.surface, 5));
+    pts.push({ px: f.fx(1), py: f.fy(rec.intercept_m), x: 1, y: rec.intercept_m });
     legend(f, [
       { label: 'Residual drawdown', kind: 'circle', colour: p.accent },
       { label: 'Fitted line', kind: 'line', colour: p.secondary },
+      { label: 'intercept ' + rec.intercept_m.toFixed(1) + ' m (theory: 0)',
+        kind: 'diamond', colour: p.secondary },
     ], { avoid: pts });
     f.svg.appendChild(svgEl('text', {
       x: f.width - f.margin.right, y: 18, 'text-anchor': 'end',
@@ -811,6 +861,13 @@
       text: 'T = ' + S.sig(rec.transmissivity_m2_per_day, 3) + ' m²/day · r² = ' +
         rec.r_squared.toFixed(3),
     }));
+    if (rec.equivalent_time) {
+      f.plot.appendChild(svgEl('text', {
+        x: f.margin.left + 8, y: f.margin.top + f.plotH - 8, 'font-size': 10.5,
+        fill: p.inkSoft,
+        text: 't = equivalent pumping time ' + C.pyFixed(pumpingTime, 0) + ' min',
+      }));
+    }
     if (opts.hover !== false) {
       addHover(f, [{ label: 'Recovery', points: pts }], {
         format: function (pt) {
@@ -830,9 +887,12 @@
     var q = st.steps.map(function (s) { return s.discharge_m3_per_h * 24.0; });
     var sq = st.steps.map(function (s) { return s.sw_over_q_day_per_m2; });
 
+    /* a line through two points is exact by construction, and the title
+     * says so rather than letting an r² of 1.000 stand as a result */
     var f = frame({
       width: opts.width || 620, height: opts.height || 400,
-      title: opts.title || 'Step drawdown analysis (Hantush-Bierschenk)',
+      title: opts.title || ('Step drawdown analysis (Hantush-Bierschenk' +
+        (st.two_point ? ', two points' : '') + ')'),
       xLabel: 'Discharge Q (m³/day)', yLabel: 'Specific drawdown s/Q (day/m²)',
       xDomain: [0, Math.max.apply(null, q) * 1.12],
       yDomain: padDomain([0].concat(sq), false, 0.15),
@@ -865,7 +925,9 @@
       x: f.width - f.margin.right, y: 18, 'text-anchor': 'end',
       'font-size': 11.5, fill: p.inkSoft,
       text: 'B = ' + S.sig(st.aquifer_loss_B, 3) + ' · C = ' +
-        S.sig(st.well_loss_C, 3) + ' · r² = ' + st.r_squared.toFixed(3),
+        S.sig(st.well_loss_C, 3) +
+        (st.two_point ? ' · two points, exact by construction'
+          : ' · r² = ' + st.r_squared.toFixed(3)),
     }));
     return f.svg;
   }
@@ -1099,26 +1161,14 @@
   /* Lithology fills. Each is paired with a label in the legend, so the pattern
    * is a cue and never the only carrier of meaning. */
   /* The colour stands for a class of material, not for one driller's wording,
-   * so the legend names the class. Order matters: the first pattern that
-   * matches wins, and a fracture zone is called a fracture zone whatever rock
-   * it is in. */
-  var LITHOLOGY_COLOURS = [
-    [/fracture|fissure/i, '#6D8FA8', 'Fracture zone'],
-    [/laterite|duricrust|topsoil/i, '#B5651D', 'Laterite and topsoil'],
-    [/clay|saprolite/i, '#9E8B5F', 'Clay and saprolite'],
-    [/sand|gravel/i, '#C8B57C', 'Sand and gravel'],
-    [/weather|regolith/i, '#A98F63', 'Weathered rock'],
-    [/fresh|granite|basement|bedrock|gneiss|schist/i, '#7E7F84', 'Fresh basement'],
-  ];
-  var LITHOLOGY_OTHER = ['#B0A99C', 'Other material'];
-
+   * so the legend names the class. The table is the engine's
+   * (groundwater/design/lithology.py, C.lithologyClass): this file kept a
+   * second one, and the same interval was "clay and saprolite" on the
+   * drawing, "saprolite" in the report and "fresh basement" on the Depth
+   * Spine. One table, so every figure calls a log the same thing. */
   function lithologyClass(description) {
-    for (var i = 0; i < LITHOLOGY_COLOURS.length; i++) {
-      if (LITHOLOGY_COLOURS[i][0].test(description || '')) {
-        return { colour: LITHOLOGY_COLOURS[i][1], label: LITHOLOGY_COLOURS[i][2] };
-      }
-    }
-    return { colour: LITHOLOGY_OTHER[0], label: LITHOLOGY_OTHER[1] };
+    var klass = C.lithologyClass(description);
+    return { key: klass.key, label: klass.label, colour: klass.colour, hatch: klass.hatch };
   }
 
   function lithologyColour(description) {
@@ -1169,19 +1219,23 @@
     var p = palette();
     var width = opts.width || 800;
 
-    /* 5.0 -> 5, 6.5 -> 6.5: a diameter is quoted the way it is stamped */
-    function trim(v) {
-      return typeof v === 'number' ? String(Math.round(v * 100) / 100) : String(v);
-    }
+    /* 5.0 -> 5, 6.5 -> 6.5: a diameter is quoted the way it is stamped, and
+     * a depth prints as the Python drawing's :g does (14.5, not 14.0) */
+    var formatG = C.formatG;
 
     var depth = design.total_depth_m || 1;
     var stickup = design.stickup_m || 0;
+    /* a design's pump is where the pump should go and its screens are where
+     * the rules put them; only an as-built record can say where they are */
+    var asBuilt = !!design.as_built;
     var swl = (design.static_water_level_m === null ||
       design.static_water_level_m === undefined) ? null : design.static_water_level_m;
 
     /* ------------------------------------------------------------ colours */
     var COLOUR = {
       gravel: '#D9C89A', gravelMark: '#9C8A55',
+      stabiliser: '#E3D3A4', stabiliserMark: '#A0905E',
+      formation: '#F4F1EA',
       backfill: '#CFC9BB', backfillMark: '#938C7C',
       seal: '#9BA3A8', sealMark: '#6E777D',
       casing: '#EDEBE4', casingEdge: '#5C6360',
@@ -1195,26 +1249,43 @@
      * built first, because how many rows it needs decides how tall the
      * drawing has to be for the section itself to keep its room */
     var litho = (log && log.intervals) || [];
+    /* the log split into bands by the engine (groundwater/design/lithology.py):
+     * a fracture zone the driller named with its depths is a band at those
+     * depths, not a hatch across the five metres it was logged on, and the
+     * rock around it is classed as what it is */
+    var bands = litho.length ? C.lithologyBands(litho) : [];
     var lithoKeys = [];
-    litho.forEach(function (interval) {
-      var klass = lithologyClass(interval.description);
-      if (!lithoKeys.some(function (k) { return k.label === klass.label; })) {
-        lithoKeys.push({ label: klass.label, colour: klass.colour });
+    bands.forEach(function (band) {
+      var label = band.label.toLowerCase();
+      if (!lithoKeys.some(function (k) { return k.label === label; })) {
+        lithoKeys.push({ label: label, colour: band.colour });
       }
     });
+    /* The annulus below the seal, by what the design says it holds: a 19 mm
+     * annulus used to be drawn and captioned as a gravel pack. */
+    var FILL_STYLES = {
+      'gravel pack': { label: 'gravel pack', colour: COLOUR.gravel, fill: 'gravel' },
+      'formation stabiliser': {
+        label: 'formation stabiliser', colour: COLOUR.stabiliser, fill: 'stabiliser',
+      },
+      'none': { label: 'no gravel pack (formation)', colour: COLOUR.formation },
+    };
+    var fillStyle = FILL_STYLES[design.annular_fill] || FILL_STYLES['gravel pack'];
+    var hasSump = (design.segments || []).some(function (s) { return s.kind === 'sump'; });
     /* The construction materials come first because they are what the reader
      * is being asked to check; the formation classes follow. Each interval is
      * already named in the column beside it, so the legend explains what a
-     * colour means rather than repeating twelve descriptions. */
+     * colour means rather than repeating twelve descriptions. The wording is
+     * the Python drawing's. */
     var legendItems = [
-      { label: 'Gravel pack', colour: COLOUR.gravel, fill: 'gravel' },
-      { label: 'Annular backfill', colour: COLOUR.backfill, fill: 'backfill' },
-      { label: 'Cement sanitary seal', colour: COLOUR.seal, fill: 'seal' },
-      { label: 'Plain casing', colour: COLOUR.casing },
-      { label: 'Screen', colour: COLOUR.screen },
-      { label: 'Sump', colour: COLOUR.sump },
+      { label: fillStyle.label, colour: fillStyle.colour, fill: fillStyle.fill },
+      { label: 'backfill', colour: COLOUR.backfill, fill: 'backfill' },
+      { label: 'cement sanitary seal', colour: COLOUR.seal, fill: 'seal' },
+      { label: 'plain casing', colour: COLOUR.casing },
+      { label: 'screen', colour: COLOUR.screen },
     ];
-    if (swl !== null) legendItems.push({ label: 'Water in the casing', colour: COLOUR.water });
+    if (hasSump) legendItems.push({ label: 'sump', colour: COLOUR.sump });
+    if (swl !== null) legendItems.push({ label: 'water in the casing', colour: COLOUR.water });
     legendItems = legendItems.concat(lithoKeys);
 
     var legendCols = 2;
@@ -1246,7 +1317,8 @@
     var svg = svgEl('svg', {
       viewBox: '0 0 ' + width + ' ' + height, width: '100%', xmlns: NS,
       'font-family': FONT, role: 'img',
-      'aria-label': 'Borehole construction design, drawn to scale with depth',
+      'aria-label': (asBuilt ? 'As-built borehole record' : 'Borehole construction design') +
+        ', drawn to scale with depth',
     });
     svg.appendChild(svgEl('rect', { width: width, height: height, fill: p.surface }));
 
@@ -1259,6 +1331,14 @@
           svgEl('circle', { cx: 2.6, cy: 2.6, r: 1.25, fill: COLOUR.gravelMark }),
           svgEl('circle', { cx: 6.8, cy: 6.4, r: 1.05, fill: COLOUR.gravelMark }),
           svgEl('circle', { cx: 7.2, cy: 1.8, r: 0.8, fill: COLOUR.gravelMark }),
+        ],
+      },
+      /* finer than a gravel pack: placeable, but too thin to filter */
+      stabiliser: {
+        size: 6, background: COLOUR.stabiliser,
+        marks: [
+          svgEl('circle', { cx: 1.6, cy: 1.6, r: 0.85, fill: COLOUR.stabiliserMark }),
+          svgEl('circle', { cx: 4.4, cy: 4.2, r: 0.85, fill: COLOUR.stabiliserMark }),
         ],
       },
       backfill: {
@@ -1289,14 +1369,24 @@
 
     svg.appendChild(svgEl('text', {
       x: 16, y: titleY, 'font-size': 13.5, 'font-weight': 640, fill: p.ink,
-      text: opts.title || 'Borehole construction design',
+      text: opts.title ||
+        (asBuilt ? 'As-built borehole record' : 'Borehole construction design'),
     }));
-    if (opts.subtitle) {
+    /* the header block of the record sheet: the construction, and what the
+     * drawing is. The log records no casing string, so a drawing built by
+     * the rules says so on its own face. */
+    var headerLines = [];
+    if (opts.subtitle) headerLines.push(opts.subtitle);
+    headerLines.push(
+      'Construction: ' + formatG(design.borehole_diameter_in) + '" hole, ' +
+      formatG(design.casing_diameter_in) + '" ' + (design.casing_material || 'uPVC') +
+      '   ·   Drawing: ' + (asBuilt ? 'as built' : 'design generated from the log'));
+    headerLines.forEach(function (line, i) {
       svg.appendChild(svgEl('text', {
-        x: 16, y: titleY + 17, 'font-size': 10.5, fill: p.muted,
-        text: ellipsise(opts.subtitle, width - 32, 10.5),
+        x: 16, y: titleY + 17 + i * 12, 'font-size': 10.5, fill: p.muted,
+        text: ellipsise(line, width - 32, 10.5),
       }));
-    }
+    });
 
     /* ------------------------------------------------------ column headers */
     function header(x, anchor, text) {
@@ -1335,14 +1425,33 @@
 
     /* --------------------------------------------------- formation column */
     if (litho.length) {
-      litho.forEach(function (interval) {
-        var colour = lithologyColour(interval.description);
-        var y0 = fy(Math.max(0, interval.top_m));
-        var y1 = fy(Math.min(interval.bottom_m, depth));
+      /* one rect per band with the band's colour, so a named fracture zone
+       * sits at its own depths and the host rock around it keeps its own */
+      bands.forEach(function (band) {
+        var y0 = fy(Math.max(0, band.top_m));
+        var y1 = fy(Math.min(band.bottom_m, depth));
         if (y1 <= y0) return;
         svg.appendChild(svgEl('rect', {
           x: lithX, y: y0, width: lithW, height: y1 - y0,
-          fill: colour, stroke: '#FFFFFF', 'stroke-width': 0.8,
+          fill: band.colour, stroke: '#FFFFFF', 'stroke-width': 0.8,
+        }));
+      });
+      /* the driller's own words stay beside each logged interval; the ink
+       * is chosen against the band that takes most of the interval */
+      litho.forEach(function (interval) {
+        var y0 = fy(Math.max(0, interval.top_m));
+        var y1 = fy(Math.min(interval.bottom_m, depth));
+        if (y1 <= y0) return;
+        var colour = null, most = 0;
+        bands.forEach(function (band) {
+          var overlap = Math.min(band.bottom_m, interval.bottom_m) -
+            Math.max(band.top_m, interval.top_m);
+          if (overlap > most) { most = overlap; colour = band.colour; }
+        });
+        if (colour === null) colour = lithologyColour(interval.description);
+        svg.appendChild(svgEl('rect', {
+          x: lithX, y: y0, width: lithW, height: y1 - y0,
+          fill: 'none', 'pointer-events': 'all',
         }, [svgEl('title', {
           text: interval.top_m + '–' + interval.bottom_m + ' m: ' +
             (interval.description || ''),
@@ -1391,7 +1500,7 @@
         }));
       });
     }
-    annulus(design.gravel_pack, fills.gravel);
+    annulus(design.gravel_pack, fillStyle.fill ? fills[fillStyle.fill] : fillStyle.colour);
     annulus(design.backfill, fills.backfill);
     annulus(design.sanitary_seal, fills.seal);
 
@@ -1521,13 +1630,15 @@
     if (swl !== null) {
       gutterEntries.push({
         anchor: fy(swl), colour: p.cat[0],
-        text: 'SWL ' + S.fmt(swl, 2) + ' m', swl: true,
+        text: 'SWL ' + C.pyFixed(swl, 2) + ' m', swl: true,
       });
     }
     (design.water_strikes_m || []).forEach(function (strike) {
+      /* named for what it is: a bare "12 m" beside an arrow read as
+       * anything from a casing joint to a sample depth */
       gutterEntries.push({
         anchor: fy(strike), colour: p.secondary,
-        text: 'strike ' + S.fmt(strike, strike % 1 ? 1 : 0) + ' m',
+        text: 'water strike ' + formatG(strike) + ' m',
       });
     });
     stackLabels(gutterEntries, 14, groundY + 7, bottomY - 2)
@@ -1564,39 +1675,49 @@
       if (b < a) return;
       callouts.push({ anchor: fy((a + b) / 2), text: text });
     }
-    callout(-stickup, 0, 'Stick-up ' + S.fmt(stickup, 1) + ' m, ' +
-      trim(design.casing_diameter_in) + '" ' + (design.casing_material || 'uPVC') +
-      ' in a ' + trim(design.borehole_diameter_in) + '" hole');
+    function span(top, bottom) {
+      return formatG(top) + '-' + formatG(bottom) + ' m';
+    }
+    /* the diameters are in the header block; the callout keeps the stick-up */
+    callout(-stickup, 0, 'stick-up ' + formatG(stickup) + ' m');
     if (design.sanitary_seal) {
       callout(design.sanitary_seal[0], design.sanitary_seal[1],
-        'Cement sanitary seal ' + S.fmt(design.sanitary_seal[0], 1) + '–' +
-        S.fmt(design.sanitary_seal[1], 1) + ' m');
+        'cement grout 0-' + formatG(design.sanitary_seal[1]) + ' m');
     }
     if (design.backfill && design.backfill[1] > design.backfill[0]) {
       callout(design.backfill[0], design.backfill[1],
-        'Backfill ' + S.fmt(design.backfill[0], 1) + '–' +
-        S.fmt(design.backfill[1], 1) + ' m');
+        'backfill ' + span(design.backfill[0], design.backfill[1]));
     }
     if (design.gravel_pack) {
       callout(design.gravel_pack[0], design.gravel_pack[1],
-        'Gravel pack ' + S.fmt(design.gravel_pack[0], 1) + '–' +
-        S.fmt(design.gravel_pack[1], 1) + ' m');
+        fillStyle.label + ' ' + span(design.gravel_pack[0], design.gravel_pack[1]));
     }
     segments.forEach(function (seg) {
       var label = seg.kind === 'screen'
-        ? 'Screen ' + S.fmt(seg.top_m, 1) + '–' + S.fmt(seg.bottom_m, 1) + ' m' +
-          (design.screen_slot_mm ? ', ' + trim(design.screen_slot_mm) + ' mm slot' : '')
+        ? 'screen ' + span(seg.top_m, seg.bottom_m) +
+          (design.screen_slot_mm ? ', ' + formatG(design.screen_slot_mm) + ' mm slot' : '')
         : seg.kind === 'sump'
-          ? 'Sump ' + S.fmt(seg.top_m, 1) + '–' + S.fmt(seg.bottom_m, 1) + ' m'
-          : 'Plain casing ' + S.fmt(seg.top_m, 1) + '–' + S.fmt(seg.bottom_m, 1) + ' m';
+          ? 'sump (sediment trap) ' + span(seg.top_m, seg.bottom_m) +
+            ',\nbottom plug at ' + formatG(depth) + ' m'
+          : 'plain casing ' + span(seg.top_m, seg.bottom_m);
       callout(seg.top_m, seg.bottom_m, label);
     });
+    if (!hasSump) callout(depth, depth, 'bottom plug at ' + formatG(depth) + ' m');
     if (intake !== null) {
-      callout(intake, intake, 'Pump intake ' + S.fmt(intake, intake % 1 ? 1 : 0) + ' m');
+      /* a design's pump is where the pump should go; only an as-built
+       * record can say where one is */
+      callout(intake, intake, 'pump intake ' + formatG(intake) + ' m' +
+        (asBuilt ? '' : ' (recommended)'));
     }
 
+    /* a newline in a callout is a break the caller chose, so a unit is
+     * never wrapped away from its number */
     var wrapped = callouts.map(function (c) {
-      return { anchor: c.anchor, lines: wrapText(c.text, labelMaxW, 9.5) };
+      var lines = [];
+      String(c.text).split('\n').forEach(function (part) {
+        lines = lines.concat(wrapText(part, labelMaxW, 9.5));
+      });
+      return { anchor: c.anchor, lines: lines };
     });
     var tallest = wrapped.reduce(function (m, c) { return Math.max(m, c.lines.length); }, 1);
     var gap = Math.max(15, tallest * 11 + 3);
@@ -3098,7 +3219,10 @@
    * engine reads the same table in groundwater/mapping/regional.py; change
    * one and change the other, or the two engines draw the same survey with
    * different symbols and a reader holding both reports cannot line them up. */
+  /* the sounding the survey recommends drilling at: the one marker on a
+   * siting map that has to be unmistakable */
   var AREA_MARKERS = {
+    'recommended point': { kind: 'star', colour: '#B00020', size: 8 },
     'VES point': { kind: 'triangle', colour: '#1F5C8B' },
     borehole: { kind: 'circle', colour: '#0F7B3F' },
     'water point': { kind: 'square', colour: '#7B5AA6' },

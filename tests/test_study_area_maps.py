@@ -635,7 +635,7 @@ def test_a_correlation_across_ground_nobody_surveyed_says_so():
     far = close[:]
     far[-1].site_easting = float(far[-1].site_easting) + 20_000.0
     note = _correlation_note(traverse_profile(far), reach)
-    assert "no measurement between them" in note
+    assert "no measurement between those stations" in note
     assert "times the" in note
 
 
@@ -941,3 +941,127 @@ def test_the_national_map_carries_no_window_caveat():
     assert "km window" not in text, "the national map claims a window"
     assert "Freetown Layered Complex" in text
     assert "Not mapped at this scale" in text
+
+
+# ---------------------------------------------------------------------------
+# A straight traverse is the ordinary field layout, not a crash
+# ---------------------------------------------------------------------------
+
+def _collinear_interps(n: int = 3, spacing_m: float = 50.0):
+    """n copies of a sounding pegged exactly along one easting line."""
+    soundings, interps = _traverse(n=n)
+    for k, (s, i) in enumerate(zip(soundings, interps, strict=True)):
+        s.site.easting = 708958.0 + spacing_m * k
+        s.site.northing = 926355.0
+        i.site_easting = s.site.easting
+        i.site_northing = s.site.northing
+    return soundings, interps
+
+
+def test_points_on_one_line_enclose_no_area():
+    from groundwater.mapping import points_enclose_an_area
+
+    assert not points_enclose_an_area([0.0, 50.0, 100.0], [0.0, 0.0, 0.0])
+    assert not points_enclose_an_area([0.0, 50.0], [0.0, 10.0])
+    assert points_enclose_an_area([0.0, 50.0, 100.0], [0.0, 30.0, 0.0])
+
+
+def test_a_straight_traverse_draws_its_points_rather_than_crashing(tmp_path):
+    """Three pegs on one line used to raise a Qhull 'initial simplex is
+    flat' error, a RuntimeError that walked past every except ValueError
+    between the map and the report and took the whole document down."""
+    from groundwater.mapping import MapPoint, suitability_map
+
+    _soundings, interps = _collinear_interps()
+    for name, fn in (
+        ("aquifer", aquifer_thickness_map),
+        ("protective", protective_capacity_map),
+    ):
+        path = fn(interps, zone=28, path=tmp_path / f"{name}.png")
+        assert path.stat().st_size > 10_000, name
+    points = [
+        MapPoint(label=f"P{k}", easting=708958.0 + 50.0 * k, northing=926355.0,
+                 value=60.0 + k, kind="Good", rank=3 - k)
+        for k in range(3)
+    ]
+    fig = suitability_map(points, zone=28)
+    try:
+        said = " ".join(t.get_text() for t in fig.axes[0].texts)
+    finally:
+        import matplotlib.pyplot as plt
+        plt.close(fig)
+    assert "enclose no area" in said
+
+
+def test_a_straight_traverse_still_gets_its_report(tmp_path):
+    from groundwater.reporting.geophysical import (
+        GeophysicalReportInputs,
+        build_geophysical_report,
+    )
+    from groundwater.ves import invert_sounding
+
+    soundings, interps = _collinear_interps()
+    inversions = [invert_sounding(s) for s in soundings]
+    path = build_geophysical_report(
+        GeophysicalReportInputs(soundings=soundings, inversions=inversions,
+                                interpretations=interps, figures_dir=tmp_path),
+        tmp_path / "collinear.docx",
+    )
+    assert path.exists() and path.stat().st_size > 100_000
+
+
+# ---------------------------------------------------------------------------
+# A section joins stations that can be correlated, and no others
+# ---------------------------------------------------------------------------
+
+def test_a_section_across_an_uncorrelatable_gap_is_refused(tmp_path):
+    """Two Rokel soundings 20.7 km apart are not a 60 m section."""
+    from groundwater.mapping import geoelectric_section_along_traverse
+
+    _soundings, interps = _traverse(n=2)
+    interps[1].site_easting = interps[0].site_easting + 20_750.0
+    interps[1].site_northing = interps[0].site_northing
+    with pytest.raises(ValueError, match="no measurement between"):
+        geoelectric_section_along_traverse(interps, path=tmp_path / "section.png")
+
+
+def test_a_wide_gap_on_a_section_is_left_uncorrelated():
+    from groundwater.mapping import geoelectric_section_along_traverse
+    from groundwater.mapping.subsurface import _correlation_note, traverse_profile
+
+    _soundings, interps = _traverse(n=3)
+    base_e, base_n = interps[0].site_easting, interps[0].site_northing
+    for k, gap in enumerate((0.0, 60.0, 5_000.0)):
+        interps[k].site_easting = base_e + gap
+        interps[k].site_northing = base_n
+    profile = traverse_profile(interps)
+    reach = max(i.investigation_depth_m for i in interps)
+    note = _correlation_note(profile, reach, [False, True])
+    assert "No boundary is correlated across the gap" in note
+    assert "4,940 m" in note
+    fig = geoelectric_section_along_traverse(interps)
+    try:
+        said = " ".join(t.get_text() for t in fig.axes[0].texts)
+    finally:
+        import matplotlib.pyplot as plt
+        plt.close(fig)
+    assert "No boundary is correlated" in said
+
+
+def test_the_pseudosection_does_not_paint_across_a_wide_gap():
+    soundings, interps = _traverse(n=2)
+    interps[1].site_easting = interps[0].site_easting + 20_750.0
+    interps[1].site_northing = interps[0].site_northing
+    soundings[1].site.easting = interps[1].site_easting
+    soundings[1].site.northing = interps[1].site_northing
+    profile = traverse_profile(interps)
+    fig = apparent_resistivity_pseudosection(soundings, profile)
+    try:
+        ax = fig.axes[0]
+        said = " ".join(t.get_text() for t in ax.texts)
+        filled = [c for c in ax.collections if type(c).__name__ != "PathCollection"]
+    finally:
+        import matplotlib.pyplot as plt
+        plt.close(fig)
+    assert "No colour is interpolated across" in said
+    assert not filled, "nothing should be contoured between two stations 20 km apart"

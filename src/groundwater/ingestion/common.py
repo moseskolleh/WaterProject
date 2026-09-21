@@ -60,6 +60,8 @@ LABEL_PATTERNS: dict[str, list[str]] = {
     "sample_date": [r"^sample\s*date", r"^date\s*sampled"],
     "grouting_depth_m": [r"^grout(ing)?\b"],
     "drill_rig": [r"^drill\s*rig"],
+    "installed_screens": [r"^screens?\s*installed", r"^installed\s*screens?",
+                          r"^screens?\s*(set|as\s*built)"],
 }
 
 _COMPILED = {

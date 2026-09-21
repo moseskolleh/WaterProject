@@ -50,13 +50,23 @@ class SuitabilityComponents:
 @dataclass
 class SitingSuitability:
     sounding_id: str
-    suitability: float  # 0-100
+    suitability: float  # 0-100, the geological score
     grade: str  # Poor / Moderate / Good / Very good
     components: SuitabilityComponents
     rationale: str
     easting: float | None = None
     northing: float | None = None
     rank: int | None = None
+    #: 0-1: how far the model fit and an unresolved basement discount the
+    #: score. The points are ranked on suitability x confidence, so a point
+    #: whose curve was fitted to 27 percent does not outrank one fitted to
+    #: 13 percent on a few ohm-m of half-space resistivity.
+    confidence: float = 1.0
+
+    @property
+    def weighted(self) -> float:
+        """The number the ranking is decided on."""
+        return self.suitability * self.confidence
 
 
 def _grade(score: float) -> str:
@@ -132,8 +142,12 @@ def _rationale(interp: SiteInterpretation, comp: SuitabilityComponents) -> str:
         )
     parts = []
     thick = interp.aquifer_thickness_m
+    open_ended = getattr(interp, "basement_not_resolved", False)
     parts.append(
-        f"about {thick:.0f} m of interpreted water-bearing thickness"
+        (f"at least {thick:.0f} m of interpreted water-bearing thickness, the "
+         "base of the zone being below the depth the sounding resolves"
+         if open_ended else
+         f"about {thick:.0f} m of interpreted water-bearing thickness")
         + (" (thick)" if comp.aquifer_thickness >= 0.7 else
            " (modest)" if comp.aquifer_thickness >= 0.4 else " (thin)")
     )
@@ -149,7 +163,44 @@ def _rationale(interp: SiteInterpretation, comp: SuitabilityComponents) -> str:
         parts.append(
             f"overburden of about {interp.depth_to_basement_m:.0f} m that limits the target"
         )
-    return "Driven by " + "; ".join(parts) + "."
+    text = "Driven by " + "; ".join(parts) + "."
+    confidence = getattr(interp, "confidence", 1.0)
+    if confidence < 1.0:
+        reasons = []
+        err = getattr(interp, "fit_error_percent", None)
+        if getattr(interp, "fit_quality", "ok") != "ok":
+            reasons.append(f"a model fit of {err:.1f} percent (ERR)")
+        if open_ended:
+            reasons.append("a basement the sounding did not reach")
+        text += (
+            f" Confidence {confidence:.2f}: "
+            + " and ".join(reasons)
+            + " discount the score before ranking."
+        )
+    return text
+
+
+def ranking_tie(results: list["SitingSuitability"], within_points: float = 3.0) -> str:
+    """One sentence when the top two points cannot be told apart.
+
+    Two weighted scores within a few points of each other are the same
+    number for siting purposes: a table that ranks them 1st and 2nd on a
+    difference hidden by rounding gives the client a preference with no
+    visible basis. Returns "" when the ranking is clear or there is one point.
+    """
+    ranked = sorted(results, key=lambda r: r.rank if r.rank is not None else 99)
+    if len(ranked) < 2:
+        return ""
+    first, second = ranked[0], ranked[1]
+    if abs(first.weighted - second.weighted) >= within_points:
+        return ""
+    return (
+        f"Points {first.sounding_id} and {second.sounding_id} are indistinguishable "
+        f"on geophysical grounds (confidence-weighted suitability "
+        f"{first.weighted:.1f} and {second.weighted:.1f}); {first.sounding_id} is "
+        "listed first by name only, and the choice between them should be made "
+        "on access, sanitary distances and the community's preference."
+    )
 
 
 def assess_siting(
@@ -185,10 +236,12 @@ def assess_siting(
                 rationale=_rationale(interp, comp),
                 easting=interp.site_easting,
                 northing=interp.site_northing,
+                confidence=round(float(getattr(interp, "confidence", 1.0)), 3),
             )
         )
-    # rank: highest suitability first, ties broken by sounding id for stability
-    ranked = sorted(results, key=lambda r: (-r.suitability, r.sounding_id))
+    # rank on the confidence-weighted score, highest first; ties broken by
+    # sounding id for stability, and said in words by ranking_tie()
+    ranked = sorted(results, key=lambda r: (-r.weighted, r.sounding_id))
     for rank, result in enumerate(ranked, start=1):
         result.rank = rank
     return ranked
@@ -210,8 +263,11 @@ def suitability_map_points(results: list[SitingSuitability]):
                 label=f"{r.sounding_id}",
                 easting=float(r.easting),
                 northing=float(r.northing),
-                value=r.suitability,
+                # the confidence-weighted score: the number the ranking is
+                # decided on, so the map colours agree with the table's order
+                value=round(r.weighted, 1),
                 kind=r.grade,
+                rank=r.rank,
             )
         )
     return points

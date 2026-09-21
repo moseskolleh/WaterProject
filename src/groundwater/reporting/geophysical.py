@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ..config import Config
+from ..config import Config, VESConfig
 from ..geo import infer_zone_for_sierra_leone
 from ..mapping import (
     apparent_resistivity_pseudosection,
@@ -30,13 +30,21 @@ from ..mapping import (
     geoelectric_section_along_traverse,
     protective_capacity_map,
     suitability_map,
+    suitability_map_state,
     traverse_profile,
 )
 from ..models import DataFlag, VESSounding
-from ..siting import assess_siting, suitability_map_points
-from ..utils import fmt_num, safe_slug
+from ..siting import assess_siting, ranking_tie, suitability_map_points
+from ..mapping.lithology import region_of
+from ..utils import fmt_num, plural, plural_noun, safe_slug, utm_text
 from ..ves.classify import classify_curve
-from ..ves.interpret import SiteInterpretation, drilling_preference_table
+from ..ves.interpret import (
+    SiteInterpretation,
+    drilling_depth_text,
+    drilling_preference_table,
+    rank_interpretations,
+    zone_text,
+)
 from ..ves.inversion import InversionResult
 from ..ves.plots import plot_model_pseudosection, plot_sounding_curve
 from .citations import GLOSSARY, references_for
@@ -92,6 +100,13 @@ class GeophysicalReportInputs:
     #: as ``(path, caption)`` pairs in the order they should appear.
     subsurface_figures: list[tuple[Path, str]] = field(default_factory=list)
     survey_photo_path: Path | None = None
+    #: A previous interpretation of the same soundings, keyed by sounding
+    #: id - the IPI2Win models transcribed from the original survey report,
+    #: say. Each is drawn dashed on its curve figure and tabled beside the
+    #: toolkit's model with its reported ERR and the ERR this toolkit gets
+    #: for it on the same readings, so a difference is shown, not hidden.
+    reference_models: dict | None = None
+    reference_label: str = "IPI2Win model (as reported)"
     geology_text: str = ""
     reconnaissance_date: str = ""
     reconnaissance_notes: str = ""
@@ -107,10 +122,48 @@ class GeophysicalReportInputs:
     readiness: Any = None
 
 
-def _geology_for(district: str, override: str) -> str:
+def _geology_for(site, override: str) -> str:
+    """The geology paragraph, from the map under the site.
+
+    With a GPS fix the paragraph names the USGS unit the site sits on and
+    the BGS aquifer class, through the same crosswalk the map legend uses,
+    so the text and Figures 3 and 4 cannot disagree. Without a fix, the
+    district's region decides; the Western Area gets the Freetown Complex
+    paragraph because the whole peninsula is the Freetown Complex, not
+    because the word "western" appears.
+    """
     if override:
         return override
-    if "western" in (district or "").lower():
+    district = getattr(site, "district", "") or ""
+    latlon = getattr(site, "latlon", None)
+    if latlon is not None:
+        from ..mapping import aquifer_unit_at, geology_unit_at
+        from ..mapping.lithology import describe
+
+        lat, lon = latlon
+        unit = geology_unit_at(lat, lon)
+        aquifer = aquifer_unit_at(lat, lon)
+        parts = []
+        if unit is not None:
+            told = describe(unit.glg, district)
+            parts.append(
+                "The site lies on the unit the USGS Geologic Map of Africa "
+                f"maps as {unit.unit} ({unit.glg}). "
+                + (told if told else "")
+            )
+        if aquifer is not None:
+            parts.append(
+                "The BGS Africa Groundwater Atlas classes the aquifer here as "
+                f"{aquifer.unit}"
+                + (f" ({aquifer.era.lower()})" if aquifer.era else "") + "."
+            )
+        if parts:
+            return " ".join(p.strip() for p in parts) + (
+                " Groundwater potential depends on the thickness of the "
+                "weathered zone and the degree of fracturing beneath it, which "
+                "the soundings below resolve."
+            )
+    if region_of(district) == "Western Area":
         return _FREETOWN_GEOLOGY
     return _DEFAULT_GEOLOGY
 
@@ -131,6 +184,12 @@ def build_geophysical_report(
     client = site.client or "the client"
 
     rb = ReportBuilder(config.style, title=f"Geophysical Survey Report - {community}")
+
+    # One ranking for the whole document, assigned before anything reads it:
+    # the executive summary, the preference table, the suitability section
+    # and the recommendations all name the same preferred point because they
+    # all read `rank`, and rank is the confidence-weighted suitability.
+    rank_interpretations(inputs.interpretations, config=config.ves)
 
     # ---- cover -------------------------------------------------------------
     rb.cover(
@@ -173,24 +232,38 @@ def build_geophysical_report(
 
     # ---- 2 background / geology ---------------------------------------------
     rb.heading("2. Background and Geology of the Project Area", 1)
-    rb.paragraph(_geology_for(district, inputs.geology_text), align="justify")
+    rb.paragraph(_geology_for(site, inputs.geology_text), align="justify")
     # the soundings go on the study area map, so a reader can see the survey
-    # laid out in the area rather than having to hold two figures together
+    # laid out in the area rather than having to hold two figures together;
+    # the recommended one gets the one marker on a siting map that has to
+    # be unmistakable, and the site star is not drawn on top of whichever
+    # sounding happened to be first on the sheet
+    preferred = _preferred(inputs.interpretations)
     survey_overlay = [
         {"lat": s.site.latlon[0], "lon": s.site.latlon[1],
-         "label": s.sounding_id, "kind": "VES point"}
+         "label": s.sounding_id,
+         "kind": ("recommended point" if s.sounding_id == preferred.sounding_id
+                  else "VES point")}
         for s in soundings if s.site.latlon is not None
     ]
     context_maps = context_map_figures(site, inputs.figures_dir, config.style,
-                                       points=survey_overlay)
+                                       points=survey_overlay, mark_site=False)
     if context_maps:
         if "study_area" in context_maps:
-            rb.figure(
-                context_maps["study_area"],
+            caption = (
                 f"Study area at {community}, with the survey points and its "
-                "location in Sierra Leone inset. Boundaries from "
-                "geoBoundaries (CC BY 4.0).",
+                "location in Sierra Leone inset. The star is the recommended "
+                f"drilling point, {preferred.sounding_id}."
             )
+            spread = _survey_spread_km(soundings)
+            if spread > 5.0:
+                caption += (
+                    f" The survey points are up to {spread:.1f} km apart, which "
+                    "is unusually far for one site; the positions should be "
+                    "checked against the field notes."
+                )
+            caption += " Boundaries from geoBoundaries (CC BY 4.0)."
+            rb.figure(context_maps["study_area"], caption)
         rb.figure(
             context_maps["admin"],
             f"Location of {community}. Boundaries from geoBoundaries "
@@ -212,35 +285,36 @@ def build_geophysical_report(
     # ---- 3 field work -----------------------------------------------------------
     rb.heading("3. Field Work", 1)
     rb.heading("3.1 Reconnaissance Survey", 2)
-    recon_date = inputs.reconnaissance_date or site.date
+    # What this section says has to be evidenced by the inputs. It used to
+    # assert a reconnaissance dated the survey day, a geomorphological
+    # survey of slopes and streams, and a formation assessment, for every
+    # survey, whatever the sheets held: a client read a day of field work
+    # nobody had recorded. A recorded date or notes are printed; without
+    # them the section says so.
+    if inputs.reconnaissance_date or inputs.reconnaissance_notes:
+        rb.paragraph(
+            "The reconnaissance survey selected the points for the "
+            "geophysical survey"
+            + (f" and was conducted on {inputs.reconnaissance_date}"
+               if inputs.reconnaissance_date else "")
+            + ".",
+            align="justify",
+        )
+        if inputs.reconnaissance_notes:
+            rb.paragraph("Field observations", bold=True)
+            rb.paragraph(inputs.reconnaissance_notes, align="justify")
+    else:
+        rb.paragraph(
+            "No reconnaissance record (date or field observations) was "
+            "supplied with the sounding data, so none is reported here. The "
+            "sounding points were taken as recorded on the field sheets"
+            + (f", dated {site.date}" if site.date else "") + ".",
+            align="justify",
+        )
     rb.paragraph(
-        "The aim of the reconnaissance survey was to select suitable points "
-        "for the geophysical survey. Existing water points, environmental "
-        "and other physical conditions were also assessed."
-        + (f" The field reconnaissance survey was conducted on {recon_date}." if recon_date else ""),
-        align="justify",
-    )
-    rb.paragraph("Geomorphological survey of the area", bold=True)
-    rb.paragraph(
-        inputs.reconnaissance_notes
-        or (
-            "The landscape and other physical features of the area were "
-            "examined, including slopes, drainage lines and streams, since "
-            "there is normally hydraulic continuity between groundwater and "
-            "surface water."
-        ),
-        align="justify",
-    )
-    rb.paragraph(
-        "Geological and hydrogeological survey to determine the formation "
-        "of the area and identify possible features",
-        bold=True,
-    )
-    rb.paragraph(
-        "The weathered products overlying the bedrock were assessed as the "
-        "principal prospect for groundwater, since groundwater occurs mostly "
-        "in weathered and unconsolidated materials compared with "
-        "consolidated and crystalline rocks.",
+        "The weathered zone over the bedrock and the fractured rock beneath "
+        "it are the groundwater prospects in this ground, and the soundings "
+        "below are interpreted for both.",
         align="justify",
     )
     if inputs.site_map_path and Path(inputs.site_map_path).exists():
@@ -261,22 +335,36 @@ def build_geophysical_report(
             f"Topographic map of the project area at {community}. "
             f"{inputs.topographic_map_credit}".strip(),
         )
-    if inputs.ground_profile_path and Path(inputs.ground_profile_path).exists():
+    else:
+        # silent before: a report with no topographic map said nothing
+        # about why, and a reader took the survey point map for one
+        rb.paragraph(
+            "No elevation model was supplied with this survey, so no "
+            "topographic map is drawn: the toolkit bundles none and invents "
+            "none. The elevations the crew recorded at the soundings are "
+            "the ground levels this report has.",
+            align="justify",
+        )
+    profile_path = inputs.ground_profile_path
+    if not (profile_path and Path(profile_path).exists()):
+        profile_path = _ground_profile_figure(inputs, community)
+    if profile_path is not None:
         rb.figure(
-            inputs.ground_profile_path,
+            profile_path,
             "Ground surface along the survey traverse, from the elevation "
             "recorded at each sounding.",
         )
 
-    rb.paragraph("Selection of traverse line for the geophysical survey", bold=True)
+    rb.paragraph("Sounding positions", bold=True)
+    placed = [s for s in soundings if s.site.easting is not None and s.site.northing is not None]
     rb.paragraph(
-        "The traverse line for the resistivity survey was selected on the "
-        "basis of geomorphologic and geological/hydrogeological features as "
-        "well as the location of the project area. Points for the vertical "
-        "electrical soundings were selected considering the available space "
-        "and the environmental and other physical conditions, and the "
-        "proposed borehole locations were marked with pegs for "
-        "identification.",
+        f"{plural(len(placed), 'sounding')} of {len(soundings)} "
+        + ("carry" if len(placed) != 1 else "carries")
+        + " a recorded GPS position, plotted on the survey point map. "
+        + (inputs.profiling_note if inputs.profiling_note else
+           "How the points were chosen on the ground is not recorded on the "
+           "field sheets; where a traverse or profiling was run, its notes "
+           "belong in the reconnaissance record above."),
         align="justify",
     )
 
@@ -294,40 +382,18 @@ def build_geophysical_report(
             f"Geophysical survey using the {instrument} equipment.",
         )
 
-    rb.heading("3.2.1 Resistivity Profiling", 3)
-    rb.paragraph(
-        inputs.profiling_note
-        or (
-            "Electrical resistivity profiling is usually carried out along a "
-            "selected traverse of 50 m to 100 m length at 10 m intervals to "
-            "determine the lateral variation of subsurface resistivities and "
-            "delineate anomalous points with groundwater potential. Where "
-            "the available land extent does not permit profiling, the "
-            "vertical electrical soundings are carried out at the selected "
-            "points directly."
-        ),
-        align="justify",
-    )
-
-    rb.heading("3.2.2 Selection of VES Points", 3)
+    rb.heading("3.2.1 Vertical Electrical Sounding (VES)", 3)
     labels = ", ".join(s.sounding_id for s in soundings)
+    arrays = sorted({(s.array_type or "schlumberger").capitalize() for s in soundings})
     rb.paragraph(
-        f"{len(soundings)} vertical electrical sounding point(s) were "
-        "selected based on the available space and the location of the "
-        "project area, considering geological, hydrogeological and "
-        f"environmental conditions. The points are labelled {labels} in "
-        "this report.",
-        align="justify",
-    )
-
-    rb.heading("3.2.3 Vertical Electrical Sounding (VES)", 3)
-    rb.paragraph(
-        "Vertical electrical soundings were carried out with the aim of "
-        "determining the formation resistivities and the depth to bedrock, "
-        "as well as the possibility of finding water bearing fractures or "
-        "aquifers at depth with their corresponding thicknesses. The "
-        "Schlumberger electrode configuration and the required procedures "
-        "were used for the soundings.",
+        f"{plural(len(soundings), 'vertical electrical sounding')} "
+        f"({labels}) {'was' if len(soundings) == 1 else 'were'} recorded with "
+        f"the {' and '.join(arrays)} electrode configuration, to determine the "
+        "formation resistivities and the depth to bedrock, and whether water "
+        "bearing fractures or a saturated weathered zone are present at depth "
+        "and how thick they are. No resistivity profiling record was supplied"
+        + ("." if not inputs.profiling_note else
+           "; the profiling note above describes what was run."),
         align="justify",
     )
 
@@ -336,23 +402,35 @@ def build_geophysical_report(
     # one inversion and one interpretation per sounding, built in lockstep by
     # every caller: a short list silently drops a point's whole analysis block
     # while the preference table below still ranks it
+    references = inputs.reference_models or {}
     for sounding, inversion, interp in zip(
         soundings, inputs.inversions, inputs.interpretations, strict=True
     ):
-        _sounding_block(rb, sounding, inversion, interp, inputs.figures_dir)
+        _sounding_block(rb, sounding, inversion, interp, inputs.figures_dir,
+                        config=config.ves,
+                        reference_model=references.get(sounding.sounding_id),
+                        reference_label=inputs.reference_label)
 
     # ---- preference table -----------------------------------------------------
-    rows = drilling_preference_table(inputs.interpretations)
+    rows = drilling_preference_table(inputs.interpretations, config=config.ves)
     header = list(rows[0].keys()) if rows else []
+    open_ended = any(i.basement_not_resolved for i in inputs.interpretations)
     rb.table(
         [[row[h] for h in header] for row in rows],
         header=header,
-        caption="List of VES points in order of preference for drilling.",
+        caption=(
+            "List of VES points in order of preference for drilling. The "
+            "resistivities are those of the fitted layers, not the apparent "
+            "resistivities read in the field."
+            + (" A water zone marked + continues below the depth the "
+               "sounding resolves, so its base and the drilling depth are "
+               "minima." if open_ended else "")
+        ),
         font_size_pt=8.5,
     )
 
     # ---- drill-target suitability --------------------------------------------
-    _suitability_block(rb, inputs, site)
+    _suitability_block(rb, inputs, site, config.ves)
 
     # ---- 5 conclusions and recommendations -------------------------------------
     rb.heading("5. Conclusions and Recommendations", 1)
@@ -364,7 +442,7 @@ def build_geophysical_report(
 
     # ---- 6 limitations and uncertainty -----------------------------------------
     rb.heading("6. Limitations and Uncertainty", 1)
-    rb.bullets(_limitations(inputs.inversions))
+    rb.bullets(_limitations(inputs.inversions, inputs.interpretations, config.ves))
 
     # ---- QA annex (optional) -----------------------------------------------------
     if inputs.include_qa_annex and inputs.flags:
@@ -390,8 +468,33 @@ def build_geophysical_report(
     return rb.save(out_path)
 
 
-def _limitations(inversions: list[InversionResult]) -> list[str]:
+def _limitations(
+    inversions: list[InversionResult],
+    interpretations: list[SiteInterpretation] | None = None,
+    config: VESConfig | None = None,
+) -> list[str]:
     """Honest, calibrated limitations for the VES interpretation."""
+    config = config or VESConfig()
+    interpretations = interpretations or []
+    spacings = [i.max_spacing_m for i in interpretations if i.max_spacing_m]
+    dois = [i.investigation_depth_m for i in interpretations if i.investigation_depth_m]
+    if spacings and dois:
+        fraction = config.depth_of_investigation_factor
+        fraction_text = "half" if abs(fraction - 0.5) < 1e-9 else f"{fraction:g} times"
+        depth_item = (
+            "A Schlumberger sounding resolves the ground to roughly "
+            f"{fraction_text} its largest AB/2, not to the spacing itself: with "
+            f"AB/2 expanded to {fmt_num(max(spacings))} m the depth of "
+            f"investigation here is about {fmt_num(max(dois))} m, and any "
+            "structure below it is not resolved. A layer that continues to that "
+            "depth has no base in these data."
+        )
+    else:
+        depth_item = (
+            "The depth of investigation is a fraction of the largest electrode "
+            "spacing (roughly half of AB/2 for a Schlumberger sounding), so any "
+            "structure below it is not resolved."
+        )
     items = [
         ("Resistivity models are not unique: different layered models can fit "
         "the same sounding curve almost equally well (the equivalence and "
@@ -401,21 +504,34 @@ def _limitations(inversions: list[InversionResult]) -> list[str]:
         ("A low resistivity layer can represent either a saturated, water "
         "bearing zone or a conductive clay; the interpretation is made from "
         "the geological context and must be confirmed by drilling."),
-        ("The depth of investigation is limited to roughly the maximum "
-        "electrode spacing, so any structure below the deepest reliable depth "
-        "is not resolved."),
+        depth_item,
         ("The survey indicates groundwater potential only. The actual yield and "
         "water quality can be confirmed only by test drilling, test pumping "
         "and laboratory analysis."),
     ]
     errs = [inv.fit_error_percent for inv in inversions if inv.fit_error_percent is not None]
     if errs:
-        items.insert(
-            0,
-            f"The fitted models reproduce the measured apparent resistivities "
-            f"to within {max(errs):.1f} percent (ERR); a larger misfit means a "
-            "less certain model.",
+        worst = max(errs)
+        sentence = (
+            "The fitted models reproduce the measured apparent resistivities "
+            f"to within {worst:.1f} percent (ERR); a larger misfit means a "
+            "less certain model."
         )
+        if worst > config.target_fit_percent:
+            over = [
+                inv.model.sounding_id or f"sounding {k + 1}"
+                for k, inv in enumerate(inversions)
+                if inv.fit_error_percent is not None
+                and inv.fit_error_percent > config.target_fit_percent
+            ]
+            sentence += (
+                f" The target is {config.target_fit_percent:g} percent, and "
+                + ", ".join(over)
+                + (" does" if len(over) == 1 else " do")
+                + " not reach it: the layer depths there are indicative, and "
+                "the ranking discounts them for it."
+            )
+        items.insert(0, sentence)
     return items
 
 
@@ -425,14 +541,31 @@ def _site_slug(site) -> str:
     return safe_slug(getattr(site, "community", "") or "site", "site")
 
 
+def _survey_spread_km(soundings: list[VESSounding]) -> float:
+    """The largest distance between any two positioned soundings, in km."""
+    from ..geo import geodesic_distance_m
+
+    placed = [s.site.latlon for s in soundings if s.site.latlon is not None]
+    widest = 0.0
+    for a in range(len(placed)):
+        for b in range(a + 1, len(placed)):
+            widest = max(widest, geodesic_distance_m(placed[a][0], placed[a][1],
+                                                     placed[b][0], placed[b][1]))
+    return widest / 1000.0
+
+
 def _sounding_block(
     rb: ReportBuilder,
     sounding: VESSounding,
     inversion: InversionResult,
     interp: SiteInterpretation,
     figures_dir: Path,
+    config: VESConfig | None = None,
+    reference_model=None,
+    reference_label: str = "reference model",
 ) -> None:
     """One data analysis block per sounding: tables, figures, narrative."""
+    config = config or VESConfig()
     site = sounding.site
     sid = sounding.sounding_id
     # site as well as sounding id: two surveys both with a sounding "A"
@@ -453,8 +586,8 @@ def _sounding_block(
         [
             ("Client", site.client), ("Community", site.community),
             ("Project", site.project or "Geophysical Survey"), ("Sounding Number", sid),
-            ("District", site.district), ("GPS Coordinate East", fmt_num(site.easting, 7)),
-            ("Date", site.date), ("GPS Coordinate North", fmt_num(site.northing, 7)),
+            ("District", site.district), ("GPS Coordinate East", utm_text(site, "easting")),
+            ("Date", site.date), ("GPS Coordinate North", utm_text(site, "northing")),
             ("Field Supervisor", site.supervisor),
             ("Elevation", fmt_num(site.elevation_m) + " m" if site.elevation_m else ""),
         ]
@@ -473,12 +606,21 @@ def _sounding_block(
         col_widths_cm=[1.5, 3.0, 3.0, 7.0],
     )
 
-    # curve + model figure
+    # curve + model figure, drawn to the depth of investigation, with the
+    # reference interpretation dashed beside the toolkit's where one exists
     curve_path = figures_dir / f"ves_curve_{safe_id}.png"
     plot_sounding_curve(
-        sounding, inversion.model, inversion.rho_calc, inversion.ab2, path=curve_path
+        sounding, inversion.model, inversion.rho_calc, inversion.ab2, path=curve_path,
+        depth_max=interp.investigation_depth_m or None,
+        reference_model=reference_model, reference_label=reference_label,
     )
-    rb.figure(curve_path, f"Schlumberger array VES curve and model at point {sid}.")
+    rb.figure(
+        curve_path,
+        f"Schlumberger array VES curve and model at point {sid}."
+        + (f" The dashed line is the {reference_label}." if reference_model is not None else "")
+        + " The model panel is drawn to the depth of investigation "
+        f"({fmt_num(interp.investigation_depth_m)} m).",
+    )
 
     # model table (IPI2Win layout) with linearised uncertainty factors
     rho_fac = inversion.rho_uncertainty_factor
@@ -499,7 +641,7 @@ def _sounding_block(
                 row["N"],
                 rho_cell,
                 h_cell,
-                "0/0" if row["z_m"] == "0/0" else fmt_num(row["z_m"]),
+                "half-space" if row["z_m"] == "0/0" else fmt_num(row["z_m"]),
             ]
         )
     err = inversion.fit_error_percent
@@ -514,18 +656,59 @@ def _sounding_block(
         ),
         col_widths_cm=[1.2, 4.6, 3.4, 2.8],
     )
+    # what else was tried, so the model in the table is seen as one choice
+    # among the candidates rather than the only reading of the curve
+    trials = [(n, e) for n, e in inversion.trials if e is not None]
+    if len(trials) > 1:
+        tried = "; ".join(f"{n} layers, {e:.1f}%" for n, e in trials)
+        chosen = inversion.model.n_layers
+        if err <= config.target_fit_percent:
+            why = (
+                f"the {chosen}-layer model is the simplest that reaches the "
+                f"{config.target_fit_percent:g} percent target"
+            )
+        else:
+            why = (
+                f"none reaches the {config.target_fit_percent:g} percent target, "
+                f"and the {chosen}-layer model is kept as the simplest within "
+                f"{(config.parsimony_fallback_ratio - 1) * 100:.0f} percent of "
+                "the best fit; the alternatives are equally admissible readings "
+                "of the same curve"
+            )
+        rb.paragraph(f"Models tried: {tried}. Of these {why}.", align="justify")
+    # a poorly resolved boundary is said to be one, in the sentence that
+    # the table caption's factor already implies
+    if h_fac is not None and len(h_fac):
+        weak = [
+            (inversion.model.depths_bottom[i], float(f))
+            for i, f in enumerate(h_fac) if f >= 2.0
+        ]
+        if weak:
+            rb.paragraph(
+                "The boundary at "
+                + ", ".join(f"{fmt_num(z)} m (x/ {f:.1f})" for z, f in weak)
+                + " is poorly resolved: within its uncertainty the model "
+                "collapses to one with a layer fewer, so the layer count "
+                "above is a reading of the curve rather than a property of it.",
+                align="justify",
+            )
+    if reference_model is not None:
+        _reference_model_block(rb, sid, inversion, reference_model, reference_label,
+                               sounding.array_type)
 
-    # pseudo-section figure
-    pseudo_path = figures_dir / f"ves_pseudosection_{safe_id}.png"
+    # the interpreted layer column, drawn to the depth of investigation
+    layer_path = figures_dir / f"ves_layer_section_{safe_id}.png"
     plot_model_pseudosection(
         inversion.model,
-        path=pseudo_path,
-        depth_max=interp.investigation_depth_m * 0.5,
+        path=layer_path,
+        depth_max=interp.investigation_depth_m or None,
         title=f"Layer section at {sid}",
     )
     rb.figure(
-        pseudo_path,
-        f"Pseudo-section showing resistivity and layer thicknesses at point {sid}.",
+        layer_path,
+        f"Interpreted one-dimensional layer section at point {sid}: the "
+        "resistivity and thickness of each fitted layer, drawn to the depth "
+        f"of investigation ({fmt_num(interp.investigation_depth_m)} m).",
     )
 
     # interpretation paragraph
@@ -533,9 +716,56 @@ def _sounding_block(
     rb.page_break()
 
 
-def _suitability_block(rb: ReportBuilder, inputs, site) -> None:
+def _reference_model_block(rb, sid, inversion, reference_model, label,
+                           array_type: str = "schlumberger") -> None:
+    """The previous interpretation of the same curve, beside the toolkit's.
+
+    The comparison the reader will make anyway is made for them: the
+    reference model's layers, the ERR it reported, and the ERR this
+    toolkit computes for that model on the same readings. Where the two
+    ERRs disagree, the reader is told rather than left to find it.
+    """
+    from ..ves.forward import forward_schlumberger, forward_wenner
+    from ..ves.inversion import fit_error_percent
+
+    forward = forward_wenner if str(array_type).startswith("wenner") else forward_schlumberger
+    recomputed = fit_error_percent(inversion.rho_obs, forward(reference_model, inversion.ab2))
+    reported = reference_model.fit_error_percent
+    rows = [
+        [row["N"], fmt_num(row["rho_ohm_m"], 4),
+         "" if row["h_m"] is None else fmt_num(row["h_m"]),
+         "half-space" if row["z_m"] == "0/0" else fmt_num(row["z_m"])]
+        for row in reference_model.as_table()
+    ]
+    caption = f"{label[0].upper() + label[1:]} at point {sid}"
+    if reported is not None:
+        caption += f", reported ERR = {reported:.1f}%"
+    caption += f"; on the readings tabled above this toolkit computes ERR = {recomputed:.1f}%."
+    rb.table(rows, header=["N", "rho (ohm-m)", "h (m)", "z (m)"], caption=caption,
+             col_widths_cm=[1.2, 4.6, 3.4, 2.8])
+    own = inversion.model
+    sentences = []
+    if reference_model.n_layers != own.n_layers:
+        sentences.append(
+            f"The reference interpretation has {reference_model.n_layers} layers "
+            f"where this one has {own.n_layers}."
+        )
+    if reported is not None and abs(recomputed - reported) > 5.0:
+        sentences.append(
+            f"Its reported misfit ({reported:.1f} percent) is not reproduced on "
+            f"these readings ({recomputed:.1f} percent): either the readings "
+            "it was fitted to differ from the transcribed sheet, or the misfit "
+            "was defined differently. Neither is settled here."
+        )
+    if sentences:
+        rb.paragraph(" ".join(sentences), align="justify")
+
+
+def _suitability_block(rb: ReportBuilder, inputs, site,
+                       config: VESConfig | None = None) -> None:
     """Ranked drill-target suitability scorecard, map and recommendation."""
-    suit = assess_siting(inputs.interpretations)
+    config = config or VESConfig()
+    suit = assess_siting(inputs.interpretations, config)
     if not suit:
         return
     rb.heading("Drill-target suitability", 2)
@@ -549,53 +779,73 @@ def _suitability_block(rb: ReportBuilder, inputs, site) -> None:
         align="justify",
     )
     rb.table(
-        [[s.rank, s.sounding_id, f"{s.suitability:.0f}", s.grade] for s in suit],
-        header=["Rank", "VES point", "Suitability (0 to 100)", "Grade"],
-        caption="Drill-target suitability of the surveyed points.",
-        col_widths_cm=[1.8, 4.0, 4.5, 3.7],
+        [[s.rank, s.sounding_id, f"{s.suitability:.1f}", f"{s.confidence:.2f}",
+          f"{s.weighted:.1f}", s.grade] for s in suit],
+        header=["Rank", "VES point", "Suitability (0 to 100)", "Confidence",
+                "Weighted", "Grade"],
+        caption=(
+            "Drill-target suitability of the surveyed points. Suitability is "
+            "the geological score; confidence discounts it for a model fit "
+            "above the target and for a water-bearing zone whose base the "
+            "sounding never reached; the points are ranked on the weighted "
+            "figure."
+        ),
+        col_widths_cm=[1.4, 3.0, 3.6, 2.4, 2.2, 3.4],
     )
+    # the same rank the rest of the document carries: rank_interpretations()
+    # ranks on the weighted suitability, so the table above and the preferred
+    # point named everywhere else agree by construction
     best = suit[0]
-    # The rest of the report (executive summary, conclusions, recommendations,
-    # drilling-preference table) selects the preferred point by interpretation
-    # score. Anchor the recommendation here to that same point so the document
-    # never recommends one point in the summary and a different one here; where
-    # the suitability scorecard's top differs, surface it as a note rather than
-    # a competing recommendation.
-    preferred_id = min(
-        inputs.interpretations, key=lambda i: (-i.score, i.sounding_id)
-    ).sounding_id
-    preferred = next((s for s in suit if s.sounding_id == preferred_id), best)
-    if preferred.sounding_id == best.sounding_id:
+    tie = ranking_tie(suit, within_points=config.ranking_tie_points)
+    if tie:
         rb.paragraph(
-            f"Point {best.sounding_id} has the highest suitability "
-            f"({best.suitability:.0f} out of 100, {best.grade.lower()}) and is the "
-            f"recommended drilling target. {best.rationale}",
+            f"{tie} Point {best.sounding_id}: {best.rationale}",
             align="justify",
         )
     else:
         rb.paragraph(
-            f"The recommended drilling target is point {preferred.sounding_id} "
-            f"(suitability {preferred.suitability:.0f} out of 100, "
-            f"{preferred.grade.lower()}), consistent with the ranked results "
-            f"elsewhere in this report. Point {best.sounding_id} scores highest "
-            f"on the suitability scorecard ({best.suitability:.0f}); where the two "
-            "measures differ, confirm the choice against the site conditions. "
-            f"{preferred.rationale}",
+            f"Point {best.sounding_id} ranks first (suitability "
+            f"{best.suitability:.0f} out of 100, {best.grade.lower()}, confidence "
+            f"{best.confidence:.2f}) and is the recommended drilling target. "
+            f"{best.rationale}",
             align="justify",
         )
     map_points = suitability_map_points(suit)
     if map_points:
         zone = site.utm_zone or infer_zone_for_sierra_leone(map_points[0].easting)
         smap = Path(inputs.figures_dir) / f"suitability_map_{_site_slug(site)}.png"
-        suitability_map(map_points, zone, path=smap)
-        rb.figure(
-            smap,
-            "Drill-target suitability of the surveyed points; greener is more "
-            "suitable. The interpolated surface is blanked outside the ground "
-            "the survey covered, except where the points lie on one line and "
-            "enclose no area - the figure says so on its own face when that "
-            "happens.",
-        )
+        try:
+            suitability_map(map_points, zone, path=smap)
+        except (ValueError, RuntimeError) as exc:
+            rb.paragraph(f"The drill-target map could not be drawn: {exc}")
+        else:
+            state = suitability_map_state(map_points)
+            caption = (
+                "Drill-target suitability of the surveyed points, coloured by "
+                "the confidence-weighted score; greener is more suitable."
+            )
+            if state["tie"]:
+                caption += (
+                    " The two highest-ranked points cannot be told apart on "
+                    "geophysical grounds, so neither is starred."
+                )
+            elif state["recommended"]:
+                caption += (
+                    f" The star is the recommended target, {state['recommended']}, "
+                    "with its grid coordinates."
+                )
+            if state["surface"]:
+                caption += (
+                    " The surface between the points is interpolated and blanked "
+                    "outside the ground they enclose."
+                )
+            elif state["n_points"] >= 3:
+                caption += (
+                    " The points lie on one line and enclose no area, so no "
+                    "surface is interpolated between them."
+                )
+            rb.figure(smap, caption)
+
     _add_subsurface_figures(rb, inputs.soundings, inputs.interpretations,
                             inputs, site)
 
@@ -617,13 +867,17 @@ def _add_subsurface_figures(rb, soundings, interpretations, inputs, site) -> Non
     figures_dir = Path(inputs.figures_dir)
     placed = [i for i in interpretations if i.site_easting is not None
               and i.site_northing is not None]
-    if len(placed) < 3 and not inputs.subsurface_figures:
+    if len(placed) < 2 and not inputs.subsurface_figures:
         return
     zone = site.utm_zone or (
         infer_zone_for_sierra_leone(placed[0].site_easting) if placed else 28
     )
     slug = _site_slug(site)
     made: list[tuple[Path, str]] = []
+    # what was not drawn, and why: a figure missing without a word reads as
+    # "the survey did not attempt this", and the reason is usually a GPS
+    # position nobody recorded, which a reviewer can ask for
+    not_drawn: list[str] = []
     plan = (
         (depth_to_bedrock_map, "depth_to_bedrock",
          ("Depth to bedrock across the surveyed ground, from the layered "
@@ -642,24 +896,34 @@ def _add_subsurface_figures(rb, soundings, interpretations, inputs, site) -> Non
           "well the ground above the aquifer resists downward contamination; "
           "it says nothing about yield.")),
     )
+    names = {
+        "depth_to_bedrock": "depth to bedrock map",
+        "aquifer_thickness": "aquifer thickness map",
+        "bedrock_elevation": "bedrock elevation map",
+        "protective_capacity": "protective capacity map",
+    }
     for fn, name, caption in plan:
         try:
             made.append((fn(placed, zone,
                             path=figures_dir / f"{name}_{slug}.png"), caption))
-        except ValueError:
-            continue  # the reason is per-figure and the others still stand
+        except (ValueError, RuntimeError) as exc:
+            # the reason is per-figure and the others still stand; a Qhull
+            # error on a straight traverse is a RuntimeError, and it used to
+            # walk past this line and take the whole report down
+            not_drawn.append(f"{names[name]}: {exc}")
     try:
         made.append((
             geoelectric_section_along_traverse(
                 placed, path=figures_dir / f"geoelectric_section_{slug}.png"),
             ("Interpreted geoelectric section along the traverse, with the "
-             "soundings at their surveyed spacing rather than evenly spaced. "
-             "Colour is layer resistivity; the dashed lines correlate "
-             "boundaries between neighbouring soundings and are an "
+             "soundings at their surveyed spacing rather than evenly spaced "
+             "and drawn to the depth of investigation. Colour is layer "
+             "resistivity; the dashed lines correlate boundaries between "
+             "neighbouring soundings within reach of each other and are an "
              "interpretation, not a measured contact."),
         ))
-    except (ValueError, KeyError):
-        pass
+    except (ValueError, KeyError, RuntimeError) as exc:
+        not_drawn.append(f"geoelectric section: {exc}")
     try:
         profile = traverse_profile(placed)
         pseudo = apparent_resistivity_pseudosection(
@@ -668,7 +932,8 @@ def _add_subsurface_figures(rb, soundings, interpretations, inputs, site) -> Non
             "Apparent resistivity along the traverse, as measured. Unlike "
             "every other section in this report it involves no inversion: "
             "each point is a reading at the station and electrode spacing "
-            "it was taken with. AB/2 is that spacing, not a depth."
+            "it was taken with. AB/2 is that spacing, not a depth. Colour is "
+            "interpolated only between stations within reach of each other."
         )
         if not profile.is_collinear:
             caption += (
@@ -677,22 +942,65 @@ def _add_subsurface_figures(rb, soundings, interpretations, inputs, site) -> Non
                 "rather than along it."
             )
         made.append((pseudo, caption))
-    except (ValueError, KeyError):
-        pass
+    except (ValueError, KeyError, RuntimeError) as exc:
+        not_drawn.append(f"apparent-resistivity pseudo-section: {exc}")
     made.extend(inputs.subsurface_figures)
-    if not made:
+    if not made and not not_drawn:
         return
     rb.heading("Subsurface maps from the survey", 2)
-    rb.paragraph(
-        "The maps in this section are drawn from the soundings themselves "
-        "rather than from a national dataset, so they carry the survey's own "
-        "resolution. Each interpolated surface is blanked outside the ground "
-        "the soundings enclose: a contour beyond the last peg is the "
-        "interpolator continuing a trend, and a borehole gets sited on it.",
-        align="justify",
-    )
+    if made:
+        rb.paragraph(
+            "The maps in this section are drawn from the soundings themselves "
+            "rather than from a national dataset, so they carry the survey's own "
+            "resolution. Each interpolated surface is blanked outside the ground "
+            "the soundings enclose: a contour beyond the last peg is the "
+            "interpolator continuing a trend, and a borehole gets sited on it.",
+            align="justify",
+        )
     for path, caption in made:
         rb.figure(path, caption)
+    if not_drawn:
+        rb.paragraph(
+            ("Not drawn from this survey, and why:" if made else
+             "No subsurface map or section could be drawn from this survey:"),
+            bold=True,
+        )
+        rb.bullets([_sentence(reason) for reason in not_drawn])
+
+
+def _ground_profile_figure(inputs: GeophysicalReportInputs, community: str):
+    """The ground profile the recorded levels support, or None.
+
+    Two soundings with positions and elevations are a profile; the report
+    used to leave it undrawn unless a caller drew it first.
+    """
+    from ..mapping.terrain import plot_ground_profile
+
+    levelled = [
+        i for i in inputs.interpretations
+        if getattr(i, "site_easting", None) is not None
+        and getattr(i, "site_northing", None) is not None
+        and getattr(i, "site_elevation_m", None) is not None
+    ]
+    if len(levelled) < 2:
+        return None
+    try:
+        profile = traverse_profile(levelled)
+        by_id = {i.sounding_id: i for i in levelled}
+        path = Path(inputs.figures_dir) / f"ground_profile_{safe_slug(community, 'site')}.png"
+        plot_ground_profile(
+            profile.chainage_m,
+            [by_id[label].site_elevation_m for label in profile.labels],
+            labels=list(profile.labels), path=path,
+        )
+        return path
+    except (ValueError, RuntimeError, KeyError):
+        return None
+
+
+def _sentence(text: str) -> str:
+    text = text.strip()
+    return text[0].upper() + text[1:] + ("" if text.endswith(".") else ".")
 
 
 def _executive_summary(
@@ -702,19 +1010,27 @@ def _executive_summary(
     district: str,
 ) -> tuple[list[str], list[str]]:
     """Compose the geophysical executive summary from the ranked results."""
-    # Select the preferred point by the same key drilling_preference_table
-    # uses (highest score, then sounding id). This does not rely on .rank,
-    # which is only assigned later when that table is built, so the summary
-    # is deterministic however many times the report is regenerated.
-    best = min(interpretations, key=lambda i: (-i.score, i.sounding_id))
+    # The preferred point is the one ranked first; build_geophysical_report
+    # ranks before anything reads it, and the fallback keeps an unranked
+    # list deterministic.
+    best = _preferred(interpretations)
     n = len(soundings)
     zones = best.water_zones
     if zones:
-        zone_txt = "; ".join(f"{int(t)} m to {int(b)} m" for t, b in zones)
+        zone_txt = "; ".join(
+            zone_text(t, b, open_ended=(best.basement_not_resolved and (t, b) == zones[-1]))
+            for t, b in zones
+        )
         zone_sentence = (
             "The most promising water bearing zone at the preferred point "
-            f"lies between {zone_txt}."
+            f"lies from {zone_txt}."
         )
+        if best.basement_not_resolved:
+            zone_sentence += (
+                " Its base is not resolved: the sounding sees to about "
+                f"{best.investigation_depth_m:.0f} m and the conductive ground "
+                "continues below that, so the thickness is a minimum."
+            )
     else:
         zone_txt = ""
         zone_sentence = (
@@ -724,18 +1040,27 @@ def _executive_summary(
         )
     para = (
         f"A geophysical siting survey using {n} vertical electrical sounding "
-        f"point(s) was carried out at {community}"
+        f"{'point' if n == 1 else 'points'} was carried out at {community}"
         + (f", {district}" if district else "")
         + f". Point {best.sounding_id} is recommended as the preferred "
-        f"drilling location, to a depth of about {best.max_drilling_depth_m:.0f} m. "
+        f"drilling location, to a depth of {drilling_depth_text(best)}. "
         + zone_sentence
     )
     key = [
         f"Preferred drilling point: {best.sounding_id}.",
-        f"Recommended drilling depth: about {best.max_drilling_depth_m:.0f} m.",
+        f"Recommended drilling depth: {drilling_depth_text(best)}.",
     ]
     if zone_txt:
-        key.append(f"Target water zone(s): {zone_txt}.")
+        key.append(f"Target water {plural_noun(len(zones), 'zone')}: {zone_txt}.")
+    if best.fit_error_percent is not None:
+        fit = f"Model fit at the preferred point: ERR {best.fit_error_percent:.1f} percent"
+        if best.fit_quality == "unreliable":
+            fit += (" (well above target; the layer depths are indicative only "
+                    f"and the ranking confidence is {best.confidence:.2f})")
+        elif best.fit_quality == "poor":
+            fit += (" (above target; the layer depths are approximate and the "
+                    f"ranking confidence is {best.confidence:.2f})")
+        key.append(fit + ".")
     key.append(
         "Yield and water quality can only be confirmed by test drilling and "
         "test pumping."
@@ -743,11 +1068,16 @@ def _executive_summary(
     return [para], key
 
 
+def _preferred(interpretations: list[SiteInterpretation]) -> SiteInterpretation:
+    """The point ranked first, or a deterministic stand-in when unranked."""
+    return min(interpretations, key=lambda i: (i.rank or 99, -i.score, i.sounding_id))
+
+
 def _conclusions(
     interpretations: list[SiteInterpretation], district: str, community: str
 ) -> list[str]:
     items = []
-    if district and "western" in district.lower():
+    if district and region_of(district) == "Western Area":
         items.append(
             "The project area is part of the Freetown Basic Complex "
             "lithological formation."
@@ -758,17 +1088,23 @@ def _conclusions(
     )
     for interp in interpretations:
         if interp.water_zones:
-            zones = " and ".join(f"{int(t)} m to {int(b)} m" for t, b in interp.water_zones)
+            zones = " and ".join(
+                zone_text(t, b, open_ended=(interp.basement_not_resolved
+                                            and (t, b) == interp.water_zones[-1]))
+                for t, b in interp.water_zones
+            )
             items.append(
                 f"The potential water zones at point {interp.sounding_id} are "
-                f"found between {zones}."
+                f"found from {zones}."
+                + (" The base of the deepest zone lies below the depth the "
+                   "sounding resolves." if interp.basement_not_resolved else "")
             )
         else:
             items.append(
                 f"No clearly water bearing zone was resolved at point "
                 f"{interp.sounding_id} within the investigated depth."
             )
-    best = min(interpretations, key=lambda i: i.rank or 99)
+    best = _preferred(interpretations)
     items.append(
         f"Point {best.sounding_id} is selected as the preferred point for "
         "drilling according to the results and data analysis."
@@ -785,7 +1121,7 @@ def _conclusions(
 
 
 def _recommendations(interpretations: list[SiteInterpretation]) -> list[str]:
-    best = min(interpretations, key=lambda i: i.rank or 99)
+    best = _preferred(interpretations)
     others = [i for i in interpretations if i is not best]
     items = [
         (f"Drilling should be carried out at the selected point "
@@ -793,18 +1129,24 @@ def _recommendations(interpretations: list[SiteInterpretation]) -> list[str]:
     ]
     if others:
         items.append(
-            "Point(s) "
+            ("Point " if len(others) == 1 else "Points ")
             + ", ".join(i.sounding_id for i in others)
-            + " are optional drilling points."
+            + (" is an optional drilling point." if len(others) == 1
+               else " are optional drilling points.")
         )
     depths = "; ".join(
-        f"{i.max_drilling_depth_m:.0f} m at point {i.sounding_id}"
-        for i in sorted(interpretations, key=lambda i: i.rank or 99)
+        f"{drilling_depth_text(i)} at point {i.sounding_id}"
+        for i in sorted(interpretations, key=lambda i: (i.rank or 99, i.sounding_id))
     )
+    open_ended = any(i.basement_not_resolved for i in interpretations)
     items.append(
-        f"The maximum drilling depth should be {depths}, to cut across the "
-        "probable water zones for sustainable productivity and a high yield "
-        "of the borehole(s)."
+        f"The drilling depth should be {depths}, to cut across the probable "
+        "water zones."
+        + (" Where the depth is a minimum, the water-bearing zone continues "
+           "below what the survey resolves: drill on while the formation is "
+           "water bearing, guided by the strikes and the penetration rate, and "
+           "stop in fresh rock."
+           if open_ended else "")
     )
     items.append(
         "The borehole must be constructed using correct and standard "

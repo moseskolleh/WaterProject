@@ -5,9 +5,30 @@ from __future__ import annotations
 import datetime
 from pathlib import Path
 
+import re
+
 from ..models import DataFlag, DrillingLog, LithologyInterval
 from ..utils import clean_text, parse_depth_interval, parse_number
 from . import common
+
+_SCREEN_RANGE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(?:-|–|to)\s*(\d+(?:\.\d+)?)")
+
+
+def parse_installed_screens(value) -> list[tuple[float, float]]:
+    """``"25-35; 48-53 m"`` -> ``[(25.0, 35.0), (48.0, 53.0)]``.
+
+    The as-built screens a crew writes on the sheet, as ranges separated by
+    anything. A cell with no range in it records no screens.
+    """
+    text = clean_text(value)
+    out = []
+    for match in _SCREEN_RANGE_RE.finditer(text):
+        top, bottom = float(match.group(1)), float(match.group(2))
+        if bottom < top:
+            top, bottom = bottom, top
+        if bottom > top:
+            out.append((top, bottom))
+    return sorted(out)
 
 
 def _find_log_header(grid: list[list]) -> tuple[int, dict] | None:
@@ -118,6 +139,7 @@ def drilling_from_grid(grid: list[list], source: str = "") -> DrillingLog:
         intervals=sorted(intervals, key=lambda iv: iv.top_m),
         water_strikes_m=sorted(strikes),
         grouting_depth_m=fields.get("grouting_depth_m"),
+        installed_screens_m=parse_installed_screens(fields.get("installed_screens", "")),
         start_date=str(fields.get("start_date", "")),
         completion_date=str(fields.get("completion_date", "")),
         status=fields.get("status", ""),

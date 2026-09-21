@@ -174,3 +174,34 @@ def safe_slug(value, default: str = "item") -> str:
     """
     slug = re.sub(r"[^A-Za-z0-9_-]+", "_", str(value or "")).strip("_")
     return slug or default
+
+
+def utm_text(site, axis: str) -> str:
+    """``"778000 m E (UTM zone 28N)"``: a grid coordinate as a coordinate.
+
+    Reports printed "778,000" with a thousands separator and no zone, which
+    is a number, not a position anyone can type into a GPS.
+    """
+    value = getattr(site, axis, None)
+    if value is None:
+        return ""
+    utm = getattr(site, "utm", None)
+    zone = f" (UTM zone {utm.zone}N)" if utm is not None and axis == "easting" else ""
+    letter = "E" if axis == "easting" else "N"
+    return f"{float(value):.0f} m {letter}{zone}"
+
+
+def plural(count: int, singular: str, plural_form: str | None = None) -> str:
+    """``"1 point"``, ``"2 points"``: the noun agrees with the count.
+
+    Reports used to print "2 vertical electrical sounding point(s)" and
+    "Health based exceedance(s): Manganese", which is a form, not a
+    sentence.
+    """
+    word = singular if count == 1 else (plural_form or singular + "s")
+    return f"{count} {word}"
+
+
+def plural_noun(count: int, singular: str, plural_form: str | None = None) -> str:
+    """The noun alone, agreeing with a count the sentence already carries."""
+    return singular if count == 1 else (plural_form or singular + "s")

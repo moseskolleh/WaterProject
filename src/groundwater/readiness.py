@@ -32,6 +32,8 @@ analysis it is supposed to describe.
 
 from __future__ import annotations
 
+from .utils import plural, plural_noun
+
 import csv
 import io
 import os
@@ -317,8 +319,8 @@ def _borehole_logged(state: dict) -> tuple[str, str]:
     if not log.intervals:
         return "unmet", "The drilling log records no lithology."
     return "met", (
-        f"Logged to {log.total_depth_m:.0f} m with {len(log.intervals)} "
-        "lithological interval(s)."
+        f"Logged to {log.total_depth_m:.0f} m with "
+        f"{plural(len(log.intervals), 'lithological interval')}."
     )
 
 
@@ -340,11 +342,11 @@ def _pumping_measured(state: dict) -> tuple[str, str]:
     missing = [s.step_number for s in test.steps if s.discharge_m3_per_h is None]
     if missing:
         return "unmet", (
-            "Discharge is missing for step(s) "
+            f"Discharge is missing for {plural_noun(len(missing), 'step')} "
             + ", ".join(str(n) for n in missing) + "."
         )
     return "met", (
-        f"{len(test.steps)} step(s) with discharge, static water level "
+        f"{plural(len(test.steps), 'step')} with discharge, static water level "
         f"{test.static_water_level_m:.2f} m."
     )
 
@@ -370,6 +372,14 @@ def _yield_established(state: dict) -> tuple[str, str]:
         return "unmet", rec.pending_reason
     if rec.safe_yield_m3_per_h is None:
         return "unmet", "The safe yield could not be derived from this test."
+    # A yield the analysis itself calls indicative is not established. The
+    # gate used to certify a 30-minute test inside its casing storage on
+    # the strength of the number alone.
+    if getattr(rec, "is_indicative", False):
+        return "unmet", (
+            f"The safe yield of {rec.yield_range_text} is indicative, not "
+            "established: " + "; ".join(rec.confidence_reasons) + "."
+        )
     return "met", f"Safe yield {rec.yield_range_text}."
 
 
@@ -395,7 +405,7 @@ def _water_quality_evaluable(state: dict) -> tuple[str, str]:
     if not assessment.evaluated_rows:
         return "unmet", "No result in the sample could be graded."
     return "met", (
-        f"{len(assessment.evaluated_rows)} determinand(s) graded; verdict "
+        f"{plural(len(assessment.evaluated_rows), 'determinand')} graded; verdict "
         f"{assessment.verdict_state}."
     )
 
@@ -423,7 +433,7 @@ def _design_derived(state: dict) -> tuple[str, str]:
         return "unmet", "The design places no screen."
     return "met", (
         f"{design.total_screen_length_m:.1f} m of screen in "
-        f"{len(design.screens)} run(s)."
+        f"{plural(len(design.screens), 'run')}."
     )
 
 

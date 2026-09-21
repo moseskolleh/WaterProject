@@ -81,6 +81,28 @@ class Project:
             )
         return cls(root, site).ensure_folders()
 
+    def clear_outputs(self) -> list[Path]:
+        """Remove everything a previous run generated; return what went.
+
+        ``raw/`` and the metadata are kept: they are inputs. Everything
+        under ``processed/``, ``figures/`` and ``reports/`` is a product of
+        the code that last ran, and a product left behind by an earlier
+        version of the code is not a stale file but a wrong one - a map of
+        what the project used to say, sitting beside the current map with
+        nothing in its name to tell them apart. A run that starts by
+        clearing the folders leaves exactly what it produced.
+        """
+        removed: list[Path] = []
+        for sub in ("processed", "figures", "reports"):
+            folder = self.root / sub
+            if not folder.is_dir():
+                continue
+            for path in sorted(folder.iterdir()):
+                if path.is_file():
+                    path.unlink()
+                    removed.append(path)
+        return removed
+
     def save_metadata(self) -> None:
         data = {"site": {k: v for k, v in asdict(self.site).items() if v not in (None, "")}}
         with open(self.root / "project.yaml", "w", encoding="utf-8") as fh:

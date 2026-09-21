@@ -1406,12 +1406,18 @@
       var pos = soundingLatLon(interp);
       if (pos) {
         points.push({ lat: pos.lat, lon: pos.lon, label: interp.sounding_id,
-          kind: 'VES point' });
+          kind: interp.rank === 1 ? 'recommended point' : 'VES point' });
       }
     });
-    if (window_.exact) {
+    /* the site marker, unless it would sit on a sounding: a siting survey's
+     * "site" is the first sounding's position, and a marker drawn over it
+     * read as "drill here" on whichever peg was first on the sheet */
+    var onASounding = points.some(function (p) {
+      return Math.abs(p.lat - window_.lat) < 1e-6 && Math.abs(p.lon - window_.lon) < 1e-6;
+    });
+    if (window_.exact && !onASounding) {
       points.push({ lat: window_.lat, lon: window_.lon, label: siteLabel(),
-        kind: 'borehole' });
+        kind: derived.log ? 'borehole' : 'site' });
     }
     /* the water points the Water points page looked up, if it has run */
     (derived.waterPoints || []).slice(0, 40).forEach(function (wp) {
@@ -1734,9 +1740,10 @@
             ? C.fmtNum(interp.depth_to_basement_m) + ' m' : 'not resolved'),
           S.stat('Aquifer thickness', C.fmtNum(interp.aquifer_thickness_m) + ' m',
             interp.water_zones.length + ' zone(s)'),
-          S.stat('Max drilling depth',
-            interp.max_drilling_depth_m.toFixed(0) + ' m',
-            'capped at the investigated depth'),
+          S.stat('Max drilling depth', C.drillingDepthText(interp),
+            interp.basement_not_resolved
+              ? 'a minimum: the zone continues below the depth of investigation'
+              : 'capped at the depth of investigation'),
           S.stat('Protective capacity', interp.protective_capacity,
             'S = ' + C.fmtNum(interp.protective_conductance_s, 3) + ' S'),
         ]),
@@ -1887,7 +1894,9 @@
     var nodes = [
       pageHead('Borehole design', 'Screens against the aquifer and below the ' +
         'static level, plain casing, a sump, gravel pack, backfill and a cement ' +
-        'sanitary seal — assembled by the rules in Settings and drawn to scale.'),
+        'sanitary seal — assembled by the rules in Settings and drawn to scale. ' +
+        'When the log records the screens installed, the drawing is an as-built ' +
+        'record instead of a design.'),
     ];
 
     var suggestedDepth = (derived.log && derived.log.total_depth_m) ||
@@ -1925,23 +1934,44 @@
     }
 
     var design = derived.design;
-    nodes.push(card('Construction', [
+    /* The drawing is an as-built record only when the log records the
+     * screens the crew set (design.as_built); otherwise the rules generated
+     * it from the log and the page says so instead of calling it as-built.
+     * The diameters, the annular fill and the pump intake are read off the
+     * design object: the drilled diameter is the log's where it records one,
+     * the fill follows the annulus (a 19 mm annulus carries no gravel pack)
+     * and the intake may have been moved out of a screen into plain casing. */
+    var drawingTitle = design.as_built ? 'As-built borehole record'
+      : 'Borehole construction design';
+    var diameterLogged = !!(derived.log && (derived.log.intervals || []).some(
+      function (iv) { return iv.bit_diameter_in; }));
+    var hasIntake = design.pump_intake_m !== null && design.pump_intake_m !== undefined;
+    nodes.push(card(design.as_built ? 'Construction (as built)' : 'Construction', [
       S.statRow([
         S.stat('Total depth', C.fmtNum(design.total_depth_m) + ' m'),
-        S.stat('Screen', C.fmtNum(design.total_screen_length_m) + ' m',
+        S.stat(design.as_built ? 'Screen (as installed)' : 'Screen',
+          C.fmtNum(design.total_screen_length_m) + ' m',
           design.screens.length + ' section(s), slot ' +
           C.fmtNum(design.screen_slot_mm) + ' mm'),
-        S.stat('Casing', design.casing_diameter_in + '" ' + design.casing_material,
-          'in a ' + design.borehole_diameter_in + '" hole'),
-        S.stat('Gravel pack', design.gravel_pack[0].toFixed(0) + '–' +
-          design.gravel_pack[1].toFixed(0) + ' m'),
-      ]),
-      design.flags.length ? S.checkList(design.flags.map(function (f) {
-        return { level: f.level, message: f.message };
-      })) : null,
+        S.stat('Casing', C.formatG(design.casing_diameter_in) + '" ' +
+          design.casing_material,
+          'in a ' + C.formatG(design.borehole_diameter_in) + '" hole' +
+          (diameterLogged ? ' as logged' : '')),
+        S.stat('Annular fill', C.formatG(design.gravel_pack[0]) + '–' +
+          C.formatG(design.gravel_pack[1]) + ' m', design.annular_fill_label),
+        hasIntake ? S.stat('Pump intake', C.formatG(design.pump_intake_m) + ' m',
+          'below the top of the casing') : null,
+      ].filter(Boolean)),
+      /* every flag the design raised, warnings and errors included: the thin
+       * annulus and the moved pump intake used to reach no page */
+      design.flags.length ? flagList(design.flags) : null,
       el('div.split', [
-        charts.figure(charts.boreholeDesign(design, derived.log),
-          'Borehole construction design', { filename: 'borehole_design' }),
+        el('div', [
+          charts.figure(charts.boreholeDesign(design, derived.log),
+            drawingTitle, { filename: design.as_built ? 'as_built_record'
+              : 'borehole_design' }),
+          el('p.muted', design.construction_note),
+        ]),
         el('div', [
           S.table([
             { key: '0', label: 'Item' }, { key: '1', label: 'Detail' },
@@ -1987,7 +2017,8 @@
 
     nodes.push(reportCard('Borehole completion report', 'completion',
       'Introduction, methodology, drilling record, the borehole log table and ' +
-      'the as-built construction.'));
+      (design.as_built ? 'the as-built construction.'
+        : 'the borehole construction design generated from the drilling log.')));
     nodes.push(nextStep('Next, analyse the pumping test to get a yield.',
       'Pumping test', 'pumping'));
     return nodes;
@@ -2097,6 +2128,22 @@
           store.set('spine.overriding', spec.stage); render();
         }, { variant: 'ghost' }),
       ]),
+    ]);
+  }
+
+  /* Where a page prints the yield recommendation's pump intake and the
+   * borehole design has moved that depth out of a screen into plain casing,
+   * say so in the design's words: the design page, the drawing and the
+   * completion and handover reports all print design.pump_intake_m. */
+  function pumpIntakeMovedNote() {
+    var design = derived.design;
+    if (!design || !design.flags) return null;
+    var moved = design.flags.filter(function (f) { return f.code === 'pump_intake_moved'; });
+    if (!moved.length) return null;
+    return el('div.callout', [
+      el('p', moved[0].message),
+      el('p.muted', 'The borehole design and the completion and handover reports ' +
+        'print the intake at ' + C.formatG(design.pump_intake_m) + ' m.'),
     ]);
   }
 
@@ -2275,6 +2322,14 @@
   function spineDesignStage(view) {
     var section = view.section, design = view.design, y = design.yield;
     var errors = design.flags.filter(function (f) { return f.level === 'error'; });
+    /* the intake beside a design is the design's (section.levels.pumpIntake
+     * is design.pump_intake_m): it may have moved the yield recommendation's
+     * depth out of a screen into plain casing */
+    var levels = section.levels || {};
+    var intakeM = levels.pumpIntake !== null && levels.pumpIntake !== undefined
+      ? levels.pumpIntake : y.pumpDepthM;
+    var intakeMoved = intakeM !== y.pumpDepthM && y.pumpDepthM !== null &&
+      y.pumpDepthM !== undefined;
     var clean = !errors.length &&
       design.flags.every(function (f) { return f.level === 'info'; });
 
@@ -2323,7 +2378,9 @@
             'projected to ' + y.designPeriodDays + ' days, safety factor ' +
             y.safetyFactor),
           S.stat('Transmissivity', y.transmissivity + ' m²/day', 'preferred method'),
-          S.stat('Pump setting', y.pumpDepthM + ' m', 'below ground level'),
+          S.stat('Pump intake', intakeM + ' m', 'below the top of the casing' +
+            (intakeMoved ? ', moved to plain casing from the ' + y.pumpDepthM +
+              ' m the yield recommendation asked for' : '')),
           S.stat('Specific capacity', y.specificCapacity + ' m³/h per m'),
         ]),
         y.methods && y.methods.length ? S.table([
@@ -2585,6 +2642,19 @@
 
   /* --- pumping test --------------------------------------------------------- */
 
+  /* What a fitted method is worth, for the note beside its transmissivity:
+   * the reason it was passed over, or that it was adopted only as the best
+   * available, or - for the one adopted to standard - the caller's own words
+   * (the recovery method's "preferred" used to be printed whether or not
+   * the yield rested on it). */
+  function methodStatus(analysis, method, adoptedText) {
+    var why = C.whyNotAdopted(analysis, method);
+    if (analysis.transmissivity_source === method) {
+      return why ? ' — adopted as the best available; ' + why : adoptedText;
+    }
+    return why ? ' — not adopted: ' + why : '';
+  }
+
   PAGES.pumping = function () {
     var nodes = [
       pageHead('Pumping test', 'Cooper-Jacob, Theis and recovery on the same ' +
@@ -2608,6 +2678,10 @@
     var test = derived.test, analysis = derived.analysis;
 
     nodes.push(card('Discharge per step', [
+      /* what was parsed, in the words a report uses for the test type */
+      el('p', 'Parsed ' + C.testTypeText(test.test_type) + ' with ' +
+        test.steps.length + ' pumping ' + S.plural(test.steps.length, 'series', 'series') +
+        ' and ' + (test.recovery_time_min ? 'a' : 'no') + ' recovery record.'),
       el('p.muted', 'Discharge is often left off the field sheet. Enter the ' +
         'bucket-and-stopwatch figures here and every pending result is computed ' +
         'immediately — the value belongs to the project, not to the file, so it ' +
@@ -2663,22 +2737,31 @@
           analysis.recovery ? {
             method: 'Theis recovery',
             T: S.sig(analysis.recovery.transmissivity_m2_per_day, 4),
+            /* "preferred" only when it was in fact adopted to standard */
             note: 'r² = ' + analysis.recovery.r_squared.toFixed(3) +
-              ' — least affected by well losses, so preferred',
+              methodStatus(analysis, 'recovery',
+                ' — least affected by well losses, so preferred'),
           } : null,
           analysis.cooper_jacob ? {
             method: 'Cooper-Jacob',
             T: S.sig(analysis.cooper_jacob.transmissivity_m2_per_day, 4),
-            note: analysis.cooper_jacob.u_check,
+            note: analysis.cooper_jacob.u_check +
+              methodStatus(analysis, 'cooper_jacob', ''),
           } : null,
           analysis.theis ? {
             method: 'Theis type curve',
             T: S.sig(analysis.theis.transmissivity_m2_per_day, 4),
             note: 'S = ' + S.sig(analysis.theis.storativity, 2) +
               (analysis.theis.storativity_reliable ? ''
-                : ' — not resolvable from a single pumped well'),
+                : ' — not resolvable from a single pumped well') +
+              methodStatus(analysis, 'theis', ''),
           } : null,
         ].filter(Boolean)),
+        Object.keys(analysis.disqualified || {}).length ? el('p.muted',
+          'Not adopted for the yield: ' +
+          Object.keys(analysis.disqualified).map(function (k) {
+            return C.METHOD_LABELS[k] + ' (' + analysis.disqualified[k] + ')';
+          }).join('; ') + '.') : null,
       ]));
     }
 
@@ -2691,13 +2774,25 @@
           rec2.long_term_yield_m3_per_h.toFixed(2) + ' m³/h',
           'before the ' + rec2.safety_factor + '× safety factor'),
         S.stat('Specific capacity', rec2.specific_capacity_m3hr_per_m
-          ? rec2.specific_capacity_m3hr_per_m.toFixed(2) + ' m³/h per m' : '—'),
-        S.stat('Pump setting', rec2.pump_installation_depth_m !== null
-          ? rec2.pump_installation_depth_m.toFixed(0) + ' m' : '—'),
+          ? C.formatG(C.roundSig(rec2.specific_capacity_m3hr_per_m, 2), 2) +
+            ' m³/h per m' : '—', rec2.specific_capacity_basis || ''),
+        S.stat('Pump intake', rec2.pump_installation_depth_m !== null
+          ? rec2.pump_installation_depth_m.toFixed(0) + ' m' : '—',
+        'below the top of the casing'),
       ]) : el('div.callout.callout-warn', el('p',
         'Yield recommendation pending: ' + rec2.pending_reason + '.')),
+      /* what the yield is worth, beside the number, as every report prints it */
+      rec2.safe_yield_m3_per_h
+        ? (rec2.is_indicative
+          ? el('div.callout.callout-warn', [
+            el('p', el('strong', 'Indicative, not established')),
+            el('p', rec2.confidence_text)])
+          : el('p.muted', rec2.confidence_text))
+        : null,
       el('p', rec2.basis),
       rec2.envelope_basis ? el('div.callout', el('p', rec2.envelope_basis)) : null,
+      rec2.pump_depth_basis ? el('p.muted', rec2.pump_depth_basis) : null,
+      pumpIntakeMovedNote(),
       rec2.safe_yield_m3_per_h ? el('p.muted',
         'At 20 litres per person per day over an eight hour pumping day, the ' +
         'safe yield serves about ' +
@@ -2797,10 +2892,14 @@
         C.pyFixed(result.dry_season_loss_percent, 0) + '% less than it did on ' +
         'the day of the test. Size the supply on the dry-season figure.')));
     }
-    if (result.pump_installation_depth_m !== null) {
+    /* the one intake depth, the deeper of the recommendation's and the
+     * drought scenario's, with the reason */
+    var intake = C.pumpIntakeDepth(analysis, result);
+    if (intake[0] !== null) {
       nodes.push(el('div.callout', el('p', 'Set the pump intake at ' +
-        C.fmtNum(result.pump_installation_depth_m) + ' m — deep enough for ' +
-        'the drought case. The pump is fitted once, and one that draws air in ' +
+        C.fmtNum(intake[0]) + ' m below the top of the casing, ' +
+        (intake[1] || 'deep enough for the drought case') +
+        '. The pump is fitted once, and one that draws air in ' +
         'a bad year loses the village its borehole in the year it is needed ' +
         'most.')));
     }
@@ -3643,7 +3742,7 @@
           ['Drilling Method', '', 'Drill Rig', ''],
           ['Start Date', '', 'Completion Date', ''],
           ['Total Depth', '', 'BH Status', ''],
-          ['Grouting Depth', '', '', ''],
+          ['Grouting Depth', '', 'Screens installed (m)', ''],
           [],
           ['Depth Interval (m)', 'From', 'To', 'Penetration rate (m/min)',
             'Sample description / lithology', 'Bit diameter (in)', 'Water strike (m)'],
@@ -3653,7 +3752,9 @@
         ] }];
       },
       note: 'Format the depth column as Text before typing "5-10", or Excel ' +
-        'converts it to a date and the row is skipped.',
+        'converts it to a date and the row is skipped. Fill "Screens installed" ' +
+        'as ranges ("25-35; 48-53") once the string is set: the drawing is then ' +
+        'an as-built record rather than a design.',
     },
     daily: {
       label: "Driller's daily report", file: 'daily_log_template.xlsx',
@@ -5403,8 +5504,11 @@
             });
             figures.push({
               soundingId: id,
-              image: await charts.toPng(charts.layeredModel(result.model)),
-              caption: 'Layered earth model for ' + id, widthCm: 9,
+              image: await charts.toPng(charts.layeredModel(result.model, {
+                maxDepth: Math.max(derived.interpretations[i].investigation_depth_m, 20),
+              })),
+              caption: 'Layered earth model for ' + id + ', drawn to the depth of ' +
+                'investigation', widthCm: 9,
             });
           }
           context.interpretations = derived.interpretations;
@@ -5414,9 +5518,15 @@
 
         } else if (kind === 'completion') {
           if (!derived.design) throw new Error('There is no borehole design yet.');
+          /* tagged design: true so the writer finds it whatever its caption;
+           * a drawing the rules generated is not captioned as-built */
           figures.push({
             image: await charts.toPng(charts.boreholeDesign(derived.design, derived.log)),
-            caption: 'Borehole construction design', widthCm: 12,
+            caption: derived.design.as_built
+              ? 'As-built borehole record with lithology and construction columns.'
+              : 'Borehole construction design generated from the drilling log, ' +
+                'with lithology and construction columns.',
+            widthCm: 12, design: true,
           });
           GWT.imageSlot.collect(store.get('photos.completion'), 'completion')
             .forEach(function (photo) {
@@ -5513,9 +5623,15 @@
 
         } else if (kind === 'handover') {
           if (derived.design) {
+            /* an as-built diagram only when the log records the screens
+             * installed; otherwise the design the rules generated */
             figures.push({
               image: await charts.toPng(charts.boreholeDesign(derived.design, derived.log)),
-              caption: 'As-built borehole design', widthCm: 11,
+              caption: derived.design.as_built
+                ? 'As-built borehole diagram.'
+                : 'Borehole construction design generated from the drilling log; ' +
+                  'the log records no casing string, so this is not an as-built record.',
+              widthCm: 11, design: true,
             });
           }
           GWT.imageSlot.collect(store.get('photos.handover'), 'handover')

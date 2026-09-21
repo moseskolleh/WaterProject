@@ -186,7 +186,8 @@ def iso_resistivity_points(
 def _require_points(points: list[MapPoint], what: str, need: int = 3) -> None:
     if len(points) < need:
         raise ValueError(
-            f"a {what} needs at least {need} soundings that carry both a "
+            f"{'an' if what[:1] in 'aeiou' else 'a'} {what} needs at least "
+            f"{need} soundings that carry both a "
             f"position and the value; {len(points)} do. Record the GPS "
             "position of every sounding on the field sheet."
         )
@@ -312,26 +313,35 @@ def protective_capacity_map(
 
     from matplotlib.patches import Patch
 
-    from .maps import _clip_to_surveyed_ground, _format_grid, _north_arrow, _pad_limits, _scale_bar
+    from .maps import (
+        _clip_to_surveyed_ground,
+        _extent,
+        _figsize,
+        _format_grid,
+        _no_surface_note,
+        _north_arrow,
+        _pad_limits,
+        _scale_bar,
+        _surface,
+    )
 
     with figure_context(style):
-        fig, ax = plt.subplots(figsize=(style.figure_width_in, 5.4))
+        fig, ax = plt.subplots(figsize=_figsize(style, *_extent(points)))
         _pad_limits(ax, points)
         if len(points) >= 3:
-            from scipy.interpolate import griddata
-
             e = np.array([p.easting for p in points])
             n = np.array([p.northing for p in points])
             v = np.array([p.value for p in points], dtype=float)
             x0, x1 = ax.get_xlim()
             y0, y1 = ax.get_ylim()
             gx, gy = np.meshgrid(np.linspace(x0, x1, 200), np.linspace(y0, y1, 200))
-            lin = griddata((e, n), v, (gx, gy), method="linear")
-            near = griddata((e, n), v, (gx, gy), method="nearest")
-            grid = np.where(np.isnan(lin), near, lin)
-            grid, _clipped = _clip_to_surveyed_ground(ax, grid, e, n, gx, gy)
-            ax.contourf(gx, gy, grid, levels=bounds, cmap=cmap, norm=norm,
-                        alpha=0.8)
+            grid = _surface(e, n, v, gx, gy)
+            if grid is not None:
+                grid, _clipped = _clip_to_surveyed_ground(ax, grid, e, n, gx, gy)
+                ax.contourf(gx, gy, grid, levels=bounds, cmap=cmap, norm=norm,
+                            alpha=0.8)
+            else:
+                _no_surface_note(ax, len(points))
         for p in points:
             colour = _protective_colour(p.value)
             ax.plot(p.easting, p.northing, "o", ms=11, mfc=colour,
@@ -528,38 +538,85 @@ def geoelectric_section_along_traverse(
         (float(getattr(i, "investigation_depth_m", 0.0)) for i in ordered),
         default=0.0,
     )
+    if depth_max is None and reach > 0:
+        # the section is drawn to the depth the soundings resolve, the same
+        # rule as every other figure, and never so shallow that a fitted
+        # interface falls off the bottom of it
+        deepest_interface = max(
+            (float(i.model.depths_top[-1]) for i in ordered if i.model.n_layers > 1),
+            default=0.0,
+        )
+        depth_max = max(reach, deepest_interface * 1.2 + 2.0)
+    # A boundary is correlated between two stations only when they are
+    # within the correlation rule of each other. Two Rokel soundings 20.7 km
+    # apart used to come out as a 60 m section with a dashed horizon joining
+    # them: a line between two points in different chiefdoms, called a
+    # section. Where no pair of neighbours is within reach there is no
+    # section to draw and the caller is told why; where some are, the
+    # boundaries are correlated across those gaps only.
+    gaps = np.diff(np.asarray(profile.chainage_m, float))
+    wide = _wide_gaps(profile, reach)
+    if wide and all(wide):
+        widest = float(gaps.max())
+        raise ValueError(
+            f"the soundings are {widest:,.0f} m apart, about {widest / reach:.0f} "
+            f"times the {reach:,.0f} m they resolve; a section between them would "
+            "join two measurements with no measurement between, so none is drawn. "
+            "A section needs stations within a few times the depth of "
+            "investigation of each other."
+        )
     return plot_geoelectric_section(
         [interp.model for interp in ordered],
         positions=[float(x) for x in profile.chainage_m],
         labels=[interp.sounding_id or "VES" for interp in ordered],
         path=path, style=style, depth_max=depth_max, title=title,
         half_width_m=reach or None,
-        note=_correlation_note(profile, reach),
+        correlate=[not w for w in wide] or None,
+        note=_correlation_note(profile, reach, wide),
     )
 
 
-def _correlation_note(profile: "TraverseProfile", reach_m: float) -> str:
-    """What the dashed lines between two distant soundings do not mean.
+#: Stations further apart than this many times the depth of investigation
+#: have nothing measured between them: no boundary is correlated across
+#: such a gap, and a survey with no closer pair gets no section at all.
+CORRELATION_REACH_MULTIPLE = 10.0
+
+
+def _wide_gaps(profile: "TraverseProfile", reach_m: float) -> list[bool]:
+    """Which gaps between neighbouring stations are too wide to correlate."""
+    if reach_m <= 0 or len(profile.chainage_m) < 2:
+        return []
+    gaps = np.diff(np.asarray(profile.chainage_m, float))
+    return [bool(gap > reach_m * CORRELATION_REACH_MULTIPLE) for gap in gaps]
+
+
+def _correlation_note(profile: "TraverseProfile", reach_m: float,
+                      wide: list[bool] | None = None) -> str:
+    """What is not correlated on the section, and why.
 
     A sounding sees the ground under it, to a lateral reach of roughly
     its largest electrode half-spacing. Joining a layer boundary across
     a gap many times that is drawing a line between two points and
     calling it a horizon. The classic rule of thumb is that correlation
     needs stations no more than a few times the depth of investigation
-    apart; beyond about ten times there is nothing between them at all.
+    apart; beyond about ten times there is nothing between them at all,
+    and the section leaves such a gap uncorrelated and says so.
     """
-    if reach_m <= 0 or len(profile.chainage_m) < 2:
+    if wide is None:
+        wide = _wide_gaps(profile, reach_m)
+    if reach_m <= 0 or len(profile.chainage_m) < 2 or not any(wide):
         return ""
-    gaps = np.diff(np.sort(profile.chainage_m))
-    widest = float(gaps.max())
-    if widest <= reach_m * 10:
-        return ""
+    gaps = np.diff(np.asarray(profile.chainage_m, float))
+    parts = [
+        f"{profile.labels[k]} to {profile.labels[k + 1]} ({gaps[k]:,.0f} m, about "
+        f"{gaps[k] / reach_m:.0f} times the {reach_m:,.0f} m the soundings reached)"
+        for k, is_wide in enumerate(wide) if is_wide
+    ]
     return (
-        f"The widest gap between adjacent soundings is {widest:,.0f} m, "
-        f"about {widest / reach_m:.0f} times the {reach_m:,.0f} m the "
-        "soundings reached. The dashed correlations across it join two "
-        "measurements with no measurement between them; read them as a "
-        "proposal, not as a traced horizon."
+        "No boundary is correlated across the gap "
+        + "; ".join(parts)
+        + ": there is no measurement between those stations, and a dashed "
+        "line across them would be a proposal drawn as a horizon."
     )
 
 
@@ -638,6 +695,17 @@ def apparent_resistivity_pseudosection(
     x = np.array(xs)
     y = np.array(ys)
     v = np.array(vs)
+    # Colour is interpolated between two stations only when they are within
+    # the correlation rule of each other; between a pair further apart
+    # there is no measurement, and a continuous banded fill across 20 km
+    # read as a 20 km resistivity cross-section.
+    max_gap = float(np.max(y)) * 0.5 * CORRELATION_REACH_MULTIPLE
+    uncorrelated: list[tuple[str, str, float]] = []
+    for k in range(len(stations) - 1):
+        gap = stations[k + 1] - stations[k]
+        if gap > max_gap:
+            uncorrelated.append((ordered[k].sounding_id or "VES",
+                                 ordered[k + 1].sounding_id or "VES", gap))
     with figure_context(style):
         fig, ax = plt.subplots(figsize=(style.figure_width_in, 3.4))
         vmin = max(float(v.min()), 1.0)
@@ -653,29 +721,51 @@ def apparent_resistivity_pseudosection(
         # themselves on top: the colour between two stations is
         # interpolation and the dots are where the instrument actually was
         if len(np.unique(x)) >= 2 and len(np.unique(y)) >= 2:
-            ax.tricontourf(x, np.log10(y), v, levels=levels, cmap="viridis",
-                           norm=norm, alpha=0.85, extend="both")
+            from matplotlib.tri import Triangulation
+
+            tri = Triangulation(x, np.log10(y))
+            span = x[tri.triangles].max(axis=1) - x[tri.triangles].min(axis=1)
+            tri.set_mask(span > max_gap)
+            if not tri.mask.all():
+                ax.tricontourf(tri, v, levels=levels, cmap="viridis",
+                               norm=norm, alpha=0.85, extend="both")
         sc = ax.scatter(x, np.log10(y), c=v, cmap="viridis", norm=norm,
                         s=22, edgecolors="white", linewidths=0.6, zorder=5)
         cbar = fig.colorbar(sc, ax=ax, pad=0.02)
         cbar.set_label("Apparent resistivity (ohm-m)")
-        ticks = np.unique(np.round(np.log10(y)))
+        # decade ticks, but only the ones the readings reach: an 80 m spread
+        # does not get a 100 m tick
+        ticks = [t for t in np.unique(np.round(np.log10(y)))
+                 if y.min() / 1.5 <= 10 ** t <= y.max() * 1.5]
         ax.set_yticks(ticks)
         ax.set_yticklabels([f"{10 ** t:g}" for t in ticks])
         ax.invert_yaxis()
         ax.set_ylabel("AB/2 (m)")
         ax.set_xlabel(x_label)
-        for station, sounding in zip(stations, ordered, strict=True):
+        # station names above the frame, clear of the shallowest readings;
+        # the end stations lean inwards so they stay on the page
+        for k, (station, sounding) in enumerate(zip(stations, ordered, strict=True)):
+            ha = "center"
+            if len(stations) > 1 and k == 0:
+                ha = "left"
+            elif len(stations) > 1 and k == len(stations) - 1:
+                ha = "right"
             ax.annotate(
                 sounding.sounding_id or "VES", xy=(station, np.log10(y.min())),
-                xytext=(0, -6), textcoords="offset points", ha="center",
-                va="top", fontsize=7.5, fontweight="bold",
+                xytext=(0, 4), textcoords="offset points", ha=ha,
+                va="bottom", fontsize=7.5, fontweight="bold",
                 color=style.accent_color, annotation_clip=False,
             )
         notes = [
             ("AB/2 is the electrode half-spacing, not a depth: a deeper "
              "reading is a wider spread, not a measured horizon."),
         ]
+        if uncorrelated:
+            notes.append(
+                "No colour is interpolated across "
+                + "; ".join(f"{a} to {b} ({gap:,.0f} m)" for a, b, gap in uncorrelated)
+                + ": nothing was measured between those stations."
+            )
         if spaced_evenly:
             notes.append(
                 "Stations are drawn evenly spaced because no sounding "

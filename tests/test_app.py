@@ -167,14 +167,21 @@ def test_subsurface_maps_flow(app):
     assert made and all(p.exists() for p in made)
     # Rokel has two soundings, so the interpolated surfaces cannot be
     # built - they need three - and the page says so rather than failing.
-    # What two soundings do support is the survey point map and a section.
+    # What two soundings do support is the survey point map and the
+    # pseudo-section of their readings.
     assert any("site_location" in p.name for p in made)
-    assert Path(app.session_state["section_path"]).exists()
+    assert Path(app.session_state["pseudosection_path"]).exists()
     traverse = app.session_state["traverse"]
     assert {"length_m", "bearing_deg", "max_offset_m"} <= set(traverse)
     # and the two Rokel points really are 20 km apart, which is what the
-    # consistency checker flags and what the section now has to show
+    # consistency checker flags. A section joining two soundings with
+    # nothing measured between them is refused, and the page says why
+    # rather than drawing a horizon across two chiefdoms.
     assert traverse["length_m"] > 20_000
+    assert "section_path" not in app.session_state
+    captions = " ".join(str(c.value) for c in app.caption)
+    assert "No geoelectric section" in captions
+    assert "no measurement between" in captions
 
 
 def test_project_state_tracked(app):

@@ -21,28 +21,14 @@ from ..config import HouseStyle
 from ..models import DrillingLog
 from ..plotting import figure_context, save_figure
 from .designer import BoreholeDesign
+from .lithology import lithology_bands
 
-# lithology keyword -> (colour, hatch, class name for the legend)
-_LITHO_STYLES = [
-    (("topsoil", "lateritic topsoil"), ("#8B5A2B", "", "Topsoil")),
-    (("laterite", "clayey laterites"), ("#C4703E", "", "Laterite")),
-    (("clay",), ("#B8860B", "--", "Clay")),
-    (("saprolite", "weathered granite fragments"),
-     ("#D2B48C", "..", "Saprolite")),
-    (("sand", "gravel"), ("#E8D8A0", "..", "Sand and gravel")),
-    (("fracture", "fractured"), ("#9FB6CD", "xx", "Fracture zone")),
-    (("granite", "gneiss", "basement", "bedrock", "rock"),
-     ("#A9A9A9", "++", "Fresh basement")),
-]
-_DEFAULT_LITHO = ("#CCCCCC", "", "Other material")
-
-
-def _litho_style(description: str) -> tuple[str, str, str]:
-    text = description.lower()
-    for keywords, style in _LITHO_STYLES:
-        if any(k in text for k in keywords):
-            return style
-    return _DEFAULT_LITHO
+#: The annulus below the seal, by what the design says it holds.
+_FILL_STYLES = {
+    "gravel pack": ("#F0E3B2", "..", "gravel pack"),
+    "formation stabiliser": ("#EAD9A8", ".", "formation stabiliser"),
+    "none": ("#F4F1EA", "", "no gravel pack (formation)"),
+}
 
 
 def _stack_labels(
@@ -122,6 +108,8 @@ def draw_borehole_design(
                 ax.spines[side].set_visible(False)
         ax_c.spines["left"].set_visible(False)
         ax_c.tick_params(left=False, labelleft=False)
+        # the depth axis ends at the bottom of the hole, not below it
+        ax_l.spines["left"].set_bounds(y_top, depth)
 
         # ------------------------------------------------------------------
         # left: lithology column
@@ -133,16 +121,20 @@ def draw_borehole_design(
         litho_classes: dict[str, tuple[str, str]] = {}
         if log is not None and log.intervals:
             litho_entries = []
-            for interval in log.intervals:
-                color, hatch, klass = _litho_style(interval.description)
-                if klass not in litho_classes:
-                    litho_classes[klass] = (color, hatch)
+            # one class table for every drawing, and a fracture zone the
+            # driller named with its depths is drawn at those depths, not
+            # hatched across the five metres it was logged on
+            for top, bottom, klass in lithology_bands(log.intervals):
+                if klass.label not in litho_classes:
+                    litho_classes[klass.label] = (klass.colour, klass.hatch)
                 ax_l.add_patch(
                     Rectangle(
-                        (0.06, interval.top_m), 0.32, interval.thickness_m,
-                        facecolor=color, hatch=hatch, edgecolor="#555555", lw=0.6,
+                        (0.06, top), 0.32, bottom - top,
+                        facecolor=klass.colour, hatch=klass.hatch,
+                        edgecolor="#555555", lw=0.6,
                     )
                 )
+            for interval in log.intervals:
                 wrapped = textwrap.fill(interval.description, 26)
                 mid = (interval.top_m + interval.bottom_m) / 2
                 litho_entries.append((mid, wrapped))
@@ -172,10 +164,11 @@ def draw_borehole_design(
         seal_top, seal_bot = design.sanitary_seal
         back_top, back_bot = design.backfill
         grav_top, grav_bot = design.gravel_pack
+        fill_style = _FILL_STYLES.get(design.annular_fill, _FILL_STYLES["gravel pack"])
         for (top, bot), (color, hatch, _label) in (
             ((seal_top, seal_bot), ("#B0B0B0", "//", "cement sanitary seal")),
             ((back_top, back_bot), ("#E0D5C0", "", "backfill")),
-            ((grav_top, grav_bot), ("#F0E3B2", "..", "gravel pack")),
+            ((grav_top, grav_bot), fill_style),
         ):
             ax_c.add_patch(
                 Rectangle((x_hole, top), w_hole, bot - top, facecolor=color,
@@ -255,8 +248,11 @@ def draw_borehole_design(
                 "", xy=(x_hole, strike), xytext=(x_hole - 0.09, strike),
                 arrowprops=dict(arrowstyle="->", color="#2A6EBB", lw=1.4),
             )
-            ax_c.text(x_hole - 0.10, strike, f"{strike:g} m", fontsize=7,
-                      ha="right", va="center", color="#2A6EBB")
+            # named for what it is: a bare "12 m" beside an arrow read as
+            # anything from a casing joint to a sample depth
+            ax_c.text(x_hole - 0.10, strike, f"water strike\n{strike:g} m",
+                      fontsize=6.5, ha="right", va="center", color="#2A6EBB",
+                      linespacing=1.0)
         if design.pump_intake_m is not None:
             y = design.pump_intake_m
             # the rising main from the headworks down to the pump, so the
@@ -274,17 +270,21 @@ def draw_borehole_design(
                           facecolor=style.secondary_color, edgecolor="white",
                           lw=0.8, zorder=8)
             )
-            annos.append((y, f"pump intake {y:.0f} m", style.secondary_color))
+            # a design's pump is where the pump should go; only an as-built
+            # record can say where one is
+            annos.append((y, f"pump intake {y:g} m"
+                          + ("" if design.as_built else " (recommended)"),
+                          style.secondary_color))
 
         # right-hand annotations with depths
         screens = design.screens
         annos += [
             (seal_bot / 2 if seal_bot else 1.5,
-             f"sanitary seal 0-{seal_bot:g} m", neutral),
+             f"cement grout 0-{seal_bot:g} m", neutral),
             ((back_top + back_bot) / 2,
              f"backfill {back_top:g}-{back_bot:g} m", neutral),
             ((grav_top + min(grav_bot, depth)) / 2,
-             f"gravel pack {grav_top:g}-{grav_bot:g} m", neutral),
+             f"{fill_style[2]} {grav_top:g}-{grav_bot:g} m", neutral),
         ]
         for s in screens:
             annos.append(((s.top_m + s.bottom_m) / 2,
@@ -321,8 +321,8 @@ def draw_borehole_design(
         # legend: what each fill means, once, rather than a word on every band
         # ------------------------------------------------------------------
         handles: list = [
-            Patch(facecolor="#F0E3B2", hatch="..", edgecolor="#777777",
-                  label="gravel pack"),
+            Patch(facecolor=fill_style[0], hatch=fill_style[1], edgecolor="#777777",
+                  label=fill_style[2]),
             Patch(facecolor="#E0D5C0", edgecolor="#777777", label="backfill"),
             Patch(facecolor="#B0B0B0", hatch="//", edgecolor="#777777",
                   label="cement sanitary seal"),
@@ -362,13 +362,20 @@ def draw_borehole_design(
         # ------------------------------------------------------------------
         # title and header block
         # ------------------------------------------------------------------
-        fig.suptitle(title or "Borehole design", fontsize=12, fontweight="bold",
-                     color=style.accent_color)
+        fig.suptitle(
+            title or ("As-built borehole record" if design.as_built else "Borehole design"),
+            fontsize=12, fontweight="bold", color=style.accent_color,
+        )
         header_pairs = list(header_pairs or [])
         header_pairs.append((
             "Construction",
             (f'{design.borehole_diameter_in:g}" hole, '
             f'{design.casing_diameter_in:g}" {design.casing_material}'),
+        ))
+        # what the drawing is: the log records no casing string, so a
+        # drawing built by the rules says so on its own face
+        header_pairs.append((
+            "Drawing", "as built" if design.as_built else "design generated from the log",
         ))
         # The header is laid out in rows that fit the canvas. One long line
         # does not clip: save_figure uses bbox_inches="tight", which grows the

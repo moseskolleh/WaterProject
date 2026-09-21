@@ -18,12 +18,12 @@ from docx.shared import RGBColor
 
 from ..config import Config
 from ..quality.assess import STATUS_LABELS, WaterQualityAssessment
-from ..quality.diagrams import plot_piper, plot_stiff
+from ..quality.diagrams import facies_of, plot_piper, plot_stiff
 from ..quality.standards import (
     PROVISIONAL_NATIONAL_NOTE,
     provisional_national_parameters,
 )
-from ..utils import fmt_num, safe_slug
+from ..utils import fmt_num, safe_slug, plural_noun
 from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
 from .context import add_area_section
@@ -95,13 +95,14 @@ def _executive_summary(assessment: WaterQualityAssessment) -> tuple[list[str], l
         para = (
             f"Laboratory results for the borehole water at {community} meet the "
             "WHO health based guideline values but do not comply with the "
-            f"national standard limit(s) for {names}. A national limit is a "
+            f"national standard {plural_noun(len(national), 'limit')} for {names}. "
+            "A national limit is a "
             "legal requirement, not a matter of taste: treatment is required "
             "before the supply can be accepted."
         )
         key = [
             "All WHO health based guideline values are met.",
-            f"National standard exceedance(s): {names}.",
+            f"National standard {plural_noun(len(national), 'exceedance')}: {names}.",
             "Treatment is required before the supply is accepted.",
         ]
     elif state == "indeterminate":
@@ -120,13 +121,22 @@ def _executive_summary(assessment: WaterQualityAssessment) -> tuple[list[str], l
             f"Laboratory results for the borehole water at {community} were "
             "assessed against the WHO Guidelines for Drinking-water Quality and "
             "the national/adopted limits. The water does not meet the health "
-            f"based guideline value(s) for {names}, so treatment or an "
+            f"based guideline {plural_noun(len(health), 'value')} for {names}, so treatment or an "
             "alternative source is required before it is used for drinking."
         )
         key = [
-            f"Health based exceedance(s): {names}.",
+            f"Health based {plural_noun(len(health), 'exceedance')}: {names}.",
             "Treatment or an alternative source is required before drinking.",
         ]
+        if national:
+            # a national-limit failure beside a health one used to vanish
+            # from the summary; the indicator that put it there is named
+            also = ", ".join(r.parameter for r in national)
+            para += (
+                f" The water also fails the national standard "
+                f"{plural_noun(len(national), 'limit')} for {also}."
+            )
+            key.insert(1, f"National standard {plural_noun(len(national), 'exceedance')}: {also}.")
     elif aesthetic:
         names = ", ".join(r.parameter for r in aesthetic)
         para = (
@@ -137,7 +147,7 @@ def _executive_summary(assessment: WaterQualityAssessment) -> tuple[list[str], l
         )
         key = [
             "All health based guideline values are met.",
-            f"Aesthetic exceedance(s): {names}.",
+            f"Aesthetic {plural_noun(len(aesthetic), 'exceedance')}: {names}.",
         ]
     else:
         para = (
@@ -330,8 +340,23 @@ def build_quality_report(
         stiff_path = figures / f"stiff_{slug}.png"
         plot_piper([sample], path=piper_path, style=config.style)
         plot_stiff(sample, path=stiff_path, style=config.style)
-        rb.figure(piper_path, "Piper diagram.", width_cm=13.0)
-        rb.figure(stiff_path, "Stiff diagram.", width_cm=11.0)
+        # the section used to be two figures and no words
+        facies = facies_of(sample)
+        if facies is not None:
+            rb.paragraph(facies["sentence"], align="justify")
+        rb.figure(
+            piper_path,
+            "Piper diagram: the sample's major-ion composition, with the "
+            "cations on the left triangle, the anions on the right and the "
+            "combined point in the diamond.",
+            width_cm=13.0,
+        )
+        rb.figure(
+            stiff_path,
+            "Stiff diagram: the same composition as a shape, cations to the "
+            "left and anions to the right of the axis.",
+            width_cm=11.0,
+        )
 
     # ---- 6 recommendations -----------------------------------------------------------
     rb.heading("6. Recommendations", 1)

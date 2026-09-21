@@ -71,12 +71,18 @@ def _section(log: DrillingLog, design: BoreholeDesign, analysis, config: Config)
     # A little air below the hole so the total-depth line is not on the edge.
     domain = total_depth * 1.06
 
+    # one class table for every drawing: the class and colour ride with each
+    # interval so the workspace shades the log the way the report draws it
+    from ..design.lithology import lithology_class
+
     lithology = [
         {
             "top": iv.top_m,
             "base": iv.bottom_m,
             "description": iv.description,
             "aquifer": _looks_like_aquifer(iv.description),
+            "class": lithology_class(iv.description).label,
+            "colour": lithology_class(iv.description).colour,
         }
         for iv in log.intervals
     ]
@@ -108,6 +114,7 @@ def _section(log: DrillingLog, design: BoreholeDesign, analysis, config: Config)
             {"kind": s.kind, "top": s.top_m, "base": s.bottom_m} for s in design.segments
         ],
         "gravelPack": list(design.gravel_pack),
+        "annularFill": design.annular_fill,
         "backfill": list(design.backfill),
         "sanitarySeal": list(design.sanitary_seal),
         "levels": levels,

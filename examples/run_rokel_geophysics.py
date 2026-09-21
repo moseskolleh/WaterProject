@@ -31,17 +31,17 @@ from groundwater.ves import (
     invert_sounding,
     read_ipi2win_models,
 )
-from groundwater.ves.plots import plot_geoelectric_section
+from groundwater.mapping import geoelectric_section_along_traverse
 
 HERE = Path(__file__).parent
 VES_FILE = HERE / "data" / "rokel" / "rokel_ves.xlsx"
 IPI_FILE = HERE / "data" / "rokel" / "rokel_ipi2win_models.xlsx"
 
 
-def main() -> None:
+def main(out_root: Path | None = None) -> None:
     # ---- project folder -----------------------------------------------------
     project = Project.create(
-        HERE / "projects" / "rokel",
+        (out_root or HERE / "projects") / "rokel",
         SiteMetadata(
             client="Living Water International",
             project="Geophysical Survey",
@@ -50,6 +50,9 @@ def main() -> None:
             date="8th December, 2015",
         ),
     )
+    # a run leaves exactly what it produced: a figure an earlier version of
+    # the code wrote is a map of what the project used to say
+    project.clear_outputs()
 
     # ---- parse and check ------------------------------------------------------
     soundings = read_ves_workbook(VES_FILE)
@@ -109,13 +112,16 @@ def main() -> None:
             writer.writerow({k: str(v).replace("\n", " | ") for k, v in row.items()})
 
     # ---- extra figure: geoelectric section along the traverse ----------------
-    plot_geoelectric_section(
-        [inv.model for inv in inversions],
-        positions=[0.0, 60.0],
-        labels=[s.sounding_id for s in soundings],
-        depth_max=45.0,
-        path=project.figure_path("geoelectric_section.png"),
-    )
+    # Drawn at the soundings' surveyed spacing, or not at all: these two are
+    # 20.7 km apart by their own coordinates, and a section that joined them
+    # would be a line between two points in different chiefdoms. The
+    # example used to hard-code them 60 m apart.
+    try:
+        geoelectric_section_along_traverse(
+            interpretations, path=project.figure_path("geoelectric_section.png"),
+        )
+    except ValueError as exc:
+        print(f"\nno geoelectric section: {exc}")
 
     # ---- report ---------------------------------------------------------------
     readiness = assess_readiness({"site": soundings[0].site}, "geophysical")
@@ -127,10 +133,10 @@ def main() -> None:
             interpretations=interpretations,
             figures_dir=project.figures,
             readiness=readiness,
-            geologist_name="A. N. Geologist",
-            geologist_phone="+232 00 000 000",
+            # no signatory is invented: the sheet's supervisor signs
             flags=flags,
             include_qa_annex=True,
+            reference_models=ipi_models,
         ),
         project.report_path("Rokel_Geophysical_Survey_Report.docx"),
         project.config,

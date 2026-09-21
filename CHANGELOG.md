@@ -33,6 +33,216 @@ is worse than none. What it claimed, and what is true:
 
 ## What changed
 
+A sounding is read to the depth it resolves, not to the length of its
+array. A Schlumberger sounding resolves the ground to about half of its
+largest AB/2; the interpretation used to take the spacing itself, so a
+conductive half-space below 8 m became a "water bearing zone 8 m to
+80 m", an aquifer 72 m thick and a recommendation to drill to 80 m, at
+both Rokel points, from data that had seen 40. One rule
+(`VESConfig.depth_of_investigation_factor`) now sets how deep the
+interpretation, the model panel, the layer column, the section and the
+drilling-depth cap reach. A water-bearing half-space is an open-ended
+zone: "8 m to at least 40 m", flagged `basement_not_resolved`, with the
+thickness a minimum and the drilling depth a minimum, and it is called
+what it is - a weathered zone whose base the sounding never reached -
+rather than "fractured bedrock with groundwater in fractures", which
+fresh gabbro at 47 ohm-m is not.
+
+The ranking can now see how well a model fits. Neither Rokel model
+reaches the 10 percent misfit target; the report preferred B (2), fitted
+to 26.8 percent, over A (1) at 13.3, on 2.7 ohm-m of half-space
+resistivity, and said nothing about either fit. A model above the target
+now carries a `poor_fit` flag and a sentence in its narrative, the
+points are ranked on their suitability discounted by a confidence that
+the misfit and an unresolved basement lower, the suitability table
+prints that confidence, and two points whose weighted scores are within
+three points are said to be indistinguishable rather than 1st and 2nd.
+The one ranking is assigned once and read everywhere, so the summary,
+the preference table and the scorecard cannot name different points.
+The sounding block lists the models tried, names a boundary the
+uncertainty factor shows to be unresolved, and, where an earlier
+interpretation is supplied, tables it beside the toolkit's with its
+reported misfit and the misfit this toolkit computes for it on the same
+readings (35.8 percent against the 21.5 reported for Rokel A (1)). Two
+readings at one AB/2 that disagree by more than a fifth at an MN change
+are a warning naming the pair, not an information note. The preference
+table's resistivity column is named for what it holds, the layer
+resistivities, and the layer column figure is captioned as one rather
+than as a pseudo-section. The browser engine mirrors all of it, and the
+parity suite now holds the two engines to the interpretation's zones,
+flags, confidence and narrative and to the preference table word for
+word.
+
+The survey-scale figures now show what was measured and refuse what was
+not. Three soundings on a straight line, the standard field layout,
+used to crash the geophysical report and the Streamlit maps page with a
+Qhull "initial simplex is flat" error that no handler caught; a survey
+that encloses no area now gets its values drawn at the points under a
+note saying why there is no surface, and the report catches the error
+class Qhull actually raises. The Rokel example hard-coded its two
+soundings 60 m apart on the geoelectric section when their own
+coordinates put them 20.7 km apart; the section is now drawn from the
+recorded positions, no boundary is correlated across a gap wider than
+ten times the depth of investigation, and a survey with no closer pair
+gets no section and a sentence saying so ("20,751 m apart, about 519
+times the 40 m they resolve"). The apparent-resistivity pseudo-section,
+the one figure that shows the readings rather than an interpretation of
+them, is drawn from two placed soundings, paints no colour across a gap
+the correlation rule excludes, and keeps its station labels off the
+readings; the protective-capacity map is drawn from the same two. The
+report lists, under "Not drawn from this survey, and why", every figure
+it could not draw. The drill-target map can be walked to: the
+recommended point is a star with its grid coordinates printed beside
+it, every point is labelled by rank and score, a tie within three points
+is written on the map, the caption describes what was drawn rather than
+a surface that was not, and the study-area map stars the recommended
+sounding instead of hiding it under a marker for the runner-up. Maps of
+an elongated survey keep their proportions and at most five round
+grid labels an axis, the resistivity colour scale is fitted to the
+models on the figure rather than clipped at fixed limits, and both
+Streamlit pages infer the UTM zone from the easting instead of assuming
+two different zones.
+
+A pumping test is now worth what it measured. Dr Timbo's constant test
+pumped for thirty minutes at 2.93 m3/h from a 5 inch casing and drew the
+level down 32.8 m; by Schafer's rule the water standing in the casing
+supplies such a pump for the first two hours, so the whole test was the
+borehole emptying rather than the aquifer responding, and the Theis fit
+duly returned a storativity of 0.18. The report adopted a transmissivity
+of 1.4 m2/day from a recovery line that met t/t' = 1 at 21.7 m of
+residual drawdown, where the method requires zero, and the completion
+and handover reports printed a safe yield of 0.97 m3/h and "successful
+and sustainable" without the pumping report's own "treat as indicative".
+The analysis now computes the casing-storage period from the casing and
+riser diameters, checks the recovery intercept, refuses a storativity no
+aquifer has, fits no drawdown line to a first step that ends above the
+stated static level, and reads the recovery after a step test against
+the discharge-weighted equivalent pumping time. A method that fails any
+of these is reported with its reason and not adopted; when nothing
+fits to standard the best of the poor fits is adopted and said to be.
+Every yield carries a confidence, established or indicative with its
+reasons, and every report that prints the yield prints that beside it:
+the completion report reserves "successful and sustainable" for an
+established yield, and the readiness gate holds "Yield established"
+unmet for an indicative one. Dr Timbo's yield is 0.39 m3/h, indicative,
+on a 0.54 m2/day Cooper-Jacob line adopted as the best available.
+
+The pump goes where the drawdown the yield was computed on exists. The
+intake used to be raised to just clear the drawdown at the safe rate,
+which put Dr Timbo's pump at 39 m, three metres above the 42.3 m the
+test itself had reached, and spent the safety factor on lifting the
+pump; it is now set below the static level plus the dry-season reserve,
+the usable drawdown and the submergence margin, never above the deepest
+level the test reached, so Dr Timbo's goes to 52 m and the basis says
+why. A report prints one pump depth, the deeper of the yield's and the
+drought scenario's, instead of 39 m in one paragraph and 40 m in the
+next; the test's own pump setting is stated beside it; every depth is
+below the top of the casing, the datum the sheet records levels from,
+rather than a ground level nobody measured the stick-up to. The
+parser flags a level recorded below the pump intake, and a report whose
+levels are flagged says they are inconsistent rather than that the
+curves are valid. The overview figure labels every step in its own
+colour with the legend under the axes, the step figure draws the intake
+and the hole bottom, a two-step Hantush-Bierschenk line says it is
+exact by construction instead of printing R squared 1.000, the specific
+capacity carries its rate, drawdown and time, the test type is written
+in words, and the browser engine mirrors all of it with the parity suite
+holding both engines to the same confidence, reasons and pump depth.
+
+The borehole design reads the driller's own words. Dr Timbo's log says
+"fracture zone 49-52 m" on the 45-50 m row and "fracture zone 60-62 m"
+on the 55-60 m row; the screens were set on the five-metre rows, so one
+covered a metre of the first zone and the second sat behind plain
+casing. A depth range named against a fracture phrase is now the
+target, with a metre of screen either side, and the lithology column
+draws the zone at those depths with the rock around it classed as what
+the driller called it, from one class table shared with the Depth Spine
+rather than three. The log records grouting to 20 m; the drawing showed
+a 6 m seal with a screen and a gravel pack inside the grouted interval.
+The recorded grout is now the seal, nothing is screened inside it, and
+the 12 m seepage in clayey laterite is cased off rather than screened,
+with the basis saying so. The drilled diameter comes from the log's
+diameter column, and the annular fill follows the annulus it leaves: a
+5 inch casing in a 6.5 inch hole leaves 19 mm a side, into which no
+gravel can be poured, so the drawing, the summary and the bill of
+quantities carry no pack instead of the 2-4 mm one the design's own
+flag said could not be placed, and the completion and handover reports
+print the design's warnings. A pump intake that the yield puts inside a
+screen is moved into plain casing beside it, and the reports print that
+depth. The drilling template gains a "Screens installed" field; a
+drawing built from it is captioned as built, and every other drawing
+is captioned as the design it is. Dr Timbo's screens are 25-35, 48-53
+and 59-63 m under a 20 m grout, with the pump at 54 m.
+
+The reports say what their inputs support. The geology paragraph was
+chosen by the substring "western" in the district name and said
+"Freetown Basic Complex" of a site the report's own maps placed on the
+Bullom Group; it is now written from the USGS and BGS polygons under
+the site, through the crosswalk the map legend uses, and the Western
+Area text is chosen by region. The field-work section asserted a
+reconnaissance dated the survey day, a geomorphological survey,
+traverse selection, pegs and a profiling method for every survey; it
+now prints the recorded reconnaissance date and notes when there are
+any and says there are none when there are not, states the array and
+the count of positioned soundings, says that no elevation model was
+supplied, and draws the ground profile the recorded levels support.
+Total coliforms were reported as a WHO health-guideline failure and
+"faecal contamination" with E. coli at zero: WHO sets no health
+guideline for them, so they are a national-limit failure that calls
+for disinfection and a sanitary inspection, and the remark, the
+verdict and the summary say so. The corrosivity paragraph stated the pH
+was within the acceptability range beside a value of 5.9; it now states
+the pH and which side of the range it is on. The table of contents
+carries the headings themselves rather than "right-click and choose
+Update Field", captions carry Word's Caption style, an empty table no
+longer crashes a build, the Piper diagram's base labels no longer meet
+as "HNO3+K" and the facies section says what the water is, a
+provisional report qualifies its own executive summary, the national
+standard is cited as unverified, every "(s)" is a noun that agrees with
+its count, grid coordinates print as coordinates, the model table
+writes "half-space" rather than "0/0", and the placeholder signatories
+and phone number are out of the worked examples.
+
+The regional maps show where things are at the scale they are drawn.
+The scale caveat quoted an 80 km window on maps drawn at 52 km and
+135 km; it now describes the window that was drawn. The same USGS
+polygon was named for the site's district rather than its own, so the
+Freetown Complex was "Paleozoic Igneous", the age the crosswalk itself
+calls wrong, on a Kuntolo map; each polygon is now placed by its own
+position. The bundled chiefdom layer truncates names to fifteen
+characters and those went onto client maps; the full names are carried
+beside them, printed, and accepted from an operator. Guinea and Liberia
+were painted the same blue as the Atlantic; the land across the border
+is now in the paper tone, told from the sea by the geology layer's own
+polygons. Graticule ticks placed past the frame grew every map and
+thirteen labels at a tenth of a degree collided; the ticks stay inside
+the frame at three to six per axis. The location map highlights the
+district the position resolves to, lights both halves of the Western
+Area and the chiefdoms of Karene and Falaba, and keeps the site star
+clear of the names; the geology tints are separated in greyscale; the
+study-area map is drawn at the scale its points need, so Rokel's shows
+both soundings 20.7 km apart on one sheet; a unit map over the coastal
+plain says that the Precambrian polygon spans the Rokel River Group belt
+the aquifer map shows as fracture flow; the Streamlit maps page draws
+the maps the reports embed; the national legends sit in the Atlantic
+corner and the scale bar's total carries its unit.
+
+An audit of the three worked examples, reading every figure and every
+report as a client or a ministry reviewer would, found real defects in
+the maps, the borehole design, the VES interpretation, the pumping-test
+recommendations and the report text. `ROADMAP.md` lists them by
+consequence in the order they are being fixed, with the files, the
+browser-engine mirrors and the tests each touches. The first step is
+done here: the example folders held twenty-nine figures that no script
+had written for months - maps keyed to a district centroid the boundary
+layer had since moved, drawings under file names a builder had stopped
+using - beside the current ones, with nothing in either name to say which
+a committed report embeds. Every example now clears its output folders
+before it runs, a map of an area with no GPS fix is named for the area
+(`study_area_map_port_loko_district.png`) rather than for a centroid
+that moves with every rebuild of the layer, and a test runs each example
+into a temporary folder and holds the committed set of files to it.
+
 Offline releases are now built rather than maintained by hand.
 `web/build_offline.py` reads the app shell the way a browser does and
 emits `docs/sw.js` with exactly the files the page loads; the release

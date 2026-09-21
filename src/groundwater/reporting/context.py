@@ -7,6 +7,8 @@ maps, generated once into the report's figures directory.
 
 from __future__ import annotations
 
+import math
+import re
 from pathlib import Path
 
 from ..config import HouseStyle
@@ -37,12 +39,67 @@ def _figures_dir(figures_dir, out_path) -> Path:
     return figures
 
 
+def _map_key(window) -> str:
+    """The token in a context map's file name.
+
+    A site with a GPS fix is keyed by its position, so two sites in one
+    project keep their own maps rather than overwriting each other. A site
+    without one is keyed by the area the map covers - "western_area_rural_
+    district" - and not by that area's centroid: the centroid is a
+    floating-point property of the boundary layer, and every rebuild of
+    that layer moved it by a few metres, which left a stale twin of every
+    area map beside the current one with nothing in either name to say
+    which the report used.
+    """
+    if window.exact:
+        return f"{window.lat:.4f}_{abs(window.lon):.4f}".replace(".", "p")
+    slug = re.sub(r"[^a-z0-9]+", "_", window.label.lower()).strip("_")
+    return slug or "area"
+
+
+#: A study-area map of a site with a GPS fix spans this much either side
+#: of it unless the overlay points need more: at 10 km the village, the
+#: soundings and the recommended point are told apart, which at the old
+#: fixed 40 km (an 80 km window) they never were.
+STUDY_AREA_RADIUS_KM = 10.0
+
+
+def study_area_radius_km(site: SiteMetadata | None, points: list[dict] | None,
+                         ceiling_km: float = 40.0) -> float:
+    """The half-width of the study-area map, from what has to fit on it."""
+    lats, lons = [], []
+    if site is not None and site.latlon is not None:
+        lats.append(site.latlon[0])
+        lons.append(site.latlon[1])
+    for point in points or []:
+        if point.get("lat") is not None and point.get("lon") is not None:
+            lats.append(float(point["lat"]))
+            lons.append(float(point["lon"]))
+    if len(lats) < 2:
+        return min(STUDY_AREA_RADIUS_KM, ceiling_km)
+    # the map is centred on the site (area_window), so what has to fit is
+    # the farthest point from it, not half the spread between the points
+    if site is not None and site.latlon is not None:
+        centre_lat, centre_lon = site.latlon
+    else:
+        centre_lat, centre_lon = sum(lats) / len(lats), sum(lons) / len(lons)
+    cos_lat = math.cos(math.radians(centre_lat))
+    farthest = max(
+        math.hypot((lat - centre_lat) * 111.32, (lon - centre_lon) * 111.32 * cos_lat)
+        for lat, lon in zip(lats, lons, strict=True)
+    )
+    # the farthest point with a quarter of the frame to spare beyond it
+    needed = farthest * 1.25 + 1.0
+    return float(min(max(STUDY_AREA_RADIUS_KM, needed), ceiling_km))
+
+
 def context_map_figures(
     site: SiteMetadata | None,
     figures_dir: str | Path,
     style: HouseStyle | None = None,
     local_radius_km: float = 40.0,
     points: list[dict] | None = None,
+    mark_site: bool = True,
 ) -> dict[str, Path]:
     """Generate the context maps for a site.
 
@@ -78,15 +135,16 @@ def context_map_figures(
         return {}
     figures = Path(figures_dir)
     figures.mkdir(parents=True, exist_ok=True)
-    # the file name carries the centre of the window, so two sites in one
-    # project keep their own maps rather than overwriting each other
-    token = f"{window.lat:.4f}_{abs(window.lon):.4f}".replace(".", "p")
+    token = _map_key(window)
     out: dict[str, Path] = {}
     study = figures / f"study_area_map_{token}.png"
     try:
+        # a site with a fix is mapped at the scale its points need; an
+        # area without one is mapped at the area's own size by area_window
         plot_study_area_map(site, path=study, style=style,
-                            radius_km=min(local_radius_km, 40.0),
-                            points=points or [])
+                            radius_km=study_area_radius_km(
+                                site, points, ceiling_km=min(local_radius_km, 40.0)),
+                            points=points or [], mark_site=mark_site)
         out["study_area"] = study
     except ValueError:
         # area_window found a centre, so this should not happen; if the

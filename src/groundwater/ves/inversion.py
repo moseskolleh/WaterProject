@@ -267,8 +267,12 @@ def invert_sounding(
                     break
 
     # Parsimony: the simplest model reaching the target; otherwise the
-    # simplest model whose fit is within 15 percent of the best fit
-    # (extra layers must earn their keep), otherwise the overall best.
+    # simplest model whose fit is within config.parsimony_fallback_ratio of
+    # the best fit (extra layers must earn their keep), otherwise the
+    # overall best. A model chosen by the fallback has not reached the
+    # target, and the interpretation flags that: neither Rokel sounding
+    # reaches it, and the choice between their candidates was being made by
+    # a constant nobody could see.
     #
     # "Reaching the target" is not enough on its own. A two-layer model can
     # sit just under the target while a three-layer one fits the same curve
@@ -287,7 +291,7 @@ def invert_sounding(
             break
     if chosen is None:
         for cand in candidates:
-            if cand[2] <= 1.15 * best_err:
+            if cand[2] <= config.parsimony_fallback_ratio * best_err:
                 chosen = cand
                 break
     if chosen is None:

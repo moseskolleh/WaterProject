@@ -62,9 +62,8 @@ def test_geophysical_report_structure(geophysical_report):
         "1. Introduction",
         "2. Background and Geology of the Project Area",
         "3.1 Reconnaissance Survey",
-        "3.2.1 Resistivity Profiling",
-        "3.2.2 Selection of VES Points",
-        "3.2.3 Vertical Electrical Sounding (VES)",
+        "Sounding positions",
+        "3.2.1 Vertical Electrical Sounding (VES)",
         "4. Data Analysis and Interpretation",
         "order of preference for drilling",
         "5. Conclusions and Recommendations",
@@ -513,3 +512,116 @@ def test_the_works_list_certifies_nothing_the_project_holds_no_record_of():
     built = HandoverReportInputs(
         site=site, works_completed=["Wellhead completion with apron."])
     assert built.works_completed == ["Wellhead completion with apron."]
+
+
+def test_the_reports_say_what_a_thirty_minute_test_is_worth(sample_data, tmp_path):
+    """Dr Timbo's completion and handover reports printed the yield and
+    "successful and sustainable" without the analysis's own warnings."""
+    d = sample_data / "dr_timbo"
+    log = read_drilling_workbook(d / "dr_timbo_drilling_log.xlsx")
+    analysis = analyse_pumping_test(read_pumping_workbook(d / "dr_timbo_constant_test.xlsx"))
+    assert analysis.yield_recommendation.is_indicative
+    completion = build_completion_report(
+        CompletionReportInputs(log=log, pumping=analysis, figures_dir=tmp_path),
+        tmp_path / "completion.docx",
+    )
+    text = _document_text(completion)
+    assert "indicative, not established" in text
+    assert "casing-storage" in text
+    assert "successful and sustainable" not in text
+    assert "Pump setting during the test" in text and "67 m" in text
+    assert "Recommended pump intake" in text and "52 m below the top of the casing" in text
+    assert "constant discharge test with recovery" in text
+    assert "constant+recovery" not in text
+    assert "L/h" not in text and "Test discharge" in text
+    handover = build_handover_report(
+        HandoverReportInputs(site=log.site, log=log, pumping=analysis, figures_dir=tmp_path),
+        tmp_path / "handover.docx",
+    )
+    text = _document_text(handover)
+    assert "Yield confidence" in text and "indicative" in text
+    assert "below the top of the casing" in text
+    pumping = build_pumping_report(
+        PumpingReportInputs(analysis=analysis, figures_dir=tmp_path),
+        tmp_path / "pumping.docx",
+    )
+    text = _document_text(pumping)
+    assert "below ground level" not in text
+    assert "Casing storage" in text and "117 minutes" in text
+    assert "Not adopted for the yield" in text
+    assert "Adopted as the best available" in text
+    assert "distance criterion" in text
+    assert "meets t/t' = 1 at 21.7 m" in text
+    assert "(2.93 m3/h over 32.8 m of drawdown after 30 minutes)" in text
+    assert "Confidence | indicative" in text or "indicative" in text
+
+
+def test_a_sheet_whose_levels_run_below_the_pump_is_not_called_valid(sample_data, tmp_path):
+    test = read_pumping_workbook(sample_data / "kuntolo" / "kuntolo_step_test.xlsx")
+    analysis = analyse_pumping_test(test)
+    path = build_pumping_report(
+        PumpingReportInputs(analysis=analysis, figures_dir=tmp_path),
+        tmp_path / "kuntolo.docx",
+    )
+    text = _document_text(path)
+    assert "curves are valid" not in text
+    assert "inconsistent with the stated static level, pump setting or borehole depth" in text
+    assert "level_below_pump" in text
+    assert "step drawdown test with recovery" in text
+
+
+def test_a_two_step_fit_says_it_is_exact_by_construction(sample_data, tmp_path):
+    test = read_pumping_workbook(sample_data / "kuntolo" / "kuntolo_step_test.xlsx")
+    for step, q in zip(test.steps, (1.5, 2.2, 3.0), strict=True):
+        step.discharge_m3_per_h = q
+    analysis = analyse_pumping_test(test)
+    path = build_pumping_report(
+        PumpingReportInputs(analysis=analysis, figures_dir=tmp_path),
+        tmp_path / "kuntolo_q.docx",
+    )
+    text = _document_text(path)
+    assert "exact by construction" in text
+    assert "R squared 1.000" not in text
+    assert "equivalent pumping time of 112 minutes" in text
+    assert "(indicative)" in text
+
+
+def test_the_drawing_is_captioned_as_what_it_is(sample_data, tmp_path):
+    """Dr Timbo's log records no casing string; the drawing was "as-built"."""
+    d = sample_data / "dr_timbo"
+    log = read_drilling_workbook(d / "dr_timbo_drilling_log.xlsx")
+    design = design_borehole(log=log, static_water_level_m=9.44, pump_intake_m=52.0)
+    completion = build_completion_report(
+        CompletionReportInputs(log=log, design=design, figures_dir=tmp_path),
+        tmp_path / "completion.docx",
+    )
+    text = _document_text(completion)
+    assert "5. Borehole Construction Design" in text
+    assert "this is a design, not an as-built record" in text
+    assert "As-built" not in text
+    assert "Design notes:" in text and "thin_annulus" in text
+    assert "rather than the 52 m the yield recommendation asked for" in text
+    # the intake the design moved out of the screen is the one every table prints
+    assert "Recommended pump intake | 54 m" in text or "54 m" in text
+    assert "52 m below the top of the casing" not in text
+    assert "Annular fill" in text and "no gravel pack" in text
+    assert "0-20 m cement grout" in text
+    handover = build_handover_report(
+        HandoverReportInputs(site=log.site, log=log, design=design, figures_dir=tmp_path),
+        tmp_path / "handover.docx",
+    )
+    text = _document_text(handover)
+    assert "not an as-built record" in text
+    assert "Design notes:" in text
+    # with the screens recorded as installed the same reports say as built
+    log.installed_screens_m = [(25.0, 35.0), (48.0, 53.0), (59.0, 63.0)]
+    built = design_borehole(log=log, static_water_level_m=9.44)
+    assert built.as_built
+    completion = build_completion_report(
+        CompletionReportInputs(log=log, design=built, figures_dir=tmp_path),
+        tmp_path / "completion_built.docx",
+    )
+    text = _document_text(completion)
+    assert "5. Borehole Construction" in text and "Construction Design" not in text
+    assert "As-built construction summary" in text
+    assert "screens as installed, recorded on the drilling log" in text

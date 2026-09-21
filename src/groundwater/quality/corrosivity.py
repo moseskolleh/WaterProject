@@ -174,18 +174,36 @@ def assess_corrosivity(sample: WaterQualitySample) -> CorrosivityAssessment:
     assessment.is_aggressive = aggressive
 
     if aggressive:
+        # The pH sentence used to say "within the acceptability range" for
+        # a sample the same report flagged at 5.9. It now says what the pH is.
+        if ph < 6.5:
+            ph_note = (
+                f"The pH of {ph:.1f} is below the 6.5 to 8.5 acceptability range, "
+                "which adds to the attack on metal; soft, low-alkalinity basement "
+                "groundwater is aggressive even at a pH inside that range."
+            )
+        elif ph > 8.5:
+            ph_note = (
+                f"The pH of {ph:.1f} is above the 6.5 to 8.5 acceptability range; "
+                "the aggressiveness comes from the low calcium and alkalinity."
+            )
+        else:
+            ph_note = (
+                f"The pH of {ph:.1f} is within the 6.5 to 8.5 acceptability range, "
+                "and the water is aggressive all the same, which is typical of "
+                "soft basement groundwater."
+            )
         assessment.verdict = (
             f"The water is chemically aggressive (Ryznar index {rsi:.1f}, "
-            f"Langelier index {lsi:+.1f}). It will corrode metal fittings, and "
-            "it can be aggressive even though the pH is within the acceptability "
-            "range, which is typical of soft basement groundwater."
+            f"Langelier index {lsi:+.1f}). It will corrode metal fittings. "
+            + ph_note
         )
         assessment.materials_note = (
             "Specify uPVC or stainless steel (grade 304 or 316) for the rising "
             "main and pump components, and avoid galvanised iron and mild steel, "
             "which corrode rapidly in this water and are a leading cause of "
-            "premature handpump failure. Inspect the rising main and pump rods "
-            "for corrosion at each service."
+            "premature pump failure. Inspect the rising main and the wetted "
+            "metal parts of the pump for corrosion at each service."
         )
         if assessment.larson_skold is not None and assessment.larson_skold > 0.8:
             assessment.materials_note += (

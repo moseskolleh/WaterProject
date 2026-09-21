@@ -219,7 +219,9 @@ await withPage(async (page, base, consoleErrors) => {
             d.analysis.transmissivity_m2_per_day, 3))],
           ['safe yield', has(C.fmtNum(
             d.analysis.yield_recommendation.safe_yield_m3_per_h))],
-          ['test type', has(d.analysis.test_type || d.test.test_type)],
+          // the report prints the test type in words ("constant discharge
+          // test with recovery"), never the sheet's token
+          ['test type', has(C.testTypeText(d.test.test_type))],
         ];
         wants.quality = [
           ['the verdict', has(d.assessment.verdict)],
