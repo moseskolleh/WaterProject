@@ -954,14 +954,13 @@
     return { rho: factors.slice(0, nLayers), h: factors.slice(nLayers) };
   }
 
-  /* Full search: layer count from min_layers to max_layers, two starts each,
-   * keeping the simplest model that reaches the target fit.
-   *
-   * onProgress(fraction, label) is called between trials so the page can show
-   * where the inversion has got to; it is the only non-pure part of this. */
-  function invertSounding(sounding, options) {
+  /* ves/inversion.py inversion_readings: the readings the inversion fits,
+   * spliced where the array has segments, sorted by spacing, and only the
+   * finite, positive apparent resistivities. The interpretation reads its
+   * depth of investigation from the same readings, so a last reading
+   * recorded as 0 cannot lend it a depth the model never saw. */
+  function inversionReadings(sounding, options) {
     var opts = options || {};
-    var cfg = (opts.config || defaultConfig()).ves;
     var arrayType = sounding.array_type || 'schlumberger';
     var spliced;
     if (opts.splice !== false && arrayType.indexOf('wenner') !== 0) {
@@ -975,12 +974,25 @@
         shifts: [1.0],
       };
     }
-
-    var ab2 = [], rhoApp = [];
+    var ab2 = [], rho = [];
     for (var i = 0; i < spliced.ab2.length; i++) {
       var value = spliced.rho[i];
-      if (isFinite(value) && value > 0) { ab2.push(spliced.ab2[i]); rhoApp.push(value); }
+      if (isFinite(value) && value > 0) { ab2.push(spliced.ab2[i]); rho.push(value); }
     }
+    return { ab2: ab2, rho: rho, shifts: spliced.shifts };
+  }
+
+  /* Full search: layer count from min_layers to max_layers, two starts each,
+   * keeping the simplest model that reaches the target fit.
+   *
+   * onProgress(fraction, label) is called between trials so the page can show
+   * where the inversion has got to; it is the only non-pure part of this. */
+  function invertSounding(sounding, options) {
+    var opts = options || {};
+    var cfg = (opts.config || defaultConfig()).ves;
+    var arrayType = sounding.array_type || 'schlumberger';
+    var spliced = inversionReadings(sounding, opts);
+    var ab2 = spliced.ab2, rhoApp = spliced.rho;
     if (ab2.length < 4) throw new Error('Not enough readings to invert');
 
     var candidates = [], trials = [];
@@ -1064,6 +1076,9 @@
         fit_error_percent: chosen.err,
         method: 'damped-lsq',
         sounding_id: sounding.sounding_id || '',
+        /* travels with the model so the interpretation can say a boundary
+         * is poorly resolved instead of reading the layer count as settled */
+        h_uncertainty_factor: uncertainty.h,
       }),
       ab2: ab2,
       /* which array the spacings are: a Wenner sounding's column is the
@@ -1227,7 +1242,8 @@
 
   function drillingDepthText(interp) {
     var depth = pyFixed(interp.max_drilling_depth_m, 0) + ' m';
-    return (interp.basement_not_resolved ? 'at least ' : 'about ') + depth;
+    var minimum = interp.basement_not_resolved || interp.drilling_depth_capped;
+    return (minimum ? 'at least ' : 'about ') + depth;
   }
 
   function darZarrouk(layers) {
@@ -1283,8 +1299,12 @@
     var n = model.n_layers, i;
 
     var investigation, maxSpacing = null;
-    if (sounding && sounding.ab2 && sounding.ab2.length) {
-      maxSpacing = arrMax(sounding.ab2);
+    /* the spacings the inversion actually fitted: a reading it dropped (a
+     * zero or a blank resistivity) extends no depth the model was fitted to */
+    var used = (sounding && sounding.ab2 && sounding.ab2.length)
+      ? inversionReadings(sounding).ab2 : [];
+    if (used.length) {
+      maxSpacing = arrMax(used);
       investigation = depthOfInvestigation(maxSpacing, cfg);
     } else if (n > 1) {
       investigation = bottoms[n - 2] * 2 + 20;
@@ -1308,18 +1328,23 @@
       });
     }
 
-    /* water zones: the top few metres are vadose, so a zone starts at 3 m */
+    /* water zones: the top few metres are vadose, so a zone starts at 3 m.
+     * A layer whose modelled base lies below the depth of investigation is
+     * open-ended there, as the half-space is: the model put that base where
+     * no reading reaches. A water-bearing layer that starts at or below the
+     * depth of investigation was never seen at all, so it is no zone, and
+     * the narrative says so. */
     var zones = [];
     var basementNotResolved = false;
+    var openBase = null, unseenTops = [];
     layers.forEach(function (layer) {
       if (!layer.water_bearing) return;
       var top = Math.max(layer.top_m, 3.0);
-      var bottom;
-      if (isFinite(layer.bottom_m)) {
-        bottom = layer.bottom_m;
-      } else {
-        bottom = investigation;
+      if (top >= investigation) { unseenTops.push(layer.top_m); return; }
+      var bottom = Math.min(layer.bottom_m, investigation);
+      if (layer.bottom_m > investigation) {
         basementNotResolved = bottom - top >= 1.0;
+        openBase = layer.bottom_m;
       }
       if (bottom - top >= 1.0) zones.push([pyRound(top), pyRound(bottom)]);
     });
@@ -1343,6 +1368,10 @@
         layers[layers.length - 1].rho >= cfg.fractured_zone_rho[1]) {
       depthToBasement = layers[layers.length - 1].top_m;
     }
+    /* a basement top below the depth of investigation is where the model
+     * happened to put it, not a depth the sounding measured */
+    var bedrockUnseen = depthToBasement !== null && depthToBasement > investigation;
+    if (bedrockUnseen) depthToBasement = null;
 
     var aquiferThickness = zones.reduce(function (a, z) { return a + (z[1] - z[0]); }, 0);
 
@@ -1353,6 +1382,9 @@
     var deepest = zones.length
       ? zones[zones.length - 1][1] + cfg.max_drilling_margin_m
       : investigation;
+    /* a depth cut back to the depth of investigation is a minimum, and says
+     * so, rather than reading as an estimate */
+    var drillingDepthCapped = deepest > investigation;
     var step = cfg.round_drilling_depth_to_m;
     var maxDepth = Math.ceil(Math.min(deepest, investigation) / step) * step;
     maxDepth = Math.min(maxDepth, investigation);
@@ -1391,11 +1423,16 @@
         context: sid });
     }
     if (basementNotResolved) {
+      var where = (openBase === null || !isFinite(openBase))
+        ? 'is the half-space: the sounding did not reach its base within the ' +
+          pyFixed(investigation, 0) + ' m it resolves'
+        : 'continues below the ' + pyFixed(investigation, 0) + ' m the sounding ' +
+          'resolves: the model puts its base at ' + fmtNum(openBase) + ' m, deeper ' +
+          'than the readings reach';
       flags.push({ level: 'info', code: 'basement_not_resolved',
-        message: 'The deepest water-bearing layer is the half-space: the sounding ' +
-          'did not reach its base within the ' + pyFixed(investigation, 0) +
-          ' m it resolves, so the zone is open-ended, the aquifer thickness is a ' +
-          'minimum and the drilling depth is a minimum.',
+        message: 'The deepest water-bearing layer ' + where + ', so the zone is ' +
+          'open-ended, the aquifer thickness is a minimum and the drilling depth ' +
+          'is a minimum.',
         context: sid });
     }
 
@@ -1422,12 +1459,13 @@
       site_elevation_m: sounding && sounding.site ? sounding.site.elevation_m : null,
       flags: flags,
       basement_not_resolved: basementNotResolved,
+      drilling_depth_capped: drillingDepthCapped,
       confidence: confidence,
       fit_error_percent: err,
       fit_quality: fitQuality,
       max_spacing_m: maxSpacing,
     };
-    interp.narrative = interpretationNarrative(interp);
+    interp.narrative = interpretationNarrative(interp, unseenTops, bedrockUnseen);
     return interp;
   }
 
@@ -1568,10 +1606,42 @@
     return count === 1 ? singular : (pluralForm || singular + 's');
   }
 
-  function interpretationNarrative(interp) {
-    var parts = ['The data at ' + interp.sounding_id + ' resolves a ' +
-      interp.model.n_layers + ' layer subsurface (' +
-      describeCurveType(interp.curve_type) + ').'];
+  /* ves/interpret.py POORLY_RESOLVED_FACTOR / poorly_resolved_boundaries:
+   * [depth, factor] of each boundary whose thickness is known only to within
+   * a factor of 2 or worse; empty for a model with no uncertainty. */
+  var POORLY_RESOLVED_FACTOR = 2.0;
+
+  function poorlyResolvedBoundaries(model) {
+    var factors = model.h_uncertainty_factor;
+    if (!factors) return [];
+    var out = [];
+    Array.prototype.forEach.call(factors, function (f, i) {
+      if (f >= POORLY_RESOLVED_FACTOR) out.push([model.depths_bottom[i], f]);
+    });
+    return out;
+  }
+
+  /* "a", "a and b", "a, b and c" */
+  function andJoin(items) {
+    return items.length === 1 ? items[0]
+      : items.slice(0, -1).join(', ') + ' and ' + items[items.length - 1];
+  }
+
+  function interpretationNarrative(interp, unseenTops, bedrockUnseen) {
+    var curve = describeCurveType(interp.curve_type);
+    /* "resolves a 3 layer subsurface" over a boundary known only to x/ 3.7
+     * claimed a layer the curve does not settle */
+    var weak = poorlyResolvedBoundaries(interp.model);
+    var opening = weak.length
+      ? 'The data at ' + interp.sounding_id + ' are fitted with a ' +
+        interp.model.n_layers + ' layer model (' + curve + '), though the ' +
+        (weak.length === 1 ? 'boundary' : 'boundaries') + ' at ' +
+        andJoin(weak.map(function (w) { return fmtNum(w[0]) + ' m'; })) + ' ' +
+        (weak.length === 1 ? 'is' : 'are') + ' poorly resolved, so the layer ' +
+        'count is uncertain.'
+      : 'The data at ' + interp.sounding_id + ' resolves a ' +
+        interp.model.n_layers + ' layer subsurface (' + curve + ').';
+    var parts = [opening];
     interp.layers.forEach(function (layer) {
       var span = layer.thickness_m !== null
         ? 'from ' + fmtNum(layer.top_m) + ' m to ' + fmtNum(layer.bottom_m) +
@@ -1597,6 +1667,15 @@
       parts.push('No clearly water bearing low resistivity zone is resolved at ' +
         'this point within the investigated depth.');
     }
+    if (unseenTops && unseenTops.length) {
+      var one = unseenTops.length === 1;
+      parts.push('The water-bearing ' + (one ? 'layer' : 'layers') + ' from ' +
+        andJoin(unseenTops.map(function (t) { return fmtNum(t) + ' m'; })) + ' ' +
+        (one ? 'lies' : 'lie') + ' below the ' + fmtNum(interp.investigation_depth_m) +
+        ' m the sounding resolves, so ' +
+        (one ? 'it is not counted as a water zone' : 'they are not counted as water zones') +
+        '.');
+    }
     if (interp.fit_error_percent !== null && interp.fit_error_percent !== undefined) {
       if (interp.fit_quality === 'unreliable') {
         parts.push('The model reproduces the readings to ' +
@@ -1612,6 +1691,9 @@
     if (interp.depth_to_basement_m !== null) {
       parts.push('The depth to bedrock is estimated at about ' +
         fmtNum(interp.depth_to_basement_m) + ' m.');
+    } else if (bedrockUnseen) {
+      parts.push('The depth to bedrock is not resolved within the depth of ' +
+        'investigation (about ' + fmtNum(interp.investigation_depth_m) + ' m).');
     }
     if (interp.longitudinal_conductance_s > 0) {
       var base = 'The Dar-Zarrouk longitudinal conductance of the section is ' +
@@ -1644,8 +1726,13 @@
   }
 
   function rankInterpretations(interpretations, preferredOrder, cfg) {
-    var weight = {};
-    interpretations.forEach(function (i) { weight[i.sounding_id] = rankingWeight(i, cfg); });
+    /* Held beside the interpretation itself, not keyed by its sounding id: a
+     * sheet copied without renumbering gives two soundings one id, and a
+     * weight looked up by id gave both the last one's, so a point with no
+     * water zone could rank first while the suitability table ranked the
+     * other. */
+    var weight = new Map();
+    interpretations.forEach(function (i) { weight.set(i, rankingWeight(i, cfg)); });
     var byId = function (a, b) {
       return a.sounding_id < b.sounding_id ? -1 : a.sounding_id > b.sounding_id ? 1 : 0;
     };
@@ -1658,11 +1745,11 @@
           ? preferredOrder.length : position[a.sounding_id];
         var pb = position[b.sounding_id] === undefined
           ? preferredOrder.length : position[b.sounding_id];
-        return pa - pb || weight[b.sounding_id] - weight[a.sounding_id] || byId(a, b);
+        return pa - pb || weight.get(b) - weight.get(a) || byId(a, b);
       });
     } else {
       ranked = interpretations.slice().sort(function (a, b) {
-        return weight[b.sounding_id] - weight[a.sounding_id] || byId(a, b);
+        return weight.get(b) - weight.get(a) || byId(a, b);
       });
     }
     ranked.forEach(function (interp, i) { interp.rank = i + 1; });
@@ -1672,8 +1759,18 @@
   var LAYER_RESISTIVITY_COLUMN = 'Layer resistivity (ohm-m)';
 
   function drillingPreferenceTable(interpretations, preferredOrder, cfg) {
-    rankInterpretations(interpretations, preferredOrder, cfg);
-    return interpretations.map(function (interp, i) {
+    var c = cfg || defaultConfig().ves;
+    var ranked = rankInterpretations(interpretations, preferredOrder, c);
+    /* The rows in the order of preference the caption promises; they used to
+     * follow the sheets. Two points the ranking cannot separate are both
+     * "=1st", by the same test as the tie sentence, unless the analyst has
+     * set the order, which is then a judgment and not a score. */
+    var tied = [];
+    if (!(preferredOrder && preferredOrder.length) && ranked.length >= 2 &&
+        C.tiedLeaders(C.assessSiting(interpretations, c), c.ranking_tie_points)) {
+      tied = [ranked[0], ranked[1]];
+    }
+    return ranked.map(function (interp, i) {
       return {
         'No.': i + 1,
         'VES Point': interp.sounding_id,
@@ -1691,9 +1788,92 @@
           return zoneCell(z[0], z[1], zoneIsOpen(interp, z));
         }).join('\n') || 'none resolved',
         'Max Drilling Depth (m)': drillingDepthText(interp),
-        Ranking: ordinal(interp.rank),
+        Ranking: tied.indexOf(interp) >= 0 ? '=1st' : ordinal(interp.rank),
       };
     });
+  }
+
+  /* reporting/geophysical.py depth_of_investigation_text: how deep the
+   * soundings of one array resolve, in the array's own terms. A Wenner
+   * sounding's spacing is a, and it used to be reported as a maximum AB/2. */
+  function depthOfInvestigationText(arrayType, maxSpacing, doi, cfg) {
+    var c = cfg || defaultConfig().ves;
+    var fraction = c.depth_of_investigation_factor;
+    var fractionText = Math.abs(fraction - 0.5) < 1e-9 ? 'half' : formatG(fraction) + ' times';
+    if (String(arrayType || '').indexOf('wenner') === 0) {
+      /* A M N B at equal spacing a: AB = 3a, so AB/2 is 1.5 a */
+      return 'A Wenner sounding resolves the ground to roughly ' + fractionText +
+        ' its largest electrode spacing a, not to the spacing itself: with a ' +
+        'expanded to ' + fmtNum(maxSpacing) + ' m (AB/2 of ' + fmtNum(1.5 * maxSpacing) +
+        ' m) the depth of investigation here is about ' + fmtNum(doi) + ' m, and ' +
+        'any structure below it is not resolved.';
+    }
+    return 'A Schlumberger sounding resolves the ground to roughly ' + fractionText +
+      ' its largest AB/2, not to the spacing itself: with AB/2 expanded to ' +
+      fmtNum(maxSpacing) + ' m the depth of investigation here is about ' +
+      fmtNum(doi) + ' m, and any structure below it is not resolved.';
+  }
+
+  /* reporting/geophysical.py models_tried_text: what else was tried, so the
+   * model in the table is seen as one choice among the candidates. */
+  function modelsTriedText(inversion, cfg) {
+    var c = cfg || defaultConfig().ves;
+    var trials = (inversion.trials || []).filter(function (t) {
+      return t[1] !== null && t[1] !== undefined;
+    });
+    if (trials.length < 2) return '';
+    var tried = trials.map(function (t) {
+      return t[0] + ' layers, ' + pyFixed(t[1], 1) + '%';
+    }).join('; ');
+    var chosen = inversion.model.n_layers;
+    var target = c.target_fit_percent;
+    var why;
+    if (inversion.fit_error_percent <= target) {
+      /* "the simplest that reaches the target" was false whenever a simpler
+       * model reached it too and was passed over because a richer one more
+       * than halved its misfit (the parsimony rule) */
+      var simpler = trials.filter(function (t) { return t[0] < chosen && t[1] <= target; })
+        .map(function (t) { return t[0]; });
+      if (simpler.length) {
+        var best = trials.reduce(function (a, b) { return b[1] < a[1] ? b : a; })[0];
+        var ratio = c.parsimony_max_error_ratio;
+        var cut = Math.abs(ratio - 2.0) < 1e-9 ? 'more than halves'
+          : 'cuts by more than a factor of ' + formatG(ratio);
+        var one = simpler.length === 1;
+        why = 'the ' + andJoin(simpler.map(function (n) { return n + '-layer'; })) + ' ' +
+          (one ? 'model also reaches' : 'models also reach') + ' the ' +
+          formatG(target) + ' percent target, but ' +
+          (best === chosen
+            ? 'the ' + chosen + '-layer model ' + cut + ' ' + (one ? 'its' : 'their') +
+              ' misfit and is preferred'
+            : 'the ' + best + '-layer model ' + cut + ' ' + (one ? 'its' : 'their') +
+              ' misfit, and the ' + chosen + '-layer model is the simplest it does ' +
+              'not better that far');
+      } else {
+        why = 'the ' + chosen + '-layer model is the simplest that reaches the ' +
+          formatG(target) + ' percent target';
+      }
+    } else {
+      why = 'none reaches the ' + formatG(target) + ' percent target, and the ' +
+        chosen + '-layer model is kept as the simplest within ' +
+        pyFixed((c.parsimony_fallback_ratio - 1) * 100, 0) + ' percent of the best ' +
+        'fit; the alternatives are equally admissible readings of the same curve';
+    }
+    return 'Models tried: ' + tried + '. Of these ' + why + '.';
+  }
+
+  /* reporting/geophysical.py poorly_resolved_text: each boundary whose
+   * thickness factor is 2 or more, by the test the narrative softens on. */
+  function poorlyResolvedText(model) {
+    var weak = poorlyResolvedBoundaries(model);
+    if (!weak.length) return '';
+    var one = weak.length === 1;
+    return 'The ' + (one ? 'boundary' : 'boundaries') + ' at ' +
+      andJoin(weak.map(function (w) { return fmtNum(w[0]) + ' m (x/ ' + pyFixed(w[1], 1) + ')'; })) +
+      (one ? ' is' : ' are') + ' poorly resolved: within ' + (one ? 'its' : 'their') +
+      ' uncertainty the model collapses to one with ' +
+      (one ? 'a layer fewer' : 'fewer layers') + ', so the layer count above is a ' +
+      'reading of the curve rather than a property of it.';
   }
 
   C.MIN_PER_DAY = MIN_PER_DAY;
@@ -1712,6 +1892,7 @@
     soundingSegments: soundingSegments, spliceSegments: spliceSegments,
     fitErrorPercent: fitErrorPercent, invertModel: invertModel,
     invertSounding: invertSounding, layeredModel: layeredModel,
+    inversionReadings: inversionReadings,
     startingModels: startingModels, parameterUncertainty: parameterUncertainty,
     classifyCurve: classifyCurve, describeCurveType: describeCurveType,
     interpretModel: interpretModel, rankInterpretations: rankInterpretations,
@@ -1719,6 +1900,9 @@
     depthOfInvestigation: depthOfInvestigation, fitConfidence: fitConfidence,
     zoneText: zoneText, zoneCell: zoneCell, zoneIsOpen: zoneIsOpen,
     drillingDepthText: drillingDepthText, rankingWeight: rankingWeight,
+    poorlyResolvedBoundaries: poorlyResolvedBoundaries, andJoin: andJoin,
+    depthOfInvestigationText: depthOfInvestigationText,
+    modelsTriedText: modelsTriedText, poorlyResolvedText: poorlyResolvedText,
     LAYER_RESISTIVITY_COLUMN: LAYER_RESISTIVITY_COLUMN,
     fmtNum: fmtNum, fmtRange: fmtRange, formatG: formatG,
     roundSig: roundSig, pyRound: pyRound, pyFixed: pyFixed, expo: expo,
@@ -2006,8 +2190,12 @@
 
   /* Hantush-Bierschenk step drawdown analysis. Fits s_w = B Q + C Q^2 through
    * the end-of-step drawdowns by regressing s_w/Q on Q, so the SLOPE is C and
-   * the INTERCEPT is B. Q is m3/day, so B is day/m2 and C day2/m5. */
-  function hantushBierschenk(stepDischargesM3PerH, stepEndDrawdownsM) {
+   * the INTERCEPT is B. Q is m3/day, so B is day/m2 and C day2/m5.
+   * stepNumbers are the sheet's numbers for the steps passed in. A step left
+   * out of the fit used to renumber the rest, so the table printed "Step 1 |
+   * 2.2 m3/h" beside a test details line saying step 1 ran at 1.5 m3/h.
+   * Without them the steps are numbered from one. */
+  function hantushBierschenk(stepDischargesM3PerH, stepEndDrawdownsM, stepNumbers) {
     var q = stepDischargesM3PerH.map(function (v) { return v * 24.0; });
     var s = stepEndDrawdownsM.slice();
     if (q.length < 2) {
@@ -2047,7 +2235,7 @@
     var steps = q.map(function (qi, i) {
       var total = B * qi + C * qi * qi;
       return {
-        step: i + 1,
+        step: stepNumbers ? Number(stepNumbers[i]) : i + 1,
         discharge_m3_per_h: qi / 24.0,
         drawdown_end_m: s[i],
         sw_over_q_day_per_m2: s[i] / qi,
@@ -2110,6 +2298,35 @@
     return words + (tail ? ' with recovery' : '');
   }
 
+  /* Flags that say the recorded levels cannot all be right: a level above
+   * the stated static level, below the bottom of the hole or below the pump
+   * intake. A report used to certify "the drawdown and recovery curves are
+   * valid" over levels 18 m below the pump intake, and the yield computed
+   * from those drawdowns was called established. */
+  var LEVEL_FLAGS = ['water_level_above_static', 'level_below_borehole', 'level_below_pump'];
+
+  /* The confidence reason a flagged set of levels gives the yield. */
+  var LEVELS_IN_DOUBT_REASON = 'the recorded water levels are inconsistent ' +
+    'with the stated static level, pump setting or borehole depth, so the ' +
+    'drawdowns the yield is computed from are as recorded and not to be ' +
+    'relied on';
+
+  /* True when the sheet's own levels contradict its static level, pump or depth. */
+  function levelsInDoubt(test) {
+    return ((test && test.flags) || []).some(function (f) {
+      return LEVEL_FLAGS.indexOf(f.code) >= 0;
+    });
+  }
+
+  /* Python's PumpingTest.has_discharge: any step with a rate. The browser's
+   * test object is plain data and its rates are edited after parsing, so this
+   * is asked of the steps each time rather than stored. */
+  function hasDischarge(test) {
+    return ((test && test.steps) || []).some(function (s) {
+      return s.discharge_m3_per_h !== null && s.discharge_m3_per_h !== undefined;
+    });
+  }
+
   /* What a two-step Hantush-Bierschenk fit is worth, in the report's words. */
   var TWO_POINT_NOTE = 'The line is fitted through two points, so it is exact ' +
     'by construction: the R squared of 1.000 tests nothing, and B, C and the ' +
@@ -2135,16 +2352,39 @@
       return [recorded, false];
     }
     var qLast = Number(steps[steps.length - 1].discharge_m3_per_h);
-    var volume = 0.0, previousEnd = 0.0;
-    steps.forEach(function (step) {
-      var finite = step.time_min.filter(function (v) { return isFinite(v); });
-      if (!finite.length) return;
-      var end = arrMax(finite);
-      volume += Number(step.discharge_m3_per_h) * Math.max(end - previousEnd, 0.0);
-      previousEnd = end;
+    var durations = stepDurationsMin(steps)[0];
+    var volume = 0.0;
+    steps.forEach(function (step, i) {
+      volume += Number(step.discharge_m3_per_h) * durations[i];
     });
     if (qLast <= 0 || volume <= 0) return [recorded, false];
     return [volume / qLast, true];
+  }
+
+  /* [minutes per step, restarted step numbers]: how long each step pumped.
+   * A step's times normally run on from the step before (61, 62 ... after a
+   * step ending at 60), and its length is its last reading less that step's.
+   * Some sheets count each step from its own start instead, so a step opens
+   * at or before the minute the step before it ended; its own last reading is
+   * then its length, and the lengths add. Differencing those steps against
+   * the step before gave them no length at all: the recovery after such a
+   * step test was read against 30 minutes where the steps had pumped 158. A
+   * step with no readable time pumped for no measurable time. */
+  function stepDurationsMin(steps) {
+    var durations = [], restarted = [], previousEnd = null;
+    (steps || []).forEach(function (step) {
+      var finite = (step.time_min || []).filter(function (v) { return isFinite(v); });
+      if (!finite.length) { durations.push(0.0); return; }
+      var start = arrMin(finite), end = arrMax(finite);
+      if (previousEnd !== null && start <= previousEnd) {
+        restarted.push(step.step_number);
+        durations.push(Math.max(end, 0.0));
+      } else {
+        durations.push(Math.max(end - (previousEnd || 0.0), 0.0));
+      }
+      previousEnd = end;
+    });
+    return [durations, restarted];
   }
 
   /* How long casing storage controls the drawdown, in minutes. Early in a
@@ -2338,8 +2578,11 @@
       if (swl === null || swl === undefined) missing.push('static water level is missing');
       if (transmissivity === null || transmissivity === undefined) {
         var anyQ = (test.steps || []).some(function (s) { return s.discharge_m3_per_h; });
+        /* opts.noTransmissivityReason says why, when fits ran and every one
+         * was rejected on its own result */
         missing.push(anyQ
-          ? 'transmissivity could not be fitted from the readings'
+          ? (opts.noTransmissivityReason ||
+            'transmissivity could not be fitted from the readings')
           : 'discharge is missing on the field sheet');
       }
       return pending(missing.join(' and '));
@@ -2399,25 +2642,43 @@
      * safety factor on lifting the pump rather than on the rate. It is now
      * set below the static level plus the dry-season reserve, the usable
      * drawdown and the submergence margin, and never above the deepest
-     * level the test drew the water to, with the same submergence under it. */
+     * level the test drew the water to, with the same submergence under it.
+     * That floor is a reading, so it holds only where the readings do: a
+     * level the sheet itself shows cannot be right (below the pump, below the
+     * bottom of the hole) set a Kuntolo intake at 67 m from a 78.5 m reading
+     * in a 70 m hole. The pump cannot have drawn the level below its own
+     * setting either, so the floor never goes deeper than the test pump did. */
     var pumpDepth = swl + cfg.seasonal_allowance_m + usable + cfg.pump_submergence_min_m;
     var reached = '';
-    if (deepest !== null && deepest !== undefined) {
+    var hasPumpSetting = test.pump_setting_m !== null && test.pump_setting_m !== undefined;
+    if (deepest !== null && deepest !== undefined && levelsInDoubt(test)) {
+      reached = '; the deepest level recorded, ' + pyFixed(deepest, 1) + ' m, is ' +
+        'left out because the recorded levels are inconsistent with the stated ' +
+        'static level, pump setting or borehole depth';
+    } else if (deepest !== null && deepest !== undefined) {
       var floor = deepest + cfg.pump_submergence_min_m;
+      var atPump = hasPumpSetting && floor > test.pump_setting_m;
+      if (atPump) floor = test.pump_setting_m;
       reached = '; the test itself drew the level to ' + pyFixed(deepest, 1) + ' m' +
         (qLast ? ' at ' + formatG(qLast) + ' m3/h' : '');
       if (floor > pumpDepth) {
         pumpDepth = floor;
-        reached += ', which sets the intake';
+        reached += ', which sets the intake' + (atPump
+          ? ' at the ' + formatG(test.pump_setting_m) + ' m the test pump was set to'
+          : '');
       }
     }
+    /* Rounded to the next whole metre down the hole, except where the
+     * clearance above the bottom governs: rounding down the hole after the cap
+     * put a 45.5 m hole's intake at 43 m, 2.5 m above the bottom, beside text
+     * saying it was capped 3 m above. */
+    pumpDepth = Math.ceil(pumpDepth);
     var capped = '';
     if (test.borehole_depth_m && pumpDepth > test.borehole_depth_m - 3.0) {
-      pumpDepth = test.borehole_depth_m - 3.0;
+      pumpDepth = Math.floor(test.borehole_depth_m - 3.0);
       capped = ', capped 3 m above the ' + formatG(test.borehole_depth_m) +
         ' m bottom of the borehole';
     }
-    pumpDepth = Math.ceil(pumpDepth);
     var pumpDepthBasis = 'Pump intake at ' + formatG(pumpDepth) + ' m: the static ' +
       'level ' + pyFixed(swl, 1) + ' m plus the ' + formatG(cfg.seasonal_allowance_m) +
       ' m dry-season reserve, the ' + pyFixed(usable, 1) + ' m of drawdown the ' +
@@ -2477,9 +2738,19 @@
     var rec = analysis.yield_recommendation;
     if (!rec || rec.safe_yield_m3_per_h === null) return;
 
-    var fitted = [analysis.recovery, analysis.cooper_jacob, analysis.theis]
-      .filter(function (r) { return r && r.transmissivity_m2_per_day; })
-      .map(function (r) { return r.transmissivity_m2_per_day; });
+    /* A fit the analysis rejected does not widen the band either: Dr Timbo's
+     * "0.39 m3/h (0.28 to 1.2)" took its top from the recovery line it had
+     * just refused for missing the origin. The adopted fit stays in even when
+     * it is a casing-storage fallback, since the yield itself rests on it. */
+    var disqualified = analysis.disqualified || {};
+    var adoptedName = adoptedFit(analysis).method;
+    var fitted = fittedMethods(analysis)
+      .filter(function (f) {
+        return f[1].transmissivity_m2_per_day &&
+          (!Object.prototype.hasOwnProperty.call(disqualified, f[0]) ||
+            f[0] === adoptedName);
+      })
+      .map(function (f) { return f[1].transmissivity_m2_per_day; });
     if (!fitted.length) return;
     /* when only one method fitted there is no spread to measure, so allow the
      * factor of two that separates methods on a typical basement borehole */
@@ -2503,6 +2774,8 @@
       });
     });
     if (!yields.length) return;
+    // the central figure is inside its own range (see the Python)
+    yields.push(rec.safe_yield_m3_per_h);
     rec.safe_yield_low_m3_per_h = arrMin(yields);
     rec.safe_yield_high_m3_per_h = arrMax(yields);
     rec.envelope_basis = 'Range over transmissivity ' + tRange[0].toFixed(1) + '-' +
@@ -2543,27 +2816,38 @@
    * keeps it last. When nothing reaches the threshold the best of the poor
    * fits is still adopted (the highest R squared among the straight lines,
    * the curve fit only when it is all there is) so a yield is produced, and
-   * qualifies is false so the caller can flag it. */
+   * qualifies is false so the caller can flag it.
+   * The best of the poor fits is taken from the fits nothing disqualified,
+   * and only when there are none from the fits disqualified for lying inside
+   * the casing-storage period. A fit in invalid_fits is never adopted: the
+   * pick used to run over every fit, so a recovery line meeting t/t' = 1 at
+   * 60% of its drawdown won on its R squared of 0.99 and the yield rested on
+   * the one result the analysis had rejected. When nothing is left the
+   * method is null and the yield is pending. */
   function adoptedFit(analysis) {
     var fits = fittedMethods(analysis);
     var disqualified = analysis.disqualified || {};
+    var invalid = analysis.invalid_fits || {};
+    var has = function (map, key) { return Object.prototype.hasOwnProperty.call(map, key); };
     var minR2 = analysis.min_fit_r_squared === undefined
       ? defaultConfig().pumping.min_fit_r_squared : analysis.min_fit_r_squared;
     for (var i = 0; i < fits.length; i++) {
-      if (Object.prototype.hasOwnProperty.call(disqualified, fits[i][0])) continue;
+      if (has(disqualified, fits[i][0])) continue;
       var r2 = fits[i][1].r_squared;
       if (r2 === undefined || r2 === null || r2 >= minR2) {
         return { method: fits[i][0], result: fits[i][1], qualifies: true };
       }
     }
-    if (!fits.length) return { method: null, result: null, qualifies: false };
+    var pool = fits.filter(function (f) { return !has(disqualified, f[0]); });
+    if (!pool.length) pool = fits.filter(function (f) { return !has(invalid, f[0]); });
+    if (!pool.length) return { method: null, result: null, qualifies: false };
     var score = function (fit) {
       var r = fit[1].r_squared;
       return (r === undefined || r === null || !r) ? -1.0 : r;
     };
-    var best = fits[0];
-    for (var j = 1; j < fits.length; j++) {
-      if (score(fits[j]) > score(best)) best = fits[j];
+    var best = pool[0];
+    for (var j = 1; j < pool.length; j++) {
+      if (score(pool[j]) > score(best)) best = pool[j];
     }
     return { method: best[0], result: best[1], qualifies: false };
   }
@@ -2625,6 +2909,12 @@
        * recovery line nowhere near the origin, a Theis storativity no
        * aquifer has */
       disqualified: {},
+      /* the disqualified fits whose own result is wrong - a recovery line
+       * nowhere near the origin, a storativity no aquifer has - keyed by
+       * method with that reason. A fit read inside the casing-storage period
+       * is disqualified as well, but its line may be sound, so it can still
+       * be adopted as the best of the poor fits; a wrong result never can. */
+      invalid_fits: {},
       /* how long casing storage controls the drawdown in this borehole */
       casing_storage_min: null,
     };
@@ -2761,6 +3051,41 @@
       }
     }
 
+    /* Step clocks. A step test whose times restart each step is read with
+     * each step's own last reading as its length. The reading is the
+     * toolkit's, not the sheet's, and the overview and the recorded duration
+     * still show the step clocks, so it is said. */
+    var stepDurations = [], pumpedTotal = 0;
+    if (String(test.test_type || '').indexOf('step') === 0) {
+      var timed = (test.steps || []).filter(function (s) {
+        return s.time_min && s.time_min.length;
+      });
+      var clocks = stepDurationsMin(timed);
+      stepDurations = clocks[0];
+      var restarted = clocks[1];
+      pumpedTotal = stepDurations.reduce(function (a, b) { return a + b; }, 0);
+      if (restarted.length) {
+        var one = restarted.length === 1;
+        var names = one ? 'Step ' + restarted[0]
+          : 'Steps ' + restarted.slice(0, -1).join(', ') + ' and ' +
+            restarted[restarted.length - 1];
+        flags.push({
+          level: 'warning', code: 'step_time_restarted',
+          message: names + (one ? ' opens' : ' open') + ' at or before the ' +
+            'minute the step before ' + (one ? 'it' : 'each') + ' ended, so ' +
+            (one ? 'its' : 'their') + ' times are read as counted from the ' +
+            'start of ' + (one ? 'the' : 'each') + ' step rather than from the ' +
+            "start of the test: each step's own last reading is taken as its " +
+            'length, and the steps pumped for ' + formatG(pumpedTotal) +
+            ' minutes in all' +
+            (test.pumping_duration_min
+              ? ', not the ' + formatG(test.pumping_duration_min) +
+                ' minutes the latest reading gives' : '') +
+            '. Check the times on the sheet.',
+        });
+      }
+    }
+
     /* recovery */
     if (test.recovery_level_m && hasSwl && test.recovery_time_min) {
       var residual = test.recovery_level_m.map(function (v) { return v - swl; });
@@ -2785,12 +3110,14 @@
       }
       var recFit = analysis.recovery;
       if (recFit && equivalent) {
+        /* the steps' own lengths added up: a sheet whose step times restart
+         * has a latest reading that is one step, not the test */
         flags.push({
           level: 'info', code: 'recovery_equivalent_time',
           message: 'The recovery is read against an equivalent pumping time of ' +
             pyFixed(tPump, 0) + ' minutes at the last rate of ' + formatG(qRec) +
             ' m3/h (the volume pumped over all the steps at that rate), not ' +
-            'the ' + formatG(test.pumping_duration_min) + ' minutes the test ran.',
+            'the ' + formatG(pumpedTotal) + ' minutes the test ran.',
         });
       }
       if (recFit && recFit.intercept_fraction > cfg.recovery_intercept_max_fraction) {
@@ -2798,12 +3125,16 @@
           recFit.intercept_m.toFixed(1) + ' m of residual drawdown, ' +
           pyFixed(recFit.intercept_fraction * 100, 0) + '% of the drawdown the ' +
           'recovery started from, where the method requires zero';
+        analysis.invalid_fits.recovery = analysis.disqualified.recovery;
+        /* the fraction is of the magnitude the recovery started from; a line
+         * meeting the axis below zero printed "37% of the -21.8 m" */
         flags.push({
           level: 'warning', code: 'recovery_intercept',
           message: 'The recovery line does not pass through the origin: it meets ' +
             "t/t' = 1 at " + recFit.intercept_m.toFixed(1) + ' m of residual ' +
             'drawdown (' + pyFixed(recFit.intercept_fraction * 100, 0) + '% of the ' +
-            (recFit.intercept_m / Math.max(recFit.intercept_fraction, 1e-9)).toFixed(1) +
+            (Math.abs(recFit.intercept_m) /
+              Math.max(recFit.intercept_fraction, 1e-9)).toFixed(1) +
             ' m the recovery started from), where Theis recovery requires zero. ' +
             'The residual drawdown is dominated by something the method does ' +
             'not model (casing storage, a changing static level or a wrong ' +
@@ -2840,14 +3171,15 @@
               context: label,
             });
           } else {
-            positive.push([s.discharge_m3_per_h, sEnd]);
+            positive.push([s.discharge_m3_per_h, sEnd, s.step_number]);
           }
         });
         if (positive.length >= 2) {
           try {
             analysis.step_test = hantushBierschenk(
               positive.map(function (p) { return p[0]; }),
-              positive.map(function (p) { return p[1]; }));
+              positive.map(function (p) { return p[1]; }),
+              positive.map(function (p) { return p[2]; }));
           } catch (e4) {
             flags.push({ level: 'warning', code: 'step_test_failed', message: e4.message });
           }
@@ -2889,14 +3221,19 @@
       }
     }
     var tC = analysis.casing_storage_min;
+    /* A step test is judged on the length of a step, so its sentences are
+     * worded per step: a 3 x 50-minute test used to be "the test pumped for
+     * 50 minutes" and "the whole test lies inside" the casing-storage period. */
+    var perStep = lengthKind === 'step';
+    var inside = [];
+    var casingFlag = null;
     if (tC) {
-      var inside = [];
       var cjFit = analysis.cooper_jacob;
       if (cjFit && cjFit.fit_window_min[1] <= tC) {
         analysis.disqualified.cooper_jacob = 'its fitted window ' +
           formatG(cjFit.fit_window_min[0]) + '-' + formatG(cjFit.fit_window_min[1]) +
           ' minutes lies inside the ' + pyFixed(tC, 0) + '-minute casing-storage period';
-        inside.push('Cooper-Jacob');
+        inside.push('cooper_jacob');
       } else if (cjFit && cjFit.fit_window_min[0] < tC) {
         flags.push({
           level: 'warning', code: 'casing_storage_window',
@@ -2908,35 +3245,29 @@
       }
       var thFit = analysis.theis;
       if (thFit && duration !== null && duration <= tC) {
-        analysis.disqualified.theis = 'the whole ' + formatG(duration) + '-minute ' +
-          'test lies inside the ' + pyFixed(tC, 0) + '-minute casing-storage period';
-        inside.push('Theis');
+        analysis.disqualified.theis = (perStep
+          ? 'each ' + formatG(duration) + '-minute step lies inside'
+          : 'the whole ' + formatG(duration) + '-minute test lies inside') +
+          ' the ' + pyFixed(tC, 0) + '-minute casing-storage period';
+        inside.push('theis');
       }
       if (inside.length) {
-        flags.push({
-          level: 'warning', code: 'casing_storage',
-          message: 'With a ' + formatG(cfg.casing_diameter_in) + ' inch casing and a ' +
-            'specific capacity of ' + formatG(roundSig(qFirst / sFirst, 2), 2) +
-            ' m3/h per m, casing storage controls the drawdown for the first ' +
-            pyFixed(tC, 0) + " minutes (Schafer's rule)" +
-            (duration !== null && duration <= tC
-              ? '; this test pumped for ' + formatG(duration) + ' minutes, entirely inside it'
-              : '') +
-            '. The ' + inside.join(' and ') + ' fit' +
-            (inside.length > 1 ? 's see' : ' sees') +
-            ' the borehole emptying rather than the aquifer, so ' +
-            (inside.length > 1 ? 'their' : 'its') +
-            ' transmissivity is reported but not adopted.',
-        });
+        /* Worded below, once the adoption is known: the flag said every fit
+         * inside the period was "reported but not adopted" while the
+         * transmissivity note adopted one of them as the best available. */
+        casingFlag = { level: 'warning', code: 'casing_storage', message: '' };
+        flags.push(casingFlag);
       }
     }
     var thCheck = analysis.theis;
     if (thCheck && thCheck.storativity > cfg.max_plausible_storativity) {
+      var storativityReason = 'its storativity of ' +
+        formatG(roundSig(thCheck.storativity, 2), 2) + ' is above ' +
+        formatG(cfg.max_plausible_storativity) + ', which no aquifer has';
       if (!Object.prototype.hasOwnProperty.call(analysis.disqualified, 'theis')) {
-        analysis.disqualified.theis = 'its storativity of ' +
-          formatG(roundSig(thCheck.storativity, 2), 2) + ' is above ' +
-          formatG(cfg.max_plausible_storativity) + ', which no aquifer has';
+        analysis.disqualified.theis = storativityReason;
       }
+      analysis.invalid_fits.theis = storativityReason;
       flags.push({
         level: 'warning', code: 'storativity_implausible',
         message: 'The Theis fit returns a storativity of ' +
@@ -2951,6 +3282,44 @@
     analysis.transmissivity_source = adopted.method;
     analysis.transmissivity_m2_per_day = adopted.result
       ? adopted.result.transmissivity_m2_per_day : null;
+    if (casingFlag) {
+      var words = { cooper_jacob: 'Cooper-Jacob', theis: 'Theis' };
+      var several = inside.length > 1;
+      var casingText = 'With a ' + formatG(cfg.casing_diameter_in) + ' inch casing and a ' +
+        'specific capacity of ' + formatG(roundSig(qFirst / sFirst, 2), 2) +
+        ' m3/h per m, casing storage controls the drawdown for the first ' +
+        pyFixed(tC, 0) + " minutes (Schafer's rule)" +
+        (duration !== null && duration <= tC
+          ? (perStep ? '; each step pumped for ' : '; this test pumped for ') +
+            formatG(duration) + ' minutes, entirely inside it'
+          : '') +
+        '. The ' + inside.map(function (k) { return words[k]; }).join(' and ') +
+        ' fit' + (several ? 's see' : ' sees') +
+        ' the borehole emptying rather than the aquifer';
+      if (inside.indexOf(adopted.method) >= 0) {
+        var others = inside.filter(function (k) { return k !== adopted.method; })
+          .map(function (k) { return words[k]; });
+        casingText += '. No fit outside that period can be adopted, so the ' +
+          words[adopted.method] + ' value is adopted only as the best available' +
+          (others.length
+            ? ' and the ' + others.join(' and ') + ' value is reported but not adopted'
+            : '') + '.';
+      } else {
+        casingText += ', so ' + (several ? 'their' : 'its') +
+          ' transmissivity is reported but not adopted.';
+      }
+      casingFlag.message = casingText;
+    }
+    /* Every fit ran and every one was rejected on its own result: the yield
+     * is pending, and says why, rather than resting on a rejected line. */
+    var rejected = '';
+    if (!adopted.result && fittedMethods(analysis).length) {
+      rejected = 'no fitted transmissivity can be adopted (' +
+        fittedMethods(analysis).map(function (f) {
+          return METHOD_LABELS[f[0]] + ' ' + f[1].transmissivity_m2_per_day.toFixed(2) +
+            ' m2/day, ' + (analysis.invalid_fits[f[0]] || whyNotAdopted(analysis, f[0]));
+        }).join('; ') + ')';
+    }
     if (adopted.result && !adopted.qualifies) {
       var scored = fittedMethods(analysis).map(function (f) {
         return METHOD_LABELS[f[0]] + ' ' + f[1].transmissivity_m2_per_day.toFixed(2) +
@@ -2968,7 +3337,7 @@
 
     analysis.yield_recommendation = recommendYield(test,
       analysis.transmissivity_m2_per_day, analysis.step_test, cfg,
-      { transmissivitySource: adopted.method });
+      { transmissivitySource: adopted.method, noTransmissivityReason: rejected });
     attachYieldEnvelope(analysis, cfg);
     if (shortPrefix && analysis.yield_recommendation.safe_yield_m3_per_h !== null) {
       analysis.yield_recommendation.basis = shortPrefix +
@@ -2979,18 +3348,24 @@
     /* What the yield is worth: one judgement, made here and printed by
      * every report beside the yield. The pumping report used to carry these
      * warnings in its data notes while the completion and handover reports
-     * printed the same yield as "successful and sustainable" without them. */
+     * printed the same yield as "successful and sustainable" without them.
+     * Levels the sheet itself shows cannot be right come first: a yield
+     * computed from them was called established, and the readiness gate
+     * certified it. */
     var recommendation = analysis.yield_recommendation;
     var reasons = [];
+    if (levelsInDoubt(test)) reasons.push(LEVELS_IN_DOUBT_REASON);
     if (duration !== null && duration > 0 && duration < threshold) {
-      reasons.push('the test pumped for ' + formatG(duration) + ' minutes, below ' +
+      reasons.push((perStep ? 'each step ran for ' : 'the test pumped for ') +
+        formatG(duration) + ' minutes, below ' +
         'the ' + formatG(threshold) + ' needed to see late-time behaviour, so the ' +
         'yield is extrapolated ' +
         (Math.log(cfg.design_period_days * MIN_PER_DAY / duration) / Math.LN10).toFixed(1) +
         ' log cycles of time');
     }
     if (tC && duration !== null && duration <= tC) {
-      reasons.push('the whole test lies inside the ' + pyFixed(tC, 0) + '-minute ' +
+      reasons.push((perStep ? 'each step lies inside' : 'the whole test lies inside') +
+        ' the ' + pyFixed(tC, 0) + '-minute ' +
         'casing-storage period, so its drawdown is the borehole emptying rather ' +
         'than the aquifer responding');
     }
@@ -3019,6 +3394,8 @@
     TWO_POINT_NOTE: TWO_POINT_NOTE,
     CASING_STORAGE_COEFFICIENT: CASING_STORAGE_COEFFICIENT,
     testTypeText: testTypeText, equivalentPumpingTimeMin: equivalentPumpingTimeMin,
+    stepDurationsMin: stepDurationsMin, LEVEL_FLAGS: LEVEL_FLAGS,
+    levelsInDoubt: levelsInDoubt, hasDischarge: hasDischarge,
     casingStorageMin: casingStorageMin, deepestPumpingLevel: deepestPumpingLevel,
     pumpIntakeDepth: pumpIntakeDepth, confidenceText: confidenceText,
     adoptedFit: adoptedFit, whyNotAdopted: whyNotAdopted,
@@ -3760,6 +4137,20 @@
     return ['Strongly corrosive', true];
   }
 
+  /* The pH to one decimal, or to as many as the range sentence needs
+   * (corrosivity.py _ph_text). Rounded to one decimal, 6.46 printed as "6.5
+   * is below the 6.5 to 8.5 acceptability range" and 8.54 as "8.5 is above"
+   * it. pyFixed, not toFixed: Python's "%.1f" sends a tie to the even digit,
+   * so a pH reported as 6.25 prints as 6.2 in both engines. */
+  function phText(ph) {
+    for (var places = 1; places <= 4; places++) {
+      var text = pyFixed(ph, places);
+      var shown = Number(text);
+      if ((shown !== 6.5 && shown !== 8.5) || (ph >= 6.5 && ph <= 8.5)) return text;
+    }
+    return formatG(ph);
+  }
+
   function assessCorrosivity(sample) {
     var assessment = {
       lsi: null, rsi: null, aggressive_index: null, larson_skold: null,
@@ -3848,21 +4239,19 @@
     var signedLsi = (lsi >= 0 ? '+' : '') + lsi.toFixed(1);
     if (aggressive) {
       /* The pH sentence used to say "within the acceptability range" for a
-       * sample the same report flagged at 5.9. It now says what the pH is.
-       * pyFixed, not toFixed: Python's "%.1f" sends a tie to the even digit,
-       * so a pH reported as 6.25 prints as 6.2 in both engines. */
+       * sample the same report flagged at 5.9. It now says what the pH is. */
       var phNote;
       if (ph < 6.5) {
-        phNote = 'The pH of ' + pyFixed(ph, 1) + ' is below the 6.5 to 8.5 ' +
+        phNote = 'The pH of ' + phText(ph) + ' is below the 6.5 to 8.5 ' +
           'acceptability range, which adds to the attack on metal; soft, ' +
           'low-alkalinity basement groundwater is aggressive even at a pH ' +
           'inside that range.';
       } else if (ph > 8.5) {
-        phNote = 'The pH of ' + pyFixed(ph, 1) + ' is above the 6.5 to 8.5 ' +
+        phNote = 'The pH of ' + phText(ph) + ' is above the 6.5 to 8.5 ' +
           'acceptability range; the aggressiveness comes from the low calcium ' +
           'and alkalinity.';
       } else {
-        phNote = 'The pH of ' + pyFixed(ph, 1) + ' is within the 6.5 to 8.5 ' +
+        phNote = 'The pH of ' + phText(ph) + ' is within the 6.5 to 8.5 ' +
           'acceptability range, and the water is aggressive all the same, ' +
           'which is typical of soft basement groundwater.';
       }
@@ -3966,6 +4355,9 @@
     unknown_parameter: 'the parameter is not in the standards table',
     unit_basis_conflict:
       'the unit names a different chemical basis from the parameter',
+    value_unreadable: 'the reported result could not be read',
+    detected_not_quantified:
+      'the laboratory reported only a lower bound, which is inside the limit',
   };
 
   var GRADED_STATUSES = ['exceeds_health', 'exceeds_national',
@@ -4048,16 +4440,19 @@
     return { value: converted, reason: '' };
   }
 
-  function gradeRow(row, entry, value, unitNote) {
+  /* The limit hierarchy: [status, key of the limit that set it]
+   * (assess.py _classify). exceeds(limit) says whether a limit is crossed:
+   * a measured value asks limitExceededBy, a lower bound whether it already
+   * reaches the limit. One hierarchy serves both, so a ">1.0" iron is graded
+   * as a measured iron is, rather than by rules of its own. */
+  function classifyLimits(entry, exceeds) {
     var isMicro = String(entry.category || '').trim().toLowerCase() === 'microbiological';
     var isFaecal = String(entry.parameter || '').trim().toLowerCase() === 'e. coli';
-    if (entry.who_health && limitExceededBy(entry.who_health, value)) {
-      row.status = 'exceeds_health';
-      row.remark = 'exceeds the WHO health based guideline (' +
-        limitText(entry.who_health) + ')' + unitNote;
-    } else if (isMicro && (
-        (entry.sl_standard && limitExceededBy(entry.sl_standard, value)) ||
-        (entry.who_aesthetic && limitExceededBy(entry.who_aesthetic, value)))) {
+    if (entry.who_health && exceeds(entry.who_health)) {
+      return ['exceeds_health', 'who_health'];
+    }
+    if (isMicro && ((entry.sl_standard && exceeds(entry.sl_standard)) ||
+        (entry.who_aesthetic && exceeds(entry.who_aesthetic)))) {
       /* A microbiological indicator is never an aesthetic matter, even when
        * its limit is carried in the national column. E. coli is the faecal
        * indicator and any detection is a health exceedance. Total coliforms
@@ -4066,52 +4461,76 @@
        * contamination, so they are a national-limit failure that calls for
        * disinfection and a sanitary inspection. Three reports used to call a
        * sample with E. coli 0 "faecal contamination" on total coliforms. */
+      return [isFaecal ? 'exceeds_health' : 'exceeds_national', 'microbiological'];
+    }
+    if (entry.sl_standard && exceeds(entry.sl_standard)) {
+      /* With a WHO health value the national limit is the stricter one, and
+       * failing it is a compliance failure, not a matter of taste. Without
+       * one the national limit is an acceptability limit (iron staining,
+       * chloride taste, turbidity). */
+      return [entry.who_health ? 'exceeds_national' : 'exceeds_aesthetic', 'sl_standard'];
+    }
+    if (entry.who_aesthetic && exceeds(entry.who_aesthetic)) {
+      return ['exceeds_aesthetic', 'who_aesthetic'];
+    }
+    if (!(entry.who_health || entry.who_aesthetic || entry.sl_standard)) {
+      return ['no_guideline', ''];
+    }
+    return ['within_limits', ''];
+  }
+
+  /* What a remark adds after a national acceptability limit. The WHO figure
+   * is what the national one was carried across from, and naming it is the
+   * only way a reader can tell a limit somebody set from a limit this
+   * toolkit assumed. "Which is provisional" is said only of a value the
+   * table in use marks provisional: a table whose national column names its
+   * specification was told its confirmed limits were provisional. */
+  function acceptabilityNote(entry) {
+    var provisional = entry.sl_provisional ? ', which is provisional' : '';
+    var whoNote = entry.who_aesthetic
+      ? '; the WHO acceptability value is ' + limitText(entry.who_aesthetic)
+      : '; WHO sets no value for this determinand';
+    return provisional + whoNote;
+  }
+
+  function gradeRow(row, entry, value, unitNote) {
+    var graded = classifyLimits(entry, function (limit) {
+      return limitExceededBy(limit, value);
+    });
+    var status = graded[0], basis = graded[1];
+    row.status = status;
+    if (basis === 'who_health') {
+      row.remark = 'exceeds the WHO health based guideline (' +
+        limitText(entry.who_health) + ')' + unitNote;
+    } else if (basis === 'microbiological') {
       var micro = entry.sl_standard || entry.who_aesthetic;
-      if (isFaecal) {
-        row.status = 'exceeds_health';
+      if (status === 'exceeds_health') {
         row.remark = 'faecal indicator detected above the limit (' +
           limitText(micro) + '); a health concern, not aesthetic' + unitNote;
       } else {
-        row.status = 'exceeds_national';
         row.remark = 'detected above the national limit (' + limitText(micro) +
           '); an indicator of ingress or inadequate wellhead protection, not ' +
           'of faecal contamination in itself, and WHO sets no health based ' +
           'guideline for it' + unitNote;
       }
-    } else if (entry.sl_standard && limitExceededBy(entry.sl_standard, value)) {
-      if (entry.who_health) {
-        /* A national limit stricter than the WHO health value is a
-         * compliance failure, not a matter of taste. */
-        row.status = 'exceeds_national';
-        row.remark = 'exceeds the national standard limit (' +
-          limitText(entry.sl_standard) + '), which is stricter than the ' +
-          'WHO health based guideline (' + limitText(entry.who_health) + ')' +
-          unitNote;
-      } else {
-        /* Every national value in the bundled table is provisional - a WHO
-         * or regional figure carried across, not a confirmed Standards
-         * Bureau one - so the remark says so rather than reporting a legal
-         * failure the toolkit cannot establish. */
-        row.status = 'exceeds_aesthetic';
-        /* The WHO figure is what the national one was carried across from,
-         * and naming it is the only way a reader can tell a limit somebody
-         * set from a limit this toolkit assumed. */
-        var whoNote = entry.who_aesthetic
-          ? '; the WHO acceptability value is ' + limitText(entry.who_aesthetic)
-          : '; WHO sets no value for this determinand';
-        row.remark = 'exceeds the national acceptability limit (' +
-          limitText(entry.sl_standard) + '), which is provisional' +
-          whoNote + unitNote;
-      }
-    } else if (entry.who_aesthetic && limitExceededBy(entry.who_aesthetic, value)) {
-      row.status = 'exceeds_aesthetic';
+    } else if (basis === 'sl_standard' && status === 'exceeds_national') {
+      row.remark = 'exceeds the national standard limit (' +
+        limitText(entry.sl_standard) + '), which is stricter than the ' +
+        'WHO health based guideline (' + limitText(entry.who_health) + ')' +
+        unitNote;
+    } else if (basis === 'sl_standard') {
+      /* No WHO health value exists for this parameter, so the national limit
+       * is an acceptability one, and a provisional one - a WHO or regional
+       * figure carried across - is called provisional rather than reported
+       * as a legal failure the toolkit cannot establish. */
+      row.remark = 'exceeds the national acceptability limit (' +
+        limitText(entry.sl_standard) + ')' + acceptabilityNote(entry) + unitNote;
+    } else if (basis === 'who_aesthetic') {
       row.remark = 'exceeds the WHO acceptability value (' +
         limitText(entry.who_aesthetic) + ')' + unitNote;
-    } else if (!(entry.who_health || entry.who_aesthetic || entry.sl_standard)) {
-      row.status = 'no_guideline';
+    } else if (status === 'no_guideline') {
       row.remark = entry.note || 'no guideline value';
     } else {
-      row.status = 'within_limits';
       row.remark = unitNote.trim();
     }
   }
@@ -4184,63 +4603,158 @@
     return row;
   }
 
+  /* How a remark says which unit a number was read in (assess.py _unit_note). */
+  function wqUnitNote(reported, unit, converted, reason, guidelineUnit) {
+    if (reason === 'unit_assumed') {
+      return unit
+        ? ' (read as ' + guidelineUnit + "; the reported unit was '" + unit + "')"
+        : ' (read as ' + guidelineUnit + '; no unit was reported)';
+    }
+    if (converted !== reported) {
+      return ' (' + formatG(reported) + ' ' + unit + ' = ' + formatG(converted) +
+        ' ' + guidelineUnit + ')';
+    }
+    return '';
+  }
+
+  /* a lower bound as a remark words it */
+  function statedBound(result) {
+    var bound = Number(result.greater_than);
+    if (bound === 0 && !result.greater_than_inclusive) {
+      return 'detected, count not quantified';
+    }
+    return (result.greater_than_inclusive ? 'at least ' : 'more than ') + formatG(bound);
+  }
+
+  /* The reason on a row whose lower bound is over one limit and under a
+   * stricter one: ">1.5" copper is over the 1 mg/L acceptability value, and
+   * whether it is also over the 2 mg/L health guideline is not known. The
+   * exceedance it demonstrates is its status; the one it cannot rule out
+   * keeps the sample out of "suitable". */
+  var STRICTER_LIMIT_UNRESOLVED = 'stricter_limit_unresolved';
+
+  /* how a remark names the limit classifyLimits says decided a row */
+  var LIMIT_NAMES = {
+    who_health: 'the WHO health based guideline',
+    microbiological: 'the national limit',
+    sl_standard: 'the national standard limit',
+    who_aesthetic: 'the WHO acceptability value',
+  };
+
+  function decidingLimit(entry, basis) {
+    if (basis === 'microbiological') return entry.sl_standard || entry.who_aesthetic;
+    return basis ? entry[basis] : null;
+  }
+
   /* A result the laboratory saw and did not put a number to.
    *
-   * "TNTC", "Present" and "Positive" are a count above zero; ">50" is at
-   * least 50. All of them used to read as "not measured", so a sample with
-   * E. coli 0 and total coliforms TNTC was graded Safe, and a ">50" count
-   * was graded as exactly 50 - inside the limit whenever the limit is 50. */
+   * "TNTC", "Present" and "Positive" are a count above zero; ">50" is more
+   * than 50 and ">=50" at least 50. All of them used to read as "not
+   * measured", so a sample with E. coli 0 and total coliforms TNTC was graded
+   * Safe, and a ">50" count was graded as exactly 50 - inside the limit
+   * whenever the limit is 50.
+   *
+   * The bound is put on the guideline's scale and then graded through the
+   * same limit hierarchy as a measured value. It used to be compared as
+   * written, so lead ">5 ug/L" (0.005 mg/L) was a health exceedance where a
+   * measured 7 ug/L complied; and every limit it crossed got the coliform
+   * wording, so iron ">1.0" was a national failure put down to ingress at the
+   * wellhead where a measured 1.5 was an acceptability one. */
   function assessUnquantified(row, result, entry) {
-    var bound = Number(result.greater_than);
+    var reported = Number(result.greater_than);
+    var stated = statedBound(result);
+    var converted = toGuidelineUnit(reported, result.unit, entry);
+    if (converted.value === null) {
+      row.status = 'indeterminate';
+      row.evaluable = false;
+      row.reason = converted.reason;
+      row.remark = 'reported as ' + stated + " in '" + (result.unit || '') +
+        "' but the guideline is in '" + entry.unit + "': " +
+        INDETERMINATE_REASONS[converted.reason] + '. The value was not ' +
+        'compared against any limit.';
+      return row;
+    }
+    var bound = converted.value;
+    stated += wqUnitNote(reported, result.unit || '', bound, converted.reason,
+      entry.unit);
+    var inclusive = !!result.greater_than_inclusive;
+
+    /* The true value is above the bound, or at it for ">=", so a limit is
+     * crossed only when the bound already reaches it: ">50" exceeds 50,
+     * ">=50" may equal it. */
+    function certainlyOver(limit) {
+      if (limit.maximum === null || limit.maximum === undefined) return false;
+      return bound > limit.maximum || (bound === limit.maximum && !inclusive);
+    }
+
+    var graded = classifyLimits(entry, certainlyOver);
+    var status = graded[0], basis = graded[1];
+    /* the status the true value would have if it were as large as it may be */
+    var worst = classifyLimits(entry, function (limit) {
+      return limit.maximum !== null && limit.maximum !== undefined;
+    });
+    row.status = status;
     row.evaluable = true;
     row.reason = 'detected_not_quantified';
-    var isFaecal = String(entry.parameter || '').trim().toLowerCase() === 'e. coli';
-    var stated = bound === 0
-      ? 'detected, count not quantified' : 'more than ' + formatG(bound);
-
-    function maximum(limit) {
-      return limit && limit.maximum !== null && limit.maximum !== undefined
-        ? limit.maximum : null;
+    if (status === 'no_guideline') {
+      row.remark = stated + '. ' + (entry.note || 'No guideline value');
+      return row;
     }
-    var health = maximum(entry.who_health);
-    var national = maximum(entry.sl_standard);
-    if (national === null) national = maximum(entry.who_aesthetic);
-
-    var overHealth = health !== null && bound >= health;
-    var overNational = national !== null && bound >= national;
-
-    if (overHealth) {
-      row.status = 'exceeds_health';
-      row.remark = stated + ', which is above the WHO health based guideline (' +
-        limitText(entry.who_health) + '); the laboratory did not quantify it';
-    } else if (overNational && isFaecal) {
-      row.status = 'exceeds_health';
-      row.remark = 'faecal indicator ' + stated + ', above the limit (' +
-        limitText(entry.sl_standard || entry.who_aesthetic) +
-        '); a health concern, not aesthetic';
-    } else if (overNational) {
-      row.status = 'exceeds_national';
-      row.remark = stated + ', above the national limit (' +
-        limitText(entry.sl_standard || entry.who_aesthetic) + '); an indicator ' +
-        'of ingress or inadequate wellhead protection, not of faecal ' +
-        'contamination in itself, and WHO sets no health based guideline for it';
-    } else {
+    if (status === 'within_limits') {
+      if (worst[0] === 'within_limits') {
+        row.remark = stated;
+        return row;
+      }
       /* The bound is inside every limit, so the result is an open question
        * rather than a pass: the true value is somewhere above it. */
       row.status = 'indeterminate';
       row.evaluable = false;
       row.remark = stated + '; the laboratory did not quantify it, so it ' +
         'cannot be shown to meet the limit';
+      return row;
+    }
+
+    var limit = limitText(decidingLimit(entry, basis));
+    if (basis === 'who_health') {
+      row.remark = stated + ', which is above the WHO health based guideline (' +
+        limit + '); the laboratory did not quantify it';
+    } else if (basis === 'microbiological' && status === 'exceeds_health') {
+      row.remark = 'faecal indicator ' + stated + ', above the limit (' + limit +
+        '); a health concern, not aesthetic';
+    } else if (basis === 'microbiological') {
+      row.remark = stated + ', above the national limit (' + limit + '); an ' +
+        'indicator of ingress or inadequate wellhead protection, not of faecal ' +
+        'contamination in itself, and WHO sets no health based guideline for it';
+    } else if (basis === 'sl_standard' && status === 'exceeds_national') {
+      row.remark = stated + ', above the national standard limit (' + limit +
+        '), which is stricter than the WHO health based guideline (' +
+        limitText(entry.who_health) + '); the laboratory did not quantify it';
+    } else if (basis === 'sl_standard') {
+      row.remark = stated + ', above the national acceptability limit (' + limit +
+        ')' + acceptabilityNote(entry) + '; the laboratory did not quantify it';
+    } else {
+      row.remark = stated + ', above the WHO acceptability value (' + limit +
+        '); the laboratory did not quantify it';
+    }
+    if (status !== worst[0]) {
+      /* Over one limit and under a stricter one: the exceedance it shows
+       * stands, and the one it cannot rule out keeps the sample open. */
+      row.reason = STRICTER_LIMIT_UNRESOLVED;
+      row.remark += '. Whether it also exceeds ' + LIMIT_NAMES[worst[1]] + ' (' +
+        limitText(decidingLimit(entry, worst[1])) + ') is not known';
     }
     return row;
   }
 
   function assessResult(result, entry) {
     var guidelineUnit = entry ? (entry.unit || '') : '';
+    var missing = result.value === null || result.value === undefined;
+    var unquantified = missing && result.greater_than !== null &&
+      result.greater_than !== undefined;
+    var unreadable = missing && !!result.unreadable;
     var row = {
       parameter: result.parameter,
-      value: (result.value === null || result.value === undefined)
-        ? null : Number(result.value),
+      value: missing ? null : Number(result.value),
       unit: result.unit || guidelineUnit,
       below_detection: !!result.below_detection,
       who_health: entry && entry.who_health ? limitText(entry.who_health) : '',
@@ -4254,25 +4768,43 @@
         result.detection_limit === undefined) ? null : Number(result.detection_limit),
       evaluable: true,
       reason: '',
+      /* the lower bound of a result the laboratory did not quantify, in the
+       * reported unit: a table printing only the value showed "TNTC" and
+       * ">50" as a dash */
+      greater_than: unquantified ? Number(result.greater_than) : null,
+      greater_than_inclusive: unquantified && !!result.greater_than_inclusive,
+      /* whether the national value was provisional in the table in use */
+      sl_provisional: !!(entry && entry.sl_provisional),
     };
 
-    var missing = result.value === null || result.value === undefined;
-    if (missing && !result.below_detection) {
-      if (result.greater_than !== null && result.greater_than !== undefined && entry) {
-        return assessUnquantified(row, result, entry);
-      }
+    if (missing && !result.below_detection && !unquantified && !unreadable) {
       return row;
     }
 
     if (!entry) {
-      /* An unrecognised determinand is an open question, not a clean bill. */
+      /* An unrecognised determinand is an open question, not a clean bill,
+       * and a detection of one is no less of one: "Salmonella: Present" was
+       * read as not measured and left the sample suitable for drinking. */
       row.status = 'no_guideline';
       row.reason = 'unknown_parameter';
       row.evaluable = false;
       row.remark = 'parameter not in the standards table, so it was not ' +
         'checked against any limit';
+      if (unquantified) row.remark = statedBound(result) + '; ' + row.remark;
       return row;
     }
+
+    if (unreadable) {
+      row.status = 'indeterminate';
+      row.evaluable = false;
+      row.reason = 'value_unreadable';
+      row.remark = "reported as '" + result.unreadable + "', which could not be " +
+        'read as a measurement, a detection limit or a lower bound, so it was ' +
+        'not compared against any limit. Confirm the result with the laboratory.';
+      return row;
+    }
+
+    if (unquantified) return assessUnquantified(row, result, entry);
 
     var limits = limitMaximums(entry);
     if (result.below_detection && missing) {
@@ -4293,20 +4825,21 @@
 
     row.value_in_guideline_unit = converted.value;
     row.reason = converted.reason;
-    var unitNote;
-    if (converted.reason === 'unit_assumed') {
-      unitNote = result.unit
-        ? ' (read as ' + guidelineUnit + "; the reported unit was '" +
-          result.unit + "')"
-        : ' (read as ' + guidelineUnit + '; no unit was reported)';
-    } else if (converted.value !== Number(result.value)) {
-      unitNote = ' (' + formatG(Number(result.value)) + ' ' + result.unit +
-        ' = ' + formatG(converted.value) + ' ' + guidelineUnit + ')';
-    } else {
-      unitNote = '';
-    }
-    gradeRow(row, entry, converted.value, unitNote);
+    gradeRow(row, entry, converted.value, wqUnitNote(Number(result.value),
+      result.unit || '', converted.value, converted.reason, guidelineUnit));
     return row;
+  }
+
+  /* How a result the laboratory did not quantify reads in a table: ">50",
+   * "≥50", or "detected" for a count seen and not numbered; '' for any
+   * other row (assess.py unquantified_text). */
+  function unquantifiedText(row) {
+    if ((row.value !== null && row.value !== undefined) ||
+        row.greater_than === null || row.greater_than === undefined) {
+      return '';
+    }
+    if (row.greater_than === 0 && !row.greater_than_inclusive) return 'detected';
+    return (row.greater_than_inclusive ? '≥' : '>') + formatG(row.greater_than);
   }
 
   var ESSENTIAL_EQUIVALENTS = { 'nitrate (as no3)': ['nitrate (as n)'] };
@@ -4336,26 +4869,33 @@
    * index of 1.98, and treating the unknown as zero turned a sample that
    * might fail the rule into one that passed it silently. */
   function nitrateNitriteIndex(rows, table) {
-    function valueAndGv(key) {
-      var entry = table[key];
-      var gv = entry && entry.who_health ? entry.who_health.maximum : null;
-      for (var i = 0; i < rows.length; i++) {
-        var row = rows[i];
-        if (normaliseParameter(row.parameter) !== key) continue;
-        if (row.value_in_guideline_unit !== null &&
-            row.value_in_guideline_unit !== undefined) {
-          return [Number(row.value_in_guideline_unit), gv, false];
+    /* Each ion is divided by the guideline on the basis its own row is
+     * reported on. Only the "as NO3" and "as NO2" rows were looked for, so a
+     * laboratory reporting both as nitrogen (10 and 0.8 mg/L as N, an index
+     * of 1.76) was never checked against the rule at all. */
+    function component(keys) {
+      for (var k = 0; k < keys.length; k++) {
+        var key = keys[k];
+        var entry = table[key];
+        var gv = entry && entry.who_health ? entry.who_health.maximum : null;
+        for (var i = 0; i < rows.length; i++) {
+          var row = rows[i];
+          if (normaliseParameter(row.parameter) !== key) continue;
+          if (row.value_in_guideline_unit !== null &&
+              row.value_in_guideline_unit !== undefined) {
+            return [Number(row.value_in_guideline_unit), gv, false];
+          }
+          if (row.below_detection && entry &&
+              row.detection_limit !== null && row.detection_limit !== undefined) {
+            var dl = toGuidelineUnit(Number(row.detection_limit), row.unit, entry);
+            if (dl.value !== null) return [Number(dl.value), gv, true];
+          }
         }
-        if (row.below_detection && entry &&
-            row.detection_limit !== null && row.detection_limit !== undefined) {
-          var dl = toGuidelineUnit(Number(row.detection_limit), row.unit, entry);
-          if (dl.value !== null) return [Number(dl.value), gv, true];
-        }
-        return [null, gv, false];
       }
-      return [null, gv, false];
+      return [null, null, false];
     }
-    var a = valueAndGv('nitrate (as no3)'), b = valueAndGv('nitrite (as no2)');
+    var a = component(['nitrate (as no3)', 'nitrate (as n)']);
+    var b = component(['nitrite (as no2)', 'nitrite (as n)']);
     if (a[0] === null || b[0] === null || !a[1] || !b[1]) return null;
     return { ratio: a[0] / a[1] + b[0] / b[1], no3: a[0], no2: b[0],
       gv3: a[1], gv2: b[1], bounded: a[2] || b[2] };
@@ -4400,6 +4940,12 @@
           level: 'error', code: 'indeterminate_' + row.reason,
           message: "'" + result.parameter + "' could not be assessed: " + row.remark,
         });
+      } else if (row.reason === STRICTER_LIMIT_UNRESOLVED) {
+        flags.push({
+          level: 'warning', code: STRICTER_LIMIT_UNRESOLVED,
+          message: "'" + result.parameter + "' could not be graded in full: " +
+            row.remark + '.',
+        });
       }
     });
 
@@ -4435,6 +4981,7 @@
         value_in_guideline_unit: bounded ? null : pyRound(combined.ratio, 2),
         detection_limit: null, evaluable: !bounded,
         reason: bounded ? 'detection_limit_above_guideline' : '',
+        greater_than: null, greater_than_inclusive: false, sl_provisional: false,
       });
       flags.push({
         level: 'warning',
@@ -4542,6 +5089,12 @@
       var why = INDETERMINATE_REASONS[row.reason] || 'it could not be evaluated';
       reasons.push(row.parameter + ' could not be assessed: ' + why);
     });
+    assessment.rows.forEach(function (row) {
+      if (row.reason === STRICTER_LIMIT_UNRESOLVED) {
+        reasons.push(row.parameter + ' was not quantified, so a stricter limit ' +
+          'than the one it exceeds cannot be ruled out');
+      }
+    });
     assessment.unknown_parameters.forEach(function (row) {
       reasons.push(row.parameter + ' has no entry in the standards table, so ' +
         'it was not checked against any limit');
@@ -4581,12 +5134,22 @@
         ? ' Acceptability limits are also exceeded for: ' +
           names(acceptability) + '.'
         : '';
+      var action = ' Treatment is required before the supply can be accepted ' +
+        'against the national standard; check whether the limit exceeded is a ' +
+        'health or an acceptability limit.';
+      if ((assessment.uncertainties || []).length) {
+        /* The national failure outranks the open questions, but it does not
+         * answer them: "meets the WHO health based guideline values" was said
+         * of an arsenic result nobody could grade. */
+        return 'The water does not comply with the national standard ' +
+          pluralNoun(national.length, 'limit') + ' for: ' + names(national) +
+          '.' + extra + ' It has not been shown to meet the WHO health based ' +
+          'guideline values: ' + assessment.uncertainties.join('; ') + '.' + action;
+      }
       return 'The water meets the WHO health based guideline values, but does ' +
         'not comply with the national standard ' +
         pluralNoun(national.length, 'limit') + ' for: ' + names(national) +
-        '.' + extra + ' Treatment is required before the supply can be accepted ' +
-        'against the national standard; check whether the limit exceeded is a ' +
-        'health or an acceptability limit.';
+        '.' + extra + action;
     }
     if (state === 'indeterminate') {
       var also = acceptability.length
@@ -4723,19 +5286,42 @@
     if (anName === 'HCO3' && (catName === 'Ca' || catName === 'Mg')) {
       meaning = 'a fresh, recently recharged water of the kind weathering of ' +
         'silicate rock gives; typical of shallow basement groundwater';
-    } else if (anName === 'HCO3') {
+    } else if (anName === 'HCO3' && catName === 'Na+K') {
       meaning = 'a bicarbonate water in which sodium and potassium have ' +
         'replaced calcium, which points to longer contact with the rock or ' +
         'to ion exchange in a clayey weathered zone';
+    } else if (anName === 'HCO3') {
+      /* No cation holds half the total, so sodium and potassium hold less
+       * than half and calcium and magnesium together hold more. Dr Timbo's
+       * water (Ca 40%, Mg 26%, Na+K 34%) was said to be one in which sodium
+       * had replaced calcium. */
+      meaning = 'a bicarbonate water with no single dominant cation, in which ' +
+        'calcium and magnesium together still outweigh sodium and potassium; ' +
+        'a fresh water of the kind weathering of silicate rock gives, with ' +
+        'the sodium share pointing to feldspar weathering or some ion ' +
+        'exchange along the flow path';
     } else if (anName === 'Cl' && catName === 'Na+K') {
       meaning = 'a sodium chloride water, which in this setting points to ' +
         'salinity from the coast, an estuary or evaporation rather than to ' +
         'rock weathering';
+    } else if (anName === 'Cl' && (catName === 'Ca' || catName === 'Mg')) {
+      /* it has a dominant ion pair, and was called a water without one */
+      meaning = 'a ' + (catName === 'Ca' ? 'calcium' : 'magnesium') +
+        ' chloride water, which is unusual in fresh basement groundwater; it ' +
+        'can point to saline water exchanging with the aquifer or to ' +
+        'pollution, and is worth checking against the sample\'s provenance';
+    } else if (anName === 'Cl') {
+      meaning = 'a chloride water with no single dominant cation, which points ' +
+        'to salinity or pollution mixed into the groundwater rather than to ' +
+        'rock weathering alone';
     } else if (anName === 'SO4') {
       meaning = 'a sulfate water, which is unusual in basement ground and ' +
         'worth checking against the sample\'s provenance';
-    } else {
+    } else if (catName === 'mixed-cation') {
       meaning = 'a mixed water with no single dominant ion pair';
+    } else {
+      meaning = 'a water with no single dominant anion, of mixed origin or in ' +
+        'transition between types';
     }
 
     return {
@@ -4774,6 +5360,8 @@
     qualityVerdict: qualityVerdict, STATUS_ORDER: STATUS_ORDER,
     qualityVerdictState: qualityVerdictState,
     qualityUncertainties: qualityUncertainties,
+    unquantifiedText: unquantifiedText, readQualityCell: readQualityCell,
+    STRICTER_LIMIT_UNRESOLVED: STRICTER_LIMIT_UNRESOLVED,
     WQ_STATUS_LABELS: WQ_STATUS_LABELS, VERDICT_ORDER: VERDICT_ORDER,
     VERDICT_SHORT: VERDICT_SHORT, VERDICT_LONG: VERDICT_LONG,
     VERDICT_TONE: VERDICT_TONE,
@@ -4798,14 +5386,43 @@
   var LITHOLOGY_RANGE_SOURCE =
     '(\\d+(?:\\.\\d+)?)\\s*(?:-|–|to)\\s*(\\d+(?:\\.\\d+)?)\\s*m\\b';
 
-  /* "fracture zone 49-52 m", "fractured 60-62 m", "fractures at 30-31 m":
-   * a depth range named against a fracture phrase. */
-  var FRACTURE_RANGE_SOURCE =
-    'fracture[ds]?\\s*(?:zones?)?\\s*(?:at|from|between)?\\s*' + LITHOLOGY_RANGE_SOURCE;
-  var FRACTURE_RANGE_RE = new RegExp(FRACTURE_RANGE_SOURCE, 'i');
+  /* "fracture zone", "fractured", "fractures": the words that name a
+   * fracture. The depths they name are read from the rest of the clause. */
+  var FRACTURE_PHRASE_RE = /\bfracture[ds]?\b(?:\s+zones?\b)?/i;
 
   /* Any depth range written into a description. */
   var ANY_RANGE_RE = new RegExp(LITHOLOGY_RANGE_SOURCE, 'i');
+
+  /* One depth range in a fracture clause: "49-52 m", "49 m to 52 m",
+   * "between 49 and 52 m", "49-52 metres", or "49-52" with the unit left
+   * off. A range followed by another unit ("2-3 mm", "1-2 per metre") is an
+   * aperture or a count, not depths, and is not read. */
+  var FRACTURE_NUMBER = '(\\d+(?:\\.\\d+)?)';
+  var FRACTURE_METRES = '(?:metres?|meters?|mtrs?|m)\\b';
+  var DEPTH_RANGE_SOURCE =
+    '(?:between\\s+' + FRACTURE_NUMBER + '\\s*(?:' + FRACTURE_METRES +
+    ')?\\s*(?:and|-|to)\\s*' + FRACTURE_NUMBER +
+    '|' + FRACTURE_NUMBER + '\\s*(?:' + FRACTURE_METRES + ')?\\s*(?:-|to)\\s*' +
+    FRACTURE_NUMBER + ')' +
+    '(?:\\s*' + FRACTURE_METRES + ')?' +
+    '(?!\\s*(?:mm|cm|%|in\\b|inch|"|ft\\b|feet|per\\b|/|x\\b|\\d|m\\s*/))';
+
+  /* Where a fracture clause ends: a semicolon, a bracket, a line break, a
+   * full stop that is not a decimal point, or a comma that does not lead
+   * straight on to another range ("fractured zones 49-52 m, 55-56 m" is one
+   * clause, "fractured, quartz vein at 52-53 m" is two). */
+  var CLAUSE_END_RE = /[;()\n]|\.(?!\d)|,(?!\s*(?:and\s+|&\s*)?\d)/g;
+
+  /* "at" or "from" before the first range belongs to the fracture phrase, so
+   * it goes with it when the zone is taken out of the description. */
+  var RANGE_LEAD_RE = /\s*\b(?:at|from)\s*$/i;
+
+  /* How far outside the row it is written on a named zone may lie and still
+   * be read as a depth. The driller logs "fracture zone 60-62 m" against the
+   * 55-60 m row he was drilling when he saw it; a "range" tens of metres from
+   * its row is something else (a count, a date), and the row is screened
+   * instead. */
+  var NAMED_ZONE_REACH_M = 5.0;
 
   /* In matching order. The patterns are applied to the lowercased
    * description. */
@@ -4844,26 +5461,94 @@
     return CLAYEY_RE.test(String(description || '').toLowerCase());
   }
 
-  /* Depth ranges a description names as fractured, in metres. */
-  function fractureRanges(description) {
-    var re = new RegExp(FRACTURE_RANGE_SOURCE, 'gi');
-    var text = String(description || ''), out = [], match;
-    while ((match = re.exec(text)) !== null) {
-      var top = Number(match[1]), bottom = Number(match[2]);
-      if (bottom < top) { var swap = top; top = bottom; bottom = swap; }
-      if (bottom > top) out.push([top, bottom]);
+  /* Read every depth range a fracture phrase names, to the end of its clause
+   * (lithology.read_fractures). Only the first range right after the phrase
+   * used to be read, so "fractures at 30-31 m and 33-34 m" left 33-34 m
+   * behind plain casing, and "between 49 and 52 m", "49 m to 52 m", "49-52
+   * metres", "49-52" and an em dash all read as nothing, which screened the
+   * whole logged row. Given the row (top, bottom), a range further than
+   * NAMED_ZONE_REACH_M from it is not taken as a depth.
+   *
+   * Returns { ranges, unread, cuts, text }: the zones read; whether a
+   * fracture phrase names depths that could not be read as a zone near the
+   * row, so the caller treats the whole logged interval as the target as
+   * well; and the spans of the dash-normalised text that name the zones
+   * read, for taking them out. */
+  function readFractures(description, top, bottom) {
+    var text = normaliseDashes(String(description || ''));
+    var ranges = [], cuts = [], unread = false;
+    var phraseRe = new RegExp(FRACTURE_PHRASE_RE.source, 'gi');
+    var phrases = [], m;
+    while ((m = phraseRe.exec(text)) !== null) {
+      phrases.push({ start: m.index, end: m.index + m[0].length });
     }
-    return out;
+    var hasRow = top !== null && top !== undefined && bottom !== null && bottom !== undefined;
+    phrases.forEach(function (phrase, i) {
+      var limit = i + 1 < phrases.length ? phrases[i + 1].start : text.length;
+      CLAUSE_END_RE.lastIndex = phrase.end;
+      var end = CLAUSE_END_RE.exec(text);
+      var clauseEnd = end && end.index < limit ? end.index : limit;
+      var clause = text.slice(phrase.end, clauseEnd);
+      var read = [], match;
+      var rangeRe = new RegExp(DEPTH_RANGE_SOURCE, 'gi');
+      while ((match = rangeRe.exec(clause)) !== null) {
+        var numbers = match.slice(1).filter(function (g) {
+          return g !== undefined;
+        }).map(Number);
+        var low = Math.min.apply(null, numbers), high = Math.max.apply(null, numbers);
+        var near = !hasRow || (low >= top - NAMED_ZONE_REACH_M &&
+          high <= bottom + NAMED_ZONE_REACH_M);
+        if (high > low && near) {
+          ranges.push([low, high]);
+          read.push([match.index, match.index + match[0].length]);
+        }
+      }
+      /* whatever digits are left in the clause name something that was not
+       * read as a zone */
+      var left = '', cursor = 0;
+      read.forEach(function (span) { left += clause.slice(cursor, span[0]); cursor = span[1]; });
+      left += clause.slice(cursor);
+      if (/\d/.test(left)) {
+        unread = true;
+      } else if (read.length) {
+        var start = read[0][0];
+        var lead = RANGE_LEAD_RE.exec(clause.slice(0, start));
+        if (lead) start = lead.index;
+        cuts.push([phrase.start, phrase.end]);
+        cuts.push([phrase.end + start, phrase.end + read[read.length - 1][1]]);
+      }
+    });
+    return { ranges: ranges, unread: unread, cuts: cuts, text: text };
+  }
+
+  /* Depth ranges a description names as fractured, in metres. */
+  function fractureRanges(description, top, bottom) {
+    return readFractures(description, top, bottom).ranges;
   }
 
   /* The description with its named fracture ranges taken out: "Light colour
    * granite, fracture zone 49-52 m" -> "Light colour granite", so the rock
-   * around a named zone is classed as what it is. */
-  function hostDescription(description) {
-    var text = String(description || '')
-      .replace(new RegExp(FRACTURE_RANGE_SOURCE, 'gi'), '')
-      .replace(/[\s,;]+$/, '');
-    return text.replace(/^[ ,;]+/, '').replace(/[ ,;]+$/, '');
+   * around a named zone is classed as what it is. A fracture phrase whose
+   * depths could not all be read is left in, so the row it is written on is
+   * still classed as fractured. */
+  function hostDescription(description, top, bottom) {
+    var reading = readFractures(description, top, bottom);
+    var kept = '', cursor = 0;
+    reading.cuts.forEach(function (cut) {
+      kept += reading.text.slice(cursor, cut[0]);
+      cursor = cut[1];
+    });
+    kept += reading.text.slice(cursor);
+    return kept.replace(/\s+/g, ' ').replace(/^[ ,;.]+/, '').replace(/[ ,;.]+$/, '');
+  }
+
+  /* The class of the rock a row is logged as, once any zone it names is out
+   * (lithology.host_class). "Light colour granite, fracture zone 49-52 m" is
+   * basement rock with a fracture zone drawn in it as a band of its own; the
+   * class of the whole description would call the row a fracture zone. */
+  function hostClass(description, top, bottom) {
+    return lithologyClass(fractureRanges(description, top, bottom).length
+      ? hostDescription(description, top, bottom) : description);
   }
 
   /* The log split into bands, each with its class. A fracture zone named
@@ -4877,7 +5562,8 @@
     var list = Array.isArray(intervals) ? intervals : (intervals ? [intervals] : []);
     var named = [];
     list.forEach(function (iv) {
-      fractureRanges(iv.description).forEach(function (zone) { named.push(zone); });
+      fractureRanges(iv.description, Number(iv.top_m), Number(iv.bottom_m))
+        .forEach(function (zone) { named.push(zone); });
     });
     named.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
     var fracture = lithologyClass('fracture');
@@ -4890,8 +5576,7 @@
       var top = Number(iv.top_m), bottom = Number(iv.bottom_m);
       /* the host rock: the description without the zone it names, so
        * "Light colour granite, fracture zone 49-52 m" is granite here */
-      var host = lithologyClass(fractureRanges(iv.description).length
-        ? hostDescription(iv.description) : iv.description);
+      var host = hostClass(iv.description, top, bottom);
       var cursor = top;
       named.forEach(function (zone) {
         var t = Math.max(zone[0], top), b = Math.min(zone[1], bottom);
@@ -4928,9 +5613,30 @@
   /* The cement seal: the recorded grout depth, never less than the rule. Dr
    * Timbo's log records grouting to 20 m; the drawing showed a 6 m seal
    * with a screen and a gravel pack inside the grouted interval. */
-  function sealDepthFor(log, rules) {
+  function sealDepthFor(log, rules, totalDepthM) {
     var grout = log ? Number(log.grouting_depth_m || 0.0) : 0.0;
+    /* A grout recorded at or below the top of the sump cannot be what was
+     * placed: it leaves nowhere for a screen, and 70 m in a 60 m hole printed
+     * a "0-70 m" seal over "Annular fill 70-60 m". It is held at the top of
+     * the sump, and designBorehole flags it as grout_too_deep. */
+    var total = totalDepthM;
+    if ((total === null || total === undefined) && log && log.total_depth_m) {
+      total = Number(log.total_depth_m);
+    }
+    if (total !== null && total !== undefined) {
+      grout = Math.min(grout, Math.max(total - rules.sump_length_m, 0.0));
+    }
     return Math.max(rules.sanitary_seal_depth_m, grout);
+  }
+
+  /* The shallowest pump intake the pumping test supports: the deepest level
+   * the test drew the water to, with the submergence margin under it, the
+   * floor the yield recommendation itself never sets the intake above. Null
+   * when the test gives no level (designer.pump_intake_floor). */
+  function pumpIntakeFloor(recommendation, submergenceM) {
+    var deepest = recommendation ? recommendation.deepest_pumping_level_m : null;
+    if (deepest === null || deepest === undefined) return null;
+    return Number(deepest) + Number(submergenceM);
   }
 
   /* The drilled diameter the log records, from its diameter column. The
@@ -4968,26 +5674,51 @@
    * not from the candidates: a strike above the static-level floor used to
    * leave "screens positioned against the water strikes (8 m)" in the client
    * document beside "no aquifer intervals identified", and blocked the VES
-   * fallback while contributing no screen. */
+   * fallback while contributing no screen. Each candidate is kept with what
+   * the clip did to it, so placementBasis can say why a zone the log names is
+   * screened only in part, or not at all.
+   *
+   * Returns { zones, targets, excluded, ves }: the merged zones, one target
+   * per depth the log names ({ kind: 'strike' | 'zone' | 'interval', label,
+   * candidate, clipped, cut }), the sentences that do not depend on
+   * what survives (a strike in clay or in the grout, a clayey interval), and
+   * the VES sentence when the VES zones were used. */
   function targetZones(log, interpretation, swl, totalDepth, rules) {
-    var seal = sealDepthFor(log, rules);
+    var seal = sealDepthFor(log, rules, totalDepth);
     var margin = (rules.fracture_zone_margin_m === undefined ||
                   rules.fracture_zone_margin_m === null)
       ? DEFAULT_CONFIG.design.fracture_zone_margin_m : rules.fracture_zone_margin_m;
     /* nothing is screened inside the grouted interval, whatever the log says
      * is wet there: the grout is there to keep that water out */
-    var floor = Math.max((swl || 0.0) + rules.min_screen_below_swl_m, seal);
-    function clip(candidates) {
-      var out = [];
-      candidates.forEach(function (z) {
-        var top = Math.ceil(Math.max(z[0], floor) * 2.0) / 2.0;
-        var bottom = Math.floor(Math.min(z[1], totalDepth - rules.sump_length_m) * 2.0) / 2.0;
-        if (bottom - top >= 1.0) out.push([top, bottom]);
-      });
-      return out;
+    var swlFloor = (swl || 0.0) + rules.min_screen_below_swl_m;
+    var floor = Math.max(swlFloor, seal);
+    var sumpTop = totalDepth - rules.sump_length_m;
+    function clipOne(z) {
+      var top = Math.ceil(Math.max(z[0], floor) * 2.0) / 2.0;
+      var bottom = Math.floor(Math.min(z[1], sumpTop) * 2.0) / 2.0;
+      return bottom - top >= 1.0 ? [top, bottom] : null;
     }
-    var basis = [], strikeZones = [], lithoZones = [], namedZones = [];
-    var namedText = [], fracturedIntervals = [], excluded = [], keptStrikes = [];
+    function clip(candidates) {
+      return candidates.map(clipOne).filter(function (c) { return c !== null; });
+    }
+    function target(kind, label, first, candidate) {
+      var cut = [];
+      if (candidate[0] < floor) {
+        cut.push(seal >= swlFloor
+          ? 'within the ' + formatG(seal) + ' m grouted interval'
+          : 'shallower than ' + formatG(floor) + ' m, ' +
+            formatG(rules.min_screen_below_swl_m) + ' m below the static water level');
+      }
+      if (candidate[1] > sumpTop) {
+        cut.push(first >= totalDepth
+          ? 'below the ' + formatG(totalDepth) + ' m bottom of the hole'
+          : 'below the top of the ' + formatG(rules.sump_length_m) + ' m sump, at ' +
+            formatG(sumpTop) + ' m');
+      }
+      return { kind: kind, label: label, candidate: candidate,
+        clipped: clipOne(candidate), cut: cut };
+    }
+    var targets = [], excluded = [];
     if (log) {
       (log.water_strikes_m || []).forEach(function (strike) {
         var host = intervalAt(log, strike);
@@ -5004,11 +5735,8 @@
             reasons.join(' and '));
           return;
         }
-        var zone = [Math.max(strike - 1.0, 0.0), strike + 5.0];
-        if (clip([zone]).length) {
-          strikeZones.push(zone);
-          keptStrikes.push(strike);
-        }
+        targets.push(target('strike', formatG(strike) + ' m', strike,
+          [Math.max(strike - 1.0, 0.0), strike + 5.0]));
       });
       (log.intervals || []).forEach(function (interval) {
         var text = String(interval.description || '').toLowerCase();
@@ -5026,41 +5754,36 @@
         /* "fracture zone 49-52 m" on the 45-50 m row: the zone is the target,
          * with a margin, not the five metres it was logged on. The screens
          * used to cover one metre of that zone and none of the next, which
-         * sat behind plain casing. */
-        var ranges = fractureRanges(interval.description);
-        if (ranges.length) {
-          ranges.forEach(function (r) {
-            namedZones.push([r[0] - margin, r[1] + margin]);
-            namedText.push(formatG(r[0]) + '-' + formatG(r[1]) + ' m');
-          });
-        } else {
-          lithoZones.push([interval.top_m, interval.bottom_m]);
-          fracturedIntervals.push(formatG(interval.top_m) + '-' +
-            formatG(interval.bottom_m) + ' m');
+         * sat behind plain casing. A fracture phrase whose depths cannot be
+         * read leaves the row a target as well, rather than leaving it to
+         * plain casing. */
+        var reading = readFractures(interval.description, interval.top_m, interval.bottom_m);
+        reading.ranges.forEach(function (r) {
+          targets.push(target('zone', formatG(r[0]) + '-' + formatG(r[1]) + ' m', r[0],
+            [r[0] - margin, r[1] + margin]));
+        });
+        if (reading.unread || !reading.ranges.length) {
+          targets.push(target('interval', formatG(interval.top_m) + '-' +
+            formatG(interval.bottom_m) + ' m', interval.top_m,
+            [interval.top_m, interval.bottom_m]));
         }
       });
     }
-    var clipped = clip(strikeZones).concat(clip(namedZones), clip(lithoZones));
-    if (keptStrikes.length) {
-      basis.push('screens positioned against the water strikes recorded in ' +
-        'the drilling log (' + keptStrikes.map(function (w) {
-          return formatG(w) + ' m';
-        }).join(', ') + ')');
-    }
-    if (namedZones.length && clip(namedZones).length) {
-      basis.push('screens positioned against the fracture zones the log names (' +
-        namedText.join(', ') + '), with ' + formatG(margin) +
-        ' m of screen either side');
-    }
-    if (lithoZones.length && clip(lithoZones).length) {
-      basis.push('screens positioned against the fractured or water-bearing ' +
-        'intervals logged at ' + fracturedIntervals.join(', '));
-    }
-    excluded.forEach(function (sentence) { basis.push(sentence); });
+    /* one target per thing the log names, however many rows name it */
+    var seen = {};
+    targets = targets.filter(function (t) {
+      var key = t.kind + '|' + t.label;
+      if (seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
+    var clipped = targets.filter(function (t) { return t.clipped; })
+      .map(function (t) { return t.clipped; });
+    var ves = [];
     if (!clipped.length && interpretation && interpretation.water_zones.length) {
       clipped = clip(interpretation.water_zones.map(function (z) { return [z[0], z[1]]; }));
       if (clipped.length) {
-        basis.push('screens positioned against the low resistivity zones of the ' +
+        ves.push('screens positioned against the low resistivity zones of the ' +
           'VES interpretation (' + interpretation.water_zones.map(function (z) {
             return Math.trunc(z[0]) + '-' + Math.trunc(z[1]) + ' m';
           }).join(', ') + ')');
@@ -5073,13 +5796,93 @@
       if (last && zone[0] <= last[1] + 1.0) last[1] = Math.max(last[1], zone[1]);
       else merged.push([zone[0], zone[1]]);
     });
-    return { zones: merged, basis: basis };
+    return { zones: merged, targets: targets, excluded: excluded, ves: ves };
+  }
+
+  /* The basis sentences, written from the screens that are actually built
+   * (designer._placement_basis). A zone clipped by the grout, the sump or the
+   * bottom of the hole, or trimmed away with the shallowest screens, used to
+   * stay in the basis as "screens positioned against the fracture zones the
+   * log names (16-18 m, 49-52 m, 59-62 m), with 1 m of screen either side"
+   * beside a single 48-53 m screen. Each target is now described by what
+   * covers it: in full, in part with the reason, or not at all with the
+   * reason. */
+  function placementBasis(found, screens, rules) {
+    var margin = (rules.fracture_zone_margin_m === undefined ||
+                  rules.fracture_zone_margin_m === null)
+      ? DEFAULT_CONFIG.design.fracture_zone_margin_m : rules.fracture_zone_margin_m;
+    var trimReason = 'the screens were trimmed to 60 percent of the hole, keeping ' +
+      'the deepest sections';
+    function covered(zone) {
+      var pieces = [];
+      screens.forEach(function (s) {
+        var top = Math.max(zone[0], s[0]), bottom = Math.min(zone[1], s[1]);
+        if (bottom > top) pieces.push([top, bottom]);
+      });
+      if (!pieces.length) return null;
+      return [Math.min.apply(null, pieces.map(function (p) { return p[0]; })),
+        Math.max.apply(null, pieces.map(function (p) { return p[1]; }))];
+    }
+    function same(a, b) {
+      return a === null ? b === null : (b !== null && a[0] === b[0] && a[1] === b[1]);
+    }
+    var nouns = { strike: 'strike', zone: 'fracture zone', interval: 'interval' };
+    var strikes = [], zones = [], intervals = [], partial = [], dropped = [];
+    found.targets.forEach(function (t) {
+      var cover = t.clipped ? covered(t.clipped) : null;
+      var trimmed = t.clipped !== null && !same(cover, t.clipped);
+      var why = [];
+      if (t.cut.length && (cover === null || cover[0] > t.candidate[0] ||
+                           cover[1] < t.candidate[1])) {
+        why.push((cover === null ? 'it lies ' : 'the rest of it lies ') + t.cut.join(' and '));
+      }
+      if (trimmed) why.push(trimReason);
+      if (cover === null) {
+        if (why.length) {
+          dropped.push('the ' + t.label + ' ' + nouns[t.kind] + ' is not screened: ' +
+            why.join('; '));
+        }
+        return;
+      }
+      if (t.kind === 'strike') {
+        strikes.push(t.label);
+      } else if (t.kind === 'interval') {
+        intervals.push(t.label);
+      } else if (same(cover, [Math.ceil(t.candidate[0] * 2.0) / 2.0,
+                              Math.floor(t.candidate[1] * 2.0) / 2.0])) {
+        zones.push(t.label);
+      } else {
+        partial.push('the ' + t.label + ' fracture zone is screened at ' +
+          formatG(cover[0]) + '-' + formatG(cover[1]) + ' m, not with ' + formatG(margin) +
+          ' m of screen either side: ' +
+          (why.length ? why : ['the screen is rounded to the half metre']).join('; '));
+      }
+    });
+    var basis = [];
+    if (strikes.length) {
+      basis.push('screens positioned against the water strikes recorded in ' +
+        'the drilling log (' + strikes.join(', ') + ')');
+    }
+    if (zones.length) {
+      basis.push('screens positioned against the fracture zones the log names (' +
+        zones.join(', ') + '), with ' + formatG(margin) + ' m of screen either side');
+    }
+    if (intervals.length) {
+      basis.push('screens positioned against the fractured or water-bearing ' +
+        'intervals logged at ' + intervals.join(', '));
+    }
+    return basis.concat(partial, found.excluded, dropped, found.ves);
   }
 
   /* Clean up analyst-supplied screen intervals without silently moving them:
    * anything the clipping actually changed is flagged rather than absorbed,
-   * because a screen that has quietly moved is worse than one refused. */
-  function analystScreens(screensM, totalDepthM, rules, flags) {
+   * because a screen that has quietly moved is worse than one refused.
+   *
+   * Screens recorded as installed are a record, not a choice: two that meet
+   * stay two, and a clip is a warning that reaches the client documents. It
+   * used to be an info flag, so "48-54; 54-60 m" in a 60 m hole was printed
+   * "Screens (as installed) 48-58 m" without a word. */
+  function analystScreens(screensM, totalDepthM, rules, flags, asBuilt) {
     var sumpTop = totalDepthM - rules.sump_length_m;
     var cleaned = [];
     screensM.map(function (s) { return [Number(s[0]), Number(s[1])]; })
@@ -5098,17 +5901,32 @@
           return;
         }
         if (clippedTop !== top || clippedBottom !== bottom) {
-          flags.push({
-            level: 'info', code: 'screen_clipped',
-            message: 'Screen ' + formatG(top) + '-' + formatG(bottom) +
-              ' m was clipped to ' + formatG(clippedTop) + '-' +
-              formatG(clippedBottom) + ' m to stay inside the hole and above ' +
-              'the sump.',
-          });
+          if (asBuilt) {
+            flags.push({
+              level: 'warning', code: 'screen_clipped',
+              message: 'The screen recorded as installed at ' + formatG(top) + '-' +
+                formatG(bottom) + ' m runs below the top of the ' +
+                formatG(rules.sump_length_m) + ' m sump the design rules place at ' +
+                formatG(sumpTop) + ' m in this ' + formatG(totalDepthM) +
+                ' m hole; it is drawn as ' + formatG(clippedTop) + '-' +
+                formatG(clippedBottom) + ' m. Check the record against the hole.',
+            });
+          } else {
+            flags.push({
+              level: 'info', code: 'screen_clipped',
+              message: 'Screen ' + formatG(top) + '-' + formatG(bottom) +
+                ' m was clipped to ' + formatG(clippedTop) + '-' +
+                formatG(clippedBottom) + ' m to stay inside the hole and above ' +
+                'the sump.',
+            });
+          }
         }
         var last = cleaned[cleaned.length - 1];
-        if (last && clippedTop <= last[1]) last[1] = Math.max(last[1], clippedBottom);
-        else cleaned.push([clippedTop, clippedBottom]);
+        if (last && (clippedTop < last[1] || (clippedTop === last[1] && !asBuilt))) {
+          last[1] = Math.max(last[1], clippedBottom);
+        } else {
+          cleaned.push([clippedTop, clippedBottom]);
+        }
       });
     if (!cleaned.length) throw new Error('no usable screen interval was supplied');
     return {
@@ -5137,7 +5955,36 @@
     segments.forEach(function (s) { s.length_m = s.bottom_m - s.top_m; });
 
     var topScreen = screens[0][0];
-    var sealDepth = sealDepthFor(log, rules);
+    var sealDepth = sealDepthFor(log, rules, totalDepthM);
+    var flags = spec.flags;
+    var grout = log ? Number(log.grouting_depth_m || 0.0) : 0.0;
+    if (grout > 0 && grout >= sumpTop) {
+      flags.push({
+        level: 'error', code: 'grout_too_deep',
+        message: 'The drilling log records grouting to ' + formatG(grout) + ' m, at ' +
+          'or below the top of the sump at ' + formatG(sumpTop) + ' m in this ' +
+          formatG(totalDepthM) + ' m hole, which leaves nowhere below the grout for ' +
+          'a screen. The seal is drawn to ' + formatG(sealDepth) + ' m; check the ' +
+          'grouting depth on the log.',
+      });
+    }
+    /* A screen inside the grout is sealed off from the water it is there to
+     * take. The design never places one there; a screen recorded as
+     * installed, or placed by the analyst, can say otherwise, and 15-20 m of
+     * an as-built screen inside a 20 m grout used to go unmentioned. */
+    screens.forEach(function (s) {
+      if (s[0] < sealDepth) {
+        var sealed = Math.min(s[1], sealDepth) - s[0];
+        flags.push({
+          level: 'warning', code: 'screen_in_grout',
+          message: (asBuilt ? 'The screen recorded as installed at ' : 'The screen at ') +
+            formatG(s[0]) + '-' + formatG(s[1]) + ' m runs inside the ' +
+            formatG(sealDepth) + ' m grouted interval, which seals ' + formatG(sealed) +
+            ' m of it off' + (asBuilt
+              ? '; the record of the grout or of the screen needs checking.' : '.'),
+        });
+      }
+    });
     var gravelTop = Math.max(topScreen - rules.gravel_pack_above_top_screen_m, sealDepth);
     var gravel = [gravelTop, totalDepthM];
     var seal = [0.0, sealDepth];
@@ -5149,7 +5996,6 @@
     var boreIn = logged || rules.borehole_diameter_in;
     var diameterSource = logged ? ' as logged' : '';
 
-    var flags = spec.flags;
     /* The same annulus rule the field checks apply (50 mm per side to place
      * gravel, 70 mm for it to filter). It used to raise a flag that reached
      * no document while the drawing, the summary and the bill of quantities
@@ -5197,7 +6043,12 @@
         ' m above the top screen';
     }
     var sealSentence;
-    if (sealDepth > rules.sanitary_seal_depth_m) {
+    if (grout > sealDepth) {
+      /* held at the top of the sump: not what the log records */
+      sealSentence = 'cement grout from surface to ' + formatG(sealDepth) + ' m, the ' +
+        'top of the sump, where the drilling log records ' + formatG(grout) +
+        ' m (see the design notes), with ' + rules.apron_note;
+    } else if (sealDepth > rules.sanitary_seal_depth_m) {
       sealSentence = 'cement grout from surface to ' + formatG(sealDepth) +
         ' m as recorded on the drilling log (the rule\'s minimum is ' +
         formatG(rules.sanitary_seal_depth_m) + ' m), with ' + rules.apron_note;
@@ -5226,9 +6077,11 @@
      * otherwise, by the same clearance the pumping rules use. The yield
      * recommendation cannot know where the screens are; the design can. */
     var intake = spec.pumpIntakeM === undefined ? null : spec.pumpIntakeM;
+    var intakeFloor = spec.pumpIntakeFloorM === undefined ? null : spec.pumpIntakeFloorM;
     var inScreen = function (depth) {
       return screens.some(function (s) { return s[0] <= depth && depth <= s[1]; });
     };
+    var held = '';
     if (intake !== null) {
       var hit = null;
       for (var h = 0; h < screens.length; h++) {
@@ -5240,6 +6093,24 @@
         var plainBelow = below <= sumpTop && !inScreen(below);
         var plainAbove = above > 0 &&
           (swl === null || swl === undefined || above > swl) && !inScreen(above);
+        /* Moving the intake up spends drawdown the yield was worked out on.
+         * It goes up only as far as the deepest level the pumping test
+         * reached plus the submergence margin, the floor the yield itself
+         * holds to: a 40-68 m screen used to lift a 52 m intake to 39 m,
+         * above the 42.3 m the test had drawn the water to, which is the
+         * intake hydraulics-4 took out of the yield. Without that floor there
+         * is nothing to check a shallower setting against. */
+        if (plainAbove && !plainBelow) {
+          if (intakeFloor === null) {
+            held = 'the plain casing above it, at ' + formatG(above) + ' m, cannot ' +
+              'be checked against the level the pumping test reached';
+          } else if (above < intakeFloor) {
+            held = 'the plain casing above it, at ' + formatG(above) + ' m, is ' +
+              'shallower than the ' + formatG(intakeFloor) + ' m the pumping test ' +
+              'supports (the deepest level it reached with the submergence margin)';
+          }
+          if (held) plainAbove = false;
+        }
         var moved = plainBelow ? below : (plainAbove ? above : null);
         if (moved !== null) {
           var direction = moved > intake ? 'below' : 'above';
@@ -5268,6 +6139,15 @@
           message: 'The pump intake at ' + formatG(intake) + ' m is below the top of ' +
             'the sump at ' + formatG(sumpTop) + ' m in a ' + formatG(totalDepthM) +
             ' m hole; it cannot be set there.',
+        });
+      } else if (held) {
+        flags.push({
+          level: 'warning', code: 'pump_intake_in_screen',
+          message: 'The pump intake at ' + formatG(intake) + ' m sits inside a ' +
+            'screened interval and is kept there: there is no plain casing below ' +
+            'that screen above the sump, and ' + held + '. Set the screens so there ' +
+            'is plain casing at a depth the test supports, or accept the inflow ' +
+            'drawn across the pump.',
         });
       } else if (inScreen(intake)) {
         flags.push({
@@ -5351,8 +6231,9 @@
         }).join('; ') + ' (slot ' + formatG(design.screen_slot_mm) + ' mm)'],
       ['Annular fill', formatG(design.gravel_pack[0]) + '-' +
         formatG(design.gravel_pack[1]) + ' m: ' + annularFillLabel(design)],
-      ['Backfill', formatG(design.backfill[0]) + '-' +
-        formatG(design.backfill[1]) + ' m'],
+      /* the fill can reach the seal, and "Backfill 20-20 m" was printed */
+      ['Backfill', design.backfill[1] > design.backfill[0]
+        ? formatG(design.backfill[0]) + '-' + formatG(design.backfill[1]) + ' m' : 'none'],
       ['Sanitary seal', formatG(design.sanitary_seal[0]) + '-' +
         formatG(design.sanitary_seal[1]) + ' m cement grout'],
     ];
@@ -5395,31 +6276,37 @@
       screensM = log.installed_screens_m.map(function (s) { return [s[0], s[1]]; });
       asBuilt = true;
     }
+    var intakeFloor = opts.pumpIntakeFloorM === undefined ? null : opts.pumpIntakeFloorM;
     if (screensM && screensM.length) {
-      var chosen = analystScreens(screensM, totalDepthM, rules, flags);
+      var chosen = analystScreens(screensM, totalDepthM, rules, flags, asBuilt);
       var chosenBasis = chosen.basis;
       if (asBuilt) {
+        /* the record as the crew wrote it: where the drawing has had to
+         * differ from it, a screen_clipped warning says how */
         chosenBasis = ['screens as installed, recorded on the drilling log (' +
-          chosen.screens.map(function (s) {
-            return formatG(s[0]) + '-' + formatG(s[1]) + ' m';
-          }).join(', ') + ')'];
+          screensM.map(function (s) { return [Number(s[0]), Number(s[1])]; })
+            .sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; })
+            .map(function (s) {
+              return formatG(s[0]) + '-' + formatG(s[1]) + ' m';
+            }).join(', ') + ')'];
       }
       return assembleDesign({
         screens: chosen.screens, basis: chosenBasis, flags: flags,
         totalDepthM: totalDepthM, swl: swl, pumpIntakeM: opts.pumpIntakeM,
-        rules: rules, log: log, asBuilt: asBuilt,
+        pumpIntakeFloorM: intakeFloor, rules: rules, log: log, asBuilt: asBuilt,
       });
     }
 
-    var targeted = targetZones(log, interpretation, swl, totalDepthM, rules);
-    var basis = targeted.basis;
-    var screens = targeted.zones.map(function (z) { return [z[0], z[1]]; });
+    var found = targetZones(log, interpretation, swl, totalDepthM, rules);
+    var screens = found.zones.map(function (z) { return [z[0], z[1]]; });
+    var fallback = [];
 
     if (!screens.length) {
       /* fall back: screen the bottom third of the hole below the SWL margin,
        * and never inside the grout */
-      var floor = Math.max((swl || 0.0) + rules.min_screen_below_swl_m,
-        sealDepthFor(log, rules));
+      var swlFloor = (swl || 0.0) + rules.min_screen_below_swl_m;
+      var sealAt = sealDepthFor(log, rules, totalDepthM);
+      var floor = Math.max(swlFloor, sealAt);
       var sumpTop = Math.max(totalDepthM - rules.sump_length_m, 0.0);
       var bottom = sumpTop;
       /* rounded to 0.5 m like every other screen top */
@@ -5428,23 +6315,31 @@
         top = Math.max(bottom - rules.screen_length_default_m, floor);
       }
       if (bottom - top < 1.0) {
-        /* The static water level margin plus the sump leave no room for a
-         * valid screen. Clamp to a positive interval just above the sump so
-         * the geometry stays valid and flag it loudly rather than emitting
-         * a negative-length screen. */
+        /* The static water level margin, or the recorded grout, plus the
+         * sump leave no room for a valid screen. Clamp to a positive interval
+         * just above the sump so the geometry stays valid and flag it loudly
+         * rather than emitting a negative-length screen. The message names
+         * whichever of the two is in the way: a grout recorded below the hole
+         * was blamed on the static water level. */
         top = Math.max(Math.min(bottom - rules.screen_length_default_m, bottom - 1.0), 0.0);
+        var cause = sealAt >= swlFloor
+          ? 'The ' + formatG(sealAt) + ' m grouted interval'
+          : 'Static water level plus the ' + formatG(rules.min_screen_below_swl_m) +
+            ' m minimum screen depth';
         flags.push({
           level: 'error', code: 'hole_too_shallow',
-          message: 'Static water level plus the ' +
-            formatG(rules.min_screen_below_swl_m) + ' m minimum screen depth ' +
-            'leaves no room for a screen above the sump in this ' +
+          message: cause + ' leaves no room for a screen above the sump in this ' +
             formatG(totalDepthM) + ' m hole. Screen placement is a best effort ' +
             'only - deepen the hole or revise the design manually.',
         });
       }
       screens = [[top, bottom]];
-      basis.push('no aquifer intervals identified from the data; screens ' +
-        'default to the lower third of the hole');
+      /* the targets the log names and the design could not screen are listed
+       * above this sentence, so it does not say there were none */
+      fallback.push((found.targets.length || found.excluded.length
+        ? 'none of the aquifer intervals identified from the data can be screened'
+        : 'no aquifer intervals identified from the data') +
+        '; screens default to the lower third of the hole');
       flags.push({
         level: 'warning', code: 'default_screens',
         message: 'Screen placement fell back to the lower third of the hole; ' +
@@ -5474,8 +6369,9 @@
     }
 
     return assembleDesign({
-      screens: screens, basis: basis, flags: flags, totalDepthM: totalDepthM,
-      swl: swl, pumpIntakeM: opts.pumpIntakeM, rules: rules, log: log,
+      screens: screens, basis: placementBasis(found, screens, rules).concat(fallback),
+      flags: flags, totalDepthM: totalDepthM, swl: swl, pumpIntakeM: opts.pumpIntakeM,
+      pumpIntakeFloorM: intakeFloor, rules: rules, log: log,
     });
   }
 
@@ -6220,24 +7116,25 @@
   Object.assign(C, {
     designBorehole: designBorehole, designSummaryRows: designSummaryRows,
     targetZones: targetZones, sealDepthFor: sealDepthFor,
+    pumpIntakeFloor: pumpIntakeFloor,
     loggedDiameterIn: loggedDiameterIn, intervalAt: intervalAt,
     annularFillLabel: annularFillLabel,
     DESIGN_NOTE: DESIGN_NOTE, AS_BUILT_NOTE: AS_BUILT_NOTE,
     ANNULUS_PACK_MIN_MM: ANNULUS_PACK_MIN_MM,
     ANNULUS_FILTER_MIN_MM: ANNULUS_FILTER_MIN_MM,
     LITHOLOGY_CLASSES: LITHOLOGY_CLASSES, LITHOLOGY_OTHER: LITHOLOGY_OTHER,
-    FRACTURE_RANGE_RE: FRACTURE_RANGE_RE, ANY_RANGE_RE: ANY_RANGE_RE,
+    FRACTURE_PHRASE_RE: FRACTURE_PHRASE_RE, ANY_RANGE_RE: ANY_RANGE_RE,
     CLAYEY_RE: CLAYEY_RE,
     lithologyClass: lithologyClass, isClayey: isClayey,
     fractureRanges: fractureRanges, hostDescription: hostDescription,
-    lithologyBands: lithologyBands,
+    readFractures: readFractures, hostClass: hostClass, lithologyBands: lithologyBands,
     /* the same table under one name, for the drawings */
     lithology: {
       CLASSES: LITHOLOGY_CLASSES, OTHER: LITHOLOGY_OTHER,
-      FRACTURE_RANGE_RE: FRACTURE_RANGE_RE, ANY_RANGE_RE: ANY_RANGE_RE,
+      FRACTURE_PHRASE_RE: FRACTURE_PHRASE_RE, ANY_RANGE_RE: ANY_RANGE_RE,
       CLAYEY_RE: CLAYEY_RE, lithologyClass: lithologyClass, isClayey: isClayey,
       fractureRanges: fractureRanges, hostDescription: hostDescription,
-      lithologyBands: lithologyBands,
+      readFractures: readFractures, lithologyBands: lithologyBands,
     },
     STAGES: STAGES, RESOURCE_CATEGORIES: RESOURCE_CATEGORIES,
     DEFAULT_EXCHANGE_RATE_SLE_PER_USD: DEFAULT_EXCHANGE_RATE_SLE_PER_USD,
@@ -6349,6 +7246,27 @@
     return value.replace(DASH_RE, '-');
   }
 
+  /* A metre unit written against a number ("30 m", "5m", "12 metres"), which
+   * the depth interval pattern does not expect between the two depths. */
+  var METRE_UNIT_RE = /(\d)\s*(?:met(?:re|er)s?|mtrs?|m)\b\.?/gi;
+
+  /* Drop the metre unit written against each number in a text cell
+   * (common.strip_metre_units). "30 m - 40 m" and "5m-10m" reach the
+   * interval pattern as "30 - 40" and "5-10"; they used to be skipped with
+   * the row's description and strike, and the only trace was a gap flag
+   * blaming the log. A value that is not text is handed back untouched. */
+  function stripMetreUnits(value) {
+    if (typeof value !== 'string') return value;
+    return value.replace(METRE_UNIT_RE, '$1');
+  }
+
+  /* The deeper end of a depth range written in a header cell, if it is one. */
+  function rangeBottom(value) {
+    if (typeof value !== 'string') return null;
+    var interval = parseDepthInterval(stripMetreUnits(normaliseDashes(cleanText(value))));
+    return interval ? interval[1] : null;
+  }
+
   /* Canonical header keys and the label patterns that map to them. */
   var LABEL_PATTERNS = {
     client: ['^client\\b'],
@@ -6401,6 +7319,12 @@
   var NUMERIC_HEADER_KEYS = ['easting', 'northing', 'elevation_m',
     'borehole_depth_m', 'static_water_level_m', 'pump_setting_m',
     'step_length_min', 'grouting_depth_m'];
+
+  /* Header depths a crew writes as a range from the surface ("Grouting:
+   * 0-20 m"). The depth is the bottom of the range: read as a number, "0-20"
+   * was the 0 at its top, the recorded 20 m grout was lost, and screens were
+   * drawn at 10-20 m inside it. */
+  var RANGE_BOTTOM_KEYS = ['grouting_depth_m'];
 
   /* Priority is the pattern index within the key's list: 0 is the most
    * specific wording ("Depth of Borehole"), higher numbers are generic
@@ -6495,7 +7419,8 @@
         }
         if (value === null || value === undefined) continue;
         if (NUMERIC_HEADER_KEYS.indexOf(key) >= 0) {
-          var number = parseNumber(value);
+          var number = RANGE_BOTTOM_KEYS.indexOf(key) >= 0 ? rangeBottom(value) : null;
+          if (number === null) number = parseNumber(value);
           if (number !== null) { fields[key] = number; priorities[key] = priority; }
         } else {
           fields[key] = cleanText(value);
@@ -6796,6 +7721,31 @@
           'thirds of the tabulated AB/2, which is the spacing the Wenner ' +
           'geometric factor and forward model take.' });
     }
+    if (isWenner) {
+      /* A Wenner array keeps MN equal to a and reads each spacing once. A
+       * Schlumberger sheet with only its array field changed to "Wenner" was
+       * read as Wenner, every spacing divided by 1.5, with nothing but
+       * information notes, although its MN column and the repeated AB/2 at
+       * each MN change are things a Wenner array cannot have. numpy's
+       * isclose(rtol=0.01) is the tolerance on MN = a. */
+      var reasons = [];
+      var mnOff = mn.some(function (v, i) {
+        return isFinite(v) && !(Math.abs(v - ab2[i]) <= 1e-8 + 0.01 * Math.abs(ab2[i]));
+      });
+      if (mnOff) reasons.push('its MN column holds spacings other than a');
+      var counts = {}, repeated = 0;
+      ab2.forEach(function (v) { counts[v] = (counts[v] || 0) + 1; });
+      Object.keys(counts).forEach(function (v) { if (counts[v] > 1) repeated += 1; });
+      if (repeated) reasons.push('it repeats ' + plural(repeated, 'spacing'));
+      if (reasons.length) {
+        flags.push({ level: 'warning', code: 'array_type_wenner_contradicted',
+          message: 'The sounding was read as Wenner, as the sheet has it, but ' +
+            reasons.join(' and ') + '. A Wenner array keeps MN equal to the ' +
+            'spacing a and reads each spacing once, so these are the marks of a ' +
+            'Schlumberger sounding. Confirm the array with the field crew: the ' +
+            'wrong forward model is wrong by tens of percent.' });
+      }
+    }
     if (fromResistance) {
       flags.push({ level: 'info', code: 'rho_computed_from_resistance',
         message: 'The sheet records a resistance (V/I), not a resistivity; ' +
@@ -6873,8 +7823,13 @@
       if (readings.length < 2) return;
       var ratio = Math.max.apply(null, readings) / Math.min.apply(null, readings);
       if (ratio > OVERLAP_DISCREPANCY_RATIO) {
-        out.push('AB/2 ' + formatG(value) + ' m: ' + formatG(readings[0]) + ' and ' +
-          formatG(readings[1]) + ' ohm-m (ratio ' + pyFixed(ratio, 2) + ')');
+        /* the pair the ratio is of, in field order: with three readings at
+         * one spacing the first two can agree while the third is the one out */
+        var hi = readings.indexOf(Math.max.apply(null, readings));
+        var lo = readings.indexOf(Math.min.apply(null, readings));
+        var ends = [Math.min(hi, lo), Math.max(hi, lo)];
+        out.push('AB/2 ' + formatG(value) + ' m: ' + formatG(readings[ends[0]]) + ' and ' +
+          formatG(readings[ends[1]]) + ' ohm-m (ratio ' + pyFixed(ratio, 2) + ')');
       }
     });
     return out;
@@ -6884,19 +7839,57 @@
   /* skipped, when given, receives one warning flag per sheet that yielded
    * no sounding, naming the sheet and the reason */
   function readVesSheets(sheets, source, skipped) {
-    var out = [];
+    var out = [], titles = [];
     sheets.forEach(function (sheet) {
       var pair = soundingOrReason(sheet.rows, source || '', sheet.name);
-      if (pair[0]) out.push(pair[0]);
-      else if (skipped) {
+      if (pair[0]) {
+        out.push(pair[0]);
+        titles.push(sheet.name);
+      } else if (skipped) {
         skipped.push({ level: 'warning', code: 'sheet_skipped',
           message: "Sheet '" + sheet.name + "' was skipped: " + pair[1] + '.' });
       }
     });
+    flagDuplicateIds(out, titles);
     return out;
   }
 
+  /* ingestion/ves.py _flag_duplicate_ids: a sheet copied for the next point
+   * and never renumbered reads as the same point in every table, figure and
+   * ranking, and nothing downstream can tell the two apart by name. */
+  function flagDuplicateIds(soundings, titles) {
+    var firstSheet = {};
+    soundings.forEach(function (sounding, i) {
+      var sid = sounding.sounding_id;
+      if (Object.prototype.hasOwnProperty.call(firstSheet, sid)) {
+        sounding.flags.push({ level: 'warning', code: 'duplicate_sounding_id',
+          message: "Sheet '" + titles[i] + "' carries the sounding number '" + sid +
+            "', which sheet '" + firstSheet[sid] + "' already uses. A sheet copied " +
+            'without renumbering reads as the same point in every table, figure ' +
+            'and ranking; give each sounding its own number before the results ' +
+            'are used.',
+          context: sid });
+      } else {
+        firstSheet[sid] = titles[i];
+      }
+    });
+  }
+
   /* --- drilling logs -------------------------------------------------------- */
+
+  /* Whether a cell in the interval column was meant as a depth interval. A
+   * cell of numbers and separators with nothing else in it ("30 -", "30 40")
+   * is a row the crew logged and this parser could not read, and it is
+   * flagged. A note under the table ("Water strike 1: 18 m") has words in it
+   * and is not a row at all. */
+  function readsAsInterval(value) {
+    if (value === null || value === undefined || typeof value === 'boolean') return false;
+    if (value instanceof Date) return false;
+    if (typeof value === 'number') return true;
+    var text = stripMetreUnits(normaliseDashes(cleanText(value)))
+      .replace(/\b(?:to|from)\b/gi, ' ');
+    return /\d/.test(text) && !/[a-z]/i.test(text);
+  }
 
   function findLogHeader(grid) {
     for (var r = 0; r < grid.length; r++) {
@@ -6935,8 +7928,21 @@
   /* A clock time carries a colon or an "h" between the hour and the minutes
    * ("14:30", "14h30"). A decimal point is deliberately not a clock separator
    * here: "8.50" in a strike note is a depth far more often than it is ten to
-   * nine, and reading it as a time would lose the strike. */
-  var CLOCK_TIME_RE = /\b\d{1,2}\s*[:h]\s*\d{2}\b(?:\s*(?:am|pm|hrs?))?|\b\d{3,4}\s*(?:hrs?|hours?)\b/gi;
+   * nine, and reading it as a time would lose the strike.
+   *
+   * A clock time is written with no space inside it. "Water strike 1: 12 m,
+   * water strike 2: 30 m" numbers its strikes with a colon and a space, and a
+   * pattern that allowed the space took "1: 12" and "2: 30" for times and
+   * recorded no strike at all, without a flag. */
+  var CLOCK_TIME_RE = /\b\d{1,2}[:h]\d{2}\b(?:\s*(?:am|pm|hrs?))?|\b\d{3,4}\s*(?:hrs?|hours?)\b/gi;
+
+  /* A water level written beside a strike ("Water strike at 18 m; rest water
+   * level 4.5 m") is not a strike. Its number was read as one, so the log
+   * recorded strikes at 4.5 m and 18 m and the design basis explained why the
+   * 4.5 m strike was not screened. */
+  var WATER_LEVEL_RE = new RegExp('\\b(?:s\\.?w\\.?l|r\\.?w\\.?l|' +
+    '(?:rest(?:ing)?|static|standing)\\s+(?:water\\s+)?level|water\\s+level)\\b' +
+    '\\.?[^\\d;,.]*?\\d+(?:[.,]\\d+)?\\s*(?:met(?:re|er)s?\\b|m\\b)?', 'gi');
 
   /* One depth, or a list of them sharing the unit written after the last
    * ("12, 18 and 30 m"), in metres. The lookahead keeps the "m" of a rate
@@ -6962,13 +7968,38 @@
    * the time per metre a driller times with a stopwatch and writes the other
    * way up. The order of the alternatives is load-bearing. */
   var METRE_SOURCE = '(?:met(?:re|er)s?|m)';
-  var RATE_UNIT_RE = new RegExp('(\\d+(?:[.,]\\d+)?)\\s*(' +
-    METRE_SOURCE + '\\s*(?:/|per)\\s*min(?:ute)?s?' +
+  var RATE_UNITS_SOURCE = METRE_SOURCE + '\\s*(?:/|per)\\s*min(?:ute)?s?' +
     '|' + METRE_SOURCE + '\\s*(?:/|per)\\s*(?:hrs?|hours?|h)' +
     '|min(?:ute)?s?\\s*(?:/|per)\\s*' + METRE_SOURCE +
     '|sec(?:ond)?s?\\s*(?:/|per)\\s*' + METRE_SOURCE +
-    '|s\\s*(?:/|per)\\s*' + METRE_SOURCE +
+    '|s\\s*(?:/|per)\\s*' + METRE_SOURCE;
+  var RATE_UNIT_RE = new RegExp('(\\d+(?:[.,]\\d+)?)\\s*(' + RATE_UNITS_SOURCE +
     ')(?![a-z])', 'gi');
+
+  /* The unit a column header gives its cells: "Penetration rate (min/m)",
+   * "Bit diameter (mm)". A bare number in the cell is in that unit. The
+   * column was read in the template's units whatever its header said, so 165
+   * under "Bit diameter (mm)" was a 165 inch hole (a 2 m annulus and 1654
+   * bags of cement in the bill of quantities) and 4 under "(min/m)" was
+   * 4 m/min. */
+  var RATE_HEADER_RE = new RegExp('(?:' + RATE_UNITS_SOURCE + ')(?![a-z])', 'i');
+  var METRIC_HEADER_RE = /\b(millimet(?:re|er)s?|mms?|centimet(?:re|er)s?|cms?)\b/i;
+
+  /* A whole number and a fraction of an inch with no unit ("6 1/2"), which
+   * is how a bit is quoted. Groups are number, numerator, denominator. */
+  var MIXED_NUMBER_RE = /(\d+(?:[.,]\d+)?)\s+(\d+)\s*\/\s*(\d+)/g;
+
+  /* "8½" and "8-1/2" are how a bit size is stamped and typed; both used
+   * to be read as 8 inches. The fraction is written out and the hyphen
+   * dropped, so they reach the patterns above as "8 1/2". */
+  var VULGAR_FRACTIONS = { '½': '1/2', '¼': '1/4', '¾': '3/4',
+    '⅛': '1/8', '⅜': '3/8', '⅝': '5/8', '⅞': '7/8' };
+  var VULGAR_RE = /[½¼¾⅛⅜⅝⅞]/g;
+  var HYPHENATED_FRACTION_RE = /(\d)\s*-\s*(?=\d+\s*\/\s*\d)/g;
+
+  /* No water well is drilled wider than this, in inches: a larger reading is
+   * a bit size in millimetres with its unit left off. */
+  var MAX_BIT_DIAMETER_IN = 36.0;
 
   /* Python guards both unit patterns with a lookbehind, (?<![\d./,]), which
    * keeps the denominator of "6 1/2" from being read as a number in its own
@@ -7018,7 +8049,17 @@
     if (typeof value === 'boolean') return [[], ''];
     if (typeof value === 'number') return [value > 0 ? [value] : [], ''];
 
-    var text = cleanText(value).replace(CLOCK_TIME_RE, ' ');
+    /* A water level and a clock time are taken out before any number is
+     * read, and counted: a cell whose only numbers were those names no
+     * strike, and says so rather than recording nothing in silence. */
+    var levels = 0, clocks = 0;
+    var text = cleanText(value).replace(WATER_LEVEL_RE, function () {
+      levels += 1;
+      return ' ';
+    }).replace(CLOCK_TIME_RE, function () {
+      clocks += 1;
+      return ' ';
+    });
     /* A fraction between two digits is half a metre, or a date, or a run
      * number; it is not two depths and it is not its own denominator.
      * "Water strike 1/2 m" read as a strike at 2 m, which would place a
@@ -7041,7 +8082,13 @@
      * about ("First water strike: 12"); several are a sentence this parser
      * cannot take apart, and guessing one of them is worse than refusing. */
     var numbers = text.match(NUMBER_TOKEN_RE) || [];
-    if (!numbers.length) return [[], ''];
+    if (!numbers.length) {
+      var named = [];
+      if (levels) named.push('a water level');
+      if (clocks) named.push('a clock time');
+      if (named.length) return [[], 'it names ' + named.join(' and ') + ' but no strike depth'];
+      return [[], ''];
+    }
     if (numbers.length > 1) {
       return [[], 'it names several numbers and none of them carries a unit'];
     }
@@ -7060,37 +8107,78 @@
         'its unit, as "water strike at 12 m and 30 m".' };
   }
 
+  function fractionsWrittenOut(text) {
+    return text.replace(VULGAR_RE, function (c) { return ' ' + VULGAR_FRACTIONS[c]; })
+      .replace(HYPHENATED_FRACTION_RE, '$1 ');
+  }
+
+  /* A diameter in `unit` (the cell's or the header's) in inches. */
+  function inches(number, unit) {
+    if (number === null || number === undefined || !unit) return number;
+    var u = String(unit).toLowerCase();
+    if (u.indexOf('mm') === 0 || u.indexOf('millim') === 0) return pyRound(number / 25.4, 2);
+    if (u.indexOf('cm') === 0 || u.indexOf('centim') === 0) return pyRound(number / 2.54, 2);
+    return number;
+  }
+
+  /* The metric unit a diameter column header names, or null for inches. */
+  function headerDiameterUnit(header) {
+    var match = METRIC_HEADER_RE.exec(cleanText(header));
+    return match ? match[1].toLowerCase() : null;
+  }
+
+  /* The penetration rate unit a column header names, if it names one. */
+  function headerRateUnit(header) {
+    var match = RATE_HEADER_RE.exec(cleanText(header));
+    return match ? match[0] : null;
+  }
+
   /* The drilled diameter in inches, converting the unit the cell carries.
    *
    * Crews quote a bit in millimetres as often as in inches, and the column
    * was read as a bare number, so "165 mm" was recorded as a 165 inch hole
    * (ROADMAP data-ingestion-15) - a metre and a half of annulus in the bill
-   * of quantities and in the completion drawing. A cell with no unit at all
-   * is read as inches, which is the unit the template column asks for
-   * ("Drilling diameter (in)") and the unit the design rules are written in.
+   * of quantities and in the completion drawing. A cell with no unit is in
+   * `unit`, the unit its column header names; with none, inches, which is the
+   * unit the template column asks for ("Drilling diameter (in)") and the unit
+   * the design rules are written in.
    *
    * A converted diameter is kept to two decimals: 165 mm is the metric name
    * of a 6.5 in bit, and 6.5 in is what the completion log should print. */
-  function parseBitDiameterIn(value) {
+  function parseBitDiameterIn(value, unit) {
     if (value === null || value === undefined) return null;
     if (typeof value === 'boolean') return null;
-    if (typeof value === 'number') return value;
-    var text = cleanText(value);
+    if (typeof value === 'number') return inches(value, unit);
+    var text = fractionsWrittenOut(cleanText(value));
     var match = searchUnit(DIAMETER_UNIT_RE, text);
-    if (match === null) return parseNumber(text);
+    if (match === null) {
+      var mixed = searchUnit(MIXED_NUMBER_RE, text);
+      if (mixed === null) return inches(parseNumber(text), unit);
+      var whole = parseNumber(mixed[1]);
+      if (whole !== null && Number(mixed[3]) !== 0) whole += Number(mixed[2]) / Number(mixed[3]);
+      return inches(whole, unit);
+    }
     var number = parseNumber(match[1]);
     if (number === null) return null;
     if (match[2] && Number(match[3]) !== 0) {
       /* "6 1/2 in" is six and a half inches, which is how a bit is quoted. */
       number += Number(match[2]) / Number(match[3]);
     }
-    var unit = match[4].toLowerCase();
-    if (unit.indexOf('mm') === 0 || unit.indexOf('millim') === 0) {
-      return pyRound(number / 25.4, 2);
+    return inches(number, match[4]);
+  }
+
+  /* A penetration rate in `unit` (the cell's or the header's) in m/min. */
+  function rateInMPerMin(number, unit) {
+    if (number === null || number === undefined || !unit) return number;
+    var u = String(unit).replace(/\s+/g, '').toLowerCase().replace(/per/g, '/');
+    if (u.indexOf('min') === 0) {
+      /* minutes per metre: the reciprocal, and a zero is not a rate at all */
+      return number > 0 ? 1.0 / number : null;
     }
-    if (unit.indexOf('cm') === 0 || unit.indexOf('centim') === 0) {
-      return pyRound(number / 2.54, 2);
+    if (u.indexOf('s') === 0) {                       /* seconds per metre */
+      return number > 0 ? 60.0 / number : null;
     }
+    if (u.indexOf('/h') >= 0) return number / 60.0;
     return number;
   }
 
@@ -7102,27 +8190,19 @@
    * quotes metres per hour. The column was read as a bare number, so a hole
    * advancing at five minutes to the metre was recorded as five metres a
    * minute (ROADMAP data-ingestion-15), twenty-five times too fast. A cell
-   * with no unit is read as metres per minute, which is the unit the template
-   * column asks for ("Penetration rate (m/min)"). */
-  function parsePenetrationRateMPerMin(value) {
+   * with no unit is in `unit`, the unit its column header names; with none,
+   * metres per minute, which is the unit the template column asks for
+   * ("Penetration rate (m/min)"). */
+  function parsePenetrationRateMPerMin(value, unit) {
     if (value === null || value === undefined) return null;
     if (typeof value === 'boolean') return null;
-    if (typeof value === 'number') return value;
+    if (typeof value === 'number') return rateInMPerMin(value, unit);
     var text = cleanText(value);
     var match = searchUnit(RATE_UNIT_RE, text);
-    if (match === null) return parseNumber(text);
+    if (match === null) return rateInMPerMin(parseNumber(text), unit);
     var number = parseNumber(match[1]);
     if (number === null) return null;
-    var unit = match[2].replace(/\s+/g, '').toLowerCase().replace(/per/g, '/');
-    if (unit.indexOf('min') === 0) {
-      /* minutes per metre: the reciprocal, and a zero is not a rate at all */
-      return number > 0 ? 1.0 / number : null;
-    }
-    if (unit.indexOf('s') === 0) {                    /* seconds per metre */
-      return number > 0 ? 60.0 / number : null;
-    }
-    if (unit.indexOf('/h') >= 0) return number / 60.0;
-    return number;
+    return rateInMPerMin(number, match[2]);
   }
 
   /* "25-35; 48-53 m" -> [[25, 35], [48, 53]]: the as-built screens a crew
@@ -7144,11 +8224,18 @@
   function drillingFromGrid(grid, source) {
     var fields = extractHeaderFields(grid, grid.length);
     var site = siteFromFields(fields, source);
-    var flags = [], intervals = [], strikes = [], zeroStrikeRows = 0;
+    var flags = [], intervals = [], strikes = [], zeroStrikeRows = 0, tooWide = [];
     var located = findLogHeader(grid);
 
     if (located) {
       var cols = located.cols;
+      var headerCell = function (key) {
+        var c = cols[key], headerRow = grid[located.row] || [];
+        return (c !== undefined && c < headerRow.length) ? headerRow[c] : null;
+      };
+      /* the unit the column header names is the unit of a bare number */
+      var rateUnit = headerRateUnit(headerCell('rate'));
+      var diameterUnit = headerDiameterUnit(headerCell('diameter'));
       for (var r = located.row + 1; r < grid.length; r++) {
         var row = grid[r] || [];
         var cell = function (key) {
@@ -7176,15 +8263,35 @@
          * and the gap it left was reported as a gap in the crew's own log
          * (ROADMAP data-ingestion-8). Normalising the dashes reads the
          * interval as it was written, whichever dash was typed. */
-        var interval = parseDepthInterval(normaliseDashes(rawInterval));
-        if (!interval) continue;
+        /* A metre unit against each depth ("30 m - 40 m", "5m-10m") is
+         * dropped first for the same reason: the row used to be skipped with
+         * its description and its strike. */
+        var interval = parseDepthInterval(stripMetreUnits(normaliseDashes(rawInterval)));
+        if (!interval) {
+          if (readsAsInterval(rawInterval)) {
+            flags.push({
+              level: 'warning', code: 'interval_unreadable',
+              message: 'Depth interval cell "' + cleanText(rawInterval) + '" was not ' +
+                'read as a depth interval, so this row was skipped; write it as the ' +
+                'depths from and to, as "30-40".',
+            });
+          }
+          continue;
+        }
+        var diameter = parseBitDiameterIn(cell('diameter'), diameterUnit);
+        if (diameter !== null && diameter > MAX_BIT_DIAMETER_IN) {
+          /* a bit size in millimetres with its unit left off: sized as inches
+           * it made a two-metre annulus and a thousand bags of cement */
+          tooWide.push(cleanText(cell('diameter')));
+          diameter = null;
+        }
         intervals.push({
           top_m: interval[0], bottom_m: interval[1],
           description: cleanText(cell('description')),
           from_time: cleanText(cell('from_time')),
           to_time: cleanText(cell('to_time')),
-          penetration_rate_m_per_min: parsePenetrationRateMPerMin(cell('rate')),
-          bit_diameter_in: parseBitDiameterIn(cell('diameter')),
+          penetration_rate_m_per_min: parsePenetrationRateMPerMin(cell('rate'), rateUnit),
+          bit_diameter_in: diameter,
         });
         var rawStrike = cell('strike');
         var readStrike = parseWaterStrikeDepths(rawStrike);
@@ -7205,6 +8312,14 @@
           message: 'The water strike column holds 0 on ' + zeroStrikeRows +
             ' row(s); a zero there is read as no strike on that row, not as ' +
             'a strike at 0 m.' });
+      }
+      if (tooWide.length) {
+        var wideValues = tooWide.filter(function (v, i) { return tooWide.indexOf(v) === i; });
+        flags.push({ level: 'warning', code: 'diameter_implausible',
+          message: 'Drilled diameter ' + wideValues.join(', ') + ' reads as more than ' +
+            formatG(MAX_BIT_DIAMETER_IN) + ' inches, wider than any water well bit, so ' +
+            'it was not recorded; write the unit in the cell or the column header, ' +
+            'as "165 mm".' });
       }
     }
 
@@ -7332,19 +8447,14 @@
     return null;
   }
 
-  /* what a laboratory writes for "nothing found": a below-detection result
-   * with no stated limit, judged by the assessment per parameter */
+  /* What a laboratory writes for "nothing found": a below-detection result
+   * with no stated limit, judged by the assessment per parameter. The same
+   * words often carry that limit after them ("ND (<0.05)", "BDL (0.02)",
+   * "ND at 0.05"); only an exact match once counted, and every one of those
+   * was graded as a measured concentration exceeding a health guideline. */
   var ABSENCE_TOKENS = ['absent', 'nd', 'n.d', 'n/d', 'nil', 'none', 'not detected',
     'none detected', 'bdl', 'below detection', 'below detection limit', '<dl',
     'negative', 'neg'];
-
-  /* The same words with the laboratory's limit written after them:
-   * "ND (<0.05)", "BDL (0.02)", "ND<0.1", "Not detected (<0.001)". Only an
-   * exact match counted, so every one of these was read as a measured
-   * concentration and graded as exceeding a health guideline - the arsenic a
-   * laboratory reported as absent came out as the worst reading on the
-   * sheet. */
-  var ABSENCE_WITH_LIMIT = /^([a-z][a-z.\s/]*?)\s*[([]?\s*<?\s*(\d+(?:[.,]\d+)?)\s*[)\]]?\.?$/;
 
   /* What a laboratory writes when it saw the determinand and put no number
    * to it. For a determinand whose limit is zero that is the whole finding:
@@ -7353,15 +8463,164 @@
   var PRESENCE_TOKENS = ['tntc', 't.n.t.c', 'too numerous to count', 'confluent',
     'confluent growth', 'present', 'positive', 'pos', '+ve', 'detected'];
 
-  /* at least this much, not exactly this much: ">50" was read as 50 */
-  var GREATER_THAN_RE = /^(?:>|>=|\u2265|more than|greater than)\s*(\d+(?:[.,]\d+)?)\s*\+?$/;
+  /* Words that introduce a lower bound, and whether the bound itself is a
+   * possible value. ">=50" is at least 50; ">50" is more than 50. */
+  var LOWER_BOUND_WORDS = [['>=', true], ['=>', true], ['>', false],
+    ['at least', true], ['more than', false], ['greater than', false],
+    ['above', false], ['over', false]];
 
-  function absenceLimit(text) {
-    var match = ABSENCE_WITH_LIMIT.exec(String(text || '').toLowerCase().trim());
-    if (!match) return null;
-    var word = match[1].replace(/[\s.]+$/, '').trim();
-    if (ABSENCE_TOKENS.indexOf(word) < 0) return null;
-    return parseNumber(match[2]);
+  /* words that introduce an upper bound: "<0.05" is below a limit of 0.05 */
+  var UPPER_BOUND_WORDS = ['<=', '=<', '<', 'less than'];
+
+  /* What may stand between an absence word and the limit it carries:
+   * "ND (DL 0.05)", "ND (DL=0.05)", "ND at 0.05", "ND (LOD 0.05)". */
+  var LIMIT_WORD_RE = /^(?:at|dl|d\.l\.?|lod|loq|mdl|detection limit|limit of detection|limit)\s*[=:]?\s*/;
+
+  /* a bound with no number: "<DL", "< LOQ" */
+  var LIMIT_ONLY_RE = /^(?:dl|d\.l\.?|lod|loq|mdl|detection limit|detection)$/;
+
+  /* "Absent/100 mL", "Present in 100 mL": the volume examined, not a limit */
+  var VOLUME_RE = /^(?:\/|per|in)\s*100\s*ml$/;
+
+  /* a number and the unit written after it: "50", "50 mg/L", "0,05mg/l" */
+  var NUMBER_AND_UNIT_RE = /^(\d+(?:[.,]\d+)?|[.,]\d+)\s*([^\d\s()[\]][\s\S]*)?$/;
+
+  /* Python's str.strip(chars): the set, from both ends. */
+  function stripChars(text, chars) {
+    var start = 0, end = text.length;
+    while (start < end && chars.indexOf(text.charAt(start)) >= 0) start++;
+    while (end > start && chars.indexOf(text.charAt(end - 1)) >= 0) end--;
+    return text.slice(start, end);
+  }
+
+  /* Python's str.isalpha for one character, as far as a laboratory cell
+   * needs it: a letter is a character that has a case. */
+  function isLetter(ch) {
+    return ch.toLowerCase() !== ch.toUpperCase();
+  }
+
+  /* The longest of `words` the text starts with, as a whole word. */
+  function leadingWord(text, words) {
+    var sorted = words.slice().sort(function (a, b) { return b.length - a.length; });
+    for (var i = 0; i < sorted.length; i++) {
+      var word = sorted[i];
+      if (text.indexOf(word) === 0) {
+        var rest = text.slice(word.length);
+        if (!rest || !isLetter(rest.charAt(0))) return word;
+      }
+    }
+    return null;
+  }
+
+  function numberAndUnit(text) {
+    var m = NUMBER_AND_UNIT_RE.exec(stripChars(text.trim(), '()[]').trim());
+    if (!m) return null;
+    var unit = (m[2] || '').trim().replace(/\.+$/, '').trim();
+    return [parseNumber(m[1]), unit];
+  }
+
+  /* What a laboratory's result cell says: waterquality.py _read_cell.
+   *
+   * kind is number, below (a non-detect, with the limit it states if any),
+   * above (a lower bound: ">50", "TNTC"), empty, text (words that are not a
+   * result, such as "Not analysed") or unreadable: a cell that starts like a
+   * qualified result and could not be read. That last one used to fall
+   * through to a plain number parse, which read "ND (DL 0.05)" as a measured
+   * 0.05, ">50 mg/L" as exactly 50 and "Absent/100 mL" as a count of 100. */
+  function readQualityCell(rawValue) {
+    function reading(kind, number, unit, inclusive) {
+      return { kind: kind, number: number === undefined ? null : number,
+        unit: unit || '', inclusive: !!inclusive };
+    }
+    if (typeof rawValue === 'number') {
+      var n = parseNumber(rawValue);
+      return reading(n === null ? 'empty' : 'number', n);
+    }
+    var text = cleanText(rawValue);
+    if (!text) return reading('empty');
+    var plain = text.toLowerCase().replace(/≥/g, '>=').replace(/≤/g, '<=')
+      .replace(/\.+$/, '').trim();
+    var unreadable = reading('unreadable');
+
+    function below(rest) {
+      /* what follows an absence word or a "<": nothing, the volume
+       * examined, or a limit with an optional unit */
+      rest = rest.trim().replace(/^[,;:.-]+/, '').trim();
+      rest = stripChars(rest, '()[]').trim();
+      if (!rest || VOLUME_RE.test(rest) || LIMIT_ONLY_RE.test(rest)) {
+        return reading('below');
+      }
+      rest = rest.replace(LIMIT_WORD_RE, '');
+      rest = rest.replace(/^(?:<=|=<|<)\s*/, '');
+      var read = numberAndUnit(rest);
+      return read ? reading('below', read[0], read[1]) : unreadable;
+    }
+
+    function above(rest, inclusive) {
+      rest = stripChars(rest.trim(), '()[]').trim();
+      var plus = /^(\d+(?:[.,]\d+)?|[.,]\d+)\s*\+\s*([\s\S]*)$/.exec(rest);
+      if (plus) {
+        rest = plus[1] + ' ' + plus[2];
+        inclusive = true;
+      }
+      var read = numberAndUnit(rest);
+      return read ? reading('above', read[0], read[1], inclusive) : unreadable;
+    }
+
+    var word = leadingWord(plain, ABSENCE_TOKENS);
+    if (word !== null) return below(plain.slice(word.length));
+    word = leadingWord(plain, PRESENCE_TOKENS);
+    if (word !== null) {
+      var rest = plain.slice(word.length).trim().replace(/^[,;:-]+/, '').trim();
+      if (!rest || VOLUME_RE.test(rest)) return reading('above', 0, '', false);
+      /* "TNTC (>300)": the count is at least the stated bound */
+      var inner = stripChars(rest, '()[]').trim();
+      for (var i = 0; i < LOWER_BOUND_WORDS.length; i++) {
+        if (inner.indexOf(LOWER_BOUND_WORDS[i][0]) === 0) {
+          return above(inner.slice(LOWER_BOUND_WORDS[i][0].length),
+            LOWER_BOUND_WORDS[i][1]);
+        }
+      }
+      return unreadable;
+    }
+    for (var u = 0; u < UPPER_BOUND_WORDS.length; u++) {
+      if (plain.indexOf(UPPER_BOUND_WORDS[u]) === 0) {
+        return below(plain.slice(UPPER_BOUND_WORDS[u].length));
+      }
+    }
+    for (var l = 0; l < LOWER_BOUND_WORDS.length; l++) {
+      if (plain.indexOf(LOWER_BOUND_WORDS[l][0]) === 0) {
+        return above(plain.slice(LOWER_BOUND_WORDS[l][0].length),
+          LOWER_BOUND_WORDS[l][1]);
+      }
+    }
+    /* "50+" is 50 or more */
+    if (/^(\d+(?:[.,]\d+)?|[.,]\d+)\s*\+/.test(plain)) return above(plain, true);
+    var number = parseNumber(rawValue);
+    return number === null ? reading('text') : reading('number', number);
+  }
+
+  /* a unit read from the lower-cased cell, in the case the cell wrote it */
+  function unitAsWritten(text, unit) {
+    var at = unit ? text.toLowerCase().lastIndexOf(unit) : -1;
+    return at >= 0 ? text.slice(at, at + unit.length) : unit;
+  }
+
+  /* The number on the row's scale, and the unit to record for the row. A
+   * unit written in the cell ("ND (<0.05 mg/L)") is read, not dropped: it
+   * becomes the row's unit when the unit column is blank, and is converted
+   * onto the column's unit when the two differ. [null, rowUnit] when they
+   * cannot be reconciled, which is never the same as zero. */
+  function inRowUnit(number, cellUnit, rowUnit) {
+    if (!cellUnit) return [number, rowUnit];
+    if (!normaliseUnit(rowUnit)) return [number, cellUnit];
+    if (normaliseUnit(cellUnit) === normaliseUnit(rowUnit)) return [number, rowUnit];
+    var source = parseUnit(cellUnit), target = parseUnit(rowUnit);
+    if (!source || !target || source.dimension !== target.dimension ||
+        source.basis !== target.basis) {
+      return [null, rowUnit];
+    }
+    return [convertUnit(number, cellUnit, rowUnit), rowUnit];
   }
 
   function qualityFromGrid(grid, source) {
@@ -7383,42 +8642,46 @@
       var parameter = cleanText(cell('parameter'));
       if (!parameter || parameter.toLowerCase().indexOf('note') === 0) continue;
       var rawValue = cell('value');
-      var textValue = cleanText(rawValue);
-      /* "<1", the words a certificate uses for the same thing, and those
-       * same words with the limit written after them ("ND (<0.05)") */
-      var plain = textValue.toLowerCase().replace(/\.+$/, '');
-      var absent = ABSENCE_TOKENS.indexOf(plain) >= 0;
-      var wordedLimit = absenceLimit(textValue);
-      var belowDetection = textValue.indexOf('<') === 0 || absent || wordedLimit !== null;
-      /* a count the laboratory saw and did not quantify, and a ">50" that
-       * used to be read as exactly 50 */
-      var greaterThan = null;
-      if (!belowDetection) {
-        if (PRESENCE_TOKENS.indexOf(plain) >= 0) {
-          greaterThan = 0;
-        } else {
-          var gt = GREATER_THAN_RE.exec(plain);
-          if (gt) greaterThan = parseNumber(gt[1]);
-        }
-      }
-      var value = (absent || wordedLimit !== null || greaterThan !== null)
-        ? null : parseNumber(rawValue);
+      var unit = cleanText(cell('unit'));
       var dl = parseNumber(cell('dl'));
-      if (wordedLimit !== null && dl === null) dl = wordedLimit;
-      if (belowDetection) {
-        /* A "<X" marker means the true concentration is unknown, bounded above
-         * by X. The measured value must be cleared so the assessment treats
-         * the row as below-detection and never grades it as a real
-         * concentration equal to the limit. */
-        dl = dl !== null ? dl : value;
-        value = null;
+      var read = readQualityCell(rawValue);
+      var kind = read.kind, number = read.number;
+      if (number !== null) {
+        var onScale = inRowUnit(number, unitAsWritten(cleanText(rawValue), read.unit),
+          unit);
+        number = onScale[0];
+        unit = onScale[1];
+        /* the cell names a unit the column contradicts */
+        if (number === null) kind = 'unreadable';
+      }
+      var value = null, greaterThan = null, belowDetection = false;
+      if (kind === 'number') {
+        value = number;
+      } else if (kind === 'below') {
+        /* "<X" bounds the true concentration above by X, and so does a
+         * filled detection-limit column; the larger of the two is the one
+         * the laboratory can stand behind. Taking the column alone graded
+         * "<0.05" beside a column of 0.001 against 0.001. */
+        belowDetection = true;
+        var stated = [number, dl].filter(function (x) { return x !== null; });
+        dl = stated.length ? Math.max.apply(null, stated) : null;
+      } else if (kind === 'above') {
+        greaterThan = number;
+      } else if (kind === 'empty') {
+        /* A blank result beside a filled detection-limit column is the one
+         * layout where the column is the result. Not analysed, N/A, TNTC,
+         * Present and ">50" are not blanks, and reading any of them this way
+         * reported a detection as "not detected". */
+        belowDetection = dl !== null;
       }
       results.push({
-        parameter: parameter, value: value, unit: cleanText(cell('unit')),
+        parameter: parameter, value: value, unit: unit,
         detection_limit: dl,
-        below_detection: belowDetection || (value === null && dl !== null),
+        below_detection: belowDetection,
         method: cleanText(cell('method')),
         greater_than: greaterThan,
+        greater_than_inclusive: read.inclusive,
+        unreadable: kind === 'unreadable' ? cleanText(rawValue) : '',
       });
     }
 
@@ -7799,11 +9062,20 @@
        * minutes had been added to it. */
       var note = '';
       if (span !== null && first < span[0]) {
-        offset = span[0] - first;
-        note = 'block ' + number + ' counts its time within its own hour ' +
-          'from ' + formatG(first) + " min and its heading '" + heading +
-          "' covers " + formatG(span[0]) + ' to ' + formatG(span[1]) +
-          ' min, so ' + formatG(offset) + ' min were added to it';
+        /* The block is placed by its heading alone. The template numbers the
+         * minutes of each block on from the block before ("0-60 min",
+         * "61-120 min"), so the block's own clock reads zero one minute before
+         * its heading starts. Aligning its first reading with the heading
+         * instead put a block read every five minutes, 5 to 60, at 61 to 116,
+         * and a four-hour test ended at 226 minutes. */
+        offset = Math.max(span[0] - 1.0, 0.0);
+        if (offset) {
+          note = 'block ' + number + ' counts its time within its own hour and ' +
+            "its heading '" + heading + "' covers " + formatG(span[0]) + ' to ' +
+            formatG(span[1]) + ' min, so ' + formatG(offset) + ' min were added ' +
+            'to it and its first reading, at ' + formatG(first) + ' min, is minute ' +
+            formatG(first + offset) + ' of the test';
+        }
       } else if (span !== null || end === null || first > end) {
         offset = 0;
       } else if (last <= end) {
@@ -8519,6 +9791,36 @@
     return matchDistrict(name)[0];
   }
 
+  /* The name a district written on a sheet is printed under: the district it
+   * resolves to - "Port Loko" for "Port Loko District" - or the region's own
+   * name for a name that means a region, and the sheet's words as written for
+   * a name that resolves to nothing. Printed as typed, the name went into
+   * client documents as "Port Loko District district". district_display_name
+   * in the Python engine. */
+  function districtDisplayName(name) {
+    var resolved = matchDistrict(name)[0];
+    if (resolved.length === 1) return resolved[0];
+    var keys = Object.keys(DISTRICT_REGIONS);
+    for (var i = 0; i < keys.length; i++) {
+      if (resolved.length && sameDistrictSet(DISTRICT_REGIONS[keys[i]], resolved)) {
+        /* the keys are written in lower case to be compared, and the
+         * region's name is those words capitalised, as str.title() does */
+        return keys[i].replace(/\b[a-z]/g, function (c) { return c.toUpperCase(); });
+      }
+    }
+    return String(name === null || name === undefined ? '' : name).trim();
+  }
+
+  /* How a report names the district a sheet states: "Port Loko district". A
+   * region is not a district, so "Western Area" is printed as itself rather
+   * than as "Western Area district". district_label in the Python engine. */
+  function districtLabel(name) {
+    var shown = districtDisplayName(name);
+    if (!shown) return '';
+    if (matchDistrict(name)[0].length > 1) return shown;
+    return shown + ' district';
+  }
+
   /* A list an operator reads as a sentence: "Koinadugu or Kono". */
   function orList(names) {
     var list = (names || []).slice();
@@ -9035,6 +10337,7 @@
     loadChiefdomDistrict: loadChiefdomDistrict,
     districtNames: districtNames, matchDistrict: matchDistrict,
     districtsNamed: districtsNamed, orList: orList,
+    districtDisplayName: districtDisplayName, districtLabel: districtLabel,
     chiefdomPopulation: chiefdomPopulation,
     countPointsByChiefdom: countPointsByChiefdom,
     countPointsByDistrict: countPointsByDistrict,
@@ -9241,7 +10544,11 @@
   var SIERRA_LEONE_LAT_BAND = [6.9, 10.0];
   var SIERRA_LEONE_LON_BAND = [-13.3, -10.3];
 
-  var ZONE_NUMBER_RE = /\d+/g;
+  var ZONE_NUMBER_RE = /\d+(?:\.\d+)?/g;
+
+  /* The datum a GPS writes beside the zone. Its 84 is a year, not a second
+   * zone, so it is taken out before the numbers in the cell are counted. */
+  var DATUM_RE = /WGS\s*-?\s*84(?!\d)/gi;
 
   /* The UTM zone a cell states, or null when it states no single zone.
    *
@@ -9256,22 +10563,30 @@
    * is the sheet's own instruction, not an answer - and neither does a number
    * outside the 1 to 60 a UTM zone can be. Both are refused rather than
    * guessed at, so the caller can say the zone is unrecorded and fall back to
-   * the easting. */
+   * the easting.
+   *
+   * The datum is not a second number: "28N WGS84" and "WGS 84 / UTM zone
+   * 28N", which is how a handheld GPS and a GIS write the zone, were refused
+   * for naming two numbers, and the sheet was then flagged "UTM zone not
+   * recorded" when it had recorded one. Nor is a spreadsheet's float: a zone
+   * cell read back as "28.0" states zone 28. */
   function parseUtmZone(value) {
     if (value === null || value === undefined) return null;
     if (typeof value === 'boolean') return null;
     var numbers;
     if (typeof value === 'number') {
-      if (!isFinite(value) || Math.trunc(value) !== value) return null;
       numbers = [value];
     } else {
+      var text = String(value).replace(DATUM_RE, ' ');
       ZONE_NUMBER_RE.lastIndex = 0;
-      var found = String(value).match(ZONE_NUMBER_RE);
+      var found = text.match(ZONE_NUMBER_RE);
       numbers = (found || []).map(Number);
     }
     if (numbers.length !== 1) return null;
-    if (!(numbers[0] >= 1 && numbers[0] <= 60)) return null;
-    return numbers[0];
+    var number = numbers[0];
+    if (!isFinite(number) || Math.trunc(number) !== number) return null;
+    if (!(number >= 1 && number <= 60)) return null;
+    return number;
   }
 
   /* --- a pasted "lat, lon", as a field crew writes it ----------------------
@@ -9515,6 +10830,580 @@
     geodesicDistanceM: geodesicDistanceM, utmDistanceM: utmDistanceM,
   });
 
+  /* ================================================================ regional
+   * groundwater/mapping/regional.py and mapping/lithology.py: the area a
+   * report maps and what it is called, the district a location map lights,
+   * and the ground under a point. gwt-charts.js draws the maps; what they
+   * cover and what the report says about them is decided here, where the
+   * parity suite can hold it to the Python. The browser used to work these
+   * out in the page with rules of its own, and the same site got a different
+   * window, a different caveat and a different geology paragraph from each
+   * engine.
+   */
+
+  /* Which crosswalk region a district belongs to. A coarse USGS class covers
+   * different formations in different parts of the country, so a row applies
+   * only where its region says it does. _REGIONS in lithology.py. */
+  var LITHOLOGY_REGIONS = {
+    'Western Area': ['western area', 'western area urban', 'western area rural'],
+    'coastal plain': ['bonthe', 'moyamba', 'port loko', 'kambia', 'pujehun'],
+    'north and centre': ['bombali', 'tonkolili', 'koinadugu', 'karene', 'falaba'],
+  };
+
+  function lithologyRegionOf(district) {
+    var name = String(district || '').trim().toLowerCase();
+    var keys = Object.keys(LITHOLOGY_REGIONS);
+    for (var i = 0; i < keys.length; i++) {
+      if (LITHOLOGY_REGIONS[keys[i]].indexOf(name) >= 0) return keys[i];
+    }
+    return 'interior';   /* the default: everything the others do not claim */
+  }
+
+  /* What the ground is, for one USGS class in one district - or null, which
+   * is the honest answer for a class nobody has annotated and leaves the key
+   * showing the source's own wording rather than a guess.
+   *
+   * This mirrors lithology_for() in the Python engine, including its two
+   * refusals: a named district that has no row gets nothing rather than
+   * another region's rock, and with no district at all a regional row
+   * applies only if every row for the class agrees on the formation. */
+  function lithologyFor(glg, district) {
+    var rows = ((GWT.data || {}).lithologyCrosswalk) || [];
+    var mine = rows.filter(function (r) { return r.usgs_code === glg; });
+    if (!mine.length) return null;
+    if (district) {
+      var wanted = [lithologyRegionOf(district), 'all'];
+      for (var w = 0; w < wanted.length; w++) {
+        for (var i = 0; i < mine.length; i++) {
+          if (mine[i].region === wanted[w]) return mine[i];
+        }
+      }
+      return null;
+    }
+    for (var j = 0; j < mine.length; j++) {
+      if (mine[j].region === 'all') return mine[j];
+    }
+    var agreed = mine.map(function (r) {
+      return r.formation_name + '\u0000' + r.formation_code;
+    });
+    var same = agreed.every(function (a) { return a === agreed[0]; });
+    return same ? mine[0] : null;
+  }
+
+  /* A sentence for a report: the formation, the rock, and what it means.
+   * describe() in lithology.py. */
+  function describeLithology(glg, district) {
+    var row = lithologyFor(glg, district);
+    if (!row) return '';
+    var text = function (key) { return String(row[key] || '').trim(); };
+    var parts = [text('formation_code')
+      ? text('formation_name') + ' (' + text('formation_code').replace(/;/g, ', ') + ')'
+      : text('formation_name')];
+    if (text('era_actual')) parts.push(text('era_actual'));
+    var sentence = parts.join(', ') + '. ' + text('lithology') + '. ' +
+      text('aquifer_character') + '.';
+    if (text('basis') === 'published') {
+      sentence += ' (Formation assignment from the regional literature rather ' +
+        'than from a source committed with this toolkit.)';
+    }
+    return sentence;
+  }
+
+  /* The chiefdom polygons, built once: every point placed here goes through
+   * them, and 166 polygons would otherwise be rebuilt for each. */
+  var regionalPolysCache = null;
+
+  function regionalPolys() {
+    if (!regionalPolysCache) regionalPolysCache = loadPolygons();
+    return regionalPolysCache;
+  }
+
+  /* The district a point is in today: district_of in the Python engine.
+   *
+   * Through the chiefdom first and the crosswalk after it: the bundled
+   * district polygons are geoBoundaries as released, which predates the 2017
+   * creation of Karene and Falaba, so a point in one of those two has no
+   * district polygon to fall in. A point in the seam beside a chiefdom is
+   * placed on it, within CHIEFDOM_EDGE_TOLERANCE_M; further out it is off
+   * the layer, and "" is the answer (ROADMAP data-ingestion-7). */
+  function districtOfPoint(lat, lon) {
+    var crosswalk = loadChiefdomDistrict() || {};
+    var polys = regionalPolys();
+    for (var i = 0; i < polys.length; i++) {
+      if (polyContains(polys[i], lon, lat)) {
+        return crosswalk[polys[i].name] || polys[i].district || '';
+      }
+    }
+    var near = nearestChiefdomIndex(lon, lat, outerRingSets(polys));
+    if (near === null) return '';
+    return crosswalk[polys[near].name] || polys[near].district || '';
+  }
+
+  /* The outer ring of each part of a Polygon or MultiPolygon, as the Python
+   * loaders keep them in AdminArea.rings and GeologyUnit.ring. */
+  function outerRings(geometry) {
+    if (!geometry) return [];
+    var parts = geometry.type === 'MultiPolygon' ? geometry.coordinates
+      : geometry.type === 'Polygon' ? [geometry.coordinates] : [];
+    return parts.filter(function (part) { return part && part.length; })
+      .map(function (part) { return part[0]; });
+  }
+
+  /* Signed area and centroid of a closed ring, by the shoelace formula over
+   * consecutive vertices: _ring_area and _ring_centroid. */
+  function regionalRingArea(ring) {
+    var sum = 0;
+    for (var i = 0; i < ring.length - 1; i++) {
+      sum += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+    }
+    return 0.5 * sum;
+  }
+
+  function regionalRingCentroid(ring) {
+    var area = 0, cx = 0, cy = 0, sx = 0, sy = 0;
+    for (var i = 0; i < ring.length - 1; i++) {
+      var cross = ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+      area += cross;
+      cx += (ring[i][0] + ring[i + 1][0]) * cross;
+      cy += (ring[i][1] + ring[i + 1][1]) * cross;
+    }
+    ring.forEach(function (v) { sx += v[0]; sy += v[1]; });
+    area /= 2;
+    if (Math.abs(area) < 1e-12) return [sx / ring.length, sy / ring.length];
+    return [cx / (6 * area), cy / (6 * area)];
+  }
+
+  /* Centroid of the largest ring: AdminArea.label_point. */
+  function labelPoint(rings) {
+    var best = rings[0], bestArea = -1;
+    rings.forEach(function (ring) {
+      var area = Math.abs(regionalRingArea(ring));
+      if (area > bestArea) { bestArea = area; best = ring; }
+    });
+    return regionalRingCentroid(best);
+  }
+
+  /* Half the span of every ring together, in km: _ring_span_km.
+   *
+   * All the rings, and the span across them. The window used to be sized
+   * from the largest ring alone, by its farthest vertex from that ring's
+   * centroid, so a chiefdom or district in several parts - Dema, Bonthe - was
+   * framed at a different size in each engine, and the scale caveat quoted a
+   * different window in each engine's copy of the same report. */
+  function ringSpanKm(rings) {
+    var lonMin = Infinity, lonMax = -Infinity, latMin = Infinity, latMax = -Infinity;
+    var latSum = 0, count = 0;
+    rings.forEach(function (ring) {
+      ring.forEach(function (c) {
+        if (c[0] < lonMin) lonMin = c[0];
+        if (c[0] > lonMax) lonMax = c[0];
+        if (c[1] < latMin) latMin = c[1];
+        if (c[1] > latMax) latMax = c[1];
+        latSum += c[1];
+        count += 1;
+      });
+    });
+    var lat = latSum / count;
+    var dlat = (latMax - latMin) * 111.32;
+    var dlon = (lonMax - lonMin) * 111.32 * Math.cos(lat * Math.PI / 180);
+    return Math.max(dlat, dlon) / 2;
+  }
+
+  /* The middle of the rings' combined extent, and its half-span in km:
+   * _extent_window. */
+  function extentWindow(rings) {
+    var lonMin = Infinity, lonMax = -Infinity, latMin = Infinity, latMax = -Infinity;
+    rings.forEach(function (ring) {
+      ring.forEach(function (c) {
+        if (c[0] < lonMin) lonMin = c[0];
+        if (c[0] > lonMax) lonMax = c[0];
+        if (c[1] < latMin) latMin = c[1];
+        if (c[1] > latMax) latMax = c[1];
+      });
+    });
+    return [(lonMin + lonMax) / 2, (latMin + latMax) / 2, ringSpanKm(rings)];
+  }
+
+  /* Layer name -> full name, for the chiefdoms the layer truncated to
+   * fifteen characters ("Bureh Kasseh Ma"). */
+  function chiefdomFullNames() {
+    var out = {};
+    ((GWT.data || {}).chiefdomNames || []).forEach(function (row) {
+      out[String(row.layer_name || '').trim()] = String(row.full_name || '').trim();
+    });
+    return out;
+  }
+
+  /* The name a chiefdom is printed under: AdminArea.label. */
+  function chiefdomLabel(layerName) {
+    var full = chiefdomFullNames();
+    return (own(full, layerName) && full[layerName]) || layerName;
+  }
+
+  /* The layer's key for a chiefdom written either way: canonical_chiefdom.
+   * An operator typing "Bureh Kasseh Maconteh", the chiefdom's name, got the
+   * district window instead of the chiefdom, because the layer only knows
+   * "Bureh Kasseh Ma". */
+  function canonicalChiefdom(name) {
+    var written = String(name === null || name === undefined ? '' : name).trim();
+    var wanted = written.toLowerCase();
+    if (!wanted) return '';
+    var full = chiefdomFullNames();
+    var keys = Object.keys(full);
+    for (var i = 0; i < keys.length; i++) {
+      if (wanted === keys[i].toLowerCase() || wanted === full[keys[i]].toLowerCase()) {
+        return keys[i];
+      }
+    }
+    return written;
+  }
+
+  /* The district polygons of the bundled boundary layer, each with its outer
+   * rings: load_admin's districts. */
+  function adminDistricts() {
+    var features = ((((GWT.data || {}).geo || {}).adminBoundaries || {}).features) || [];
+    return features.filter(function (f) {
+      return ((f.properties || {}).level || 'ADM2') !== 'ADM0';
+    }).map(function (f) {
+      return { name: String((f.properties || {}).name || ''), rings: outerRings(f.geometry) };
+    });
+  }
+
+  /* The rings of every chiefdom the crosswalk puts in a district today:
+   * _chiefdom_rings_of. */
+  function chiefdomRingsOf(district) {
+    var wanted = String(district || '').trim().toLowerCase();
+    var crosswalk = loadChiefdomDistrict();
+    var rings = [];
+    regionalPolys().forEach(function (poly) {
+      var current = own(crosswalk, poly.name) ? crosswalk[poly.name] : '';
+      if (String(current).trim().toLowerCase() === wanted) {
+        poly.rings.forEach(function (ring) { rings.push(ring); });
+      }
+    });
+    return rings;
+  }
+
+  /* What a district written on a sheet covers, and what a map calls it:
+   * _district_named. Read as the consistency check reads it, so "Port Loko
+   * District" is Port Loko and "Western Area" is the region's two districts;
+   * compared as typed with the layer's own names, both got no map at all,
+   * and the report said no administrative area was recorded right after
+   * naming it. A name the matcher cannot resolve is kept as written. */
+  function districtNamed(name) {
+    var written = String(name === null || name === undefined ? '' : name).trim();
+    if (!written) return { label: '', names: [] };
+    var resolved = matchDistrict(written)[0];
+    return { label: districtLabel(written), names: resolved.length ? resolved : [written] };
+  }
+
+  /* The window a local map of this site should cover, if there is one:
+   * area_window in the Python engine.
+   *
+   * A GPS fix gives a point. Without one the recorded chiefdom, or failing
+   * that the district, still gives an area, and an area is what most of these
+   * maps are asked for: where in the country this is, and what the ground is
+   * like around it. Only a site that records neither gets nothing. `latlon`
+   * is the site's position as the page reads it, or null. */
+  function areaWindow(site, latlon, radiusKm) {
+    if (!site) return null;
+    if (latlon) {
+      return { lon: latlon.lon, lat: latlon.lat, radiusKm: radiusKm || 40.0,
+        label: site.community || 'the site', exact: true };
+    }
+    var chiefdom = canonicalChiefdom(site.chiefdom).toLowerCase();
+    if (chiefdom) {
+      var polys = regionalPolys();
+      for (var i = 0; i < polys.length; i++) {
+        if (polys[i].name.trim().toLowerCase() === chiefdom) {
+          var centre = labelPoint(polys[i].rings);
+          return { lon: centre[0], lat: centre[1],
+            radiusKm: Math.max(ringSpanKm(polys[i].rings) * 1.35, 12.0),
+            label: chiefdomLabel(polys[i].name) + ' chiefdom', exact: false };
+        }
+      }
+    }
+    var named = districtNamed(site.district);
+    if (!named.names.length) return null;
+    var byName = {};
+    adminDistricts().forEach(function (area) {
+      byName[area.name.trim().toLowerCase()] = area;
+    });
+    if (named.names.length === 1 && own(byName, named.names[0].toLowerCase())) {
+      var area = byName[named.names[0].toLowerCase()];
+      var point = labelPoint(area.rings);
+      return { lon: point[0], lat: point[1],
+        radiusKm: Math.max(ringSpanKm(area.rings) * 1.2, 20.0),
+        label: named.label, exact: false };
+    }
+    /* Karene and Falaba postdate the boundary release, so they are assembled
+     * from their chiefdoms rather than looked up; a region is its districts
+     * together, framed on the middle of the whole as an assembled district
+     * is, because no one part of it is the centre. */
+    var rings = [];
+    named.names.forEach(function (name) {
+      var key = name.toLowerCase();
+      (own(byName, key) ? byName[key].rings : chiefdomRingsOf(name))
+        .forEach(function (ring) { rings.push(ring); });
+    });
+    if (!rings.length) return null;
+    var extent = extentWindow(rings);
+    return { lon: extent[0], lat: extent[1],
+      radiusKm: Math.max(extent[2] * 1.2, 20.0), label: named.label, exact: false };
+  }
+
+  /* Which district a location map lights, and under what name:
+   * _home_district in the Python engine. { name, districts, chiefdoms }:
+   * the name for the legend, the district polygons to light (lower case, as
+   * the layer's names compare), and the chiefdoms to light in their place.
+   *
+   * The position decides when there is one: "Western Area" written on a
+   * sheet resolves to Western Area Rural from the coordinates. Without a
+   * position the written name is read as the area window reads it: "Port
+   * Loko District" is Port Loko, "Western Area" lights both halves of the
+   * peninsula, and Karene or Falaba, which the boundary layer predates, light
+   * the chiefdoms the crosswalk assigns to them. The locator used to light a
+   * polygon only when its name was typed exactly, so the legend named a
+   * district in a colour that appeared nowhere on the map. */
+  function homeDistrict(site, latlon) {
+    var none = { name: '', districts: [], chiefdoms: [] };
+    if (!site) return none;
+    var name = String(site.district || '').trim();
+    if (latlon) {
+      var found = districtOfPoint(latlon.lat, latlon.lon);
+      if (found) name = found;
+    }
+    if (!name) return none;
+    var names = districtNamed(name).names;
+    var known = {};
+    adminDistricts().forEach(function (area) {
+      known[area.name.trim().toLowerCase()] = true;
+    });
+    var lit = [], missing = [];
+    names.forEach(function (n) {
+      var key = n.toLowerCase();
+      if (own(known, key)) { if (lit.indexOf(key) < 0) lit.push(key); }
+      else if (missing.indexOf(key) < 0) missing.push(key);
+    });
+    var chiefdoms = [];
+    if (missing.length) {
+      var crosswalk = loadChiefdomDistrict();
+      regionalPolys().forEach(function (poly) {
+        var current = own(crosswalk, poly.name) ? crosswalk[poly.name] : '';
+        if (missing.indexOf(String(current).trim().toLowerCase()) >= 0) {
+          chiefdoms.push(poly.name);
+        }
+      });
+    }
+    return { name: districtDisplayName(name), districts: lit, chiefdoms: chiefdoms };
+  }
+
+  /* One sentence placing the site, for the paragraph above the map:
+   * area_map_note in the Python engine. `latlon` is the site's position, or
+   * null. */
+  function areaMapNote(site, latlon) {
+    if (!site) return 'No site metadata was supplied with this report.';
+    /* the district as the area window resolves it: written as typed, a
+     * sheet's "Port Loko District" became "Port Loko District district" */
+    var where = [site.community, site.chiefdom && site.chiefdom + ' chiefdom',
+      site.district && districtLabel(site.district)].filter(Boolean).join(', ');
+    if (!latlon) {
+      var window_ = areaWindow(site, null);
+      if (!window_) {
+        return (where ? 'The site is recorded as ' + where + '. ' : '') +
+          'Neither a GPS position nor an administrative area is recorded for it, ' +
+          'so no map of the area can be drawn. A borehole that cannot be found ' +
+          'again on the ground cannot be revisited or maintained: record the ' +
+          'position on the field sheet and reissue this report.';
+      }
+      return (where ? 'The site is recorded as ' + where + '. ' : '') +
+        'No GPS position is recorded for it, so the maps below cover ' +
+        window_.label + ' rather than the borehole itself and carry no site ' +
+        'marker. Record the position on the field sheet and reissue this report: ' +
+        'a borehole that cannot be found again on the ground cannot be revisited ' +
+        'or maintained.';
+    }
+    return (where ? 'The site is at ' + where + ', ' : 'The site is at ') +
+      pyFixed(Math.abs(latlon.lat), 5) + ' ' + (latlon.lat >= 0 ? 'N' : 'S') + ', ' +
+      pyFixed(Math.abs(latlon.lon), 5) + ' ' + (latlon.lon >= 0 ? 'E' : 'W') + '.';
+  }
+
+  /* Inside the polygon, and not in a hole that cuts it: _point_in_unit. A
+   * hole is ground the unit does not cover - a dyke cutting the country rock,
+   * a window of something else - so a point in one is not on this unit,
+   * whatever the outer ring says. */
+  function pointInUnit(lon, lat, geometry) {
+    if (!geometry) return false;
+    var parts = geometry.type === 'MultiPolygon' ? geometry.coordinates
+      : geometry.type === 'Polygon' ? [geometry.coordinates] : [];
+    return parts.some(function (part) {
+      if (!part || !part.length || !pointInRing(lon, lat, part[0])) return false;
+      for (var h = 1; h < part.length; h++) {
+        if (pointInRing(lon, lat, part[h])) return false;
+      }
+      return true;
+    });
+  }
+
+  function unitAt(layer, lat, lon) {
+    var features = (layer || {}).features || [];
+    for (var i = 0; i < features.length; i++) {
+      if (pointInUnit(lon, lat, features[i].geometry)) return features[i];
+    }
+    return null;
+  }
+
+  /* The USGS geology polygon under a point, and the BGS aquifer polygon:
+   * geology_unit_at and aquifer_unit_at. Null outside the layer. */
+  function geologyUnitAt(lat, lon) {
+    return unitAt((((GWT.data || {}).geo) || {}).geology, lat, lon);
+  }
+
+  function aquiferUnitAt(lat, lon) {
+    return unitAt((((GWT.data || {}).geo) || {}).hydrogeology, lat, lon);
+  }
+
+  /* The district a polygon lies in, for the crosswalk that names it:
+   * _unit_district. The crosswalk used to be scoped by the site's district, so
+   * the same Freetown Complex polygon was "Freetown Layered Complex" on a
+   * Rokel map and "Paleozoic Igneous", the age the crosswalk itself calls
+   * wrong, on a Kuntolo map 100 km away. A polygon is where it is. */
+  function unitDistrict(geometry) {
+    var rings = outerRings(geometry);
+    if (!rings.length) return '';
+    var ring = rings[0];
+    var centre = regionalRingCentroid(ring);
+    var found = districtOfPoint(centre[1], centre[0]);
+    if (found) return found;
+    /* a polygon straddling the border can have its centroid abroad; any
+     * vertex inside the country places it */
+    var stride = Math.max(1, Math.floor(ring.length / 24));
+    for (var i = 0; i < ring.length; i += stride) {
+      found = districtOfPoint(ring[i][1], ring[i][0]);
+      if (found) return found;
+    }
+    return '';
+  }
+
+  var DEFAULT_GEOLOGY = 'The project area lies within the crystalline ' +
+    'basement terrain of Sierra Leone, where groundwater occurs mainly within ' +
+    'the weathered overburden (regolith) and in fractured zones of the ' +
+    'underlying bedrock. The weathered zone develops on granites, gneisses and ' +
+    'related rocks, and its thickness and degree of fracturing control the ' +
+    'groundwater potential. Groundwater quality and quantity can be favourable ' +
+    'where the borehole position is properly located through appropriate ' +
+    'hydrogeological and geophysical investigations.';
+
+  var FREETOWN_GEOLOGY = 'The project area lies within the Freetown Basic ' +
+    'Complex. The Freetown Complex is a layered gabbroic anorthosite intrusion ' +
+    'emplaced against gneisses and schists of the Kasila Group, and it forms ' +
+    'part of the Peninsula and Banana Islands. It is thought to have been ' +
+    'formed by multiple injections of magma that occurred intermittently. ' +
+    'Groundwater potential within the Freetown Basic Complex is found within ' +
+    'weathered and fractured zones of these igneous (crystalline) rocks. ' +
+    'Groundwater quality and quantity can be high if the borehole is properly ' +
+    'located through appropriate hydrogeological and geophysical investigations.';
+
+  /* The geology paragraph of the geophysical report, from the map under the
+   * site: _geology_for in reporting/geophysical.py.
+   *
+   * With a position it names the USGS unit the site sits on and the BGS
+   * aquifer class, through the same crosswalk the map key uses and scoped by
+   * where the polygon is, as the key is, so the text and the figures cannot
+   * disagree. The browser report said "crystalline basement complex" of every
+   * site, the Bullom sands included, beside its own figures showing the
+   * Bullom Group and an intergranular aquifer. Without a position the
+   * district's region decides. */
+  function geologyParagraph(site, latlon, override) {
+    if (override) return override;
+    var district = (site && site.district) || '';
+    if (latlon) {
+      var unit = geologyUnitAt(latlon.lat, latlon.lon);
+      var aquifer = aquiferUnitAt(latlon.lat, latlon.lon);
+      var parts = [];
+      if (unit) {
+        var props = unit.properties || {};
+        var glg = String(props.glg || '');
+        var told = describeLithology(glg, unitDistrict(unit.geometry) || district);
+        parts.push('The site lies on the unit the USGS Geologic Map of Africa ' +
+          'maps as ' + String(props.unit || props.glg || 'unit') + ' (' + glg + '). ' +
+          told);
+      }
+      if (aquifer) {
+        var aq = aquifer.properties || {};
+        parts.push('The BGS Africa Groundwater Atlas classes the aquifer here as ' +
+          String(aq.unit || 'unit') +
+          (aq.geology ? ' (' + String(aq.geology).toLowerCase() + ')' : '') + '.');
+      }
+      if (parts.length) {
+        return parts.map(function (p) { return p.trim(); }).join(' ') +
+          ' Groundwater potential depends on the thickness of the weathered zone ' +
+          'and the degree of fracturing beneath it, which the soundings below ' +
+          'resolve.';
+      }
+    }
+    if (lithologyRegionOf(district) === 'Western Area') return FREETOWN_GEOLOGY;
+    return DEFAULT_GEOLOGY;
+  }
+
+  /* Both bundled unit layers are published at 1:5,000,000. At that scale a
+   * 0.5 mm drafting line is 2.5 km on the ground, so below this window the
+   * figure says what it is made of. */
+  var HONEST_WINDOW_KM = 60;
+
+  /* The note a small window over a small-scale dataset has earned:
+   * _scale_caveat, word for word.
+   *
+   * Empty for a national map, which is the scale the data was published at
+   * and needs no apology. `radiusKm` is the half-width of the window that was
+   * actually drawn, never the one that was asked for: a national map carrying
+   * "4% of this 60 km window" asserts something that is not on it. The window
+   * is given to the kilometre: a chiefdom or district window is the area's own
+   * size, and "this 43.4293 km window" claimed a precision the sentence is
+   * there to disown. */
+  function scaleCaveat(radiusKm, sourceScale, publisherNote) {
+    if (radiusKm === null || radiusKm === undefined || !sourceScale ||
+        radiusKm > HONEST_WINDOW_KM) return '';
+    var lineKm = sourceScale * 0.0005 / 1000;   /* a 0.5 mm line on the sheet */
+    var share = lineKm / (2 * radiusKm) * 100;
+    var note = 'Drawn from a 1:' + Number(sourceScale).toLocaleString('en-US') +
+      ' dataset: a boundary on this map is placed to roughly ' +
+      formatG(lineKm) + ' km, which is ' + pyFixed(share, 0) +
+      '% of this ' + pyFixed(2 * radiusKm, 0) + ' km window. Read the ' +
+      'contacts as regional context, not as mapped ground.';
+    return (note + ' ' + (publisherNote || '')).trim();
+  }
+
+  /* Sierra Leone in geographic coordinates, with a generous margin: _SL_BOUNDS
+   * in ingestion/checks.py, [lonMin, lonMax, latMin, latMax]. */
+  var SL_BOUNDS = [-13.6, -10.0, 6.7, 10.2];
+
+  /* The coordinates_outside_country sentence check_site_consistency writes,
+   * or '' for a position inside the country. The browser never said it: a
+   * degree pair typed without its western sign was drawn in central Africa,
+   * off every map, with nothing on the page to say so. */
+  function outsideCountryNote(lat, lon) {
+    if (lon >= SL_BOUNDS[0] && lon <= SL_BOUNDS[1] &&
+        lat >= SL_BOUNDS[2] && lat <= SL_BOUNDS[3]) return '';
+    return 'Coordinates convert to ' + pyFixed(Math.abs(lat), 4) + ' ' +
+      (lat >= 0 ? 'N' : 'S') + ', ' + pyFixed(Math.abs(lon), 4) + ' ' +
+      (lon >= 0 ? 'E' : 'W') + ' which is outside Sierra Leone; check ' +
+      'easting/northing and the UTM zone.';
+  }
+
+  Object.assign(C, {
+    lithologyRegionOf: lithologyRegionOf, lithologyFor: lithologyFor,
+    describeLithology: describeLithology, districtOfPoint: districtOfPoint,
+    canonicalChiefdom: canonicalChiefdom, chiefdomLabel: chiefdomLabel,
+    ringSpanKm: ringSpanKm, labelPoint: labelPoint,
+    areaWindow: areaWindow, homeDistrict: homeDistrict, areaMapNote: areaMapNote,
+    pointInUnit: pointInUnit, geologyUnitAt: geologyUnitAt,
+    aquiferUnitAt: aquiferUnitAt, unitDistrict: unitDistrict,
+    geologyParagraph: geologyParagraph,
+    HONEST_WINDOW_KM: HONEST_WINDOW_KM, scaleCaveat: scaleCaveat,
+    outsideCountryNote: outsideCountryNote,
+  });
+
   /* ================================================================== siting
    * groundwater/siting/suitability.py. A transparent drill-target scorecard.
    *
@@ -9618,7 +11507,9 @@
     }
     if (interp.depth_to_basement_m !== null && interp.depth_to_basement_m !== undefined &&
         comp.overburden < 0.4) {
-      parts.push('overburden of about ' + interp.depth_to_basement_m.toFixed(0) +
+      /* pyFixed, not toFixed: a basement top at 2.5 m is "about 2 m" in the
+       * package (half to even) and toFixed printed "about 3 m" */
+      parts.push('overburden of about ' + pyFixed(interp.depth_to_basement_m, 0) +
         ' m that limits the target');
     }
     var text = 'Driven by ' + parts.join('; ') + '.';
@@ -9636,22 +11527,65 @@
     return text;
   }
 
-  /* One sentence when the top two points cannot be told apart; '' otherwise. */
-  function rankingTie(results, withinPoints) {
+  /* siting/suitability.py tied_leaders: the two highest-ranked points when the
+   * ranking cannot separate them, else null. One test for the tie sentence,
+   * the preference table's "=1st" and the report's summary and conclusions,
+   * decided on the confidence-weighted scores as they are, not as printed. */
+  function tiedLeaders(results, withinPoints) {
     var within = withinPoints === undefined ? 3.0 : withinPoints;
     var ranked = results.slice().sort(function (a, b) {
       return (a.rank === null || a.rank === undefined ? 99 : a.rank) -
         (b.rank === null || b.rank === undefined ? 99 : b.rank);
     });
-    if (ranked.length < 2) return '';
+    if (ranked.length < 2) return null;
     var first = ranked[0], second = ranked[1];
+    if (Math.abs(first.suitability * first.confidence -
+                 second.suitability * second.confidence) >= within) return null;
+    return [first, second];
+  }
+
+  /* One sentence when the top two points cannot be told apart; '' otherwise. */
+  function rankingTie(results, withinPoints) {
+    var within = withinPoints === undefined ? 3.0 : withinPoints;
+    var pair = tiedLeaders(results, within);
+    if (!pair) return '';
+    var first = pair[0], second = pair[1];
     var w1 = first.suitability * first.confidence, w2 = second.suitability * second.confidence;
-    if (Math.abs(w1 - w2) >= within) return '';
+    /* "by name only" is true only of equal scores; said of 82.3 against 79.5
+     * it told the client the order was alphabetical when it was not */
+    var gap = w1 - w2;
+    var order = gap === 0
+      ? first.sounding_id + ' is listed first by name only'
+      : first.sounding_id + ' is ahead by ' +
+        (pyRound(gap, 1) >= 0.1 ? pyFixed(gap, 1) : 'less than 0.1') +
+        ' points, within the ' + formatG(within) + '-point margin the ranking ' +
+        'cannot separate';
     return 'Points ' + first.sounding_id + ' and ' + second.sounding_id +
       ' are indistinguishable on geophysical grounds (confidence-weighted suitability ' +
-      pyFixed(w1, 1) + ' and ' + pyFixed(w2, 1) + '); ' + first.sounding_id +
-      ' is listed first by name only, and the choice between them should be made ' +
-      'on access, sanitary distances and the community\'s preference.';
+      pyFixed(w1, 1) + ' and ' + pyFixed(w2, 1) + '); ' + order + ', and the choice ' +
+      'between them should be made on access, sanitary distances and the ' +
+      'community\'s preference.';
+  }
+
+  /* siting/suitability.py suitability_verdict: the paragraph under the
+   * suitability table, the target or the tie. A tie gives both points'
+   * rationale, since the reader is being asked to choose between them. */
+  function suitabilityVerdict(results, withinPoints) {
+    if (!results || !results.length) return '';
+    var tie = rankingTie(results, withinPoints);
+    if (tie) {
+      return [tie].concat(tiedLeaders(results, withinPoints).map(function (r) {
+        return 'Point ' + r.sounding_id + ': ' + r.rationale;
+      })).join(' ');
+    }
+    var best = results.slice().sort(function (a, b) {
+      return (a.rank === null || a.rank === undefined ? 99 : a.rank) -
+        (b.rank === null || b.rank === undefined ? 99 : b.rank);
+    })[0];
+    return 'Point ' + best.sounding_id + ' ranks first (suitability ' +
+      pyFixed(best.suitability, 0) + ' out of 100, ' + best.grade.toLowerCase() +
+      ', confidence ' + pyFixed(best.confidence, 2) + ') and is the recommended ' +
+      'drilling target. ' + best.rationale;
   }
 
   /* Score and rank candidate VES points, most suitable first (rank 1 = best),
@@ -9694,7 +11628,8 @@
   Object.assign(C, {
     SUITABILITY_WEIGHTS: SUITABILITY_WEIGHTS, assessSiting: assessSiting,
     suitabilityGrade: suitabilityGrade, zoneGeomeanRho: zoneGeomeanRho,
-    rankingTie: rankingTie,
+    rankingTie: rankingTie, tiedLeaders: tiedLeaders,
+    suitabilityVerdict: suitabilityVerdict,
   });
 
   /* ================================================================ portfolio
@@ -10452,16 +12387,23 @@
     return {
       totalDepth: totalDepth,
       domain: domain,
+      /* One class table for every drawing. Each interval carries the rock it
+       * is logged as, and bands carries what the borehole drawing draws: a
+       * fracture zone named with its depths is a band of its own wherever
+       * those depths fall. The class used to be taken from the whole
+       * description, so Dr Timbo's 45-50 m and 55-60 m rows were "Fracture
+       * zone" here while the drawing drew them as granite with a zone in and
+       * below them. */
       lithology: ((log && log.intervals) || []).map(function (iv) {
-        /* one class table for every drawing: the class and colour ride with
-         * each interval so the workspace shades the log the way the report
-         * draws it */
-        var klass = lithologyClass(iv.description);
+        var klass = hostClass(iv.description, iv.top_m, iv.bottom_m);
         return {
           top: iv.top_m, base: iv.bottom_m, description: iv.description,
           aquifer: looksLikeAquifer(iv.description),
           'class': klass.label, colour: klass.colour,
         };
+      }),
+      bands: lithologyBands((log && log.intervals) || []).map(function (b) {
+        return { top: b.top_m, base: b.bottom_m, 'class': b.label, colour: b.colour };
       }),
       waterStrikes: (design.water_strikes_m || []).slice(),
       segments: (design.segments || []).map(function (s) {
@@ -10758,17 +12700,19 @@
     var analysis = inputs.analysis || null;
     var log = inputs.log;
     if (!log) throw new Error('the Depth Spine needs a drilling log');
-    var swl = null, pumpIntake = null;
+    var swl = null, pumpIntake = null, intakeFloor = null;
     if (analysis) {
       swl = analysis.test ? analysis.test.static_water_level_m : null;
       if (analysis.yield_recommendation) {
         pumpIntake = analysis.yield_recommendation.pump_installation_depth_m;
+        intakeFloor = pumpIntakeFloor(analysis.yield_recommendation,
+          config.pumping.pump_submergence_min_m);
       }
     }
 
     var design = designBorehole({
       log: log, staticWaterLevelM: swl, pumpIntakeM: pumpIntake,
-      rules: config.design,
+      pumpIntakeFloorM: intakeFloor, rules: config.design,
       screensM: screensM && screensM.length ? screensM : null,
     });
 
@@ -13688,6 +15632,11 @@
    * positional error of a handheld GPS under canopy. */
   var COLLINEAR_STRAIGHTNESS = 0.10;
 
+  /* subsurface.py COINCIDENT_STATION_M: two soundings recorded closer
+   * together than this are one station. A metre is well inside the error of
+   * a handheld GPS, and no survey pegs two soundings that close on purpose. */
+  var COINCIDENT_STATION_M = 1.0;
+
   /* maps.py points_enclose_an_area's tolerance. */
   var AREA_TOLERANCE = 1e-6;
 
@@ -13720,12 +15669,52 @@
     return out;
   }
 
+  function hasPosition(item) {
+    return !!item && item.site_easting !== null && item.site_easting !== undefined &&
+      item.site_northing !== null && item.site_northing !== undefined;
+  }
+
+  /* maps.py to_zone: a recorded position re-expressed in the UTM zone `zone`.
+   *
+   * Sierra Leone straddles the 28N/29N boundary at 12 degrees W, and a survey
+   * on that line can record its soundings in both zones: 829580 E in zone 28
+   * and 170420 E in zone 29 are 400 m apart on the ground and 659 km apart as
+   * numbers. Every survey-scale figure subtracts eastings, so each sounding is
+   * brought into one zone, through its latitude and longitude, before any of
+   * them is drawn. The zone a position was recorded in is read off its
+   * easting, which in Sierra Leone identifies it. */
+  function toZone(easting, northing, zone) {
+    var own = inferZoneForSierraLeone(Number(easting));
+    if (own === zone) return [Number(easting), Number(northing)];
+    var geo = utmToGeographic(Number(easting), Number(northing), own);
+    if (!geo) return [Number(easting), Number(northing)];
+    var utm = geographicToUtm(geo.lat, geo.lon, zone);
+    return [utm.easting, utm.northing];
+  }
+
+  /* subsurface.py survey_zone: the zone the survey's own figures are drawn
+   * in, the first positioned sounding's; null when none carries a position. */
+  function surveyZone(interpretations) {
+    var first = (interpretations || []).filter(hasPosition)[0];
+    return first ? inferZoneForSierraLeone(Number(first.site_easting)) : null;
+  }
+
   /* subsurface.py _positioned: a sounding with no recorded position cannot be
-   * put on a map or on a line, and is dropped rather than placed at a guess. */
-  function positionedSoundings(interpretations) {
-    return (interpretations || []).filter(function (item) {
-      return item && item.site_easting !== null && item.site_easting !== undefined &&
-        item.site_northing !== null && item.site_northing !== undefined;
+   * put on a map or on a line, and is dropped rather than placed at a guess.
+   * The rest are brought into one zone (by default the first positioned
+   * sounding's): three soundings 400 m apart either side of 12 W came out as
+   * a 660 km map and a "659732 m along" section. A sounding that needed
+   * moving is a copy, so the caller's keeps the position it recorded. */
+  function positionedSoundings(interpretations, zone) {
+    var placed = (interpretations || []).filter(hasPosition);
+    var target = (zone === null || zone === undefined) ? surveyZone(placed) : zone;
+    return placed.map(function (item) {
+      var moved = toZone(item.site_easting, item.site_northing, target);
+      if (moved[0] === Number(item.site_easting) &&
+          moved[1] === Number(item.site_northing)) {
+        return item;
+      }
+      return Object.assign({}, item, { site_easting: moved[0], site_northing: moved[1] });
     });
   }
 
@@ -13850,11 +15839,44 @@
           'of every sounding on the field sheet.',
       };
     }
+    /* positionedSoundings keeps the order it was given, so its k-th sounding
+     * is the k-th of those in the list that carry a position */
+    var source = [];
+    all.forEach(function (item, k) { if (hasPosition(item)) source.push(k); });
     var e = positioned.map(function (item) { return Number(item.site_easting); });
     var n = positioned.map(function (item) { return Number(item.site_northing); });
     var labels = positioned.map(function (item, k) {
       return item.sounding_id || 'VES ' + (k + 1);
     });
+    /* A traverse needs stations at distinct places. Soundings all recorded at
+     * one position came out as a "0 m along bearing 90 degrees" section, and
+     * two sharing a position shrank every column on it to a sliver, one drawn
+     * over the other; both are refused, with the reason. */
+    var pairs = 0, shared = [], a, b;
+    for (a = 0; a < positioned.length; a += 1) {
+      for (b = a + 1; b < positioned.length; b += 1) {
+        pairs += 1;
+        if (Math.hypot(e[a] - e[b], n[a] - n[b]) < COINCIDENT_STATION_M) {
+          shared.push(labels[a] + ' and ' + labels[b]);
+        }
+      }
+    }
+    if (shared.length === pairs) {
+      return {
+        reason: 'all ' + positioned.length + ' positioned soundings are recorded ' +
+          'at one position, so there is no traverse to draw them along; check the ' +
+          'positions against the field notes',
+      };
+    }
+    if (shared.length) {
+      return {
+        reason: (shared.length === 1 ? 'two soundings share' : 'soundings share') +
+          ' one position (less than ' + formatG(COINCIDENT_STATION_M) + ' m apart): ' +
+          shared.join('; ') + '. A traverse has one sounding at each station, and a ' +
+          'figure along it would draw one on top of the other; check the positions ' +
+          'against the field notes',
+      };
+    }
     var ce = arrMean(e), cn = arrMean(n);
     var dx = e.map(function (v) { return v - ce; });
     var dy = n.map(function (v) { return v - cn; });
@@ -13885,7 +15907,9 @@
     var offset = pick(across);
     var base = arrMin(sortedAlong);
     var chainage = sortedAlong.map(function (v) { return v - base; });
-    var length = arrMax(chainage) || 1.0;
+    /* never zero: distinct stations more than a metre apart were required
+     * above, and the principal axis runs through the widest spread of them */
+    var length = arrMax(chainage);
     var maxOffset = arrMax(offset.map(function (v) { return Math.abs(v); }));
     var bearing = ((Math.atan2(direction[0], direction[1]) * 180.0 / Math.PI) %
       180.0 + 180.0) % 180.0;
@@ -13906,6 +15930,11 @@
       is_collinear: maxOffset / length <= COLLINEAR_STRAIGHTNESS,
       length_m: arrMax(chainage) - arrMin(chainage),
       gaps_m: diffs(chainage),
+      /* where each station's sounding sits in the list the profile was built
+       * from: a figure takes its soundings by this, not by identifier, since
+       * two soundings both called "VES 1" drew the second one's model at
+       * both stations when the section looked them up by name */
+      indices: order.map(function (k) { return source[k]; }),
     };
   }
 
@@ -13977,21 +16006,9 @@
     var all = interpretations || [];
     var profile = traverseProfile(all);
     if (profile.reason) return { reason: profile.reason, profile: null };
-    var byId = {};
-    all.forEach(function (item, k) {
-      byId[item.sounding_id || 'VES ' + (k + 1)] = item;
-    });
-    var ordered = [];
-    profile.labels.forEach(function (label) {
-      if (own(byId, label)) ordered.push(byId[label]);
-    });
-    if (ordered.length < 2) {
-      return {
-        reason: 'the traverse and the interpretations share fewer than two ' +
-          'sounding identifiers, so the section cannot be placed',
-        profile: profile,
-      };
-    }
+    /* by position in the list, not by identifier: two soundings both called
+     * "VES 1" drew the second one's model at both stations */
+    var ordered = profile.indices.map(function (k) { return all[k]; });
     /* A column stands for the ground the sounding sampled, which is about its
      * largest electrode half-spacing either side of the peg - not for an equal
      * share of the profile. Two Rokel soundings 20 km apart came out as two
@@ -14057,6 +16074,26 @@
         reason: models.length + ' soundings need ' + models.length +
           ' positions and ' + models.length + ' labels; got ' + positions.length +
           ' and ' + labels.length,
+        profile: profile,
+      };
+    }
+    /* ves/plots.py plot_geoelectric_section: two columns at one chainage are
+     * one drawn over the other, and the column width is capped at the
+     * narrowest gap, so a repeated position also shrank every other column on
+     * the section to a sliver */
+    var sortedX = positions.slice().sort(function (p, q) { return p - q; });
+    var repeated = [];
+    for (var r = 1; r < sortedX.length; r += 1) {
+      if (sortedX[r] === sortedX[r - 1] && repeated.indexOf(sortedX[r]) < 0) {
+        repeated.push(sortedX[r]);
+      }
+    }
+    if (repeated.length) {
+      return {
+        reason: 'more than one sounding is placed at ' + repeated.map(function (x) {
+          return formatG(x) + ' m';
+        }).join(', ') + ' along the profile; a section draws one column at each ' +
+          'station, and one would hide the other',
         profile: profile,
       };
     }
@@ -14142,17 +16179,31 @@
           list.length,
       };
     }
-    var byId = {};
-    list.forEach(function (sounding, k) {
-      byId[sounding.sounding_id || 'VES ' + (k + 1)] = sounding;
+    var ids = list.map(function (sounding, k) {
+      return sounding.sounding_id || 'VES ' + (k + 1);
     });
     var ordered = [], stations = [], xLabel, spacedEvenly;
     if (profile) {
-      profile.labels.forEach(function (label, k) {
-        if (!own(byId, label)) return;
-        ordered.push(byId[label]);
-        stations.push(Number(profile.chainage_m[k]));
-      });
+      var parallel = !!(profile.indices && profile.indices.length) &&
+        profile.indices.every(function (k, j) {
+          return k < list.length && ids[k] === profile.labels[j];
+        });
+      if (parallel) {
+        /* the soundings are the list the profile was built from, so each
+         * station takes its own readings by position: two soundings both
+         * called "VES 1" drew the second one's readings at both stations
+         * when they were looked up by name */
+        ordered = profile.indices.map(function (k) { return list[k]; });
+        stations = profile.chainage_m.map(Number);
+      } else {
+        var byId = {};
+        list.forEach(function (sounding, k) { byId[ids[k]] = sounding; });
+        profile.labels.forEach(function (label, k) {
+          if (!own(byId, label)) return;
+          ordered.push(byId[label]);
+          stations.push(Number(profile.chainage_m[k]));
+        });
+      }
       xLabel = 'Distance along traverse (m)';
       spacedEvenly = false;
     } else {
@@ -14226,8 +16277,8 @@
           ticks.push([tick, formatG(spacing)]);
         }
       });
-    var notes = ['AB/2 is the electrode half-spacing, not a depth: a deeper ' +
-      'reading is a wider spread, not a measured horizon.'];
+    var spacing = spacingName(ordered);
+    var notes = [spacingNote(spacing)];
     if (uncorrelated.length) {
       notes.push('No colour is interpolated across ' +
         uncorrelated.map(function (pair) {
@@ -14262,9 +16313,57 @@
       spaced_evenly: spacedEvenly,
       title: 'Apparent resistivity pseudo-section along the traverse',
       x_label: xLabel,
-      y_label: 'AB/2 (m)',
+      y_label: spacing + ' (m)',
+      spacing: spacing,
       cbar_label: 'Apparent resistivity (ohm-m)',
     };
+  }
+
+  /* subsurface.py spacing_name: what the soundings' electrode spacing is
+   * called. A Wenner sounding is read against the spacing a, and a
+   * pseudo-section of Wenner readings labelled "AB/2 (m)" named a spacing
+   * nobody set out. */
+  function spacingName(soundings) {
+    var wenner = {};
+    (soundings || []).forEach(function (sounding) {
+      wenner[String(sounding.array_type || 'schlumberger').indexOf('wenner') === 0] = true;
+    });
+    if (wenner['true'] && !wenner['false']) return 'a';
+    if (wenner['true']) return 'AB/2 or a';
+    return 'AB/2';
+  }
+
+  /* subsurface.py spacing_note: the pseudo-section's warning that its
+   * vertical axis is not a depth. */
+  function spacingNote(name) {
+    if (name === 'a') {
+      return 'The Wenner spacing a is the electrode spacing, not a depth: a ' +
+        'deeper reading is a wider spread, not a measured horizon.';
+    }
+    if (name === 'AB/2') {
+      return 'AB/2 is the electrode half-spacing, not a depth: a deeper ' +
+        'reading is a wider spread, not a measured horizon.';
+    }
+    return 'AB/2 and a are electrode spacings, not depths: a deeper reading is ' +
+      'a wider spread, not a measured horizon.';
+  }
+
+  /* reporting/geophysical.py's pseudo-section caption, naming the spacing the
+   * readings were taken with. */
+  function pseudosectionCaption(spacing, profile) {
+    var caption = 'Apparent resistivity along the traverse, as measured. Unlike ' +
+      'every other section in this report it involves no inversion: each point ' +
+      'is a reading at the station and electrode spacing it was taken with. ' +
+      ({ 'AB/2': 'AB/2 is that spacing, not a depth.',
+        a: 'The Wenner spacing a is that spacing, not a depth.' }[spacing] ||
+        'AB/2 and a are those spacings, not depths.') +
+      ' Colour is interpolated only between stations within reach of each other.';
+    if (profile && !profile.reason && !profile.is_collinear) {
+      caption += ' The soundings sit up to ' + pyFixed(profile.max_offset_m, 0) +
+        ' m off the profile line, so this section cuts across the survey rather ' +
+        'than along it.';
+    }
+    return caption;
   }
 
   /* --- the interpolated surface -------------------------------------------
@@ -14711,10 +16810,14 @@
    * Soundings without a position are dropped - they cannot be put on a map -
    * and so are those whose value the interpretation left unset, because a
    * sounding whose curve never reached basement has no depth to basement and
-   * plotting a zero there would draw basement at the surface. */
-  function subsurfaceMapPoints(interpretations, attribute) {
+   * plotting a zero there would draw basement at the surface. An aquifer
+   * thickness at such a sounding is kept but marked a minimum: the zone runs
+   * on below the depth the sounding resolves. */
+  var OPEN_ENDED_MINIMA = ['aquifer_thickness_m'];
+
+  function subsurfaceMapPoints(interpretations, attribute, zone) {
     var points = [];
-    positionedSoundings(interpretations).forEach(function (item) {
+    positionedSoundings(interpretations, zone).forEach(function (item) {
       var value = own(item, attribute) ? item[attribute] : null;
       if (value === null || value === undefined || !isFinite(Number(value))) return;
       points.push({
@@ -14723,6 +16826,8 @@
         northing: Number(item.site_northing),
         value: Number(value),
         kind: 'VES point',
+        minimum: OPEN_ENDED_MINIMA.indexOf(attribute) >= 0 &&
+          !!item.basement_not_resolved,
       });
     });
     return points;
@@ -14732,9 +16837,9 @@
    * basement, which needs both numbers at the same sounding. A survey that
    * recorded no elevations gives an empty list rather than a bedrock surface
    * at sea level, which is what subtracting a depth from nothing amounts to. */
-  function bedrockElevationPoints(interpretations) {
+  function bedrockElevationPoints(interpretations, zone) {
     var points = [];
-    positionedSoundings(interpretations).forEach(function (item) {
+    positionedSoundings(interpretations, zone).forEach(function (item) {
       var ground = item.site_elevation_m;
       var depth = item.depth_to_basement_m;
       if (ground === null || ground === undefined) return;
@@ -14750,14 +16855,65 @@
     return points;
   }
 
-  /* subsurface.py _require_points, as the sentence rather than the exception. */
-  function requirePointsReason(points, what, need) {
+  /* subsurface.py _require_points, as the sentence rather than the exception.
+   *
+   * The reason used to be the same whatever the shortfall - "record the GPS
+   * position of every sounding" - which sent the Rokel reader looking for
+   * positions both soundings carried, when what they lacked was a basement
+   * the curves never reached. Given the interpretations, the shortfall is
+   * split into its causes: the soundings with no position, and `lacking`,
+   * the caller's sentence for the positioned ones that have no value. */
+  function requirePointsReason(points, what, need, interpretations, lacking) {
     var wanted = need === undefined ? 3 : need;
     if (points.length >= wanted) return null;
-    return ('aeiou'.indexOf(what.charAt(0)) >= 0 ? 'an' : 'a') + ' ' + what +
+    var reason = ('aeiou'.indexOf(what.charAt(0)) >= 0 ? 'an' : 'a') + ' ' + what +
       ' needs at least ' + wanted + ' soundings that carry both a position ' +
-      'and the value; ' + points.length + ' do. Record the GPS position of ' +
-      'every sounding on the field sheet.';
+      'and the value; ' + points.length + ' do.';
+    if (interpretations === undefined || interpretations === null) {
+      return reason + ' Record the GPS position of every sounding on the field sheet.';
+    }
+    var total = interpretations.length;
+    var placed = interpretations.filter(hasPosition).length;
+    if (placed < total) {
+      reason += ' ' + (total - placed) + ' of ' + total + ' soundings ' +
+        (total - placed === 1 ? 'carries' : 'carry') + ' no recorded position: ' +
+        'record the GPS position of every sounding on the field sheet.';
+    }
+    if (lacking) reason += ' ' + lacking;
+    return reason;
+  }
+
+  /* subsurface.py _unresolved_basement: the positioned soundings with no
+   * basement, and what that costs a map. */
+  function unresolvedBasement(interpretations, quantity) {
+    var placed = (interpretations || []).filter(hasPosition);
+    var missing = placed.filter(function (item) {
+      return item.depth_to_basement_m === null || item.depth_to_basement_m === undefined;
+    }).length;
+    if (!missing) return '';
+    return missing + ' of ' + placed.length + ' positioned soundings did not reach ' +
+      'basement within the depth they resolve, so they have no ' + quantity + '.';
+  }
+
+  /* The sentence a subsurface map's refusal adds for the positioned soundings
+   * that carry no value: subsurface.py writes it per map. */
+  function subsurfaceLacking(key, interpretations) {
+    if (key === 'depth_to_bedrock') {
+      return unresolvedBasement(interpretations, 'depth to bedrock');
+    }
+    if (key === 'bedrock_elevation') {
+      var placed = (interpretations || []).filter(hasPosition);
+      var unlevelled = placed.filter(function (item) {
+        return item.site_elevation_m === null || item.site_elevation_m === undefined;
+      }).length;
+      return [
+        unresolvedBasement(interpretations, 'bedrock elevation'),
+        unlevelled ? unlevelled + ' of ' + placed.length + ' positioned soundings ' +
+          (unlevelled === 1 ? 'carries' : 'carry') + ' no recorded ground ' +
+          'elevation to take the depth from.' : '',
+      ].filter(Boolean).join(' ');
+    }
+    return '';
   }
 
   /* maps.py _interpolated_map, without the drawing: the grid, the range the
@@ -14809,14 +16965,19 @@
       reason: null,
       points: valued.map(function (p, k) {
         var text = p.label;
-        if (!z) {
+        if (p.minimum) {
+          /* a lower bound is said to be one beside its peg whether or not a
+           * surface is drawn: the contour there is a floor, and without the
+           * words it reads as the value itself */
+          text += '\nat least ' + formatG(p.value, 3);
+        } else if (!z) {
           /* the value is written beside the peg when no surface carries it */
           text += '\n' + formatG(opts.logScale ? Math.pow(10, v[k]) : p.value, 3);
         }
         return {
           label: p.label, easting: p.easting, northing: p.northing,
           value: p.value, plot_value: v[k], kind: p.kind || 'VES point',
-          text: text,
+          minimum: !!p.minimum, text: text,
         };
       }),
       grid: z ? grid : null,
@@ -14935,18 +17096,24 @@
       attribute: 'depth_to_basement_m', title: 'Depth to bedrock',
       cbar_label: 'Depth to bedrock (m)', cmap: 'YlOrBr',
       log_scale: false, classed: false, need: 3,
+      what: 'Depth to bedrock across the surveyed ground, from the layered models.',
     },
     {
       key: 'aquifer_thickness', name: 'aquifer thickness map',
       attribute: 'aquifer_thickness_m', title: 'Interpreted aquifer thickness',
       cbar_label: 'Interpreted aquifer thickness (m)', cmap: 'GnBu',
       log_scale: false, classed: false, need: 3,
+      what: 'Interpreted thickness of the weathered and fractured zone - the ' +
+        'section a borehole is completed in.',
     },
     {
       key: 'bedrock_elevation', name: 'bedrock elevation map',
       attribute: null, title: 'Bedrock surface elevation',
       cbar_label: 'Bedrock surface elevation (m)', cmap: 'terrain',
       log_scale: false, classed: false, need: 3,
+      what: 'The bedrock surface as a landform, from the ground elevation ' +
+        'recorded at each sounding less its depth to basement. A low in this ' +
+        'surface is a buried valley, which basement groundwater drains towards.',
     },
     {
       key: 'protective_capacity', name: 'protective capacity map',
@@ -14955,8 +17122,41 @@
        * legend protectiveCapacityMapData carries */
       cbar_label: null, cmap: null,
       log_scale: false, classed: true, need: 1,
+      what: 'Protective capacity of the cover over the aquifer, from the ' +
+        'longitudinal conductance of the overlying layers. It rates how well ' +
+        'the ground above the aquifer resists downward contamination; it says ' +
+        'nothing about yield.',
     },
   ];
+
+  /* reporting/geophysical.py _subsurface_caption: a subsurface map's caption,
+   * written from what the map shows. The captions were fixed strings, and
+   * "the surface is blanked outside the hull of the soundings" sat under a
+   * figure of three collinear soundings that said on its own face "surface
+   * not drawn". */
+  function subsurfaceCaption(what, points) {
+    var surface = points.length >= 3 && pointsEncloseAnArea(
+      points.map(function (p) { return Number(p.easting); }),
+      points.map(function (p) { return Number(p.northing); }));
+    var caption = what;
+    if (surface) {
+      caption += ' The surface is interpolated between the soundings and ' +
+        'blanked outside the ground they enclose.';
+    } else if (points.length >= 3) {
+      caption += ' The soundings lie on one line and enclose no area, so no ' +
+        'surface is drawn; the values are printed at the points.';
+    } else {
+      caption += ' With fewer than three soundings no surface is drawn; each ' +
+        'point is coloured by its class.';
+    }
+    var minima = points.filter(function (p) { return p.minimum; })
+      .map(function (p) { return p.label; });
+    if (minima.length) {
+      caption += ' The value at ' + minima.join(', ') + ' is a minimum, labelled ' +
+        '"at least": the sounding did not resolve the base of the zone there.';
+    }
+    return { caption: caption, surface: surface };
+  }
 
   function subsurfaceMapSpec(key) {
     var found = null;
@@ -14974,22 +17174,38 @@
   function subsurfaceMapData(interpretations, key, options) {
     var spec = subsurfaceMapSpec(key);
     if (!spec) return { key: key, reason: 'no such subsurface map: ' + key };
-    var placed = positionedSoundings(interpretations);
+    var all = interpretations || [];
+    /* every point in the zone the map is labelled in */
+    var zone = (options && options.zone !== undefined) ? options.zone : null;
     var points = spec.key === 'bedrock_elevation'
-      ? bedrockElevationPoints(placed)
-      : subsurfaceMapPoints(placed, spec.attribute);
+      ? bedrockElevationPoints(all, zone)
+      : subsurfaceMapPoints(all, spec.attribute, zone);
     var head = {
       key: spec.key, name: spec.name, title: spec.title,
       cbar_label: spec.cbar_label, cmap: spec.cmap,
       log_scale: spec.log_scale, classed: spec.classed, points: points,
     };
-    var reason = requirePointsReason(points, spec.name, spec.need);
+    /* every interpretation, positioned or not, so a refusal can say which
+     * soundings lack a position and which lack the value */
+    var reason = requirePointsReason(points, spec.name, spec.need, all,
+      subsurfaceLacking(spec.key, all));
+    /* aquifer_thickness_map: contours through lower bounds were drawn as
+     * though they were the thickness, and a reader reads the colour, not the
+     * footnote */
+    if (!reason && spec.key === 'aquifer_thickness' &&
+        points.every(function (p) { return p.minimum; })) {
+      reason = 'the water-bearing zone at every one of the ' + points.length +
+        ' positioned soundings continues below the depth the sounding resolves, ' +
+        'so each thickness is only a minimum; a surface contoured through minima ' +
+        'reads as the thickness itself, so none is drawn';
+    }
     if (reason) return Object.assign(head, { reason: reason });
     var data = spec.classed
       ? protectiveCapacityMapData(points, options)
       : interpolatedMapData(points, Object.assign({}, options || {},
         { logScale: spec.log_scale }));
-    return Object.assign(head, data);
+    var told = subsurfaceCaption(spec.what, points);
+    return Object.assign(head, data, { caption: told.caption, surface_said: told.surface });
   }
 
   /* reporting/geophysical.py _add_subsurface_figures' own gate, which comes
@@ -15016,39 +17232,36 @@
 
   /* --- the drill-target suitability map ------------------------------------ */
 
-  /* maps.py suitability_map's own tie test, which is not siting's.
-   *
-   * ranking_tie() reads config.ranking_tie_points off the unrounded weighted
-   * scores; the map reads a fixed three points off the values it prints, and
-   * the two can differ on the same survey. The map's number belongs to the
-   * map: a figure that stars one of two pegs it has drawn with the same
-   * colour and the same printed score is claiming a preference the reader
-   * cannot see any basis for. */
-  var SUITABILITY_TIE_POINTS = 3.0;
-
   /* siting/suitability.py suitability_map_points: the scored points that can
    * go on a map, valued by the number the ranking was decided on.
    *
    * A point with no recorded position is dropped rather than placed at a
    * guess. The value is the confidence-weighted score, so the colours on the
    * map and the order in the ranked table cannot tell two different stories
-   * about which peg to drill. */
-  function suitabilityMapPoints(results) {
-    var points = [];
+   * about which peg to drill. Every point is in the zone `zone` (by default
+   * the first placed point's): a survey on the 28N/29N boundary records its
+   * soundings in both, and a map that subtracted the two sets of eastings drew
+   * 400 m of ground 660 km wide. */
+  function suitabilityMapPoints(results, zone) {
+    var points = [], target = (zone === undefined) ? null : zone;
     (results || []).forEach(function (result) {
       if (!result) return;
       if (result.easting === null || result.easting === undefined) return;
       if (result.northing === null || result.northing === undefined) return;
+      if (target === null) target = inferZoneForSierraLeone(Number(result.easting));
+      var moved = toZone(result.easting, result.northing, target);
       var confidence = (result.confidence === null || result.confidence === undefined)
         ? 1.0 : Number(result.confidence);
       points.push({
         label: String(result.sounding_id),
-        easting: Number(result.easting),
-        northing: Number(result.northing),
-        /* SitingSuitability.weighted, rounded where the Python rounds it: the
-         * tie below is decided on these rounded values, so rounding later
-         * would settle it on a number the figure never shows */
+        easting: moved[0],
+        northing: moved[1],
+        /* SitingSuitability.weighted, rounded where the Python rounds it */
         value: pyRound(Number(result.suitability) * confidence, 1),
+        /* the grade of the suitability before the confidence discount, the
+         * one the ranked table prints; the label names it as that grade
+         * rather than pairing it with the weighted score, which it does not
+         * grade */
         kind: result.grade,
         rank: (result.rank === undefined) ? null : result.rank,
       });
@@ -15073,51 +17286,122 @@
     });
   }
 
+  /* maps.py _suitability_ranking: what the ranking lets a suitability map say
+   * about which peg to drill.
+   *
+   * `tie` is the ranking's own verdict on its two leaders, rankingTie() on
+   * the project's ranking_tie_points. The map used to decide it again, three
+   * points apart on the rounded values it prints, and a project with a
+   * different tie margin got a report calling two points indistinguishable
+   * over a map that starred one of them. Left unset it is decided here by
+   * the same rule on the points' values, and only between the points ranked
+   * first and second.
+   *
+   * `ranking` is every scored sounding in rank order, placed or not. A
+   * recommended point with no recorded position is not on the map at all:
+   * the caption used to promise a star over a map with no star on it, naming
+   * the runner-up as the target. Left unset, every ranked point is taken to
+   * be on the map. */
+  function suitabilityRanking(points, tie, ranking) {
+    var ranked = rankedMapPoints(points);
+    var order = ranking || ranked.map(function (p) { return p.label; });
+    var tied = tie;
+    if (tied === undefined || tied === null) {
+      tied = ranked.length >= 2 && ranked[0].rank === 1 && ranked[1].rank === 2 &&
+        Math.abs(Number(ranked[0].value) - Number(ranked[1].value)) <
+        defaultConfig().ves.ranking_tie_points;
+    }
+    tied = !!tied;
+    var leaders = order.slice(0, tied ? 2 : 1);
+    var onMap = {};
+    (points || []).forEach(function (p) { if (p) onMap[p.label] = true; });
+    var unplaced = leaders.filter(function (label) { return !own(onMap, label); });
+    return {
+      tie: tied,
+      leaders: leaders,
+      unplaced: unplaced,
+      recommended: leaders.length && !tied && !unplaced.length ? leaders[0] : null,
+    };
+  }
+
+  /* maps.py unplaced_text: the sentence a map owes its reader for a leading
+   * point it cannot show. */
+  function unplacedText(unplaced, where) {
+    var on = where || 'this map';
+    if (!unplaced.length) return '';
+    if (unplaced.length === 1) {
+      return unplaced[0] + ' has no recorded position and is not on ' + on + '.';
+    }
+    return unplaced.join(' and ') + ' have no recorded position and are not on ' +
+      on + '.';
+  }
+
+  /* maps.py suitability_map_note: the line across the top of a suitability
+   * map that has no star. */
+  function suitabilityMapNote(verdict) {
+    if (verdict.tie) {
+      var note = verdict.leaders[0] + ' and ' + verdict.leaders[1] + ' are ' +
+        'indistinguishable on geophysical grounds; choose between them on ' +
+        'access and sanitary distances.';
+      if (verdict.unplaced.length) note += ' ' + unplacedText(verdict.unplaced);
+      return note;
+    }
+    if (verdict.unplaced.length) {
+      return 'The recommended point, ' + verdict.unplaced[0] + ', has no ' +
+        'recorded position and is not on this map.';
+    }
+    return '';
+  }
+
   /* maps.py suitability_map_state: what a suitability map of these points
    * will show, for its caption.
    *
    * A caption used to promise "the interpolated surface is blanked outside
    * the ground the survey covered" over a figure of two dots with no surface
-   * on it at all. The rules are the figure's - three valued points, an area
-   * between them, and two leading scores far enough apart to separate - so
-   * the report asks for them here instead of restating them and drifting. */
-  function suitabilityMapState(points) {
+   * on it at all, and "the star is the recommended target" over a map whose
+   * recommended point had no position and so no star. The rules are the
+   * figure's, so the report asks for them here instead of restating them and
+   * drifting. `tie` and `ranking` are the ones the map is drawn with. */
+  function suitabilityMapState(points, tie, ranking) {
     var valued = (points || []).filter(function (p) {
       return p && p.value !== null && p.value !== undefined;
     });
     var e = valued.map(function (p) { return Number(p.easting); });
     var n = valued.map(function (p) { return Number(p.northing); });
-    var ranked = rankedMapPoints(valued);
-    return {
+    return Object.assign({
       n_points: valued.length,
       surface: valued.length >= 3 && pointsEncloseAnArea(e, n),
-      tie: ranked.length >= 2 && Math.abs(Number(ranked[0].value) -
-        Number(ranked[1].value)) < SUITABILITY_TIE_POINTS,
-      recommended: ranked.length ? ranked[0].label : null,
-    };
+    }, suitabilityRanking(points, tie, ranking));
   }
 
   var SUITABILITY_MAP_CAPTION = 'Drill-target suitability of the surveyed ' +
     'points, coloured by the confidence-weighted score; greener is more ' +
-    'suitable.';
+    'suitable. Each point is labelled with its rank and weighted score, and ' +
+    'with the grade of its suitability before the confidence discount, as in ' +
+    'the table above.';
 
-  /* reporting/geophysical.py _suitability_block's caption, in its four
-   * branches.
+  /* reporting/geophysical.py _suitability_block's caption.
    *
    * Each clause is a claim about the figure underneath it: that a star marks
    * the target, or that no star does because the two best points cannot be
-   * separated; that the colour between the pegs is interpolated ground, or
-   * that there is no colour between them at all. Written from anything but
-   * the state the figure was drawn from, a caption promises a reader
-   * something the figure does not show, and the reader believes the caption. */
+   * separated or the best has no position; that the colour between the pegs
+   * is interpolated ground, or that there is no colour between them at all.
+   * Written from anything but the state the figure was drawn from, a caption
+   * promises a reader something the figure does not show, and the reader
+   * believes the caption. */
   function suitabilityMapCaption(state) {
     var caption = SUITABILITY_MAP_CAPTION;
+    var unplaced = state.unplaced || [];
     if (state.tie) {
       caption += ' The two highest-ranked points cannot be told apart on ' +
         'geophysical grounds, so neither is starred.';
+      if (unplaced.length) caption += ' ' + unplacedText(unplaced, 'the map');
     } else if (state.recommended) {
       caption += ' The star is the recommended target, ' + state.recommended +
         ', with its grid coordinates.';
+    } else if (unplaced.length) {
+      caption += ' The recommended target, ' + unplaced[0] + ', has no recorded ' +
+        'position and is not on the map, so no point is starred.';
     }
     if (state.surface) {
       caption += ' The surface between the points is interpolated and blanked ' +
@@ -15144,17 +17428,28 @@
    * options: {results, ves, zone, gridN}. `results` is an assessSiting()
    * scorecard the caller has already built, so the map and the ranked table
    * are scored once and cannot disagree; `ves` is the VESConfig used when it
-   * has to score them here. */
+   * has to score them here, and whose ranking_tie_points decides the tie, as
+   * rankingTie() decides it for the text: the map used to pin its own three
+   * points on rounded values. `zone` is the zone every point is drawn in,
+   * by default the first positioned sounding's. */
   function suitabilityMapData(interpretations, options) {
     var opts = options || {};
-    var results = opts.results || assessSiting(interpretations, opts.ves);
+    var ves = opts.ves || defaultConfig().ves;
+    var results = opts.results || assessSiting(interpretations, ves);
     if (!results.length) return null;
-    var points = suitabilityMapPoints(results);
+    var zone = (opts.zone === null || opts.zone === undefined)
+      ? surveyZone(interpretations) : opts.zone;
+    var points = suitabilityMapPoints(results, zone);
     if (!points.length) return null;
+    if (zone === null) zone = inferZoneForSierraLeone(Number(points[0].easting));
     var valued = points.filter(function (p) {
       return p.value !== null && p.value !== undefined;
     });
-    var state = suitabilityMapState(points);
+    var ranking = results.slice().sort(function (a, b) {
+      return (a.rank || 99) - (b.rank || 99);
+    }).map(function (r) { return String(r.sounding_id); });
+    var state = suitabilityMapState(points,
+      rankingTie(results, ves.ranking_tie_points) !== '', ranking);
     /* _extent(points), over every point and not only the valued ones: a peg
      * that could not be scored was still surveyed, and a map that frames it
      * out has lost a station the reader walked to. */
@@ -15184,7 +17479,6 @@
      * none: a two-point survey has nothing to interpolate and saying
      * "surface not drawn" over two dots reads as a failure rather than as
      * the figure working as intended. */
-    var ranked = rankedMapPoints(points);
     var tie = state.tie;
     var drawn = points.map(function (p) {
       /* the star is the point of this map - somebody walks to that peg and
@@ -15193,8 +17487,13 @@
        * to whichever sorted first */
       var recommended = p.rank === 1 && !tie;
       var text = p.label;
+      /* the rank and the weighted score, and the grade named as the grade
+       * of the suitability: "38 - Very good" paired a weighted 38 with the
+       * grade of a suitability of 75 */
       if (p.value !== null && p.value !== undefined) {
-        text += '\n' + pyFixed(p.value, 0) + ' - ' + p.kind;
+        text += '\n' + (p.rank !== null && p.rank !== undefined
+          ? 'Rank ' + p.rank + ', ' : '') + 'weighted ' + pyFixed(p.value, 0) +
+          '\n' + p.kind + ' suitability';
       }
       if (recommended) {
         text += '\nE ' + pyFixed(p.easting, 0) + '  N ' + pyFixed(p.northing, 0);
@@ -15228,10 +17527,10 @@
       caption: suitabilityMapCaption(state),
       tie: tie,
       /* said on the figure as well as in the caption, because a reader who
-       * sees two pegs and no star has to be told why there is no star */
-      tie_note: tie ? ranked[0].label + ' and ' + ranked[1].label +
-        ' are indistinguishable on geophysical grounds; choose between them ' +
-        'on access and sanitary distances.' : '',
+       * sees the pegs and no star has to be told why there is no star: two
+       * points the ranking cannot separate, or a recommended point with no
+       * position to draw it at */
+      tie_note: suitabilityMapNote(state),
       grid: grid,
       surface: !!grid,
       clipped: clipped,
@@ -15243,8 +17542,7 @@
       levels: linspace(0.0, 100.0, 11),
       range: [0.0, 100.0],
       extent: extent,
-      zone: (opts.zone === null || opts.zone === undefined)
-        ? inferZoneForSierraLeone(points[0].easting) : opts.zone,
+      zone: zone,
     };
   }
 
@@ -15263,46 +17561,129 @@
     });
   }
 
-  /* mapping/terrain.py plot_ground_profile as reporting/geophysical.py
-   * _ground_profile_figure calls it: the land surface along the traverse,
-   * from the survey's own levels, against chainage.
+  /* ves/plots.py model_depth_m: the depth a figure of one sounding's model is
+   * drawn to - the depth of investigation, or deeper where a fitted interface
+   * lies below it, because the model shown has to be the model fitted. The
+   * curve's model panel ran past the depth of investigation for that reason
+   * while the layer column stopped there, so a basement at 61 m under a 50 m
+   * depth of investigation was on one figure and not the other, both
+   * captioned as drawn to 50 m; the browser's panel used a third rule. One
+   * rule now serves every figure of a sounding in both engines. */
+  function modelDepthM(model, investigationDepthM) {
+    var tops = (model && model.depths_top) || [];
+    var deepest = model && model.n_layers > 1 ? Number(tops[tops.length - 1]) : 0.0;
+    return Math.max(Number(investigationDepthM) || 0.0, deepest * 1.2 + 2.0);
+  }
+
+  /* reporting/geophysical.py _drawn_depth_text: how deep a figure of one
+   * sounding's model is drawn, for its caption. */
+  function drawnDepthText(model, investigationDepthM) {
+    var doi = Number(investigationDepthM) || 0.0;
+    var drawn = modelDepthM(model, doi);
+    if (drawn <= doi) return 'to the depth of investigation (' + fmtNum(doi) + ' m)';
+    return 'to ' + fmtNum(drawn) + ' m so that the deepest fitted interface stays ' +
+      'on it; the red line marks the depth of investigation (' + fmtNum(doi) +
+      ' m), below which the readings do not resolve the model';
+  }
+
+  /* reporting/geophysical.py _study_area_caption: the study-area caption,
+   * worded from what was overlaid on the map. It used to promise the survey
+   * points and a star on the recommended point whatever the map held: over a
+   * map with no sounding on it, over a recommended point with no recorded
+   * position, and over two points the ranking calls indistinguishable, one of
+   * which carried the star. `marked` are the soundings drawn on the map. */
+  function studyAreaCaption(community, marked, preferred, leaders, tie) {
+    if (!marked.length) {
+      return 'Study area at ' + community + ', with its location in Sierra Leone ' +
+        'inset. No sounding carries a recorded GPS position, so none is marked on it.';
+    }
+    var caption = 'Study area at ' + community + ', with the survey points and ' +
+      'its location in Sierra Leone inset.';
+    if (tie && leaders.length >= 2) {
+      caption += ' ' + leaders[0] + ' and ' + leaders[1] + ' cannot be told apart ' +
+        'on geophysical grounds, so neither is starred.';
+      var missing = leaders.slice(0, 2).filter(function (label) {
+        return marked.indexOf(label) < 0;
+      });
+      if (missing.length) caption += ' ' + unplacedText(missing, 'the map');
+    } else if (marked.indexOf(preferred) >= 0) {
+      caption += ' The star is the recommended drilling point, ' + preferred + '.';
+    } else {
+      caption += ' The recommended drilling point, ' + preferred + ', has no ' +
+        'recorded position and is not on the map.';
+    }
+    return caption;
+  }
+
+  /* subsurface.py ground_profile_state, and mapping/terrain.py
+   * plot_ground_profile as reporting/geophysical.py _ground_profile_figure
+   * calls it: the land surface along the traverse, from the survey's own
+   * levels, against chainage, under the rules the section follows.
    *
-   * Returns null where the Python draws nothing, and null is the whole of the
-   * answer: _ground_profile_figure omits the figure silently - fewer than two
-   * levelled soundings, a traverse that cannot be placed, a label the lookup
-   * has no sounding for, or fewer than two finite elevations once the array
-   * is built - and the report says nothing about it either. Anything drawn
-   * from one levelled station, or from a station whose level nobody recorded,
-   * would be a ground surface the survey did not measure.
-   */
+   * Returns null where the Python says nothing - fewer than two soundings
+   * carry a position and a level, so there is no profile to be missing - and
+   * {reason} where it refuses and lists the refusal among what was not drawn:
+   * a traverse that cannot be placed, or levels that are all further apart
+   * than CORRELATION_REACH_MULTIPLE times the depth the soundings resolve.
+   * Rokel's two levels, 20.7 km apart, were joined by a straight 71 to 68 m
+   * slope that the section beside it refused to draw.
+   *
+   * Every positioned sounding is a station, levelled or not. Only the
+   * levelled ones used to be handed over, so a station nobody levelled
+   * vanished and the "N of M stations recorded no elevation" note could never
+   * be printed. `runs` are the stations the line may join: a gap wider than
+   * the reach starts a new run, and no line or fill crosses it. */
   function groundProfileData(interpretations) {
-    var levelled = levelledSoundings(interpretations);
-    if (levelled.length < 2) return null;
-    var profile = traverseProfile(levelled);
-    /* traverse_profile raises where it cannot place the soundings, and
-     * _ground_profile_figure catches it and draws nothing */
-    if (profile.reason) return null;
-    var byId = {};
-    levelled.forEach(function (item) { byId[item.sounding_id] = item; });
-    var elevation = [], missing = false;
-    profile.labels.forEach(function (label) {
-      /* by_id[label] is a KeyError in the Python for a sounding with no id,
-       * which traverse_profile labelled positionally; the figure is dropped
-       * rather than drawn against a level belonging to another station */
-      if (!own(byId, label)) {
-        missing = true;
-        elevation.push(null);
-        return;
-      }
-      var value = Number(byId[label].site_elevation_m);
-      elevation.push(isFinite(value) ? value : null);
+    var all = interpretations || [];
+    if (levelledSoundings(all).length < 2) return null;
+    var profile = traverseProfile(all);
+    if (profile.reason) return { reason: profile.reason };
+    var placed = profile.indices.map(function (k) { return all[k]; });
+    var elevation = placed.map(function (item) {
+      var value = item.site_elevation_m;
+      if (value === null || value === undefined || !isFinite(Number(value))) return null;
+      return Number(value);
     });
-    if (missing) return null;
+    var reaches = placed.map(function (item) {
+      return Number(item.investigation_depth_m || 0.0);
+    });
+    var reach = reaches.length ? Math.max(arrMax(reaches), 0.0) : 0.0;
+    var maxGap = reach > 0 ? reach * CORRELATION_REACH_MULTIPLE : null;
+    var levelled = [];
+    profile.labels.forEach(function (label, k) {
+      if (elevation[k] !== null) levelled.push([label, profile.chainage_m[k], k]);
+    });
+    var gaps = [];
+    for (var g = 1; g < levelled.length; g += 1) {
+      gaps.push([levelled[g - 1][0], levelled[g][0],
+        levelled[g][1] - levelled[g - 1][1], g]);
+    }
+    var openGaps = gaps.filter(function (gap) {
+      return maxGap !== null && gap[2] > maxGap;
+    });
+    if (levelled.length < 2) {
+      return {
+        reason: levelled.length + ' of ' + placed.length + ' stations carry an ' +
+          'elevation. A ground profile needs at least two levelled points; ' +
+          'record them on the field sheet.',
+      };
+    }
+    if (openGaps.length === gaps.length) {
+      var widest = arrMax(gaps.map(function (gap) { return gap[2]; }));
+      return {
+        reason: 'the levelled stations are ' + commaFixed0(widest) + ' m apart, ' +
+          'about ' + pyFixed(widest / reach, 0) + ' times the ' + commaFixed0(reach) +
+          ' m the soundings resolve; a ground line between them would be a ' +
+          'straight slope across ground nobody levelled, so none is drawn',
+      };
+    }
+    var runs = [[levelled[0][2]]];
+    gaps.forEach(function (gap) {
+      if (maxGap !== null && gap[2] > maxGap) runs.push([]);
+      runs[runs.length - 1].push(levelled[gap[3]][2]);
+    });
     var known = elevation.filter(function (value) { return value !== null; });
-    /* plot_ground_profile's own refusal: two levelled points are a profile
-     * and one is a spot height. A level recorded as a blank cell reaches here
-     * as a non-finite number and is not a level. */
-    if (known.length < 2) return null;
+    var missing = elevation.length - known.length;
     var stations = profile.labels.map(function (label, k) {
       return {
         label: label,
@@ -15310,28 +17691,49 @@
         elevation_m: elevation[k],
       };
     });
+    var notes = [];
+    if (missing) {
+      notes.push(missing + ' of ' + elevation.length + ' stations recorded no ' +
+        'elevation and are not drawn.');
+    }
+    if (openGaps.length) {
+      notes.push('The line is not drawn across ' + openGaps.map(function (gap) {
+        return (gap[0] || 'station') + ' to ' + (gap[1] || 'station') + ' (' +
+          commaFixed0(gap[2]) + ' m)';
+      }).join('; ') + ': nothing was levelled between those stations.');
+    }
+    var caption = GROUND_PROFILE_CAPTION;
+    if (missing) {
+      caption += ' ' + missing + ' of ' + stations.length + ' stations recorded no ' +
+        'elevation and are not drawn.';
+    }
+    if (openGaps.length) {
+      caption += ' The line is not drawn across gaps wider than ' +
+        commaFixed0(maxGap) + ' m, where nothing was levelled between the stations.';
+    }
     return {
       reason: null,
       title: 'Ground surface along the survey traverse',
       x_label: 'Distance along traverse (m)',
       y_label: 'Elevation (m)',
       series_label: 'Levelled at the station',
-      caption: GROUND_PROFILE_CAPTION,
+      caption: caption,
       labels: profile.labels,
       chainage_m: profile.chainage_m,
       elevation_m: elevation,
       stations: stations,
+      max_gap_m: maxGap,
+      open_gaps: openGaps.map(function (gap) { return [gap[0], gap[1], gap[2]]; }),
+      /* station indices, each run a line of its own */
+      runs: runs,
       /* fill_between drops to nanmin(elevation) - 2.0: the ground is drawn as
        * a solid, not as a line floating on the axis, and the base is below
        * the lowest level so the lowest station is not drawn on the floor */
       baseline_m: arrMin(known) - 2.0,
-      /* a station that reaches the figure with no level is not drawn, and
-       * the figure says so rather than closing the gap silently and showing
-       * a straight slope across ground nobody levelled */
-      note: known.length < elevation.length
-        ? (elevation.length - known.length) + ' of ' + elevation.length +
-          ' stations recorded no elevation and are not drawn.'
-        : '',
+      /* a station with no level, and a gap the line does not cross, are both
+       * said on the figure: without the words the straight line reads as a
+       * slope somebody levelled */
+      note: notes.join(' '),
     };
   }
 
@@ -15363,11 +17765,19 @@
     protectiveColour: protectiveColour,
     subsurfaceMapData: subsurfaceMapData, subsurfaceMapSet: subsurfaceMapSet,
     subsurfaceFiguresApply: subsurfaceFiguresApply,
-    SUITABILITY_TIE_POINTS: SUITABILITY_TIE_POINTS,
+    subsurfaceCaption: subsurfaceCaption, unresolvedBasement: unresolvedBasement,
+    COINCIDENT_STATION_M: COINCIDENT_STATION_M,
+    toZone: toZone, surveyZone: surveyZone, positionedSoundings: positionedSoundings,
+    spacingName: spacingName, spacingNote: spacingNote,
+    pseudosectionCaption: pseudosectionCaption,
+    modelDepthM: modelDepthM, drawnDepthText: drawnDepthText,
+    studyAreaCaption: studyAreaCaption,
     SUITABILITY_MAP_CAPTION: SUITABILITY_MAP_CAPTION,
     GROUND_PROFILE_CAPTION: GROUND_PROFILE_CAPTION,
     suitabilityMapPoints: suitabilityMapPoints,
     rankedMapPoints: rankedMapPoints,
+    suitabilityRanking: suitabilityRanking, unplacedText: unplacedText,
+    suitabilityMapNote: suitabilityMapNote,
     suitabilityMapState: suitabilityMapState,
     suitabilityMapCaption: suitabilityMapCaption,
     suitabilityMapData: suitabilityMapData,

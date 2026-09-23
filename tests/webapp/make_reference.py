@@ -32,12 +32,14 @@ from __future__ import annotations
 
 import argparse
 import base64
+import csv
 import json
 import math
 import sys
 import tempfile
 import zlib
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -53,7 +55,9 @@ from groundwater.ingestion import (
 )
 from groundwater.models import (
     DrillingLog,
+    LayeredModel,
     SiteMetadata,
+    VESSounding,
     WaterQualityResult,
     WaterQualitySample,
 )
@@ -66,7 +70,12 @@ from groundwater.portfolio import (
     site_one_pager,
 )
 from groundwater.geo import geodesic_distance_m, geographic_to_utm
+from groundwater.ingestion.waterquality import quality_from_grid
 from groundwater.quality import assess_sample
+from groundwater.quality.assess import unquantified_text
+from groundwater.quality.corrosivity import assess_corrosivity
+from groundwater.quality.diagrams import facies_of
+from groundwater.reporting.quality import quality_recommendations
 from groundwater.units import convert as unit_convert
 from groundwater.siting import assess_siting
 from groundwater.supervision.checklists import (
@@ -74,7 +83,19 @@ from groundwater.supervision.checklists import (
     load_checklists,
     migrate_response_keys,
 )
-from groundwater.ves.interpret import drilling_preference_table, interpret_model
+from groundwater.config import VESConfig
+from groundwater.ingestion.ves import _flag_duplicate_ids, _sounding_or_reason
+from groundwater.reporting.geophysical import (
+    depth_of_investigation_text,
+    models_tried_text,
+    poorly_resolved_text,
+)
+from groundwater.siting import ranking_tie, suitability_verdict
+from groundwater.ves.interpret import (
+    drilling_depth_text,
+    drilling_preference_table,
+    interpret_model,
+)
 from groundwater.ves.inversion import invert_sounding
 
 REPO = Path(__file__).resolve().parents[2]
@@ -121,6 +142,296 @@ def site_dict(site):
 
 def flags(items):
     return [[f.level, f.code, f.message] for f in items]
+
+# ------------------------------------------- designs and logs the review read
+
+# Logs the borehole-design review found read or designed wrongly: a named
+# zone the fracture reader missed, a pump intake lifted above the level the
+# test reached, a grout past the sump, screens clipped or trimmed out of
+# their basis, and an as-built record rewritten. The browser reads each
+# spec from reference.json and runs it through its own engine, so the two
+# are held to the same screens, sentences and flags on the same input.
+_TIMBO_ROWS = [
+    [0, 10, "Lateritic topsoil"], [10, 20, "Clayey saprolite"],
+    [20, 45, "Light colour granite"], [45, 50, "Light colour granite, fracture zone 49-52 m"],
+    [50, 70, "Light colour granite"],
+]
+DESIGN_CASES = [
+    # every range a fracture phrase names, in the wordings drillers use
+    {"total": 60, "swl": 5, "intervals": [
+        [0, 10, "Laterite"], [10, 30, "Granite"],
+        [30, 35, "Granite, fractures at 30-31 m and 33-34 m"],
+        [35, 45, "Granite, fracture zone between 40 and 42 m"],
+        [45, 50, "Granite, fracture zone 46—48 metres"],
+        [50, 55, "Granite, fractures at 51 and 53 m"], [55, 60, "Granite"]]},
+    # a pump intake in a bottom screen stays below the test's floor
+    {"total": 70, "grout": 20, "swl": 9.44, "pump": 52, "floor": 45.26,
+     "screens": [[40, 68]], "intervals": _TIMBO_ROWS},
+    {"total": 70, "grout": 20, "swl": 9.44, "pump": 52, "floor": 45.26,
+     "screens": [[47, 68]], "intervals": _TIMBO_ROWS},
+    {"total": 70, "grout": 20, "swl": 9.44, "pump": 52,
+     "screens": [[40, 68]], "intervals": _TIMBO_ROWS},
+    # a grout past the sump, and a zone the grout covers
+    {"total": 60, "grout": 70, "swl": 5, "intervals": [
+        [0, 10, "Laterite"], [10, 45, "Granite"],
+        [45, 50, "Granite, fracture zone 49-52 m"], [50, 60, "Granite"]]},
+    {"total": 60, "grout": 55, "swl": 5, "intervals": [
+        [0, 10, "Laterite"], [10, 45, "Granite"],
+        [45, 50, "Granite, fracture zone 49-52 m"], [50, 60, "Granite"]]},
+    # zones in the grout, in the sump and below the hole
+    {"total": 60, "grout": 20, "swl": 5, "intervals": [
+        [0, 10, "Laterite"], [10, 20, "Granite, fracture zone 16-18 m"],
+        [20, 50, "Granite"], [50, 55, "Granite, fracture zone 49-52 m"],
+        [55, 60, "Granite, fracture zone 59-62 m"]]},
+    {"total": 60, "swl": 5, "intervals": [
+        [0, 10, "Laterite"], [10, 55, "Granite"],
+        [55, 60, "Granite, fracture zone 58-62 m"]]},
+    # a strike trimmed away with the shallowest screen
+    {"total": 40, "swl": 2, "strikes": [9], "intervals": [
+        [0, 15, "Granite"], [15, 40, "Granite, fractured"]]},
+    # an as-built record that runs into the sump and inside the grout
+    {"total": 60, "grout": 20, "swl": 5, "installed": [[15, 25], [48, 54], [54, 60]],
+     "intervals": [[0, 10, "Laterite"], [10, 60, "Granite"]],
+     "rules": {"borehole_diameter_in": 8.0, "casing_diameter_in": 4.0}},
+]
+
+
+def _case_log(spec):
+    from groundwater.models import DrillingLog, LithologyInterval, SiteMetadata
+
+    return DrillingLog(
+        site=SiteMetadata(community="Case"), total_depth_m=spec["total"],
+        drilling_method="DTH",
+        intervals=[LithologyInterval(t, b, d) for t, b, d in spec["intervals"]],
+        water_strikes_m=list(spec.get("strikes", [])),
+        grouting_depth_m=spec.get("grout"),
+        installed_screens_m=[tuple(s) for s in spec.get("installed", [])],
+    )
+
+
+def design_case(spec) -> dict:
+    from groundwater.config import DesignRules
+    from groundwater.reporting.handover import HandoverReportInputs, default_works
+
+    log = _case_log(spec)
+    design = design_borehole(
+        log=log, static_water_level_m=spec.get("swl"), pump_intake_m=spec.get("pump"),
+        pump_intake_floor_m=spec.get("floor"), rules=DesignRules(**spec.get("rules", {})),
+        screens_m=[tuple(s) for s in spec["screens"]] if spec.get("screens") else None,
+    )
+    return {
+        "spec": spec,
+        "rows": [list(r) for r in design.summary_rows()],
+        "basis": list(design.design_basis),
+        "flags": flags(design.flags),
+        "pump": clean(design.pump_intake_m),
+        "works": default_works(HandoverReportInputs(site=log.site, log=log, design=design)),
+    }
+
+
+# Drilling log sheets as grids: the header block, the table header, rows
+# and the notes under them.
+def _sheet(header, rows, grout=6, notes=()):
+    grid = [["BOREHOLE DRILLING LOG", None, None, None, None, None, None],
+            ["Community", "Case", None, "Client", "X", None, None],
+            ["Drilling method", "DTH", None, "Total depth (m)", 60, None, None],
+            ["Grouting depth (m)", grout, None, "Drill rig", None, None, None],
+            header]
+    return grid + [list(r) for r in rows] + [[n, None, None, None, None, None, None]
+                                             for n in notes]
+
+
+_TABLE = ["Depth interval (m)", "From time", "To time", "Penetration rate (m/min)",
+          "Sample / lithology description", "Drilling diameter (in)",
+          "Water strike depth (m)"]
+_ROWS = [["0-10", "", "", 1, "Topsoil and laterite", 6.5, None],
+         ["10-30", "", "", 0.5, "Weathered granite", 6.5, None],
+         ["30-60", "", "", 0.4, "Granite, fractured", 6.5, None]]
+DRILLING_CASES = [
+    # numbered strikes and a water level written beside a strike
+    _sheet(_TABLE, _ROWS, notes=["Water strike 1: 18 m, water strike 2: 42 m",
+                                 "Water strike at 20 m; rest water level 4.5 m"]),
+    # strike cells naming a strike by number, a level and a time
+    _sheet(_TABLE, [["0-10", "", "", 1, "Topsoil", 6.5, "Strike 1: 8 m"],
+                    ["10-30", "", "", 0.5, "Weathered granite", 6.5, "SWL 4.5"],
+                    ["30-60", "", "", 0.4, "Granite, fractured", 6.5, "14:30"]]),
+    # the units a column header names, fractions of an inch, and a bare
+    # millimetre size under an inch header
+    _sheet(["Depth interval (m)", "From time", "To time", "Penetration rate (min/m)",
+            "Sample / lithology description", "Bit diameter (mm)", "Water strike depth (m)"],
+           [["0-10", "", "", 1, "Topsoil", 254, None],
+            ["10-30", "", "", 2, "Weathered granite", "165", None],
+            ["30-60", "", "", 4, "Granite, fractured", '8½"', 35]]),
+    _sheet(_TABLE, [["0-10", "", "", 1, "Topsoil", '8-1/2"', None],
+                    ["10-30", "", "", 0.5, "Weathered granite", "6½", None],
+                    ["30-60", "", "", 0.4, "Granite, fractured", 165, None]]),
+    # depth intervals written with their unit, and one that cannot be read
+    _sheet(_TABLE, [["0m-10m", "", "", 1, "Topsoil", 6.5, None],
+                    ["10 m - 30 m", "", "", 0.5, "Weathered granite, fractured", 6.5, 14],
+                    ["30-60 metres", "", "", 0.4, "Granite", 6.5, None],
+                    ["60 -", "", "", 0.4, "Granite", 6.5, None]]),
+    # a grout written as the range it covers
+    _sheet(_TABLE, _ROWS, grout="0-20"),
+]
+
+
+def drilling_case(grid) -> dict:
+    from groundwater.ingestion.drilling import drilling_from_grid
+
+    log = drilling_from_grid(grid, "case.xlsx")
+    return {
+        "grid": grid,
+        "strikes": clean(log.water_strikes_m),
+        "grout": clean(log.grouting_depth_m),
+        "intervals": [[clean(iv.top_m), clean(iv.bottom_m), iv.description,
+                       clean(iv.penetration_rate_m_per_min), clean(iv.bit_diameter_in)]
+                      for iv in log.intervals],
+        # codes only: the messages of the gap and depth flags print a float
+        # differently in the two engines, which is not what these cases test
+        "flags": [[f.level, f.code] for f in log.flags],
+        "messages": [f.message for f in log.flags
+                     if f.code in ("water_strike_unreadable", "interval_unreadable",
+                                   "diameter_implausible")],
+    }
+
+
+# The interpretation and report prose over cases the Rokel pair never
+# reaches: a zone whose modelled base lies below the depth of investigation,
+# one wholly below it, a margin cut back to it, a last reading the inversion
+# dropped, poorly resolved boundaries, a near-tie, an exact tie and two
+# sheets carrying one sounding number. parity.mjs builds the same cases.
+VES_CASE_SPACINGS = [1.0, 2.0, 5.0, 10.0, 20.0, 40.0, 80.0]
+VES_CASES = [
+    # name, rho, h, err, h_factor, ab2, rho_app
+    ("zone past doi", [1000, 100, 5000], [5, 60], 8.0, None, None, None),
+    ("zone below doi", [1000, 1500, 100, 5000], [10, 40, 20], 6.0, None,
+     [1.0, 2.0, 5.0, 10.0, 20.0, 40.0, 60.0], None),
+    ("margin past doi", [1000, 100, 5000], [5, 33], 5.0, None, None, None),
+    ("last reading dropped", [1000, 100], [8], 5.0, None, None,
+     [300.0, 250.0, 200.0, 150.0, 120.0, 110.0, 0.0]),
+    ("poorly resolved", [1100, 1600, 47], [1.0, 7.0], 13.3, [3.7, 1.4], None, None),
+    ("two poorly resolved", [1100, 1600, 300, 47], [1.0, 2.0, 7.0], 5.0,
+     [3.7, 2.5, 1.1], None, None),
+    ("thin resistive at 2.5", [1000, 5000, 100], [2.5, 3], 5.0, None, None, None),
+]
+
+
+def _case_interp(sid, rho, h, err=None, h_factor=None, ab2=None, rho_app=None):
+    ab2 = ab2 or VES_CASE_SPACINGS
+    model = LayeredModel(rho, h, fit_error_percent=err, sounding_id=sid)
+    if h_factor is not None:
+        model.h_uncertainty_factor = np.array(h_factor, dtype=float)
+    sounding = VESSounding(SiteMetadata(), sid, np.array(ab2), np.full(len(ab2), np.nan),
+                           np.array(rho_app or [100.0] * len(ab2)))
+    return interpret_model(sounding, model)
+
+
+def _ves_sheet(number, array, header, rows):
+    return ([["VES FIELD DATA", None, None, None],
+             ["Client", "Ref Client", "Community", "Refville"],
+             ["Project", "Geophysical Survey", "Sounding Number", number],
+             ["District", "Bo", "Date", "1 Jan 2020"],
+             ["Array", array, "Instrument", "ABEM"],
+             [None, None, None, None],
+             header]
+            + [[k + 1] + list(r) for k, r in enumerate(rows)])
+
+
+VES_SHEETS = [
+    # a Schlumberger sheet with only its array field changed to "Wenner"
+    ("W", _ves_sheet("W 1", "Wenner", ["No.", "AB/2 (m)", "MN (m)",
+                                        "Apparent Resistivity (ohm-m)"],
+                     [[1.5, 1.0, 300.0], [3.0, 1.0, 280.0], [6.0, 1.0, 200.0],
+                      [6.0, 4.0, 190.0], [15.0, 4.0, 120.0], [30.0, 4.0, 90.0]])),
+    # three readings at one AB/2, the third the one out
+    ("S3", _ves_sheet("S 3", "Schlumberger", ["No.", "AB/2 (m)", "MN (m)",
+                                             "Apparent Resistivity (ohm-m)"],
+                      [[10.0, 1.0, 400.0], [20.0, 1.0, 250.0], [40.0, 1.0, 150.0],
+                       [40.0, 4.0, 148.0], [40.0, 10.0, 78.0], [60.0, 10.0, 60.0]])),
+    # a copied sheet whose Sounding Number was not changed
+    ("S3 copy", _ves_sheet("S 3", "Schlumberger", ["No.", "AB/2 (m)", "MN (m)",
+                                                  "Apparent Resistivity (ohm-m)"],
+                           [[10.0, 1.0, 410.0], [20.0, 1.0, 260.0], [40.0, 1.0, 140.0],
+                            [60.0, 10.0, 70.0]])),
+]
+
+
+def _trial_case(trials, chosen_rho, chosen_h, err):
+    return SimpleNamespace(trials=trials, fit_error_percent=err,
+                           model=LayeredModel(chosen_rho, chosen_h))
+
+
+MODELS_TRIED_CASES = [
+    _trial_case([(2, 4.2), (3, 0.01)], [300, 100, 150], [3, 30], 0.01),
+    _trial_case([(2, 8.0), (3, 3.5), (4, 2.0)], [300, 100, 150], [3, 30], 3.5),
+    _trial_case([(2, 15.4), (3, 8.0)], [300, 100, 150], [3, 30], 8.0),
+    _trial_case([(2, 15.4), (3, 13.3), (4, 13.1)], [300, 100, 150], [3, 30], 13.3),
+]
+
+
+def ves_text(rokel_inversions, rokel_interps) -> dict:
+    cases = {}
+    for name, rho, h, err, h_factor, ab2, rho_app in VES_CASES:
+        i = _case_interp(name, rho, h, err, h_factor, ab2, rho_app)
+        suit = assess_siting([i])[0]
+        cases[name] = {
+            "water_zones": [[clean(t), clean(b)] for t, b in i.water_zones],
+            "depth_to_basement_m": clean(i.depth_to_basement_m),
+            "investigation_depth_m": clean(i.investigation_depth_m),
+            "max_drilling_depth_m": clean(i.max_drilling_depth_m),
+            "basement_not_resolved": i.basement_not_resolved,
+            "drilling_depth_capped": i.drilling_depth_capped,
+            "drilling_depth_text": drilling_depth_text(i),
+            "flags": flags(i.flags),
+            "narrative": i.narrative,
+            "suitability": clean(suit.suitability),
+            "rationale": suit.rationale,
+        }
+
+    def ranking(interps):
+        suit = assess_siting(interps)
+        return {
+            "tie": ranking_tie(suit),
+            "verdict": suitability_verdict(suit),
+            "preference": [[r["VES Point"], r["Ranking"], r["Possible Water Zones (m)"]]
+                           for r in drilling_preference_table(interps)],
+        }
+
+    near = [_case_interp("VES 1", [1000, 100, 5000], [5, 20], 9.0),
+            _case_interp("VES 2", [1000, 100, 5000], [5, 22], 9.0)]
+    equal = [_case_interp("VES 2", [1000, 100, 5000], [5, 20], 9.0),
+             _case_interp("VES 1", [1000, 100, 5000], [5, 20], 9.0)]
+    clear = [_case_interp("VES 1", [300, 1500], [30], 5.0),
+             _case_interp("VES 2", [1000, 100, 5000], [5, 20], 5.0)]
+    # the one with no water zone first, so a weight looked up by the shared
+    # id would rank it with the other's score
+    same_id = [_case_interp("VES 1", [300, 1500], [30], 5.0),
+               _case_interp("VES 1", [1000, 100, 5000], [5, 20], 5.0)]
+
+    grids = []
+    for title, grid in VES_SHEETS:
+        sounding, _ = _sounding_or_reason(grid, source="x.xlsx", sheet_name=title)
+        grids.append((title, sounding))
+    _flag_duplicate_ids([s for _, s in grids], [t for t, _ in grids])
+
+    return {
+        "cases": cases,
+        "near_tie": ranking(near),
+        "equal": ranking(equal),
+        "clear": ranking(clear),
+        "same_id": ranking(same_id),
+        "rokel_verdict": suitability_verdict(assess_siting(rokel_interps)),
+        "models_tried": [models_tried_text(inv) for inv in rokel_inversions]
+        + [models_tried_text(case) for case in MODELS_TRIED_CASES],
+        "poorly_resolved": [poorly_resolved_text(inv.model) for inv in rokel_inversions],
+        "doi_text": [
+            depth_of_investigation_text("schlumberger", 80.0, 40.0),
+            depth_of_investigation_text("wenner", 60.0, 30.0),
+            depth_of_investigation_text(
+                "wenner", 60.0, 24.0, VESConfig(depth_of_investigation_factor=0.4)),
+        ],
+        "sheets": [[s.sounding_id, s.array_type, flags(s.flags)] for _, s in grids],
+    }
 
 
 def build() -> dict:
@@ -251,6 +562,9 @@ def build() -> dict:
         "specific_capacity_basis": step_rec.specific_capacity_basis,
         "flags": [[f.level, f.code] for f in step_analysis.flags],
         "type_text": test_type_text(step_q.test_type),
+        # the sheet's own step numbers, not a count of the steps that fitted
+        "step_numbers": [s["step"] for s in step_analysis.step_test.steps]
+                        if step_analysis.step_test else None,
     }
 
     assessed = assess_sample(sample)
@@ -380,8 +694,11 @@ def build() -> dict:
     out["spine"] = {
         "total_depth": clean(spine["section"]["totalDepth"]),
         "domain": clean(spine["section"]["domain"]),
-        "lithology": [[clean(u["top"]), clean(u["base"]), u["aquifer"]]
+        # the rock each row is logged as, and the bands the drawing draws
+        "lithology": [[clean(u["top"]), clean(u["base"]), u["aquifer"], u["class"]]
                       for u in spine["section"]["lithology"]],
+        "bands": [[clean(b["top"]), clean(b["base"]), b["class"], b["colour"]]
+                  for b in spine["section"]["bands"]],
         "strikes": clean(spine["section"]["waterStrikes"]),
         "segments": [[s["kind"], clean(s["top"]), clean(s["base"])]
                      for s in spine["section"]["segments"]],
@@ -459,6 +776,7 @@ def build() -> dict:
         for i in rokel_interps
     ]
     out["preference"] = drilling_preference_table(rokel_interps)
+    out["ves_text"] = ves_text(rokel_inversions, rokel_interps)
 
     # A siting survey with no borehole yet: the design comes from the
     # interpretation alone. The degenerate half-space used to make this an
@@ -552,10 +870,75 @@ def build() -> dict:
             *_panel, WaterQualityResult("Glyphosate", 0.4, "mg/L")),
         # the charge balance cannot be computed, and used to say nothing
         "no_ionic_balance": _wq(WaterQualityResult("Calcium", 40.0, "mg/L")),
+        # a detection of a determinand the table does not know, which was
+        # "not measured" and left the sample safe
+        "unknown_detected": _wq(*_panel, WaterQualityResult(
+            "Salmonella", None, "per 100 mL", greater_than=0.0)),
+        # a national failure beside a result that could not be graded: the
+        # verdict used to say the WHO health values were met
+        "national_fail_unresolved": _wq(
+            WaterQualityResult("E. coli", 0.0, "CFU/100 mL"),
+            WaterQualityResult("Arsenic", None, "mg/L", detection_limit=0.05,
+                               below_detection=True),
+            WaterQualityResult("Total coliforms", 12.0, "CFU/100 mL")),
+        # both ions reported as nitrogen, which skipped the combined rule
+        "nitrogen_basis_combined": _wq(
+            *_panel[:3], WaterQualityResult("Nitrate (as N)", 10.0, "mg/L"),
+            WaterQualityResult("Nitrite (as N)", 0.8, "mg/L")),
+        # lower bounds, on the guideline's scale and through its hierarchy
+        "bound_in_micrograms": _wq(*_panel, WaterQualityResult(
+            "Lead", None, "ug/L", greater_than=5.0)),
+        "bound_acceptability": _wq(*_panel, WaterQualityResult(
+            "Iron", None, "mg/L", greater_than=1.0)),
+        "bound_stricter_open": _wq(*_panel, WaterQualityResult(
+            "Copper", None, "mg/L", greater_than=1.5)),
+        "bound_inclusive": _wq(*_panel[:3], WaterQualityResult(
+            "Nitrate (as NO3)", None, "mg/L", greater_than=50.0,
+            greater_than_inclusive=True)),
+        "bound_exclusive": _wq(*_panel[:3], WaterQualityResult(
+            "Nitrate (as NO3)", None, "mg/L", greater_than=50.0)),
+        "unreadable": _wq(*_panel, WaterQualityResult(
+            "Lead", None, "mg/L", unreadable="ND (see note)")),
+        # treatment advice by table name, and pH advice by direction
+        "advice_by_name": _wq(
+            *_panel, WaterQualityResult("Faecal coliforms", 5.0, "CFU/100 mL"),
+            WaterQualityResult("Sulphate", 400.0, "mg/L"),
+            WaterQualityResult("pH", 9.2, "pH units")),
+        "low_ph": _wq(*_panel, WaterQualityResult("pH", 5.9, "pH units")),
+        "lead": _wq(*_panel, WaterQualityResult("Lead", 0.05, "mg/L")),
+        # a table whose national iron value names its specification
+        "confirmed_national": _wq(*_panel, WaterQualityResult("Iron", 1.2, "mg/L")),
     }
+    # The standards table a case is assessed against, when it is not the
+    # bundled one. The browser is given the same rows (parity.mjs).
+    _confirmed = [
+        {"parameter": "E. coli", "unit": "CFU/100 mL", "who_health_gv": "0",
+         "who_aesthetic": "", "sl_standard": "0", "sl_source": "SLSB 2021",
+         "category": "microbiological", "note": ""},
+        {"parameter": "Arsenic", "unit": "mg/L", "who_health_gv": "0.01",
+         "who_aesthetic": "", "sl_standard": "0.01", "sl_source": "SLSB 2021",
+         "category": "metal", "note": ""},
+        {"parameter": "Fluoride", "unit": "mg/L", "who_health_gv": "1.5",
+         "who_aesthetic": "", "sl_standard": "1.5", "sl_source": "SLSB 2021",
+         "category": "inorganic", "note": ""},
+        {"parameter": "Nitrate (as NO3)", "unit": "mg/L", "who_health_gv": "50",
+         "who_aesthetic": "", "sl_standard": "50", "sl_source": "SLSB 2021",
+         "category": "inorganic", "note": ""},
+        {"parameter": "Iron", "unit": "mg/L", "who_health_gv": "",
+         "who_aesthetic": "0.3", "sl_standard": "0.3", "sl_source": "SLSB 2021",
+         "category": "metal", "note": ""},
+    ]
+    _tables = {"confirmed_national": _confirmed}
     out["verdicts"] = {}
     for name, sample in _cases.items():
-        a = assess_sample(sample)
+        standards = None
+        if name in _tables:
+            standards = Path(tempfile.mkdtemp()) / "standards.csv"
+            with open(standards, "w", encoding="utf-8", newline="") as fh:
+                writer = csv.DictWriter(fh, fieldnames=list(_tables[name][0]))
+                writer.writeheader()
+                writer.writerows(_tables[name])
+        a = assess_sample(sample, standards_path=standards)
         out["verdicts"][name] = {
             "state": a.verdict_state,
             "statuses": [r.status for r in a.rows],
@@ -565,7 +948,79 @@ def build() -> dict:
             "missing_essential": list(a.missing_essential),
             "verdict": a.verdict,
             "flags": [[f.level, f.code, f.message] for f in a.flags],
+            # the remark, the table cell a bound prints as, and whether the
+            # national value was provisional, row by row; and the report's
+            # recommendations, which the two engines used to word apart
+            "remarks": [r.remark for r in a.rows],
+            "values": [unquantified_text(r) for r in a.rows],
+            "provisional": [r.sl_provisional for r in a.rows],
+            "recommendations": quality_recommendations(a),
         }
+
+    # What the laboratory sheet reader makes of a qualified result cell: a
+    # unit or a label in the cell, a filled detection-limit column beside a
+    # detection, a bound that is not a number.
+    _cells = [
+        ["E. coli", "CFU/100 mL", "Present", 1], ["E. coli", "CFU/100 mL", "TNTC", 1],
+        ["Nitrate (as NO3)", "mg/L", ">50", 0.1], ["Arsenic", "mg/L", "Not analysed", 0.001],
+        ["Arsenic", "mg/L", "N/A", 0.001], ["Arsenic", "mg/L", "-", 0.001],
+        ["Arsenic", "mg/L", None, 0.001], ["Arsenic", "mg/L", "<0.05", 0.001],
+        ["Arsenic", "mg/L", "ND (<0.05)", 0.001], ["Nitrate (as NO3)", "mg/L", ">50 mg/L", None],
+        ["Nitrate (as NO3)", "mg/L", "> 50mg/l", None], ["Nitrate (as NO3)", "mg/L", "50+", None],
+        ["Nitrate (as NO3)", "mg/L", "above 50", None], ["Nitrate (as NO3)", "mg/L", "≥50", None],
+        ["Nitrate (as NO3)", "mg/L", ">=50", None], ["Arsenic", "mg/L", "ND (<0.05 mg/L)", None],
+        ["Arsenic", "mg/L", "ND (DL 0.05)", None], ["Arsenic", "mg/L", "ND, <0.05", None],
+        ["Arsenic", "mg/L", "ND at 0.05", None], ["E. coli", "CFU/100 mL", "Absent/100 mL", None],
+        ["E. coli", "CFU/100 mL", "Present in 100 mL", None],
+        ["Total coliforms", "CFU/100 mL", "TNTC (>300)", None],
+        ["Arsenic", "mg/L", "ND (see note)", None], ["Lead", "", "<5 ug/L", None],
+        ["Lead", "mg/L", "<5 ug/L", None], ["Lead", "mg/L", "<5 NTU", None],
+        ["Arsenic", "mg/L", "<LOD", None], ["Arsenic", "mg/L", "<0,05", None],
+        ["Arsenic", "mg/L", 0.004, None], ["Arsenic", "mg/L", "0.5 ND", None],
+    ]
+    _grid = ([["WATER QUALITY LABORATORY RESULTS"], ["Community", "Ref"], [], [],
+              ["Parameter", "Unit", "Value", "Detection limit"]] + _cells)
+    out["quality_cells"] = [
+        [r.parameter, clean(r.value), r.unit, clean(r.detection_limit),
+         r.below_detection, clean(r.greater_than), r.greater_than_inclusive,
+         r.unreadable]
+        for r in quality_from_grid(_grid, "cells.xlsx").results
+    ]
+
+    # The facies sentence over every branch it has: a mixed-cation
+    # bicarbonate water was said to be one in which sodium had replaced
+    # calcium, and a calcium chloride water to have no dominant ion pair.
+    _ions = ("Calcium", "Magnesium", "Sodium", "Potassium", "Bicarbonate",
+             "Chloride", "Sulfate")
+    _mg_per_meq = (20.04, 12.15, 22.99, 39.10, 61.02, 35.45, 48.03)
+    _facies_meq = {
+        "ca_hco3": (3.0, 1.0, 0.5, 0.1, 3.5, 0.7, 0.4),
+        "na_hco3": (0.5, 0.3, 3.0, 0.2, 3.0, 0.6, 0.4),
+        "mixed_hco3": (1.6, 1.0, 1.3, 0.1, 2.5, 1.2, 0.3),
+        "na_cl": (0.5, 0.5, 4.0, 0.0, 0.7, 4.0, 0.3),
+        "ca_cl": (3.0, 0.5, 0.8, 0.1, 1.0, 3.0, 0.4),
+        "mixed_cl": (1.5, 1.2, 1.4, 0.0, 0.8, 3.0, 0.4),
+        "so4": (2.0, 1.0, 1.0, 0.0, 1.0, 0.5, 2.5),
+        "ca_mixed_anion": (3.0, 0.5, 0.5, 0.0, 1.5, 1.3, 1.2),
+        "mixed": (1.5, 1.2, 1.3, 0.0, 1.5, 1.3, 1.2),
+    }
+    out["facies"] = {
+        name: facies_of(_wq(*[
+            WaterQualityResult(ion, round(meq * mg, 3), "mg/L")
+            for ion, meq, mg in zip(_ions, meqs, _mg_per_meq, strict=True)
+        ]))["sentence"]
+        for name, meqs in _facies_meq.items()
+    }
+
+    # The corrosivity sentence names the pH, to as many decimals as it needs
+    # to be true: 6.46 printed as "6.5 is below the 6.5 to 8.5 range".
+    out["corrosivity_ph"] = {
+        str(ph): assess_corrosivity(_wq(
+            WaterQualityResult("pH", ph), WaterQualityResult("Calcium", 4.0),
+            WaterQualityResult("Alkalinity", 10.0), WaterQualityResult("TDS", 60.0),
+        )).verdict
+        for ph in (6.46, 8.54, 6.25, 6.4999, 8.46)
+    }
 
     # The Depth Spine's guideline chart over units that are NOT the
     # guideline's own. The bundled sample reports everything in the guideline
@@ -990,7 +1445,552 @@ def build() -> dict:
     }
 
     out["pdf_sheet"] = pdf_sheet_reference()
+    out["pumping_cases"] = pumping_cases()
+    out["regional"] = regional_reference()
+    out["survey_figures"] = survey_figures_reference(rokel_interps)
+    out["design_cases"] = [design_case(spec) for spec in DESIGN_CASES]
+    out["drilling_cases"] = [drilling_case(grid) for grid in DRILLING_CASES]
     return out
+
+
+# ------------------------------------------------- pumping sheets at the edges
+
+def _pumping_case_grids() -> dict[str, list[list]]:
+    """The bundled pumping sheets with the cells rewritten that each
+    hydraulics defect turned on: a recovery line that misses the origin, a
+    level below the pump, a hole too shallow for the intake the test implies,
+    hourly blocks read every few minutes, step times that restart, short
+    steps inside the casing-storage period. Row 4 carries the borehole depth
+    and row 5 the static level and pump setting in column 4 and 1; row 8 the
+    step discharges; row 9 the block headings; readings start on row 11."""
+    from groundwater.ingestion import common
+
+    def grid_of(path):
+        grid, _ = common.load_grid(path)
+        return json.loads(json.dumps(grid, default=str))
+
+    def copy(grid):
+        return json.loads(json.dumps(grid))
+
+    def clear_readings(grid):
+        for row in grid[11:]:
+            for c in range(15):
+                row[c] = None
+
+    timbo = grid_of(DATA / "dr_timbo" / "dr_timbo_constant_test.xlsx")
+    kuntolo = grid_of(DATA / "kuntolo" / "kuntolo_step_test.xlsx")
+    swl = 9.44
+    cases: dict[str, list[list]] = {}
+
+    # the recovery on a clean line meeting t/t' = 1 at 20 m, beside fits that
+    # are all disqualified; then with too few readings for any drawdown fit
+    rejected = copy(timbo)
+    for i, t_prime in enumerate([0, 1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 35, 40, 45,
+                                 50, 55, 60]):
+        rejected[11 + i][13] = (42.26 if t_prime == 0 else round(
+            swl + 20.0 + 9.0 * math.log10((30 + t_prime) / t_prime), 2))
+    cases["rejected_recovery"] = rejected
+    alone = copy(rejected)
+    for row in alone[15:]:
+        row[0] = row[1] = row[2] = None
+    cases["every_fit_rejected"] = alone
+
+    # the recovery line meeting t/t' = 1 below zero
+    negative = copy(timbo)
+    for i, t_prime in enumerate([0, 1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 35, 40, 45,
+                                 50, 55, 60]):
+        negative[11 + i][13] = (42.26 if t_prime == 0 else round(
+            swl - 8.0 + 20.0 * math.log10((30 + t_prime) / t_prime), 2))
+    cases["negative_intercept"] = negative
+
+    # the pump written at 15 m, 27 m above the deepest level recorded
+    below_pump = copy(timbo)
+    below_pump[5][4] = 15
+    cases["level_below_pump"] = below_pump
+
+    # a 45.5 m hole with the pump at 44 m
+    shallow = copy(timbo)
+    shallow[4][4] = 45.5
+    shallow[5][4] = 44
+    cases["shallow_hole"] = shallow
+
+    # four hours in hourly blocks, hours two to four read every 5, 10 and 15
+    # minutes and counted within the hour
+    blocks = copy(timbo)
+    clear_readings(blocks)
+    for b, (start, times) in enumerate([
+            (0, [0, 1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 40, 50, 60]),
+            (60, [5, 10, 15, 20, 25, 30, 40, 50, 60]),
+            (120, [10, 20, 30, 40, 50, 60]), (180, [15, 30, 45, 60])]):
+        for i, t in enumerate(times):
+            blocks[11 + i][3 * b] = t
+            blocks[11 + i][3 * b + 1] = round(
+                swl + (0 if start + t == 0 else 3.0 * math.log10(start + t) + 5.0), 2)
+    cases["blocks_by_heading"] = blocks
+
+    # Kuntolo with its discharges, each step's time counted from its own start
+    restart = copy(kuntolo)
+    restart[8][2], restart[8][5], restart[8][8] = 1.5, 2.2, 3.0
+    for row in restart[11:]:
+        for col, offset in ((3, 60), (6, 120)):
+            if isinstance(row[col], (int, float)):
+                row[col] = row[col] - offset
+    cases["step_restart"] = restart
+
+    # three 50-minute steps, every one inside an 80-minute casing storage
+    short = copy(kuntolo)
+    short[2][4] = 50
+    short[5][1] = 10.0
+    short[8][2], short[8][5], short[8][8] = 1.0, 2.0, 3.0
+    clear_readings(short)
+    rates = [1.0, 2.0, 3.0]
+
+    def drawdown(t):
+        s = 0.0
+        for i, q in enumerate(rates):
+            if t > 50 * i:
+                dq = q - (rates[i - 1] if i else 0.0)
+                s += 2.303 * dq * 24 / (4 * math.pi * 2.5) * math.log10(
+                    2.25 * 2.5 * ((t - 50 * i) / 1440) / (0.01 * 1e-3))
+        q = rates[min(int((t - 1e-9) // 50), 2)]
+        return s + 0.002 * (q * 24) ** 2 / 24
+
+    for k in range(3):
+        for i, t in enumerate([1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 25, 30, 40, 50]):
+            short[11 + i][3 * k] = 50 * k + t
+            short[11 + i][3 * k + 1] = round(10.0 + drawdown(50 * k + t), 2)
+    cases["short_steps"] = short
+    return cases
+
+
+def pumping_cases() -> dict:
+    """What Python makes of each edge sheet, with the sheet itself.
+
+    The grid travels as a JSON string so the browser parses exactly the cells
+    Python parsed; the rest is compared quantity by quantity, the prose word
+    for word."""
+    from groundwater.ingestion.pumping import _assemble
+
+    out = {}
+    for name, grid in _pumping_case_grids().items():
+        test = _assemble(grid, f"{name}.xlsx")
+        analysis = analyse_pumping_test(test)
+        rec = analysis.yield_recommendation
+        out[name] = {
+            "grid": json.dumps(grid),
+            "steps": [[s.step_number, clean(s.discharge_m3_per_h), len(s.time_min),
+                       clean(float(np.min(s.time_min))), clean(float(np.max(s.time_min)))]
+                      for s in test.steps],
+            "duration": clean(test.pumping_duration_min),
+            "source": analysis.transmissivity_source,
+            "qualifies": analysis.adopted_fit()[2],
+            "disqualified": sorted(analysis.disqualified),
+            "invalid": sorted(analysis.invalid_fits),
+            "T": clean(analysis.transmissivity_m2_per_day),
+            "safe": clean(rec.safe_yield_m3_per_h),
+            "range_text": rec.yield_range_text,
+            "pump_depth": clean(rec.pump_installation_depth_m),
+            "confidence": rec.confidence,
+            "confidence_reasons": list(rec.confidence_reasons),
+            "pending_reason": rec.pending_reason,
+            "pump_depth_basis": rec.pump_depth_basis,
+            "envelope_basis": rec.envelope_basis,
+            "rec_pumping_time": clean(analysis.recovery.pumping_time_min)
+                                if analysis.recovery else None,
+            "step_numbers": [s["step"] for s in analysis.step_test.steps]
+                            if analysis.step_test else None,
+            "flags": flags(analysis.flags),
+        }
+    return out
+
+
+# ------------------------------------------------------ where a report is set
+
+#: Positions the regional checks place a site at: the Rokel sounding on the
+#: Bullom sands, the Freetown Complex under a sheet that says Port Loko, a
+#: dyke the Precambrian encloses in Kono, Kamakwie in Karene, the interior,
+#: and a point in the Falaba chiefdoms the boundary layer predates.
+_REGIONAL_POSITIONS = [
+    (8.375866051953114, -13.102371011661704, "Western Area"),
+    (8.40, -13.18, "Port Loko"),
+    (9.392, -10.396, "Kono"),
+    (9.4967, -12.2405, "Karene"),
+    (7.96, -11.74, "Bo"),
+    (9.85, -11.3, "Falaba"),
+    (8.35, -13.10, "Western Area"),
+    (8.77, -12.79, "Port Loko District"),
+]
+
+#: District names as sheets write them: the region, a trailing "District",
+#: the two districts the boundary layer predates, lower case, a name that
+#: could be two districts, and one that is no district at all.
+_REGIONAL_DISTRICTS = ["Karene", "Falaba", "Western Area", "Port Loko District",
+                       "western area rural", "Ko", "Atlantis", ""]
+
+
+def regional_reference() -> dict:
+    """The area each report maps, what it is called, and the ground under it.
+
+    Every chiefdom and district window is here, because the browser sized
+    them from the largest ring alone and 41 of the 180 came out more than a
+    tenth different, which the scale caveat then quoted in the client's
+    copy of the report.
+    """
+    from groundwater.geo import parse_utm_zone
+    from groundwater.mapping.regional import (
+        _BGS_PUBLISHER_NOTE,
+        _home_district,
+        _scale_caveat,
+        area_window,
+        load_admin,
+        load_chiefdoms,
+    )
+    from groundwater.reporting.context import area_map_note
+    from groundwater.reporting.geophysical import _geology_for
+
+    _, districts = load_admin()
+
+    def window(site):
+        found = area_window(site)
+        if found is None:
+            return None
+        return clean([found.lon, found.lat, found.radius_km, found.label,
+                      found.exact])
+
+    def placed(lat, lon, district, community="T"):
+        utm = geographic_to_utm(lat, lon)
+        return SiteMetadata(community=community, district=district,
+                            easting=utm.easting, northing=utm.northing,
+                            utm_zone=utm.zone)
+
+    cases = ([{"chiefdom": area.name, "district": ""} for area in load_chiefdoms()]
+             + [{"chiefdom": "", "district": area.name} for area in districts]
+             + [{"chiefdom": "", "district": name} for name in _REGIONAL_DISTRICTS]
+             + [{"chiefdom": name, "district": "Port Loko"}
+                for name in ("Bureh Kasseh Maconteh", "Bureh Kasseh Ma",
+                             "sanda magbolontor")])
+    windows = []
+    for case in cases:
+        site = SiteMetadata(community="T", **case)
+        name, names, chiefdoms = _home_district(site, districts)
+        windows.append(dict(case, window=window(site), note=area_map_note(site),
+                            home=[name, sorted(names),
+                                  sorted(area.name for area in chiefdoms)]))
+
+    positions = []
+    for lat, lon, district in _REGIONAL_POSITIONS:
+        site = placed(lat, lon, district)
+        # the position the site actually carries, after the round trip
+        # through UTM, so the browser is handed the same point
+        at_lat, at_lon = site.latlon
+        name, names, chiefdoms = _home_district(site, districts)
+        positions.append({
+            "district": district, "lat": clean(at_lat), "lon": clean(at_lon),
+            "window": window(site), "note": area_map_note(site),
+            "home": [name, sorted(names), sorted(area.name for area in chiefdoms)],
+            "geology": _geology_for(site, ""),
+        })
+    unplaced = [{"district": district,
+                 "geology": _geology_for(SiteMetadata(district=district), "")}
+                for district in ("Western Area", "Western Area Rural", "Bo", "")]
+
+    return {
+        "windows": windows,
+        "positions": positions,
+        "unplaced_geology": unplaced,
+        "caveats": [
+            {"radius_km": radius, "note": note,
+             "text": _scale_caveat(radius, 5_000_000, note)}
+            for radius, note in ((None, ""), (21.71465, ""), (30.0, ""),
+                                 (42.5, _BGS_PUBLISHER_NOTE), (60.0, ""),
+                                 (60.5, ""), (6.25, ""))
+        ],
+        "utm_zones": [
+            {"value": value, "zone": parse_utm_zone(value)}
+            for value in ("28N", "Zone 28", "29 N", "28N WGS84",
+                          "WGS 84 / UTM zone 28N", "WGS-84 29N", "28.0", 28,
+                          28.0, 28.5, "708958", "UTM Zone (28N or 29N)", "",
+                          "zone 61", "0")
+        ],
+    }
+
+
+
+# ------------------------------------------------ the survey's own figures
+
+#: The spacings of the synthetic soundings below. Their readings are a plain
+#: ramp: nothing here reads them but the pseudo-section's station order.
+_SURVEY_AB2 = [1, 1.5, 2, 3, 4, 6, 8, 10, 15, 20, 25, 32, 40, 50, 65, 80, 100.0]
+_E, _N = 178000.0, 1000000.0
+
+#: Each case is a list of stations: (id, easting, northing, elevation,
+#: resistivities, thicknesses). parity.mjs builds the same surveys.
+SURVEY_CASES = {
+    # the best point (VES 3) carries no position
+    "nopos": [
+        ("VES 1", _E, _N, 70.0, [320, 150, 4200], [2.5, 6]),
+        ("VES 2", _E + 80, _N + 40, 72.0, [320, 160, 4200], [2.5, 5]),
+        ("VES 3", None, None, None, [320, 60, 4200], [2.5, 20]),
+    ],
+    "noposall": [
+        ("VES 1", None, None, None, [320, 150, 4200], [2.5, 6]),
+        ("VES 2", None, None, None, [320, 60, 4200], [2.5, 20]),
+    ],
+    # 75.3 against 71.5: a tie on a five-point margin, not on three
+    "margin": [
+        ("VES 1", _E, _N, 70.0, [320, 60, 4200], [2.5, 16]),
+        ("VES 2", _E + 80, _N + 40, 72.0, [320, 60, 4200], [2.5, 11]),
+    ],
+    # 75.3 and 75.3, with a third point elsewhere
+    "tie": [
+        ("VES 1", _E, _N, 70.0, [320, 60, 4200], [2.5, 16]),
+        ("VES 2", _E + 80, _N + 40, 72.0, [320, 60, 4200], [2.5, 16]),
+        ("VES 3", _E + 30, _N + 120, 71.0, [320, 400, 4200], [2.5, 4]),
+    ],
+    # levels missing at two of four stations
+    "levels": [
+        ("VES 1", _E, _N, 70.0, [320, 60, 4200], [2.5, 16]),
+        ("VES 2", _E + 100, _N, None, [320, 60, 4200], [2.5, 16]),
+        ("VES 3", _E + 200, _N, None, [320, 60, 4200], [2.5, 16]),
+        ("VES 4", _E + 300, _N, 64.0, [320, 60, 4200], [2.5, 16]),
+    ],
+    # a gap wider than ten depths of investigation between VES 2 and VES 3
+    "gap": [
+        ("VES 1", _E, _N, 70.0, [320, 60, 4200], [2.5, 16]),
+        ("VES 2", _E + 100, _N, 71.0, [320, 60, 4200], [2.5, 14]),
+        ("VES 3", _E + 5000, _N, 64.0, [320, 60, 4200], [2.5, 12]),
+    ],
+    # Rokel's two pegs, 20.7 km apart and neither reaching basement
+    "far": [
+        ("A (1)", 708958.0, 926355.0, 71.0, [320, 60], [2.5]),
+        ("B (2)", 727012.0, 916125.0, 68.0, [320, 70], [3.0]),
+    ],
+    "onepoint": [
+        ("VES 1", _E, _N, 70.0, [320, 60, 4200], [2.5, 16]),
+        ("VES 2", _E, _N, 71.0, [320, 60, 4200], [2.5, 14]),
+        ("VES 3", _E, _N, 72.0, [320, 60, 4200], [2.5, 12]),
+    ],
+    "shared": [
+        ("VES 1", _E, _N, 70.0, [320, 60, 4200], [2.5, 16]),
+        ("VES 2", _E, _N, 71.0, [320, 60, 4200], [2.5, 14]),
+        ("VES 3", _E + 100, _N + 30, 72.0, [320, 60, 4200], [2.5, 12]),
+    ],
+    # two soundings both called VES 1
+    "sameid": [
+        ("VES 1", _E, _N, 70.0, [320, 150, 4200], [2.5, 5]),
+        ("VES 1", _E + 100, _N, 71.0, [320, 60, 4200], [2.5, 15]),
+        ("VES 2", _E + 200, _N, 72.0, [320, 160, 4200], [2.5, 5]),
+    ],
+    "collinear": [
+        ("VES 1", _E, _N, 70.0, [320, 60, 4200], [2.5, 16]),
+        ("VES 2", _E + 100, _N, 71.0, [320, 60, 4200], [2.5, 14]),
+        ("VES 3", _E + 200, _N, 72.0, [320, 60, 4200], [2.5, 12]),
+    ],
+    # every water zone open below the depth of investigation
+    "open": [
+        ("VES 1", _E, _N, 70.0, [320, 60], [2.5]),
+        ("VES 2", _E + 100, _N + 30, 71.0, [320, 70], [3.0]),
+        ("VES 3", _E + 40, _N + 120, 72.0, [320, 65], [2.0]),
+    ],
+    # one of three open
+    "someopen": [
+        ("VES 1", _E, _N, 70.0, [320, 60], [2.5]),
+        ("VES 2", _E + 100, _N + 30, 71.0, [320, 70, 4200], [3.0, 14]),
+        ("VES 3", _E + 40, _N + 120, 72.0, [320, 65, 4200], [2.0, 18]),
+    ],
+    # a basement at 61 m under a 50 m depth of investigation
+    "deepbase": [
+        ("VES 1", _E, _N, 70.0, [320, 60, 4200], [2.5, 58.5]),
+        ("VES 2", _E + 100, _N + 30, 71.0, [320, 60, 4200], [2.5, 16]),
+    ],
+}
+
+
+def _zone_straddle():
+    """Three soundings either side of 12 W, each recorded in its own zone."""
+    stations = []
+    for k, lon in enumerate((-12.0036, -11.9964, -11.995)):
+        utm = geographic_to_utm(8.9, lon)
+        stations.append((f"VES {k + 1}", utm.easting, utm.northing, 30.0 + k,
+                         [320, 55 + 9 * k, 4200], [2.5 + 0.4 * k, 14 + 5.5 * k]))
+    return stations
+
+
+def _survey(stations, array_type="schlumberger"):
+    from groundwater.models import LayeredModel, VESSounding
+
+    soundings, interps = [], []
+    for sid, e, n, z, rho, h in stations:
+        site = SiteMetadata(community="Kuntolo", district="Bombali",
+                            easting=e, northing=n, elevation_m=z)
+        ab2 = np.array(_SURVEY_AB2)
+        sounding = VESSounding(
+            site=site, sounding_id=sid, ab2=ab2, mn=np.full(ab2.size, 0.5),
+            rho_app=100.0 + 10.0 * np.arange(ab2.size), array_type=array_type)
+        model = LayeredModel(resistivities=np.array(rho, float),
+                             thicknesses=np.array(h, float), sounding_id=sid,
+                             fit_error_percent=0.5)
+        soundings.append(sounding)
+        interps.append(interpret_model(sounding, model))
+    return soundings, interps
+
+
+def survey_figures_reference(rokel_interps) -> dict:
+    """What the survey's own figures say, case by case.
+
+    The maps and sections are drawn by different code in each engine, but
+    what they claim is decided once: which point is starred, whether two
+    points tie, which figures are refused and why, the chainages, the zone
+    everything is drawn in and the captions. No parity check read any of
+    it, and the browser's suitability map, section and ground profile drifted
+    from the package's without a failing test.
+    """
+    from groundwater.config import VESConfig
+    from groundwater.mapping import (
+        ground_profile_state,
+        spacing_name,
+        suitability_map_state,
+        survey_zone,
+        traverse_profile,
+    )
+    from groundwater.mapping.maps import (
+        interpolated_label,
+        points_enclose_an_area,
+        suitability_label,
+        suitability_map_note,
+    )
+    from groundwater.mapping.subsurface import spacing_note
+    from groundwater.reporting.geophysical import (
+        _SUBSURFACE_MAPS,
+        _drawn_depth_text,
+        _ground_profile_caption,
+        _pseudosection_caption,
+        _study_area_caption,
+        _subsurface_caption,
+        _subsurface_points,
+        _suitability_caption,
+    )
+    from groundwater.siting import ranking_tie, suitability_map_points
+    from groundwater.ves.plots import model_depth_m
+
+    def refusal(fn):
+        try:
+            fn()
+        except ValueError as exc:
+            return str(exc)
+        return None
+
+    def suitability(interps, tie_points=3.0):
+        cfg = VESConfig(ranking_tie_points=tie_points)
+        suit = assess_siting(interps, cfg)
+        tie = bool(ranking_tie(suit, within_points=cfg.ranking_tie_points))
+        zone = survey_zone(interps)
+        points = suitability_map_points(suit, zone)
+        ranking = [s.sounding_id for s in suit]
+        state = suitability_map_state(points, tie=tie, ranking=ranking)
+        marked = [i.sounding_id for i in interps if i.site_easting is not None]
+        return {
+            "state": clean(state),
+            "caption": _suitability_caption(state) if points else None,
+            "note": suitability_map_note(state),
+            "labels": [suitability_label(p, p.rank == 1 and not state["tie"])
+                       for p in points],
+            "eastings": [clean(p.easting) for p in points],
+            "zone": zone,
+            "study_area": _study_area_caption(
+                "Kuntolo", marked, ranking[0], ranking[:2], tie),
+        }
+
+    def maps(interps):
+        zone = survey_zone(interps) or 28
+        out = {}
+        for fn, key, _name, what in _SUBSURFACE_MAPS:
+            reason = refusal(lambda fn=fn: plt_close(fn(interps, zone)))
+            entry = {"reason": reason}
+            if reason is None:
+                points = _subsurface_points(key, interps, zone)
+                surface = len(points) >= 3 and points_enclose_an_area(
+                    [p.easting for p in points], [p.northing for p in points])
+                entry["caption"] = _subsurface_caption(what, points)[0]
+                entry["minimum"] = [p.minimum for p in points]
+                if key != "protective_capacity":
+                    entry["labels"] = [interpolated_label(p, surface) for p in points]
+            out[key] = entry
+        return out
+
+    def traverse(interps):
+        try:
+            profile = traverse_profile(interps)
+        except ValueError as exc:
+            return {"reason": str(exc)}
+        return {
+            "reason": None,
+            "labels": list(profile.labels),
+            "chainage_m": clean(profile.chainage_m),
+            "indices": list(profile.indices),
+            "length_m": clean(profile.length_m),
+            "bearing_deg": clean(profile.bearing_deg),
+            # the model each station takes, by position in the list
+            "layer2_rho": [clean(interps[k].model.resistivities[1])
+                           for k in profile.indices],
+        }
+
+    def ground(interps):
+        levelled = [i for i in interps if i.site_easting is not None
+                    and i.site_northing is not None and i.site_elevation_m is not None]
+        if len(levelled) < 2:
+            # the report says nothing: there is no profile to be missing
+            return {"reason": None, "silent": True}
+        try:
+            state = ground_profile_state(interps)
+        except ValueError as exc:
+            return {"reason": str(exc)}
+        if state["reason"]:
+            return {"reason": state["reason"]}
+        return {
+            "reason": None,
+            "caption": _ground_profile_caption(state),
+            "chainage_m": clean(state["chainage_m"]),
+            "open_gaps": clean(state["open_gaps"]),
+            "max_gap_m": clean(state["max_gap_m"]),
+        }
+
+    cases = dict(SURVEY_CASES, zones=_zone_straddle())
+    # the stations travel with the answers, so the browser builds the very
+    # same surveys rather than a copy of them typed out again
+    out: dict = {"cases": {}, "inputs": clean(cases), "ab2": _SURVEY_AB2}
+    for name, stations in cases.items():
+        soundings, interps = _survey(stations)
+        entry = {
+            "suitability": suitability(interps),
+            "traverse": traverse(interps),
+            "ground": ground(interps),
+            "maps": maps(interps),
+            "model_depth": [clean(model_depth_m(i.model, i.investigation_depth_m))
+                            for i in interps],
+            "drawn_depth": [_drawn_depth_text(i.model, i) for i in interps],
+        }
+        if name == "margin":
+            entry["suitability_margin5"] = suitability(interps, tie_points=5.0)
+        out["cases"][name] = entry
+    # a Wenner survey: the spacing is a, not AB/2
+    wenner, interps = _survey(SURVEY_CASES["collinear"], array_type="wenner")
+    profile = traverse_profile(interps)
+    spacing = spacing_name(wenner)
+    out["wenner"] = {
+        "spacing": spacing,
+        "note": spacing_note(spacing),
+        "caption": _pseudosection_caption(spacing, profile),
+    }
+    out["rokel_drawn_depth"] = [_drawn_depth_text(i.model, i) for i in rokel_interps]
+    return out
+
+
+def plt_close(fig):
+    """Close a figure a map function returned rather than saved."""
+    import matplotlib.pyplot as plt
+
+    plt.close(fig)
 
 
 # ------------------------------------------------- the unruled PDF field sheet

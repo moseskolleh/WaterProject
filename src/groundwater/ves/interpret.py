@@ -24,8 +24,9 @@ import numpy as np
 
 from ..config import VESConfig
 from ..models import DataFlag, LayeredModel, VESSounding
-from ..utils import fmt_num, ordinal
+from ..utils import and_join, fmt_num, ordinal
 from .classify import classify_curve, describe_curve_type
+from .inversion import inversion_readings
 
 __all__ = [
     "LayerInterpretation",
@@ -104,10 +105,16 @@ class SiteInterpretation:
     site_northing: float | None = None
     site_elevation_m: float | None = None
     flags: list = field(default_factory=list)
-    #: True when the deepest water-bearing layer is the half-space: the
-    #: sounding never reached its base, so the zone is open-ended, the
-    #: aquifer thickness is a lower bound and the drilling depth a minimum
+    #: True when the deepest water-bearing layer continues below the depth
+    #: of investigation - the half-space, or a layer whose modelled base
+    #: lies deeper than the sounding sees: the zone is open-ended at the
+    #: depth of investigation, the aquifer thickness is a lower bound and
+    #: the drilling depth a minimum
     basement_not_resolved: bool = False
+    #: True when the deepest target plus the drilling margin lies below the
+    #: depth of investigation, so the recommended depth was cut back to it
+    #: and is a minimum rather than an estimate
+    drilling_depth_capped: bool = False
     #: 0-1 discount from the fit quality and the unresolved basement,
     #: applied to the score and the suitability before ranking
     confidence: float = 1.0
@@ -168,8 +175,11 @@ def interpret_model(
     n = model.n_layers
 
     max_spacing: float | None = None
-    if sounding is not None:
-        max_spacing = float(np.max(sounding.ab2))
+    # the spacings the inversion actually fitted: a reading it dropped (a
+    # zero or a blank resistivity) extends no depth the model was fitted to
+    used = inversion_readings(sounding)[0] if sounding is not None else np.array([])
+    if len(used):
+        max_spacing = float(np.max(used))
         investigation = depth_of_investigation(max_spacing, config)
     elif n > 1:
         investigation = float(bottoms[-2] * 2 + 20)
@@ -202,17 +212,27 @@ def interpret_model(
     # to the depth of investigation because that is as far as the sounding
     # saw, not because anything ends there. The interpretation says so
     # rather than reporting the array's reach as an aquifer thickness.
+    # A finite layer whose modelled base lies below the depth of
+    # investigation is open-ended in the same way: the model put that base
+    # where no reading reaches, and a zone "4 m to 60 m" from a sounding that
+    # sees 40 m reports the model's extrapolation as a measured aquifer. A
+    # water-bearing layer that starts at or below the depth of investigation
+    # was never seen at all, so it is no zone, and the narrative says so.
     zones: list[tuple[float, float]] = []
     basement_not_resolved = False
+    open_base: float | None = None  # the modelled base of the zone cut at the DOI
+    unseen_tops: list[float] = []  # water-bearing layers below the DOI
     for layer in layers:
         if not layer.water_bearing:
             continue
         top = max(layer.top_m, 3.0)  # the top few metres are vadose
-        if math.isfinite(layer.bottom_m):
-            bottom = layer.bottom_m
-        else:
-            bottom = investigation
+        if top >= investigation:
+            unseen_tops.append(layer.top_m)
+            continue
+        bottom = min(layer.bottom_m, investigation)
+        if layer.bottom_m > investigation:
             basement_not_resolved = bottom - top >= 1.0
+            open_base = layer.bottom_m
         if bottom - top >= 1.0:
             zones.append((round(top), round(bottom)))
     # merge touching zones
@@ -232,6 +252,12 @@ def interpret_model(
             break
     if depth_to_basement is None and layers[-1].rho >= config.fractured_zone_rho[1]:
         depth_to_basement = layers[-1].top_m
+    # A basement top below the depth of investigation is where the model
+    # happened to put it, not a depth the sounding measured, and the siting
+    # score and the bedrock map would otherwise read it as one.
+    bedrock_unseen = depth_to_basement is not None and depth_to_basement > investigation
+    if bedrock_unseen:
+        depth_to_basement = None
 
     aquifer_thickness = sum(b - t for t, b in zones)
 
@@ -242,6 +268,10 @@ def interpret_model(
         deepest = zones[-1][1] + config.max_drilling_margin_m
     else:
         deepest = investigation
+    # the cap used to be silent: a target and margin reaching past the depth
+    # of investigation came out as "about 40 m", an estimate, when 40 m is
+    # only where the survey stops seeing and the hole has further to go
+    drilling_depth_capped = deepest > investigation
     step = config.round_drilling_depth_to_m
     # Round up to the nearest step, then re-apply the investigated-depth cap:
     # rounding after the min() could push the recommendation past the depth the
@@ -293,14 +323,21 @@ def interpret_model(
             )
         )
     if basement_not_resolved:
+        where = (
+            "is the half-space: the sounding did not reach its base within the "
+            f"{investigation:.0f} m it resolves"
+            if open_base is None or not math.isfinite(open_base) else
+            f"continues below the {investigation:.0f} m the sounding resolves: "
+            f"the model puts its base at {fmt_num(open_base)} m, deeper than the "
+            "readings reach"
+        )
         flags.append(
             DataFlag(
                 "info",
                 "basement_not_resolved",
-                "The deepest water-bearing layer is the half-space: the sounding "
-                f"did not reach its base within the {investigation:.0f} m it "
-                "resolves, so the zone is open-ended, the aquifer thickness is a "
-                "minimum and the drilling depth is a minimum.",
+                f"The deepest water-bearing layer {where}, so the zone is "
+                "open-ended, the aquifer thickness is a minimum and the drilling "
+                "depth is a minimum.",
                 model.sounding_id or (sounding.sounding_id if sounding else ""),
             )
         )
@@ -319,6 +356,7 @@ def interpret_model(
         score=score,
         flags=flags,
         basement_not_resolved=basement_not_resolved,
+        drilling_depth_capped=drilling_depth_capped,
         confidence=confidence,
         fit_error_percent=err,
         fit_quality=fit_quality,
@@ -338,7 +376,7 @@ def interpret_model(
         interp.site_easting = sounding.site.easting
         interp.site_northing = sounding.site.northing
         interp.site_elevation_m = sounding.site.elevation_m
-    interp.narrative = _narrative(interp)
+    interp.narrative = _narrative(interp, unseen_tops, bedrock_unseen)
     return interp
 
 
@@ -410,13 +448,46 @@ def _zone_rho(layers: list[LayerInterpretation], top: float, bottom: float) -> f
     return math.exp(acc / total) if total > 0 else 100.0
 
 
-def _narrative(interp: SiteInterpretation) -> str:
+#: A thickness known only to within this factor or worse marks a boundary
+#: the curve does not resolve (the linearised 1-sigma uncertainty).
+POORLY_RESOLVED_FACTOR = 2.0
+
+
+def poorly_resolved_boundaries(model: LayeredModel) -> list[tuple[float, float]]:
+    """``(depth, factor)`` of each boundary whose thickness uncertainty factor
+    is :data:`POORLY_RESOLVED_FACTOR` or more; empty for a model that carries
+    no uncertainty (a transcribed one)."""
+    factors = getattr(model, "h_uncertainty_factor", None)
+    if factors is None:
+        return []
+    bottoms = model.depths_bottom
+    return [(float(bottoms[i]), float(f)) for i, f in enumerate(factors)
+            if f >= POORLY_RESOLVED_FACTOR]
+
+
+def _narrative(
+    interp: SiteInterpretation,
+    unseen_tops: list[float] | tuple = (),
+    bedrock_unseen: bool = False,
+) -> str:
     """Interpretation paragraph for the report, one block per sounding."""
     n = interp.model.n_layers
-    parts = [
-        (f"The data at {interp.sounding_id} resolves a {n} layer subsurface "
-        f"({describe_curve_type(interp.curve_type)}).")
-    ]
+    curve = describe_curve_type(interp.curve_type)
+    # "resolves a 3 layer subsurface" over a boundary known only to x/ 3.7
+    # claimed a layer the curve does not settle, a paragraph after the
+    # sounding block said it was poorly resolved
+    weak = poorly_resolved_boundaries(interp.model)
+    if weak:
+        opening = (
+            f"The data at {interp.sounding_id} are fitted with a {n} layer model "
+            f"({curve}), though the {'boundary' if len(weak) == 1 else 'boundaries'} "
+            f"at {and_join([f'{fmt_num(z)} m' for z, _ in weak])} "
+            f"{'is' if len(weak) == 1 else 'are'} poorly resolved, so the layer "
+            "count is uncertain."
+        )
+    else:
+        opening = f"The data at {interp.sounding_id} resolves a {n} layer subsurface ({curve})."
+    parts = [opening]
     for layer in interp.layers:
         if layer.thickness_m is not None:
             span = (
@@ -450,6 +521,15 @@ def _narrative(interp: SiteInterpretation) -> str:
             "No clearly water bearing low resistivity zone is resolved at this "
             "point within the investigated depth."
         )
+    if unseen_tops:
+        one = len(unseen_tops) == 1
+        parts.append(
+            f"The water-bearing {'layer' if one else 'layers'} from "
+            f"{and_join([f'{fmt_num(t)} m' for t in unseen_tops])} "
+            f"{'lies' if one else 'lie'} below the "
+            f"{fmt_num(interp.investigation_depth_m)} m the sounding resolves, so "
+            f"{'it is not counted as a water zone' if one else 'they are not counted as water zones'}."
+        )
     if interp.fit_error_percent is not None:
         err = interp.fit_error_percent
         if interp.fit_quality == "unreliable":
@@ -467,6 +547,11 @@ def _narrative(interp: SiteInterpretation) -> str:
         parts.append(
             f"The depth to bedrock is estimated at about "
             f"{fmt_num(interp.depth_to_basement_m)} m."
+        )
+    elif bedrock_unseen:
+        parts.append(
+            "The depth to bedrock is not resolved within the depth of "
+            f"investigation (about {fmt_num(interp.investigation_depth_m)} m)."
         )
     if interp.longitudinal_conductance_s > 0:
         base = (
@@ -507,9 +592,11 @@ def zone_cell(top: float, bottom: float, open_ended: bool = False) -> str:
 
 def drilling_depth_text(interp: SiteInterpretation) -> str:
     """The recommended drilling depth, as a minimum when the base of the
-    water-bearing zone was never reached."""
+    water-bearing zone was never reached or the depth was cut back to the
+    depth of investigation."""
     depth = f"{interp.max_drilling_depth_m:.0f} m"
-    return f"at least {depth}" if interp.basement_not_resolved else f"about {depth}"
+    minimum = interp.basement_not_resolved or interp.drilling_depth_capped
+    return f"at least {depth}" if minimum else f"about {depth}"
 
 
 def ranking_weight(interp: SiteInterpretation, config: VESConfig | None = None) -> float:
@@ -541,16 +628,20 @@ def rank_interpretations(
     set leaves every rank None, and "best" then falls back to whichever
     sounding happened to be parsed first.
     """
-    weight = {i.sounding_id: ranking_weight(i, config) for i in interpretations}
+    # Keyed by the interpretation itself, not its sounding id: a sheet copied
+    # without renumbering gives two soundings one id, and a weight looked up
+    # by id gave both the last one's, so a point with no water zone could
+    # rank first while the suitability table ranked the other.
+    weight = {id(i): ranking_weight(i, config) for i in interpretations}
     if preferred_order:
         position = {sid: i for i, sid in enumerate(preferred_order)}
         ranked = sorted(
             interpretations,
             key=lambda i: (position.get(i.sounding_id, len(position)),
-                           -weight[i.sounding_id], i.sounding_id),
+                           -weight[id(i)], i.sounding_id),
         )
     else:
-        ranked = sorted(interpretations, key=lambda i: (-weight[i.sounding_id], i.sounding_id))
+        ranked = sorted(interpretations, key=lambda i: (-weight[id(i)], i.sounding_id))
     for rank, interp in enumerate(ranked, start=1):
         interp.rank = rank
     return ranked
@@ -564,12 +655,14 @@ def drilling_preference_table(
     preferred_order: list[str] | None = None,
     config: VESConfig | None = None,
 ) -> list[dict]:
-    """Ranked drilling preference table (one row per VES point).
+    """Ranked drilling preference table (one row per VES point, most
+    preferred first).
 
     Matches the survey report layout: layers with thickness, depth and
     resistivity, possible water zones, maximum drilling depth and the
     ranking. Ranks are assigned from the confidence-weighted suitability
-    (1st = most preferred). When sites score close together the choice is a
+    (1st = most preferred; "=1st" for a top pair the ranking cannot
+    separate). When sites score close together the choice is a
     professional judgment call, so ``preferred_order`` (a list of
     sounding ids, most preferred first) lets the analyst set the
     ranking explicitly; unlisted sites follow after, by score.
@@ -578,9 +671,21 @@ def drilling_preference_table(
     named so: apparent resistivity is the field reading at a spacing, and
     the two are not the same number.
     """
-    rank_interpretations(interpretations, preferred_order, config)
+    config = config or VESConfig()
+    ranked = rank_interpretations(interpretations, preferred_order, config)
+    # The rows in the order of preference the caption promises; they used to
+    # follow the sheets, so a table "in order of preference" could open on
+    # its 2nd. Two points the ranking cannot separate are both "=1st",
+    # decided by the same test as the tie sentence, unless the analyst has
+    # set the order, which is then a judgment and not a score.
+    tied: set[int] = set()
+    if not preferred_order and len(ranked) >= 2:
+        from ..siting.suitability import assess_siting, tied_leaders  # circular
+
+        if tied_leaders(assess_siting(interpretations, config), config.ranking_tie_points):
+            tied = {id(ranked[0]), id(ranked[1])}
     rows = []
-    for i, interp in enumerate(interpretations, start=1):
+    for i, interp in enumerate(ranked, start=1):
         layer_numbers = "\n".join(str(layer.number) for layer in interp.layers)
         thicknesses = "\n".join(
             fmt_num(layer.thickness_m) if layer.thickness_m is not None else ""
@@ -606,7 +711,7 @@ def drilling_preference_table(
                 LAYER_RESISTIVITY_COLUMN: rhos,
                 "Possible Water Zones (m)": zones,
                 "Max Drilling Depth (m)": drilling_depth_text(interp),
-                "Ranking": ordinal(interp.rank),
+                "Ranking": "=1st" if id(interp) in tied else ordinal(interp.rank),
             }
         )
     return rows

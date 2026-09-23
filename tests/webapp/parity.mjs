@@ -140,6 +140,8 @@ await withPage(async (page, base, consoleErrors) => {
       specific_capacity_basis: stepRec.specific_capacity_basis,
       flags: stepAnalysis.flags.map((f) => [f.level, f.code]),
       type_text: C.testTypeText(stepQ.test_type),
+      step_numbers: stepAnalysis.step_test
+        ? stepAnalysis.step_test.steps.map((s) => s.step) : null,
     };
 
     const assessed = C.assessSample(sample);
@@ -236,7 +238,9 @@ await withPage(async (page, base, consoleErrors) => {
     out.spine = {
       total_depth: spine.section.totalDepth,
       domain: spine.section.domain,
-      lithology: spine.section.lithology.map((u) => [u.top, u.base, u.aquifer]),
+      // the rock each row is logged as, and the bands the drawing draws
+      lithology: spine.section.lithology.map((u) => [u.top, u.base, u.aquifer, u.class]),
+      bands: spine.section.bands.map((b) => [b.top, b.base, b.class, b.colour]),
       strikes: spine.section.waterStrikes,
       segments: spine.section.segments.map((s) => [s.kind, s.top, s.base]),
       levels: spine.section.levels,
@@ -281,10 +285,9 @@ await withPage(async (page, base, consoleErrors) => {
     ];
     // the drill-target scorecard, over the real Rokel soundings
     const rokelSoundings = C.readVesSheets(vesSheets, 'rokel_ves.xlsx');
-    const rokelInterps = rokelSoundings.map((s) => {
-      const inv = C.invertSounding(s);
-      return C.interpretModel(s, inv.model);
-    });
+    const rokelInversions = rokelSoundings.map((s) => C.invertSounding(s));
+    const rokelInterps = rokelSoundings.map((s, k) =>
+      C.interpretModel(s, rokelInversions[k].model));
     out.siting = C.assessSiting(rokelInterps).map((r) => ({
       id: r.sounding_id, rank: r.rank, suitability: r.suitability,
       grade: r.grade, components: r.components, rationale: r.rationale,
@@ -301,6 +304,110 @@ await withPage(async (page, base, consoleErrors) => {
       narrative: i.narrative,
     }));
     out.preference = C.drillingPreferenceTable(rokelInterps);
+    // the depth each figure of a Rokel model is drawn to, as its caption says
+    out.rokel_drawn_depth = rokelInterps.map(
+      (i) => C.drawnDepthText(i.model, i.investigation_depth_m));
+
+    // The interpretation and report prose over the cases make_reference.py
+    // builds as VES_CASES, VES_SHEETS and MODELS_TRIED_CASES: a zone past the
+    // depth of investigation, one wholly below it, a margin cut back to it, a
+    // dropped last reading, poorly resolved boundaries, a near-tie, an exact
+    // tie, two sheets with one sounding number and a Wenner sheet with an MN
+    // column. The inputs are written out twice on purpose; they are the
+    // contract.
+    const SPACINGS = [1, 2, 5, 10, 20, 40, 80];
+    const caseInterp = (sid, rho, h, err, hFactor, ab2, rhoApp) => {
+      const spacing = ab2 || SPACINGS;
+      const extra = { fit_error_percent: err, sounding_id: sid };
+      if (hFactor) extra.h_uncertainty_factor = hFactor;
+      const sounding = { site: {}, sounding_id: sid, ab2: spacing,
+        mn: spacing.map(() => NaN), rho_app: rhoApp || spacing.map(() => 100),
+        array_type: 'schlumberger', flags: [] };
+      return C.interpretModel(sounding, C.layeredModel(rho, h, extra));
+    };
+    const vesCases = [
+      ['zone past doi', [1000, 100, 5000], [5, 60], 8.0, null, null, null],
+      ['zone below doi', [1000, 1500, 100, 5000], [10, 40, 20], 6.0, null,
+        [1, 2, 5, 10, 20, 40, 60], null],
+      ['margin past doi', [1000, 100, 5000], [5, 33], 5.0, null, null, null],
+      ['last reading dropped', [1000, 100], [8], 5.0, null, null,
+        [300, 250, 200, 150, 120, 110, 0]],
+      ['poorly resolved', [1100, 1600, 47], [1.0, 7.0], 13.3, [3.7, 1.4], null, null],
+      ['two poorly resolved', [1100, 1600, 300, 47], [1, 2, 7], 5.0, [3.7, 2.5, 1.1],
+        null, null],
+      ['thin resistive at 2.5', [1000, 5000, 100], [2.5, 3], 5.0, null, null, null],
+    ];
+    const cases = {};
+    vesCases.forEach(([name, rho, h, err, hFactor, ab2, rhoApp]) => {
+      const i = caseInterp(name, rho, h, err, hFactor, ab2, rhoApp);
+      const suit = C.assessSiting([i])[0];
+      cases[name] = {
+        water_zones: i.water_zones, depth_to_basement_m: i.depth_to_basement_m,
+        investigation_depth_m: i.investigation_depth_m,
+        max_drilling_depth_m: i.max_drilling_depth_m,
+        basement_not_resolved: i.basement_not_resolved,
+        drilling_depth_capped: i.drilling_depth_capped,
+        drilling_depth_text: C.drillingDepthText(i),
+        flags: i.flags.map((f) => [f.level, f.code, f.message]),
+        narrative: i.narrative, suitability: suit.suitability, rationale: suit.rationale,
+      };
+    });
+    const ranking = (interps) => {
+      const suit = C.assessSiting(interps);
+      return {
+        tie: C.rankingTie(suit), verdict: C.suitabilityVerdict(suit),
+        preference: C.drillingPreferenceTable(interps).map((r) =>
+          [r['VES Point'], r.Ranking, r['Possible Water Zones (m)']]),
+      };
+    };
+    const vesSheet = (number, array, header, rows) => [
+      ['VES FIELD DATA', null, null, null],
+      ['Client', 'Ref Client', 'Community', 'Refville'],
+      ['Project', 'Geophysical Survey', 'Sounding Number', number],
+      ['District', 'Bo', 'Date', '1 Jan 2020'],
+      ['Array', array, 'Instrument', 'ABEM'],
+      [null, null, null, null],
+      header,
+    ].concat(rows.map((r, k) => [k + 1].concat(r)));
+    const withMn = ['No.', 'AB/2 (m)', 'MN (m)', 'Apparent Resistivity (ohm-m)'];
+    const sheets = C.readVesSheets([
+      { name: 'W', rows: vesSheet('W 1', 'Wenner', withMn, [[1.5, 1, 300], [3, 1, 280],
+        [6, 1, 200], [6, 4, 190], [15, 4, 120], [30, 4, 90]]) },
+      { name: 'S3', rows: vesSheet('S 3', 'Schlumberger', withMn, [[10, 1, 400],
+        [20, 1, 250], [40, 1, 150], [40, 4, 148], [40, 10, 78], [60, 10, 60]]) },
+      { name: 'S3 copy', rows: vesSheet('S 3', 'Schlumberger', withMn, [[10, 1, 410],
+        [20, 1, 260], [40, 1, 140], [60, 10, 70]]) },
+    ], 'x.xlsx');
+    const trialCase = (trials, err) => ({ trials, fit_error_percent: err,
+      model: C.layeredModel([300, 100, 150], [3, 30]) });
+    const withFactor = Object.assign({}, C.defaultConfig().ves,
+      { depth_of_investigation_factor: 0.4 });
+    out.ves_text = {
+      cases,
+      near_tie: ranking([caseInterp('VES 1', [1000, 100, 5000], [5, 20], 9.0),
+        caseInterp('VES 2', [1000, 100, 5000], [5, 22], 9.0)]),
+      equal: ranking([caseInterp('VES 2', [1000, 100, 5000], [5, 20], 9.0),
+        caseInterp('VES 1', [1000, 100, 5000], [5, 20], 9.0)]),
+      clear: ranking([caseInterp('VES 1', [300, 1500], [30], 5.0),
+        caseInterp('VES 2', [1000, 100, 5000], [5, 20], 5.0)]),
+      same_id: ranking([caseInterp('VES 1', [300, 1500], [30], 5.0),
+        caseInterp('VES 1', [1000, 100, 5000], [5, 20], 5.0)]),
+      rokel_verdict: C.suitabilityVerdict(C.assessSiting(rokelInterps)),
+      models_tried: rokelInversions.map((inv) => C.modelsTriedText(inv)).concat([
+        trialCase([[2, 4.2], [3, 0.01]], 0.01),
+        trialCase([[2, 8.0], [3, 3.5], [4, 2.0]], 3.5),
+        trialCase([[2, 15.4], [3, 8.0]], 8.0),
+        trialCase([[2, 15.4], [3, 13.3], [4, 13.1]], 13.3),
+      ].map((inv) => C.modelsTriedText(inv))),
+      poorly_resolved: rokelInversions.map((inv) => C.poorlyResolvedText(inv.model)),
+      doi_text: [
+        C.depthOfInvestigationText('schlumberger', 80, 40),
+        C.depthOfInvestigationText('wenner', 60, 30),
+        C.depthOfInvestigationText('wenner', 60, 24, withFactor),
+      ],
+      sheets: sheets.map((s) => [s.sounding_id, s.array_type,
+        s.flags.map((f) => [f.level, f.code, f.message])]),
+    };
 
     // a siting survey with no borehole yet: the design comes from the
     // interpretation alone, which is where the degenerate zone used to put
@@ -373,10 +480,62 @@ await withPage(async (page, base, consoleErrors) => {
         { parameter: 'Glyphosate', value: 0.4, unit: 'mg/L' }),
       // the charge balance cannot be computed, and used to say nothing
       no_ionic_balance: wq({ parameter: 'Calcium', value: 40.0, unit: 'mg/L' }),
+      // a detection of a determinand the table does not know, which was
+      // "not measured" and left the sample safe
+      unknown_detected: wq(...panel, { parameter: 'Salmonella', value: null,
+        unit: 'per 100 mL', greater_than: 0 }),
+      // a national failure beside a result that could not be graded: the
+      // verdict used to say the WHO health values were met
+      national_fail_unresolved: wq(
+        { parameter: 'E. coli', value: 0.0, unit: 'CFU/100 mL' },
+        { parameter: 'Arsenic', value: null, unit: 'mg/L', detection_limit: 0.05,
+          below_detection: true },
+        { parameter: 'Total coliforms', value: 12.0, unit: 'CFU/100 mL' }),
+      // both ions reported as nitrogen, which skipped the combined rule
+      nitrogen_basis_combined: wq(...panel.slice(0, 3),
+        { parameter: 'Nitrate (as N)', value: 10.0, unit: 'mg/L' },
+        { parameter: 'Nitrite (as N)', value: 0.8, unit: 'mg/L' }),
+      // lower bounds, on the guideline's scale and through its hierarchy
+      bound_in_micrograms: wq(...panel, { parameter: 'Lead', value: null,
+        unit: 'ug/L', greater_than: 5.0 }),
+      bound_acceptability: wq(...panel, { parameter: 'Iron', value: null,
+        unit: 'mg/L', greater_than: 1.0 }),
+      bound_stricter_open: wq(...panel, { parameter: 'Copper', value: null,
+        unit: 'mg/L', greater_than: 1.5 }),
+      bound_inclusive: wq(...panel.slice(0, 3), { parameter: 'Nitrate (as NO3)',
+        value: null, unit: 'mg/L', greater_than: 50.0, greater_than_inclusive: true }),
+      bound_exclusive: wq(...panel.slice(0, 3), { parameter: 'Nitrate (as NO3)',
+        value: null, unit: 'mg/L', greater_than: 50.0 }),
+      unreadable: wq(...panel, { parameter: 'Lead', value: null, unit: 'mg/L',
+        unreadable: 'ND (see note)' }),
+      // treatment advice by table name, and pH advice by direction
+      advice_by_name: wq(...panel,
+        { parameter: 'Faecal coliforms', value: 5.0, unit: 'CFU/100 mL' },
+        { parameter: 'Sulphate', value: 400.0, unit: 'mg/L' },
+        { parameter: 'pH', value: 9.2, unit: 'pH units' }),
+      low_ph: wq(...panel, { parameter: 'pH', value: 5.9, unit: 'pH units' }),
+      lead: wq(...panel, { parameter: 'Lead', value: 0.05, unit: 'mg/L' }),
+      // a table whose national iron value names its specification
+      confirmed_national: wq(...panel, { parameter: 'Iron', value: 1.2, unit: 'mg/L' }),
+    };
+    /* The standards table a case is assessed against, when it is not the
+     * bundled one: the rows make_reference.py writes to a CSV. */
+    const confirmedRow = (parameter, unit, health, aesthetic, national, category) => ({
+      parameter, unit, who_health_gv: health, who_aesthetic: aesthetic,
+      sl_standard: national, sl_source: 'SLSB 2021', category, note: '',
+    });
+    const standardsFor = {
+      confirmed_national: [
+        confirmedRow('E. coli', 'CFU/100 mL', '0', '', '0', 'microbiological'),
+        confirmedRow('Arsenic', 'mg/L', '0.01', '', '0.01', 'metal'),
+        confirmedRow('Fluoride', 'mg/L', '1.5', '', '1.5', 'inorganic'),
+        confirmedRow('Nitrate (as NO3)', 'mg/L', '50', '', '50', 'inorganic'),
+        confirmedRow('Iron', 'mg/L', '', '0.3', '0.3', 'metal'),
+      ],
     };
     out.verdicts = {};
     Object.keys(verdictCases).forEach((name) => {
-      const a = C.assessSample(verdictCases[name]);
+      const a = C.assessSample(verdictCases[name], standardsFor[name]);
       out.verdicts[name] = {
         state: a.verdict_state,
         statuses: a.rows.map((r) => r.status),
@@ -386,7 +545,68 @@ await withPage(async (page, base, consoleErrors) => {
         missing_essential: a.missing_essential,
         verdict: a.verdict,
         flags: a.flags.map((f) => [f.level, f.code, f.message]),
+        remarks: a.rows.map((r) => r.remark),
+        values: a.rows.map((r) => C.unquantifiedText(r)),
+        provisional: a.rows.map((r) => r.sl_provisional),
+        recommendations: GWT.docx.qualityRecommendations(a),
       };
+    });
+
+    // what the laboratory sheet reader makes of a qualified result cell
+    const cells = [
+      ['E. coli', 'CFU/100 mL', 'Present', 1], ['E. coli', 'CFU/100 mL', 'TNTC', 1],
+      ['Nitrate (as NO3)', 'mg/L', '>50', 0.1], ['Arsenic', 'mg/L', 'Not analysed', 0.001],
+      ['Arsenic', 'mg/L', 'N/A', 0.001], ['Arsenic', 'mg/L', '-', 0.001],
+      ['Arsenic', 'mg/L', null, 0.001], ['Arsenic', 'mg/L', '<0.05', 0.001],
+      ['Arsenic', 'mg/L', 'ND (<0.05)', 0.001], ['Nitrate (as NO3)', 'mg/L', '>50 mg/L', null],
+      ['Nitrate (as NO3)', 'mg/L', '> 50mg/l', null], ['Nitrate (as NO3)', 'mg/L', '50+', null],
+      ['Nitrate (as NO3)', 'mg/L', 'above 50', null], ['Nitrate (as NO3)', 'mg/L', '≥50', null],
+      ['Nitrate (as NO3)', 'mg/L', '>=50', null], ['Arsenic', 'mg/L', 'ND (<0.05 mg/L)', null],
+      ['Arsenic', 'mg/L', 'ND (DL 0.05)', null], ['Arsenic', 'mg/L', 'ND, <0.05', null],
+      ['Arsenic', 'mg/L', 'ND at 0.05', null], ['E. coli', 'CFU/100 mL', 'Absent/100 mL', null],
+      ['E. coli', 'CFU/100 mL', 'Present in 100 mL', null],
+      ['Total coliforms', 'CFU/100 mL', 'TNTC (>300)', null],
+      ['Arsenic', 'mg/L', 'ND (see note)', null], ['Lead', '', '<5 ug/L', null],
+      ['Lead', 'mg/L', '<5 ug/L', null], ['Lead', 'mg/L', '<5 NTU', null],
+      ['Arsenic', 'mg/L', '<LOD', null], ['Arsenic', 'mg/L', '<0,05', null],
+      ['Arsenic', 'mg/L', 0.004, null], ['Arsenic', 'mg/L', '0.5 ND', null],
+    ];
+    out.quality_cells = C.qualityFromGrid([['WATER QUALITY LABORATORY RESULTS'],
+      ['Community', 'Ref'], [], [], ['Parameter', 'Unit', 'Value', 'Detection limit']]
+      .concat(cells), 'cells.xlsx').results.map((r) => [r.parameter, r.value, r.unit,
+      r.detection_limit, r.below_detection, r.greater_than, r.greater_than_inclusive,
+      r.unreadable]);
+
+    // the facies sentence over every branch it has
+    const ions = ['Calcium', 'Magnesium', 'Sodium', 'Potassium', 'Bicarbonate',
+      'Chloride', 'Sulfate'];
+    const mgPerMeq = [20.04, 12.15, 22.99, 39.10, 61.02, 35.45, 48.03];
+    const faciesMeq = {
+      ca_hco3: [3.0, 1.0, 0.5, 0.1, 3.5, 0.7, 0.4],
+      na_hco3: [0.5, 0.3, 3.0, 0.2, 3.0, 0.6, 0.4],
+      mixed_hco3: [1.6, 1.0, 1.3, 0.1, 2.5, 1.2, 0.3],
+      na_cl: [0.5, 0.5, 4.0, 0.0, 0.7, 4.0, 0.3],
+      ca_cl: [3.0, 0.5, 0.8, 0.1, 1.0, 3.0, 0.4],
+      mixed_cl: [1.5, 1.2, 1.4, 0.0, 0.8, 3.0, 0.4],
+      so4: [2.0, 1.0, 1.0, 0.0, 1.0, 0.5, 2.5],
+      ca_mixed_anion: [3.0, 0.5, 0.5, 0.0, 1.5, 1.3, 1.2],
+      mixed: [1.5, 1.2, 1.3, 0.0, 1.5, 1.3, 1.2],
+    };
+    out.facies = {};
+    Object.keys(faciesMeq).forEach((name) => {
+      out.facies[name] = C.faciesOf(wq(...ions.map((ion, i) => ({
+        parameter: ion, value: C.pyRound(faciesMeq[name][i] * mgPerMeq[i], 3),
+        unit: 'mg/L',
+      })))).sentence;
+    });
+
+    // the corrosivity sentence names the pH to as many decimals as it needs
+    out.corrosivity_ph = {};
+    [6.46, 8.54, 6.25, 6.4999, 8.46].forEach((ph) => {
+      out.corrosivity_ph[String(ph)] = C.assessCorrosivity(wq(
+        { parameter: 'pH', value: ph }, { parameter: 'Calcium', value: 4.0 },
+        { parameter: 'Alkalinity', value: 10.0 }, { parameter: 'TDS', value: 60.0 },
+      )).verdict;
     });
 
     out.spine_quality = C.spineQuality(C.assessSample(wq(
@@ -731,7 +951,67 @@ await withPage(async (page, base, consoleErrors) => {
     return out;
   }, reference.streamlit_project_file.yaml);
 
+  // The designs and logs the borehole-design review found wanting, run from
+  // the specs make_reference.py wrote, so both engines see the same input.
+  const cases = await page.evaluate((specs) => {
+    const C = GWT.core;
+    const design = specs.design.map((spec) => {
+      const log = {
+        site: { community: 'Case' }, total_depth_m: spec.total, drilling_method: 'DTH',
+        intervals: spec.intervals.map((r) => ({ top_m: r[0], bottom_m: r[1], description: r[2] })),
+        water_strikes_m: spec.strikes || [],
+        grouting_depth_m: spec.grout === undefined ? null : spec.grout,
+        installed_screens_m: spec.installed || [],
+      };
+      const d = C.designBorehole({
+        log, staticWaterLevelM: spec.swl === undefined ? null : spec.swl,
+        pumpIntakeM: spec.pump === undefined ? null : spec.pump,
+        pumpIntakeFloorM: spec.floor === undefined ? null : spec.floor,
+        rules: Object.assign({}, C.defaultConfig().design, spec.rules || {}),
+        screensM: spec.screens || null,
+      });
+      return {
+        rows: C.designSummaryRows(d).map((r) => [r[0], r[1]]),
+        basis: d.design_basis.slice(),
+        flags: d.flags.map((f) => [f.level, f.code, f.message]),
+        pump: d.pump_intake_m,
+        works: GWT.docx.handoverWorks({ log, design: d }),
+      };
+    });
+    const drilling = specs.drilling.map((grid) => {
+      const log = C.drillingFromGrid(grid, 'case.xlsx');
+      const told = ['water_strike_unreadable', 'interval_unreadable', 'diameter_implausible'];
+      return {
+        strikes: log.water_strikes_m,
+        grout: log.grouting_depth_m,
+        intervals: log.intervals.map((iv) => [iv.top_m, iv.bottom_m, iv.description,
+          iv.penetration_rate_m_per_min === undefined ? null : iv.penetration_rate_m_per_min,
+          iv.bit_diameter_in === undefined ? null : iv.bit_diameter_in]),
+        flags: log.flags.map((f) => [f.level, f.code]),
+        messages: log.flags.filter((f) => told.indexOf(f.code) >= 0).map((f) => f.message),
+      };
+    });
+    return { design, drilling };
+  }, {
+    design: reference.design_cases.map((c) => c.spec),
+    drilling: reference.drilling_cases.map((c) => c.grid),
+  });
+
   const R = reference;
+  R.design_cases.forEach((ref, i) => {
+    for (const key of ['rows', 'basis', 'flags', 'pump', 'works']) {
+      check(`design case ${i + 1}: ${key}`,
+        JSON.stringify(cases.design[i][key]) === JSON.stringify(ref[key]),
+        `js ${JSON.stringify(cases.design[i][key])}\n     py ${JSON.stringify(ref[key])}`);
+    }
+  });
+  R.drilling_cases.forEach((ref, i) => {
+    for (const key of ['strikes', 'grout', 'intervals', 'flags', 'messages']) {
+      check(`drilling case ${i + 1}: ${key}`,
+        JSON.stringify(cases.drilling[i][key]) === JSON.stringify(ref[key]),
+        `js ${JSON.stringify(cases.drilling[i][key])}\n     py ${JSON.stringify(ref[key])}`);
+    }
+  });
   // --- VES ---
   check('ves: sounding count', parsed.ves.length === R.ves.length,
     `js ${parsed.ves.length} vs py ${R.ves.length}`);
@@ -818,7 +1098,7 @@ await withPage(async (page, base, consoleErrors) => {
   });
   ['T', 'source', 'qualifies', 'cj', 'theis', 'rec', 'rec_pumping_time', 'rec_equivalent',
     'B', 'C', 'two_point', 'safe', 'pump_depth', 'confidence', 'confidence_reasons',
-    'pump_depth_basis', 'specific_capacity_basis', 'flags', 'type_text',
+    'pump_depth_basis', 'specific_capacity_basis', 'flags', 'type_text', 'step_numbers',
   ].forEach((k) => {
     check(`step analysis: ${k}`, sameValue(parsed.step_analysis[k], R.step_analysis[k]),
       `js ${describe(parsed.step_analysis[k])}\n     py ${describe(R.step_analysis[k])}`);
@@ -896,7 +1176,7 @@ await withPage(async (page, base, consoleErrors) => {
     `js ${parsed.inversion.err} vs py ${R.inversion.err}`);
 
   // --- Depth Spine ---
-  const spineExact = ['lithology', 'strikes', 'segments', 'screen_limits',
+  const spineExact = ['lithology', 'bands', 'strikes', 'segments', 'screen_limits',
     'screens', 'methods', 'design_flags', 'by_stage', 'quantity_basis',
     'quality_verdict', 'quality_health', 'quality_aesthetic', 'quality_ratios',
     'piper_percent', 'yield_range', 'edited_screens', 'edited', 'levels'];
@@ -951,6 +1231,38 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify(parsed.preference) === JSON.stringify(R.preference),
     `js ${JSON.stringify(parsed.preference)}\n     py ${JSON.stringify(R.preference)}`);
 
+  // --- Interpretation and report prose past the Rokel pair ---
+  // A reference written before this section existed fails here by name
+  // rather than stopping every check after it.
+  check('ves text: the reference carries the section', !!R.ves_text,
+    'regenerate tests/webapp/reference.json with make_reference.py');
+  const VT = R.ves_text || { cases: {} };
+  Object.keys(VT.cases).forEach((name) => {
+    const js = parsed.ves_text.cases[name], py = VT.cases[name];
+    ['water_zones', 'depth_to_basement_m', 'investigation_depth_m',
+      'max_drilling_depth_m', 'basement_not_resolved', 'drilling_depth_capped',
+      'drilling_depth_text', 'flags', 'narrative', 'rationale'].forEach((key) => {
+      check(`ves case ${name}: ${key}`,
+        JSON.stringify(js[key]) === JSON.stringify(py[key]),
+        `js ${JSON.stringify(js[key])}\n     py ${JSON.stringify(py[key])}`);
+    });
+    check(`ves case ${name}: suitability`, close(js.suitability, py.suitability, 1e-6),
+      `js ${js.suitability} vs py ${py.suitability}`);
+  });
+  ['near_tie', 'equal', 'clear', 'same_id'].filter((name) => VT[name]).forEach((name) => {
+    ['tie', 'verdict', 'preference'].forEach((key) => {
+      const js = parsed.ves_text[name][key], py = VT[name][key];
+      check(`ranking ${name}: ${key}`, JSON.stringify(js) === JSON.stringify(py),
+        `js ${JSON.stringify(js)}\n     py ${JSON.stringify(py)}`);
+    });
+  });
+  ['rokel_verdict', 'models_tried', 'poorly_resolved', 'doi_text', 'sheets']
+    .filter((key) => key in VT).forEach((key) => {
+      const js = parsed.ves_text[key], py = VT[key];
+      check(`ves text: ${key}, word for word`, JSON.stringify(js) === JSON.stringify(py),
+        `js ${JSON.stringify(js)}\n     py ${JSON.stringify(py)}`);
+    });
+
   // --- Geographic -> UTM ---
   parsed.geo.forEach((g, i) => {
     check(`geo[${i}]: easting/northing/zone`,
@@ -988,7 +1300,8 @@ await withPage(async (page, base, consoleErrors) => {
     check(`verdict ${name}: state`, js.state === py.state,
       `js ${js.state} vs py ${py.state}`);
     for (const key of ['statuses', 'reasons', 'uncertainties',
-      'missing_essential', 'verdict']) {
+      'missing_essential', 'verdict', 'remarks', 'values', 'provisional',
+      'recommendations']) {
       check(`verdict ${name}: ${key}`,
         JSON.stringify(js[key]) === JSON.stringify(py[key]),
         `js ${JSON.stringify(js[key])}\n     py ${JSON.stringify(py[key])}`);
@@ -998,6 +1311,32 @@ await withPage(async (page, base, consoleErrors) => {
       js.converted.every((v, i) => (v === null || py.converted[i] === null)
         ? v === py.converted[i] : close(v, py.converted[i], 1e-9)),
       `js ${JSON.stringify(js.converted)}\n     py ${JSON.stringify(py.converted)}`);
+  });
+
+  // --- A qualified result cell, as the laboratory sheet reader reads it ---
+  // A unit or a label in the cell, and a filled detection-limit column beside
+  // a detection, turned bounds into measurements and detections into
+  // absences; the two readers have to read every one of them the same way.
+  check('quality cells: one row per cell',
+    parsed.quality_cells.length === R.quality_cells.length,
+    `js ${parsed.quality_cells.length} vs py ${R.quality_cells.length}`);
+  R.quality_cells.forEach((py, i) => {
+    const js = parsed.quality_cells[i];
+    check(`quality cell ${i} ${py[0]}`, JSON.stringify(js) === JSON.stringify(py),
+      `js ${JSON.stringify(js)}\n     py ${JSON.stringify(py)}`);
+  });
+
+  // --- The facies sentence, over every branch it has ---
+  Object.keys(R.facies).forEach((name) => {
+    check(`facies ${name}`, parsed.facies[name] === R.facies[name],
+      `js "${parsed.facies[name]}"\n     py "${R.facies[name]}"`);
+  });
+
+  // --- The corrosivity sentence names a pH that is true of the range ---
+  Object.keys(R.corrosivity_ph).forEach((ph) => {
+    check(`corrosivity at pH ${ph}`,
+      parsed.corrosivity_ph[ph] === R.corrosivity_ph[ph],
+      `js "${parsed.corrosivity_ph[ph]}"\n     py "${R.corrosivity_ph[ph]}"`);
   });
 
   // --- The Depth Spine's guideline chart, on non-guideline units ---
@@ -1298,6 +1637,59 @@ await withPage(async (page, base, consoleErrors) => {
     pdf.uncertain === R.pdf_sheet.uncertain,
     `js ${pdf.uncertain} py ${R.pdf_sheet.uncertain}`);
 
+  // --- pumping sheets at the edges ---
+  // The two sample sheets are the ordinary case. These are the same sheets
+  // with the cells rewritten that each hydraulics defect turned on: a rejected
+  // recovery beside fits that are all disqualified, a level below the pump, a
+  // hole too shallow for the intake, hourly blocks read every few minutes,
+  // step times that restart, short steps inside casing storage. The grid is
+  // Python's, so both engines read the same cells.
+  const edgeCases = await page.evaluate((grids) => {
+    const C = GWT.core;
+    const out = {};
+    Object.keys(grids).forEach((name) => {
+      try {
+        const test = C.pumpingFromGrid(JSON.parse(grids[name]), name + '.xlsx');
+        const a = C.analysePumpingTest(test);
+        const rec = a.yield_recommendation;
+        out[name] = {
+          steps: test.steps.map((s) => [s.step_number, s.discharge_m3_per_h,
+            s.time_min.length, Math.min(...s.time_min), Math.max(...s.time_min)]),
+          duration: test.pumping_duration_min,
+          source: a.transmissivity_source,
+          qualifies: C.adoptedFit(a).qualifies,
+          disqualified: Object.keys(a.disqualified).sort(),
+          invalid: Object.keys(a.invalid_fits || {}).sort(),
+          T: a.transmissivity_m2_per_day,
+          safe: rec.safe_yield_m3_per_h,
+          range_text: a.yield_range_text,
+          pump_depth: rec.pump_installation_depth_m,
+          confidence: rec.confidence,
+          confidence_reasons: rec.confidence_reasons.slice(),
+          pending_reason: rec.pending_reason,
+          pump_depth_basis: rec.pump_depth_basis,
+          envelope_basis: rec.envelope_basis,
+          rec_pumping_time: a.recovery ? a.recovery.pumping_time_min : null,
+          step_numbers: a.step_test ? a.step_test.steps.map((s) => s.step) : null,
+          flags: a.flags.map((f) => [f.level, f.code, f.message]),
+        };
+      } catch (e) { out[name] = { error: String(e && e.message || e) }; }
+    });
+    return out;
+  }, Object.fromEntries(Object.entries(R.pumping_cases).map(([k, v]) => [k, v.grid])));
+  const sameCase = (js, py) => {
+    if (typeof py === 'number' && typeof js === 'number') return close(js, py, 1e-4);
+    return JSON.stringify(js) === JSON.stringify(py);
+  };
+  Object.keys(R.pumping_cases).forEach((name) => {
+    const py = R.pumping_cases[name], js = edgeCases[name] || {};
+    if (js.error) { check(`pumping case ${name}: runs`, false, js.error); return; }
+    Object.keys(py).filter((k) => k !== 'grid').forEach((k) => {
+      check(`pumping case ${name}: ${k}`, sameCase(js[k], py[k]),
+        `js ${JSON.stringify(js[k])}\n     py ${JSON.stringify(py[k])}`);
+    });
+  });
+
   // --- quantities both engines carried but nothing held them to ---
   // Eight groups were collected into the reference and read out of the
   // browser and then never compared, so a divergence in any of them passed
@@ -1333,6 +1725,228 @@ await withPage(async (page, base, consoleErrors) => {
 
   deep('VES-only design: from the interpretation alone',
     parsed.ves_only_design, R.ves_only_design);
+
+  // --- where a report is set ---
+  // The area each report maps, the sentence placing the site, the district
+  // the locator lights and the geology paragraph were all worked out in the
+  // page with rules of the browser's own, and none of them was held here: a
+  // chiefdom window half as wide again as the Python's, no map at all for
+  // "Western Area", and "crystalline basement" written over the Bullom sands
+  // all passed every run.
+  const regional = await page.evaluate((RR) => {
+    const C = GWT.core;
+    const windowOf = (w) => (w ? [w.lon, w.lat, w.radiusKm, w.label, w.exact] : null);
+    const homeOf = (h) => [h.name, h.districts.slice().sort(), h.chiefdoms.slice().sort()];
+    return {
+      windows: RR.windows.map((c) => {
+        const site = { community: 'T', chiefdom: c.chiefdom, district: c.district };
+        return { window: windowOf(C.areaWindow(site, null)),
+          note: C.areaMapNote(site, null), home: homeOf(C.homeDistrict(site, null)) };
+      }),
+      positions: RR.positions.map((c) => {
+        const site = { community: 'T', chiefdom: '', district: c.district };
+        const at = { lat: c.lat, lon: c.lon };
+        return { window: windowOf(C.areaWindow(site, at)), note: C.areaMapNote(site, at),
+          home: homeOf(C.homeDistrict(site, at)), geology: C.geologyParagraph(site, at) };
+      }),
+      unplaced_geology: RR.unplaced_geology.map(
+        (c) => C.geologyParagraph({ district: c.district }, null)),
+      caveats: RR.caveats.map((c) => C.scaleCaveat(c.radius_km, 5000000, c.note)),
+      utm_zones: RR.utm_zones.map((c) => C.parseUtmZone(c.value)),
+    };
+  }, R.regional);
+  const sameWindow = (a, b) => (a === null || b === null ? a === b
+    : close(a[0], b[0], 1e-9) && close(a[1], b[1], 1e-9) && close(a[2], b[2], 1e-9) &&
+      a[3] === b[3] && a[4] === b[4]);
+  const windowMisses = R.regional.windows.filter(
+    (c, i) => !sameWindow(regional.windows[i].window, c.window));
+  check(`regional: every chiefdom and district window (${R.regional.windows.length})`,
+    windowMisses.length === 0,
+    windowMisses.slice(0, 5).map((c) => JSON.stringify([c.chiefdom, c.district, c.window,
+      regional.windows[R.regional.windows.indexOf(c)].window])).join('\n     '));
+  const noteMisses = R.regional.windows.filter((c, i) => regional.windows[i].note !== c.note);
+  check('regional: the sentence placing a site with no position',
+    noteMisses.length === 0,
+    noteMisses.slice(0, 3).map((c) => c.note + '\n     vs ' +
+      regional.windows[R.regional.windows.indexOf(c)].note).join('\n     '));
+  const homeMisses = R.regional.windows.filter((c, i) =>
+    JSON.stringify(regional.windows[i].home) !== JSON.stringify(c.home));
+  check('regional: the district a locator lights, without a position',
+    homeMisses.length === 0,
+    homeMisses.slice(0, 3).map((c) => JSON.stringify(c.home) + ' vs ' + JSON.stringify(
+      regional.windows[R.regional.windows.indexOf(c)].home)).join('\n     '));
+  R.regional.positions.forEach((c, i) => {
+    const js = regional.positions[i];
+    const label = `regional: a site at ${c.lat.toFixed(4)}, ${c.lon.toFixed(4)} (${c.district})`;
+    check(`${label}: window and note`,
+      sameWindow(js.window, c.window) && js.note === c.note,
+      JSON.stringify([js.window, js.note]) + '\n     vs ' + JSON.stringify([c.window, c.note]));
+    check(`${label}: the district its locator lights`,
+      JSON.stringify(js.home) === JSON.stringify(c.home),
+      JSON.stringify(js.home) + ' vs ' + JSON.stringify(c.home));
+    check(`${label}: the geology paragraph`, js.geology === c.geology,
+      js.geology + '\n     vs ' + c.geology);
+  });
+  R.regional.unplaced_geology.forEach((c, i) => {
+    check(`regional: the geology paragraph with no position (${JSON.stringify(c.district)})`,
+      regional.unplaced_geology[i] === c.geology,
+      regional.unplaced_geology[i] + '\n     vs ' + c.geology);
+  });
+  R.regional.caveats.forEach((c, i) => {
+    check(`regional: the scale caveat for a ${c.radius_km} km radius`,
+      regional.caveats[i] === c.text, regional.caveats[i] + '\n     vs ' + c.text);
+  });
+  check('regional: the UTM zone a cell states',
+    R.regional.utm_zones.every((c, i) => regional.utm_zones[i] === c.zone),
+    JSON.stringify(regional.utm_zones) + '\n     vs ' +
+    JSON.stringify(R.regional.utm_zones.map((c) => c.zone)));
+
+  // --- the survey's own figures ---
+  // The maps and sections are drawn by different code in each engine, but
+  // what they claim is decided once and held here: which point is starred and
+  // why none is, the tie on the project's own margin, which figures are
+  // refused and in what words, the chainages and the zone everything is drawn
+  // in, the depth a model is drawn to, and the captions. Nothing compared any
+  // of it, and the browser's suitability map, section and ground profile had
+  // drifted from the package's without a failing check.
+  const SF = R.survey_figures;
+  const survey = await page.evaluate(({ inputs, ab2 }) => {
+    const C = GWT.core;
+    function build(stations, arrayType) {
+      const soundings = [], interps = [];
+      stations.forEach(([sid, e, n, z, rho, h]) => {
+        const sounding = {
+          sounding_id: sid, ab2: ab2.slice(), mn: ab2.map(() => 0.5),
+          rho_app: ab2.map((v, k) => 100.0 + 10.0 * k),
+          array_type: arrayType || 'schlumberger',
+          site: { easting: e, northing: n, elevation_m: z, utm_zone: null,
+            community: 'Kuntolo', district: 'Bombali' },
+        };
+        const model = C.layeredModel(rho, h, { sounding_id: sid, fit_error_percent: 0.5 });
+        soundings.push(sounding);
+        interps.push(C.interpretModel(sounding, model));
+      });
+      return { soundings, interps };
+    }
+    function suitability(interps, tiePoints) {
+      const ves = Object.assign({}, C.defaultConfig().ves,
+        { ranking_tie_points: tiePoints || 3.0 });
+      const results = C.assessSiting(interps, ves);
+      const tie = C.rankingTie(results, ves.ranking_tie_points) !== '';
+      const ranking = results.map((r) => r.sounding_id);
+      const data = C.suitabilityMapData(interps, { results, ves, zone: null });
+      const state = data ? data.state : C.suitabilityMapState([], tie, ranking);
+      const marked = interps.filter((i) => i.site_easting !== null &&
+        i.site_easting !== undefined).map((i) => i.sounding_id);
+      return {
+        state,
+        caption: data ? data.caption : null,
+        note: data ? data.tie_note : C.suitabilityMapNote(state),
+        labels: data ? data.points.map((p) => p.text) : [],
+        eastings: data ? data.points.map((p) => p.easting) : [],
+        zone: data ? data.zone : C.surveyZone(interps),
+        study_area: C.studyAreaCaption('Kuntolo', marked, ranking[0],
+          ranking.slice(0, 2), tie),
+      };
+    }
+    function maps(interps) {
+      const zone = C.surveyZone(interps) || 28;
+      const out = {};
+      C.SUBSURFACE_MAP_SPECS.forEach((spec) => {
+        const d = C.subsurfaceMapData(interps, spec.key, { zone, gridN: 40 });
+        const entry = { reason: d.reason || null };
+        if (!d.reason) {
+          entry.caption = d.caption;
+          entry.minimum = d.points.map((p) => !!p.minimum);
+          if (spec.key !== 'protective_capacity') entry.labels = d.points.map((p) => p.text);
+        }
+        out[spec.key] = entry;
+      });
+      return out;
+    }
+    function traverse(interps) {
+      const profile = C.traverseProfile(interps);
+      if (profile.reason) return { reason: profile.reason };
+      const section = C.geoelectricSectionGeometry(interps, {});
+      return {
+        reason: null, labels: profile.labels, chainage_m: profile.chainage_m,
+        indices: profile.indices, length_m: profile.length_m,
+        bearing_deg: profile.bearing_deg,
+        // the model each column is drawn with, where the section is drawn
+        layer2_rho: section.reason
+          ? profile.indices.map((k) => interps[k].model.resistivities[1])
+          : section.models.map((m) => m.resistivities[1]),
+      };
+    }
+    function ground(interps) {
+      const g = C.groundProfileData(interps);
+      if (g === null) return { reason: null, silent: true };
+      if (g.reason) return { reason: g.reason };
+      return { reason: null, caption: g.caption, chainage_m: g.chainage_m,
+        open_gaps: g.open_gaps, max_gap_m: g.max_gap_m };
+    }
+    const out = { cases: {} };
+    Object.keys(inputs).forEach((name) => {
+      const { interps } = build(inputs[name]);
+      const entry = {
+        suitability: suitability(interps),
+        traverse: traverse(interps),
+        ground: ground(interps),
+        maps: maps(interps),
+        model_depth: interps.map((i) => C.modelDepthM(i.model, i.investigation_depth_m)),
+        drawn_depth: interps.map((i) => C.drawnDepthText(i.model, i.investigation_depth_m)),
+      };
+      if (name === 'margin') entry.suitability_margin5 = suitability(interps, 5.0);
+      out.cases[name] = entry;
+    });
+    const wenner = build(inputs.collinear, 'wenner');
+    const spacing = C.spacingName(wenner.soundings);
+    const pseudo = C.pseudosectionGeometry(wenner.soundings,
+      C.traverseProfile(wenner.interps));
+    out.wenner = {
+      spacing, note: C.spacingNote(spacing),
+      caption: C.pseudosectionCaption(spacing, C.traverseProfile(wenner.interps)),
+      y_label: pseudo.y_label, first_note: pseudo.notes[0],
+    };
+    return out;
+  }, { inputs: SF.inputs, ab2: SF.ab2 });
+
+  // numbers within a relative tolerance, everything else exactly
+  const approx = (a, b) => {
+    if (typeof b === 'number' && typeof a === 'number') return close(a, b, 1e-6);
+    if (Array.isArray(b)) {
+      return Array.isArray(a) && a.length === b.length && b.every((v, i) => approx(a[i], v));
+    }
+    if (b && typeof b === 'object') {
+      return !!a && typeof a === 'object' && Object.keys(b).every((k) => approx(a[k], b[k]));
+    }
+    return a === b;
+  };
+  const same = (name, a, b) => check(name, approx(a, b),
+    `js ${JSON.stringify(a).slice(0, 700)}\n     py ${JSON.stringify(b).slice(0, 700)}`);
+  Object.keys(SF.cases).forEach((name) => {
+    const js = survey.cases[name], py = SF.cases[name];
+    same(`survey ${name}: suitability map state and caption`, js.suitability, py.suitability);
+    if (py.suitability_margin5) {
+      same(`survey ${name}: the tie on the project's own margin`,
+        js.suitability_margin5, py.suitability_margin5);
+    }
+    same(`survey ${name}: traverse`, js.traverse, py.traverse);
+    same(`survey ${name}: ground profile`, js.ground, py.ground);
+    same(`survey ${name}: subsurface maps`, js.maps, py.maps);
+    same(`survey ${name}: depth each model is drawn to`,
+      [js.model_depth, js.drawn_depth], [py.model_depth, py.drawn_depth]);
+  });
+  same('survey wenner: the spacing is a', {
+    spacing: survey.wenner.spacing, note: survey.wenner.note,
+    caption: survey.wenner.caption,
+  }, SF.wenner);
+  check('survey wenner: the pseudo-section axis and note name a',
+    survey.wenner.y_label === SF.wenner.spacing + ' (m)' &&
+    survey.wenner.first_note === SF.wenner.note,
+    JSON.stringify(survey.wenner));
+  same('survey rokel: depth each model is drawn to', parsed.rokel_drawn_depth,
+    SF.rokel_drawn_depth);
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, {});

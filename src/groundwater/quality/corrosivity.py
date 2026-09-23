@@ -74,6 +74,21 @@ def _value(sample: WaterQualitySample, key: str) -> Optional[float]:
     return None
 
 
+def _ph_text(ph: float) -> str:
+    """The pH to one decimal, or to as many as the range sentence needs.
+
+    Rounded to one decimal, 6.46 printed as "6.5 is below the 6.5 to 8.5
+    acceptability range" and 8.54 as "8.5 is above" it. A value outside the
+    range that rounds onto an end of it keeps the decimals that show it is
+    outside.
+    """
+    for places in (1, 2, 3, 4):
+        text = f"{ph:.{places}f}"
+        if float(text) not in (6.5, 8.5) or 6.5 <= ph <= 8.5:
+            return text
+    return f"{ph:g}"
+
+
 def _classify_rsi(rsi: float) -> tuple[str, bool]:
     """Map a Ryznar index to a class and an is-aggressive flag."""
     if rsi < 6.0:
@@ -178,18 +193,18 @@ def assess_corrosivity(sample: WaterQualitySample) -> CorrosivityAssessment:
         # a sample the same report flagged at 5.9. It now says what the pH is.
         if ph < 6.5:
             ph_note = (
-                f"The pH of {ph:.1f} is below the 6.5 to 8.5 acceptability range, "
+                f"The pH of {_ph_text(ph)} is below the 6.5 to 8.5 acceptability range, "
                 "which adds to the attack on metal; soft, low-alkalinity basement "
                 "groundwater is aggressive even at a pH inside that range."
             )
         elif ph > 8.5:
             ph_note = (
-                f"The pH of {ph:.1f} is above the 6.5 to 8.5 acceptability range; "
+                f"The pH of {_ph_text(ph)} is above the 6.5 to 8.5 acceptability range; "
                 "the aggressiveness comes from the low calcium and alkalinity."
             )
         else:
             ph_note = (
-                f"The pH of {ph:.1f} is within the 6.5 to 8.5 acceptability range, "
+                f"The pH of {_ph_text(ph)} is within the 6.5 to 8.5 acceptability range, "
                 "and the water is aggressive all the same, which is typical of "
                 "soft basement groundwater."
             )

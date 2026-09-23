@@ -408,7 +408,12 @@ def test_the_works_lists_only_claim_what_the_data_evidences(sample_data, tmp_pat
         tmp_path / "full_completion.docx",
     )
     text = _doc_text(full)
-    assert "Gravel packing" in text and "airlifting" in text
+    assert "airlifting" in text
+    # the Dr Timbo design places no pack in its 19 mm annulus, and the log
+    # records no casing string, so neither is listed as work done
+    assert "Gravel packing" not in text
+    assert "No gravel pack: the 19 mm annulus is too thin to place one." in text
+    assert "Supply and installation of casings (plain and screen) as designed" in text
     sited = build_handover_report(
         HandoverReportInputs(site=log.site, log=log, design=design, sited=True,
                              figures_dir=tmp_path),
@@ -548,6 +553,14 @@ def test_the_reports_say_what_a_thirty_minute_test_is_worth(sample_data, tmp_pat
     text = _document_text(pumping)
     assert "below ground level" not in text
     assert "Casing storage" in text and "117 minutes" in text
+    # the casing paragraph and the casing flag are worded from the adoption:
+    # they said no line was read inside the period, and that every fit in it
+    # was not adopted, a page above the Cooper-Jacob line adopted from it
+    assert "no straight line is read from it" not in text
+    assert ("No fit outside it can be adopted, so the Cooper-Jacob value read "
+            "inside it is used only as the best available.") in text
+    assert "their transmissivity is reported but not adopted" not in text
+    assert "the Cooper-Jacob value is adopted only as the best available" in text
     assert "Not adopted for the yield" in text
     assert "Adopted as the best available" in text
     assert "distance criterion" in text
@@ -584,6 +597,12 @@ def test_a_two_step_fit_says_it_is_exact_by_construction(sample_data, tmp_path):
     assert "R squared 1.000" not in text
     assert "equivalent pumping time of 112 minutes" in text
     assert "(indicative)" in text
+    # step 1 ends above static and is left out of the fit; the table used to
+    # renumber the rest, printing "1 | 2.2" under "Step 1: 1.5 m3/h"
+    table = next(t for t in docx.Document(str(path)).tables
+                 if t.rows[0].cells[0].text == "Step")
+    assert [(r.cells[0].text, r.cells[1].text) for r in table.rows[1:]] == [
+        ("2", "2.2"), ("3", "3")]
 
 
 def test_the_drawing_is_captioned_as_what_it_is(sample_data, tmp_path):
@@ -625,3 +644,72 @@ def test_the_drawing_is_captioned_as_what_it_is(sample_data, tmp_path):
     assert "5. Borehole Construction" in text and "Construction Design" not in text
     assert "As-built construction summary" in text
     assert "screens as installed, recorded on the drilling log" in text
+
+
+def test_the_works_lists_word_the_fill_the_design_places(sample_data, tmp_path):
+    """The handover certified "gravel pack" and the completion report listed
+    "Gravel packing of the annulus" beside a design that places none in its
+    19 mm annulus, and both listed a generated string as completed work above
+    a drawing captioned "not an as-built record"."""
+    from groundwater.config import DesignRules
+    from groundwater.reporting.completion import _construction_works
+    from groundwater.reporting.handover import default_works
+
+    log = read_drilling_workbook(sample_data / "dr_timbo" / "dr_timbo_drilling_log.xlsx")
+    design = design_borehole(log=log, static_water_level_m=9.44)
+    works = default_works(HandoverReportInputs(site=log.site, log=log, design=design))
+    assert ("Construction designed with 5 inch uPVC casing, 19 m of screen, no gravel "
+            "pack (the 19 mm annulus is too thin to place one) and sanitary seal to "
+            "20 m; the drilling log records no casing string as installed.") in works
+    assert _construction_works(design) == [
+        ("Supply and installation of casings (plain and screen) as designed in "
+         "section 5; the drilling log records no casing string as installed."),
+        "No gravel pack: the 19 mm annulus is too thin to place one.",
+    ]
+
+    for rules, fill, bullet in (
+        (DesignRules(borehole_diameter_in=10.0, casing_diameter_in=4.0), "gravel pack",
+         "Gravel packing of the annulus."),
+        (DesignRules(borehole_diameter_in=8.0, casing_diameter_in=4.0),
+         "formation stabiliser", "Placing a formation stabiliser in the annulus."),
+    ):
+        log.installed_screens_m = [(25.0, 35.0), (48.0, 53.0)]
+        for interval in log.intervals:
+            interval.bit_diameter_in = None
+        built = design_borehole(log=log, static_water_level_m=9.44, rules=rules)
+        assert built.as_built and built.annular_fill == fill
+        works = default_works(HandoverReportInputs(site=log.site, log=log, design=built))
+        assert (f"Construction with 4 inch uPVC casing, 15 m of screen as installed, "
+                f"{fill} and sanitary seal to 20 m.") in works
+        assert _construction_works(built)[1] == bullet
+
+
+def test_the_intake_sentences_say_what_the_design_does(sample_data, tmp_path):
+    """The pumping report promised that the design "sets it just below that
+    screen" while the design lifted an intake above the level the test had
+    reached; the completion report said "in plain casing clear of the
+    screens" of an intake the design had to leave inside one."""
+    d = sample_data / "dr_timbo"
+    log = read_drilling_workbook(d / "dr_timbo_drilling_log.xlsx")
+    analysis = analyse_pumping_test(read_pumping_workbook(d / "dr_timbo_constant_test.xlsx"))
+    text = _document_text(build_pumping_report(
+        PumpingReportInputs(analysis=analysis, figures_dir=tmp_path),
+        tmp_path / "pumping.docx",
+    ))
+    assert "sets it just below that screen" not in text
+    assert ("or above it where that is no shallower than the deepest level the test "
+            "reached plus the submergence margin; otherwise it keeps this depth and "
+            "says so in its design notes.") in text
+
+    intake = analysis.yield_recommendation.pump_installation_depth_m
+    boxed = design_borehole(log=log, static_water_level_m=9.44, pump_intake_m=intake,
+                            pump_intake_floor_m=analysis.yield_recommendation
+                            .deepest_pumping_level_m + 3.0,
+                            screens_m=[(40.0, 68.0)])
+    assert boxed.pump_intake_m == intake
+    text = _document_text(build_completion_report(
+        CompletionReportInputs(log=log, design=boxed, pumping=analysis, figures_dir=tmp_path),
+        tmp_path / "completion.docx",
+    ))
+    assert "in plain casing clear of the screens" not in text
+    assert "pump_intake_in_screen" in text

@@ -17,9 +17,10 @@ the districts actually cover. The table is still bundled for the
 name-and-province list the apps offer, but nothing here consults it.
 
 The polygon layer is geoBoundaries as released, which predates the 2017
-creation of Karene and Falaba; the bundled chiefdom crosswalk supplies
-those two, and where even that cannot place a point the check says so
-rather than choosing a district for it.
+creation of Karene and Falaba; the point is placed through the chiefdom
+layer and the bundled crosswalk, which supply those two, and where that
+cannot place a point the check says so rather than choosing a district
+for it.
 """
 
 from __future__ import annotations
@@ -42,12 +43,6 @@ _SL_BOUNDS = (-13.6, -10.0, 6.7, 10.2)  # lon_min, lon_max, lat_min, lat_max
 _REGIONS: dict[str, tuple[str, ...]] = {
     "western area": ("Western Area Urban", "Western Area Rural"),
 }
-
-# The two districts created in 2017 and the pre-2017 district each was
-# split out of. The bundled district polygons predate the split, so where
-# the chiefdom layer cannot place a point and those polygons answer
-# instead, "Bombali" is an answer that cannot tell Bombali from Karene.
-_SPLIT_FROM = {"Karene": "Bombali", "Falaba": "Koinadugu"}
 
 
 def _fmt_latlon(lat: float, lon: float) -> str:
@@ -146,31 +141,56 @@ def districts_named(name: str) -> tuple[str, ...]:
     return match_district(name)[0]
 
 
-def district_at(lat: float, lon: float) -> tuple[str, str, bool]:
-    """Where the bundled boundaries put a point.
+def district_display_name(name: str) -> str:
+    """The name a district written on a sheet is printed under.
 
-    Returns ``(chiefdom, district, current)``. ``current`` is True when the
-    district is the one the point is in today, which is what the chiefdom
-    layer plus the crosswalk give; it is False when only the district
-    polygons could answer, because those predate the 2017 split and so
-    cannot tell Bombali from Karene or Koinadugu from Falaba. Both are
-    empty when no polygon holds the point.
+    The district it resolves to - "Port Loko" for "Port Loko District" - or
+    the region's own name for a name that means a region, and the sheet's
+    words as written for a name that resolves to nothing. Printed as typed,
+    the name went into client documents as "Port Loko District district".
+    """
+    resolved, _ = match_district(name)
+    if len(resolved) == 1:
+        return resolved[0]
+    for key, covered in _REGIONS.items():
+        if resolved and set(covered) == set(resolved):
+            # the keys are written in lower case to be compared, and the
+            # region's name is those words capitalised
+            return key.title()
+    return str(name or "").strip()
+
+
+def district_label(name: str) -> str:
+    """How a report names the district a sheet states: "Port Loko district".
+
+    A region is not a district, so "Western Area" is printed as itself
+    rather than as "Western Area district".
+    """
+    shown = district_display_name(name)
+    if not shown:
+        return ""
+    if len(match_district(name)[0]) > 1:
+        return shown
+    return f"{shown} district"
+
+
+def district_at(lat: float, lon: float) -> tuple[str, str]:
+    """Where the bundled boundaries put a point: ``(chiefdom, district)``.
+
+    The district is the one the point is in today, from the chiefdom layer
+    and the crosswalk; both are empty when no chiefdom holds the point or
+    lies within the seam tolerance of it. There is no second answer from
+    the pre-2017 district polygons any more: ``district_of`` resolves
+    through the same chiefdoms, so a point this cannot place is a point
+    nothing bundled can place, and the check says so.
 
     The mapping package owns the point-in-polygon lookups and is imported
     here rather than at module scope because it pulls in matplotlib, and
     reading a field sheet must not depend on a plotting stack.
     """
-    from ..mapping.regional import chiefdom_of, district_of
+    from ..mapping.regional import chiefdom_of
 
-    chiefdom, district = chiefdom_of(lat, lon)
-    if district:
-        return chiefdom, district, True
-    # No chiefdom holds the point, and none is within the seam tolerance of
-    # it either. district_of is asked next, and with the bundled layer it
-    # now resolves through the same chiefdom polygons, so in practice it
-    # answers nothing here: a caller that supplies its own district layer is
-    # the only way this returns a name, and that name may be pre-2017.
-    return "", district_of(lat, lon), False
+    return chiefdom_of(lat, lon)
 
 
 def _or_list(names: Iterable[str]) -> str:
@@ -243,7 +263,7 @@ def check_site_consistency(site: SiteMetadata, context: str = "") -> list[DataFl
                 )
             )
     elif resolved:
-        chiefdom, found, current = district_at(lat, lon)
+        chiefdom, found = district_at(lat, lon)
         if not found:
             flags.append(
                 DataFlag(
@@ -258,54 +278,17 @@ def check_site_consistency(site: SiteMetadata, context: str = "") -> list[DataFl
                 )
             )
         elif found not in resolved:
-            # A point no chiefdom polygon holds is placed by the district
-            # polygons, and those predate the 2017 split: for a site stated
-            # to be in Karene or Falaba they can only name the district it
-            # was split from, which neither confirms nor contradicts it.
-            split = next(
-                (d for d in resolved if not current and _SPLIT_FROM.get(d) == found),
-                "",
+            flags.append(
+                DataFlag(
+                    "warning",
+                    "district_coordinate_conflict",
+                    f"Stated district '{site.district}' does not contain "
+                    f"the coordinates ({_fmt_latlon(lat, lon)}), which "
+                    f"fall in {chiefdom} chiefdom, {found} district. "
+                    "Verify against the field notes.",
+                    ctx,
+                )
             )
-            if split:
-                flags.append(
-                    DataFlag(
-                        "info",
-                        "district_predates_boundaries",
-                        f"District '{site.district}' could not be checked "
-                        f"against the coordinates ({_fmt_latlon(lat, lon)}): "
-                        "no chiefdom polygon holds them, and the district "
-                        f"polygons predate the 2017 creation of {split}, so "
-                        f"the {found} they give is the district {split} was "
-                        "split from.",
-                        ctx,
-                    )
-                )
-            elif current:
-                flags.append(
-                    DataFlag(
-                        "warning",
-                        "district_coordinate_conflict",
-                        f"Stated district '{site.district}' does not contain "
-                        f"the coordinates ({_fmt_latlon(lat, lon)}), which "
-                        f"fall in {chiefdom} chiefdom, {found} district. "
-                        "Verify against the field notes.",
-                        ctx,
-                    )
-                )
-            else:
-                flags.append(
-                    DataFlag(
-                        "warning",
-                        "district_coordinate_conflict",
-                        f"Stated district '{site.district}' does not contain "
-                        f"the coordinates ({_fmt_latlon(lat, lon)}). No "
-                        "chiefdom polygon holds them; the district polygons, "
-                        "which predate the 2017 creation of Karene and "
-                        f"Falaba, place them in {found}. Verify against the "
-                        "field notes.",
-                        ctx,
-                    )
-                )
     return flags
 
 

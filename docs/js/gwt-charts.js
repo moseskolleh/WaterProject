@@ -32,15 +32,22 @@
    * black. The fallbacks below are the stylesheet's own light values, so a
    * chart built while this flag is set is a chart built for print, whatever
    * the reader of the app is looking at. Set it around the figure building,
-   * not around the rasterising: the colours are already in the SVG by then. */
-  var printPalette = false;
+   * not around the rasterising: the colours are already in the SVG by then.
+   *
+   * It is a count, not a switch. Each build turns it on and off again in its
+   * own `finally`, and builds overlap - two report cards clicked one after
+   * the other run at once - so a switch was turned off by whichever build
+   * finished first while the other was still drawing, and that one's
+   * remaining figures went into its document on the dark ground. The print
+   * palette holds until the last build that asked for it is done. */
+  var printDepth = 0;
 
   function usePrintPalette(on) {
-    printPalette = !!on;
+    printDepth = on ? printDepth + 1 : Math.max(0, printDepth - 1);
   }
 
   function token(name, fallback) {
-    if (printPalette) return fallback;
+    if (printDepth > 0) return fallback;
     if (typeof getComputedStyle === 'undefined') return fallback;
     var value = getComputedStyle(document.documentElement)
       .getPropertyValue('--' + name);
@@ -685,7 +692,25 @@
           'text-anchor': flip ? 'end' : 'start', fill: p.inkSoft, text: e.text,
         }));
       });
+    markInvestigationDepth(f, opts.investigationDepth, maxDepth);
     return f.svg;
+  }
+
+  /* ves/plots.py _mark_investigation_depth: a dashed line at the depth of
+   * investigation, where a figure of one sounding's model runs past it to
+   * keep the deepest fitted interface on it. */
+  function markInvestigationDepth(f, depth, depthMax) {
+    if (depth === null || depth === undefined || !(Number(depth) < depthMax)) return;
+    var y = f.fy(Number(depth));
+    f.plot.appendChild(svgEl('line', {
+      x1: f.margin.left, y1: y, x2: f.margin.left + f.plotW, y2: y,
+      stroke: f.palette.critical, 'stroke-width': 1.2, 'stroke-dasharray': '5 3',
+    }));
+    f.plot.appendChild(svgEl('text', {
+      x: f.margin.left + f.plotW - 4, y: y - 3, 'text-anchor': 'end',
+      'font-size': 9, fill: f.palette.critical, stroke: f.palette.surface,
+      'stroke-width': 2.4, 'paint-order': 'stroke', text: 'depth of investigation',
+    }));
   }
 
   /* ====================================================== pumping test figures */
@@ -1279,8 +1304,8 @@
 
     var depth = design.total_depth_m || 1;
     var stickup = design.stickup_m || 0;
-    /* a design's pump is where the pump should go and its screens are where
-     * the rules put them; only an as-built record can say where they are */
+    /* a design's screens are where the rules put them; only an as-built
+     * record can say where they are */
     var asBuilt = !!design.as_built;
     var swl = (design.static_water_level_m === null ||
       design.static_water_level_m === undefined) ? null : design.static_water_level_m;
@@ -1758,10 +1783,9 @@
     });
     if (!hasSump) callout(depth, depth, 'bottom plug at ' + formatG(depth) + ' m');
     if (intake !== null) {
-      /* a design's pump is where the pump should go; only an as-built
-       * record can say where one is */
-      callout(intake, intake, 'pump intake ' + formatG(intake) + ' m' +
-        (asBuilt ? '' : ' (recommended)'));
+      /* the intake is always the recommended one: an as-built record
+       * carries the screens the crew set, but no record of a pump */
+      callout(intake, intake, 'pump intake ' + formatG(intake) + ' m (recommended)');
     }
 
     /* a newline in a callout is a break the caller chose, so a unit is
@@ -2425,97 +2449,15 @@
     return String(props.glg || props.code || '');
   }
 
-  /* Which crosswalk region a district belongs to. The Python engine holds
-   * the same table in groundwater/mapping/lithology.py as _REGIONS; a coarse
-   * USGS class covers different formations in different parts of the
-   * country, so a row applies only where its region says it does. */
-  var LITHOLOGY_REGIONS = {
-    'Western Area': ['western area', 'western area urban', 'western area rural'],
-    'coastal plain': ['bonthe', 'moyamba', 'port loko', 'kambia', 'pujehun'],
-    'north and centre': ['bombali', 'tonkolili', 'koinadugu', 'karene', 'falaba'],
-  };
-
-  function regionOf(district) {
-    var name = String(district || '').trim().toLowerCase();
-    var keys = Object.keys(LITHOLOGY_REGIONS);
-    for (var i = 0; i < keys.length; i++) {
-      if (LITHOLOGY_REGIONS[keys[i]].indexOf(name) >= 0) return keys[i];
-    }
-    return 'interior';   /* the default: everything the others do not claim */
-  }
-
-  /* What the ground is, for one USGS class in one district - or null, which
-   * is the honest answer for a class nobody has annotated and leaves the key
-   * showing the source's own wording rather than a guess.
-   *
-   * This mirrors lithology_for() in the Python engine, including its two
-   * refusals: a named district that has no row gets nothing rather than
-   * another region's rock, and with no district at all a regional row
-   * applies only if every row for the class agrees on the formation. */
-  function lithologyFor(glg, district) {
-    var rows = ((GWT.data || {}).lithologyCrosswalk) || [];
-    var mine = rows.filter(function (r) { return r.usgs_code === glg; });
-    if (!mine.length) return null;
-    if (district) {
-      var wanted = [regionOf(district), 'all'];
-      for (var w = 0; w < wanted.length; w++) {
-        for (var i = 0; i < mine.length; i++) {
-          if (mine[i].region === wanted[w]) return mine[i];
-        }
-      }
-      return null;
-    }
-    for (var j = 0; j < mine.length; j++) {
-      if (mine[j].region === 'all') return mine[j];
-    }
-    var agreed = mine.map(function (r) {
-      return r.formation_name + '\u0000' + r.formation_code;
-    });
-    var same = agreed.every(function (a) { return a === agreed[0]; });
-    return same ? mine[0] : null;
-  }
-
-  /* The chiefdom polygons, built once: the join that places a point in a
-   * district, and 166 polygons to rebuild on every redraw otherwise. */
-  var _chiefdomPolys = null;
-
-  function chiefdomPolys() {
-    if (!_chiefdomPolys) _chiefdomPolys = C.loadPolygons();
-    return _chiefdomPolys;
-  }
-
-  /* The district a point is in today.
-   *
-   * Through the chiefdom first and the crosswalk after it, as district_of
-   * does in the Python engine: the bundled district polygons are
-   * geoBoundaries as released, which predates the 2017 creation of Karene
-   * and Falaba, so a point in one of those two has no district polygon to
-   * fall in.
-   *
-   * A point inside no ring at all is placed on the chiefdom whose ring is
-   * nearest, when that ring is within C.CHIEFDOM_EDGE_TOLERANCE_M: the rings
-   * were simplified one at a time, so two that were one shared border no
-   * longer meet and leave a seam of ground in no chiefdom, and a point there
-   * is on a border rather than nowhere. It no longer falls back to the
-   * district polygons. That fallback answered with a district that no longer
-   * exists where the point was - Koinadugu for ground that is now Falaba - or
-   * with the district on the wrong side of a seam, while the chiefdom lookup
-   * answered the same point with nothing (ROADMAP data-ingestion-7). One
-   * lookup, one answer, and where there is no basis for one, none: a point
-   * further out than the tolerance is off the layer, and "" is what this
-   * returns for it. */
-  function districtAtPoint(lat, lon) {
-    var crosswalk = C.loadChiefdomDistrict() || {};
-    var polys = chiefdomPolys();
-    for (var i = 0; i < polys.length; i++) {
-      if (C.polyContains(polys[i], lon, lat)) {
-        return crosswalk[polys[i].name] || polys[i].district || '';
-      }
-    }
-    var near = C.nearestChiefdomIndex(lon, lat, C.outerRingSets(polys));
-    if (near === null) return '';
-    return crosswalk[polys[near].name] || polys[near].district || '';
-  }
+  /* Which crosswalk region a district belongs to, what the ground is for one
+   * USGS class there, and which district a polygon lies in. They live in the
+   * engine, gwt-core.js, because the geophysical report's geology paragraph
+   * reads them too: the key on the map and the paragraph beside it name one
+   * polygon one way, and the parity suite holds the paragraph to the
+   * Python's. */
+  var regionOf = C.lithologyRegionOf;
+  var lithologyFor = C.lithologyFor;
+  var unitDistrict = C.unitDistrict;
 
   /* Centroid of a ring, by the shoelace formula. */
   function ringCentroid(ring) {
@@ -2530,30 +2472,6 @@
     area /= 2;
     if (Math.abs(area) < 1e-12) return [sx / ring.length, sy / ring.length];
     return [cx / (6 * area), cy / (6 * area)];
-  }
-
-  /* The district a polygon lies in, for the crosswalk that names it.
-   *
-   * The crosswalk used to be scoped by the site's district, so the same
-   * Freetown Complex polygon was "Freetown Layered Complex" on a Rokel map
-   * and "Paleozoic Igneous", the age the crosswalk itself calls wrong, on a
-   * Kuntolo map 100 km away. A polygon is where it is. _unit_district in the
-   * Python engine. */
-  function unitDistrict(geometry) {
-    var rings = ringsOf(geometry);
-    if (!rings.length) return '';
-    var ring = rings[0];
-    var centre = ringCentroid(ring);
-    var found = districtAtPoint(centre[1], centre[0]);
-    if (found) return found;
-    /* a polygon straddling the border can have its centroid abroad; any
-     * vertex inside the country places it */
-    var stride = Math.max(1, Math.floor(ring.length / 24));
-    for (var i = 0; i < ring.length; i += stride) {
-      found = districtAtPoint(ring[i][1], ring[i][0]);
-      if (found) return found;
-    }
-    return '';
   }
 
   /* The name to put in a map key: the formation first, then its own code,
@@ -3235,7 +3153,6 @@
   /* Both bundled layers are published at 1:5,000,000. */
   var USGS_SOURCE_SCALE = 5000000;
   var BGS_SOURCE_SCALE = 5000000;
-  var HONEST_WINDOW_KM = 60;
 
   /* The BGS Africa Groundwater Atlas user guide (OR/21/063, section 2.2) on
    * what its country maps are for. Quoted rather than paraphrased: it is the
@@ -3245,26 +3162,10 @@
     'suitable for providing detailed information on geology and ' +
     'hydrogeology at a sub-national (e.g. catchment) scale".';
 
-  /* The note a small window over a small-scale dataset has earned.
-   *
-   * Empty for a national map, which is the scale the data was published at
-   * and needs no apology. `radiusKm` is the half-width of the window that
-   * was actually drawn, never the one that was asked for: a radius the site
-   * could not be placed in falls back to the national map, and a national
-   * map carrying "4% of this 60 km window" asserts something that is not on
-   * it. _scale_caveat in the Python engine, word for word. */
-  function scaleCaveat(radiusKm, sourceScale, publisherNote) {
-    if (radiusKm === null || radiusKm === undefined || !sourceScale ||
-        radiusKm > HONEST_WINDOW_KM) return '';
-    var lineKm = sourceScale * 0.0005 / 1000;   /* a 0.5 mm line on the sheet */
-    var share = lineKm / (2 * radiusKm) * 100;
-    var note = 'Drawn from a 1:' + Number(sourceScale).toLocaleString('en-US') +
-      ' dataset: a boundary on this map is placed to roughly ' +
-      C.formatG(lineKm) + ' km, which is ' + C.pyFixed(share, 0) +
-      '% of this ' + C.formatG(2 * radiusKm) + ' km window. Read the ' +
-      'contacts as regional context, not as mapped ground.';
-    return (note + ' ' + (publisherNote || '')).trim();
-  }
+  /* The note a small window over a small-scale dataset has earned: the
+   * engine's C.scaleCaveat, _scale_caveat in the Python engine word for word,
+   * where the parity suite can hold the sentence to it. */
+  var scaleCaveat = C.scaleCaveat;
 
   /* The legend is measured before the map is laid out, because how many rows
    * it needs is what decides how much height the map itself can have. */
@@ -3884,6 +3785,19 @@
           (feature.properties || {}).shapeName || ''),
       })]));
     });
+    /* Karene and Falaba have no polygon of their own in the boundary layer,
+     * which predates them, so a locator for either lights the chiefdoms the
+     * crosswalk assigns to it, over the district they were split from, as
+     * plot_admin_map does. Lit by name alone, the district was never lit and
+     * the legend named it in a colour that was nowhere on the map. */
+    var highlight = spec.highlight || [];
+    highlight.forEach(function (feature) {
+      canvas.layer.appendChild(svgEl('path', {
+        d: geometryPath(feature.geometry, canvas.project),
+        'fill-rule': 'evenodd', fill: spec.highlightFill || '#CFE0D6',
+        stroke: '#7E93A6', 'stroke-width': 0.5,
+      }));
+    });
     /* The districts were drawn as shapes with a hover title and nothing
      * written on them, so a printed location map named no district at all.
      * The same declutter the study-area map uses keeps a name off its
@@ -3891,6 +3805,17 @@
     if (spec.labelContext) {
       var nameBox = canvas.project.visibleBox();
       var nameCandidates = [];
+      /* a district lit through its chiefdoms is named once, over them, and
+       * first, so the declutter keeps it over the older district's name */
+      if (highlight.length && spec.highlightLabel) {
+        var sx = 0, sy = 0, count = 0;
+        highlight.forEach(function (feature) {
+          ringsOf(feature.geometry).forEach(function (ring) {
+            ring.forEach(function (c) { sx += c[0]; sy += c[1]; count += 1; });
+          });
+        });
+        if (count) nameCandidates.push([sx / count, sy / count, spec.highlightLabel]);
+      }
       context.forEach(function (feature) {
         var props = feature.properties || {};
         var text = String(props.name || props.shapeName || '');
@@ -4599,9 +4524,18 @@
     if (!model || !model.resistivities || !model.resistivities.length) return null;
     var opts = options || {};
     var tops = model.depths_top || [];
-    var depthMax = opts.depthMax === undefined || opts.depthMax === null
-      ? (tops.length > 1 ? Number(tops[tops.length - 1]) : 10) * 1.35 + 3
-      : Number(opts.depthMax);
+    /* given the depth of investigation, the column is drawn to the depth the
+     * curve's model panel is drawn to, with the depth of investigation
+     * dashed where the column runs past it: drawn to the depth of
+     * investigation alone, a basement below it was left off the column */
+    var depthMax;
+    if (opts.depthMax !== undefined && opts.depthMax !== null) {
+      depthMax = Number(opts.depthMax);
+    } else if (opts.investigationDepth) {
+      depthMax = C.modelDepthM(model, opts.investigationDepth);
+    } else {
+      depthMax = (tops.length > 1 ? Number(tops[tops.length - 1]) : 10) * 1.35 + 3;
+    }
     var width = opts.width || 420;
     var height = opts.height || Math.round(width * 3.6 / (FIGURE_WIDTH_IN * 0.72));
 
@@ -4649,6 +4583,7 @@
         stroke: ON_RAMP_INK, 'stroke-width': 1.2,
       }));
     });
+    markInvestigationDepth(f, opts.investigationDepth, depthMax);
 
     colourBar(f, {
       x: f.margin.left + f.plotW + 14, top: f.margin.top, height: f.plotH,
@@ -4705,7 +4640,7 @@
     var width = opts.width || 760;
     var noteLines = geometry.note ? wrapText(geometry.note, width - 150, 8.5) : [];
     var base = Math.round(width * 3.4 / FIGURE_WIDTH_IN);
-    var height = (opts.height || base) + noteLines.length * 11;
+    var height = (opts.height || base) + noteLines.length * 11 + 14;
     var ticks = (geometry.ticks || []).map(function (tick) {
       return { value: tick[0], label: tick[1] };
     });
@@ -4719,9 +4654,12 @@
      * what matplotlib gives the readings. */
     var filled = (geometry.triangles || []).length > 0;
     var yValues = logY.concat(ticks.map(function (tick) { return tick.value; }));
+    /* the top margin holds the station names as well as the title, one line
+     * each, as the Python lifts its title clear of them: with room for the
+     * title alone the names were written into it */
     var f = frame({
       width: width, height: height,
-      margin: { top: 32, right: 104, bottom: 46 + noteLines.length * 11, left: 62 },
+      margin: { top: 46, right: 104, bottom: 46 + noteLines.length * 11, left: 62 },
       title: opts.title || geometry.title,
       yLabel: geometry.y_label, yDown: true,
       xDomain: filled ? [Math.min.apply(null, xs), Math.max.apply(null, xs)]
@@ -5448,17 +5386,32 @@
       return [f.fx(station.chainage_m), f.fy(station.elevation_m)];
     });
     /* the ground drawn as a solid rather than as a line floating on the
-     * axis: fill_between(chainage, elevation, nanmin(elevation) - 2) */
+     * axis: fill_between(chainage, elevation, nanmin(elevation) - 2), one
+     * run of stations at a time, so no line and no fill crosses a gap wider
+     * than the soundings reach - a straight line across one is a slope
+     * nobody levelled */
     var base = f.fy(baseline);
-    var fill = 'M' + pts[0][0].toFixed(2) + ' ' + base.toFixed(2);
-    pts.forEach(function (pt) {
-      fill += 'L' + pt[0].toFixed(2) + ' ' + pt[1].toFixed(2);
+    var runs = data.runs || [stations.map(function (station, k) { return k; })
+      .filter(function (k) {
+        return stations[k].elevation_m !== null && stations[k].elevation_m !== undefined;
+      })];
+    runs.forEach(function (run) {
+      var seg = run.map(function (k) {
+        return [f.fx(stations[k].chainage_m), f.fy(stations[k].elevation_m)];
+      });
+      if (!seg.length) return;
+      var fill = 'M' + seg[0][0].toFixed(2) + ' ' + base.toFixed(2);
+      seg.forEach(function (pt) {
+        fill += 'L' + pt[0].toFixed(2) + ' ' + pt[1].toFixed(2);
+      });
+      fill += 'L' + seg[seg.length - 1][0].toFixed(2) + ' ' + base.toFixed(2) + 'Z';
+      f.plot.appendChild(svgEl('path', {
+        d: fill, fill: p.accent, 'fill-opacity': 0.08, stroke: 'none',
+      }));
+      if (seg.length > 1) {
+        f.plot.appendChild(polyline(seg, { stroke: p.accent, 'stroke-width': 1.8 }));
+      }
     });
-    fill += 'L' + pts[pts.length - 1][0].toFixed(2) + ' ' + base.toFixed(2) + 'Z';
-    f.plot.appendChild(svgEl('path', {
-      d: fill, fill: p.accent, 'fill-opacity': 0.08, stroke: 'none',
-    }));
-    f.plot.appendChild(polyline(pts, { stroke: p.accent, 'stroke-width': 1.8 }));
     known.forEach(function (station, k) {
       var mark = marker(pts[k][0], pts[k][1], 'circle', p.surface, p.accent, 4);
       mark.appendChild(svgEl('title', {

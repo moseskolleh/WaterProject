@@ -19,6 +19,7 @@ from .forward import forward_schlumberger, forward_wenner
 from .splice import splice_segments
 
 __all__ = [
+    "model_depth_m",
     "plot_sounding_curve",
     "plot_model_pseudosection",
     "plot_geoelectric_section",
@@ -44,6 +45,32 @@ def _rho_norm(models: list[LayeredModel]) -> mcolors.LogNorm:
     if hi <= lo:
         hi = lo * 10
     return mcolors.LogNorm(vmin=float(lo), vmax=float(hi))
+
+
+def model_depth_m(model: LayeredModel, investigation_depth_m: float) -> float:
+    """The depth a figure of one sounding's model is drawn to.
+
+    The depth of investigation, or deeper where a fitted interface lies
+    below it: the model shown has to be the model fitted. The curve's
+    model panel already ran on past the depth of investigation for that
+    reason while the layer column beside it stopped there, so a basement
+    at 61 m under a 50 m depth of investigation was on one figure and not
+    the other, both captioned as drawn to 50 m. One rule now serves both
+    figures and the browser's, and the captions give the depth drawn.
+    """
+    deepest = float(model.depths_top[-1]) if model.n_layers > 1 else 0.0
+    return max(float(investigation_depth_m), deepest * 1.2 + 2.0)
+
+
+def _mark_investigation_depth(ax, investigation_depth_m: float | None,
+                              depth_max: float, x: float = 0.98) -> None:
+    """A dashed line at the depth of investigation, where the figure runs past it."""
+    if investigation_depth_m is None or not investigation_depth_m < depth_max:
+        return
+    ax.axhline(investigation_depth_m, color="#B00020", lw=1.0, ls="--", zorder=4)
+    ax.text(x, investigation_depth_m, "depth of investigation",
+            transform=ax.get_yaxis_transform(), ha="right", va="bottom",
+            fontsize=7, color="#B00020", zorder=5)
 
 
 def _model_step(model: LayeredModel, depth_max: float) -> tuple[np.ndarray, np.ndarray]:
@@ -78,12 +105,13 @@ def plot_sounding_curve(
     the spliced curve and the model response. Right: the layered model
     as a resistivity-depth step plot, annotated with the fit error.
 
-    ``depth_max`` is the depth of investigation the panel is drawn to;
-    left unset it is the toolkit's default fraction of the largest AB/2,
-    the same rule the interpretation uses, so the panel no longer runs to
-    the electrode spacing while the layer column beside it stops at half
-    of it. ``reference_model`` (an imported IPI2Win model, say) is drawn
-    dashed on both panels so the two interpretations can be read together.
+    ``depth_max`` is the depth of investigation; left unset it is the
+    toolkit's default fraction of the largest AB/2, the same rule the
+    interpretation uses. The panel is drawn to :func:`model_depth_m` of it,
+    the depth the layer column is drawn to as well, with the depth of
+    investigation dashed where the panel runs past it.
+    ``reference_model`` (an imported IPI2Win model, say) is drawn dashed
+    on both panels so the two interpretations can be read together.
     """
     style = style or HouseStyle()
     with figure_context(style):
@@ -155,11 +183,12 @@ def plot_sounding_curve(
         if axm is not None and model is not None:
             from .interpret import depth_of_investigation
 
-            if depth_max is None:
-                depth_max = depth_of_investigation(float(np.max(sounding.ab2)))
+            doi = (float(depth_max) if depth_max is not None
+                   else depth_of_investigation(float(np.max(sounding.ab2))))
             # the deepest interface must stay on the panel, or the model
             # shown is not the model fitted
-            depth_max = max(float(depth_max), model.depths_top[-1] * 1.2 + 2.0)
+            depth_max = model_depth_m(model, doi)
+            _mark_investigation_depth(axm, doi, depth_max)
             z, r = _model_step(model, depth_max)
             axm.plot(r, z, color=style.secondary_color, lw=2.0, label="fitted model")
             if reference_model is not None:
@@ -211,23 +240,36 @@ def plot_model_pseudosection(
     style: HouseStyle | None = None,
     depth_max: float | None = None,
     title: str | None = None,
+    investigation_depth_m: float | None = None,
 ):
     """Single sounding layer column coloured by resistivity.
 
     The 'pseudo-section showing apparent resistivity and layer
     thicknesses' figure of the survey reports: horizontal bands to
     scale with a logarithmic resistivity colour bar.
+
+    Given ``investigation_depth_m``, the column is drawn to
+    :func:`model_depth_m` of it - the depth the curve's model panel is
+    drawn to - with the depth of investigation dashed where the column
+    runs past it. Drawn to the depth of investigation alone, a basement
+    below it was left off the column and its label printed under the
+    frame.
     """
     style = style or HouseStyle()
     with figure_context(style):
         fig, ax = plt.subplots(figsize=(style.figure_width_in * 0.72, 3.6))
         tops = model.depths_top
+        if depth_max is None and investigation_depth_m:
+            depth_max = model_depth_m(model, investigation_depth_m)
         if depth_max is None:
             depth_max = (tops[-1] if len(tops) > 1 else 10) * 1.35 + 3
         cmap = plt.get_cmap("viridis")
         norm = _rho_norm([model])
         for i, rho in enumerate(model.resistivities):
             top = tops[i]
+            if top >= depth_max:
+                # a layer below the frame has no band to label
+                continue
             bottom = tops[i + 1] if i + 1 < len(tops) else depth_max
             ax.axhspan(top, bottom, color=cmap(norm(max(rho, norm.vmin))))
             z_text = (top + min(bottom, depth_max)) / 2
@@ -240,6 +282,7 @@ def plot_model_pseudosection(
             )
         for z in tops[1:]:
             ax.axhline(z, color="white", lw=1.0)
+        _mark_investigation_depth(ax, investigation_depth_m, depth_max)
         ax.set_ylim(depth_max, 0)
         ax.set_xlim(0, 1)
         ax.set_xticks([])
@@ -306,6 +349,18 @@ def plot_geoelectric_section(
         raise ValueError(
             f"{len(models)} soundings need {len(models)} positions and "
             f"{len(models)} labels; got {len(positions)} and {len(labels)}"
+        )
+    # Two columns at one chainage are one drawn over the other, and the
+    # column width is capped at the narrowest gap, so a single repeated
+    # position also shrank every other column on the section to a sliver.
+    ordered_x = sorted(float(x) for x in positions)
+    repeated = sorted({a for a, b in zip(ordered_x, ordered_x[1:], strict=False) if b == a})
+    if repeated:
+        raise ValueError(
+            "more than one sounding is placed at "
+            + ", ".join(f"{x:g} m" for x in repeated)
+            + " along the profile; a section draws one column at each station, "
+            "and one would hide the other"
         )
     if depth_max is None:
         depth_max = max(

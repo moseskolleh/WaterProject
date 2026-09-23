@@ -18,6 +18,8 @@ from .suitability import (
     assess_siting,
     ranking_tie,
     suitability_map_points,
+    suitability_verdict,
+    tied_leaders,
 )
 
 __all__ = [
@@ -26,4 +28,6 @@ __all__ = [
     "assess_siting",
     "ranking_tie",
     "suitability_map_points",
+    "suitability_verdict",
+    "tied_leaders",
 ]

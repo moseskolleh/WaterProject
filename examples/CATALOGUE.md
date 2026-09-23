@@ -20,7 +20,7 @@ Parse, consistency checks, inversion against the original IPI2Win models, hydrog
   - `rokel_ipi2win_models.xlsx` (ipi2win): 2 original model(s), 7 layer(s)
 - Reports:
   - `Rokel_Geophysical_Survey_Report.docx`: certifiable
-- Figures: 12; derived tables: 2
+- Figures: 11; derived tables: 2
 
 ## Kuntoloh - step drawdown test
 

@@ -270,22 +270,22 @@ def draw_borehole_design(
                           facecolor=style.secondary_color, edgecolor="white",
                           lw=0.8, zorder=8)
             )
-            # a design's pump is where the pump should go; only an as-built
-            # record can say where one is
-            annos.append((y, f"pump intake {y:g} m"
-                          + ("" if design.as_built else " (recommended)"),
+            # the intake is always the recommended one: an as-built record
+            # carries the screens the crew set, but no record of a pump
+            annos.append((y, f"pump intake {y:g} m (recommended)",
                           style.secondary_color))
 
         # right-hand annotations with depths
         screens = design.screens
-        annos += [
-            (seal_bot / 2 if seal_bot else 1.5,
-             f"cement grout 0-{seal_bot:g} m", neutral),
-            ((back_top + back_bot) / 2,
-             f"backfill {back_top:g}-{back_bot:g} m", neutral),
-            ((grav_top + min(grav_bot, depth)) / 2,
-             f"{fill_style[2]} {grav_top:g}-{grav_bot:g} m", neutral),
-        ]
+        annos.append((seal_bot / 2 if seal_bot else 1.5,
+                      f"cement grout 0-{seal_bot:g} m", neutral))
+        # the fill can reach the seal, which left "backfill 20-20 m" on the
+        # drawing; the browser drawing labels only a backfill that is there
+        if back_bot > back_top:
+            annos.append(((back_top + back_bot) / 2,
+                          f"backfill {back_top:g}-{back_bot:g} m", neutral))
+        annos.append(((grav_top + min(grav_bot, depth)) / 2,
+                      f"{fill_style[2]} {grav_top:g}-{grav_bot:g} m", neutral))
         for s in screens:
             annos.append(((s.top_m + s.bottom_m) / 2,
                           f"screen {s.top_m:g}-{s.bottom_m:g} m", neutral))

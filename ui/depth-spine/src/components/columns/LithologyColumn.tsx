@@ -1,20 +1,30 @@
 import type { Scale } from '../../domain/scale';
-import type { LithologyInterval } from '../../domain/view';
+import type { LithologyBand, LithologyInterval } from '../../domain/view';
 
 interface Props {
   scale: Scale;
   units: LithologyInterval[];
+  /** The bands the report's drawing draws, with their class and colour. */
+  bands?: LithologyBand[];
   strikes: number[];
 }
 
-/** Fill chosen from the driller's own words, not from an invented rock code. */
-function fillFor(description: string, aquifer: boolean): string {
-  const text = description.toLowerCase();
-  if (aquifer) return 'fill-fractured';
-  if (text.includes('topsoil') || text.includes('laterit')) return 'fill-topsoil';
-  if (text.includes('clay')) return 'fill-clayey-sand';
-  if (text.includes('saprolite') || text.includes('weathered')) return 'fill-saprolite';
-  return 'fill-fresh';
+/**
+ * The blocks are the bands the payload sends, in the colour the payload
+ * gives them. This column used to shade each logged row from keywords of its
+ * own, so a row naming a fracture zone was drawn as five metres of fractured
+ * rock while the report's drawing drew granite with the zone where the
+ * driller put it. A payload written before the bands were sent falls back to
+ * the rows, in the colour of the rock each is logged as.
+ */
+function blocksFor(units: LithologyInterval[], bands?: LithologyBand[]): LithologyBand[] {
+  if (bands && bands.length) return bands;
+  return units.map((u) => ({
+    top: u.top,
+    base: u.base,
+    class: u.class ?? u.description,
+    colour: u.colour ?? '#CCCCCC',
+  }));
 }
 
 interface Placed<T> {
@@ -58,7 +68,7 @@ function declutter<T>(
 // the block itself — truncating it in the lane is better than overprinting it.
 const LABEL_H = 30;
 
-export function LithologyColumn({ scale, units, strikes }: Props) {
+export function LithologyColumn({ scale, units, bands, strikes }: Props) {
   const strikeYs = strikes.map((d) => scale.y(d));
   const placed = declutter(
     units.map((u) => ({
@@ -74,14 +84,16 @@ export function LithologyColumn({ scale, units, strikes }: Props) {
     <div className="col-litho">
       <div className="col-head">Lithology — cuttings</div>
       <div className="track" style={{ height: scale.height }}>
-        {units.map((u) => (
+        {blocksFor(units, bands).map((b) => (
           <div
-            key={`${u.top}-${u.base}`}
-            className={`litho-block ${fillFor(u.description, u.aquifer)}${
-              u.aquifer ? ' is-aquifer' : ''
-            }`}
-            style={{ top: scale.y(u.top), height: scale.h(u.top, u.base) }}
-            title={`${u.top}–${u.base} m · ${u.description}`}
+            key={`${b.top}-${b.base}`}
+            className="litho-block"
+            style={{
+              top: scale.y(b.top),
+              height: scale.h(b.top, b.base),
+              background: b.colour,
+            }}
+            title={`${b.top}–${b.base} m · ${b.class}`}
           />
         ))}
 

@@ -36,17 +36,22 @@ await withPage(async (page, base, consoleErrors) => {
 
   // The visible text of a .docx, in reading order: a report can be a valid
   // ZIP with every OOXML part in place and still claim something nobody
-  // recorded, so these checks read what the client would read.
+  // recorded, so these checks read what the client would read. The table of
+  // contents repeats every heading, so it is left out unless asked for: the
+  // checks find a section by its heading, and would otherwise find its line
+  // in the contents.
   await page.evaluate(() => {
-    window.__docText = async function (bytes) {
+    window.__docText = async function (bytes, withContents) {
       const files = await window.GWT.support.unzip(bytes);
       return ['word/document.xml', 'word/footer1.xml']
         .filter((n) => files[n])
         .map((name) => {
           const xml = new DOMParser().parseFromString(
             new TextDecoder().decode(files[name]), 'application/xml');
-          return Array.from(xml.getElementsByTagName('w:p')).map((p) =>
-            Array.from(p.getElementsByTagName('w:t'))
+          return Array.from(xml.getElementsByTagName('w:p')).filter((p) =>
+            withContents || !Array.from(p.getElementsByTagName('w:instrText'))
+              .some((i) => /^\s*TOC\b/.test(i.textContent)))
+            .map((p) => Array.from(p.getElementsByTagName('w:t'))
               .map((t) => t.textContent).join('')).join('\n');
         }).join('\n');
     };
@@ -191,10 +196,26 @@ await withPage(async (page, base, consoleErrors) => {
   // The bullets a payment is argued from carry the quantities a surveyor
   // checks. They used to carry the casing size in one engine and the screen
   // run in the other, and the seal in neither.
+  // It words the fill from the design and says "designed" unless the log
+  // records the screens as installed: it used to certify a gravel pack in a
+  // 19 mm annulus the design had left empty, and 19 m of screen as completed
+  // work above a drawing captioned "not an as-built record".
   check('the construction bullet carries the casing, the screen run and the seal',
-    said(works.full, 'Construction with 5 inch uPVC casing, 19 m of screen, ' +
-      'gravel pack and sanitary seal to 20 m.'),
+    said(works.full, 'Construction designed with 5 inch uPVC casing, 19 m of screen, ' +
+      'no gravel pack (the 19 mm annulus is too thin to place one) and sanitary seal ' +
+      'to 20 m; the drilling log records no casing string as installed.'),
     JSON.stringify(works.full));
+  // The pumping report promised that "the borehole design sets it just below
+  // that screen", while the design lifted an intake in a bottom screen above
+  // the level the test had reached. The sentence now says what the design does.
+  const pumpingText = await issued('pumping');
+  check('the pumping report says what the design does with an intake in a screen',
+    pumpingText.includes('or above it where that is no shallower than the deepest ' +
+      'level the test reached plus the submergence margin; otherwise it keeps this ' +
+      'depth and says so in its design notes.') &&
+    !pumpingText.includes('sets it just below that screen'),
+    pumpingText.slice(pumpingText.indexOf('Install the pump intake'),
+      pumpingText.indexOf('Install the pump intake') + 400));
   check('a siting survey is listed only where one was interpreted',
     !said(works.full, 'Geophysical siting survey') &&
     said(works.sited, 'Geophysical siting survey'),
@@ -309,6 +330,57 @@ await withPage(async (page, base, consoleErrors) => {
     faciesAt >= 0 && piperAt > faciesAt &&
     /The water is a [-\w+]+ type \(/.test(qualityDoc.slice(faciesAt, piperAt)),
     qualityDoc.slice(faciesAt, faciesAt + 400));
+
+  // --- the table of contents reads before Word has updated it ----------------
+  // Its cached result was the sentence "Right-click and choose Update Field",
+  // which is what every viewer other than Word shows; it is now the headings,
+  // and settings.xml asks Word to add the page numbers on opening, as the
+  // Python builder does.
+  const parts = await page.evaluate(async () => {
+    const d = window.GWT.app.derived;
+    const builder = await window.GWT.docx.qualityReport({
+      assessment: d.assessment, style: window.GWT.app.config().style, figures: [],
+    });
+    const bytes = await builder.build();
+    const files = await window.GWT.support.unzip(bytes);
+    const text = (name) => (files[name] ? new TextDecoder().decode(files[name]) : '');
+    return {
+      body: await window.__docText(bytes, true),
+      settings: text('word/settings.xml'),
+      types: text('[Content_Types].xml'),
+      rels: text('word/_rels/document.xml.rels'),
+    };
+  });
+  const tocAt = parts.body.indexOf('Table of Contents');
+  const contents = parts.body.slice(tocAt, parts.body.indexOf('Executive Summary'));
+  check('the table of contents lists the headings and asks Word to number them',
+    tocAt >= 0 && !parts.body.includes('Right-click') &&
+    contents.includes('1. Sample Details') && contents.includes('6. Recommendations') &&
+    parts.settings.includes('<w:updateFields w:val="true"/>') &&
+    parts.types.includes('/word/settings.xml') && parts.rels.includes('settings.xml'),
+    JSON.stringify({ contents: contents.slice(0, 300), settings: parts.settings }));
+
+  // --- a result the laboratory did not quantify prints as it was reported ---
+  // TNTC and ">50" reached the results table as a dash. The one engine that
+  // writes this table has to print the bound, or "detected".
+  const unquantified = await page.evaluate(async () => {
+    const C = window.GWT.core;
+    const assessment = C.assessSample({ site: { community: 'Ref' }, flags: [], results: [
+      { parameter: 'E. coli', value: 0, unit: 'CFU/100 mL' },
+      { parameter: 'Arsenic', value: 0.001, unit: 'mg/L' },
+      { parameter: 'Fluoride', value: 0.3, unit: 'mg/L' },
+      { parameter: 'Nitrate (as NO3)', value: null, unit: 'mg/L', greater_than: 50 },
+      { parameter: 'Total coliforms', value: null, unit: 'CFU/100 mL', greater_than: 0 },
+    ] });
+    const builder = await window.GWT.docx.qualityReport({
+      assessment, style: window.GWT.app.config().style, figures: [],
+    });
+    return (await window.__docText(await builder.build())).split('\n');
+  });
+  const cellAfter = (name) => unquantified[unquantified.indexOf(name) + 1];
+  check('a result the laboratory did not quantify prints as it was reported',
+    cellAfter('Nitrate (as NO3)') === '>50' && cellAfter('Total coliforms') === 'detected',
+    JSON.stringify([cellAfter('Nitrate (as NO3)'), cellAfter('Total coliforms')]));
 
   // --- missing GPS stays missing, everywhere it shows ------------------------
   check('the report says the maps cover the area, not the borehole',
@@ -510,6 +582,106 @@ await withPage(async (page, base, consoleErrors) => {
     !!pending.reason && pending.detail === pending.reason &&
     pending.unmet.includes('yield_established'), JSON.stringify(pending));
 
+  // --- the pumping report says what the sheet cannot support -----------------
+  // The browser's pumping report printed none of the analysis's notes, so
+  // Kuntolo's levels 18 m below the pump reached the client with nothing to
+  // say so; its cover printed the parser's "step+recovery" token; its step
+  // table renumbered the steps after one was left out; and the completion
+  // report asked for a discharge the sheet recorded. The Python report, and
+  // the hydraulics-8 wording, are what it is held to.
+  const kuntoloDocs = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, d = app.derived;
+    const base = { style: app.config().style, site: app.store.get('site'), figures: [] };
+    const log = { borehole_ref: 'KTL-01', total_depth_m: 70, status: 'Successful',
+      intervals: [], water_strikes_m: [] };
+    const text = async (builder) => window.__docText(await (await builder).build());
+    const withQ = (pump) => {
+      const test = JSON.parse(JSON.stringify(d.analysis.test));
+      [1.5, 2.2, 3.0].forEach((q, i) => { test.steps[i].discharge_m3_per_h = q; });
+      if (pump) test.pump_setting_m = pump;
+      return C.analysePumpingTest(test);
+    };
+    return {
+      pumping: await text(window.GWT.docx.pumpingReport(
+        Object.assign({ analysis: d.analysis }, base))),
+      stepped: await text(window.GWT.docx.pumpingReport(
+        Object.assign({ analysis: withQ() }, base))),
+      noDischarge: await text(window.GWT.docx.completionReport(
+        Object.assign({ analysis: d.analysis, log }, base))),
+      // rates on the sheet, and a pump set too shallow to leave any drawdown
+      shallowPump: await text(window.GWT.docx.completionReport(
+        Object.assign({ analysis: withQ(20), log }, base))),
+    };
+  });
+  check('pumping report: the test type is in words on the cover, never the token',
+    kuntoloDocs.pumping.includes('step drawdown test with recovery') &&
+    !kuntoloDocs.pumping.includes('step+recovery'), kuntoloDocs.pumping.slice(0, 400));
+  check('pumping report: the analysis\'s own notes are printed',
+    kuntoloDocs.pumping.includes('Data verification notes:') &&
+    kuntoloDocs.pumping.includes('[WARNING] level_below_pump: Recorded water level 78.45 m'),
+    kuntoloDocs.pumping.slice(0, 400));
+  check('pumping report: levels that cannot be right are never presented as sound curves',
+    kuntoloDocs.pumping.includes('The recorded water levels are inconsistent with ' +
+      'the stated static level, pump setting or borehole depth (see the data ' +
+      'verification notes), so the curves are shown as recorded and their drawdowns ' +
+      'are not to be relied on; the transmissivity and safe yield are pending ' +
+      'because discharge is missing on the field sheet.') &&
+    kuntoloDocs.pumping.includes('as recorded; the notes below say why the recorded ' +
+      'levels cannot all be right'), kuntoloDocs.pumping.slice(0, 1200));
+  check('pumping report: a step left out of the fit keeps the sheet\'s number',
+    /Well efficiency\n2\n2\.20\n[^\n]*\n[^\n]*\n[^\n]*\n3\n3\.00\n/.test(kuntoloDocs.stepped),
+    (kuntoloDocs.stepped.match(/Well efficiency(\n[^\n]*){12}/) || [''])[0]);
+  check('completion: a discharge is asked for only when the sheet has none',
+    kuntoloDocs.noDischarge.includes('The pumping test discharge must be supplied') &&
+    !kuntoloDocs.shallowPump.includes('The pumping test discharge must be supplied'),
+    JSON.stringify([kuntoloDocs.noDischarge.length, kuntoloDocs.shallowPump.length]));
+
+  // --- the casing paragraph follows the adoption, and the intake is one depth
+  // Dr Timbo's Cooper-Jacob line lies inside the casing-storage period and is
+  // adopted as the best available; the report said a page earlier that no
+  // line is read from that period. With an 8 m annual swing the drought case
+  // sets the intake at 55 m where the day of the test sets 52 m; the design
+  // was fed 52 m (and moved it to 54 m, below a screen) while the pumping
+  // report printed 55 m.
+  await page.evaluate(() => window.GWT.app.loadSample('dr_timbo'));
+  await page.waitForFunction(
+    () => window.GWT.app.recomputeState.running === 0 &&
+          window.GWT.app.derived.analysis !== null, { timeout: 60000 });
+  const timbo = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, d = app.derived;
+    app.store.set('seasonal', { rangeM: 8 });
+    await app.recompute();
+    const seasonal = C.seasonalYield(d.analysis, app.config().pumping, { annualRangeM: 8 });
+    const intake = C.pumpIntakeDepth(d.analysis, seasonal);
+    const pumping = await window.__docText(await (await window.GWT.docx.pumpingReport({
+      style: app.config().style, site: app.store.get('site'), figures: [],
+      analysis: d.analysis, seasonal,
+    })).build());
+    const moved = (d.design.flags || []).find((f) => f.code === 'pump_intake_moved');
+    const out = {
+      pumping, intake: intake[0],
+      yieldDepth: d.analysis.yield_recommendation.pump_installation_depth_m,
+      designIntake: d.design.pump_intake_m,
+      requested: moved ? moved.message : null,
+    };
+    app.store.set('seasonal', {});
+    await app.recompute();
+    return out;
+  });
+  check('pumping report: the casing paragraph is worded from the adoption',
+    timbo.pumping.includes('No fit outside it can be adopted, so the Cooper-Jacob ' +
+      'value read inside it is used only as the best available.') &&
+    !timbo.pumping.includes('no straight line is read from it') &&
+    timbo.pumping.includes('the Cooper-Jacob value is adopted only as the best available'),
+    timbo.pumping.slice(0, 400));
+  check('the design is given the intake the pumping report prints',
+    timbo.intake > timbo.yieldDepth &&
+    timbo.pumping.includes('Install the pump intake at ' + timbo.intake + ' m') &&
+    (timbo.designIntake === timbo.intake ||
+      (timbo.requested || '').includes('The pump intake of ' + timbo.intake + ' m')),
+    JSON.stringify({ intake: timbo.intake, yieldDepth: timbo.yieldDepth,
+      design: timbo.designIntake, moved: timbo.requested }));
+
   // --- a sounding that will not invert takes only itself out -----------------
   // The inversion is the one computation here that can fail on real readings,
   // and it fails one sounding at a time. What must never happen is the survey
@@ -528,6 +700,24 @@ await withPage(async (page, base, consoleErrors) => {
     () => window.GWT.app.derived.soundings.map((s) => s.sounding_id));
   check('ves: the sample has more than one sounding to confuse',
     soundings.length > 1, JSON.stringify(soundings));
+
+  // The whole Rokel survey through the app's own report build: two pegs
+  // 20.7 km apart, both levelled, neither reaching basement. The ground
+  // profile follows the rule the section follows and is refused, with its
+  // reason in the list of what was not drawn; it used to draw a straight
+  // 71 to 68 m slope across the 20.7 km the section refused to cross.
+  const rokelReport = await issued('geophysical');
+  const notDrawn = rokelReport.slice(rokelReport.indexOf('Not drawn from this survey'));
+  check('geophysical: the ground profile is refused across 20.7 km, and says why',
+    !rokelReport.includes('Ground surface along the survey traverse, from the ' +
+      'elevation recorded') &&
+    notDrawn.includes('Ground profile: the levelled stations are 20,751 m apart'),
+    notDrawn.slice(0, 900));
+  check('geophysical: the depth-to-bedrock refusal names the missing basement',
+    notDrawn.includes('did not reach basement within the depth they resolve, so ' +
+      'they have no depth to bedrock') &&
+    !/Depth to bedrock map:[^\n]*Record the GPS position/.test(notDrawn),
+    notDrawn.slice(0, 900));
 
   const broken = await page.evaluate(async () => {
     const C = window.GWT.core;
@@ -592,6 +782,112 @@ await withPage(async (page, base, consoleErrors) => {
   check('ves: the report does not head a block for a sounding it could not interpret',
     !new RegExp('^' + failed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'm')
       .test(geophysical), failed);
+
+  // The geology section is the ground under the site. Nothing in the page set
+  // it, so the document fell back to a fixed "crystalline basement complex"
+  // paragraph on every site - Rokel's included, which is on the Bullom sands,
+  // beside the report's own maps showing the Bullom Group and an
+  // intergranular aquifer. The paragraph's wording is held to the Python's in
+  // parity.mjs; what is held here is that the report the user gets carries it.
+  const geologyNote = await page.evaluate(() => window.GWT.core.geologyParagraph(
+    window.GWT.app.store.get('site'), window.GWT.app.siteLatLon()));
+  check('geophysical: the geology section describes the ground the site is on',
+    /Bullom Group/.test(geologyNote) && geophysical.includes(geologyNote) &&
+    !geophysical.includes('crystalline basement complex'),
+    geologyNote.slice(0, 240));
+
+  // --- the browser report says what the Python report says ------------------
+  // The sounding blocks, the scorecard, the annex and the array are written
+  // only by gwt-docx.js; the sentences are worded in the core and held to the
+  // package by parity.mjs, and this holds that the report prints them. The
+  // browser report had no "Models tried", no poorly resolved boundary, no
+  // suitability table, an annex nothing filled, and "a Schlumberger array"
+  // whatever the sheets said.
+  await page.evaluate(() => window.GWT.app.runInversions({ quiet: true }));
+  const rokelDoc = await issued('geophysical');
+  check('ves: every sounding block says what else was tried',
+    (rokelDoc.match(/Models tried: /g) || []).length === soundings.length,
+    (rokelDoc.match(/Models tried: [^\n]*/g) || []).join(' | '));
+  check('ves: a poorly resolved boundary is named, and the narrative does not claim it',
+    rokelDoc.includes('is poorly resolved: within its uncertainty the model collapses') &&
+    rokelDoc.includes('are fitted with a 3 layer model') &&
+    !rokelDoc.includes('The data at A (1) resolves a 3 layer subsurface'),
+    (rokelDoc.match(/[^\n]*poorly resolved[^\n]*/g) || []).join(' | ').slice(0, 600));
+  check('ves: the scorecard the ranking is decided on is printed',
+    rokelDoc.includes('Suitability (0 to 100)') && rokelDoc.includes('Confidence') &&
+    /Point \S+ \(\d\) ranks first \(suitability \d+ out of 100/.test(rokelDoc),
+    (rokelDoc.match(/[^\n]*ranks first[^\n]*/g) || []).join(' | ').slice(0, 400));
+  check('ves: the warnings the sheets raised reach the annex',
+    rokelDoc.includes('Annex A. Data Verification Notes') &&
+    rokelDoc.includes('[WARNING] segment_overlap_discrepancy (A (1)): ') &&
+    rokelDoc.includes('156.1 and 78.7 ohm-m (ratio 1.98)'),
+    rokelDoc.slice(rokelDoc.indexOf('Annex A'), rokelDoc.indexOf('Annex A') + 400));
+  check('ves: the array and its reach are the sheets\', in the sheets\' terms',
+    rokelDoc.includes('recorded with the Schlumberger electrode configuration') &&
+    rokelDoc.includes('with AB/2 expanded to 80 m the depth of investigation here is ' +
+      'about 40 m'),
+    (rokelDoc.match(/[^\n]*(array\. |expanded to)[^\n]*/g) || []).join(' | ').slice(0, 600));
+
+  /* Two points the ranking cannot separate, and a Wenner survey: built
+   * straight from interpretations, since no bundled survey is either. */
+  const [tieDoc, wennerDoc] = await page.evaluate(async () => {
+    const C = window.GWT.core, app = window.GWT.app;
+    const ab2 = [1, 2, 5, 10, 20, 40, 80];
+    const survey = (array, models) => {
+      const soundings = [], inversions = [], interpretations = [];
+      models.forEach(([sid, rho, h]) => {
+        const sounding = { site: { community: 'Testville' }, sounding_id: sid, ab2,
+          mn: ab2.map(() => NaN), rho_app: ab2.map(() => 100), array_type: array,
+          flags: [] };
+        const model = C.layeredModel(rho, h, { fit_error_percent: 9.0, sounding_id: sid });
+        soundings.push(sounding);
+        inversions.push({ array_type: array, model, fit_error_percent: 9.0,
+          trials: [[2, 20.0], [3, 9.0]] });
+        interpretations.push(C.interpretModel(sounding, model));
+      });
+      return { style: app.config().style, site: { community: 'Testville' },
+        interpretations, inversions, soundings, figures: [], ves: app.config().ves };
+    };
+    const tie = survey('schlumberger', [['VES 1', [1000, 100, 5000], [5, 20]],
+      ['VES 2', [1000, 100, 5000], [5, 22]]]);
+    const wenner = survey('wenner', [['W 1', [1000, 100, 5000], [5, 20]]]);
+    return Promise.all([tie, wenner].map(async (context) =>
+      window.__docText(await (await window.GWT.docx.geophysicalReport(context)).build())));
+  });
+  check('ves: a pair the ranking cannot separate is not a winner and a runner-up',
+    !tieDoc.includes('(ranked 1st)') && !tieDoc.includes('Recommended VES point') &&
+    tieDoc.includes('Drill at VES 2 or VES 1, which the survey cannot separate') &&
+    tieDoc.includes('Points VES 2 and VES 1 cannot be told apart on geophysical grounds') &&
+    tieDoc.includes('VES 2 is ahead by 2.8 points, within the 3-point margin') &&
+    (tieDoc.match(/^=1st$/gm) || []).length === 2 && !tieDoc.includes('by name only') &&
+    tieDoc.includes('Of these the 3-layer model is the simplest that reaches the 10 ' +
+      'percent target.'),
+    tieDoc.slice(tieDoc.indexOf('5. Conclusions'), tieDoc.indexOf('5. Conclusions') + 400));
+  check('ves: a Wenner survey is described as one',
+    wennerDoc.includes('recorded with the Wenner electrode configuration') &&
+    wennerDoc.includes('with a expanded to 80 m (AB/2 of 120 m)') &&
+    wennerDoc.includes('a Wenner sounding resolves the ground to roughly half of its ' +
+      'largest electrode spacing a') &&
+    !wennerDoc.includes('Schlumberger array') &&
+    !wennerDoc.includes('Schlumberger sounding resolves'),
+    wennerDoc.slice(wennerDoc.indexOf('3.2 Geophysical'), wennerDoc.indexOf('3.2 Geophysical') + 600));
+
+  // The field-work section says what the inputs evidence and nothing else, as
+  // reporting/geophysical.py's has since reports-6. The browser's still said
+  // the site "was walked with the community", that the points were agreed
+  // with it, and that resistivity profiling was run with a Schlumberger
+  // array, for every survey: a day of field work nobody recorded.
+  check('geophysical: the field work claims no walk, no agreement and no profiling',
+    !geophysical.includes('walked with the community') &&
+    !geophysical.includes('agreed with the community') &&
+    !geophysical.includes('Resistivity Profiling') &&
+    geophysical.includes('No reconnaissance record (date or field observations) ' +
+      'was supplied with the sounding data') &&
+    geophysical.includes('No resistivity profiling record was supplied.') &&
+    /\d+ soundings? of \d+ carr(y|ies) a recorded GPS position/.test(geophysical) &&
+    /electrode configuration, to determine the formation resistivities/.test(geophysical),
+    geophysical.slice(geophysical.indexOf('3. Field Work'),
+      geophysical.indexOf('4. Data Analysis')).slice(0, 1500));
 
   // --- a ranking that is cut short says so -----------------------------------
   // The coverage table is read to decide where to drill next, and it is sorted
@@ -826,19 +1122,139 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify({ loaded: allBad.loaded, codes: allBad.codes,
       text: allBad.text.slice(0, 260) }));
 
+  // --- where the site is, as the page and its locator show it ---------------
+  // The locator lit a district only when its name was typed exactly as the
+  // boundary layer spells it, while the legend named whatever the sheet said:
+  // "Karene" at Kamakwie, "Falaba", "Western Area" and "Port Loko District"
+  // all got a key entry in a colour that was nowhere on the map.
+  const locators = await page.evaluate(async () => {
+    const app = window.GWT.app, charts = window.GWT.charts, docx = window.GWT.docx;
+    const C = window.GWT.core;
+    const saved = JSON.parse(JSON.stringify(app.store.get('site')));
+    const out = [];
+    const cases = [
+      { district: 'Karene', lat: 9.4967, lon: -12.2405, name: 'Karene district' },
+      { district: 'Falaba', lat: 9.85, lon: -11.3, name: 'Falaba district' },
+      { district: 'Western Area', lat: 8.35, lon: -13.1, name: 'Western Area Rural district' },
+      { district: 'Port Loko District', lat: 8.77, lon: -12.79, name: 'Port Loko district' },
+      { district: 'Karene', lat: null, lon: null, name: 'Karene district' },
+      { district: 'Western Area', lat: null, lon: null, name: 'Western Area' },
+    ];
+    const realMap = charts.siteMap, realDoc = docx.supervisionReport;
+    try {
+      for (const c of cases) {
+        const utm = c.lat === null ? null : C.geographicToUtm(c.lat, c.lon);
+        app.store.set('site', Object.assign({}, saved, {
+          community: 'T', chiefdom: '', district: c.district,
+          easting: utm ? utm.easting : null, northing: utm ? utm.northing : null,
+          utm_zone: utm ? utm.zone : null }));
+        let svg = null;
+        charts.siteMap = function (spec) { svg = realMap(spec); return svg; };
+        docx.supervisionReport = async () => ({ save: async () => {} });
+        await app.buildReport('supervision');
+        const fills = svg ? [...svg.querySelectorAll('path')]
+          .map((p) => (p.getAttribute('fill') || '').toUpperCase()) : [];
+        const texts = svg ? [...svg.querySelectorAll('text')].map((t) => t.textContent) : [];
+        out.push({ case: c.district + (c.lat === null ? ' (no position)' : ''),
+          expected: c.name, lit: fills.filter((f) => f === '#CFE0D6').length,
+          legend: texts.filter((t) => / district$|^Western Area$/.test(t)) });
+      }
+    } finally {
+      charts.siteMap = realMap;
+      docx.supervisionReport = realDoc;
+      app.store.set('site', saved);
+    }
+    return out;
+  });
+  check('locator: the district the key names is lit on the map',
+    locators.every((l) => l.lit > 0 && l.legend.includes(l.expected)),
+    JSON.stringify(locators));
+
+  // A pair of degrees in the site's easting and northing fields was taken at
+  // face value, so a longitude typed without its western sign put the site in
+  // central Africa - no marker, "13.23170 E" in every report, and nothing on
+  // the page to say so - while a correct western fix printed "-13.23170°E".
+  const degrees = await page.evaluate(async () => {
+    const app = window.GWT.app;
+    const saved = JSON.parse(JSON.stringify(app.store.get('site')));
+    const out = {};
+    try {
+      for (const [key, e, n] of [['unsigned', 13.2317, 8.4657],
+        ['signed', -13.2317, 8.4657], ['abroad', 20.5, 5.25]]) {
+        app.store.set('site', Object.assign({}, saved, { community: 'T', chiefdom: '',
+          district: '', easting: e, northing: n, utm_zone: null }));
+        app.goto('site');
+        await new Promise((r) => setTimeout(r, 200));
+        const latlon = app.siteLatLon();
+        out[key] = { lat: latlon && latlon.lat, lon: latlon && latlon.lon,
+          text: document.querySelector('#page-host').textContent };
+      }
+    } finally {
+      app.store.set('site', saved);
+    }
+    return out;
+  });
+  check('site: an unsigned longitude in the degree fields is read as west, and says so',
+    degrees.unsigned.lon === -13.2317 &&
+    degrees.unsigned.text.includes('8.46570° N, 13.23170° W') &&
+    degrees.unsigned.text.includes('Longitude 13.2317 was read as 13.2317 W'),
+    JSON.stringify([degrees.unsigned.lat, degrees.unsigned.lon]));
+  check('site: a western position is printed as west, not as a negative east',
+    degrees.signed.text.includes('8.46570° N, 13.23170° W') &&
+    !degrees.signed.text.includes('°E') && !degrees.signed.text.includes('was read as'),
+    degrees.signed.text.slice(0, 200));
+  check('site: a position outside Sierra Leone is flagged, as the Python check flags it',
+    degrees.abroad.text.includes('Coordinates convert to 5.2500 N, 20.5000 E which ' +
+      'is outside Sierra Leone'),
+    degrees.abroad.text.slice(0, 200));
+
   /* A report figure is painted for paper, not for the screen it was built
    * on. The app's default theme is dark and every chart reads the live CSS
    * tokens as it is constructed, so clients were sent maps, sections and
-   * borehole drawings rasterised white on black. */
+   * borehole drawings rasterised white on black.
+   *
+   * Two builds run at once whenever two report cards are clicked one after
+   * the other, and each turns the print palette off when it finishes. While
+   * that was a switch, the first to finish turned it off under the other,
+   * whose remaining figures went into its document on the dark ground. So
+   * this runs two real builds together, on the dark theme, and reads the
+   * background of every figure the documents were handed. */
   const printed = await page.evaluate(async () => {
-    const charts = window.GWT.charts;
+    const app = window.GWT.app, charts = window.GWT.charts, docx = window.GWT.docx;
     document.documentElement.setAttribute('data-theme', 'dark');
     const onScreen = charts.palette().surface;
-    charts.usePrintPalette(true);
-    const forPaper = charts.palette();
-    charts.usePrintPalette(false);
-    const backOnScreen = charts.palette().surface;
-    return { onScreen, surface: forPaper.surface, ink: forPaper.ink, backOnScreen };
+    const captured = [];
+    const real = { geophysicalReport: docx.geophysicalReport,
+      supervisionReport: docx.supervisionReport };
+    Object.keys(real).forEach((name) => {
+      docx[name] = async (ctx) => { captured.push(ctx); return { save: async () => {} }; };
+    });
+    try {
+      await Promise.all([app.buildReport('geophysical'), app.buildReport('supervision')]);
+    } finally {
+      Object.assign(docx, real);
+    }
+    const images = [];
+    captured.forEach((ctx) => {
+      [].concat(ctx.areaMaps || [], ctx.figures || [], ctx.subsurface || [],
+        [ctx.groundProfile, ctx.suitabilityMap])
+        .forEach((f) => { if (f && f.image && f.image.dataUrl) images.push(f); });
+    });
+    const corners = [];
+    for (const f of images) {
+      const img = new Image();
+      img.src = f.image.dataUrl;
+      await img.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width; canvas.height = img.height;
+      const g = canvas.getContext('2d');
+      g.drawImage(img, 0, 0);
+      const px = g.getImageData(4, 4, 1, 1).data;
+      corners.push({ caption: String(f.caption || '').slice(0, 48),
+        rgb: [px[0], px[1], px[2]] });
+    }
+    return { onScreen, documents: captured.length, corners,
+      backOnScreen: charts.palette().surface };
   });
   const light = (hex) => {
     const v = String(hex || '').trim().replace('#', '');
@@ -846,10 +1262,13 @@ await withPage(async (page, base, consoleErrors) => {
     const n = [0, 2, 4].map((i) => parseInt(v.slice(i, i + 2), 16) / 255);
     return (0.2126 * n[0] + 0.7152 * n[1] + 0.0722 * n[2]) > 0.8;
   };
-  check('a report figure is rasterised for paper, whatever theme the app is in',
-    light(printed.surface) && !light(printed.ink) &&
-    printed.backOnScreen === printed.onScreen,
-    JSON.stringify(printed));
+  const darkFigures = printed.corners.filter((c) =>
+    (0.2126 * c.rgb[0] + 0.7152 * c.rgb[1] + 0.0722 * c.rgb[2]) / 255 <= 0.8);
+  check('two reports built at once are both rasterised for paper, whatever theme the app is in',
+    printed.documents === 2 && printed.corners.length >= 6 && darkFigures.length === 0 &&
+    !light(printed.onScreen) && printed.backOnScreen === printed.onScreen,
+    JSON.stringify({ documents: printed.documents, figures: printed.corners.length,
+      dark: darkFigures, onScreen: printed.onScreen, back: printed.backOnScreen }));
 
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));

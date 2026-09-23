@@ -44,6 +44,8 @@ figure depends on goes before the figure; fixes in one file go together.
    because the engines above must be fixed before their inputs are
    re-plumbed, and each of these is a self-contained fix that can be
    pulled forward.
+9. Review of the roadmap commits. The fixes above, reviewed area by area
+   once they were all ticked; what that review found and what it left open.
 
 Every engine change lands as Python + JavaScript mirror + tests +
 regenerated example outputs + parity reference, in one commit, so the
@@ -66,7 +68,11 @@ two engines never disagree on a client document (see "Cross-cutting").
   Done: `Project.clear_outputs()` runs at the start of every example,
   area-centred maps are keyed by the area's name, and
   `tests/test_examples.py` runs each example into a temporary folder
-  and holds the committed set of output files to it.
+  and holds the committed set of output files to it. That held the names
+  only, and the report text changed after the reports were last
+  regenerated: they went on quoting a WHO turbidity value WHO does not set and
+  judging districts by the deleted boxes. The same test now holds the text
+  of every committed report to a fresh run.
 
 ## 1. Depth of investigation and VES interpretation
 
@@ -565,7 +571,7 @@ the browser too), `gwt-app.js` parseLatLon. Tests: `test_ingestion.py`,
   top of the unit they should cut, so the dolerite dykes in Kono, Koinadugu
   and Falaba and the igneous aquifer around Kamakwie vanish from the maps.
   Done in the build and in both renderers: a shape's rings are grouped by their winding, each outer ring with the holes that fall inside it, and the smallest containing ring wins so a hole in an island is cut from the island. A unit carries its interior rings, draws them as a compound path that leaves them open, and a point in a hole is not on the unit - on the maps, in the not-mapped test and in the lookup the geology paragraph is written from.
-  Not yet regenerated: the raw shapefiles are about 40 MB and are not committed, so `data/sl_geology_usgs.geojson` and `data/sl_hydrogeology_bgs.geojson` still carry the flattened holes. Run `python web/build_geodata.py --raw <dir>` with the sources listed at the top of that script, then `python web/build_webapp_data.py` and `python web/build_offline.py`, and the dykes come back.
+  Regenerated: both layers now carry their holes (34 in the geology, 10 in the hydrogeology), rebuilt from the committed BGS shapefile and the USGS mirror named in `web/build_geodata.py`. The note that stood here said neither could be rebuilt without the raw downloads, but the BGS source had been committed all along. The rebuild also showed that the grouping tested only a hole's first vertex: three Precambrian holes clipped at the window's edge start on the edge they share with their outer ring, read as outside it and were dropped. The ring holding most of a hole's vertices now takes it, and a hole that finds no ring is reported rather than lost. On the national maps the lake near 11°35′W, 7°35′N is water again rather than an outline over granite, and the igneous intrusions around Kamakwie are on the aquifer map.
 - [x] **H data-ingestion-8. A drilling-log interval written with an en or em
   dash ("5–10") is dropped without a word;** the only trace is an
   "interval_gap" flag blaming the log.
@@ -619,6 +625,110 @@ chiefdom aggregation (every district total conserved), the UTM zone
 inference threshold, the leading-zero parsing, and the coastal gap in the
 geology and aquifer layers, which is the sources' generalised coastline
 and not the build's clipping.
+
+## 9. Review of the roadmap commits
+
+Once every item above was ticked, the commits that ticked them (#67 and
+#68) were reviewed the way the outputs had been audited: six reviewers,
+one per area, each finding reproduced in both engines before it was
+reported, and each fix written against a test that fails on the code as it
+was. Sixty-nine findings; every one is fixed in Python and the browser
+together, and the parity suite now holds 1,298 checks (623 when the
+roadmap closed). What follows is what the fixes left open, then the
+findings by area.
+
+Still open, each by decision rather than oversight:
+
+- [ ] **A detection of an unknown microbiological parameter is not graded
+  a failure.** "Salmonella Present" is now not evaluable and keeps the
+  sample from "suitable" rather than reading as not measured, but the only
+  way the code could tell it is microbiological is the unit, and a
+  heterotrophic plate count in CFU/mL would then become a false health
+  failure.
+- [ ] **The short water-quality sentence in the completion and handover
+  summaries does not list the uncertainties.** It says the WHO values have
+  not been shown to be met; the quality section of each report lists what
+  is unresolved.
+- [ ] **Dense surveys still overprint their suitability-map labels.** The
+  labels now carry the rank and the weighted score, which makes them wider;
+  placing them apart is a layout judgement left for a real dense survey.
+- [ ] **A step test whose clock restarts at each step prints the longest
+  step's clock as the test duration** in the test-details row. The
+  equivalent time and the flag are right and the flag says the clock
+  restarted; the parser's duration is unchanged.
+- [ ] **The browser's readiness gate does not refuse a position outside
+  Sierra Leone**, where the Python stamps such a report provisional. The
+  browser now flags the position on the site page.
+
+- [x] **Pumping tests (12).** A recovery line the analysis rejected was
+  still adopted when every fit was disqualified (Dr Timbo-like sheet: 0.99
+  m3/h); a fit whose own result is wrong is now never adopted, and with
+  nothing left the yield is pending with the reason. The yield range no
+  longer reaches to a rejected fit (Dr Timbo: 0.22 to 0.71 m3/h, not 0.28
+  to 1.2) and always contains the yield it qualifies. Levels below the
+  pump or the hole make the yield indicative and no longer set the intake.
+  Hourly blocks are placed by their heading; step tests whose clock
+  restarts keep their length; reasons are worded per step;
+  Hantush-Bierschenk keeps the sheet's step numbers; the 3 m cap rounds
+  down; the casing-storage wording follows the adoption. The browser
+  pumping report carries the data verification notes, and both apps give
+  the design the one intake the pumping report prints.
+- [x] **Survey maps and sections (12).** The drill-target star no longer
+  passes to the runner-up when the best point has no position; a survey
+  straddling 12 degrees W is drawn in one zone; the tie is decided once and
+  read by the text, the map and the study-area overlay; map labels give the
+  rank and weighted score; minimum aquifer thicknesses are labelled as
+  minima and not contoured; the ground profile follows the section's
+  traverse rules (Rokel's straight slope across 20.7 km is refused);
+  captions describe what was drawn; both model figures are drawn to one
+  depth; degenerate traverses are refused; refusals name what is actually
+  missing; the browser field-work section no longer claims a walk, an
+  agreement or a profiling run.
+- [x] **Water quality and report text (14).** A filled detection-limit
+  column no longer turns "Present", "TNTC" or ">50" into "not detected";
+  bounds and non-detects written with a unit or a label are read as what
+  they are; bounds are converted and graded through the same limit
+  hierarchy as measured values; the combined nitrate and nitrite rule reads
+  either basis; a national-limit failure no longer claims the WHO values
+  are met when something could not be graded; treatment advice follows the
+  table name and the direction of the exceedance; "provisional" follows the
+  table in use; unquantified results print as reported; the facies
+  sentence reads mixed-cation water correctly; the browser table of
+  contents is filled and Word updates it; the pH in the corrosivity
+  sentence is printed so the sentence is true.
+- [x] **Borehole design (11).** The completion and handover reports no
+  longer promise a gravel pack the design left out, and call the
+  construction designed unless the log records it installed; every
+  fracture range a description names is read, in the usual wordings; a
+  pump intake in a screen is never lifted above the level the test
+  reached; a grout written as a range is its bottom and a grout past the
+  sump is held and flagged; numbered strike notes are read and water
+  levels are not strikes; the basis describes the screens actually built;
+  an as-built record is kept as recorded; units in an interval cell or a
+  column header are read; the Depth Spine draws the drawing's bands; the
+  Streamlit static-level box shows the level the design uses.
+- [x] **VES interpretation (10).** Nothing below the depth of
+  investigation is reported as resolved, and a drilling depth cut back to
+  it reads as a minimum; a near tie is carried through the summary, the
+  conclusions, the recommendations and the preference table ("=1st"), and
+  "by name only" is said only of equal scores; two soundings sharing a
+  number are ranked on their own weights and flagged; the model tables
+  label the half-space row, not the surface; "Models tried" says why a
+  simpler model that reached the target lost; a Wenner survey is described
+  in its own terms and a contradicted array is flagged; the narrative no
+  longer says "resolves" over a poorly resolved boundary; the sheets'
+  warnings reach Annex A; the depth of investigation comes from the
+  readings the inversion used.
+- [x] **Cartography and coordinates (10).** The browser geophysical report
+  describes the ground under the site instead of "crystalline basement"
+  for every site; two report builds at once no longer put dark figures in
+  a document; the browser places, frames and lights a report's area as the
+  Python does (Karene, Falaba, full chiefdom names); "Western Area" and
+  "Port Loko District" get their maps in both engines; a degree longitude
+  typed without its sign is read as west with a note; the geology
+  paragraph names a polygon as the map key does; both engines size windows
+  alike and quote the caveat to the kilometre; the study-area tint and the
+  GeoLibre export keep the holes; a zone written with its datum is read.
 
 ## Cross-cutting rules for every fix
 

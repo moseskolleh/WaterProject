@@ -523,6 +523,37 @@ def _ring_span_km(rings: list[np.ndarray]) -> float:
     return max(dlat, dlon) / 2.0
 
 
+def _extent_window(rings: list[np.ndarray]) -> tuple[float, float, float]:
+    """The middle of the rings' combined extent, and its half-span in km."""
+    pts = np.concatenate(rings)
+    lon = float(pts[:, 0].min() + pts[:, 0].max()) / 2.0
+    lat = float(pts[:, 1].min() + pts[:, 1].max()) / 2.0
+    return lon, lat, _ring_span_km(rings)
+
+
+def _district_named(name: str) -> tuple[str, tuple[str, ...]]:
+    """What a district written on a sheet covers, and what a map calls it.
+
+    Read with :func:`~groundwater.ingestion.checks.match_district`, as the
+    consistency check reads it, so "Port Loko District" is Port Loko and
+    "Western Area" is the region's two districts. The window and the
+    locator used to compare the name as typed with the layer's own names,
+    so both of those got no map at all, and the report said that no
+    administrative area was recorded right after naming it. A name the
+    matcher cannot resolve is kept as written, for a replacement boundary
+    layer that spells its districts its own way.
+    """
+    # imported here: the ingestion package brings every sheet reader with
+    # it, and a map should not load them to read a district's name
+    from ..ingestion.checks import district_label, match_district
+
+    written = (name or "").strip()
+    if not written:
+        return "", ()
+    resolved = match_district(written)[0]
+    return district_label(written), (resolved or (written,))
+
+
 @functools.lru_cache(maxsize=1)
 def _bundled_crosswalk() -> dict[str, str]:
     text = (resources.files("groundwater") / "data"
@@ -568,20 +599,26 @@ def _district_from_chiefdoms(
     has no single dominant ring to sit in, and the middle of the whole is
     what frames it.
     """
+    rings = _chiefdom_rings_of(district, chiefdom_path, crosswalk_path)
+    if not rings:
+        return None
+    return _extent_window(rings)
+
+
+def _chiefdom_rings_of(
+    district: str,
+    chiefdom_path: str | Path | None = None,
+    crosswalk_path: str | Path | None = None,
+) -> list[np.ndarray]:
+    """The rings of every chiefdom the crosswalk puts in a district today."""
     wanted = district.strip().lower()
     crosswalk = _current_district_of_chiefdom(crosswalk_path)
-    rings = [
+    return [
         ring
         for area in load_chiefdoms(chiefdom_path)
         if crosswalk.get(area.name, "").strip().lower() == wanted
         for ring in area.rings
     ]
-    if not rings:
-        return None
-    pts = np.concatenate(rings)
-    lon = float(pts[:, 0].min() + pts[:, 0].max()) / 2.0
-    lat = float(pts[:, 1].min() + pts[:, 1].max()) / 2.0
-    return lon, lat, _ring_span_km(rings)
 
 
 def area_window(
@@ -605,23 +642,30 @@ def area_window(
                 return AreaWindow(lon, lat,
                                   max(_ring_span_km(area.rings) * 1.35, 12.0),
                                   f"{area.label} chiefdom", False)
-    name = (site.district or "").strip().lower()
-    if name:
-        _, districts = load_admin(admin_path)
-        for area in districts:
-            if area.name.strip().lower() == name:
-                lon, lat = area.label_point
-                return AreaWindow(lon, lat,
-                                  max(_ring_span_km(area.rings) * 1.2, 20.0),
-                                  f"{area.name} district", False)
-        # Karene and Falaba postdate the boundary release, so they are
-        # assembled from their chiefdoms rather than looked up.
-        assembled = _district_from_chiefdoms(name, chiefdom_path)
-        if assembled is not None:
-            lon, lat, span = assembled
-            return AreaWindow(lon, lat, max(span * 1.2, 20.0),
-                              f"{site.district.strip()} district", False)
-    return None
+    label, names = _district_named(site.district)
+    if not names:
+        return None
+    _, districts = load_admin(admin_path)
+    by_name = {area.name.strip().lower(): area for area in districts}
+    if len(names) == 1 and names[0].lower() in by_name:
+        area = by_name[names[0].lower()]
+        lon, lat = area.label_point
+        return AreaWindow(lon, lat,
+                          max(_ring_span_km(area.rings) * 1.2, 20.0),
+                          label, False)
+    # Karene and Falaba postdate the boundary release, so they are
+    # assembled from their chiefdoms rather than looked up; a region is its
+    # districts together, framed on the middle of the whole as an assembled
+    # district is, because no one part of it is the centre.
+    rings: list[np.ndarray] = []
+    for name in names:
+        area = by_name.get(name.lower())
+        rings.extend(area.rings if area is not None
+                     else _chiefdom_rings_of(name, chiefdom_path))
+    if not rings:
+        return None
+    lon, lat, span = _extent_window(rings)
+    return AreaWindow(lon, lat, max(span * 1.2, 20.0), label, False)
 
 
 def _mask_outside_country(ax, outline: AdminArea, style: HouseStyle,
@@ -718,7 +762,8 @@ def _mark_site(ax, site: SiteMetadata, color: str) -> tuple[float, float] | None
     return lonlat
 
 
-def _ring_meets_country(ring: np.ndarray, country: list[np.ndarray]) -> bool:
+def _ring_meets_country(ring: np.ndarray, country: list[np.ndarray],
+                        holes: tuple = ()) -> bool:
     """Does this unit polygon cover any ground inside Sierra Leone?
 
     The bundled layers are clipped to a rectangle, not to the border, so
@@ -732,7 +777,9 @@ def _ring_meets_country(ring: np.ndarray, country: list[np.ndarray]) -> bool:
     Cheap and symmetric: a unit vertex inside the country, or a border
     vertex inside the unit. That misses only the case where the two
     outlines cross without either carrying a vertex inside the other,
-    which no polygon pair in these layers does.
+    which no polygon pair in these layers does. A border vertex in one of
+    the unit's ``holes`` is not inside the unit - some other unit covers
+    that ground - which is how the browser's ``meetsOutline`` reads it.
     """
     extent = (ring[:, 0].min(), ring[:, 1].min(),
               ring[:, 0].max(), ring[:, 1].max())
@@ -744,7 +791,10 @@ def _ring_meets_country(ring: np.ndarray, country: list[np.ndarray]) -> bool:
             continue
         if MplPath(border).contains_points(ring).any():
             return True
-        if unit_path.contains_points(border).any():
+        inside = unit_path.contains_points(border)
+        for hole in holes:
+            inside &= ~MplPath(hole).contains_points(border)
+        if inside.any():
             return True
     return False
 
@@ -827,7 +877,7 @@ def _plot_units_map(
                all_pts[:, 0].max() + 0.15, all_pts[:, 1].max() + 0.12)
     in_view = [unit for unit in units
                if _ring_in_box(unit.ring, box)
-               and _ring_meets_country(unit.ring, outline.rings)]
+               and _ring_meets_country(unit.ring, outline.rings, unit.holes)]
     # None, not "": an unknown district is not the interior, and the
     # crosswalk treats the two differently
     district = (site.district if site is not None else "") or None
@@ -1167,7 +1217,8 @@ def _home_district(site, districts) -> tuple[str, set[str], list]:
     The position decides when there is one: "Western Area" written on a
     sheet resolves to Western Area Rural from the coordinates, and used to
     highlight nothing while the title named a district that does not
-    exist. Without a position the written name is used: "Western Area"
+    exist. Without a position the written name is used, read as the area
+    window reads it: "Port Loko District" is Port Loko, "Western Area"
     lights both halves of the peninsula, and Karene or Falaba, which the
     boundary layer predates, light the chiefdoms the crosswalk assigns to
     them. Returns ``(name for the title, polygon names to highlight,
@@ -1182,19 +1233,22 @@ def _home_district(site, districts) -> tuple[str, set[str], list]:
             name = found
     if not name:
         return "", set(), []
-    lower = name.lower()
+    # read as the area window reads it: "Port Loko District" lit nothing
+    # while the title named a "Port Loko District District"
+    from ..ingestion.checks import district_display_name
+
+    _, names = _district_named(name)
     known = {d.name.strip().lower() for d in districts}
-    if lower in known:
-        return name, {lower}, []
-    if lower == "western area":
-        halves = {d for d in known if d.startswith("western area")}
-        return name, halves, []
-    crosswalk = _current_district_of_chiefdom()
-    chiefdoms = [
-        area for area in load_chiefdoms()
-        if crosswalk.get(area.name, "").strip().lower() == lower
-    ]
-    return name, set(), chiefdoms
+    lit = {n.lower() for n in names if n.lower() in known}
+    missing = {n.lower() for n in names if n.lower() not in known}
+    chiefdoms = []
+    if missing:
+        crosswalk = _current_district_of_chiefdom()
+        chiefdoms = [
+            area for area in load_chiefdoms()
+            if crosswalk.get(area.name, "").strip().lower() in missing
+        ]
+    return district_display_name(name), lit, chiefdoms
 
 
 #: Where the neighbours' names go, as fractions of the frame rather than
@@ -1345,10 +1399,13 @@ def _scale_caveat(
         return ""
     line_km = source_scale * 0.0005 / 1000.0  # a 0.5 mm line on the sheet
     share = line_km / (2 * radius_km) * 100
+    # The window to the kilometre. A chiefdom or district window is the
+    # area's own size, and "this 43.4293 km window" claimed a precision the
+    # sentence is there to disown.
     note = (
         f"Drawn from a 1:{source_scale:,} dataset: a boundary on this map is "
         f"placed to roughly {line_km:g} km, which is {share:.0f}% of this "
-        f"{2 * radius_km:g} km window. Read the contacts as regional "
+        f"{2 * radius_km:.0f} km window. Read the contacts as regional "
         "context, not as mapped ground."
     )
     return f"{note} {publisher_note}".strip()
@@ -1507,8 +1564,11 @@ def plot_study_area_map(
             for unit in load_geology(geology_path):
                 if not _ring_in_box(unit.ring, box):
                     continue
+                # with its holes left open: painted from the outer ring
+                # alone, the Precambrian lay over every dyke it encloses
+                # and the two tints mixed into a colour neither unit has
                 ax.add_patch(
-                    plt.Polygon(unit.ring, closed=True, facecolor=unit.color,
+                    _unit_patch(unit, facecolor=unit.color,
                                 edgecolor="none", alpha=0.45, zorder=1)
                 )
             credit = f"{GEOLOGY_CREDIT}. {credit}"

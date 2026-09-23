@@ -21,12 +21,13 @@ from ..hydraulics.analysis import PumpingTestAnalysis
 from ..models import DrillingLog, SiteMetadata
 from ..quality.assess import (
     SUITABILITY_PHRASE,
-    SUITABILITY_SENTENCE,
     WaterQualityAssessment,
+    suitability_sentence,
+    unquantified_text,
 )
 from ..utils import fmt_num, safe_slug
 from .citations import GLOSSARY, references_for
-from ..quality.standards import PROVISIONAL_NATIONAL_NOTE, provisional_national_parameters
+from ..quality.standards import PROVISIONAL_NATIONAL_NOTE
 from ..utils import utm_text
 from .context import add_area_section
 from .docx_utils import ReportBuilder
@@ -293,13 +294,14 @@ def build_handover_report(
         exceed = inputs.quality.all_exceedances
         if exceed:
             rb.table(
-                [[r.parameter, fmt_num(r.value), r.unit, r.remark] for r in exceed],
+                [[r.parameter, unquantified_text(r) or fmt_num(r.value), r.unit,
+                  r.remark] for r in exceed],
                 header=["Parameter", "Value", "Unit", "Remark"],
                 caption="Parameters above guideline or standard limits.",
             )
             # a national limit the quality report calls provisional is
-            # provisional here too
-            if provisional_national_parameters():
+            # provisional here too, judged by the table the assessment used
+            if any(r.sl_provisional for r in exceed):
                 rb.paragraph(PROVISIONAL_NATIONAL_NOTE, align="justify", italic=True)
     else:
         rb.paragraph("Water quality results are reported separately.")
@@ -426,7 +428,7 @@ def _executive_summary(inputs: HandoverReportInputs) -> tuple[list[str], list[st
     if quality is not None:
         # Chosen on the full verdict state, not the health exceedances alone:
         # a national breach or an unevaluable panel used to read as suitable.
-        sentence = SUITABILITY_SENTENCE[quality.verdict_state]
+        sentence = suitability_sentence(quality)
         if quality.verdict_state in ("health_fail", "national_fail"):
             sentence = sentence.rstrip(".") + "; see the water quality section."
         bits.append(sentence)
@@ -486,11 +488,25 @@ def default_works(inputs: HandoverReportInputs) -> list[str]:
         )
     design = inputs.design
     if design is not None:
+        # The fill is the design's own, and the bullet says "designed" unless
+        # the log records the screens as installed: it certified "gravel
+        # pack" over a 19 mm annulus the design had left empty, and 19 m of
+        # screen as completed work above a drawing captioned "not an
+        # as-built record".
+        fill = {
+            "gravel pack": "gravel pack",
+            "formation stabiliser": "formation stabiliser",
+        }.get(design.annular_fill,
+              f"no gravel pack (the {design.annulus_mm:.0f} mm annulus is too thin "
+              "to place one)")
         works.append(
-            f"Construction with {design.casing_diameter_in:g} inch "
-            f"{design.casing_material} casing, "
-            f"{fmt_num(design.total_screen_length_m)} m of screen, gravel pack "
-            f"and sanitary seal to {fmt_num(design.sanitary_seal[1])} m."
+            ("Construction with " if design.as_built else "Construction designed with ")
+            + f"{design.casing_diameter_in:g} inch {design.casing_material} casing, "
+            f"{fmt_num(design.total_screen_length_m)} m of screen"
+            + (" as installed" if design.as_built else "")
+            + f", {fill} and sanitary seal to {fmt_num(design.sanitary_seal[1])} m"
+            + ("." if design.as_built
+               else "; the drilling log records no casing string as installed.")
         )
         works.append("Development of the borehole by air lifting until clear.")
     if inputs.pumping is not None:

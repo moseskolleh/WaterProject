@@ -448,6 +448,16 @@
     if (changed) store.set('site', site);
   }
 
+  /* The one pump intake depth every document prints (C.pumpIntakeDepth):
+   * the deeper of the yield recommendation's and the seasonal projection's,
+   * as [depth, why]. The design was fed the yield's depth alone, so the
+   * drawing and the completion report gave one depth and the pumping report,
+   * built with the seasonal projection, another (hydraulics-6). */
+  function recommendedIntake() {
+    if (!derived.analysis || !derived.analysis.yield_recommendation) return [null, ''];
+    return C.pumpIntakeDepth(derived.analysis, currentSeasonal(derived.analysis));
+  }
+
   function rebuildDesign() {
     derived.design = null;
     var cfg = config();
@@ -460,14 +470,17 @@
     }
     if (!totalDepth && interp) totalDepth = interp.max_drilling_depth_m;
     if (!totalDepth) return;
+    var rec = derived.analysis ? derived.analysis.yield_recommendation : null;
     try {
       derived.design = C.designBorehole({
         log: derived.log, interpretation: interp,
         staticWaterLevelM: swl === undefined ? null : swl,
         pumpIntakeM: custom.pumpIntake !== null && custom.pumpIntake !== undefined
-          ? custom.pumpIntake
-          : (derived.analysis && derived.analysis.yield_recommendation
-            ? derived.analysis.yield_recommendation.pump_installation_depth_m : null),
+          ? custom.pumpIntake : recommendedIntake()[0],
+        /* the shallowest intake the test supports, whoever chose the depth:
+         * the design moves an intake up out of a screen only as far as that */
+        pumpIntakeFloorM: rec
+          ? C.pumpIntakeFloor(rec, cfg.pumping.pump_submergence_min_m) : null,
         rules: cfg.design, totalDepthM: totalDepth,
         screensM: custom.screens && custom.screens.length ? custom.screens : null,
       });
@@ -1009,15 +1022,14 @@
     var mapNode = null;
     if (GWT.data.geo && GWT.data.geo.adminBoundaries) {
       var boundaries = GWT.data.geo.adminBoundaries.features || [];
+      var home = locatorHome(site, latlon);
       var legendItems = [];
       if (latlon) {
         legendItems.push({ label: 'Project site', kind: 'diamond',
           colour: charts.palette().secondary });
       }
-      if (site.district) {
-        legendItems.push({ label: site.district + ' district', colour: '#CFE0D6' });
-      }
-      legendItems.push({ label: 'other districts', colour: '#EDEAE3' });
+      if (home.legend) legendItems.push(home.legend);
+      legendItems.push({ label: 'other districts', colour: OTHER_FILL });
       mapNode = charts.siteMap({
         context: boundaries,
         /* the bundled layer is geoBoundaries; the credit named a dataset this
@@ -1025,10 +1037,9 @@
          * tell the Atlantic from unmapped ground */
         outline: nationalOutline(GWT.data.geo),
         labelContext: true,
-        contextFill: function (feature) {
-          var name = (feature.properties || {}).name || (feature.properties || {}).shapeName;
-          return name === site.district ? '#CFE0D6' : '#EDEAE3';
-        },
+        contextFill: home.fill,
+        highlight: home.highlight, highlightFill: HOME_FILL,
+        highlightLabel: home.highlight.length ? home.name : '',
         points: latlon ? [{
           lon: latlon.lon, lat: latlon.lat, label: siteLabel(),
           colour: charts.palette().secondary, size: 6.5,
@@ -1123,12 +1134,18 @@
               render();
             }, { variant: 'ghost' }),
           ])),
-        latlon ? el('p.muted', 'Interpreted position: ' + latlon.lat.toFixed(5) +
-          '°N, ' + latlon.lon.toFixed(5) + '°E' +
+        latlon ? el('p.muted', 'Interpreted position: ' + degreesText(latlon) +
           (latlon.fromUtm ? ' (converted from UTM zone ' + latlon.zone + ')' : '') +
           (latlon.chiefdom ? ' — inside ' + latlon.chiefdom + ' chiefdom' +
             (districtOf(latlon.chiefdom) ? ', ' + districtOf(latlon.chiefdom) +
               ' district' : '') : '')) : null,
+        /* a sign the reader supplied is not a sign the crew typed, and a
+         * position outside the country is on no map below: both are said
+         * where the position is shown, in the words the engine uses */
+        latlon && latlon.note
+          ? el('div.callout.callout-warn', el('p', latlon.note)) : null,
+        latlon && latlon.outside
+          ? el('div.callout.callout-bad', el('p', latlon.outside)) : null,
         /* the commonest copy-over error on a field sheet is a district that
          * does not contain the recorded position, so say so where it is seen */
         districtWarning
@@ -1278,20 +1295,44 @@
 
   /* Sierra Leone lies in UTM zones 28N and 29N; the easting alone identifies
    * the zone, so it is inferred rather than guessed. A pair of small numbers is
-   * read as degrees instead. */
+   * read as degrees instead, and read the way a pasted "lat, lon" is, through
+   * the engine's readLatLon: a longitude typed without its western sign is
+   * read as west, and the reading says so. Taken at face value, easting
+   * 13.2317 and northing 8.4657 put the site in central Africa - no marker on
+   * any map, "13.23170 E" in every report, and nothing on the page to say it
+   * was wrong.
+   *
+   * `note` is the assumption a degree reading rests on, and `outside` the
+   * sentence check_site_consistency writes for a position outside the
+   * country, UTM or degrees; the site page shows both. */
   function siteLatLon() {
     var site = store.get('site');
     var e = site.easting, n = site.northing;
     if (e === null || n === null || e === undefined || n === undefined) return null;
+    var ll;
     if (Math.abs(e) <= 180 && Math.abs(n) <= 90) {
-      return { lon: e, lat: n, fromUtm: false, chiefdom: chiefdomAt(n, e) };
+      var reading = C.readLatLon(String(n) + ', ' + String(e));
+      ll = reading.lat === null || reading.lon === null
+        ? { lat: Number(n), lon: Number(e), note: '' }
+        : { lat: reading.lat, lon: reading.lon, note: reading.message };
+      ll.fromUtm = false;
+    } else {
+      var zone = site.utm_zone || C.inferZoneForSierraLeone(e);
+      ll = utmToLatLon(e, n, zone);
+      if (!ll) return null;
+      ll.fromUtm = true; ll.zone = zone; ll.note = '';
     }
-    var zone = site.utm_zone || C.inferZoneForSierraLeone(e);
-    var ll = utmToLatLon(e, n, zone);
-    if (!ll) return null;
-    ll.fromUtm = true; ll.zone = zone;
+    ll.outside = C.outsideCountryNote(ll.lat, ll.lon);
     ll.chiefdom = chiefdomAt(ll.lat, ll.lon);
     return ll;
+  }
+
+  /* A position as a reader writes it: "8.46570° N, 13.23170° W". The site
+   * page printed the signed longitude against an E, so a correct western fix
+   * read "-13.23170°E". */
+  function degreesText(latlon) {
+    return C.pyFixed(Math.abs(latlon.lat), 5) + '° ' + (latlon.lat >= 0 ? 'N' : 'S') +
+      ', ' + C.pyFixed(Math.abs(latlon.lon), 5) + '° ' + (latlon.lon >= 0 ? 'E' : 'W');
   }
 
   /* --- the area a report should map ---------------------------------------
@@ -1303,71 +1344,42 @@
    * Only a project that records neither gets no map, and then the report says
    * so rather than leaving a gap.
    *
-   * This mirrors groundwater.mapping.area_window on the Python side, so the
+   * The window itself is the engine's C.areaWindow, a port of
+   * groundwater.mapping.area_window held to it by the parity suite, so the
    * browser report and the report the desktop toolkit writes cover the same
-   * ground.
+   * ground at the same size. The page used to work it out with rules of its
+   * own - the largest ring only, the layer's truncated chiefdom names, a
+   * district name compared as typed - and gave Dema a window a third
+   * narrower than the Python's, no map at all for Karene, Falaba, "Western
+   * Area" or "Port Loko District", and "Bureh Kasseh Ma chiefdom" in a
+   * caption.
    */
-  function ringCentroid(ring) {
-    var a = 0, cx = 0, cy = 0;
-    for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-      var cross = ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
-      a += cross;
-      cx += (ring[j][0] + ring[i][0]) * cross;
-      cy += (ring[j][1] + ring[i][1]) * cross;
-    }
-    if (!a) {
-      return [ring[0][0], ring[0][1]];
-    }
-    return [cx / (3 * a), cy / (3 * a)];
-  }
 
-  function featureRings(feature) {
-    var geometry = (feature || {}).geometry;
-    if (!geometry) return [];
-    if (geometry.type === 'Polygon') return geometry.coordinates;
-    if (geometry.type === 'MultiPolygon') {
-      return geometry.coordinates.map(function (poly) { return poly[0]; });
-    }
-    return [];
-  }
+  /* The district a location map lights, and the legend entry that names it.
+   * The fill is applied to the polygons C.homeDistrict names, and to the
+   * chiefdoms it names in place of a district the boundary layer predates;
+   * the legend names the district only when something is lit, because a key
+   * entry in a colour that is nowhere on the map is a key that lies. */
+  var HOME_FILL = '#CFE0D6';
+  var OTHER_FILL = '#EDEAE3';
 
-  function featureWindow(feature, label, minRadiusKm, factor) {
-    var rings = featureRings(feature);
-    if (!rings.length) return null;
-    var biggest = rings[0], best = 0;
-    rings.forEach(function (ring) {
-      var lonMin = Infinity, lonMax = -Infinity, latMin = Infinity, latMax = -Infinity;
-      ring.forEach(function (c) {
-        lonMin = Math.min(lonMin, c[0]); lonMax = Math.max(lonMax, c[0]);
-        latMin = Math.min(latMin, c[1]); latMax = Math.max(latMax, c[1]);
-      });
-      var area = (lonMax - lonMin) * (latMax - latMin);
-      if (area > best) { best = area; biggest = ring; }
-    });
-    var centre = ringCentroid(biggest);
-    var latSpan = 0, lonSpan = 0;
-    biggest.forEach(function (c) {
-      lonSpan = Math.max(lonSpan, Math.abs(c[0] - centre[0]));
-      latSpan = Math.max(latSpan, Math.abs(c[1] - centre[1]));
-    });
-    var km = Math.max(latSpan * 110.574,
-      lonSpan * 111.320 * Math.cos(centre[1] * Math.PI / 180));
+  function locatorHome(site, latlon) {
+    var home = C.homeDistrict(site, latlon);
+    var lit = {};
+    home.chiefdoms.forEach(function (name) { lit[name] = true; });
+    var chiefdoms = (((GWT.data.geo || {}).chiefdomBoundaries || {}).features || [])
+      .filter(function (f) { return lit[(f.properties || {}).name] === true; });
     return {
-      lon: centre[0], lat: centre[1], label: label, exact: false,
-      radiusKm: Math.max(km * (factor || 1.2), minRadiusKm || 20),
+      name: home.name,
+      fill: function (feature) {
+        var props = feature.properties || {};
+        var name = String(props.name || props.shapeName || '').trim().toLowerCase();
+        return home.districts.indexOf(name) >= 0 ? HOME_FILL : OTHER_FILL;
+      },
+      highlight: chiefdoms,
+      legend: home.districts.length || chiefdoms.length
+        ? { label: C.districtLabel(home.name), colour: HOME_FILL } : null,
     };
-  }
-
-  function adminFeature(level, name) {
-    var wanted = String(name || '').trim().toLowerCase();
-    if (!wanted) return null;
-    var set = level === 'chiefdom'
-      ? ((GWT.data.geo || {}).chiefdomBoundaries || {}).features
-      : ((GWT.data.geo || {}).adminBoundaries || {}).features;
-    return (set || []).filter(function (feature) {
-      var props = feature.properties || {};
-      return String(props.name || props.shapeName || '').trim().toLowerCase() === wanted;
-    })[0] || null;
   }
 
   /* The national outline on its own. The geology and aquifer maps need it
@@ -1395,11 +1407,14 @@
     if (!window_) return null;
     var geo = GWT.data.geo || {};
     var points = [];
+    /* two points the ranking cannot separate get no star between them, as on
+     * the drill-target map: the report's text calls them indistinguishable */
+    var tie = surveyTie(derived.interpretations);
     (derived.interpretations || []).forEach(function (interp) {
       var pos = soundingLatLon(interp);
       if (pos) {
         points.push({ lat: pos.lat, lon: pos.lon, label: interp.sounding_id,
-          kind: interp.rank === 1 ? 'recommended point' : 'VES point' });
+          kind: interp.rank === 1 && !tie ? 'recommended point' : 'VES point' });
       }
     });
     /* the site marker, unless it would sit on a sounding: a siting survey's
@@ -1434,62 +1449,38 @@
     });
   }
 
+  /* The survey's one tie, as reporting/geophysical.py computes it once for the
+   * whole document: rankingTie() over the scorecard, on the project's own
+   * ranking_tie_points. The study-area map, the drill-target map and their
+   * captions all read it, where each map used to decide it again. */
+  function surveyTie(interpretations) {
+    if (!interpretations || !interpretations.length) return false;
+    var ves = config().ves;
+    return C.rankingTie(C.assessSiting(interpretations, ves),
+      ves.ranking_tie_points) !== '';
+  }
+
   /* A sounding carries its own position, which is not always the site's:
    * a traverse is a line of pegs, and the map is the only place that shows
    * which end of it the drill target sits at. */
   function soundingLatLon(interp) {
     if (interp.site_easting == null || interp.site_northing == null) return null;
-    var zone = (store.get('site') || {}).utm_zone ||
-      C.inferZoneForSierraLeone(interp.site_easting);
+    /* the sounding's own zone, read off its easting as the engine reads it:
+     * a survey on the 28N/29N boundary records soundings in both zones, and
+     * the project's one zone put the other zone's pegs 660 km away */
+    var zone = C.inferZoneForSierraLeone(interp.site_easting);
     var pair = C.utmToGeographic(interp.site_easting, interp.site_northing, zone);
     return { lat: pair.lat, lon: pair.lon };
   }
 
   function areaWindow(radiusKm) {
-    var site = store.get('site') || {};
-    var latlon = siteLatLon();
-    if (latlon) {
-      return {
-        lon: latlon.lon, lat: latlon.lat, exact: true,
-        label: site.community || 'the site',
-        radiusKm: radiusKm || store.get('site.mapRadiusKm', 40),
-      };
-    }
-    var chiefdom = adminFeature('chiefdom', site.chiefdom);
-    if (chiefdom) {
-      return featureWindow(chiefdom, site.chiefdom + ' chiefdom', 12, 1.35);
-    }
-    var district = adminFeature('district', site.district);
-    if (district) {
-      return featureWindow(district, site.district + ' district', 20, 1.2);
-    }
-    return null;
+    return C.areaWindow(store.get('site') || {}, siteLatLon(),
+      radiusKm || store.get('site.mapRadiusKm', 40));
   }
 
+  /* The sentence placing the site: area_map_note, in the engine. */
   function areaNote() {
-    var site = store.get('site') || {};
-    var where = [site.community, site.chiefdom && site.chiefdom + ' chiefdom',
-      site.district && site.district + ' district'].filter(Boolean).join(', ');
-    var latlon = siteLatLon();
-    if (latlon) {
-      return (where ? 'The site is at ' + where + ', ' : 'The site is at ') +
-        Math.abs(latlon.lat).toFixed(5) + ' ' + (latlon.lat < 0 ? 'S' : 'N') + ', ' +
-        Math.abs(latlon.lon).toFixed(5) + ' ' + (latlon.lon < 0 ? 'W' : 'E') + '.';
-    }
-    var window_ = areaWindow();
-    if (!window_) {
-      return (where ? 'The site is recorded as ' + where + '. ' : '') +
-        'Neither a GPS position nor an administrative area is recorded for it, ' +
-        'so no map of the area can be drawn. A borehole that cannot be found ' +
-        'again on the ground cannot be revisited or maintained: record the ' +
-        'position on the field sheet and reissue this report.';
-    }
-    return (where ? 'The site is recorded as ' + where + '. ' : '') +
-      'No GPS position is recorded for it, so the maps below cover ' +
-      window_.label + ' rather than the borehole itself and carry no site ' +
-      'marker. Record the position on the field sheet and reissue this report: ' +
-      'a borehole that cannot be found again on the ground cannot be revisited ' +
-      'or maintained.';
+    return C.areaMapNote(store.get('site') || {}, siteLatLon());
   }
 
   /* The figures themselves, rasterised for the .docx. `detail` adds the
@@ -1502,23 +1493,20 @@
     var window_ = areaWindow();
     if (!window_) return [];
 
+    var home = locatorHome(site, latlon);
     var legendItems = [];
     if (latlon) {
       legendItems.push({ label: 'Project site', kind: 'diamond',
         colour: charts.palette().secondary });
     }
-    if (site.district) {
-      legendItems.push({ label: site.district + ' district', colour: '#CFE0D6' });
-    }
-    legendItems.push({ label: 'other districts', colour: '#EDEAE3' });
+    if (home.legend) legendItems.push(home.legend);
+    legendItems.push({ label: 'other districts', colour: OTHER_FILL });
 
     var out = [];
     var locator = charts.siteMap({
       context: (geo.adminBoundaries.features || []),
-      contextFill: function (feature) {
-        var name = (feature.properties || {}).name || (feature.properties || {}).shapeName;
-        return name === site.district ? '#CFE0D6' : '#EDEAE3';
-      },
+      contextFill: home.fill,
+      highlight: home.highlight, highlightFill: HOME_FILL,
       points: latlon ? [{
         lon: latlon.lon, lat: latlon.lat, label: siteLabel(),
         colour: charts.palette().secondary, size: 6.5,
@@ -1648,7 +1636,9 @@
    * the same thing about it. */
   function districtNote(site, latlon) {
     var stated = (site && site.district) || '';
-    if (!stated || !latlon) return '';
+    /* a position outside the country is said once, as the Python check says
+     * it, and not judged against any district as well */
+    if (!stated || !latlon || latlon.outside) return '';
     var matched = C.matchDistrict(stated);
     var resolved = matched[0], candidates = matched[1];
     if (!resolved.length) {
@@ -1776,8 +1766,10 @@
       var interp = derived.interpretations[i];
       var soundingId = interp.sounding_id;
       var curve = charts.vesCurve(result);
+      /* the depth every figure of this model is drawn to, the report's too */
       var model = charts.layeredModel(result.model, {
-        maxDepth: Math.max(interp.investigation_depth_m, 20),
+        maxDepth: C.modelDepthM(result.model, interp.investigation_depth_m),
+        investigationDepth: interp.investigation_depth_m,
       });
       nodes.push(card(soundingId + ' — ' +
         C.describeCurveType(interp.curve_type).split(';')[0], [
@@ -1969,9 +1961,7 @@
           'from the pumping test sheet'),
         field('Pump intake (m)', S.numberInput(
           custom.pumpIntake !== null && custom.pumpIntake !== undefined
-            ? custom.pumpIntake
-            : (derived.analysis && derived.analysis.yield_recommendation
-              ? derived.analysis.yield_recommendation.pump_installation_depth_m : null),
+            ? custom.pumpIntake : recommendedIntake()[0],
           function (v) { store.set('design.pumpIntake', v); rebuildDesign(); render(); }),
           'from the yield recommendation unless overridden'),
       ]),
@@ -2827,6 +2817,7 @@
     }
 
     var rec2 = analysis.yield_recommendation;
+    var intake = recommendedIntake();
     nodes.push(card('Yield recommendation', [
       rec2.safe_yield_m3_per_h ? S.statRow([
         S.stat('Safe yield', C.yieldRangeText(rec2),
@@ -2837,9 +2828,10 @@
         S.stat('Specific capacity', rec2.specific_capacity_m3hr_per_m
           ? C.formatG(C.roundSig(rec2.specific_capacity_m3hr_per_m, 2), 2) +
             ' m³/h per m' : '—', rec2.specific_capacity_basis || ''),
-        S.stat('Pump intake', rec2.pump_installation_depth_m !== null
-          ? rec2.pump_installation_depth_m.toFixed(0) + ' m' : '—',
-        'below the top of the casing'),
+        /* the depth the reports and the design print, not the day-of-test
+         * depth alone */
+        S.stat('Pump intake', intake[0] !== null ? intake[0].toFixed(0) + ' m' : '—',
+          'below the top of the casing' + (intake[1] ? ', ' + intake[1] : '')),
       ]) : el('div.callout.callout-warn', el('p',
         'Yield recommendation pending: ' + rec2.pending_reason + '.')),
       /* what the yield is worth, beside the number, as every report prints it */
@@ -2915,6 +2907,8 @@
             months, function (v) {
               store.set('seasonal', Object.assign({}, store.get('seasonal') || {},
                 { month: Number(v) || null, touched: true }));
+              /* the intake the design draws follows the projection */
+              rebuildDesign();
               render();
             }), 'Read from the field sheet where it can be'),
         field('Annual water-table swing (m)',
@@ -2923,6 +2917,7 @@
           function (v) {
             store.set('seasonal', Object.assign({}, store.get('seasonal') || {},
               { rangeM: (v === null || v === undefined) ? null : Number(v) }));
+            rebuildDesign();
             render();
           }, { min: 0, max: 30, step: 0.5 }),
         'Wet-season high to dry-season low. A single test cannot measure it'),
@@ -5612,10 +5607,17 @@
     if (!node) return null;
     var site = store.get('site') || {};
     var preferred = preferredInterpretation(interpretations);
-    var caption = 'Study area at ' + (site.community || 'the project area') +
-      ', with the survey points and its location in Sierra Leone inset.' +
-      (preferred ? ' The star is the recommended drilling point, ' +
-        preferred.sounding_id + '.' : '');
+    /* worded from what the map actually carries: the soundings with a
+     * position, the star only where the ranking gives one and the point has
+     * a position to draw it at */
+    var marked = (interpretations || []).filter(function (interp) {
+      return !!soundingLatLon(interp);
+    }).map(function (interp) { return interp.sounding_id; });
+    var ves = config().ves;
+    var leaders = C.assessSiting(interpretations || [], ves).slice(0, 2)
+      .map(function (r) { return r.sounding_id; });
+    var caption = C.studyAreaCaption(site.community || 'the project area', marked,
+      preferred ? preferred.sounding_id : '', leaders, surveyTie(interpretations));
     var spread = surveySpreadKm(interpretations);
     if (spread > 5.0) {
       caption += ' The survey points are up to ' + C.pyFixed(spread, 1) +
@@ -5626,37 +5628,16 @@
     return { image: await charts.toPng(node), caption: caption, widthCm: 14 };
   }
 
-  /* The captions reporting/geophysical.py gives the four subsurface maps and
-   * the two sections, word for word. Each says what the figure is and what it
-   * is not; an interpreted surface that travels without its caption is read
-   * as measured ground. */
-  var SUBSURFACE_CAPTIONS = {
-    depth_to_bedrock: 'Depth to bedrock across the surveyed ground, from the ' +
-      'layered models. The surface is blanked outside the hull of the soundings.',
-    aquifer_thickness: 'Interpreted thickness of the weathered and fractured ' +
-      'zone - the section a borehole is completed in.',
-    bedrock_elevation: 'The bedrock surface as a landform, from the ground ' +
-      'elevation recorded at each sounding less its depth to basement. A low ' +
-      'in this surface is a buried valley, which basement groundwater drains ' +
-      'towards.',
-    protective_capacity: 'Protective capacity of the cover over the aquifer, ' +
-      'from the longitudinal conductance of the overlying layers. It rates how ' +
-      'well the ground above the aquifer resists downward contamination; it ' +
-      'says nothing about yield.',
-  };
-
+  /* The captions of the four subsurface maps and the pseudo-section are the
+   * engine's, written from what each figure shows (C.subsurfaceCaption,
+   * C.pseudosectionCaption), as reporting/geophysical.py writes them. This
+   * one is fixed in both engines. */
   var GEOELECTRIC_SECTION_CAPTION = 'Interpreted geoelectric section along the ' +
     'traverse, with the soundings at their surveyed spacing rather than evenly ' +
     'spaced and drawn to the depth of investigation. Colour is layer ' +
     'resistivity; the dashed lines correlate boundaries between neighbouring ' +
     'soundings within reach of each other and are an interpretation, not a ' +
     'measured contact.';
-
-  var PSEUDOSECTION_CAPTION = 'Apparent resistivity along the traverse, as ' +
-    'measured. Unlike every other section in this report it involves no ' +
-    'inversion: each point is a reading at the station and electrode spacing ' +
-    'it was taken with. AB/2 is that spacing, not a depth. Colour is ' +
-    'interpolated only between stations within reach of each other.';
 
   /* A figure the chart layer returned nothing for, with no reason from the
    * engine, is a defect in the drawing rather than a refusal the survey
@@ -5677,31 +5658,34 @@
    * and a figure missing without a word reads as "the survey did not attempt
    * this". Returns null where the Python writes no section at all: with
    * fewer than two positioned soundings there is nothing to say about the
-   * ground between them. */
-  async function subsurfaceFigures(interpretations, soundings) {
+   * ground between them. `profileRefusal` is why the ground profile of
+   * section 3 was not drawn, listed first as the Python lists it.
+   *
+   * Every interpretation goes to the maps and the section, positioned or
+   * not: the engine places them in one zone, and a refusal can then say
+   * which soundings lack a position and which lack the value. */
+  async function subsurfaceFigures(interpretations, soundings, profileRefusal) {
     if (!C.subsurfaceFiguresApply(interpretations)) return null;
-    var placed = (interpretations || []).filter(function (interp) {
-      return interp.site_easting !== null && interp.site_easting !== undefined &&
-        interp.site_northing !== null && interp.site_northing !== undefined;
-    });
+    var all = interpretations || [];
     var site = store.get('site') || {};
-    var zone = site.utm_zone ||
-      (placed.length ? C.inferZoneForSierraLeone(placed[0].site_easting) : 28);
-    var made = [], notDrawn = [], i, svg;
+    var zone = site.utm_zone || C.surveyZone(all) || 28;
+    var made = [], notDrawn = [], i, svg, anySurface = false;
+    if (profileRefusal) notDrawn.push('ground profile: ' + profileRefusal);
 
-    var maps = charts.subsurfaceMaps(placed, { zone: zone });
+    var maps = charts.subsurfaceMaps(all, { zone: zone });
     for (i = 0; i < maps.length; i += 1) {
       if (maps[i].reason || !maps[i].svg) {
         notDrawn.push(maps[i].name + ': ' + figureRefusal(maps[i].reason));
       } else {
+        anySurface = anySurface || !!maps[i].data.surface_said;
         made.push({
           image: await charts.toPng(maps[i].svg),
-          caption: SUBSURFACE_CAPTIONS[maps[i].key],
+          caption: maps[i].data.caption,
         });
       }
     }
 
-    var section = C.geoelectricSectionGeometry(placed, {});
+    var section = C.geoelectricSectionGeometry(all, {});
     svg = section.reason ? null : charts.geoelectricSection(section);
     if (svg) {
       made.push({ image: await charts.toPng(svg),
@@ -5714,23 +5698,21 @@
      * it, so a traverse that cannot be placed is the reason printed against
      * the pseudo-section rather than an evenly spaced section drawn under a
      * note saying no positions were recorded */
-    var profile = C.traverseProfile(placed);
+    var profile = C.traverseProfile(all);
     var pseudo = C.pseudosectionGeometry(soundings || [], profile);
     svg = pseudo.reason ? null : charts.apparentPseudosection(pseudo);
     if (svg) {
-      var caption = PSEUDOSECTION_CAPTION;
-      if (!profile.reason && !profile.is_collinear) {
-        caption += ' The soundings sit up to ' +
-          C.pyFixed(profile.max_offset_m, 0) + ' m off the profile line, so ' +
-          'this section cuts across the survey rather than along it.';
-      }
-      made.push({ image: await charts.toPng(svg), caption: caption });
+      made.push({ image: await charts.toPng(svg),
+        caption: C.pseudosectionCaption(C.spacingName(soundings || []), profile) });
     } else {
       notDrawn.push('apparent-resistivity pseudo-section: ' +
         figureRefusal(pseudo.reason));
     }
 
-    return { figures: made, notDrawn: notDrawn };
+    /* whether any map in the section has an interpolated surface, for the
+     * sentence the section opens on: it promised surfaces over three
+     * collinear soundings whose maps had none */
+    return { figures: made, notDrawn: notDrawn, anySurface: anySurface };
   }
 
   /* The drill-target suitability map, mirroring the figure path of
@@ -5775,20 +5757,23 @@
    * at each sounding: reporting/geophysical.py _ground_profile_figure, drawn
    * with mapping/terrain.py plot_ground_profile.
    *
-   * Omitted in silence wherever the Python omits it - fewer than two
-   * soundings carrying an easting, a northing and an elevation, a traverse
-   * that cannot be placed, or fewer than two finite levels - because the
-   * Python report writes no line about a profile it did not draw. It is not
-   * added to any "not drawn" list for the same reason. Ground drawn from one
-   * levelled station, or across a station nobody levelled, is relief this
-   * survey did not measure, and a reader takes a profile for measured
-   * ground. */
+   * Returns {figure, refusal}. Omitted in silence where the Python omits it -
+   * fewer than two soundings carrying a position and an elevation, so there
+   * is no profile to be missing. Refused with the engine's reason where the
+   * traverse cannot be placed or every gap between levels is wider than the
+   * soundings reach, and the reason goes on the "not drawn" list: the
+   * profile used to draw Rokel's 71 to 68 m slope across 20.7 km that the
+   * section beside it refused. */
   async function groundProfileFigure(interpretations) {
     var data = C.groundProfileData(interpretations);
-    if (!data) return null;
+    if (!data) return { figure: null, refusal: '' };
+    if (data.reason) return { figure: null, refusal: data.reason };
     var svg = charts.groundProfile(data);
-    if (!svg) return null;
-    return { image: await charts.toPng(svg), caption: data.caption };
+    if (!svg) return { figure: null, refusal: '' };
+    return {
+      figure: { image: await charts.toPng(svg), caption: data.caption },
+      refusal: '',
+    };
   }
 
   function reportCard(title, kind, description, extra) {
@@ -5832,6 +5817,12 @@
           if (!derived.interpretations || !derived.interpretations.length) {
             throw new Error('No sounding has been interpreted yet.');
           }
+          /* The geology paragraph, from the map under the site, through the
+           * engine's port of _geology_for. Nothing set it, so every browser
+           * report said "crystalline basement" - on the Bullom sands too,
+           * beside its own figures showing the Bullom Group and an
+           * intergranular aquifer. */
+          context.geologyNote = C.geologyParagraph(context.site, siteLatLon());
           for (var i = 0; i < derived.inversions.length; i++) {
             var result = derived.inversions[i];
             /* off the interpretation, which was pushed with this inversion; a
@@ -5844,13 +5835,21 @@
               image: await charts.toPng(charts.vesCurve(result, { hover: false })),
               caption: 'Sounding curve and fitted model for ' + id,
             });
+            /* one depth for every figure of this sounding's model, in both
+             * engines: the depth of investigation, or deeper where a fitted
+             * interface lies below it (ves/plots.py model_depth_m). The panel
+             * was drawn to the larger of the depth of investigation and 20 m,
+             * a rule no other figure used, under a caption saying it was
+             * drawn to the depth of investigation. */
+            var doi = derived.interpretations[i].investigation_depth_m;
             figures.push({
               soundingId: id,
               image: await charts.toPng(charts.layeredModel(result.model, {
-                maxDepth: Math.max(derived.interpretations[i].investigation_depth_m, 20),
+                maxDepth: C.modelDepthM(result.model, doi),
+                investigationDepth: doi,
               })),
-              caption: 'Layered earth model for ' + id + ', drawn to the depth of ' +
-                'investigation', widthCm: 9,
+              caption: 'Layered earth model for ' + id + ', drawn ' +
+                C.drawnDepthText(result.model, doi) + '.', widthCm: 9,
             });
             /* The interpreted layer column, which _sounding_block draws with
              * ves/plots.py plot_model_pseudosection. The staircase above
@@ -5860,7 +5859,7 @@
              * soundings side by side on. A model with no layers has no column
              * to draw, and the chart layer says so by returning nothing. */
             var layerSection = charts.modelPseudosection(result.model, {
-              depthMax: derived.interpretations[i].investigation_depth_m || null,
+              investigationDepth: doi || null,
               title: 'Layer section at ' + id,
             });
             if (layerSection) {
@@ -5869,9 +5868,7 @@
                 image: await charts.toPng(layerSection),
                 caption: 'Interpreted one-dimensional layer section at point ' +
                   id + ': the resistivity and thickness of each fitted layer, ' +
-                  'drawn to the depth of investigation (' +
-                  C.fmtNum(derived.interpretations[i].investigation_depth_m) +
-                  ' m).',
+                  'drawn ' + C.drawnDepthText(result.model, doi) + '.',
               });
             }
           }
@@ -5886,8 +5883,10 @@
            * recorded: section 3.1 carries it in the Python report, and the
            * browser's report had no figure showing whether the traverse runs
            * up a slope or along a valley floor. Null where the Python draws
-           * nothing, and the writer then prints nothing. */
-          context.groundProfile = await groundProfileFigure(derived.interpretations);
+           * nothing, and the writer then prints nothing; where the engine
+           * refuses it, the reason joins the "not drawn" list below. */
+          var ground = await groundProfileFigure(derived.interpretations);
+          context.groundProfile = ground.figure;
           /* The drill-target map: the one figure in the document that shows
            * which peg the recommendation is on, rather than naming it. */
           context.suitabilityMap = await suitabilityMapFigure(derived.interpretations);
@@ -5900,10 +5899,17 @@
           derived.interpretations.forEach(function (interp) {
             interpreted[interp.sounding_id] = true;
           });
+          var reported = (derived.soundings || []).filter(function (sounding) {
+            return interpreted[sounding.sounding_id] === true;
+          });
           context.subsurface = await subsurfaceFigures(derived.interpretations,
-            (derived.soundings || []).filter(function (sounding) {
-              return interpreted[sounding.sounding_id] === true;
-            }));
+            reported, ground.refusal);
+          /* the soundings carry the instrument and the array the field-work
+           * section names and the warnings their sheets raised, which the
+           * annex lists; the inversions, in lockstep with the interpretations,
+           * carry the array and the models tried */
+          context.soundings = reported;
+          context.inversions = derived.inversions;
           context.interpretations = derived.interpretations;
           context.figures = figures;
           context.preferredOrder = store.get('ves.preferredOrder');

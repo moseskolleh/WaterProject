@@ -252,15 +252,25 @@ def rings_to_polygons(
         return [[r] for r in rings]
     polygons: list[list[list[tuple[float, float]]]] = [[r] for r in outers]
     for hole in holes:
-        probe = hole[0]
-        # the smallest outer ring that contains it, so a hole inside a hole's
-        # island is cut from the island and not from the continent
-        candidates = [
-            i for i, poly in enumerate(polygons) if point_in_ring(probe, poly[0])
+        # A hole's own vertices decide which ring it cuts, not its first one
+        # alone: a hole clipped at the window's edge starts on that edge,
+        # which is also the edge of the outer ring clipped with it, and a ray
+        # cast from a point on a boundary says "outside" as readily as
+        # "inside". Three Precambrian holes were dropped that way. The outer
+        # ring holding the most of its vertices wins, and among equals the
+        # smallest, so a hole in an island is cut from the island and not
+        # from the continent around it.
+        counts = [
+            sum(point_in_ring(p, poly[0]) for p in hole[:-1]) for poly in polygons
         ]
-        if not candidates:
+        if not any(counts):
+            print(f"  a hole of {ring_area(hole):.5f} square degrees lies in no "
+                  "outer ring of its shape and is left out")
             continue
-        best = min(candidates, key=lambda i: ring_area(polygons[i][0]))
+        best = max(
+            range(len(polygons)),
+            key=lambda i: (counts[i], -ring_area(polygons[i][0])),
+        )
         polygons[best].append(hole)
     return polygons
 

@@ -51,6 +51,10 @@
      * open with an unqualified verdict two pages after the stamp said the
      * evidence was incomplete. */
     this.stampedReadiness = null;
+    /* The headings the table of contents lists, and where in the body the
+     * table sits (reporting/docx_utils.py _headings). */
+    this.headings = [];
+    this.tocIndex = null;
   }
 
   ReportBuilder.prototype.run = function (text, attrs) {
@@ -90,9 +94,12 @@
     return this;
   };
 
-  ReportBuilder.prototype.heading = function (text, level) {
+  /* numbered false keeps a heading out of the table of contents, as the
+   * Python builder does for the contents, summary, references and glossary. */
+  ReportBuilder.prototype.heading = function (text, level, numbered) {
     var lvl = Math.min(Math.max(level || 1, 1), 3);
     this.paragraph(text, { style: 'Heading' + lvl, keepNext: true });
+    if (numbered !== false) this.headings.push([lvl, clean(text)]);
     return this;
   };
 
@@ -114,17 +121,30 @@
     return this;
   };
 
-  /* Word fills this in on "Update Field"; the placeholder tells the reader so. */
+  /* A table of contents that reads before Word has updated anything
+   * (reporting/docx_utils.py table_of_contents). The page numbers come from
+   * Word updating the field, which settings.xml asks it to do on opening; the
+   * field's cached result, which every other viewer and every text
+   * extraction shows, is the list of headings, written when the document is.
+   * It used to be the sentence "Right-click and choose Update Field". */
   ReportBuilder.prototype.tableOfContents = function () {
-    this.heading('Table of Contents', 1);
-    this.body.push('<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
-      '<w:r><w:instrText xml:space="preserve"> TOC \\o "1-3" \\h \\z \\u </w:instrText></w:r>' +
-      '<w:r><w:fldChar w:fldCharType="separate"/></w:r>' +
-      '<w:r><w:t xml:space="preserve">Right-click and choose Update Field to fill ' +
-      'the table of contents.</w:t></w:r>' +
-      '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>');
+    this.heading('Table of Contents', 1, false);
+    this.tocIndex = this.body.length;
+    this.body.push('');
     this.pageBreak();
     return this;
+  };
+
+  ReportBuilder.prototype.tocXml = function () {
+    var lines = this.headings.map(function (h, i) {
+      return (i ? '<w:br/>' : '') + '<w:t xml:space="preserve">' +
+        esc(new Array(h[0]).join('    ') + h[1]) + '</w:t>';
+    }).join('');
+    return '<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
+      '<w:r><w:instrText xml:space="preserve"> TOC \\o "1-3" \\h \\z \\u </w:instrText></w:r>' +
+      '<w:r><w:fldChar w:fldCharType="separate"/></w:r>' +
+      '<w:r>' + lines + '</w:r>' +
+      '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>';
   };
 
   ReportBuilder.prototype.cover = function (titleLines, subtitleLines, details) {
@@ -204,7 +224,7 @@
 
   ReportBuilder.prototype.executiveSummary = function (paragraphs, keyFindings) {
     var self = this;
-    this.heading('Executive Summary', 1);
+    this.heading('Executive Summary', 1, false);
     /* The summary is qualified the way the cover is. A provisional stamp on
      * page one and an unhedged "the source is rated at ..." on page three is
      * a contradiction a reader who starts at the summary never sees resolved,
@@ -361,7 +381,7 @@
   ReportBuilder.prototype.references = function (entries) {
     var self = this;
     if (!entries || !entries.length) return this;
-    this.heading('References', 1);
+    this.heading('References', 1, false);
     entries.forEach(function (entry) {
       self.paragraph(entry, { indentCm: 0.8, hangingCm: 0.8, spaceAfter: 4 });
     });
@@ -370,7 +390,7 @@
 
   ReportBuilder.prototype.glossary = function (terms) {
     if (!terms || !terms.length) return this;
-    this.heading('Glossary and Abbreviations', 1);
+    this.heading('Glossary and Abbreviations', 1, false);
     this.table(terms, {
       header: ['Term', 'Meaning'], colWidthsCm: [3.5, 12.0], fontSize: 9.0,
     });
@@ -439,8 +459,17 @@
       '<w:pgMar w:top="1418" w:right="1418" w:bottom="1418" w:left="1418" ' +
       'w:header="708" w:footer="708" w:gutter="0"/>' +
       '</w:sectPr>';
+    var body = this.body.slice();
+    if (this.tocIndex !== null) body[this.tocIndex] = this.tocXml();
     return XML_HEAD + '<w:document ' + W_NS + '><w:body>' +
-      this.body.join('') + sectPr + '</w:body></w:document>';
+      body.join('') + sectPr + '</w:body></w:document>';
+  };
+
+  /* Asks Word to update the fields on opening, so the table of contents
+   * gains its page numbers; written only for a document that has one. */
+  ReportBuilder.prototype.settingsXml = function () {
+    return XML_HEAD + '<w:settings ' + W_NS + '>' +
+      '<w:updateFields w:val="true"/></w:settings>';
   };
 
   ReportBuilder.prototype.stylesXml = function () {
@@ -501,6 +530,7 @@
 
   ReportBuilder.prototype.build = function () {
     var self = this;
+    var withToc = this.tocIndex !== null;
     var imageTypes = {};
     this.images.forEach(function (img) {
       imageTypes[/jpe?g/i.test(img.mime) ? 'jpeg' : 'png'] = img.mime;
@@ -517,6 +547,7 @@
       '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
       '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>' +
       '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>' +
+      (withToc ? '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>' : '') +
       '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
       '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>' +
       '</Types>';
@@ -533,6 +564,7 @@
       '<Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
       '<Relationship Id="rIdNumbering" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>' +
       '<Relationship Id="rIdFooter" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>' +
+      (withToc ? '<Relationship Id="rIdSettings" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>' : '') +
       this.images.map(function (img, i) {
         return '<Relationship Id="rIdImg' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/' +
           img.name + '"/>';
@@ -562,9 +594,10 @@
       { name: 'word/styles.xml', data: this.stylesXml() },
       { name: 'word/numbering.xml', data: numberingXml() },
       { name: 'word/footer1.xml', data: footerXml() },
-    ].concat(this.images.map(function (img) {
-      return { name: 'word/media/' + img.name, data: img.bytes, store: true };
-    }));
+    ].concat(withToc ? [{ name: 'word/settings.xml', data: this.settingsXml() }] : [],
+      this.images.map(function (img) {
+        return { name: 'word/media/' + img.name, data: img.bytes, store: true };
+      }));
 
     return S.zip(entries);
   };
@@ -701,16 +734,26 @@
     return row.who_health || row.sl_standard || row.who_aesthetic || '';
   }
 
-  function limitationsParagraphs(kind) {
+  /* arrays: for 'ves', the arrays the soundings were run with. The paragraph
+   * said "a Schlumberger sounding ... its largest AB/2" over a Wenner survey,
+   * whose spacing is a. */
+  function limitationsParagraphs(kind, arrays) {
     var shared = 'The findings rest on the data recorded on the field sheets and ' +
       'on the standard interpretation methods named in this report. Field data ' +
       'carry measurement error, and the methods carry assumptions that are ' +
       'stated where they are used.';
     if (kind === 'ves') {
+      var kinds = arrays && arrays.length ? arrays : ['schlumberger'];
+      var reach = kinds.map(function (a) {
+        return a === 'wenner'
+          ? 'a Wenner sounding resolves the ground to roughly half of its largest ' +
+            'electrode spacing a'
+          : 'a Schlumberger sounding resolves the ground to roughly half of its ' +
+            'largest AB/2';
+      }).join(' and ');
       return [shared, 'Resistivity models are not unique: different layer ' +
         'combinations can fit the same sounding curve almost equally well ' +
-        '(the equivalence and suppression problem), and a Schlumberger sounding ' +
-        'resolves the ground to roughly half of its largest AB/2, not to the ' +
+        '(the equivalence and suppression problem), and ' + reach + ', not to the ' +
         'spacing itself: a layer that continues to that depth has no base in ' +
         'these data. A model whose misfit is above the target does not describe ' +
         'the curve closely, and the ranking discounts it for that. The ' +
@@ -760,12 +803,15 @@
     if (!figures.length && !notDrawn.length) return;
     b.heading('Subsurface maps from the survey', 2);
     if (figures.length) {
+      /* the promise about interpolated surfaces is made only where a map in
+       * the section has one: over three collinear soundings none does */
       b.paragraph('The maps in this section are drawn from the soundings ' +
         'themselves rather than from a national dataset, so they carry the ' +
-        'survey\'s own resolution. Each interpolated surface is blanked ' +
-        'outside the ground the soundings enclose: a contour beyond the last ' +
-        'peg is the interpolator continuing a trend, and a borehole gets ' +
-        'sited on it.', { align: 'justify' });
+        'survey\'s own resolution.' + (subsurface.anySurface
+          ? ' Each interpolated surface is blanked outside the ground the ' +
+            'soundings enclose: a contour beyond the last peg is the ' +
+            'interpolator continuing a trend, and a borehole gets sited on it.'
+          : ''), { align: 'justify' });
     }
     figures.forEach(function (fig) {
       b.figure(fig.image, fig.caption, fig.widthCm);
@@ -794,15 +840,38 @@
     b.provisionalStamp(context.readiness);
     b.tableOfContents();
 
-    var best = interpretations.slice().sort(function (a, c) {
+    var inversions = context.inversions || [];
+    var vesCfg = context.ves || C.defaultConfig().ves;
+    var analystOrder = !!(context.preferredOrder && context.preferredOrder.length);
+    /* One ranking for the whole document, assigned before anything reads it,
+     * on the settings the tables below are scored with, as
+     * reporting/geophysical.py does; and one tie, by the test the tie
+     * sentence and the "=1st" in the preference table use. The report used
+     * to write "Drill at X (ranked 1st)" under a table that could not
+     * separate X from the next point. An order the analyst set is a
+     * judgment, not a score, and is not second-guessed. */
+    if (interpretations.length) {
+      C.rankInterpretations(interpretations, context.preferredOrder, vesCfg);
+    }
+    var suit = interpretations.length ? C.assessSiting(interpretations, vesCfg) : [];
+    var ranked = interpretations.slice().sort(function (a, c) {
       return (a.rank || 99) - (c.rank || 99);
-    })[0];
+    });
+    var best = ranked[0];
+    var tied = (!analystOrder && suit.length >= 2 &&
+      C.tiedLeaders(suit, vesCfg.ranking_tie_points)) ? ranked.slice(0, 2) : [];
+    var at = tied.length ? ' at ' + best.sounding_id : '';
     b.executiveSummary([
       'A vertical electrical sounding survey was carried out at ' +
         (site.community || 'the site') + ' to select a drilling target. ' +
         interpretations.length + ' ' + S.plural(interpretations.length, 'sounding') +
         ' were made and interpreted as layered earth models.',
-      best ? 'The recommended drilling point is ' + best.sounding_id + ', where ' +
+      best ? (tied.length
+        ? 'Points ' + tied[0].sounding_id + ' and ' + tied[1].sounding_id +
+          ' cannot be told apart on geophysical grounds, so either may be drilled, ' +
+          'the choice between them to be made on access, sanitary distances and ' +
+          'the community\'s preference. At ' + best.sounding_id + ' '
+        : 'The recommended drilling point is ' + best.sounding_id + ', where ') +
         (best.water_zones.length
           ? 'possible water bearing zones are resolved from ' +
             best.water_zones.map(function (z) {
@@ -813,7 +882,10 @@
             'about ' + C.fmtNum(best.investigation_depth_m) + ' m and the conductive ' +
             'ground continues below that, so the thickness is a minimum'
           : '') +
-        '. A drilling depth of ' + C.drillingDepthText(best) + ' is recommended.' +
+        '. A drilling depth of ' + C.drillingDepthText(best) + ' is recommended' +
+        (tied.length
+          ? ' there, and of ' + C.drillingDepthText(tied[1]) + ' at ' + tied[1].sounding_id
+          : '') + '.' +
         (best.fit_quality === 'unreliable'
           ? ' The model at this point reproduces the readings to ' +
             C.pyFixed(best.fit_error_percent, 1) + ' percent (ERR), well above the ' +
@@ -824,14 +896,22 @@
               'target, so the layer depths are approximate.'
             : '') : '',
     ], best ? [
-      'Recommended VES point: ' + best.sounding_id,
-      'Depth to bedrock: ' + (best.depth_to_basement_m !== null
+      tied.length
+        ? 'VES points the survey cannot separate: ' + tied[0].sounding_id + ' and ' +
+          tied[1].sounding_id
+        : 'Recommended VES point: ' + best.sounding_id,
+      'Depth to bedrock' + at + ': ' + (best.depth_to_basement_m !== null
         ? C.fmtNum(best.depth_to_basement_m) + ' m' : 'not resolved'),
-      'Interpreted aquifer thickness: ' + (best.basement_not_resolved ? 'at least ' : '') +
+      'Interpreted aquifer thickness' + at + ': ' +
+        (best.basement_not_resolved ? 'at least ' : '') +
         C.fmtNum(best.aquifer_thickness_m) + ' m',
-      'Aquifer protective capacity: ' + best.protective_capacity,
-      'Recommended drilling depth: ' + C.drillingDepthText(best),
-      'Ranking confidence: ' + C.pyFixed(best.confidence === undefined ? 1 : best.confidence, 2),
+      'Aquifer protective capacity' + at + ': ' + best.protective_capacity,
+      'Recommended drilling depth: ' + (tied.length
+        ? tied.map(function (i) {
+            return C.drillingDepthText(i) + ' at ' + i.sounding_id; }).join('; ')
+        : C.drillingDepthText(best)),
+      'Ranking confidence' + at + ': ' +
+        C.pyFixed(best.confidence === undefined ? 1 : best.confidence, 2),
     ] : []);
 
     b.heading('1. Introduction', 1);
@@ -846,19 +926,28 @@
     areaSection(b, context, '1.1 Location and setting');
 
     b.heading('2. Background and Geology of the Project Area', 1);
-    b.paragraph(context.geologyNote || 'The area lies within the crystalline ' +
-      'basement complex of Sierra Leone. Groundwater in this terrain occurs in ' +
-      'the weathered overburden (saprolite and saprock) and in the fractured ' +
-      'zone at the top of fresh bedrock. Yields depend on the thickness of the ' +
-      'weathered zone and on the degree of fracturing, both of which vary over ' +
-      'short distances, which is why a geophysical survey precedes drilling.',
+    /* The paragraph is the engine's, _geology_for word for word: the page
+     * that builds this report works it out from the site's position and
+     * passes it in. A caller that does not gets the paragraph the Python
+     * writes for a site with no position, rather than the fixed "crystalline
+     * basement" text this used to print on the Bullom sands as well. */
+    b.paragraph(context.geologyNote || C.geologyParagraph(site, null),
       { align: 'justify' });
 
     b.heading('3. Field Work', 1);
     b.heading('3.1 Reconnaissance Survey', 2);
-    b.paragraph('The site was walked with the community to identify candidate ' +
-      'points clear of latrines, graveyards, refuse pits and flood paths, and ' +
-      'accessible to a drilling rig.', { align: 'justify' });
+    /* What this section says has to be evidenced by the inputs, as
+     * reporting/geophysical.py's field-work section has been since reports-6.
+     * It said the site "was walked with the community" and named a
+     * profiling method for every survey, whatever the sheets held; the
+     * browser holds no reconnaissance record, so it says there is none. */
+    b.paragraph('No reconnaissance record (date or field observations) was ' +
+      'supplied with the sounding data, so none is reported here. The sounding ' +
+      'points were taken as recorded on the field sheets' +
+      (site.date ? ', dated ' + site.date : '') + '.', { align: 'justify' });
+    b.paragraph('The weathered zone over the bedrock and the fractured rock ' +
+      'beneath it are the groundwater prospects in this ground, and the ' +
+      'soundings below are interpreted for both.', { align: 'justify' });
     /* The browser can never have an elevation model, and the Python report
      * always says so here. Silent, a reader took the survey point map for a
      * topographic one; and this is the sentence that explains why the ground
@@ -878,25 +967,74 @@
       b.figure(context.groundProfile.image, context.groundProfile.caption,
         context.groundProfile.widthCm);
     }
+    var soundings = context.soundings || [];
+    var placed = interpretations.filter(function (interp) {
+      return interp.site_easting !== null && interp.site_easting !== undefined &&
+        interp.site_northing !== null && interp.site_northing !== undefined;
+    });
+    b.paragraph('Sounding positions', { bold: true });
+    /* the positions are named as drawn only where a figure draws them: the
+     * study area map is the one figure here that marks the soundings */
+    var studyAreaShown = (context.areaMaps || []).some(function (fig) {
+      return /^Study area at /.test(fig.caption || '') &&
+        !/No sounding carries a recorded GPS position/.test(fig.caption || '');
+    });
+    b.paragraph(placed.length + ' ' + S.plural(placed.length, 'sounding') + ' of ' +
+      interpretations.length + ' ' + (placed.length === 1 ? 'carries' : 'carry') +
+      ' a recorded GPS position' +
+      (placed.length && studyAreaShown ? ', marked on the study area map' : '') +
+      '. How the points were chosen on the ground is not recorded on the field ' +
+      'sheets; where a traverse or profiling was run, its notes belong in the ' +
+      'reconnaissance record above.', { align: 'justify' });
     b.heading('3.2 Geophysical Survey', 2);
-    b.heading('3.2.1 Resistivity Profiling', 3);
-    b.paragraph('Resistivity measurements were made with a Schlumberger array. ' +
-      'Apparent resistivity is computed from the measured resistance and the ' +
-      'array geometric factor.', { align: 'justify' });
-    b.heading('3.2.2 Selection of VES Points', 3);
-    b.paragraph('Sounding points were placed on the candidate positions agreed ' +
-      'with the community.', { align: 'justify' });
-    b.heading('3.2.3 Vertical Electrical Sounding (VES)', 3);
-    b.paragraph('Each sounding was expanded to a maximum AB/2 of ' +
-      (interpretations.length
-        ? C.fmtNum(Math.max.apply(null, interpretations.map(function (i) {
-            return i.max_spacing_m || 0; })))
-        : '—') + ' m. A Schlumberger sounding resolves the ground to roughly half ' +
-      'of that, so the depth of investigation is about ' +
-      (interpretations.length
-        ? C.fmtNum(Math.max.apply(null, interpretations.map(function (i) {
-            return i.investigation_depth_m; })))
-        : '—') + ' m; a layer that continues to that depth has no base in these data.',
+    var instrument = (soundings[0] && soundings[0].instrument) || 'Syscal Junior';
+    b.paragraph('The geophysical survey consisted of electrical resistivity ' +
+      'measurements, specifically vertical electrical sounding (VES) using the ' +
+      instrument + ' instrument.', { align: 'justify' });
+    b.heading('3.2.1 Vertical Electrical Sounding (VES)', 3);
+    /* the configuration named off the soundings, as the Python names it; the
+     * Schlumberger array and a profiling method used to be asserted here for
+     * every survey */
+    var arrays = {};
+    (soundings.length ? soundings : [{}]).forEach(function (sounding) {
+      var name = String(sounding.array_type || 'schlumberger');
+      arrays[name.charAt(0).toUpperCase() + name.slice(1).toLowerCase()] = true;
+    });
+    b.paragraph(interpretations.length + ' ' +
+      S.plural(interpretations.length, 'vertical electrical sounding') + ' (' +
+      interpretations.map(function (interp) { return interp.sounding_id; }).join(', ') +
+      ') ' + (interpretations.length === 1 ? 'was' : 'were') + ' recorded with the ' +
+      Object.keys(arrays).sort().join(' and ') + ' electrode configuration, to ' +
+      'determine the formation resistivities and the depth to bedrock, and ' +
+      'whether water bearing fractures or a saturated weathered zone are present ' +
+      'at depth and how thick they are. No resistivity profiling record was ' +
+      'supplied.', { align: 'justify' });
+    /* The reach of each array, from its inversion (the two lists are built
+     * in lockstep): the report said "a maximum AB/2 of 60 m" and "a
+     * Schlumberger sounding resolves" over a Wenner survey whose spacing a
+     * was 60 m and whose AB/2 was 90 m. Worded as reporting/geophysical.py
+     * _limitations words it. */
+    var arrayOf = function (k) {
+      var inv = inversions[k];
+      return inv && String(inv.array_type || '').indexOf('wenner') === 0
+        ? 'wenner' : 'schlumberger';
+    };
+    /* the kinds of array, for the limitations section's reach sentence */
+    var arrayKinds = interpretations.map(function (interp, k) { return arrayOf(k); })
+      .filter(function (a, k, all) { return all.indexOf(a) === k; }).sort();
+    var reach = {};
+    interpretations.forEach(function (interp, k) {
+      if (!(interp.max_spacing_m && interp.investigation_depth_m)) return;
+      var kind = arrayOf(k), was = reach[kind] || [0, 0];
+      reach[kind] = [Math.max(was[0], interp.max_spacing_m),
+        Math.max(was[1], interp.investigation_depth_m)];
+    });
+    b.paragraph(Object.keys(reach).length
+      ? Object.keys(reach).sort().map(function (kind) {
+          return C.depthOfInvestigationText(kind, reach[kind][0], reach[kind][1], vesCfg);
+        }).join(' ') + ' A layer that continues to that depth has no base in these data.'
+      : 'The depth of investigation is a fraction of the largest electrode spacing, ' +
+        'so any structure below it is not resolved.',
       { align: 'justify' });
 
     b.heading('4. Data Analysis and Interpretation', 1);
@@ -924,6 +1062,16 @@
         caption: 'Layered model for ' + interp.sounding_id + '.',
         colWidthsCm: [1.4, 2.6, 2.2, 1.8, 1.8, 6.2],
       });
+      /* the sentences reporting/geophysical.py _sounding_block writes under
+       * the model table, worded once in the core: what else was tried, and
+       * which boundary the curve does not settle */
+      var inversion = inversions[i];
+      if (inversion) {
+        var tried = C.modelsTriedText(inversion, vesCfg);
+        if (tried) b.paragraph(tried, { align: 'justify' });
+        var weak = C.poorlyResolvedText(inversion.model);
+        if (weak) b.paragraph(weak, { align: 'justify' });
+      }
       var fig = figures.filter(function (f) { return f.soundingId === interp.sounding_id; });
       for (var k = 0; k < fig.length; k++) {
         b.figure(fig[k].image, fig[k].caption, fig[k].widthCm || 15);
@@ -932,7 +1080,7 @@
 
     if (interpretations.length) {
       b.heading('Drill-target suitability', 2);
-      b.table(C.drillingPreferenceTable(interpretations, context.preferredOrder, context.ves)
+      b.table(C.drillingPreferenceTable(interpretations, context.preferredOrder, vesCfg)
         .map(function (row) {
           return [row['No.'], row['VES Point'], row.Layer, row['Thickness (m)'],
             row['Depth (m)'], row[C.LAYER_RESISTIVITY_COLUMN],
@@ -943,9 +1091,38 @@
         caption: 'Ranked drilling preference. The resistivities are those of the ' +
           'fitted layers, not the apparent resistivities read in the field; a water ' +
           'zone marked + continues below the depth the sounding resolves, so its ' +
-          'base and the drilling depth are minima.',
+          'base and the drilling depth are minima.' +
+          (tied.length ? ' The two points marked =1st cannot be told apart on ' +
+            'geophysical grounds.' : ''),
         fontSize: 8.5,
       });
+      /* The scorecard reporting/geophysical.py _suitability_block prints under
+       * the ranked table: the suitability, the confidence that discounts it
+       * and the figure the points are ranked on, then the target or the tie,
+       * worded once in the core. The browser report showed the ranking and
+       * never the numbers it was decided on. */
+      b.paragraph('Each surveyed point is given a transparent suitability score ' +
+        'from 0 to 100. The score combines the interpreted water-bearing ' +
+        'thickness, how well the resistivity of the water zone sits within the ' +
+        'productive fractured or weathered window, the overburden profile, and ' +
+        'the presence of a fractured zone at the basement contact. The scores ' +
+        'rank the points as drilling targets.', { align: 'justify' });
+      b.table(suit.map(function (s) {
+        return [s.rank, s.sounding_id, C.pyFixed(s.suitability, 1),
+          C.pyFixed(s.confidence, 2), C.pyFixed(s.suitability * s.confidence, 1),
+          s.grade];
+      }), {
+        header: ['Rank', 'VES point', 'Suitability (0 to 100)', 'Confidence',
+          'Weighted', 'Grade'],
+        caption: 'Drill-target suitability of the surveyed points. Suitability is ' +
+          'the geological score; confidence discounts it for a model fit above ' +
+          'the target and for a water-bearing zone whose base the sounding never ' +
+          'reached; the points are ranked on the weighted figure.',
+        colWidthsCm: [1.4, 3.0, 3.6, 2.4, 2.2, 3.4],
+      });
+      b.paragraph(C.suitabilityVerdict(suit, vesCfg.ranking_tie_points) +
+        (analystOrder ? ' The drilling preference above follows the order the ' +
+          'analyst set, not these scores.' : ''), { align: 'justify' });
       /* The drill-target map, where reporting/geophysical.py _suitability_block
        * puts it: under the ranked table, above the subsurface maps. It is
        * written inside this heading rather than beside the call to
@@ -967,20 +1144,50 @@
 
     b.heading('5. Conclusions and Recommendations', 1);
     if (best) {
+      /* the points drilled for: the one ranked first, or both of a pair the
+       * ranking cannot separate */
+      var chosen = tied.length ? tied : [best];
+      /* A depth is a minimum for one of two reasons, named as
+       * reporting/geophysical.py _recommendations names them: the zone runs
+       * on below the depth of investigation, or it ends inside it but the
+       * margin drilled below it does not. */
+      var openEnded = chosen.some(function (i) { return i.basement_not_resolved; });
+      var capped = chosen.some(function (i) {
+        return i.drilling_depth_capped && !i.basement_not_resolved;
+      });
+      var reason = openEnded && capped
+        ? 'The water-bearing zone, or the margin drilled below it, runs past what ' +
+          'the survey resolves'
+        : openEnded ? 'The water-bearing zone continues below what the survey resolves'
+          : capped ? 'The margin drilled below the deepest water zone runs past what ' +
+            'the survey resolves' : '';
+      var targets = function (interp) {
+        return interp.water_zones.map(function (z) {
+          return C.zoneCell(z[0], z[1], C.zoneIsOpen(interp, z)) + ' m'; }).join(', ');
+      };
       b.bullets([
-        'Drill at ' + best.sounding_id + ' (ranked ' + C.ordinal(best.rank || 1) + ').',
-        'Recommended drilling depth: ' + C.drillingDepthText(best) + '.' +
-          (best.basement_not_resolved
-            ? ' The water-bearing zone continues below what the survey resolves: ' +
-              'drill on while the formation is water bearing, guided by the strikes ' +
-              'and the penetration rate, and stop in fresh rock.'
+        tied.length
+          ? 'Drill at ' + tied[0].sounding_id + ' or ' + tied[1].sounding_id +
+            ', which the survey cannot separate on geophysical grounds; choose ' +
+            'between them on access, sanitary distances and the community\'s ' +
+            'preference.'
+          : 'Drill at ' + best.sounding_id + ' (ranked ' + C.ordinal(best.rank || 1) + ').',
+        'Recommended drilling depth: ' + (tied.length
+          ? tied.map(function (i) {
+              return C.drillingDepthText(i) + ' at ' + i.sounding_id; }).join('; ')
+          : C.drillingDepthText(best)) + '.' +
+          (reason
+            ? ' ' + reason + ': drill on while the formation is water bearing, ' +
+              'guided by the strikes and the penetration rate, and stop in fresh rock.'
             : ''),
-        best.water_zones.length
-          ? 'Target the interpreted water bearing ' +
-            S.plural(best.water_zones.length, 'zone') + ' at ' +
-            best.water_zones.map(function (z) {
-              return C.zoneCell(z[0], z[1], C.zoneIsOpen(best, z)) + ' m'; }).join(', ') + '.'
-          : 'No clear water bearing zone was resolved; treat the hole as exploratory.',
+        tied.length
+          ? 'Target the interpreted water bearing zones: ' + tied.map(function (i) {
+              return (targets(i) || 'none resolved') + ' at ' + i.sounding_id;
+            }).join('; ') + '.'
+          : best.water_zones.length
+            ? 'Target the interpreted water bearing ' +
+              S.plural(best.water_zones.length, 'zone') + ' at ' + targets(best) + '.'
+            : 'No clear water bearing zone was resolved; treat the hole as exploratory.',
         'Case and screen against the zones confirmed by the drill cuttings, not ' +
           'against this model alone.',
       ]);
@@ -988,13 +1195,29 @@
     (context.recommendations || []).length && b.bullets(context.recommendations);
 
     b.heading('6. Limitations and Uncertainty', 1);
-    limitationsParagraphs('ves').forEach(function (text) {
+    limitationsParagraphs('ves', arrayKinds).forEach(function (text) {
       b.paragraph(text, { align: 'justify' });
     });
 
-    if (context.verificationNotes && context.verificationNotes.length) {
+    /* The checks the sheets raised, as reporting/geophysical.py
+     * _verification_notes gathers them: every warning on a sounding the
+     * report covers, once, with the sounding named where the flag does not
+     * name it. Two overlap readings at AB/2 40 m a factor of 1.98 apart
+     * reached no document. */
+    var notes = (context.verificationNotes || []).slice();
+    (context.soundings || []).forEach(function (sounding) {
+      (sounding.flags || []).forEach(function (flag) {
+        if (flag.level !== 'warning' && flag.level !== 'error') return;
+        var text = flagText(flag.context ? flag
+          : Object.assign({}, flag, { context: sounding.sounding_id }));
+        if (notes.indexOf(text) < 0) notes.push(text);
+      });
+    });
+    if (notes.length) {
       b.heading('Annex A. Data Verification Notes', 1);
-      b.bullets(context.verificationNotes);
+      b.paragraph('The following checks were raised automatically during data ' +
+        'processing and should be verified against the field notes.');
+      b.bullets(notes);
     }
 
     b.references([REFERENCES.rwsn_professional, REFERENCES.geology, REFERENCES.bgs,
@@ -1278,8 +1501,8 @@
       var exceed = assessment.all_exceedances || [];
       if (exceed.length) {
         b.table(exceed.map(function (r) {
-          return [r.parameter, C.fmtNum(r.value), r.unit || '',
-            breachedLimit(r), r.remark || ''];
+          return [r.parameter, C.unquantifiedText(r) || C.fmtNum(r.value),
+            r.unit || '', breachedLimit(r), r.remark || ''];
         }), {
           header: ['Parameter', 'Value', 'Unit', 'Limit', 'Remark'],
           caption: 'Parameters above guideline or standard limits.',
@@ -1289,8 +1512,9 @@
          * provisional here too. This table states the limit a parameter
          * breached without the column the quality report carries, so a
          * reader met the words "national standard" with nothing to say the
-         * edition behind them is unverified (completion.py). */
-        if (C.provisionalNationalParameters().length) {
+         * edition behind them is unverified (completion.py). Said of the
+         * rows printed, judged by the table the assessment used. */
+        if (exceed.some(function (r) { return r.sl_provisional; })) {
           b.paragraph(C.PROVISIONAL_NATIONAL_NOTE, { align: 'justify', italic: true });
         }
       }
@@ -1321,13 +1545,21 @@
         C.formatG(rec.safety_factor) + ' applied to the long term yield' +
         (rec.is_indicative ? ', indicative' : '') + ').');
       if (pumpIntake(context)) {
+        /* not where the design had to leave it inside a screen, which its
+         * notes then say */
+        var inScreen = design && (design.screens || []).some(function (s) {
+          return s.top_m <= pumpIntake(context) && pumpIntake(context) <= s.bottom_m;
+        });
         advice.push('The pump intake is set at ' +
           C.fmtNum(pumpIntake(context)) + ' m below the top of the casing' +
-          (design ? ', in plain casing clear of the screens' : '') + '.');
+          (design && !inScreen ? ', in plain casing clear of the screens' : '') + '.');
       }
       advice.push('The pump should rest for at least one hour in every ' +
         'pumping cycle and the pumping water level should be checked routinely.');
-    } else if (analysis && test && !test.has_discharge) {
+    } else if (analysis && test && !C.hasDischarge(test)) {
+      /* asked of the steps, as Python's PumpingTest.has_discharge is: the
+       * browser's test carries no such field, so this said the discharge
+       * must be supplied beside a sheet that recorded it */
       advice.push('The pumping test discharge must be supplied so the yield ' +
         'recommendation can be completed; abstraction figures remain pending.');
     }
@@ -1360,17 +1592,27 @@
    * so "below ground level" was a claim the data did not support. */
   var DATUM_TEXT = 'below the top of the casing, the datum the levels were measured from';
 
+  /* reporting/pumping._levels_in_doubt: the analysis or the sheet says the
+   * recorded levels cannot all be right. A report used to certify the curves
+   * over levels 18 m below the pump intake. */
+  function pumpLevelsInDoubt(analysis) {
+    var flags = (analysis.flags || []).concat((analysis.test && analysis.test.flags) || []);
+    return flags.some(function (f) { return C.LEVEL_FLAGS.indexOf(f.code) >= 0; });
+  }
+
   async function pumpingReport(context) {
     var b = new ReportBuilder({ style: context.style, title: 'Pumping Test Report' });
     var analysis = context.analysis, test = analysis.test, site = test.site || {};
     var rec = analysis.yield_recommendation;
     var figures = context.figures || [];
+    var levelsInDoubt = pumpLevelsInDoubt(analysis);
 
+    /* the test type in words, never the parser's "step+recovery" token */
     b.cover(['Pumping Test Report',
       (test.borehole_ref ? test.borehole_ref + ' — ' : '') + (site.community || '')],
       [], siteDetails(site, [
         ['Borehole reference', test.borehole_ref || '—'],
-        ['Test type', test.test_type || '—'],
+        ['Test type', C.testTypeText(test.test_type)],
         ['Static water level', test.static_water_level_m !== null
           ? test.static_water_level_m.toFixed(2) + ' m' : '—'],
         ['Borehole depth', test.borehole_depth_m ? C.fmtNum(test.borehole_depth_m) + ' m' : '—'],
@@ -1401,7 +1643,17 @@
               (pumpDepthWhy ? ', ' + pumpDepthWhy : '')
             : 'a depth to be confirmed') + '.' +
           (rec.is_indicative ? ' ' + rec.confidence_text : '')
-        : 'Yield results are pending: ' + (rec.pending_reason || 'inputs are missing') + '.',
+        /* reporting/pumping._executive_summary: levels the sheet shows cannot
+         * be right are never presented as curves to read a result from */
+        : (levelsInDoubt
+          ? 'The recorded water levels are inconsistent with the stated static ' +
+            'level, pump setting or borehole depth (see the data verification ' +
+            'notes), so the curves are shown as recorded and their drawdowns are ' +
+            'not to be relied on; the'
+          : 'The drawdown and recovery curves are plotted from the readings as ' +
+            'recorded, but the') +
+          ' transmissivity and safe yield are pending because ' +
+          (rec.pending_reason || 'the analysis is incomplete') + '.',
     ], [
       analysis.transmissivity_m2_per_day
         ? 'Transmissivity: ' + S.sig(analysis.transmissivity_m2_per_day, 3) + ' m²/day' +
@@ -1469,7 +1721,19 @@
       }
     }
 
+    if (analysis.max_drawdown_m !== null && analysis.max_drawdown_m !== undefined) {
+      b.paragraph('The maximum drawdown reached ' + C.fmtNum(analysis.max_drawdown_m) +
+        ' m below the static water level' +
+        (levelsInDoubt ? ', as recorded; the notes below say why the recorded ' +
+          'levels cannot all be right' : '') + '.');
+    }
     if (analysis.casing_storage_min) {
+      /* worded from the adoption: "no straight line is read from it" stood a
+       * page above a Cooper-Jacob line read inside the period and adopted as
+       * the best available */
+      var casingSource = analysis.transmissivity_source;
+      var adoptedInside = casingSource && Object.prototype.hasOwnProperty.call(
+        analysis.disqualified || {}, casingSource);
       b.paragraph('Casing storage: with a ' +
         C.formatG((context.config && context.config.pumping
           ? context.config.pumping : C.defaultConfig().pumping).casing_diameter_in) +
@@ -1477,7 +1741,19 @@
         'water standing in the casing supplies the pump for about the first ' +
         C.pyFixed(analysis.casing_storage_min, 0) + " minutes (Schafer's rule). " +
         'Drawdown inside that period is the borehole emptying, not the aquifer ' +
-        'responding, and no straight line is read from it.', { align: 'justify' });
+        'responding' +
+        (adoptedInside
+          ? '. No fit outside it can be adopted, so the ' +
+            C.METHOD_LABELS[casingSource] + ' value read inside it is used only ' +
+            'as the best available.'
+          : ', and no straight line is read from it.'), { align: 'justify' });
+    }
+    /* The analysis's own notes, as the Python report prints them: the
+     * browser report carried none, so a sheet whose levels ran below the pump
+     * reached the client with nothing to say so. */
+    if ((analysis.flags || []).length) {
+      b.paragraph('Data verification notes:', { bold: true });
+      b.bullets(analysis.flags.map(flagText));
     }
 
     b.heading('3. Analysis', 1);
@@ -1578,7 +1854,9 @@
         ? S.sig(analysis.transmissivity_m2_per_day, 3) + ' m²/day (' +
           C.METHOD_LABELS[analysis.transmissivity_source] + ')' : 'pending'],
       ['Maximum drawdown', analysis.max_drawdown_m !== null
-        ? analysis.max_drawdown_m.toFixed(2) + ' m' : '—'],
+        ? analysis.max_drawdown_m.toFixed(2) + ' m' +
+          (levelsInDoubt ? ', as recorded; see the data verification notes' : '')
+        : '—'],
       ['Specific capacity', rec.specific_capacity_m3hr_per_m
         ? C.formatG(C.roundSig(rec.specific_capacity_m3hr_per_m, 2), 2) +
           ' m³/h per m (' + rec.specific_capacity_basis + ')' : 'pending'],
@@ -1617,7 +1895,10 @@
         'Install the pump intake at ' + C.fmtNum(pumpDepth) + ' m ' + DATUM_TEXT +
           (pumpDepthWhy ? ', ' + pumpDepthWhy : '') +
           ', in plain casing: where that depth falls within a screen, ' +
-          'the borehole design sets it just below that screen.',
+          'the borehole design moves it into plain casing below that screen, ' +
+          'or above it where that is no shallower than the deepest level the ' +
+          'test reached plus the submergence margin; otherwise it keeps this ' +
+          'depth and says so in its design notes.',
         'Monitor the pumping water level and re-assess the yield if the level ' +
           'approaches the pump intake.',
       ]);
@@ -1684,6 +1965,102 @@
 
   /* --- 4. water quality ------------------------------------------------------ */
 
+  /* Advice for a parameter over its limit, keyed by the standards-table
+   * name (reporting/quality.py _TREATMENT_ADVICE). This report used to give
+   * only the generic lines and the Python one only the matched advice, so
+   * the same sample was told different things by the two. */
+  var NITRATE_ADVICE = 'Elevated nitrate usually indicates pollution from ' +
+    'sanitation or agriculture; investigate the sanitary protection zone. Do ' +
+    'not give the water to bottle fed infants until resolved.';
+  var TREATMENT_ADVICE = {
+    iron: 'Iron above the acceptability value causes staining and metallic ' +
+      'taste; aeration followed by sand filtration or a simple oxidation ' +
+      'filter normally resolves it.',
+    manganese: 'Manganese requires oxidation and filtration (aeration or ' +
+      'chlorination followed by filtration); monitor infant exposure in the ' +
+      'meantime.',
+    'e. coli': 'Any E. coli detection calls for shock chlorination of the ' +
+      'borehole, verification of the sanitary seal and apron, and re-sampling ' +
+      'before use.',
+    'total coliforms': 'Coliform detection calls for disinfection of the ' +
+      'borehole and pump, a sanitary inspection of the wellhead, and re-sampling.',
+    'nitrate (as no3)': NITRATE_ADVICE,
+    'nitrate (as n)': NITRATE_ADVICE,
+    'nitrate + nitrite': NITRATE_ADVICE,
+    fluoride: 'Fluoride above 1.5 mg/L requires an alternative source or ' +
+      'defluoridation (bone char or activated alumina).',
+    arsenic: 'Arsenic above 0.01 mg/L requires an alternative source or ' +
+      'specialised removal; re-test to confirm before any use for drinking.',
+    turbidity: 'High turbidity interferes with disinfection; extend ' +
+      'development of the borehole and re-sample.',
+  };
+  /* pH is out of range in one of two directions, and the advice differs */
+  var PH_ADVICE_LOW = 'Low pH water is corrosive to metal fittings; a limestone ' +
+    'contactor or careful choice of corrosion resistant materials is advised.';
+  var PH_ADVICE_HIGH = 'A pH above the acceptability range reduces the ' +
+    'effectiveness of chlorine disinfection and can give the water a bitter ' +
+    'taste and deposit scale; confirm the reading and set any chlorine dose ' +
+    'to suit.';
+
+  /* The recommendations a water quality report closes with, word for word
+   * the list reporting/quality.py quality_recommendations writes. Every
+   * health or national exceedance gets a treatment line whether or not
+   * there is advice written for its parameter. */
+  function qualityRecommendations(assessment) {
+    var advice = [];
+    var corr = assessment.corrosivity;
+    if (corr && corr.is_aggressive) advice.push(corr.materials_note);
+    function names(rows) {
+      return rows.map(function (r) { return r.parameter; }).join(', ');
+    }
+    if (assessment.health_exceedances.length) {
+      advice.push('Treat or replace the source before it is used for drinking: ' +
+        'health based limits are exceeded for ' +
+        names(assessment.health_exceedances) + '.');
+    }
+    if (assessment.national_exceedances.length) {
+      advice.push('Treat before the supply is accepted against the national ' +
+        'standard: national limits are exceeded for ' +
+        names(assessment.national_exceedances) + '.');
+    }
+    assessment.all_exceedances.forEach(function (r) {
+      var key = C.normaliseParameter(r.parameter);
+      var text;
+      if (key === 'ph') {
+        var low = r.value_in_guideline_unit !== null &&
+          r.value_in_guideline_unit !== undefined && r.value_in_guideline_unit < 7.0;
+        text = low ? PH_ADVICE_LOW : PH_ADVICE_HIGH;
+      } else {
+        text = Object.prototype.hasOwnProperty.call(TREATMENT_ADVICE, key)
+          ? TREATMENT_ADVICE[key] : null;
+      }
+      if (text && advice.indexOf(text) < 0) advice.push(text);
+    });
+    if (assessment.aesthetic_exceedances.length) {
+      advice.push('Acceptability limits are exceeded for ' +
+        names(assessment.aesthetic_exceedances) + ': simple treatment is ' +
+        'advisable if users complain of taste, odour or staining.');
+    }
+    var state = assessment.verdict_state;
+    if (state === 'indeterminate') {
+      /* "No treatment is required" is a clearance, and this report has not
+       * established one. Say what is outstanding instead. */
+      var open = (assessment.uncertainties || []).join('; ');
+      advice.push('Do not treat this supply as safe to drink on these results. ' +
+        open.charAt(0).toUpperCase() + open.slice(1) + '. Resolve these and ' +
+        're-issue the assessment before any treatment decision is taken.');
+    } else if (state === 'pass' && !advice.length) {
+      advice.push('No treatment is required on the basis of the parameters ' +
+        'tested. Maintain the sanitary seal and apron in good condition.');
+    }
+    advice.push('Disinfect the borehole after any maintenance and re-test ' +
+      'microbiological quality before the source is returned to use.');
+    advice.push('Repeat physico-chemical and bacteriological testing at least ' +
+      'once a year, and after any flooding, repair work on the wellhead or ' +
+      'change in taste, colour or odour.');
+    return advice;
+  }
+
   async function qualityReport(context) {
     var b = new ReportBuilder({ style: context.style, title: 'Water Quality Report' });
     var assessment = context.assessment, sample = assessment.sample;
@@ -1729,7 +2106,8 @@
     b.heading('2. Results Against Guideline Values', 1);
     b.table(assessment.rows.map(function (row) {
       return [row.parameter,
-        row.value === null ? (row.below_detection ? '< DL' : '—') : C.fmtNum(row.value, 4),
+        C.unquantifiedText(row) || (row.value === null
+          ? (row.below_detection ? '< DL' : '—') : C.fmtNum(row.value, 4)),
         row.unit || '', row.who_health || '—', row.sl_standard || '—',
         statusLabel(row.status), row.remark || ''];
     }), {
@@ -1739,8 +2117,9 @@
     });
 
     /* A national exceedance reads as a compliance failure, so the report has
-     * to say plainly when the limit it was judged against is not confirmed. */
-    if (C.provisionalNationalParameters().length) {
+     * to say plainly when the limit it was judged against is not confirmed:
+     * judged by the table the assessment used, not the bundled one. */
+    if (assessment.rows.some(function (r) { return r.sl_provisional; })) {
       b.paragraph(C.PROVISIONAL_NATIONAL_NOTE, { align: 'justify' });
     }
 
@@ -1789,34 +2168,8 @@
     figures.forEach(function (f) { b.figure(f.image, f.caption, f.widthCm || 14); });
 
     b.heading('6. Recommendations', 1);
-    var recommendations = [];
-    /* The assessment's own note, rather than a paraphrase of it written
-     * here: the two had already drifted apart, and only this copy still
-     * spoke of a handpump's rods where the borehole may carry a
-     * submersible (reporting/quality.py puts corr.materials_note first). */
-    if (assessment.corrosivity && assessment.corrosivity.is_aggressive) {
-      recommendations.push(assessment.corrosivity.materials_note);
-    }
-    if (assessment.health_exceedances.length) {
-      recommendations.push('Treat or replace the source before it is used for ' +
-        'drinking: ' + assessment.health_exceedances.map(function (r) {
-          return r.parameter; }).join(', ') + ' exceed health based limits.');
-    }
-    if (assessment.national_exceedances.length) {
-      recommendations.push('Treat before the supply is accepted against the ' +
-        'national standard: ' + assessment.national_exceedances.map(function (r) {
-          return r.parameter; }).join(', ') + ' exceed the national limit.');
-    }
-    if (assessment.verdict_state === 'indeterminate') {
-      recommendations.push('Do not describe this supply as safe to drink until ' +
-        'the results are complete: ' +
-        (assessment.uncertainties || []).join('; ') + '.');
-    }
-    recommendations.push('Disinfect the borehole after any maintenance and ' +
-      're-test microbiological quality before the source is returned to use.');
-    recommendations.push('Repeat the analysis at least annually, and after any ' +
-      'change in taste, colour or odour.');
-    b.bullets(recommendations.concat(context.recommendations || []));
+    b.bullets(qualityRecommendations(assessment)
+      .concat(context.recommendations || []));
 
     b.heading('7. Limitations and Uncertainty', 1);
     limitationsParagraphs('quality').forEach(function (text) {
@@ -2143,10 +2496,21 @@
         ' m' + (log.drilling_method ? ' by ' + log.drilling_method : '') + '.');
     }
     if (design) {
-      works.push('Construction with ' + C.formatG(design.casing_diameter_in) +
-        ' inch ' + design.casing_material + ' casing, ' +
-        C.fmtNum(design.total_screen_length_m) + ' m of screen, gravel pack ' +
-        'and sanitary seal to ' + C.fmtNum(design.sanitary_seal[1]) + ' m.');
+      /* The fill is the design's own, and the bullet says "designed" unless
+       * the log records the screens as installed: it certified "gravel pack"
+       * over a 19 mm annulus the design had left empty, and 19 m of screen as
+       * completed work above a drawing captioned "not an as-built record". */
+      var fill = design.annular_fill === 'gravel pack' ||
+        design.annular_fill === 'formation stabiliser' ? design.annular_fill
+        : 'no gravel pack (the ' + C.pyFixed(design.annulus_mm || 0, 0) +
+          ' mm annulus is too thin to place one)';
+      works.push((design.as_built ? 'Construction with ' : 'Construction designed with ') +
+        C.formatG(design.casing_diameter_in) + ' inch ' + design.casing_material +
+        ' casing, ' + C.fmtNum(design.total_screen_length_m) + ' m of screen' +
+        (design.as_built ? ' as installed' : '') + ', ' + fill +
+        ' and sanitary seal to ' + C.fmtNum(design.sanitary_seal[1]) + ' m' +
+        (design.as_built ? '.'
+          : '; the drilling log records no casing string as installed.'));
       works.push('Development of the borehole by air lifting until clear.');
     }
     if (context.analysis) works.push('Pumping test and yield assessment.');
@@ -2285,15 +2649,17 @@
       var breaches = assessment.all_exceedances || [];
       if (breaches.length) {
         b.table(breaches.map(function (r) {
-          return [r.parameter, C.fmtNum(r.value), r.unit || '', r.remark || ''];
+          return [r.parameter, C.unquantifiedText(r) || C.fmtNum(r.value),
+            r.unit || '', r.remark || ''];
         }), {
           header: ['Parameter', 'Value', 'Unit', 'Remark'],
           caption: 'Parameters above guideline or standard limits.',
           fontSize: 9, colWidthsCm: [3.8, 1.8, 1.8, 8.2],
         });
         /* A national limit the quality report calls provisional is
-         * provisional on the handover certificate too. */
-        if (C.provisionalNationalParameters().length) {
+         * provisional on the handover certificate too, judged by the table
+         * the assessment used. */
+        if (breaches.some(function (r) { return r.sl_provisional; })) {
           b.paragraph(C.PROVISIONAL_NATIONAL_NOTE, { align: 'justify', italic: true });
         }
       }
@@ -2575,7 +2941,7 @@
     geophysicalReport: geophysicalReport,
     completionReport: completionReport,
     pumpingReport: pumpingReport,
-    qualityReport: qualityReport,
+    qualityReport: qualityReport, qualityRecommendations: qualityRecommendations,
     costingReport: costingReport,
     supervisionReport: supervisionReport,
     handoverReport: handoverReport, handoverWorks: handoverWorks,

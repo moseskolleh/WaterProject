@@ -16,7 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from groundwater import Project
-from groundwater.design import design_borehole
+from groundwater.design import design_borehole, pump_intake_floor
 from groundwater.hydraulics import analyse_pumping_test
 from groundwater.ingestion import (
     check_all,
@@ -72,6 +72,8 @@ def main(out_root: Path | None = None) -> None:
         log=log,
         static_water_level_m=test.static_water_level_m,
         pump_intake_m=analysis.yield_recommendation.pump_installation_depth_m,
+        pump_intake_floor_m=pump_intake_floor(
+            analysis.yield_recommendation, project.config.pumping.pump_submergence_min_m),
         rules=project.config.design,
     )
 

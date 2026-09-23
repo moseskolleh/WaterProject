@@ -249,6 +249,33 @@ def test_utm_zone_reads_the_number_after_the_label():
                check_site_consistency(SiteMetadata(utm_zone=708958, **rokel)))
 
 
+def test_utm_zone_is_read_past_the_datum_and_the_spreadsheet_float():
+    """"28N WGS84" states zone 28, and so does a cell read back as "28.0".
+
+    A handheld GPS writes the datum beside the zone and a GIS writes it in
+    front ("WGS 84 / UTM zone 28N"); its 84 was counted as a second number,
+    the zone refused, and the sheet flagged "UTM zone not recorded" when it
+    had recorded one. clean_text turns a numeric cell into "28.0", which was
+    refused the same way.
+    """
+    from groundwater.geo import parse_utm_zone
+
+    assert parse_utm_zone("28N WGS84") == 28
+    assert parse_utm_zone("WGS 84 / UTM zone 28N") == 28
+    assert parse_utm_zone("29N (WGS-84)") == 29
+    assert parse_utm_zone("28.0") == 28
+    assert parse_utm_zone(28.0) == 28
+    # still refused: a fraction, two zones, a zone no UTM grid has
+    assert parse_utm_zone("28.5") is None
+    assert parse_utm_zone(28.5) is None
+    assert parse_utm_zone("28N or 29N WGS84") is None
+    assert parse_utm_zone("zone 61") is None
+
+    rokel = dict(district="Western Area", easting=708958, northing=926355)
+    assert check_site_consistency(
+        SiteMetadata(utm_zone=parse_utm_zone("28N WGS84"), **rokel)) == []
+
+
 def _site_at(lat: float, lon: float, district: str) -> SiteMetadata:
     """A site record for a point, carrying the UTM fix a sheet would record."""
     utm = geographic_to_utm(lat, lon)
@@ -354,31 +381,27 @@ def test_a_point_no_boundary_polygon_holds_is_not_given_a_district():
     assert "offshore" in flags[0].message
 
 
-def test_a_gap_in_the_chiefdoms_cannot_tell_karene_from_bombali(monkeypatch):
-    """Where only the pre-2017 polygons can answer, the check says so.
+def test_ground_no_chiefdom_holds_is_not_judged_by_the_older_district_layer():
+    """A point the chiefdoms cannot place is said to be unplaced, and no more.
 
-    The bundled district polygons are geoBoundaries as released, which
-    predates the 2017 creation of Karene and Falaba; the chiefdom crosswalk
-    is what supplies those two. For a point the chiefdom layer cannot place,
-    the district polygons can only say "Bombali", which is the district
-    Karene was split from - so a Karene sheet is neither confirmed nor
-    contradicted, and calling that a conflict would flag a correct sheet.
+    The check used to fall back to the pre-2017 district polygons for such a
+    point and had a branch for when they answered with the district Karene
+    or Falaba was split from. With the bundled layers that branch could not
+    be reached - the district lookup resolves through the same chiefdoms -
+    and its test reached it only by monkeypatching both lookups, so it held
+    a behaviour production never had. The branch is gone, and this holds
+    what production does: inside the withheld Maforki wedge, which the
+    layer does not carry, a sheet saying Kono is neither confirmed nor
+    contradicted, and no district from the older layer is named.
     """
-    from groundwater.mapping import regional
-
-    monkeypatch.setattr(regional, "chiefdom_of", lambda lat, lon: ("", ""))
-    monkeypatch.setattr(regional, "district_of", lambda lat, lon: "Bombali")
-
-    flags = check_site_consistency(_site_at(9.4967, -12.2417, "Karene"))
-    assert [f.code for f in flags] == ["district_predates_boundaries"]
-    assert flags[0].level == "info"
-    assert "2017" in flags[0].message
-
-    # a stated district that is not what that answer was split from is still
-    # a conflict, and the message says which layer placed the point
-    flags = check_site_consistency(_site_at(9.4967, -12.2417, "Bo"))
+    flags = check_site_consistency(_site_at(8.673, -10.51, "Kono"))
+    assert [f.code for f in flags] == ["coordinates_outside_districts"]
+    assert "Kono" in flags[0].message and "Koinadugu" not in flags[0].message
+    # and a Karene sheet on Kamakwie is placed through the crosswalk
+    assert check_site_consistency(_site_at(9.4967, -12.2405, "Karene")) == []
+    flags = check_site_consistency(_site_at(9.4967, -12.2405, "Bo"))
     assert [f.code for f in flags] == ["district_coordinate_conflict"]
-    assert "predate the 2017" in flags[0].message
+    assert "Karene district" in flags[0].message
 
 
 def test_two_spellings_of_one_district_are_not_a_disagreement():

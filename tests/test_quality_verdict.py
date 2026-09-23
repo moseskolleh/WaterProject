@@ -518,3 +518,194 @@ def test_a_complete_analysis_still_balances_without_the_new_flag():
     ))
     assert a.ionic is not None
     assert not [f for f in a.flags if f.code == "ionic_balance_not_checked"]
+
+
+def test_a_detection_of_a_determinand_the_table_does_not_know_is_not_a_pass():
+    """"Salmonella: Present" was read as not measured, raised no flag, and
+    left the sample "suitable for drinking"; the same organism with a count
+    was "not proven safe"."""
+    a = assess_sample(_sample(
+        *_health_panel(),
+        WaterQualityResult("Salmonella", None, "per 100 mL", greater_than=0.0),
+        WaterQualityResult("Faecal streptococci", None, "CFU/100 mL",
+                           greater_than=50.0),
+    ))
+    for row in a.rows[4:]:
+        assert row.status == "no_guideline" and row.reason == "unknown_parameter"
+        assert not row.evaluable
+    assert a.rows[4].remark.startswith("detected, count not quantified")
+    assert a.rows[5].remark.startswith("more than 50")
+    assert [f.code for f in a.flags].count("unknown_parameter") == 2
+    assert a.verdict_state == "indeterminate"
+    assert "suitable for drinking on the basis" not in a.verdict
+
+
+def test_a_national_failure_does_not_claim_health_values_it_never_showed():
+    """Arsenic "<0.05" could not be graded and there was no fluoride or
+    nitrate, yet a total coliform count made the verdict "meets the WHO
+    health based guideline values" in the verdict, the summary and the
+    completion and handover sentences."""
+    from groundwater.quality.assess import SUITABILITY_SENTENCE, suitability_sentence
+    from groundwater.reporting.quality import _executive_summary
+
+    a = assess_sample(_sample(
+        WaterQualityResult("E. coli", 0.0, "CFU/100 mL"),
+        WaterQualityResult("Arsenic", None, "mg/L", detection_limit=0.05,
+                           below_detection=True),
+        WaterQualityResult("Total coliforms", 12.0, "CFU/100 mL"),
+    ))
+    assert a.verdict_state == "national_fail" and a.uncertainties
+    assert "meets the WHO" not in a.verdict
+    assert "has not been shown to meet the WHO health based guideline values" in a.verdict
+    assert "Arsenic could not be assessed" in a.verdict
+    assert "meets the WHO" not in suitability_sentence(a)
+    paragraphs, key = _executive_summary(a)
+    assert "meet the WHO" not in paragraphs[0].replace("not been shown to meet the WHO", "")
+    assert "All WHO health based guideline values are met." not in key
+    # with nothing unresolved the claim is made, and made true
+    clean = assess_sample(_sample(
+        *_health_panel(), WaterQualityResult("Total coliforms", 12.0, "CFU/100 mL")))
+    assert clean.uncertainties == []
+    assert clean.verdict.startswith("The water meets the WHO health based guideline values")
+    assert suitability_sentence(clean) == SUITABILITY_SENTENCE["national_fail"]
+    assert "All WHO health based guideline values are met." in _executive_summary(clean)[1]
+
+
+def test_the_combined_nitrate_rule_reads_either_basis():
+    """10 and 0.8 mg/L as N is an index of 1.76, and the rule was skipped
+    because only the "as NO3" and "as NO2" rows were looked for."""
+    def combined(*results):
+        a = assess_sample(_sample(*_health_panel()[:3], *results))
+        rows = [r for r in a.rows if "combined" in r.parameter]
+        return (rows[0].status, rows[0].value) if rows else None
+
+    assert combined(WaterQualityResult("Nitrate (as N)", 10.0, "mg/L"),
+                    WaterQualityResult("Nitrite (as N)", 0.8, "mg/L")) == (
+        "exceeds_health", 1.76)
+    assert combined(WaterQualityResult("Nitrate (as NO3)", 45.0, "mg/L"),
+                    WaterQualityResult("Nitrite (as N)", 0.5, "mg/L")) == (
+        "exceeds_health", 1.45)
+    assert combined(WaterQualityResult("Nitrate-N", 10.0, "mg/L"),
+                    WaterQualityResult("Nitrite", 1.5, "mg/L")) == (
+        "exceeds_health", 1.38)
+    assert combined(WaterQualityResult("Nitrate (as NO3)", 45.0, "mg/L"),
+                    WaterQualityResult("Nitrite (as NO2)", 1.5, "mg/L")) == (
+        "exceeds_health", 1.4)
+    assert combined(WaterQualityResult("Nitrate (as N)", 5.0, "mg/L"),
+                    WaterQualityResult("Nitrite (as N)", 0.1, "mg/L")) is None
+
+
+def test_a_lower_bound_is_graded_as_a_measured_value_would_be():
+    """A bound was compared as written and met every limit with the coliform
+    wording: lead ">5 ug/L" (0.005 mg/L) failed the health guideline while a
+    measured 7 ug/L complied, iron ">1.0" was a national failure put down
+    to wellhead ingress where a measured 1.5 was an acceptability one, and
+    ">=50" nitrate exceeded a limit of 50 it may equal."""
+    def row(result, panel=None):
+        a = assess_sample(_sample(*(panel or _health_panel()), result))
+        return next(r for r in a.rows if r.parameter == result.parameter), a
+
+    lead, _ = row(WaterQualityResult("Lead", None, "ug/L", greater_than=5.0))
+    assert lead.status == "indeterminate"
+    assert "(5 ug/L = 0.005 mg/L)" in lead.remark
+    lead, _ = row(WaterQualityResult("Lead", None, "ug/L", greater_than=20.0))
+    assert lead.status == "exceeds_health"
+    iron, a = row(WaterQualityResult("Iron", None, "mg/L", greater_than=1.0))
+    measured, _ = row(WaterQualityResult("Iron", 1.5, "mg/L"))
+    assert iron.status == measured.status == "exceeds_aesthetic"
+    assert "wellhead" not in iron.remark and a.verdict_state == "aesthetic"
+    tds, _ = row(WaterQualityResult("TDS", None, "mg/L", greater_than=1000.0))
+    assert tds.status == "exceeds_aesthetic"
+    panel = _health_panel()[:3]
+    at_least, _ = row(WaterQualityResult("Nitrate (as NO3)", None, "mg/L",
+                                         greater_than=50.0,
+                                         greater_than_inclusive=True), panel)
+    assert at_least.status == "indeterminate" and "at least 50" in at_least.remark
+    more_than, _ = row(WaterQualityResult("Nitrate (as NO3)", None, "mg/L",
+                                          greater_than=50.0), panel)
+    assert more_than.status == "exceeds_health"
+    # over the acceptability value and under the health guideline: the
+    # exceedance stands, and the guideline it cannot rule out is said
+    copper, a = row(WaterQualityResult("Copper", None, "mg/L", greater_than=1.5))
+    assert copper.status == "exceeds_aesthetic"
+    assert copper.reason == "stricter_limit_unresolved"
+    assert "WHO health based guideline (2) is not known" in copper.remark
+    assert a.verdict_state == "indeterminate"
+    assert any("Copper was not quantified" in u for u in a.uncertainties)
+    assert any(f.code == "stricter_limit_unresolved" for f in a.flags)
+
+
+def test_a_confirmed_national_limit_is_not_called_provisional(tmp_path):
+    """Every acceptability remark said "which is provisional", and the
+    summary called a provisional limit a legal requirement, whatever table
+    was in use."""
+    from groundwater.reporting.quality import _executive_summary
+
+    standards = tmp_path / "standards.csv"
+    standards.write_text(
+        "parameter,unit,who_health_gv,who_aesthetic,sl_standard,sl_source,category,note\n"
+        "E. coli,CFU/100 mL,0,,0,SLSB 2021,microbiological,\n"
+        "Arsenic,mg/L,0.01,,0.01,SLSB 2021,metal,\n"
+        "Fluoride,mg/L,1.5,,1.5,SLSB 2021,inorganic,\n"
+        "Nitrate (as NO3),mg/L,50,,50,SLSB 2021,inorganic,\n"
+        "Iron,mg/L,,0.3,0.3,SLSB 2021,metal,\n"
+        "Total coliforms,CFU/100 mL,,0,0,SLSB 2021,microbiological,\n",
+        encoding="utf-8",
+    )
+    iron = WaterQualityResult("Iron", 1.2, "mg/L")
+    confirmed = assess_sample(_sample(*_health_panel(), iron), standards_path=standards)
+    assert confirmed.rows[-1].status == "exceeds_aesthetic"
+    assert "provisional" not in confirmed.rows[-1].remark
+    assert not confirmed.rows[-1].sl_provisional
+    bundled = assess_sample(_sample(*_health_panel(), iron))
+    assert "which is provisional" in bundled.rows[-1].remark
+    assert bundled.rows[-1].sl_provisional
+
+    coliforms = WaterQualityResult("Total coliforms", 5.0, "CFU/100 mL")
+    legal = assess_sample(_sample(*_health_panel(), coliforms), standards_path=standards)
+    assert "legal requirement" in _executive_summary(legal)[0][0]
+    paragraph = _executive_summary(assess_sample(_sample(*_health_panel(), coliforms)))[0][0]
+    assert "legal requirement" not in paragraph
+    assert "provisional" in paragraph and "compliance finding" in paragraph
+
+
+def test_the_recommendations_follow_the_table_name_and_the_direction():
+    """Advice was matched by substring on the name as written: lead and
+    "Faecal coliforms" got "No treatment is required" under "Treat before
+    use", "Sulphate" got the low-pH advice for containing "ph", and so did a
+    pH of 9.2."""
+    from groundwater.reporting.quality import quality_recommendations
+
+    def advice(*results):
+        return quality_recommendations(assess_sample(_sample(*_health_panel(), *results)))
+
+    lead = advice(WaterQualityResult("Lead", 0.05, "mg/L"))
+    assert not any("No treatment is required" in t for t in lead)
+    assert any(t.startswith("Treat or replace the source") and "Lead" in t for t in lead)
+    faecal = advice(WaterQualityResult("Faecal coliforms", 5.0, "CFU/100 mL"))
+    assert any("E. coli detection calls for shock chlorination" in t for t in faecal)
+    assert not any("No treatment is required" in t for t in faecal)
+    sulphate = advice(WaterQualityResult("Sulphate", 400.0, "mg/L"))
+    assert not any("pH" in t for t in sulphate)
+    high = advice(WaterQualityResult("pH", 9.2, "pH units"))
+    assert any("pH above the acceptability range" in t for t in high)
+    assert not any("Low pH" in t for t in high)
+    assert any("Low pH" in t for t in advice(WaterQualityResult("pH", 5.9, "pH units")))
+    clean = advice(WaterQualityResult("pH", 7.2, "pH units"))
+    assert any("No treatment is required" in t for t in clean)
+
+
+def test_a_result_that_was_not_quantified_prints_as_what_was_reported():
+    """The report tables printed only the value, so TNTC and ">50" reached
+    the client as "n/a"."""
+    from groundwater.quality.assess import unquantified_text
+
+    a = assess_sample(_sample(
+        *_health_panel()[:3],
+        WaterQualityResult("Nitrate (as NO3)", None, "mg/L", greater_than=50.0),
+        WaterQualityResult("Total coliforms", None, "CFU/100 mL", greater_than=0.0),
+        WaterQualityResult("Iron", None, "mg/L", greater_than=1.0,
+                           greater_than_inclusive=True),
+    ))
+    assert [unquantified_text(r) for r in a.rows] == [
+        "", "", "", ">50", "detected", "≥1"]

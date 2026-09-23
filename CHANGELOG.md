@@ -760,9 +760,102 @@ A hole in a map unit is cut out of it rather than painted over it. Every
 interior ring became a filled polygon carrying its parent's code, and
 thirteen of them were drawn on top of the unit they should have exposed:
 the dolerite dykes in Kono, Koinadugu and Falaba, and the igneous aquifer
-around Kamakwie, disappeared behind the ground meant to reveal them. The
-two bundled layers still carry the flattened holes, because the raw
-shapefiles are not committed; the roadmap says how to regenerate them.
+around Kamakwie, disappeared behind the ground meant to reveal them. Both
+bundled layers are rebuilt with their holes: 34 in the geology and 10 in
+the hydrogeology. An earlier note here said the rebuild had to wait for the
+raw downloads, but the BGS source had been committed all along, and the
+USGS mirror is reachable. The rebuild found that three Precambrian holes
+clipped at the window's edge had been dropped, because only a hole's first
+vertex was tested and it lay on the edge its outer ring shares. On the
+national geology map the lake near 11°35′W, 7°35′N is now water rather
+than an outline over granite.
+
+The worked examples' reports are what the code writes today. Report text
+changed after they were last regenerated, so the committed reports still
+quoted WHO turbidity and hardness values WHO does not set, judged
+districts by the deleted boxes and blamed handpumps for a corroded
+submersible. Nothing caught it, because the examples test compared file
+names; it now compares the text of every report as well.
+
+## The fixes, reviewed
+
+With every roadmap item ticked, the commits that ticked them were reviewed
+area by area, each finding reproduced in both engines and each fix written
+against a test that failed on the code as it was. Sixty-nine were found.
+The parity suite that holds the browser to the package grew from 623
+checks to 1,298 on the way; the five things the fixes deliberately left
+open are listed at the end of `ROADMAP.md`.
+
+A pumping test no longer rests its yield on a result it refused. When every
+fit was disqualified the fallback picked the best R squared over all of
+them, so a recovery line meeting t/t' = 1 at 60 percent of its drawdown
+could carry a yield of 0.99 m3/h; a fit whose own result is wrong is now
+never adopted, and with nothing left the yield is pending and says why.
+The yield range left out nothing either, so Dr Timbo's "0.39 m3/h (0.28 to
+1.2)" took its top from that refused line; it is 0.22 to 0.71, and a range
+now always contains the yield it qualifies. A level the sheet itself shows
+cannot be right - below the pump, below the hole - makes the yield
+indicative and no longer sets the pump intake, which had put Kuntolo's at
+67 m from a reading below the bottom of a 70 m hole. An hourly block is
+placed by its heading, so a four-hour test read every few minutes no longer
+ends at 226 minutes and gets called short; a step test whose clock
+restarts keeps its length; the step table keeps the sheet's step numbers.
+Both apps now give the design the one intake the pumping report prints.
+
+A drill-target map no longer passes its star to the runner-up when the
+best point has no position, and a survey either side of 12 degrees W is
+drawn in one UTM zone instead of on a 660 km map. The tie between the top
+two points is decided once, on the project's own margin, and read by the
+text, the map and the study-area overlay, so a report can no longer call
+two points indistinguishable over a map that stars one; the summary,
+conclusions, recommendations and preference table ("=1st") carry it too,
+and "listed first by name only" is said only of equal scores. Minimum
+aquifer thicknesses are labelled as minima rather than contoured, the
+ground profile follows the section's rules (Rokel's straight slope across
+20.7 km of unlevelled ground is refused), captions describe what was
+drawn, and a refused map names what is actually missing. Nothing below a
+sounding's depth of investigation is reported as resolved, and a drilling
+depth cut back to it reads as a minimum; the sheets' own warnings, such as
+overlap readings that disagree by a factor of two, reach Annex A; a Wenner
+survey is described in its own terms.
+
+A laboratory sheet is read as the laboratory wrote it. A filled
+detection-limit column had turned "Present", "TNTC" and ">50" into "not
+detected", so a sample with E. coli present was graded safe to drink;
+bounds and non-detects written with a unit or a label (">50 mg/L", "ND (DL
+0.05)", "Absent/100 mL") were read as measured numbers. Both are read as
+what they are, bounds are graded through the same limit hierarchy as
+measured values, and the combined nitrate and nitrite rule reads either
+basis. A national-limit failure no longer claims the WHO health values are
+met when something could not be graded, treatment advice follows the
+parameter and the direction of the exceedance ("Sulphate" no longer gets
+the low-pH advice), and the facies sentence no longer says sodium replaced
+calcium in a water whose calcium and magnesium are two thirds of the
+cations.
+
+A design document says what the design is. The completion and handover
+reports promised a gravel pack in a 19 mm annulus the design had left
+empty and listed a generated casing string as completed work; they now
+describe the fill the design places and call the construction designed
+unless the log records it installed. Every fracture zone a description
+names is read, in the usual wordings, so "fractures at 30-31 m and 33-34 m"
+screens both; a pump intake inside a screen is no longer lifted above the
+level the pumping test reached; a grout written "0-20" is 20 m; "Water
+strike 1: 12 m" is a strike and a rest water level is not; the basis
+describes only the screens that are built; an as-built record keeps its
+screens as recorded. The Depth Spine draws the drawing's lithology bands.
+
+The browser's geophysical report described every site as crystalline
+basement, the Bullom sands included, because nothing gave it a geology
+paragraph; it is now worked out from the map under the site, word for word
+as the package writes it. Two report builds started together no longer put
+dark-theme figures into a client document. The browser places and frames a
+report's area as the package does, so Karene and Falaba get their maps and
+captions carry full chiefdom names, and in both engines a sheet saying
+"Western Area" or "Port Loko District" gets its map. A longitude typed in
+degrees without its sign is read as west, with a note, instead of placing
+the site in central Africa. The study-area tint and the GeoLibre export
+keep the holes the rebuilt layers now carry.
 
 ## A note on the sixteen districts
 

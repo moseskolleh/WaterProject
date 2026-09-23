@@ -66,6 +66,26 @@ def test_type_text(test_type: str) -> str:
     return words + (" with recovery" if tail else "")
 
 
+#: Flags that say the recorded levels cannot all be right: a level above the
+#: stated static level, below the bottom of the hole or below the pump intake.
+#: A report used to certify "the drawdown and recovery curves are valid" over
+#: levels 18 m below the pump intake, and the yield computed from those
+#: drawdowns was called established.
+LEVEL_FLAGS = ("water_level_above_static", "level_below_borehole", "level_below_pump")
+
+#: The confidence reason a flagged set of levels gives the yield.
+LEVELS_IN_DOUBT_REASON = (
+    "the recorded water levels are inconsistent with the stated static level, "
+    "pump setting or borehole depth, so the drawdowns the yield is computed "
+    "from are as recorded and not to be relied on"
+)
+
+
+def levels_in_doubt(test: PumpingTest) -> bool:
+    """True when the sheet's own levels contradict its static level, pump or depth."""
+    return any(f.code in LEVEL_FLAGS for f in test.flags)
+
+
 # ---------------------------------------------------------------------------
 # Result containers
 # ---------------------------------------------------------------------------
@@ -228,6 +248,12 @@ class PumpingTestAnalysis:
     # a Cooper-Jacob window inside the casing-storage period, a recovery
     # line nowhere near the origin, a Theis storativity no aquifer has.
     disqualified: dict[str, str] = field(default_factory=dict)
+    # The disqualified fits whose own result is wrong - a recovery line
+    # nowhere near the origin, a storativity no aquifer has - keyed by method
+    # with that reason. A fit read inside the casing-storage period is
+    # disqualified as well, but its line may be sound, so it can still be
+    # adopted as the best of the poor fits; a result that is wrong never can.
+    invalid_fits: dict[str, str] = field(default_factory=dict)
     # How long casing storage controls the drawdown in this borehole, from
     # the casing and riser diameters and the specific capacity. None when
     # there is no specific capacity to compute it from.
@@ -259,6 +285,14 @@ class PumpingTestAnalysis:
         over a 4.3 m2/day Cooper-Jacob at 0.99. When nothing reaches the
         threshold the best of the poor fits is still adopted, so a yield is
         produced, and ``qualifies`` is False so the caller can flag it.
+
+        The best of the poor fits is taken from the fits nothing disqualified,
+        and only when there are none from the fits disqualified for lying
+        inside the casing-storage period. A fit in ``invalid_fits`` is never
+        adopted: the pick used to run over every fit, so a recovery line
+        meeting t/t' = 1 at 60% of its drawdown won on its R squared of 0.99
+        and the yield rested on the one result the analysis had rejected.
+        When nothing is left the method is None and the yield is pending.
         """
         fits = self.fits()
         for name, result in fits:
@@ -267,12 +301,15 @@ class PumpingTestAnalysis:
             r2 = getattr(result, "r_squared", None)
             if r2 is None or r2 >= self.min_fit_r_squared:
                 return name, result, True
-        if not fits:
+        pool = [item for item in fits if item[0] not in self.disqualified] or [
+            item for item in fits if item[0] not in self.invalid_fits
+        ]
+        if not pool:
             return None, None, False
         # the best of the poor fits: the highest R squared among the straight
         # lines, and the curve fit (which has none) only when it is all there is
         name, result = max(
-            fits, key=lambda item: getattr(item[1], "r_squared", None) or -1.0
+            pool, key=lambda item: getattr(item[1], "r_squared", None) or -1.0
         )
         return name, result, False
 
@@ -556,17 +593,44 @@ def equivalent_pumping_time_min(test: PumpingTest) -> tuple[Optional[float], boo
     ):
         return test.pumping_duration_min, False
     q_last = float(steps[-1].discharge_m3_per_h)
-    volume, previous_end = 0.0, 0.0
-    for step in steps:
-        finite = step.time_min[np.isfinite(step.time_min)]
-        if not len(finite):
-            continue
-        end = float(finite.max())
-        volume += float(step.discharge_m3_per_h) * max(end - previous_end, 0.0)
-        previous_end = end
+    durations, _ = step_durations_min(steps)
+    volume = sum(
+        float(step.discharge_m3_per_h) * dt
+        for step, dt in zip(steps, durations, strict=True)
+    )
     if q_last <= 0 or volume <= 0:
         return test.pumping_duration_min, False
     return volume / q_last, True
+
+
+def step_durations_min(steps) -> tuple[list[float], list[int]]:
+    """``(minutes per step, restarted step numbers)``: how long each step pumped.
+
+    A step's times normally run on from the step before (61, 62 ... after a
+    step ending at 60), and its length is its last reading less that step's.
+    Some sheets count each step from its own start instead, so a step opens
+    at or before the minute the step before it ended; its own last reading is
+    then its length, and the lengths add. Differencing those steps against
+    the step before gave them no length at all: the recovery after such a
+    step test was read against 30 minutes where the steps had pumped 158.
+    A step with no readable time pumped for no measurable time.
+    """
+    durations: list[float] = []
+    restarted: list[int] = []
+    previous_end: Optional[float] = None
+    for step in steps:
+        finite = step.time_min[np.isfinite(step.time_min)]
+        if not len(finite):
+            durations.append(0.0)
+            continue
+        start, end = float(finite.min()), float(finite.max())
+        if previous_end is not None and start <= previous_end:
+            restarted.append(step.step_number)
+            durations.append(max(end, 0.0))
+        else:
+            durations.append(max(end - (previous_end or 0.0), 0.0))
+        previous_end = end
+    return durations, restarted
 
 
 def casing_storage_min(
@@ -606,12 +670,18 @@ def deepest_pumping_level(test: PumpingTest) -> Optional[float]:
 def hantush_bierschenk(
     step_discharges_m3_per_h: list[float],
     step_end_drawdowns_m: list[float],
+    step_numbers: Optional[list[int]] = None,
 ) -> StepTestResult:
     """Hantush-Bierschenk analysis of a step drawdown test.
 
     Fits ``s_w = B Q + C Q^2`` through the end-of-step drawdowns by
     linear regression of s_w/Q on Q. Q is converted to m3/day, so B is
     in day/m2 and C in day2/m5.
+
+    ``step_numbers`` are the sheet's numbers for the steps passed in. A step
+    left out of the fit used to renumber the rest, so the table printed
+    "Step 1 | 2.2 m3/h" beside a test details line saying step 1 ran at
+    1.5 m3/h. Without them the steps are numbered from one.
     """
     q = np.asarray(step_discharges_m3_per_h, dtype=float) * 24.0
     s = np.asarray(step_end_drawdowns_m, dtype=float)
@@ -643,12 +713,13 @@ def hantush_bierschenk(
             "negative aquifer loss refitted as pure well loss; efficiencies are "
             "not meaningful"
         )
+    numbers = list(step_numbers) if step_numbers is not None else list(range(1, len(q) + 1))
     steps = []
-    for i, (qi, si) in enumerate(zip(q, s, strict=True), start=1):
+    for number, qi, si in zip(numbers, q, s, strict=True):
         eff = 100.0 * B * qi / (B * qi + C * qi**2) if (B * qi + C * qi**2) > 0 else 100.0
         steps.append(
             {
-                "step": i,
+                "step": int(number),
                 "discharge_m3_per_h": qi / 24.0,
                 "drawdown_end_m": float(si),
                 "sw_over_q_day_per_m2": float(si / qi),
@@ -715,6 +786,7 @@ def recommend_yield(
     assumed_storativity: float = 1e-3,
     effective_radius_m: float = 0.1,
     transmissivity_source: str | None = None,
+    no_transmissivity_reason: str = "",
 ) -> YieldRecommendation:
     """Specific capacity, sustainable yield and pump depth.
 
@@ -725,6 +797,8 @@ def recommend_yield(
     is recorded in ``basis`` so the recommendation is traceable;
     ``transmissivity_source`` (a key of :data:`METHOD_LABELS`) names the
     method the transmissivity came from in that narrative.
+    ``no_transmissivity_reason`` is why no transmissivity was adopted when
+    fits ran and every one was rejected, for the pending narrative.
     """
     config = config or PumpingConfig()
     swl = test.static_water_level_m
@@ -805,7 +879,8 @@ def recommend_yield(
             missing.append(
                 "discharge is missing on the field sheet"
                 if not any(s.discharge_m3_per_h for s in test.steps)
-                else "transmissivity could not be fitted from the readings"
+                else no_transmissivity_reason
+                or "transmissivity could not be fitted from the readings"
             )
         return pending(" and ".join(missing))
 
@@ -871,25 +946,46 @@ def recommend_yield(
     # set below the static level plus the dry-season reserve, the usable
     # drawdown and the submergence margin, and never above the deepest
     # level the test drew the water to, with the same submergence under it.
+    # That floor is a reading, so it holds only where the readings do: a
+    # level the sheet itself shows cannot be right (below the pump, below the
+    # bottom of the hole) set a Kuntolo intake at 67 m from a 78.5 m reading
+    # in a 70 m hole. The pump cannot have drawn the level below its own
+    # setting either, so the floor never goes deeper than the test pump did.
     pump_depth = swl + config.seasonal_allowance_m + usable + config.pump_submergence_min_m
     reached = ""
-    if deepest is not None:
+    if deepest is not None and levels_in_doubt(test):
+        reached = (
+            f"; the deepest level recorded, {deepest:.1f} m, is left out because "
+            "the recorded levels are inconsistent with the stated static level, "
+            "pump setting or borehole depth"
+        )
+    elif deepest is not None:
         floor = deepest + config.pump_submergence_min_m
+        at_pump = test.pump_setting_m is not None and floor > test.pump_setting_m
+        if at_pump:
+            floor = test.pump_setting_m
         reached = (
             f"; the test itself drew the level to {deepest:.1f} m"
             + (f" at {q_last:g} m3/h" if q_last else "")
         )
         if floor > pump_depth:
             pump_depth = floor
-            reached += ", which sets the intake"
+            reached += ", which sets the intake" + (
+                f" at the {test.pump_setting_m:g} m the test pump was set to"
+                if at_pump else ""
+            )
+    # Rounded to the next whole metre down the hole, except where the
+    # clearance above the bottom governs: rounding down the hole after the cap
+    # put a 45.5 m hole's intake at 43 m, 2.5 m above the bottom, beside text
+    # saying it was capped 3 m above.
+    pump_depth = math.ceil(pump_depth)
     capped = ""
     if test.borehole_depth_m and pump_depth > test.borehole_depth_m - 3.0:
-        pump_depth = test.borehole_depth_m - 3.0
+        pump_depth = math.floor(test.borehole_depth_m - 3.0)
         capped = (
             f", capped 3 m above the {test.borehole_depth_m:g} m bottom of the "
             "borehole"
         )
-    pump_depth = math.ceil(pump_depth)
     pump_depth_basis = (
         f"Pump intake at {pump_depth:g} m: the static level {swl:.1f} m plus the "
         f"{config.seasonal_allowance_m:g} m dry-season reserve, the {usable:.1f} m "
@@ -965,10 +1061,16 @@ def attach_yield_envelope(
     if recommendation is None or recommendation.safe_yield_m3_per_h is None:
         return
 
+    # A fit the analysis rejected does not widen the band either: Dr Timbo's
+    # "0.39 m3/h (0.28 to 1.2)" took its top from the recovery line it had
+    # just refused for missing the origin. The adopted fit stays in even when
+    # it is a casing-storage fallback, since the yield itself rests on it.
+    adopted = analysis.transmissivity_source
     fitted = [
         r.transmissivity_m2_per_day
-        for r in (analysis.recovery, analysis.cooper_jacob, analysis.theis)
-        if r is not None and r.transmissivity_m2_per_day
+        for name, r in analysis.fits()
+        if r.transmissivity_m2_per_day
+        and (name not in analysis.disqualified or name == adopted)
     ]
     if not fitted:
         return
@@ -996,6 +1098,11 @@ def attach_yield_envelope(
                         yields.append(trial.safe_yield_m3_per_h)
     if not yields:
         return
+    # The corners are the ends of each assumption's range, and they do not
+    # always bracket the central figure: with the levels in doubt the central
+    # yield of 0.0067 m3/h was printed beside a range starting at 0.0068. A
+    # range that leaves out the figure it qualifies reads as a contradiction.
+    yields.append(recommendation.safe_yield_m3_per_h)
     recommendation.safe_yield_low_m3_per_h = min(yields)
     recommendation.safe_yield_high_m3_per_h = max(yields)
     recommendation.envelope_basis = (
@@ -1204,6 +1311,40 @@ def analyse_pumping_test(
                 if keep.any():
                     flags.append(DataFlag("warning", "theis_failed", str(exc)))
 
+    # ---- step clocks ----------------------------------------------------------
+    # A step test whose times restart each step is read with each step's own
+    # last reading as its length. The reading is the toolkit's, not the
+    # sheet's, and the overview and the recorded duration still show the
+    # step clocks, so it is said.
+    step_durations: list[float] = []
+    if test.test_type.startswith("step"):
+        timed = [s for s in test.steps if len(s.time_min)]
+        step_durations, restarted = step_durations_min(timed)
+        if restarted:
+            one = len(restarted) == 1
+            names = (
+                f"Step {restarted[0]}" if one
+                else "Steps " + ", ".join(str(n) for n in restarted[:-1])
+                + f" and {restarted[-1]}"
+            )
+            recorded = (
+                f", not the {test.pumping_duration_min:g} minutes the latest "
+                "reading gives" if test.pumping_duration_min else ""
+            )
+            flags.append(
+                DataFlag(
+                    "warning",
+                    "step_time_restarted",
+                    f"{names} {'opens' if one else 'open'} at or before the minute "
+                    f"the step before {'it' if one else 'each'} ended, so "
+                    f"{'its' if one else 'their'} times are read as counted from "
+                    f"the start of {'the' if one else 'each'} step rather than from "
+                    "the start of the test: each step's own last reading is taken "
+                    f"as its length, and the steps pumped for {sum(step_durations):g} "
+                    f"minutes in all{recorded}. Check the times on the sheet.",
+                )
+            )
+
     # ---- recovery -----------------------------------------------------------
     residual = test.residual_drawdown()
     if residual is not None and test.recovery_time_min is not None:
@@ -1223,6 +1364,8 @@ def analyse_pumping_test(
                 flags.append(DataFlag("warning", "recovery_failed", str(exc)))
         rec = analysis.recovery
         if rec is not None and equivalent:
+            # the steps' own lengths added up: a sheet whose step times
+            # restart has a latest reading that is one step, not the test
             flags.append(
                 DataFlag(
                     "info",
@@ -1230,7 +1373,7 @@ def analyse_pumping_test(
                     f"The recovery is read against an equivalent pumping time of "
                     f"{t_pump:.0f} minutes at the last rate of {q_rec:g} m3/h "
                     f"(the volume pumped over all the steps at that rate), not "
-                    f"the {test.pumping_duration_min:g} minutes the test ran.",
+                    f"the {sum(step_durations):g} minutes the test ran.",
                 )
             )
         if rec is not None and rec.intercept_fraction > config.recovery_intercept_max_fraction:
@@ -1239,6 +1382,9 @@ def analyse_pumping_test(
                 f"residual drawdown, {rec.intercept_fraction:.0%} of the drawdown "
                 "the recovery started from, where the method requires zero"
             )
+            analysis.invalid_fits["recovery"] = analysis.disqualified["recovery"]
+            # the fraction is of the magnitude the recovery started from; a
+            # line meeting the axis below zero printed "37% of the -21.8 m"
             flags.append(
                 DataFlag(
                     "warning",
@@ -1246,7 +1392,7 @@ def analyse_pumping_test(
                     f"The recovery line does not pass through the origin: it "
                     f"meets t/t' = 1 at {rec.intercept_m:.1f} m of residual "
                     f"drawdown ({rec.intercept_fraction:.0%} of the "
-                    f"{rec.intercept_m / max(rec.intercept_fraction, 1e-9):.1f} m "
+                    f"{abs(rec.intercept_m) / max(rec.intercept_fraction, 1e-9):.1f} m "
                     "the recovery started from), where Theis recovery requires "
                     "zero. The residual drawdown is dominated by something the "
                     "method does not model (casing storage, a changing static "
@@ -1282,11 +1428,12 @@ def analyse_pumping_test(
                         )
                     )
                 else:
-                    positive.append((s.discharge_m3_per_h, s_end))
+                    positive.append((s.discharge_m3_per_h, s_end, s.step_number))
             if len(positive) >= 2:
                 try:
                     analysis.step_test = hantush_bierschenk(
-                        [q for q, _ in positive], [s_end for _, s_end in positive]
+                        [q for q, _, _ in positive], [s_end for _, s_end, _ in positive],
+                        step_numbers=[n for _, _, n in positive],
                     )
                 except ValueError as exc:
                     flags.append(DataFlag("warning", "step_test_failed", str(exc)))
@@ -1320,15 +1467,20 @@ def analyse_pumping_test(
         if q_first and s_first and s_first > 0:
             analysis.casing_storage_min = casing_storage_min(q_first / s_first, config)
     t_c = analysis.casing_storage_min
+    # A step test is judged on the length of a step, so its sentences are
+    # worded per step: a 3 x 50-minute test used to be "the test pumped for
+    # 50 minutes" and "the whole test lies inside" the casing-storage period.
+    per_step = kind == "step"
+    inside: list[str] = []
+    casing_flag: Optional[DataFlag] = None
     if t_c:
-        inside = []
         cj = analysis.cooper_jacob
         if cj is not None and cj.fit_window_min[1] <= t_c:
             analysis.disqualified["cooper_jacob"] = (
                 f"its fitted window {cj.fit_window_min[0]:g}-{cj.fit_window_min[1]:g} "
                 f"minutes lies inside the {t_c:.0f}-minute casing-storage period"
             )
-            inside.append("Cooper-Jacob")
+            inside.append("cooper_jacob")
         elif cj is not None and cj.fit_window_min[0] < t_c:
             flags.append(
                 DataFlag(
@@ -1342,36 +1494,25 @@ def analyse_pumping_test(
         th = analysis.theis
         if th is not None and duration is not None and duration <= t_c:
             analysis.disqualified["theis"] = (
-                f"the whole {duration:g}-minute test lies inside the {t_c:.0f}-minute "
-                "casing-storage period"
+                (f"each {duration:g}-minute step lies inside" if per_step
+                 else f"the whole {duration:g}-minute test lies inside")
+                + f" the {t_c:.0f}-minute casing-storage period"
             )
-            inside.append("Theis")
+            inside.append("theis")
         if inside:
-            flags.append(
-                DataFlag(
-                    "warning",
-                    "casing_storage",
-                    f"With a {config.casing_diameter_in:g} inch casing and a "
-                    f"specific capacity of {q_first / s_first:.2g} m3/h per m, "
-                    "casing storage controls the drawdown for the first "
-                    f"{t_c:.0f} minutes (Schafer's rule)"
-                    + (f"; this test pumped for {duration:g} minutes, entirely "
-                       "inside it" if duration is not None and duration <= t_c
-                       else "")
-                    + f". The {' and '.join(inside)} fit"
-                    + ("s see" if len(inside) > 1 else " sees")
-                    + " the borehole emptying rather than the aquifer, so "
-                    + ("their" if len(inside) > 1 else "its")
-                    + " transmissivity is reported but not adopted.",
-                )
-            )
+            # Worded below, once the adoption is known: the flag said every fit
+            # inside the period was "reported but not adopted" while the
+            # transmissivity note adopted one of them as the best available.
+            casing_flag = DataFlag("warning", "casing_storage", "")
+            flags.append(casing_flag)
     th = analysis.theis
     if th is not None and th.storativity > config.max_plausible_storativity:
-        analysis.disqualified.setdefault(
-            "theis",
+        storativity_reason = (
             f"its storativity of {th.storativity:.2g} is above "
-            f"{config.max_plausible_storativity:g}, which no aquifer has",
+            f"{config.max_plausible_storativity:g}, which no aquifer has"
         )
+        analysis.disqualified.setdefault("theis", storativity_reason)
+        analysis.invalid_fits["theis"] = storativity_reason
         flags.append(
             DataFlag(
                 "warning",
@@ -1385,6 +1526,44 @@ def analyse_pumping_test(
 
     # ---- transmissivity ---------------------------------------------------------
     method, fit, qualifies = analysis.adopted_fit()
+    if casing_flag is not None:
+        words = {"cooper_jacob": "Cooper-Jacob", "theis": "Theis"}
+        several = len(inside) > 1
+        text = (
+            f"With a {config.casing_diameter_in:g} inch casing and a "
+            f"specific capacity of {q_first / s_first:.2g} m3/h per m, "
+            "casing storage controls the drawdown for the first "
+            f"{t_c:.0f} minutes (Schafer's rule)"
+            + ((f"; each step pumped for {duration:g} minutes" if per_step
+                else f"; this test pumped for {duration:g} minutes")
+               + ", entirely inside it" if duration is not None and duration <= t_c
+               else "")
+            + f". The {' and '.join(words[k] for k in inside)} fit"
+            + ("s see" if several else " sees")
+            + " the borehole emptying rather than the aquifer"
+        )
+        if method in inside:
+            others = [words[k] for k in inside if k != method]
+            text += (
+                ". No fit outside that period can be adopted, so the "
+                f"{words[method]} value is adopted only as the best available"
+                + (f" and the {' and '.join(others)} value is reported but not "
+                   "adopted" if others else "")
+                + "."
+            )
+        else:
+            text += (", so " + ("their" if several else "its")
+                     + " transmissivity is reported but not adopted.")
+        casing_flag.message = text
+    # Every fit ran and every one was rejected on its own result: the yield
+    # is pending, and says why, rather than resting on a rejected line.
+    rejected = ""
+    if fit is None and analysis.fits():
+        rejected = "no fitted transmissivity can be adopted (" + "; ".join(
+            f"{METHOD_LABELS[name]} {result.transmissivity_m2_per_day:.2f} m2/day, "
+            + (analysis.invalid_fits.get(name) or analysis.why_not_adopted(name))
+            for name, result in analysis.fits()
+        ) + ")"
     if fit is not None and not qualifies:
         scored = "; ".join(
             f"{METHOD_LABELS[name]} {result.transmissivity_m2_per_day:.2f} m2/day, "
@@ -1410,6 +1589,7 @@ def analyse_pumping_test(
         analysis.step_test,
         config,
         transmissivity_source=method,
+        no_transmissivity_reason=rejected,
     )
     attach_yield_envelope(analysis, config)
     recommendation = analysis.yield_recommendation
@@ -1420,18 +1600,25 @@ def analyse_pumping_test(
     # One judgement, made here and printed by every report beside the yield.
     # The pumping report used to carry these warnings in its data notes while
     # the completion and handover reports printed the same yield as
-    # "successful and sustainable" without them.
+    # "successful and sustainable" without them. Levels the sheet itself
+    # shows cannot be right come first: a yield computed from them was called
+    # established, and the readiness gate certified it.
     reasons: list[str] = []
+    if levels_in_doubt(test):
+        reasons.append(LEVELS_IN_DOUBT_REASON)
     if duration is not None and 0 < duration < threshold:
         reasons.append(
-            f"the test pumped for {duration:g} minutes, below the {threshold:g} "
+            (f"each step ran for {duration:g} minutes" if per_step
+             else f"the test pumped for {duration:g} minutes")
+            + f", below the {threshold:g} "
             "needed to see late-time behaviour, so the yield is extrapolated "
             f"{math.log10(config.design_period_days * MIN_PER_DAY / duration):.1f} "
             "log cycles of time"
         )
     if t_c and duration is not None and duration <= t_c:
         reasons.append(
-            f"the whole test lies inside the {t_c:.0f}-minute casing-storage "
+            ("each step lies inside" if per_step else "the whole test lies inside")
+            + f" the {t_c:.0f}-minute casing-storage "
             "period, so its drawdown is the borehole emptying rather than the "
             "aquifer responding"
         )

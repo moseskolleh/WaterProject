@@ -239,6 +239,15 @@ await withPage(async (page, base, consoleErrors) => {
     /* the update may also fail without rejecting; what matters is what is
      * installed afterwards, not how the failure was reported */
     await new Promise((r) => setTimeout(r, 1000));
+    /* The install copies the whole release before it reaches the missing
+     * file and clears what it copied, and on a loaded machine that takes
+     * longer than the second above: the check once read the broken cache
+     * while the install was still filling it. Wait for the install to end. */
+    for (let i = 0; i < 100; i += 1) {
+      const r = await navigator.serviceWorker.getRegistration();
+      if (!(r && r.installing)) break;
+      await new Promise((res) => setTimeout(res, 100));
+    }
     const after = await navigator.serviceWorker.getRegistration();
     return {
       rejected,

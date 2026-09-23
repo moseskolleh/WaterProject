@@ -40,16 +40,32 @@ def _texts(fig) -> str:
 
 
 def test_the_caveat_describes_the_window_that_was_drawn():
-    """A district window is the district's size, whatever radius was asked."""
-    site = SiteMetadata(community="Kuntoloh", district="Port Loko")
+    """A chiefdom window is the chiefdom's size, whatever radius was asked.
+
+    This used the Port Loko district window, which at 67.8 km is past the
+    60 km beyond which no caveat is drawn at all, so the assertion passed on
+    its "no caveat" branch without ever reading one. Koya's window is small
+    enough to earn the caveat, and the caveat has to name that window, to
+    the kilometre.
+    """
+    site = SiteMetadata(community="Kuntoloh", chiefdom="Koya", district="Port Loko")
     window = area_window(site, 40.0)
     assert window is not None and not window.exact
-    assert window.radius_km != 40.0
+    assert window.radius_km != 40.0 and window.radius_km <= 60.0
     fig = plot_geological_map(site=site, radius_km=40.0)
-    text = _texts(fig)
+    text = " ".join(_texts(fig).split())      # the footnote is wrapped
     plt.close(fig)
-    assert f"{2 * window.radius_km:g} km window" in text or "km window" not in text
+    assert f"of this {2 * window.radius_km:.0f} km window" in text
     assert "80 km window" not in text
+
+
+def test_the_caveat_names_a_window_to_the_kilometre():
+    """"this 43.4293 km window" claimed a precision the caveat disowns."""
+    from groundwater.mapping.regional import _scale_caveat
+
+    note = _scale_caveat(21.71465, 5_000_000)
+    assert "which is 6% of this 43 km window" in note
+    assert "43.4" not in note
 
 
 def test_a_polygon_is_named_for_where_it_is_not_for_the_site():
@@ -144,6 +160,91 @@ def test_the_location_map_highlights_the_district_the_position_resolves_to():
     fig = plot_admin_map(SiteMetadata(community="Kamakwie", district="Karene"))
     assert "Karene District" in _texts(fig)
     plt.close(fig)
+
+
+def test_a_district_is_read_the_way_the_consistency_check_reads_it():
+    """"Port Loko District" and "Western Area" are places, and get a map.
+
+    The area window and the locator compared the name as typed with the
+    boundary layer's own names, so a sheet saying "Western Area" - the
+    region, what peninsula sheets almost always say - or "Port Loko
+    District" got no map at all, and the report said that no administrative
+    area was recorded right after naming it, as "Port Loko District
+    district".
+    """
+    from groundwater.reporting.context import area_map_note
+
+    _, districts = load_admin()
+    plain = area_window(SiteMetadata(district="Port Loko"))
+    written = area_window(SiteMetadata(district="Port Loko District"))
+    assert written is not None and written == plain
+    assert written.label == "Port Loko district"
+    name, names, _ = _home_district(SiteMetadata(district="Port Loko District"), districts)
+    assert name == "Port Loko" and names == {"port loko"}
+
+    region = area_window(SiteMetadata(district="Western Area"))
+    assert region is not None and not region.exact
+    assert region.label == "Western Area"
+    # framed on the two districts together: both halves are in the window
+    for half in ("Western Area Urban", "Western Area Rural"):
+        lon, lat = next(d for d in districts if d.name == half).label_point
+        assert abs(lon - region.lon) * 111.32 * 0.99 < region.radius_km
+        assert abs(lat - region.lat) * 111.32 < region.radius_km
+
+    note = area_map_note(SiteMetadata(community="Testville", district="Port Loko District"))
+    assert note.startswith("The site is recorded as Testville, Port Loko district. No GPS")
+    note = area_map_note(SiteMetadata(community="Testville", district="Western Area"))
+    assert note.startswith("The site is recorded as Testville, Western Area. No GPS")
+    assert "Western Area district" not in note
+    # a name that could be two districts is still no place, as the check says
+    assert area_window(SiteMetadata(district="Ko")) is None
+
+
+def test_the_study_area_tint_leaves_a_dyke_open():
+    """The Precambrian was painted over every dyke it encloses.
+
+    With the geology tint on, the study-area map drew each unit from its
+    outer ring alone, so at the centre of a dyke hole in Kono two tints lay
+    one over the other: the dyke's and the Precambrian's.
+    """
+    from groundwater.geo import geographic_to_utm
+    from groundwater.mapping import plot_study_area_map
+
+    lat, lon = 9.392, -10.396                  # a Mi dyke the Precambrian encloses
+    utm = geographic_to_utm(lat, lon)
+    fig = plot_study_area_map(SiteMetadata(community="Dyke", easting=utm.easting,
+                                           northing=utm.northing, utm_zone=utm.zone),
+                              radius_km=10.0, show_geology=True)
+    from matplotlib.path import Path as MplPath
+
+    def covers(patch) -> bool:
+        # the outer ring and then the holes, as the patch will be filled;
+        # Path.contains_point alone ignores the holes of a compound path
+        rings = patch.get_path().to_polygons(closed_only=True)
+        return (MplPath(rings[0]).contains_point((lon, lat))
+                and not any(MplPath(r).contains_point((lon, lat)) for r in rings[1:]))
+
+    tints = [p for p in fig.axes[0].patches if p.get_zorder() == 1 and covers(p)]
+    plt.close(fig)
+    assert len(tints) == 1, f"{len(tints)} tints cover the dyke"
+
+
+def test_a_country_inside_a_units_hole_does_not_meet_the_unit():
+    """The key's country test reads the holes, as the browser's does.
+
+    A border vertex in a hole is on ground some other unit covers; counted
+    as inside the unit, it put a unit in the key that the window shows none
+    of, where the browser's meetsOutline left it out.
+    """
+    from groundwater.mapping.regional import _ring_meets_country
+
+    outer = np.array([[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]], dtype=float)
+    hole = np.array([[3, 3], [7, 3], [7, 7], [3, 7], [3, 3]], dtype=float)
+    in_hole = np.array([[4, 4], [6, 4], [6, 6], [4, 6], [4, 4]], dtype=float)
+    across = np.array([[8, 8], [12, 8], [12, 12], [8, 12], [8, 8]], dtype=float)
+    assert _ring_meets_country(outer, [in_hole]) is True       # the outer ring alone
+    assert _ring_meets_country(outer, [in_hole], (hole,)) is False
+    assert _ring_meets_country(outer, [across], (hole,)) is True
 
 
 def test_the_study_area_is_drawn_at_the_scale_its_points_need():

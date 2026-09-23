@@ -28,7 +28,7 @@ import numpy as np
 
 from ..ves.arrays import geometric_factor
 from ..models import DataFlag, VESSounding
-from ..utils import clean_text, parse_number
+from ..utils import clean_text, parse_number, plural
 from . import common
 
 # "MN/2", "MN / 2", "MN /2 (m)" - a typed header keeps its spaces
@@ -310,6 +310,30 @@ def _sounding_or_reason(
             "the tabulated AB/2, which is the spacing the Wenner geometric "
             "factor and forward model take.",
         ))
+    if is_wenner:
+        # A Wenner array keeps MN equal to a and reads each spacing once. A
+        # Schlumberger sheet with only its array field changed to "Wenner"
+        # was read as Wenner, every spacing divided by 1.5, with nothing but
+        # information notes, although its MN column and the repeated AB/2 at
+        # each MN change are things a Wenner array cannot have.
+        spacing, potential = np.array(ab2), np.array(mn)
+        measured = np.isfinite(potential)
+        reasons = []
+        if np.any(~np.isclose(potential[measured], spacing[measured], rtol=0.01)):
+            reasons.append("its MN column holds spacings other than a")
+        repeated = _duplicate_ab2_count(spacing)
+        if repeated:
+            reasons.append(f"it repeats {plural(repeated, 'spacing')}")
+        if reasons:
+            flags.append(DataFlag(
+                "warning", "array_type_wenner_contradicted",
+                "The sounding was read as Wenner, as the sheet has it, but "
+                + " and ".join(reasons)
+                + ". A Wenner array keeps MN equal to the spacing a and reads "
+                "each spacing once, so these are the marks of a Schlumberger "
+                "sounding. Confirm the array with the field crew: the wrong "
+                "forward model is wrong by tens of percent.",
+            ))
     if from_resistance:
         flags.append(DataFlag(
             "info", "rho_computed_from_resistance",
@@ -407,7 +431,10 @@ def _overlap_discrepancies(ab2: np.ndarray, rho: np.ndarray) -> list[str]:
             continue
         ratio = float(np.max(readings) / np.min(readings))
         if ratio > OVERLAP_DISCREPANCY_RATIO:
-            pair = " and ".join(f"{r:g}" for r in readings[:2])
+            # the pair the ratio is of, in field order: with three readings at
+            # one spacing the first two can agree while the third is the one out
+            ends = sorted((int(np.argmax(readings)), int(np.argmin(readings))))
+            pair = " and ".join(f"{readings[k]:g}" for k in ends)
             out.append(f"AB/2 {value:g} m: {pair} ohm-m (ratio {ratio:.2f})")
     return out
 
@@ -428,17 +455,44 @@ def read_ves_workbook(
     """
     path = Path(path)
     soundings = []
+    titles = []
     for name in common.sheet_names(path):
         grid, title = common.load_grid(path, sheet=name)
         sounding, reason = _sounding_or_reason(grid, source=str(path), sheet_name=title)
         if sounding is not None:
             soundings.append(sounding)
+            titles.append(title)
         elif skipped is not None:
             skipped.append(DataFlag(
                 "warning", "sheet_skipped",
                 f"Sheet '{title}' was skipped: {reason}.",
             ))
+    _flag_duplicate_ids(soundings, titles)
     return soundings
+
+
+def _flag_duplicate_ids(soundings: list[VESSounding], titles: list[str]) -> None:
+    """Warn on each sounding whose id an earlier sheet already carries.
+
+    A sheet copied for the next point and never renumbered reads as the
+    same point in every table, figure and ranking, and nothing downstream
+    can tell the two apart by name.
+    """
+    first_sheet: dict[str, str] = {}
+    for sounding, title in zip(soundings, titles, strict=True):
+        sid = sounding.sounding_id
+        if sid in first_sheet:
+            sounding.flags.append(DataFlag(
+                "warning", "duplicate_sounding_id",
+                f"Sheet '{title}' carries the sounding number '{sid}', which "
+                f"sheet '{first_sheet[sid]}' already uses. A sheet copied "
+                "without renumbering reads as the same point in every table, "
+                "figure and ranking; give each sounding its own number before "
+                "the results are used.",
+                sid,
+            ))
+        else:
+            first_sheet[sid] = title
 
 
 def read_ves_csv(path: str | Path) -> VESSounding:

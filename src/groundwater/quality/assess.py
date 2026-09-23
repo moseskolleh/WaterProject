@@ -133,6 +133,25 @@ SUITABILITY_PHRASE = {
     "pass": "suitable for drinking on the parameters tested.",
 }
 
+
+def suitability_sentence(assessment: "WaterQualityAssessment") -> str:
+    """The :data:`SUITABILITY_SENTENCE` this assessment can support.
+
+    The national_fail sentence says the WHO health based values are met,
+    which is only shown when nothing is left unresolved; a sample failing a
+    national limit with an ungradable arsenic result used to be certified as
+    meeting them in the completion and handover summaries.
+    """
+    state = assessment.verdict_state
+    if state == "national_fail" and assessment.uncertainties:
+        return (
+            "The water does not comply with the national standard, and it has "
+            "not been shown to meet the WHO health based guideline values; "
+            "treatment is required before the supply is accepted."
+        )
+    return SUITABILITY_SENTENCE[state]
+
+
 #: The health panel a verdict of "suitable for drinking" requires. E. coli is
 #: the direct indicator of faecal contamination; arsenic and fluoride are the
 #: geogenic risks that make otherwise clear, pleasant groundwater unsafe over
@@ -163,7 +182,18 @@ INDETERMINATE_REASONS = {
     "unit_basis_conflict": (
         "the unit names a different chemical basis from the parameter"
     ),
+    "value_unreadable": "the reported result could not be read",
+    "detected_not_quantified": (
+        "the laboratory reported only a lower bound, which is inside the limit"
+    ),
 }
+
+#: The reason on a row whose lower bound is over one limit and under a
+#: stricter one: ">1.5" copper is over the 1 mg/L acceptability value, and
+#: whether it is also over the 2 mg/L health guideline is not known. The
+#: exceedance it demonstrates is its status; the one it cannot rule out
+#: keeps the sample out of "suitable".
+STRICTER_LIMIT_UNRESOLVED = "stricter_limit_unresolved"
 
 
 @dataclass
@@ -186,8 +216,31 @@ class ParameterAssessment:
     detection_limit: Optional[float] = None
     #: Whether the row could be graded against the limits that apply to it.
     evaluable: bool = True
-    #: A code from :data:`INDETERMINATE_REASONS`, ``"unit_assumed"``, or "".
+    #: A code from :data:`INDETERMINATE_REASONS`, ``"unit_assumed"``,
+    #: :data:`STRICTER_LIMIT_UNRESOLVED`, or "".
     reason: str = ""
+    #: The lower bound of a result the laboratory did not quantify, in the
+    #: reported unit, and whether the bound itself is a possible value. A
+    #: table printing only ``value`` showed "TNTC" and ">50" as "n/a".
+    greater_than: Optional[float] = None
+    greater_than_inclusive: bool = False
+    #: Whether the national value this row was judged against is still
+    #: provisional in the standards table the assessment used.
+    sl_provisional: bool = False
+
+
+def unquantified_text(row: ParameterAssessment) -> str:
+    """How a result the laboratory did not quantify reads in a table.
+
+    ">50", "≥50", or "detected" for a count seen and not numbered; "" for
+    any other row. The report tables printed only the value, so "TNTC" and
+    ">50" reached a client as "n/a" and the browser's as a dash.
+    """
+    if row.value is not None or row.greater_than is None:
+        return ""
+    if row.greater_than == 0 and not row.greater_than_inclusive:
+        return "detected"
+    return ("≥" if row.greater_than_inclusive else ">") + f"{row.greater_than:g}"
 
 
 @dataclass
@@ -276,6 +329,12 @@ class WaterQualityAssessment:
         for row in self.indeterminate_rows:
             why = INDETERMINATE_REASONS.get(row.reason, "it could not be evaluated")
             reasons.append(f"{row.parameter} could not be assessed: {why}")
+        for row in self.rows:
+            if row.reason == STRICTER_LIMIT_UNRESOLVED:
+                reasons.append(
+                    f"{row.parameter} was not quantified, so a stricter limit "
+                    "than the one it exceeds cannot be ruled out"
+                )
         for row in self.unknown_parameters:
             reasons.append(
                 f"{row.parameter} has no entry in the standards table, so it "
@@ -343,13 +402,27 @@ class WaterQualityAssessment:
                 if acceptability
                 else ""
             )
+            action = (
+                " Treatment is required before the supply can be accepted "
+                "against the national standard; check whether the limit "
+                "exceeded is a health or an acceptability limit."
+            )
+            if self.uncertainties:
+                # The national failure outranks the open questions, but it
+                # does not answer them: "meets the WHO health based guideline
+                # values" was said of an arsenic result nobody could grade.
+                return (
+                    "The water does not comply with the national standard "
+                    f"{plural_noun(len(national), 'limit')} for: {names}.{extra} "
+                    "It has not been shown to meet the WHO health based "
+                    "guideline values: " + "; ".join(self.uncertainties) + "."
+                    + action
+                )
             return (
                 "The water meets the WHO health based guideline values, but "
                 f"does not comply with the national standard "
                 f"{plural_noun(len(national), 'limit')} for: "
-                f"{names}.{extra} Treatment is required before the supply can "
-                "be accepted against the national standard; check whether the "
-                "limit exceeded is a health or an acceptability limit."
+                f"{names}.{extra}" + action
             )
         if state == "indeterminate":
             reasons = "; ".join(self.uncertainties)
@@ -395,12 +468,34 @@ def _limit_maximums(entry: StandardEntry) -> list[float]:
 _convert_to_guideline_unit = to_standard_unit
 
 
+def _unit_note(reported: float, unit: str, converted: float, reason: str,
+               guideline_unit: str) -> str:
+    """How a remark says which unit a number was read in."""
+    if reason == "unit_assumed":
+        if unit:
+            return f" (read as {guideline_unit}; the reported unit was '{unit}')"
+        return f" (read as {guideline_unit}; no unit was reported)"
+    if converted != reported:
+        return f" ({reported:g} {unit} = {converted:g} {guideline_unit})"
+    return ""
+
+
+def _stated_bound(result) -> str:
+    """A lower bound as a remark words it."""
+    bound = float(result.greater_than)
+    if bound == 0 and not result.greater_than_inclusive:
+        return "detected, count not quantified"
+    return ("at least " if result.greater_than_inclusive else "more than ") + f"{bound:g}"
+
+
 def _assess_result(result, entry: Optional[StandardEntry]) -> ParameterAssessment:
     """Grade one laboratory result against its guideline entry."""
     who_h = str(entry.who_health) if entry and entry.who_health else ""
     who_a = str(entry.who_aesthetic) if entry and entry.who_aesthetic else ""
     sl = str(entry.sl_standard) if entry and entry.sl_standard else ""
     guideline_unit = entry.unit if entry else ""
+    unquantified = result.value is None and result.greater_than is not None
+    unreadable = result.value is None and bool(getattr(result, "unreadable", ""))
 
     row = ParameterAssessment(
         parameter=result.parameter,
@@ -414,15 +509,19 @@ def _assess_result(result, entry: Optional[StandardEntry]) -> ParameterAssessmen
         remark="no value reported",
         guideline_unit=guideline_unit,
         detection_limit=result.detection_limit,
+        greater_than=result.greater_than if unquantified else None,
+        greater_than_inclusive=bool(unquantified and result.greater_than_inclusive),
+        sl_provisional=bool(entry is not None and entry.sl_provisional),
     )
 
-    if result.value is None and not result.below_detection:
-        if result.greater_than is not None and entry is not None:
-            return _assess_unquantified(row, result, entry)
+    if (result.value is None and not result.below_detection
+            and not unquantified and not unreadable):
         return row
 
     if entry is None:
-        # An unrecognised determinand is an open question, not a clean bill.
+        # An unrecognised determinand is an open question, not a clean bill,
+        # and a detection of one is no less of one: "Salmonella: Present" was
+        # read as not measured and left the sample suitable for drinking.
         row.status = "no_guideline"
         row.reason = "unknown_parameter"
         row.evaluable = False
@@ -430,7 +529,23 @@ def _assess_result(result, entry: Optional[StandardEntry]) -> ParameterAssessmen
             "parameter not in the standards table, so it was not checked "
             "against any limit"
         )
+        if unquantified:
+            row.remark = f"{_stated_bound(result)}; {row.remark}"
         return row
+
+    if unreadable:
+        row.status = "indeterminate"
+        row.evaluable = False
+        row.reason = "value_unreadable"
+        row.remark = (
+            f"reported as '{result.unreadable}', which could not be read as a "
+            "measurement, a detection limit or a lower bound, so it was not "
+            "compared against any limit. Confirm the result with the laboratory."
+        )
+        return row
+
+    if unquantified:
+        return _assess_unquantified(row, result, entry)
 
     limits = _limit_maximums(entry)
 
@@ -453,17 +568,26 @@ def _assess_result(result, entry: Optional[StandardEntry]) -> ParameterAssessmen
 
     row.value_in_guideline_unit = converted
     row.reason = reason
-    if reason == "unit_assumed":
-        unit_note = f" (read as {guideline_unit}; the reported unit was '{result.unit}')" \
-            if result.unit else f" (read as {guideline_unit}; no unit was reported)"
-    elif converted != result.value:
-        unit_note = (
-            f" ({result.value:g} {result.unit} = {converted:g} {guideline_unit})"
-        )
-    else:
-        unit_note = ""
+    unit_note = _unit_note(float(result.value), result.unit, converted, reason,
+                           guideline_unit)
     _grade(row, entry, converted, unit_note)
     return row
+
+
+#: How a remark names the limit :func:`_classify` says decided a row.
+_LIMIT_NAMES = {
+    "who_health": "the WHO health based guideline",
+    "microbiological": "the national limit",
+    "sl_standard": "the national standard limit",
+    "who_aesthetic": "the WHO acceptability value",
+}
+
+
+def _deciding_limit(entry: StandardEntry, basis: str):
+    """The limit :func:`_classify` names by ``basis``."""
+    if basis == "microbiological":
+        return entry.sl_standard or entry.who_aesthetic
+    return getattr(entry, basis) if basis else None
 
 
 def _assess_unquantified(
@@ -471,52 +595,57 @@ def _assess_unquantified(
 ) -> ParameterAssessment:
     """A result the laboratory saw and did not put a number to.
 
-    "TNTC", "Present" and "Positive" are a count above zero; ">50" is at
-    least 50. All of them used to read as "not measured", so a sample with
-    E. coli 0 and total coliforms TNTC was graded Safe, and a ">50" count
-    was graded as exactly 50 - inside the limit whenever the limit is 50.
+    "TNTC", "Present" and "Positive" are a count above zero; ">50" is more
+    than 50 and ">=50" at least 50. All of them used to read as "not
+    measured", so a sample with E. coli 0 and total coliforms TNTC was graded
+    Safe, and a ">50" count was graded as exactly 50 - inside the limit
+    whenever the limit is 50.
+
+    The bound is put on the guideline's scale and then graded through the
+    same limit hierarchy as a measured value. It used to be compared as
+    written, so lead ">5 ug/L" (0.005 mg/L) was a health exceedance where a
+    measured 7 ug/L complied; and every limit it crossed got the coliform
+    wording, so iron ">1.0" was a national failure put down to ingress at
+    the wellhead where a measured 1.5 was an acceptability one.
     """
-    bound = float(result.greater_than)
+    reported = float(result.greater_than)
+    stated = _stated_bound(result)
+    converted, reason = _convert_to_guideline_unit(reported, result.unit, entry)
+    if converted is None:
+        row.status = "indeterminate"
+        row.evaluable = False
+        row.reason = reason
+        row.remark = (
+            f"reported as {stated} in '{result.unit}' but the guideline is in "
+            f"'{entry.unit}': {INDETERMINATE_REASONS[reason]}. The value was "
+            "not compared against any limit."
+        )
+        return row
+    stated += _unit_note(reported, result.unit, converted, reason, entry.unit)
+    inclusive = bool(result.greater_than_inclusive)
+
+    def certainly_over(limit) -> bool:
+        # The true value is above the bound, or at it for ">=", so a limit is
+        # crossed only when the bound already reaches it: ">50" exceeds 50,
+        # ">=50" may equal it.
+        if limit.maximum is None:
+            return False
+        return converted > limit.maximum or (
+            converted == limit.maximum and not inclusive)
+
+    status, basis = _classify(entry, certainly_over)
+    # the status the true value would have if it were as large as it may be
+    worst, worst_basis = _classify(entry, lambda limit: limit.maximum is not None)
+    row.status = status
     row.evaluable = True
     row.reason = "detected_not_quantified"
-    is_faecal = entry.parameter.strip().lower() == "e. coli"
-    stated = "detected, count not quantified" if bound == 0 else f"more than {bound:g}"
-
-    def maximum(limit):
-        return limit.maximum if limit is not None else None
-
-    health = maximum(entry.who_health)
-    national = maximum(entry.sl_standard)
-    if national is None:
-        national = maximum(entry.who_aesthetic)
-    # The bound settles it whenever the bound is already over the limit; a
-    # zero limit is over as soon as anything is detected.
-    over_health = health is not None and bound >= health
-    over_national = national is not None and bound >= national
-
-    if over_health:
-        row.status = "exceeds_health"
-        row.remark = (
-            f"{stated}, which is above the WHO health based guideline "
-            f"({entry.who_health}); the laboratory did not quantify it"
-        )
-    elif over_national and is_faecal:
-        row.status = "exceeds_health"
-        row.remark = (
-            f"faecal indicator {stated}, above the limit "
-            f"({entry.sl_standard or entry.who_aesthetic}); a health concern, "
-            "not aesthetic"
-        )
-    elif over_national:
-        row.status = "exceeds_national"
-        row.remark = (
-            f"{stated}, above the national limit "
-            f"({entry.sl_standard or entry.who_aesthetic}); an indicator of "
-            "ingress or inadequate wellhead protection, not of faecal "
-            "contamination in itself, and WHO sets no health based guideline "
-            "for it"
-        )
-    else:
+    if status == "no_guideline":
+        row.remark = f"{stated}. {entry.note or 'No guideline value'}"
+        return row
+    if status == "within_limits":
+        if worst == "within_limits":
+            row.remark = stated
+            return row
         # The bound is inside every limit, so the result is an open question
         # rather than a pass: the true value is somewhere above it.
         row.status = "indeterminate"
@@ -524,6 +653,50 @@ def _assess_unquantified(
         row.remark = (
             f"{stated}; the laboratory did not quantify it, so it cannot be "
             "shown to meet the limit"
+        )
+        return row
+
+    limit = _deciding_limit(entry, basis)
+    if basis == "who_health":
+        row.remark = (
+            f"{stated}, which is above the WHO health based guideline "
+            f"({limit}); the laboratory did not quantify it"
+        )
+    elif basis == "microbiological" and status == "exceeds_health":
+        row.remark = (
+            f"faecal indicator {stated}, above the limit ({limit}); a health "
+            "concern, not aesthetic"
+        )
+    elif basis == "microbiological":
+        row.remark = (
+            f"{stated}, above the national limit ({limit}); an indicator of "
+            "ingress or inadequate wellhead protection, not of faecal "
+            "contamination in itself, and WHO sets no health based guideline "
+            "for it"
+        )
+    elif basis == "sl_standard" and status == "exceeds_national":
+        row.remark = (
+            f"{stated}, above the national standard limit ({limit}), which is "
+            f"stricter than the WHO health based guideline ({entry.who_health}); "
+            "the laboratory did not quantify it"
+        )
+    elif basis == "sl_standard":
+        row.remark = (
+            f"{stated}, above the national acceptability limit ({limit})"
+            f"{_acceptability_note(entry)}; the laboratory did not quantify it"
+        )
+    else:
+        row.remark = (
+            f"{stated}, above the WHO acceptability value ({limit}); the "
+            "laboratory did not quantify it"
+        )
+    if status != worst:
+        # Over one limit and under a stricter one: the exceedance it shows
+        # stands, and the one it cannot rule out keeps the sample open.
+        row.reason = STRICTER_LIMIT_UNRESOLVED
+        row.remark += (
+            f". Whether it also exceeds {_LIMIT_NAMES[worst_basis]} "
+            f"({_deciding_limit(entry, worst_basis)}) is not known"
         )
     return row
 
@@ -610,21 +783,21 @@ def _assess_below_detection(
     return row
 
 
-def _grade(
-    row: ParameterAssessment, entry: StandardEntry, value: float, unit_note: str
-) -> None:
-    """Apply the limit hierarchy to a converted value."""
+def _classify(entry: StandardEntry, exceeds) -> tuple[str, str]:
+    """The limit hierarchy: a status, and the key of the limit that set it.
+
+    ``exceeds(limit)`` says whether a limit is crossed. A measured value asks
+    :meth:`Limit.exceeded_by`; a lower bound asks whether it already reaches
+    the limit. One hierarchy serves both, so a ">1.0" iron is graded as a
+    measured iron is, rather than by rules of its own.
+    """
     is_micro = (entry.category or "").strip().lower() == "microbiological"
     is_faecal = entry.parameter.strip().lower() == "e. coli"
-    if entry.who_health and entry.who_health.exceeded_by(value):
-        row.status = "exceeds_health"
-        row.remark = (
-            f"exceeds the WHO health based guideline ({entry.who_health})"
-            f"{unit_note}"
-        )
-    elif is_micro and (
-        (entry.sl_standard and entry.sl_standard.exceeded_by(value))
-        or (entry.who_aesthetic and entry.who_aesthetic.exceeded_by(value))
+    if entry.who_health and exceeds(entry.who_health):
+        return "exceeds_health", "who_health"
+    if is_micro and (
+        (entry.sl_standard and exceeds(entry.sl_standard))
+        or (entry.who_aesthetic and exceeds(entry.who_aesthetic))
     ):
         # A microbiological indicator is never an aesthetic matter, even when
         # its limit is carried in the national column. E. coli is the faecal
@@ -634,63 +807,88 @@ def _grade(
         # contamination, so they are a national-limit failure that calls for
         # disinfection and a sanitary inspection. Three reports used to call a
         # sample with E. coli 0 "faecal contamination" on total coliforms.
+        return ("exceeds_health" if is_faecal else "exceeds_national"), "microbiological"
+    if entry.sl_standard and exceeds(entry.sl_standard):
+        # With a WHO health value the national limit is the stricter one, and
+        # failing it is a compliance failure, not a matter of taste. Without
+        # one the national limit is an acceptability limit (iron staining,
+        # chloride taste, turbidity).
+        return (
+            "exceeds_national" if entry.who_health else "exceeds_aesthetic"
+        ), "sl_standard"
+    if entry.who_aesthetic and exceeds(entry.who_aesthetic):
+        return "exceeds_aesthetic", "who_aesthetic"
+    if not (entry.who_health or entry.who_aesthetic or entry.sl_standard):
+        return "no_guideline", ""
+    return "within_limits", ""
+
+
+def _acceptability_note(entry: StandardEntry) -> str:
+    """What a remark adds after a national acceptability limit.
+
+    The WHO figure is what the national one was carried across from, and
+    naming it is the only way a reader can tell a limit somebody set from a
+    limit this toolkit assumed. "Which is provisional" is said only of a
+    value the table in use marks provisional: a table whose national column
+    names its specification was told its confirmed limits were provisional.
+    """
+    provisional = ", which is provisional" if entry.sl_provisional else ""
+    who_note = (
+        f"; the WHO acceptability value is {entry.who_aesthetic}"
+        if entry.who_aesthetic
+        else "; WHO sets no value for this determinand"
+    )
+    return provisional + who_note
+
+
+def _grade(
+    row: ParameterAssessment, entry: StandardEntry, value: float, unit_note: str
+) -> None:
+    """Apply the limit hierarchy to a converted value."""
+    status, basis = _classify(entry, lambda limit: limit.exceeded_by(value))
+    row.status = status
+    if basis == "who_health":
+        row.remark = (
+            f"exceeds the WHO health based guideline ({entry.who_health})"
+            f"{unit_note}"
+        )
+    elif basis == "microbiological":
         limit = entry.sl_standard or entry.who_aesthetic
-        if is_faecal:
-            row.status = "exceeds_health"
+        if status == "exceeds_health":
             row.remark = (
                 f"faecal indicator detected above the limit ({limit}); a health "
                 f"concern, not aesthetic{unit_note}"
             )
         else:
-            row.status = "exceeds_national"
             row.remark = (
                 f"detected above the national limit ({limit}); an indicator of "
                 "ingress or inadequate wellhead protection, not of faecal "
                 "contamination in itself, and WHO sets no health based guideline "
                 f"for it{unit_note}"
             )
-    elif entry.sl_standard and entry.sl_standard.exceeded_by(value):
-        if entry.who_health:
-            # WHO sets a health value and the national limit is stricter:
-            # failing it is a compliance failure, not a matter of taste, and
-            # must not be reported as aesthetic.
-            row.status = "exceeds_national"
-            row.remark = (
-                f"exceeds the national standard limit ({entry.sl_standard}), "
-                f"which is stricter than the WHO health based guideline "
-                f"({entry.who_health}){unit_note}"
-            )
-        else:
-            # No WHO health value exists for this parameter, so the national
-            # limit is an acceptability one (iron staining, chloride taste,
-            # turbidity). Every national value in the bundled table is
-            # provisional - a WHO or regional figure carried across, not a
-            # confirmed Standards Bureau one - so the remark says so rather
-            # than reporting a legal failure the toolkit cannot establish.
-            row.status = "exceeds_aesthetic"
-            # The WHO figure is what the national one was carried across
-            # from, and naming it is the only way a reader can tell a limit
-            # somebody set from a limit this toolkit assumed.
-            who_note = (
-                f"; the WHO acceptability value is {entry.who_aesthetic}"
-                if entry.who_aesthetic
-                else "; WHO sets no value for this determinand"
-            )
-            row.remark = (
-                f"exceeds the national acceptability limit "
-                f"({entry.sl_standard}), which is provisional{who_note}{unit_note}"
-            )
-    elif entry.who_aesthetic and entry.who_aesthetic.exceeded_by(value):
-        row.status = "exceeds_aesthetic"
+    elif basis == "sl_standard" and status == "exceeds_national":
+        row.remark = (
+            f"exceeds the national standard limit ({entry.sl_standard}), "
+            f"which is stricter than the WHO health based guideline "
+            f"({entry.who_health}){unit_note}"
+        )
+    elif basis == "sl_standard":
+        # No WHO health value exists for this parameter, so the national
+        # limit is an acceptability one, and a provisional one - a WHO or
+        # regional figure carried across - is called provisional rather than
+        # reported as a legal failure the toolkit cannot establish.
+        row.remark = (
+            f"exceeds the national acceptability limit "
+            f"({entry.sl_standard}){_acceptability_note(entry)}{unit_note}"
+        )
+    elif basis == "who_aesthetic":
         row.remark = (
             f"exceeds the WHO acceptability value ({entry.who_aesthetic})"
             f"{unit_note}"
         )
-    elif not (entry.who_health or entry.who_aesthetic or entry.sl_standard):
-        row.status = "no_guideline"
+    elif status == "no_guideline":
         row.remark = entry.note or "no guideline value"
     else:
-        row.status = "within_limits"
         row.remark = unit_note.strip() if unit_note else ""
 
 
@@ -772,6 +970,15 @@ def assess_sample(
                     "error",
                     f"indeterminate_{row.reason}",
                     f"'{result.parameter}' could not be assessed: {row.remark}",
+                )
+            )
+        elif row.reason == STRICTER_LIMIT_UNRESOLVED:
+            flags.append(
+                DataFlag(
+                    "warning",
+                    STRICTER_LIMIT_UNRESOLVED,
+                    f"'{result.parameter}' could not be graded in full: "
+                    f"{row.remark}.",
                 )
             )
 
@@ -901,7 +1108,9 @@ def _nitrate_nitrite_index(rows: list[ParameterAssessment], table):
     Returns ``(ratio, no3, no2, gv3, gv2, bounded)`` where ``ratio`` is
     ``no3/gv3 + no2/gv2``, or ``None`` when a value or guideline is missing
     altogether. Both concentrations are the unit-converted ones, so a result
-    reported in ug/L is not silently added as though it were mg/L.
+    reported in ug/L is not silently added as though it were mg/L, and each
+    is on its own row's basis (as the ion or as nitrogen) with the guideline
+    for that basis.
 
     A component reported below detection is taken at its detection limit,
     and ``bounded`` says so. That reading is deliberately the pessimistic
@@ -910,25 +1119,29 @@ def _nitrate_nitrite_index(rows: list[ParameterAssessment], table):
     sample that might fail the rule into one that passed it silently.
     """
 
-    def _value_and_gv(key):
-        entry = table.get(key)
-        gv = entry.who_health.maximum if entry and entry.who_health else None
-        for row in rows:
-            if normalise_parameter(row.parameter) != key:
-                continue
-            if row.value_in_guideline_unit is not None:
-                return float(row.value_in_guideline_unit), gv, False
-            if row.below_detection and entry is not None:
-                dl, reason = to_standard_unit(
-                    float(row.detection_limit), row.unit, entry
-                ) if row.detection_limit is not None else (None, "")
-                if dl is not None:
-                    return float(dl), gv, True
-                return None, gv, False
-        return None, gv, False
+    def _component(keys):
+        # Each ion is divided by the guideline on the basis its own row is
+        # reported on. Only the "as NO3" and "as NO2" rows were looked for,
+        # so a laboratory reporting both as nitrogen (10 and 0.8 mg/L as N,
+        # an index of 1.76) was never checked against the rule at all.
+        for key in keys:
+            entry = table.get(key)
+            gv = entry.who_health.maximum if entry and entry.who_health else None
+            for row in rows:
+                if normalise_parameter(row.parameter) != key:
+                    continue
+                if row.value_in_guideline_unit is not None:
+                    return float(row.value_in_guideline_unit), gv, False
+                if (row.below_detection and entry is not None
+                        and row.detection_limit is not None):
+                    dl, _ = to_standard_unit(
+                        float(row.detection_limit), row.unit, entry)
+                    if dl is not None:
+                        return float(dl), gv, True
+        return None, None, False
 
-    no3, gv3, b3 = _value_and_gv("nitrate (as no3)")
-    no2, gv2, b2 = _value_and_gv("nitrite (as no2)")
+    no3, gv3, b3 = _component(("nitrate (as no3)", "nitrate (as n)"))
+    no2, gv2, b2 = _component(("nitrite (as no2)", "nitrite (as n)"))
     if no3 is None or no2 is None or not gv3 or not gv2:
         return None
     return no3 / gv3 + no2 / gv2, no3, no2, gv3, gv2, (b3 or b2)

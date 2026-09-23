@@ -19,7 +19,7 @@ from ..costing.model import (
     estimate_borehole_cost,
     inputs_from_design,
 )
-from ..design.designer import BoreholeDesign, design_borehole
+from ..design.designer import BoreholeDesign, design_borehole, pump_intake_floor
 from ..hydraulics.analysis import PumpingTestAnalysis
 from ..models import DataFlag, DrillingLog, WaterQualitySample
 from ..quality.assess import WaterQualityAssessment, assess_sample
@@ -71,9 +71,13 @@ def _section(log: DrillingLog, design: BoreholeDesign, analysis, config: Config)
     # A little air below the hole so the total-depth line is not on the edge.
     domain = total_depth * 1.06
 
-    # one class table for every drawing: the class and colour ride with each
-    # interval so the workspace shades the log the way the report draws it
-    from ..design.lithology import lithology_class
+    # One class table for every drawing. Each interval carries the rock it is
+    # logged as, and "bands" carries what the borehole drawing draws: a
+    # fracture zone named with its depths is a band of its own wherever those
+    # depths fall. The class used to be taken from the whole description, so
+    # Dr Timbo's 45-50 m and 55-60 m rows were "Fracture zone" here while the
+    # drawing drew them as granite with a zone in and below them.
+    from ..design.lithology import host_class, lithology_bands
 
     lithology = [
         {
@@ -81,10 +85,14 @@ def _section(log: DrillingLog, design: BoreholeDesign, analysis, config: Config)
             "base": iv.bottom_m,
             "description": iv.description,
             "aquifer": _looks_like_aquifer(iv.description),
-            "class": lithology_class(iv.description).label,
-            "colour": lithology_class(iv.description).colour,
+            "class": host_class(iv.description, iv.top_m, iv.bottom_m).label,
+            "colour": host_class(iv.description, iv.top_m, iv.bottom_m).colour,
         }
         for iv in log.intervals
+    ]
+    bands = [
+        {"top": top, "base": base, "class": klass.label, "colour": klass.colour}
+        for top, base, klass in lithology_bands(log.intervals)
     ]
 
     levels: dict[str, Any] = {}
@@ -109,6 +117,7 @@ def _section(log: DrillingLog, design: BoreholeDesign, analysis, config: Config)
         "totalDepth": total_depth,
         "domain": domain,
         "lithology": lithology,
+        "bands": bands,
         "waterStrikes": list(design.water_strikes_m),
         "segments": [
             {"kind": s.kind, "top": s.top_m, "base": s.bottom_m} for s in design.segments
@@ -464,15 +473,19 @@ def build_view(
     analysis = inputs.analysis
     swl = None
     pump_intake = None
+    intake_floor = None
     if analysis is not None:
         swl = analysis.test.static_water_level_m
         if analysis.yield_recommendation is not None:
             pump_intake = analysis.yield_recommendation.pump_installation_depth_m
+            intake_floor = pump_intake_floor(analysis.yield_recommendation,
+                                             config.pumping.pump_submergence_min_m)
 
     design = design_borehole(
         log=inputs.log,
         static_water_level_m=swl,
         pump_intake_m=pump_intake,
+        pump_intake_floor_m=intake_floor,
         rules=config.design,
         screens_m=screens_m,
     )

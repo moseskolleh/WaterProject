@@ -291,3 +291,18 @@ def test_the_build_groups_a_shape_s_rings_into_one_polygon_with_its_holes():
     grouped = module.rings_to_polygons([outer, far_outer, hole, far_hole])
     assert len(grouped) == 2
     assert all(len(poly) == 2 for poly in grouped)
+
+    # a hole clipped at the window's edge starts on the edge it shares with
+    # its clipped outer ring; it was dropped because that one vertex was
+    # tested and a ray cast from a boundary point reads as outside
+    edge_hole = [(10.0, 3.0), (10.0, 7.0), (7.0, 7.0), (7.0, 3.0), (10.0, 3.0)]
+    assert module.signed_ring_area(edge_hole) > 0
+    assert not module.point_in_ring(edge_hole[0], outer)
+    polygons = module.rings_to_polygons([outer, edge_hole])
+    assert polygons == [[outer, edge_hole]]
+
+    # a hole in an island in a hole is cut from the island, not the continent
+    island = [(4.0, 4.0), (4.0, 6.0), (6.0, 6.0), (6.0, 4.0), (4.0, 4.0)]
+    island_hole = [(4.5, 4.5), (5.5, 4.5), (5.5, 5.5), (4.5, 5.5), (4.5, 4.5)]
+    nested = module.rings_to_polygons([outer, island, hole, island_hole])
+    assert [outer, hole] in nested and [island, island_hole] in nested

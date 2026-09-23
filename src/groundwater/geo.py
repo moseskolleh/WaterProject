@@ -268,7 +268,11 @@ def infer_zone_for_sierra_leone(easting: float) -> int:
 SIERRA_LEONE_LAT_BAND = (6.9, 10.0)
 SIERRA_LEONE_LON_BAND = (-13.3, -10.3)
 
-_ZONE_NUMBER_RE = re.compile(r"\d+")
+_ZONE_NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
+
+# The datum a GPS writes beside the zone. Its 84 is a year, not a second
+# zone, so it is taken out before the numbers in the cell are counted.
+_DATUM_RE = re.compile(r"WGS\s*-?\s*84(?!\d)", re.IGNORECASE)
 
 
 def parse_utm_zone(value) -> int | None:
@@ -287,9 +291,19 @@ def parse_utm_zone(value) -> int | None:
     than guessed at, so the caller can say the zone is unrecorded and fall
     back to the easting.
 
+    The datum is not a second number: "28N WGS84" and "WGS 84 / UTM zone
+    28N", which is how a handheld GPS and a GIS write the zone, were refused
+    for naming two numbers, and the sheet was then flagged "UTM zone not
+    recorded" when it had recorded one. Nor is a spreadsheet's float: a
+    zone cell read back as "28.0" states zone 28.
+
     >>> parse_utm_zone("28N")
     28
     >>> parse_utm_zone("Zone 28")
+    28
+    >>> parse_utm_zone("WGS 84 / UTM zone 28N")
+    28
+    >>> parse_utm_zone("28.0")
     28
     >>> parse_utm_zone("708958") is None
     True
@@ -299,14 +313,16 @@ def parse_utm_zone(value) -> int | None:
     if value is None or isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
-        if not math.isfinite(value) or float(value) != int(value):
-            return None
-        numbers = [int(value)]
+        numbers = [float(value)]
     else:
-        numbers = [int(found) for found in _ZONE_NUMBER_RE.findall(str(value))]
-    if len(numbers) != 1 or not 1 <= numbers[0] <= 60:
+        text = _DATUM_RE.sub(" ", str(value))
+        numbers = [float(found) for found in _ZONE_NUMBER_RE.findall(text)]
+    if len(numbers) != 1:
         return None
-    return numbers[0]
+    number = numbers[0]
+    if not math.isfinite(number) or number != int(number) or not 1 <= number <= 60:
+        return None
+    return int(number)
 
 
 _LATLON_TOKEN = re.compile(r"^([+-]?\d*\.?\d+)\s*([NSEWnsew])?$")

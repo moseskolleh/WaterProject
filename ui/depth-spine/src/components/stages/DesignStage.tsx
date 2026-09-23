@@ -109,6 +109,7 @@ export function DesignStage({
           <LithologyColumn
             scale={scale}
             units={section.lithology}
+            bands={section.bands}
             strikes={section.waterStrikes}
           />
           <ConstructionColumn

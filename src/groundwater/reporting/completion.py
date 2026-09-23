@@ -24,13 +24,14 @@ from ..hydraulics.plots import plot_test_overview
 from ..models import DrillingLog
 from ..quality.assess import (
     SUITABILITY_PHRASE,
-    SUITABILITY_SENTENCE,
     WaterQualityAssessment,
+    suitability_sentence,
+    unquantified_text,
 )
 from ..utils import fmt_num, safe_slug
 from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
-from ..quality.standards import PROVISIONAL_NATIONAL_NOTE, provisional_national_parameters
+from ..quality.standards import PROVISIONAL_NATIONAL_NOTE
 from .context import add_area_section
 
 
@@ -124,7 +125,7 @@ def _executive_summary(inputs: CompletionReportInputs) -> tuple[list[str], list[
     if quality is not None:
         # Chosen on the full verdict state, not the health exceedances alone:
         # a national breach or an unevaluable panel used to read as suitable.
-        bits.append(SUITABILITY_SENTENCE[quality.verdict_state])
+        bits.append(suitability_sentence(quality))
 
     key: list[str] = []
     if log.total_depth_m:
@@ -147,7 +148,9 @@ def _record_span(record) -> str:
     import re
 
     def minutes(text):
-        m = re.match(r"\s*(\d{1,2}):(\d{2})", str(text or ""))
+        # "17:00", and "17.00" or "17h00" as crews also write it; the colon
+        # alone used to count, so a record kept with points said nothing
+        m = re.match(r"\s*(\d{1,2})[:.h](\d{2})\b", str(text or ""))
         return int(m.group(1)) * 60 + int(m.group(2)) if m else None
 
     starts = [minutes(r[0]) for r in record if len(r) > 1]
@@ -159,11 +162,41 @@ def _record_span(record) -> str:
     total = max(ends) - min(starts)
     if total <= 0:
         return ""
-    first = min(record, key=lambda r: minutes(r[0]) or 0)[0]
-    last = max(record, key=lambda r: minutes(r[1]) or 0)[1]
+    # The span's own ends, from the times that were read: taking the cell of
+    # the row with the earliest start printed "( to 18:00)" when the first
+    # row's start was blank.
+    first, last = min(starts), max(ends)
     hours, mins = divmod(total, 60)
     length = (f"{hours} h {mins:02d} min" if hours else f"{mins} minutes")
-    return f"The record covers {length} ({first} to {last})."
+    return (f"The record covers {length} ({first // 60:02d}:{first % 60:02d} "
+            f"to {last // 60:02d}:{last % 60:02d}).")
+
+
+def _construction_works(design) -> list[str]:
+    """The casing and annulus bullets, worded from what the design places.
+
+    "Gravel packing of the annulus." was listed as work done beside a design
+    that places no pack in a 19 mm annulus, and a string the rules generated
+    was listed as installed although the log records no casing. The fill
+    comes from the design, and the casing is "as designed" unless the log
+    records the screens as installed.
+    """
+    done = "" if design.as_built else ", as designed"
+    works = [
+        "Supply and installation of casings (plain and screen)"
+        + (", with the screens recorded as installed on the drilling log."
+           if design.as_built
+           else " as designed in section 5; the drilling log records no casing "
+           "string as installed.")
+    ]
+    if design.annular_fill == "gravel pack":
+        works.append(f"Gravel packing of the annulus{done}.")
+    elif design.annular_fill == "formation stabiliser":
+        works.append(f"Placing a formation stabiliser in the annulus{done}.")
+    else:
+        works.append(f"No gravel pack: the {design.annulus_mm:.0f} mm annulus is too "
+                     "thin to place one.")
+    return works
 
 
 def _design_notes(rb, design) -> None:
@@ -253,10 +286,7 @@ def build_completion_report(
         + (f" using the {log.drilling_method} method." if log.drilling_method else "."),
     ]
     if inputs.design is not None:
-        drilling_works += [
-            "Supply and installation of casings (plain and screen).",
-            "Gravel packing of the annulus.",
-        ]
+        drilling_works += _construction_works(inputs.design)
     if inputs.development_record or inputs.development_note:
         drilling_works.append(
             "Development of the borehole by surging with compressed air and airlifting."
@@ -309,7 +339,10 @@ def build_completion_report(
         design_fig = figures / f"borehole_design_{slug}.png"
         draw_borehole_design(
             inputs.design, log, path=design_fig, style=config.style,
-            title=f"Borehole design - {site.community} ({log.borehole_ref})",
+            # named for what it is, as the header under it and the browser
+            # drawing already were: an as-built drawing was titled a design
+            title=(("As-built borehole record" if design.as_built else "Borehole design")
+                   + f" - {site.community} ({log.borehole_ref})"),
             header_pairs=[
                 ("Client", site.client), ("Contractor", site.contractor or ""),
                 ("Method", log.drilling_method), ("Status", log.status),
@@ -448,12 +481,14 @@ def build_completion_report(
         exceed = inputs.quality.all_exceedances
         if exceed:
             rb.table(
-                [[r.parameter, fmt_num(r.value), r.unit, _breached_limit(r), r.remark]
+                [[r.parameter, unquantified_text(r) or fmt_num(r.value), r.unit,
+                  _breached_limit(r), r.remark]
                  for r in exceed],
                 header=["Parameter", "Value", "Unit", "Limit", "Remark"],
                 caption="Parameters above guideline or standard limits.",
             )
-            if provisional_national_parameters():
+            # said of the rows printed, judged by the table the assessment used
+            if any(r.sl_provisional for r in exceed):
                 rb.paragraph(PROVISIONAL_NATIONAL_NOTE, align="justify", italic=True)
         section += 1
 
@@ -490,7 +525,13 @@ def build_completion_report(
             bullets.append(
                 f"The pump intake is set at {fmt_num(_pump_intake(inputs))} m "
                 "below the top of the casing"
-                + (", in plain casing clear of the screens" if inputs.design else "")
+                # not where the design had to leave it inside a screen,
+                # which its notes then say
+                + (", in plain casing clear of the screens"
+                   if inputs.design and not any(
+                       s.top_m <= _pump_intake(inputs) <= s.bottom_m
+                       for s in inputs.design.screens)
+                   else "")
                 + "."
             )
         bullets.append(

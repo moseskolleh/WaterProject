@@ -180,6 +180,27 @@ def _rationale(interp: SiteInterpretation, comp: SuitabilityComponents) -> str:
     return text
 
 
+def tied_leaders(
+    results: list["SitingSuitability"], within_points: float = 3.0
+) -> tuple["SitingSuitability", "SitingSuitability"] | None:
+    """The two highest-ranked points when the ranking cannot separate them.
+
+    One test for every place that has to know: the tie sentence, the
+    preference table's "=1st" and the summary, conclusions and
+    recommendations, which otherwise named a single winner in the same
+    document that called the two indistinguishable. Decided on the
+    confidence-weighted scores as they are, not as printed. ``None`` when
+    the ranking is clear or there is one point.
+    """
+    ranked = sorted(results, key=lambda r: r.rank if r.rank is not None else 99)
+    if len(ranked) < 2:
+        return None
+    first, second = ranked[0], ranked[1]
+    if abs(first.weighted - second.weighted) >= within_points:
+        return None
+    return first, second
+
+
 def ranking_tie(results: list["SitingSuitability"], within_points: float = 3.0) -> str:
     """One sentence when the top two points cannot be told apart.
 
@@ -188,18 +209,48 @@ def ranking_tie(results: list["SitingSuitability"], within_points: float = 3.0) 
     difference hidden by rounding gives the client a preference with no
     visible basis. Returns "" when the ranking is clear or there is one point.
     """
-    ranked = sorted(results, key=lambda r: r.rank if r.rank is not None else 99)
-    if len(ranked) < 2:
+    pair = tied_leaders(results, within_points)
+    if pair is None:
         return ""
-    first, second = ranked[0], ranked[1]
-    if abs(first.weighted - second.weighted) >= within_points:
-        return ""
+    first, second = pair
+    # "by name only" is true only of equal scores; said of 82.3 against 79.5
+    # it told the client the order was alphabetical when it was not
+    gap = first.weighted - second.weighted
+    if gap == 0:
+        order = f"{first.sounding_id} is listed first by name only"
+    else:
+        ahead = f"{gap:.1f}" if round(gap, 1) >= 0.1 else "less than 0.1"
+        order = (
+            f"{first.sounding_id} is ahead by {ahead} points, within the "
+            f"{within_points:g}-point margin the ranking cannot separate"
+        )
     return (
         f"Points {first.sounding_id} and {second.sounding_id} are indistinguishable "
         f"on geophysical grounds (confidence-weighted suitability "
-        f"{first.weighted:.1f} and {second.weighted:.1f}); {first.sounding_id} is "
-        "listed first by name only, and the choice between them should be made "
-        "on access, sanitary distances and the community's preference."
+        f"{first.weighted:.1f} and {second.weighted:.1f}); {order}, and the choice "
+        "between them should be made on access, sanitary distances and the "
+        "community's preference."
+    )
+
+
+def suitability_verdict(results: list["SitingSuitability"], within_points: float = 3.0) -> str:
+    """The paragraph under the suitability table: the target, or the tie.
+
+    Worded once for both engines. A tie gives both points' rationale, since
+    the reader is being asked to choose between them.
+    """
+    if not results:
+        return ""
+    tie = ranking_tie(results, within_points)
+    if tie:
+        pair = tied_leaders(results, within_points)
+        return " ".join([tie] + [f"Point {r.sounding_id}: {r.rationale}" for r in pair])
+    best = sorted(results, key=lambda r: r.rank if r.rank is not None else 99)[0]
+    return (
+        f"Point {best.sounding_id} ranks first (suitability "
+        f"{best.suitability:.0f} out of 100, {best.grade.lower()}, confidence "
+        f"{best.confidence:.2f}) and is the recommended drilling target. "
+        f"{best.rationale}"
     )
 
 
@@ -247,25 +298,36 @@ def assess_siting(
     return ranked
 
 
-def suitability_map_points(results: list[SitingSuitability]):
+def suitability_map_points(results: list[SitingSuitability], zone: int | None = None):
     """Build MapPoints (value = suitability) for the drill-target map.
 
-    Only points that carry coordinates are returned.
+    Only points that carry coordinates are returned, all in the UTM zone
+    ``zone`` (by default the zone of the first placed point): a survey on
+    the 28N/29N boundary records its soundings in both, and a map that
+    subtracted the two sets of eastings drew 400 m of ground 660 km wide.
     """
-    from ..mapping.maps import MapPoint
+    from ..geo import infer_zone_for_sierra_leone
+    from ..mapping.maps import MapPoint, to_zone
 
     points = []
     for r in results:
         if r.easting is None or r.northing is None:
             continue
+        if zone is None:
+            zone = infer_zone_for_sierra_leone(float(r.easting))
+        easting, northing = to_zone(r.easting, r.northing, zone)
         points.append(
             MapPoint(
                 label=f"{r.sounding_id}",
-                easting=float(r.easting),
-                northing=float(r.northing),
+                easting=easting,
+                northing=northing,
                 # the confidence-weighted score: the number the ranking is
                 # decided on, so the map colours agree with the table's order
                 value=round(r.weighted, 1),
+                # the grade of the suitability before the confidence
+                # discount, the one the ranked table prints; the map names
+                # it as that grade rather than pairing it with the weighted
+                # score, which it does not grade
                 kind=r.grade,
                 rank=r.rank,
             )

@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 
 from ..config import HouseStyle
+from ..ingestion.checks import district_label
 from ..mapping import (
     area_window,
     plot_admin_map,
@@ -169,9 +170,11 @@ def area_map_note(site: SiteMetadata | None) -> str:
     """One sentence placing the site, for the paragraph above the map."""
     if site is None:
         return "No site metadata was supplied with this report."
+    # the district as the area window resolves it: written as typed, a
+    # sheet's "Port Loko District" became "Port Loko District district"
     where = ", ".join(
         part for part in (site.community, site.chiefdom and f"{site.chiefdom} chiefdom",
-                          site.district and f"{site.district} district")
+                          site.district and district_label(site.district))
         if part
     )
     if site.latlon is None:

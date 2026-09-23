@@ -17,12 +17,9 @@ from pathlib import Path
 from docx.shared import RGBColor
 
 from ..config import Config
-from ..quality.assess import STATUS_LABELS, WaterQualityAssessment
+from ..quality.assess import STATUS_LABELS, WaterQualityAssessment, unquantified_text
 from ..quality.diagrams import facies_of, plot_piper, plot_stiff
-from ..quality.standards import (
-    PROVISIONAL_NATIONAL_NOTE,
-    provisional_national_parameters,
-)
+from ..quality.standards import PROVISIONAL_NATIONAL_NOTE, normalise_parameter
 from ..utils import fmt_num, safe_slug, plural_noun
 from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
@@ -42,6 +39,17 @@ def _sentence(text: str) -> str:
     return text[:1].upper() + text[1:] if text else text
 
 
+#: Advice for a parameter over its limit, keyed by the standards-table name.
+#: It used to be matched by substring on the name as written, so "Sulphate"
+#: got the pH advice for containing "ph", and "Faecal coliforms" and lead got
+#: nothing, which left "No treatment is required" under a verdict of
+#: "Treat before use". The browser's recommendations are the same list
+#: (gwt-docx.js qualityRecommendations).
+_NITRATE_ADVICE = (
+    "Elevated nitrate usually indicates pollution from sanitation or "
+    "agriculture; investigate the sanitary protection zone. Do not give the "
+    "water to bottle fed infants until resolved."
+)
 _TREATMENT_ADVICE = {
     "iron": "Iron above the acceptability value causes staining and metallic "
     "taste; aeration followed by sand filtration or a simple oxidation "
@@ -54,18 +62,98 @@ _TREATMENT_ADVICE = {
     "before use.",
     "total coliforms": "Coliform detection calls for disinfection of the "
     "borehole and pump, a sanitary inspection of the wellhead, and re-sampling.",
-    "nitrate (as no3)": "Elevated nitrate usually indicates pollution from "
-    "sanitation or agriculture; investigate the sanitary protection zone. Do "
-    "not give the water to bottle fed infants until resolved.",
+    "nitrate (as no3)": _NITRATE_ADVICE,
+    "nitrate (as n)": _NITRATE_ADVICE,
+    "nitrate + nitrite": _NITRATE_ADVICE,
     "fluoride": "Fluoride above 1.5 mg/L requires an alternative source or "
     "defluoridation (bone char or activated alumina).",
     "arsenic": "Arsenic above 0.01 mg/L requires an alternative source or "
     "specialised removal; re-test to confirm before any use for drinking.",
-    "ph": "Low pH water is corrosive to metal fittings; a limestone contactor "
-    "or careful choice of corrosion resistant materials is advised.",
     "turbidity": "High turbidity interferes with disinfection; extend "
     "development of the borehole and re-sample.",
 }
+
+#: pH is out of range in one of two directions, and the advice for each is
+#: different: the low-pH advice used to be given for a pH of 9.2.
+_PH_ADVICE_LOW = (
+    "Low pH water is corrosive to metal fittings; a limestone contactor or "
+    "careful choice of corrosion resistant materials is advised."
+)
+_PH_ADVICE_HIGH = (
+    "A pH above the acceptability range reduces the effectiveness of chlorine "
+    "disinfection and can give the water a bitter taste and deposit scale; "
+    "confirm the reading and set any chlorine dose to suit."
+)
+
+
+def quality_recommendations(assessment: WaterQualityAssessment) -> list[str]:
+    """The recommendations a water quality report closes with.
+
+    Every health or national exceedance gets a treatment line whether or not
+    there is advice written for its parameter, and the list is the one the
+    browser writes, word for word.
+    """
+    advice: list[str] = []
+    corr = assessment.corrosivity
+    if corr is not None and corr.is_aggressive:
+        advice.append(corr.materials_note)
+
+    def names(rows) -> str:
+        return ", ".join(r.parameter for r in rows)
+
+    if assessment.health_exceedances:
+        advice.append(
+            "Treat or replace the source before it is used for drinking: "
+            "health based limits are exceeded for "
+            + names(assessment.health_exceedances) + "."
+        )
+    if assessment.national_exceedances:
+        advice.append(
+            "Treat before the supply is accepted against the national "
+            "standard: national limits are exceeded for "
+            + names(assessment.national_exceedances) + "."
+        )
+    for r in assessment.all_exceedances:
+        key = normalise_parameter(r.parameter)
+        if key == "ph":
+            low = (r.value_in_guideline_unit is not None
+                   and r.value_in_guideline_unit < 7.0)
+            text = _PH_ADVICE_LOW if low else _PH_ADVICE_HIGH
+        else:
+            text = _TREATMENT_ADVICE.get(key)
+        if text and text not in advice:
+            advice.append(text)
+    if assessment.aesthetic_exceedances:
+        advice.append(
+            "Acceptability limits are exceeded for "
+            + names(assessment.aesthetic_exceedances) + ": simple treatment "
+            "is advisable if users complain of taste, odour or staining."
+        )
+    state = assessment.verdict_state
+    if state == "indeterminate":
+        # "No treatment is required" is a clearance, and this report has not
+        # established one. Say what is outstanding instead.
+        advice.append(
+            "Do not treat this supply as safe to drink on these results. "
+            + _sentence("; ".join(assessment.uncertainties))
+            + ". Resolve these and re-issue the assessment before any "
+            "treatment decision is taken."
+        )
+    elif state == "pass" and not advice:
+        advice.append(
+            "No treatment is required on the basis of the parameters tested. "
+            "Maintain the sanitary seal and apron in good condition."
+        )
+    advice.append(
+        "Disinfect the borehole after any maintenance and re-test "
+        "microbiological quality before the source is returned to use."
+    )
+    advice.append(
+        "Repeat physico-chemical and bacteriological testing at least once a "
+        "year, and after any flooding, repair work on the wellhead or change "
+        "in taste, colour or odour."
+    )
+    return advice
 
 
 @dataclass
@@ -92,16 +180,43 @@ def _executive_summary(assessment: WaterQualityAssessment) -> tuple[list[str], l
     state = assessment.verdict_state
     if state == "national_fail":
         names = ", ".join(r.parameter for r in national)
-        para = (
-            f"Laboratory results for the borehole water at {community} meet the "
-            "WHO health based guideline values but do not comply with the "
-            f"national standard {plural_noun(len(national), 'limit')} for {names}. "
-            "A national limit is a "
-            "legal requirement, not a matter of taste: treatment is required "
-            "before the supply can be accepted."
-        )
-        key = [
-            "All WHO health based guideline values are met.",
+        limits = plural_noun(len(national), "limit")
+        if assessment.uncertainties:
+            # The national failure outranks the open questions without
+            # answering them, so the WHO values are not called met.
+            para = (
+                f"Laboratory results for the borehole water at {community} do "
+                f"not comply with the national standard {limits} for {names}, "
+                "and they have not been shown to meet the WHO health based "
+                "guideline values: " + "; ".join(assessment.uncertainties) + "."
+            )
+            who_key = [
+                "The WHO health based guideline values have not been shown to be met."
+            ] + [_sentence(u) + "." for u in assessment.uncertainties]
+        else:
+            para = (
+                f"Laboratory results for the borehole water at {community} meet "
+                "the WHO health based guideline values but do not comply with "
+                f"the national standard {limits} for {names}."
+            )
+            who_key = ["All WHO health based guideline values are met."]
+        if any(r.sl_provisional for r in national):
+            # The note in section 1 says a provisional limit is to be confirmed
+            # before an exceedance of it is treated as a compliance finding;
+            # calling it a legal requirement here contradicted it.
+            para += (
+                f" The national {limits} applied {'are' if len(national) > 1 else 'is'} "
+                "provisional, so confirm the figures against the Sierra Leone "
+                "Standards Bureau specification before treating the exceedance "
+                "as a compliance finding; treatment is required before the "
+                "supply can be accepted."
+            )
+        else:
+            para += (
+                " A national limit is a legal requirement, not a matter of "
+                "taste: treatment is required before the supply can be accepted."
+            )
+        key = who_key + [
             f"National standard {plural_noun(len(national), 'exceedance')}: {names}.",
             "Treatment is required before the supply is accepted.",
         ]
@@ -223,7 +338,9 @@ def build_quality_report(
     )
     # A national exceedance reads as a compliance failure, so the report must
     # say plainly when the limit it was judged against is not yet confirmed.
-    if provisional_national_parameters():
+    # Said when a national value in the table the assessment used is
+    # provisional, not whenever the bundled table carries one.
+    if any(r.sl_provisional for r in assessment.rows):
         rb.paragraph(PROVISIONAL_NATIONAL_NOTE, align="justify")
 
     add_area_section(rb, site, figures, config.style,
@@ -241,7 +358,8 @@ def build_quality_report(
     rows = []
     highlight = []
     for r in assessment.rows:
-        value = "< DL" if (r.below_detection and r.value is None) else fmt_num(r.value)
+        value = unquantified_text(r) or (
+            "< DL" if (r.below_detection and r.value is None) else fmt_num(r.value))
         rows.append([
             r.parameter, value, r.unit, r.who_health, r.who_aesthetic,
             r.sl_standard, _STATUS_LABEL.get(r.status, r.status),
@@ -360,34 +478,7 @@ def build_quality_report(
 
     # ---- 6 recommendations -----------------------------------------------------------
     rb.heading("6. Recommendations", 1)
-    advice = []
-    if corr is not None and corr.is_aggressive:
-        advice.append(corr.materials_note)
-    for r in assessment.all_exceedances:
-        key = r.parameter.strip().lower()
-        for match, text in _TREATMENT_ADVICE.items():
-            if match in key:
-                advice.append(text)
-                break
-    if assessment.verdict_state == "indeterminate":
-        # "No treatment is required" is a clearance, and this report has not
-        # established one. Say what is outstanding instead.
-        advice.append(
-            "Do not treat this supply as safe to drink on these results. "
-            + _sentence("; ".join(assessment.uncertainties))
-            + ". Resolve these and re-issue the assessment before any "
-            "treatment decision is taken."
-        )
-    elif not advice:
-        advice.append(
-            "No treatment is required on the basis of the parameters tested. "
-            "Maintain the sanitary seal and apron in good condition."
-        )
-    advice.append(
-        "Repeat physico-chemical and bacteriological testing at least once a "
-        "year, and after any flooding or repair work on the wellhead."
-    )
-    rb.bullets(advice)
+    rb.bullets(quality_recommendations(assessment))
 
     # ---- 7 limitations ---------------------------------------------------------
     rb.heading("7. Limitations and Uncertainty", 1)

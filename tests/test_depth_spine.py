@@ -198,3 +198,22 @@ def test_real_view_survives_the_static_render(dr_timbo):
     html = render_static(build_view(dr_timbo))
     assert "Dr. Timbo" in html
     assert "__SPINE_VIEW__" not in html
+
+
+def test_the_section_carries_the_bands_the_drawing_draws(dr_timbo):
+    """The class sent with each interval was taken from its whole description,
+    so Dr Timbo's 45-50 m and 55-60 m rows were "Fracture zone" and 60-65 m
+    "Basement rock" in the workspace, while the drawing drew granite with the
+    named zones at 49-52 m and 60-62 m."""
+    from groundwater.design import lithology_bands
+
+    section = build_view(dr_timbo)["section"]
+    by_row = {(u["top"], u["base"]): u["class"] for u in section["lithology"]}
+    assert by_row[(45.0, 50.0)] == "Basement rock"
+    assert by_row[(55.0, 60.0)] == "Basement rock"
+    bands = [(b["top"], b["base"], b["class"], b["colour"]) for b in section["bands"]]
+    assert bands == [(t, b, c.label, c.colour)
+                     for t, b, c in lithology_bands(dr_timbo.log.intervals)]
+    assert (49.0, 50.0, "Fracture zone") in [b[:3] for b in bands]
+    assert (60.0, 62.0, "Fracture zone") in [b[:3] for b in bands]
+    assert (62.0, 65.0, "Basement rock") in [b[:3] for b in bands]

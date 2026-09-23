@@ -22,6 +22,21 @@ export interface LithologyInterval {
   base: number;
   description: string;
   aquifer: boolean;
+  /** The rock the row is logged as, from the toolkit's one class table. */
+  class?: string;
+  colour?: string;
+}
+
+/**
+ * What the report's borehole drawing draws: a fracture zone the driller names
+ * with its depths is a band of its own wherever those depths fall, and the
+ * rest of each row is the rock it is logged as.
+ */
+export interface LithologyBand {
+  top: number;
+  base: number;
+  class: string;
+  colour: string;
 }
 
 export type SegmentKind = 'plain' | 'screen' | 'sump';
@@ -52,6 +67,8 @@ export interface Section {
   /** Depth at the foot of the track — a little below the hole. */
   domain: number;
   lithology: LithologyInterval[];
+  /** Absent from a payload written before the bands were sent. */
+  bands?: LithologyBand[];
   waterStrikes: number[];
   segments: Segment[];
   gravelPack: [number, number];

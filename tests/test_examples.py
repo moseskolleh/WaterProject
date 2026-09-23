@@ -7,6 +7,7 @@ committed index to the committed outputs, and hold the examples
 themselves to the rule the project asks of every contributor.
 """
 
+import difflib
 import importlib.util
 import re
 import zipfile
@@ -131,3 +132,30 @@ def test_the_committed_outputs_are_what_the_current_code_writes(case, tmp_path):
         f"only committed {sorted(committed - fresh)}; only fresh {sorted(fresh - committed)}. "
         f"Run: python examples/{entry['script']} && python examples/build_catalogue.py"
     )
+    # The names alone let a whole release of report changes through: the
+    # committed reports went on saying "handpump failure", quoting a WHO
+    # turbidity value WHO does not set and judging districts by the deleted
+    # boxes, because nothing compared what they said. The words are
+    # deterministic where a rasterised figure's bytes are not, so the text
+    # of every report is held to a fresh run.
+    for name in sorted(n for n in fresh if n.endswith(".docx")):
+        now = _report_text(tmp_path / case / name)
+        then = _report_text(EXAMPLES / "projects" / case / name)
+        changed = [
+            line for line in difflib.unified_diff(then, now, lineterm="", n=0)
+            if line[:1] in "+-" and line[:3] not in ("+++", "---")
+        ]
+        assert not changed, (
+            f"examples/projects/{case}/{name} is not what the current code writes:\n"
+            + "\n".join(changed[:12])
+            + f"\nRun: python examples/{entry['script']} && python examples/build_catalogue.py"
+        )
+
+
+def _report_text(path: Path) -> list[str]:
+    """The paragraphs of a report, table cells included, as the reader sees them."""
+    xml = zipfile.ZipFile(path).read("word/document.xml").decode("utf-8")
+    return [
+        "".join(re.findall(r"<w:t(?:\s[^>]*)?>([^<]*)</w:t>", paragraph))
+        for paragraph in re.findall(r"<w:p[\s>].*?</w:p>", xml, flags=re.S)
+    ]

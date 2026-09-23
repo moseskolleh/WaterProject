@@ -352,12 +352,21 @@ def test_a_first_step_above_static_gets_no_drawdown_fit(sample_data):
     assert "recovery_equivalent_time" in codes
     # two steps make an exact line, and the result says so
     assert analysis.step_test.two_point
+    # the table carries the sheet's step numbers: step 1 was left out, and the
+    # 2.2 m3/h step used to be printed as "Step 1"
+    assert [s["step"] for s in analysis.step_test.steps] == [2, 3]
+    assert analysis.step_test.steps[0]["discharge_m3_per_h"] == pytest.approx(2.2)
     # the sheet's levels run 18 m below the pump: a flag exists for it now
     assert any(f.code == "level_below_pump" for f in test.flags)
     yr = analysis.yield_recommendation
-    assert yr.pump_installation_depth_m == 67                 # capped 3 m above the bottom
-    assert "which sets the intake" in yr.pump_depth_basis
-    assert "capped 3 m above the 70 m bottom" in yr.pump_depth_basis
+    # A 78.45 m reading below the 70 m hole and the 60 m pump used to set the
+    # intake at 67 m ("which sets the intake"). The flagged levels no longer
+    # set it, and the yield resting on them is indicative.
+    assert yr.pump_installation_depth_m == 50
+    assert "which sets the intake" not in yr.pump_depth_basis
+    assert "78.5 m, is left out" in yr.pump_depth_basis
+    assert yr.is_indicative
+    assert yr.confidence_reasons[0].startswith("the recorded water levels are inconsistent")
 
 
 def test_the_test_type_is_written_in_words():
@@ -390,3 +399,218 @@ def test_a_pinned_step_fit_says_its_efficiencies_are_not_meaningful():
     assert result.aquifer_loss_B == 0.0 and result.fit_note
     clean = hantush_bierschenk([1.0, 2.0, 3.0], [1.0, 2.4, 4.2])
     assert clean.fit_note == ""
+    # the steps keep the numbers the sheet gave them
+    kept = hantush_bierschenk([2.2, 3.0], [2.4, 4.2], step_numbers=[2, 3])
+    assert [s["step"] for s in kept.steps] == [2, 3]
+    assert [s["step"] for s in clean.steps] == [1, 2, 3]
+
+
+def _dr_timbo(sample_data):
+    return read_pumping_workbook(sample_data / "dr_timbo" / "dr_timbo_constant_test.xlsx")
+
+
+def _dr_timbo_as(sample_data, tmp_path, **cells):
+    """The Dr Timbo sheet with header cells rewritten (E5 is the borehole
+    depth, E6 the pump setting), read back through the parser so its own
+    checks on the levels run against the new values."""
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(sample_data / "dr_timbo" / "dr_timbo_constant_test.xlsx")
+    for cell, value in cells.items():
+        workbook.active[cell] = value
+    path = tmp_path / "dr_timbo_edited.xlsx"
+    workbook.save(path)
+    return read_pumping_workbook(path)
+
+
+def _recovery_line(test, intercept_m, slope_m):
+    """Recovery levels on a clean straight line that misses the origin."""
+    t_rec = np.array([1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60], float)
+    residual = intercept_m + slope_m * np.log10((test.pumping_duration_min + t_rec) / t_rec)
+    test.recovery_time_min = t_rec
+    test.recovery_level_m = test.static_water_level_m + residual
+    return test
+
+
+def test_a_rejected_recovery_is_not_adopted_over_a_casing_storage_fallback(sample_data):
+    """Dr Timbo with its recovery on a clean line meeting t/t' = 1 at 20 m.
+    Every fit was disqualified, and the best of the poor fits was picked by R
+    squared over all of them: the rejected recovery won at 0.99, the yield
+    rose to 0.99 m3/h, and the flags said in one sentence that the recovery
+    was not adopted and in the next that it was."""
+    analysis = analyse_pumping_test(_recovery_line(_dr_timbo(sample_data), 20.0, 9.0))
+    assert analysis.recovery.r_squared > 0.99
+    assert set(analysis.disqualified) == {"recovery", "cooper_jacob", "theis"}
+    # the recovery line and the Theis storativity are wrong in themselves; the
+    # Cooper-Jacob line is only read inside the casing-storage period
+    assert set(analysis.invalid_fits) == {"recovery", "theis"}
+    method, fit, qualifies = analysis.adopted_fit()
+    assert method == "cooper_jacob" and not qualifies
+    assert fit.transmissivity_m2_per_day == pytest.approx(0.536, abs=0.001)
+    assert 0.3 < analysis.yield_recommendation.safe_yield_m3_per_h < 0.5
+    low = next(f for f in analysis.flags if f.code == "transmissivity_low_confidence")
+    assert "The Cooper-Jacob value of 0.54 m2/day is adopted" in low.message
+    # the casing-storage flag is worded from the adoption, not against it
+    casing = next(f for f in analysis.flags if f.code == "casing_storage")
+    assert "the Cooper-Jacob value is adopted only as the best available" in casing.message
+    assert "the Theis value is reported but not adopted" in casing.message
+    assert "their transmissivity is reported but not adopted" not in casing.message
+
+
+def test_when_every_fit_is_rejected_the_yield_is_pending_and_says_why(sample_data):
+    """Four readings are too few for either drawdown fit, and the recovery
+    line misses the origin: nothing is left that the yield could rest on."""
+    test = _dr_timbo(sample_data)
+    step = test.steps[0]
+    step.time_min, step.water_level_m = step.time_min[:4], step.water_level_m[:4]
+    test.pumping_duration_min = 3.0
+    analysis = analyse_pumping_test(_recovery_line(test, 20.0, 9.0))
+    assert analysis.cooper_jacob is None and analysis.theis is None
+    assert "recovery" in analysis.invalid_fits
+    assert analysis.adopted_fit() == (None, None, False)
+    assert analysis.transmissivity_m2_per_day is None
+    yr = analysis.yield_recommendation
+    assert yr.safe_yield_m3_per_h is None and yr.yield_range_text == "pending"
+    assert yr.pending_reason.startswith(
+        "no fitted transmissivity can be adopted (Theis recovery")
+    assert "where the method requires zero" in yr.pending_reason
+    assert not any(f.code == "transmissivity_low_confidence" for f in analysis.flags)
+
+
+def test_levels_below_the_pump_make_the_yield_indicative_and_set_no_intake(
+        sample_data, tmp_path):
+    """Dr Timbo written with the pump at 15 m: the level is recorded at 42.3 m,
+    27 m below a pump that cannot draw it there. That reading set the intake
+    at 46 m, and a sheet whose only fault was such a level was certified as
+    an established yield."""
+    from groundwater.models import DataFlag
+
+    test = _dr_timbo_as(sample_data, tmp_path, E6=15)
+    assert any(f.code == "level_below_pump" for f in test.flags)
+    yr = analyse_pumping_test(test).yield_recommendation
+    assert yr.is_indicative
+    assert yr.confidence_reasons[0] == (
+        "the recorded water levels are inconsistent with the stated static level, "
+        "pump setting or borehole depth, so the drawdowns the yield is computed "
+        "from are as recorded and not to be relied on"
+    )
+    # the intake comes from the usable drawdown, never from the flagged level
+    assert yr.pump_installation_depth_m == 15
+    assert "42.3 m, is left out" in yr.pump_depth_basis
+    # the envelope's corners did not bracket this yield, and 0.0067 m3/h was
+    # printed beside a range that began at 0.0068
+    assert yr.safe_yield_low_m3_per_h <= yr.safe_yield_m3_per_h <= yr.safe_yield_high_m3_per_h
+
+    # a clean long test is established; the same test with one such flag is not
+    t_min, s = _theis_series()
+    clean = _constant_test(t_min, s)
+    assert analyse_pumping_test(clean).yield_recommendation.confidence == "established"
+    clean.flags = [DataFlag("warning", "level_below_borehole", "below the bottom")]
+    flagged = analyse_pumping_test(clean).yield_recommendation
+    assert flagged.is_indicative and len(flagged.confidence_reasons) == 1
+
+
+def test_the_intake_is_never_below_the_test_pump_or_within_3_m_of_the_bottom(
+        sample_data, tmp_path):
+    """Dr Timbo in a 45.5 m hole with the pump at 44 m. The deepest level plus
+    submergence (45.3 m) set the intake below the pump that drew it, and
+    rounding up after the 3 m cap put it at 43 m, 2.5 m above the bottom,
+    beside text saying it was capped 3 m above."""
+    test = _dr_timbo_as(sample_data, tmp_path, E5=45.5, E6=44)
+    assert not {"level_below_pump", "level_below_borehole"} & {f.code for f in test.flags}
+    yr = analyse_pumping_test(test).yield_recommendation
+    assert yr.pump_installation_depth_m == 42
+    assert "which sets the intake at the 44 m the test pump was set to" in yr.pump_depth_basis
+    assert "capped 3 m above the 45.5 m bottom" in yr.pump_depth_basis
+
+
+def test_the_yield_range_leaves_out_the_fits_the_analysis_rejected(sample_data):
+    """Dr Timbo printed "0.39 m3/h (0.28 to 1.2)": the top of the range came
+    from the recovery transmissivity of 1.40 m2/day that the same analysis
+    refused for missing the origin."""
+    analysis = analyse_pumping_test(_dr_timbo(sample_data))
+    yr = analysis.yield_recommendation
+    adopted = analysis.transmissivity_m2_per_day
+    # only the adopted casing-storage fallback is left, so the band is the
+    # one-method factor of 1.5 around it, not the spread to the recovery
+    assert f"{adopted / 1.5:.1f}-{adopted * 1.5:.1f} m2/day" in yr.envelope_basis
+    assert "spread between the fitted methods" not in yr.envelope_basis
+    assert yr.yield_range_text == "0.39 m3/h (0.22 to 0.71)"
+
+
+def _step_test(times_by_step, rates=(1.5, 2.2, 3.0), step_length=None):
+    """A step test in an ideal well, each step's level rising with log time."""
+    from groundwater.models import PumpingStep, PumpingTest, SiteMetadata
+
+    swl = 10.0
+    steps = [
+        PumpingStep(step_number=n, discharge_m3_per_h=q,
+                    time_min=np.asarray(times, float),
+                    water_level_m=swl + q * (1.0 + 0.3 * np.log10(np.asarray(times, float))),
+                    label=f"Step {n}")
+        for n, (times, q) in enumerate(zip(times_by_step, rates, strict=True), start=1)
+    ]
+    t_rec = np.array([1, 2, 3, 5, 10, 20, 30, 60], float)
+    return PumpingTest(
+        site=SiteMetadata(community="synthetic"), test_type="step+recovery",
+        static_water_level_m=swl, borehole_depth_m=70.0, pump_setting_m=60.0,
+        step_length_min=step_length, steps=steps,
+        pumping_duration_min=float(max(float(np.max(s.time_min)) for s in steps)),
+        recovery_time_min=t_rec,
+        recovery_level_m=swl + 3.0 * np.log10((158.0 + t_rec) / t_rec),
+    )
+
+
+def test_a_step_test_whose_times_restart_each_step_keeps_its_length():
+    """Each step counted from its own start: the equivalent time for the
+    recovery came out at 30 minutes where the steps had pumped 112, the flag
+    said the test ran 60 minutes where it ran 158, and nothing said the
+    sheet's clock restarted."""
+    from groundwater.hydraulics import equivalent_pumping_time_min
+    from groundwater.hydraulics.analysis import step_durations_min
+
+    running = _step_test([np.arange(1, 61), np.arange(61, 121), np.arange(121, 159)])
+    restarting = _step_test([np.arange(1, 61), np.arange(1, 61), np.arange(1, 39)])
+    assert step_durations_min(running.steps) == ([60.0, 60.0, 38.0], [])
+    assert step_durations_min(restarting.steps) == ([60.0, 60.0, 38.0], [2, 3])
+    assert equivalent_pumping_time_min(running) == (pytest.approx(112.0), True)
+    assert equivalent_pumping_time_min(restarting) == (pytest.approx(112.0), True)
+
+    analysis = analyse_pumping_test(restarting)
+    restart = next(f for f in analysis.flags if f.code == "step_time_restarted")
+    assert restart.message.startswith("Steps 2 and 3 open at or before the minute")
+    assert "158 minutes in all, not the 60 minutes the latest reading gives" in restart.message
+    equivalent = next(f for f in analysis.flags if f.code == "recovery_equivalent_time")
+    assert "equivalent pumping time of 112 minutes" in equivalent.message
+    assert "not the 158 minutes the test ran" in equivalent.message
+    assert not any(f.code == "step_time_restarted" for f in analyse_pumping_test(running).flags)
+
+
+def test_a_step_test_is_judged_per_step_in_its_own_words():
+    """A 3 x 50-minute step test inside its casing-storage period was said to
+    have "pumped for 50 minutes" with "the whole test" inside the period, of
+    a test that pumped for 150."""
+    t = np.array([1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 25, 30, 40, 50], float)
+    test = _step_test([t, t + 50, t + 100], rates=(1.0, 2.0, 3.0), step_length=50.0)
+    test.test_type = "step"
+    test.recovery_time_min = test.recovery_level_m = None
+    analysis = analyse_pumping_test(test, PumpingConfig(casing_diameter_in=12.0))
+    assert analysis.casing_storage_min > 50
+    reasons = analysis.yield_recommendation.confidence_reasons
+    assert reasons[0].startswith("each step ran for 50 minutes, below the 60 needed")
+    assert reasons[1].startswith("each step lies inside the ")
+    assert not any("the test pumped" in r or "the whole test" in r for r in reasons)
+    casing = next(f for f in analysis.flags if f.code == "casing_storage")
+    assert "; each step pumped for 50 minutes, entirely inside it" in casing.message
+    assert analysis.disqualified["theis"].startswith("each 50-minute step lies inside")
+
+
+def test_a_negative_recovery_intercept_is_a_share_of_a_positive_drawdown(sample_data):
+    """A recovery line meeting t/t' = 1 below zero printed "37% of the -21.8 m
+    the recovery started from"."""
+    analysis = analyse_pumping_test(_recovery_line(_dr_timbo(sample_data), -8.0, 20.0))
+    rec = analysis.recovery
+    assert rec.intercept_m < 0 and "recovery" in analysis.disqualified
+    flag = next(f for f in analysis.flags if f.code == "recovery_intercept")
+    assert "of the -" not in flag.message
+    assert f"of the {abs(rec.intercept_m) / rec.intercept_fraction:.1f} m the recovery" in flag.message

@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import math
 import re
+import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -612,6 +613,7 @@ def plot_ground_profile(
     title: str = "Ground surface along the survey traverse",
     grid: ElevationGrid | None = None,
     lonlats: list[tuple[float, float]] | None = None,
+    max_gap_m: float | None = None,
 ):
     """The land surface along the traverse, from the survey's own levels.
 
@@ -622,6 +624,11 @@ def plot_ground_profile(
     can be compared rather than silently averaged - a metre of
     disagreement over 200 m of traverse changes which end of the line
     the water runs to.
+
+    ``max_gap_m`` is the widest gap the line is drawn across. Two levels
+    further apart than that have nothing between them, and a straight
+    line across the gap is a slope nobody measured: Rokel's was a 3 m fall
+    drawn across 20.7 km. Such a gap is left open and the figure says so.
     """
     style = style or HouseStyle()
     chainage = np.asarray(chainage_m, dtype=float)
@@ -648,12 +655,30 @@ def plot_ground_profile(
             if np.isfinite(modelled).sum() >= 2:
                 ax.plot(chainage, modelled, "-", color="#888888", lw=1.2,
                         label=f"Elevation model ({grid.source})", zorder=2)
-        ax.plot(chainage[known], elevation[known], "-o", color=style.accent_color,
-                lw=1.8, ms=5, mfc="white", mew=1.4, label="Levelled at the station",
-                zorder=3)
-        ax.fill_between(chainage[known], elevation[known],
-                        float(np.nanmin(elevation)) - 2.0,
-                        color=style.accent_color, alpha=0.08, zorder=1)
+        # the levelled stations in runs the line may join: a gap wider than
+        # max_gap_m starts a new run, so no line and no fill crosses it
+        xs = chainage[known]
+        ys = elevation[known]
+        names = [name for name, k in zip(labels or [""] * chainage.size, known,
+                                         strict=True) if k]
+        runs: list[list[int]] = [[0]]
+        open_gaps: list[str] = []
+        for k in range(1, xs.size):
+            gap = float(xs[k] - xs[k - 1])
+            if max_gap_m is not None and gap > max_gap_m:
+                runs.append([k])
+                open_gaps.append(f"{names[k - 1] or 'station'} to "
+                                 f"{names[k] or 'station'} ({gap:,.0f} m)")
+            else:
+                runs[-1].append(k)
+        base = float(np.nanmin(elevation)) - 2.0
+        for n_run, run in enumerate(runs):
+            ax.plot(xs[run], ys[run], "-o", color=style.accent_color,
+                    lw=1.8, ms=5, mfc="white", mew=1.4,
+                    label="Levelled at the station" if n_run == 0 else None,
+                    zorder=3)
+            ax.fill_between(xs[run], ys[run], base,
+                            color=style.accent_color, alpha=0.08, zorder=1)
         for x, y, label in zip(
             chainage, elevation, labels or [""] * chainage.size, strict=True
         ):
@@ -662,11 +687,20 @@ def plot_ground_profile(
             ax.annotate(label, xy=(x, y), xytext=(0, 7),
                         textcoords="offset points", ha="center", fontsize=7.5,
                         fontweight="bold", color="#222222")
+        notes = []
         if known.sum() < elevation.size:
-            ax.text(
-                0.5, 0.02,
+            notes.append(
                 f"{int(elevation.size - known.sum())} of {elevation.size} "
-                "stations recorded no elevation and are not drawn.",
+                "stations recorded no elevation and are not drawn."
+            )
+        if open_gaps:
+            notes.append(
+                "The line is not drawn across " + "; ".join(open_gaps)
+                + ": nothing was levelled between those stations."
+            )
+        if notes:
+            ax.text(
+                0.5, 0.02, textwrap.fill(" ".join(notes), 120),
                 transform=ax.transAxes, ha="center", va="bottom", fontsize=7,
                 color="#B00020",
             )

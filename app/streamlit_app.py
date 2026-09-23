@@ -48,7 +48,7 @@ from groundwater.costing import (
     plot_programme_gantt,
     write_boq_workbook,
 )
-from groundwater.design import design_borehole, draw_borehole_design
+from groundwater.design import design_borehole, draw_borehole_design, pump_intake_floor
 from groundwater.hydraulics import analyse_pumping_test
 from groundwater.hydraulics.analysis import (
     METHOD_LABELS,
@@ -89,6 +89,7 @@ from groundwater.mapping import (
     district_of,
     geoelectric_section_along_traverse,
     geolibre,
+    ground_profile_along_traverse,
     iso_resistivity_map,
     iso_resistivity_points,
     load_admin,
@@ -99,7 +100,6 @@ from groundwater.mapping import (
     plot_admin_map,
     plot_coverage_choropleth,
     plot_geological_map,
-    plot_ground_profile,
     plot_hydrogeology_map,
     plot_portfolio_map,
     plot_study_area_map,
@@ -1627,6 +1627,28 @@ def app_config() -> Config:
     return cfg
 
 
+def reported_pump_intake(analysis) -> float | None:
+    """The pump intake the pumping report prints, for the design to use.
+
+    The pumping report sets the intake at the deeper of the test day's depth
+    and the drought year's, from the month and swing chosen under "Through
+    the year" (hydraulics-6); the design took the test day's alone, so with
+    a swing entered the drawing and the completion report named one depth
+    and the pumping report another. The browser app had the same fault.
+    """
+    if analysis is None or analysis.yield_recommendation is None:
+        return None
+    pumping = app_config().pumping
+    month = st.session_state.get("seasonal_month")
+    if month is None:
+        month = month_of(analysis.test.site.date)[0]
+    seasonal = seasonal_yield(
+        analysis, pumping, month=(month or None),
+        annual_range_m=st.session_state.get("seasonal_range", pumping.seasonal_allowance_m),
+    )
+    return pump_intake_depth(analysis, seasonal)[0]
+
+
 # ---------------------------------------------------------------------------
 # Header
 # ---------------------------------------------------------------------------
@@ -2844,8 +2866,19 @@ with tab_design:
     _test_swl = (
         _design_analysis.test.static_water_level_m if _design_analysis else None
     )
-    if _test_swl is not None and "design_swl" not in st.session_state:
-        st.session_state["design_swl"] = round(float(_test_swl), 2)
+    # The box shows the level the design uses: the test's, unless the analyst
+    # typed another. It was prefilled only when the widget had never run, so
+    # opening the app before loading a test left it at 0.0 under a caption
+    # saying "Prefilled from the pumping test" while the design used the
+    # test's level. A box still at 0.0, or at the level last prefilled, has
+    # not been typed over and follows the test.
+    if _test_swl is not None:
+        _prefill = round(float(_test_swl), 2)
+        if st.session_state.get("design_swl") in (
+            None, 0.0, st.session_state.get("design_swl_prefilled"),
+        ):
+            st.session_state["design_swl"] = _prefill
+        st.session_state["design_swl_prefilled"] = _prefill
     swl_input = st.number_input("Static water level (m)", min_value=0.0, step=0.1,
                                 key="design_swl")
     if _test_swl is not None:
@@ -2853,8 +2886,10 @@ with tab_design:
             f"Prefilled from the pumping test on this project "
             f"({fmt_num(_test_swl)} m). Type over it to design against another level."
         )
-    _design_intake = (
-        _design_analysis.yield_recommendation.pump_installation_depth_m
+    _design_intake = reported_pump_intake(_design_analysis)
+    _design_intake_floor = (
+        pump_intake_floor(_design_analysis.yield_recommendation,
+                          CONFIG.pumping.pump_submergence_min_m)
         if _design_analysis and _design_analysis.yield_recommendation
         else None
     )
@@ -2864,6 +2899,7 @@ with tab_design:
             log=log,
             static_water_level_m=swl_input or _test_swl,
             pump_intake_m=_design_intake,
+            pump_intake_floor_m=_design_intake_floor,
             rules=CONFIG.design,
         )
         st.session_state.borehole_design = design
@@ -2878,7 +2914,8 @@ with tab_design:
             drawing = workdir() / "design.png"
             draw_borehole_design(
                 design, log, path=drawing,
-                title=f"Borehole design - {log.site.community or 'site'}",
+                title=("As-built borehole record" if design.as_built else "Borehole design")
+                + f" - {log.site.community or 'site'}",
             )
             st.image(str(drawing))
             offer_download(drawing, "Download design drawing (.png)")
@@ -3019,8 +3056,10 @@ with tab_spine:
                 static_water_level_m=(
                     analysis.test.static_water_level_m if analysis else None
                 ),
-                pump_intake_m=(
-                    analysis.yield_recommendation.pump_installation_depth_m
+                pump_intake_m=reported_pump_intake(analysis),
+                pump_intake_floor_m=(
+                    pump_intake_floor(analysis.yield_recommendation,
+                                      CONFIG.pumping.pump_submergence_min_m)
                     if analysis and analysis.yield_recommendation
                     else None
                 ),
@@ -3873,16 +3912,17 @@ with tab_maps:
                 "profile; record them on the field sheet."
             )
         elif st.button("Draw the ground profile", key="run_profile"):
-            profile = traverse_profile(_levelled)
-            by_id = {i.sounding_id: i for i in _levelled}
+            # the report's profile, under the section's rules: every
+            # positioned station, no line across a gap nothing was levelled
+            # in, and a reason rather than a figure where there is none
             profile_path = workdir() / "ground_profile.png"
-            plot_ground_profile(
-                profile.chainage_m,
-                [by_id[label].site_elevation_m for label in profile.labels],
-                labels=list(profile.labels),
-                path=profile_path, style=app_config().style,
-            )
-            st.session_state["profile_path"] = str(profile_path)
+            try:
+                ground_profile_along_traverse(
+                    _interps, path=profile_path, style=app_config().style)
+                st.session_state["profile_path"] = str(profile_path)
+            except ValueError as exc:
+                st.session_state.pop("profile_path", None)
+                st.info(f"No ground profile: {exc}")
         if st.session_state.get("profile_path"):
             st.image(st.session_state["profile_path"])
             offer_download(Path(st.session_state["profile_path"]),

@@ -173,6 +173,11 @@ class LayeredModel:
     fit_error_percent: Optional[float] = None  # RMS misfit, like IPI2Win ERR
     method: str = ""  # "ipi2win-import" | "damped-lsq" | ...
     sounding_id: str = ""
+    #: Linearised 1-sigma multiplicative uncertainty of each thickness, set
+    #: by the inversion that fitted the model (None for a transcribed one).
+    #: It travels with the model so the interpretation can say a boundary
+    #: is poorly resolved instead of reading the layer count as settled.
+    h_uncertainty_factor: Optional[np.ndarray] = None
 
     def __post_init__(self) -> None:
         self.resistivities = np.asarray(self.resistivities, dtype=float)
@@ -341,6 +346,15 @@ class WaterQualityResult:
     #: E. coli 0 and total coliforms TNTC came out as safe, and ">50" was
     #: read as exactly 50.
     greater_than: Optional[float] = None
+    #: Whether the bound is itself a possible value: ">=50" and "50+" are at
+    #: least 50, ">50" is more than 50. Against a limit of 50 the first is an
+    #: open question and the second is an exceedance.
+    greater_than_inclusive: bool = False
+    #: The cell as written, when it reads as a qualified result (a "<", a
+    #: ">", or an absence or presence word) that could not be parsed. Such a
+    #: cell used to fall through to a plain number parse, so "ND (DL 0.05)"
+    #: became a measured 0.05 and "Absent/100 mL" a count of 100.
+    unreadable: str = ""
 
     @property
     def detected_not_quantified(self) -> bool:

@@ -7,6 +7,7 @@ from .designer import (
     CasingSegment,
     design_borehole,
     logged_diameter_in,
+    pump_intake_floor,
     seal_depth_for,
 )
 from .drawing import draw_borehole_design
@@ -17,6 +18,7 @@ from .lithology import (
     is_clayey,
     lithology_bands,
     lithology_class,
+    read_fractures,
 )
 
 __all__ = [
@@ -33,5 +35,7 @@ __all__ = [
     "lithology_bands",
     "lithology_class",
     "logged_diameter_in",
+    "pump_intake_floor",
+    "read_fractures",
     "seal_depth_for",
 ]

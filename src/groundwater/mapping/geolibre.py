@@ -355,10 +355,14 @@ def unit_features(units: Iterable) -> list[dict]:
                 "stroke-width": 0.5,
             }
         )
+        # The holes go with the outer ring. Written without them, every dyke
+        # the Precambrian encloses was painted over in the exported layer,
+        # and the project differed from the one the browser writes, which
+        # keeps them.
+        rings = [_ring(unit.ring)]
+        rings.extend(_ring(hole) for hole in getattr(unit, "holes", ()))
         features.append(
-            _feature(
-                {"type": "Polygon", "coordinates": [_ring(unit.ring)]}, properties
-            )
+            _feature({"type": "Polygon", "coordinates": rings}, properties)
         )
     return features
 
