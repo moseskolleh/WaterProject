@@ -523,10 +523,11 @@ def test_a_complete_analysis_still_balances_without_the_new_flag():
 def test_a_detection_of_a_determinand_the_table_does_not_know_is_not_a_pass():
     """"Salmonella: Present" was read as not measured, raised no flag, and
     left the sample "suitable for drinking"; the same organism with a count
-    was "not proven safe"."""
+    was "not proven safe". Salmonella is now graded by name (below); any
+    other detection of something the table does not know stays open."""
     a = assess_sample(_sample(
         *_health_panel(),
-        WaterQualityResult("Salmonella", None, "per 100 mL", greater_than=0.0),
+        WaterQualityResult("Iron bacteria", None, "per 100 mL", greater_than=0.0),
         WaterQualityResult("Faecal streptococci", None, "CFU/100 mL",
                            greater_than=50.0),
     ))
@@ -538,6 +539,72 @@ def test_a_detection_of_a_determinand_the_table_does_not_know_is_not_a_pass():
     assert [f.code for f in a.flags].count("unknown_parameter") == 2
     assert a.verdict_state == "indeterminate"
     assert "suitable for drinking on the basis" not in a.verdict
+
+
+def test_a_faecal_pathogen_is_graded_by_its_name_not_its_unit():
+    """"Salmonella: Present" was an unknown determinand, so the verdict asked
+    for units and detection limits to be confirmed while the laboratory had
+    reported Salmonella in the water. The only thing that could have told
+    it was microbiological was the unit, and grading every CFU count as a
+    pathogen would fail a sample on a heterotrophic plate count, which WHO
+    does not treat as a health parameter."""
+    from groundwater.quality.standards import faecal_pathogen
+    from groundwater.reporting.quality import quality_recommendations
+
+    def graded(result):
+        a = assess_sample(_sample(*_health_panel(), result))
+        return a, a.rows[-1]
+
+    for result in (
+        WaterQualityResult("Salmonella", None, "per 100 mL", greater_than=0.0),
+        WaterQualityResult("Shigella spp.", 3.0, "CFU/100 mL"),
+        WaterQualityResult("Giardia cysts", None, "per 10 L", greater_than=50.0),
+        WaterQualityResult("Vibrio cholerae O1", 1.0, ""),
+    ):
+        a, row = graded(result)
+        assert (row.status, row.evaluable, row.reason) == ("exceeds_health", True, "")
+        assert row.remark.endswith("a health concern, whatever the count")
+        assert a.verdict_state == "health_fail"
+        assert "a sanitary inspection to find where the contamination enters" in (
+            " ".join(quality_recommendations(a)))
+    a, row = graded(WaterQualityResult("Salmonella", None, "per 100 mL",
+                                       greater_than=0.0))
+    assert row.remark.startswith("detected, count not quantified: a faecal pathogen")
+    assert a.verdict.startswith(
+        "The water does not meet the health based guideline value for: Salmonella.")
+
+    # nothing found is the requirement met, and does not hold the sample open
+    for result, status in (
+        (WaterQualityResult("Salmonella", 0.0, "CFU/100 mL"), "within_limits"),
+        (WaterQualityResult("Salmonella", None, "", below_detection=True),
+         "below_detection"),
+        (WaterQualityResult("Cryptosporidium oocysts", None, "oocysts/10 L",
+                            detection_limit=1.0, below_detection=True),
+         "below_detection"),
+    ):
+        a, row = graded(result)
+        assert (row.status, row.evaluable) == (status, True)
+        assert a.verdict_state == "pass"
+    # but a method that cannot see one organism cannot show there are none
+    a, row = graded(WaterQualityResult("Cryptosporidium oocysts", None, "oocysts/10 L",
+                                       detection_limit=10.0, below_detection=True))
+    assert (row.status, row.evaluable) == ("indeterminate", False)
+    assert row.remark.startswith(
+        "reported below a detection limit of 10 oocysts/10 L, which cannot show")
+    assert a.verdict_state == "indeterminate"
+
+    # a plate count names no organism, and stays an open question, not a failure
+    a, row = graded(WaterQualityResult("Heterotrophic plate count", 250.0, "CFU/mL"))
+    assert (row.status, row.reason) == ("no_guideline", "unknown_parameter")
+    assert a.verdict_state == "indeterminate"
+    assert [faecal_pathogen(n) for n in (
+        "E. coli", "Total coliforms", "Heterotrophic plate count", "Iron bacteria",
+        "Hepatitis antibodies", "Faecal streptococci")] == [""] * 6
+    assert [faecal_pathogen(n) for n in (
+        "Salmonella typhi", "S. Typhi", "Hepatitis A virus", "Enteroviruses",
+        "E. coli O157:H7", "V. cholerae")] == [
+        "salmonella", "s. typhi", "hepatitis a", "enterovirus", "e. coli o157",
+        "v. cholerae"]
 
 
 def test_a_national_failure_does_not_claim_health_values_it_never_showed():
@@ -569,6 +636,49 @@ def test_a_national_failure_does_not_claim_health_values_it_never_showed():
     assert clean.verdict.startswith("The water meets the WHO health based guideline values")
     assert suitability_sentence(clean) == SUITABILITY_SENTENCE["national_fail"]
     assert "All WHO health based guideline values are met." in _executive_summary(clean)[1]
+
+
+def test_the_completion_and_handover_summaries_name_what_is_unresolved():
+    """The summary sentence said only that the WHO values had not been shown
+    to be met, or that the results were incomplete, and named nothing: the
+    arsenic result nobody could grade and the missing fluoride were in the
+    quality section and nowhere in the summary."""
+    from groundwater.models import DrillingLog, SiteMetadata
+    from groundwater.quality.assess import suitability_sentence
+    from groundwater.reporting import completion, handover
+
+    arsenic = WaterQualityResult("Arsenic", None, "mg/L", detection_limit=0.05,
+                                 below_detection=True)
+    failing = assess_sample(_sample(
+        WaterQualityResult("E. coli", 0.0, "CFU/100 mL"), arsenic,
+        WaterQualityResult("Total coliforms", 12.0, "CFU/100 mL"),
+    ))
+    open_only = assess_sample(_sample(
+        WaterQualityResult("E. coli", 0.0, "CFU/100 mL"), arsenic,
+    ))
+    assert failing.verdict_state == "national_fail"
+    assert open_only.verdict_state == "indeterminate"
+
+    site = SiteMetadata(community="Mabang")
+    log = DrillingLog(site=site, total_depth_m=60.0)
+    for a in (failing, open_only):
+        sentence = suitability_sentence(a)
+        assert "Arsenic could not be assessed: the detection limit is above" in sentence
+        assert "no evaluable result for Arsenic, Fluoride, Nitrate (as NO3)" in sentence
+        assert sentence.endswith(".") and ".." not in sentence
+        for paragraphs in (
+            completion._executive_summary(
+                completion.CompletionReportInputs(log=log, quality=a))[0],
+            handover._executive_summary(
+                handover.HandoverReportInputs(site=site, log=log, quality=a))[0],
+        ):
+            assert "Arsenic could not be assessed" in paragraphs[0]
+            assert "Fluoride" in paragraphs[0]
+    assert suitability_sentence(failing).startswith(
+        "The water does not comply with the national standard, and it has not "
+        "been shown to meet the WHO health based guideline values: Arsenic")
+    assert suitability_sentence(open_only).startswith(
+        "The water has not been shown to be suitable for drinking: Arsenic")
 
 
 def test_the_combined_nitrate_rule_reads_either_basis():

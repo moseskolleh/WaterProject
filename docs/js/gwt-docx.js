@@ -1994,6 +1994,12 @@
     turbidity: 'High turbidity interferes with disinfection; extend ' +
       'development of the borehole and re-sample.',
   };
+  /* For a faecal pathogen found in the water, which has no table entry to
+   * key advice by and used to get none under "Treat before use". */
+  var PATHOGEN_ADVICE = 'A faecal pathogen in the water calls for shock ' +
+    'chlorination of the borehole, a sanitary inspection to find where the ' +
+    'contamination enters, and re-sampling for the pathogen and for E. coli ' +
+    'before the supply is used for drinking.';
   /* pH is out of range in one of two directions, and the advice differs */
   var PH_ADVICE_LOW = 'Low pH water is corrosive to metal fittings; a limestone ' +
     'contactor or careful choice of corrosion resistant materials is advised.';
@@ -2030,6 +2036,8 @@
         var low = r.value_in_guideline_unit !== null &&
           r.value_in_guideline_unit !== undefined && r.value_in_guideline_unit < 7.0;
         text = low ? PH_ADVICE_LOW : PH_ADVICE_HIGH;
+      } else if (C.faecalPathogen(r.parameter)) {
+        text = PATHOGEN_ADVICE;
       } else {
         text = Object.prototype.hasOwnProperty.call(TREATMENT_ADVICE, key)
           ? TREATMENT_ADVICE[key] : null;

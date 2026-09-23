@@ -32,7 +32,7 @@ from scipy.optimize import curve_fit
 from scipy.special import exp1
 
 from ..config import PumpingConfig
-from ..models import DataFlag, PumpingTest
+from ..models import DataFlag, PumpingTest, step_durations_min
 from ..utils import plural
 
 MIN_PER_DAY = 1440.0
@@ -601,36 +601,6 @@ def equivalent_pumping_time_min(test: PumpingTest) -> tuple[Optional[float], boo
     if q_last <= 0 or volume <= 0:
         return test.pumping_duration_min, False
     return volume / q_last, True
-
-
-def step_durations_min(steps) -> tuple[list[float], list[int]]:
-    """``(minutes per step, restarted step numbers)``: how long each step pumped.
-
-    A step's times normally run on from the step before (61, 62 ... after a
-    step ending at 60), and its length is its last reading less that step's.
-    Some sheets count each step from its own start instead, so a step opens
-    at or before the minute the step before it ended; its own last reading is
-    then its length, and the lengths add. Differencing those steps against
-    the step before gave them no length at all: the recovery after such a
-    step test was read against 30 minutes where the steps had pumped 158.
-    A step with no readable time pumped for no measurable time.
-    """
-    durations: list[float] = []
-    restarted: list[int] = []
-    previous_end: Optional[float] = None
-    for step in steps:
-        finite = step.time_min[np.isfinite(step.time_min)]
-        if not len(finite):
-            durations.append(0.0)
-            continue
-        start, end = float(finite.min()), float(finite.max())
-        if previous_end is not None and start <= previous_end:
-            restarted.append(step.step_number)
-            durations.append(max(end, 0.0))
-        else:
-            durations.append(max(end - (previous_end or 0.0), 0.0))
-        previous_end = end
-    return durations, restarted
 
 
 def casing_storage_min(
@@ -1313,9 +1283,9 @@ def analyse_pumping_test(
 
     # ---- step clocks ----------------------------------------------------------
     # A step test whose times restart each step is read with each step's own
-    # last reading as its length. The reading is the toolkit's, not the
-    # sheet's, and the overview and the recorded duration still show the
-    # step clocks, so it is said.
+    # last reading as its length, and the recorded duration and the overview
+    # put each step on the test's clock by the same reading. The reading is
+    # the toolkit's, not the sheet's, so it is said.
     step_durations: list[float] = []
     if test.test_type.startswith("step"):
         timed = [s for s in test.steps if len(s.time_min)]
@@ -1327,9 +1297,13 @@ def analyse_pumping_test(
                 else "Steps " + ", ".join(str(n) for n in restarted[:-1])
                 + f" and {restarted[-1]}"
             )
+            finite = [
+                float(np.nanmax(s.time_min)) for s in timed
+                if np.isfinite(s.time_min).any()
+            ]
             recorded = (
-                f", not the {test.pumping_duration_min:g} minutes the latest "
-                "reading gives" if test.pumping_duration_min else ""
+                f", not the {max(finite):g} minutes the latest reading gives"
+                if finite and max(finite) else ""
             )
             flags.append(
                 DataFlag(

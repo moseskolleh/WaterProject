@@ -56,7 +56,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ..models import DataFlag, PumpingStep, PumpingTest
+from ..models import DataFlag, PumpingStep, PumpingTest, step_offsets_min
 from ..units import Quantity, convert, read_quantity, unit_from_label
 from ..utils import clean_text, parse_number
 from . import common
@@ -754,7 +754,12 @@ def _assemble(grid: list[list], source: str) -> PumpingTest:
     swl = fields.get("static_water_level_m")
     pumping_duration = None
     if steps:
-        pumping_duration = float(max(s.time_min.max() for s in steps))
+        # on the test's clock: a step test whose times restart each step
+        # pumped for its steps' lengths added, not for its longest step
+        pumping_duration = float(max(
+            s.time_min.max() + offset
+            for s, offset in zip(steps, step_offsets_min(steps), strict=True)
+        ))
 
     test = PumpingTest(
         site=site,

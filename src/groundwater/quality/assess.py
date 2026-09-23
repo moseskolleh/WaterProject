@@ -48,6 +48,7 @@ from .ionic import IonicBalanceResult, ionic_balance, ionic_balance_gap
 from ..utils import plural_noun
 from .standards import (
     StandardEntry,
+    faecal_pathogen,
     load_standards,
     normalise_parameter,
     to_standard_unit,
@@ -141,14 +142,22 @@ def suitability_sentence(assessment: "WaterQualityAssessment") -> str:
     which is only shown when nothing is left unresolved; a sample failing a
     national limit with an ungradable arsenic result used to be certified as
     meeting them in the completion and handover summaries.
+
+    Where something is unresolved the sentence says what. It used to say
+    only that the values had not been shown to be met, so a reader of the
+    summary alone could not tell which parameter was outstanding or why,
+    and had to find the list in the water quality section.
     """
     state = assessment.verdict_state
-    if state == "national_fail" and assessment.uncertainties:
+    unresolved = "; ".join(assessment.uncertainties)
+    if state == "national_fail" and unresolved:
         return (
             "The water does not comply with the national standard, and it has "
-            "not been shown to meet the WHO health based guideline values; "
-            "treatment is required before the supply is accepted."
+            "not been shown to meet the WHO health based guideline values: "
+            f"{unresolved}. Treatment is required before the supply is accepted."
         )
+    if state == "indeterminate" and unresolved:
+        return f"The water has not been shown to be suitable for drinking: {unresolved}."
     return SUITABILITY_SENTENCE[state]
 
 
@@ -518,7 +527,8 @@ def _assess_result(result, entry: Optional[StandardEntry]) -> ParameterAssessmen
             and not unquantified and not unreadable):
         return row
 
-    if entry is None:
+    pathogen = entry is None and bool(faecal_pathogen(result.parameter))
+    if entry is None and not pathogen:
         # An unrecognised determinand is an open question, not a clean bill,
         # and a detection of one is no less of one: "Salmonella: Present" was
         # read as not measured and left the sample suitable for drinking.
@@ -543,6 +553,9 @@ def _assess_result(result, entry: Optional[StandardEntry]) -> ParameterAssessmen
             "compared against any limit. Confirm the result with the laboratory."
         )
         return row
+
+    if pathogen:
+        return _assess_pathogen(row, result)
 
     if unquantified:
         return _assess_unquantified(row, result, entry)
@@ -571,6 +584,57 @@ def _assess_result(result, entry: Optional[StandardEntry]) -> ParameterAssessmen
     unit_note = _unit_note(float(result.value), result.unit, converted, reason,
                            guideline_unit)
     _grade(row, entry, converted, unit_note)
+    return row
+
+
+#: What a pathogen row says about the limit it is held to.
+_PATHOGEN_NOTE = (
+    "a faecal pathogen, which drinking water must carry none of. WHO sets no "
+    "guideline value for it because the faecal indicator E. coli is the "
+    "routine check"
+)
+
+
+def _assess_pathogen(row: ParameterAssessment, result) -> ParameterAssessment:
+    """A faecal pathogen named on the certificate, graded by whether it was found.
+
+    "Salmonella: Present" was an unknown determinand: not evaluable, so it
+    kept the sample from "suitable", but not a failure either, so the verdict
+    asked for the units and detection limits to be confirmed while the
+    laboratory had reported Salmonella in the water. Any count or
+    lower bound is a detection and a health failure; nothing found, or
+    nothing found at one organism per volume examined, is the requirement
+    met. A coarser detection limit cannot show absence.
+    """
+    if result.value is not None:
+        if float(result.value) > 0:
+            return _pathogen_found(row, "detected")
+        row.status = "within_limits"
+        row.remark = f"none counted: {_PATHOGEN_NOTE}"
+        return row
+    if result.greater_than is not None:
+        return _pathogen_found(row, _stated_bound(result))
+    dl = result.detection_limit
+    if dl is not None and float(dl) > 1.0:
+        row.status = "indeterminate"
+        row.evaluable = False
+        row.reason = "detection_limit_above_guideline"
+        row.remark = (
+            f"reported below a detection limit of {float(dl):g}"
+            + (f" {result.unit}" if result.unit else "")
+            + ", which cannot show that it is absent: "
+            f"{_PATHOGEN_NOTE}. Ask the laboratory whether it was found in the "
+            "volume examined."
+        )
+        return row
+    row.status = "below_detection"
+    row.remark = f"not detected: {_PATHOGEN_NOTE}"
+    return row
+
+
+def _pathogen_found(row: ParameterAssessment, stated: str) -> ParameterAssessment:
+    row.status = "exceeds_health"
+    row.remark = f"{stated}: {_PATHOGEN_NOTE}; a health concern, whatever the count"
     return row
 
 

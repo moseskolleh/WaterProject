@@ -873,7 +873,23 @@ def build() -> dict:
         # a detection of a determinand the table does not know, which was
         # "not measured" and left the sample safe
         "unknown_detected": _wq(*_panel, WaterQualityResult(
+            "Iron bacteria", None, "per 100 mL", greater_than=0.0)),
+        # a faecal pathogen, by name: "Present" and a count fail on health,
+        # nothing found is the requirement met, and a method that cannot see
+        # one organism cannot show there are none; a plate count in CFU is
+        # not a pathogen and stays an open question
+        "pathogen_present": _wq(*_panel, WaterQualityResult(
             "Salmonella", None, "per 100 mL", greater_than=0.0)),
+        "pathogen_counted": _wq(*_panel, WaterQualityResult(
+            "Shigella spp.", 3.0, "CFU/100 mL")),
+        "pathogen_absent": _wq(*_panel, WaterQualityResult(
+            "Vibrio cholerae", None, "", below_detection=True),
+            WaterQualityResult("Salmonella typhi", 0.0, "CFU/100 mL")),
+        "pathogen_coarse_limit": _wq(*_panel, WaterQualityResult(
+            "Cryptosporidium oocysts", None, "oocysts/10 L", detection_limit=10.0,
+            below_detection=True)),
+        "plate_count": _wq(*_panel, WaterQualityResult(
+            "Heterotrophic plate count", 250.0, "CFU/mL")),
         # a national failure beside a result that could not be graded: the
         # verdict used to say the WHO health values were met
         "national_fail_unresolved": _wq(
@@ -1067,6 +1083,10 @@ def build() -> dict:
         "full": (_full, {}),
         "empty": ({}, {}),
         "no_site": (dict(_full, site=SiteMetadata(community="Nowhere")), {}),
+        # a northing 500 km short: a position, but not one in the country
+        "off_country": (dict(_full, site=SiteMetadata(
+            community="Dr. Timbo's", district="Western Area Rural",
+            easting=778000.0, northing=446000.0, utm_zone=28)), {}),
         "no_quality": (dict(_full, wq_assessment=None), {}),
         "overridden": (dict(_full, wq_assessment=None), {
             "water_quality_panel": {"reason": "lab result awaited", "by": "M. K."},
@@ -1570,6 +1590,7 @@ def pumping_cases() -> dict:
     Python parsed; the rest is compared quantity by quantity, the prose word
     for word."""
     from groundwater.ingestion.pumping import _assemble
+    from groundwater.models import step_offsets_min
 
     out = {}
     for name, grid in _pumping_case_grids().items():
@@ -1582,6 +1603,7 @@ def pumping_cases() -> dict:
                        clean(float(np.min(s.time_min))), clean(float(np.max(s.time_min)))]
                       for s in test.steps],
             "duration": clean(test.pumping_duration_min),
+            "offsets": step_offsets_min(test.steps),
             "source": analysis.transmissivity_source,
             "qualifies": analysis.adopted_fit()[2],
             "disqualified": sorted(analysis.disqualified),
@@ -1895,6 +1917,9 @@ def survey_figures_reference(rokel_interps) -> dict:
             "note": suitability_map_note(state),
             "labels": [suitability_label(p, p.rank == 1 and not state["tie"])
                        for p in points],
+            "compact_labels": [
+                suitability_label(p, p.rank == 1 and not state["tie"], compact=True)
+                for p in points],
             "eastings": [clean(p.easting) for p in points],
             "zone": zone,
             "study_area": _study_area_caption(

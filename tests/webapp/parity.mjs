@@ -482,8 +482,24 @@ await withPage(async (page, base, consoleErrors) => {
       no_ionic_balance: wq({ parameter: 'Calcium', value: 40.0, unit: 'mg/L' }),
       // a detection of a determinand the table does not know, which was
       // "not measured" and left the sample safe
-      unknown_detected: wq(...panel, { parameter: 'Salmonella', value: null,
+      unknown_detected: wq(...panel, { parameter: 'Iron bacteria', value: null,
         unit: 'per 100 mL', greater_than: 0 }),
+      // a faecal pathogen, by name: "Present" and a count fail on health,
+      // nothing found is the requirement met, and a method that cannot see
+      // one organism cannot show there are none; a plate count in CFU is not
+      // a pathogen and stays an open question
+      pathogen_present: wq(...panel, { parameter: 'Salmonella', value: null,
+        unit: 'per 100 mL', greater_than: 0 }),
+      pathogen_counted: wq(...panel, { parameter: 'Shigella spp.', value: 3.0,
+        unit: 'CFU/100 mL' }),
+      pathogen_absent: wq(...panel, { parameter: 'Vibrio cholerae', value: null,
+        unit: '', below_detection: true },
+        { parameter: 'Salmonella typhi', value: 0.0, unit: 'CFU/100 mL' }),
+      pathogen_coarse_limit: wq(...panel, { parameter: 'Cryptosporidium oocysts',
+        value: null, unit: 'oocysts/10 L', detection_limit: 10.0,
+        below_detection: true }),
+      plate_count: wq(...panel, { parameter: 'Heterotrophic plate count',
+        value: 250.0, unit: 'CFU/mL' }),
       // a national failure beside a result that could not be graded: the
       // verdict used to say the WHO health values were met
       national_fail_unresolved: wq(
@@ -633,6 +649,9 @@ await withPage(async (page, base, consoleErrors) => {
       full: [fullProject, {}],
       empty: [{}, {}],
       no_site: [Object.assign({}, fullProject, { site: { community: 'Nowhere' } }), {}],
+      // a northing 500 km short: a position, but not one in the country
+      off_country: [Object.assign({}, fullProject, { site: Object.assign({}, located,
+        { northing: 446000.0 }) }), {}],
       no_quality: [Object.assign({}, fullProject, { wq_assessment: null }), {}],
       overridden: [Object.assign({}, fullProject, { wq_assessment: null }), {
         water_quality_panel: { reason: 'lab result awaited', by: 'M. K.' },
@@ -1656,6 +1675,7 @@ await withPage(async (page, base, consoleErrors) => {
           steps: test.steps.map((s) => [s.step_number, s.discharge_m3_per_h,
             s.time_min.length, Math.min(...s.time_min), Math.max(...s.time_min)]),
           duration: test.pumping_duration_min,
+          offsets: C.stepOffsetsMin(test.steps),
           source: a.transmissivity_source,
           qualifies: C.adoptedFit(a).qualifies,
           disqualified: Object.keys(a.disqualified).sort(),
@@ -1843,6 +1863,7 @@ await withPage(async (page, base, consoleErrors) => {
         caption: data ? data.caption : null,
         note: data ? data.tie_note : C.suitabilityMapNote(state),
         labels: data ? data.points.map((p) => p.text) : [],
+        compact_labels: data ? data.points.map((p) => p.compact_text) : [],
         eastings: data ? data.points.map((p) => p.easting) : [],
         zone: data ? data.zone : C.surveyZone(interps),
         study_area: C.studyAreaCaption('Kuntolo', marked, ranking[0],

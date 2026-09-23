@@ -783,8 +783,8 @@ With every roadmap item ticked, the commits that ticked them were reviewed
 area by area, each finding reproduced in both engines and each fix written
 against a test that failed on the code as it was. Sixty-nine were found.
 The parity suite that holds the browser to the package grew from 623
-checks to 1,298 on the way; the five things the fixes deliberately left
-open are listed at the end of `ROADMAP.md`.
+checks to 1,298 on the way. The five things the fixes deliberately left
+open are closed in the next section.
 
 A pumping test no longer rests its yield on a result it refused. When every
 fit was disqualified the fallback picked the best R squared over all of
@@ -856,6 +856,50 @@ captions carry full chiefdom names, and in both engines a sheet saying
 degrees without its sign is read as west, with a note, instead of placing
 the site in central Africa. The study-area tint and the GeoLibre export
 keep the holes the rebuilt layers now carry.
+
+## What the review left open
+
+A laboratory that names a pathogen is read as having named one.
+"Salmonella: Present" had become an unknown determinand: not evaluable, so
+it kept the sample from "suitable", but not a failure either, so the
+verdict asked for the units and detection limits to be confirmed while the
+laboratory had reported Salmonella in the water. The only thing that
+could have told the code it was microbiological was its unit, and a
+heterotrophic plate count in CFU/mL - which WHO does not treat as a health
+parameter - would have failed on the same rule. Both engines now recognise
+the faecal-oral pathogens by name: any count, "Present" or lower bound is a
+health failure with its own treatment line (shock chlorination, a sanitary
+inspection, re-sampling for the pathogen and for E. coli); none counted,
+"Absent" or "<1" is the requirement met; a coarser detection limit cannot
+show that the organism is absent. WHO sets no guideline value for a
+pathogen, and the row says that rather than quoting one. A plate count
+names no organism and stays an open question.
+
+The short water-quality sentence in the completion and handover summaries
+said the WHO values had "not been shown to be met", or that the results
+were incomplete, and named nothing; it now says what is unresolved, as the
+verdict in the quality section does.
+
+A step test whose clock restarts at each step is recorded as lasting as
+long as its steps together: the Kuntolo sheet read that way pumped for 158
+minutes, and the test details row said 60. The overview and the step
+drawdown figure put each step where it was pumped instead of stacking all
+three on the first hour.
+
+The labels on a drill-target map are placed apart. Each used to be written
+to the right of its peg, so a dense survey printed its labels through each
+other and through the neighbouring pegs; both engines now place the target
+first and the rest by rank, each at the nearest place round its peg that
+covers nothing, then further out on a leader line. When the full labels do
+not all fit, the grade line, which the table carries for every point, gives
+way everywhere but at the target, and the caption says the grade is
+printed where the map has room. On the Rokel map this moves B (2)'s label
+back inside the right-hand neatline, where the browser already had it.
+
+The browser's readiness gate refuses a position outside Sierra Leone, as
+the Python's does: the site page flagged such a position and the report
+went out unstamped. A latitude and longitude typed into the site boxes is
+recorded on the gate as degrees, where it read "-13 mE, 8 mN".
 
 ## A note on the sixteen districts
 

@@ -3575,15 +3575,15 @@
     null
    ],
    "uncertainties": [
-    "Salmonella has no entry in the standards table, so it was not checked against any limit"
+    "Iron bacteria has no entry in the standards table, so it was not checked against any limit"
    ],
    "missing_essential": [],
-   "verdict": "The water cannot be declared suitable for drinking on these results: Salmonella has no entry in the standards table, so it was not checked against any limit. Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off.",
+   "verdict": "The water cannot be declared suitable for drinking on these results: Iron bacteria has no entry in the standards table, so it was not checked against any limit. Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off.",
    "flags": [
     [
      "warning",
      "unknown_parameter",
-     "No guideline entry for 'Salmonella'; it was not checked against any limit and keeps the sample out of a 'suitable for drinking' verdict. Add it to the standards CSV if a limit applies."
+     "No guideline entry for 'Iron bacteria'; it was not checked against any limit and keeps the sample out of a 'suitable for drinking' verdict. Add it to the standards CSV if a limit applies."
     ],
     [
      "warning",
@@ -3613,7 +3613,329 @@
     false
    ],
    "recommendations": [
-    "Do not treat this supply as safe to drink on these results. Salmonella has no entry in the standards table, so it was not checked against any limit. Resolve these and re-issue the assessment before any treatment decision is taken.",
+    "Do not treat this supply as safe to drink on these results. Iron bacteria has no entry in the standards table, so it was not checked against any limit. Resolve these and re-issue the assessment before any treatment decision is taken.",
+    "Disinfect the borehole after any maintenance and re-test microbiological quality before the source is returned to use.",
+    "Repeat physico-chemical and bacteriological testing at least once a year, and after any flooding, repair work on the wellhead or change in taste, colour or odour."
+   ]
+  },
+  "pathogen_present": {
+   "state": "health_fail",
+   "statuses": [
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "exceeds_health"
+   ],
+   "reasons": [
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   "converted": [
+    0.0,
+    0.001,
+    0.3,
+    5.0,
+    null
+   ],
+   "uncertainties": [],
+   "missing_essential": [],
+   "verdict": "The water does not meet the health based guideline value for: Salmonella. Treatment or an alternative source is required before the water is used for drinking.",
+   "flags": [
+    [
+     "warning",
+     "ionic_balance_not_checked",
+     "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+    ]
+   ],
+   "remarks": [
+    "",
+    "",
+    "",
+    "",
+    "detected, count not quantified: a faecal pathogen, which drinking water must carry none of. WHO sets no guideline value for it because the faecal indicator E. coli is the routine check; a health concern, whatever the count"
+   ],
+   "values": [
+    "",
+    "",
+    "",
+    "",
+    "detected"
+   ],
+   "provisional": [
+    true,
+    true,
+    true,
+    true,
+    false
+   ],
+   "recommendations": [
+    "Treat or replace the source before it is used for drinking: health based limits are exceeded for Salmonella.",
+    "A faecal pathogen in the water calls for shock chlorination of the borehole, a sanitary inspection to find where the contamination enters, and re-sampling for the pathogen and for E. coli before the supply is used for drinking.",
+    "Disinfect the borehole after any maintenance and re-test microbiological quality before the source is returned to use.",
+    "Repeat physico-chemical and bacteriological testing at least once a year, and after any flooding, repair work on the wellhead or change in taste, colour or odour."
+   ]
+  },
+  "pathogen_counted": {
+   "state": "health_fail",
+   "statuses": [
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "exceeds_health"
+   ],
+   "reasons": [
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   "converted": [
+    0.0,
+    0.001,
+    0.3,
+    5.0,
+    null
+   ],
+   "uncertainties": [],
+   "missing_essential": [],
+   "verdict": "The water does not meet the health based guideline value for: Shigella spp.. Treatment or an alternative source is required before the water is used for drinking.",
+   "flags": [
+    [
+     "warning",
+     "ionic_balance_not_checked",
+     "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+    ]
+   ],
+   "remarks": [
+    "",
+    "",
+    "",
+    "",
+    "detected: a faecal pathogen, which drinking water must carry none of. WHO sets no guideline value for it because the faecal indicator E. coli is the routine check; a health concern, whatever the count"
+   ],
+   "values": [
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   "provisional": [
+    true,
+    true,
+    true,
+    true,
+    false
+   ],
+   "recommendations": [
+    "Treat or replace the source before it is used for drinking: health based limits are exceeded for Shigella spp..",
+    "A faecal pathogen in the water calls for shock chlorination of the borehole, a sanitary inspection to find where the contamination enters, and re-sampling for the pathogen and for E. coli before the supply is used for drinking.",
+    "Disinfect the borehole after any maintenance and re-test microbiological quality before the source is returned to use.",
+    "Repeat physico-chemical and bacteriological testing at least once a year, and after any flooding, repair work on the wellhead or change in taste, colour or odour."
+   ]
+  },
+  "pathogen_absent": {
+   "state": "pass",
+   "statuses": [
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "below_detection",
+    "within_limits"
+   ],
+   "reasons": [
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   "converted": [
+    0.0,
+    0.001,
+    0.3,
+    5.0,
+    null,
+    null
+   ],
+   "uncertainties": [],
+   "missing_essential": [],
+   "verdict": "All measured parameters comply with the WHO guideline values and the national standard limits applied. The water is suitable for drinking on the basis of the parameters tested.",
+   "flags": [
+    [
+     "warning",
+     "ionic_balance_not_checked",
+     "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+    ]
+   ],
+   "remarks": [
+    "",
+    "",
+    "",
+    "",
+    "not detected: a faecal pathogen, which drinking water must carry none of. WHO sets no guideline value for it because the faecal indicator E. coli is the routine check",
+    "none counted: a faecal pathogen, which drinking water must carry none of. WHO sets no guideline value for it because the faecal indicator E. coli is the routine check"
+   ],
+   "values": [
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   "provisional": [
+    true,
+    true,
+    true,
+    true,
+    false,
+    false
+   ],
+   "recommendations": [
+    "No treatment is required on the basis of the parameters tested. Maintain the sanitary seal and apron in good condition.",
+    "Disinfect the borehole after any maintenance and re-test microbiological quality before the source is returned to use.",
+    "Repeat physico-chemical and bacteriological testing at least once a year, and after any flooding, repair work on the wellhead or change in taste, colour or odour."
+   ]
+  },
+  "pathogen_coarse_limit": {
+   "state": "indeterminate",
+   "statuses": [
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "indeterminate"
+   ],
+   "reasons": [
+    "",
+    "",
+    "",
+    "",
+    "detection_limit_above_guideline"
+   ],
+   "converted": [
+    0.0,
+    0.001,
+    0.3,
+    5.0,
+    null
+   ],
+   "uncertainties": [
+    "Cryptosporidium oocysts could not be assessed: the detection limit is above the limit being checked"
+   ],
+   "missing_essential": [],
+   "verdict": "The water cannot be declared suitable for drinking on these results: Cryptosporidium oocysts could not be assessed: the detection limit is above the limit being checked. Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off.",
+   "flags": [
+    [
+     "error",
+     "indeterminate_detection_limit_above_guideline",
+     "'Cryptosporidium oocysts' could not be assessed: reported below a detection limit of 10 oocysts/10 L, which cannot show that it is absent: a faecal pathogen, which drinking water must carry none of. WHO sets no guideline value for it because the faecal indicator E. coli is the routine check. Ask the laboratory whether it was found in the volume examined."
+    ],
+    [
+     "warning",
+     "ionic_balance_not_checked",
+     "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+    ]
+   ],
+   "remarks": [
+    "",
+    "",
+    "",
+    "",
+    "reported below a detection limit of 10 oocysts/10 L, which cannot show that it is absent: a faecal pathogen, which drinking water must carry none of. WHO sets no guideline value for it because the faecal indicator E. coli is the routine check. Ask the laboratory whether it was found in the volume examined."
+   ],
+   "values": [
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   "provisional": [
+    true,
+    true,
+    true,
+    true,
+    false
+   ],
+   "recommendations": [
+    "Do not treat this supply as safe to drink on these results. Cryptosporidium oocysts could not be assessed: the detection limit is above the limit being checked. Resolve these and re-issue the assessment before any treatment decision is taken.",
+    "Disinfect the borehole after any maintenance and re-test microbiological quality before the source is returned to use.",
+    "Repeat physico-chemical and bacteriological testing at least once a year, and after any flooding, repair work on the wellhead or change in taste, colour or odour."
+   ]
+  },
+  "plate_count": {
+   "state": "indeterminate",
+   "statuses": [
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "within_limits",
+    "no_guideline"
+   ],
+   "reasons": [
+    "",
+    "",
+    "",
+    "",
+    "unknown_parameter"
+   ],
+   "converted": [
+    0.0,
+    0.001,
+    0.3,
+    5.0,
+    null
+   ],
+   "uncertainties": [
+    "Heterotrophic plate count has no entry in the standards table, so it was not checked against any limit"
+   ],
+   "missing_essential": [],
+   "verdict": "The water cannot be declared suitable for drinking on these results: Heterotrophic plate count has no entry in the standards table, so it was not checked against any limit. Resolve the outstanding parameters - re-sample, or ask the laboratory for the units and detection limits used - before the supply is signed off.",
+   "flags": [
+    [
+     "warning",
+     "unknown_parameter",
+     "No guideline entry for 'Heterotrophic plate count'; it was not checked against any limit and keeps the sample out of a 'suitable for drinking' verdict. Add it to the standards CSV if a limit applies."
+    ],
+    [
+     "warning",
+     "ionic_balance_not_checked",
+     "The charge balance could not be computed: the analysis carries no values for calcium, magnesium, sodium, chloride, bicarbonate (or alkalinity), sulfate. Ask the laboratory for the major ions if the analysis is to be relied on."
+    ]
+   ],
+   "remarks": [
+    "",
+    "",
+    "",
+    "",
+    "parameter not in the standards table, so it was not checked against any limit"
+   ],
+   "values": [
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   "provisional": [
+    true,
+    true,
+    true,
+    true,
+    false
+   ],
+   "recommendations": [
+    "Do not treat this supply as safe to drink on these results. Heterotrophic plate count has no entry in the standards table, so it was not checked against any limit. Resolve these and re-issue the assessment before any treatment decision is taken.",
     "Disinfect the borehole after any maintenance and re-test microbiological quality before the source is returned to use.",
     "Repeat physico-chemical and bacteriological testing at least once a year, and after any flooding, repair work on the wellhead or change in taste, colour or odour."
    ]
@@ -5443,6 +5765,239 @@
       "site_located",
       "unmet",
       "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained.",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ],
+    "assumptions": []
+   }
+  },
+  "off_country": {
+   "completion": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position, Yield established.",
+    "requirements": [
+     [
+      "field_data",
+      "met",
+      "No input is a bundled example file.",
+      "",
+      ""
+     ],
+     [
+      "site_located",
+      "unmet",
+      "Coordinates convert to 4.0312 N, 12.4963 W which is outside Sierra Leone; check easting/northing and the UTM zone.",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 70 m with 14 lithological intervals.",
+      "",
+      ""
+     ],
+     [
+      "readings_usable",
+      "met",
+      "Every reading carried a unit the toolkit could read.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinands graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "design_derived",
+      "met",
+      "19.0 m of screen in 3 runs.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ],
+    "assumptions": []
+   },
+   "handover": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position, Yield established.",
+    "requirements": [
+     [
+      "field_data",
+      "met",
+      "No input is a bundled example file.",
+      "",
+      ""
+     ],
+     [
+      "site_located",
+      "unmet",
+      "Coordinates convert to 4.0312 N, 12.4963 W which is outside Sierra Leone; check easting/northing and the UTM zone.",
+      "",
+      ""
+     ],
+     [
+      "borehole_logged",
+      "met",
+      "Logged to 70 m with 14 lithological intervals.",
+      "",
+      ""
+     ],
+     [
+      "pumping_measured",
+      "met",
+      "1 step with discharge, static water level 9.44 m.",
+      "",
+      ""
+     ],
+     [
+      "yield_established",
+      "unmet",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinands graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ],
+    "assumptions": []
+   },
+   "quality": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position.",
+    "requirements": [
+     [
+      "field_data",
+      "met",
+      "No input is a bundled example file.",
+      "",
+      ""
+     ],
+     [
+      "site_located",
+      "unmet",
+      "Coordinates convert to 4.0312 N, 12.4963 W which is outside Sierra Leone; check easting/northing and the UTM zone.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_panel",
+      "met",
+      "The health panel was run and every result was evaluable.",
+      "",
+      ""
+     ],
+     [
+      "water_quality_evaluable",
+      "met",
+      "22 determinands graded; verdict health_fail.",
+      "",
+      ""
+     ],
+     [
+      "no_errors",
+      "met",
+      "No module reported a fatal problem with the data.",
+      "",
+      ""
+     ]
+    ],
+    "assumptions": []
+   },
+   "pumping": {
+    "state": "not_ready",
+    "summary": "Not ready to certify - outstanding: Site position, Yield established.",
+    "requirements": [
+     [
+      "field_data",
+      "met",
+      "No input is a bundled example file.",
+      "",
+      ""
+     ],
+     [
+      "site_located",
+      "unmet",
+      "Coordinates convert to 4.0312 N, 12.4963 W which is outside Sierra Leone; check easting/northing and the UTM zone.",
       "",
       ""
      ],
@@ -12977,6 +13532,9 @@
     ]
    ],
    "duration": 30.0,
+   "offsets": [
+    0.0
+   ],
    "source": "cooper_jacob",
    "qualifies": false,
    "disqualified": [
@@ -13043,6 +13601,9 @@
     ]
    ],
    "duration": 3.0,
+   "offsets": [
+    0.0
+   ],
    "source": null,
    "qualifies": false,
    "disqualified": [
@@ -13097,6 +13658,9 @@
     ]
    ],
    "duration": 30.0,
+   "offsets": [
+    0.0
+   ],
    "source": "cooper_jacob",
    "qualifies": false,
    "disqualified": [
@@ -13169,6 +13733,9 @@
     ]
    ],
    "duration": 30.0,
+   "offsets": [
+    0.0
+   ],
    "source": "cooper_jacob",
    "qualifies": false,
    "disqualified": [
@@ -13241,6 +13808,9 @@
     ]
    ],
    "duration": 30.0,
+   "offsets": [
+    0.0
+   ],
    "source": "cooper_jacob",
    "qualifies": false,
    "disqualified": [
@@ -13307,6 +13877,9 @@
     ]
    ],
    "duration": 240.0,
+   "offsets": [
+    0.0
+   ],
    "source": "cooper_jacob",
    "qualifies": true,
    "disqualified": [],
@@ -13360,7 +13933,12 @@
      38.0
     ]
    ],
-   "duration": 60.0,
+   "duration": 158.0,
+   "offsets": [
+    0.0,
+    60.0,
+    120.0
+   ],
    "source": "recovery",
    "qualifies": false,
    "disqualified": [],
@@ -13451,6 +14029,11 @@
     ]
    ],
    "duration": 150.0,
+   "offsets": [
+    0.0,
+    0.0,
+    0.0
+   ],
    "source": "cooper_jacob",
    "qualifies": false,
    "disqualified": [
@@ -17101,11 +17684,15 @@
       ],
       "recommended": null
      },
-     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and with the grade of its suitability before the confidence discount, as in the table above. The recommended target, VES 3, has no recorded position and is not on the map, so no point is starred.",
+     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and, where the map has room, with the grade of its suitability before the confidence discount, as in the table above. The recommended target, VES 3, has no recorded position and is not on the map, so no point is starred.",
      "note": "The recommended point, VES 3, has no recorded position and is not on this map.",
      "labels": [
       "VES 1\nRank 2, weighted 68\nGood suitability",
       "VES 2\nRank 3, weighted 63\nGood suitability"
+     ],
+     "compact_labels": [
+      "VES 1\nRank 2, weighted 68",
+      "VES 2\nRank 3, weighted 63"
      ],
      "eastings": [
       178000.0,
@@ -17192,6 +17779,7 @@
      "caption": null,
      "note": "The recommended point, VES 2, has no recorded position and is not on this map.",
      "labels": [],
+     "compact_labels": [],
      "eastings": [],
      "zone": null,
      "study_area": "Study area at Kuntolo, with its location in Sierra Leone inset. No sounding carries a recorded GPS position, so none is marked on it."
@@ -17238,11 +17826,15 @@
       "unplaced": [],
       "recommended": "VES 1"
      },
-     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and with the grade of its suitability before the confidence discount, as in the table above. The star is the recommended target, VES 1, with its grid coordinates.",
+     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and, where the map has room, with the grade of its suitability before the confidence discount, as in the table above. The star is the recommended target, VES 1, with its grid coordinates.",
      "note": "",
      "labels": [
       "VES 1\nRank 1, weighted 75\nVery good suitability\nE 178000  N 1000000",
       "VES 2\nRank 2, weighted 72\nGood suitability"
+     ],
+     "compact_labels": [
+      "VES 1\nRank 1, weighted 75\nVery good suitability\nE 178000  N 1000000",
+      "VES 2\nRank 2, weighted 72"
      ],
      "eastings": [
       178000.0,
@@ -17321,11 +17913,15 @@
       "unplaced": [],
       "recommended": null
      },
-     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and with the grade of its suitability before the confidence discount, as in the table above. The two highest-ranked points cannot be told apart on geophysical grounds, so neither is starred.",
+     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and, where the map has room, with the grade of its suitability before the confidence discount, as in the table above. The two highest-ranked points cannot be told apart on geophysical grounds, so neither is starred.",
      "note": "VES 1 and VES 2 are indistinguishable on geophysical grounds; choose between them on access and sanitary distances.",
      "labels": [
       "VES 1\nRank 1, weighted 75\nVery good suitability",
       "VES 2\nRank 2, weighted 72\nGood suitability"
+     ],
+     "compact_labels": [
+      "VES 1\nRank 1, weighted 75",
+      "VES 2\nRank 2, weighted 72"
      ],
      "eastings": [
       178000.0,
@@ -17348,12 +17944,17 @@
       "unplaced": [],
       "recommended": null
      },
-     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and with the grade of its suitability before the confidence discount, as in the table above. The two highest-ranked points cannot be told apart on geophysical grounds, so neither is starred. The surface between the points is interpolated and blanked outside the ground they enclose.",
+     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and, where the map has room, with the grade of its suitability before the confidence discount, as in the table above. The two highest-ranked points cannot be told apart on geophysical grounds, so neither is starred. The surface between the points is interpolated and blanked outside the ground they enclose.",
      "note": "VES 1 and VES 2 are indistinguishable on geophysical grounds; choose between them on access and sanitary distances.",
      "labels": [
       "VES 1\nRank 1, weighted 75\nVery good suitability",
       "VES 2\nRank 2, weighted 75\nVery good suitability",
       "VES 3\nRank 3, weighted 56\nGood suitability"
+     ],
+     "compact_labels": [
+      "VES 1\nRank 1, weighted 75",
+      "VES 2\nRank 2, weighted 75",
+      "VES 3\nRank 3, weighted 56"
      ],
      "eastings": [
       178000.0,
@@ -17476,13 +18077,19 @@
       "unplaced": [],
       "recommended": null
      },
-     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and with the grade of its suitability before the confidence discount, as in the table above. The two highest-ranked points cannot be told apart on geophysical grounds, so neither is starred. The points lie on one line and enclose no area, so no surface is interpolated between them.",
+     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and, where the map has room, with the grade of its suitability before the confidence discount, as in the table above. The two highest-ranked points cannot be told apart on geophysical grounds, so neither is starred. The points lie on one line and enclose no area, so no surface is interpolated between them.",
      "note": "VES 1 and VES 2 are indistinguishable on geophysical grounds; choose between them on access and sanitary distances.",
      "labels": [
       "VES 1\nRank 1, weighted 75\nVery good suitability",
       "VES 2\nRank 2, weighted 75\nVery good suitability",
       "VES 3\nRank 3, weighted 75\nVery good suitability",
       "VES 4\nRank 4, weighted 75\nVery good suitability"
+     ],
+     "compact_labels": [
+      "VES 1\nRank 1, weighted 75",
+      "VES 2\nRank 2, weighted 75",
+      "VES 3\nRank 3, weighted 75",
+      "VES 4\nRank 4, weighted 75"
      ],
      "eastings": [
       178000.0,
@@ -17607,12 +18214,17 @@
       "unplaced": [],
       "recommended": null
      },
-     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and with the grade of its suitability before the confidence discount, as in the table above. The two highest-ranked points cannot be told apart on geophysical grounds, so neither is starred. The points lie on one line and enclose no area, so no surface is interpolated between them.",
+     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and, where the map has room, with the grade of its suitability before the confidence discount, as in the table above. The two highest-ranked points cannot be told apart on geophysical grounds, so neither is starred. The points lie on one line and enclose no area, so no surface is interpolated between them.",
      "note": "VES 1 and VES 2 are indistinguishable on geophysical grounds; choose between them on access and sanitary distances.",
      "labels": [
       "VES 1\nRank 1, weighted 75\nVery good suitability",
       "VES 2\nRank 2, weighted 72\nGood suitability",
       "VES 3\nRank 3, weighted 70\nGood suitability"
+     ],
+     "compact_labels": [
+      "VES 1\nRank 1, weighted 75",
+      "VES 2\nRank 2, weighted 72",
+      "VES 3\nRank 3, weighted 70"
      ],
      "eastings": [
       178000.0,
@@ -17741,11 +18353,15 @@
       "unplaced": [],
       "recommended": null
      },
-     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and with the grade of its suitability before the confidence discount, as in the table above. The two highest-ranked points cannot be told apart on geophysical grounds, so neither is starred.",
+     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and, where the map has room, with the grade of its suitability before the confidence discount, as in the table above. The two highest-ranked points cannot be told apart on geophysical grounds, so neither is starred.",
      "note": "B (2) and A (1) are indistinguishable on geophysical grounds; choose between them on access and sanitary distances.",
      "labels": [
       "B (2)\nRank 1, weighted 60\nGood suitability",
       "A (1)\nRank 2, weighted 59\nGood suitability"
+     ],
+     "compact_labels": [
+      "B (2)\nRank 1, weighted 60",
+      "A (1)\nRank 2, weighted 59"
      ],
      "eastings": [
       727012.0,
@@ -17819,12 +18435,17 @@
       "unplaced": [],
       "recommended": null
      },
-     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and with the grade of its suitability before the confidence discount, as in the table above. The two highest-ranked points cannot be told apart on geophysical grounds, so neither is starred. The points lie on one line and enclose no area, so no surface is interpolated between them.",
+     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and, where the map has room, with the grade of its suitability before the confidence discount, as in the table above. The two highest-ranked points cannot be told apart on geophysical grounds, so neither is starred. The points lie on one line and enclose no area, so no surface is interpolated between them.",
      "note": "VES 1 and VES 2 are indistinguishable on geophysical grounds; choose between them on access and sanitary distances.",
      "labels": [
       "VES 1\nRank 1, weighted 75\nVery good suitability",
       "VES 2\nRank 2, weighted 72\nGood suitability",
       "VES 3\nRank 3, weighted 70\nGood suitability"
+     ],
+     "compact_labels": [
+      "VES 1\nRank 1, weighted 75",
+      "VES 2\nRank 2, weighted 72",
+      "VES 3\nRank 3, weighted 70"
      ],
      "eastings": [
       178000.0,
@@ -17917,12 +18538,17 @@
       "unplaced": [],
       "recommended": null
      },
-     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and with the grade of its suitability before the confidence discount, as in the table above. The two highest-ranked points cannot be told apart on geophysical grounds, so neither is starred. The points lie on one line and enclose no area, so no surface is interpolated between them.",
+     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and, where the map has room, with the grade of its suitability before the confidence discount, as in the table above. The two highest-ranked points cannot be told apart on geophysical grounds, so neither is starred. The points lie on one line and enclose no area, so no surface is interpolated between them.",
      "note": "VES 1 and VES 2 are indistinguishable on geophysical grounds; choose between them on access and sanitary distances.",
      "labels": [
       "VES 1\nRank 1, weighted 75\nVery good suitability",
       "VES 2\nRank 2, weighted 72\nGood suitability",
       "VES 3\nRank 3, weighted 70\nGood suitability"
+     ],
+     "compact_labels": [
+      "VES 1\nRank 1, weighted 75",
+      "VES 2\nRank 2, weighted 72",
+      "VES 3\nRank 3, weighted 70"
      ],
      "eastings": [
       178000.0,
@@ -18014,12 +18640,17 @@
       "unplaced": [],
       "recommended": "VES 1"
      },
-     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and with the grade of its suitability before the confidence discount, as in the table above. The star is the recommended target, VES 1, with its grid coordinates. The points lie on one line and enclose no area, so no surface is interpolated between them.",
+     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and, where the map has room, with the grade of its suitability before the confidence discount, as in the table above. The star is the recommended target, VES 1, with its grid coordinates. The points lie on one line and enclose no area, so no surface is interpolated between them.",
      "note": "",
      "labels": [
       "VES 1\nRank 1, weighted 77\nVery good suitability\nE 178100  N 1000000",
       "VES 1\nRank 2, weighted 64\nGood suitability",
       "VES 2\nRank 3, weighted 63\nGood suitability"
+     ],
+     "compact_labels": [
+      "VES 1\nRank 1, weighted 77\nVery good suitability\nE 178100  N 1000000",
+      "VES 1\nRank 2, weighted 64",
+      "VES 2\nRank 3, weighted 63"
      ],
      "eastings": [
       178100.0,
@@ -18142,12 +18773,17 @@
       "unplaced": [],
       "recommended": null
      },
-     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and with the grade of its suitability before the confidence discount, as in the table above. The two highest-ranked points cannot be told apart on geophysical grounds, so neither is starred. The points lie on one line and enclose no area, so no surface is interpolated between them.",
+     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and, where the map has room, with the grade of its suitability before the confidence discount, as in the table above. The two highest-ranked points cannot be told apart on geophysical grounds, so neither is starred. The points lie on one line and enclose no area, so no surface is interpolated between them.",
      "note": "VES 1 and VES 2 are indistinguishable on geophysical grounds; choose between them on access and sanitary distances.",
      "labels": [
       "VES 1\nRank 1, weighted 75\nVery good suitability",
       "VES 2\nRank 2, weighted 72\nGood suitability",
       "VES 3\nRank 3, weighted 70\nGood suitability"
+     ],
+     "compact_labels": [
+      "VES 1\nRank 1, weighted 75",
+      "VES 2\nRank 2, weighted 72",
+      "VES 3\nRank 3, weighted 70"
      ],
      "eastings": [
       178000.0,
@@ -18270,12 +18906,17 @@
       "unplaced": [],
       "recommended": null
      },
-     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and with the grade of its suitability before the confidence discount, as in the table above. The two highest-ranked points cannot be told apart on geophysical grounds, so neither is starred. The surface between the points is interpolated and blanked outside the ground they enclose.",
+     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and, where the map has room, with the grade of its suitability before the confidence discount, as in the table above. The two highest-ranked points cannot be told apart on geophysical grounds, so neither is starred. The surface between the points is interpolated and blanked outside the ground they enclose.",
      "note": "VES 2 and VES 3 are indistinguishable on geophysical grounds; choose between them on access and sanitary distances.",
      "labels": [
       "VES 2\nRank 1, weighted 60\nGood suitability",
       "VES 3\nRank 2, weighted 60\nGood suitability",
       "VES 1\nRank 3, weighted 59\nGood suitability"
+     ],
+     "compact_labels": [
+      "VES 2\nRank 1, weighted 60",
+      "VES 3\nRank 2, weighted 60",
+      "VES 1\nRank 3, weighted 59"
      ],
      "eastings": [
       178100.0,
@@ -18364,12 +19005,17 @@
       "unplaced": [],
       "recommended": "VES 3"
      },
-     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and with the grade of its suitability before the confidence discount, as in the table above. The star is the recommended target, VES 3, with its grid coordinates. The surface between the points is interpolated and blanked outside the ground they enclose.",
+     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and, where the map has room, with the grade of its suitability before the confidence discount, as in the table above. The star is the recommended target, VES 3, with its grid coordinates. The surface between the points is interpolated and blanked outside the ground they enclose.",
      "note": "",
      "labels": [
       "VES 3\nRank 1, weighted 79\nVery good suitability\nE 178040  N 1000120",
       "VES 2\nRank 2, weighted 75\nVery good suitability",
       "VES 1\nRank 3, weighted 59\nGood suitability"
+     ],
+     "compact_labels": [
+      "VES 3\nRank 1, weighted 79\nVery good suitability\nE 178040  N 1000120",
+      "VES 2\nRank 2, weighted 75",
+      "VES 1\nRank 3, weighted 59"
      ],
      "eastings": [
       178040.0,
@@ -18469,11 +19115,15 @@
       "unplaced": [],
       "recommended": "VES 2"
      },
-     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and with the grade of its suitability before the confidence discount, as in the table above. The star is the recommended target, VES 2, with its grid coordinates.",
+     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and, where the map has room, with the grade of its suitability before the confidence discount, as in the table above. The star is the recommended target, VES 2, with its grid coordinates.",
      "note": "",
      "labels": [
       "VES 2\nRank 1, weighted 75\nVery good suitability\nE 178100  N 1000030",
       "VES 1\nRank 2, weighted 59\nGood suitability"
+     ],
+     "compact_labels": [
+      "VES 2\nRank 1, weighted 75\nVery good suitability\nE 178100  N 1000030",
+      "VES 1\nRank 2, weighted 59"
      ],
      "eastings": [
       178100.0,
@@ -18553,12 +19203,17 @@
       "unplaced": [],
       "recommended": "VES 3"
      },
-     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and with the grade of its suitability before the confidence discount, as in the table above. The star is the recommended target, VES 3, with its grid coordinates. The surface between the points is interpolated and blanked outside the ground they enclose.",
+     "caption": "Drill-target suitability of the surveyed points, coloured by the confidence-weighted score; greener is more suitable. Each point is labelled with its rank and weighted score, and, where the map has room, with the grade of its suitability before the confidence discount, as in the table above. The star is the recommended target, VES 3, with its grid coordinates. The surface between the points is interpolated and blanked outside the ground they enclose.",
      "note": "",
      "labels": [
       "VES 3\nRank 1, weighted 91\nVery good suitability\nE 830527  N 985138",
       "VES 2\nRank 2, weighted 82\nVery good suitability",
       "VES 1\nRank 3, weighted 72\nGood suitability"
+     ],
+     "compact_labels": [
+      "VES 3\nRank 1, weighted 91\nVery good suitability\nE 830527  N 985138",
+      "VES 2\nRank 2, weighted 82",
+      "VES 1\nRank 3, weighted 72"
      ],
      "eastings": [
       830527.0161506778,

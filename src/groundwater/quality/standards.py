@@ -197,6 +197,32 @@ def normalise_parameter(name: str) -> str:
     return key
 
 
+#: Faecal-oral pathogens a laboratory may name on a certificate: the bacteria,
+#: viruses and protozoa the faecal indicator E. coli stands for. WHO sets no
+#: guideline value for any of them, because drinking water must carry none
+#: and the indicator is the routine check. They are recognised by name, not
+#: by unit: a count in CFU is as likely to be a heterotrophic plate count,
+#: which has no health significance, and reading every CFU count as a
+#: pathogen would turn that into a health failure.
+_FAECAL_PATHOGEN_RE = re.compile(
+    r"\b(salmonella|s\.? ?typhi|typhoid|shigella|vibrio cholerae|v\.? ?cholerae"
+    r"|cholera|campylobacter|yersinia|e\.? ?coli o157|cryptosporidium|giardia"
+    r"|entamoeba histolytica|cyclospora|hepatitis [ae]\b|rotavirus|norovirus"
+    r"|enterovirus|adenovirus|astrovirus)"
+)
+
+
+def faecal_pathogen(name: str) -> str:
+    """The faecal pathogen a parameter name refers to, or ``""``.
+
+    "Salmonella spp.", "Vibrio cholerae O1" and "Cryptosporidium oocysts"
+    all name one; "E. coli" is the indicator and has its own table entry,
+    and "Heterotrophic plate count" names no organism at all.
+    """
+    match = _FAECAL_PATHOGEN_RE.search(re.sub(r"\s+", " ", str(name or "").lower()))
+    return match.group(1) if match else ""
+
+
 _PARAMETER_BASIS_RE = re.compile(r"\(\s*as\s+([^)]+?)\s*\)")
 
 

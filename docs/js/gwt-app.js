@@ -1306,22 +1306,10 @@
    * sentence check_site_consistency writes for a position outside the
    * country, UTM or degrees; the site page shows both. */
   function siteLatLon() {
-    var site = store.get('site');
-    var e = site.easting, n = site.northing;
-    if (e === null || n === null || e === undefined || n === undefined) return null;
-    var ll;
-    if (Math.abs(e) <= 180 && Math.abs(n) <= 90) {
-      var reading = C.readLatLon(String(n) + ', ' + String(e));
-      ll = reading.lat === null || reading.lon === null
-        ? { lat: Number(n), lon: Number(e), note: '' }
-        : { lat: reading.lat, lon: reading.lon, note: reading.message };
-      ll.fromUtm = false;
-    } else {
-      var zone = site.utm_zone || C.inferZoneForSierraLeone(e);
-      ll = utmToLatLon(e, n, zone);
-      if (!ll) return null;
-      ll.fromUtm = true; ll.zone = zone; ll.note = '';
-    }
+    /* read once, in the core, so the readiness gate refuses the position the
+     * site page flags */
+    var ll = C.sitePosition(store.get('site'));
+    if (!ll) return null;
     ll.outside = C.outsideCountryNote(ll.lat, ll.lon);
     ll.chiefdom = chiefdomAt(ll.lat, ll.lon);
     return ll;

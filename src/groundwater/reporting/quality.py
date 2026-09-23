@@ -19,7 +19,11 @@ from docx.shared import RGBColor
 from ..config import Config
 from ..quality.assess import STATUS_LABELS, WaterQualityAssessment, unquantified_text
 from ..quality.diagrams import facies_of, plot_piper, plot_stiff
-from ..quality.standards import PROVISIONAL_NATIONAL_NOTE, normalise_parameter
+from ..quality.standards import (
+    PROVISIONAL_NATIONAL_NOTE,
+    faecal_pathogen,
+    normalise_parameter,
+)
 from ..utils import fmt_num, safe_slug, plural_noun
 from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
@@ -73,6 +77,15 @@ _TREATMENT_ADVICE = {
     "development of the borehole and re-sample.",
 }
 
+#: For a faecal pathogen found in the water, which has no table entry to key
+#: advice by and used to get none under "Treat before use".
+_PATHOGEN_ADVICE = (
+    "A faecal pathogen in the water calls for shock chlorination of the "
+    "borehole, a sanitary inspection to find where the contamination enters, "
+    "and re-sampling for the pathogen and for E. coli before the supply is "
+    "used for drinking."
+)
+
 #: pH is out of range in one of two directions, and the advice for each is
 #: different: the low-pH advice used to be given for a pH of 9.2.
 _PH_ADVICE_LOW = (
@@ -119,6 +132,8 @@ def quality_recommendations(assessment: WaterQualityAssessment) -> list[str]:
             low = (r.value_in_guideline_unit is not None
                    and r.value_in_guideline_unit < 7.0)
             text = _PH_ADVICE_LOW if low else _PH_ADVICE_HIGH
+        elif faecal_pathogen(r.parameter):
+            text = _PATHOGEN_ADVICE
         else:
             text = _TREATMENT_ADVICE.get(key)
         if text and text not in advice:

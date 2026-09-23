@@ -288,6 +288,63 @@ class PumpingTest:
         return self.recovery_level_m - self.static_water_level_m
 
 
+def step_durations_min(steps) -> tuple[list[float], list[int]]:
+    """``(minutes per step, restarted step numbers)``: how long each step pumped.
+
+    A step's times normally run on from the step before (61, 62 ... after a
+    step ending at 60), and its length is its last reading less that step's.
+    Some sheets count each step from its own start instead, so a step opens
+    at or before the minute the step before it ended; its own last reading is
+    then its length, and the lengths add. Differencing those steps against
+    the step before gave them no length at all: the recovery after such a
+    step test was read against 30 minutes where the steps had pumped 158.
+    A step with no readable time pumped for no measurable time.
+    """
+    durations: list[float] = []
+    restarted: list[int] = []
+    previous_end: Optional[float] = None
+    for step in steps:
+        finite = step.time_min[np.isfinite(step.time_min)]
+        if not len(finite):
+            durations.append(0.0)
+            continue
+        start, end = float(finite.min()), float(finite.max())
+        if previous_end is not None and start <= previous_end:
+            restarted.append(step.step_number)
+            durations.append(max(end, 0.0))
+        else:
+            durations.append(max(end - (previous_end or 0.0), 0.0))
+        previous_end = end
+    return durations, restarted
+
+
+def step_offsets_min(steps) -> list[float]:
+    """The minutes to add to each step's times to put it on the test's clock.
+
+    Read by the same rule as :func:`step_durations_min`: a step counted from
+    its own start began when the step before it ended, so it moves to there,
+    and a step that runs on from it moves with it. On a sheet whose times run
+    through the test every offset is zero. The recorded duration and the
+    overview used to read the restarted clocks as written, so a test that
+    pumped for 158 minutes was printed as lasting 60 and drawn as three steps
+    stacked on the same hour.
+    """
+    offsets: list[float] = []
+    shift = 0.0
+    previous_end: Optional[float] = None
+    for step in steps:
+        finite = step.time_min[np.isfinite(step.time_min)]
+        if not len(finite):
+            offsets.append(shift)
+            continue
+        start, end = float(finite.min()), float(finite.max())
+        if previous_end is not None and start <= previous_end:
+            shift += previous_end
+        offsets.append(shift)
+        previous_end = end
+    return offsets
+
+
 # ---------------------------------------------------------------------------
 # Drilling log
 # ---------------------------------------------------------------------------

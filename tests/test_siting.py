@@ -1,5 +1,7 @@
 """Drill-target siting suitability (prototype) tests."""
 
+import pytest
+
 from groundwater.ingestion import read_ves_workbook
 from groundwater.siting import assess_siting, suitability_map_points
 from groundwater.mapping import suitability_map
@@ -96,6 +98,123 @@ def test_the_map_stars_the_recommended_point_and_writes_its_coordinates(tmp_path
     assert "recommended drill target" not in legend
     assert "indistinguishable" in said
     assert suitability_map_state(points)["tie"] is True
+
+
+def _grid_survey(nx, ny, spacing):
+    """A survey of nx by ny pegs, scored so that no two tie."""
+    from groundwater.mapping import MapPoint
+
+    points = []
+    for j in range(ny):
+        for i in range(nx):
+            k = j * nx + i
+            value = 80.0 - 4.0 * ((k * 7) % (nx * ny))
+            points.append(MapPoint(
+                label=f"VES {k + 1}", easting=710000.0 + spacing * i,
+                northing=950000.0 + spacing * j, value=value,
+                kind="Good" if value >= 55 else "Moderate",
+            ))
+    for rank, p in enumerate(sorted(points, key=lambda p: -p.value), start=1):
+        p.rank = rank
+    return points
+
+
+def _label_layout(fig):
+    """Each label's box and text, the pegs' boxes, and the map frame."""
+    from matplotlib.text import Annotation
+
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    ax = fig.axes[0]
+    labels = [(a.get_window_extent(renderer), a.get_text()) for a in ax.texts
+              if isinstance(a, Annotation) and a.get_text().startswith("VES")]
+    pegs = [line.get_window_extent(renderer) for line in ax.get_lines()
+            if line.get_marker() in ("o", "*")]
+    return labels, pegs, ax.get_window_extent(renderer)
+
+
+def _shared(a, b) -> float:
+    w = min(a.x1, b.x1) - max(a.x0, b.x0)
+    h = min(a.y1, b.y1) - max(a.y0, b.y0)
+    return w * h if w > 0 and h > 0 else 0.0
+
+
+def test_the_labels_of_a_dense_survey_are_placed_apart():
+    """Every label was written up and to the right of its peg, so twelve pegs
+    60 m apart printed their four-line labels through each other and through
+    the neighbouring pegs, and the map named none of them."""
+    import matplotlib.pyplot as plt
+
+    fig = suitability_map(_grid_survey(4, 3, 60.0), zone=28)
+    try:
+        labels, pegs, frame = _label_layout(fig)
+        leaders = [a for a in fig.axes[0].texts if not a.get_text()
+                   and getattr(a, "arrow_patch", None) is not None]
+    finally:
+        plt.close(fig)
+    assert len(labels) == 12
+    for i, (box, text) in enumerate(labels):
+        assert _shared(box, frame) == pytest.approx(box.width * box.height), text
+        for other, _ in labels[i + 1:]:
+            assert _shared(box, other) == 0, text
+        for peg in pegs:
+            assert _shared(box, peg) == 0, text
+    # a label moved off its peg is tied to it
+    assert leaders
+    # there was room for every label in full
+    assert all("suitability" in text for _, text in labels)
+
+
+def test_a_label_with_room_stays_where_it_was_written_and_none_leaves_the_map():
+    """The two Rokel points: A (1) keeps its place up and to the right of the
+    star. B (2) is close to the right-hand edge, and its label used to run
+    out past the neatline; it is written back into the map instead."""
+    import matplotlib.pyplot as plt
+
+    from groundwater.mapping import MapPoint
+
+    points = [
+        MapPoint(label="A (1)", easting=708958.0, northing=926355.0, value=48.0,
+                 kind="Good", rank=1),
+        MapPoint(label="B (2)", easting=727012.0, northing=916125.0, value=29.0,
+                 kind="Good", rank=2),
+    ]
+    fig = suitability_map(points, zone=28)
+    try:
+        labels, _, frame = _label_layout(fig)
+        written = {a.get_text().split("\n")[0]: (a.xyann, a.get_ha())
+                   for a in fig.axes[0].texts if a.get_text().startswith(("A", "B"))}
+    finally:
+        plt.close(fig)
+    assert written["A (1)"] == ((11, 6), "left")
+    assert written["B (2)"][1] == "right"
+    for box, text in labels:
+        assert _shared(box, frame) == pytest.approx(box.width * box.height), text
+
+
+def test_a_survey_too_dense_for_full_labels_drops_the_grade_line_but_not_the_target():
+    """Where the full labels cannot all be placed apart, the grade line - the
+    table above carries it for every point - gives way, and the recommended
+    target keeps its full label with its coordinates."""
+    import matplotlib.pyplot as plt
+
+    from groundwater.mapping.maps import suitability_label
+
+    points = _grid_survey(8, 2, 50.0)
+    fig = suitability_map(points, zone=28)
+    try:
+        texts = {a.get_text().split("\n")[0]: a.get_text() for a in fig.axes[0].texts
+                 if a.get_text().startswith("VES")}
+    finally:
+        plt.close(fig)
+    target = next(p for p in points if p.rank == 1)
+    assert texts[target.label] == suitability_label(target, True)
+    assert "suitability" in texts[target.label] and "E 710" in texts[target.label]
+    others = [p for p in points if p.rank != 1]
+    assert all(texts[p.label] == suitability_label(p, False, compact=True) for p in others)
+    assert all("suitability" not in texts[p.label] for p in others)
+    assert suitability_label(others[0], False, compact=True) == (
+        f"{others[0].label}\nRank {others[0].rank}, weighted {others[0].value:.0f}")
 
 
 def _scored(sid, suitability, confidence=1.0, rank=None):

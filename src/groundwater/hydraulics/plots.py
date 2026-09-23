@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from ..config import HouseStyle
-from ..models import PumpingTest
+from ..models import PumpingTest, step_offsets_min
 from ..plotting import figure_context, save_figure
 from .analysis import (
     CooperJacobResult,
@@ -87,16 +87,17 @@ def plot_test_overview(
     with figure_context(style):
         fig, ax = plt.subplots(figsize=(style.figure_width_in, 3.6))
         t_end = 0.0
-        for k, step in enumerate(test.steps):
+        offsets = step_offsets_min(test.steps)
+        for k, (step, offset) in enumerate(zip(test.steps, offsets, strict=True)):
             label = step.label or f"step {step.step_number}"
             if len(test.steps) == 1:
                 label = "pumping phase"
             if step.discharge_m3_per_h:
                 label += f" ({step.discharge_m3_per_h:g} m3/h)"
             colour = STEP_COLOURS[k % len(STEP_COLOURS)] if len(test.steps) > 1 else style.accent_color
-            ax.plot(step.time_min, step.water_level_m, "-o", ms=3,
+            ax.plot(step.time_min + offset, step.water_level_m, "-o", ms=3,
                     color=colour, lw=1.2, label=label)
-            t_end = max(t_end, float(np.nanmax(step.time_min)))
+            t_end = max(t_end, float(np.nanmax(step.time_min)) + offset)
         if test.recovery_time_min is not None:
             ax.plot(test.recovery_time_min + t_end, test.recovery_level_m, "-s",
                     ms=3, color=style.secondary_color, lw=1.2, label="recovery")
@@ -263,14 +264,15 @@ def plot_step_test(
         else:
             fig, ax = plt.subplots(figsize=(style.figure_width_in * 0.85, 3.6))
             ax2 = None
-        for k, step in enumerate(test.steps):
+        offsets = step_offsets_min(test.steps)
+        for k, (step, offset) in enumerate(zip(test.steps, offsets, strict=True)):
             s = step.water_level_m - swl if swl is not None else step.water_level_m
             q_note = (
                 f", Q = {step.discharge_m3_per_h:.1f} m3/h"
                 if step.discharge_m3_per_h is not None
                 else ", Q pending"
             )
-            ax.plot(step.time_min, s, "-o", ms=3, lw=1.2,
+            ax.plot(step.time_min + offset, s, "-o", ms=3, lw=1.2,
                     color=STEP_COLOURS[k % len(STEP_COLOURS)],
                     label=f"{step.label}{q_note}")
         # the intake and the hole bottom, as drawdown: a step that runs past
