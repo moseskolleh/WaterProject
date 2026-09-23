@@ -523,3 +523,31 @@ def test_the_static_level_box_shows_the_level_the_design_uses(sample_data):
     at.run()
     assert at.number_input(key="design_swl").value == 12.0
     assert at.session_state["borehole_design"].static_water_level_m == 12.0
+
+
+def test_the_design_takes_the_intake_the_pumping_report_prints(sample_data):
+    """With an annual swing entered the pumping report set the intake deeper,
+    for the drought year, and the design kept the test day's depth: the
+    drawing and the completion report named one depth and the pumping report
+    another (hydraulics-6; the browser app had the same fault)."""
+    from groundwater.hydraulics import pump_intake_depth
+    from groundwater.seasonal import seasonal_yield
+
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.run()
+    at.selectbox(key="sample_pump").select("dr_timbo/dr_timbo_constant_test.xlsx")
+    at.run()
+    at.number_input(key="seasonal_range").set_value(8.0)
+    at.run()
+    at.selectbox(key="sample_log").select("dr_timbo/dr_timbo_drilling_log.xlsx")
+    at.run()
+    assert not at.exception, at.exception
+
+    analysis = at.session_state["pump_analysis"]
+    month = at.selectbox(key="seasonal_month").value
+    seasonal = seasonal_yield(analysis, month=(month or None), annual_range_m=8.0)
+    reported, _ = pump_intake_depth(analysis, seasonal)
+    # the swing has to move the depth, or this test proves nothing
+    assert reported > analysis.yield_recommendation.pump_installation_depth_m
+    design = at.session_state["borehole_design"]
+    assert design.pump_intake_m >= reported

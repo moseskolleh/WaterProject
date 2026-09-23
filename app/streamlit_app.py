@@ -1627,6 +1627,28 @@ def app_config() -> Config:
     return cfg
 
 
+def reported_pump_intake(analysis) -> float | None:
+    """The pump intake the pumping report prints, for the design to use.
+
+    The pumping report sets the intake at the deeper of the test day's depth
+    and the drought year's, from the month and swing chosen under "Through
+    the year" (hydraulics-6); the design took the test day's alone, so with
+    a swing entered the drawing and the completion report named one depth
+    and the pumping report another. The browser app had the same fault.
+    """
+    if analysis is None or analysis.yield_recommendation is None:
+        return None
+    pumping = app_config().pumping
+    month = st.session_state.get("seasonal_month")
+    if month is None:
+        month = month_of(analysis.test.site.date)[0]
+    seasonal = seasonal_yield(
+        analysis, pumping, month=(month or None),
+        annual_range_m=st.session_state.get("seasonal_range", pumping.seasonal_allowance_m),
+    )
+    return pump_intake_depth(analysis, seasonal)[0]
+
+
 # ---------------------------------------------------------------------------
 # Header
 # ---------------------------------------------------------------------------
@@ -2864,11 +2886,7 @@ with tab_design:
             f"Prefilled from the pumping test on this project "
             f"({fmt_num(_test_swl)} m). Type over it to design against another level."
         )
-    _design_intake = (
-        _design_analysis.yield_recommendation.pump_installation_depth_m
-        if _design_analysis and _design_analysis.yield_recommendation
-        else None
-    )
+    _design_intake = reported_pump_intake(_design_analysis)
     _design_intake_floor = (
         pump_intake_floor(_design_analysis.yield_recommendation,
                           CONFIG.pumping.pump_submergence_min_m)
@@ -3038,11 +3056,7 @@ with tab_spine:
                 static_water_level_m=(
                     analysis.test.static_water_level_m if analysis else None
                 ),
-                pump_intake_m=(
-                    analysis.yield_recommendation.pump_installation_depth_m
-                    if analysis and analysis.yield_recommendation
-                    else None
-                ),
+                pump_intake_m=reported_pump_intake(analysis),
                 pump_intake_floor_m=(
                     pump_intake_floor(analysis.yield_recommendation,
                                       CONFIG.pumping.pump_submergence_min_m)
