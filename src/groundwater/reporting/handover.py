@@ -488,11 +488,25 @@ def default_works(inputs: HandoverReportInputs) -> list[str]:
         )
     design = inputs.design
     if design is not None:
+        # The fill is the design's own, and the bullet says "designed" unless
+        # the log records the screens as installed: it certified "gravel
+        # pack" over a 19 mm annulus the design had left empty, and 19 m of
+        # screen as completed work above a drawing captioned "not an
+        # as-built record".
+        fill = {
+            "gravel pack": "gravel pack",
+            "formation stabiliser": "formation stabiliser",
+        }.get(design.annular_fill,
+              f"no gravel pack (the {design.annulus_mm:.0f} mm annulus is too thin "
+              "to place one)")
         works.append(
-            f"Construction with {design.casing_diameter_in:g} inch "
-            f"{design.casing_material} casing, "
-            f"{fmt_num(design.total_screen_length_m)} m of screen, gravel pack "
-            f"and sanitary seal to {fmt_num(design.sanitary_seal[1])} m."
+            ("Construction with " if design.as_built else "Construction designed with ")
+            + f"{design.casing_diameter_in:g} inch {design.casing_material} casing, "
+            f"{fmt_num(design.total_screen_length_m)} m of screen"
+            + (" as installed" if design.as_built else "")
+            + f", {fill} and sanitary seal to {fmt_num(design.sanitary_seal[1])} m"
+            + ("." if design.as_built
+               else "; the drilling log records no casing string as installed.")
         )
         works.append("Development of the borehole by air lifting until clear.")
     if inputs.pumping is not None:

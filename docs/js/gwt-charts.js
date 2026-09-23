@@ -1304,8 +1304,8 @@
 
     var depth = design.total_depth_m || 1;
     var stickup = design.stickup_m || 0;
-    /* a design's pump is where the pump should go and its screens are where
-     * the rules put them; only an as-built record can say where they are */
+    /* a design's screens are where the rules put them; only an as-built
+     * record can say where they are */
     var asBuilt = !!design.as_built;
     var swl = (design.static_water_level_m === null ||
       design.static_water_level_m === undefined) ? null : design.static_water_level_m;
@@ -1783,10 +1783,9 @@
     });
     if (!hasSump) callout(depth, depth, 'bottom plug at ' + formatG(depth) + ' m');
     if (intake !== null) {
-      /* a design's pump is where the pump should go; only an as-built
-       * record can say where one is */
-      callout(intake, intake, 'pump intake ' + formatG(intake) + ' m' +
-        (asBuilt ? '' : ' (recommended)'));
+      /* the intake is always the recommended one: an as-built record
+       * carries the screens the crew set, but no record of a pump */
+      callout(intake, intake, 'pump intake ' + formatG(intake) + ' m (recommended)');
     }
 
     /* a newline in a callout is a break the caller chose, so a unit is

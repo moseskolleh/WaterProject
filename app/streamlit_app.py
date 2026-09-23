@@ -48,7 +48,7 @@ from groundwater.costing import (
     plot_programme_gantt,
     write_boq_workbook,
 )
-from groundwater.design import design_borehole, draw_borehole_design
+from groundwater.design import design_borehole, draw_borehole_design, pump_intake_floor
 from groundwater.hydraulics import analyse_pumping_test
 from groundwater.hydraulics.analysis import (
     METHOD_LABELS,
@@ -2844,8 +2844,19 @@ with tab_design:
     _test_swl = (
         _design_analysis.test.static_water_level_m if _design_analysis else None
     )
-    if _test_swl is not None and "design_swl" not in st.session_state:
-        st.session_state["design_swl"] = round(float(_test_swl), 2)
+    # The box shows the level the design uses: the test's, unless the analyst
+    # typed another. It was prefilled only when the widget had never run, so
+    # opening the app before loading a test left it at 0.0 under a caption
+    # saying "Prefilled from the pumping test" while the design used the
+    # test's level. A box still at 0.0, or at the level last prefilled, has
+    # not been typed over and follows the test.
+    if _test_swl is not None:
+        _prefill = round(float(_test_swl), 2)
+        if st.session_state.get("design_swl") in (
+            None, 0.0, st.session_state.get("design_swl_prefilled"),
+        ):
+            st.session_state["design_swl"] = _prefill
+        st.session_state["design_swl_prefilled"] = _prefill
     swl_input = st.number_input("Static water level (m)", min_value=0.0, step=0.1,
                                 key="design_swl")
     if _test_swl is not None:
@@ -2858,12 +2869,19 @@ with tab_design:
         if _design_analysis and _design_analysis.yield_recommendation
         else None
     )
+    _design_intake_floor = (
+        pump_intake_floor(_design_analysis.yield_recommendation,
+                          CONFIG.pumping.pump_submergence_min_m)
+        if _design_analysis and _design_analysis.yield_recommendation
+        else None
+    )
     if path is not None and (log := parse_upload(read_drilling_workbook, path)) is not None:
         show_flags(log.flags)
         design = design_borehole(
             log=log,
             static_water_level_m=swl_input or _test_swl,
             pump_intake_m=_design_intake,
+            pump_intake_floor_m=_design_intake_floor,
             rules=CONFIG.design,
         )
         st.session_state.borehole_design = design
@@ -2878,7 +2896,8 @@ with tab_design:
             drawing = workdir() / "design.png"
             draw_borehole_design(
                 design, log, path=drawing,
-                title=f"Borehole design - {log.site.community or 'site'}",
+                title=("As-built borehole record" if design.as_built else "Borehole design")
+                + f" - {log.site.community or 'site'}",
             )
             st.image(str(drawing))
             offer_download(drawing, "Download design drawing (.png)")
@@ -3021,6 +3040,12 @@ with tab_spine:
                 ),
                 pump_intake_m=(
                     analysis.yield_recommendation.pump_installation_depth_m
+                    if analysis and analysis.yield_recommendation
+                    else None
+                ),
+                pump_intake_floor_m=(
+                    pump_intake_floor(analysis.yield_recommendation,
+                                      CONFIG.pumping.pump_submergence_min_m)
                     if analysis and analysis.yield_recommendation
                     else None
                 ),

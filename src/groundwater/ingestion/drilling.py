@@ -26,9 +26,24 @@ _SCREEN_RANGE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(?:-|–|to)\s*(\d+(?:\.\d+)?)
 # a depth in metres, so they are removed with the other clock forms; a bare
 # "2 hrs" is an elapsed time and too short to be a clock, so it is left
 # alone, and no number that carries a metre unit is touched either way.
+#
+# A clock time is written with no space inside it. "Water strike 1: 12 m,
+# water strike 2: 30 m" numbers its strikes with a colon and a space, and a
+# pattern that allowed the space took "1: 12" and "2: 30" for times and
+# recorded no strike at all, without a flag.
 _CLOCK_TIME_RE = re.compile(
-    r"\b\d{1,2}\s*[:h]\s*\d{2}\b(?:\s*(?:am|pm|hrs?))?"
+    r"\b\d{1,2}[:h]\d{2}\b(?:\s*(?:am|pm|hrs?))?"
     r"|\b\d{3,4}\s*(?:hrs?|hours?)\b",
+    re.IGNORECASE,
+)
+
+# A water level written beside a strike ("Water strike at 18 m; rest water
+# level 4.5 m") is not a strike. Its number was read as one, so the log
+# recorded strikes at 4.5 m and 18 m and the design basis explained why the
+# 4.5 m strike was not screened.
+_WATER_LEVEL_RE = re.compile(
+    r"\b(?:s\.?w\.?l|r\.?w\.?l|(?:rest(?:ing)?|static|standing)\s+(?:water\s+)?level"
+    r"|water\s+level)\b\.?[^\d;,.]*?\d+(?:[.,]\d+)?\s*(?:met(?:re|er)s?\b|m\b)?",
     re.IGNORECASE,
 )
 
@@ -73,16 +88,45 @@ _DIAMETER_UNIT_RE = re.compile(
 # data-ingestion-15). The longer spelling is listed before the shorter one in
 # each pair so "metres" is not read as an "m" followed by rubbish.
 _METRE = r"(?:met(?:re|er)s?|m)"
-_RATE_UNIT_RE = re.compile(
-    r"(?<![\d./,])(?P<number>\d+(?:[.,]\d+)?)\s*(?P<unit>"
-    + _METRE + r"\s*(?:/|per)\s*min(?:ute)?s?"
+_RATE_UNITS = (
+    _METRE + r"\s*(?:/|per)\s*min(?:ute)?s?"
     r"|" + _METRE + r"\s*(?:/|per)\s*(?:hrs?|hours?|h)"
     r"|min(?:ute)?s?\s*(?:/|per)\s*" + _METRE +
     r"|sec(?:ond)?s?\s*(?:/|per)\s*" + _METRE +
-    r"|s\s*(?:/|per)\s*" + _METRE +
-    r")(?![a-z])",
+    r"|s\s*(?:/|per)\s*" + _METRE
+)
+_RATE_UNIT_RE = re.compile(
+    r"(?<![\d./,])(?P<number>\d+(?:[.,]\d+)?)\s*(?P<unit>" + _RATE_UNITS + r")(?![a-z])",
     re.IGNORECASE,
 )
+
+# The unit a column header gives its cells: "Penetration rate (min/m)", "Bit
+# diameter (mm)". A bare number in the cell is in that unit. The column was
+# read in the template's units whatever its header said, so 165 under "Bit
+# diameter (mm)" was a 165 inch hole (a 2 m annulus and 1654 bags of cement
+# in the bill of quantities) and 4 under "(min/m)" was 4 m/min.
+_RATE_HEADER_RE = re.compile(r"(?:" + _RATE_UNITS + r")(?![a-z])", re.IGNORECASE)
+_METRIC_HEADER_RE = re.compile(
+    r"\b(millimet(?:re|er)s?|mms?|centimet(?:re|er)s?|cms?)\b", re.IGNORECASE,
+)
+
+# A whole number and a fraction of an inch with no unit ("6 1/2"), which is
+# how a bit is quoted.
+_MIXED_NUMBER_RE = re.compile(
+    r"(?<![\d./,])(?P<number>\d+(?:[.,]\d+)?)\s+(?P<numerator>\d+)\s*/\s*(?P<denominator>\d+)"
+)
+
+# "8½" and "8-1/2" are how a bit size is stamped and typed; both used to
+# be read as 8 inches. The fraction is written out and the hyphen dropped, so
+# they reach the patterns above as "8 1/2".
+_VULGAR_FRACTIONS = {"\u00bd": "1/2", "\u00bc": "1/4", "\u00be": "3/4", "\u215b": "1/8",
+                     "\u215c": "3/8", "\u215d": "5/8", "\u215e": "7/8"}
+_VULGAR_RE = re.compile("[" + "".join(_VULGAR_FRACTIONS) + "]")
+_HYPHENATED_FRACTION_RE = re.compile(r"(\d)\s*-\s*(?=\d+\s*/\s*\d)")
+
+#: No water well is drilled wider than this, in inches: a larger reading is a
+#: bit size in millimetres with its unit left off.
+MAX_BIT_DIAMETER_IN = 36.0
 
 
 #: Two numbers with a slash between them: a fraction, a date, or a run
@@ -115,16 +159,22 @@ def parse_water_strike_depths(value) -> tuple[list[float], str]:
     """
     if value is None:
         return [], ""
-    if isinstance(value, (datetime.date, datetime.datetime)):
+    if isinstance(value, (datetime.date, datetime.datetime, datetime.time)):
         # Excel hands a cell typed as a time back as a datetime, and reading
-        # it as a number recorded the year as a strike depth.
+        # it as a number recorded the year as a strike depth. A cell typed
+        # as a time of day alone comes back as a time, which was read as
+        # "14:30:00" and dropped without the flag the browser raises.
         return [], "the cell holds a date or a time rather than a depth"
     if isinstance(value, bool):
         return [], ""
     if isinstance(value, (int, float)):
         return ([float(value)] if value > 0 else []), ""
 
-    text = _CLOCK_TIME_RE.sub(" ", clean_text(value))
+    # A water level and a clock time are taken out before any number is
+    # read, and counted: a cell whose only numbers were those names no
+    # strike, and says so rather than recording nothing in silence.
+    text, levels = _WATER_LEVEL_RE.subn(" ", clean_text(value))
+    text, clocks = _CLOCK_TIME_RE.subn(" ", text)
     # A fraction between two digits is half a metre, or a date, or a run
     # number; it is not two depths and it is not its own denominator.
     # "Water strike 1/2 m" read as a strike at 2 m, which would place a
@@ -145,6 +195,10 @@ def parse_water_strike_depths(value) -> tuple[list[float], str]:
     # cannot take apart, and guessing one of them is worse than refusing.
     numbers = _NUMBER_TOKEN_RE.findall(text)
     if not numbers:
+        named = [what for what, count in (("a water level", levels), ("a clock time", clocks))
+                 if count]
+        if named:
+            return [], "it names " + " and ".join(named) + " but no strike depth"
         return [], ""
     if len(numbers) > 1:
         return [], "it names several numbers and none of them carries a unit"
@@ -169,15 +223,45 @@ def _unreadable_strike_flag(text: str, reason: str) -> DataFlag:
     )
 
 
-def parse_bit_diameter_in(value) -> float | None:
+def _fractions_written_out(text: str) -> str:
+    text = _VULGAR_RE.sub(lambda m: " " + _VULGAR_FRACTIONS[m.group(0)], text)
+    return _HYPHENATED_FRACTION_RE.sub(r"\1 ", text)
+
+
+def _inches(number: float | None, unit: str | None) -> float | None:
+    """A diameter in ``unit`` (the cell's or the header's) in inches."""
+    if number is None or not unit:
+        return number
+    unit = unit.lower()
+    if unit.startswith(("mm", "millim")):
+        return round(number / 25.4, 2)
+    if unit.startswith(("cm", "centim")):
+        return round(number / 2.54, 2)
+    return number
+
+
+def header_diameter_unit(header) -> str | None:
+    """The metric unit a diameter column header names, or ``None`` for inches."""
+    match = _METRIC_HEADER_RE.search(clean_text(header))
+    return match.group(1).lower() if match else None
+
+
+def header_rate_unit(header) -> str | None:
+    """The penetration rate unit a column header names, if it names one."""
+    match = _RATE_HEADER_RE.search(clean_text(header))
+    return match.group(0) if match else None
+
+
+def parse_bit_diameter_in(value, unit: str | None = None) -> float | None:
     """The drilled diameter in inches, converting the unit the cell carries.
 
     Crews quote a bit in millimetres as often as in inches, and the column
     was read as a bare number, so "165 mm" was recorded as a 165 inch hole
     (ROADMAP data-ingestion-15) - a metre and a half of annulus in the bill
-    of quantities and in the completion drawing. A cell with no unit at all
-    is read as inches, which is the unit the template column asks for
-    ("Drilling diameter (in)") and the unit the design rules are written in.
+    of quantities and in the completion drawing. A cell with no unit is in
+    ``unit``, the unit its column header names; with none, inches, which is
+    the unit the template column asks for ("Drilling diameter (in)") and the
+    unit the design rules are written in.
 
     A converted diameter is kept to two decimals: 165 mm is the metric name
     of a 6.5 in bit, and 6.5 in is what the completion log should print.
@@ -188,61 +272,41 @@ def parse_bit_diameter_in(value) -> float | None:
     6.5
     >>> parse_bit_diameter_in(6.5)
     6.5
+    >>> parse_bit_diameter_in("8½")
+    8.5
+    >>> parse_bit_diameter_in(165, unit="mm")
+    6.5
     """
     if value is None:
         return None
     if isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
-        return float(value)
-    text = clean_text(value)
+        return _inches(float(value), unit)
+    text = _fractions_written_out(clean_text(value))
     match = _DIAMETER_UNIT_RE.search(text)
     if match is None:
-        return parse_number(text)
+        mixed = _MIXED_NUMBER_RE.search(text)
+        if mixed is None:
+            return _inches(parse_number(text), unit)
+        number = parse_number(mixed.group("number"))
+        if number is not None and float(mixed.group("denominator")) != 0:
+            number += float(mixed.group("numerator")) / float(mixed.group("denominator"))
+        return _inches(number, unit)
     number = parse_number(match.group("number"))
     if number is None:
         return None
     if match.group("numerator") and float(match.group("denominator")) != 0:
         # "6 1/2 in" is six and a half inches, which is how a bit is quoted.
         number += float(match.group("numerator")) / float(match.group("denominator"))
-    unit = match.group("unit").lower()
-    if unit.startswith(("mm", "millim")):
-        return round(number / 25.4, 2)
-    if unit.startswith(("cm", "centim")):
-        return round(number / 2.54, 2)
-    return number
+    return _inches(number, match.group("unit"))
 
 
-def parse_penetration_rate_m_per_min(value) -> float | None:
-    """The penetration rate in metres per minute, whichever way up it is written.
-
-    A driller times a rod with a stopwatch and writes what the watch says, so
-    the cell carries "5 min/m" as readily as "0.2 m/min" and a rig sheet
-    quotes metres per hour. The column was read as a bare number, so a hole
-    advancing at five minutes to the metre was recorded as five metres a
-    minute (ROADMAP data-ingestion-15), twenty-five times too fast. A cell
-    with no unit is read as metres per minute, which is the unit the template
-    column asks for ("Penetration rate (m/min)").
-
-    >>> parse_penetration_rate_m_per_min("5 min/m")
-    0.2
-    >>> parse_penetration_rate_m_per_min(0.33)
-    0.33
-    """
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    text = clean_text(value)
-    match = _RATE_UNIT_RE.search(text)
-    if match is None:
-        return parse_number(text)
-    number = parse_number(match.group("number"))
-    if number is None:
-        return None
-    unit = re.sub(r"\s+", "", match.group("unit")).lower().replace("per", "/")
+def _rate_in_m_per_min(number: float | None, unit: str | None) -> float | None:
+    """A penetration rate in ``unit`` (the cell's or the header's) in m/min."""
+    if number is None or not unit:
+        return number
+    unit = re.sub(r"\s+", "", unit).lower().replace("per", "/")
     if unit.startswith("min"):
         # minutes per metre: the reciprocal, and a zero is not a rate at all
         return 1.0 / number if number > 0 else None
@@ -252,6 +316,41 @@ def parse_penetration_rate_m_per_min(value) -> float | None:
     if "/h" in unit:
         return number / 60.0
     return number
+
+
+def parse_penetration_rate_m_per_min(value, unit: str | None = None) -> float | None:
+    """The penetration rate in metres per minute, whichever way up it is written.
+
+    A driller times a rod with a stopwatch and writes what the watch says, so
+    the cell carries "5 min/m" as readily as "0.2 m/min" and a rig sheet
+    quotes metres per hour. The column was read as a bare number, so a hole
+    advancing at five minutes to the metre was recorded as five metres a
+    minute (ROADMAP data-ingestion-15), twenty-five times too fast. A cell
+    with no unit is in ``unit``, the unit its column header names; with
+    none, metres per minute, which is the unit the template column asks for
+    ("Penetration rate (m/min)").
+
+    >>> parse_penetration_rate_m_per_min("5 min/m")
+    0.2
+    >>> parse_penetration_rate_m_per_min(0.33)
+    0.33
+    >>> parse_penetration_rate_m_per_min(4, unit="min/m")
+    0.25
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return _rate_in_m_per_min(float(value), unit)
+    text = clean_text(value)
+    match = _RATE_UNIT_RE.search(text)
+    if match is None:
+        return _rate_in_m_per_min(parse_number(text), unit)
+    number = parse_number(match.group("number"))
+    if number is None:
+        return None
+    return _rate_in_m_per_min(number, match.group("unit"))
 
 
 def parse_installed_screens(value) -> list[tuple[float, float]]:
@@ -271,6 +370,23 @@ def parse_installed_screens(value) -> list[tuple[float, float]]:
         if bottom > top:
             out.append((top, bottom))
     return sorted(out)
+
+
+def _reads_as_interval(value) -> bool:
+    """Whether a cell in the interval column was meant as a depth interval.
+
+    A cell of numbers and separators with nothing else in it ("30 -", "30
+    40") is a row the crew logged and this parser could not read, and it is
+    flagged. A note under the table ("Water strike 1: 18 m") has words in it
+    and is not a row at all.
+    """
+    if isinstance(value, bool) or value is None:
+        return False
+    if isinstance(value, (int, float)):
+        return True
+    text = common.strip_metre_units(common.normalise_dashes(clean_text(value)))
+    text = re.sub(r"\b(?:to|from)\b", " ", text, flags=re.IGNORECASE)
+    return bool(re.search(r"\d", text)) and not re.search(r"[a-z]", text, re.IGNORECASE)
 
 
 def _find_log_header(grid: list[list]) -> tuple[int, dict] | None:
@@ -316,8 +432,18 @@ def drilling_from_grid(grid: list[list], source: str = "") -> DrillingLog:
     intervals: list[LithologyInterval] = []
     strikes: list[float] = []
     zero_strike_rows = 0
+    too_wide: list[str] = []
     if located is not None:
         header_row, cols = located
+
+        def header(key):
+            c = cols.get(key)
+            row = grid[header_row]
+            return row[c] if c is not None and c < len(row) else None
+
+        # the unit the column header names is the unit of a bare number
+        rate_unit = header_rate_unit(header("rate"))
+        diameter_unit = header_diameter_unit(header("diameter"))
         for row in grid[header_row + 1 :]:
             def cell(key):
                 c = cols.get(key)
@@ -347,11 +473,33 @@ def drilling_from_grid(grid: list[list], source: str = "") -> DrillingLog:
             # without a word and the gap it left was reported as a gap in the
             # crew's log (ROADMAP data-ingestion-8). Normalising the dashes
             # reads the interval as it was written, whichever dash was typed.
-            interval = parse_depth_interval(common.normalise_dashes(raw_interval))
+            # A metre unit against each depth ("30 m - 40 m", "5m-10m") is
+            # dropped first for the same reason: the row used to be skipped
+            # with its description and its strike.
+            interval = parse_depth_interval(
+                common.strip_metre_units(common.normalise_dashes(raw_interval))
+            )
             if interval is None:
+                if _reads_as_interval(raw_interval):
+                    flags.append(
+                        DataFlag(
+                            "warning",
+                            "interval_unreadable",
+                            f'Depth interval cell "{clean_text(raw_interval)}" was not '
+                            "read as a depth interval, so this row was skipped; write "
+                            'it as the depths from and to, as "30-40".',
+                        )
+                    )
                 continue
             top, bottom = interval
             description = clean_text(cell("description"))
+            diameter = parse_bit_diameter_in(cell("diameter"), diameter_unit)
+            if diameter is not None and diameter > MAX_BIT_DIAMETER_IN:
+                # a bit size in millimetres with its unit left off: sized as
+                # inches it made a two-metre annulus and a thousand bags of
+                # cement
+                too_wide.append(clean_text(cell("diameter")))
+                diameter = None
             intervals.append(
                 LithologyInterval(
                     top_m=top,
@@ -360,9 +508,9 @@ def drilling_from_grid(grid: list[list], source: str = "") -> DrillingLog:
                     from_time=clean_text(cell("from_time")),
                     to_time=clean_text(cell("to_time")),
                     penetration_rate_m_per_min=parse_penetration_rate_m_per_min(
-                        cell("rate")
+                        cell("rate"), rate_unit
                     ),
-                    bit_diameter_in=parse_bit_diameter_in(cell("diameter")),
+                    bit_diameter_in=diameter,
                 )
             )
             raw_strike = cell("strike")
@@ -388,6 +536,18 @@ def drilling_from_grid(grid: list[list], source: str = "") -> DrillingLog:
                     f"The water strike column holds 0 on {zero_strike_rows} "
                     "row(s); a zero there is read as no strike on that row, "
                     "not as a strike at 0 m.",
+                )
+            )
+        if too_wide:
+            values = ", ".join(dict.fromkeys(too_wide))
+            flags.append(
+                DataFlag(
+                    "warning",
+                    "diameter_implausible",
+                    f"Drilled diameter {values} reads as more than "
+                    f"{MAX_BIT_DIAMETER_IN:g} inches, wider than any water well "
+                    "bit, so it was not recorded; write the unit in the cell or "
+                    'the column header, as "165 mm".',
                 )
             )
 

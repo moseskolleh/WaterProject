@@ -470,12 +470,17 @@
     }
     if (!totalDepth && interp) totalDepth = interp.max_drilling_depth_m;
     if (!totalDepth) return;
+    var rec = derived.analysis ? derived.analysis.yield_recommendation : null;
     try {
       derived.design = C.designBorehole({
         log: derived.log, interpretation: interp,
         staticWaterLevelM: swl === undefined ? null : swl,
         pumpIntakeM: custom.pumpIntake !== null && custom.pumpIntake !== undefined
           ? custom.pumpIntake : recommendedIntake()[0],
+        /* the shallowest intake the test supports, whoever chose the depth:
+         * the design moves an intake up out of a screen only as far as that */
+        pumpIntakeFloorM: rec
+          ? C.pumpIntakeFloor(rec, cfg.pumping.pump_submergence_min_m) : null,
         rules: cfg.design, totalDepthM: totalDepth,
         screensM: custom.screens && custom.screens.length ? custom.screens : null,
       });

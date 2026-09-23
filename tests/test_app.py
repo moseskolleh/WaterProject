@@ -495,3 +495,31 @@ def test_depth_spine_page(app):
     assert view["costing"]["quantityBasis"]["screenM"] == pytest.approx(
         sum(s["base"] - s["top"] for s in view["design"]["screens"])
     )
+
+
+def test_the_static_level_box_shows_the_level_the_design_uses(sample_data):
+    """Open the app, then load the test and the log: the box said 0.0.
+
+    The box was prefilled only when the widget had never run, and it runs on
+    the first page load, so it held 0.0 under a caption saying "Prefilled from
+    the pumping test (9.44 m)" while the design used 9.44 m.
+    """
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.run()
+    assert not at.exception, at.exception
+    at.selectbox(key="sample_pump").select("dr_timbo/dr_timbo_constant_test.xlsx")
+    at.run()
+    at.selectbox(key="sample_log").select("dr_timbo/dr_timbo_drilling_log.xlsx")
+    at.run()
+    assert not at.exception, at.exception
+
+    level = at.session_state["pump_analysis"].test.static_water_level_m
+    design = at.session_state["borehole_design"]
+    assert design.static_water_level_m == pytest.approx(level, abs=0.01)
+    assert at.number_input(key="design_swl").value == pytest.approx(level, abs=0.01)
+
+    # a level the analyst types over it is the level, and it stays
+    at.number_input(key="design_swl").set_value(12.0)
+    at.run()
+    assert at.number_input(key="design_swl").value == 12.0
+    assert at.session_state["borehole_design"].static_water_level_m == 12.0

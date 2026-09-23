@@ -5386,14 +5386,43 @@
   var LITHOLOGY_RANGE_SOURCE =
     '(\\d+(?:\\.\\d+)?)\\s*(?:-|–|to)\\s*(\\d+(?:\\.\\d+)?)\\s*m\\b';
 
-  /* "fracture zone 49-52 m", "fractured 60-62 m", "fractures at 30-31 m":
-   * a depth range named against a fracture phrase. */
-  var FRACTURE_RANGE_SOURCE =
-    'fracture[ds]?\\s*(?:zones?)?\\s*(?:at|from|between)?\\s*' + LITHOLOGY_RANGE_SOURCE;
-  var FRACTURE_RANGE_RE = new RegExp(FRACTURE_RANGE_SOURCE, 'i');
+  /* "fracture zone", "fractured", "fractures": the words that name a
+   * fracture. The depths they name are read from the rest of the clause. */
+  var FRACTURE_PHRASE_RE = /\bfracture[ds]?\b(?:\s+zones?\b)?/i;
 
   /* Any depth range written into a description. */
   var ANY_RANGE_RE = new RegExp(LITHOLOGY_RANGE_SOURCE, 'i');
+
+  /* One depth range in a fracture clause: "49-52 m", "49 m to 52 m",
+   * "between 49 and 52 m", "49-52 metres", or "49-52" with the unit left
+   * off. A range followed by another unit ("2-3 mm", "1-2 per metre") is an
+   * aperture or a count, not depths, and is not read. */
+  var FRACTURE_NUMBER = '(\\d+(?:\\.\\d+)?)';
+  var FRACTURE_METRES = '(?:metres?|meters?|mtrs?|m)\\b';
+  var DEPTH_RANGE_SOURCE =
+    '(?:between\\s+' + FRACTURE_NUMBER + '\\s*(?:' + FRACTURE_METRES +
+    ')?\\s*(?:and|-|to)\\s*' + FRACTURE_NUMBER +
+    '|' + FRACTURE_NUMBER + '\\s*(?:' + FRACTURE_METRES + ')?\\s*(?:-|to)\\s*' +
+    FRACTURE_NUMBER + ')' +
+    '(?:\\s*' + FRACTURE_METRES + ')?' +
+    '(?!\\s*(?:mm|cm|%|in\\b|inch|"|ft\\b|feet|per\\b|/|x\\b|\\d|m\\s*/))';
+
+  /* Where a fracture clause ends: a semicolon, a bracket, a line break, a
+   * full stop that is not a decimal point, or a comma that does not lead
+   * straight on to another range ("fractured zones 49-52 m, 55-56 m" is one
+   * clause, "fractured, quartz vein at 52-53 m" is two). */
+  var CLAUSE_END_RE = /[;()\n]|\.(?!\d)|,(?!\s*(?:and\s+|&\s*)?\d)/g;
+
+  /* "at" or "from" before the first range belongs to the fracture phrase, so
+   * it goes with it when the zone is taken out of the description. */
+  var RANGE_LEAD_RE = /\s*\b(?:at|from)\s*$/i;
+
+  /* How far outside the row it is written on a named zone may lie and still
+   * be read as a depth. The driller logs "fracture zone 60-62 m" against the
+   * 55-60 m row he was drilling when he saw it; a "range" tens of metres from
+   * its row is something else (a count, a date), and the row is screened
+   * instead. */
+  var NAMED_ZONE_REACH_M = 5.0;
 
   /* In matching order. The patterns are applied to the lowercased
    * description. */
@@ -5432,26 +5461,94 @@
     return CLAYEY_RE.test(String(description || '').toLowerCase());
   }
 
-  /* Depth ranges a description names as fractured, in metres. */
-  function fractureRanges(description) {
-    var re = new RegExp(FRACTURE_RANGE_SOURCE, 'gi');
-    var text = String(description || ''), out = [], match;
-    while ((match = re.exec(text)) !== null) {
-      var top = Number(match[1]), bottom = Number(match[2]);
-      if (bottom < top) { var swap = top; top = bottom; bottom = swap; }
-      if (bottom > top) out.push([top, bottom]);
+  /* Read every depth range a fracture phrase names, to the end of its clause
+   * (lithology.read_fractures). Only the first range right after the phrase
+   * used to be read, so "fractures at 30-31 m and 33-34 m" left 33-34 m
+   * behind plain casing, and "between 49 and 52 m", "49 m to 52 m", "49-52
+   * metres", "49-52" and an em dash all read as nothing, which screened the
+   * whole logged row. Given the row (top, bottom), a range further than
+   * NAMED_ZONE_REACH_M from it is not taken as a depth.
+   *
+   * Returns { ranges, unread, cuts, text }: the zones read; whether a
+   * fracture phrase names depths that could not be read as a zone near the
+   * row, so the caller treats the whole logged interval as the target as
+   * well; and the spans of the dash-normalised text that name the zones
+   * read, for taking them out. */
+  function readFractures(description, top, bottom) {
+    var text = normaliseDashes(String(description || ''));
+    var ranges = [], cuts = [], unread = false;
+    var phraseRe = new RegExp(FRACTURE_PHRASE_RE.source, 'gi');
+    var phrases = [], m;
+    while ((m = phraseRe.exec(text)) !== null) {
+      phrases.push({ start: m.index, end: m.index + m[0].length });
     }
-    return out;
+    var hasRow = top !== null && top !== undefined && bottom !== null && bottom !== undefined;
+    phrases.forEach(function (phrase, i) {
+      var limit = i + 1 < phrases.length ? phrases[i + 1].start : text.length;
+      CLAUSE_END_RE.lastIndex = phrase.end;
+      var end = CLAUSE_END_RE.exec(text);
+      var clauseEnd = end && end.index < limit ? end.index : limit;
+      var clause = text.slice(phrase.end, clauseEnd);
+      var read = [], match;
+      var rangeRe = new RegExp(DEPTH_RANGE_SOURCE, 'gi');
+      while ((match = rangeRe.exec(clause)) !== null) {
+        var numbers = match.slice(1).filter(function (g) {
+          return g !== undefined;
+        }).map(Number);
+        var low = Math.min.apply(null, numbers), high = Math.max.apply(null, numbers);
+        var near = !hasRow || (low >= top - NAMED_ZONE_REACH_M &&
+          high <= bottom + NAMED_ZONE_REACH_M);
+        if (high > low && near) {
+          ranges.push([low, high]);
+          read.push([match.index, match.index + match[0].length]);
+        }
+      }
+      /* whatever digits are left in the clause name something that was not
+       * read as a zone */
+      var left = '', cursor = 0;
+      read.forEach(function (span) { left += clause.slice(cursor, span[0]); cursor = span[1]; });
+      left += clause.slice(cursor);
+      if (/\d/.test(left)) {
+        unread = true;
+      } else if (read.length) {
+        var start = read[0][0];
+        var lead = RANGE_LEAD_RE.exec(clause.slice(0, start));
+        if (lead) start = lead.index;
+        cuts.push([phrase.start, phrase.end]);
+        cuts.push([phrase.end + start, phrase.end + read[read.length - 1][1]]);
+      }
+    });
+    return { ranges: ranges, unread: unread, cuts: cuts, text: text };
+  }
+
+  /* Depth ranges a description names as fractured, in metres. */
+  function fractureRanges(description, top, bottom) {
+    return readFractures(description, top, bottom).ranges;
   }
 
   /* The description with its named fracture ranges taken out: "Light colour
    * granite, fracture zone 49-52 m" -> "Light colour granite", so the rock
-   * around a named zone is classed as what it is. */
-  function hostDescription(description) {
-    var text = String(description || '')
-      .replace(new RegExp(FRACTURE_RANGE_SOURCE, 'gi'), '')
-      .replace(/[\s,;]+$/, '');
-    return text.replace(/^[ ,;]+/, '').replace(/[ ,;]+$/, '');
+   * around a named zone is classed as what it is. A fracture phrase whose
+   * depths could not all be read is left in, so the row it is written on is
+   * still classed as fractured. */
+  function hostDescription(description, top, bottom) {
+    var reading = readFractures(description, top, bottom);
+    var kept = '', cursor = 0;
+    reading.cuts.forEach(function (cut) {
+      kept += reading.text.slice(cursor, cut[0]);
+      cursor = cut[1];
+    });
+    kept += reading.text.slice(cursor);
+    return kept.replace(/\s+/g, ' ').replace(/^[ ,;.]+/, '').replace(/[ ,;.]+$/, '');
+  }
+
+  /* The class of the rock a row is logged as, once any zone it names is out
+   * (lithology.host_class). "Light colour granite, fracture zone 49-52 m" is
+   * basement rock with a fracture zone drawn in it as a band of its own; the
+   * class of the whole description would call the row a fracture zone. */
+  function hostClass(description, top, bottom) {
+    return lithologyClass(fractureRanges(description, top, bottom).length
+      ? hostDescription(description, top, bottom) : description);
   }
 
   /* The log split into bands, each with its class. A fracture zone named
@@ -5465,7 +5562,8 @@
     var list = Array.isArray(intervals) ? intervals : (intervals ? [intervals] : []);
     var named = [];
     list.forEach(function (iv) {
-      fractureRanges(iv.description).forEach(function (zone) { named.push(zone); });
+      fractureRanges(iv.description, Number(iv.top_m), Number(iv.bottom_m))
+        .forEach(function (zone) { named.push(zone); });
     });
     named.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
     var fracture = lithologyClass('fracture');
@@ -5478,8 +5576,7 @@
       var top = Number(iv.top_m), bottom = Number(iv.bottom_m);
       /* the host rock: the description without the zone it names, so
        * "Light colour granite, fracture zone 49-52 m" is granite here */
-      var host = lithologyClass(fractureRanges(iv.description).length
-        ? hostDescription(iv.description) : iv.description);
+      var host = hostClass(iv.description, top, bottom);
       var cursor = top;
       named.forEach(function (zone) {
         var t = Math.max(zone[0], top), b = Math.min(zone[1], bottom);
@@ -5516,9 +5613,30 @@
   /* The cement seal: the recorded grout depth, never less than the rule. Dr
    * Timbo's log records grouting to 20 m; the drawing showed a 6 m seal
    * with a screen and a gravel pack inside the grouted interval. */
-  function sealDepthFor(log, rules) {
+  function sealDepthFor(log, rules, totalDepthM) {
     var grout = log ? Number(log.grouting_depth_m || 0.0) : 0.0;
+    /* A grout recorded at or below the top of the sump cannot be what was
+     * placed: it leaves nowhere for a screen, and 70 m in a 60 m hole printed
+     * a "0-70 m" seal over "Annular fill 70-60 m". It is held at the top of
+     * the sump, and designBorehole flags it as grout_too_deep. */
+    var total = totalDepthM;
+    if ((total === null || total === undefined) && log && log.total_depth_m) {
+      total = Number(log.total_depth_m);
+    }
+    if (total !== null && total !== undefined) {
+      grout = Math.min(grout, Math.max(total - rules.sump_length_m, 0.0));
+    }
     return Math.max(rules.sanitary_seal_depth_m, grout);
+  }
+
+  /* The shallowest pump intake the pumping test supports: the deepest level
+   * the test drew the water to, with the submergence margin under it, the
+   * floor the yield recommendation itself never sets the intake above. Null
+   * when the test gives no level (designer.pump_intake_floor). */
+  function pumpIntakeFloor(recommendation, submergenceM) {
+    var deepest = recommendation ? recommendation.deepest_pumping_level_m : null;
+    if (deepest === null || deepest === undefined) return null;
+    return Number(deepest) + Number(submergenceM);
   }
 
   /* The drilled diameter the log records, from its diameter column. The
@@ -5556,26 +5674,51 @@
    * not from the candidates: a strike above the static-level floor used to
    * leave "screens positioned against the water strikes (8 m)" in the client
    * document beside "no aquifer intervals identified", and blocked the VES
-   * fallback while contributing no screen. */
+   * fallback while contributing no screen. Each candidate is kept with what
+   * the clip did to it, so placementBasis can say why a zone the log names is
+   * screened only in part, or not at all.
+   *
+   * Returns { zones, targets, excluded, ves }: the merged zones, one target
+   * per depth the log names ({ kind: 'strike' | 'zone' | 'interval', label,
+   * candidate, clipped, cut }), the sentences that do not depend on
+   * what survives (a strike in clay or in the grout, a clayey interval), and
+   * the VES sentence when the VES zones were used. */
   function targetZones(log, interpretation, swl, totalDepth, rules) {
-    var seal = sealDepthFor(log, rules);
+    var seal = sealDepthFor(log, rules, totalDepth);
     var margin = (rules.fracture_zone_margin_m === undefined ||
                   rules.fracture_zone_margin_m === null)
       ? DEFAULT_CONFIG.design.fracture_zone_margin_m : rules.fracture_zone_margin_m;
     /* nothing is screened inside the grouted interval, whatever the log says
      * is wet there: the grout is there to keep that water out */
-    var floor = Math.max((swl || 0.0) + rules.min_screen_below_swl_m, seal);
-    function clip(candidates) {
-      var out = [];
-      candidates.forEach(function (z) {
-        var top = Math.ceil(Math.max(z[0], floor) * 2.0) / 2.0;
-        var bottom = Math.floor(Math.min(z[1], totalDepth - rules.sump_length_m) * 2.0) / 2.0;
-        if (bottom - top >= 1.0) out.push([top, bottom]);
-      });
-      return out;
+    var swlFloor = (swl || 0.0) + rules.min_screen_below_swl_m;
+    var floor = Math.max(swlFloor, seal);
+    var sumpTop = totalDepth - rules.sump_length_m;
+    function clipOne(z) {
+      var top = Math.ceil(Math.max(z[0], floor) * 2.0) / 2.0;
+      var bottom = Math.floor(Math.min(z[1], sumpTop) * 2.0) / 2.0;
+      return bottom - top >= 1.0 ? [top, bottom] : null;
     }
-    var basis = [], strikeZones = [], lithoZones = [], namedZones = [];
-    var namedText = [], fracturedIntervals = [], excluded = [], keptStrikes = [];
+    function clip(candidates) {
+      return candidates.map(clipOne).filter(function (c) { return c !== null; });
+    }
+    function target(kind, label, first, candidate) {
+      var cut = [];
+      if (candidate[0] < floor) {
+        cut.push(seal >= swlFloor
+          ? 'within the ' + formatG(seal) + ' m grouted interval'
+          : 'shallower than ' + formatG(floor) + ' m, ' +
+            formatG(rules.min_screen_below_swl_m) + ' m below the static water level');
+      }
+      if (candidate[1] > sumpTop) {
+        cut.push(first >= totalDepth
+          ? 'below the ' + formatG(totalDepth) + ' m bottom of the hole'
+          : 'below the top of the ' + formatG(rules.sump_length_m) + ' m sump, at ' +
+            formatG(sumpTop) + ' m');
+      }
+      return { kind: kind, label: label, candidate: candidate,
+        clipped: clipOne(candidate), cut: cut };
+    }
+    var targets = [], excluded = [];
     if (log) {
       (log.water_strikes_m || []).forEach(function (strike) {
         var host = intervalAt(log, strike);
@@ -5592,11 +5735,8 @@
             reasons.join(' and '));
           return;
         }
-        var zone = [Math.max(strike - 1.0, 0.0), strike + 5.0];
-        if (clip([zone]).length) {
-          strikeZones.push(zone);
-          keptStrikes.push(strike);
-        }
+        targets.push(target('strike', formatG(strike) + ' m', strike,
+          [Math.max(strike - 1.0, 0.0), strike + 5.0]));
       });
       (log.intervals || []).forEach(function (interval) {
         var text = String(interval.description || '').toLowerCase();
@@ -5614,41 +5754,36 @@
         /* "fracture zone 49-52 m" on the 45-50 m row: the zone is the target,
          * with a margin, not the five metres it was logged on. The screens
          * used to cover one metre of that zone and none of the next, which
-         * sat behind plain casing. */
-        var ranges = fractureRanges(interval.description);
-        if (ranges.length) {
-          ranges.forEach(function (r) {
-            namedZones.push([r[0] - margin, r[1] + margin]);
-            namedText.push(formatG(r[0]) + '-' + formatG(r[1]) + ' m');
-          });
-        } else {
-          lithoZones.push([interval.top_m, interval.bottom_m]);
-          fracturedIntervals.push(formatG(interval.top_m) + '-' +
-            formatG(interval.bottom_m) + ' m');
+         * sat behind plain casing. A fracture phrase whose depths cannot be
+         * read leaves the row a target as well, rather than leaving it to
+         * plain casing. */
+        var reading = readFractures(interval.description, interval.top_m, interval.bottom_m);
+        reading.ranges.forEach(function (r) {
+          targets.push(target('zone', formatG(r[0]) + '-' + formatG(r[1]) + ' m', r[0],
+            [r[0] - margin, r[1] + margin]));
+        });
+        if (reading.unread || !reading.ranges.length) {
+          targets.push(target('interval', formatG(interval.top_m) + '-' +
+            formatG(interval.bottom_m) + ' m', interval.top_m,
+            [interval.top_m, interval.bottom_m]));
         }
       });
     }
-    var clipped = clip(strikeZones).concat(clip(namedZones), clip(lithoZones));
-    if (keptStrikes.length) {
-      basis.push('screens positioned against the water strikes recorded in ' +
-        'the drilling log (' + keptStrikes.map(function (w) {
-          return formatG(w) + ' m';
-        }).join(', ') + ')');
-    }
-    if (namedZones.length && clip(namedZones).length) {
-      basis.push('screens positioned against the fracture zones the log names (' +
-        namedText.join(', ') + '), with ' + formatG(margin) +
-        ' m of screen either side');
-    }
-    if (lithoZones.length && clip(lithoZones).length) {
-      basis.push('screens positioned against the fractured or water-bearing ' +
-        'intervals logged at ' + fracturedIntervals.join(', '));
-    }
-    excluded.forEach(function (sentence) { basis.push(sentence); });
+    /* one target per thing the log names, however many rows name it */
+    var seen = {};
+    targets = targets.filter(function (t) {
+      var key = t.kind + '|' + t.label;
+      if (seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
+    var clipped = targets.filter(function (t) { return t.clipped; })
+      .map(function (t) { return t.clipped; });
+    var ves = [];
     if (!clipped.length && interpretation && interpretation.water_zones.length) {
       clipped = clip(interpretation.water_zones.map(function (z) { return [z[0], z[1]]; }));
       if (clipped.length) {
-        basis.push('screens positioned against the low resistivity zones of the ' +
+        ves.push('screens positioned against the low resistivity zones of the ' +
           'VES interpretation (' + interpretation.water_zones.map(function (z) {
             return Math.trunc(z[0]) + '-' + Math.trunc(z[1]) + ' m';
           }).join(', ') + ')');
@@ -5661,13 +5796,93 @@
       if (last && zone[0] <= last[1] + 1.0) last[1] = Math.max(last[1], zone[1]);
       else merged.push([zone[0], zone[1]]);
     });
-    return { zones: merged, basis: basis };
+    return { zones: merged, targets: targets, excluded: excluded, ves: ves };
+  }
+
+  /* The basis sentences, written from the screens that are actually built
+   * (designer._placement_basis). A zone clipped by the grout, the sump or the
+   * bottom of the hole, or trimmed away with the shallowest screens, used to
+   * stay in the basis as "screens positioned against the fracture zones the
+   * log names (16-18 m, 49-52 m, 59-62 m), with 1 m of screen either side"
+   * beside a single 48-53 m screen. Each target is now described by what
+   * covers it: in full, in part with the reason, or not at all with the
+   * reason. */
+  function placementBasis(found, screens, rules) {
+    var margin = (rules.fracture_zone_margin_m === undefined ||
+                  rules.fracture_zone_margin_m === null)
+      ? DEFAULT_CONFIG.design.fracture_zone_margin_m : rules.fracture_zone_margin_m;
+    var trimReason = 'the screens were trimmed to 60 percent of the hole, keeping ' +
+      'the deepest sections';
+    function covered(zone) {
+      var pieces = [];
+      screens.forEach(function (s) {
+        var top = Math.max(zone[0], s[0]), bottom = Math.min(zone[1], s[1]);
+        if (bottom > top) pieces.push([top, bottom]);
+      });
+      if (!pieces.length) return null;
+      return [Math.min.apply(null, pieces.map(function (p) { return p[0]; })),
+        Math.max.apply(null, pieces.map(function (p) { return p[1]; }))];
+    }
+    function same(a, b) {
+      return a === null ? b === null : (b !== null && a[0] === b[0] && a[1] === b[1]);
+    }
+    var nouns = { strike: 'strike', zone: 'fracture zone', interval: 'interval' };
+    var strikes = [], zones = [], intervals = [], partial = [], dropped = [];
+    found.targets.forEach(function (t) {
+      var cover = t.clipped ? covered(t.clipped) : null;
+      var trimmed = t.clipped !== null && !same(cover, t.clipped);
+      var why = [];
+      if (t.cut.length && (cover === null || cover[0] > t.candidate[0] ||
+                           cover[1] < t.candidate[1])) {
+        why.push((cover === null ? 'it lies ' : 'the rest of it lies ') + t.cut.join(' and '));
+      }
+      if (trimmed) why.push(trimReason);
+      if (cover === null) {
+        if (why.length) {
+          dropped.push('the ' + t.label + ' ' + nouns[t.kind] + ' is not screened: ' +
+            why.join('; '));
+        }
+        return;
+      }
+      if (t.kind === 'strike') {
+        strikes.push(t.label);
+      } else if (t.kind === 'interval') {
+        intervals.push(t.label);
+      } else if (same(cover, [Math.ceil(t.candidate[0] * 2.0) / 2.0,
+                              Math.floor(t.candidate[1] * 2.0) / 2.0])) {
+        zones.push(t.label);
+      } else {
+        partial.push('the ' + t.label + ' fracture zone is screened at ' +
+          formatG(cover[0]) + '-' + formatG(cover[1]) + ' m, not with ' + formatG(margin) +
+          ' m of screen either side: ' +
+          (why.length ? why : ['the screen is rounded to the half metre']).join('; '));
+      }
+    });
+    var basis = [];
+    if (strikes.length) {
+      basis.push('screens positioned against the water strikes recorded in ' +
+        'the drilling log (' + strikes.join(', ') + ')');
+    }
+    if (zones.length) {
+      basis.push('screens positioned against the fracture zones the log names (' +
+        zones.join(', ') + '), with ' + formatG(margin) + ' m of screen either side');
+    }
+    if (intervals.length) {
+      basis.push('screens positioned against the fractured or water-bearing ' +
+        'intervals logged at ' + intervals.join(', '));
+    }
+    return basis.concat(partial, found.excluded, dropped, found.ves);
   }
 
   /* Clean up analyst-supplied screen intervals without silently moving them:
    * anything the clipping actually changed is flagged rather than absorbed,
-   * because a screen that has quietly moved is worse than one refused. */
-  function analystScreens(screensM, totalDepthM, rules, flags) {
+   * because a screen that has quietly moved is worse than one refused.
+   *
+   * Screens recorded as installed are a record, not a choice: two that meet
+   * stay two, and a clip is a warning that reaches the client documents. It
+   * used to be an info flag, so "48-54; 54-60 m" in a 60 m hole was printed
+   * "Screens (as installed) 48-58 m" without a word. */
+  function analystScreens(screensM, totalDepthM, rules, flags, asBuilt) {
     var sumpTop = totalDepthM - rules.sump_length_m;
     var cleaned = [];
     screensM.map(function (s) { return [Number(s[0]), Number(s[1])]; })
@@ -5686,17 +5901,32 @@
           return;
         }
         if (clippedTop !== top || clippedBottom !== bottom) {
-          flags.push({
-            level: 'info', code: 'screen_clipped',
-            message: 'Screen ' + formatG(top) + '-' + formatG(bottom) +
-              ' m was clipped to ' + formatG(clippedTop) + '-' +
-              formatG(clippedBottom) + ' m to stay inside the hole and above ' +
-              'the sump.',
-          });
+          if (asBuilt) {
+            flags.push({
+              level: 'warning', code: 'screen_clipped',
+              message: 'The screen recorded as installed at ' + formatG(top) + '-' +
+                formatG(bottom) + ' m runs below the top of the ' +
+                formatG(rules.sump_length_m) + ' m sump the design rules place at ' +
+                formatG(sumpTop) + ' m in this ' + formatG(totalDepthM) +
+                ' m hole; it is drawn as ' + formatG(clippedTop) + '-' +
+                formatG(clippedBottom) + ' m. Check the record against the hole.',
+            });
+          } else {
+            flags.push({
+              level: 'info', code: 'screen_clipped',
+              message: 'Screen ' + formatG(top) + '-' + formatG(bottom) +
+                ' m was clipped to ' + formatG(clippedTop) + '-' +
+                formatG(clippedBottom) + ' m to stay inside the hole and above ' +
+                'the sump.',
+            });
+          }
         }
         var last = cleaned[cleaned.length - 1];
-        if (last && clippedTop <= last[1]) last[1] = Math.max(last[1], clippedBottom);
-        else cleaned.push([clippedTop, clippedBottom]);
+        if (last && (clippedTop < last[1] || (clippedTop === last[1] && !asBuilt))) {
+          last[1] = Math.max(last[1], clippedBottom);
+        } else {
+          cleaned.push([clippedTop, clippedBottom]);
+        }
       });
     if (!cleaned.length) throw new Error('no usable screen interval was supplied');
     return {
@@ -5725,7 +5955,36 @@
     segments.forEach(function (s) { s.length_m = s.bottom_m - s.top_m; });
 
     var topScreen = screens[0][0];
-    var sealDepth = sealDepthFor(log, rules);
+    var sealDepth = sealDepthFor(log, rules, totalDepthM);
+    var flags = spec.flags;
+    var grout = log ? Number(log.grouting_depth_m || 0.0) : 0.0;
+    if (grout > 0 && grout >= sumpTop) {
+      flags.push({
+        level: 'error', code: 'grout_too_deep',
+        message: 'The drilling log records grouting to ' + formatG(grout) + ' m, at ' +
+          'or below the top of the sump at ' + formatG(sumpTop) + ' m in this ' +
+          formatG(totalDepthM) + ' m hole, which leaves nowhere below the grout for ' +
+          'a screen. The seal is drawn to ' + formatG(sealDepth) + ' m; check the ' +
+          'grouting depth on the log.',
+      });
+    }
+    /* A screen inside the grout is sealed off from the water it is there to
+     * take. The design never places one there; a screen recorded as
+     * installed, or placed by the analyst, can say otherwise, and 15-20 m of
+     * an as-built screen inside a 20 m grout used to go unmentioned. */
+    screens.forEach(function (s) {
+      if (s[0] < sealDepth) {
+        var sealed = Math.min(s[1], sealDepth) - s[0];
+        flags.push({
+          level: 'warning', code: 'screen_in_grout',
+          message: (asBuilt ? 'The screen recorded as installed at ' : 'The screen at ') +
+            formatG(s[0]) + '-' + formatG(s[1]) + ' m runs inside the ' +
+            formatG(sealDepth) + ' m grouted interval, which seals ' + formatG(sealed) +
+            ' m of it off' + (asBuilt
+              ? '; the record of the grout or of the screen needs checking.' : '.'),
+        });
+      }
+    });
     var gravelTop = Math.max(topScreen - rules.gravel_pack_above_top_screen_m, sealDepth);
     var gravel = [gravelTop, totalDepthM];
     var seal = [0.0, sealDepth];
@@ -5737,7 +5996,6 @@
     var boreIn = logged || rules.borehole_diameter_in;
     var diameterSource = logged ? ' as logged' : '';
 
-    var flags = spec.flags;
     /* The same annulus rule the field checks apply (50 mm per side to place
      * gravel, 70 mm for it to filter). It used to raise a flag that reached
      * no document while the drawing, the summary and the bill of quantities
@@ -5785,7 +6043,12 @@
         ' m above the top screen';
     }
     var sealSentence;
-    if (sealDepth > rules.sanitary_seal_depth_m) {
+    if (grout > sealDepth) {
+      /* held at the top of the sump: not what the log records */
+      sealSentence = 'cement grout from surface to ' + formatG(sealDepth) + ' m, the ' +
+        'top of the sump, where the drilling log records ' + formatG(grout) +
+        ' m (see the design notes), with ' + rules.apron_note;
+    } else if (sealDepth > rules.sanitary_seal_depth_m) {
       sealSentence = 'cement grout from surface to ' + formatG(sealDepth) +
         ' m as recorded on the drilling log (the rule\'s minimum is ' +
         formatG(rules.sanitary_seal_depth_m) + ' m), with ' + rules.apron_note;
@@ -5814,9 +6077,11 @@
      * otherwise, by the same clearance the pumping rules use. The yield
      * recommendation cannot know where the screens are; the design can. */
     var intake = spec.pumpIntakeM === undefined ? null : spec.pumpIntakeM;
+    var intakeFloor = spec.pumpIntakeFloorM === undefined ? null : spec.pumpIntakeFloorM;
     var inScreen = function (depth) {
       return screens.some(function (s) { return s[0] <= depth && depth <= s[1]; });
     };
+    var held = '';
     if (intake !== null) {
       var hit = null;
       for (var h = 0; h < screens.length; h++) {
@@ -5828,6 +6093,24 @@
         var plainBelow = below <= sumpTop && !inScreen(below);
         var plainAbove = above > 0 &&
           (swl === null || swl === undefined || above > swl) && !inScreen(above);
+        /* Moving the intake up spends drawdown the yield was worked out on.
+         * It goes up only as far as the deepest level the pumping test
+         * reached plus the submergence margin, the floor the yield itself
+         * holds to: a 40-68 m screen used to lift a 52 m intake to 39 m,
+         * above the 42.3 m the test had drawn the water to, which is the
+         * intake hydraulics-4 took out of the yield. Without that floor there
+         * is nothing to check a shallower setting against. */
+        if (plainAbove && !plainBelow) {
+          if (intakeFloor === null) {
+            held = 'the plain casing above it, at ' + formatG(above) + ' m, cannot ' +
+              'be checked against the level the pumping test reached';
+          } else if (above < intakeFloor) {
+            held = 'the plain casing above it, at ' + formatG(above) + ' m, is ' +
+              'shallower than the ' + formatG(intakeFloor) + ' m the pumping test ' +
+              'supports (the deepest level it reached with the submergence margin)';
+          }
+          if (held) plainAbove = false;
+        }
         var moved = plainBelow ? below : (plainAbove ? above : null);
         if (moved !== null) {
           var direction = moved > intake ? 'below' : 'above';
@@ -5856,6 +6139,15 @@
           message: 'The pump intake at ' + formatG(intake) + ' m is below the top of ' +
             'the sump at ' + formatG(sumpTop) + ' m in a ' + formatG(totalDepthM) +
             ' m hole; it cannot be set there.',
+        });
+      } else if (held) {
+        flags.push({
+          level: 'warning', code: 'pump_intake_in_screen',
+          message: 'The pump intake at ' + formatG(intake) + ' m sits inside a ' +
+            'screened interval and is kept there: there is no plain casing below ' +
+            'that screen above the sump, and ' + held + '. Set the screens so there ' +
+            'is plain casing at a depth the test supports, or accept the inflow ' +
+            'drawn across the pump.',
         });
       } else if (inScreen(intake)) {
         flags.push({
@@ -5939,8 +6231,9 @@
         }).join('; ') + ' (slot ' + formatG(design.screen_slot_mm) + ' mm)'],
       ['Annular fill', formatG(design.gravel_pack[0]) + '-' +
         formatG(design.gravel_pack[1]) + ' m: ' + annularFillLabel(design)],
-      ['Backfill', formatG(design.backfill[0]) + '-' +
-        formatG(design.backfill[1]) + ' m'],
+      /* the fill can reach the seal, and "Backfill 20-20 m" was printed */
+      ['Backfill', design.backfill[1] > design.backfill[0]
+        ? formatG(design.backfill[0]) + '-' + formatG(design.backfill[1]) + ' m' : 'none'],
       ['Sanitary seal', formatG(design.sanitary_seal[0]) + '-' +
         formatG(design.sanitary_seal[1]) + ' m cement grout'],
     ];
@@ -5983,31 +6276,37 @@
       screensM = log.installed_screens_m.map(function (s) { return [s[0], s[1]]; });
       asBuilt = true;
     }
+    var intakeFloor = opts.pumpIntakeFloorM === undefined ? null : opts.pumpIntakeFloorM;
     if (screensM && screensM.length) {
-      var chosen = analystScreens(screensM, totalDepthM, rules, flags);
+      var chosen = analystScreens(screensM, totalDepthM, rules, flags, asBuilt);
       var chosenBasis = chosen.basis;
       if (asBuilt) {
+        /* the record as the crew wrote it: where the drawing has had to
+         * differ from it, a screen_clipped warning says how */
         chosenBasis = ['screens as installed, recorded on the drilling log (' +
-          chosen.screens.map(function (s) {
-            return formatG(s[0]) + '-' + formatG(s[1]) + ' m';
-          }).join(', ') + ')'];
+          screensM.map(function (s) { return [Number(s[0]), Number(s[1])]; })
+            .sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; })
+            .map(function (s) {
+              return formatG(s[0]) + '-' + formatG(s[1]) + ' m';
+            }).join(', ') + ')'];
       }
       return assembleDesign({
         screens: chosen.screens, basis: chosenBasis, flags: flags,
         totalDepthM: totalDepthM, swl: swl, pumpIntakeM: opts.pumpIntakeM,
-        rules: rules, log: log, asBuilt: asBuilt,
+        pumpIntakeFloorM: intakeFloor, rules: rules, log: log, asBuilt: asBuilt,
       });
     }
 
-    var targeted = targetZones(log, interpretation, swl, totalDepthM, rules);
-    var basis = targeted.basis;
-    var screens = targeted.zones.map(function (z) { return [z[0], z[1]]; });
+    var found = targetZones(log, interpretation, swl, totalDepthM, rules);
+    var screens = found.zones.map(function (z) { return [z[0], z[1]]; });
+    var fallback = [];
 
     if (!screens.length) {
       /* fall back: screen the bottom third of the hole below the SWL margin,
        * and never inside the grout */
-      var floor = Math.max((swl || 0.0) + rules.min_screen_below_swl_m,
-        sealDepthFor(log, rules));
+      var swlFloor = (swl || 0.0) + rules.min_screen_below_swl_m;
+      var sealAt = sealDepthFor(log, rules, totalDepthM);
+      var floor = Math.max(swlFloor, sealAt);
       var sumpTop = Math.max(totalDepthM - rules.sump_length_m, 0.0);
       var bottom = sumpTop;
       /* rounded to 0.5 m like every other screen top */
@@ -6016,23 +6315,31 @@
         top = Math.max(bottom - rules.screen_length_default_m, floor);
       }
       if (bottom - top < 1.0) {
-        /* The static water level margin plus the sump leave no room for a
-         * valid screen. Clamp to a positive interval just above the sump so
-         * the geometry stays valid and flag it loudly rather than emitting
-         * a negative-length screen. */
+        /* The static water level margin, or the recorded grout, plus the
+         * sump leave no room for a valid screen. Clamp to a positive interval
+         * just above the sump so the geometry stays valid and flag it loudly
+         * rather than emitting a negative-length screen. The message names
+         * whichever of the two is in the way: a grout recorded below the hole
+         * was blamed on the static water level. */
         top = Math.max(Math.min(bottom - rules.screen_length_default_m, bottom - 1.0), 0.0);
+        var cause = sealAt >= swlFloor
+          ? 'The ' + formatG(sealAt) + ' m grouted interval'
+          : 'Static water level plus the ' + formatG(rules.min_screen_below_swl_m) +
+            ' m minimum screen depth';
         flags.push({
           level: 'error', code: 'hole_too_shallow',
-          message: 'Static water level plus the ' +
-            formatG(rules.min_screen_below_swl_m) + ' m minimum screen depth ' +
-            'leaves no room for a screen above the sump in this ' +
+          message: cause + ' leaves no room for a screen above the sump in this ' +
             formatG(totalDepthM) + ' m hole. Screen placement is a best effort ' +
             'only - deepen the hole or revise the design manually.',
         });
       }
       screens = [[top, bottom]];
-      basis.push('no aquifer intervals identified from the data; screens ' +
-        'default to the lower third of the hole');
+      /* the targets the log names and the design could not screen are listed
+       * above this sentence, so it does not say there were none */
+      fallback.push((found.targets.length || found.excluded.length
+        ? 'none of the aquifer intervals identified from the data can be screened'
+        : 'no aquifer intervals identified from the data') +
+        '; screens default to the lower third of the hole');
       flags.push({
         level: 'warning', code: 'default_screens',
         message: 'Screen placement fell back to the lower third of the hole; ' +
@@ -6062,8 +6369,9 @@
     }
 
     return assembleDesign({
-      screens: screens, basis: basis, flags: flags, totalDepthM: totalDepthM,
-      swl: swl, pumpIntakeM: opts.pumpIntakeM, rules: rules, log: log,
+      screens: screens, basis: placementBasis(found, screens, rules).concat(fallback),
+      flags: flags, totalDepthM: totalDepthM, swl: swl, pumpIntakeM: opts.pumpIntakeM,
+      pumpIntakeFloorM: intakeFloor, rules: rules, log: log,
     });
   }
 
@@ -6808,24 +7116,25 @@
   Object.assign(C, {
     designBorehole: designBorehole, designSummaryRows: designSummaryRows,
     targetZones: targetZones, sealDepthFor: sealDepthFor,
+    pumpIntakeFloor: pumpIntakeFloor,
     loggedDiameterIn: loggedDiameterIn, intervalAt: intervalAt,
     annularFillLabel: annularFillLabel,
     DESIGN_NOTE: DESIGN_NOTE, AS_BUILT_NOTE: AS_BUILT_NOTE,
     ANNULUS_PACK_MIN_MM: ANNULUS_PACK_MIN_MM,
     ANNULUS_FILTER_MIN_MM: ANNULUS_FILTER_MIN_MM,
     LITHOLOGY_CLASSES: LITHOLOGY_CLASSES, LITHOLOGY_OTHER: LITHOLOGY_OTHER,
-    FRACTURE_RANGE_RE: FRACTURE_RANGE_RE, ANY_RANGE_RE: ANY_RANGE_RE,
+    FRACTURE_PHRASE_RE: FRACTURE_PHRASE_RE, ANY_RANGE_RE: ANY_RANGE_RE,
     CLAYEY_RE: CLAYEY_RE,
     lithologyClass: lithologyClass, isClayey: isClayey,
     fractureRanges: fractureRanges, hostDescription: hostDescription,
-    lithologyBands: lithologyBands,
+    readFractures: readFractures, hostClass: hostClass, lithologyBands: lithologyBands,
     /* the same table under one name, for the drawings */
     lithology: {
       CLASSES: LITHOLOGY_CLASSES, OTHER: LITHOLOGY_OTHER,
-      FRACTURE_RANGE_RE: FRACTURE_RANGE_RE, ANY_RANGE_RE: ANY_RANGE_RE,
+      FRACTURE_PHRASE_RE: FRACTURE_PHRASE_RE, ANY_RANGE_RE: ANY_RANGE_RE,
       CLAYEY_RE: CLAYEY_RE, lithologyClass: lithologyClass, isClayey: isClayey,
       fractureRanges: fractureRanges, hostDescription: hostDescription,
-      lithologyBands: lithologyBands,
+      readFractures: readFractures, lithologyBands: lithologyBands,
     },
     STAGES: STAGES, RESOURCE_CATEGORIES: RESOURCE_CATEGORIES,
     DEFAULT_EXCHANGE_RATE_SLE_PER_USD: DEFAULT_EXCHANGE_RATE_SLE_PER_USD,
@@ -6937,6 +7246,27 @@
     return value.replace(DASH_RE, '-');
   }
 
+  /* A metre unit written against a number ("30 m", "5m", "12 metres"), which
+   * the depth interval pattern does not expect between the two depths. */
+  var METRE_UNIT_RE = /(\d)\s*(?:met(?:re|er)s?|mtrs?|m)\b\.?/gi;
+
+  /* Drop the metre unit written against each number in a text cell
+   * (common.strip_metre_units). "30 m - 40 m" and "5m-10m" reach the
+   * interval pattern as "30 - 40" and "5-10"; they used to be skipped with
+   * the row's description and strike, and the only trace was a gap flag
+   * blaming the log. A value that is not text is handed back untouched. */
+  function stripMetreUnits(value) {
+    if (typeof value !== 'string') return value;
+    return value.replace(METRE_UNIT_RE, '$1');
+  }
+
+  /* The deeper end of a depth range written in a header cell, if it is one. */
+  function rangeBottom(value) {
+    if (typeof value !== 'string') return null;
+    var interval = parseDepthInterval(stripMetreUnits(normaliseDashes(cleanText(value))));
+    return interval ? interval[1] : null;
+  }
+
   /* Canonical header keys and the label patterns that map to them. */
   var LABEL_PATTERNS = {
     client: ['^client\\b'],
@@ -6989,6 +7319,12 @@
   var NUMERIC_HEADER_KEYS = ['easting', 'northing', 'elevation_m',
     'borehole_depth_m', 'static_water_level_m', 'pump_setting_m',
     'step_length_min', 'grouting_depth_m'];
+
+  /* Header depths a crew writes as a range from the surface ("Grouting:
+   * 0-20 m"). The depth is the bottom of the range: read as a number, "0-20"
+   * was the 0 at its top, the recorded 20 m grout was lost, and screens were
+   * drawn at 10-20 m inside it. */
+  var RANGE_BOTTOM_KEYS = ['grouting_depth_m'];
 
   /* Priority is the pattern index within the key's list: 0 is the most
    * specific wording ("Depth of Borehole"), higher numbers are generic
@@ -7083,7 +7419,8 @@
         }
         if (value === null || value === undefined) continue;
         if (NUMERIC_HEADER_KEYS.indexOf(key) >= 0) {
-          var number = parseNumber(value);
+          var number = RANGE_BOTTOM_KEYS.indexOf(key) >= 0 ? rangeBottom(value) : null;
+          if (number === null) number = parseNumber(value);
           if (number !== null) { fields[key] = number; priorities[key] = priority; }
         } else {
           fields[key] = cleanText(value);
@@ -7540,6 +7877,20 @@
 
   /* --- drilling logs -------------------------------------------------------- */
 
+  /* Whether a cell in the interval column was meant as a depth interval. A
+   * cell of numbers and separators with nothing else in it ("30 -", "30 40")
+   * is a row the crew logged and this parser could not read, and it is
+   * flagged. A note under the table ("Water strike 1: 18 m") has words in it
+   * and is not a row at all. */
+  function readsAsInterval(value) {
+    if (value === null || value === undefined || typeof value === 'boolean') return false;
+    if (value instanceof Date) return false;
+    if (typeof value === 'number') return true;
+    var text = stripMetreUnits(normaliseDashes(cleanText(value)))
+      .replace(/\b(?:to|from)\b/gi, ' ');
+    return /\d/.test(text) && !/[a-z]/i.test(text);
+  }
+
   function findLogHeader(grid) {
     for (var r = 0; r < grid.length; r++) {
       var texts = rowText(grid[r]);
@@ -7577,8 +7928,21 @@
   /* A clock time carries a colon or an "h" between the hour and the minutes
    * ("14:30", "14h30"). A decimal point is deliberately not a clock separator
    * here: "8.50" in a strike note is a depth far more often than it is ten to
-   * nine, and reading it as a time would lose the strike. */
-  var CLOCK_TIME_RE = /\b\d{1,2}\s*[:h]\s*\d{2}\b(?:\s*(?:am|pm|hrs?))?|\b\d{3,4}\s*(?:hrs?|hours?)\b/gi;
+   * nine, and reading it as a time would lose the strike.
+   *
+   * A clock time is written with no space inside it. "Water strike 1: 12 m,
+   * water strike 2: 30 m" numbers its strikes with a colon and a space, and a
+   * pattern that allowed the space took "1: 12" and "2: 30" for times and
+   * recorded no strike at all, without a flag. */
+  var CLOCK_TIME_RE = /\b\d{1,2}[:h]\d{2}\b(?:\s*(?:am|pm|hrs?))?|\b\d{3,4}\s*(?:hrs?|hours?)\b/gi;
+
+  /* A water level written beside a strike ("Water strike at 18 m; rest water
+   * level 4.5 m") is not a strike. Its number was read as one, so the log
+   * recorded strikes at 4.5 m and 18 m and the design basis explained why the
+   * 4.5 m strike was not screened. */
+  var WATER_LEVEL_RE = new RegExp('\\b(?:s\\.?w\\.?l|r\\.?w\\.?l|' +
+    '(?:rest(?:ing)?|static|standing)\\s+(?:water\\s+)?level|water\\s+level)\\b' +
+    '\\.?[^\\d;,.]*?\\d+(?:[.,]\\d+)?\\s*(?:met(?:re|er)s?\\b|m\\b)?', 'gi');
 
   /* One depth, or a list of them sharing the unit written after the last
    * ("12, 18 and 30 m"), in metres. The lookahead keeps the "m" of a rate
@@ -7604,13 +7968,38 @@
    * the time per metre a driller times with a stopwatch and writes the other
    * way up. The order of the alternatives is load-bearing. */
   var METRE_SOURCE = '(?:met(?:re|er)s?|m)';
-  var RATE_UNIT_RE = new RegExp('(\\d+(?:[.,]\\d+)?)\\s*(' +
-    METRE_SOURCE + '\\s*(?:/|per)\\s*min(?:ute)?s?' +
+  var RATE_UNITS_SOURCE = METRE_SOURCE + '\\s*(?:/|per)\\s*min(?:ute)?s?' +
     '|' + METRE_SOURCE + '\\s*(?:/|per)\\s*(?:hrs?|hours?|h)' +
     '|min(?:ute)?s?\\s*(?:/|per)\\s*' + METRE_SOURCE +
     '|sec(?:ond)?s?\\s*(?:/|per)\\s*' + METRE_SOURCE +
-    '|s\\s*(?:/|per)\\s*' + METRE_SOURCE +
+    '|s\\s*(?:/|per)\\s*' + METRE_SOURCE;
+  var RATE_UNIT_RE = new RegExp('(\\d+(?:[.,]\\d+)?)\\s*(' + RATE_UNITS_SOURCE +
     ')(?![a-z])', 'gi');
+
+  /* The unit a column header gives its cells: "Penetration rate (min/m)",
+   * "Bit diameter (mm)". A bare number in the cell is in that unit. The
+   * column was read in the template's units whatever its header said, so 165
+   * under "Bit diameter (mm)" was a 165 inch hole (a 2 m annulus and 1654
+   * bags of cement in the bill of quantities) and 4 under "(min/m)" was
+   * 4 m/min. */
+  var RATE_HEADER_RE = new RegExp('(?:' + RATE_UNITS_SOURCE + ')(?![a-z])', 'i');
+  var METRIC_HEADER_RE = /\b(millimet(?:re|er)s?|mms?|centimet(?:re|er)s?|cms?)\b/i;
+
+  /* A whole number and a fraction of an inch with no unit ("6 1/2"), which
+   * is how a bit is quoted. Groups are number, numerator, denominator. */
+  var MIXED_NUMBER_RE = /(\d+(?:[.,]\d+)?)\s+(\d+)\s*\/\s*(\d+)/g;
+
+  /* "8½" and "8-1/2" are how a bit size is stamped and typed; both used
+   * to be read as 8 inches. The fraction is written out and the hyphen
+   * dropped, so they reach the patterns above as "8 1/2". */
+  var VULGAR_FRACTIONS = { '½': '1/2', '¼': '1/4', '¾': '3/4',
+    '⅛': '1/8', '⅜': '3/8', '⅝': '5/8', '⅞': '7/8' };
+  var VULGAR_RE = /[½¼¾⅛⅜⅝⅞]/g;
+  var HYPHENATED_FRACTION_RE = /(\d)\s*-\s*(?=\d+\s*\/\s*\d)/g;
+
+  /* No water well is drilled wider than this, in inches: a larger reading is
+   * a bit size in millimetres with its unit left off. */
+  var MAX_BIT_DIAMETER_IN = 36.0;
 
   /* Python guards both unit patterns with a lookbehind, (?<![\d./,]), which
    * keeps the denominator of "6 1/2" from being read as a number in its own
@@ -7660,7 +8049,17 @@
     if (typeof value === 'boolean') return [[], ''];
     if (typeof value === 'number') return [value > 0 ? [value] : [], ''];
 
-    var text = cleanText(value).replace(CLOCK_TIME_RE, ' ');
+    /* A water level and a clock time are taken out before any number is
+     * read, and counted: a cell whose only numbers were those names no
+     * strike, and says so rather than recording nothing in silence. */
+    var levels = 0, clocks = 0;
+    var text = cleanText(value).replace(WATER_LEVEL_RE, function () {
+      levels += 1;
+      return ' ';
+    }).replace(CLOCK_TIME_RE, function () {
+      clocks += 1;
+      return ' ';
+    });
     /* A fraction between two digits is half a metre, or a date, or a run
      * number; it is not two depths and it is not its own denominator.
      * "Water strike 1/2 m" read as a strike at 2 m, which would place a
@@ -7683,7 +8082,13 @@
      * about ("First water strike: 12"); several are a sentence this parser
      * cannot take apart, and guessing one of them is worse than refusing. */
     var numbers = text.match(NUMBER_TOKEN_RE) || [];
-    if (!numbers.length) return [[], ''];
+    if (!numbers.length) {
+      var named = [];
+      if (levels) named.push('a water level');
+      if (clocks) named.push('a clock time');
+      if (named.length) return [[], 'it names ' + named.join(' and ') + ' but no strike depth'];
+      return [[], ''];
+    }
     if (numbers.length > 1) {
       return [[], 'it names several numbers and none of them carries a unit'];
     }
@@ -7702,37 +8107,78 @@
         'its unit, as "water strike at 12 m and 30 m".' };
   }
 
+  function fractionsWrittenOut(text) {
+    return text.replace(VULGAR_RE, function (c) { return ' ' + VULGAR_FRACTIONS[c]; })
+      .replace(HYPHENATED_FRACTION_RE, '$1 ');
+  }
+
+  /* A diameter in `unit` (the cell's or the header's) in inches. */
+  function inches(number, unit) {
+    if (number === null || number === undefined || !unit) return number;
+    var u = String(unit).toLowerCase();
+    if (u.indexOf('mm') === 0 || u.indexOf('millim') === 0) return pyRound(number / 25.4, 2);
+    if (u.indexOf('cm') === 0 || u.indexOf('centim') === 0) return pyRound(number / 2.54, 2);
+    return number;
+  }
+
+  /* The metric unit a diameter column header names, or null for inches. */
+  function headerDiameterUnit(header) {
+    var match = METRIC_HEADER_RE.exec(cleanText(header));
+    return match ? match[1].toLowerCase() : null;
+  }
+
+  /* The penetration rate unit a column header names, if it names one. */
+  function headerRateUnit(header) {
+    var match = RATE_HEADER_RE.exec(cleanText(header));
+    return match ? match[0] : null;
+  }
+
   /* The drilled diameter in inches, converting the unit the cell carries.
    *
    * Crews quote a bit in millimetres as often as in inches, and the column
    * was read as a bare number, so "165 mm" was recorded as a 165 inch hole
    * (ROADMAP data-ingestion-15) - a metre and a half of annulus in the bill
-   * of quantities and in the completion drawing. A cell with no unit at all
-   * is read as inches, which is the unit the template column asks for
-   * ("Drilling diameter (in)") and the unit the design rules are written in.
+   * of quantities and in the completion drawing. A cell with no unit is in
+   * `unit`, the unit its column header names; with none, inches, which is the
+   * unit the template column asks for ("Drilling diameter (in)") and the unit
+   * the design rules are written in.
    *
    * A converted diameter is kept to two decimals: 165 mm is the metric name
    * of a 6.5 in bit, and 6.5 in is what the completion log should print. */
-  function parseBitDiameterIn(value) {
+  function parseBitDiameterIn(value, unit) {
     if (value === null || value === undefined) return null;
     if (typeof value === 'boolean') return null;
-    if (typeof value === 'number') return value;
-    var text = cleanText(value);
+    if (typeof value === 'number') return inches(value, unit);
+    var text = fractionsWrittenOut(cleanText(value));
     var match = searchUnit(DIAMETER_UNIT_RE, text);
-    if (match === null) return parseNumber(text);
+    if (match === null) {
+      var mixed = searchUnit(MIXED_NUMBER_RE, text);
+      if (mixed === null) return inches(parseNumber(text), unit);
+      var whole = parseNumber(mixed[1]);
+      if (whole !== null && Number(mixed[3]) !== 0) whole += Number(mixed[2]) / Number(mixed[3]);
+      return inches(whole, unit);
+    }
     var number = parseNumber(match[1]);
     if (number === null) return null;
     if (match[2] && Number(match[3]) !== 0) {
       /* "6 1/2 in" is six and a half inches, which is how a bit is quoted. */
       number += Number(match[2]) / Number(match[3]);
     }
-    var unit = match[4].toLowerCase();
-    if (unit.indexOf('mm') === 0 || unit.indexOf('millim') === 0) {
-      return pyRound(number / 25.4, 2);
+    return inches(number, match[4]);
+  }
+
+  /* A penetration rate in `unit` (the cell's or the header's) in m/min. */
+  function rateInMPerMin(number, unit) {
+    if (number === null || number === undefined || !unit) return number;
+    var u = String(unit).replace(/\s+/g, '').toLowerCase().replace(/per/g, '/');
+    if (u.indexOf('min') === 0) {
+      /* minutes per metre: the reciprocal, and a zero is not a rate at all */
+      return number > 0 ? 1.0 / number : null;
     }
-    if (unit.indexOf('cm') === 0 || unit.indexOf('centim') === 0) {
-      return pyRound(number / 2.54, 2);
+    if (u.indexOf('s') === 0) {                       /* seconds per metre */
+      return number > 0 ? 60.0 / number : null;
     }
+    if (u.indexOf('/h') >= 0) return number / 60.0;
     return number;
   }
 
@@ -7744,27 +8190,19 @@
    * quotes metres per hour. The column was read as a bare number, so a hole
    * advancing at five minutes to the metre was recorded as five metres a
    * minute (ROADMAP data-ingestion-15), twenty-five times too fast. A cell
-   * with no unit is read as metres per minute, which is the unit the template
-   * column asks for ("Penetration rate (m/min)"). */
-  function parsePenetrationRateMPerMin(value) {
+   * with no unit is in `unit`, the unit its column header names; with none,
+   * metres per minute, which is the unit the template column asks for
+   * ("Penetration rate (m/min)"). */
+  function parsePenetrationRateMPerMin(value, unit) {
     if (value === null || value === undefined) return null;
     if (typeof value === 'boolean') return null;
-    if (typeof value === 'number') return value;
+    if (typeof value === 'number') return rateInMPerMin(value, unit);
     var text = cleanText(value);
     var match = searchUnit(RATE_UNIT_RE, text);
-    if (match === null) return parseNumber(text);
+    if (match === null) return rateInMPerMin(parseNumber(text), unit);
     var number = parseNumber(match[1]);
     if (number === null) return null;
-    var unit = match[2].replace(/\s+/g, '').toLowerCase().replace(/per/g, '/');
-    if (unit.indexOf('min') === 0) {
-      /* minutes per metre: the reciprocal, and a zero is not a rate at all */
-      return number > 0 ? 1.0 / number : null;
-    }
-    if (unit.indexOf('s') === 0) {                    /* seconds per metre */
-      return number > 0 ? 60.0 / number : null;
-    }
-    if (unit.indexOf('/h') >= 0) return number / 60.0;
-    return number;
+    return rateInMPerMin(number, match[2]);
   }
 
   /* "25-35; 48-53 m" -> [[25, 35], [48, 53]]: the as-built screens a crew
@@ -7786,11 +8224,18 @@
   function drillingFromGrid(grid, source) {
     var fields = extractHeaderFields(grid, grid.length);
     var site = siteFromFields(fields, source);
-    var flags = [], intervals = [], strikes = [], zeroStrikeRows = 0;
+    var flags = [], intervals = [], strikes = [], zeroStrikeRows = 0, tooWide = [];
     var located = findLogHeader(grid);
 
     if (located) {
       var cols = located.cols;
+      var headerCell = function (key) {
+        var c = cols[key], headerRow = grid[located.row] || [];
+        return (c !== undefined && c < headerRow.length) ? headerRow[c] : null;
+      };
+      /* the unit the column header names is the unit of a bare number */
+      var rateUnit = headerRateUnit(headerCell('rate'));
+      var diameterUnit = headerDiameterUnit(headerCell('diameter'));
       for (var r = located.row + 1; r < grid.length; r++) {
         var row = grid[r] || [];
         var cell = function (key) {
@@ -7818,15 +8263,35 @@
          * and the gap it left was reported as a gap in the crew's own log
          * (ROADMAP data-ingestion-8). Normalising the dashes reads the
          * interval as it was written, whichever dash was typed. */
-        var interval = parseDepthInterval(normaliseDashes(rawInterval));
-        if (!interval) continue;
+        /* A metre unit against each depth ("30 m - 40 m", "5m-10m") is
+         * dropped first for the same reason: the row used to be skipped with
+         * its description and its strike. */
+        var interval = parseDepthInterval(stripMetreUnits(normaliseDashes(rawInterval)));
+        if (!interval) {
+          if (readsAsInterval(rawInterval)) {
+            flags.push({
+              level: 'warning', code: 'interval_unreadable',
+              message: 'Depth interval cell "' + cleanText(rawInterval) + '" was not ' +
+                'read as a depth interval, so this row was skipped; write it as the ' +
+                'depths from and to, as "30-40".',
+            });
+          }
+          continue;
+        }
+        var diameter = parseBitDiameterIn(cell('diameter'), diameterUnit);
+        if (diameter !== null && diameter > MAX_BIT_DIAMETER_IN) {
+          /* a bit size in millimetres with its unit left off: sized as inches
+           * it made a two-metre annulus and a thousand bags of cement */
+          tooWide.push(cleanText(cell('diameter')));
+          diameter = null;
+        }
         intervals.push({
           top_m: interval[0], bottom_m: interval[1],
           description: cleanText(cell('description')),
           from_time: cleanText(cell('from_time')),
           to_time: cleanText(cell('to_time')),
-          penetration_rate_m_per_min: parsePenetrationRateMPerMin(cell('rate')),
-          bit_diameter_in: parseBitDiameterIn(cell('diameter')),
+          penetration_rate_m_per_min: parsePenetrationRateMPerMin(cell('rate'), rateUnit),
+          bit_diameter_in: diameter,
         });
         var rawStrike = cell('strike');
         var readStrike = parseWaterStrikeDepths(rawStrike);
@@ -7847,6 +8312,14 @@
           message: 'The water strike column holds 0 on ' + zeroStrikeRows +
             ' row(s); a zero there is read as no strike on that row, not as ' +
             'a strike at 0 m.' });
+      }
+      if (tooWide.length) {
+        var wideValues = tooWide.filter(function (v, i) { return tooWide.indexOf(v) === i; });
+        flags.push({ level: 'warning', code: 'diameter_implausible',
+          message: 'Drilled diameter ' + wideValues.join(', ') + ' reads as more than ' +
+            formatG(MAX_BIT_DIAMETER_IN) + ' inches, wider than any water well bit, so ' +
+            'it was not recorded; write the unit in the cell or the column header, ' +
+            'as "165 mm".' });
       }
     }
 
@@ -11914,16 +12387,23 @@
     return {
       totalDepth: totalDepth,
       domain: domain,
+      /* One class table for every drawing. Each interval carries the rock it
+       * is logged as, and bands carries what the borehole drawing draws: a
+       * fracture zone named with its depths is a band of its own wherever
+       * those depths fall. The class used to be taken from the whole
+       * description, so Dr Timbo's 45-50 m and 55-60 m rows were "Fracture
+       * zone" here while the drawing drew them as granite with a zone in and
+       * below them. */
       lithology: ((log && log.intervals) || []).map(function (iv) {
-        /* one class table for every drawing: the class and colour ride with
-         * each interval so the workspace shades the log the way the report
-         * draws it */
-        var klass = lithologyClass(iv.description);
+        var klass = hostClass(iv.description, iv.top_m, iv.bottom_m);
         return {
           top: iv.top_m, base: iv.bottom_m, description: iv.description,
           aquifer: looksLikeAquifer(iv.description),
           'class': klass.label, colour: klass.colour,
         };
+      }),
+      bands: lithologyBands((log && log.intervals) || []).map(function (b) {
+        return { top: b.top_m, base: b.bottom_m, 'class': b.label, colour: b.colour };
       }),
       waterStrikes: (design.water_strikes_m || []).slice(),
       segments: (design.segments || []).map(function (s) {
@@ -12220,17 +12700,19 @@
     var analysis = inputs.analysis || null;
     var log = inputs.log;
     if (!log) throw new Error('the Depth Spine needs a drilling log');
-    var swl = null, pumpIntake = null;
+    var swl = null, pumpIntake = null, intakeFloor = null;
     if (analysis) {
       swl = analysis.test ? analysis.test.static_water_level_m : null;
       if (analysis.yield_recommendation) {
         pumpIntake = analysis.yield_recommendation.pump_installation_depth_m;
+        intakeFloor = pumpIntakeFloor(analysis.yield_recommendation,
+          config.pumping.pump_submergence_min_m);
       }
     }
 
     var design = designBorehole({
       log: log, staticWaterLevelM: swl, pumpIntakeM: pumpIntake,
-      rules: config.design,
+      pumpIntakeFloorM: intakeFloor, rules: config.design,
       screensM: screensM && screensM.length ? screensM : null,
     });
 

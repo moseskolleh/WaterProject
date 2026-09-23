@@ -1545,9 +1545,14 @@
         C.formatG(rec.safety_factor) + ' applied to the long term yield' +
         (rec.is_indicative ? ', indicative' : '') + ').');
       if (pumpIntake(context)) {
+        /* not where the design had to leave it inside a screen, which its
+         * notes then say */
+        var inScreen = design && (design.screens || []).some(function (s) {
+          return s.top_m <= pumpIntake(context) && pumpIntake(context) <= s.bottom_m;
+        });
         advice.push('The pump intake is set at ' +
           C.fmtNum(pumpIntake(context)) + ' m below the top of the casing' +
-          (design ? ', in plain casing clear of the screens' : '') + '.');
+          (design && !inScreen ? ', in plain casing clear of the screens' : '') + '.');
       }
       advice.push('The pump should rest for at least one hour in every ' +
         'pumping cycle and the pumping water level should be checked routinely.');
@@ -1890,7 +1895,10 @@
         'Install the pump intake at ' + C.fmtNum(pumpDepth) + ' m ' + DATUM_TEXT +
           (pumpDepthWhy ? ', ' + pumpDepthWhy : '') +
           ', in plain casing: where that depth falls within a screen, ' +
-          'the borehole design sets it just below that screen.',
+          'the borehole design moves it into plain casing below that screen, ' +
+          'or above it where that is no shallower than the deepest level the ' +
+          'test reached plus the submergence margin; otherwise it keeps this ' +
+          'depth and says so in its design notes.',
         'Monitor the pumping water level and re-assess the yield if the level ' +
           'approaches the pump intake.',
       ]);
@@ -2488,10 +2496,21 @@
         ' m' + (log.drilling_method ? ' by ' + log.drilling_method : '') + '.');
     }
     if (design) {
-      works.push('Construction with ' + C.formatG(design.casing_diameter_in) +
-        ' inch ' + design.casing_material + ' casing, ' +
-        C.fmtNum(design.total_screen_length_m) + ' m of screen, gravel pack ' +
-        'and sanitary seal to ' + C.fmtNum(design.sanitary_seal[1]) + ' m.');
+      /* The fill is the design's own, and the bullet says "designed" unless
+       * the log records the screens as installed: it certified "gravel pack"
+       * over a 19 mm annulus the design had left empty, and 19 m of screen as
+       * completed work above a drawing captioned "not an as-built record". */
+      var fill = design.annular_fill === 'gravel pack' ||
+        design.annular_fill === 'formation stabiliser' ? design.annular_fill
+        : 'no gravel pack (the ' + C.pyFixed(design.annulus_mm || 0, 0) +
+          ' mm annulus is too thin to place one)';
+      works.push((design.as_built ? 'Construction with ' : 'Construction designed with ') +
+        C.formatG(design.casing_diameter_in) + ' inch ' + design.casing_material +
+        ' casing, ' + C.fmtNum(design.total_screen_length_m) + ' m of screen' +
+        (design.as_built ? ' as installed' : '') + ', ' + fill +
+        ' and sanitary seal to ' + C.fmtNum(design.sanitary_seal[1]) + ' m' +
+        (design.as_built ? '.'
+          : '; the drilling log records no casing string as installed.'));
       works.push('Development of the borehole by air lifting until clear.');
     }
     if (context.analysis) works.push('Pumping test and yield assessment.');

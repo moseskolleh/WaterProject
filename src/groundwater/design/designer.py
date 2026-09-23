@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from ..config import DesignRules
 from ..models import DataFlag, DrillingLog
 from ..ves.interpret import SiteInterpretation
-from .lithology import fracture_ranges, is_clayey
+from .lithology import is_clayey, read_fractures
 
 # Lithology phrases that mark an interval as a screening target, and phrases
 # that negate it. Matching is on whole words/phrases so a description like
@@ -134,7 +134,9 @@ class BoreholeDesign:
                 (f"{self.gravel_pack[0]:g}-{self.gravel_pack[1]:g} m: "
                  f"{self.annular_fill_label}"),
             ),
-            ("Backfill", f"{self.backfill[0]:g}-{self.backfill[1]:g} m"),
+            # the fill can reach the seal, and "Backfill 20-20 m" was printed
+            ("Backfill", f"{self.backfill[0]:g}-{self.backfill[1]:g} m"
+             if self.backfill[1] > self.backfill[0] else "none"),
             (
                 "Sanitary seal",
                 f"{self.sanitary_seal[0]:g}-{self.sanitary_seal[1]:g} m cement grout",
@@ -151,13 +153,24 @@ class BoreholeDesign:
         return rows
 
 
-def seal_depth_for(log: DrillingLog | None, rules: DesignRules) -> float:
+def seal_depth_for(
+    log: DrillingLog | None, rules: DesignRules, total_depth_m: float | None = None,
+) -> float:
     """The cement seal: the recorded grout depth, never less than the rule.
 
     Dr Timbo's log records grouting to 20 m; the drawing showed a 6 m seal
     with a screen and a gravel pack inside the grouted interval.
+
+    A grout recorded at or below the top of the sump cannot be what was
+    placed: it leaves nowhere for a screen, and 70 m in a 60 m hole printed
+    a "0-70 m" seal over "Annular fill 70-60 m". It is held at the top of
+    the sump, and :func:`design_borehole` flags it as ``grout_too_deep``.
     """
     grout = float(getattr(log, "grouting_depth_m", None) or 0.0) if log else 0.0
+    if total_depth_m is None and log is not None and log.total_depth_m:
+        total_depth_m = float(log.total_depth_m)
+    if total_depth_m is not None:
+        grout = min(grout, max(total_depth_m - rules.sump_length_m, 0.0))
     return max(rules.sanitary_seal_depth_m, grout)
 
 
@@ -184,43 +197,86 @@ def _interval_at(log: DrillingLog | None, depth: float):
     return None
 
 
+@dataclass
+class _Target:
+    """One depth the log says is worth screening, and what became of it."""
+
+    kind: str  # "strike", "zone" (a named fracture zone) or "interval"
+    label: str  # "30 m", "49-52 m", "25-30 m"
+    candidate: tuple[float, float]  # the screen asked for, before clipping
+    clipped: tuple[float, float] | None = None
+    # where the clip took the rest of it: "within the 20 m grouted interval"
+    cut: list[str] = field(default_factory=list)
+
+    @property
+    def noun(self) -> str:
+        return {"strike": "strike", "zone": "fracture zone"}.get(self.kind, "interval")
+
+
+@dataclass
+class _Targets:
+    zones: list[tuple[float, float]]
+    targets: list[_Target]
+    # sentences that do not depend on what survives: a strike in clay or in
+    # the grout, a clayey interval
+    excluded: list[str]
+    ves: list[str]
+
+
+def _half_metres(zone: tuple[float, float]) -> tuple[float, float]:
+    """A screen interval rounded inwards to the half metre, as every screen is."""
+    return math.ceil(zone[0] * 2.0) / 2.0, math.floor(zone[1] * 2.0) / 2.0
+
+
 def _target_zones(
     log: DrillingLog | None,
     interpretation: SiteInterpretation | None,
     swl: float | None,
     total_depth: float,
     rules: DesignRules,
-) -> tuple[list[tuple[float, float]], list[str]]:
+) -> _Targets:
     """Candidate aquifer intervals from strikes, lithology and VES.
 
     The basis sentences are written from the zones that survive clipping,
     not from the candidates: a strike above the static-level floor used to
     leave "screens positioned against the water strikes (8 m)" in the client
     document beside "no aquifer intervals identified", and blocked the VES
-    fallback while contributing no screen.
+    fallback while contributing no screen. Each candidate is kept with what
+    the clip did to it, so :func:`_placement_basis` can say why a zone the log
+    names is screened only in part, or not at all.
     """
-    seal = seal_depth_for(log, rules)
+    seal = seal_depth_for(log, rules, total_depth)
     # nothing is screened inside the grouted interval, whatever the log says
     # is wet there: the grout is there to keep that water out
-    floor = max((swl or 0.0) + rules.min_screen_below_swl_m, seal)
+    swl_floor = (swl or 0.0) + rules.min_screen_below_swl_m
+    floor = max(swl_floor, seal)
+    sump_top = total_depth - rules.sump_length_m
+
+    def clip_one(zone):
+        top = math.ceil(max(zone[0], floor) * 2.0) / 2.0
+        bottom = math.floor(min(zone[1], sump_top) * 2.0) / 2.0
+        return (top, bottom) if bottom - top >= 1.0 else None
 
     def clip(candidates):
-        clipped = []
-        for top, bottom in candidates:
-            top = math.ceil(max(top, floor) * 2.0) / 2.0
-            bottom = math.floor(min(bottom, total_depth - rules.sump_length_m) * 2.0) / 2.0
-            if bottom - top >= 1.0:
-                clipped.append((top, bottom))
-        return clipped
+        return [c for c in (clip_one(zone) for zone in candidates) if c]
 
-    basis = []
-    strike_zones: list[tuple[float, float]] = []
-    litho_zones: list[tuple[float, float]] = []
-    named_zones: list[tuple[float, float]] = []
-    named_text: list[str] = []
-    fractured_intervals: list[str] = []
+    def target(kind, label, first, candidate):
+        cut = []
+        if candidate[0] < floor:
+            cut.append(
+                f"within the {seal:g} m grouted interval" if seal >= swl_floor
+                else f"shallower than {floor:g} m, {rules.min_screen_below_swl_m:g} m "
+                "below the static water level"
+            )
+        if candidate[1] > sump_top:
+            cut.append(
+                f"below the {total_depth:g} m bottom of the hole" if first >= total_depth
+                else f"below the top of the {rules.sump_length_m:g} m sump, at {sump_top:g} m"
+            )
+        return _Target(kind, label, candidate, clip_one(candidate), cut)
+
+    targets: list[_Target] = []
     excluded: list[str] = []
-    kept_strikes: list[float] = []
     if log is not None:
         for strike in log.water_strikes_m:
             host = _interval_at(log, strike)
@@ -237,10 +293,8 @@ def _target_zones(
                     f"the {strike:g} m strike is not screened: " + " and ".join(reasons)
                 )
                 continue
-            zone = (max(strike - 1.0, 0.0), strike + 5.0)
-            if clip([zone]):
-                strike_zones.append(zone)
-                kept_strikes.append(strike)
+            targets.append(target("strike", f"{strike:g} m", strike,
+                                  (max(strike - 1.0, 0.0), strike + 5.0)))
         for interval in log.intervals:
             text = interval.description.lower()
             if any(neg in text for neg in _NEGATION_PHRASES):
@@ -258,38 +312,31 @@ def _target_zones(
             # "fracture zone 49-52 m" on the 45-50 m row: the zone is the
             # target, with a margin, not the five metres it was logged on.
             # The screens used to cover one metre of that zone and none of
-            # the next, which sat behind plain casing.
-            ranges = fracture_ranges(interval.description)
-            if ranges:
-                for top, bottom in ranges:
-                    named_zones.append((top - rules.fracture_zone_margin_m,
-                                        bottom + rules.fracture_zone_margin_m))
-                    named_text.append(f"{top:g}-{bottom:g} m")
-            else:
-                litho_zones.append((interval.top_m, interval.bottom_m))
-                fractured_intervals.append(f"{interval.top_m:g}-{interval.bottom_m:g} m")
-    clipped = clip(strike_zones) + clip(named_zones) + clip(litho_zones)
-    if kept_strikes:
-        basis.append(
-            "screens positioned against the water strikes recorded in the "
-            "drilling log (" + ", ".join(f"{w:g} m" for w in kept_strikes) + ")"
-        )
-    if named_zones and clip(named_zones):
-        basis.append(
-            "screens positioned against the fracture zones the log names ("
-            + ", ".join(named_text)
-            + f"), with {rules.fracture_zone_margin_m:g} m of screen either side"
-        )
-    if litho_zones and clip(litho_zones):
-        basis.append(
-            "screens positioned against the fractured or water-bearing intervals "
-            "logged at " + ", ".join(fractured_intervals)
-        )
-    basis.extend(excluded)
+            # the next, which sat behind plain casing. A fracture phrase
+            # whose depths cannot be read leaves the row a target as well,
+            # rather than leaving it to plain casing.
+            reading = read_fractures(interval.description, interval.top_m, interval.bottom_m)
+            for top, bottom in reading.ranges:
+                targets.append(target(
+                    "zone", f"{top:g}-{bottom:g} m", top,
+                    (top - rules.fracture_zone_margin_m,
+                     bottom + rules.fracture_zone_margin_m),
+                ))
+            if reading.unread or not reading.ranges:
+                targets.append(target(
+                    "interval", f"{interval.top_m:g}-{interval.bottom_m:g} m",
+                    interval.top_m, (interval.top_m, interval.bottom_m),
+                ))
+    # one target per thing the log names, however many rows name it
+    seen: set[tuple[str, str]] = set()
+    targets = [t for t in targets
+               if not ((t.kind, t.label) in seen or seen.add((t.kind, t.label)))]
+    clipped = [t.clipped for t in targets if t.clipped]
+    ves: list[str] = []
     if not clipped and interpretation is not None and interpretation.water_zones:
         clipped = clip([(t, b) for t, b in interpretation.water_zones])
         if clipped:
-            basis.append(
+            ves.append(
                 "screens positioned against the low resistivity zones of the VES "
                 "interpretation ("
                 + ", ".join(f"{int(t)}-{int(b)} m" for t, b in interpretation.water_zones)
@@ -302,7 +349,75 @@ def _target_zones(
             merged[-1] = (merged[-1][0], max(merged[-1][1], zone[1]))
         else:
             merged.append(zone)
-    return merged, basis
+    return _Targets(merged, targets, excluded, ves)
+
+
+def _placement_basis(
+    found: _Targets, screens: list[tuple[float, float]], rules: DesignRules,
+) -> list[str]:
+    """The basis sentences, written from the screens that are actually built.
+
+    A zone clipped by the grout, the sump or the bottom of the hole, or
+    trimmed away with the shallowest screens, used to stay in the basis as
+    "screens positioned against the fracture zones the log names (16-18 m,
+    49-52 m, 59-62 m), with 1 m of screen either side" beside a single
+    48-53 m screen. Each target is now described by what covers it: in full,
+    in part with the reason, or not at all with the reason.
+    """
+    margin = rules.fracture_zone_margin_m
+    trim_reason = ("the screens were trimmed to 60 percent of the hole, keeping "
+                   "the deepest sections")
+
+    def covered(zone):
+        pieces = [(max(zone[0], top), min(zone[1], bottom)) for top, bottom in screens
+                  if min(zone[1], bottom) > max(zone[0], top)]
+        if not pieces:
+            return None
+        return min(p[0] for p in pieces), max(p[1] for p in pieces)
+
+    strikes, zones, intervals, partial, dropped = [], [], [], [], []
+    for t in found.targets:
+        cover = covered(t.clipped) if t.clipped else None
+        trimmed = t.clipped is not None and cover != t.clipped
+        why = []
+        if t.cut and (cover is None or cover[0] > t.candidate[0] or cover[1] < t.candidate[1]):
+            why.append(("it lies " if cover is None else "the rest of it lies ")
+                       + " and ".join(t.cut))
+        if trimmed:
+            why.append(trim_reason)
+        if cover is None:
+            if why:
+                dropped.append(f"the {t.label} {t.noun} is not screened: " + "; ".join(why))
+            continue
+        if t.kind == "strike":
+            strikes.append(t.label)
+        elif t.kind == "interval":
+            intervals.append(t.label)
+        elif cover == _half_metres(t.candidate):
+            zones.append(t.label)
+        else:
+            partial.append(
+                f"the {t.label} fracture zone is screened at {cover[0]:g}-{cover[1]:g} m, "
+                f"not with {margin:g} m of screen either side: "
+                + "; ".join(why or ["the screen is rounded to the half metre"])
+            )
+    basis = []
+    if strikes:
+        basis.append(
+            "screens positioned against the water strikes recorded in the "
+            "drilling log (" + ", ".join(strikes) + ")"
+        )
+    if zones:
+        basis.append(
+            "screens positioned against the fracture zones the log names ("
+            + ", ".join(zones) + f"), with {margin:g} m of screen either side"
+        )
+    if intervals:
+        basis.append(
+            "screens positioned against the fractured or water-bearing intervals "
+            "logged at " + ", ".join(intervals)
+        )
+    return basis + partial + found.excluded + dropped + found.ves
 
 
 def design_borehole(
@@ -313,6 +428,7 @@ def design_borehole(
     rules: DesignRules | None = None,
     total_depth_m: float | None = None,
     screens_m: list[tuple[float, float]] | None = None,
+    pump_intake_floor_m: float | None = None,
 ) -> BoreholeDesign:
     """Produce a construction design from the drilling log and/or VES model.
 
@@ -321,6 +437,11 @@ def design_borehole(
     pack, backfill and seal - is still assembled by the same rules, and the
     same checks still run, so an analyst-placed screen is validated exactly
     like a generated one rather than being taken on trust.
+
+    ``pump_intake_floor_m`` is the shallowest depth the pumping test supports
+    for the intake (see :func:`pump_intake_floor`). An intake that falls in a
+    screen is moved up into plain casing only as far as that; without it, it
+    is moved down or not at all.
     """
     rules = rules or DesignRules()
     flags: list[DataFlag] = []
@@ -342,11 +463,15 @@ def design_borehole(
         screens_m = list(log.installed_screens_m)
         as_built = True
     if screens_m:
-        screens, basis = _analyst_screens(screens_m, total_depth_m, rules, flags)
+        screens, basis = _analyst_screens(screens_m, total_depth_m, rules, flags,
+                                          as_built=as_built)
         if as_built:
+            # the record as the crew wrote it: where the drawing has had to
+            # differ from it, a screen_clipped warning says how
             basis = [
                 "screens as installed, recorded on the drilling log ("
-                + ", ".join(f"{t:g}-{b:g} m" for t, b in screens) + ")"
+                + ", ".join(f"{float(t):g}-{float(b):g} m" for t, b in sorted(screens_m))
+                + ")"
             ]
         return _assemble(
             screens=screens,
@@ -355,21 +480,24 @@ def design_borehole(
             total_depth_m=total_depth_m,
             swl=swl,
             pump_intake_m=pump_intake_m,
+            pump_intake_floor_m=pump_intake_floor_m,
             rules=rules,
             log=log,
             as_built=as_built,
         )
 
-    zones, basis = _target_zones(log, interpretation, swl, total_depth_m, rules)
+    found = _target_zones(log, interpretation, swl, total_depth_m, rules)
 
     # screens: cover the zones, at least the default screen length overall
     screens: list[tuple[float, float]] = []
-    for top, bottom in zones:
+    for top, bottom in found.zones:
         screens.append((top, bottom))
+    fallback: list[str] = []
     if not screens:
         # fall back: screen the bottom third of the hole below the SWL margin
-        floor = max((swl or 0.0) + rules.min_screen_below_swl_m,
-                    seal_depth_for(log, rules))
+        swl_floor = (swl or 0.0) + rules.min_screen_below_swl_m
+        seal = seal_depth_for(log, rules, total_depth_m)
+        floor = max(swl_floor, seal)
         sump_top = max(total_depth_m - rules.sump_length_m, 0.0)
         bottom = sump_top
         # rounded to 0.5 m like every other screen top, so the summary does
@@ -378,26 +506,36 @@ def design_borehole(
         if bottom - top < 3.0:
             top = max(bottom - rules.screen_length_default_m, floor)
         if bottom - top < 1.0:
-            # The static water level margin plus the sump leave no room for a
-            # valid screen: the hole is too shallow for this SWL. Clamp to a
-            # positive interval just above the sump so the geometry stays valid
-            # (no negative-length screen, no casing past the hole bottom) and
+            # The static water level margin, or the recorded grout, plus the
+            # sump leave no room for a valid screen. Clamp to a positive
+            # interval just above the sump so the geometry stays valid (no
+            # negative-length screen, no casing past the hole bottom) and
             # flag it loudly for manual review rather than emitting garbage.
+            # The message names whichever of the two is in the way: a grout
+            # recorded below the hole was blamed on the static water level.
             top = max(min(bottom - rules.screen_length_default_m, bottom - 1.0), 0.0)
+            cause = (
+                f"The {seal:g} m grouted interval" if seal >= swl_floor
+                else f"Static water level plus the {rules.min_screen_below_swl_m:g} m "
+                "minimum screen depth"
+            )
             flags.append(
                 DataFlag(
                     "error",
                     "hole_too_shallow",
-                    f"Static water level plus the {rules.min_screen_below_swl_m:g} m "
-                    f"minimum screen depth leaves no room for a screen above the sump "
+                    f"{cause} leaves no room for a screen above the sump "
                     f"in this {total_depth_m:g} m hole. Screen placement is a best "
                     "effort only - deepen the hole or revise the design manually.",
                 )
             )
         screens = [(top, bottom)]
-        basis.append(
-            "no aquifer intervals identified from the data; screens default to "
-            "the lower third of the hole"
+        # the targets the log names and the design could not screen are
+        # listed above this sentence, so it does not say there were none
+        fallback.append(
+            ("none of the aquifer intervals identified from the data can be screened"
+             if found.targets or found.excluded
+             else "no aquifer intervals identified from the data")
+            + "; screens default to the lower third of the hole"
         )
         flags.append(
             DataFlag(
@@ -435,14 +573,28 @@ def design_borehole(
 
     return _assemble(
         screens=screens,
-        basis=basis,
+        basis=_placement_basis(found, screens, rules) + fallback,
         flags=flags,
         total_depth_m=total_depth_m,
         swl=swl,
         pump_intake_m=pump_intake_m,
+        pump_intake_floor_m=pump_intake_floor_m,
         rules=rules,
         log=log,
     )
+
+
+def pump_intake_floor(recommendation, submergence_m: float) -> float | None:
+    """The shallowest pump intake the pumping test supports.
+
+    That is the deepest level the test drew the water to, with the
+    submergence margin under it: the floor the yield recommendation itself
+    never sets the intake above. ``None`` when the test gives no level.
+    """
+    deepest = getattr(recommendation, "deepest_pumping_level_m", None)
+    if deepest is None:
+        return None
+    return float(deepest) + float(submergence_m)
 
 
 def _analyst_screens(
@@ -450,6 +602,7 @@ def _analyst_screens(
     total_depth_m: float,
     rules: DesignRules,
     flags: list[DataFlag],
+    as_built: bool = False,
 ) -> tuple[list[tuple[float, float]], list[str]]:
     """Clean up analyst-supplied screen intervals without silently moving them.
 
@@ -457,6 +610,11 @@ def _analyst_screens(
     they touch. Anything the clipping actually changed is flagged rather than
     absorbed, because a screen that has quietly moved is worse than one that
     was refused.
+
+    Screens recorded as installed are a record, not a choice: two that meet
+    stay two, and a clip is a warning that reaches the client documents. It
+    used to be an info flag, so "48-54; 54-60 m" in a 60 m hole was printed
+    "Screens (as installed) 48-58 m" without a word.
     """
     sump_top = total_depth_m - rules.sump_length_m
     cleaned: list[tuple[float, float]] = []
@@ -474,16 +632,31 @@ def _analyst_screens(
             )
             continue
         if (clipped_top, clipped_bottom) != (top, bottom):
-            flags.append(
-                DataFlag(
-                    "info",
-                    "screen_clipped",
-                    f"Screen {top:g}-{bottom:g} m was clipped to "
-                    f"{clipped_top:g}-{clipped_bottom:g} m to stay inside the hole "
-                    "and above the sump.",
+            if as_built:
+                flags.append(
+                    DataFlag(
+                        "warning",
+                        "screen_clipped",
+                        f"The screen recorded as installed at {top:g}-{bottom:g} m "
+                        f"runs below the top of the {rules.sump_length_m:g} m sump "
+                        f"the design rules place at {sump_top:g} m in this "
+                        f"{total_depth_m:g} m hole; it is drawn as "
+                        f"{clipped_top:g}-{clipped_bottom:g} m. Check the record "
+                        "against the hole.",
+                    )
                 )
-            )
-        if cleaned and clipped_top <= cleaned[-1][1]:
+            else:
+                flags.append(
+                    DataFlag(
+                        "info",
+                        "screen_clipped",
+                        f"Screen {top:g}-{bottom:g} m was clipped to "
+                        f"{clipped_top:g}-{clipped_bottom:g} m to stay inside the hole "
+                        "and above the sump.",
+                    )
+                )
+        if cleaned and (clipped_top < cleaned[-1][1]
+                        or (clipped_top == cleaned[-1][1] and not as_built)):
             cleaned[-1] = (cleaned[-1][0], max(cleaned[-1][1], clipped_bottom))
         else:
             cleaned.append((clipped_top, clipped_bottom))
@@ -510,6 +683,7 @@ def _assemble(
     rules: DesignRules,
     log: DrillingLog | None,
     as_built: bool = False,
+    pump_intake_floor_m: float | None = None,
 ) -> BoreholeDesign:
     """Build the casing string and annulus around a set of screen intervals."""
     segments: list[CasingSegment] = []
@@ -525,7 +699,38 @@ def _assemble(
     segments.append(CasingSegment(sump_top, total_depth_m, "sump"))
 
     top_screen = screens[0][0]
-    seal_depth = seal_depth_for(log, rules)
+    seal_depth = seal_depth_for(log, rules, total_depth_m)
+    grout = float(getattr(log, "grouting_depth_m", None) or 0.0) if log else 0.0
+    if grout > 0 and grout >= sump_top:
+        flags.append(
+            DataFlag(
+                "error",
+                "grout_too_deep",
+                f"The drilling log records grouting to {grout:g} m, at or below the "
+                f"top of the sump at {sump_top:g} m in this {total_depth_m:g} m hole, "
+                "which leaves nowhere below the grout for a screen. The seal is "
+                f"drawn to {seal_depth:g} m; check the grouting depth on the log.",
+            )
+        )
+    # A screen inside the grout is sealed off from the water it is there to
+    # take. The design never places one there; a screen recorded as
+    # installed, or placed by the analyst, can say otherwise, and 15-20 m of
+    # an as-built screen inside a 20 m grout used to go unmentioned.
+    for top, bottom in screens:
+        if top < seal_depth:
+            sealed = min(bottom, seal_depth) - top
+            flags.append(
+                DataFlag(
+                    "warning",
+                    "screen_in_grout",
+                    (f"The screen recorded as installed at {top:g}-{bottom:g} m"
+                     if as_built else f"The screen at {top:g}-{bottom:g} m")
+                    + f" runs inside the {seal_depth:g} m grouted interval, which "
+                    f"seals {sealed:g} m of it off"
+                    + ("; the record of the grout or of the screen needs checking."
+                       if as_built else "."),
+                )
+            )
     gravel_top = max(top_screen - rules.gravel_pack_above_top_screen_m, seal_depth)
     gravel = (gravel_top, total_depth_m)
     seal = (0.0, seal_depth)
@@ -584,7 +789,14 @@ def _assemble(
             f"{fill} ({material}) from {gravel[0]:g} m to the bottom, "
             f"{rules.gravel_pack_above_top_screen_m:g} m above the top screen"
         )
-    if seal_depth > rules.sanitary_seal_depth_m:
+    if grout > seal_depth:
+        # held at the top of the sump: not what the log records
+        seal_sentence = (
+            f"cement grout from surface to {seal_depth:g} m, the top of the sump, "
+            f"where the drilling log records {grout:g} m (see the design notes), "
+            "with " + rules.apron_note
+        )
+    elif seal_depth > rules.sanitary_seal_depth_m:
         seal_sentence = (
             f"cement grout from surface to {seal_depth:g} m as recorded on the "
             f"drilling log (the rule's minimum is {rules.sanitary_seal_depth_m:g} m), "
@@ -619,6 +831,7 @@ def _assemble(
     # where the string allows it (deeper is more submergence) and upwards
     # otherwise, by the same clearance the pumping rules use. The yield
     # recommendation cannot know where the screens are; the design can.
+    held = ""
     if pump_intake_m is not None:
         hit = next(((t, b) for t, b in screens if t <= pump_intake_m <= b), None)
         if hit is not None:
@@ -631,6 +844,24 @@ def _assemble(
             plain_above = above > 0 and (swl is None or above > swl) and not any(
                 t <= above <= b for t, b in screens
             )
+            # Moving the intake up spends drawdown the yield was worked out
+            # on. It goes up only as far as the deepest level the pumping
+            # test reached plus the submergence margin, the floor the yield
+            # itself holds to: a 40-68 m screen used to lift a 52 m intake to
+            # 39 m, above the 42.3 m the test had drawn the water to, which
+            # is the intake hydraulics-4 took out of the yield. Without that
+            # floor there is nothing to check a shallower setting against.
+            if plain_above and not plain_below:
+                if pump_intake_floor_m is None:
+                    held = (f"the plain casing above it, at {above:g} m, cannot be "
+                            "checked against the level the pumping test reached")
+                elif above < pump_intake_floor_m:
+                    held = (f"the plain casing above it, at {above:g} m, is shallower "
+                            f"than the {pump_intake_floor_m:g} m the pumping test "
+                            "supports (the deepest level it reached with the "
+                            "submergence margin)")
+                if held:
+                    plain_above = False
             moved = below if plain_below else (above if plain_above else None)
             if moved is not None:
                 flags.append(
@@ -663,6 +894,18 @@ def _assemble(
                     f"The pump intake at {pump_intake_m:g} m is below the top of the "
                     f"sump at {sump_top:g} m in a {total_depth_m:g} m hole; it cannot "
                     "be set there.",
+                )
+            )
+        elif held:
+            flags.append(
+                DataFlag(
+                    "warning",
+                    "pump_intake_in_screen",
+                    f"The pump intake at {pump_intake_m:g} m sits inside a screened "
+                    "interval and is kept there: there is no plain casing below "
+                    f"that screen above the sump, and {held}. Set the screens so "
+                    "there is plain casing at a depth the test supports, or accept "
+                    "the inflow drawn across the pump.",
                 )
             )
         elif any(top <= pump_intake_m <= bottom for top, bottom in screens):

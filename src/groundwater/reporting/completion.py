@@ -172,6 +172,33 @@ def _record_span(record) -> str:
             f"to {last // 60:02d}:{last % 60:02d}).")
 
 
+def _construction_works(design) -> list[str]:
+    """The casing and annulus bullets, worded from what the design places.
+
+    "Gravel packing of the annulus." was listed as work done beside a design
+    that places no pack in a 19 mm annulus, and a string the rules generated
+    was listed as installed although the log records no casing. The fill
+    comes from the design, and the casing is "as designed" unless the log
+    records the screens as installed.
+    """
+    done = "" if design.as_built else ", as designed"
+    works = [
+        "Supply and installation of casings (plain and screen)"
+        + (", with the screens recorded as installed on the drilling log."
+           if design.as_built
+           else " as designed in section 5; the drilling log records no casing "
+           "string as installed.")
+    ]
+    if design.annular_fill == "gravel pack":
+        works.append(f"Gravel packing of the annulus{done}.")
+    elif design.annular_fill == "formation stabiliser":
+        works.append(f"Placing a formation stabiliser in the annulus{done}.")
+    else:
+        works.append(f"No gravel pack: the {design.annulus_mm:.0f} mm annulus is too "
+                     "thin to place one.")
+    return works
+
+
 def _design_notes(rb, design) -> None:
     """The design's own warnings, in the client document.
 
@@ -259,10 +286,7 @@ def build_completion_report(
         + (f" using the {log.drilling_method} method." if log.drilling_method else "."),
     ]
     if inputs.design is not None:
-        drilling_works += [
-            "Supply and installation of casings (plain and screen).",
-            "Gravel packing of the annulus.",
-        ]
+        drilling_works += _construction_works(inputs.design)
     if inputs.development_record or inputs.development_note:
         drilling_works.append(
             "Development of the borehole by surging with compressed air and airlifting."
@@ -315,7 +339,10 @@ def build_completion_report(
         design_fig = figures / f"borehole_design_{slug}.png"
         draw_borehole_design(
             inputs.design, log, path=design_fig, style=config.style,
-            title=f"Borehole design - {site.community} ({log.borehole_ref})",
+            # named for what it is, as the header under it and the browser
+            # drawing already were: an as-built drawing was titled a design
+            title=(("As-built borehole record" if design.as_built else "Borehole design")
+                   + f" - {site.community} ({log.borehole_ref})"),
             header_pairs=[
                 ("Client", site.client), ("Contractor", site.contractor or ""),
                 ("Method", log.drilling_method), ("Status", log.status),
@@ -498,7 +525,13 @@ def build_completion_report(
             bullets.append(
                 f"The pump intake is set at {fmt_num(_pump_intake(inputs))} m "
                 "below the top of the casing"
-                + (", in plain casing clear of the screens" if inputs.design else "")
+                # not where the design had to leave it inside a screen,
+                # which its notes then say
+                + (", in plain casing clear of the screens"
+                   if inputs.design and not any(
+                       s.top_m <= _pump_intake(inputs) <= s.bottom_m
+                       for s in inputs.design.screens)
+                   else "")
                 + "."
             )
         bullets.append(

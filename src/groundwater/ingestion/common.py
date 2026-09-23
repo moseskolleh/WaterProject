@@ -19,7 +19,7 @@ from openpyxl import load_workbook
 
 from ..geo import parse_utm_zone
 from ..models import SiteMetadata
-from ..utils import clean_text, parse_number
+from ..utils import clean_text, parse_depth_interval, parse_number
 
 # Canonical header keys and the label patterns that map to them.
 LABEL_PATTERNS: dict[str, list[str]] = {
@@ -80,6 +80,40 @@ NUMERIC_HEADER_KEYS = {
     "step_length_min",
     "grouting_depth_m",
 }
+
+#: Header depths a crew writes as a range from the surface ("Grouting:
+#: 0-20 m"). The depth is the bottom of the range: read as a number, "0-20"
+#: was the 0 at its top, the recorded 20 m grout was lost, and screens were
+#: drawn at 10-20 m inside it.
+RANGE_BOTTOM_KEYS = {"grouting_depth_m"}
+
+# A metre unit written against a number ("30 m", "5m", "12 metres"), which
+# the depth interval pattern does not expect between the two depths.
+_METRE_UNIT_RE = re.compile(r"(\d)\s*(?:met(?:re|er)s?|mtrs?|m)\b\.?", re.IGNORECASE)
+
+
+def strip_metre_units(value):
+    """Drop the metre unit written against each number in a text cell.
+
+    "30 m - 40 m" and "5m-10m" reach the interval pattern as "30 - 40" and
+    "5-10"; they used to be skipped with the row's description and strike,
+    and the only trace was a gap flag blaming the log. A value that is not
+    text is handed back untouched.
+
+    >>> strip_metre_units("30 m - 40 m")
+    '30 - 40'
+    """
+    if not isinstance(value, str):
+        return value
+    return _METRE_UNIT_RE.sub(r"\1", value)
+
+
+def _range_bottom(value) -> float | None:
+    """The deeper end of a depth range written in a header cell, if it is one."""
+    if not isinstance(value, str):
+        return None
+    interval = parse_depth_interval(strip_metre_units(normalise_dashes(clean_text(value))))
+    return None if interval is None else interval[1]
 
 
 def load_grid(path: str | Path, sheet: str | None = None) -> tuple[list[list], str]:
@@ -206,7 +240,9 @@ def extract_header_fields(grid: list[list], max_rows: int = 30) -> dict:
             if value is None:
                 continue
             if key in NUMERIC_HEADER_KEYS:
-                number = parse_number(value)
+                number = _range_bottom(value) if key in RANGE_BOTTOM_KEYS else None
+                if number is None:
+                    number = parse_number(value)
                 if number is not None:
                     fields[key] = number
                     priorities[key] = priority

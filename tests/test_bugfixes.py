@@ -844,8 +844,10 @@ def test_the_design_flags_its_own_annulus_and_an_impossible_pump_intake():
     too_deep = design_borehole(log=log, static_water_level_m=10.0, pump_intake_m=80.0)
     assert any(f.code == "pump_intake_below_hole" and f.level == "error" for f in too_deep.flags)
     # an intake inside a screen is moved into plain casing when the string
-    # has any, and only flagged as unplaceable when it has none
-    screened = design_borehole(log=log, static_water_level_m=10.0, pump_intake_m=27.0)
+    # has any the pumping test supports (here up, to above the level the test
+    # reached plus submergence), and only flagged as unplaceable when it has none
+    screened = design_borehole(log=log, static_water_level_m=10.0, pump_intake_m=27.0,
+                               pump_intake_floor_m=15.0)
     assert any(f.code == "pump_intake_moved" for f in screened.flags)
     assert not any(f.code == "pump_intake_in_screen" for f in screened.flags)
     assert screened.pump_intake_m == 19.0     # 1 m above the 20-48 m screen

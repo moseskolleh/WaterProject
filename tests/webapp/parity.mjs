@@ -238,7 +238,9 @@ await withPage(async (page, base, consoleErrors) => {
     out.spine = {
       total_depth: spine.section.totalDepth,
       domain: spine.section.domain,
-      lithology: spine.section.lithology.map((u) => [u.top, u.base, u.aquifer]),
+      // the rock each row is logged as, and the bands the drawing draws
+      lithology: spine.section.lithology.map((u) => [u.top, u.base, u.aquifer, u.class]),
+      bands: spine.section.bands.map((b) => [b.top, b.base, b.class, b.colour]),
       strikes: spine.section.waterStrikes,
       segments: spine.section.segments.map((s) => [s.kind, s.top, s.base]),
       levels: spine.section.levels,
@@ -949,7 +951,67 @@ await withPage(async (page, base, consoleErrors) => {
     return out;
   }, reference.streamlit_project_file.yaml);
 
+  // The designs and logs the borehole-design review found wanting, run from
+  // the specs make_reference.py wrote, so both engines see the same input.
+  const cases = await page.evaluate((specs) => {
+    const C = GWT.core;
+    const design = specs.design.map((spec) => {
+      const log = {
+        site: { community: 'Case' }, total_depth_m: spec.total, drilling_method: 'DTH',
+        intervals: spec.intervals.map((r) => ({ top_m: r[0], bottom_m: r[1], description: r[2] })),
+        water_strikes_m: spec.strikes || [],
+        grouting_depth_m: spec.grout === undefined ? null : spec.grout,
+        installed_screens_m: spec.installed || [],
+      };
+      const d = C.designBorehole({
+        log, staticWaterLevelM: spec.swl === undefined ? null : spec.swl,
+        pumpIntakeM: spec.pump === undefined ? null : spec.pump,
+        pumpIntakeFloorM: spec.floor === undefined ? null : spec.floor,
+        rules: Object.assign({}, C.defaultConfig().design, spec.rules || {}),
+        screensM: spec.screens || null,
+      });
+      return {
+        rows: C.designSummaryRows(d).map((r) => [r[0], r[1]]),
+        basis: d.design_basis.slice(),
+        flags: d.flags.map((f) => [f.level, f.code, f.message]),
+        pump: d.pump_intake_m,
+        works: GWT.docx.handoverWorks({ log, design: d }),
+      };
+    });
+    const drilling = specs.drilling.map((grid) => {
+      const log = C.drillingFromGrid(grid, 'case.xlsx');
+      const told = ['water_strike_unreadable', 'interval_unreadable', 'diameter_implausible'];
+      return {
+        strikes: log.water_strikes_m,
+        grout: log.grouting_depth_m,
+        intervals: log.intervals.map((iv) => [iv.top_m, iv.bottom_m, iv.description,
+          iv.penetration_rate_m_per_min === undefined ? null : iv.penetration_rate_m_per_min,
+          iv.bit_diameter_in === undefined ? null : iv.bit_diameter_in]),
+        flags: log.flags.map((f) => [f.level, f.code]),
+        messages: log.flags.filter((f) => told.indexOf(f.code) >= 0).map((f) => f.message),
+      };
+    });
+    return { design, drilling };
+  }, {
+    design: reference.design_cases.map((c) => c.spec),
+    drilling: reference.drilling_cases.map((c) => c.grid),
+  });
+
   const R = reference;
+  R.design_cases.forEach((ref, i) => {
+    for (const key of ['rows', 'basis', 'flags', 'pump', 'works']) {
+      check(`design case ${i + 1}: ${key}`,
+        JSON.stringify(cases.design[i][key]) === JSON.stringify(ref[key]),
+        `js ${JSON.stringify(cases.design[i][key])}\n     py ${JSON.stringify(ref[key])}`);
+    }
+  });
+  R.drilling_cases.forEach((ref, i) => {
+    for (const key of ['strikes', 'grout', 'intervals', 'flags', 'messages']) {
+      check(`drilling case ${i + 1}: ${key}`,
+        JSON.stringify(cases.drilling[i][key]) === JSON.stringify(ref[key]),
+        `js ${JSON.stringify(cases.drilling[i][key])}\n     py ${JSON.stringify(ref[key])}`);
+    }
+  });
   // --- VES ---
   check('ves: sounding count', parsed.ves.length === R.ves.length,
     `js ${parsed.ves.length} vs py ${R.ves.length}`);
@@ -1114,7 +1176,7 @@ await withPage(async (page, base, consoleErrors) => {
     `js ${parsed.inversion.err} vs py ${R.inversion.err}`);
 
   // --- Depth Spine ---
-  const spineExact = ['lithology', 'strikes', 'segments', 'screen_limits',
+  const spineExact = ['lithology', 'bands', 'strikes', 'segments', 'screen_limits',
     'screens', 'methods', 'design_flags', 'by_stage', 'quantity_basis',
     'quality_verdict', 'quality_health', 'quality_aesthetic', 'quality_ratios',
     'piper_percent', 'yield_range', 'edited_screens', 'edited', 'levels'];

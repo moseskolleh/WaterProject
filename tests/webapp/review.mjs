@@ -196,10 +196,26 @@ await withPage(async (page, base, consoleErrors) => {
   // The bullets a payment is argued from carry the quantities a surveyor
   // checks. They used to carry the casing size in one engine and the screen
   // run in the other, and the seal in neither.
+  // It words the fill from the design and says "designed" unless the log
+  // records the screens as installed: it used to certify a gravel pack in a
+  // 19 mm annulus the design had left empty, and 19 m of screen as completed
+  // work above a drawing captioned "not an as-built record".
   check('the construction bullet carries the casing, the screen run and the seal',
-    said(works.full, 'Construction with 5 inch uPVC casing, 19 m of screen, ' +
-      'gravel pack and sanitary seal to 20 m.'),
+    said(works.full, 'Construction designed with 5 inch uPVC casing, 19 m of screen, ' +
+      'no gravel pack (the 19 mm annulus is too thin to place one) and sanitary seal ' +
+      'to 20 m; the drilling log records no casing string as installed.'),
     JSON.stringify(works.full));
+  // The pumping report promised that "the borehole design sets it just below
+  // that screen", while the design lifted an intake in a bottom screen above
+  // the level the test had reached. The sentence now says what the design does.
+  const pumpingText = await issued('pumping');
+  check('the pumping report says what the design does with an intake in a screen',
+    pumpingText.includes('or above it where that is no shallower than the deepest ' +
+      'level the test reached plus the submergence margin; otherwise it keeps this ' +
+      'depth and says so in its design notes.') &&
+    !pumpingText.includes('sets it just below that screen'),
+    pumpingText.slice(pumpingText.indexOf('Install the pump intake'),
+      pumpingText.indexOf('Install the pump intake') + 400));
   check('a siting survey is listed only where one was interpreted',
     !said(works.full, 'Geophysical siting survey') &&
     said(works.sited, 'Geophysical siting survey'),

@@ -912,3 +912,131 @@ def test_three_readings_at_one_spacing_name_the_pair_that_disagrees(tmp_path):
     (sounding,) = read_ves_workbook(path)
     warning = next(f for f in sounding.flags if f.code == "segment_overlap_discrepancy")
     assert "AB/2 40 m: 150 and 78 ohm-m (ratio 1.92)" in warning.message
+
+def test_a_numbered_strike_is_read_and_a_water_level_is_not_a_strike():
+    """"Water strike 1: 12 m, water strike 2: 30 m" recorded no strike at all.
+
+    The clock pattern allowed a space inside a time, so "1: 12" and "2: 30"
+    were removed as times of day and nothing was left to read, with no flag.
+    A water level written beside a strike went the other way: "Water strike
+    at 18 m; rest water level 4.5 m" recorded strikes at 4.5 m and 18 m, and
+    the design basis explained why the 4.5 m one was not screened.
+    """
+    from groundwater.ingestion.drilling import drilling_from_grid, parse_water_strike_depths
+
+    assert parse_water_strike_depths("Water strike 1: 12 m, water strike 2: 30 m") == (
+        [12.0, 30.0], "")
+    assert parse_water_strike_depths("Strike 1: 12 m") == ([12.0], "")
+    assert parse_water_strike_depths("Water strike at 18 m; rest water level 4.5 m") == (
+        [18.0], "")
+    assert parse_water_strike_depths("Water strike 8 m, SWL 3.2 m") == ([8.0], "")
+    # a clock time is still a clock time
+    assert parse_water_strike_depths("Water strike: 8 m at 14:30") == ([8.0], "")
+
+    # a cell with numbers that names no strike says so
+    for cell, what in (("SWL 4.5", "a water level"), ("14:30", "a clock time"),
+                       ("Water strike at 14h30", "a clock time")):
+        depths, reason = parse_water_strike_depths(cell)
+        assert depths == [] and what in reason, cell
+
+    log = drilling_from_grid(_drilling_grid([
+        ["0-10", None, None, None, "Lateritic topsoil", 6.5, "SWL 4.5"],
+        ["10-30", None, None, None, "Fractured granite", 6.5, None],
+        ["Water strike 1: 12 m, water strike 2: 25 m"],
+    ]))
+    assert log.water_strikes_m == [12.0, 25.0]
+    flag = next(f for f in log.flags if f.code == "water_strike_unreadable")
+    assert '"SWL 4.5"' in flag.message and "a water level" in flag.message
+
+
+def test_a_strike_cell_typed_as_a_time_is_flagged():
+    """Excel hands a cell typed as a time of day back as a time, which was
+    read as "14:30:00" and dropped without the flag the browser raises."""
+    import datetime
+
+    from groundwater.ingestion.drilling import drilling_from_grid, parse_water_strike_depths
+
+    depths, reason = parse_water_strike_depths(datetime.time(14, 30))
+    assert depths == [] and "date or a time" in reason
+    log = drilling_from_grid(_drilling_grid([
+        ["0-30", None, None, None, "Fractured granite", 6.5, datetime.time(14, 30)],
+    ]))
+    assert any(f.code == "water_strike_unreadable" for f in log.flags)
+
+
+def test_a_depth_interval_written_with_its_unit_is_read_not_dropped():
+    """"30 m - 40 m" and "5m-10m" were skipped with the row's description and
+    strike, and the only trace was a gap flag blaming the log. A cell that
+    still cannot be read is named."""
+    from groundwater.ingestion.drilling import drilling_from_grid
+
+    log = drilling_from_grid(_drilling_grid([
+        ["0m-5m", None, None, None, "Lateritic topsoil", 6.5, None],
+        ["5 m - 10 m", None, None, None, "Clayey laterite", 6.5, None],
+        ["10-20 metres", None, None, None, "Saprolite", 6.5, None],
+        ["20 m to 30 m", None, None, None, "Fractured granite", 6.5, 25],
+    ]))
+    assert [(iv.top_m, iv.bottom_m) for iv in log.intervals] == [
+        (0.0, 5.0), (5.0, 10.0), (10.0, 20.0), (20.0, 30.0)
+    ]
+    assert log.water_strikes_m == [25.0]
+    assert not any(f.code == "interval_gap" for f in log.flags)
+
+    log = drilling_from_grid(_drilling_grid([
+        ["0-20", None, None, None, "Saprolite", 6.5, None],
+        ["20 -", None, None, None, "Fractured granite", 6.5, 25],
+        ["Note: water strike 1: 25 m"],
+    ]))
+    unread = [f for f in log.flags if f.code == "interval_unreadable"]
+    assert len(unread) == 1 and '"20 -"' in unread[0].message
+    # a note under the table is not a row, and is not flagged as one
+    assert "Note" not in unread[0].message
+
+
+def test_the_unit_in_the_column_header_is_the_unit_of_a_bare_number():
+    """165 under "Bit diameter (mm)" was a 165 inch hole: a 2 m annulus and
+    1654 bags of cement in the bill of quantities. 4 under "Penetration rate
+    (min/m)" was four metres a minute. "8-1/2"" and "8½"" read as 8 inches,
+    and a bare 165 under an inch header is flagged rather than sized."""
+    from groundwater.costing import inputs_from_design
+    from groundwater.design import design_borehole
+    from groundwater.ingestion.drilling import drilling_from_grid, parse_bit_diameter_in
+
+    grid = _drilling_grid([
+        ["0-10", None, None, 1, "Lateritic topsoil", 254, None],
+        ["10-20", None, None, 2, "Saprolite", "165", None],
+        ["20-30", None, None, 4, "Fractured granite", 165, 25],
+    ])
+    grid[4][3] = "Penetration rate (min/m)"
+    grid[4][5] = "Bit diameter (mm)"
+    log = drilling_from_grid(grid)
+    assert [iv.bit_diameter_in for iv in log.intervals] == [10.0, 6.5, 6.5]
+    assert [iv.penetration_rate_m_per_min for iv in log.intervals] == [1.0, 0.5, 0.25]
+    design = design_borehole(log=log, static_water_level_m=4.0)
+    assert design.borehole_diameter_in == 6.5
+    assert inputs_from_design(design).cement_bags < 100
+    # a cell that carries its own unit keeps it
+    grid[5][5] = '6 1/2"'
+    assert drilling_from_grid(grid).intervals[1].bit_diameter_in == 6.5
+
+    for text in ('8-1/2"', "8½\"", "8½", "8 1/2", "8 - 1/2 in"):
+        assert parse_bit_diameter_in(text) == 8.5, text
+
+    log = drilling_from_grid(_drilling_grid([
+        ["0-30", None, None, None, "Fractured granite", 165, 25],
+    ]))
+    assert log.intervals[0].bit_diameter_in is None
+    wide = next(f for f in log.flags if f.code == "diameter_implausible")
+    assert wide.level == "warning" and "165" in wide.message
+
+
+def test_a_grout_written_as_a_range_is_its_bottom():
+    """"0-20" in the grouting field was read as 0: the seal became the rule's
+    6 m, screens went at 10-20 m inside the grout, and "Grouting:" dropped out
+    of the completion report."""
+    from groundwater.ingestion.drilling import drilling_from_grid
+
+    for cell in ("0-20", "0 - 20 m", "0m-20m", "0–20", 20, "20 m"):
+        grid = _drilling_grid([["0-30", None, None, None, "Fractured granite", 6.5, None]])
+        grid[3] = ["Grouting depth (m)", cell]
+        assert drilling_from_grid(grid).grouting_depth_m == 20.0, cell

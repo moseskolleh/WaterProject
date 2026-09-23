@@ -143,6 +143,157 @@ def site_dict(site):
 def flags(items):
     return [[f.level, f.code, f.message] for f in items]
 
+# ------------------------------------------- designs and logs the review read
+
+# Logs the borehole-design review found read or designed wrongly: a named
+# zone the fracture reader missed, a pump intake lifted above the level the
+# test reached, a grout past the sump, screens clipped or trimmed out of
+# their basis, and an as-built record rewritten. The browser reads each
+# spec from reference.json and runs it through its own engine, so the two
+# are held to the same screens, sentences and flags on the same input.
+_TIMBO_ROWS = [
+    [0, 10, "Lateritic topsoil"], [10, 20, "Clayey saprolite"],
+    [20, 45, "Light colour granite"], [45, 50, "Light colour granite, fracture zone 49-52 m"],
+    [50, 70, "Light colour granite"],
+]
+DESIGN_CASES = [
+    # every range a fracture phrase names, in the wordings drillers use
+    {"total": 60, "swl": 5, "intervals": [
+        [0, 10, "Laterite"], [10, 30, "Granite"],
+        [30, 35, "Granite, fractures at 30-31 m and 33-34 m"],
+        [35, 45, "Granite, fracture zone between 40 and 42 m"],
+        [45, 50, "Granite, fracture zone 46—48 metres"],
+        [50, 55, "Granite, fractures at 51 and 53 m"], [55, 60, "Granite"]]},
+    # a pump intake in a bottom screen stays below the test's floor
+    {"total": 70, "grout": 20, "swl": 9.44, "pump": 52, "floor": 45.26,
+     "screens": [[40, 68]], "intervals": _TIMBO_ROWS},
+    {"total": 70, "grout": 20, "swl": 9.44, "pump": 52, "floor": 45.26,
+     "screens": [[47, 68]], "intervals": _TIMBO_ROWS},
+    {"total": 70, "grout": 20, "swl": 9.44, "pump": 52,
+     "screens": [[40, 68]], "intervals": _TIMBO_ROWS},
+    # a grout past the sump, and a zone the grout covers
+    {"total": 60, "grout": 70, "swl": 5, "intervals": [
+        [0, 10, "Laterite"], [10, 45, "Granite"],
+        [45, 50, "Granite, fracture zone 49-52 m"], [50, 60, "Granite"]]},
+    {"total": 60, "grout": 55, "swl": 5, "intervals": [
+        [0, 10, "Laterite"], [10, 45, "Granite"],
+        [45, 50, "Granite, fracture zone 49-52 m"], [50, 60, "Granite"]]},
+    # zones in the grout, in the sump and below the hole
+    {"total": 60, "grout": 20, "swl": 5, "intervals": [
+        [0, 10, "Laterite"], [10, 20, "Granite, fracture zone 16-18 m"],
+        [20, 50, "Granite"], [50, 55, "Granite, fracture zone 49-52 m"],
+        [55, 60, "Granite, fracture zone 59-62 m"]]},
+    {"total": 60, "swl": 5, "intervals": [
+        [0, 10, "Laterite"], [10, 55, "Granite"],
+        [55, 60, "Granite, fracture zone 58-62 m"]]},
+    # a strike trimmed away with the shallowest screen
+    {"total": 40, "swl": 2, "strikes": [9], "intervals": [
+        [0, 15, "Granite"], [15, 40, "Granite, fractured"]]},
+    # an as-built record that runs into the sump and inside the grout
+    {"total": 60, "grout": 20, "swl": 5, "installed": [[15, 25], [48, 54], [54, 60]],
+     "intervals": [[0, 10, "Laterite"], [10, 60, "Granite"]],
+     "rules": {"borehole_diameter_in": 8.0, "casing_diameter_in": 4.0}},
+]
+
+
+def _case_log(spec):
+    from groundwater.models import DrillingLog, LithologyInterval, SiteMetadata
+
+    return DrillingLog(
+        site=SiteMetadata(community="Case"), total_depth_m=spec["total"],
+        drilling_method="DTH",
+        intervals=[LithologyInterval(t, b, d) for t, b, d in spec["intervals"]],
+        water_strikes_m=list(spec.get("strikes", [])),
+        grouting_depth_m=spec.get("grout"),
+        installed_screens_m=[tuple(s) for s in spec.get("installed", [])],
+    )
+
+
+def design_case(spec) -> dict:
+    from groundwater.config import DesignRules
+    from groundwater.reporting.handover import HandoverReportInputs, default_works
+
+    log = _case_log(spec)
+    design = design_borehole(
+        log=log, static_water_level_m=spec.get("swl"), pump_intake_m=spec.get("pump"),
+        pump_intake_floor_m=spec.get("floor"), rules=DesignRules(**spec.get("rules", {})),
+        screens_m=[tuple(s) for s in spec["screens"]] if spec.get("screens") else None,
+    )
+    return {
+        "spec": spec,
+        "rows": [list(r) for r in design.summary_rows()],
+        "basis": list(design.design_basis),
+        "flags": flags(design.flags),
+        "pump": clean(design.pump_intake_m),
+        "works": default_works(HandoverReportInputs(site=log.site, log=log, design=design)),
+    }
+
+
+# Drilling log sheets as grids: the header block, the table header, rows
+# and the notes under them.
+def _sheet(header, rows, grout=6, notes=()):
+    grid = [["BOREHOLE DRILLING LOG", None, None, None, None, None, None],
+            ["Community", "Case", None, "Client", "X", None, None],
+            ["Drilling method", "DTH", None, "Total depth (m)", 60, None, None],
+            ["Grouting depth (m)", grout, None, "Drill rig", None, None, None],
+            header]
+    return grid + [list(r) for r in rows] + [[n, None, None, None, None, None, None]
+                                             for n in notes]
+
+
+_TABLE = ["Depth interval (m)", "From time", "To time", "Penetration rate (m/min)",
+          "Sample / lithology description", "Drilling diameter (in)",
+          "Water strike depth (m)"]
+_ROWS = [["0-10", "", "", 1, "Topsoil and laterite", 6.5, None],
+         ["10-30", "", "", 0.5, "Weathered granite", 6.5, None],
+         ["30-60", "", "", 0.4, "Granite, fractured", 6.5, None]]
+DRILLING_CASES = [
+    # numbered strikes and a water level written beside a strike
+    _sheet(_TABLE, _ROWS, notes=["Water strike 1: 18 m, water strike 2: 42 m",
+                                 "Water strike at 20 m; rest water level 4.5 m"]),
+    # strike cells naming a strike by number, a level and a time
+    _sheet(_TABLE, [["0-10", "", "", 1, "Topsoil", 6.5, "Strike 1: 8 m"],
+                    ["10-30", "", "", 0.5, "Weathered granite", 6.5, "SWL 4.5"],
+                    ["30-60", "", "", 0.4, "Granite, fractured", 6.5, "14:30"]]),
+    # the units a column header names, fractions of an inch, and a bare
+    # millimetre size under an inch header
+    _sheet(["Depth interval (m)", "From time", "To time", "Penetration rate (min/m)",
+            "Sample / lithology description", "Bit diameter (mm)", "Water strike depth (m)"],
+           [["0-10", "", "", 1, "Topsoil", 254, None],
+            ["10-30", "", "", 2, "Weathered granite", "165", None],
+            ["30-60", "", "", 4, "Granite, fractured", '8½"', 35]]),
+    _sheet(_TABLE, [["0-10", "", "", 1, "Topsoil", '8-1/2"', None],
+                    ["10-30", "", "", 0.5, "Weathered granite", "6½", None],
+                    ["30-60", "", "", 0.4, "Granite, fractured", 165, None]]),
+    # depth intervals written with their unit, and one that cannot be read
+    _sheet(_TABLE, [["0m-10m", "", "", 1, "Topsoil", 6.5, None],
+                    ["10 m - 30 m", "", "", 0.5, "Weathered granite, fractured", 6.5, 14],
+                    ["30-60 metres", "", "", 0.4, "Granite", 6.5, None],
+                    ["60 -", "", "", 0.4, "Granite", 6.5, None]]),
+    # a grout written as the range it covers
+    _sheet(_TABLE, _ROWS, grout="0-20"),
+]
+
+
+def drilling_case(grid) -> dict:
+    from groundwater.ingestion.drilling import drilling_from_grid
+
+    log = drilling_from_grid(grid, "case.xlsx")
+    return {
+        "grid": grid,
+        "strikes": clean(log.water_strikes_m),
+        "grout": clean(log.grouting_depth_m),
+        "intervals": [[clean(iv.top_m), clean(iv.bottom_m), iv.description,
+                       clean(iv.penetration_rate_m_per_min), clean(iv.bit_diameter_in)]
+                      for iv in log.intervals],
+        # codes only: the messages of the gap and depth flags print a float
+        # differently in the two engines, which is not what these cases test
+        "flags": [[f.level, f.code] for f in log.flags],
+        "messages": [f.message for f in log.flags
+                     if f.code in ("water_strike_unreadable", "interval_unreadable",
+                                   "diameter_implausible")],
+    }
+
 
 # The interpretation and report prose over cases the Rokel pair never
 # reaches: a zone whose modelled base lies below the depth of investigation,
@@ -543,8 +694,11 @@ def build() -> dict:
     out["spine"] = {
         "total_depth": clean(spine["section"]["totalDepth"]),
         "domain": clean(spine["section"]["domain"]),
-        "lithology": [[clean(u["top"]), clean(u["base"]), u["aquifer"]]
+        # the rock each row is logged as, and the bands the drawing draws
+        "lithology": [[clean(u["top"]), clean(u["base"]), u["aquifer"], u["class"]]
                       for u in spine["section"]["lithology"]],
+        "bands": [[clean(b["top"]), clean(b["base"]), b["class"], b["colour"]]
+                  for b in spine["section"]["bands"]],
         "strikes": clean(spine["section"]["waterStrikes"]),
         "segments": [[s["kind"], clean(s["top"]), clean(s["base"])]
                      for s in spine["section"]["segments"]],
@@ -1294,6 +1448,8 @@ def build() -> dict:
     out["pumping_cases"] = pumping_cases()
     out["regional"] = regional_reference()
     out["survey_figures"] = survey_figures_reference(rokel_interps)
+    out["design_cases"] = [design_case(spec) for spec in DESIGN_CASES]
+    out["drilling_cases"] = [drilling_case(grid) for grid in DRILLING_CASES]
     return out
 
 

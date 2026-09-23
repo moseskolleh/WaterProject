@@ -462,7 +462,10 @@ def build_pumping_report(
                     (f"Install the pump intake at {fmt_num(pump_depth)} m "
                     f"{DATUM_TEXT}" + (f", {pump_depth_why}" if pump_depth_why else "")
                     + ", in plain casing: where that depth falls within a screen, "
-                    "the borehole design sets it just below that screen."),
+                    "the borehole design moves it into plain casing below that "
+                    "screen, or above it where that is no shallower than the "
+                    "deepest level the test reached plus the submergence margin; "
+                    "otherwise it keeps this depth and says so in its design notes."),
                     ("Monitor the pumping water level and re-assess the yield if "
                     "the level approaches the pump intake."),
                 ]
