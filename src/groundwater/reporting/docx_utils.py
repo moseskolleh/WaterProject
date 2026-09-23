@@ -35,6 +35,19 @@ _CONTRACTION_RE = re.compile(
 )
 
 
+#: The children of w:settings that the WordprocessingML schema places after
+#: w:updateFields, in order (ECMA-376 CT_Settings).
+_SETTINGS_AFTER_UPDATE_FIELDS = (
+    "w:hdrShapeDefaults", "w:footnotePr", "w:endnotePr", "w:compat",
+    "w:docVars", "w:rsids", "m:mathPr", "w:attachedSchema", "w:themeFontLang",
+    "w:clrSchemeMapping", "w:doNotIncludeSubdocsInStats",
+    "w:doNotAutoCompressPictures", "w:forceUpgrade", "w:captions",
+    "w:readModeInkLockDown", "w:smartTagType", "sl:schemaLibrary",
+    "w:shapeDefaults", "w:doNotEmbedSmartTags", "w:decimalSymbol",
+    "w:listSeparator",
+)
+
+
 def lint_text(text: str) -> list[str]:
     """Return house style violations in a piece of report text."""
     problems = []
@@ -281,7 +294,11 @@ class ReportBuilder:
         if settings.find(qn("w:updateFields")) is None:
             update = OxmlElement("w:updateFields")
             update.set(qn("w:val"), "true")
-            settings.append(update)
+            # w:settings is an ordered sequence, and appended after
+            # w:listSeparator the element fails schema validation ("This
+            # element is not expected"); it goes before the first of the
+            # elements the schema places after it.
+            settings.insert_element_before(update, *_SETTINGS_AFTER_UPDATE_FIELDS)
 
     def executive_summary(
         self, paragraphs: list[str], key_findings: list[str] | None = None

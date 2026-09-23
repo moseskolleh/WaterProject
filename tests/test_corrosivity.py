@@ -73,3 +73,25 @@ def test_assess_sample_attaches_corrosivity_and_flag():
     assessment = assess_sample(sample)
     assert assessment.corrosivity is not None and assessment.corrosivity.is_aggressive
     assert any(f.code == "aggressive_water" for f in assessment.flags)
+
+
+def test_the_ph_is_printed_so_the_range_sentence_is_true():
+    """6.46 printed as "6.5 is below the 6.5 to 8.5 acceptability range".
+
+    Rounded to one decimal a pH just outside the range lands on its end, and
+    the sentence then says a number is outside a range it bounds.
+    """
+    def verdict(ph):
+        corr = assess_corrosivity(_sample(
+            pH=(ph, "pH units"), Calcium=(4.0, "mg/L"),
+            Alkalinity=(10.0, "mg/L as CaCO3"), TDS=(60.0, "mg/L"),
+        ))
+        assert corr.is_aggressive
+        return corr.verdict
+
+    assert "The pH of 6.46 is below the 6.5 to 8.5" in verdict(6.46)
+    assert "The pH of 8.54 is above the 6.5 to 8.5" in verdict(8.54)
+    assert "The pH of 6.4999 is below" in verdict(6.4999)
+    # one decimal is still enough whenever it tells the truth
+    assert "The pH of 5.9 is below" in verdict(5.9)
+    assert "The pH of 8.5 is within" in verdict(8.46)

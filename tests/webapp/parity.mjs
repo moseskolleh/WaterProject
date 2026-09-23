@@ -478,10 +478,62 @@ await withPage(async (page, base, consoleErrors) => {
         { parameter: 'Glyphosate', value: 0.4, unit: 'mg/L' }),
       // the charge balance cannot be computed, and used to say nothing
       no_ionic_balance: wq({ parameter: 'Calcium', value: 40.0, unit: 'mg/L' }),
+      // a detection of a determinand the table does not know, which was
+      // "not measured" and left the sample safe
+      unknown_detected: wq(...panel, { parameter: 'Salmonella', value: null,
+        unit: 'per 100 mL', greater_than: 0 }),
+      // a national failure beside a result that could not be graded: the
+      // verdict used to say the WHO health values were met
+      national_fail_unresolved: wq(
+        { parameter: 'E. coli', value: 0.0, unit: 'CFU/100 mL' },
+        { parameter: 'Arsenic', value: null, unit: 'mg/L', detection_limit: 0.05,
+          below_detection: true },
+        { parameter: 'Total coliforms', value: 12.0, unit: 'CFU/100 mL' }),
+      // both ions reported as nitrogen, which skipped the combined rule
+      nitrogen_basis_combined: wq(...panel.slice(0, 3),
+        { parameter: 'Nitrate (as N)', value: 10.0, unit: 'mg/L' },
+        { parameter: 'Nitrite (as N)', value: 0.8, unit: 'mg/L' }),
+      // lower bounds, on the guideline's scale and through its hierarchy
+      bound_in_micrograms: wq(...panel, { parameter: 'Lead', value: null,
+        unit: 'ug/L', greater_than: 5.0 }),
+      bound_acceptability: wq(...panel, { parameter: 'Iron', value: null,
+        unit: 'mg/L', greater_than: 1.0 }),
+      bound_stricter_open: wq(...panel, { parameter: 'Copper', value: null,
+        unit: 'mg/L', greater_than: 1.5 }),
+      bound_inclusive: wq(...panel.slice(0, 3), { parameter: 'Nitrate (as NO3)',
+        value: null, unit: 'mg/L', greater_than: 50.0, greater_than_inclusive: true }),
+      bound_exclusive: wq(...panel.slice(0, 3), { parameter: 'Nitrate (as NO3)',
+        value: null, unit: 'mg/L', greater_than: 50.0 }),
+      unreadable: wq(...panel, { parameter: 'Lead', value: null, unit: 'mg/L',
+        unreadable: 'ND (see note)' }),
+      // treatment advice by table name, and pH advice by direction
+      advice_by_name: wq(...panel,
+        { parameter: 'Faecal coliforms', value: 5.0, unit: 'CFU/100 mL' },
+        { parameter: 'Sulphate', value: 400.0, unit: 'mg/L' },
+        { parameter: 'pH', value: 9.2, unit: 'pH units' }),
+      low_ph: wq(...panel, { parameter: 'pH', value: 5.9, unit: 'pH units' }),
+      lead: wq(...panel, { parameter: 'Lead', value: 0.05, unit: 'mg/L' }),
+      // a table whose national iron value names its specification
+      confirmed_national: wq(...panel, { parameter: 'Iron', value: 1.2, unit: 'mg/L' }),
+    };
+    /* The standards table a case is assessed against, when it is not the
+     * bundled one: the rows make_reference.py writes to a CSV. */
+    const confirmedRow = (parameter, unit, health, aesthetic, national, category) => ({
+      parameter, unit, who_health_gv: health, who_aesthetic: aesthetic,
+      sl_standard: national, sl_source: 'SLSB 2021', category, note: '',
+    });
+    const standardsFor = {
+      confirmed_national: [
+        confirmedRow('E. coli', 'CFU/100 mL', '0', '', '0', 'microbiological'),
+        confirmedRow('Arsenic', 'mg/L', '0.01', '', '0.01', 'metal'),
+        confirmedRow('Fluoride', 'mg/L', '1.5', '', '1.5', 'inorganic'),
+        confirmedRow('Nitrate (as NO3)', 'mg/L', '50', '', '50', 'inorganic'),
+        confirmedRow('Iron', 'mg/L', '', '0.3', '0.3', 'metal'),
+      ],
     };
     out.verdicts = {};
     Object.keys(verdictCases).forEach((name) => {
-      const a = C.assessSample(verdictCases[name]);
+      const a = C.assessSample(verdictCases[name], standardsFor[name]);
       out.verdicts[name] = {
         state: a.verdict_state,
         statuses: a.rows.map((r) => r.status),
@@ -491,7 +543,68 @@ await withPage(async (page, base, consoleErrors) => {
         missing_essential: a.missing_essential,
         verdict: a.verdict,
         flags: a.flags.map((f) => [f.level, f.code, f.message]),
+        remarks: a.rows.map((r) => r.remark),
+        values: a.rows.map((r) => C.unquantifiedText(r)),
+        provisional: a.rows.map((r) => r.sl_provisional),
+        recommendations: GWT.docx.qualityRecommendations(a),
       };
+    });
+
+    // what the laboratory sheet reader makes of a qualified result cell
+    const cells = [
+      ['E. coli', 'CFU/100 mL', 'Present', 1], ['E. coli', 'CFU/100 mL', 'TNTC', 1],
+      ['Nitrate (as NO3)', 'mg/L', '>50', 0.1], ['Arsenic', 'mg/L', 'Not analysed', 0.001],
+      ['Arsenic', 'mg/L', 'N/A', 0.001], ['Arsenic', 'mg/L', '-', 0.001],
+      ['Arsenic', 'mg/L', null, 0.001], ['Arsenic', 'mg/L', '<0.05', 0.001],
+      ['Arsenic', 'mg/L', 'ND (<0.05)', 0.001], ['Nitrate (as NO3)', 'mg/L', '>50 mg/L', null],
+      ['Nitrate (as NO3)', 'mg/L', '> 50mg/l', null], ['Nitrate (as NO3)', 'mg/L', '50+', null],
+      ['Nitrate (as NO3)', 'mg/L', 'above 50', null], ['Nitrate (as NO3)', 'mg/L', '≥50', null],
+      ['Nitrate (as NO3)', 'mg/L', '>=50', null], ['Arsenic', 'mg/L', 'ND (<0.05 mg/L)', null],
+      ['Arsenic', 'mg/L', 'ND (DL 0.05)', null], ['Arsenic', 'mg/L', 'ND, <0.05', null],
+      ['Arsenic', 'mg/L', 'ND at 0.05', null], ['E. coli', 'CFU/100 mL', 'Absent/100 mL', null],
+      ['E. coli', 'CFU/100 mL', 'Present in 100 mL', null],
+      ['Total coliforms', 'CFU/100 mL', 'TNTC (>300)', null],
+      ['Arsenic', 'mg/L', 'ND (see note)', null], ['Lead', '', '<5 ug/L', null],
+      ['Lead', 'mg/L', '<5 ug/L', null], ['Lead', 'mg/L', '<5 NTU', null],
+      ['Arsenic', 'mg/L', '<LOD', null], ['Arsenic', 'mg/L', '<0,05', null],
+      ['Arsenic', 'mg/L', 0.004, null], ['Arsenic', 'mg/L', '0.5 ND', null],
+    ];
+    out.quality_cells = C.qualityFromGrid([['WATER QUALITY LABORATORY RESULTS'],
+      ['Community', 'Ref'], [], [], ['Parameter', 'Unit', 'Value', 'Detection limit']]
+      .concat(cells), 'cells.xlsx').results.map((r) => [r.parameter, r.value, r.unit,
+      r.detection_limit, r.below_detection, r.greater_than, r.greater_than_inclusive,
+      r.unreadable]);
+
+    // the facies sentence over every branch it has
+    const ions = ['Calcium', 'Magnesium', 'Sodium', 'Potassium', 'Bicarbonate',
+      'Chloride', 'Sulfate'];
+    const mgPerMeq = [20.04, 12.15, 22.99, 39.10, 61.02, 35.45, 48.03];
+    const faciesMeq = {
+      ca_hco3: [3.0, 1.0, 0.5, 0.1, 3.5, 0.7, 0.4],
+      na_hco3: [0.5, 0.3, 3.0, 0.2, 3.0, 0.6, 0.4],
+      mixed_hco3: [1.6, 1.0, 1.3, 0.1, 2.5, 1.2, 0.3],
+      na_cl: [0.5, 0.5, 4.0, 0.0, 0.7, 4.0, 0.3],
+      ca_cl: [3.0, 0.5, 0.8, 0.1, 1.0, 3.0, 0.4],
+      mixed_cl: [1.5, 1.2, 1.4, 0.0, 0.8, 3.0, 0.4],
+      so4: [2.0, 1.0, 1.0, 0.0, 1.0, 0.5, 2.5],
+      ca_mixed_anion: [3.0, 0.5, 0.5, 0.0, 1.5, 1.3, 1.2],
+      mixed: [1.5, 1.2, 1.3, 0.0, 1.5, 1.3, 1.2],
+    };
+    out.facies = {};
+    Object.keys(faciesMeq).forEach((name) => {
+      out.facies[name] = C.faciesOf(wq(...ions.map((ion, i) => ({
+        parameter: ion, value: C.pyRound(faciesMeq[name][i] * mgPerMeq[i], 3),
+        unit: 'mg/L',
+      })))).sentence;
+    });
+
+    // the corrosivity sentence names the pH to as many decimals as it needs
+    out.corrosivity_ph = {};
+    [6.46, 8.54, 6.25, 6.4999, 8.46].forEach((ph) => {
+      out.corrosivity_ph[String(ph)] = C.assessCorrosivity(wq(
+        { parameter: 'pH', value: ph }, { parameter: 'Calcium', value: 4.0 },
+        { parameter: 'Alkalinity', value: 10.0 }, { parameter: 'TDS', value: 60.0 },
+      )).verdict;
     });
 
     out.spine_quality = C.spineQuality(C.assessSample(wq(
@@ -1125,7 +1238,8 @@ await withPage(async (page, base, consoleErrors) => {
     check(`verdict ${name}: state`, js.state === py.state,
       `js ${js.state} vs py ${py.state}`);
     for (const key of ['statuses', 'reasons', 'uncertainties',
-      'missing_essential', 'verdict']) {
+      'missing_essential', 'verdict', 'remarks', 'values', 'provisional',
+      'recommendations']) {
       check(`verdict ${name}: ${key}`,
         JSON.stringify(js[key]) === JSON.stringify(py[key]),
         `js ${JSON.stringify(js[key])}\n     py ${JSON.stringify(py[key])}`);
@@ -1135,6 +1249,32 @@ await withPage(async (page, base, consoleErrors) => {
       js.converted.every((v, i) => (v === null || py.converted[i] === null)
         ? v === py.converted[i] : close(v, py.converted[i], 1e-9)),
       `js ${JSON.stringify(js.converted)}\n     py ${JSON.stringify(py.converted)}`);
+  });
+
+  // --- A qualified result cell, as the laboratory sheet reader reads it ---
+  // A unit or a label in the cell, and a filled detection-limit column beside
+  // a detection, turned bounds into measurements and detections into
+  // absences; the two readers have to read every one of them the same way.
+  check('quality cells: one row per cell',
+    parsed.quality_cells.length === R.quality_cells.length,
+    `js ${parsed.quality_cells.length} vs py ${R.quality_cells.length}`);
+  R.quality_cells.forEach((py, i) => {
+    const js = parsed.quality_cells[i];
+    check(`quality cell ${i} ${py[0]}`, JSON.stringify(js) === JSON.stringify(py),
+      `js ${JSON.stringify(js)}\n     py ${JSON.stringify(py)}`);
+  });
+
+  // --- The facies sentence, over every branch it has ---
+  Object.keys(R.facies).forEach((name) => {
+    check(`facies ${name}`, parsed.facies[name] === R.facies[name],
+      `js "${parsed.facies[name]}"\n     py "${R.facies[name]}"`);
+  });
+
+  // --- The corrosivity sentence names a pH that is true of the range ---
+  Object.keys(R.corrosivity_ph).forEach((ph) => {
+    check(`corrosivity at pH ${ph}`,
+      parsed.corrosivity_ph[ph] === R.corrosivity_ph[ph],
+      `js "${parsed.corrosivity_ph[ph]}"\n     py "${R.corrosivity_ph[ph]}"`);
   });
 
   // --- The Depth Spine's guideline chart, on non-guideline units ---

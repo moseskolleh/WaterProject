@@ -346,6 +346,15 @@ class WaterQualityResult:
     #: E. coli 0 and total coliforms TNTC came out as safe, and ">50" was
     #: read as exactly 50.
     greater_than: Optional[float] = None
+    #: Whether the bound is itself a possible value: ">=50" and "50+" are at
+    #: least 50, ">50" is more than 50. Against a limit of 50 the first is an
+    #: open question and the second is an exceedance.
+    greater_than_inclusive: bool = False
+    #: The cell as written, when it reads as a qualified result (a "<", a
+    #: ">", or an absence or presence word) that could not be parsed. Such a
+    #: cell used to fall through to a plain number parse, so "ND (DL 0.05)"
+    #: became a measured 0.05 and "Absent/100 mL" a count of 100.
+    unreadable: str = ""
 
     @property
     def detected_not_quantified(self) -> bool:

@@ -13,7 +13,7 @@ from __future__ import annotations
 from docx import Document
 
 from groundwater.models import SiteMetadata, WaterQualityResult, WaterQualitySample
-from groundwater.quality import assess_sample
+from groundwater.quality import PROVISIONAL_NATIONAL_NOTE, assess_sample
 from groundwater.quality.diagrams import facies_of
 from groundwater.reporting.docx_utils import ReportBuilder
 from groundwater.reporting.geophysical import _geology_for
@@ -116,6 +116,16 @@ def test_the_table_of_contents_reads_without_word(tmp_path):
     assert "1. Introduction" in body and "    1.1 Setting" in body
     settings = doc.settings.element
     assert any(el.tag.endswith("updateFields") for el in settings)
+    # w:settings is an ordered sequence: appended after w:listSeparator the
+    # element failed schema validation, so it has to sit before every child
+    # the schema places after it
+    from groundwater.reporting.docx_utils import _SETTINGS_AFTER_UPDATE_FIELDS
+
+    after = {name.split(":")[1] for name in _SETTINGS_AFTER_UPDATE_FIELDS}
+    tags = [el.tag.split("}")[1] for el in settings]
+    at = tags.index("updateFields")
+    assert not after & set(tags[:at])
+    assert "compat" in tags[at:] and "listSeparator" in tags[at:]
 
 
 def test_captions_use_the_caption_style_and_empty_cells_are_empty(tmp_path):
@@ -167,6 +177,26 @@ def test_the_facies_section_says_what_the_water_is(sample_data):
     facies = facies_of(sample)
     assert facies["facies"] == "mixed-cation-HCO3"
     assert facies["sentence"].startswith("The water is a mixed-cation-HCO3 type")
+    # calcium and magnesium are two thirds of it: sodium has not replaced
+    # calcium, which is what a sodium bicarbonate water is said to show
+    assert "sodium and potassium have replaced calcium" not in facies["sentence"]
+    assert "calcium and magnesium together still outweigh" in facies["sentence"]
+
+    def facies_for(ca, mg, na, hco3, cl, so4):
+        return facies_of(_sample(
+            WaterQualityResult("Calcium", ca * 20.04), WaterQualityResult("Magnesium", mg * 12.15),
+            WaterQualityResult("Sodium", na * 22.99), WaterQualityResult("Potassium", 0.0),
+            WaterQualityResult("Bicarbonate", hco3 * 61.02), WaterQualityResult("Chloride", cl * 35.45),
+            WaterQualityResult("Sulfate", so4 * 48.03)))
+
+    sodium = facies_for(0.5, 0.3, 3.0, 3.0, 0.6, 0.4)
+    assert sodium["facies"] == "Na+K-HCO3"
+    assert "sodium and potassium have replaced calcium" in sodium["sentence"]
+    # a calcium chloride water has a dominant ion pair, and was said not to
+    calcium = facies_for(3.0, 0.5, 0.8, 1.0, 3.0, 0.4)
+    assert calcium["facies"] == "Ca-Cl"
+    assert "a calcium chloride water" in calcium["sentence"]
+    assert "no single dominant ion pair" not in calcium["sentence"]
     assert "milliequivalent percent" in facies["sentence"]
     assert facies_of(_sample(WaterQualityResult("pH", 7.0))) is None
     assessment = assess_sample(sample)
@@ -238,7 +268,8 @@ def test_the_handover_and_completion_reports_say_what_they_hold(sample_data, tmp
     assert text.count("Total depth") == 1
     assert "strokes per day" not in text and "pump rods" not in text
     assert "meter reading" in text
-    assert "provisional" in text.lower()
+    # the note itself: the word alone was met by the Standards Bureau citation
+    assert PROVISIONAL_NATIONAL_NOTE in text
     assert om_guidance("India Mark II")[1][1][1].startswith("Record the approximate hours")
     completion = build_completion_report(
         CompletionReportInputs(
@@ -250,7 +281,7 @@ def test_the_handover_and_completion_reports_say_what_they_hold(sample_data, tmp
     text = _text(completion)
     assert "Status as recorded by the driller" in text
     assert "The record covers 1 h 00 min (17:00 to 18:00)." in text
-    assert "provisional" in text.lower()
+    assert PROVISIONAL_NATIONAL_NOTE in text
 
 
 def _tables(path) -> list[list[list[str]]]:
@@ -534,3 +565,50 @@ def test_a_wenner_survey_far_apart_is_captioned_and_refused_honestly(tmp_path):
     assert "Ground surface along the survey traverse" not in text
     assert "Ground profile: the levelled stations are 20,751 m apart" in text
     assert "so they have no depth to bedrock" in text
+
+
+def test_the_development_record_span_reads_the_times_it_has():
+    """A blank first start printed "( to 18:00)", and a record kept with
+    points ("17.00") said nothing at all."""
+    from groundwater.reporting.completion import _record_span
+
+    assert _record_span([("", "17:17", "", "Muddy"), ("17:17", "18:00", "2.5", "Clear")]) == (
+        "The record covers 43 minutes (17:17 to 18:00).")
+    assert _record_span([("17.00", "17.17", "", "Muddy"), ("17.17", "18.00", "", "Clear")]) == (
+        "The record covers 1 h 00 min (17:00 to 18:00).")
+    assert _record_span([("17h00", "18h30", "", "")]) == (
+        "The record covers 1 h 30 min (17:00 to 18:30).")
+    assert _record_span([("", "", "", "")]) == ""
+
+
+def test_a_result_that_was_not_quantified_reaches_the_documents(sample_data, tmp_path):
+    """TNTC and ">50" were printed as "n/a" in the quality, completion and
+    handover tables: the one thing the laboratory said about them was lost."""
+    from groundwater.ingestion import read_drilling_workbook
+    from groundwater.reporting.completion import CompletionReportInputs, build_completion_report
+    from groundwater.reporting.handover import HandoverReportInputs, build_handover_report
+    from groundwater.reporting.quality import QualityReportInputs, build_quality_report
+
+    log = read_drilling_workbook(sample_data / "dr_timbo" / "dr_timbo_drilling_log.xlsx")
+    quality = assess_sample(_sample(
+        WaterQualityResult("E. coli", 0.0, "CFU/100 mL"),
+        WaterQualityResult("Arsenic", 0.001, "mg/L"),
+        WaterQualityResult("Fluoride", 0.3, "mg/L"),
+        WaterQualityResult("Nitrate (as NO3)", None, "mg/L", greater_than=50.0),
+        WaterQualityResult("Total coliforms", None, "CFU/100 mL", greater_than=0.0),
+    ))
+    documents = [
+        build_quality_report(QualityReportInputs(
+            assessment=quality, figures_dir=tmp_path, include_diagrams=False),
+            tmp_path / "q.docx"),
+        build_completion_report(CompletionReportInputs(
+            log=log, figures_dir=tmp_path, quality=quality), tmp_path / "c.docx"),
+        build_handover_report(HandoverReportInputs(
+            site=log.site, log=log, quality=quality, figures_dir=tmp_path),
+            tmp_path / "h.docx"),
+    ]
+    for path in documents:
+        rows = {row.cells[0].text: row.cells[1].text
+                for table in Document(str(path)).tables for row in table.rows}
+        assert rows["Nitrate (as NO3)"] == ">50", path.name
+        assert rows["Total coliforms"] == "detected", path.name

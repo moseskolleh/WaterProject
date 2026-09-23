@@ -4137,6 +4137,20 @@
     return ['Strongly corrosive', true];
   }
 
+  /* The pH to one decimal, or to as many as the range sentence needs
+   * (corrosivity.py _ph_text). Rounded to one decimal, 6.46 printed as "6.5
+   * is below the 6.5 to 8.5 acceptability range" and 8.54 as "8.5 is above"
+   * it. pyFixed, not toFixed: Python's "%.1f" sends a tie to the even digit,
+   * so a pH reported as 6.25 prints as 6.2 in both engines. */
+  function phText(ph) {
+    for (var places = 1; places <= 4; places++) {
+      var text = pyFixed(ph, places);
+      var shown = Number(text);
+      if ((shown !== 6.5 && shown !== 8.5) || (ph >= 6.5 && ph <= 8.5)) return text;
+    }
+    return formatG(ph);
+  }
+
   function assessCorrosivity(sample) {
     var assessment = {
       lsi: null, rsi: null, aggressive_index: null, larson_skold: null,
@@ -4225,21 +4239,19 @@
     var signedLsi = (lsi >= 0 ? '+' : '') + lsi.toFixed(1);
     if (aggressive) {
       /* The pH sentence used to say "within the acceptability range" for a
-       * sample the same report flagged at 5.9. It now says what the pH is.
-       * pyFixed, not toFixed: Python's "%.1f" sends a tie to the even digit,
-       * so a pH reported as 6.25 prints as 6.2 in both engines. */
+       * sample the same report flagged at 5.9. It now says what the pH is. */
       var phNote;
       if (ph < 6.5) {
-        phNote = 'The pH of ' + pyFixed(ph, 1) + ' is below the 6.5 to 8.5 ' +
+        phNote = 'The pH of ' + phText(ph) + ' is below the 6.5 to 8.5 ' +
           'acceptability range, which adds to the attack on metal; soft, ' +
           'low-alkalinity basement groundwater is aggressive even at a pH ' +
           'inside that range.';
       } else if (ph > 8.5) {
-        phNote = 'The pH of ' + pyFixed(ph, 1) + ' is above the 6.5 to 8.5 ' +
+        phNote = 'The pH of ' + phText(ph) + ' is above the 6.5 to 8.5 ' +
           'acceptability range; the aggressiveness comes from the low calcium ' +
           'and alkalinity.';
       } else {
-        phNote = 'The pH of ' + pyFixed(ph, 1) + ' is within the 6.5 to 8.5 ' +
+        phNote = 'The pH of ' + phText(ph) + ' is within the 6.5 to 8.5 ' +
           'acceptability range, and the water is aggressive all the same, ' +
           'which is typical of soft basement groundwater.';
       }
@@ -4343,6 +4355,9 @@
     unknown_parameter: 'the parameter is not in the standards table',
     unit_basis_conflict:
       'the unit names a different chemical basis from the parameter',
+    value_unreadable: 'the reported result could not be read',
+    detected_not_quantified:
+      'the laboratory reported only a lower bound, which is inside the limit',
   };
 
   var GRADED_STATUSES = ['exceeds_health', 'exceeds_national',
@@ -4425,16 +4440,19 @@
     return { value: converted, reason: '' };
   }
 
-  function gradeRow(row, entry, value, unitNote) {
+  /* The limit hierarchy: [status, key of the limit that set it]
+   * (assess.py _classify). exceeds(limit) says whether a limit is crossed:
+   * a measured value asks limitExceededBy, a lower bound whether it already
+   * reaches the limit. One hierarchy serves both, so a ">1.0" iron is graded
+   * as a measured iron is, rather than by rules of its own. */
+  function classifyLimits(entry, exceeds) {
     var isMicro = String(entry.category || '').trim().toLowerCase() === 'microbiological';
     var isFaecal = String(entry.parameter || '').trim().toLowerCase() === 'e. coli';
-    if (entry.who_health && limitExceededBy(entry.who_health, value)) {
-      row.status = 'exceeds_health';
-      row.remark = 'exceeds the WHO health based guideline (' +
-        limitText(entry.who_health) + ')' + unitNote;
-    } else if (isMicro && (
-        (entry.sl_standard && limitExceededBy(entry.sl_standard, value)) ||
-        (entry.who_aesthetic && limitExceededBy(entry.who_aesthetic, value)))) {
+    if (entry.who_health && exceeds(entry.who_health)) {
+      return ['exceeds_health', 'who_health'];
+    }
+    if (isMicro && ((entry.sl_standard && exceeds(entry.sl_standard)) ||
+        (entry.who_aesthetic && exceeds(entry.who_aesthetic)))) {
       /* A microbiological indicator is never an aesthetic matter, even when
        * its limit is carried in the national column. E. coli is the faecal
        * indicator and any detection is a health exceedance. Total coliforms
@@ -4443,52 +4461,76 @@
        * contamination, so they are a national-limit failure that calls for
        * disinfection and a sanitary inspection. Three reports used to call a
        * sample with E. coli 0 "faecal contamination" on total coliforms. */
+      return [isFaecal ? 'exceeds_health' : 'exceeds_national', 'microbiological'];
+    }
+    if (entry.sl_standard && exceeds(entry.sl_standard)) {
+      /* With a WHO health value the national limit is the stricter one, and
+       * failing it is a compliance failure, not a matter of taste. Without
+       * one the national limit is an acceptability limit (iron staining,
+       * chloride taste, turbidity). */
+      return [entry.who_health ? 'exceeds_national' : 'exceeds_aesthetic', 'sl_standard'];
+    }
+    if (entry.who_aesthetic && exceeds(entry.who_aesthetic)) {
+      return ['exceeds_aesthetic', 'who_aesthetic'];
+    }
+    if (!(entry.who_health || entry.who_aesthetic || entry.sl_standard)) {
+      return ['no_guideline', ''];
+    }
+    return ['within_limits', ''];
+  }
+
+  /* What a remark adds after a national acceptability limit. The WHO figure
+   * is what the national one was carried across from, and naming it is the
+   * only way a reader can tell a limit somebody set from a limit this
+   * toolkit assumed. "Which is provisional" is said only of a value the
+   * table in use marks provisional: a table whose national column names its
+   * specification was told its confirmed limits were provisional. */
+  function acceptabilityNote(entry) {
+    var provisional = entry.sl_provisional ? ', which is provisional' : '';
+    var whoNote = entry.who_aesthetic
+      ? '; the WHO acceptability value is ' + limitText(entry.who_aesthetic)
+      : '; WHO sets no value for this determinand';
+    return provisional + whoNote;
+  }
+
+  function gradeRow(row, entry, value, unitNote) {
+    var graded = classifyLimits(entry, function (limit) {
+      return limitExceededBy(limit, value);
+    });
+    var status = graded[0], basis = graded[1];
+    row.status = status;
+    if (basis === 'who_health') {
+      row.remark = 'exceeds the WHO health based guideline (' +
+        limitText(entry.who_health) + ')' + unitNote;
+    } else if (basis === 'microbiological') {
       var micro = entry.sl_standard || entry.who_aesthetic;
-      if (isFaecal) {
-        row.status = 'exceeds_health';
+      if (status === 'exceeds_health') {
         row.remark = 'faecal indicator detected above the limit (' +
           limitText(micro) + '); a health concern, not aesthetic' + unitNote;
       } else {
-        row.status = 'exceeds_national';
         row.remark = 'detected above the national limit (' + limitText(micro) +
           '); an indicator of ingress or inadequate wellhead protection, not ' +
           'of faecal contamination in itself, and WHO sets no health based ' +
           'guideline for it' + unitNote;
       }
-    } else if (entry.sl_standard && limitExceededBy(entry.sl_standard, value)) {
-      if (entry.who_health) {
-        /* A national limit stricter than the WHO health value is a
-         * compliance failure, not a matter of taste. */
-        row.status = 'exceeds_national';
-        row.remark = 'exceeds the national standard limit (' +
-          limitText(entry.sl_standard) + '), which is stricter than the ' +
-          'WHO health based guideline (' + limitText(entry.who_health) + ')' +
-          unitNote;
-      } else {
-        /* Every national value in the bundled table is provisional - a WHO
-         * or regional figure carried across, not a confirmed Standards
-         * Bureau one - so the remark says so rather than reporting a legal
-         * failure the toolkit cannot establish. */
-        row.status = 'exceeds_aesthetic';
-        /* The WHO figure is what the national one was carried across from,
-         * and naming it is the only way a reader can tell a limit somebody
-         * set from a limit this toolkit assumed. */
-        var whoNote = entry.who_aesthetic
-          ? '; the WHO acceptability value is ' + limitText(entry.who_aesthetic)
-          : '; WHO sets no value for this determinand';
-        row.remark = 'exceeds the national acceptability limit (' +
-          limitText(entry.sl_standard) + '), which is provisional' +
-          whoNote + unitNote;
-      }
-    } else if (entry.who_aesthetic && limitExceededBy(entry.who_aesthetic, value)) {
-      row.status = 'exceeds_aesthetic';
+    } else if (basis === 'sl_standard' && status === 'exceeds_national') {
+      row.remark = 'exceeds the national standard limit (' +
+        limitText(entry.sl_standard) + '), which is stricter than the ' +
+        'WHO health based guideline (' + limitText(entry.who_health) + ')' +
+        unitNote;
+    } else if (basis === 'sl_standard') {
+      /* No WHO health value exists for this parameter, so the national limit
+       * is an acceptability one, and a provisional one - a WHO or regional
+       * figure carried across - is called provisional rather than reported
+       * as a legal failure the toolkit cannot establish. */
+      row.remark = 'exceeds the national acceptability limit (' +
+        limitText(entry.sl_standard) + ')' + acceptabilityNote(entry) + unitNote;
+    } else if (basis === 'who_aesthetic') {
       row.remark = 'exceeds the WHO acceptability value (' +
         limitText(entry.who_aesthetic) + ')' + unitNote;
-    } else if (!(entry.who_health || entry.who_aesthetic || entry.sl_standard)) {
-      row.status = 'no_guideline';
+    } else if (status === 'no_guideline') {
       row.remark = entry.note || 'no guideline value';
     } else {
-      row.status = 'within_limits';
       row.remark = unitNote.trim();
     }
   }
@@ -4561,63 +4603,158 @@
     return row;
   }
 
+  /* How a remark says which unit a number was read in (assess.py _unit_note). */
+  function wqUnitNote(reported, unit, converted, reason, guidelineUnit) {
+    if (reason === 'unit_assumed') {
+      return unit
+        ? ' (read as ' + guidelineUnit + "; the reported unit was '" + unit + "')"
+        : ' (read as ' + guidelineUnit + '; no unit was reported)';
+    }
+    if (converted !== reported) {
+      return ' (' + formatG(reported) + ' ' + unit + ' = ' + formatG(converted) +
+        ' ' + guidelineUnit + ')';
+    }
+    return '';
+  }
+
+  /* a lower bound as a remark words it */
+  function statedBound(result) {
+    var bound = Number(result.greater_than);
+    if (bound === 0 && !result.greater_than_inclusive) {
+      return 'detected, count not quantified';
+    }
+    return (result.greater_than_inclusive ? 'at least ' : 'more than ') + formatG(bound);
+  }
+
+  /* The reason on a row whose lower bound is over one limit and under a
+   * stricter one: ">1.5" copper is over the 1 mg/L acceptability value, and
+   * whether it is also over the 2 mg/L health guideline is not known. The
+   * exceedance it demonstrates is its status; the one it cannot rule out
+   * keeps the sample out of "suitable". */
+  var STRICTER_LIMIT_UNRESOLVED = 'stricter_limit_unresolved';
+
+  /* how a remark names the limit classifyLimits says decided a row */
+  var LIMIT_NAMES = {
+    who_health: 'the WHO health based guideline',
+    microbiological: 'the national limit',
+    sl_standard: 'the national standard limit',
+    who_aesthetic: 'the WHO acceptability value',
+  };
+
+  function decidingLimit(entry, basis) {
+    if (basis === 'microbiological') return entry.sl_standard || entry.who_aesthetic;
+    return basis ? entry[basis] : null;
+  }
+
   /* A result the laboratory saw and did not put a number to.
    *
-   * "TNTC", "Present" and "Positive" are a count above zero; ">50" is at
-   * least 50. All of them used to read as "not measured", so a sample with
-   * E. coli 0 and total coliforms TNTC was graded Safe, and a ">50" count
-   * was graded as exactly 50 - inside the limit whenever the limit is 50. */
+   * "TNTC", "Present" and "Positive" are a count above zero; ">50" is more
+   * than 50 and ">=50" at least 50. All of them used to read as "not
+   * measured", so a sample with E. coli 0 and total coliforms TNTC was graded
+   * Safe, and a ">50" count was graded as exactly 50 - inside the limit
+   * whenever the limit is 50.
+   *
+   * The bound is put on the guideline's scale and then graded through the
+   * same limit hierarchy as a measured value. It used to be compared as
+   * written, so lead ">5 ug/L" (0.005 mg/L) was a health exceedance where a
+   * measured 7 ug/L complied; and every limit it crossed got the coliform
+   * wording, so iron ">1.0" was a national failure put down to ingress at the
+   * wellhead where a measured 1.5 was an acceptability one. */
   function assessUnquantified(row, result, entry) {
-    var bound = Number(result.greater_than);
+    var reported = Number(result.greater_than);
+    var stated = statedBound(result);
+    var converted = toGuidelineUnit(reported, result.unit, entry);
+    if (converted.value === null) {
+      row.status = 'indeterminate';
+      row.evaluable = false;
+      row.reason = converted.reason;
+      row.remark = 'reported as ' + stated + " in '" + (result.unit || '') +
+        "' but the guideline is in '" + entry.unit + "': " +
+        INDETERMINATE_REASONS[converted.reason] + '. The value was not ' +
+        'compared against any limit.';
+      return row;
+    }
+    var bound = converted.value;
+    stated += wqUnitNote(reported, result.unit || '', bound, converted.reason,
+      entry.unit);
+    var inclusive = !!result.greater_than_inclusive;
+
+    /* The true value is above the bound, or at it for ">=", so a limit is
+     * crossed only when the bound already reaches it: ">50" exceeds 50,
+     * ">=50" may equal it. */
+    function certainlyOver(limit) {
+      if (limit.maximum === null || limit.maximum === undefined) return false;
+      return bound > limit.maximum || (bound === limit.maximum && !inclusive);
+    }
+
+    var graded = classifyLimits(entry, certainlyOver);
+    var status = graded[0], basis = graded[1];
+    /* the status the true value would have if it were as large as it may be */
+    var worst = classifyLimits(entry, function (limit) {
+      return limit.maximum !== null && limit.maximum !== undefined;
+    });
+    row.status = status;
     row.evaluable = true;
     row.reason = 'detected_not_quantified';
-    var isFaecal = String(entry.parameter || '').trim().toLowerCase() === 'e. coli';
-    var stated = bound === 0
-      ? 'detected, count not quantified' : 'more than ' + formatG(bound);
-
-    function maximum(limit) {
-      return limit && limit.maximum !== null && limit.maximum !== undefined
-        ? limit.maximum : null;
+    if (status === 'no_guideline') {
+      row.remark = stated + '. ' + (entry.note || 'No guideline value');
+      return row;
     }
-    var health = maximum(entry.who_health);
-    var national = maximum(entry.sl_standard);
-    if (national === null) national = maximum(entry.who_aesthetic);
-
-    var overHealth = health !== null && bound >= health;
-    var overNational = national !== null && bound >= national;
-
-    if (overHealth) {
-      row.status = 'exceeds_health';
-      row.remark = stated + ', which is above the WHO health based guideline (' +
-        limitText(entry.who_health) + '); the laboratory did not quantify it';
-    } else if (overNational && isFaecal) {
-      row.status = 'exceeds_health';
-      row.remark = 'faecal indicator ' + stated + ', above the limit (' +
-        limitText(entry.sl_standard || entry.who_aesthetic) +
-        '); a health concern, not aesthetic';
-    } else if (overNational) {
-      row.status = 'exceeds_national';
-      row.remark = stated + ', above the national limit (' +
-        limitText(entry.sl_standard || entry.who_aesthetic) + '); an indicator ' +
-        'of ingress or inadequate wellhead protection, not of faecal ' +
-        'contamination in itself, and WHO sets no health based guideline for it';
-    } else {
+    if (status === 'within_limits') {
+      if (worst[0] === 'within_limits') {
+        row.remark = stated;
+        return row;
+      }
       /* The bound is inside every limit, so the result is an open question
        * rather than a pass: the true value is somewhere above it. */
       row.status = 'indeterminate';
       row.evaluable = false;
       row.remark = stated + '; the laboratory did not quantify it, so it ' +
         'cannot be shown to meet the limit';
+      return row;
+    }
+
+    var limit = limitText(decidingLimit(entry, basis));
+    if (basis === 'who_health') {
+      row.remark = stated + ', which is above the WHO health based guideline (' +
+        limit + '); the laboratory did not quantify it';
+    } else if (basis === 'microbiological' && status === 'exceeds_health') {
+      row.remark = 'faecal indicator ' + stated + ', above the limit (' + limit +
+        '); a health concern, not aesthetic';
+    } else if (basis === 'microbiological') {
+      row.remark = stated + ', above the national limit (' + limit + '); an ' +
+        'indicator of ingress or inadequate wellhead protection, not of faecal ' +
+        'contamination in itself, and WHO sets no health based guideline for it';
+    } else if (basis === 'sl_standard' && status === 'exceeds_national') {
+      row.remark = stated + ', above the national standard limit (' + limit +
+        '), which is stricter than the WHO health based guideline (' +
+        limitText(entry.who_health) + '); the laboratory did not quantify it';
+    } else if (basis === 'sl_standard') {
+      row.remark = stated + ', above the national acceptability limit (' + limit +
+        ')' + acceptabilityNote(entry) + '; the laboratory did not quantify it';
+    } else {
+      row.remark = stated + ', above the WHO acceptability value (' + limit +
+        '); the laboratory did not quantify it';
+    }
+    if (status !== worst[0]) {
+      /* Over one limit and under a stricter one: the exceedance it shows
+       * stands, and the one it cannot rule out keeps the sample open. */
+      row.reason = STRICTER_LIMIT_UNRESOLVED;
+      row.remark += '. Whether it also exceeds ' + LIMIT_NAMES[worst[1]] + ' (' +
+        limitText(decidingLimit(entry, worst[1])) + ') is not known';
     }
     return row;
   }
 
   function assessResult(result, entry) {
     var guidelineUnit = entry ? (entry.unit || '') : '';
+    var missing = result.value === null || result.value === undefined;
+    var unquantified = missing && result.greater_than !== null &&
+      result.greater_than !== undefined;
+    var unreadable = missing && !!result.unreadable;
     var row = {
       parameter: result.parameter,
-      value: (result.value === null || result.value === undefined)
-        ? null : Number(result.value),
+      value: missing ? null : Number(result.value),
       unit: result.unit || guidelineUnit,
       below_detection: !!result.below_detection,
       who_health: entry && entry.who_health ? limitText(entry.who_health) : '',
@@ -4631,25 +4768,43 @@
         result.detection_limit === undefined) ? null : Number(result.detection_limit),
       evaluable: true,
       reason: '',
+      /* the lower bound of a result the laboratory did not quantify, in the
+       * reported unit: a table printing only the value showed "TNTC" and
+       * ">50" as a dash */
+      greater_than: unquantified ? Number(result.greater_than) : null,
+      greater_than_inclusive: unquantified && !!result.greater_than_inclusive,
+      /* whether the national value was provisional in the table in use */
+      sl_provisional: !!(entry && entry.sl_provisional),
     };
 
-    var missing = result.value === null || result.value === undefined;
-    if (missing && !result.below_detection) {
-      if (result.greater_than !== null && result.greater_than !== undefined && entry) {
-        return assessUnquantified(row, result, entry);
-      }
+    if (missing && !result.below_detection && !unquantified && !unreadable) {
       return row;
     }
 
     if (!entry) {
-      /* An unrecognised determinand is an open question, not a clean bill. */
+      /* An unrecognised determinand is an open question, not a clean bill,
+       * and a detection of one is no less of one: "Salmonella: Present" was
+       * read as not measured and left the sample suitable for drinking. */
       row.status = 'no_guideline';
       row.reason = 'unknown_parameter';
       row.evaluable = false;
       row.remark = 'parameter not in the standards table, so it was not ' +
         'checked against any limit';
+      if (unquantified) row.remark = statedBound(result) + '; ' + row.remark;
       return row;
     }
+
+    if (unreadable) {
+      row.status = 'indeterminate';
+      row.evaluable = false;
+      row.reason = 'value_unreadable';
+      row.remark = "reported as '" + result.unreadable + "', which could not be " +
+        'read as a measurement, a detection limit or a lower bound, so it was ' +
+        'not compared against any limit. Confirm the result with the laboratory.';
+      return row;
+    }
+
+    if (unquantified) return assessUnquantified(row, result, entry);
 
     var limits = limitMaximums(entry);
     if (result.below_detection && missing) {
@@ -4670,20 +4825,21 @@
 
     row.value_in_guideline_unit = converted.value;
     row.reason = converted.reason;
-    var unitNote;
-    if (converted.reason === 'unit_assumed') {
-      unitNote = result.unit
-        ? ' (read as ' + guidelineUnit + "; the reported unit was '" +
-          result.unit + "')"
-        : ' (read as ' + guidelineUnit + '; no unit was reported)';
-    } else if (converted.value !== Number(result.value)) {
-      unitNote = ' (' + formatG(Number(result.value)) + ' ' + result.unit +
-        ' = ' + formatG(converted.value) + ' ' + guidelineUnit + ')';
-    } else {
-      unitNote = '';
-    }
-    gradeRow(row, entry, converted.value, unitNote);
+    gradeRow(row, entry, converted.value, wqUnitNote(Number(result.value),
+      result.unit || '', converted.value, converted.reason, guidelineUnit));
     return row;
+  }
+
+  /* How a result the laboratory did not quantify reads in a table: ">50",
+   * "≥50", or "detected" for a count seen and not numbered; '' for any
+   * other row (assess.py unquantified_text). */
+  function unquantifiedText(row) {
+    if ((row.value !== null && row.value !== undefined) ||
+        row.greater_than === null || row.greater_than === undefined) {
+      return '';
+    }
+    if (row.greater_than === 0 && !row.greater_than_inclusive) return 'detected';
+    return (row.greater_than_inclusive ? '≥' : '>') + formatG(row.greater_than);
   }
 
   var ESSENTIAL_EQUIVALENTS = { 'nitrate (as no3)': ['nitrate (as n)'] };
@@ -4713,26 +4869,33 @@
    * index of 1.98, and treating the unknown as zero turned a sample that
    * might fail the rule into one that passed it silently. */
   function nitrateNitriteIndex(rows, table) {
-    function valueAndGv(key) {
-      var entry = table[key];
-      var gv = entry && entry.who_health ? entry.who_health.maximum : null;
-      for (var i = 0; i < rows.length; i++) {
-        var row = rows[i];
-        if (normaliseParameter(row.parameter) !== key) continue;
-        if (row.value_in_guideline_unit !== null &&
-            row.value_in_guideline_unit !== undefined) {
-          return [Number(row.value_in_guideline_unit), gv, false];
+    /* Each ion is divided by the guideline on the basis its own row is
+     * reported on. Only the "as NO3" and "as NO2" rows were looked for, so a
+     * laboratory reporting both as nitrogen (10 and 0.8 mg/L as N, an index
+     * of 1.76) was never checked against the rule at all. */
+    function component(keys) {
+      for (var k = 0; k < keys.length; k++) {
+        var key = keys[k];
+        var entry = table[key];
+        var gv = entry && entry.who_health ? entry.who_health.maximum : null;
+        for (var i = 0; i < rows.length; i++) {
+          var row = rows[i];
+          if (normaliseParameter(row.parameter) !== key) continue;
+          if (row.value_in_guideline_unit !== null &&
+              row.value_in_guideline_unit !== undefined) {
+            return [Number(row.value_in_guideline_unit), gv, false];
+          }
+          if (row.below_detection && entry &&
+              row.detection_limit !== null && row.detection_limit !== undefined) {
+            var dl = toGuidelineUnit(Number(row.detection_limit), row.unit, entry);
+            if (dl.value !== null) return [Number(dl.value), gv, true];
+          }
         }
-        if (row.below_detection && entry &&
-            row.detection_limit !== null && row.detection_limit !== undefined) {
-          var dl = toGuidelineUnit(Number(row.detection_limit), row.unit, entry);
-          if (dl.value !== null) return [Number(dl.value), gv, true];
-        }
-        return [null, gv, false];
       }
-      return [null, gv, false];
+      return [null, null, false];
     }
-    var a = valueAndGv('nitrate (as no3)'), b = valueAndGv('nitrite (as no2)');
+    var a = component(['nitrate (as no3)', 'nitrate (as n)']);
+    var b = component(['nitrite (as no2)', 'nitrite (as n)']);
     if (a[0] === null || b[0] === null || !a[1] || !b[1]) return null;
     return { ratio: a[0] / a[1] + b[0] / b[1], no3: a[0], no2: b[0],
       gv3: a[1], gv2: b[1], bounded: a[2] || b[2] };
@@ -4777,6 +4940,12 @@
           level: 'error', code: 'indeterminate_' + row.reason,
           message: "'" + result.parameter + "' could not be assessed: " + row.remark,
         });
+      } else if (row.reason === STRICTER_LIMIT_UNRESOLVED) {
+        flags.push({
+          level: 'warning', code: STRICTER_LIMIT_UNRESOLVED,
+          message: "'" + result.parameter + "' could not be graded in full: " +
+            row.remark + '.',
+        });
       }
     });
 
@@ -4812,6 +4981,7 @@
         value_in_guideline_unit: bounded ? null : pyRound(combined.ratio, 2),
         detection_limit: null, evaluable: !bounded,
         reason: bounded ? 'detection_limit_above_guideline' : '',
+        greater_than: null, greater_than_inclusive: false, sl_provisional: false,
       });
       flags.push({
         level: 'warning',
@@ -4919,6 +5089,12 @@
       var why = INDETERMINATE_REASONS[row.reason] || 'it could not be evaluated';
       reasons.push(row.parameter + ' could not be assessed: ' + why);
     });
+    assessment.rows.forEach(function (row) {
+      if (row.reason === STRICTER_LIMIT_UNRESOLVED) {
+        reasons.push(row.parameter + ' was not quantified, so a stricter limit ' +
+          'than the one it exceeds cannot be ruled out');
+      }
+    });
     assessment.unknown_parameters.forEach(function (row) {
       reasons.push(row.parameter + ' has no entry in the standards table, so ' +
         'it was not checked against any limit');
@@ -4958,12 +5134,22 @@
         ? ' Acceptability limits are also exceeded for: ' +
           names(acceptability) + '.'
         : '';
+      var action = ' Treatment is required before the supply can be accepted ' +
+        'against the national standard; check whether the limit exceeded is a ' +
+        'health or an acceptability limit.';
+      if ((assessment.uncertainties || []).length) {
+        /* The national failure outranks the open questions, but it does not
+         * answer them: "meets the WHO health based guideline values" was said
+         * of an arsenic result nobody could grade. */
+        return 'The water does not comply with the national standard ' +
+          pluralNoun(national.length, 'limit') + ' for: ' + names(national) +
+          '.' + extra + ' It has not been shown to meet the WHO health based ' +
+          'guideline values: ' + assessment.uncertainties.join('; ') + '.' + action;
+      }
       return 'The water meets the WHO health based guideline values, but does ' +
         'not comply with the national standard ' +
         pluralNoun(national.length, 'limit') + ' for: ' + names(national) +
-        '.' + extra + ' Treatment is required before the supply can be accepted ' +
-        'against the national standard; check whether the limit exceeded is a ' +
-        'health or an acceptability limit.';
+        '.' + extra + action;
     }
     if (state === 'indeterminate') {
       var also = acceptability.length
@@ -5100,19 +5286,42 @@
     if (anName === 'HCO3' && (catName === 'Ca' || catName === 'Mg')) {
       meaning = 'a fresh, recently recharged water of the kind weathering of ' +
         'silicate rock gives; typical of shallow basement groundwater';
-    } else if (anName === 'HCO3') {
+    } else if (anName === 'HCO3' && catName === 'Na+K') {
       meaning = 'a bicarbonate water in which sodium and potassium have ' +
         'replaced calcium, which points to longer contact with the rock or ' +
         'to ion exchange in a clayey weathered zone';
+    } else if (anName === 'HCO3') {
+      /* No cation holds half the total, so sodium and potassium hold less
+       * than half and calcium and magnesium together hold more. Dr Timbo's
+       * water (Ca 40%, Mg 26%, Na+K 34%) was said to be one in which sodium
+       * had replaced calcium. */
+      meaning = 'a bicarbonate water with no single dominant cation, in which ' +
+        'calcium and magnesium together still outweigh sodium and potassium; ' +
+        'a fresh water of the kind weathering of silicate rock gives, with ' +
+        'the sodium share pointing to feldspar weathering or some ion ' +
+        'exchange along the flow path';
     } else if (anName === 'Cl' && catName === 'Na+K') {
       meaning = 'a sodium chloride water, which in this setting points to ' +
         'salinity from the coast, an estuary or evaporation rather than to ' +
         'rock weathering';
+    } else if (anName === 'Cl' && (catName === 'Ca' || catName === 'Mg')) {
+      /* it has a dominant ion pair, and was called a water without one */
+      meaning = 'a ' + (catName === 'Ca' ? 'calcium' : 'magnesium') +
+        ' chloride water, which is unusual in fresh basement groundwater; it ' +
+        'can point to saline water exchanging with the aquifer or to ' +
+        'pollution, and is worth checking against the sample\'s provenance';
+    } else if (anName === 'Cl') {
+      meaning = 'a chloride water with no single dominant cation, which points ' +
+        'to salinity or pollution mixed into the groundwater rather than to ' +
+        'rock weathering alone';
     } else if (anName === 'SO4') {
       meaning = 'a sulfate water, which is unusual in basement ground and ' +
         'worth checking against the sample\'s provenance';
-    } else {
+    } else if (catName === 'mixed-cation') {
       meaning = 'a mixed water with no single dominant ion pair';
+    } else {
+      meaning = 'a water with no single dominant anion, of mixed origin or in ' +
+        'transition between types';
     }
 
     return {
@@ -5151,6 +5360,8 @@
     qualityVerdict: qualityVerdict, STATUS_ORDER: STATUS_ORDER,
     qualityVerdictState: qualityVerdictState,
     qualityUncertainties: qualityUncertainties,
+    unquantifiedText: unquantifiedText, readQualityCell: readQualityCell,
+    STRICTER_LIMIT_UNRESOLVED: STRICTER_LIMIT_UNRESOLVED,
     WQ_STATUS_LABELS: WQ_STATUS_LABELS, VERDICT_ORDER: VERDICT_ORDER,
     VERDICT_SHORT: VERDICT_SHORT, VERDICT_LONG: VERDICT_LONG,
     VERDICT_TONE: VERDICT_TONE,
@@ -7763,19 +7974,14 @@
     return null;
   }
 
-  /* what a laboratory writes for "nothing found": a below-detection result
-   * with no stated limit, judged by the assessment per parameter */
+  /* What a laboratory writes for "nothing found": a below-detection result
+   * with no stated limit, judged by the assessment per parameter. The same
+   * words often carry that limit after them ("ND (<0.05)", "BDL (0.02)",
+   * "ND at 0.05"); only an exact match once counted, and every one of those
+   * was graded as a measured concentration exceeding a health guideline. */
   var ABSENCE_TOKENS = ['absent', 'nd', 'n.d', 'n/d', 'nil', 'none', 'not detected',
     'none detected', 'bdl', 'below detection', 'below detection limit', '<dl',
     'negative', 'neg'];
-
-  /* The same words with the laboratory's limit written after them:
-   * "ND (<0.05)", "BDL (0.02)", "ND<0.1", "Not detected (<0.001)". Only an
-   * exact match counted, so every one of these was read as a measured
-   * concentration and graded as exceeding a health guideline - the arsenic a
-   * laboratory reported as absent came out as the worst reading on the
-   * sheet. */
-  var ABSENCE_WITH_LIMIT = /^([a-z][a-z.\s/]*?)\s*[([]?\s*<?\s*(\d+(?:[.,]\d+)?)\s*[)\]]?\.?$/;
 
   /* What a laboratory writes when it saw the determinand and put no number
    * to it. For a determinand whose limit is zero that is the whole finding:
@@ -7784,15 +7990,164 @@
   var PRESENCE_TOKENS = ['tntc', 't.n.t.c', 'too numerous to count', 'confluent',
     'confluent growth', 'present', 'positive', 'pos', '+ve', 'detected'];
 
-  /* at least this much, not exactly this much: ">50" was read as 50 */
-  var GREATER_THAN_RE = /^(?:>|>=|\u2265|more than|greater than)\s*(\d+(?:[.,]\d+)?)\s*\+?$/;
+  /* Words that introduce a lower bound, and whether the bound itself is a
+   * possible value. ">=50" is at least 50; ">50" is more than 50. */
+  var LOWER_BOUND_WORDS = [['>=', true], ['=>', true], ['>', false],
+    ['at least', true], ['more than', false], ['greater than', false],
+    ['above', false], ['over', false]];
 
-  function absenceLimit(text) {
-    var match = ABSENCE_WITH_LIMIT.exec(String(text || '').toLowerCase().trim());
-    if (!match) return null;
-    var word = match[1].replace(/[\s.]+$/, '').trim();
-    if (ABSENCE_TOKENS.indexOf(word) < 0) return null;
-    return parseNumber(match[2]);
+  /* words that introduce an upper bound: "<0.05" is below a limit of 0.05 */
+  var UPPER_BOUND_WORDS = ['<=', '=<', '<', 'less than'];
+
+  /* What may stand between an absence word and the limit it carries:
+   * "ND (DL 0.05)", "ND (DL=0.05)", "ND at 0.05", "ND (LOD 0.05)". */
+  var LIMIT_WORD_RE = /^(?:at|dl|d\.l\.?|lod|loq|mdl|detection limit|limit of detection|limit)\s*[=:]?\s*/;
+
+  /* a bound with no number: "<DL", "< LOQ" */
+  var LIMIT_ONLY_RE = /^(?:dl|d\.l\.?|lod|loq|mdl|detection limit|detection)$/;
+
+  /* "Absent/100 mL", "Present in 100 mL": the volume examined, not a limit */
+  var VOLUME_RE = /^(?:\/|per|in)\s*100\s*ml$/;
+
+  /* a number and the unit written after it: "50", "50 mg/L", "0,05mg/l" */
+  var NUMBER_AND_UNIT_RE = /^(\d+(?:[.,]\d+)?|[.,]\d+)\s*([^\d\s()[\]][\s\S]*)?$/;
+
+  /* Python's str.strip(chars): the set, from both ends. */
+  function stripChars(text, chars) {
+    var start = 0, end = text.length;
+    while (start < end && chars.indexOf(text.charAt(start)) >= 0) start++;
+    while (end > start && chars.indexOf(text.charAt(end - 1)) >= 0) end--;
+    return text.slice(start, end);
+  }
+
+  /* Python's str.isalpha for one character, as far as a laboratory cell
+   * needs it: a letter is a character that has a case. */
+  function isLetter(ch) {
+    return ch.toLowerCase() !== ch.toUpperCase();
+  }
+
+  /* The longest of `words` the text starts with, as a whole word. */
+  function leadingWord(text, words) {
+    var sorted = words.slice().sort(function (a, b) { return b.length - a.length; });
+    for (var i = 0; i < sorted.length; i++) {
+      var word = sorted[i];
+      if (text.indexOf(word) === 0) {
+        var rest = text.slice(word.length);
+        if (!rest || !isLetter(rest.charAt(0))) return word;
+      }
+    }
+    return null;
+  }
+
+  function numberAndUnit(text) {
+    var m = NUMBER_AND_UNIT_RE.exec(stripChars(text.trim(), '()[]').trim());
+    if (!m) return null;
+    var unit = (m[2] || '').trim().replace(/\.+$/, '').trim();
+    return [parseNumber(m[1]), unit];
+  }
+
+  /* What a laboratory's result cell says: waterquality.py _read_cell.
+   *
+   * kind is number, below (a non-detect, with the limit it states if any),
+   * above (a lower bound: ">50", "TNTC"), empty, text (words that are not a
+   * result, such as "Not analysed") or unreadable: a cell that starts like a
+   * qualified result and could not be read. That last one used to fall
+   * through to a plain number parse, which read "ND (DL 0.05)" as a measured
+   * 0.05, ">50 mg/L" as exactly 50 and "Absent/100 mL" as a count of 100. */
+  function readQualityCell(rawValue) {
+    function reading(kind, number, unit, inclusive) {
+      return { kind: kind, number: number === undefined ? null : number,
+        unit: unit || '', inclusive: !!inclusive };
+    }
+    if (typeof rawValue === 'number') {
+      var n = parseNumber(rawValue);
+      return reading(n === null ? 'empty' : 'number', n);
+    }
+    var text = cleanText(rawValue);
+    if (!text) return reading('empty');
+    var plain = text.toLowerCase().replace(/≥/g, '>=').replace(/≤/g, '<=')
+      .replace(/\.+$/, '').trim();
+    var unreadable = reading('unreadable');
+
+    function below(rest) {
+      /* what follows an absence word or a "<": nothing, the volume
+       * examined, or a limit with an optional unit */
+      rest = rest.trim().replace(/^[,;:.-]+/, '').trim();
+      rest = stripChars(rest, '()[]').trim();
+      if (!rest || VOLUME_RE.test(rest) || LIMIT_ONLY_RE.test(rest)) {
+        return reading('below');
+      }
+      rest = rest.replace(LIMIT_WORD_RE, '');
+      rest = rest.replace(/^(?:<=|=<|<)\s*/, '');
+      var read = numberAndUnit(rest);
+      return read ? reading('below', read[0], read[1]) : unreadable;
+    }
+
+    function above(rest, inclusive) {
+      rest = stripChars(rest.trim(), '()[]').trim();
+      var plus = /^(\d+(?:[.,]\d+)?|[.,]\d+)\s*\+\s*([\s\S]*)$/.exec(rest);
+      if (plus) {
+        rest = plus[1] + ' ' + plus[2];
+        inclusive = true;
+      }
+      var read = numberAndUnit(rest);
+      return read ? reading('above', read[0], read[1], inclusive) : unreadable;
+    }
+
+    var word = leadingWord(plain, ABSENCE_TOKENS);
+    if (word !== null) return below(plain.slice(word.length));
+    word = leadingWord(plain, PRESENCE_TOKENS);
+    if (word !== null) {
+      var rest = plain.slice(word.length).trim().replace(/^[,;:-]+/, '').trim();
+      if (!rest || VOLUME_RE.test(rest)) return reading('above', 0, '', false);
+      /* "TNTC (>300)": the count is at least the stated bound */
+      var inner = stripChars(rest, '()[]').trim();
+      for (var i = 0; i < LOWER_BOUND_WORDS.length; i++) {
+        if (inner.indexOf(LOWER_BOUND_WORDS[i][0]) === 0) {
+          return above(inner.slice(LOWER_BOUND_WORDS[i][0].length),
+            LOWER_BOUND_WORDS[i][1]);
+        }
+      }
+      return unreadable;
+    }
+    for (var u = 0; u < UPPER_BOUND_WORDS.length; u++) {
+      if (plain.indexOf(UPPER_BOUND_WORDS[u]) === 0) {
+        return below(plain.slice(UPPER_BOUND_WORDS[u].length));
+      }
+    }
+    for (var l = 0; l < LOWER_BOUND_WORDS.length; l++) {
+      if (plain.indexOf(LOWER_BOUND_WORDS[l][0]) === 0) {
+        return above(plain.slice(LOWER_BOUND_WORDS[l][0].length),
+          LOWER_BOUND_WORDS[l][1]);
+      }
+    }
+    /* "50+" is 50 or more */
+    if (/^(\d+(?:[.,]\d+)?|[.,]\d+)\s*\+/.test(plain)) return above(plain, true);
+    var number = parseNumber(rawValue);
+    return number === null ? reading('text') : reading('number', number);
+  }
+
+  /* a unit read from the lower-cased cell, in the case the cell wrote it */
+  function unitAsWritten(text, unit) {
+    var at = unit ? text.toLowerCase().lastIndexOf(unit) : -1;
+    return at >= 0 ? text.slice(at, at + unit.length) : unit;
+  }
+
+  /* The number on the row's scale, and the unit to record for the row. A
+   * unit written in the cell ("ND (<0.05 mg/L)") is read, not dropped: it
+   * becomes the row's unit when the unit column is blank, and is converted
+   * onto the column's unit when the two differ. [null, rowUnit] when they
+   * cannot be reconciled, which is never the same as zero. */
+  function inRowUnit(number, cellUnit, rowUnit) {
+    if (!cellUnit) return [number, rowUnit];
+    if (!normaliseUnit(rowUnit)) return [number, cellUnit];
+    if (normaliseUnit(cellUnit) === normaliseUnit(rowUnit)) return [number, rowUnit];
+    var source = parseUnit(cellUnit), target = parseUnit(rowUnit);
+    if (!source || !target || source.dimension !== target.dimension ||
+        source.basis !== target.basis) {
+      return [null, rowUnit];
+    }
+    return [convertUnit(number, cellUnit, rowUnit), rowUnit];
   }
 
   function qualityFromGrid(grid, source) {
@@ -7814,42 +8169,46 @@
       var parameter = cleanText(cell('parameter'));
       if (!parameter || parameter.toLowerCase().indexOf('note') === 0) continue;
       var rawValue = cell('value');
-      var textValue = cleanText(rawValue);
-      /* "<1", the words a certificate uses for the same thing, and those
-       * same words with the limit written after them ("ND (<0.05)") */
-      var plain = textValue.toLowerCase().replace(/\.+$/, '');
-      var absent = ABSENCE_TOKENS.indexOf(plain) >= 0;
-      var wordedLimit = absenceLimit(textValue);
-      var belowDetection = textValue.indexOf('<') === 0 || absent || wordedLimit !== null;
-      /* a count the laboratory saw and did not quantify, and a ">50" that
-       * used to be read as exactly 50 */
-      var greaterThan = null;
-      if (!belowDetection) {
-        if (PRESENCE_TOKENS.indexOf(plain) >= 0) {
-          greaterThan = 0;
-        } else {
-          var gt = GREATER_THAN_RE.exec(plain);
-          if (gt) greaterThan = parseNumber(gt[1]);
-        }
-      }
-      var value = (absent || wordedLimit !== null || greaterThan !== null)
-        ? null : parseNumber(rawValue);
+      var unit = cleanText(cell('unit'));
       var dl = parseNumber(cell('dl'));
-      if (wordedLimit !== null && dl === null) dl = wordedLimit;
-      if (belowDetection) {
-        /* A "<X" marker means the true concentration is unknown, bounded above
-         * by X. The measured value must be cleared so the assessment treats
-         * the row as below-detection and never grades it as a real
-         * concentration equal to the limit. */
-        dl = dl !== null ? dl : value;
-        value = null;
+      var read = readQualityCell(rawValue);
+      var kind = read.kind, number = read.number;
+      if (number !== null) {
+        var onScale = inRowUnit(number, unitAsWritten(cleanText(rawValue), read.unit),
+          unit);
+        number = onScale[0];
+        unit = onScale[1];
+        /* the cell names a unit the column contradicts */
+        if (number === null) kind = 'unreadable';
+      }
+      var value = null, greaterThan = null, belowDetection = false;
+      if (kind === 'number') {
+        value = number;
+      } else if (kind === 'below') {
+        /* "<X" bounds the true concentration above by X, and so does a
+         * filled detection-limit column; the larger of the two is the one
+         * the laboratory can stand behind. Taking the column alone graded
+         * "<0.05" beside a column of 0.001 against 0.001. */
+        belowDetection = true;
+        var stated = [number, dl].filter(function (x) { return x !== null; });
+        dl = stated.length ? Math.max.apply(null, stated) : null;
+      } else if (kind === 'above') {
+        greaterThan = number;
+      } else if (kind === 'empty') {
+        /* A blank result beside a filled detection-limit column is the one
+         * layout where the column is the result. Not analysed, N/A, TNTC,
+         * Present and ">50" are not blanks, and reading any of them this way
+         * reported a detection as "not detected". */
+        belowDetection = dl !== null;
       }
       results.push({
-        parameter: parameter, value: value, unit: cleanText(cell('unit')),
+        parameter: parameter, value: value, unit: unit,
         detection_limit: dl,
-        below_detection: belowDetection || (value === null && dl !== null),
+        below_detection: belowDetection,
         method: cleanText(cell('method')),
         greater_than: greaterThan,
+        greater_than_inclusive: read.inclusive,
+        unreadable: kind === 'unreadable' ? cleanText(rawValue) : '',
       });
     }
 

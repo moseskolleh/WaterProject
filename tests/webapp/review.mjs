@@ -36,17 +36,22 @@ await withPage(async (page, base, consoleErrors) => {
 
   // The visible text of a .docx, in reading order: a report can be a valid
   // ZIP with every OOXML part in place and still claim something nobody
-  // recorded, so these checks read what the client would read.
+  // recorded, so these checks read what the client would read. The table of
+  // contents repeats every heading, so it is left out unless asked for: the
+  // checks find a section by its heading, and would otherwise find its line
+  // in the contents.
   await page.evaluate(() => {
-    window.__docText = async function (bytes) {
+    window.__docText = async function (bytes, withContents) {
       const files = await window.GWT.support.unzip(bytes);
       return ['word/document.xml', 'word/footer1.xml']
         .filter((n) => files[n])
         .map((name) => {
           const xml = new DOMParser().parseFromString(
             new TextDecoder().decode(files[name]), 'application/xml');
-          return Array.from(xml.getElementsByTagName('w:p')).map((p) =>
-            Array.from(p.getElementsByTagName('w:t'))
+          return Array.from(xml.getElementsByTagName('w:p')).filter((p) =>
+            withContents || !Array.from(p.getElementsByTagName('w:instrText'))
+              .some((i) => /^\s*TOC\b/.test(i.textContent)))
+            .map((p) => Array.from(p.getElementsByTagName('w:t'))
               .map((t) => t.textContent).join('')).join('\n');
         }).join('\n');
     };
@@ -309,6 +314,57 @@ await withPage(async (page, base, consoleErrors) => {
     faciesAt >= 0 && piperAt > faciesAt &&
     /The water is a [-\w+]+ type \(/.test(qualityDoc.slice(faciesAt, piperAt)),
     qualityDoc.slice(faciesAt, faciesAt + 400));
+
+  // --- the table of contents reads before Word has updated it ----------------
+  // Its cached result was the sentence "Right-click and choose Update Field",
+  // which is what every viewer other than Word shows; it is now the headings,
+  // and settings.xml asks Word to add the page numbers on opening, as the
+  // Python builder does.
+  const parts = await page.evaluate(async () => {
+    const d = window.GWT.app.derived;
+    const builder = await window.GWT.docx.qualityReport({
+      assessment: d.assessment, style: window.GWT.app.config().style, figures: [],
+    });
+    const bytes = await builder.build();
+    const files = await window.GWT.support.unzip(bytes);
+    const text = (name) => (files[name] ? new TextDecoder().decode(files[name]) : '');
+    return {
+      body: await window.__docText(bytes, true),
+      settings: text('word/settings.xml'),
+      types: text('[Content_Types].xml'),
+      rels: text('word/_rels/document.xml.rels'),
+    };
+  });
+  const tocAt = parts.body.indexOf('Table of Contents');
+  const contents = parts.body.slice(tocAt, parts.body.indexOf('Executive Summary'));
+  check('the table of contents lists the headings and asks Word to number them',
+    tocAt >= 0 && !parts.body.includes('Right-click') &&
+    contents.includes('1. Sample Details') && contents.includes('6. Recommendations') &&
+    parts.settings.includes('<w:updateFields w:val="true"/>') &&
+    parts.types.includes('/word/settings.xml') && parts.rels.includes('settings.xml'),
+    JSON.stringify({ contents: contents.slice(0, 300), settings: parts.settings }));
+
+  // --- a result the laboratory did not quantify prints as it was reported ---
+  // TNTC and ">50" reached the results table as a dash. The one engine that
+  // writes this table has to print the bound, or "detected".
+  const unquantified = await page.evaluate(async () => {
+    const C = window.GWT.core;
+    const assessment = C.assessSample({ site: { community: 'Ref' }, flags: [], results: [
+      { parameter: 'E. coli', value: 0, unit: 'CFU/100 mL' },
+      { parameter: 'Arsenic', value: 0.001, unit: 'mg/L' },
+      { parameter: 'Fluoride', value: 0.3, unit: 'mg/L' },
+      { parameter: 'Nitrate (as NO3)', value: null, unit: 'mg/L', greater_than: 50 },
+      { parameter: 'Total coliforms', value: null, unit: 'CFU/100 mL', greater_than: 0 },
+    ] });
+    const builder = await window.GWT.docx.qualityReport({
+      assessment, style: window.GWT.app.config().style, figures: [],
+    });
+    return (await window.__docText(await builder.build())).split('\n');
+  });
+  const cellAfter = (name) => unquantified[unquantified.indexOf(name) + 1];
+  check('a result the laboratory did not quantify prints as it was reported',
+    cellAfter('Nitrate (as NO3)') === '>50' && cellAfter('Total coliforms') === 'detected',
+    JSON.stringify([cellAfter('Nitrate (as NO3)'), cellAfter('Total coliforms')]));
 
   // --- missing GPS stays missing, everywhere it shows ------------------------
   check('the report says the maps cover the area, not the borehole',

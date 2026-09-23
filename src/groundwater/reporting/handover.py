@@ -21,12 +21,13 @@ from ..hydraulics.analysis import PumpingTestAnalysis
 from ..models import DrillingLog, SiteMetadata
 from ..quality.assess import (
     SUITABILITY_PHRASE,
-    SUITABILITY_SENTENCE,
     WaterQualityAssessment,
+    suitability_sentence,
+    unquantified_text,
 )
 from ..utils import fmt_num, safe_slug
 from .citations import GLOSSARY, references_for
-from ..quality.standards import PROVISIONAL_NATIONAL_NOTE, provisional_national_parameters
+from ..quality.standards import PROVISIONAL_NATIONAL_NOTE
 from ..utils import utm_text
 from .context import add_area_section
 from .docx_utils import ReportBuilder
@@ -293,13 +294,14 @@ def build_handover_report(
         exceed = inputs.quality.all_exceedances
         if exceed:
             rb.table(
-                [[r.parameter, fmt_num(r.value), r.unit, r.remark] for r in exceed],
+                [[r.parameter, unquantified_text(r) or fmt_num(r.value), r.unit,
+                  r.remark] for r in exceed],
                 header=["Parameter", "Value", "Unit", "Remark"],
                 caption="Parameters above guideline or standard limits.",
             )
             # a national limit the quality report calls provisional is
-            # provisional here too
-            if provisional_national_parameters():
+            # provisional here too, judged by the table the assessment used
+            if any(r.sl_provisional for r in exceed):
                 rb.paragraph(PROVISIONAL_NATIONAL_NOTE, align="justify", italic=True)
     else:
         rb.paragraph("Water quality results are reported separately.")
@@ -426,7 +428,7 @@ def _executive_summary(inputs: HandoverReportInputs) -> tuple[list[str], list[st
     if quality is not None:
         # Chosen on the full verdict state, not the health exceedances alone:
         # a national breach or an unevaluable panel used to read as suitable.
-        sentence = SUITABILITY_SENTENCE[quality.verdict_state]
+        sentence = suitability_sentence(quality)
         if quality.verdict_state in ("health_fail", "national_fail"):
             sentence = sentence.rstrip(".") + "; see the water quality section."
         bits.append(sentence)

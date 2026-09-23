@@ -231,11 +231,23 @@ def facies_of(sample: WaterQualitySample) -> dict | None:
             "a fresh, recently recharged water of the kind weathering of "
             "silicate rock gives; typical of shallow basement groundwater"
         )
-    elif an_name == "HCO3":
+    elif an_name == "HCO3" and cat_name == "Na+K":
         meaning = (
             "a bicarbonate water in which sodium and potassium have replaced "
             "calcium, which points to longer contact with the rock or to ion "
             "exchange in a clayey weathered zone"
+        )
+    elif an_name == "HCO3":
+        # No cation holds half the total, so sodium and potassium hold less
+        # than half and calcium and magnesium together hold more. Dr Timbo's
+        # water (Ca 40%, Mg 26%, Na+K 34%) was said to be one in which sodium
+        # had replaced calcium.
+        meaning = (
+            "a bicarbonate water with no single dominant cation, in which "
+            "calcium and magnesium together still outweigh sodium and "
+            "potassium; a fresh water of the kind weathering of silicate rock "
+            "gives, with the sodium share pointing to feldspar weathering or "
+            "some ion exchange along the flow path"
         )
     elif an_name == "Cl" and cat_name == "Na+K":
         meaning = (
@@ -243,13 +255,32 @@ def facies_of(sample: WaterQualitySample) -> dict | None:
             "salinity from the coast, an estuary or evaporation rather than "
             "to rock weathering"
         )
+    elif an_name == "Cl" and cat_name in ("Ca", "Mg"):
+        # It has a dominant ion pair, and was called a water without one.
+        meaning = (
+            f"a {'calcium' if cat_name == 'Ca' else 'magnesium'} chloride "
+            "water, which is unusual in fresh basement groundwater; it can "
+            "point to saline water exchanging with the aquifer or to "
+            "pollution, and is worth checking against the sample's provenance"
+        )
+    elif an_name == "Cl":
+        meaning = (
+            "a chloride water with no single dominant cation, which points to "
+            "salinity or pollution mixed into the groundwater rather than to "
+            "rock weathering alone"
+        )
     elif an_name == "SO4":
         meaning = (
             "a sulfate water, which is unusual in basement ground and worth "
             "checking against the sample's provenance"
         )
-    else:
+    elif cat_name == "mixed-cation":
         meaning = "a mixed water with no single dominant ion pair"
+    else:
+        meaning = (
+            "a water with no single dominant anion, of mixed origin or in "
+            "transition between types"
+        )
     sentence = (
         f"The water is a {facies} type ({pct(cations)}; {pct(anions)}, in "
         f"milliequivalent percent): {meaning}."

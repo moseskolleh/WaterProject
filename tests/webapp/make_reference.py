@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import csv
 import json
 import math
 import sys
@@ -69,7 +70,12 @@ from groundwater.portfolio import (
     site_one_pager,
 )
 from groundwater.geo import geodesic_distance_m, geographic_to_utm
+from groundwater.ingestion.waterquality import quality_from_grid
 from groundwater.quality import assess_sample
+from groundwater.quality.assess import unquantified_text
+from groundwater.quality.corrosivity import assess_corrosivity
+from groundwater.quality.diagrams import facies_of
+from groundwater.reporting.quality import quality_recommendations
 from groundwater.units import convert as unit_convert
 from groundwater.siting import assess_siting
 from groundwater.supervision.checklists import (
@@ -710,10 +716,75 @@ def build() -> dict:
             *_panel, WaterQualityResult("Glyphosate", 0.4, "mg/L")),
         # the charge balance cannot be computed, and used to say nothing
         "no_ionic_balance": _wq(WaterQualityResult("Calcium", 40.0, "mg/L")),
+        # a detection of a determinand the table does not know, which was
+        # "not measured" and left the sample safe
+        "unknown_detected": _wq(*_panel, WaterQualityResult(
+            "Salmonella", None, "per 100 mL", greater_than=0.0)),
+        # a national failure beside a result that could not be graded: the
+        # verdict used to say the WHO health values were met
+        "national_fail_unresolved": _wq(
+            WaterQualityResult("E. coli", 0.0, "CFU/100 mL"),
+            WaterQualityResult("Arsenic", None, "mg/L", detection_limit=0.05,
+                               below_detection=True),
+            WaterQualityResult("Total coliforms", 12.0, "CFU/100 mL")),
+        # both ions reported as nitrogen, which skipped the combined rule
+        "nitrogen_basis_combined": _wq(
+            *_panel[:3], WaterQualityResult("Nitrate (as N)", 10.0, "mg/L"),
+            WaterQualityResult("Nitrite (as N)", 0.8, "mg/L")),
+        # lower bounds, on the guideline's scale and through its hierarchy
+        "bound_in_micrograms": _wq(*_panel, WaterQualityResult(
+            "Lead", None, "ug/L", greater_than=5.0)),
+        "bound_acceptability": _wq(*_panel, WaterQualityResult(
+            "Iron", None, "mg/L", greater_than=1.0)),
+        "bound_stricter_open": _wq(*_panel, WaterQualityResult(
+            "Copper", None, "mg/L", greater_than=1.5)),
+        "bound_inclusive": _wq(*_panel[:3], WaterQualityResult(
+            "Nitrate (as NO3)", None, "mg/L", greater_than=50.0,
+            greater_than_inclusive=True)),
+        "bound_exclusive": _wq(*_panel[:3], WaterQualityResult(
+            "Nitrate (as NO3)", None, "mg/L", greater_than=50.0)),
+        "unreadable": _wq(*_panel, WaterQualityResult(
+            "Lead", None, "mg/L", unreadable="ND (see note)")),
+        # treatment advice by table name, and pH advice by direction
+        "advice_by_name": _wq(
+            *_panel, WaterQualityResult("Faecal coliforms", 5.0, "CFU/100 mL"),
+            WaterQualityResult("Sulphate", 400.0, "mg/L"),
+            WaterQualityResult("pH", 9.2, "pH units")),
+        "low_ph": _wq(*_panel, WaterQualityResult("pH", 5.9, "pH units")),
+        "lead": _wq(*_panel, WaterQualityResult("Lead", 0.05, "mg/L")),
+        # a table whose national iron value names its specification
+        "confirmed_national": _wq(*_panel, WaterQualityResult("Iron", 1.2, "mg/L")),
     }
+    # The standards table a case is assessed against, when it is not the
+    # bundled one. The browser is given the same rows (parity.mjs).
+    _confirmed = [
+        {"parameter": "E. coli", "unit": "CFU/100 mL", "who_health_gv": "0",
+         "who_aesthetic": "", "sl_standard": "0", "sl_source": "SLSB 2021",
+         "category": "microbiological", "note": ""},
+        {"parameter": "Arsenic", "unit": "mg/L", "who_health_gv": "0.01",
+         "who_aesthetic": "", "sl_standard": "0.01", "sl_source": "SLSB 2021",
+         "category": "metal", "note": ""},
+        {"parameter": "Fluoride", "unit": "mg/L", "who_health_gv": "1.5",
+         "who_aesthetic": "", "sl_standard": "1.5", "sl_source": "SLSB 2021",
+         "category": "inorganic", "note": ""},
+        {"parameter": "Nitrate (as NO3)", "unit": "mg/L", "who_health_gv": "50",
+         "who_aesthetic": "", "sl_standard": "50", "sl_source": "SLSB 2021",
+         "category": "inorganic", "note": ""},
+        {"parameter": "Iron", "unit": "mg/L", "who_health_gv": "",
+         "who_aesthetic": "0.3", "sl_standard": "0.3", "sl_source": "SLSB 2021",
+         "category": "metal", "note": ""},
+    ]
+    _tables = {"confirmed_national": _confirmed}
     out["verdicts"] = {}
     for name, sample in _cases.items():
-        a = assess_sample(sample)
+        standards = None
+        if name in _tables:
+            standards = Path(tempfile.mkdtemp()) / "standards.csv"
+            with open(standards, "w", encoding="utf-8", newline="") as fh:
+                writer = csv.DictWriter(fh, fieldnames=list(_tables[name][0]))
+                writer.writeheader()
+                writer.writerows(_tables[name])
+        a = assess_sample(sample, standards_path=standards)
         out["verdicts"][name] = {
             "state": a.verdict_state,
             "statuses": [r.status for r in a.rows],
@@ -723,7 +794,79 @@ def build() -> dict:
             "missing_essential": list(a.missing_essential),
             "verdict": a.verdict,
             "flags": [[f.level, f.code, f.message] for f in a.flags],
+            # the remark, the table cell a bound prints as, and whether the
+            # national value was provisional, row by row; and the report's
+            # recommendations, which the two engines used to word apart
+            "remarks": [r.remark for r in a.rows],
+            "values": [unquantified_text(r) for r in a.rows],
+            "provisional": [r.sl_provisional for r in a.rows],
+            "recommendations": quality_recommendations(a),
         }
+
+    # What the laboratory sheet reader makes of a qualified result cell: a
+    # unit or a label in the cell, a filled detection-limit column beside a
+    # detection, a bound that is not a number.
+    _cells = [
+        ["E. coli", "CFU/100 mL", "Present", 1], ["E. coli", "CFU/100 mL", "TNTC", 1],
+        ["Nitrate (as NO3)", "mg/L", ">50", 0.1], ["Arsenic", "mg/L", "Not analysed", 0.001],
+        ["Arsenic", "mg/L", "N/A", 0.001], ["Arsenic", "mg/L", "-", 0.001],
+        ["Arsenic", "mg/L", None, 0.001], ["Arsenic", "mg/L", "<0.05", 0.001],
+        ["Arsenic", "mg/L", "ND (<0.05)", 0.001], ["Nitrate (as NO3)", "mg/L", ">50 mg/L", None],
+        ["Nitrate (as NO3)", "mg/L", "> 50mg/l", None], ["Nitrate (as NO3)", "mg/L", "50+", None],
+        ["Nitrate (as NO3)", "mg/L", "above 50", None], ["Nitrate (as NO3)", "mg/L", "≥50", None],
+        ["Nitrate (as NO3)", "mg/L", ">=50", None], ["Arsenic", "mg/L", "ND (<0.05 mg/L)", None],
+        ["Arsenic", "mg/L", "ND (DL 0.05)", None], ["Arsenic", "mg/L", "ND, <0.05", None],
+        ["Arsenic", "mg/L", "ND at 0.05", None], ["E. coli", "CFU/100 mL", "Absent/100 mL", None],
+        ["E. coli", "CFU/100 mL", "Present in 100 mL", None],
+        ["Total coliforms", "CFU/100 mL", "TNTC (>300)", None],
+        ["Arsenic", "mg/L", "ND (see note)", None], ["Lead", "", "<5 ug/L", None],
+        ["Lead", "mg/L", "<5 ug/L", None], ["Lead", "mg/L", "<5 NTU", None],
+        ["Arsenic", "mg/L", "<LOD", None], ["Arsenic", "mg/L", "<0,05", None],
+        ["Arsenic", "mg/L", 0.004, None], ["Arsenic", "mg/L", "0.5 ND", None],
+    ]
+    _grid = ([["WATER QUALITY LABORATORY RESULTS"], ["Community", "Ref"], [], [],
+              ["Parameter", "Unit", "Value", "Detection limit"]] + _cells)
+    out["quality_cells"] = [
+        [r.parameter, clean(r.value), r.unit, clean(r.detection_limit),
+         r.below_detection, clean(r.greater_than), r.greater_than_inclusive,
+         r.unreadable]
+        for r in quality_from_grid(_grid, "cells.xlsx").results
+    ]
+
+    # The facies sentence over every branch it has: a mixed-cation
+    # bicarbonate water was said to be one in which sodium had replaced
+    # calcium, and a calcium chloride water to have no dominant ion pair.
+    _ions = ("Calcium", "Magnesium", "Sodium", "Potassium", "Bicarbonate",
+             "Chloride", "Sulfate")
+    _mg_per_meq = (20.04, 12.15, 22.99, 39.10, 61.02, 35.45, 48.03)
+    _facies_meq = {
+        "ca_hco3": (3.0, 1.0, 0.5, 0.1, 3.5, 0.7, 0.4),
+        "na_hco3": (0.5, 0.3, 3.0, 0.2, 3.0, 0.6, 0.4),
+        "mixed_hco3": (1.6, 1.0, 1.3, 0.1, 2.5, 1.2, 0.3),
+        "na_cl": (0.5, 0.5, 4.0, 0.0, 0.7, 4.0, 0.3),
+        "ca_cl": (3.0, 0.5, 0.8, 0.1, 1.0, 3.0, 0.4),
+        "mixed_cl": (1.5, 1.2, 1.4, 0.0, 0.8, 3.0, 0.4),
+        "so4": (2.0, 1.0, 1.0, 0.0, 1.0, 0.5, 2.5),
+        "ca_mixed_anion": (3.0, 0.5, 0.5, 0.0, 1.5, 1.3, 1.2),
+        "mixed": (1.5, 1.2, 1.3, 0.0, 1.5, 1.3, 1.2),
+    }
+    out["facies"] = {
+        name: facies_of(_wq(*[
+            WaterQualityResult(ion, round(meq * mg, 3), "mg/L")
+            for ion, meq, mg in zip(_ions, meqs, _mg_per_meq, strict=True)
+        ]))["sentence"]
+        for name, meqs in _facies_meq.items()
+    }
+
+    # The corrosivity sentence names the pH, to as many decimals as it needs
+    # to be true: 6.46 printed as "6.5 is below the 6.5 to 8.5 range".
+    out["corrosivity_ph"] = {
+        str(ph): assess_corrosivity(_wq(
+            WaterQualityResult("pH", ph), WaterQualityResult("Calcium", 4.0),
+            WaterQualityResult("Alkalinity", 10.0), WaterQualityResult("TDS", 60.0),
+        )).verdict
+        for ph in (6.46, 8.54, 6.25, 6.4999, 8.46)
+    }
 
     # The Depth Spine's guideline chart over units that are NOT the
     # guideline's own. The bundled sample reports everything in the guideline

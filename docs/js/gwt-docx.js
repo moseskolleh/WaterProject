@@ -51,6 +51,10 @@
      * open with an unqualified verdict two pages after the stamp said the
      * evidence was incomplete. */
     this.stampedReadiness = null;
+    /* The headings the table of contents lists, and where in the body the
+     * table sits (reporting/docx_utils.py _headings). */
+    this.headings = [];
+    this.tocIndex = null;
   }
 
   ReportBuilder.prototype.run = function (text, attrs) {
@@ -90,9 +94,12 @@
     return this;
   };
 
-  ReportBuilder.prototype.heading = function (text, level) {
+  /* numbered false keeps a heading out of the table of contents, as the
+   * Python builder does for the contents, summary, references and glossary. */
+  ReportBuilder.prototype.heading = function (text, level, numbered) {
     var lvl = Math.min(Math.max(level || 1, 1), 3);
     this.paragraph(text, { style: 'Heading' + lvl, keepNext: true });
+    if (numbered !== false) this.headings.push([lvl, clean(text)]);
     return this;
   };
 
@@ -114,17 +121,30 @@
     return this;
   };
 
-  /* Word fills this in on "Update Field"; the placeholder tells the reader so. */
+  /* A table of contents that reads before Word has updated anything
+   * (reporting/docx_utils.py table_of_contents). The page numbers come from
+   * Word updating the field, which settings.xml asks it to do on opening; the
+   * field's cached result, which every other viewer and every text
+   * extraction shows, is the list of headings, written when the document is.
+   * It used to be the sentence "Right-click and choose Update Field". */
   ReportBuilder.prototype.tableOfContents = function () {
-    this.heading('Table of Contents', 1);
-    this.body.push('<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
-      '<w:r><w:instrText xml:space="preserve"> TOC \\o "1-3" \\h \\z \\u </w:instrText></w:r>' +
-      '<w:r><w:fldChar w:fldCharType="separate"/></w:r>' +
-      '<w:r><w:t xml:space="preserve">Right-click and choose Update Field to fill ' +
-      'the table of contents.</w:t></w:r>' +
-      '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>');
+    this.heading('Table of Contents', 1, false);
+    this.tocIndex = this.body.length;
+    this.body.push('');
     this.pageBreak();
     return this;
+  };
+
+  ReportBuilder.prototype.tocXml = function () {
+    var lines = this.headings.map(function (h, i) {
+      return (i ? '<w:br/>' : '') + '<w:t xml:space="preserve">' +
+        esc(new Array(h[0]).join('    ') + h[1]) + '</w:t>';
+    }).join('');
+    return '<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
+      '<w:r><w:instrText xml:space="preserve"> TOC \\o "1-3" \\h \\z \\u </w:instrText></w:r>' +
+      '<w:r><w:fldChar w:fldCharType="separate"/></w:r>' +
+      '<w:r>' + lines + '</w:r>' +
+      '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>';
   };
 
   ReportBuilder.prototype.cover = function (titleLines, subtitleLines, details) {
@@ -204,7 +224,7 @@
 
   ReportBuilder.prototype.executiveSummary = function (paragraphs, keyFindings) {
     var self = this;
-    this.heading('Executive Summary', 1);
+    this.heading('Executive Summary', 1, false);
     /* The summary is qualified the way the cover is. A provisional stamp on
      * page one and an unhedged "the source is rated at ..." on page three is
      * a contradiction a reader who starts at the summary never sees resolved,
@@ -361,7 +381,7 @@
   ReportBuilder.prototype.references = function (entries) {
     var self = this;
     if (!entries || !entries.length) return this;
-    this.heading('References', 1);
+    this.heading('References', 1, false);
     entries.forEach(function (entry) {
       self.paragraph(entry, { indentCm: 0.8, hangingCm: 0.8, spaceAfter: 4 });
     });
@@ -370,7 +390,7 @@
 
   ReportBuilder.prototype.glossary = function (terms) {
     if (!terms || !terms.length) return this;
-    this.heading('Glossary and Abbreviations', 1);
+    this.heading('Glossary and Abbreviations', 1, false);
     this.table(terms, {
       header: ['Term', 'Meaning'], colWidthsCm: [3.5, 12.0], fontSize: 9.0,
     });
@@ -439,8 +459,17 @@
       '<w:pgMar w:top="1418" w:right="1418" w:bottom="1418" w:left="1418" ' +
       'w:header="708" w:footer="708" w:gutter="0"/>' +
       '</w:sectPr>';
+    var body = this.body.slice();
+    if (this.tocIndex !== null) body[this.tocIndex] = this.tocXml();
     return XML_HEAD + '<w:document ' + W_NS + '><w:body>' +
-      this.body.join('') + sectPr + '</w:body></w:document>';
+      body.join('') + sectPr + '</w:body></w:document>';
+  };
+
+  /* Asks Word to update the fields on opening, so the table of contents
+   * gains its page numbers; written only for a document that has one. */
+  ReportBuilder.prototype.settingsXml = function () {
+    return XML_HEAD + '<w:settings ' + W_NS + '>' +
+      '<w:updateFields w:val="true"/></w:settings>';
   };
 
   ReportBuilder.prototype.stylesXml = function () {
@@ -501,6 +530,7 @@
 
   ReportBuilder.prototype.build = function () {
     var self = this;
+    var withToc = this.tocIndex !== null;
     var imageTypes = {};
     this.images.forEach(function (img) {
       imageTypes[/jpe?g/i.test(img.mime) ? 'jpeg' : 'png'] = img.mime;
@@ -517,6 +547,7 @@
       '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
       '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>' +
       '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>' +
+      (withToc ? '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>' : '') +
       '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
       '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>' +
       '</Types>';
@@ -533,6 +564,7 @@
       '<Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
       '<Relationship Id="rIdNumbering" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>' +
       '<Relationship Id="rIdFooter" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>' +
+      (withToc ? '<Relationship Id="rIdSettings" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>' : '') +
       this.images.map(function (img, i) {
         return '<Relationship Id="rIdImg' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/' +
           img.name + '"/>';
@@ -562,9 +594,10 @@
       { name: 'word/styles.xml', data: this.stylesXml() },
       { name: 'word/numbering.xml', data: numberingXml() },
       { name: 'word/footer1.xml', data: footerXml() },
-    ].concat(this.images.map(function (img) {
-      return { name: 'word/media/' + img.name, data: img.bytes, store: true };
-    }));
+    ].concat(withToc ? [{ name: 'word/settings.xml', data: this.settingsXml() }] : [],
+      this.images.map(function (img) {
+        return { name: 'word/media/' + img.name, data: img.bytes, store: true };
+      }));
 
     return S.zip(entries);
   };
@@ -1468,8 +1501,8 @@
       var exceed = assessment.all_exceedances || [];
       if (exceed.length) {
         b.table(exceed.map(function (r) {
-          return [r.parameter, C.fmtNum(r.value), r.unit || '',
-            breachedLimit(r), r.remark || ''];
+          return [r.parameter, C.unquantifiedText(r) || C.fmtNum(r.value),
+            r.unit || '', breachedLimit(r), r.remark || ''];
         }), {
           header: ['Parameter', 'Value', 'Unit', 'Limit', 'Remark'],
           caption: 'Parameters above guideline or standard limits.',
@@ -1479,8 +1512,9 @@
          * provisional here too. This table states the limit a parameter
          * breached without the column the quality report carries, so a
          * reader met the words "national standard" with nothing to say the
-         * edition behind them is unverified (completion.py). */
-        if (C.provisionalNationalParameters().length) {
+         * edition behind them is unverified (completion.py). Said of the
+         * rows printed, judged by the table the assessment used. */
+        if (exceed.some(function (r) { return r.sl_provisional; })) {
           b.paragraph(C.PROVISIONAL_NATIONAL_NOTE, { align: 'justify', italic: true });
         }
       }
@@ -1923,6 +1957,102 @@
 
   /* --- 4. water quality ------------------------------------------------------ */
 
+  /* Advice for a parameter over its limit, keyed by the standards-table
+   * name (reporting/quality.py _TREATMENT_ADVICE). This report used to give
+   * only the generic lines and the Python one only the matched advice, so
+   * the same sample was told different things by the two. */
+  var NITRATE_ADVICE = 'Elevated nitrate usually indicates pollution from ' +
+    'sanitation or agriculture; investigate the sanitary protection zone. Do ' +
+    'not give the water to bottle fed infants until resolved.';
+  var TREATMENT_ADVICE = {
+    iron: 'Iron above the acceptability value causes staining and metallic ' +
+      'taste; aeration followed by sand filtration or a simple oxidation ' +
+      'filter normally resolves it.',
+    manganese: 'Manganese requires oxidation and filtration (aeration or ' +
+      'chlorination followed by filtration); monitor infant exposure in the ' +
+      'meantime.',
+    'e. coli': 'Any E. coli detection calls for shock chlorination of the ' +
+      'borehole, verification of the sanitary seal and apron, and re-sampling ' +
+      'before use.',
+    'total coliforms': 'Coliform detection calls for disinfection of the ' +
+      'borehole and pump, a sanitary inspection of the wellhead, and re-sampling.',
+    'nitrate (as no3)': NITRATE_ADVICE,
+    'nitrate (as n)': NITRATE_ADVICE,
+    'nitrate + nitrite': NITRATE_ADVICE,
+    fluoride: 'Fluoride above 1.5 mg/L requires an alternative source or ' +
+      'defluoridation (bone char or activated alumina).',
+    arsenic: 'Arsenic above 0.01 mg/L requires an alternative source or ' +
+      'specialised removal; re-test to confirm before any use for drinking.',
+    turbidity: 'High turbidity interferes with disinfection; extend ' +
+      'development of the borehole and re-sample.',
+  };
+  /* pH is out of range in one of two directions, and the advice differs */
+  var PH_ADVICE_LOW = 'Low pH water is corrosive to metal fittings; a limestone ' +
+    'contactor or careful choice of corrosion resistant materials is advised.';
+  var PH_ADVICE_HIGH = 'A pH above the acceptability range reduces the ' +
+    'effectiveness of chlorine disinfection and can give the water a bitter ' +
+    'taste and deposit scale; confirm the reading and set any chlorine dose ' +
+    'to suit.';
+
+  /* The recommendations a water quality report closes with, word for word
+   * the list reporting/quality.py quality_recommendations writes. Every
+   * health or national exceedance gets a treatment line whether or not
+   * there is advice written for its parameter. */
+  function qualityRecommendations(assessment) {
+    var advice = [];
+    var corr = assessment.corrosivity;
+    if (corr && corr.is_aggressive) advice.push(corr.materials_note);
+    function names(rows) {
+      return rows.map(function (r) { return r.parameter; }).join(', ');
+    }
+    if (assessment.health_exceedances.length) {
+      advice.push('Treat or replace the source before it is used for drinking: ' +
+        'health based limits are exceeded for ' +
+        names(assessment.health_exceedances) + '.');
+    }
+    if (assessment.national_exceedances.length) {
+      advice.push('Treat before the supply is accepted against the national ' +
+        'standard: national limits are exceeded for ' +
+        names(assessment.national_exceedances) + '.');
+    }
+    assessment.all_exceedances.forEach(function (r) {
+      var key = C.normaliseParameter(r.parameter);
+      var text;
+      if (key === 'ph') {
+        var low = r.value_in_guideline_unit !== null &&
+          r.value_in_guideline_unit !== undefined && r.value_in_guideline_unit < 7.0;
+        text = low ? PH_ADVICE_LOW : PH_ADVICE_HIGH;
+      } else {
+        text = Object.prototype.hasOwnProperty.call(TREATMENT_ADVICE, key)
+          ? TREATMENT_ADVICE[key] : null;
+      }
+      if (text && advice.indexOf(text) < 0) advice.push(text);
+    });
+    if (assessment.aesthetic_exceedances.length) {
+      advice.push('Acceptability limits are exceeded for ' +
+        names(assessment.aesthetic_exceedances) + ': simple treatment is ' +
+        'advisable if users complain of taste, odour or staining.');
+    }
+    var state = assessment.verdict_state;
+    if (state === 'indeterminate') {
+      /* "No treatment is required" is a clearance, and this report has not
+       * established one. Say what is outstanding instead. */
+      var open = (assessment.uncertainties || []).join('; ');
+      advice.push('Do not treat this supply as safe to drink on these results. ' +
+        open.charAt(0).toUpperCase() + open.slice(1) + '. Resolve these and ' +
+        're-issue the assessment before any treatment decision is taken.');
+    } else if (state === 'pass' && !advice.length) {
+      advice.push('No treatment is required on the basis of the parameters ' +
+        'tested. Maintain the sanitary seal and apron in good condition.');
+    }
+    advice.push('Disinfect the borehole after any maintenance and re-test ' +
+      'microbiological quality before the source is returned to use.');
+    advice.push('Repeat physico-chemical and bacteriological testing at least ' +
+      'once a year, and after any flooding, repair work on the wellhead or ' +
+      'change in taste, colour or odour.');
+    return advice;
+  }
+
   async function qualityReport(context) {
     var b = new ReportBuilder({ style: context.style, title: 'Water Quality Report' });
     var assessment = context.assessment, sample = assessment.sample;
@@ -1968,7 +2098,8 @@
     b.heading('2. Results Against Guideline Values', 1);
     b.table(assessment.rows.map(function (row) {
       return [row.parameter,
-        row.value === null ? (row.below_detection ? '< DL' : '—') : C.fmtNum(row.value, 4),
+        C.unquantifiedText(row) || (row.value === null
+          ? (row.below_detection ? '< DL' : '—') : C.fmtNum(row.value, 4)),
         row.unit || '', row.who_health || '—', row.sl_standard || '—',
         statusLabel(row.status), row.remark || ''];
     }), {
@@ -1978,8 +2109,9 @@
     });
 
     /* A national exceedance reads as a compliance failure, so the report has
-     * to say plainly when the limit it was judged against is not confirmed. */
-    if (C.provisionalNationalParameters().length) {
+     * to say plainly when the limit it was judged against is not confirmed:
+     * judged by the table the assessment used, not the bundled one. */
+    if (assessment.rows.some(function (r) { return r.sl_provisional; })) {
       b.paragraph(C.PROVISIONAL_NATIONAL_NOTE, { align: 'justify' });
     }
 
@@ -2028,34 +2160,8 @@
     figures.forEach(function (f) { b.figure(f.image, f.caption, f.widthCm || 14); });
 
     b.heading('6. Recommendations', 1);
-    var recommendations = [];
-    /* The assessment's own note, rather than a paraphrase of it written
-     * here: the two had already drifted apart, and only this copy still
-     * spoke of a handpump's rods where the borehole may carry a
-     * submersible (reporting/quality.py puts corr.materials_note first). */
-    if (assessment.corrosivity && assessment.corrosivity.is_aggressive) {
-      recommendations.push(assessment.corrosivity.materials_note);
-    }
-    if (assessment.health_exceedances.length) {
-      recommendations.push('Treat or replace the source before it is used for ' +
-        'drinking: ' + assessment.health_exceedances.map(function (r) {
-          return r.parameter; }).join(', ') + ' exceed health based limits.');
-    }
-    if (assessment.national_exceedances.length) {
-      recommendations.push('Treat before the supply is accepted against the ' +
-        'national standard: ' + assessment.national_exceedances.map(function (r) {
-          return r.parameter; }).join(', ') + ' exceed the national limit.');
-    }
-    if (assessment.verdict_state === 'indeterminate') {
-      recommendations.push('Do not describe this supply as safe to drink until ' +
-        'the results are complete: ' +
-        (assessment.uncertainties || []).join('; ') + '.');
-    }
-    recommendations.push('Disinfect the borehole after any maintenance and ' +
-      're-test microbiological quality before the source is returned to use.');
-    recommendations.push('Repeat the analysis at least annually, and after any ' +
-      'change in taste, colour or odour.');
-    b.bullets(recommendations.concat(context.recommendations || []));
+    b.bullets(qualityRecommendations(assessment)
+      .concat(context.recommendations || []));
 
     b.heading('7. Limitations and Uncertainty', 1);
     limitationsParagraphs('quality').forEach(function (text) {
@@ -2524,15 +2630,17 @@
       var breaches = assessment.all_exceedances || [];
       if (breaches.length) {
         b.table(breaches.map(function (r) {
-          return [r.parameter, C.fmtNum(r.value), r.unit || '', r.remark || ''];
+          return [r.parameter, C.unquantifiedText(r) || C.fmtNum(r.value),
+            r.unit || '', r.remark || ''];
         }), {
           header: ['Parameter', 'Value', 'Unit', 'Remark'],
           caption: 'Parameters above guideline or standard limits.',
           fontSize: 9, colWidthsCm: [3.8, 1.8, 1.8, 8.2],
         });
         /* A national limit the quality report calls provisional is
-         * provisional on the handover certificate too. */
-        if (C.provisionalNationalParameters().length) {
+         * provisional on the handover certificate too, judged by the table
+         * the assessment used. */
+        if (breaches.some(function (r) { return r.sl_provisional; })) {
           b.paragraph(C.PROVISIONAL_NATIONAL_NOTE, { align: 'justify', italic: true });
         }
       }
@@ -2814,7 +2922,7 @@
     geophysicalReport: geophysicalReport,
     completionReport: completionReport,
     pumpingReport: pumpingReport,
-    qualityReport: qualityReport,
+    qualityReport: qualityReport, qualityRecommendations: qualityRecommendations,
     costingReport: costingReport,
     supervisionReport: supervisionReport,
     handoverReport: handoverReport, handoverWorks: handoverWorks,

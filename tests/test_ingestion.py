@@ -283,6 +283,89 @@ def test_a_count_the_laboratory_did_not_quantify_is_not_absence(tmp_path):
     assert by_name["E. coli"].value == pytest.approx(0.0)
 
 
+
+def test_a_detection_limit_column_does_not_turn_a_detection_into_absence(tmp_path):
+    """A filled detection-limit column made every result without a number
+    "below detection": E. coli "Present" read as not detected, a TNTC count
+    as clean, ">50" nitrate as under 0.1, and "Not analysed" arsenic as
+    compliant. Only a blank result takes the column as its reading.
+    """
+    from groundwater.ingestion import read_quality_workbook
+    from groundwater.quality import assess_sample
+
+    sample = read_quality_workbook(_quality_workbook(tmp_path / "dl.xlsx", [
+        ["E. coli", "CFU/100 mL", "Present", 1],
+        ["Total coliforms", "CFU/100 mL", "TNTC", 1],
+        ["Nitrate (as NO3)", "mg/L", ">50", 0.1],
+        ["Arsenic", "mg/L", "Not analysed", 0.001],
+        ["Fluoride", "mg/L", "N/A", 0.05],
+        ["Lead", "mg/L", "-", 0.001],
+        ["Cadmium", "mg/L", None, 0.001],
+        ["Mercury", "mg/L", "<0.05", 0.001],
+        ["Chromium (total)", "mg/L", "ND (<0.05)", 0.001],
+    ]))
+    by_name = {r.parameter: r for r in sample.results}
+    for name in ("E. coli", "Total coliforms", "Nitrate (as NO3)"):
+        assert not by_name[name].below_detection, name
+        assert by_name[name].detected_not_quantified, name
+    assert by_name["Nitrate (as NO3)"].greater_than == pytest.approx(50.0)
+    for name in ("Arsenic", "Fluoride", "Lead"):
+        assert not by_name[name].below_detection, name
+        assert by_name[name].value is None, name
+    # a blank beside the column is the one layout where the column is the result
+    assert by_name["Cadmium"].below_detection
+    assert by_name["Cadmium"].detection_limit == pytest.approx(0.001)
+    # "<0.05" beside a column of 0.001 is below 0.05, not below 0.001
+    assert by_name["Mercury"].detection_limit == pytest.approx(0.05)
+    assert by_name["Chromium (total)"].detection_limit == pytest.approx(0.05)
+
+    rows = {r.parameter: r for r in assess_sample(sample).rows}
+    assert rows["E. coli"].status == "exceeds_health"
+    assert rows["Total coliforms"].status == "exceeds_national"
+    assert rows["Nitrate (as NO3)"].status == "exceeds_health"
+    assert rows["Arsenic"].status == "not_measured"
+    assert rows["Mercury"].status == "indeterminate"
+
+
+def test_a_unit_or_a_label_in_the_cell_does_not_make_a_bound_a_number(tmp_path):
+    """">50 mg/L" was a measured 50, "ND (DL 0.05)" a measured 0.05 and
+    "Absent/100 mL" a count of 100: a cell that starts as a qualified result
+    fell through to a plain number parse whenever it carried anything more.
+    """
+    from groundwater.ingestion import read_quality_workbook
+
+    cells = [
+        ("Nitrate (as NO3)", "mg/L", ">50 mg/L"), ("Nitrate (as NO3)", "mg/L", "> 50mg/l"),
+        ("Nitrate (as NO3)", "mg/L", "50+"), ("Nitrate (as NO3)", "mg/L", "above 50"),
+        ("Nitrate (as NO3)", "mg/L", ">=50"), ("Nitrate (as NO3)", "mg/L", "\u226550"),
+        ("Arsenic", "mg/L", "ND (<0.05 mg/L)"), ("Arsenic", "mg/L", "ND (DL 0.05)"),
+        ("Arsenic", "mg/L", "ND, <0.05"), ("Arsenic", "mg/L", "ND at 0.05"),
+        ("E. coli", "CFU/100 mL", "Absent/100 mL"), ("E. coli", "CFU/100 mL", "Present in 100 mL"),
+        ("Total coliforms", "CFU/100 mL", "TNTC (>300)"), ("Arsenic", "mg/L", "ND (see note)"),
+        ("Lead", "", "<5 ug/L"), ("Lead", "mg/L", "<5 ug/L"), ("Lead", "mg/L", "<5 NTU"),
+    ]
+    results = read_quality_workbook(_quality_workbook(
+        tmp_path / "cells.xlsx", [[p, u, v, None] for p, u, v in cells])).results
+    greater = [(r.greater_than, r.greater_than_inclusive) for r in results[:6]]
+    assert greater == [(50.0, False), (50.0, False), (50.0, True), (50.0, False),
+                       (50.0, True), (50.0, True)]
+    assert all(r.value is None for r in results)
+    for r in results[6:10]:
+        assert r.below_detection and r.detection_limit == pytest.approx(0.05), r
+    assert results[10].below_detection and results[10].detection_limit is None
+    assert results[11].greater_than == 0.0
+    assert results[12].greater_than == pytest.approx(300.0)
+    # a qualified cell that cannot be read is said to be unreadable, never
+    # graded as the number it happens to contain
+    assert results[13].unreadable == "ND (see note)"
+    assert not results[13].below_detection and results[13].greater_than is None
+    # the cell's own unit is read: taken when the column is blank, converted
+    # when it differs, and refused when it measures something else
+    assert (results[14].unit, results[14].detection_limit) == ("ug/L", 5.0)
+    assert (results[15].unit, results[15].detection_limit) == ("mg/L", pytest.approx(0.005))
+    assert results[16].unreadable == "<5 NTU"
+
+
 def _drilling_grid(rows):
     """A drilling sheet as the reader sees it: header block, then the log table.
 
