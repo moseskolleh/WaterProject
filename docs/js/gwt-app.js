@@ -1402,11 +1402,14 @@
     if (!window_) return null;
     var geo = GWT.data.geo || {};
     var points = [];
+    /* two points the ranking cannot separate get no star between them, as on
+     * the drill-target map: the report's text calls them indistinguishable */
+    var tie = surveyTie(derived.interpretations);
     (derived.interpretations || []).forEach(function (interp) {
       var pos = soundingLatLon(interp);
       if (pos) {
         points.push({ lat: pos.lat, lon: pos.lon, label: interp.sounding_id,
-          kind: interp.rank === 1 ? 'recommended point' : 'VES point' });
+          kind: interp.rank === 1 && !tie ? 'recommended point' : 'VES point' });
       }
     });
     /* the site marker, unless it would sit on a sounding: a siting survey's
@@ -1441,13 +1444,26 @@
     });
   }
 
+  /* The survey's one tie, as reporting/geophysical.py computes it once for the
+   * whole document: rankingTie() over the scorecard, on the project's own
+   * ranking_tie_points. The study-area map, the drill-target map and their
+   * captions all read it, where each map used to decide it again. */
+  function surveyTie(interpretations) {
+    if (!interpretations || !interpretations.length) return false;
+    var ves = config().ves;
+    return C.rankingTie(C.assessSiting(interpretations, ves),
+      ves.ranking_tie_points) !== '';
+  }
+
   /* A sounding carries its own position, which is not always the site's:
    * a traverse is a line of pegs, and the map is the only place that shows
    * which end of it the drill target sits at. */
   function soundingLatLon(interp) {
     if (interp.site_easting == null || interp.site_northing == null) return null;
-    var zone = (store.get('site') || {}).utm_zone ||
-      C.inferZoneForSierraLeone(interp.site_easting);
+    /* the sounding's own zone, read off its easting as the engine reads it:
+     * a survey on the 28N/29N boundary records soundings in both zones, and
+     * the project's one zone put the other zone's pegs 660 km away */
+    var zone = C.inferZoneForSierraLeone(interp.site_easting);
     var pair = C.utmToGeographic(interp.site_easting, interp.site_northing, zone);
     return { lat: pair.lat, lon: pair.lon };
   }
@@ -1745,8 +1761,10 @@
       var interp = derived.interpretations[i];
       var soundingId = interp.sounding_id;
       var curve = charts.vesCurve(result);
+      /* the depth every figure of this model is drawn to, the report's too */
       var model = charts.layeredModel(result.model, {
-        maxDepth: Math.max(interp.investigation_depth_m, 20),
+        maxDepth: C.modelDepthM(result.model, interp.investigation_depth_m),
+        investigationDepth: interp.investigation_depth_m,
       });
       nodes.push(card(soundingId + ' — ' +
         C.describeCurveType(interp.curve_type).split(';')[0], [
@@ -5584,10 +5602,17 @@
     if (!node) return null;
     var site = store.get('site') || {};
     var preferred = preferredInterpretation(interpretations);
-    var caption = 'Study area at ' + (site.community || 'the project area') +
-      ', with the survey points and its location in Sierra Leone inset.' +
-      (preferred ? ' The star is the recommended drilling point, ' +
-        preferred.sounding_id + '.' : '');
+    /* worded from what the map actually carries: the soundings with a
+     * position, the star only where the ranking gives one and the point has
+     * a position to draw it at */
+    var marked = (interpretations || []).filter(function (interp) {
+      return !!soundingLatLon(interp);
+    }).map(function (interp) { return interp.sounding_id; });
+    var ves = config().ves;
+    var leaders = C.assessSiting(interpretations || [], ves).slice(0, 2)
+      .map(function (r) { return r.sounding_id; });
+    var caption = C.studyAreaCaption(site.community || 'the project area', marked,
+      preferred ? preferred.sounding_id : '', leaders, surveyTie(interpretations));
     var spread = surveySpreadKm(interpretations);
     if (spread > 5.0) {
       caption += ' The survey points are up to ' + C.pyFixed(spread, 1) +
@@ -5598,37 +5623,16 @@
     return { image: await charts.toPng(node), caption: caption, widthCm: 14 };
   }
 
-  /* The captions reporting/geophysical.py gives the four subsurface maps and
-   * the two sections, word for word. Each says what the figure is and what it
-   * is not; an interpreted surface that travels without its caption is read
-   * as measured ground. */
-  var SUBSURFACE_CAPTIONS = {
-    depth_to_bedrock: 'Depth to bedrock across the surveyed ground, from the ' +
-      'layered models. The surface is blanked outside the hull of the soundings.',
-    aquifer_thickness: 'Interpreted thickness of the weathered and fractured ' +
-      'zone - the section a borehole is completed in.',
-    bedrock_elevation: 'The bedrock surface as a landform, from the ground ' +
-      'elevation recorded at each sounding less its depth to basement. A low ' +
-      'in this surface is a buried valley, which basement groundwater drains ' +
-      'towards.',
-    protective_capacity: 'Protective capacity of the cover over the aquifer, ' +
-      'from the longitudinal conductance of the overlying layers. It rates how ' +
-      'well the ground above the aquifer resists downward contamination; it ' +
-      'says nothing about yield.',
-  };
-
+  /* The captions of the four subsurface maps and the pseudo-section are the
+   * engine's, written from what each figure shows (C.subsurfaceCaption,
+   * C.pseudosectionCaption), as reporting/geophysical.py writes them. This
+   * one is fixed in both engines. */
   var GEOELECTRIC_SECTION_CAPTION = 'Interpreted geoelectric section along the ' +
     'traverse, with the soundings at their surveyed spacing rather than evenly ' +
     'spaced and drawn to the depth of investigation. Colour is layer ' +
     'resistivity; the dashed lines correlate boundaries between neighbouring ' +
     'soundings within reach of each other and are an interpretation, not a ' +
     'measured contact.';
-
-  var PSEUDOSECTION_CAPTION = 'Apparent resistivity along the traverse, as ' +
-    'measured. Unlike every other section in this report it involves no ' +
-    'inversion: each point is a reading at the station and electrode spacing ' +
-    'it was taken with. AB/2 is that spacing, not a depth. Colour is ' +
-    'interpolated only between stations within reach of each other.';
 
   /* A figure the chart layer returned nothing for, with no reason from the
    * engine, is a defect in the drawing rather than a refusal the survey
@@ -5649,31 +5653,34 @@
    * and a figure missing without a word reads as "the survey did not attempt
    * this". Returns null where the Python writes no section at all: with
    * fewer than two positioned soundings there is nothing to say about the
-   * ground between them. */
-  async function subsurfaceFigures(interpretations, soundings) {
+   * ground between them. `profileRefusal` is why the ground profile of
+   * section 3 was not drawn, listed first as the Python lists it.
+   *
+   * Every interpretation goes to the maps and the section, positioned or
+   * not: the engine places them in one zone, and a refusal can then say
+   * which soundings lack a position and which lack the value. */
+  async function subsurfaceFigures(interpretations, soundings, profileRefusal) {
     if (!C.subsurfaceFiguresApply(interpretations)) return null;
-    var placed = (interpretations || []).filter(function (interp) {
-      return interp.site_easting !== null && interp.site_easting !== undefined &&
-        interp.site_northing !== null && interp.site_northing !== undefined;
-    });
+    var all = interpretations || [];
     var site = store.get('site') || {};
-    var zone = site.utm_zone ||
-      (placed.length ? C.inferZoneForSierraLeone(placed[0].site_easting) : 28);
-    var made = [], notDrawn = [], i, svg;
+    var zone = site.utm_zone || C.surveyZone(all) || 28;
+    var made = [], notDrawn = [], i, svg, anySurface = false;
+    if (profileRefusal) notDrawn.push('ground profile: ' + profileRefusal);
 
-    var maps = charts.subsurfaceMaps(placed, { zone: zone });
+    var maps = charts.subsurfaceMaps(all, { zone: zone });
     for (i = 0; i < maps.length; i += 1) {
       if (maps[i].reason || !maps[i].svg) {
         notDrawn.push(maps[i].name + ': ' + figureRefusal(maps[i].reason));
       } else {
+        anySurface = anySurface || !!maps[i].data.surface_said;
         made.push({
           image: await charts.toPng(maps[i].svg),
-          caption: SUBSURFACE_CAPTIONS[maps[i].key],
+          caption: maps[i].data.caption,
         });
       }
     }
 
-    var section = C.geoelectricSectionGeometry(placed, {});
+    var section = C.geoelectricSectionGeometry(all, {});
     svg = section.reason ? null : charts.geoelectricSection(section);
     if (svg) {
       made.push({ image: await charts.toPng(svg),
@@ -5686,23 +5693,21 @@
      * it, so a traverse that cannot be placed is the reason printed against
      * the pseudo-section rather than an evenly spaced section drawn under a
      * note saying no positions were recorded */
-    var profile = C.traverseProfile(placed);
+    var profile = C.traverseProfile(all);
     var pseudo = C.pseudosectionGeometry(soundings || [], profile);
     svg = pseudo.reason ? null : charts.apparentPseudosection(pseudo);
     if (svg) {
-      var caption = PSEUDOSECTION_CAPTION;
-      if (!profile.reason && !profile.is_collinear) {
-        caption += ' The soundings sit up to ' +
-          C.pyFixed(profile.max_offset_m, 0) + ' m off the profile line, so ' +
-          'this section cuts across the survey rather than along it.';
-      }
-      made.push({ image: await charts.toPng(svg), caption: caption });
+      made.push({ image: await charts.toPng(svg),
+        caption: C.pseudosectionCaption(C.spacingName(soundings || []), profile) });
     } else {
       notDrawn.push('apparent-resistivity pseudo-section: ' +
         figureRefusal(pseudo.reason));
     }
 
-    return { figures: made, notDrawn: notDrawn };
+    /* whether any map in the section has an interpolated surface, for the
+     * sentence the section opens on: it promised surfaces over three
+     * collinear soundings whose maps had none */
+    return { figures: made, notDrawn: notDrawn, anySurface: anySurface };
   }
 
   /* The drill-target suitability map, mirroring the figure path of
@@ -5747,20 +5752,23 @@
    * at each sounding: reporting/geophysical.py _ground_profile_figure, drawn
    * with mapping/terrain.py plot_ground_profile.
    *
-   * Omitted in silence wherever the Python omits it - fewer than two
-   * soundings carrying an easting, a northing and an elevation, a traverse
-   * that cannot be placed, or fewer than two finite levels - because the
-   * Python report writes no line about a profile it did not draw. It is not
-   * added to any "not drawn" list for the same reason. Ground drawn from one
-   * levelled station, or across a station nobody levelled, is relief this
-   * survey did not measure, and a reader takes a profile for measured
-   * ground. */
+   * Returns {figure, refusal}. Omitted in silence where the Python omits it -
+   * fewer than two soundings carrying a position and an elevation, so there
+   * is no profile to be missing. Refused with the engine's reason where the
+   * traverse cannot be placed or every gap between levels is wider than the
+   * soundings reach, and the reason goes on the "not drawn" list: the
+   * profile used to draw Rokel's 71 to 68 m slope across 20.7 km that the
+   * section beside it refused. */
   async function groundProfileFigure(interpretations) {
     var data = C.groundProfileData(interpretations);
-    if (!data) return null;
+    if (!data) return { figure: null, refusal: '' };
+    if (data.reason) return { figure: null, refusal: data.reason };
     var svg = charts.groundProfile(data);
-    if (!svg) return null;
-    return { image: await charts.toPng(svg), caption: data.caption };
+    if (!svg) return { figure: null, refusal: '' };
+    return {
+      figure: { image: await charts.toPng(svg), caption: data.caption },
+      refusal: '',
+    };
   }
 
   function reportCard(title, kind, description, extra) {
@@ -5822,13 +5830,21 @@
               image: await charts.toPng(charts.vesCurve(result, { hover: false })),
               caption: 'Sounding curve and fitted model for ' + id,
             });
+            /* one depth for every figure of this sounding's model, in both
+             * engines: the depth of investigation, or deeper where a fitted
+             * interface lies below it (ves/plots.py model_depth_m). The panel
+             * was drawn to the larger of the depth of investigation and 20 m,
+             * a rule no other figure used, under a caption saying it was
+             * drawn to the depth of investigation. */
+            var doi = derived.interpretations[i].investigation_depth_m;
             figures.push({
               soundingId: id,
               image: await charts.toPng(charts.layeredModel(result.model, {
-                maxDepth: Math.max(derived.interpretations[i].investigation_depth_m, 20),
+                maxDepth: C.modelDepthM(result.model, doi),
+                investigationDepth: doi,
               })),
-              caption: 'Layered earth model for ' + id + ', drawn to the depth of ' +
-                'investigation', widthCm: 9,
+              caption: 'Layered earth model for ' + id + ', drawn ' +
+                C.drawnDepthText(result.model, doi) + '.', widthCm: 9,
             });
             /* The interpreted layer column, which _sounding_block draws with
              * ves/plots.py plot_model_pseudosection. The staircase above
@@ -5838,7 +5854,7 @@
              * soundings side by side on. A model with no layers has no column
              * to draw, and the chart layer says so by returning nothing. */
             var layerSection = charts.modelPseudosection(result.model, {
-              depthMax: derived.interpretations[i].investigation_depth_m || null,
+              investigationDepth: doi || null,
               title: 'Layer section at ' + id,
             });
             if (layerSection) {
@@ -5847,9 +5863,7 @@
                 image: await charts.toPng(layerSection),
                 caption: 'Interpreted one-dimensional layer section at point ' +
                   id + ': the resistivity and thickness of each fitted layer, ' +
-                  'drawn to the depth of investigation (' +
-                  C.fmtNum(derived.interpretations[i].investigation_depth_m) +
-                  ' m).',
+                  'drawn ' + C.drawnDepthText(result.model, doi) + '.',
               });
             }
           }
@@ -5864,8 +5878,10 @@
            * recorded: section 3.1 carries it in the Python report, and the
            * browser's report had no figure showing whether the traverse runs
            * up a slope or along a valley floor. Null where the Python draws
-           * nothing, and the writer then prints nothing. */
-          context.groundProfile = await groundProfileFigure(derived.interpretations);
+           * nothing, and the writer then prints nothing; where the engine
+           * refuses it, the reason joins the "not drawn" list below. */
+          var ground = await groundProfileFigure(derived.interpretations);
+          context.groundProfile = ground.figure;
           /* The drill-target map: the one figure in the document that shows
            * which peg the recommendation is on, rather than naming it. */
           context.suitabilityMap = await suitabilityMapFigure(derived.interpretations);
@@ -5881,10 +5897,12 @@
           var reported = (derived.soundings || []).filter(function (sounding) {
             return interpreted[sounding.sounding_id] === true;
           });
-          context.subsurface = await subsurfaceFigures(derived.interpretations, reported);
-          /* the soundings carry the warnings their sheets raised, which the
-           * report's annex lists; the inversions, in lockstep with the
-           * interpretations, carry the array and the models tried */
+          context.subsurface = await subsurfaceFigures(derived.interpretations,
+            reported, ground.refusal);
+          /* the soundings carry the instrument and the array the field-work
+           * section names and the warnings their sheets raised, which the
+           * annex lists; the inversions, in lockstep with the interpretations,
+           * carry the array and the models tried */
           context.soundings = reported;
           context.inversions = derived.inversions;
           context.interpretations = derived.interpretations;

@@ -14,6 +14,7 @@ the UTM zone note, per the house mapping rules.
 from __future__ import annotations
 
 import json
+import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,8 +23,8 @@ import numpy as np
 from matplotlib.ticker import MaxNLocator
 from scipy.interpolate import griddata
 
-from ..config import HouseStyle
-from ..geo import geographic_to_utm
+from ..config import HouseStyle, VESConfig
+from ..geo import geographic_to_utm, infer_zone_for_sierra_leone, utm_to_geographic
 from ..plotting import figure_context, save_figure
 
 
@@ -37,6 +38,30 @@ class MapPoint:
     #: 1 for the recommended drill target on a suitability map, so the
     #: figure can distinguish it from the alternatives
     rank: int | None = None
+    #: True when ``value`` is a lower bound rather than a measurement: an
+    #: aquifer thickness at a sounding that never reached the base of its
+    #: water-bearing zone. The map labels it "at least", because a contour
+    #: through it reads as the thickness itself.
+    minimum: bool = False
+
+
+def to_zone(easting: float, northing: float, zone: int) -> tuple[float, float]:
+    """A recorded position re-expressed in the UTM zone ``zone``.
+
+    Sierra Leone straddles the 28N/29N boundary at 12 degrees W, and a
+    survey on that line can record its soundings in both zones: 829580 E in
+    zone 28 and 170420 E in zone 29 are 400 m apart on the ground and 659 km
+    apart as numbers. Every survey-scale figure subtracts eastings, so each
+    sounding is brought into one zone, through its latitude and longitude,
+    before any of them is drawn. The zone a position was recorded in is
+    read off its easting, which in Sierra Leone identifies it.
+    """
+    own = infer_zone_for_sierra_leone(float(easting))
+    if own == zone:
+        return float(easting), float(northing)
+    lat, lon = utm_to_geographic(float(easting), float(northing), own)
+    utm = geographic_to_utm(lat, lon, zone)
+    return utm.easting, utm.northing
 
 
 def points_enclose_an_area(e, n, tolerance: float = 1e-6) -> bool:
@@ -183,9 +208,17 @@ def _plot_boundary(ax, geojson_path: str | Path, zone: int, color="#888888") -> 
 
 def _format_grid(ax, zone: int) -> None:
     # at most five or six round-numbered grid lines an axis: a seven-digit
-    # northing label every 25 m printed nine of them on top of one another
+    # northing label every 25 m printed nine of them on top of one another.
+    # The northings are printed on end, and one is about half an inch long,
+    # so the northing axis gets no more grid lines than its drawn height
+    # holds: an elongated survey's map is an inch tall, and five northings
+    # on it still ran into each other.
+    ax.set_aspect("equal")
+    ax.apply_aspect()
+    height_in = ax.get_position().height * ax.figure.get_figheight()
+    y_bins = int(min(5, max(1, height_in // 0.6)))
     ax.xaxis.set_major_locator(MaxNLocator(nbins=5, steps=[1, 2, 2.5, 5, 10]))
-    ax.yaxis.set_major_locator(MaxNLocator(nbins=5, steps=[1, 2, 2.5, 5, 10]))
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=y_bins, steps=[1, 2, 2.5, 5, 10]))
     ax.ticklabel_format(style="plain", useOffset=False)
     ax.tick_params(labelsize=7.5)
     for label in ax.get_yticklabels():
@@ -195,6 +228,21 @@ def _format_grid(ax, zone: int) -> None:
     ax.set_ylabel("Northing (m)", fontsize=8.5)
     ax.grid(True, color="#CCCCCC", lw=0.5)
     ax.set_aspect("equal")
+
+
+def _colour_bar(fig, ax, mappable):
+    """A colour bar exactly as tall as the map it sits beside.
+
+    Sized as a share of the figure, the bar kept the height of the space
+    the map was given rather than of the map, and a map of an elongated
+    survey - drawn an inch tall to keep a metre east equal to a metre
+    north - stood beside a bar three times its height. A bar cut from the
+    map's own side follows the map.
+    """
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+    cax = make_axes_locatable(ax).append_axes("right", size="3.5%", pad=0.08)
+    return fig.colorbar(mappable, cax=cax)
 
 
 def _pad_limits(ax, points: list[MapPoint], pad_frac=0.25, min_pad=150.0) -> None:
@@ -282,6 +330,25 @@ def _clip_to_surveyed_ground(ax, grid, e, n, gx, gy):
         return grid, False
 
 
+def interpolated_label(p: MapPoint, surface: bool) -> str:
+    """What an interpolated map writes beside a point."""
+    text = p.label
+    if p.minimum:
+        # a lower bound is said to be one beside its peg whether or not a
+        # surface is drawn: the contour there is a floor, and without the
+        # words it reads as the value itself
+        text += f"\nat least {p.value:.3g}"
+    elif not surface and p.value is not None:
+        # p.value is the value as measured; only the gridded array was ever
+        # log10'd. Exponentiating it again labelled a 250 ohm-m point
+        # "1e+250", and a 1000 ohm-m point raised OverflowError, which is
+        # neither ValueError nor RuntimeError and so walked past the
+        # geophysical report's per-figure guard and took the whole document
+        # down.
+        text += f"\n{p.value:.3g}"
+    return text
+
+
 def _interpolated_map(
     points: list[MapPoint],
     zone: int,
@@ -318,7 +385,7 @@ def _interpolated_map(
             grid, _clipped = _clip_to_surveyed_ground(ax, grid, e, n, gx, gy)
             cs = ax.contourf(gx, gy, grid, levels=12, cmap=cmap, alpha=0.9)
             ax.contour(gx, gy, grid, levels=cs.levels, colors="white", linewidths=0.5)
-            cbar = fig.colorbar(cs, ax=ax, pad=0.02, shrink=0.85)
+            cbar = _colour_bar(fig, ax, cs)
             if log_scale:
                 ticks = cbar.get_ticks()
                 cbar.set_ticks(ticks)
@@ -330,18 +397,9 @@ def _interpolated_map(
         for p in valued:
             ax.plot(p.easting, p.northing, "o", ms=7, mfc="white",
                     mec="#222222", mew=1.2, zorder=5)
-            text = p.label
-            if grid is None:
-                # p.value is the value as measured; only the gridded array was
-                # ever log10'd. Exponentiating it again labelled a 250 ohm-m
-                # point "1e+250", and a 1000 ohm-m point raised OverflowError,
-                # which is neither ValueError nor RuntimeError and so walked
-                # past the geophysical report's per-figure guard and took the
-                # whole document down.
-                shown = p.value
-                text += f"\n{shown:.3g}" if shown is not None else ""
             ax.annotate(
-                text, xy=(p.easting, p.northing), xytext=(6, 6),
+                interpolated_label(p, grid is not None),
+                xy=(p.easting, p.northing), xytext=(6, 6),
                 textcoords="offset points", fontsize=8.5, fontweight="bold",
                 color="#222222",
             )
@@ -357,12 +415,68 @@ def _interpolated_map(
         return fig
 
 
+def _suitability_ranking(
+    points: list[MapPoint],
+    tie: bool | None = None,
+    ranking: list[str] | None = None,
+) -> dict:
+    """What the ranking lets a suitability map say about which peg to drill.
+
+    ``tie`` is the ranking's own verdict on its two leaders, from
+    :func:`groundwater.siting.ranking_tie` with the project's
+    ``ranking_tie_points``. The map used to decide it again, three points
+    apart on the rounded values it prints, and a project with a different
+    tie margin got a report calling two points indistinguishable over a map
+    that starred one of them. Left unset, as by a caller drawing points on
+    their own, it is decided here by the same rule on the points' values,
+    and only between the points ranked first and second.
+
+    ``ranking`` is every scored sounding in rank order, placed or not. The
+    points on the map are only the ones with a recorded position, and a
+    recommended point that has none is not on the map at all: the caption
+    used to promise a star over a map with no star on it, naming the
+    runner-up as the target. Left unset, every ranked point is taken to be
+    on the map.
+    """
+    valued = [p for p in points if p.value is not None]
+    ranked = sorted((p for p in valued if p.rank is not None), key=lambda p: p.rank)
+    if ranking is None:
+        ranking = [p.label for p in ranked]
+    if tie is None:
+        tie = (
+            len(ranked) >= 2 and ranked[0].rank == 1 and ranked[1].rank == 2
+            and abs(float(ranked[0].value) - float(ranked[1].value))
+            < VESConfig().ranking_tie_points
+        )
+    leaders = list(ranking[: 2 if tie else 1])
+    on_map = {p.label for p in points}
+    unplaced = [label for label in leaders if label not in on_map]
+    return {
+        "tie": bool(tie),
+        "leaders": leaders,
+        "unplaced": unplaced,
+        "recommended": leaders[0] if leaders and not tie and not unplaced else None,
+    }
+
+
+def unplaced_text(unplaced: list[str], where: str = "this map") -> str:
+    """The sentence a map owes its reader for a leading point it cannot show."""
+    if not unplaced:
+        return ""
+    if len(unplaced) == 1:
+        return f"{unplaced[0]} has no recorded position and is not on {where}."
+    return (f"{' and '.join(unplaced)} have no recorded position and are not "
+            f"on {where}.")
+
+
 def suitability_map(
     points: list[MapPoint],
     zone: int,
     path: str | Path | None = None,
     style: HouseStyle | None = None,
     title: str = "Drill-target suitability",
+    tie: bool | None = None,
+    ranking: list[str] | None = None,
 ):
     """Drill-target suitability map from scored VES points.
 
@@ -376,11 +490,22 @@ def suitability_map(
     points that enclose an area a suitability surface is interpolated,
     masked to the convex hull of the surveyed points so it never
     extrapolates a drill-target confidence beyond where data exists.
+
+    ``tie`` and ``ranking`` are the ranking's own verdict and order, as
+    :func:`_suitability_ranking` reads them; a report passes both, so the
+    map, its caption and the text around it say the same thing.
+
+    Each point is labelled with its rank and weighted score, and with its
+    grade named as the grade of its suitability. The label used to pair
+    the weighted score with that grade - "29 - Good" - when 29 is Poor on
+    the grade's own scale: the grade is of the score before the confidence
+    discount, and the label now says which score it grades.
     """
     style = style or HouseStyle()
     valued = [p for p in points if p.value is not None]
     if not points:
         raise ValueError("suitability_map needs at least one point")
+    verdict = _suitability_ranking(points, tie, ranking)
     cmap = plt.get_cmap("RdYlGn")
     with figure_context(style):
         fig, ax = plt.subplots(figsize=_figsize(style, *_extent(points)))
@@ -399,19 +524,14 @@ def suitability_map(
                     gx, gy, grid, levels=np.linspace(0, 100, 11),
                     cmap=cmap, alpha=0.75, vmin=0, vmax=100,
                 )
-                cbar = fig.colorbar(cs, ax=ax, pad=0.02, shrink=0.85)
+                cbar = _colour_bar(fig, ax, cs)
                 cbar.set_label("Drilling suitability, confidence weighted (0-100)")
             else:
                 _no_surface_note(ax, len(valued))
-        ranked = sorted((p for p in valued if p.rank is not None), key=lambda p: p.rank)
-        tie = (
-            len(ranked) >= 2
-            and abs(float(ranked[0].value) - float(ranked[1].value)) < 3.0
-        )
         handles: dict[str, object] = {}
         for p in points:
             colour = cmap(p.value / 100.0) if p.value is not None else "#888888"
-            recommended = p.rank == 1 and not tie
+            recommended = p.rank == 1 and not verdict["tie"]
             marker = "*" if recommended else "o"
             handle, = ax.plot(
                 p.easting, p.northing, marker, ms=20 if recommended else 12,
@@ -421,22 +541,20 @@ def suitability_map(
                 "recommended drill target" if recommended else "surveyed point",
                 handle,
             )
-            label = p.label
-            if p.value is not None:
-                label += f"\n{p.value:.0f} - {p.kind}"
-            if recommended:
-                label += f"\nE {p.easting:.0f}  N {p.northing:.0f}"
             ax.annotate(
-                label, xy=(p.easting, p.northing), xytext=(11, 6),
+                suitability_label(p, recommended), xy=(p.easting, p.northing),
+                xytext=(11, 6),
                 textcoords="offset points", fontsize=8.5,
                 fontweight="bold" if recommended else "normal",
                 color="#222222", zorder=7,
             )
-        if tie:
+        note = suitability_map_note(verdict)
+        if note:
+            # why there is no star, on the face of the map: a reader who sees
+            # the pegs and no star reads the omission as an oversight. Kept
+            # narrow and left of centre, clear of the north arrow.
             ax.text(
-                0.5, 0.965,
-                f"{ranked[0].label} and {ranked[1].label} are indistinguishable on "
-                "geophysical grounds; choose between them on access and sanitary distances.",
+                0.46, 0.965, textwrap.fill(note, 70),
                 transform=ax.transAxes, ha="center", va="top", fontsize=7.5,
                 color="#B00020", zorder=8,
                 bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="none", alpha=0.9),
@@ -454,24 +572,59 @@ def suitability_map(
         return fig
 
 
-def suitability_map_state(points: list[MapPoint]) -> dict:
+def suitability_label(p: MapPoint, recommended: bool) -> str:
+    """What a suitability map writes beside a point.
+
+    The rank and the weighted score, and the grade named as the grade of
+    the suitability; the grid coordinates too at the recommended target.
+    """
+    label = p.label
+    if p.value is not None:
+        label += ("\n" + (f"Rank {p.rank}, " if p.rank is not None else "")
+                  + f"weighted {p.value:.0f}\n{p.kind} suitability")
+    if recommended:
+        label += f"\nE {p.easting:.0f}  N {p.northing:.0f}"
+    return label
+
+
+def suitability_map_note(verdict: dict) -> str:
+    """The line across the top of a suitability map that has no star."""
+    if verdict["tie"]:
+        note = (
+            f"{verdict['leaders'][0]} and {verdict['leaders'][1]} are "
+            "indistinguishable on geophysical grounds; choose between them on "
+            "access and sanitary distances."
+        )
+        if verdict["unplaced"]:
+            note += " " + unplaced_text(verdict["unplaced"])
+        return note
+    if verdict["unplaced"]:
+        return (f"The recommended point, {verdict['unplaced'][0]}, has no recorded "
+                "position and is not on this map.")
+    return ""
+
+
+def suitability_map_state(
+    points: list[MapPoint],
+    tie: bool | None = None,
+    ranking: list[str] | None = None,
+) -> dict:
     """What a suitability map of these points will show, for its caption.
 
     A caption used to promise "the interpolated surface is blanked outside
     the ground the survey covered" over a figure of two dots with no
-    surface at all. The caption is written from this, so it describes the
-    figure it sits under.
+    surface at all, and "the star is the recommended target" over a map
+    whose recommended point had no position and so no star. The caption is
+    written from this, so it describes the figure it sits under. ``tie``
+    and ``ranking`` are the ones the map is drawn with.
     """
     valued = [p for p in points if p.value is not None]
     e = [p.easting for p in valued]
     n = [p.northing for p in valued]
-    ranked = sorted((p for p in valued if p.rank is not None), key=lambda p: p.rank)
     return {
         "n_points": len(valued),
         "surface": len(valued) >= 3 and points_enclose_an_area(e, n),
-        "tie": (len(ranked) >= 2
-                and abs(float(ranked[0].value) - float(ranked[1].value)) < 3.0),
-        "recommended": ranked[0].label if ranked else None,
+        **_suitability_ranking(points, tie, ranking),
     }
 
 

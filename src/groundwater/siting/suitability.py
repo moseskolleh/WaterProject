@@ -298,25 +298,36 @@ def assess_siting(
     return ranked
 
 
-def suitability_map_points(results: list[SitingSuitability]):
+def suitability_map_points(results: list[SitingSuitability], zone: int | None = None):
     """Build MapPoints (value = suitability) for the drill-target map.
 
-    Only points that carry coordinates are returned.
+    Only points that carry coordinates are returned, all in the UTM zone
+    ``zone`` (by default the zone of the first placed point): a survey on
+    the 28N/29N boundary records its soundings in both, and a map that
+    subtracted the two sets of eastings drew 400 m of ground 660 km wide.
     """
-    from ..mapping.maps import MapPoint
+    from ..geo import infer_zone_for_sierra_leone
+    from ..mapping.maps import MapPoint, to_zone
 
     points = []
     for r in results:
         if r.easting is None or r.northing is None:
             continue
+        if zone is None:
+            zone = infer_zone_for_sierra_leone(float(r.easting))
+        easting, northing = to_zone(r.easting, r.northing, zone)
         points.append(
             MapPoint(
                 label=f"{r.sounding_id}",
-                easting=float(r.easting),
-                northing=float(r.northing),
+                easting=easting,
+                northing=northing,
                 # the confidence-weighted score: the number the ranking is
                 # decided on, so the map colours agree with the table's order
                 value=round(r.weighted, 1),
+                # the grade of the suitability before the confidence
+                # discount, the one the ranked table prints; the map names
+                # it as that grade rather than pairing it with the weighted
+                # score, which it does not grade
                 kind=r.grade,
                 rank=r.rank,
             )

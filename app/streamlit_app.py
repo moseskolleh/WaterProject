@@ -89,6 +89,7 @@ from groundwater.mapping import (
     district_of,
     geoelectric_section_along_traverse,
     geolibre,
+    ground_profile_along_traverse,
     iso_resistivity_map,
     iso_resistivity_points,
     load_admin,
@@ -99,7 +100,6 @@ from groundwater.mapping import (
     plot_admin_map,
     plot_coverage_choropleth,
     plot_geological_map,
-    plot_ground_profile,
     plot_hydrogeology_map,
     plot_portfolio_map,
     plot_study_area_map,
@@ -3873,16 +3873,17 @@ with tab_maps:
                 "profile; record them on the field sheet."
             )
         elif st.button("Draw the ground profile", key="run_profile"):
-            profile = traverse_profile(_levelled)
-            by_id = {i.sounding_id: i for i in _levelled}
+            # the report's profile, under the section's rules: every
+            # positioned station, no line across a gap nothing was levelled
+            # in, and a reason rather than a figure where there is none
             profile_path = workdir() / "ground_profile.png"
-            plot_ground_profile(
-                profile.chainage_m,
-                [by_id[label].site_elevation_m for label in profile.labels],
-                labels=list(profile.labels),
-                path=profile_path, style=app_config().style,
-            )
-            st.session_state["profile_path"] = str(profile_path)
+            try:
+                ground_profile_along_traverse(
+                    _interps, path=profile_path, style=app_config().style)
+                st.session_state["profile_path"] = str(profile_path)
+            except ValueError as exc:
+                st.session_state.pop("profile_path", None)
+                st.info(f"No ground profile: {exc}")
         if st.session_state.get("profile_path"):
             st.image(st.session_state["profile_path"])
             offer_download(Path(st.session_state["profile_path"]),

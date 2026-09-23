@@ -14791,6 +14791,11 @@
    * positional error of a handheld GPS under canopy. */
   var COLLINEAR_STRAIGHTNESS = 0.10;
 
+  /* subsurface.py COINCIDENT_STATION_M: two soundings recorded closer
+   * together than this are one station. A metre is well inside the error of
+   * a handheld GPS, and no survey pegs two soundings that close on purpose. */
+  var COINCIDENT_STATION_M = 1.0;
+
   /* maps.py points_enclose_an_area's tolerance. */
   var AREA_TOLERANCE = 1e-6;
 
@@ -14823,12 +14828,52 @@
     return out;
   }
 
+  function hasPosition(item) {
+    return !!item && item.site_easting !== null && item.site_easting !== undefined &&
+      item.site_northing !== null && item.site_northing !== undefined;
+  }
+
+  /* maps.py to_zone: a recorded position re-expressed in the UTM zone `zone`.
+   *
+   * Sierra Leone straddles the 28N/29N boundary at 12 degrees W, and a survey
+   * on that line can record its soundings in both zones: 829580 E in zone 28
+   * and 170420 E in zone 29 are 400 m apart on the ground and 659 km apart as
+   * numbers. Every survey-scale figure subtracts eastings, so each sounding is
+   * brought into one zone, through its latitude and longitude, before any of
+   * them is drawn. The zone a position was recorded in is read off its
+   * easting, which in Sierra Leone identifies it. */
+  function toZone(easting, northing, zone) {
+    var own = inferZoneForSierraLeone(Number(easting));
+    if (own === zone) return [Number(easting), Number(northing)];
+    var geo = utmToGeographic(Number(easting), Number(northing), own);
+    if (!geo) return [Number(easting), Number(northing)];
+    var utm = geographicToUtm(geo.lat, geo.lon, zone);
+    return [utm.easting, utm.northing];
+  }
+
+  /* subsurface.py survey_zone: the zone the survey's own figures are drawn
+   * in, the first positioned sounding's; null when none carries a position. */
+  function surveyZone(interpretations) {
+    var first = (interpretations || []).filter(hasPosition)[0];
+    return first ? inferZoneForSierraLeone(Number(first.site_easting)) : null;
+  }
+
   /* subsurface.py _positioned: a sounding with no recorded position cannot be
-   * put on a map or on a line, and is dropped rather than placed at a guess. */
-  function positionedSoundings(interpretations) {
-    return (interpretations || []).filter(function (item) {
-      return item && item.site_easting !== null && item.site_easting !== undefined &&
-        item.site_northing !== null && item.site_northing !== undefined;
+   * put on a map or on a line, and is dropped rather than placed at a guess.
+   * The rest are brought into one zone (by default the first positioned
+   * sounding's): three soundings 400 m apart either side of 12 W came out as
+   * a 660 km map and a "659732 m along" section. A sounding that needed
+   * moving is a copy, so the caller's keeps the position it recorded. */
+  function positionedSoundings(interpretations, zone) {
+    var placed = (interpretations || []).filter(hasPosition);
+    var target = (zone === null || zone === undefined) ? surveyZone(placed) : zone;
+    return placed.map(function (item) {
+      var moved = toZone(item.site_easting, item.site_northing, target);
+      if (moved[0] === Number(item.site_easting) &&
+          moved[1] === Number(item.site_northing)) {
+        return item;
+      }
+      return Object.assign({}, item, { site_easting: moved[0], site_northing: moved[1] });
     });
   }
 
@@ -14953,11 +14998,44 @@
           'of every sounding on the field sheet.',
       };
     }
+    /* positionedSoundings keeps the order it was given, so its k-th sounding
+     * is the k-th of those in the list that carry a position */
+    var source = [];
+    all.forEach(function (item, k) { if (hasPosition(item)) source.push(k); });
     var e = positioned.map(function (item) { return Number(item.site_easting); });
     var n = positioned.map(function (item) { return Number(item.site_northing); });
     var labels = positioned.map(function (item, k) {
       return item.sounding_id || 'VES ' + (k + 1);
     });
+    /* A traverse needs stations at distinct places. Soundings all recorded at
+     * one position came out as a "0 m along bearing 90 degrees" section, and
+     * two sharing a position shrank every column on it to a sliver, one drawn
+     * over the other; both are refused, with the reason. */
+    var pairs = 0, shared = [], a, b;
+    for (a = 0; a < positioned.length; a += 1) {
+      for (b = a + 1; b < positioned.length; b += 1) {
+        pairs += 1;
+        if (Math.hypot(e[a] - e[b], n[a] - n[b]) < COINCIDENT_STATION_M) {
+          shared.push(labels[a] + ' and ' + labels[b]);
+        }
+      }
+    }
+    if (shared.length === pairs) {
+      return {
+        reason: 'all ' + positioned.length + ' positioned soundings are recorded ' +
+          'at one position, so there is no traverse to draw them along; check the ' +
+          'positions against the field notes',
+      };
+    }
+    if (shared.length) {
+      return {
+        reason: (shared.length === 1 ? 'two soundings share' : 'soundings share') +
+          ' one position (less than ' + formatG(COINCIDENT_STATION_M) + ' m apart): ' +
+          shared.join('; ') + '. A traverse has one sounding at each station, and a ' +
+          'figure along it would draw one on top of the other; check the positions ' +
+          'against the field notes',
+      };
+    }
     var ce = arrMean(e), cn = arrMean(n);
     var dx = e.map(function (v) { return v - ce; });
     var dy = n.map(function (v) { return v - cn; });
@@ -14988,7 +15066,9 @@
     var offset = pick(across);
     var base = arrMin(sortedAlong);
     var chainage = sortedAlong.map(function (v) { return v - base; });
-    var length = arrMax(chainage) || 1.0;
+    /* never zero: distinct stations more than a metre apart were required
+     * above, and the principal axis runs through the widest spread of them */
+    var length = arrMax(chainage);
     var maxOffset = arrMax(offset.map(function (v) { return Math.abs(v); }));
     var bearing = ((Math.atan2(direction[0], direction[1]) * 180.0 / Math.PI) %
       180.0 + 180.0) % 180.0;
@@ -15009,6 +15089,11 @@
       is_collinear: maxOffset / length <= COLLINEAR_STRAIGHTNESS,
       length_m: arrMax(chainage) - arrMin(chainage),
       gaps_m: diffs(chainage),
+      /* where each station's sounding sits in the list the profile was built
+       * from: a figure takes its soundings by this, not by identifier, since
+       * two soundings both called "VES 1" drew the second one's model at
+       * both stations when the section looked them up by name */
+      indices: order.map(function (k) { return source[k]; }),
     };
   }
 
@@ -15080,21 +15165,9 @@
     var all = interpretations || [];
     var profile = traverseProfile(all);
     if (profile.reason) return { reason: profile.reason, profile: null };
-    var byId = {};
-    all.forEach(function (item, k) {
-      byId[item.sounding_id || 'VES ' + (k + 1)] = item;
-    });
-    var ordered = [];
-    profile.labels.forEach(function (label) {
-      if (own(byId, label)) ordered.push(byId[label]);
-    });
-    if (ordered.length < 2) {
-      return {
-        reason: 'the traverse and the interpretations share fewer than two ' +
-          'sounding identifiers, so the section cannot be placed',
-        profile: profile,
-      };
-    }
+    /* by position in the list, not by identifier: two soundings both called
+     * "VES 1" drew the second one's model at both stations */
+    var ordered = profile.indices.map(function (k) { return all[k]; });
     /* A column stands for the ground the sounding sampled, which is about its
      * largest electrode half-spacing either side of the peg - not for an equal
      * share of the profile. Two Rokel soundings 20 km apart came out as two
@@ -15160,6 +15233,26 @@
         reason: models.length + ' soundings need ' + models.length +
           ' positions and ' + models.length + ' labels; got ' + positions.length +
           ' and ' + labels.length,
+        profile: profile,
+      };
+    }
+    /* ves/plots.py plot_geoelectric_section: two columns at one chainage are
+     * one drawn over the other, and the column width is capped at the
+     * narrowest gap, so a repeated position also shrank every other column on
+     * the section to a sliver */
+    var sortedX = positions.slice().sort(function (p, q) { return p - q; });
+    var repeated = [];
+    for (var r = 1; r < sortedX.length; r += 1) {
+      if (sortedX[r] === sortedX[r - 1] && repeated.indexOf(sortedX[r]) < 0) {
+        repeated.push(sortedX[r]);
+      }
+    }
+    if (repeated.length) {
+      return {
+        reason: 'more than one sounding is placed at ' + repeated.map(function (x) {
+          return formatG(x) + ' m';
+        }).join(', ') + ' along the profile; a section draws one column at each ' +
+          'station, and one would hide the other',
         profile: profile,
       };
     }
@@ -15245,17 +15338,31 @@
           list.length,
       };
     }
-    var byId = {};
-    list.forEach(function (sounding, k) {
-      byId[sounding.sounding_id || 'VES ' + (k + 1)] = sounding;
+    var ids = list.map(function (sounding, k) {
+      return sounding.sounding_id || 'VES ' + (k + 1);
     });
     var ordered = [], stations = [], xLabel, spacedEvenly;
     if (profile) {
-      profile.labels.forEach(function (label, k) {
-        if (!own(byId, label)) return;
-        ordered.push(byId[label]);
-        stations.push(Number(profile.chainage_m[k]));
-      });
+      var parallel = !!(profile.indices && profile.indices.length) &&
+        profile.indices.every(function (k, j) {
+          return k < list.length && ids[k] === profile.labels[j];
+        });
+      if (parallel) {
+        /* the soundings are the list the profile was built from, so each
+         * station takes its own readings by position: two soundings both
+         * called "VES 1" drew the second one's readings at both stations
+         * when they were looked up by name */
+        ordered = profile.indices.map(function (k) { return list[k]; });
+        stations = profile.chainage_m.map(Number);
+      } else {
+        var byId = {};
+        list.forEach(function (sounding, k) { byId[ids[k]] = sounding; });
+        profile.labels.forEach(function (label, k) {
+          if (!own(byId, label)) return;
+          ordered.push(byId[label]);
+          stations.push(Number(profile.chainage_m[k]));
+        });
+      }
       xLabel = 'Distance along traverse (m)';
       spacedEvenly = false;
     } else {
@@ -15329,8 +15436,8 @@
           ticks.push([tick, formatG(spacing)]);
         }
       });
-    var notes = ['AB/2 is the electrode half-spacing, not a depth: a deeper ' +
-      'reading is a wider spread, not a measured horizon.'];
+    var spacing = spacingName(ordered);
+    var notes = [spacingNote(spacing)];
     if (uncorrelated.length) {
       notes.push('No colour is interpolated across ' +
         uncorrelated.map(function (pair) {
@@ -15365,9 +15472,57 @@
       spaced_evenly: spacedEvenly,
       title: 'Apparent resistivity pseudo-section along the traverse',
       x_label: xLabel,
-      y_label: 'AB/2 (m)',
+      y_label: spacing + ' (m)',
+      spacing: spacing,
       cbar_label: 'Apparent resistivity (ohm-m)',
     };
+  }
+
+  /* subsurface.py spacing_name: what the soundings' electrode spacing is
+   * called. A Wenner sounding is read against the spacing a, and a
+   * pseudo-section of Wenner readings labelled "AB/2 (m)" named a spacing
+   * nobody set out. */
+  function spacingName(soundings) {
+    var wenner = {};
+    (soundings || []).forEach(function (sounding) {
+      wenner[String(sounding.array_type || 'schlumberger').indexOf('wenner') === 0] = true;
+    });
+    if (wenner['true'] && !wenner['false']) return 'a';
+    if (wenner['true']) return 'AB/2 or a';
+    return 'AB/2';
+  }
+
+  /* subsurface.py spacing_note: the pseudo-section's warning that its
+   * vertical axis is not a depth. */
+  function spacingNote(name) {
+    if (name === 'a') {
+      return 'The Wenner spacing a is the electrode spacing, not a depth: a ' +
+        'deeper reading is a wider spread, not a measured horizon.';
+    }
+    if (name === 'AB/2') {
+      return 'AB/2 is the electrode half-spacing, not a depth: a deeper ' +
+        'reading is a wider spread, not a measured horizon.';
+    }
+    return 'AB/2 and a are electrode spacings, not depths: a deeper reading is ' +
+      'a wider spread, not a measured horizon.';
+  }
+
+  /* reporting/geophysical.py's pseudo-section caption, naming the spacing the
+   * readings were taken with. */
+  function pseudosectionCaption(spacing, profile) {
+    var caption = 'Apparent resistivity along the traverse, as measured. Unlike ' +
+      'every other section in this report it involves no inversion: each point ' +
+      'is a reading at the station and electrode spacing it was taken with. ' +
+      ({ 'AB/2': 'AB/2 is that spacing, not a depth.',
+        a: 'The Wenner spacing a is that spacing, not a depth.' }[spacing] ||
+        'AB/2 and a are those spacings, not depths.') +
+      ' Colour is interpolated only between stations within reach of each other.';
+    if (profile && !profile.reason && !profile.is_collinear) {
+      caption += ' The soundings sit up to ' + pyFixed(profile.max_offset_m, 0) +
+        ' m off the profile line, so this section cuts across the survey rather ' +
+        'than along it.';
+    }
+    return caption;
   }
 
   /* --- the interpolated surface -------------------------------------------
@@ -15814,10 +15969,14 @@
    * Soundings without a position are dropped - they cannot be put on a map -
    * and so are those whose value the interpretation left unset, because a
    * sounding whose curve never reached basement has no depth to basement and
-   * plotting a zero there would draw basement at the surface. */
-  function subsurfaceMapPoints(interpretations, attribute) {
+   * plotting a zero there would draw basement at the surface. An aquifer
+   * thickness at such a sounding is kept but marked a minimum: the zone runs
+   * on below the depth the sounding resolves. */
+  var OPEN_ENDED_MINIMA = ['aquifer_thickness_m'];
+
+  function subsurfaceMapPoints(interpretations, attribute, zone) {
     var points = [];
-    positionedSoundings(interpretations).forEach(function (item) {
+    positionedSoundings(interpretations, zone).forEach(function (item) {
       var value = own(item, attribute) ? item[attribute] : null;
       if (value === null || value === undefined || !isFinite(Number(value))) return;
       points.push({
@@ -15826,6 +15985,8 @@
         northing: Number(item.site_northing),
         value: Number(value),
         kind: 'VES point',
+        minimum: OPEN_ENDED_MINIMA.indexOf(attribute) >= 0 &&
+          !!item.basement_not_resolved,
       });
     });
     return points;
@@ -15835,9 +15996,9 @@
    * basement, which needs both numbers at the same sounding. A survey that
    * recorded no elevations gives an empty list rather than a bedrock surface
    * at sea level, which is what subtracting a depth from nothing amounts to. */
-  function bedrockElevationPoints(interpretations) {
+  function bedrockElevationPoints(interpretations, zone) {
     var points = [];
-    positionedSoundings(interpretations).forEach(function (item) {
+    positionedSoundings(interpretations, zone).forEach(function (item) {
       var ground = item.site_elevation_m;
       var depth = item.depth_to_basement_m;
       if (ground === null || ground === undefined) return;
@@ -15853,14 +16014,65 @@
     return points;
   }
 
-  /* subsurface.py _require_points, as the sentence rather than the exception. */
-  function requirePointsReason(points, what, need) {
+  /* subsurface.py _require_points, as the sentence rather than the exception.
+   *
+   * The reason used to be the same whatever the shortfall - "record the GPS
+   * position of every sounding" - which sent the Rokel reader looking for
+   * positions both soundings carried, when what they lacked was a basement
+   * the curves never reached. Given the interpretations, the shortfall is
+   * split into its causes: the soundings with no position, and `lacking`,
+   * the caller's sentence for the positioned ones that have no value. */
+  function requirePointsReason(points, what, need, interpretations, lacking) {
     var wanted = need === undefined ? 3 : need;
     if (points.length >= wanted) return null;
-    return ('aeiou'.indexOf(what.charAt(0)) >= 0 ? 'an' : 'a') + ' ' + what +
+    var reason = ('aeiou'.indexOf(what.charAt(0)) >= 0 ? 'an' : 'a') + ' ' + what +
       ' needs at least ' + wanted + ' soundings that carry both a position ' +
-      'and the value; ' + points.length + ' do. Record the GPS position of ' +
-      'every sounding on the field sheet.';
+      'and the value; ' + points.length + ' do.';
+    if (interpretations === undefined || interpretations === null) {
+      return reason + ' Record the GPS position of every sounding on the field sheet.';
+    }
+    var total = interpretations.length;
+    var placed = interpretations.filter(hasPosition).length;
+    if (placed < total) {
+      reason += ' ' + (total - placed) + ' of ' + total + ' soundings ' +
+        (total - placed === 1 ? 'carries' : 'carry') + ' no recorded position: ' +
+        'record the GPS position of every sounding on the field sheet.';
+    }
+    if (lacking) reason += ' ' + lacking;
+    return reason;
+  }
+
+  /* subsurface.py _unresolved_basement: the positioned soundings with no
+   * basement, and what that costs a map. */
+  function unresolvedBasement(interpretations, quantity) {
+    var placed = (interpretations || []).filter(hasPosition);
+    var missing = placed.filter(function (item) {
+      return item.depth_to_basement_m === null || item.depth_to_basement_m === undefined;
+    }).length;
+    if (!missing) return '';
+    return missing + ' of ' + placed.length + ' positioned soundings did not reach ' +
+      'basement within the depth they resolve, so they have no ' + quantity + '.';
+  }
+
+  /* The sentence a subsurface map's refusal adds for the positioned soundings
+   * that carry no value: subsurface.py writes it per map. */
+  function subsurfaceLacking(key, interpretations) {
+    if (key === 'depth_to_bedrock') {
+      return unresolvedBasement(interpretations, 'depth to bedrock');
+    }
+    if (key === 'bedrock_elevation') {
+      var placed = (interpretations || []).filter(hasPosition);
+      var unlevelled = placed.filter(function (item) {
+        return item.site_elevation_m === null || item.site_elevation_m === undefined;
+      }).length;
+      return [
+        unresolvedBasement(interpretations, 'bedrock elevation'),
+        unlevelled ? unlevelled + ' of ' + placed.length + ' positioned soundings ' +
+          (unlevelled === 1 ? 'carries' : 'carry') + ' no recorded ground ' +
+          'elevation to take the depth from.' : '',
+      ].filter(Boolean).join(' ');
+    }
+    return '';
   }
 
   /* maps.py _interpolated_map, without the drawing: the grid, the range the
@@ -15912,14 +16124,19 @@
       reason: null,
       points: valued.map(function (p, k) {
         var text = p.label;
-        if (!z) {
+        if (p.minimum) {
+          /* a lower bound is said to be one beside its peg whether or not a
+           * surface is drawn: the contour there is a floor, and without the
+           * words it reads as the value itself */
+          text += '\nat least ' + formatG(p.value, 3);
+        } else if (!z) {
           /* the value is written beside the peg when no surface carries it */
           text += '\n' + formatG(opts.logScale ? Math.pow(10, v[k]) : p.value, 3);
         }
         return {
           label: p.label, easting: p.easting, northing: p.northing,
           value: p.value, plot_value: v[k], kind: p.kind || 'VES point',
-          text: text,
+          minimum: !!p.minimum, text: text,
         };
       }),
       grid: z ? grid : null,
@@ -16038,18 +16255,24 @@
       attribute: 'depth_to_basement_m', title: 'Depth to bedrock',
       cbar_label: 'Depth to bedrock (m)', cmap: 'YlOrBr',
       log_scale: false, classed: false, need: 3,
+      what: 'Depth to bedrock across the surveyed ground, from the layered models.',
     },
     {
       key: 'aquifer_thickness', name: 'aquifer thickness map',
       attribute: 'aquifer_thickness_m', title: 'Interpreted aquifer thickness',
       cbar_label: 'Interpreted aquifer thickness (m)', cmap: 'GnBu',
       log_scale: false, classed: false, need: 3,
+      what: 'Interpreted thickness of the weathered and fractured zone - the ' +
+        'section a borehole is completed in.',
     },
     {
       key: 'bedrock_elevation', name: 'bedrock elevation map',
       attribute: null, title: 'Bedrock surface elevation',
       cbar_label: 'Bedrock surface elevation (m)', cmap: 'terrain',
       log_scale: false, classed: false, need: 3,
+      what: 'The bedrock surface as a landform, from the ground elevation ' +
+        'recorded at each sounding less its depth to basement. A low in this ' +
+        'surface is a buried valley, which basement groundwater drains towards.',
     },
     {
       key: 'protective_capacity', name: 'protective capacity map',
@@ -16058,8 +16281,41 @@
        * legend protectiveCapacityMapData carries */
       cbar_label: null, cmap: null,
       log_scale: false, classed: true, need: 1,
+      what: 'Protective capacity of the cover over the aquifer, from the ' +
+        'longitudinal conductance of the overlying layers. It rates how well ' +
+        'the ground above the aquifer resists downward contamination; it says ' +
+        'nothing about yield.',
     },
   ];
+
+  /* reporting/geophysical.py _subsurface_caption: a subsurface map's caption,
+   * written from what the map shows. The captions were fixed strings, and
+   * "the surface is blanked outside the hull of the soundings" sat under a
+   * figure of three collinear soundings that said on its own face "surface
+   * not drawn". */
+  function subsurfaceCaption(what, points) {
+    var surface = points.length >= 3 && pointsEncloseAnArea(
+      points.map(function (p) { return Number(p.easting); }),
+      points.map(function (p) { return Number(p.northing); }));
+    var caption = what;
+    if (surface) {
+      caption += ' The surface is interpolated between the soundings and ' +
+        'blanked outside the ground they enclose.';
+    } else if (points.length >= 3) {
+      caption += ' The soundings lie on one line and enclose no area, so no ' +
+        'surface is drawn; the values are printed at the points.';
+    } else {
+      caption += ' With fewer than three soundings no surface is drawn; each ' +
+        'point is coloured by its class.';
+    }
+    var minima = points.filter(function (p) { return p.minimum; })
+      .map(function (p) { return p.label; });
+    if (minima.length) {
+      caption += ' The value at ' + minima.join(', ') + ' is a minimum, labelled ' +
+        '"at least": the sounding did not resolve the base of the zone there.';
+    }
+    return { caption: caption, surface: surface };
+  }
 
   function subsurfaceMapSpec(key) {
     var found = null;
@@ -16077,22 +16333,38 @@
   function subsurfaceMapData(interpretations, key, options) {
     var spec = subsurfaceMapSpec(key);
     if (!spec) return { key: key, reason: 'no such subsurface map: ' + key };
-    var placed = positionedSoundings(interpretations);
+    var all = interpretations || [];
+    /* every point in the zone the map is labelled in */
+    var zone = (options && options.zone !== undefined) ? options.zone : null;
     var points = spec.key === 'bedrock_elevation'
-      ? bedrockElevationPoints(placed)
-      : subsurfaceMapPoints(placed, spec.attribute);
+      ? bedrockElevationPoints(all, zone)
+      : subsurfaceMapPoints(all, spec.attribute, zone);
     var head = {
       key: spec.key, name: spec.name, title: spec.title,
       cbar_label: spec.cbar_label, cmap: spec.cmap,
       log_scale: spec.log_scale, classed: spec.classed, points: points,
     };
-    var reason = requirePointsReason(points, spec.name, spec.need);
+    /* every interpretation, positioned or not, so a refusal can say which
+     * soundings lack a position and which lack the value */
+    var reason = requirePointsReason(points, spec.name, spec.need, all,
+      subsurfaceLacking(spec.key, all));
+    /* aquifer_thickness_map: contours through lower bounds were drawn as
+     * though they were the thickness, and a reader reads the colour, not the
+     * footnote */
+    if (!reason && spec.key === 'aquifer_thickness' &&
+        points.every(function (p) { return p.minimum; })) {
+      reason = 'the water-bearing zone at every one of the ' + points.length +
+        ' positioned soundings continues below the depth the sounding resolves, ' +
+        'so each thickness is only a minimum; a surface contoured through minima ' +
+        'reads as the thickness itself, so none is drawn';
+    }
     if (reason) return Object.assign(head, { reason: reason });
     var data = spec.classed
       ? protectiveCapacityMapData(points, options)
       : interpolatedMapData(points, Object.assign({}, options || {},
         { logScale: spec.log_scale }));
-    return Object.assign(head, data);
+    var told = subsurfaceCaption(spec.what, points);
+    return Object.assign(head, data, { caption: told.caption, surface_said: told.surface });
   }
 
   /* reporting/geophysical.py _add_subsurface_figures' own gate, which comes
@@ -16119,39 +16391,36 @@
 
   /* --- the drill-target suitability map ------------------------------------ */
 
-  /* maps.py suitability_map's own tie test, which is not siting's.
-   *
-   * ranking_tie() reads config.ranking_tie_points off the unrounded weighted
-   * scores; the map reads a fixed three points off the values it prints, and
-   * the two can differ on the same survey. The map's number belongs to the
-   * map: a figure that stars one of two pegs it has drawn with the same
-   * colour and the same printed score is claiming a preference the reader
-   * cannot see any basis for. */
-  var SUITABILITY_TIE_POINTS = 3.0;
-
   /* siting/suitability.py suitability_map_points: the scored points that can
    * go on a map, valued by the number the ranking was decided on.
    *
    * A point with no recorded position is dropped rather than placed at a
    * guess. The value is the confidence-weighted score, so the colours on the
    * map and the order in the ranked table cannot tell two different stories
-   * about which peg to drill. */
-  function suitabilityMapPoints(results) {
-    var points = [];
+   * about which peg to drill. Every point is in the zone `zone` (by default
+   * the first placed point's): a survey on the 28N/29N boundary records its
+   * soundings in both, and a map that subtracted the two sets of eastings drew
+   * 400 m of ground 660 km wide. */
+  function suitabilityMapPoints(results, zone) {
+    var points = [], target = (zone === undefined) ? null : zone;
     (results || []).forEach(function (result) {
       if (!result) return;
       if (result.easting === null || result.easting === undefined) return;
       if (result.northing === null || result.northing === undefined) return;
+      if (target === null) target = inferZoneForSierraLeone(Number(result.easting));
+      var moved = toZone(result.easting, result.northing, target);
       var confidence = (result.confidence === null || result.confidence === undefined)
         ? 1.0 : Number(result.confidence);
       points.push({
         label: String(result.sounding_id),
-        easting: Number(result.easting),
-        northing: Number(result.northing),
-        /* SitingSuitability.weighted, rounded where the Python rounds it: the
-         * tie below is decided on these rounded values, so rounding later
-         * would settle it on a number the figure never shows */
+        easting: moved[0],
+        northing: moved[1],
+        /* SitingSuitability.weighted, rounded where the Python rounds it */
         value: pyRound(Number(result.suitability) * confidence, 1),
+        /* the grade of the suitability before the confidence discount, the
+         * one the ranked table prints; the label names it as that grade
+         * rather than pairing it with the weighted score, which it does not
+         * grade */
         kind: result.grade,
         rank: (result.rank === undefined) ? null : result.rank,
       });
@@ -16176,51 +16445,122 @@
     });
   }
 
+  /* maps.py _suitability_ranking: what the ranking lets a suitability map say
+   * about which peg to drill.
+   *
+   * `tie` is the ranking's own verdict on its two leaders, rankingTie() on
+   * the project's ranking_tie_points. The map used to decide it again, three
+   * points apart on the rounded values it prints, and a project with a
+   * different tie margin got a report calling two points indistinguishable
+   * over a map that starred one of them. Left unset it is decided here by
+   * the same rule on the points' values, and only between the points ranked
+   * first and second.
+   *
+   * `ranking` is every scored sounding in rank order, placed or not. A
+   * recommended point with no recorded position is not on the map at all:
+   * the caption used to promise a star over a map with no star on it, naming
+   * the runner-up as the target. Left unset, every ranked point is taken to
+   * be on the map. */
+  function suitabilityRanking(points, tie, ranking) {
+    var ranked = rankedMapPoints(points);
+    var order = ranking || ranked.map(function (p) { return p.label; });
+    var tied = tie;
+    if (tied === undefined || tied === null) {
+      tied = ranked.length >= 2 && ranked[0].rank === 1 && ranked[1].rank === 2 &&
+        Math.abs(Number(ranked[0].value) - Number(ranked[1].value)) <
+        defaultConfig().ves.ranking_tie_points;
+    }
+    tied = !!tied;
+    var leaders = order.slice(0, tied ? 2 : 1);
+    var onMap = {};
+    (points || []).forEach(function (p) { if (p) onMap[p.label] = true; });
+    var unplaced = leaders.filter(function (label) { return !own(onMap, label); });
+    return {
+      tie: tied,
+      leaders: leaders,
+      unplaced: unplaced,
+      recommended: leaders.length && !tied && !unplaced.length ? leaders[0] : null,
+    };
+  }
+
+  /* maps.py unplaced_text: the sentence a map owes its reader for a leading
+   * point it cannot show. */
+  function unplacedText(unplaced, where) {
+    var on = where || 'this map';
+    if (!unplaced.length) return '';
+    if (unplaced.length === 1) {
+      return unplaced[0] + ' has no recorded position and is not on ' + on + '.';
+    }
+    return unplaced.join(' and ') + ' have no recorded position and are not on ' +
+      on + '.';
+  }
+
+  /* maps.py suitability_map_note: the line across the top of a suitability
+   * map that has no star. */
+  function suitabilityMapNote(verdict) {
+    if (verdict.tie) {
+      var note = verdict.leaders[0] + ' and ' + verdict.leaders[1] + ' are ' +
+        'indistinguishable on geophysical grounds; choose between them on ' +
+        'access and sanitary distances.';
+      if (verdict.unplaced.length) note += ' ' + unplacedText(verdict.unplaced);
+      return note;
+    }
+    if (verdict.unplaced.length) {
+      return 'The recommended point, ' + verdict.unplaced[0] + ', has no ' +
+        'recorded position and is not on this map.';
+    }
+    return '';
+  }
+
   /* maps.py suitability_map_state: what a suitability map of these points
    * will show, for its caption.
    *
    * A caption used to promise "the interpolated surface is blanked outside
    * the ground the survey covered" over a figure of two dots with no surface
-   * on it at all. The rules are the figure's - three valued points, an area
-   * between them, and two leading scores far enough apart to separate - so
-   * the report asks for them here instead of restating them and drifting. */
-  function suitabilityMapState(points) {
+   * on it at all, and "the star is the recommended target" over a map whose
+   * recommended point had no position and so no star. The rules are the
+   * figure's, so the report asks for them here instead of restating them and
+   * drifting. `tie` and `ranking` are the ones the map is drawn with. */
+  function suitabilityMapState(points, tie, ranking) {
     var valued = (points || []).filter(function (p) {
       return p && p.value !== null && p.value !== undefined;
     });
     var e = valued.map(function (p) { return Number(p.easting); });
     var n = valued.map(function (p) { return Number(p.northing); });
-    var ranked = rankedMapPoints(valued);
-    return {
+    return Object.assign({
       n_points: valued.length,
       surface: valued.length >= 3 && pointsEncloseAnArea(e, n),
-      tie: ranked.length >= 2 && Math.abs(Number(ranked[0].value) -
-        Number(ranked[1].value)) < SUITABILITY_TIE_POINTS,
-      recommended: ranked.length ? ranked[0].label : null,
-    };
+    }, suitabilityRanking(points, tie, ranking));
   }
 
   var SUITABILITY_MAP_CAPTION = 'Drill-target suitability of the surveyed ' +
     'points, coloured by the confidence-weighted score; greener is more ' +
-    'suitable.';
+    'suitable. Each point is labelled with its rank and weighted score, and ' +
+    'with the grade of its suitability before the confidence discount, as in ' +
+    'the table above.';
 
-  /* reporting/geophysical.py _suitability_block's caption, in its four
-   * branches.
+  /* reporting/geophysical.py _suitability_block's caption.
    *
    * Each clause is a claim about the figure underneath it: that a star marks
    * the target, or that no star does because the two best points cannot be
-   * separated; that the colour between the pegs is interpolated ground, or
-   * that there is no colour between them at all. Written from anything but
-   * the state the figure was drawn from, a caption promises a reader
-   * something the figure does not show, and the reader believes the caption. */
+   * separated or the best has no position; that the colour between the pegs
+   * is interpolated ground, or that there is no colour between them at all.
+   * Written from anything but the state the figure was drawn from, a caption
+   * promises a reader something the figure does not show, and the reader
+   * believes the caption. */
   function suitabilityMapCaption(state) {
     var caption = SUITABILITY_MAP_CAPTION;
+    var unplaced = state.unplaced || [];
     if (state.tie) {
       caption += ' The two highest-ranked points cannot be told apart on ' +
         'geophysical grounds, so neither is starred.';
+      if (unplaced.length) caption += ' ' + unplacedText(unplaced, 'the map');
     } else if (state.recommended) {
       caption += ' The star is the recommended target, ' + state.recommended +
         ', with its grid coordinates.';
+    } else if (unplaced.length) {
+      caption += ' The recommended target, ' + unplaced[0] + ', has no recorded ' +
+        'position and is not on the map, so no point is starred.';
     }
     if (state.surface) {
       caption += ' The surface between the points is interpolated and blanked ' +
@@ -16247,17 +16587,28 @@
    * options: {results, ves, zone, gridN}. `results` is an assessSiting()
    * scorecard the caller has already built, so the map and the ranked table
    * are scored once and cannot disagree; `ves` is the VESConfig used when it
-   * has to score them here. */
+   * has to score them here, and whose ranking_tie_points decides the tie, as
+   * rankingTie() decides it for the text: the map used to pin its own three
+   * points on rounded values. `zone` is the zone every point is drawn in,
+   * by default the first positioned sounding's. */
   function suitabilityMapData(interpretations, options) {
     var opts = options || {};
-    var results = opts.results || assessSiting(interpretations, opts.ves);
+    var ves = opts.ves || defaultConfig().ves;
+    var results = opts.results || assessSiting(interpretations, ves);
     if (!results.length) return null;
-    var points = suitabilityMapPoints(results);
+    var zone = (opts.zone === null || opts.zone === undefined)
+      ? surveyZone(interpretations) : opts.zone;
+    var points = suitabilityMapPoints(results, zone);
     if (!points.length) return null;
+    if (zone === null) zone = inferZoneForSierraLeone(Number(points[0].easting));
     var valued = points.filter(function (p) {
       return p.value !== null && p.value !== undefined;
     });
-    var state = suitabilityMapState(points);
+    var ranking = results.slice().sort(function (a, b) {
+      return (a.rank || 99) - (b.rank || 99);
+    }).map(function (r) { return String(r.sounding_id); });
+    var state = suitabilityMapState(points,
+      rankingTie(results, ves.ranking_tie_points) !== '', ranking);
     /* _extent(points), over every point and not only the valued ones: a peg
      * that could not be scored was still surveyed, and a map that frames it
      * out has lost a station the reader walked to. */
@@ -16287,7 +16638,6 @@
      * none: a two-point survey has nothing to interpolate and saying
      * "surface not drawn" over two dots reads as a failure rather than as
      * the figure working as intended. */
-    var ranked = rankedMapPoints(points);
     var tie = state.tie;
     var drawn = points.map(function (p) {
       /* the star is the point of this map - somebody walks to that peg and
@@ -16296,8 +16646,13 @@
        * to whichever sorted first */
       var recommended = p.rank === 1 && !tie;
       var text = p.label;
+      /* the rank and the weighted score, and the grade named as the grade
+       * of the suitability: "38 - Very good" paired a weighted 38 with the
+       * grade of a suitability of 75 */
       if (p.value !== null && p.value !== undefined) {
-        text += '\n' + pyFixed(p.value, 0) + ' - ' + p.kind;
+        text += '\n' + (p.rank !== null && p.rank !== undefined
+          ? 'Rank ' + p.rank + ', ' : '') + 'weighted ' + pyFixed(p.value, 0) +
+          '\n' + p.kind + ' suitability';
       }
       if (recommended) {
         text += '\nE ' + pyFixed(p.easting, 0) + '  N ' + pyFixed(p.northing, 0);
@@ -16331,10 +16686,10 @@
       caption: suitabilityMapCaption(state),
       tie: tie,
       /* said on the figure as well as in the caption, because a reader who
-       * sees two pegs and no star has to be told why there is no star */
-      tie_note: tie ? ranked[0].label + ' and ' + ranked[1].label +
-        ' are indistinguishable on geophysical grounds; choose between them ' +
-        'on access and sanitary distances.' : '',
+       * sees the pegs and no star has to be told why there is no star: two
+       * points the ranking cannot separate, or a recommended point with no
+       * position to draw it at */
+      tie_note: suitabilityMapNote(state),
       grid: grid,
       surface: !!grid,
       clipped: clipped,
@@ -16346,8 +16701,7 @@
       levels: linspace(0.0, 100.0, 11),
       range: [0.0, 100.0],
       extent: extent,
-      zone: (opts.zone === null || opts.zone === undefined)
-        ? inferZoneForSierraLeone(points[0].easting) : opts.zone,
+      zone: zone,
     };
   }
 
@@ -16366,46 +16720,129 @@
     });
   }
 
-  /* mapping/terrain.py plot_ground_profile as reporting/geophysical.py
-   * _ground_profile_figure calls it: the land surface along the traverse,
-   * from the survey's own levels, against chainage.
+  /* ves/plots.py model_depth_m: the depth a figure of one sounding's model is
+   * drawn to - the depth of investigation, or deeper where a fitted interface
+   * lies below it, because the model shown has to be the model fitted. The
+   * curve's model panel ran past the depth of investigation for that reason
+   * while the layer column stopped there, so a basement at 61 m under a 50 m
+   * depth of investigation was on one figure and not the other, both
+   * captioned as drawn to 50 m; the browser's panel used a third rule. One
+   * rule now serves every figure of a sounding in both engines. */
+  function modelDepthM(model, investigationDepthM) {
+    var tops = (model && model.depths_top) || [];
+    var deepest = model && model.n_layers > 1 ? Number(tops[tops.length - 1]) : 0.0;
+    return Math.max(Number(investigationDepthM) || 0.0, deepest * 1.2 + 2.0);
+  }
+
+  /* reporting/geophysical.py _drawn_depth_text: how deep a figure of one
+   * sounding's model is drawn, for its caption. */
+  function drawnDepthText(model, investigationDepthM) {
+    var doi = Number(investigationDepthM) || 0.0;
+    var drawn = modelDepthM(model, doi);
+    if (drawn <= doi) return 'to the depth of investigation (' + fmtNum(doi) + ' m)';
+    return 'to ' + fmtNum(drawn) + ' m so that the deepest fitted interface stays ' +
+      'on it; the red line marks the depth of investigation (' + fmtNum(doi) +
+      ' m), below which the readings do not resolve the model';
+  }
+
+  /* reporting/geophysical.py _study_area_caption: the study-area caption,
+   * worded from what was overlaid on the map. It used to promise the survey
+   * points and a star on the recommended point whatever the map held: over a
+   * map with no sounding on it, over a recommended point with no recorded
+   * position, and over two points the ranking calls indistinguishable, one of
+   * which carried the star. `marked` are the soundings drawn on the map. */
+  function studyAreaCaption(community, marked, preferred, leaders, tie) {
+    if (!marked.length) {
+      return 'Study area at ' + community + ', with its location in Sierra Leone ' +
+        'inset. No sounding carries a recorded GPS position, so none is marked on it.';
+    }
+    var caption = 'Study area at ' + community + ', with the survey points and ' +
+      'its location in Sierra Leone inset.';
+    if (tie && leaders.length >= 2) {
+      caption += ' ' + leaders[0] + ' and ' + leaders[1] + ' cannot be told apart ' +
+        'on geophysical grounds, so neither is starred.';
+      var missing = leaders.slice(0, 2).filter(function (label) {
+        return marked.indexOf(label) < 0;
+      });
+      if (missing.length) caption += ' ' + unplacedText(missing, 'the map');
+    } else if (marked.indexOf(preferred) >= 0) {
+      caption += ' The star is the recommended drilling point, ' + preferred + '.';
+    } else {
+      caption += ' The recommended drilling point, ' + preferred + ', has no ' +
+        'recorded position and is not on the map.';
+    }
+    return caption;
+  }
+
+  /* subsurface.py ground_profile_state, and mapping/terrain.py
+   * plot_ground_profile as reporting/geophysical.py _ground_profile_figure
+   * calls it: the land surface along the traverse, from the survey's own
+   * levels, against chainage, under the rules the section follows.
    *
-   * Returns null where the Python draws nothing, and null is the whole of the
-   * answer: _ground_profile_figure omits the figure silently - fewer than two
-   * levelled soundings, a traverse that cannot be placed, a label the lookup
-   * has no sounding for, or fewer than two finite elevations once the array
-   * is built - and the report says nothing about it either. Anything drawn
-   * from one levelled station, or from a station whose level nobody recorded,
-   * would be a ground surface the survey did not measure.
-   */
+   * Returns null where the Python says nothing - fewer than two soundings
+   * carry a position and a level, so there is no profile to be missing - and
+   * {reason} where it refuses and lists the refusal among what was not drawn:
+   * a traverse that cannot be placed, or levels that are all further apart
+   * than CORRELATION_REACH_MULTIPLE times the depth the soundings resolve.
+   * Rokel's two levels, 20.7 km apart, were joined by a straight 71 to 68 m
+   * slope that the section beside it refused to draw.
+   *
+   * Every positioned sounding is a station, levelled or not. Only the
+   * levelled ones used to be handed over, so a station nobody levelled
+   * vanished and the "N of M stations recorded no elevation" note could never
+   * be printed. `runs` are the stations the line may join: a gap wider than
+   * the reach starts a new run, and no line or fill crosses it. */
   function groundProfileData(interpretations) {
-    var levelled = levelledSoundings(interpretations);
-    if (levelled.length < 2) return null;
-    var profile = traverseProfile(levelled);
-    /* traverse_profile raises where it cannot place the soundings, and
-     * _ground_profile_figure catches it and draws nothing */
-    if (profile.reason) return null;
-    var byId = {};
-    levelled.forEach(function (item) { byId[item.sounding_id] = item; });
-    var elevation = [], missing = false;
-    profile.labels.forEach(function (label) {
-      /* by_id[label] is a KeyError in the Python for a sounding with no id,
-       * which traverse_profile labelled positionally; the figure is dropped
-       * rather than drawn against a level belonging to another station */
-      if (!own(byId, label)) {
-        missing = true;
-        elevation.push(null);
-        return;
-      }
-      var value = Number(byId[label].site_elevation_m);
-      elevation.push(isFinite(value) ? value : null);
+    var all = interpretations || [];
+    if (levelledSoundings(all).length < 2) return null;
+    var profile = traverseProfile(all);
+    if (profile.reason) return { reason: profile.reason };
+    var placed = profile.indices.map(function (k) { return all[k]; });
+    var elevation = placed.map(function (item) {
+      var value = item.site_elevation_m;
+      if (value === null || value === undefined || !isFinite(Number(value))) return null;
+      return Number(value);
     });
-    if (missing) return null;
+    var reaches = placed.map(function (item) {
+      return Number(item.investigation_depth_m || 0.0);
+    });
+    var reach = reaches.length ? Math.max(arrMax(reaches), 0.0) : 0.0;
+    var maxGap = reach > 0 ? reach * CORRELATION_REACH_MULTIPLE : null;
+    var levelled = [];
+    profile.labels.forEach(function (label, k) {
+      if (elevation[k] !== null) levelled.push([label, profile.chainage_m[k], k]);
+    });
+    var gaps = [];
+    for (var g = 1; g < levelled.length; g += 1) {
+      gaps.push([levelled[g - 1][0], levelled[g][0],
+        levelled[g][1] - levelled[g - 1][1], g]);
+    }
+    var openGaps = gaps.filter(function (gap) {
+      return maxGap !== null && gap[2] > maxGap;
+    });
+    if (levelled.length < 2) {
+      return {
+        reason: levelled.length + ' of ' + placed.length + ' stations carry an ' +
+          'elevation. A ground profile needs at least two levelled points; ' +
+          'record them on the field sheet.',
+      };
+    }
+    if (openGaps.length === gaps.length) {
+      var widest = arrMax(gaps.map(function (gap) { return gap[2]; }));
+      return {
+        reason: 'the levelled stations are ' + commaFixed0(widest) + ' m apart, ' +
+          'about ' + pyFixed(widest / reach, 0) + ' times the ' + commaFixed0(reach) +
+          ' m the soundings resolve; a ground line between them would be a ' +
+          'straight slope across ground nobody levelled, so none is drawn',
+      };
+    }
+    var runs = [[levelled[0][2]]];
+    gaps.forEach(function (gap) {
+      if (maxGap !== null && gap[2] > maxGap) runs.push([]);
+      runs[runs.length - 1].push(levelled[gap[3]][2]);
+    });
     var known = elevation.filter(function (value) { return value !== null; });
-    /* plot_ground_profile's own refusal: two levelled points are a profile
-     * and one is a spot height. A level recorded as a blank cell reaches here
-     * as a non-finite number and is not a level. */
-    if (known.length < 2) return null;
+    var missing = elevation.length - known.length;
     var stations = profile.labels.map(function (label, k) {
       return {
         label: label,
@@ -16413,28 +16850,49 @@
         elevation_m: elevation[k],
       };
     });
+    var notes = [];
+    if (missing) {
+      notes.push(missing + ' of ' + elevation.length + ' stations recorded no ' +
+        'elevation and are not drawn.');
+    }
+    if (openGaps.length) {
+      notes.push('The line is not drawn across ' + openGaps.map(function (gap) {
+        return (gap[0] || 'station') + ' to ' + (gap[1] || 'station') + ' (' +
+          commaFixed0(gap[2]) + ' m)';
+      }).join('; ') + ': nothing was levelled between those stations.');
+    }
+    var caption = GROUND_PROFILE_CAPTION;
+    if (missing) {
+      caption += ' ' + missing + ' of ' + stations.length + ' stations recorded no ' +
+        'elevation and are not drawn.';
+    }
+    if (openGaps.length) {
+      caption += ' The line is not drawn across gaps wider than ' +
+        commaFixed0(maxGap) + ' m, where nothing was levelled between the stations.';
+    }
     return {
       reason: null,
       title: 'Ground surface along the survey traverse',
       x_label: 'Distance along traverse (m)',
       y_label: 'Elevation (m)',
       series_label: 'Levelled at the station',
-      caption: GROUND_PROFILE_CAPTION,
+      caption: caption,
       labels: profile.labels,
       chainage_m: profile.chainage_m,
       elevation_m: elevation,
       stations: stations,
+      max_gap_m: maxGap,
+      open_gaps: openGaps.map(function (gap) { return [gap[0], gap[1], gap[2]]; }),
+      /* station indices, each run a line of its own */
+      runs: runs,
       /* fill_between drops to nanmin(elevation) - 2.0: the ground is drawn as
        * a solid, not as a line floating on the axis, and the base is below
        * the lowest level so the lowest station is not drawn on the floor */
       baseline_m: arrMin(known) - 2.0,
-      /* a station that reaches the figure with no level is not drawn, and
-       * the figure says so rather than closing the gap silently and showing
-       * a straight slope across ground nobody levelled */
-      note: known.length < elevation.length
-        ? (elevation.length - known.length) + ' of ' + elevation.length +
-          ' stations recorded no elevation and are not drawn.'
-        : '',
+      /* a station with no level, and a gap the line does not cross, are both
+       * said on the figure: without the words the straight line reads as a
+       * slope somebody levelled */
+      note: notes.join(' '),
     };
   }
 
@@ -16466,11 +16924,19 @@
     protectiveColour: protectiveColour,
     subsurfaceMapData: subsurfaceMapData, subsurfaceMapSet: subsurfaceMapSet,
     subsurfaceFiguresApply: subsurfaceFiguresApply,
-    SUITABILITY_TIE_POINTS: SUITABILITY_TIE_POINTS,
+    subsurfaceCaption: subsurfaceCaption, unresolvedBasement: unresolvedBasement,
+    COINCIDENT_STATION_M: COINCIDENT_STATION_M,
+    toZone: toZone, surveyZone: surveyZone, positionedSoundings: positionedSoundings,
+    spacingName: spacingName, spacingNote: spacingNote,
+    pseudosectionCaption: pseudosectionCaption,
+    modelDepthM: modelDepthM, drawnDepthText: drawnDepthText,
+    studyAreaCaption: studyAreaCaption,
     SUITABILITY_MAP_CAPTION: SUITABILITY_MAP_CAPTION,
     GROUND_PROFILE_CAPTION: GROUND_PROFILE_CAPTION,
     suitabilityMapPoints: suitabilityMapPoints,
     rankedMapPoints: rankedMapPoints,
+    suitabilityRanking: suitabilityRanking, unplacedText: unplacedText,
+    suitabilityMapNote: suitabilityMapNote,
     suitabilityMapState: suitabilityMapState,
     suitabilityMapCaption: suitabilityMapCaption,
     suitabilityMapData: suitabilityMapData,

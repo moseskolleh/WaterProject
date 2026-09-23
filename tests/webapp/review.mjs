@@ -629,6 +629,24 @@ await withPage(async (page, base, consoleErrors) => {
   check('ves: the sample has more than one sounding to confuse',
     soundings.length > 1, JSON.stringify(soundings));
 
+  // The whole Rokel survey through the app's own report build: two pegs
+  // 20.7 km apart, both levelled, neither reaching basement. The ground
+  // profile follows the rule the section follows and is refused, with its
+  // reason in the list of what was not drawn; it used to draw a straight
+  // 71 to 68 m slope across the 20.7 km the section refused to cross.
+  const rokelReport = await issued('geophysical');
+  const notDrawn = rokelReport.slice(rokelReport.indexOf('Not drawn from this survey'));
+  check('geophysical: the ground profile is refused across 20.7 km, and says why',
+    !rokelReport.includes('Ground surface along the survey traverse, from the ' +
+      'elevation recorded') &&
+    notDrawn.includes('Ground profile: the levelled stations are 20,751 m apart'),
+    notDrawn.slice(0, 900));
+  check('geophysical: the depth-to-bedrock refusal names the missing basement',
+    notDrawn.includes('did not reach basement within the depth they resolve, so ' +
+      'they have no depth to bedrock') &&
+    !/Depth to bedrock map:[^\n]*Record the GPS position/.test(notDrawn),
+    notDrawn.slice(0, 900));
+
   const broken = await page.evaluate(async () => {
     const C = window.GWT.core;
     const real = C.invertSounding;
@@ -733,7 +751,7 @@ await withPage(async (page, base, consoleErrors) => {
     rokelDoc.includes('156.1 and 78.7 ohm-m (ratio 1.98)'),
     rokelDoc.slice(rokelDoc.indexOf('Annex A'), rokelDoc.indexOf('Annex A') + 400));
   check('ves: the array and its reach are the sheets\', in the sheets\' terms',
-    rokelDoc.includes('made with a Schlumberger array') &&
+    rokelDoc.includes('recorded with the Schlumberger electrode configuration') &&
     rokelDoc.includes('with AB/2 expanded to 80 m the depth of investigation here is ' +
       'about 40 m'),
     (rokelDoc.match(/[^\n]*(array\. |expanded to)[^\n]*/g) || []).join(' | ').slice(0, 600));
@@ -781,6 +799,23 @@ await withPage(async (page, base, consoleErrors) => {
     !wennerDoc.includes('Schlumberger array') &&
     !wennerDoc.includes('Schlumberger sounding resolves'),
     wennerDoc.slice(wennerDoc.indexOf('3.2 Geophysical'), wennerDoc.indexOf('3.2 Geophysical') + 600));
+
+  // The field-work section says what the inputs evidence and nothing else, as
+  // reporting/geophysical.py's has since reports-6. The browser's still said
+  // the site "was walked with the community", that the points were agreed
+  // with it, and that resistivity profiling was run with a Schlumberger
+  // array, for every survey: a day of field work nobody recorded.
+  check('geophysical: the field work claims no walk, no agreement and no profiling',
+    !geophysical.includes('walked with the community') &&
+    !geophysical.includes('agreed with the community') &&
+    !geophysical.includes('Resistivity Profiling') &&
+    geophysical.includes('No reconnaissance record (date or field observations) ' +
+      'was supplied with the sounding data') &&
+    geophysical.includes('No resistivity profiling record was supplied.') &&
+    /\d+ soundings? of \d+ carr(y|ies) a recorded GPS position/.test(geophysical) &&
+    /electrode configuration, to determine the formation resistivities/.test(geophysical),
+    geophysical.slice(geophysical.indexOf('3. Field Work'),
+      geophysical.indexOf('4. Data Analysis')).slice(0, 1500));
 
   // --- a ranking that is cut short says so -----------------------------------
   // The coverage table is read to decide where to drill next, and it is sorted

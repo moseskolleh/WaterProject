@@ -302,6 +302,9 @@ await withPage(async (page, base, consoleErrors) => {
       narrative: i.narrative,
     }));
     out.preference = C.drillingPreferenceTable(rokelInterps);
+    // the depth each figure of a Rokel model is drawn to, as its caption says
+    out.rokel_drawn_depth = rokelInterps.map(
+      (i) => C.drawnDepthText(i.model, i.investigation_depth_m));
 
     // The interpretation and report prose over the cases make_reference.py
     // builds as VES_CASES, VES_SHEETS and MODELS_TRIED_CASES: a zone past the
@@ -1595,6 +1598,153 @@ await withPage(async (page, base, consoleErrors) => {
     R.regional.utm_zones.every((c, i) => regional.utm_zones[i] === c.zone),
     JSON.stringify(regional.utm_zones) + '\n     vs ' +
     JSON.stringify(R.regional.utm_zones.map((c) => c.zone)));
+
+  // --- the survey's own figures ---
+  // The maps and sections are drawn by different code in each engine, but
+  // what they claim is decided once and held here: which point is starred and
+  // why none is, the tie on the project's own margin, which figures are
+  // refused and in what words, the chainages and the zone everything is drawn
+  // in, the depth a model is drawn to, and the captions. Nothing compared any
+  // of it, and the browser's suitability map, section and ground profile had
+  // drifted from the package's without a failing check.
+  const SF = R.survey_figures;
+  const survey = await page.evaluate(({ inputs, ab2 }) => {
+    const C = GWT.core;
+    function build(stations, arrayType) {
+      const soundings = [], interps = [];
+      stations.forEach(([sid, e, n, z, rho, h]) => {
+        const sounding = {
+          sounding_id: sid, ab2: ab2.slice(), mn: ab2.map(() => 0.5),
+          rho_app: ab2.map((v, k) => 100.0 + 10.0 * k),
+          array_type: arrayType || 'schlumberger',
+          site: { easting: e, northing: n, elevation_m: z, utm_zone: null,
+            community: 'Kuntolo', district: 'Bombali' },
+        };
+        const model = C.layeredModel(rho, h, { sounding_id: sid, fit_error_percent: 0.5 });
+        soundings.push(sounding);
+        interps.push(C.interpretModel(sounding, model));
+      });
+      return { soundings, interps };
+    }
+    function suitability(interps, tiePoints) {
+      const ves = Object.assign({}, C.defaultConfig().ves,
+        { ranking_tie_points: tiePoints || 3.0 });
+      const results = C.assessSiting(interps, ves);
+      const tie = C.rankingTie(results, ves.ranking_tie_points) !== '';
+      const ranking = results.map((r) => r.sounding_id);
+      const data = C.suitabilityMapData(interps, { results, ves, zone: null });
+      const state = data ? data.state : C.suitabilityMapState([], tie, ranking);
+      const marked = interps.filter((i) => i.site_easting !== null &&
+        i.site_easting !== undefined).map((i) => i.sounding_id);
+      return {
+        state,
+        caption: data ? data.caption : null,
+        note: data ? data.tie_note : C.suitabilityMapNote(state),
+        labels: data ? data.points.map((p) => p.text) : [],
+        eastings: data ? data.points.map((p) => p.easting) : [],
+        zone: data ? data.zone : C.surveyZone(interps),
+        study_area: C.studyAreaCaption('Kuntolo', marked, ranking[0],
+          ranking.slice(0, 2), tie),
+      };
+    }
+    function maps(interps) {
+      const zone = C.surveyZone(interps) || 28;
+      const out = {};
+      C.SUBSURFACE_MAP_SPECS.forEach((spec) => {
+        const d = C.subsurfaceMapData(interps, spec.key, { zone, gridN: 40 });
+        const entry = { reason: d.reason || null };
+        if (!d.reason) {
+          entry.caption = d.caption;
+          entry.minimum = d.points.map((p) => !!p.minimum);
+          if (spec.key !== 'protective_capacity') entry.labels = d.points.map((p) => p.text);
+        }
+        out[spec.key] = entry;
+      });
+      return out;
+    }
+    function traverse(interps) {
+      const profile = C.traverseProfile(interps);
+      if (profile.reason) return { reason: profile.reason };
+      const section = C.geoelectricSectionGeometry(interps, {});
+      return {
+        reason: null, labels: profile.labels, chainage_m: profile.chainage_m,
+        indices: profile.indices, length_m: profile.length_m,
+        bearing_deg: profile.bearing_deg,
+        // the model each column is drawn with, where the section is drawn
+        layer2_rho: section.reason
+          ? profile.indices.map((k) => interps[k].model.resistivities[1])
+          : section.models.map((m) => m.resistivities[1]),
+      };
+    }
+    function ground(interps) {
+      const g = C.groundProfileData(interps);
+      if (g === null) return { reason: null, silent: true };
+      if (g.reason) return { reason: g.reason };
+      return { reason: null, caption: g.caption, chainage_m: g.chainage_m,
+        open_gaps: g.open_gaps, max_gap_m: g.max_gap_m };
+    }
+    const out = { cases: {} };
+    Object.keys(inputs).forEach((name) => {
+      const { interps } = build(inputs[name]);
+      const entry = {
+        suitability: suitability(interps),
+        traverse: traverse(interps),
+        ground: ground(interps),
+        maps: maps(interps),
+        model_depth: interps.map((i) => C.modelDepthM(i.model, i.investigation_depth_m)),
+        drawn_depth: interps.map((i) => C.drawnDepthText(i.model, i.investigation_depth_m)),
+      };
+      if (name === 'margin') entry.suitability_margin5 = suitability(interps, 5.0);
+      out.cases[name] = entry;
+    });
+    const wenner = build(inputs.collinear, 'wenner');
+    const spacing = C.spacingName(wenner.soundings);
+    const pseudo = C.pseudosectionGeometry(wenner.soundings,
+      C.traverseProfile(wenner.interps));
+    out.wenner = {
+      spacing, note: C.spacingNote(spacing),
+      caption: C.pseudosectionCaption(spacing, C.traverseProfile(wenner.interps)),
+      y_label: pseudo.y_label, first_note: pseudo.notes[0],
+    };
+    return out;
+  }, { inputs: SF.inputs, ab2: SF.ab2 });
+
+  // numbers within a relative tolerance, everything else exactly
+  const approx = (a, b) => {
+    if (typeof b === 'number' && typeof a === 'number') return close(a, b, 1e-6);
+    if (Array.isArray(b)) {
+      return Array.isArray(a) && a.length === b.length && b.every((v, i) => approx(a[i], v));
+    }
+    if (b && typeof b === 'object') {
+      return !!a && typeof a === 'object' && Object.keys(b).every((k) => approx(a[k], b[k]));
+    }
+    return a === b;
+  };
+  const same = (name, a, b) => check(name, approx(a, b),
+    `js ${JSON.stringify(a).slice(0, 700)}\n     py ${JSON.stringify(b).slice(0, 700)}`);
+  Object.keys(SF.cases).forEach((name) => {
+    const js = survey.cases[name], py = SF.cases[name];
+    same(`survey ${name}: suitability map state and caption`, js.suitability, py.suitability);
+    if (py.suitability_margin5) {
+      same(`survey ${name}: the tie on the project's own margin`,
+        js.suitability_margin5, py.suitability_margin5);
+    }
+    same(`survey ${name}: traverse`, js.traverse, py.traverse);
+    same(`survey ${name}: ground profile`, js.ground, py.ground);
+    same(`survey ${name}: subsurface maps`, js.maps, py.maps);
+    same(`survey ${name}: depth each model is drawn to`,
+      [js.model_depth, js.drawn_depth], [py.model_depth, py.drawn_depth]);
+  });
+  same('survey wenner: the spacing is a', {
+    spacing: survey.wenner.spacing, note: survey.wenner.note,
+    caption: survey.wenner.caption,
+  }, SF.wenner);
+  check('survey wenner: the pseudo-section axis and note name a',
+    survey.wenner.y_label === SF.wenner.spacing + ' (m)' &&
+    survey.wenner.first_note === SF.wenner.note,
+    JSON.stringify(survey.wenner));
+  same('survey rokel: depth each model is drawn to', parsed.rokel_drawn_depth,
+    SF.rokel_drawn_depth);
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, {});

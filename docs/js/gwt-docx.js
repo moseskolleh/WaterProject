@@ -770,12 +770,15 @@
     if (!figures.length && !notDrawn.length) return;
     b.heading('Subsurface maps from the survey', 2);
     if (figures.length) {
+      /* the promise about interpolated surfaces is made only where a map in
+       * the section has one: over three collinear soundings none does */
       b.paragraph('The maps in this section are drawn from the soundings ' +
         'themselves rather than from a national dataset, so they carry the ' +
-        'survey\'s own resolution. Each interpolated surface is blanked ' +
-        'outside the ground the soundings enclose: a contour beyond the last ' +
-        'peg is the interpolator continuing a trend, and a borehole gets ' +
-        'sited on it.', { align: 'justify' });
+        'survey\'s own resolution.' + (subsurface.anySurface
+          ? ' Each interpolated surface is blanked outside the ground the ' +
+            'soundings enclose: a contour beyond the last peg is the ' +
+            'interpolator continuing a trend, and a borehole gets sited on it.'
+          : ''), { align: 'justify' });
     }
     figures.forEach(function (fig) {
       b.figure(fig.image, fig.caption, fig.widthCm);
@@ -900,9 +903,18 @@
 
     b.heading('3. Field Work', 1);
     b.heading('3.1 Reconnaissance Survey', 2);
-    b.paragraph('The site was walked with the community to identify candidate ' +
-      'points clear of latrines, graveyards, refuse pits and flood paths, and ' +
-      'accessible to a drilling rig.', { align: 'justify' });
+    /* What this section says has to be evidenced by the inputs, as
+     * reporting/geophysical.py's field-work section has been since reports-6.
+     * It said the site "was walked with the community" and named a
+     * profiling method for every survey, whatever the sheets held; the
+     * browser holds no reconnaissance record, so it says there is none. */
+    b.paragraph('No reconnaissance record (date or field observations) was ' +
+      'supplied with the sounding data, so none is reported here. The sounding ' +
+      'points were taken as recorded on the field sheets' +
+      (site.date ? ', dated ' + site.date : '') + '.', { align: 'justify' });
+    b.paragraph('The weathered zone over the bedrock and the fractured rock ' +
+      'beneath it are the groundwater prospects in this ground, and the ' +
+      'soundings below are interpreted for both.', { align: 'justify' });
     /* The browser can never have an elevation model, and the Python report
      * always says so here. Silent, a reader took the survey point map for a
      * topographic one; and this is the sentence that explains why the ground
@@ -922,13 +934,53 @@
       b.figure(context.groundProfile.image, context.groundProfile.caption,
         context.groundProfile.widthCm);
     }
+    var soundings = context.soundings || [];
+    var placed = interpretations.filter(function (interp) {
+      return interp.site_easting !== null && interp.site_easting !== undefined &&
+        interp.site_northing !== null && interp.site_northing !== undefined;
+    });
+    b.paragraph('Sounding positions', { bold: true });
+    /* the positions are named as drawn only where a figure draws them: the
+     * study area map is the one figure here that marks the soundings */
+    var studyAreaShown = (context.areaMaps || []).some(function (fig) {
+      return /^Study area at /.test(fig.caption || '') &&
+        !/No sounding carries a recorded GPS position/.test(fig.caption || '');
+    });
+    b.paragraph(placed.length + ' ' + S.plural(placed.length, 'sounding') + ' of ' +
+      interpretations.length + ' ' + (placed.length === 1 ? 'carries' : 'carry') +
+      ' a recorded GPS position' +
+      (placed.length && studyAreaShown ? ', marked on the study area map' : '') +
+      '. How the points were chosen on the ground is not recorded on the field ' +
+      'sheets; where a traverse or profiling was run, its notes belong in the ' +
+      'reconnaissance record above.', { align: 'justify' });
     b.heading('3.2 Geophysical Survey', 2);
-    b.heading('3.2.1 Resistivity Profiling', 3);
-    /* The array each sounding was run with, from its inversion (the two lists
-     * are built in lockstep): the report said "a Schlumberger array" and "a
-     * maximum AB/2 of 60 m" over a Wenner survey whose spacing a was 60 m and
-     * whose AB/2 was 90 m. The reach of each array is worded as
-     * reporting/geophysical.py _limitations words it. */
+    var instrument = (soundings[0] && soundings[0].instrument) || 'Syscal Junior';
+    b.paragraph('The geophysical survey consisted of electrical resistivity ' +
+      'measurements, specifically vertical electrical sounding (VES) using the ' +
+      instrument + ' instrument.', { align: 'justify' });
+    b.heading('3.2.1 Vertical Electrical Sounding (VES)', 3);
+    /* the configuration named off the soundings, as the Python names it; the
+     * Schlumberger array and a profiling method used to be asserted here for
+     * every survey */
+    var arrays = {};
+    (soundings.length ? soundings : [{}]).forEach(function (sounding) {
+      var name = String(sounding.array_type || 'schlumberger');
+      arrays[name.charAt(0).toUpperCase() + name.slice(1).toLowerCase()] = true;
+    });
+    b.paragraph(interpretations.length + ' ' +
+      S.plural(interpretations.length, 'vertical electrical sounding') + ' (' +
+      interpretations.map(function (interp) { return interp.sounding_id; }).join(', ') +
+      ') ' + (interpretations.length === 1 ? 'was' : 'were') + ' recorded with the ' +
+      Object.keys(arrays).sort().join(' and ') + ' electrode configuration, to ' +
+      'determine the formation resistivities and the depth to bedrock, and ' +
+      'whether water bearing fractures or a saturated weathered zone are present ' +
+      'at depth and how thick they are. No resistivity profiling record was ' +
+      'supplied.', { align: 'justify' });
+    /* The reach of each array, from its inversion (the two lists are built
+     * in lockstep): the report said "a maximum AB/2 of 60 m" and "a
+     * Schlumberger sounding resolves" over a Wenner survey whose spacing a
+     * was 60 m and whose AB/2 was 90 m. Worded as reporting/geophysical.py
+     * _limitations words it. */
     var arrayOf = function (k) {
       var inv = inversions[k];
       return inv && String(inv.array_type || '').indexOf('wenner') === 0
@@ -941,18 +993,6 @@
       reach[kind] = [Math.max(was[0], interp.max_spacing_m),
         Math.max(was[1], interp.investigation_depth_m)];
     });
-    var arrays = interpretations.map(function (interp, k) { return arrayOf(k); })
-      .filter(function (a, k, all) { return all.indexOf(a) === k; }).sort();
-    b.paragraph('Resistivity measurements were made with a ' +
-      (arrays.length ? arrays : ['schlumberger']).map(function (a) {
-        return a.charAt(0).toUpperCase() + a.slice(1);
-      }).join(' and a ') + ' array. ' +
-      'Apparent resistivity is computed from the measured resistance and the ' +
-      'array geometric factor.', { align: 'justify' });
-    b.heading('3.2.2 Selection of VES Points', 3);
-    b.paragraph('Sounding points were placed on the candidate positions agreed ' +
-      'with the community.', { align: 'justify' });
-    b.heading('3.2.3 Vertical Electrical Sounding (VES)', 3);
     b.paragraph(Object.keys(reach).length
       ? Object.keys(reach).sort().map(function (kind) {
           return C.depthOfInvestigationText(kind, reach[kind][0], reach[kind][1], vesCfg);

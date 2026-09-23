@@ -398,3 +398,139 @@ def test_a_depth_cut_back_to_the_depth_of_investigation_reads_as_a_minimum():
     assert depth.startswith("The drilling depth should be at least 40 m at point S1")
     assert ("Where the depth is a minimum, the margin drilled below the deepest water "
             "zone runs past what the survey resolves") in depth
+
+# ---------------------------------------------------------------------------
+# Captions say what the survey's own figures show
+# ---------------------------------------------------------------------------
+
+def _stations(stations, array_type="schlumberger"):
+    """Soundings, inversions and interpretations for (id, easting, northing,
+    elevation, resistivities, thicknesses) stations."""
+    import numpy as np
+
+    from groundwater.models import LayeredModel, VESSounding
+    from groundwater.ves import interpret_model
+    from groundwater.ves.forward import forward_schlumberger, forward_wenner
+    from groundwater.ves.inversion import InversionResult
+
+    ab2 = np.array([1, 1.5, 2, 3, 4, 6, 8, 10, 15, 20, 25, 32, 40, 50, 65, 80, 100.0])
+    forward = forward_wenner if array_type == "wenner" else forward_schlumberger
+    soundings, inversions, interps = [], [], []
+    for sid, e, n, z, rho, h in stations:
+        site = SiteMetadata(community="Kuntolo", district="Bombali",
+                            easting=e, northing=n, elevation_m=z)
+        model = LayeredModel(resistivities=np.array(rho, float),
+                             thicknesses=np.array(h, float), sounding_id=sid,
+                             fit_error_percent=0.5)
+        calc = forward(model, ab2)
+        sounding = VESSounding(site=site, sounding_id=sid, ab2=ab2,
+                               mn=np.full(ab2.size, 0.5), rho_app=calc,
+                               array_type=array_type)
+        soundings.append(sounding)
+        inversions.append(InversionResult(model=model, ab2=ab2, rho_obs=calc,
+                                          rho_calc=calc, fit_error_percent=0.5,
+                                          n_iterations=1, converged=True))
+        interps.append(interpret_model(sounding, model))
+    return soundings, inversions, interps
+
+
+def test_the_study_area_caption_says_what_the_map_carries():
+    from groundwater.reporting.geophysical import _study_area_caption
+
+    none = _study_area_caption("Kuntolo", [], "VES 3", ["VES 3", "VES 1"], False)
+    assert "with the survey points" not in none and "star" not in none
+    assert "No sounding carries a recorded GPS position" in none
+    unplaced = _study_area_caption("Kuntolo", ["VES 1", "VES 2"], "VES 3",
+                                   ["VES 3", "VES 1"], False)
+    assert "The star is" not in unplaced
+    assert "The recommended drilling point, VES 3, has no recorded position" in unplaced
+    tie = _study_area_caption("Kuntolo", ["VES 1", "VES 2"], "VES 1",
+                              ["VES 1", "VES 2"], True)
+    assert "neither is starred" in tie and "The star is" not in tie
+    starred = _study_area_caption("Kuntolo", ["VES 1", "VES 2"], "VES 1",
+                                  ["VES 1", "VES 2"], False)
+    assert "The star is the recommended drilling point, VES 1." in starred
+
+
+def test_subsurface_captions_are_written_from_the_figure():
+    from groundwater.mapping import MapPoint
+    from groundwater.reporting.geophysical import _subsurface_caption
+
+    line = [MapPoint("VES 1", 0.0, 0.0, 10.0), MapPoint("VES 2", 100.0, 0.0, 12.0),
+            MapPoint("VES 3", 200.0, 0.0, 14.0)]
+    caption, surface = _subsurface_caption("Depth to bedrock.", line)
+    assert not surface
+    assert "blanked" not in caption and "no surface is drawn" in caption
+    area = [MapPoint("VES 1", 0.0, 0.0, 10.0), MapPoint("VES 2", 100.0, 0.0, 12.0),
+            MapPoint("VES 3", 40.0, 120.0, 14.0, minimum=True)]
+    caption, surface = _subsurface_caption("Aquifer thickness.", area)
+    assert surface and "blanked outside the ground they enclose" in caption
+    assert "The value at VES 3 is a minimum" in caption
+
+
+def test_the_model_captions_give_the_depth_drawn():
+    from groundwater.reporting.geophysical import _drawn_depth_text
+
+    _s, _i, (shallow, deep) = _stations([
+        ("VES 1", 178000.0, 1e6, 70.0, [320, 60, 4200], [2.5, 16]),
+        ("VES 2", 178100.0, 1e6, 70.0, [320, 60, 4200], [2.5, 58.5]),
+    ])
+    assert _drawn_depth_text(shallow.model, shallow) == (
+        "to the depth of investigation (50 m)")
+    text = _drawn_depth_text(deep.model, deep)
+    assert text.startswith("to 75.2 m so that the deepest fitted interface stays on it")
+    assert "depth of investigation (50 m)" in text
+
+
+def test_a_report_whose_best_point_has_no_position_stars_nothing(tmp_path):
+    """VES 3 ranks first and carries no GPS: neither caption may name a star
+    that is not drawn, nor pass it to the runner-up."""
+    from groundwater.reporting.geophysical import (
+        GeophysicalReportInputs,
+        build_geophysical_report,
+    )
+
+    soundings, inversions, interps = _stations([
+        ("VES 1", 178000.0, 1000000.0, 70.0, [320, 150, 4200], [2.5, 6]),
+        ("VES 2", 178080.0, 1000040.0, 72.0, [320, 160, 4200], [2.5, 5]),
+        ("VES 3", None, None, None, [320, 60, 4200], [2.5, 20]),
+    ])
+    path = build_geophysical_report(
+        GeophysicalReportInputs(soundings=soundings, inversions=inversions,
+                                interpretations=interps, figures_dir=tmp_path),
+        tmp_path / "nopos.docx",
+    )
+    text = _text(path)
+    assert "The star is" not in text
+    assert "The recommended drilling point, VES 3, has no recorded position" in text
+    assert "The recommended target, VES 3, has no recorded position" in text
+    # no survey point map was supplied, so the sentence does not point at one
+    assert "plotted on the survey point map" not in text
+    assert "2 soundings of 3 carry a recorded GPS position" in text
+
+
+def test_a_wenner_survey_far_apart_is_captioned_and_refused_honestly(tmp_path):
+    """Two Wenner pegs 20.7 km apart, neither reaching basement: the curve is
+    a Wenner curve, the ground profile is refused like the section, and the
+    depth-to-bedrock refusal names the basement rather than the GPS."""
+    from groundwater.reporting.geophysical import (
+        GeophysicalReportInputs,
+        build_geophysical_report,
+    )
+
+    soundings, inversions, interps = _stations([
+        ("A (1)", 708958.0, 926355.0, 71.0, [320, 60], [2.5]),
+        ("B (2)", 727012.0, 916125.0, 68.0, [320, 70], [3.0]),
+    ], array_type="wenner")
+    path = build_geophysical_report(
+        GeophysicalReportInputs(soundings=soundings, inversions=inversions,
+                                interpretations=interps, figures_dir=tmp_path),
+        tmp_path / "wenner.docx",
+    )
+    text = _text(path)
+    assert "Wenner array VES curve and model at point A (1)" in text
+    assert "Schlumberger array VES curve" not in text
+    assert "The Wenner spacing a is that spacing, not a depth." in text
+    assert "Ground surface along the survey traverse" not in text
+    assert "Ground profile: the levelled stations are 20,751 m apart" in text
+    assert "so they have no depth to bedrock" in text

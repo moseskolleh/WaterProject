@@ -692,7 +692,25 @@
           'text-anchor': flip ? 'end' : 'start', fill: p.inkSoft, text: e.text,
         }));
       });
+    markInvestigationDepth(f, opts.investigationDepth, maxDepth);
     return f.svg;
+  }
+
+  /* ves/plots.py _mark_investigation_depth: a dashed line at the depth of
+   * investigation, where a figure of one sounding's model runs past it to
+   * keep the deepest fitted interface on it. */
+  function markInvestigationDepth(f, depth, depthMax) {
+    if (depth === null || depth === undefined || !(Number(depth) < depthMax)) return;
+    var y = f.fy(Number(depth));
+    f.plot.appendChild(svgEl('line', {
+      x1: f.margin.left, y1: y, x2: f.margin.left + f.plotW, y2: y,
+      stroke: f.palette.critical, 'stroke-width': 1.2, 'stroke-dasharray': '5 3',
+    }));
+    f.plot.appendChild(svgEl('text', {
+      x: f.margin.left + f.plotW - 4, y: y - 3, 'text-anchor': 'end',
+      'font-size': 9, fill: f.palette.critical, stroke: f.palette.surface,
+      'stroke-width': 2.4, 'paint-order': 'stroke', text: 'depth of investigation',
+    }));
   }
 
   /* ====================================================== pumping test figures */
@@ -4507,9 +4525,18 @@
     if (!model || !model.resistivities || !model.resistivities.length) return null;
     var opts = options || {};
     var tops = model.depths_top || [];
-    var depthMax = opts.depthMax === undefined || opts.depthMax === null
-      ? (tops.length > 1 ? Number(tops[tops.length - 1]) : 10) * 1.35 + 3
-      : Number(opts.depthMax);
+    /* given the depth of investigation, the column is drawn to the depth the
+     * curve's model panel is drawn to, with the depth of investigation
+     * dashed where the column runs past it: drawn to the depth of
+     * investigation alone, a basement below it was left off the column */
+    var depthMax;
+    if (opts.depthMax !== undefined && opts.depthMax !== null) {
+      depthMax = Number(opts.depthMax);
+    } else if (opts.investigationDepth) {
+      depthMax = C.modelDepthM(model, opts.investigationDepth);
+    } else {
+      depthMax = (tops.length > 1 ? Number(tops[tops.length - 1]) : 10) * 1.35 + 3;
+    }
     var width = opts.width || 420;
     var height = opts.height || Math.round(width * 3.6 / (FIGURE_WIDTH_IN * 0.72));
 
@@ -4557,6 +4584,7 @@
         stroke: ON_RAMP_INK, 'stroke-width': 1.2,
       }));
     });
+    markInvestigationDepth(f, opts.investigationDepth, depthMax);
 
     colourBar(f, {
       x: f.margin.left + f.plotW + 14, top: f.margin.top, height: f.plotH,
@@ -4613,7 +4641,7 @@
     var width = opts.width || 760;
     var noteLines = geometry.note ? wrapText(geometry.note, width - 150, 8.5) : [];
     var base = Math.round(width * 3.4 / FIGURE_WIDTH_IN);
-    var height = (opts.height || base) + noteLines.length * 11;
+    var height = (opts.height || base) + noteLines.length * 11 + 14;
     var ticks = (geometry.ticks || []).map(function (tick) {
       return { value: tick[0], label: tick[1] };
     });
@@ -4627,9 +4655,12 @@
      * what matplotlib gives the readings. */
     var filled = (geometry.triangles || []).length > 0;
     var yValues = logY.concat(ticks.map(function (tick) { return tick.value; }));
+    /* the top margin holds the station names as well as the title, one line
+     * each, as the Python lifts its title clear of them: with room for the
+     * title alone the names were written into it */
     var f = frame({
       width: width, height: height,
-      margin: { top: 32, right: 104, bottom: 46 + noteLines.length * 11, left: 62 },
+      margin: { top: 46, right: 104, bottom: 46 + noteLines.length * 11, left: 62 },
       title: opts.title || geometry.title,
       yLabel: geometry.y_label, yDown: true,
       xDomain: filled ? [Math.min.apply(null, xs), Math.max.apply(null, xs)]
@@ -5356,17 +5387,32 @@
       return [f.fx(station.chainage_m), f.fy(station.elevation_m)];
     });
     /* the ground drawn as a solid rather than as a line floating on the
-     * axis: fill_between(chainage, elevation, nanmin(elevation) - 2) */
+     * axis: fill_between(chainage, elevation, nanmin(elevation) - 2), one
+     * run of stations at a time, so no line and no fill crosses a gap wider
+     * than the soundings reach - a straight line across one is a slope
+     * nobody levelled */
     var base = f.fy(baseline);
-    var fill = 'M' + pts[0][0].toFixed(2) + ' ' + base.toFixed(2);
-    pts.forEach(function (pt) {
-      fill += 'L' + pt[0].toFixed(2) + ' ' + pt[1].toFixed(2);
+    var runs = data.runs || [stations.map(function (station, k) { return k; })
+      .filter(function (k) {
+        return stations[k].elevation_m !== null && stations[k].elevation_m !== undefined;
+      })];
+    runs.forEach(function (run) {
+      var seg = run.map(function (k) {
+        return [f.fx(stations[k].chainage_m), f.fy(stations[k].elevation_m)];
+      });
+      if (!seg.length) return;
+      var fill = 'M' + seg[0][0].toFixed(2) + ' ' + base.toFixed(2);
+      seg.forEach(function (pt) {
+        fill += 'L' + pt[0].toFixed(2) + ' ' + pt[1].toFixed(2);
+      });
+      fill += 'L' + seg[seg.length - 1][0].toFixed(2) + ' ' + base.toFixed(2) + 'Z';
+      f.plot.appendChild(svgEl('path', {
+        d: fill, fill: p.accent, 'fill-opacity': 0.08, stroke: 'none',
+      }));
+      if (seg.length > 1) {
+        f.plot.appendChild(polyline(seg, { stroke: p.accent, 'stroke-width': 1.8 }));
+      }
     });
-    fill += 'L' + pts[pts.length - 1][0].toFixed(2) + ' ' + base.toFixed(2) + 'Z';
-    f.plot.appendChild(svgEl('path', {
-      d: fill, fill: p.accent, 'fill-opacity': 0.08, stroke: 'none',
-    }));
-    f.plot.appendChild(polyline(pts, { stroke: p.accent, 'stroke-width': 1.8 }));
     known.forEach(function (station, k) {
       var mark = marker(pts[k][0], pts[k][1], 'circle', p.surface, p.accent, 4);
       mark.appendChild(svgEl('title', {

@@ -1067,3 +1067,195 @@ def test_the_pseudosection_does_not_paint_across_a_wide_gap():
         plt.close(fig)
     assert "No colour is interpolated across" in said
     assert not filled, "nothing should be contoured between two stations 20 km apart"
+
+
+# ---------------------------------------------------------------------------
+# Survey-scale figures: one zone, distinct stations, the section's rules
+# ---------------------------------------------------------------------------
+
+def _stations(stations, array_type="schlumberger"):
+    """Soundings and interpretations for (id, easting, northing, elevation,
+    resistivities, thicknesses) stations; a None easting is no position."""
+    ab2 = np.array([1, 1.5, 2, 3, 4, 6, 8, 10, 15, 20, 25, 32, 40, 50, 65, 80, 100.0])
+    soundings, interps = [], []
+    for sid, e, n, z, rho, h in stations:
+        site = SiteMetadata(community="Kuntolo", district="Bombali",
+                            easting=e, northing=n, elevation_m=z)
+        sounding = VESSounding(site=site, sounding_id=sid, ab2=ab2,
+                               mn=np.full(ab2.size, 0.5),
+                               rho_app=100.0 + 10.0 * np.arange(ab2.size),
+                               array_type=array_type)
+        model = LayeredModel(resistivities=np.array(rho, float),
+                             thicknesses=np.array(h, float), sounding_id=sid,
+                             fit_error_percent=0.5)
+        soundings.append(sounding)
+        interps.append(interpret_model(sounding, model))
+    return soundings, interps
+
+
+_E, _N = KUNTOLO["easting"], KUNTOLO["northing"]
+_H = ([320, 60, 4200], [2.5, 16])
+
+
+def test_a_survey_across_the_zone_boundary_is_drawn_in_one_zone(tmp_path):
+    """Three soundings either side of 12 W, each recorded in its own zone:
+    400 m of ground, not a 660 km map and a "659732 m along" section."""
+    from groundwater.geo import geographic_to_utm
+    from groundwater.mapping import survey_zone
+
+    stations = []
+    for k, lon in enumerate((-12.0036, -11.9964, -11.995)):
+        utm = geographic_to_utm(8.9, lon)
+        stations.append((f"VES {k + 1}", utm.easting, utm.northing, 30.0 + k, *_H))
+    _soundings, interps = _stations(stations)
+    assert survey_zone(interps) == 28
+    points = subsurface_map_points(interps, "aquifer_thickness_m", 28)
+    eastings = [p.easting for p in points]
+    assert max(eastings) - min(eastings) < 1_000.0
+    profile = traverse_profile(interps)
+    assert profile.length_m < 1_000.0
+    # the recorded position is kept: only the figure's copy is moved
+    assert interps[1].site_easting < 550_000
+    path = aquifer_thickness_map(interps, zone=28, path=tmp_path / "aq.png")
+    assert path.exists()
+
+
+def test_a_traverse_needs_its_stations_at_distinct_places():
+    _s, one_point = _stations([(f"VES {k}", _E, _N, 70.0, *_H) for k in (1, 2, 3)])
+    with pytest.raises(ValueError, match="all 3 positioned soundings are recorded at one"):
+        traverse_profile(one_point)
+    _s, shared = _stations([("VES 1", _E, _N, 70.0, *_H), ("VES 2", _E, _N, 71.0, *_H),
+                            ("VES 3", _E + 100, _N + 30, 72.0, *_H)])
+    with pytest.raises(ValueError, match="two soundings share one position.*VES 1 and VES 2"):
+        traverse_profile(shared)
+
+
+def test_a_section_takes_each_station_by_position_not_by_name(tmp_path):
+    """Two soundings both called VES 1 drew the second one's model at both."""
+    from groundwater.mapping import geoelectric_section_along_traverse
+
+    soundings, interps = _stations([
+        ("VES 1", _E, _N, 70.0, [320, 150, 4200], [2.5, 5]),
+        ("VES 1", _E + 100, _N, 71.0, [320, 60, 4200], [2.5, 15]),
+        ("VES 2", _E + 200, _N, 72.0, [320, 160, 4200], [2.5, 5]),
+    ])
+    profile = traverse_profile(interps)
+    assert profile.indices == [0, 1, 2]
+    fig = geoelectric_section_along_traverse(interps)
+    import matplotlib.pyplot as plt
+    plt.close(fig)
+    fig = apparent_resistivity_pseudosection(soundings, profile)
+    plt.close(fig)
+    # the models drawn, in station order
+    assert [interps[k].model.resistivities[1] for k in profile.indices] == [150, 60, 160]
+
+
+def test_the_ground_profile_follows_the_section_rules(tmp_path):
+    from groundwater.mapping import ground_profile_along_traverse, ground_profile_state
+
+    # every positioned station is profiled, levelled or not
+    _s, levels = _stations([("VES 1", _E, _N, 70.0, *_H), ("VES 2", _E + 100, _N, None, *_H),
+                            ("VES 3", _E + 200, _N, None, *_H), ("VES 4", _E + 300, _N, 64.0, *_H)])
+    state = ground_profile_state(levels)
+    assert state["labels"] == ["VES 1", "VES 2", "VES 3", "VES 4"]
+    assert state["missing"] == 2 and not state["reason"]
+    fig = ground_profile_along_traverse(levels)
+    said = " ".join(t.get_text() for t in fig.axes[0].texts)
+    import matplotlib.pyplot as plt
+    plt.close(fig)
+    assert "2 of 4 stations recorded no elevation" in said
+
+    # a gap wider than ten depths of investigation is left open
+    _s, gap = _stations([("VES 1", _E, _N, 70.0, *_H), ("VES 2", _E + 100, _N, 71.0, *_H),
+                         ("VES 3", _E + 5000, _N, 64.0, *_H)])
+    state = ground_profile_state(gap)
+    assert state["open_gaps"] == [("VES 2", "VES 3", 4900.0)]
+    fig = ground_profile_along_traverse(gap)
+    said = " ".join(t.get_text() for t in fig.axes[0].texts)
+    spans = [max(ln.get_xdata()) - min(ln.get_xdata()) for ln in fig.axes[0].get_lines()]
+    plt.close(fig)
+    assert "not drawn across VES 2 to VES 3 (4,900 m)" in said
+    assert len(spans) == 2 and max(spans) < 4000, "no line crosses the open gap"
+
+    # and where every gap is that wide there is no profile at all: Rokel
+    _s, far = _stations([("A (1)", 708958.0, 926355.0, 71.0, [320, 60], [2.5]),
+                         ("B (2)", 727012.0, 916125.0, 68.0, [320, 70], [3.0])])
+    with pytest.raises(ValueError, match="20,751 m apart.*nobody levelled"):
+        ground_profile_along_traverse(far)
+
+
+def test_an_aquifer_thickness_that_is_only_a_minimum_says_so(tmp_path):
+    _s, some = _stations([("VES 1", _E, _N, 70.0, [320, 60], [2.5]),
+                          ("VES 2", _E + 100, _N + 30, 71.0, [320, 70, 4200], [3.0, 14]),
+                          ("VES 3", _E + 40, _N + 120, 72.0, [320, 65, 4200], [2.0, 18])])
+    points = subsurface_map_points(some, "aquifer_thickness_m")
+    assert [p.minimum for p in points] == [True, False, False]
+    fig = aquifer_thickness_map(some, zone=29)
+    said = " ".join(t.get_text() for t in fig.axes[0].texts)
+    import matplotlib.pyplot as plt
+    plt.close(fig)
+    assert "at least" in said
+    # every thickness a minimum: no surface is contoured through them
+    _s, open_ = _stations([("VES 1", _E, _N, 70.0, [320, 60], [2.5]),
+                           ("VES 2", _E + 100, _N + 30, 71.0, [320, 70], [3.0]),
+                           ("VES 3", _E + 40, _N + 120, 72.0, [320, 65], [2.0])])
+    with pytest.raises(ValueError, match="each thickness is only a minimum"):
+        aquifer_thickness_map(open_, zone=29, path=tmp_path / "aq.png")
+
+
+def test_a_refused_map_names_what_is_actually_missing(tmp_path):
+    """Rokel: both soundings positioned, neither reached basement. The reason
+    used to ask for GPS positions both soundings carried."""
+    _s, far = _stations([("A (1)", 708958.0, 926355.0, 71.0, [320, 60], [2.5]),
+                         ("B (2)", 727012.0, 916125.0, 68.0, [320, 70], [3.0])])
+    with pytest.raises(ValueError) as refused:
+        depth_to_bedrock_map(far, zone=28, path=tmp_path / "d.png")
+    assert "2 of 2 positioned soundings did not reach basement" in str(refused.value)
+    assert "Record the GPS position" not in str(refused.value)
+    _s, placed = _stations([("VES 1", _E, _N, 70.0, *_H), ("VES 2", _E + 80, _N + 40, 72.0, *_H),
+                            ("VES 3", None, None, None, *_H)])
+    with pytest.raises(ValueError, match="1 of 3 soundings carries no recorded position"):
+        depth_to_bedrock_map(placed, zone=29, path=tmp_path / "d.png")
+
+
+def test_a_wenner_pseudosection_names_its_spacing_a():
+    from groundwater.mapping import spacing_name
+
+    soundings, interps = _stations([(f"VES {k + 1}", _E + 100 * k, _N, 70.0, *_H)
+                                    for k in range(3)], array_type="wenner")
+    assert spacing_name(soundings) == "a"
+    fig = apparent_resistivity_pseudosection(soundings, traverse_profile(interps))
+    try:
+        ax = fig.axes[0]
+        assert ax.get_ylabel() == "a (m)"
+        assert "The Wenner spacing a is the electrode spacing" in " ".join(
+            t.get_text() for t in ax.texts)
+    finally:
+        import matplotlib.pyplot as plt
+        plt.close(fig)
+
+
+def test_every_figure_of_a_model_is_drawn_to_one_depth(tmp_path):
+    """A basement at 61 m under a 50 m depth of investigation: the curve's
+    panel ran to 75 m and the layer column stopped at 50 m, dropping it."""
+    import matplotlib.pyplot as plt
+
+    from groundwater.ves.plots import (
+        model_depth_m,
+        plot_model_pseudosection,
+        plot_sounding_curve,
+    )
+
+    soundings, interps = _stations([("VES 1", _E, _N, 70.0, [320, 60, 4200], [2.5, 58.5])])
+    model, doi = interps[0].model, interps[0].investigation_depth_m
+    assert doi == 50.0 and model_depth_m(model, doi) == pytest.approx(75.2)
+    fig = plot_sounding_curve(soundings[0], model, depth_max=doi)
+    panel = fig.axes[1]
+    assert panel.get_ylim()[0] == pytest.approx(75.2)
+    plt.close(fig)
+    fig = plot_model_pseudosection(model, investigation_depth_m=doi)
+    column = fig.axes[0]
+    said = [t.get_text() for t in column.texts]
+    assert column.get_ylim()[0] == pytest.approx(75.2)
+    assert "4,200 ohm-m" in said and "depth of investigation" in said
+    plt.close(fig)

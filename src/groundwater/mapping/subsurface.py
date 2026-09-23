@@ -27,8 +27,9 @@ trend, and somebody will drill on it.
 
 from __future__ import annotations
 
+import copy
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -36,8 +37,9 @@ import numpy as np
 from matplotlib.colors import BoundaryNorm, ListedColormap, LogNorm
 
 from ..config import HouseStyle
+from ..geo import infer_zone_for_sierra_leone
 from ..plotting import figure_context, save_figure
-from .maps import MapPoint, _interpolated_map
+from .maps import MapPoint, _interpolated_map, to_zone
 
 #: The crystalline-basement protective-capacity classes, as
 #: ``groundwater.ves.interpret`` rates them. The breaks are the standard
@@ -62,17 +64,58 @@ SUBSURFACE_CREDIT = (
 # Turning interpretations into mappable points
 # ---------------------------------------------------------------------------
 
-def _positioned(interpretations: list) -> list:
-    return [
+def survey_zone(interpretations: list) -> int | None:
+    """The UTM zone the survey's own figures are drawn in.
+
+    The zone of the first sounding that carries a position, read off its
+    easting; None when none does.
+    """
+    for interp in interpretations:
+        if (getattr(interp, "site_easting", None) is not None
+                and getattr(interp, "site_northing", None) is not None):
+            return infer_zone_for_sierra_leone(float(interp.site_easting))
+    return None
+
+
+def _positioned(interpretations: list, zone: int | None = None) -> list:
+    """The soundings that carry a position, all in one UTM zone.
+
+    A survey straddling the 28N/29N boundary records its soundings in both
+    zones, and every figure here subtracts eastings: three soundings 400 m
+    apart came out as a 660 km suitability map and a "659732 m along"
+    section. Each position is brought into ``zone`` (by default the first
+    positioned sounding's) through its latitude and longitude; a sounding
+    that needed moving is returned as a copy, so the caller's
+    interpretation keeps the position that was recorded.
+    """
+    placed = [
         interp for interp in interpretations
         if getattr(interp, "site_easting", None) is not None
         and getattr(interp, "site_northing", None) is not None
     ]
+    if zone is None:
+        zone = survey_zone(placed)
+    out = []
+    for interp in placed:
+        easting, northing = to_zone(interp.site_easting, interp.site_northing, zone)
+        if (easting, northing) != (float(interp.site_easting), float(interp.site_northing)):
+            interp = copy.copy(interp)
+            interp.site_easting = easting
+            interp.site_northing = northing
+        out.append(interp)
+    return out
+
+
+#: Quantities that are only a lower bound at a sounding whose curve never
+#: reached the base of its water-bearing zone: the zone runs on below the
+#: depth the sounding resolves, so its thickness is a minimum.
+_OPEN_ENDED_MINIMA = ("aquifer_thickness_m",)
 
 
 def subsurface_map_points(
     interpretations: list,
     attribute: str,
+    zone: int | None = None,
 ) -> list[MapPoint]:
     """Build :class:`~groundwater.mapping.maps.MapPoint` list for one quantity.
 
@@ -82,10 +125,13 @@ def subsurface_map_points(
     a position are dropped - they cannot be put on a map - and so are
     those whose value the interpretation left unset, because a sounding
     whose curve never reached basement has no depth to basement and
-    plotting a zero there would draw basement at the surface.
+    plotting a zero there would draw basement at the surface. An aquifer
+    thickness at such a sounding is kept but marked a minimum. The points
+    are in the UTM zone ``zone``, by default the first positioned
+    sounding's.
     """
     points: list[MapPoint] = []
-    for interp in _positioned(interpretations):
+    for interp in _positioned(interpretations, zone):
         value = getattr(interp, attribute, None)
         if value is None or not math.isfinite(float(value)):
             continue
@@ -96,12 +142,15 @@ def subsurface_map_points(
                 northing=float(interp.site_northing),
                 value=float(value),
                 kind="VES point",
+                minimum=(attribute in _OPEN_ENDED_MINIMA
+                         and bool(getattr(interp, "basement_not_resolved", False))),
             )
         )
     return points
 
 
-def bedrock_elevation_points(interpretations: list) -> list[MapPoint]:
+def bedrock_elevation_points(interpretations: list,
+                             zone: int | None = None) -> list[MapPoint]:
     """Bedrock surface elevation: ground level less the depth to basement.
 
     Needs both numbers at the same sounding. A survey that recorded no
@@ -109,7 +158,7 @@ def bedrock_elevation_points(interpretations: list) -> list[MapPoint]:
     sea level, which is what subtracting a depth from nothing amounts to.
     """
     points: list[MapPoint] = []
-    for interp in _positioned(interpretations):
+    for interp in _positioned(interpretations, zone):
         ground = getattr(interp, "site_elevation_m", None)
         depth = getattr(interp, "depth_to_basement_m", None)
         if ground is None or depth is None:
@@ -147,6 +196,7 @@ def iso_resistivity_points(
     soundings: list,
     ab2: float,
     tolerance: float = 1e-6,
+    zone: int | None = None,
 ) -> list[MapPoint]:
     """Measured apparent resistivity at one spacing, at each sounding.
 
@@ -155,13 +205,17 @@ def iso_resistivity_points(
     Where a Schlumberger segment change recorded the same AB/2 twice with
     different MN, the readings are averaged geometrically, which is how
     the two overlapping segments are spliced everywhere else in the
-    toolkit.
+    toolkit. The points are in one UTM zone, as :func:`_positioned` puts
+    the soundings.
     """
     points: list[MapPoint] = []
     for sounding in soundings:
         site = getattr(sounding, "site", None)
         if site is None or site.easting is None or site.northing is None:
             continue
+        if zone is None:
+            zone = infer_zone_for_sierra_leone(float(site.easting))
+        easting, northing = to_zone(site.easting, site.northing, zone)
         hits = [
             float(rho)
             for spacing, rho in zip(sounding.ab2, sounding.rho_app, strict=True)
@@ -174,8 +228,8 @@ def iso_resistivity_points(
         points.append(
             MapPoint(
                 label=sounding.sounding_id or "VES",
-                easting=float(site.easting),
-                northing=float(site.northing),
+                easting=easting,
+                northing=northing,
                 value=value,
                 kind="VES point",
             )
@@ -183,14 +237,57 @@ def iso_resistivity_points(
     return points
 
 
-def _require_points(points: list[MapPoint], what: str, need: int = 3) -> None:
-    if len(points) < need:
-        raise ValueError(
-            f"{'an' if what[:1] in 'aeiou' else 'a'} {what} needs at least "
-            f"{need} soundings that carry both a "
-            f"position and the value; {len(points)} do. Record the GPS "
-            "position of every sounding on the field sheet."
-        )
+def _require_points(
+    points: list[MapPoint],
+    what: str,
+    need: int = 3,
+    interpretations: list | None = None,
+    lacking: str = "",
+) -> None:
+    """Refuse a map with too few points, naming what is actually missing.
+
+    The reason used to be the same whatever the shortfall - "record the
+    GPS position of every sounding" - which sent the Rokel reader looking
+    for positions both soundings carried, when what they lacked was a
+    basement the curves never reached. Given the interpretations, the
+    shortfall is split into its causes: the soundings with no position,
+    and ``lacking``, the caller's sentence for the positioned soundings
+    that have no value.
+    """
+    if len(points) >= need:
+        return
+    reason = (
+        f"{'an' if what[:1] in 'aeiou' else 'a'} {what} needs at least "
+        f"{need} soundings that carry both a position and the value; "
+        f"{len(points)} do."
+    )
+    if interpretations is None:
+        reason += " Record the GPS position of every sounding on the field sheet."
+    else:
+        total = len(interpretations)
+        placed = len(_positioned(interpretations))
+        if placed < total:
+            reason += (
+                f" {total - placed} of {total} soundings "
+                f"{'carries' if total - placed == 1 else 'carry'} no recorded "
+                "position: record the GPS position of every sounding on the "
+                "field sheet."
+            )
+        if lacking:
+            reason += " " + lacking
+    raise ValueError(reason)
+
+
+def _unresolved_basement(interpretations: list, quantity: str) -> str:
+    """The positioned soundings with no basement, and what that costs a map."""
+    placed = _positioned(interpretations)
+    missing = sum(1 for i in placed if getattr(i, "depth_to_basement_m", None) is None)
+    if not missing:
+        return ""
+    return (
+        f"{missing} of {len(placed)} positioned soundings did not reach "
+        f"basement within the depth they resolve, so they have no {quantity}."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -210,8 +307,9 @@ def depth_to_bedrock_map(
     interpretations rather than from a hand-assembled point list, so the
     Maps page can draw it without the caller re-deriving anything.
     """
-    points = subsurface_map_points(interpretations, "depth_to_basement_m")
-    _require_points(points, "depth to bedrock map")
+    points = subsurface_map_points(interpretations, "depth_to_basement_m", zone)
+    _require_points(points, "depth to bedrock map", 3, interpretations,
+                    _unresolved_basement(interpretations, "depth to bedrock"))
     return _interpolated_map(
         points, zone, title=title, cbar_label="Depth to bedrock (m)",
         path=path, style=style, log_scale=False, cmap="YlOrBr",
@@ -225,9 +323,24 @@ def aquifer_thickness_map(
     style: HouseStyle | None = None,
     title: str = "Interpreted aquifer thickness",
 ):
-    """Saturated weathered and fractured thickness, the yield's raw material."""
-    points = subsurface_map_points(interpretations, "aquifer_thickness_m")
-    _require_points(points, "aquifer thickness map")
+    """Saturated weathered and fractured thickness, the yield's raw material.
+
+    At a sounding that never reached the base of its water-bearing zone
+    the thickness is a minimum, and the point is labelled "at least". A
+    survey where every thickness is a minimum gets no map: contours
+    through lower bounds were drawn as though they were the thickness, and
+    a reader reads the colour, not the footnote.
+    """
+    points = subsurface_map_points(interpretations, "aquifer_thickness_m", zone)
+    _require_points(points, "aquifer thickness map", 3, interpretations)
+    if all(p.minimum for p in points):
+        raise ValueError(
+            f"the water-bearing zone at every one of the {len(points)} "
+            "positioned soundings continues below the depth the sounding "
+            "resolves, so each thickness is only a minimum; a surface "
+            "contoured through minima reads as the thickness itself, so none "
+            "is drawn"
+        )
     return _interpolated_map(
         points, zone, title=title,
         cbar_label="Interpreted aquifer thickness (m)",
@@ -249,8 +362,17 @@ def bedrock_elevation_map(
     necessarily the lowest bedrock, and it is the low bedrock - the
     buried valley - that basement groundwater drains towards.
     """
-    points = bedrock_elevation_points(interpretations)
-    _require_points(points, "bedrock elevation map")
+    points = bedrock_elevation_points(interpretations, zone)
+    placed = _positioned(interpretations)
+    unlevelled = sum(1 for i in placed if getattr(i, "site_elevation_m", None) is None)
+    lacking = [
+        _unresolved_basement(interpretations, "bedrock elevation"),
+        (f"{unlevelled} of {len(placed)} positioned soundings "
+         f"{'carries' if unlevelled == 1 else 'carry'} no recorded ground "
+         "elevation to take the depth from." if unlevelled else ""),
+    ]
+    _require_points(points, "bedrock elevation map", 3, interpretations,
+                    " ".join(s for s in lacking if s))
     return _interpolated_map(
         points, zone, title=title,
         cbar_label="Bedrock surface elevation (m)",
@@ -272,8 +394,8 @@ def transverse_resistance_map(
     resistivity of the water is roughly constant across a small area,
     which is the assumption, not a result.
     """
-    points = subsurface_map_points(interpretations, "transverse_resistance_t")
-    _require_points(points, "transverse resistance map")
+    points = subsurface_map_points(interpretations, "transverse_resistance_t", zone)
+    _require_points(points, "transverse resistance map", 3, interpretations)
     return _interpolated_map(
         points, zone, title=title,
         cbar_label="Transverse resistance (ohm m2)",
@@ -301,8 +423,8 @@ def protective_capacity_map(
     a point's colour and the word in its report cannot disagree.
     """
     style = style or HouseStyle()
-    points = subsurface_map_points(interpretations, "protective_conductance_s")
-    _require_points(points, "protective capacity map", need=1)
+    points = subsurface_map_points(interpretations, "protective_conductance_s", zone)
+    _require_points(points, "protective capacity map", 1, interpretations)
 
     bounds = [c[0] for c in PROTECTIVE_CLASSES]
     # the top class is unbounded; contouring needs a finite ceiling, so use
@@ -361,8 +483,12 @@ def protective_capacity_map(
                             + (f"-{hi:g} S)" if math.isfinite(hi) else "+ S)"))
                 for lo, hi, name, colour in PROTECTIVE_CLASSES
             ],
-            loc="lower right", fontsize=7, framealpha=0.95,
-            title="Longitudinal conductance of the cover",
+            # beside the map rather than on it: in the lower right corner it
+            # covered Rokel's B (2), marker and label both, and this map has
+            # no colour bar to share the space with
+            loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0.0,
+            fontsize=7, framealpha=0.95,
+            title="Longitudinal conductance\nof the cover",
             title_fontsize=7.5,
         )
         ax.set_title(title)
@@ -384,6 +510,12 @@ def _protective_colour(conductance: float | None) -> str:
 # ---------------------------------------------------------------------------
 # The traverse: putting the soundings on a line
 # ---------------------------------------------------------------------------
+
+#: Two soundings recorded closer together than this are one station: a
+#: metre is well inside the error of a handheld GPS, and no survey pegs
+#: two soundings that close on purpose.
+COINCIDENT_STATION_M = 1.0
+
 
 @dataclass
 class TraverseProfile:
@@ -409,6 +541,11 @@ class TraverseProfile:
     bearing_deg: float
     eastings: np.ndarray
     northings: np.ndarray
+    #: where each station's sounding sits in the list the profile was built
+    #: from. A figure takes its soundings by this, not by identifier: two
+    #: soundings both called "VES 1" drew the second one's model at both
+    #: stations when the section looked them up by name.
+    indices: list[int] = field(default_factory=list)
 
     @property
     def is_collinear(self) -> bool:
@@ -438,17 +575,49 @@ def traverse_profile(interpretations: list) -> TraverseProfile:
     Soundings are returned in order along the line, which is the order a
     section draws them in. That is not always field order, and where it
     differs, field order was drawing the section back on itself.
+
+    A traverse needs stations at distinct places. Soundings all recorded
+    at one position used to come out as a "0 m along bearing 90 degrees"
+    section, and two sharing a position shrank every column on it to a
+    sliver, one drawn over the other; both are refused, with the reason.
     """
-    positioned = _positioned(interpretations)
+    listed = list(interpretations)
+    positioned = _positioned(listed)
     if len(positioned) < 2:
         raise ValueError(
-            f"{len(positioned)} of {len(interpretations)} soundings carry a "
+            f"{len(positioned)} of {len(listed)} soundings carry a "
             "position. A traverse needs at least two: record the GPS "
             "position of every sounding on the field sheet."
         )
+    # _positioned keeps the order it was given, so its k-th sounding is the
+    # k-th of those in the list that carry a position
+    source = [
+        k for k, i in enumerate(listed)
+        if getattr(i, "site_easting", None) is not None
+        and getattr(i, "site_northing", None) is not None
+    ]
     e = np.array([float(i.site_easting) for i in positioned])
     n = np.array([float(i.site_northing) for i in positioned])
     labels = [i.sounding_id or f"VES {k + 1}" for k, i in enumerate(positioned)]
+    pairs = [(a, b) for a in range(len(positioned)) for b in range(a + 1, len(positioned))]
+    shared = [
+        f"{labels[a]} and {labels[b]}" for a, b in pairs
+        if math.hypot(e[a] - e[b], n[a] - n[b]) < COINCIDENT_STATION_M
+    ]
+    if len(shared) == len(pairs):
+        raise ValueError(
+            f"all {len(positioned)} positioned soundings are recorded at one "
+            "position, so there is no traverse to draw them along; check the "
+            "positions against the field notes"
+        )
+    if shared:
+        raise ValueError(
+            f"{'two soundings share' if len(shared) == 1 else 'soundings share'} "
+            f"one position (less than {COINCIDENT_STATION_M:g} m apart): "
+            f"{'; '.join(shared)}. A traverse has one sounding at each station, "
+            "and a figure along it would draw one on top of the other; check "
+            "the positions against the field notes"
+        )
 
     centre = np.array([e.mean(), n.mean()])
     coords = np.column_stack([e, n]) - centre
@@ -469,7 +638,9 @@ def traverse_profile(interpretations: list) -> TraverseProfile:
     order = np.argsort(along)
     along, across = along[order], across[order]
     chainage = along - along.min()
-    length = float(chainage.max()) or 1.0
+    # never zero: distinct stations more than a metre apart were required
+    # above, and the principal axis runs through the widest spread of them
+    length = float(chainage.max())
     max_offset = float(np.abs(across).max())
     bearing = (math.degrees(math.atan2(direction[0], direction[1]))) % 180.0
     return TraverseProfile(
@@ -481,6 +652,7 @@ def traverse_profile(interpretations: list) -> TraverseProfile:
         bearing_deg=bearing,
         eastings=e[order],
         northings=n[order],
+        indices=[source[k] for k in order],
     )
 
 
@@ -509,17 +681,11 @@ def geoelectric_section_along_traverse(
     """
     from ..ves.plots import plot_geoelectric_section
 
-    profile = traverse_profile(interpretations)
-    by_id = {
-        (interp.sounding_id or f"VES {k + 1}"): interp
-        for k, interp in enumerate(interpretations)
-    }
-    ordered = [by_id[label] for label in profile.labels if label in by_id]
-    if len(ordered) < 2:
-        raise ValueError(
-            "the traverse and the interpretations share fewer than two "
-            "sounding identifiers, so the section cannot be placed"
-        )
+    listed = list(interpretations)
+    profile = traverse_profile(listed)
+    # by position in the list, not by identifier: two soundings both called
+    # "VES 1" drew the second one's model at both stations
+    ordered = [listed[k] for k in profile.indices]
     if title is None:
         title = (
             f"Interpreted geoelectric section, {profile.length_m:.0f} m along "
@@ -580,6 +746,88 @@ def geoelectric_section_along_traverse(
 #: have nothing measured between them: no boundary is correlated across
 #: such a gap, and a survey with no closer pair gets no section at all.
 CORRELATION_REACH_MULTIPLE = 10.0
+
+
+def ground_profile_state(interpretations: list) -> dict:
+    """The ground profile the traverse supports, under the section's rules.
+
+    Every positioned sounding is a station, levelled or not. Only the
+    levelled ones used to be handed over, so a station nobody levelled
+    vanished and the figure's "N of M stations recorded no elevation"
+    could never be printed. The line is not drawn across a gap between
+    levels wider than :data:`CORRELATION_REACH_MULTIPLE` times the depth
+    the soundings resolve, and where every gap is that wide there is no
+    profile at all: Rokel's two levels, 20.7 km apart, were joined by a
+    straight 71 to 68 m slope that the section beside it refuses to draw.
+
+    Returns the stations in order along the line (``labels``,
+    ``chainage_m``, ``elevation_m`` with NaN for a missing level), the
+    widest gap the line crosses (``max_gap_m``), the gaps left open, the
+    number of stations with no level, and ``reason`` when there is no
+    profile to draw; a traverse that cannot be placed raises instead.
+    """
+    listed = list(interpretations)
+    profile = traverse_profile(listed)
+    stations = [listed[k] for k in profile.indices]
+    elevation = [
+        float(i.site_elevation_m)
+        if getattr(i, "site_elevation_m", None) is not None else math.nan
+        for i in stations
+    ]
+    reach = max(
+        (float(getattr(i, "investigation_depth_m", 0.0) or 0.0) for i in stations),
+        default=0.0,
+    )
+    max_gap = reach * CORRELATION_REACH_MULTIPLE if reach > 0 else None
+    levelled = [(label, float(x)) for label, x, z in zip(
+        profile.labels, profile.chainage_m, elevation, strict=True) if math.isfinite(z)]
+    gaps = [(a[0], b[0], b[1] - a[1])
+            for a, b in zip(levelled, levelled[1:], strict=False)]
+    open_gaps = [g for g in gaps if max_gap is not None and g[2] > max_gap]
+    reason = ""
+    if len(levelled) < 2:
+        reason = (
+            f"{len(levelled)} of {len(stations)} stations carry an elevation. A "
+            "ground profile needs at least two levelled points; record them on "
+            "the field sheet."
+        )
+    elif len(open_gaps) == len(gaps):
+        widest = max(g[2] for g in gaps)
+        reason = (
+            f"the levelled stations are {widest:,.0f} m apart, about "
+            f"{widest / reach:.0f} times the {reach:,.0f} m the soundings resolve; "
+            "a ground line between them would be a straight slope across ground "
+            "nobody levelled, so none is drawn"
+        )
+    return {
+        "labels": list(profile.labels),
+        "chainage_m": [float(x) for x in profile.chainage_m],
+        "elevation_m": elevation,
+        "max_gap_m": max_gap,
+        "open_gaps": open_gaps,
+        "missing": sum(1 for z in elevation if not math.isfinite(z)),
+        "levelled": len(levelled),
+        "reason": reason,
+    }
+
+
+def ground_profile_along_traverse(
+    interpretations: list,
+    path: str | Path | None = None,
+    style: HouseStyle | None = None,
+):
+    """The ground surface along the traverse, as :func:`ground_profile_state`
+    finds it: every station, gaps left open, or a ValueError saying why
+    there is no profile to draw."""
+    from .terrain import plot_ground_profile
+
+    state = ground_profile_state(interpretations)
+    if state["reason"]:
+        raise ValueError(state["reason"])
+    return plot_ground_profile(
+        state["chainage_m"], state["elevation_m"], labels=state["labels"],
+        path=path, style=style, max_gap_m=state["max_gap_m"],
+    )
 
 
 def _wide_gaps(profile: "TraverseProfile", reach_m: float) -> list[bool]:
@@ -649,20 +897,38 @@ def apparent_resistivity_pseudosection(
     read as a cross-section.
 
     ``profile`` places the stations; without one the soundings are laid
-    out in the order given, evenly spaced, and the figure says so.
+    out in the order given, evenly spaced, and the figure says so. Where
+    ``soundings`` is the list the profile was built from, each station
+    takes its own sounding by position; otherwise they are matched by
+    identifier.
+
+    A Wenner sounding's spacing is a, not AB/2, and the axis and its note
+    name the spacing the readings were taken with.
     """
     style = style or HouseStyle()
     if len(soundings) < 2:
         raise ValueError(
             f"a pseudo-section needs at least two soundings; got {len(soundings)}"
         )
-    by_id = {s.sounding_id or f"VES {k + 1}": s for k, s in enumerate(soundings)}
+    listed = list(soundings)
+    ids = [s.sounding_id or f"VES {k + 1}" for k, s in enumerate(listed)]
     if profile is not None:
-        ordered = [by_id[label] for label in profile.labels if label in by_id]
-        stations = [
-            float(x) for label, x in zip(profile.labels, profile.chainage_m, strict=True)
-            if label in by_id
-        ]
+        if profile.indices and all(
+            k < len(listed) and ids[k] == label
+            for k, label in zip(profile.indices, profile.labels, strict=True)
+        ):
+            # two soundings both called "VES 1" drew the second one's
+            # readings at both stations when they were looked up by name
+            ordered = [listed[k] for k in profile.indices]
+            stations = [float(x) for x in profile.chainage_m]
+        else:
+            by_id = dict(zip(ids, listed, strict=True))
+            ordered = [by_id[label] for label in profile.labels if label in by_id]
+            stations = [
+                float(x)
+                for label, x in zip(profile.labels, profile.chainage_m, strict=True)
+                if label in by_id
+            ]
         x_label = "Distance along traverse (m)"
         spaced_evenly = False
     else:
@@ -740,10 +1006,14 @@ def apparent_resistivity_pseudosection(
         ax.set_yticks(ticks)
         ax.set_yticklabels([f"{10 ** t:g}" for t in ticks])
         ax.invert_yaxis()
-        ax.set_ylabel("AB/2 (m)")
+        spacing = spacing_name(ordered)
+        ax.set_ylabel(f"{spacing} (m)")
         ax.set_xlabel(x_label)
-        # station names above the frame, clear of the shallowest readings;
-        # the end stations lean inwards so they stay on the page
+        # station names on the top edge of the frame, clear of the
+        # shallowest readings, with the title lifted above them: anchored
+        # to the shallowest reading they sat inside the title on an ordinary
+        # three-station traverse. The end stations lean inwards so they stay
+        # on the page.
         for k, (station, sounding) in enumerate(zip(stations, ordered, strict=True)):
             ha = "center"
             if len(stations) > 1 and k == 0:
@@ -751,15 +1021,13 @@ def apparent_resistivity_pseudosection(
             elif len(stations) > 1 and k == len(stations) - 1:
                 ha = "right"
             ax.annotate(
-                sounding.sounding_id or "VES", xy=(station, np.log10(y.min())),
-                xytext=(0, 4), textcoords="offset points", ha=ha,
+                sounding.sounding_id or "VES", xy=(station, 1.0),
+                xycoords=("data", "axes fraction"),
+                xytext=(0, 3), textcoords="offset points", ha=ha,
                 va="bottom", fontsize=7.5, fontweight="bold",
                 color=style.accent_color, annotation_clip=False,
             )
-        notes = [
-            ("AB/2 is the electrode half-spacing, not a depth: a deeper "
-             "reading is a wider spread, not a measured horizon."),
-        ]
+        notes = [spacing_note(spacing)]
         if uncorrelated:
             notes.append(
                 "No colour is interpolated across "
@@ -783,9 +1051,38 @@ def apparent_resistivity_pseudosection(
             0.5, -0.30, "  ".join(notes), transform=ax.transAxes, ha="center",
             va="top", fontsize=6.8, color="#555555", wrap=True,
         )
-        ax.set_title(title)
+        ax.set_title(title, pad=16)
         ax.grid(True, color="#DDDDDD", lw=0.4)
         fig.tight_layout()
         if path is not None:
             return save_figure(fig, path, style)
         return fig
+
+
+def spacing_name(soundings: list) -> str:
+    """What the soundings' electrode spacing is called: AB/2, a, or both.
+
+    A Wenner sounding is read against the spacing a, and a pseudo-section
+    of Wenner readings labelled "AB/2 (m)" named a spacing nobody set out.
+    """
+    wenner = {
+        str(getattr(s, "array_type", "") or "schlumberger").startswith("wenner")
+        for s in soundings
+    }
+    if wenner == {True}:
+        return "a"
+    if True in wenner:
+        return "AB/2 or a"
+    return "AB/2"
+
+
+def spacing_note(name: str) -> str:
+    """The pseudo-section's warning that its vertical axis is not a depth."""
+    if name == "a":
+        return ("The Wenner spacing a is the electrode spacing, not a depth: a "
+                "deeper reading is a wider spread, not a measured horizon.")
+    if name == "AB/2":
+        return ("AB/2 is the electrode half-spacing, not a depth: a deeper "
+                "reading is a wider spread, not a measured horizon.")
+    return ("AB/2 and a are electrode spacings, not depths: a deeper reading is "
+            "a wider spread, not a measured horizon.")

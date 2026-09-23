@@ -21,21 +21,28 @@ from pathlib import Path
 from typing import Any
 
 from ..config import Config, VESConfig
-from ..geo import infer_zone_for_sierra_leone
 from ..mapping import (
     apparent_resistivity_pseudosection,
     aquifer_thickness_map,
     bedrock_elevation_map,
     depth_to_bedrock_map,
     geoelectric_section_along_traverse,
+    ground_profile_along_traverse,
+    ground_profile_state,
+    points_enclose_an_area,
     protective_capacity_map,
+    spacing_name,
+    subsurface_map_points,
     suitability_map,
     suitability_map_state,
+    survey_zone,
     traverse_profile,
+    unplaced_text,
 )
 from ..models import DataFlag, LayeredModel, VESSounding
 from ..siting import (
     assess_siting,
+    ranking_tie,
     suitability_map_points,
     suitability_verdict,
     tied_leaders,
@@ -52,7 +59,7 @@ from ..ves.interpret import (
     zone_text,
 )
 from ..ves.inversion import InversionResult
-from ..ves.plots import plot_model_pseudosection, plot_sounding_curve
+from ..ves.plots import model_depth_m, plot_model_pseudosection, plot_sounding_curve
 from .citations import GLOSSARY, references_for
 from .context import context_map_figures
 from .docx_utils import ReportBuilder
@@ -201,10 +208,17 @@ def build_geophysical_report(
     # and the recommendations all name the same preferred point because they
     # all read `rank`, and rank is the confidence-weighted suitability.
     rank_interpretations(inputs.interpretations, config=config.ves)
-    # And one tie, by the test the suitability section and its map use: a
-    # document that calls the top two indistinguishable in one section and
-    # names a single preferred point in the summary, the conclusions and the
-    # recommendations contradicts itself.
+    # One scorecard and one tie for the whole document. The study-area map,
+    # the drill-target map, its caption and the text beside them all read
+    # these: each map used to decide the tie again by a rule of its own, and
+    # a report could call two points indistinguishable over a map that
+    # starred one of them.
+    suit = assess_siting(inputs.interpretations, config.ves)
+    tie = ranking_tie(suit, within_points=config.ves.ranking_tie_points)
+    # And the pair that tie names, for the summary, the conclusions and the
+    # recommendations: a document that calls the top two indistinguishable in
+    # one section and names a single preferred point in the others
+    # contradicts itself. Both go through tied_leaders on the same margin.
     tied = _tied_pair(inputs.interpretations, config.ves)
 
     # ---- cover -------------------------------------------------------------
@@ -253,12 +267,14 @@ def build_geophysical_report(
     # laid out in the area rather than having to hold two figures together;
     # the recommended one gets the one marker on a siting map that has to
     # be unmistakable, and the site star is not drawn on top of whichever
-    # sounding happened to be first on the sheet
+    # sounding happened to be first on the sheet. Two points the ranking
+    # cannot separate get no star between them, as on the drill-target map.
     preferred = _preferred(inputs.interpretations)
     survey_overlay = [
         {"lat": s.site.latlon[0], "lon": s.site.latlon[1],
          "label": s.sounding_id,
-         "kind": ("recommended point" if s.sounding_id == preferred.sounding_id
+         "kind": ("recommended point"
+                  if s.sounding_id == preferred.sounding_id and not tie
                   else "VES point")}
         for s in soundings if s.site.latlon is not None
     ]
@@ -266,10 +282,9 @@ def build_geophysical_report(
                                        points=survey_overlay, mark_site=False)
     if context_maps:
         if "study_area" in context_maps:
-            caption = (
-                f"Study area at {community}, with the survey points and its "
-                "location in Sierra Leone inset. The star is the recommended "
-                f"drilling point, {preferred.sounding_id}."
+            caption = _study_area_caption(
+                community, [p["label"] for p in survey_overlay],
+                preferred.sounding_id, [s.sounding_id for s in suit[:2]], bool(tie),
             )
             spread = _survey_spread_km(soundings)
             if spread > 5.0:
@@ -362,21 +377,33 @@ def build_geophysical_report(
             align="justify",
         )
     profile_path = inputs.ground_profile_path
+    profile_caption = GROUND_PROFILE_CAPTION
+    # why the survey's own profile is not drawn, for the "not drawn" list
+    profile_refusal = ""
     if not (profile_path and Path(profile_path).exists()):
-        profile_path = _ground_profile_figure(inputs, community)
+        profile_path, profile_caption, profile_refusal = _ground_profile_figure(
+            inputs, community)
     if profile_path is not None:
-        rb.figure(
-            profile_path,
-            "Ground surface along the survey traverse, from the elevation "
-            "recorded at each sounding.",
-        )
+        rb.figure(profile_path, profile_caption)
 
     rb.paragraph("Sounding positions", bold=True)
     placed = [s for s in soundings if s.site.easting is not None and s.site.northing is not None]
+    # named only where the positions are drawn: the survey point map is a
+    # figure a caller may or may not supply, and a sentence pointing at it
+    # in a report without one sent the reader looking for a figure that is
+    # not there
+    if not placed:
+        plotted_on = ""
+    elif inputs.site_map_path and Path(inputs.site_map_path).exists():
+        plotted_on = ", plotted on the survey point map"
+    elif survey_overlay and "study_area" in (context_maps or {}):
+        plotted_on = ", marked on the study area map"
+    else:
+        plotted_on = ""
     rb.paragraph(
         f"{plural(len(placed), 'sounding')} of {len(soundings)} "
         + ("carry" if len(placed) != 1 else "carries")
-        + " a recorded GPS position, plotted on the survey point map. "
+        + f" a recorded GPS position{plotted_on}. "
         + (inputs.profiling_note if inputs.profiling_note else
            "How the points were chosen on the ground is not recorded on the "
            "field sheets; where a traverse or profiling was run, its notes "
@@ -448,7 +475,8 @@ def build_geophysical_report(
     )
 
     # ---- drill-target suitability --------------------------------------------
-    _suitability_block(rb, inputs, site, config.ves)
+    _suitability_block(rb, inputs, site, config.ves, suit=suit, tie=tie,
+                       profile_refusal=profile_refusal)
 
     # ---- 5 conclusions and recommendations -------------------------------------
     rb.heading("5. Conclusions and Recommendations", 1)
@@ -704,6 +732,49 @@ def _site_slug(site) -> str:
     return safe_slug(getattr(site, "community", "") or "site", "site")
 
 
+def _study_area_caption(
+    community: str,
+    marked: list[str],
+    preferred: str,
+    leaders: list[str],
+    tie: bool,
+) -> str:
+    """The study-area caption, worded from what was overlaid on the map.
+
+    It used to promise the survey points and a star on the recommended
+    point whatever the map held: over a map with no sounding on it, over
+    a recommended point with no recorded position, and over two points the
+    ranking calls indistinguishable, one of which carried the star.
+    ``marked`` are the soundings drawn on the map.
+    """
+    if not marked:
+        return (
+            f"Study area at {community}, with its location in Sierra Leone "
+            "inset. No sounding carries a recorded GPS position, so none is "
+            "marked on it."
+        )
+    caption = (
+        f"Study area at {community}, with the survey points and its location "
+        "in Sierra Leone inset."
+    )
+    if tie and len(leaders) >= 2:
+        caption += (
+            f" {leaders[0]} and {leaders[1]} cannot be told apart on geophysical "
+            "grounds, so neither is starred."
+        )
+        missing = [label for label in leaders[:2] if label not in marked]
+        if missing:
+            caption += " " + unplaced_text(missing, "the map")
+    elif preferred in marked:
+        caption += f" The star is the recommended drilling point, {preferred}."
+    else:
+        caption += (
+            f" The recommended drilling point, {preferred}, has no recorded "
+            "position and is not on the map."
+        )
+    return caption
+
+
 def _survey_spread_km(soundings: list[VESSounding]) -> float:
     """The largest distance between any two positioned soundings, in km."""
     from ..geo import geodesic_distance_m
@@ -785,8 +856,9 @@ def _sounding_block(
         col_widths_cm=widths,
     )
 
-    # curve + model figure, drawn to the depth of investigation, with the
-    # reference interpretation dashed beside the toolkit's where one exists
+    # curve + model figure, drawn to the depth of investigation or to the
+    # deepest fitted interface below it, with the reference interpretation
+    # dashed beside the toolkit's where one exists
     curve_path = figures_dir / f"ves_curve_{safe_id}.png"
     plot_sounding_curve(
         sounding, inversion.model, inversion.rho_calc, inversion.ab2, path=curve_path,
@@ -795,10 +867,11 @@ def _sounding_block(
     )
     rb.figure(
         curve_path,
-        f"Schlumberger array VES curve and model at point {sid}."
+        # the array the table above names: a Wenner table used to be
+        # followed by a figure captioned "Schlumberger array VES curve"
+        f"{array_name} array VES curve and model at point {sid}."
         + (f" The dashed line is the {reference_label}." if reference_model is not None else "")
-        + " The model panel is drawn to the depth of investigation "
-        f"({fmt_num(interp.investigation_depth_m)} m).",
+        + f" The model panel is drawn {_drawn_depth_text(inversion.model, interp)}.",
     )
 
     # model table (IPI2Win layout) with linearised uncertainty factors
@@ -841,19 +914,19 @@ def _sounding_block(
         _reference_model_block(rb, sid, inversion, reference_model, reference_label,
                                sounding.array_type)
 
-    # the interpreted layer column, drawn to the depth of investigation
+    # the interpreted layer column, drawn to the same depth as the model panel
     layer_path = figures_dir / f"ves_layer_section_{safe_id}.png"
     plot_model_pseudosection(
         inversion.model,
         path=layer_path,
-        depth_max=interp.investigation_depth_m or None,
+        investigation_depth_m=interp.investigation_depth_m or None,
         title=f"Layer section at {sid}",
     )
     rb.figure(
         layer_path,
         f"Interpreted one-dimensional layer section at point {sid}: the "
-        "resistivity and thickness of each fitted layer, drawn to the depth "
-        f"of investigation ({fmt_num(interp.investigation_depth_m)} m).",
+        "resistivity and thickness of each fitted layer, drawn "
+        f"{_drawn_depth_text(inversion.model, interp)}.",
     )
 
     # interpretation paragraph
@@ -869,6 +942,26 @@ def _depth_to_top_cell(z) -> str:
     at the surface - while the real half-space row carried no label at all.
     """
     return "0" if z == "0/0" else fmt_num(z)
+
+
+def _drawn_depth_text(model, interp: SiteInterpretation) -> str:
+    """How deep a figure of one sounding's model is drawn, for its caption.
+
+    Both figures of a sounding's model are drawn to
+    :func:`~groundwater.ves.plots.model_depth_m`: the depth of
+    investigation, or deeper where a fitted interface lies below it. The
+    captions used to say "drawn to the depth of investigation (50 m)" over
+    a panel running to 75 m.
+    """
+    doi = float(interp.investigation_depth_m or 0.0)
+    drawn = model_depth_m(model, doi)
+    if drawn <= doi:
+        return f"to the depth of investigation ({fmt_num(doi)} m)"
+    return (
+        f"to {fmt_num(drawn)} m so that the deepest fitted interface stays on "
+        f"it; the red line marks the depth of investigation ({fmt_num(doi)} m), "
+        "below which the readings do not resolve the model"
+    )
 
 
 def _reference_model_block(rb, sid, inversion, reference_model, label,
@@ -917,10 +1010,17 @@ def _reference_model_block(rb, sid, inversion, reference_model, label,
 
 
 def _suitability_block(rb: ReportBuilder, inputs, site,
-                       config: VESConfig | None = None) -> None:
-    """Ranked drill-target suitability scorecard, map and recommendation."""
+                       config: VESConfig | None = None, suit=None,
+                       tie: str | None = None, profile_refusal: str = "") -> None:
+    """Ranked drill-target suitability scorecard, map and recommendation.
+
+    ``suit`` and ``tie`` are the report's one scorecard and tie sentence;
+    ``profile_refusal`` is why the ground profile was not drawn, for the
+    subsurface section's list of what was not.
+    """
     config = config or VESConfig()
-    suit = assess_siting(inputs.interpretations, config)
+    if suit is None:
+        suit = assess_siting(inputs.interpretations, config)
     if not suit:
         return
     rb.heading("Drill-target suitability", 2)
@@ -950,49 +1050,165 @@ def _suitability_block(rb: ReportBuilder, inputs, site,
     # the same rank the rest of the document carries: rank_interpretations()
     # ranks on the weighted suitability, so the table above and the preferred
     # point named everywhere else agree by construction
+    if tie is None:
+        tie = ranking_tie(suit, within_points=config.ranking_tie_points)
     rb.paragraph(suitability_verdict(suit, within_points=config.ranking_tie_points),
                  align="justify")
-    map_points = suitability_map_points(suit)
+    # every point in one zone, the one the rest of the survey's figures are
+    # drawn in, and the tie and the order the text above was written from
+    zone = site.utm_zone or survey_zone(inputs.interpretations)
+    map_points = suitability_map_points(suit, zone)
     if map_points:
-        zone = site.utm_zone or infer_zone_for_sierra_leone(map_points[0].easting)
+        ranking = [s.sounding_id for s in suit]
         smap = Path(inputs.figures_dir) / f"suitability_map_{_site_slug(site)}.png"
         try:
-            suitability_map(map_points, zone, path=smap)
+            suitability_map(map_points, zone, path=smap, tie=bool(tie), ranking=ranking)
         except (ValueError, RuntimeError) as exc:
             rb.paragraph(f"The drill-target map could not be drawn: {exc}")
         else:
-            state = suitability_map_state(map_points)
-            caption = (
-                "Drill-target suitability of the surveyed points, coloured by "
-                "the confidence-weighted score; greener is more suitable."
-            )
-            if state["tie"]:
-                caption += (
-                    " The two highest-ranked points cannot be told apart on "
-                    "geophysical grounds, so neither is starred."
-                )
-            elif state["recommended"]:
-                caption += (
-                    f" The star is the recommended target, {state['recommended']}, "
-                    "with its grid coordinates."
-                )
-            if state["surface"]:
-                caption += (
-                    " The surface between the points is interpolated and blanked "
-                    "outside the ground they enclose."
-                )
-            elif state["n_points"] >= 3:
-                caption += (
-                    " The points lie on one line and enclose no area, so no "
-                    "surface is interpolated between them."
-                )
-            rb.figure(smap, caption)
+            state = suitability_map_state(map_points, tie=bool(tie), ranking=ranking)
+            rb.figure(smap, _suitability_caption(state))
 
     _add_subsurface_figures(rb, inputs.soundings, inputs.interpretations,
-                            inputs, site)
+                            inputs, site, profile_refusal=profile_refusal)
 
 
-def _add_subsurface_figures(rb, soundings, interpretations, inputs, site) -> None:
+def _suitability_caption(state: dict) -> str:
+    """The drill-target map's caption, from the state the map was drawn in.
+
+    Each clause is a claim about the figure: that a star marks the target,
+    or that none does because the two best points cannot be separated or
+    the best has no position; that the colour between the pegs is
+    interpolated ground, or that there is none.
+    """
+    caption = (
+        "Drill-target suitability of the surveyed points, coloured by the "
+        "confidence-weighted score; greener is more suitable. Each point is "
+        "labelled with its rank and weighted score, and with the grade of its "
+        "suitability before the confidence discount, as in the table above."
+    )
+    if state["tie"]:
+        caption += (
+            " The two highest-ranked points cannot be told apart on "
+            "geophysical grounds, so neither is starred."
+        )
+        if state["unplaced"]:
+            caption += " " + unplaced_text(state["unplaced"], "the map")
+    elif state["recommended"]:
+        caption += (
+            f" The star is the recommended target, {state['recommended']}, "
+            "with its grid coordinates."
+        )
+    elif state["unplaced"]:
+        caption += (
+            f" The recommended target, {state['unplaced'][0]}, has no recorded "
+            "position and is not on the map, so no point is starred."
+        )
+    if state["surface"]:
+        caption += (
+            " The surface between the points is interpolated and blanked "
+            "outside the ground they enclose."
+        )
+    elif state["n_points"] >= 3:
+        caption += (
+            " The points lie on one line and enclose no area, so no surface is "
+            "interpolated between them."
+        )
+    return caption
+
+
+def _pseudosection_caption(spacing: str, profile) -> str:
+    """The pseudo-section's caption, naming the spacing it was read against.
+
+    It said "AB/2 is that spacing" over Wenner readings, whose spacing is a.
+    """
+    caption = (
+        "Apparent resistivity along the traverse, as measured. Unlike every "
+        "other section in this report it involves no inversion: each point is "
+        "a reading at the station and electrode spacing it was taken with. "
+        + {"AB/2": "AB/2 is that spacing, not a depth.",
+           "a": "The Wenner spacing a is that spacing, not a depth."}.get(
+            spacing, "AB/2 and a are those spacings, not depths.")
+        + " Colour is interpolated only between stations within reach of each "
+        "other."
+    )
+    if not profile.is_collinear:
+        caption += (
+            f" The soundings sit up to {profile.max_offset_m:.0f} m off the "
+            "profile line, so this section cuts across the survey rather than "
+            "along it."
+        )
+    return caption
+
+
+#: The four subsurface maps: the function, the file stem, the name the "not
+#: drawn" list gives it, and what the map is. What the figure then shows -
+#: a surface or only the values at the points, and which values are minima -
+#: is added by :func:`_subsurface_caption` from the points it was drawn from.
+_SUBSURFACE_MAPS = (
+    (depth_to_bedrock_map, "depth_to_bedrock", "depth to bedrock map",
+     "Depth to bedrock across the surveyed ground, from the layered models."),
+    (aquifer_thickness_map, "aquifer_thickness", "aquifer thickness map",
+     "Interpreted thickness of the weathered and fractured zone - the "
+     "section a borehole is completed in."),
+    (bedrock_elevation_map, "bedrock_elevation", "bedrock elevation map",
+     "The bedrock surface as a landform, from the ground elevation "
+     "recorded at each sounding less its depth to basement. A low in this "
+     "surface is a buried valley, which basement groundwater drains towards."),
+    (protective_capacity_map, "protective_capacity", "protective capacity map",
+     "Protective capacity of the cover over the aquifer, from the "
+     "longitudinal conductance of the overlying layers. It rates how well "
+     "the ground above the aquifer resists downward contamination; it says "
+     "nothing about yield."),
+)
+
+
+def _subsurface_points(key: str, interpretations: list, zone: int) -> list:
+    """The points a subsurface map is drawn from, as the map itself builds them."""
+    from ..mapping import bedrock_elevation_points
+
+    if key == "bedrock_elevation":
+        return bedrock_elevation_points(interpretations, zone)
+    attribute = {
+        "depth_to_bedrock": "depth_to_basement_m",
+        "aquifer_thickness": "aquifer_thickness_m",
+        "protective_capacity": "protective_conductance_s",
+    }[key]
+    return subsurface_map_points(interpretations, attribute, zone)
+
+
+def _subsurface_caption(what: str, points: list) -> tuple[str, bool]:
+    """A subsurface map's caption, written from what the map shows.
+
+    The captions were fixed strings, and "the surface is blanked outside
+    the hull of the soundings" sat under a figure of three collinear
+    soundings that said on its own face "surface not drawn". Returns the
+    caption and whether a surface was drawn.
+    """
+    surface = len(points) >= 3 and points_enclose_an_area(
+        [p.easting for p in points], [p.northing for p in points])
+    caption = what
+    if surface:
+        caption += (" The surface is interpolated between the soundings and "
+                    "blanked outside the ground they enclose.")
+    elif len(points) >= 3:
+        caption += (" The soundings lie on one line and enclose no area, so no "
+                    "surface is drawn; the values are printed at the points.")
+    else:
+        caption += (" With fewer than three soundings no surface is drawn; "
+                    "each point is coloured by its class.")
+    minima = [p.label for p in points if p.minimum]
+    if minima:
+        caption += (
+            f" The value at {', '.join(minima)} is a minimum, labelled "
+            "\"at least\": the sounding did not resolve the base of the zone "
+            "there."
+        )
+    return caption, surface
+
+
+def _add_subsurface_figures(rb, soundings, interpretations, inputs, site,
+                            profile_refusal: str = "") -> None:
     """Maps of the ground under the site, from the soundings themselves.
 
     Everything in this section is this survey's own measurement: the
@@ -1005,58 +1221,43 @@ def _add_subsurface_figures(rb, soundings, interpretations, inputs, site) -> Non
     the report the others: a survey whose curves never reached basement
     has no depth-to-bedrock map but still has an aquifer thickness map,
     and one that recorded no elevations has both but no bedrock surface.
+    ``profile_refusal`` is why the ground profile in section 3 was not
+    drawn, listed here with the rest.
     """
     figures_dir = Path(inputs.figures_dir)
     placed = [i for i in interpretations if i.site_easting is not None
               and i.site_northing is not None]
     if len(placed) < 2 and not inputs.subsurface_figures:
         return
-    zone = site.utm_zone or (
-        infer_zone_for_sierra_leone(placed[0].site_easting) if placed else 28
-    )
+    zone = site.utm_zone or survey_zone(interpretations) or 28
     slug = _site_slug(site)
     made: list[tuple[Path, str]] = []
     # what was not drawn, and why: a figure missing without a word reads as
     # "the survey did not attempt this", and the reason is usually a GPS
     # position nobody recorded, which a reviewer can ask for
     not_drawn: list[str] = []
-    plan = (
-        (depth_to_bedrock_map, "depth_to_bedrock",
-         ("Depth to bedrock across the surveyed ground, from the layered "
-          "models. The surface is blanked outside the hull of the soundings.")),
-        (aquifer_thickness_map, "aquifer_thickness",
-         ("Interpreted thickness of the weathered and fractured zone - the "
-          "section a borehole is completed in.")),
-        (bedrock_elevation_map, "bedrock_elevation",
-         ("The bedrock surface as a landform, from the ground elevation "
-          "recorded at each sounding less its depth to basement. A low in "
-          "this surface is a buried valley, which basement groundwater "
-          "drains towards.")),
-        (protective_capacity_map, "protective_capacity",
-         ("Protective capacity of the cover over the aquifer, from the "
-          "longitudinal conductance of the overlying layers. It rates how "
-          "well the ground above the aquifer resists downward contamination; "
-          "it says nothing about yield.")),
-    )
-    names = {
-        "depth_to_bedrock": "depth to bedrock map",
-        "aquifer_thickness": "aquifer thickness map",
-        "bedrock_elevation": "bedrock elevation map",
-        "protective_capacity": "protective capacity map",
-    }
-    for fn, name, caption in plan:
+    if profile_refusal:
+        not_drawn.append(f"ground profile: {profile_refusal}")
+    any_surface = False
+    for fn, key, name, what in _SUBSURFACE_MAPS:
         try:
-            made.append((fn(placed, zone,
-                            path=figures_dir / f"{name}_{slug}.png"), caption))
+            # every interpretation, positioned or not, so a refusal can say
+            # which soundings lack a position and which lack the value
+            path = fn(interpretations, zone, path=figures_dir / f"{key}_{slug}.png")
         except (ValueError, RuntimeError) as exc:
             # the reason is per-figure and the others still stand; a Qhull
             # error on a straight traverse is a RuntimeError, and it used to
             # walk past this line and take the whole report down
-            not_drawn.append(f"{names[name]}: {exc}")
+            not_drawn.append(f"{name}: {exc}")
+            continue
+        caption, surface = _subsurface_caption(
+            what, _subsurface_points(key, interpretations, zone))
+        any_surface = any_surface or surface
+        made.append((path, caption))
     try:
         made.append((
             geoelectric_section_along_traverse(
-                placed, path=figures_dir / f"geoelectric_section_{slug}.png"),
+                interpretations, path=figures_dir / f"geoelectric_section_{slug}.png"),
             ("Interpreted geoelectric section along the traverse, with the "
              "soundings at their surveyed spacing rather than evenly spaced "
              "and drawn to the depth of investigation. Colour is layer "
@@ -1067,23 +1268,12 @@ def _add_subsurface_figures(rb, soundings, interpretations, inputs, site) -> Non
     except (ValueError, KeyError, RuntimeError) as exc:
         not_drawn.append(f"geoelectric section: {exc}")
     try:
-        profile = traverse_profile(placed)
+        # the soundings are the list the interpretations were made from, so
+        # each station takes its own readings by position
+        profile = traverse_profile(interpretations)
         pseudo = apparent_resistivity_pseudosection(
             soundings, profile, path=figures_dir / f"pseudosection_{slug}.png")
-        caption = (
-            "Apparent resistivity along the traverse, as measured. Unlike "
-            "every other section in this report it involves no inversion: "
-            "each point is a reading at the station and electrode spacing "
-            "it was taken with. AB/2 is that spacing, not a depth. Colour is "
-            "interpolated only between stations within reach of each other."
-        )
-        if not profile.is_collinear:
-            caption += (
-                f" The soundings sit up to {profile.max_offset_m:.0f} m off "
-                "the profile line, so this section cuts across the survey "
-                "rather than along it."
-            )
-        made.append((pseudo, caption))
+        made.append((pseudo, _pseudosection_caption(spacing_name(soundings), profile)))
     except (ValueError, KeyError, RuntimeError) as exc:
         not_drawn.append(f"apparent-resistivity pseudo-section: {exc}")
     made.extend(inputs.subsurface_figures)
@@ -1091,12 +1281,16 @@ def _add_subsurface_figures(rb, soundings, interpretations, inputs, site) -> Non
         return
     rb.heading("Subsurface maps from the survey", 2)
     if made:
+        # the promise about interpolated surfaces is made only where one was
+        # drawn: over three collinear soundings no map in the section has one
         rb.paragraph(
             "The maps in this section are drawn from the soundings themselves "
             "rather than from a national dataset, so they carry the survey's own "
-            "resolution. Each interpolated surface is blanked outside the ground "
-            "the soundings enclose: a contour beyond the last peg is the "
-            "interpolator continuing a trend, and a borehole gets sited on it.",
+            "resolution."
+            + (" Each interpolated surface is blanked outside the ground the "
+               "soundings enclose: a contour beyond the last peg is the "
+               "interpolator continuing a trend, and a borehole gets sited on it."
+               if any_surface else ""),
             align="justify",
         )
     for path, caption in made:
@@ -1110,14 +1304,23 @@ def _add_subsurface_figures(rb, soundings, interpretations, inputs, site) -> Non
         rb.bullets([_sentence(reason) for reason in not_drawn])
 
 
+GROUND_PROFILE_CAPTION = (
+    "Ground surface along the survey traverse, from the elevation recorded at "
+    "each sounding."
+)
+
+
 def _ground_profile_figure(inputs: GeophysicalReportInputs, community: str):
-    """The ground profile the recorded levels support, or None.
+    """The ground profile the recorded levels support.
 
-    Two soundings with positions and elevations are a profile; the report
-    used to leave it undrawn unless a caller drew it first.
+    Returns ``(path, caption, refusal)``. Two positioned soundings with
+    elevations are a profile; fewer is silence, as it always was, because
+    a survey that levelled nothing has no profile to be missing. A
+    traverse that cannot be placed, or levels too far apart to join, is a
+    refusal with its reason, for the report's list of what was not drawn:
+    the profile follows the rules the section follows, where it used to
+    draw the slope across 20.7 km that the section refused.
     """
-    from ..mapping.terrain import plot_ground_profile
-
     levelled = [
         i for i in inputs.interpretations
         if getattr(i, "site_easting", None) is not None
@@ -1125,19 +1328,31 @@ def _ground_profile_figure(inputs: GeophysicalReportInputs, community: str):
         and getattr(i, "site_elevation_m", None) is not None
     ]
     if len(levelled) < 2:
-        return None
+        return None, GROUND_PROFILE_CAPTION, ""
+    path = Path(inputs.figures_dir) / f"ground_profile_{safe_slug(community, 'site')}.png"
     try:
-        profile = traverse_profile(levelled)
-        by_id = {i.sounding_id: i for i in levelled}
-        path = Path(inputs.figures_dir) / f"ground_profile_{safe_slug(community, 'site')}.png"
-        plot_ground_profile(
-            profile.chainage_m,
-            [by_id[label].site_elevation_m for label in profile.labels],
-            labels=list(profile.labels), path=path,
+        state = ground_profile_state(inputs.interpretations)
+        ground_profile_along_traverse(inputs.interpretations, path=path)
+    except (ValueError, RuntimeError) as exc:
+        return None, GROUND_PROFILE_CAPTION, str(exc)
+    return path, _ground_profile_caption(state), ""
+
+
+def _ground_profile_caption(state: dict) -> str:
+    """The profile's caption, saying what the figure leaves out and why."""
+    caption = GROUND_PROFILE_CAPTION
+    if state["missing"]:
+        caption += (
+            f" {state['missing']} of {len(state['labels'])} stations recorded no "
+            "elevation and are not drawn."
         )
-        return path
-    except (ValueError, RuntimeError, KeyError):
-        return None
+    if state["open_gaps"]:
+        caption += (
+            f" The line is not drawn across gaps wider than "
+            f"{state['max_gap_m']:,.0f} m, where nothing was levelled between "
+            "the stations."
+        )
+    return caption
 
 
 def _sentence(text: str) -> str:
