@@ -251,6 +251,9 @@ def build() -> dict:
         "specific_capacity_basis": step_rec.specific_capacity_basis,
         "flags": [[f.level, f.code] for f in step_analysis.flags],
         "type_text": test_type_text(step_q.test_type),
+        # the sheet's own step numbers, not a count of the steps that fitted
+        "step_numbers": [s["step"] for s in step_analysis.step_test.steps]
+                        if step_analysis.step_test else None,
     }
 
     assessed = assess_sample(sample)
@@ -990,6 +993,158 @@ def build() -> dict:
     }
 
     out["pdf_sheet"] = pdf_sheet_reference()
+    out["pumping_cases"] = pumping_cases()
+    return out
+
+
+# ------------------------------------------------- pumping sheets at the edges
+
+def _pumping_case_grids() -> dict[str, list[list]]:
+    """The bundled pumping sheets with the cells rewritten that each
+    hydraulics defect turned on: a recovery line that misses the origin, a
+    level below the pump, a hole too shallow for the intake the test implies,
+    hourly blocks read every few minutes, step times that restart, short
+    steps inside the casing-storage period. Row 4 carries the borehole depth
+    and row 5 the static level and pump setting in column 4 and 1; row 8 the
+    step discharges; row 9 the block headings; readings start on row 11."""
+    from groundwater.ingestion import common
+
+    def grid_of(path):
+        grid, _ = common.load_grid(path)
+        return json.loads(json.dumps(grid, default=str))
+
+    def copy(grid):
+        return json.loads(json.dumps(grid))
+
+    def clear_readings(grid):
+        for row in grid[11:]:
+            for c in range(15):
+                row[c] = None
+
+    timbo = grid_of(DATA / "dr_timbo" / "dr_timbo_constant_test.xlsx")
+    kuntolo = grid_of(DATA / "kuntolo" / "kuntolo_step_test.xlsx")
+    swl = 9.44
+    cases: dict[str, list[list]] = {}
+
+    # the recovery on a clean line meeting t/t' = 1 at 20 m, beside fits that
+    # are all disqualified; then with too few readings for any drawdown fit
+    rejected = copy(timbo)
+    for i, t_prime in enumerate([0, 1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 35, 40, 45,
+                                 50, 55, 60]):
+        rejected[11 + i][13] = (42.26 if t_prime == 0 else round(
+            swl + 20.0 + 9.0 * math.log10((30 + t_prime) / t_prime), 2))
+    cases["rejected_recovery"] = rejected
+    alone = copy(rejected)
+    for row in alone[15:]:
+        row[0] = row[1] = row[2] = None
+    cases["every_fit_rejected"] = alone
+
+    # the recovery line meeting t/t' = 1 below zero
+    negative = copy(timbo)
+    for i, t_prime in enumerate([0, 1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 35, 40, 45,
+                                 50, 55, 60]):
+        negative[11 + i][13] = (42.26 if t_prime == 0 else round(
+            swl - 8.0 + 20.0 * math.log10((30 + t_prime) / t_prime), 2))
+    cases["negative_intercept"] = negative
+
+    # the pump written at 15 m, 27 m above the deepest level recorded
+    below_pump = copy(timbo)
+    below_pump[5][4] = 15
+    cases["level_below_pump"] = below_pump
+
+    # a 45.5 m hole with the pump at 44 m
+    shallow = copy(timbo)
+    shallow[4][4] = 45.5
+    shallow[5][4] = 44
+    cases["shallow_hole"] = shallow
+
+    # four hours in hourly blocks, hours two to four read every 5, 10 and 15
+    # minutes and counted within the hour
+    blocks = copy(timbo)
+    clear_readings(blocks)
+    for b, (start, times) in enumerate([
+            (0, [0, 1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 40, 50, 60]),
+            (60, [5, 10, 15, 20, 25, 30, 40, 50, 60]),
+            (120, [10, 20, 30, 40, 50, 60]), (180, [15, 30, 45, 60])]):
+        for i, t in enumerate(times):
+            blocks[11 + i][3 * b] = t
+            blocks[11 + i][3 * b + 1] = round(
+                swl + (0 if start + t == 0 else 3.0 * math.log10(start + t) + 5.0), 2)
+    cases["blocks_by_heading"] = blocks
+
+    # Kuntolo with its discharges, each step's time counted from its own start
+    restart = copy(kuntolo)
+    restart[8][2], restart[8][5], restart[8][8] = 1.5, 2.2, 3.0
+    for row in restart[11:]:
+        for col, offset in ((3, 60), (6, 120)):
+            if isinstance(row[col], (int, float)):
+                row[col] = row[col] - offset
+    cases["step_restart"] = restart
+
+    # three 50-minute steps, every one inside an 80-minute casing storage
+    short = copy(kuntolo)
+    short[2][4] = 50
+    short[5][1] = 10.0
+    short[8][2], short[8][5], short[8][8] = 1.0, 2.0, 3.0
+    clear_readings(short)
+    rates = [1.0, 2.0, 3.0]
+
+    def drawdown(t):
+        s = 0.0
+        for i, q in enumerate(rates):
+            if t > 50 * i:
+                dq = q - (rates[i - 1] if i else 0.0)
+                s += 2.303 * dq * 24 / (4 * math.pi * 2.5) * math.log10(
+                    2.25 * 2.5 * ((t - 50 * i) / 1440) / (0.01 * 1e-3))
+        q = rates[min(int((t - 1e-9) // 50), 2)]
+        return s + 0.002 * (q * 24) ** 2 / 24
+
+    for k in range(3):
+        for i, t in enumerate([1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 25, 30, 40, 50]):
+            short[11 + i][3 * k] = 50 * k + t
+            short[11 + i][3 * k + 1] = round(10.0 + drawdown(50 * k + t), 2)
+    cases["short_steps"] = short
+    return cases
+
+
+def pumping_cases() -> dict:
+    """What Python makes of each edge sheet, with the sheet itself.
+
+    The grid travels as a JSON string so the browser parses exactly the cells
+    Python parsed; the rest is compared quantity by quantity, the prose word
+    for word."""
+    from groundwater.ingestion.pumping import _assemble
+
+    out = {}
+    for name, grid in _pumping_case_grids().items():
+        test = _assemble(grid, f"{name}.xlsx")
+        analysis = analyse_pumping_test(test)
+        rec = analysis.yield_recommendation
+        out[name] = {
+            "grid": json.dumps(grid),
+            "steps": [[s.step_number, clean(s.discharge_m3_per_h), len(s.time_min),
+                       clean(float(np.min(s.time_min))), clean(float(np.max(s.time_min)))]
+                      for s in test.steps],
+            "duration": clean(test.pumping_duration_min),
+            "source": analysis.transmissivity_source,
+            "qualifies": analysis.adopted_fit()[2],
+            "disqualified": sorted(analysis.disqualified),
+            "invalid": sorted(analysis.invalid_fits),
+            "T": clean(analysis.transmissivity_m2_per_day),
+            "safe": clean(rec.safe_yield_m3_per_h),
+            "range_text": rec.yield_range_text,
+            "pump_depth": clean(rec.pump_installation_depth_m),
+            "confidence": rec.confidence,
+            "confidence_reasons": list(rec.confidence_reasons),
+            "pending_reason": rec.pending_reason,
+            "pump_depth_basis": rec.pump_depth_basis,
+            "envelope_basis": rec.envelope_basis,
+            "rec_pumping_time": clean(analysis.recovery.pumping_time_min)
+                                if analysis.recovery else None,
+            "step_numbers": [s["step"] for s in analysis.step_test.steps]
+                            if analysis.step_test else None,
+            "flags": flags(analysis.flags),
+        }
     return out
 
 

@@ -464,12 +464,20 @@ def _join_constant_blocks(
         # left out (ROADMAP data-ingestion-10).
         note = ""
         if span is not None and first < span[0]:
-            offset = span[0] - first
-            note = (
-                f"block {number} counts its time within its own hour from "
-                f"{first:g} min and its heading '{heading}' covers {span[0]:g} "
-                f"to {span[1]:g} min, so {offset:g} min were added to it"
-            )
+            # The block is placed by its heading alone. The template numbers
+            # the minutes of each block on from the block before ("0-60 min",
+            # "61-120 min"), so the block's own clock reads zero one minute
+            # before its heading starts. Aligning its first reading with the
+            # heading instead put a block read every five minutes, 5 to 60,
+            # at 61 to 116, and a four-hour test ended at 226 minutes.
+            offset = max(span[0] - 1.0, 0.0)
+            if offset:
+                note = (
+                    f"block {number} counts its time within its own hour and its "
+                    f"heading '{heading}' covers {span[0]:g} to {span[1]:g} min, "
+                    f"so {offset:g} min were added to it and its first reading, "
+                    f"at {first:g} min, is minute {first + offset:g} of the test"
+                )
         elif span is not None or end is None or first > end:
             offset = 0.0
         elif float(t.max()) <= end:

@@ -635,6 +635,43 @@ def test_hourly_blocks_that_count_from_one_are_joined_not_interleaved(tmp_path):
     assert "continuing from the last reading before it" in note.message
 
 
+def test_a_block_is_placed_by_its_heading_not_by_its_first_reading(tmp_path):
+    """Hours two to four read every five, ten and fifteen minutes, each block
+    counting within its own hour. Each block was placed by lining its first
+    reading up with its heading, so "61-120 min" read at 5 to 60 was put at
+    61 to 116, the four-hour test ended at 226 minutes, and the analysis
+    called it a short test."""
+    headings = ["Constant discharge 0-60 min", None, None,
+                "Constant discharge 61-120 min", None, None,
+                "Constant discharge 121-180 min", None, None,
+                "Constant discharge 181-240 min", None, None]
+    headers = ["Time (min)", "Water Level (m)", "Drawdown (m)"] * 4
+    times = [[0, 5, 10, 20, 30, 40, 50, 60], [5, 10, 15, 20, 30, 40, 50, 60],
+             [10, 20, 30, 40, 45, 50, 55, 60], [15, 20, 25, 30, 40, 45, 50, 60]]
+    levels = [[9.44 + 0.1 * (60 * b + t) ** 0.5 for t in block]
+              for b, block in enumerate(times)]
+    path = _pumping_workbook(tmp_path / "every_five.xlsx", headings, headers,
+                             _hourly_rows(levels, times))
+
+    test = read_pumping_workbook(path)
+    step = test.steps[0]
+    assert list(step.time_min) == [
+        0, 5, 10, 20, 30, 40, 50, 60,
+        65, 70, 75, 80, 90, 100, 110, 120,
+        130, 140, 150, 160, 165, 170, 175, 180,
+        195, 200, 205, 210, 220, 225, 230, 240,
+    ]
+    assert test.pumping_duration_min == 240
+    joined = next(f for f in test.flags if f.code == "constant_blocks_joined")
+    assert ("heading 'Constant discharge 61-120 min' covers 61 to 120 min, so 60 min "
+            "were added to it and its first reading, at 5 min, is minute 65 of the "
+            "test") in joined.message
+    assert "0 to 240 min" in joined.message
+    from groundwater.hydraulics import analyse_pumping_test
+
+    assert not any(f.code == "short_test" for f in analyse_pumping_test(test).flags)
+
+
 def test_a_block_whose_place_in_the_test_is_unreadable_is_left_out_and_named(tmp_path):
     """A block that starts inside the hour already read and runs past it is
     neither the test's own elapsed time nor a fresh count within the block,

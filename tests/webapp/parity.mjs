@@ -140,6 +140,8 @@ await withPage(async (page, base, consoleErrors) => {
       specific_capacity_basis: stepRec.specific_capacity_basis,
       flags: stepAnalysis.flags.map((f) => [f.level, f.code]),
       type_text: C.testTypeText(stepQ.test_type),
+      step_numbers: stepAnalysis.step_test
+        ? stepAnalysis.step_test.steps.map((s) => s.step) : null,
     };
 
     const assessed = C.assessSample(sample);
@@ -818,7 +820,7 @@ await withPage(async (page, base, consoleErrors) => {
   });
   ['T', 'source', 'qualifies', 'cj', 'theis', 'rec', 'rec_pumping_time', 'rec_equivalent',
     'B', 'C', 'two_point', 'safe', 'pump_depth', 'confidence', 'confidence_reasons',
-    'pump_depth_basis', 'specific_capacity_basis', 'flags', 'type_text',
+    'pump_depth_basis', 'specific_capacity_basis', 'flags', 'type_text', 'step_numbers',
   ].forEach((k) => {
     check(`step analysis: ${k}`, sameValue(parsed.step_analysis[k], R.step_analysis[k]),
       `js ${describe(parsed.step_analysis[k])}\n     py ${describe(R.step_analysis[k])}`);
@@ -1297,6 +1299,59 @@ await withPage(async (page, base, consoleErrors) => {
   check('pdf sheet: the same cells held back for review',
     pdf.uncertain === R.pdf_sheet.uncertain,
     `js ${pdf.uncertain} py ${R.pdf_sheet.uncertain}`);
+
+  // --- pumping sheets at the edges ---
+  // The two sample sheets are the ordinary case. These are the same sheets
+  // with the cells rewritten that each hydraulics defect turned on: a rejected
+  // recovery beside fits that are all disqualified, a level below the pump, a
+  // hole too shallow for the intake, hourly blocks read every few minutes,
+  // step times that restart, short steps inside casing storage. The grid is
+  // Python's, so both engines read the same cells.
+  const edgeCases = await page.evaluate((grids) => {
+    const C = GWT.core;
+    const out = {};
+    Object.keys(grids).forEach((name) => {
+      try {
+        const test = C.pumpingFromGrid(JSON.parse(grids[name]), name + '.xlsx');
+        const a = C.analysePumpingTest(test);
+        const rec = a.yield_recommendation;
+        out[name] = {
+          steps: test.steps.map((s) => [s.step_number, s.discharge_m3_per_h,
+            s.time_min.length, Math.min(...s.time_min), Math.max(...s.time_min)]),
+          duration: test.pumping_duration_min,
+          source: a.transmissivity_source,
+          qualifies: C.adoptedFit(a).qualifies,
+          disqualified: Object.keys(a.disqualified).sort(),
+          invalid: Object.keys(a.invalid_fits || {}).sort(),
+          T: a.transmissivity_m2_per_day,
+          safe: rec.safe_yield_m3_per_h,
+          range_text: a.yield_range_text,
+          pump_depth: rec.pump_installation_depth_m,
+          confidence: rec.confidence,
+          confidence_reasons: rec.confidence_reasons.slice(),
+          pending_reason: rec.pending_reason,
+          pump_depth_basis: rec.pump_depth_basis,
+          envelope_basis: rec.envelope_basis,
+          rec_pumping_time: a.recovery ? a.recovery.pumping_time_min : null,
+          step_numbers: a.step_test ? a.step_test.steps.map((s) => s.step) : null,
+          flags: a.flags.map((f) => [f.level, f.code, f.message]),
+        };
+      } catch (e) { out[name] = { error: String(e && e.message || e) }; }
+    });
+    return out;
+  }, Object.fromEntries(Object.entries(R.pumping_cases).map(([k, v]) => [k, v.grid])));
+  const sameCase = (js, py) => {
+    if (typeof py === 'number' && typeof js === 'number') return close(js, py, 1e-4);
+    return JSON.stringify(js) === JSON.stringify(py);
+  };
+  Object.keys(R.pumping_cases).forEach((name) => {
+    const py = R.pumping_cases[name], js = edgeCases[name] || {};
+    if (js.error) { check(`pumping case ${name}: runs`, false, js.error); return; }
+    Object.keys(py).filter((k) => k !== 'grid').forEach((k) => {
+      check(`pumping case ${name}: ${k}`, sameCase(js[k], py[k]),
+        `js ${JSON.stringify(js[k])}\n     py ${JSON.stringify(py[k])}`);
+    });
+  });
 
   // --- quantities both engines carried but nothing held them to ---
   // Eight groups were collected into the reference and read out of the
