@@ -1098,6 +1098,11 @@ def attach_yield_envelope(
                         yields.append(trial.safe_yield_m3_per_h)
     if not yields:
         return
+    # The corners are the ends of each assumption's range, and they do not
+    # always bracket the central figure: with the levels in doubt the central
+    # yield of 0.0067 m3/h was printed beside a range starting at 0.0068. A
+    # range that leaves out the figure it qualifies reads as a contradiction.
+    yields.append(recommendation.safe_yield_m3_per_h)
     recommendation.safe_yield_low_m3_per_h = min(yields)
     recommendation.safe_yield_high_m3_per_h = max(yields)
     recommendation.envelope_basis = (

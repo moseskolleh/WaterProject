@@ -2590,6 +2590,8 @@
       });
     });
     if (!yields.length) return;
+    // the central figure is inside its own range (see the Python)
+    yields.push(rec.safe_yield_m3_per_h);
     rec.safe_yield_low_m3_per_h = arrMin(yields);
     rec.safe_yield_high_m3_per_h = arrMax(yields);
     rec.envelope_basis = 'Range over transmissivity ' + tRange[0].toFixed(1) + '-' +

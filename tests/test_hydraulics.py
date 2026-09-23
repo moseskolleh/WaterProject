@@ -497,6 +497,9 @@ def test_levels_below_the_pump_make_the_yield_indicative_and_set_no_intake(
     # the intake comes from the usable drawdown, never from the flagged level
     assert yr.pump_installation_depth_m == 15
     assert "42.3 m, is left out" in yr.pump_depth_basis
+    # the envelope's corners did not bracket this yield, and 0.0067 m3/h was
+    # printed beside a range that began at 0.0068
+    assert yr.safe_yield_low_m3_per_h <= yr.safe_yield_m3_per_h <= yr.safe_yield_high_m3_per_h
 
     # a clean long test is established; the same test with one such flag is not
     t_min, s = _theis_series()

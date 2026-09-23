@@ -609,10 +609,10 @@
   "rec": 1.4021310045105808,
   "theis": 0.4690417877974611,
   "safe": 0.39096869216140506,
-  "low": 0.28477100688409884,
-  "high": 1.187620160960069,
+  "low": 0.21984354243082851,
+  "high": 0.7062849368288179,
   "pump_depth": 52,
-  "range_text": "0.39 m3/h (0.28 to 1.2)",
+  "range_text": "0.39 m3/h (0.22 to 0.71)",
   "flags": [
    [
     "warning",
@@ -675,12 +675,13 @@
   "C": 0.00981626157407409,
   "two_point": true,
   "safe": 0.41071772567909975,
-  "pump_depth": 67,
+  "pump_depth": 50,
   "confidence": "indicative",
   "confidence_reasons": [
+   "the recorded water levels are inconsistent with the stated static level, pump setting or borehole depth, so the drawdowns the yield is computed from are as recorded and not to be relied on",
    "no transmissivity method fitted to standard and the Theis recovery value is adopted as the best available"
   ],
-  "pump_depth_basis": "Pump intake at 67 m: the static level 19.3 m plus the 2 m dry-season reserve, the 25.0 m of drawdown the long-term yield is projected to use and 3 m of submergence; the test itself drew the level to 78.5 m at 3 m3/h, which sets the intake, capped 3 m above the 70 m bottom of the borehole. The safety factor is kept on the rate, not spent on raising the pump.",
+  "pump_depth_basis": "Pump intake at 50 m: the static level 19.3 m plus the 2 m dry-season reserve, the 25.0 m of drawdown the long-term yield is projected to use and 3 m of submergence; the deepest level recorded, 78.5 m, is left out because the recorded levels are inconsistent with the stated static level, pump setting or borehole depth. The safety factor is kept on the rate, not spent on raising the pump.",
   "specific_capacity_basis": "3 m3/h over 59.2 m of drawdown after 158 minutes",
   "flags": [
    [
@@ -712,7 +713,11 @@
     "transmissivity_low_confidence"
    ]
   ],
-  "type_text": "step drawdown test with recovery"
+  "type_text": "step drawdown test with recovery",
+  "step_numbers": [
+   2,
+   3
+  ]
  },
  "assessed": {
   "verdict": "The water does not meet the health based guideline value for: Manganese. Treatment or an alternative source is required before the water is used for drinking.",
@@ -1842,7 +1847,7 @@
   "total_screen_m": 19.0,
   "screen_share": 27.1,
   "yield_safe": 0.39,
-  "yield_range": "0.39 m3/h (0.28 to 1.2)",
+  "yield_range": "0.39 m3/h (0.22 to 0.71)",
   "yield_pump_depth": 52.0,
   "methods": [
    [
@@ -2952,7 +2957,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -3022,7 +3027,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -3127,7 +3132,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -3418,7 +3423,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -3488,7 +3493,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -3593,7 +3598,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -3651,7 +3656,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -3721,7 +3726,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -3826,7 +3831,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -3884,7 +3889,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -3954,7 +3959,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4059,7 +4064,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4117,7 +4122,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4187,7 +4192,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4292,7 +4297,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4350,7 +4355,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4420,7 +4425,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4525,7 +4530,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4583,7 +4588,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4655,7 +4660,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4764,7 +4769,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4824,7 +4829,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4894,7 +4899,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -4999,7 +5004,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -5057,7 +5062,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -5127,7 +5132,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -5232,7 +5237,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -5290,7 +5295,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -5360,7 +5365,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -5465,7 +5470,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -5523,7 +5528,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -5593,7 +5598,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -5698,7 +5703,7 @@
      [
       "yield_established",
       "unmet",
-      "The safe yield of 0.39 m3/h (0.28 to 1.2) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
+      "The safe yield of 0.39 m3/h (0.22 to 0.71) is indicative, not established: the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time; the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding; no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available.",
       "",
       ""
      ],
@@ -11093,5 +11098,537 @@
    }
   ],
   "uncertain": 0
+ },
+ "pumping_cases": {
+  "rejected_recovery": {
+   "grid": "[[\"PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)\", null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Community\", \"Dr. Timbo's Residence\", null, \"Date\", \"10/05/2018\", null, \"GPS Coordinate East\", null, null, null, null, null, null, null, null], [\"Client\", \"Dr. Timbo\", null, \"Length of each step (min)\", null, null, \"GPS Coordinate North\", null, null, null, null, null, null, null, null], [\"Test conducted by\", \"WiNGiN\", null, \"Start time\", \"17:14\", null, \"UTM Zone (28N or 29N)\", null, null, null, null, null, null, null, null], [\"Borehole Ref. No.\", \"BH-1\", null, \"Depth of Borehole (m)\", 70, null, \"Elevation (m)\", null, null, null, null, null, null, null, null], [\"Static water level (m)\", 9.44, null, \"Pump setting (m)\", 67, null, null, null, null, null, null, null, null, null, null], [\"Test type (step or constant)\", \"constant\", null, \"District\", \"Western Area Rural\", null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Discharge per step (m3/h)\", \"Step 1 Q\", 2.93, null, \"Step 2 Q\", null, null, \"Step 3 Q\", null, null, \"Step 4 Q\", null, null, null, null], [\"Constant discharge 0-60 min\", null, null, \"Constant discharge 61-120 min\", null, null, \"Constant discharge 121-180 min\", null, null, \"Constant discharge 181-240 min\", null, null, \"Recovery\", null, null], [\"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Recovery (m)\"], [0, 9.44, 0, null, null, null, null, null, null, null, null, null, 0, 42.26, 0], [1, 13.1, 3.66, null, null, null, null, null, null, null, null, null, 1, 42.86, 0.06], [2, 15.5, 2.4, null, null, null, null, null, null, null, null, null, 2, 40.28, 0.42], [3, 17.41, 1.91, null, null, null, null, null, null, null, null, null, 3, 38.81, 0.39], [4, 18.37, 0.96, null, null, null, null, null, null, null, null, null, 4, 37.8, 0.25], [5, 19.34, 0.97, null, null, null, null, null, null, null, null, null, 5, 37.05, 1.47], [10, 27.34, 8, null, null, null, null, null, null, null, null, null, 10, 34.86, 1.29], [15, 30.76, 3.42, null, null, null, null, null, null, null, null, null, 15, 33.73, 1.12], [20, 33.34, 2.58, null, null, null, null, null, null, null, null, null, 20, 33.02, 2], [25, 37.77, 4.43, null, null, null, null, null, null, null, null, null, 25, 32.52, 0.08], [30, 42.26, 4.49, null, null, null, null, null, null, null, null, null, 30, 32.15, 0.6], [null, null, null, null, null, null, null, null, null, null, null, null, 35, 31.86, 0.73], [null, null, null, null, null, null, null, null, null, null, null, null, 40, 31.63, 0.67], [null, null, null, null, null, null, null, null, null, null, null, null, 45, 31.44, 0.63], [null, null, null, null, null, null, null, null, null, null, null, null, 50, 31.28, 0.6], [null, null, null, null, null, null, null, null, null, null, null, null, 55, 31.14, 0.9], [null, null, null, null, null, null, null, null, null, null, null, null, 60, 31.02, 0.67], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Notes: record depth to water in metres below the measuring point. The Drawdown and Recovery columns are the change between successive readings; the analysis recomputes true drawdown from the static water level. Recovery time is minutes since the pump stopped. Record the discharge of every step; results stay provisional until discharge is supplied.\", null, null, null, null, null, null, null, null, null, null, null, null, null, null]]",
+   "steps": [
+    [
+     1,
+     2.93,
+     11,
+     0.0,
+     30.0
+    ]
+   ],
+   "duration": 30.0,
+   "source": "cooper_jacob",
+   "qualifies": false,
+   "disqualified": [
+    "cooper_jacob",
+    "recovery",
+    "theis"
+   ],
+   "invalid": [
+    "recovery",
+    "theis"
+   ],
+   "T": 0.5358830353611498,
+   "safe": 0.39096869216140506,
+   "range_text": "0.39 m3/h (0.22 to 0.71)",
+   "pump_depth": 52,
+   "confidence": "indicative",
+   "confidence_reasons": [
+    "the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time",
+    "the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding",
+    "no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available"
+   ],
+   "pending_reason": "",
+   "pump_depth_basis": "Pump intake at 52 m: the static level 9.4 m plus the 2 m dry-season reserve, the 36.8 m of drawdown the long-term yield is projected to use and 3 m of submergence; the test itself drew the level to 42.3 m at 2.93 m3/h. The safety factor is kept on the rate, not spent on raising the pump.",
+   "envelope_basis": "Range over transmissivity 0.4-0.8 m2/day, storativity 0.0001-0.01, effective radius 0.075-0.15 m and a dry-season decline of 1-4 m. Design to the lower figure where the supply must not fail in a dry year.",
+   "rec_pumping_time": 30.0,
+   "step_numbers": null,
+   "flags": [
+    [
+     "warning",
+     "short_test",
+     "The test pumped for 30 minutes, below the 240 minutes needed to see late-time behaviour; the yield is extrapolated 4.2 log cycles of time to the 365-day design period and should be treated as indicative."
+    ],
+    [
+     "warning",
+     "recovery_intercept",
+     "The recovery line does not pass through the origin: it meets t/t' = 1 at 20.0 m of residual drawdown (60% of the 33.4 m the recovery started from), where Theis recovery requires zero. The residual drawdown is dominated by something the method does not model (casing storage, a changing static level or a wrong pumping time), so its transmissivity of 1.43 m2/day is reported but not adopted."
+    ],
+    [
+     "warning",
+     "casing_storage",
+     "With a 5 inch casing and a specific capacity of 0.089 m3/h per m, casing storage controls the drawdown for the first 117 minutes (Schafer's rule); this test pumped for 30 minutes, entirely inside it. The Cooper-Jacob and Theis fits see the borehole emptying rather than the aquifer. No fit outside that period can be adopted, so the Cooper-Jacob value is adopted only as the best available and the Theis value is reported but not adopted."
+    ],
+    [
+     "warning",
+     "storativity_implausible",
+     "The Theis fit returns a storativity of 0.18; no aquifer stores more than about 0.1 of its volume, and a value this size is the casing being emptied, not the aquifer draining. The fit is not adopted."
+    ],
+    [
+     "warning",
+     "transmissivity_low_confidence",
+     "No method fitted to standard (Theis recovery 1.43 m2/day, the recovery line meets t/t' = 1 at 20.0 m of residual drawdown, 60% of the drawdown the recovery started from, where the method requires zero; Cooper-Jacob 0.54 m2/day, its fitted window 3-30 minutes lies inside the 117-minute casing-storage period; Theis curve fit 0.47 m2/day, the whole 30-minute test lies inside the 117-minute casing-storage period). The Cooper-Jacob value of 0.54 m2/day is adopted as the best available, so the yield rests on a fit that does not meet it."
+    ]
+   ]
+  },
+  "every_fit_rejected": {
+   "grid": "[[\"PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)\", null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Community\", \"Dr. Timbo's Residence\", null, \"Date\", \"10/05/2018\", null, \"GPS Coordinate East\", null, null, null, null, null, null, null, null], [\"Client\", \"Dr. Timbo\", null, \"Length of each step (min)\", null, null, \"GPS Coordinate North\", null, null, null, null, null, null, null, null], [\"Test conducted by\", \"WiNGiN\", null, \"Start time\", \"17:14\", null, \"UTM Zone (28N or 29N)\", null, null, null, null, null, null, null, null], [\"Borehole Ref. No.\", \"BH-1\", null, \"Depth of Borehole (m)\", 70, null, \"Elevation (m)\", null, null, null, null, null, null, null, null], [\"Static water level (m)\", 9.44, null, \"Pump setting (m)\", 67, null, null, null, null, null, null, null, null, null, null], [\"Test type (step or constant)\", \"constant\", null, \"District\", \"Western Area Rural\", null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Discharge per step (m3/h)\", \"Step 1 Q\", 2.93, null, \"Step 2 Q\", null, null, \"Step 3 Q\", null, null, \"Step 4 Q\", null, null, null, null], [\"Constant discharge 0-60 min\", null, null, \"Constant discharge 61-120 min\", null, null, \"Constant discharge 121-180 min\", null, null, \"Constant discharge 181-240 min\", null, null, \"Recovery\", null, null], [\"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Recovery (m)\"], [0, 9.44, 0, null, null, null, null, null, null, null, null, null, 0, 42.26, 0], [1, 13.1, 3.66, null, null, null, null, null, null, null, null, null, 1, 42.86, 0.06], [2, 15.5, 2.4, null, null, null, null, null, null, null, null, null, 2, 40.28, 0.42], [3, 17.41, 1.91, null, null, null, null, null, null, null, null, null, 3, 38.81, 0.39], [null, null, null, null, null, null, null, null, null, null, null, null, 4, 37.8, 0.25], [null, null, null, null, null, null, null, null, null, null, null, null, 5, 37.05, 1.47], [null, null, null, null, null, null, null, null, null, null, null, null, 10, 34.86, 1.29], [null, null, null, null, null, null, null, null, null, null, null, null, 15, 33.73, 1.12], [null, null, null, null, null, null, null, null, null, null, null, null, 20, 33.02, 2], [null, null, null, null, null, null, null, null, null, null, null, null, 25, 32.52, 0.08], [null, null, null, null, null, null, null, null, null, null, null, null, 30, 32.15, 0.6], [null, null, null, null, null, null, null, null, null, null, null, null, 35, 31.86, 0.73], [null, null, null, null, null, null, null, null, null, null, null, null, 40, 31.63, 0.67], [null, null, null, null, null, null, null, null, null, null, null, null, 45, 31.44, 0.63], [null, null, null, null, null, null, null, null, null, null, null, null, 50, 31.28, 0.6], [null, null, null, null, null, null, null, null, null, null, null, null, 55, 31.14, 0.9], [null, null, null, null, null, null, null, null, null, null, null, null, 60, 31.02, 0.67], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null]]",
+   "steps": [
+    [
+     1,
+     2.93,
+     4,
+     0.0,
+     3.0
+    ]
+   ],
+   "duration": 3.0,
+   "source": null,
+   "qualifies": false,
+   "disqualified": [
+    "recovery"
+   ],
+   "invalid": [
+    "recovery"
+   ],
+   "T": null,
+   "safe": null,
+   "range_text": "pending",
+   "pump_depth": null,
+   "confidence": "established",
+   "confidence_reasons": [],
+   "pending_reason": "no fitted transmissivity can be adopted (Theis recovery 0.59 m2/day, the recovery line meets t/t' = 1 at 22.0 m of residual drawdown, 66% of the drawdown the recovery started from, where the method requires zero)",
+   "pump_depth_basis": "",
+   "envelope_basis": "",
+   "rec_pumping_time": 3.0,
+   "step_numbers": null,
+   "flags": [
+    [
+     "warning",
+     "short_test",
+     "The test pumped for 3 minutes, below the 240 minutes needed to see late-time behaviour; the yield is extrapolated 5.2 log cycles of time to the 365-day design period and should be treated as indicative."
+    ],
+    [
+     "warning",
+     "cooper_jacob_failed",
+     "Not enough readings for a Cooper-Jacob fit"
+    ],
+    [
+     "warning",
+     "theis_failed",
+     "Not enough readings for a Theis fit"
+    ],
+    [
+     "warning",
+     "recovery_intercept",
+     "The recovery line does not pass through the origin: it meets t/t' = 1 at 22.0 m of residual drawdown (66% of the 33.4 m the recovery started from), where Theis recovery requires zero. The residual drawdown is dominated by something the method does not model (casing storage, a changing static level or a wrong pumping time), so its transmissivity of 0.59 m2/day is reported but not adopted."
+    ]
+   ]
+  },
+  "negative_intercept": {
+   "grid": "[[\"PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)\", null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Community\", \"Dr. Timbo's Residence\", null, \"Date\", \"10/05/2018\", null, \"GPS Coordinate East\", null, null, null, null, null, null, null, null], [\"Client\", \"Dr. Timbo\", null, \"Length of each step (min)\", null, null, \"GPS Coordinate North\", null, null, null, null, null, null, null, null], [\"Test conducted by\", \"WiNGiN\", null, \"Start time\", \"17:14\", null, \"UTM Zone (28N or 29N)\", null, null, null, null, null, null, null, null], [\"Borehole Ref. No.\", \"BH-1\", null, \"Depth of Borehole (m)\", 70, null, \"Elevation (m)\", null, null, null, null, null, null, null, null], [\"Static water level (m)\", 9.44, null, \"Pump setting (m)\", 67, null, null, null, null, null, null, null, null, null, null], [\"Test type (step or constant)\", \"constant\", null, \"District\", \"Western Area Rural\", null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Discharge per step (m3/h)\", \"Step 1 Q\", 2.93, null, \"Step 2 Q\", null, null, \"Step 3 Q\", null, null, \"Step 4 Q\", null, null, null, null], [\"Constant discharge 0-60 min\", null, null, \"Constant discharge 61-120 min\", null, null, \"Constant discharge 121-180 min\", null, null, \"Constant discharge 181-240 min\", null, null, \"Recovery\", null, null], [\"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Recovery (m)\"], [0, 9.44, 0, null, null, null, null, null, null, null, null, null, 0, 42.26, 0], [1, 13.1, 3.66, null, null, null, null, null, null, null, null, null, 1, 31.27, 0.06], [2, 15.5, 2.4, null, null, null, null, null, null, null, null, null, 2, 25.52, 0.42], [3, 17.41, 1.91, null, null, null, null, null, null, null, null, null, 3, 22.27, 0.39], [4, 18.37, 0.96, null, null, null, null, null, null, null, null, null, 4, 20.03, 0.25], [5, 19.34, 0.97, null, null, null, null, null, null, null, null, null, 5, 18.34, 1.47], [10, 27.34, 8, null, null, null, null, null, null, null, null, null, 10, 13.48, 1.29], [15, 30.76, 3.42, null, null, null, null, null, null, null, null, null, 15, 10.98, 1.12], [20, 33.34, 2.58, null, null, null, null, null, null, null, null, null, 20, 9.4, 2], [25, 37.77, 4.43, null, null, null, null, null, null, null, null, null, 25, 8.29, 0.08], [30, 42.26, 4.49, null, null, null, null, null, null, null, null, null, 30, 7.46, 0.6], [null, null, null, null, null, null, null, null, null, null, null, null, 35, 6.82, 0.73], [null, null, null, null, null, null, null, null, null, null, null, null, 40, 6.3, 0.67], [null, null, null, null, null, null, null, null, null, null, null, null, 45, 5.88, 0.63], [null, null, null, null, null, null, null, null, null, null, null, null, 50, 5.52, 0.6], [null, null, null, null, null, null, null, null, null, null, null, null, 55, 5.22, 0.9], [null, null, null, null, null, null, null, null, null, null, null, null, 60, 4.96, 0.67], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Notes: record depth to water in metres below the measuring point. The Drawdown and Recovery columns are the change between successive readings; the analysis recomputes true drawdown from the static water level. Recovery time is minutes since the pump stopped. Record the discharge of every step; results stay provisional until discharge is supplied.\", null, null, null, null, null, null, null, null, null, null, null, null, null, null]]",
+   "steps": [
+    [
+     1,
+     2.93,
+     11,
+     0.0,
+     30.0
+    ]
+   ],
+   "duration": 30.0,
+   "source": "cooper_jacob",
+   "qualifies": false,
+   "disqualified": [
+    "cooper_jacob",
+    "recovery",
+    "theis"
+   ],
+   "invalid": [
+    "recovery",
+    "theis"
+   ],
+   "T": 0.5358830353611498,
+   "safe": 0.39096869216140506,
+   "range_text": "0.39 m3/h (0.22 to 0.71)",
+   "pump_depth": 52,
+   "confidence": "indicative",
+   "confidence_reasons": [
+    "the recorded water levels are inconsistent with the stated static level, pump setting or borehole depth, so the drawdowns the yield is computed from are as recorded and not to be relied on",
+    "the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time",
+    "the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding",
+    "no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available"
+   ],
+   "pending_reason": "",
+   "pump_depth_basis": "Pump intake at 52 m: the static level 9.4 m plus the 2 m dry-season reserve, the 36.8 m of drawdown the long-term yield is projected to use and 3 m of submergence; the deepest level recorded, 42.3 m, is left out because the recorded levels are inconsistent with the stated static level, pump setting or borehole depth. The safety factor is kept on the rate, not spent on raising the pump.",
+   "envelope_basis": "Range over transmissivity 0.4-0.8 m2/day, storativity 0.0001-0.01, effective radius 0.075-0.15 m and a dry-season decline of 1-4 m. Design to the lower figure where the supply must not fail in a dry year.",
+   "rec_pumping_time": 30.0,
+   "step_numbers": null,
+   "flags": [
+    [
+     "warning",
+     "water_level_above_static",
+     "Some recovery water levels are above the stated static water level, giving negative drawdown. Check the static level and the measuring datum on the sheet."
+    ],
+    [
+     "warning",
+     "short_test",
+     "The test pumped for 30 minutes, below the 240 minutes needed to see late-time behaviour; the yield is extrapolated 4.2 log cycles of time to the 365-day design period and should be treated as indicative."
+    ],
+    [
+     "warning",
+     "recovery_intercept",
+     "The recovery line does not pass through the origin: it meets t/t' = 1 at -8.0 m of residual drawdown (37% of the 21.8 m the recovery started from), where Theis recovery requires zero. The residual drawdown is dominated by something the method does not model (casing storage, a changing static level or a wrong pumping time), so its transmissivity of 0.64 m2/day is reported but not adopted."
+    ],
+    [
+     "warning",
+     "casing_storage",
+     "With a 5 inch casing and a specific capacity of 0.089 m3/h per m, casing storage controls the drawdown for the first 117 minutes (Schafer's rule); this test pumped for 30 minutes, entirely inside it. The Cooper-Jacob and Theis fits see the borehole emptying rather than the aquifer. No fit outside that period can be adopted, so the Cooper-Jacob value is adopted only as the best available and the Theis value is reported but not adopted."
+    ],
+    [
+     "warning",
+     "storativity_implausible",
+     "The Theis fit returns a storativity of 0.18; no aquifer stores more than about 0.1 of its volume, and a value this size is the casing being emptied, not the aquifer draining. The fit is not adopted."
+    ],
+    [
+     "warning",
+     "transmissivity_low_confidence",
+     "No method fitted to standard (Theis recovery 0.64 m2/day, the recovery line meets t/t' = 1 at -8.0 m of residual drawdown, 37% of the drawdown the recovery started from, where the method requires zero; Cooper-Jacob 0.54 m2/day, its fitted window 3-30 minutes lies inside the 117-minute casing-storage period; Theis curve fit 0.47 m2/day, the whole 30-minute test lies inside the 117-minute casing-storage period). The Cooper-Jacob value of 0.54 m2/day is adopted as the best available, so the yield rests on a fit that does not meet it."
+    ]
+   ]
+  },
+  "level_below_pump": {
+   "grid": "[[\"PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)\", null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Community\", \"Dr. Timbo's Residence\", null, \"Date\", \"10/05/2018\", null, \"GPS Coordinate East\", null, null, null, null, null, null, null, null], [\"Client\", \"Dr. Timbo\", null, \"Length of each step (min)\", null, null, \"GPS Coordinate North\", null, null, null, null, null, null, null, null], [\"Test conducted by\", \"WiNGiN\", null, \"Start time\", \"17:14\", null, \"UTM Zone (28N or 29N)\", null, null, null, null, null, null, null, null], [\"Borehole Ref. No.\", \"BH-1\", null, \"Depth of Borehole (m)\", 70, null, \"Elevation (m)\", null, null, null, null, null, null, null, null], [\"Static water level (m)\", 9.44, null, \"Pump setting (m)\", 15, null, null, null, null, null, null, null, null, null, null], [\"Test type (step or constant)\", \"constant\", null, \"District\", \"Western Area Rural\", null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Discharge per step (m3/h)\", \"Step 1 Q\", 2.93, null, \"Step 2 Q\", null, null, \"Step 3 Q\", null, null, \"Step 4 Q\", null, null, null, null], [\"Constant discharge 0-60 min\", null, null, \"Constant discharge 61-120 min\", null, null, \"Constant discharge 121-180 min\", null, null, \"Constant discharge 181-240 min\", null, null, \"Recovery\", null, null], [\"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Recovery (m)\"], [0, 9.44, 0, null, null, null, null, null, null, null, null, null, 0, 42.26, 0], [1, 13.1, 3.66, null, null, null, null, null, null, null, null, null, 1, 42.2, 0.06], [2, 15.5, 2.4, null, null, null, null, null, null, null, null, null, 2, 41.78, 0.42], [3, 17.41, 1.91, null, null, null, null, null, null, null, null, null, 3, 41.39, 0.39], [4, 18.37, 0.96, null, null, null, null, null, null, null, null, null, 4, 41.14, 0.25], [5, 19.34, 0.97, null, null, null, null, null, null, null, null, null, 5, 39.67, 1.47], [10, 27.34, 8, null, null, null, null, null, null, null, null, null, 10, 38.38, 1.29], [15, 30.76, 3.42, null, null, null, null, null, null, null, null, null, 15, 37.26, 1.12], [20, 33.34, 2.58, null, null, null, null, null, null, null, null, null, 20, 35.26, 2], [25, 37.77, 4.43, null, null, null, null, null, null, null, null, null, 25, 35.18, 0.08], [30, 42.26, 4.49, null, null, null, null, null, null, null, null, null, 30, 34.58, 0.6], [null, null, null, null, null, null, null, null, null, null, null, null, 35, 33.85, 0.73], [null, null, null, null, null, null, null, null, null, null, null, null, 40, 33.18, 0.67], [null, null, null, null, null, null, null, null, null, null, null, null, 45, 32.55, 0.63], [null, null, null, null, null, null, null, null, null, null, null, null, 50, 31.95, 0.6], [null, null, null, null, null, null, null, null, null, null, null, null, 55, 31.05, 0.9], [null, null, null, null, null, null, null, null, null, null, null, null, 60, 30.38, 0.67], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Notes: record depth to water in metres below the measuring point. The Drawdown and Recovery columns are the change between successive readings; the analysis recomputes true drawdown from the static water level. Recovery time is minutes since the pump stopped. Record the discharge of every step; results stay provisional until discharge is supplied.\", null, null, null, null, null, null, null, null, null, null, null, null, null, null]]",
+   "steps": [
+    [
+     1,
+     2.93,
+     11,
+     0.0,
+     30.0
+    ]
+   ],
+   "duration": 30.0,
+   "source": "cooper_jacob",
+   "qualifies": false,
+   "disqualified": [
+    "cooper_jacob",
+    "recovery",
+    "theis"
+   ],
+   "invalid": [
+    "recovery",
+    "theis"
+   ],
+   "T": 0.5358830353611498,
+   "safe": 0.006666666666666667,
+   "range_text": "0.0067 m3/h (0.0067 to 0.021)",
+   "pump_depth": 15,
+   "confidence": "indicative",
+   "confidence_reasons": [
+    "the recorded water levels are inconsistent with the stated static level, pump setting or borehole depth, so the drawdowns the yield is computed from are as recorded and not to be relied on",
+    "the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time",
+    "the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding",
+    "no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available"
+   ],
+   "pending_reason": "",
+   "pump_depth_basis": "Pump intake at 15 m: the static level 9.4 m plus the 2 m dry-season reserve, the 0.4 m of drawdown the long-term yield is projected to use and 3 m of submergence; the deepest level recorded, 42.3 m, is left out because the recorded levels are inconsistent with the stated static level, pump setting or borehole depth. The safety factor is kept on the rate, not spent on raising the pump.",
+   "envelope_basis": "Range over transmissivity 0.4-0.8 m2/day, storativity 0.0001-0.01, effective radius 0.075-0.15 m and a dry-season decline of 1-4 m. Design to the lower figure where the supply must not fail in a dry year.",
+   "rec_pumping_time": 30.0,
+   "step_numbers": null,
+   "flags": [
+    [
+     "warning",
+     "level_below_pump",
+     "Recorded water level 42.26 m is below the pump intake at 15 m. A pump cannot draw the level below its own intake, so the pump setting, the levels or the datum on the sheet is wrong; the drawdown figures are as recorded and not to be relied on."
+    ],
+    [
+     "warning",
+     "short_test",
+     "The test pumped for 30 minutes, below the 240 minutes needed to see late-time behaviour; the yield is extrapolated 4.2 log cycles of time to the 365-day design period and should be treated as indicative."
+    ],
+    [
+     "warning",
+     "recovery_intercept",
+     "The recovery line does not pass through the origin: it meets t/t' = 1 at 21.7 m of residual drawdown (66% of the 32.8 m the recovery started from), where Theis recovery requires zero. The residual drawdown is dominated by something the method does not model (casing storage, a changing static level or a wrong pumping time), so its transmissivity of 1.40 m2/day is reported but not adopted."
+    ],
+    [
+     "warning",
+     "casing_storage",
+     "With a 5 inch casing and a specific capacity of 0.089 m3/h per m, casing storage controls the drawdown for the first 117 minutes (Schafer's rule); this test pumped for 30 minutes, entirely inside it. The Cooper-Jacob and Theis fits see the borehole emptying rather than the aquifer. No fit outside that period can be adopted, so the Cooper-Jacob value is adopted only as the best available and the Theis value is reported but not adopted."
+    ],
+    [
+     "warning",
+     "storativity_implausible",
+     "The Theis fit returns a storativity of 0.18; no aquifer stores more than about 0.1 of its volume, and a value this size is the casing being emptied, not the aquifer draining. The fit is not adopted."
+    ],
+    [
+     "warning",
+     "transmissivity_low_confidence",
+     "No method fitted to standard (Theis recovery 1.40 m2/day, the recovery line meets t/t' = 1 at 21.7 m of residual drawdown, 66% of the drawdown the recovery started from, where the method requires zero; Cooper-Jacob 0.54 m2/day, its fitted window 3-30 minutes lies inside the 117-minute casing-storage period; Theis curve fit 0.47 m2/day, the whole 30-minute test lies inside the 117-minute casing-storage period). The Cooper-Jacob value of 0.54 m2/day is adopted as the best available, so the yield rests on a fit that does not meet it."
+    ]
+   ]
+  },
+  "shallow_hole": {
+   "grid": "[[\"PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)\", null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Community\", \"Dr. Timbo's Residence\", null, \"Date\", \"10/05/2018\", null, \"GPS Coordinate East\", null, null, null, null, null, null, null, null], [\"Client\", \"Dr. Timbo\", null, \"Length of each step (min)\", null, null, \"GPS Coordinate North\", null, null, null, null, null, null, null, null], [\"Test conducted by\", \"WiNGiN\", null, \"Start time\", \"17:14\", null, \"UTM Zone (28N or 29N)\", null, null, null, null, null, null, null, null], [\"Borehole Ref. No.\", \"BH-1\", null, \"Depth of Borehole (m)\", 45.5, null, \"Elevation (m)\", null, null, null, null, null, null, null, null], [\"Static water level (m)\", 9.44, null, \"Pump setting (m)\", 44, null, null, null, null, null, null, null, null, null, null], [\"Test type (step or constant)\", \"constant\", null, \"District\", \"Western Area Rural\", null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Discharge per step (m3/h)\", \"Step 1 Q\", 2.93, null, \"Step 2 Q\", null, null, \"Step 3 Q\", null, null, \"Step 4 Q\", null, null, null, null], [\"Constant discharge 0-60 min\", null, null, \"Constant discharge 61-120 min\", null, null, \"Constant discharge 121-180 min\", null, null, \"Constant discharge 181-240 min\", null, null, \"Recovery\", null, null], [\"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Recovery (m)\"], [0, 9.44, 0, null, null, null, null, null, null, null, null, null, 0, 42.26, 0], [1, 13.1, 3.66, null, null, null, null, null, null, null, null, null, 1, 42.2, 0.06], [2, 15.5, 2.4, null, null, null, null, null, null, null, null, null, 2, 41.78, 0.42], [3, 17.41, 1.91, null, null, null, null, null, null, null, null, null, 3, 41.39, 0.39], [4, 18.37, 0.96, null, null, null, null, null, null, null, null, null, 4, 41.14, 0.25], [5, 19.34, 0.97, null, null, null, null, null, null, null, null, null, 5, 39.67, 1.47], [10, 27.34, 8, null, null, null, null, null, null, null, null, null, 10, 38.38, 1.29], [15, 30.76, 3.42, null, null, null, null, null, null, null, null, null, 15, 37.26, 1.12], [20, 33.34, 2.58, null, null, null, null, null, null, null, null, null, 20, 35.26, 2], [25, 37.77, 4.43, null, null, null, null, null, null, null, null, null, 25, 35.18, 0.08], [30, 42.26, 4.49, null, null, null, null, null, null, null, null, null, 30, 34.58, 0.6], [null, null, null, null, null, null, null, null, null, null, null, null, 35, 33.85, 0.73], [null, null, null, null, null, null, null, null, null, null, null, null, 40, 33.18, 0.67], [null, null, null, null, null, null, null, null, null, null, null, null, 45, 32.55, 0.63], [null, null, null, null, null, null, null, null, null, null, null, null, 50, 31.95, 0.6], [null, null, null, null, null, null, null, null, null, null, null, null, 55, 31.05, 0.9], [null, null, null, null, null, null, null, null, null, null, null, null, 60, 30.38, 0.67], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Notes: record depth to water in metres below the measuring point. The Drawdown and Recovery columns are the change between successive readings; the analysis recomputes true drawdown from the static water level. Recovery time is minutes since the pump stopped. Record the discharge of every step; results stay provisional until discharge is supplied.\", null, null, null, null, null, null, null, null, null, null, null, null, null, null]]",
+   "steps": [
+    [
+     1,
+     2.93,
+     11,
+     0.0,
+     30.0
+    ]
+   ],
+   "duration": 30.0,
+   "source": "cooper_jacob",
+   "qualifies": false,
+   "disqualified": [
+    "cooper_jacob",
+    "recovery",
+    "theis"
+   ],
+   "invalid": [
+    "recovery",
+    "theis"
+   ],
+   "T": 0.5358830353611498,
+   "safe": 0.21988269673308855,
+   "range_text": "0.22 m3/h (0.12 to 0.4)",
+   "pump_depth": 42,
+   "confidence": "indicative",
+   "confidence_reasons": [
+    "the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time",
+    "the whole test lies inside the 117-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding",
+    "no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available"
+   ],
+   "pending_reason": "",
+   "pump_depth_basis": "Pump intake at 42 m: the static level 9.4 m plus the 2 m dry-season reserve, the 20.7 m of drawdown the long-term yield is projected to use and 3 m of submergence; the test itself drew the level to 42.3 m at 2.93 m3/h, which sets the intake at the 44 m the test pump was set to, capped 3 m above the 45.5 m bottom of the borehole. The safety factor is kept on the rate, not spent on raising the pump.",
+   "envelope_basis": "Range over transmissivity 0.4-0.8 m2/day, storativity 0.0001-0.01, effective radius 0.075-0.15 m and a dry-season decline of 1-4 m. Design to the lower figure where the supply must not fail in a dry year.",
+   "rec_pumping_time": 30.0,
+   "step_numbers": null,
+   "flags": [
+    [
+     "warning",
+     "short_test",
+     "The test pumped for 30 minutes, below the 240 minutes needed to see late-time behaviour; the yield is extrapolated 4.2 log cycles of time to the 365-day design period and should be treated as indicative."
+    ],
+    [
+     "warning",
+     "recovery_intercept",
+     "The recovery line does not pass through the origin: it meets t/t' = 1 at 21.7 m of residual drawdown (66% of the 32.8 m the recovery started from), where Theis recovery requires zero. The residual drawdown is dominated by something the method does not model (casing storage, a changing static level or a wrong pumping time), so its transmissivity of 1.40 m2/day is reported but not adopted."
+    ],
+    [
+     "warning",
+     "casing_storage",
+     "With a 5 inch casing and a specific capacity of 0.089 m3/h per m, casing storage controls the drawdown for the first 117 minutes (Schafer's rule); this test pumped for 30 minutes, entirely inside it. The Cooper-Jacob and Theis fits see the borehole emptying rather than the aquifer. No fit outside that period can be adopted, so the Cooper-Jacob value is adopted only as the best available and the Theis value is reported but not adopted."
+    ],
+    [
+     "warning",
+     "storativity_implausible",
+     "The Theis fit returns a storativity of 0.18; no aquifer stores more than about 0.1 of its volume, and a value this size is the casing being emptied, not the aquifer draining. The fit is not adopted."
+    ],
+    [
+     "warning",
+     "transmissivity_low_confidence",
+     "No method fitted to standard (Theis recovery 1.40 m2/day, the recovery line meets t/t' = 1 at 21.7 m of residual drawdown, 66% of the drawdown the recovery started from, where the method requires zero; Cooper-Jacob 0.54 m2/day, its fitted window 3-30 minutes lies inside the 117-minute casing-storage period; Theis curve fit 0.47 m2/day, the whole 30-minute test lies inside the 117-minute casing-storage period). The Cooper-Jacob value of 0.54 m2/day is adopted as the best available, so the yield rests on a fit that does not meet it."
+    ]
+   ]
+  },
+  "blocks_by_heading": {
+   "grid": "[[\"PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)\", null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Community\", \"Dr. Timbo's Residence\", null, \"Date\", \"10/05/2018\", null, \"GPS Coordinate East\", null, null, null, null, null, null, null, null], [\"Client\", \"Dr. Timbo\", null, \"Length of each step (min)\", null, null, \"GPS Coordinate North\", null, null, null, null, null, null, null, null], [\"Test conducted by\", \"WiNGiN\", null, \"Start time\", \"17:14\", null, \"UTM Zone (28N or 29N)\", null, null, null, null, null, null, null, null], [\"Borehole Ref. No.\", \"BH-1\", null, \"Depth of Borehole (m)\", 70, null, \"Elevation (m)\", null, null, null, null, null, null, null, null], [\"Static water level (m)\", 9.44, null, \"Pump setting (m)\", 67, null, null, null, null, null, null, null, null, null, null], [\"Test type (step or constant)\", \"constant\", null, \"District\", \"Western Area Rural\", null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Discharge per step (m3/h)\", \"Step 1 Q\", 2.93, null, \"Step 2 Q\", null, null, \"Step 3 Q\", null, null, \"Step 4 Q\", null, null, null, null], [\"Constant discharge 0-60 min\", null, null, \"Constant discharge 61-120 min\", null, null, \"Constant discharge 121-180 min\", null, null, \"Constant discharge 181-240 min\", null, null, \"Recovery\", null, null], [\"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Recovery (m)\"], [0, 9.44, null, 5, 19.88, null, 10, 20.78, null, 15, 21.31, null, null, null, null], [1, 14.44, null, 10, 19.98, null, 20, 20.88, null, 30, 21.41, null, null, null, null], [2, 15.34, null, 15, 20.07, null, 30, 20.97, null, 45, 21.5, null, null, null, null], [3, 15.87, null, 20, 20.15, null, 40, 21.05, null, 60, 21.58, null, null, null, null], [4, 16.25, null, 25, 20.23, null, 50, 21.13, null, null, null, null, null, null, null], [5, 16.54, null, 30, 20.3, null, 60, 21.21, null, null, null, null, null, null, null], [10, 17.44, null, 40, 20.44, null, null, null, null, null, null, null, null, null, null], [15, 17.97, null, 50, 20.56, null, null, null, null, null, null, null, null, null, null], [20, 18.34, null, 60, 20.68, null, null, null, null, null, null, null, null, null, null], [25, 18.63, null, null, null, null, null, null, null, null, null, null, null, null, null], [30, 18.87, null, null, null, null, null, null, null, null, null, null, null, null, null], [40, 19.25, null, null, null, null, null, null, null, null, null, null, null, null, null], [50, 19.54, null, null, null, null, null, null, null, null, null, null, null, null, null], [60, 19.77, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null]]",
+   "steps": [
+    [
+     1,
+     2.93,
+     33,
+     0.0,
+     240.0
+    ]
+   ],
+   "duration": 240.0,
+   "source": "cooper_jacob",
+   "qualifies": true,
+   "disqualified": [],
+   "invalid": [],
+   "T": 4.293568164453823,
+   "safe": 2.8012802178752345,
+   "range_text": "2.8 m3/h (2.3 to 3.4)",
+   "pump_depth": 52,
+   "confidence": "established",
+   "confidence_reasons": [],
+   "pending_reason": "",
+   "pump_depth_basis": "Pump intake at 52 m: the static level 9.4 m plus the 2 m dry-season reserve, the 36.8 m of drawdown the long-term yield is projected to use and 3 m of submergence; the test itself drew the level to 21.6 m at 2.93 m3/h. The safety factor is kept on the rate, not spent on raising the pump.",
+   "envelope_basis": "Range over transmissivity 4.3-4.3 m2/day (spread between the fitted methods), storativity 0.0001-0.01, effective radius 0.075-0.15 m and a dry-season decline of 1-4 m. Design to the lower figure where the supply must not fail in a dry year.",
+   "rec_pumping_time": null,
+   "step_numbers": null,
+   "flags": [
+    [
+     "info",
+     "constant_blocks_joined",
+     "The constant discharge readings are written in 4 blocks: block 2 counts its time within its own hour and its heading 'Constant discharge 61-120 min' covers 61 to 120 min, so 60 min were added to it and its first reading, at 5 min, is minute 65 of the test; block 3 counts its time within its own hour and its heading 'Constant discharge 121-180 min' covers 121 to 180 min, so 120 min were added to it and its first reading, at 10 min, is minute 130 of the test; block 4 counts its time within its own hour and its heading 'Constant discharge 181-240 min' covers 181 to 240 min, so 180 min were added to it and its first reading, at 15 min, is minute 195 of the test. The blocks have been joined into one series running 0 to 240 min."
+    ],
+    [
+     "warning",
+     "casing_storage_window",
+     "The Cooper-Jacob window starts at 25 minutes, inside the 43-minute casing-storage period; the early part of the line is the borehole emptying."
+    ]
+   ]
+  },
+  "step_restart": {
+   "grid": "[[\"PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)\", null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Community\", \"Kuntoloh\", null, \"Date\", \"1st April, 2017\", null, \"GPS Coordinate East\", null, null, null, null, null, null, null, null], [\"Client\", \"ACF\", null, \"Length of each step (min)\", 60, null, \"GPS Coordinate North\", null, null, null, null, null, null, null, null], [\"Test conducted by\", \"WiNGiN\", null, \"Start time\", null, null, \"UTM Zone (28N or 29N)\", null, null, null, null, null, null, null, null], [\"Borehole Ref. No.\", \"KTL-01\", null, \"Depth of Borehole (m)\", 70, null, \"Elevation (m)\", null, null, null, null, null, null, null, null], [\"Static water level (m)\", 19.28, null, \"Pump setting (m)\", 60, null, null, null, null, null, null, null, null, null, null], [\"Test type (step or constant)\", \"step\", null, \"District\", \"Port Loko\", null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Discharge per step (m3/h)\", \"Step 1 Q\", 1.5, null, \"Step 2 Q\", 2.2, null, \"Step 3 Q\", 3.0, null, \"Step 4 Q\", null, null, null, null], [\"Constant discharge 0-60 min\", null, null, \"Constant discharge 61-120 min\", null, null, \"Constant discharge 121-180 min\", null, null, \"Constant discharge 181-240 min\", null, null, \"Recovery\", null, null], [\"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Recovery (m)\"], [1, 10.8, 0, 1, 14.98, 0, 1, 55.12, 0, null, null, null, 1, 67.56, 0], [2, 11.89, 1.09, 2, 14.99, 0.01, 2, 56.88, 1.76, null, null, null, 2, 63.26, 4.3], [3, 12.3, 0.41, 3, 15.31, 0.32, 3, 57.89, 1.01, null, null, null, 3, 60, 3.26], [4, 12.64, 0.34, 4, 15.54, 0.23, 4, 58.84, 0.95, null, null, null, 4, 59.98, 0.02], [5, 12.97, 0.33, 5, 15.65, 0.11, 5, 60.02, 1.18, null, null, null, 5, 59.5, 0.48], [6, 13.23, 0.26, 6, 16.1, 0.45, 6, 61.03, 1.01, null, null, null, 6, 59.32, 0.18], [7, 13.44, 0.21, 7, 16.23, 0.13, 7, 64.25, 3.22, null, null, null, 7, 58.94, 0.38], [8, 13.6, 0.16, 8, 16.34, 0.11, 8, 66.35, 2.1, null, null, null, 8, 58.57, 0.37], [9, 13.7, 0.1, 9, 16.42, 0.08, 9, 68.56, 2.21, null, null, null, 9, 58.14, 0.43], [10, 13.8, 0.1, 10, 16.48, 0.06, 10, 70.26, 1.7, null, null, null, 10, 57.83, 0.31], [12, 13.91, 0.11, 12, 16.6, 0.12, 12, 70.85, 0.59, null, null, null, 12, 57.06, 0.77], [14, 14.06, 0.15, 14, 16.68, 0.08, 14, 71.4, 0.55, null, null, null, 14, 56.28, 0.78], [16, 14.14, 0.08, 16, 16.73, 0.05, 16, 71.99, 0.59, null, null, null, 16, 55.4, 0.88], [18, 14.2, 0.06, 18, 16.8, 0.07, 18, 72.35, 0.36, null, null, null, 18, 54.68, 0.72], [20, 14.27, 0.07, 20, 16.88, 0.08, 20, 72.88, 0.53, null, null, null, 20, 53.94, 0.74], [22, 14.34, 0.07, 22, 16.96, 0.08, 22, 73.45, 0.57, null, null, null, 22, 53.15, 0.79], [24, 14.37, 0.03, 24, 17.03, 0.07, 24, 73.94, 0.49, null, null, null, 24, 52.44, 0.71], [26, 14.4, 0.03, 26, 17.1, 0.07, 26, 74.54, 0.6, null, null, null, 26, 51.91, 0.53], [28, 14.44, 0.04, 28, 17.23, 0.13, 28, 75.05, 0.51, null, null, null, 28, 50.88, 1.03], [30, 14.48, 0.04, 30, 17.4, 0.17, 30, 75.94, 0.89, null, null, null, 30, 50.06, 0.82], [32, 14.51, 0.03, 32, 17.76, 0.36, 32, 76.35, 0.41, null, null, null, 32, 49.31, 0.75], [34, 14.55, 0.04, 34, 18.04, 0.28, 34, 77.11, 0.76, null, null, null, 34, 48.62, 0.69], [36, 14.57, 0.02, 36, 18.59, 0.55, 36, 77.82, 0.71, null, null, null, 36, 47.95, 0.67], [38, 14.61, 0.04, 38, 20.25, 1.66, 38, 78.45, 0.63, null, null, null, 38, 47.22, 0.73], [40, 14.66, 0.05, 40, 21.3, 1.05, null, null, null, null, null, null, 40, 46.28, 0.94], [42, 14.68, 0.02, 42, 21.82, 0.52, null, null, null, null, null, null, 42, 45.62, 0.66], [44, 14.71, 0.03, 44, 23.1, 1.28, null, null, null, null, null, null, 46, 45.12, 0.5], [46, 14.74, 0.03, 46, 28.63, 5.53, null, null, null, null, null, null, 48, 44.16, 0.96], [48, 14.78, 0.04, 48, 34.76, 6.13, null, null, null, null, null, null, 50, 43.56, 0.6], [50, 14.82, 0.04, 50, 40.41, 5.65, null, null, null, null, null, null, 52, 42.99, 0.57], [52, 14.84, 0.02, 52, 41.1, 0.69, null, null, null, null, null, null, 54, 42.02, 0.97], [55, 14.86, 0.02, 55, 46.65, 5.55, null, null, null, null, null, null, 56, 40.87, 1.15], [57, 14.89, 0.03, 57, 48.3, 1.65, null, null, null, null, null, null, 58, 40.16, 0.71], [60, 14.96, 0.07, 60, 52.72, 4.42, null, null, null, null, null, null, 60, 39.49, 0.67], [null, null, null, null, null, null, null, null, null, null, null, null, 65, 37.78, 1.71], [null, null, null, null, null, null, null, null, null, null, null, null, 70, 35.67, 2.11], [null, null, null, null, null, null, null, null, null, null, null, null, 75, 34.17, 1.5], [null, null, null, null, null, null, null, null, null, null, null, null, 80, 30.82, 3.35], [null, null, null, null, null, null, null, null, null, null, null, null, 85, 29.13, 1.69], [null, null, null, null, null, null, null, null, null, null, null, null, 90, 27.66, 1.47], [null, null, null, null, null, null, null, null, null, null, null, null, 95, 23.31, 4.35], [\"Notes: record depth to water in metres below the measuring point. The Drawdown and Recovery columns are the change between successive readings; the analysis recomputes true drawdown from the static water level. Recovery time is minutes since the pump stopped. Record the discharge of every step; results stay provisional until discharge is supplied.\", null, null, null, null, null, null, null, null, null, null, null, 100, 17.18, 6.13], [null, null, null, null, null, null, null, null, null, null, null, null, 105, 13.96, 3.22], [null, null, null, null, null, null, null, null, null, null, null, null, 110, 10.39, 3.57]]",
+   "steps": [
+    [
+     1,
+     1.5,
+     34,
+     1.0,
+     60.0
+    ],
+    [
+     2,
+     2.2,
+     34,
+     1.0,
+     60.0
+    ],
+    [
+     3,
+     3.0,
+     24,
+     1.0,
+     38.0
+    ]
+   ],
+   "duration": 60.0,
+   "source": "recovery",
+   "qualifies": false,
+   "disqualified": [],
+   "invalid": [],
+   "T": 0.5049478950866564,
+   "safe": 0.41071772567909975,
+   "range_text": "0.41 m3/h (0.28 to 0.56)",
+   "pump_depth": 50,
+   "confidence": "indicative",
+   "confidence_reasons": [
+    "the recorded water levels are inconsistent with the stated static level, pump setting or borehole depth, so the drawdowns the yield is computed from are as recorded and not to be relied on",
+    "no transmissivity method fitted to standard and the Theis recovery value is adopted as the best available"
+   ],
+   "pending_reason": "",
+   "pump_depth_basis": "Pump intake at 50 m: the static level 19.3 m plus the 2 m dry-season reserve, the 25.0 m of drawdown the long-term yield is projected to use and 3 m of submergence; the deepest level recorded, 78.5 m, is left out because the recorded levels are inconsistent with the stated static level, pump setting or borehole depth. The safety factor is kept on the rate, not spent on raising the pump.",
+   "envelope_basis": "Range over transmissivity 0.3-0.8 m2/day, storativity 0.0001-0.01, effective radius 0.075-0.15 m and a dry-season decline of 1-4 m. Design to the lower figure where the supply must not fail in a dry year.",
+   "rec_pumping_time": 112.0,
+   "step_numbers": [
+    2,
+    3
+   ],
+   "flags": [
+    [
+     "warning",
+     "water_level_above_static",
+     "Some pumping and recovery water levels are above the stated static water level, giving negative drawdown. Check the static level and the measuring datum on the sheet."
+    ],
+    [
+     "warning",
+     "level_below_borehole",
+     "Recorded water level 78.45 m exceeds the stated borehole depth 70 m; check the sheet."
+    ],
+    [
+     "warning",
+     "level_below_pump",
+     "Recorded water level 78.45 m is below the pump intake at 60 m. A pump cannot draw the level below its own intake, so the pump setting, the levels or the datum on the sheet is wrong; the drawdown figures are as recorded and not to be relied on."
+    ],
+    [
+     "warning",
+     "first_step_above_static",
+     "Step 1 ends at -4.32 m drawdown, at or above the stated static level of 19.28 m, so no drawdown fit is made on it; check the static level and the datum for that step."
+    ],
+    [
+     "warning",
+     "step_time_restarted",
+     "Steps 2 and 3 open at or before the minute the step before each ended, so their times are read as counted from the start of each step rather than from the start of the test: each step's own last reading is taken as its length, and the steps pumped for 158 minutes in all, not the 60 minutes the latest reading gives. Check the times on the sheet."
+    ],
+    [
+     "info",
+     "recovery_equivalent_time",
+     "The recovery is read against an equivalent pumping time of 112 minutes at the last rate of 3 m3/h (the volume pumped over all the steps at that rate), not the 158 minutes the test ran."
+    ],
+    [
+     "warning",
+     "step_negative_drawdown",
+     "Step 1 ends at -4.32 m drawdown, at or above the static level, so it is left out of the Hantush-Bierschenk fit; check the static level and the datum for that step."
+    ],
+    [
+     "warning",
+     "transmissivity_low_confidence",
+     "No method fitted to standard (Theis recovery 0.50 m2/day, R squared 0.671 is below the 0.8 standard). The Theis recovery value of 0.50 m2/day is adopted as the best available, so the yield rests on a fit that does not meet it."
+    ]
+   ]
+  },
+  "short_steps": {
+   "grid": "[[\"PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)\", null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Community\", \"Kuntoloh\", null, \"Date\", \"1st April, 2017\", null, \"GPS Coordinate East\", null, null, null, null, null, null, null, null], [\"Client\", \"ACF\", null, \"Length of each step (min)\", 50, null, \"GPS Coordinate North\", null, null, null, null, null, null, null, null], [\"Test conducted by\", \"WiNGiN\", null, \"Start time\", null, null, \"UTM Zone (28N or 29N)\", null, null, null, null, null, null, null, null], [\"Borehole Ref. No.\", \"KTL-01\", null, \"Depth of Borehole (m)\", 70, null, \"Elevation (m)\", null, null, null, null, null, null, null, null], [\"Static water level (m)\", 10.0, null, \"Pump setting (m)\", 60, null, null, null, null, null, null, null, null, null, null], [\"Test type (step or constant)\", \"step\", null, \"District\", \"Port Loko\", null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Discharge per step (m3/h)\", \"Step 1 Q\", 1.0, null, \"Step 2 Q\", 2.0, null, \"Step 3 Q\", 3.0, null, \"Step 4 Q\", null, null, null, null], [\"Constant discharge 0-60 min\", null, null, \"Constant discharge 61-120 min\", null, null, \"Constant discharge 121-180 min\", null, null, \"Constant discharge 181-240 min\", null, null, \"Recovery\", null, null], [\"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Recovery (m)\"], [1, 14.61, null, 51, 22.32, null, 101, 30.64, null, null, null, null, null, null, null], [2, 15.14, null, 52, 22.86, null, 102, 31.19, null, null, null, null, null, null, null], [3, 15.45, null, 53, 23.18, null, 103, 31.53, null, null, null, null, null, null, null], [4, 15.67, null, 54, 23.42, null, 104, 31.77, null, null, null, null, null, null, null], [5, 15.84, null, 55, 23.6, null, 105, 31.96, null, null, null, null, null, null, null], [6, 15.98, null, 56, 23.76, null, 106, 32.12, null, null, null, null, null, null, null], [8, 16.2, null, 58, 24.0, null, 108, 32.38, null, null, null, null, null, null, null], [10, 16.37, null, 60, 24.2, null, 110, 32.59, null, null, null, null, null, null, null], [15, 16.68, null, 65, 24.57, null, 115, 33.0, null, null, null, null, null, null, null], [20, 16.9, null, 70, 24.85, null, 120, 33.3, null, null, null, null, null, null, null], [25, 17.07, null, 75, 25.07, null, 125, 33.56, null, null, null, null, null, null, null], [30, 17.21, null, 80, 25.26, null, 130, 33.78, null, null, null, null, null, null, null], [40, 17.43, null, 90, 25.57, null, 140, 34.14, null, null, null, null, null, null, null], [50, 17.6, null, 100, 25.82, null, 150, 34.45, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null]]",
+   "steps": [
+    [
+     1,
+     1.0,
+     14,
+     1.0,
+     50.0
+    ],
+    [
+     2,
+     2.0,
+     14,
+     51.0,
+     100.0
+    ],
+    [
+     3,
+     3.0,
+     14,
+     101.0,
+     150.0
+    ]
+   ],
+   "duration": 150.0,
+   "source": "cooper_jacob",
+   "qualifies": false,
+   "disqualified": [
+    "cooper_jacob",
+    "theis"
+   ],
+   "invalid": [],
+   "T": 2.499346578994622,
+   "safe": 1.4007536633575413,
+   "range_text": "1.4 m3/h (1.1 to 1.7)",
+   "pump_depth": 47,
+   "confidence": "indicative",
+   "confidence_reasons": [
+    "each step ran for 50 minutes, below the 60 needed to see late-time behaviour, so the yield is extrapolated 4.0 log cycles of time",
+    "each step lies inside the 80-minute casing-storage period, so its drawdown is the borehole emptying rather than the aquifer responding",
+    "no transmissivity method fitted to standard and the Cooper-Jacob value is adopted as the best available"
+   ],
+   "pending_reason": "",
+   "pump_depth_basis": "Pump intake at 47 m: the static level 10.0 m plus the 2 m dry-season reserve, the 31.5 m of drawdown the long-term yield is projected to use and 3 m of submergence; the test itself drew the level to 34.5 m at 3 m3/h. The safety factor is kept on the rate, not spent on raising the pump.",
+   "envelope_basis": "Range over transmissivity 1.7-3.7 m2/day, storativity 0.0001-0.01, effective radius 0.075-0.15 m and a dry-season decline of 1-4 m. Design to the lower figure where the supply must not fail in a dry year.",
+   "rec_pumping_time": null,
+   "step_numbers": [
+    1,
+    2,
+    3
+   ],
+   "flags": [
+    [
+     "warning",
+     "short_test",
+     "Each step ran for 50 minutes, below the 60 minutes needed to see late-time behaviour; the yield is extrapolated 4.0 log cycles of time to the 365-day design period and should be treated as indicative."
+    ],
+    [
+     "warning",
+     "casing_storage",
+     "With a 5 inch casing and a specific capacity of 0.13 m3/h per m, casing storage controls the drawdown for the first 80 minutes (Schafer's rule); each step pumped for 50 minutes, entirely inside it. The Cooper-Jacob and Theis fits see the borehole emptying rather than the aquifer. No fit outside that period can be adopted, so the Cooper-Jacob value is adopted only as the best available and the Theis value is reported but not adopted."
+    ],
+    [
+     "warning",
+     "transmissivity_low_confidence",
+     "No method fitted to standard (Cooper-Jacob 2.50 m2/day, its fitted window 5-50 minutes lies inside the 80-minute casing-storage period; Theis curve fit 2.50 m2/day, each 50-minute step lies inside the 80-minute casing-storage period). The Cooper-Jacob value of 2.50 m2/day is adopted as the best available, so the yield rests on a fit that does not meet it."
+    ]
+   ]
+  }
  }
 }
