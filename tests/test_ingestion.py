@@ -789,3 +789,43 @@ def test_a_block_that_was_left_out_is_not_also_reported_as_joined(tmp_path):
     assert "still starts at 30 min once placed" in dropped.message
     # the block was left out, so nothing says it was joined
     assert not any(f.code == "constant_blocks_joined" for f in test.flags)
+
+
+def test_a_copied_sheet_with_an_unchanged_sounding_number_is_flagged(tmp_path):
+    """A sheet copied for the next point and never renumbered reads as the
+    same point in every table, figure and ranking; the ranking used to give
+    both the second one's weight. The reader now says so."""
+    from openpyxl import load_workbook
+
+    from groundwater.ingestion import read_ves_workbook
+
+    rows = [[1, 1, 0.4, 1165], [2, 2, 0.4, 1193], [3, 3, 0.4, 1303], [4, 5, 0.4, 1500]]
+    path = _ves_workbook(tmp_path / "copied.xlsx", ["No.", "AB/2 (m)", "MN (m)",
+                                                    "Rho (ohm.m)"], rows)
+    wb = load_workbook(path)
+    copy = wb.copy_worksheet(wb["VES 1"])
+    copy.title = "VES 2"
+    wb.save(path)
+
+    first, second = read_ves_workbook(path)
+    assert first.sounding_id == second.sounding_id == "VES 1"
+    assert "duplicate_sounding_id" not in [f.code for f in first.flags]
+    flag = next(f for f in second.flags if f.code == "duplicate_sounding_id")
+    assert flag.level == "warning" and flag.context == "VES 1"
+    assert ("Sheet 'VES 2' carries the sounding number 'VES 1', which sheet 'VES 1' "
+            "already uses.") in flag.message
+
+
+def test_three_readings_at_one_spacing_name_the_pair_that_disagrees(tmp_path):
+    """With three readings at one AB/2 the overlap warning printed the first
+    two, which agreed, and the ratio of the pair it did not print."""
+    from groundwater.ingestion import read_ves_workbook
+
+    path = _ves_workbook(
+        tmp_path / "three.xlsx", ["No.", "AB/2 (m)", "MN (m)", "Rho (ohm.m)"],
+        [[1, 10, 1, 400], [2, 20, 1, 250], [3, 40, 1, 150], [4, 40, 4, 148],
+         [5, 40, 10, 78], [6, 60, 10, 60]],
+    )
+    (sounding,) = read_ves_workbook(path)
+    warning = next(f for f in sounding.flags if f.code == "segment_overlap_discrepancy")
+    assert "AB/2 40 m: 150 and 78 ohm-m (ratio 1.92)" in warning.message

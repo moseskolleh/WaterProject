@@ -205,3 +205,9 @@ def plural(count: int, singular: str, plural_form: str | None = None) -> str:
 def plural_noun(count: int, singular: str, plural_form: str | None = None) -> str:
     """The noun alone, agreeing with a count the sentence already carries."""
     return singular if count == 1 else (plural_form or singular + "s")
+
+
+def and_join(items: list[str]) -> str:
+    """``"a"``, ``"a and b"``, ``"a, b and c"``: a list as a sentence has it."""
+    items = list(items)
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]

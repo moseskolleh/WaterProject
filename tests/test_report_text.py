@@ -251,3 +251,150 @@ def test_the_handover_and_completion_reports_say_what_they_hold(sample_data, tmp
     assert "Status as recorded by the driller" in text
     assert "The record covers 1 h 00 min (17:00 to 18:00)." in text
     assert "provisional" in text.lower()
+
+
+def _tables(path) -> list[list[list[str]]]:
+    return [[[c.text for c in row.cells] for row in t.rows] for t in Document(str(path)).tables]
+
+
+def test_a_tie_is_carried_through_the_whole_report(tmp_path):
+    """Two points 2.8 weighted points apart: the suitability section called
+    them indistinguishable while the summary recommended one, the conclusions
+    selected it "according to the results", and the preference table opened
+    on the 2nd under "in order of preference"."""
+    import numpy as np
+
+    from groundwater.models import LayeredModel, VESSounding
+    from groundwater.reporting import build_geophysical_report
+    from groundwater.reporting.geophysical import GeophysicalReportInputs
+    from groundwater.ves import interpret_model, invert_sounding
+    from groundwater.ves.forward import forward_schlumberger
+
+    ab2 = np.array([1, 1.5, 2, 3, 4, 5, 7, 10, 15, 20, 30, 40, 50, 60, 70, 80.0])
+    soundings, inversions, interps = [], [], []
+    for sid, thickness in (("VES 1", 18.0), ("VES 2", 20.0)):
+        truth = LayeredModel([800, 60, 4000], [4, thickness])
+        s = VESSounding(SiteMetadata(community="Testville", district="Bo"), sid, ab2,
+                        np.full(len(ab2), 1.0), forward_schlumberger(truth, ab2))
+        r = invert_sounding(s)
+        soundings.append(s)
+        inversions.append(r)
+        interps.append(interpret_model(s, r.model))
+    path = build_geophysical_report(
+        GeophysicalReportInputs(soundings=soundings, inversions=inversions,
+                                interpretations=interps, figures_dir=tmp_path),
+        tmp_path / "tie.docx",
+    )
+    text = _text(path)
+    assert "VES 2 is ahead by 2.8 points, within the 3-point margin" in text
+    assert "by name only" not in text
+    assert "is recommended as the preferred drilling location" not in text
+    assert "Points VES 2 and VES 1 cannot be told apart on geophysical grounds" in text
+    assert "Drilling points the survey cannot separate: VES 2 and VES 1." in text
+    assert "is selected as the preferred point" not in text
+    assert "Points VES 2 and VES 1 cannot be separated by the results" in text
+    assert "Drilling should be carried out at point VES 2 or point VES 1" in text
+    preference = next(t for t in _tables(path) if t[0][-1] == "Ranking")
+    assert [(row[1], row[-1]) for row in preference[1:]] == [("VES 2", "=1st"),
+                                                             ("VES 1", "=1st")]
+    assert "The two points marked =1st cannot be told apart" in text
+
+
+def test_the_rokel_report_labels_its_half_space_and_carries_the_sheet_warnings(
+        sample_data, tmp_path):
+    """Every model table labelled layer 1, the surface, as the half-space; the
+    two overlap warnings the Rokel sheets raise never reached Annex A; and
+    the narrative called a boundary known to x/ 3.7 resolved."""
+    from groundwater.ingestion import read_ves_workbook
+    from groundwater.reporting import build_geophysical_report
+    from groundwater.reporting.geophysical import GeophysicalReportInputs
+    from groundwater.ves import interpret_model, invert_sounding
+
+    soundings = read_ves_workbook(sample_data / "rokel" / "rokel_ves.xlsx")
+    inversions = [invert_sounding(s) for s in soundings]
+    interps = [interpret_model(s, r.model) for s, r in zip(soundings, inversions, strict=True)]
+    path = build_geophysical_report(
+        GeophysicalReportInputs(soundings=soundings, inversions=inversions,
+                                interpretations=interps, figures_dir=tmp_path,
+                                include_qa_annex=True),
+        tmp_path / "rokel.docx",
+    )
+    text = _text(path)
+    models = [t for t in _tables(path) if t[0] == ["N", "rho (ohm-m)", "h (m)", "z (m)"]]
+    assert len(models) == 2
+    for table in models:
+        assert table[1][3] == "0"                       # the surface
+        assert table[-1][2] == "half-space"             # the half-space
+        assert sum("half-space" in cell for row in table for cell in row) == 1
+    assert "[WARNING] segment_overlap_discrepancy (A (1)): " in text
+    assert "AB/2 40 m: 156.1 and 78.7 ohm-m (ratio 1.98)" in text
+    assert "[WARNING] segment_overlap_discrepancy (B (2)): " in text
+    assert "The boundary at 1.02 m (x/ 3.7) is poorly resolved" in text
+    assert "The data at A (1) are fitted with a 3 layer model" in text
+    assert "The data at A (1) resolves" not in text
+
+
+def test_models_tried_says_why_a_simpler_model_that_reached_the_target_lost():
+    """"The 3-layer model is the simplest that reaches the 10 percent target"
+    of a 2-layer model at 4.2 percent: the 2-layer model reached it too, and
+    was passed over because the 3-layer one more than halved its misfit."""
+    from types import SimpleNamespace
+
+    from groundwater.models import LayeredModel
+    from groundwater.reporting.geophysical import models_tried_text
+
+    def trials(tried, err):
+        return SimpleNamespace(trials=tried, fit_error_percent=err,
+                               model=LayeredModel([300, 100, 150], [3, 30]))
+
+    assert models_tried_text(trials([(2, 4.2), (3, 0.01)], 0.01)) == (
+        "Models tried: 2 layers, 4.2%; 3 layers, 0.0%. Of these the 2-layer model "
+        "also reaches the 10 percent target, but the 3-layer model more than halves "
+        "its misfit and is preferred.")
+    assert ("the 4-layer model more than halves its misfit, and the 3-layer model is "
+            "the simplest it does not better that far") in models_tried_text(
+               trials([(2, 8.0), (3, 3.5), (4, 2.0)], 3.5))
+    assert models_tried_text(trials([(2, 15.4), (3, 8.0)], 8.0)).endswith(
+        "Of these the 3-layer model is the simplest that reaches the 10 percent target.")
+
+
+def test_the_limitations_describe_a_wenner_survey_in_its_own_terms():
+    """"A Schlumberger sounding ... with AB/2 expanded to 60 m" of a Wenner
+    survey whose spacing a was 60 m, so AB/2 was 90 m."""
+    import numpy as np
+
+    from groundwater.models import LayeredModel, VESSounding
+    from groundwater.reporting.geophysical import _limitations
+    from groundwater.ves import interpret_model
+
+    a = np.array([1, 2, 5, 10, 20, 40, 60.0])
+    wenner = VESSounding(SiteMetadata(), "W 1", a, np.full(len(a), np.nan),
+                         np.full(len(a), 100.0), array_type="wenner")
+    interp = interpret_model(wenner, LayeredModel([600, 40, 3000], [3, 25]))
+    text = " ".join(_limitations([], [interp], soundings=[wenner]))
+    assert ("A Wenner sounding resolves the ground to roughly half its largest "
+            "electrode spacing a") in text
+    assert ("with a expanded to 60 m (AB/2 of 90 m) the depth of investigation here "
+            "is about 30 m") in text
+    assert "Schlumberger" not in text
+
+
+def test_a_depth_cut_back_to_the_depth_of_investigation_reads_as_a_minimum():
+    """A zone resolved to 38 m in a sounding that sees 40 m: the margin below
+    it was cut to 40 m and the recommendation said "about 40 m"."""
+    import numpy as np
+
+    from groundwater.models import LayeredModel, VESSounding
+    from groundwater.reporting.geophysical import _recommendations
+    from groundwater.ves import interpret_model
+
+    ab2 = np.array([1, 2, 5, 10, 20, 40, 80.0])
+    sounding = VESSounding(SiteMetadata(), "S1", ab2, np.full(len(ab2), np.nan),
+                           np.full(len(ab2), 100.0))
+    interp = interpret_model(sounding, LayeredModel([1000, 100, 5000], [5, 33]))
+    interp.rank = 1
+    depth = next(item for item in _recommendations([interp])
+                 if item.startswith("The drilling depth"))
+    assert depth.startswith("The drilling depth should be at least 40 m at point S1")
+    assert ("Where the depth is a minimum, the margin drilled below the deepest water "
+            "zone runs past what the survey resolves") in depth

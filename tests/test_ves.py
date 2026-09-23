@@ -257,7 +257,9 @@ def test_interpretation_and_preference(rokel_ves_a):
 
     rows = drilling_preference_table([interp_a, interp_b])
     ranks = {r["VES Point"]: r["Ranking"] for r in rows}
-    assert sorted(ranks.values()) == ["1st", "2nd"]
+    # the two transcribed models score within the tie margin, so the table
+    # does not rank them 1st and 2nd on a difference the ranking cannot see
+    assert sorted(ranks.values()) == ["=1st", "=1st"]
     assert "Layer resistivity (ohm-m)" in rows[0]
     assert "Apparent Resistivity (Ohm-m)" not in rows[0]
     assert rows[0]["Possible Water Zones (m)"].endswith("+")
@@ -525,3 +527,132 @@ def test_an_array_the_reader_cannot_place_is_named_in_the_flag(tmp_path):
     assert sounding.array_type == "schlumberger"
     assert [f.code for f in sounding.flags] == ["array_type_unrecognised"]
     assert "Dipole-dipole" in sounding.flags[0].message
+
+
+# --- the interpretation stops where the sounding stops seeing ---------------
+
+def _synthetic_interp(sid, rho, h, err=5.0, ab2=(1, 2, 5, 10, 20, 40, 80), rho_app=None,
+                      h_factor=None):
+    ab2 = np.array(ab2, dtype=float)
+    model = LayeredModel(np.array(rho, float), np.array(h, float),
+                         fit_error_percent=err, sounding_id=sid)
+    if h_factor is not None:
+        model.h_uncertainty_factor = np.array(h_factor, float)
+    sounding = VESSounding(
+        site=SiteMetadata(), sounding_id=sid, ab2=ab2, mn=np.full_like(ab2, np.nan),
+        rho_app=np.array(rho_app if rho_app is not None else [100.0] * len(ab2), float),
+    )
+    return interpret_model(sounding, model)
+
+
+def test_nothing_below_the_depth_of_investigation_is_reported_as_resolved():
+    """A sounding to AB/2 80 m sees about 40 m. A weathered zone the model
+    carries from 5 m to 65 m used to be reported as "5 m to 65 m", with
+    basement at 65 m and "drill about 40 m": the zone and the basement came
+    from the model's extrapolation, and only the drilling depth was cut back,
+    silently. A zone wholly below the depth of investigation was reported as
+    a zone, with a depth to bedrock, and ranked as a good target."""
+    from groundwater.siting import assess_siting
+    from groundwater.ves.interpret import drilling_depth_text
+
+    past = _synthetic_interp("past", [1000, 100, 5000], [5, 60])
+    assert past.investigation_depth_m == 40
+    assert past.water_zones == [(5, 40)]
+    assert past.basement_not_resolved and past.drilling_depth_capped
+    assert past.depth_to_basement_m is None
+    assert drilling_depth_text(past) == "at least 40 m"
+    assert "5 m to at least 40 m" in past.narrative
+    assert "depth to bedrock is not resolved within the depth of investigation" in past.narrative
+    flag = next(f for f in past.flags if f.code == "basement_not_resolved")
+    assert "the model puts its base at 65 m" in flag.message
+    assert "half-space" not in flag.message
+
+    below = _synthetic_interp("below", [1000, 1500, 100, 5000], [10, 40, 20],
+                              ab2=(1, 2, 5, 10, 20, 40, 60))
+    assert below.investigation_depth_m == 30
+    assert below.water_zones == [] and below.depth_to_basement_m is None
+    assert ("The water-bearing layer from 50 m lies below the 30 m the sounding "
+            "resolves, so it is not counted as a water zone.") in below.narrative
+    assert assess_siting([below])[0].suitability < 35
+
+    # a zone resolved inside the depth of investigation, whose margin is not
+    margin = _synthetic_interp("margin", [1000, 100, 5000], [5, 33])
+    assert margin.water_zones == [(5, 38)] and margin.depth_to_basement_m == 38
+    assert not margin.basement_not_resolved and margin.drilling_depth_capped
+    assert drilling_depth_text(margin) == "at least 40 m"
+
+
+def test_the_depth_of_investigation_comes_from_the_readings_that_were_fitted():
+    """A last reading recorded as 0 is dropped by the inversion, and the
+    depth of investigation used to count it anyway: 40 m from a sounding
+    whose deepest fitted reading was AB/2 40 m."""
+    interp = _synthetic_interp("zero", [1000, 100], [8],
+                               rho_app=[300, 250, 200, 150, 120, 110, 0])
+    assert interp.max_spacing_m == 40
+    assert interp.investigation_depth_m == 20
+    assert interp.water_zones == [(8, 20)]
+
+
+def test_two_soundings_with_one_id_are_ranked_on_their_own_weights():
+    """A copied sheet with an unchanged Sounding Number gave both soundings
+    the weight of the last one, so a point with no water zone could come
+    first while the suitability table ranked the other."""
+    from groundwater.siting import assess_siting
+    from groundwater.ves.interpret import rank_interpretations
+
+    weak = _synthetic_interp("VES 1", [300, 1500], [30])
+    strong = _synthetic_interp("VES 1", [1000, 100, 5000], [5, 20])
+    ranked = rank_interpretations([weak, strong])
+    assert ranked[0] is strong and strong.rank == 1 and weak.rank == 2
+    suit = assess_siting([weak, strong])
+    assert suit[0].rationale == assess_siting([strong])[0].rationale
+    rows = drilling_preference_table([weak, strong])
+    assert [r["Possible Water Zones (m)"] for r in rows] == ["5-25", "none resolved"]
+
+
+def test_a_poorly_resolved_boundary_is_not_read_as_a_resolved_layer(rokel_ves_a):
+    """"The data at A (1) resolves a 3 layer subsurface" stood a paragraph
+    after the report said its first boundary was known only to x/ 3.7."""
+    soft = _synthetic_interp("A (1)", [1100, 1600, 47], [1.0, 7.0], h_factor=[3.7, 1.4])
+    assert soft.narrative.startswith(
+        "The data at A (1) are fitted with a 3 layer model (")
+    assert ("though the boundary at 1 m is poorly resolved, so the layer count is "
+            "uncertain.") in soft.narrative
+    assert "resolves a 3 layer subsurface" not in soft.narrative
+    firm = _synthetic_interp("A (1)", [1100, 1600, 47], [1.0, 7.0], h_factor=[1.2, 1.4])
+    assert firm.narrative.startswith("The data at A (1) resolves a 3 layer subsurface")
+
+    # the inversion hands its thickness uncertainty on with the model
+    result = invert_sounding(rokel_ves_a)
+    assert np.array_equal(result.model.h_uncertainty_factor, result.h_uncertainty_factor)
+
+
+def test_a_sheet_named_wenner_that_carries_schlumberger_marks_is_warned_about(tmp_path):
+    """A Schlumberger sheet with only its array field changed to "Wenner" was
+    read as Wenner, every spacing divided by 1.5, with nothing but
+    information notes: its MN column and the AB/2 repeated at each MN change
+    are things a Wenner array cannot have."""
+    from groundwater.ingestion.ves import read_ves_csv
+
+    rows = [[1, 1.5, 1.0, 300.0], [2, 3.0, 1.0, 280.0], [3, 6.0, 1.0, 200.0],
+            [4, 6.0, 4.0, 190.0], [5, 15.0, 4.0, 120.0], [6, 30.0, 4.0, 90.0]]
+    path = _ves_sheet(
+        tmp_path / "relabelled.csv",
+        [["Sounding Number", "W 5"], ["Array", "Wenner"]],
+        ["No.", "AB/2 (m)", "MN (m)", "Apparent Resistivity (ohm-m)"], rows,
+    )
+    sounding = read_ves_csv(path)
+    assert sounding.array_type == "wenner"
+    flag = next(f for f in sounding.flags if f.code == "array_type_wenner_contradicted")
+    assert flag.level == "warning"
+    assert "its MN column holds spacings other than a and it repeats 1 spacing" in flag.message
+
+    # a Wenner sheet that tabulates MN keeps it equal to a, and is not flagged
+    honest = _ves_sheet(
+        tmp_path / "wenner_mn.csv",
+        [["Sounding Number", "W 6"], ["Array", "Wenner"]],
+        ["No.", "AB/2 (m)", "MN (m)", "Apparent Resistivity (ohm-m)"],
+        [[1, 1.5, 1.0, 300.0], [2, 3.0, 2.0, 280.0], [3, 7.5, 5.0, 200.0],
+         [4, 15.0, 10.0, 120.0]],
+    )
+    assert "array_type_wenner_contradicted" not in [f.code for f in read_ves_csv(honest).flags]

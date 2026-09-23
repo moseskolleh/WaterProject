@@ -706,6 +706,82 @@ await withPage(async (page, base, consoleErrors) => {
     !geophysical.includes('crystalline basement complex'),
     geologyNote.slice(0, 240));
 
+  // --- the browser report says what the Python report says ------------------
+  // The sounding blocks, the scorecard, the annex and the array are written
+  // only by gwt-docx.js; the sentences are worded in the core and held to the
+  // package by parity.mjs, and this holds that the report prints them. The
+  // browser report had no "Models tried", no poorly resolved boundary, no
+  // suitability table, an annex nothing filled, and "a Schlumberger array"
+  // whatever the sheets said.
+  await page.evaluate(() => window.GWT.app.runInversions({ quiet: true }));
+  const rokelDoc = await issued('geophysical');
+  check('ves: every sounding block says what else was tried',
+    (rokelDoc.match(/Models tried: /g) || []).length === soundings.length,
+    (rokelDoc.match(/Models tried: [^\n]*/g) || []).join(' | '));
+  check('ves: a poorly resolved boundary is named, and the narrative does not claim it',
+    rokelDoc.includes('is poorly resolved: within its uncertainty the model collapses') &&
+    rokelDoc.includes('are fitted with a 3 layer model') &&
+    !rokelDoc.includes('The data at A (1) resolves a 3 layer subsurface'),
+    (rokelDoc.match(/[^\n]*poorly resolved[^\n]*/g) || []).join(' | ').slice(0, 600));
+  check('ves: the scorecard the ranking is decided on is printed',
+    rokelDoc.includes('Suitability (0 to 100)') && rokelDoc.includes('Confidence') &&
+    /Point \S+ \(\d\) ranks first \(suitability \d+ out of 100/.test(rokelDoc),
+    (rokelDoc.match(/[^\n]*ranks first[^\n]*/g) || []).join(' | ').slice(0, 400));
+  check('ves: the warnings the sheets raised reach the annex',
+    rokelDoc.includes('Annex A. Data Verification Notes') &&
+    rokelDoc.includes('[WARNING] segment_overlap_discrepancy (A (1)): ') &&
+    rokelDoc.includes('156.1 and 78.7 ohm-m (ratio 1.98)'),
+    rokelDoc.slice(rokelDoc.indexOf('Annex A'), rokelDoc.indexOf('Annex A') + 400));
+  check('ves: the array and its reach are the sheets\', in the sheets\' terms',
+    rokelDoc.includes('made with a Schlumberger array') &&
+    rokelDoc.includes('with AB/2 expanded to 80 m the depth of investigation here is ' +
+      'about 40 m'),
+    (rokelDoc.match(/[^\n]*(array\. |expanded to)[^\n]*/g) || []).join(' | ').slice(0, 600));
+
+  /* Two points the ranking cannot separate, and a Wenner survey: built
+   * straight from interpretations, since no bundled survey is either. */
+  const [tieDoc, wennerDoc] = await page.evaluate(async () => {
+    const C = window.GWT.core, app = window.GWT.app;
+    const ab2 = [1, 2, 5, 10, 20, 40, 80];
+    const survey = (array, models) => {
+      const soundings = [], inversions = [], interpretations = [];
+      models.forEach(([sid, rho, h]) => {
+        const sounding = { site: { community: 'Testville' }, sounding_id: sid, ab2,
+          mn: ab2.map(() => NaN), rho_app: ab2.map(() => 100), array_type: array,
+          flags: [] };
+        const model = C.layeredModel(rho, h, { fit_error_percent: 9.0, sounding_id: sid });
+        soundings.push(sounding);
+        inversions.push({ array_type: array, model, fit_error_percent: 9.0,
+          trials: [[2, 20.0], [3, 9.0]] });
+        interpretations.push(C.interpretModel(sounding, model));
+      });
+      return { style: app.config().style, site: { community: 'Testville' },
+        interpretations, inversions, soundings, figures: [], ves: app.config().ves };
+    };
+    const tie = survey('schlumberger', [['VES 1', [1000, 100, 5000], [5, 20]],
+      ['VES 2', [1000, 100, 5000], [5, 22]]]);
+    const wenner = survey('wenner', [['W 1', [1000, 100, 5000], [5, 20]]]);
+    return Promise.all([tie, wenner].map(async (context) =>
+      window.__docText(await (await window.GWT.docx.geophysicalReport(context)).build())));
+  });
+  check('ves: a pair the ranking cannot separate is not a winner and a runner-up',
+    !tieDoc.includes('(ranked 1st)') && !tieDoc.includes('Recommended VES point') &&
+    tieDoc.includes('Drill at VES 2 or VES 1, which the survey cannot separate') &&
+    tieDoc.includes('Points VES 2 and VES 1 cannot be told apart on geophysical grounds') &&
+    tieDoc.includes('VES 2 is ahead by 2.8 points, within the 3-point margin') &&
+    (tieDoc.match(/^=1st$/gm) || []).length === 2 && !tieDoc.includes('by name only') &&
+    tieDoc.includes('Of these the 3-layer model is the simplest that reaches the 10 ' +
+      'percent target.'),
+    tieDoc.slice(tieDoc.indexOf('5. Conclusions'), tieDoc.indexOf('5. Conclusions') + 400));
+  check('ves: a Wenner survey is described as one',
+    wennerDoc.includes('made with a Wenner array') &&
+    wennerDoc.includes('with a expanded to 80 m (AB/2 of 120 m)') &&
+    wennerDoc.includes('a Wenner sounding resolves the ground to roughly half of its ' +
+      'largest electrode spacing a') &&
+    !wennerDoc.includes('Schlumberger array') &&
+    !wennerDoc.includes('Schlumberger sounding resolves'),
+    wennerDoc.slice(wennerDoc.indexOf('3.2 Geophysical'), wennerDoc.indexOf('3.2 Geophysical') + 600));
+
   // --- a ranking that is cut short says so -----------------------------------
   // The coverage table is read to decide where to drill next, and it is sorted
   // worst first, so the rows that fall off the end are the ones already doing

@@ -25,7 +25,7 @@ from ..models import LayeredModel, VESSounding
 from .forward import forward_schlumberger, forward_wenner
 from .splice import splice_segments
 
-__all__ = ["InversionResult", "invert_model", "invert_sounding"]
+__all__ = ["InversionResult", "invert_model", "invert_sounding", "inversion_readings"]
 
 _RHO_BOUNDS = (0.5, 200000.0)
 _H_BOUNDS = (0.2, 300.0)
@@ -185,6 +185,25 @@ def _starting_models(ab2: np.ndarray, rho: np.ndarray, n_layers: int) -> list:
     return starts
 
 
+def inversion_readings(
+    sounding: VESSounding, splice: bool = True
+) -> tuple[np.ndarray, np.ndarray, list[float]]:
+    """The readings the inversion fits: ``(ab2, rho_app, shifts)``.
+
+    Spliced where the array has segments, sorted by spacing, and only the
+    finite, positive apparent resistivities. The interpretation reads its
+    depth of investigation from the same readings, so a last reading
+    recorded as 0 cannot lend it a depth the model never saw.
+    """
+    if splice and not sounding.array_type.startswith("wenner"):
+        ab2, rho_app, shifts = splice_segments(sounding)
+    else:
+        order = np.argsort(sounding.ab2, kind="stable")
+        ab2, rho_app, shifts = sounding.ab2[order], sounding.rho_app[order], [1.0]
+    keep = np.isfinite(rho_app) & (rho_app > 0)
+    return ab2[keep], rho_app[keep], shifts
+
+
 def invert_sounding(
     sounding: VESSounding,
     config: VESConfig | None = None,
@@ -202,14 +221,7 @@ def invert_sounding(
     that model instead.
     """
     config = config or VESConfig()
-    if splice and not sounding.array_type.startswith("wenner"):
-        ab2, rho_app, shifts = splice_segments(sounding)
-    else:
-        order = np.argsort(sounding.ab2, kind="stable")
-        ab2, rho_app, shifts = sounding.ab2[order], sounding.rho_app[order], [1.0]
-
-    keep = np.isfinite(rho_app) & (rho_app > 0)
-    ab2, rho_app = ab2[keep], rho_app[keep]
+    ab2, rho_app, shifts = inversion_readings(sounding, splice)
     if len(ab2) < 4:
         raise ValueError("Not enough readings to invert")
 
@@ -302,6 +314,7 @@ def invert_sounding(
     rho_factor, h_factor = _parameter_uncertainty(
         ab2, rho_app, model, sounding.array_type
     )
+    model.h_uncertainty_factor = h_factor
     return InversionResult(
         model=model,
         ab2=ab2,

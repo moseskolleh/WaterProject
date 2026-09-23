@@ -954,14 +954,13 @@
     return { rho: factors.slice(0, nLayers), h: factors.slice(nLayers) };
   }
 
-  /* Full search: layer count from min_layers to max_layers, two starts each,
-   * keeping the simplest model that reaches the target fit.
-   *
-   * onProgress(fraction, label) is called between trials so the page can show
-   * where the inversion has got to; it is the only non-pure part of this. */
-  function invertSounding(sounding, options) {
+  /* ves/inversion.py inversion_readings: the readings the inversion fits,
+   * spliced where the array has segments, sorted by spacing, and only the
+   * finite, positive apparent resistivities. The interpretation reads its
+   * depth of investigation from the same readings, so a last reading
+   * recorded as 0 cannot lend it a depth the model never saw. */
+  function inversionReadings(sounding, options) {
     var opts = options || {};
-    var cfg = (opts.config || defaultConfig()).ves;
     var arrayType = sounding.array_type || 'schlumberger';
     var spliced;
     if (opts.splice !== false && arrayType.indexOf('wenner') !== 0) {
@@ -975,12 +974,25 @@
         shifts: [1.0],
       };
     }
-
-    var ab2 = [], rhoApp = [];
+    var ab2 = [], rho = [];
     for (var i = 0; i < spliced.ab2.length; i++) {
       var value = spliced.rho[i];
-      if (isFinite(value) && value > 0) { ab2.push(spliced.ab2[i]); rhoApp.push(value); }
+      if (isFinite(value) && value > 0) { ab2.push(spliced.ab2[i]); rho.push(value); }
     }
+    return { ab2: ab2, rho: rho, shifts: spliced.shifts };
+  }
+
+  /* Full search: layer count from min_layers to max_layers, two starts each,
+   * keeping the simplest model that reaches the target fit.
+   *
+   * onProgress(fraction, label) is called between trials so the page can show
+   * where the inversion has got to; it is the only non-pure part of this. */
+  function invertSounding(sounding, options) {
+    var opts = options || {};
+    var cfg = (opts.config || defaultConfig()).ves;
+    var arrayType = sounding.array_type || 'schlumberger';
+    var spliced = inversionReadings(sounding, opts);
+    var ab2 = spliced.ab2, rhoApp = spliced.rho;
     if (ab2.length < 4) throw new Error('Not enough readings to invert');
 
     var candidates = [], trials = [];
@@ -1064,6 +1076,9 @@
         fit_error_percent: chosen.err,
         method: 'damped-lsq',
         sounding_id: sounding.sounding_id || '',
+        /* travels with the model so the interpretation can say a boundary
+         * is poorly resolved instead of reading the layer count as settled */
+        h_uncertainty_factor: uncertainty.h,
       }),
       ab2: ab2,
       /* which array the spacings are: a Wenner sounding's column is the
@@ -1227,7 +1242,8 @@
 
   function drillingDepthText(interp) {
     var depth = pyFixed(interp.max_drilling_depth_m, 0) + ' m';
-    return (interp.basement_not_resolved ? 'at least ' : 'about ') + depth;
+    var minimum = interp.basement_not_resolved || interp.drilling_depth_capped;
+    return (minimum ? 'at least ' : 'about ') + depth;
   }
 
   function darZarrouk(layers) {
@@ -1283,8 +1299,12 @@
     var n = model.n_layers, i;
 
     var investigation, maxSpacing = null;
-    if (sounding && sounding.ab2 && sounding.ab2.length) {
-      maxSpacing = arrMax(sounding.ab2);
+    /* the spacings the inversion actually fitted: a reading it dropped (a
+     * zero or a blank resistivity) extends no depth the model was fitted to */
+    var used = (sounding && sounding.ab2 && sounding.ab2.length)
+      ? inversionReadings(sounding).ab2 : [];
+    if (used.length) {
+      maxSpacing = arrMax(used);
       investigation = depthOfInvestigation(maxSpacing, cfg);
     } else if (n > 1) {
       investigation = bottoms[n - 2] * 2 + 20;
@@ -1308,18 +1328,23 @@
       });
     }
 
-    /* water zones: the top few metres are vadose, so a zone starts at 3 m */
+    /* water zones: the top few metres are vadose, so a zone starts at 3 m.
+     * A layer whose modelled base lies below the depth of investigation is
+     * open-ended there, as the half-space is: the model put that base where
+     * no reading reaches. A water-bearing layer that starts at or below the
+     * depth of investigation was never seen at all, so it is no zone, and
+     * the narrative says so. */
     var zones = [];
     var basementNotResolved = false;
+    var openBase = null, unseenTops = [];
     layers.forEach(function (layer) {
       if (!layer.water_bearing) return;
       var top = Math.max(layer.top_m, 3.0);
-      var bottom;
-      if (isFinite(layer.bottom_m)) {
-        bottom = layer.bottom_m;
-      } else {
-        bottom = investigation;
+      if (top >= investigation) { unseenTops.push(layer.top_m); return; }
+      var bottom = Math.min(layer.bottom_m, investigation);
+      if (layer.bottom_m > investigation) {
         basementNotResolved = bottom - top >= 1.0;
+        openBase = layer.bottom_m;
       }
       if (bottom - top >= 1.0) zones.push([pyRound(top), pyRound(bottom)]);
     });
@@ -1343,6 +1368,10 @@
         layers[layers.length - 1].rho >= cfg.fractured_zone_rho[1]) {
       depthToBasement = layers[layers.length - 1].top_m;
     }
+    /* a basement top below the depth of investigation is where the model
+     * happened to put it, not a depth the sounding measured */
+    var bedrockUnseen = depthToBasement !== null && depthToBasement > investigation;
+    if (bedrockUnseen) depthToBasement = null;
 
     var aquiferThickness = zones.reduce(function (a, z) { return a + (z[1] - z[0]); }, 0);
 
@@ -1353,6 +1382,9 @@
     var deepest = zones.length
       ? zones[zones.length - 1][1] + cfg.max_drilling_margin_m
       : investigation;
+    /* a depth cut back to the depth of investigation is a minimum, and says
+     * so, rather than reading as an estimate */
+    var drillingDepthCapped = deepest > investigation;
     var step = cfg.round_drilling_depth_to_m;
     var maxDepth = Math.ceil(Math.min(deepest, investigation) / step) * step;
     maxDepth = Math.min(maxDepth, investigation);
@@ -1391,11 +1423,16 @@
         context: sid });
     }
     if (basementNotResolved) {
+      var where = (openBase === null || !isFinite(openBase))
+        ? 'is the half-space: the sounding did not reach its base within the ' +
+          pyFixed(investigation, 0) + ' m it resolves'
+        : 'continues below the ' + pyFixed(investigation, 0) + ' m the sounding ' +
+          'resolves: the model puts its base at ' + fmtNum(openBase) + ' m, deeper ' +
+          'than the readings reach';
       flags.push({ level: 'info', code: 'basement_not_resolved',
-        message: 'The deepest water-bearing layer is the half-space: the sounding ' +
-          'did not reach its base within the ' + pyFixed(investigation, 0) +
-          ' m it resolves, so the zone is open-ended, the aquifer thickness is a ' +
-          'minimum and the drilling depth is a minimum.',
+        message: 'The deepest water-bearing layer ' + where + ', so the zone is ' +
+          'open-ended, the aquifer thickness is a minimum and the drilling depth ' +
+          'is a minimum.',
         context: sid });
     }
 
@@ -1422,12 +1459,13 @@
       site_elevation_m: sounding && sounding.site ? sounding.site.elevation_m : null,
       flags: flags,
       basement_not_resolved: basementNotResolved,
+      drilling_depth_capped: drillingDepthCapped,
       confidence: confidence,
       fit_error_percent: err,
       fit_quality: fitQuality,
       max_spacing_m: maxSpacing,
     };
-    interp.narrative = interpretationNarrative(interp);
+    interp.narrative = interpretationNarrative(interp, unseenTops, bedrockUnseen);
     return interp;
   }
 
@@ -1568,10 +1606,42 @@
     return count === 1 ? singular : (pluralForm || singular + 's');
   }
 
-  function interpretationNarrative(interp) {
-    var parts = ['The data at ' + interp.sounding_id + ' resolves a ' +
-      interp.model.n_layers + ' layer subsurface (' +
-      describeCurveType(interp.curve_type) + ').'];
+  /* ves/interpret.py POORLY_RESOLVED_FACTOR / poorly_resolved_boundaries:
+   * [depth, factor] of each boundary whose thickness is known only to within
+   * a factor of 2 or worse; empty for a model with no uncertainty. */
+  var POORLY_RESOLVED_FACTOR = 2.0;
+
+  function poorlyResolvedBoundaries(model) {
+    var factors = model.h_uncertainty_factor;
+    if (!factors) return [];
+    var out = [];
+    Array.prototype.forEach.call(factors, function (f, i) {
+      if (f >= POORLY_RESOLVED_FACTOR) out.push([model.depths_bottom[i], f]);
+    });
+    return out;
+  }
+
+  /* "a", "a and b", "a, b and c" */
+  function andJoin(items) {
+    return items.length === 1 ? items[0]
+      : items.slice(0, -1).join(', ') + ' and ' + items[items.length - 1];
+  }
+
+  function interpretationNarrative(interp, unseenTops, bedrockUnseen) {
+    var curve = describeCurveType(interp.curve_type);
+    /* "resolves a 3 layer subsurface" over a boundary known only to x/ 3.7
+     * claimed a layer the curve does not settle */
+    var weak = poorlyResolvedBoundaries(interp.model);
+    var opening = weak.length
+      ? 'The data at ' + interp.sounding_id + ' are fitted with a ' +
+        interp.model.n_layers + ' layer model (' + curve + '), though the ' +
+        (weak.length === 1 ? 'boundary' : 'boundaries') + ' at ' +
+        andJoin(weak.map(function (w) { return fmtNum(w[0]) + ' m'; })) + ' ' +
+        (weak.length === 1 ? 'is' : 'are') + ' poorly resolved, so the layer ' +
+        'count is uncertain.'
+      : 'The data at ' + interp.sounding_id + ' resolves a ' +
+        interp.model.n_layers + ' layer subsurface (' + curve + ').';
+    var parts = [opening];
     interp.layers.forEach(function (layer) {
       var span = layer.thickness_m !== null
         ? 'from ' + fmtNum(layer.top_m) + ' m to ' + fmtNum(layer.bottom_m) +
@@ -1597,6 +1667,15 @@
       parts.push('No clearly water bearing low resistivity zone is resolved at ' +
         'this point within the investigated depth.');
     }
+    if (unseenTops && unseenTops.length) {
+      var one = unseenTops.length === 1;
+      parts.push('The water-bearing ' + (one ? 'layer' : 'layers') + ' from ' +
+        andJoin(unseenTops.map(function (t) { return fmtNum(t) + ' m'; })) + ' ' +
+        (one ? 'lies' : 'lie') + ' below the ' + fmtNum(interp.investigation_depth_m) +
+        ' m the sounding resolves, so ' +
+        (one ? 'it is not counted as a water zone' : 'they are not counted as water zones') +
+        '.');
+    }
     if (interp.fit_error_percent !== null && interp.fit_error_percent !== undefined) {
       if (interp.fit_quality === 'unreliable') {
         parts.push('The model reproduces the readings to ' +
@@ -1612,6 +1691,9 @@
     if (interp.depth_to_basement_m !== null) {
       parts.push('The depth to bedrock is estimated at about ' +
         fmtNum(interp.depth_to_basement_m) + ' m.');
+    } else if (bedrockUnseen) {
+      parts.push('The depth to bedrock is not resolved within the depth of ' +
+        'investigation (about ' + fmtNum(interp.investigation_depth_m) + ' m).');
     }
     if (interp.longitudinal_conductance_s > 0) {
       var base = 'The Dar-Zarrouk longitudinal conductance of the section is ' +
@@ -1644,8 +1726,13 @@
   }
 
   function rankInterpretations(interpretations, preferredOrder, cfg) {
-    var weight = {};
-    interpretations.forEach(function (i) { weight[i.sounding_id] = rankingWeight(i, cfg); });
+    /* Held beside the interpretation itself, not keyed by its sounding id: a
+     * sheet copied without renumbering gives two soundings one id, and a
+     * weight looked up by id gave both the last one's, so a point with no
+     * water zone could rank first while the suitability table ranked the
+     * other. */
+    var weight = new Map();
+    interpretations.forEach(function (i) { weight.set(i, rankingWeight(i, cfg)); });
     var byId = function (a, b) {
       return a.sounding_id < b.sounding_id ? -1 : a.sounding_id > b.sounding_id ? 1 : 0;
     };
@@ -1658,11 +1745,11 @@
           ? preferredOrder.length : position[a.sounding_id];
         var pb = position[b.sounding_id] === undefined
           ? preferredOrder.length : position[b.sounding_id];
-        return pa - pb || weight[b.sounding_id] - weight[a.sounding_id] || byId(a, b);
+        return pa - pb || weight.get(b) - weight.get(a) || byId(a, b);
       });
     } else {
       ranked = interpretations.slice().sort(function (a, b) {
-        return weight[b.sounding_id] - weight[a.sounding_id] || byId(a, b);
+        return weight.get(b) - weight.get(a) || byId(a, b);
       });
     }
     ranked.forEach(function (interp, i) { interp.rank = i + 1; });
@@ -1672,8 +1759,18 @@
   var LAYER_RESISTIVITY_COLUMN = 'Layer resistivity (ohm-m)';
 
   function drillingPreferenceTable(interpretations, preferredOrder, cfg) {
-    rankInterpretations(interpretations, preferredOrder, cfg);
-    return interpretations.map(function (interp, i) {
+    var c = cfg || defaultConfig().ves;
+    var ranked = rankInterpretations(interpretations, preferredOrder, c);
+    /* The rows in the order of preference the caption promises; they used to
+     * follow the sheets. Two points the ranking cannot separate are both
+     * "=1st", by the same test as the tie sentence, unless the analyst has
+     * set the order, which is then a judgment and not a score. */
+    var tied = [];
+    if (!(preferredOrder && preferredOrder.length) && ranked.length >= 2 &&
+        C.tiedLeaders(C.assessSiting(interpretations, c), c.ranking_tie_points)) {
+      tied = [ranked[0], ranked[1]];
+    }
+    return ranked.map(function (interp, i) {
       return {
         'No.': i + 1,
         'VES Point': interp.sounding_id,
@@ -1691,9 +1788,92 @@
           return zoneCell(z[0], z[1], zoneIsOpen(interp, z));
         }).join('\n') || 'none resolved',
         'Max Drilling Depth (m)': drillingDepthText(interp),
-        Ranking: ordinal(interp.rank),
+        Ranking: tied.indexOf(interp) >= 0 ? '=1st' : ordinal(interp.rank),
       };
     });
+  }
+
+  /* reporting/geophysical.py depth_of_investigation_text: how deep the
+   * soundings of one array resolve, in the array's own terms. A Wenner
+   * sounding's spacing is a, and it used to be reported as a maximum AB/2. */
+  function depthOfInvestigationText(arrayType, maxSpacing, doi, cfg) {
+    var c = cfg || defaultConfig().ves;
+    var fraction = c.depth_of_investigation_factor;
+    var fractionText = Math.abs(fraction - 0.5) < 1e-9 ? 'half' : formatG(fraction) + ' times';
+    if (String(arrayType || '').indexOf('wenner') === 0) {
+      /* A M N B at equal spacing a: AB = 3a, so AB/2 is 1.5 a */
+      return 'A Wenner sounding resolves the ground to roughly ' + fractionText +
+        ' its largest electrode spacing a, not to the spacing itself: with a ' +
+        'expanded to ' + fmtNum(maxSpacing) + ' m (AB/2 of ' + fmtNum(1.5 * maxSpacing) +
+        ' m) the depth of investigation here is about ' + fmtNum(doi) + ' m, and ' +
+        'any structure below it is not resolved.';
+    }
+    return 'A Schlumberger sounding resolves the ground to roughly ' + fractionText +
+      ' its largest AB/2, not to the spacing itself: with AB/2 expanded to ' +
+      fmtNum(maxSpacing) + ' m the depth of investigation here is about ' +
+      fmtNum(doi) + ' m, and any structure below it is not resolved.';
+  }
+
+  /* reporting/geophysical.py models_tried_text: what else was tried, so the
+   * model in the table is seen as one choice among the candidates. */
+  function modelsTriedText(inversion, cfg) {
+    var c = cfg || defaultConfig().ves;
+    var trials = (inversion.trials || []).filter(function (t) {
+      return t[1] !== null && t[1] !== undefined;
+    });
+    if (trials.length < 2) return '';
+    var tried = trials.map(function (t) {
+      return t[0] + ' layers, ' + pyFixed(t[1], 1) + '%';
+    }).join('; ');
+    var chosen = inversion.model.n_layers;
+    var target = c.target_fit_percent;
+    var why;
+    if (inversion.fit_error_percent <= target) {
+      /* "the simplest that reaches the target" was false whenever a simpler
+       * model reached it too and was passed over because a richer one more
+       * than halved its misfit (the parsimony rule) */
+      var simpler = trials.filter(function (t) { return t[0] < chosen && t[1] <= target; })
+        .map(function (t) { return t[0]; });
+      if (simpler.length) {
+        var best = trials.reduce(function (a, b) { return b[1] < a[1] ? b : a; })[0];
+        var ratio = c.parsimony_max_error_ratio;
+        var cut = Math.abs(ratio - 2.0) < 1e-9 ? 'more than halves'
+          : 'cuts by more than a factor of ' + formatG(ratio);
+        var one = simpler.length === 1;
+        why = 'the ' + andJoin(simpler.map(function (n) { return n + '-layer'; })) + ' ' +
+          (one ? 'model also reaches' : 'models also reach') + ' the ' +
+          formatG(target) + ' percent target, but ' +
+          (best === chosen
+            ? 'the ' + chosen + '-layer model ' + cut + ' ' + (one ? 'its' : 'their') +
+              ' misfit and is preferred'
+            : 'the ' + best + '-layer model ' + cut + ' ' + (one ? 'its' : 'their') +
+              ' misfit, and the ' + chosen + '-layer model is the simplest it does ' +
+              'not better that far');
+      } else {
+        why = 'the ' + chosen + '-layer model is the simplest that reaches the ' +
+          formatG(target) + ' percent target';
+      }
+    } else {
+      why = 'none reaches the ' + formatG(target) + ' percent target, and the ' +
+        chosen + '-layer model is kept as the simplest within ' +
+        pyFixed((c.parsimony_fallback_ratio - 1) * 100, 0) + ' percent of the best ' +
+        'fit; the alternatives are equally admissible readings of the same curve';
+    }
+    return 'Models tried: ' + tried + '. Of these ' + why + '.';
+  }
+
+  /* reporting/geophysical.py poorly_resolved_text: each boundary whose
+   * thickness factor is 2 or more, by the test the narrative softens on. */
+  function poorlyResolvedText(model) {
+    var weak = poorlyResolvedBoundaries(model);
+    if (!weak.length) return '';
+    var one = weak.length === 1;
+    return 'The ' + (one ? 'boundary' : 'boundaries') + ' at ' +
+      andJoin(weak.map(function (w) { return fmtNum(w[0]) + ' m (x/ ' + pyFixed(w[1], 1) + ')'; })) +
+      (one ? ' is' : ' are') + ' poorly resolved: within ' + (one ? 'its' : 'their') +
+      ' uncertainty the model collapses to one with ' +
+      (one ? 'a layer fewer' : 'fewer layers') + ', so the layer count above is a ' +
+      'reading of the curve rather than a property of it.';
   }
 
   C.MIN_PER_DAY = MIN_PER_DAY;
@@ -1712,6 +1892,7 @@
     soundingSegments: soundingSegments, spliceSegments: spliceSegments,
     fitErrorPercent: fitErrorPercent, invertModel: invertModel,
     invertSounding: invertSounding, layeredModel: layeredModel,
+    inversionReadings: inversionReadings,
     startingModels: startingModels, parameterUncertainty: parameterUncertainty,
     classifyCurve: classifyCurve, describeCurveType: describeCurveType,
     interpretModel: interpretModel, rankInterpretations: rankInterpretations,
@@ -1719,6 +1900,9 @@
     depthOfInvestigation: depthOfInvestigation, fitConfidence: fitConfidence,
     zoneText: zoneText, zoneCell: zoneCell, zoneIsOpen: zoneIsOpen,
     drillingDepthText: drillingDepthText, rankingWeight: rankingWeight,
+    poorlyResolvedBoundaries: poorlyResolvedBoundaries, andJoin: andJoin,
+    depthOfInvestigationText: depthOfInvestigationText,
+    modelsTriedText: modelsTriedText, poorlyResolvedText: poorlyResolvedText,
     LAYER_RESISTIVITY_COLUMN: LAYER_RESISTIVITY_COLUMN,
     fmtNum: fmtNum, fmtRange: fmtRange, formatG: formatG,
     roundSig: roundSig, pyRound: pyRound, pyFixed: pyFixed, expo: expo,
@@ -6989,6 +7173,31 @@
           'thirds of the tabulated AB/2, which is the spacing the Wenner ' +
           'geometric factor and forward model take.' });
     }
+    if (isWenner) {
+      /* A Wenner array keeps MN equal to a and reads each spacing once. A
+       * Schlumberger sheet with only its array field changed to "Wenner" was
+       * read as Wenner, every spacing divided by 1.5, with nothing but
+       * information notes, although its MN column and the repeated AB/2 at
+       * each MN change are things a Wenner array cannot have. numpy's
+       * isclose(rtol=0.01) is the tolerance on MN = a. */
+      var reasons = [];
+      var mnOff = mn.some(function (v, i) {
+        return isFinite(v) && !(Math.abs(v - ab2[i]) <= 1e-8 + 0.01 * Math.abs(ab2[i]));
+      });
+      if (mnOff) reasons.push('its MN column holds spacings other than a');
+      var counts = {}, repeated = 0;
+      ab2.forEach(function (v) { counts[v] = (counts[v] || 0) + 1; });
+      Object.keys(counts).forEach(function (v) { if (counts[v] > 1) repeated += 1; });
+      if (repeated) reasons.push('it repeats ' + plural(repeated, 'spacing'));
+      if (reasons.length) {
+        flags.push({ level: 'warning', code: 'array_type_wenner_contradicted',
+          message: 'The sounding was read as Wenner, as the sheet has it, but ' +
+            reasons.join(' and ') + '. A Wenner array keeps MN equal to the ' +
+            'spacing a and reads each spacing once, so these are the marks of a ' +
+            'Schlumberger sounding. Confirm the array with the field crew: the ' +
+            'wrong forward model is wrong by tens of percent.' });
+      }
+    }
     if (fromResistance) {
       flags.push({ level: 'info', code: 'rho_computed_from_resistance',
         message: 'The sheet records a resistance (V/I), not a resistivity; ' +
@@ -7066,8 +7275,13 @@
       if (readings.length < 2) return;
       var ratio = Math.max.apply(null, readings) / Math.min.apply(null, readings);
       if (ratio > OVERLAP_DISCREPANCY_RATIO) {
-        out.push('AB/2 ' + formatG(value) + ' m: ' + formatG(readings[0]) + ' and ' +
-          formatG(readings[1]) + ' ohm-m (ratio ' + pyFixed(ratio, 2) + ')');
+        /* the pair the ratio is of, in field order: with three readings at
+         * one spacing the first two can agree while the third is the one out */
+        var hi = readings.indexOf(Math.max.apply(null, readings));
+        var lo = readings.indexOf(Math.min.apply(null, readings));
+        var ends = [Math.min(hi, lo), Math.max(hi, lo)];
+        out.push('AB/2 ' + formatG(value) + ' m: ' + formatG(readings[ends[0]]) + ' and ' +
+          formatG(readings[ends[1]]) + ' ohm-m (ratio ' + pyFixed(ratio, 2) + ')');
       }
     });
     return out;
@@ -7077,16 +7291,40 @@
   /* skipped, when given, receives one warning flag per sheet that yielded
    * no sounding, naming the sheet and the reason */
   function readVesSheets(sheets, source, skipped) {
-    var out = [];
+    var out = [], titles = [];
     sheets.forEach(function (sheet) {
       var pair = soundingOrReason(sheet.rows, source || '', sheet.name);
-      if (pair[0]) out.push(pair[0]);
-      else if (skipped) {
+      if (pair[0]) {
+        out.push(pair[0]);
+        titles.push(sheet.name);
+      } else if (skipped) {
         skipped.push({ level: 'warning', code: 'sheet_skipped',
           message: "Sheet '" + sheet.name + "' was skipped: " + pair[1] + '.' });
       }
     });
+    flagDuplicateIds(out, titles);
     return out;
+  }
+
+  /* ingestion/ves.py _flag_duplicate_ids: a sheet copied for the next point
+   * and never renumbered reads as the same point in every table, figure and
+   * ranking, and nothing downstream can tell the two apart by name. */
+  function flagDuplicateIds(soundings, titles) {
+    var firstSheet = {};
+    soundings.forEach(function (sounding, i) {
+      var sid = sounding.sounding_id;
+      if (Object.prototype.hasOwnProperty.call(firstSheet, sid)) {
+        sounding.flags.push({ level: 'warning', code: 'duplicate_sounding_id',
+          message: "Sheet '" + titles[i] + "' carries the sounding number '" + sid +
+            "', which sheet '" + firstSheet[sid] + "' already uses. A sheet copied " +
+            'without renumbering reads as the same point in every table, figure ' +
+            'and ranking; give each sounding its own number before the results ' +
+            'are used.',
+          context: sid });
+      } else {
+        firstSheet[sid] = titles[i];
+      }
+    });
   }
 
   /* --- drilling logs -------------------------------------------------------- */
@@ -10437,7 +10675,9 @@
     }
     if (interp.depth_to_basement_m !== null && interp.depth_to_basement_m !== undefined &&
         comp.overburden < 0.4) {
-      parts.push('overburden of about ' + interp.depth_to_basement_m.toFixed(0) +
+      /* pyFixed, not toFixed: a basement top at 2.5 m is "about 2 m" in the
+       * package (half to even) and toFixed printed "about 3 m" */
+      parts.push('overburden of about ' + pyFixed(interp.depth_to_basement_m, 0) +
         ' m that limits the target');
     }
     var text = 'Driven by ' + parts.join('; ') + '.';
@@ -10455,22 +10695,65 @@
     return text;
   }
 
-  /* One sentence when the top two points cannot be told apart; '' otherwise. */
-  function rankingTie(results, withinPoints) {
+  /* siting/suitability.py tied_leaders: the two highest-ranked points when the
+   * ranking cannot separate them, else null. One test for the tie sentence,
+   * the preference table's "=1st" and the report's summary and conclusions,
+   * decided on the confidence-weighted scores as they are, not as printed. */
+  function tiedLeaders(results, withinPoints) {
     var within = withinPoints === undefined ? 3.0 : withinPoints;
     var ranked = results.slice().sort(function (a, b) {
       return (a.rank === null || a.rank === undefined ? 99 : a.rank) -
         (b.rank === null || b.rank === undefined ? 99 : b.rank);
     });
-    if (ranked.length < 2) return '';
+    if (ranked.length < 2) return null;
     var first = ranked[0], second = ranked[1];
+    if (Math.abs(first.suitability * first.confidence -
+                 second.suitability * second.confidence) >= within) return null;
+    return [first, second];
+  }
+
+  /* One sentence when the top two points cannot be told apart; '' otherwise. */
+  function rankingTie(results, withinPoints) {
+    var within = withinPoints === undefined ? 3.0 : withinPoints;
+    var pair = tiedLeaders(results, within);
+    if (!pair) return '';
+    var first = pair[0], second = pair[1];
     var w1 = first.suitability * first.confidence, w2 = second.suitability * second.confidence;
-    if (Math.abs(w1 - w2) >= within) return '';
+    /* "by name only" is true only of equal scores; said of 82.3 against 79.5
+     * it told the client the order was alphabetical when it was not */
+    var gap = w1 - w2;
+    var order = gap === 0
+      ? first.sounding_id + ' is listed first by name only'
+      : first.sounding_id + ' is ahead by ' +
+        (pyRound(gap, 1) >= 0.1 ? pyFixed(gap, 1) : 'less than 0.1') +
+        ' points, within the ' + formatG(within) + '-point margin the ranking ' +
+        'cannot separate';
     return 'Points ' + first.sounding_id + ' and ' + second.sounding_id +
       ' are indistinguishable on geophysical grounds (confidence-weighted suitability ' +
-      pyFixed(w1, 1) + ' and ' + pyFixed(w2, 1) + '); ' + first.sounding_id +
-      ' is listed first by name only, and the choice between them should be made ' +
-      'on access, sanitary distances and the community\'s preference.';
+      pyFixed(w1, 1) + ' and ' + pyFixed(w2, 1) + '); ' + order + ', and the choice ' +
+      'between them should be made on access, sanitary distances and the ' +
+      'community\'s preference.';
+  }
+
+  /* siting/suitability.py suitability_verdict: the paragraph under the
+   * suitability table, the target or the tie. A tie gives both points'
+   * rationale, since the reader is being asked to choose between them. */
+  function suitabilityVerdict(results, withinPoints) {
+    if (!results || !results.length) return '';
+    var tie = rankingTie(results, withinPoints);
+    if (tie) {
+      return [tie].concat(tiedLeaders(results, withinPoints).map(function (r) {
+        return 'Point ' + r.sounding_id + ': ' + r.rationale;
+      })).join(' ');
+    }
+    var best = results.slice().sort(function (a, b) {
+      return (a.rank === null || a.rank === undefined ? 99 : a.rank) -
+        (b.rank === null || b.rank === undefined ? 99 : b.rank);
+    })[0];
+    return 'Point ' + best.sounding_id + ' ranks first (suitability ' +
+      pyFixed(best.suitability, 0) + ' out of 100, ' + best.grade.toLowerCase() +
+      ', confidence ' + pyFixed(best.confidence, 2) + ') and is the recommended ' +
+      'drilling target. ' + best.rationale;
   }
 
   /* Score and rank candidate VES points, most suitable first (rank 1 = best),
@@ -10513,7 +10796,8 @@
   Object.assign(C, {
     SUITABILITY_WEIGHTS: SUITABILITY_WEIGHTS, assessSiting: assessSiting,
     suitabilityGrade: suitabilityGrade, zoneGeomeanRho: zoneGeomeanRho,
-    rankingTie: rankingTie,
+    rankingTie: rankingTie, tiedLeaders: tiedLeaders,
+    suitabilityVerdict: suitabilityVerdict,
   });
 
   /* ================================================================ portfolio

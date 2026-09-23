@@ -90,3 +90,38 @@ def test_the_map_stars_the_recommended_point_and_writes_its_coordinates(tmp_path
     assert "recommended drill target" not in legend
     assert "indistinguishable" in said
     assert suitability_map_state(points)["tie"] is True
+
+
+def _scored(sid, suitability, confidence=1.0, rank=None):
+    from groundwater.siting import SitingSuitability, SuitabilityComponents
+
+    return SitingSuitability(
+        sounding_id=sid, suitability=suitability, grade="Very good",
+        components=SuitabilityComponents(1.0, 1.0, 1.0, 1.0),
+        rationale=f"Driven by {sid}.", rank=rank, confidence=confidence,
+    )
+
+
+def test_a_near_tie_is_not_said_to_be_ordered_by_name():
+    """82.3 against 79.5 was "VES 2 is listed first by name only": the order
+    was the score's, inside the margin the ranking cannot separate."""
+    from groundwater.siting import ranking_tie, suitability_verdict, tied_leaders
+
+    near = [_scored("VES 2", 82.3, rank=1), _scored("VES 1", 79.5, rank=2)]
+    sentence = ranking_tie(near, within_points=3.0)
+    assert ("VES 2 is ahead by 2.8 points, within the 3-point margin the ranking "
+            "cannot separate") in sentence
+    assert "by name only" not in sentence
+    verdict = suitability_verdict(near, within_points=3.0)
+    assert verdict.startswith(sentence)
+    assert "Point VES 2: Driven by VES 2." in verdict and "Point VES 1: Driven by VES 1." in verdict
+
+    equal = [_scored("VES 1", 80.0, rank=1), _scored("VES 2", 80.0, rank=2)]
+    assert "VES 1 is listed first by name only" in ranking_tie(equal)
+
+    clear = [_scored("VES 2", 82.3, rank=1), _scored("VES 1", 60.0, rank=2)]
+    assert tied_leaders(clear) is None and ranking_tie(clear) == ""
+    assert suitability_verdict(clear).startswith(
+        "Point VES 2 ranks first (suitability 82 out of 100, very good, confidence 1.00)")
+    # decided on the scores as they are, not as printed
+    assert tied_leaders([_scored("A", 82.96, rank=1), _scored("B", 79.95, rank=2)]) is None

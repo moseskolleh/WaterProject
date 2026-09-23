@@ -283,10 +283,9 @@ await withPage(async (page, base, consoleErrors) => {
     ];
     // the drill-target scorecard, over the real Rokel soundings
     const rokelSoundings = C.readVesSheets(vesSheets, 'rokel_ves.xlsx');
-    const rokelInterps = rokelSoundings.map((s) => {
-      const inv = C.invertSounding(s);
-      return C.interpretModel(s, inv.model);
-    });
+    const rokelInversions = rokelSoundings.map((s) => C.invertSounding(s));
+    const rokelInterps = rokelSoundings.map((s, k) =>
+      C.interpretModel(s, rokelInversions[k].model));
     out.siting = C.assessSiting(rokelInterps).map((r) => ({
       id: r.sounding_id, rank: r.rank, suitability: r.suitability,
       grade: r.grade, components: r.components, rationale: r.rationale,
@@ -303,6 +302,107 @@ await withPage(async (page, base, consoleErrors) => {
       narrative: i.narrative,
     }));
     out.preference = C.drillingPreferenceTable(rokelInterps);
+
+    // The interpretation and report prose over the cases make_reference.py
+    // builds as VES_CASES, VES_SHEETS and MODELS_TRIED_CASES: a zone past the
+    // depth of investigation, one wholly below it, a margin cut back to it, a
+    // dropped last reading, poorly resolved boundaries, a near-tie, an exact
+    // tie, two sheets with one sounding number and a Wenner sheet with an MN
+    // column. The inputs are written out twice on purpose; they are the
+    // contract.
+    const SPACINGS = [1, 2, 5, 10, 20, 40, 80];
+    const caseInterp = (sid, rho, h, err, hFactor, ab2, rhoApp) => {
+      const spacing = ab2 || SPACINGS;
+      const extra = { fit_error_percent: err, sounding_id: sid };
+      if (hFactor) extra.h_uncertainty_factor = hFactor;
+      const sounding = { site: {}, sounding_id: sid, ab2: spacing,
+        mn: spacing.map(() => NaN), rho_app: rhoApp || spacing.map(() => 100),
+        array_type: 'schlumberger', flags: [] };
+      return C.interpretModel(sounding, C.layeredModel(rho, h, extra));
+    };
+    const vesCases = [
+      ['zone past doi', [1000, 100, 5000], [5, 60], 8.0, null, null, null],
+      ['zone below doi', [1000, 1500, 100, 5000], [10, 40, 20], 6.0, null,
+        [1, 2, 5, 10, 20, 40, 60], null],
+      ['margin past doi', [1000, 100, 5000], [5, 33], 5.0, null, null, null],
+      ['last reading dropped', [1000, 100], [8], 5.0, null, null,
+        [300, 250, 200, 150, 120, 110, 0]],
+      ['poorly resolved', [1100, 1600, 47], [1.0, 7.0], 13.3, [3.7, 1.4], null, null],
+      ['two poorly resolved', [1100, 1600, 300, 47], [1, 2, 7], 5.0, [3.7, 2.5, 1.1],
+        null, null],
+      ['thin resistive at 2.5', [1000, 5000, 100], [2.5, 3], 5.0, null, null, null],
+    ];
+    const cases = {};
+    vesCases.forEach(([name, rho, h, err, hFactor, ab2, rhoApp]) => {
+      const i = caseInterp(name, rho, h, err, hFactor, ab2, rhoApp);
+      const suit = C.assessSiting([i])[0];
+      cases[name] = {
+        water_zones: i.water_zones, depth_to_basement_m: i.depth_to_basement_m,
+        investigation_depth_m: i.investigation_depth_m,
+        max_drilling_depth_m: i.max_drilling_depth_m,
+        basement_not_resolved: i.basement_not_resolved,
+        drilling_depth_capped: i.drilling_depth_capped,
+        drilling_depth_text: C.drillingDepthText(i),
+        flags: i.flags.map((f) => [f.level, f.code, f.message]),
+        narrative: i.narrative, suitability: suit.suitability, rationale: suit.rationale,
+      };
+    });
+    const ranking = (interps) => {
+      const suit = C.assessSiting(interps);
+      return {
+        tie: C.rankingTie(suit), verdict: C.suitabilityVerdict(suit),
+        preference: C.drillingPreferenceTable(interps).map((r) =>
+          [r['VES Point'], r.Ranking, r['Possible Water Zones (m)']]),
+      };
+    };
+    const vesSheet = (number, array, header, rows) => [
+      ['VES FIELD DATA', null, null, null],
+      ['Client', 'Ref Client', 'Community', 'Refville'],
+      ['Project', 'Geophysical Survey', 'Sounding Number', number],
+      ['District', 'Bo', 'Date', '1 Jan 2020'],
+      ['Array', array, 'Instrument', 'ABEM'],
+      [null, null, null, null],
+      header,
+    ].concat(rows.map((r, k) => [k + 1].concat(r)));
+    const withMn = ['No.', 'AB/2 (m)', 'MN (m)', 'Apparent Resistivity (ohm-m)'];
+    const sheets = C.readVesSheets([
+      { name: 'W', rows: vesSheet('W 1', 'Wenner', withMn, [[1.5, 1, 300], [3, 1, 280],
+        [6, 1, 200], [6, 4, 190], [15, 4, 120], [30, 4, 90]]) },
+      { name: 'S3', rows: vesSheet('S 3', 'Schlumberger', withMn, [[10, 1, 400],
+        [20, 1, 250], [40, 1, 150], [40, 4, 148], [40, 10, 78], [60, 10, 60]]) },
+      { name: 'S3 copy', rows: vesSheet('S 3', 'Schlumberger', withMn, [[10, 1, 410],
+        [20, 1, 260], [40, 1, 140], [60, 10, 70]]) },
+    ], 'x.xlsx');
+    const trialCase = (trials, err) => ({ trials, fit_error_percent: err,
+      model: C.layeredModel([300, 100, 150], [3, 30]) });
+    const withFactor = Object.assign({}, C.defaultConfig().ves,
+      { depth_of_investigation_factor: 0.4 });
+    out.ves_text = {
+      cases,
+      near_tie: ranking([caseInterp('VES 1', [1000, 100, 5000], [5, 20], 9.0),
+        caseInterp('VES 2', [1000, 100, 5000], [5, 22], 9.0)]),
+      equal: ranking([caseInterp('VES 2', [1000, 100, 5000], [5, 20], 9.0),
+        caseInterp('VES 1', [1000, 100, 5000], [5, 20], 9.0)]),
+      clear: ranking([caseInterp('VES 1', [300, 1500], [30], 5.0),
+        caseInterp('VES 2', [1000, 100, 5000], [5, 20], 5.0)]),
+      same_id: ranking([caseInterp('VES 1', [300, 1500], [30], 5.0),
+        caseInterp('VES 1', [1000, 100, 5000], [5, 20], 5.0)]),
+      rokel_verdict: C.suitabilityVerdict(C.assessSiting(rokelInterps)),
+      models_tried: rokelInversions.map((inv) => C.modelsTriedText(inv)).concat([
+        trialCase([[2, 4.2], [3, 0.01]], 0.01),
+        trialCase([[2, 8.0], [3, 3.5], [4, 2.0]], 3.5),
+        trialCase([[2, 15.4], [3, 8.0]], 8.0),
+        trialCase([[2, 15.4], [3, 13.3], [4, 13.1]], 13.3),
+      ].map((inv) => C.modelsTriedText(inv))),
+      poorly_resolved: rokelInversions.map((inv) => C.poorlyResolvedText(inv.model)),
+      doi_text: [
+        C.depthOfInvestigationText('schlumberger', 80, 40),
+        C.depthOfInvestigationText('wenner', 60, 30),
+        C.depthOfInvestigationText('wenner', 60, 24, withFactor),
+      ],
+      sheets: sheets.map((s) => [s.sounding_id, s.array_type,
+        s.flags.map((f) => [f.level, f.code, f.message])]),
+    };
 
     // a siting survey with no borehole yet: the design comes from the
     // interpretation alone, which is where the degenerate zone used to put
@@ -952,6 +1052,38 @@ await withPage(async (page, base, consoleErrors) => {
   check('preference table: the same rows, word for word',
     JSON.stringify(parsed.preference) === JSON.stringify(R.preference),
     `js ${JSON.stringify(parsed.preference)}\n     py ${JSON.stringify(R.preference)}`);
+
+  // --- Interpretation and report prose past the Rokel pair ---
+  // A reference written before this section existed fails here by name
+  // rather than stopping every check after it.
+  check('ves text: the reference carries the section', !!R.ves_text,
+    'regenerate tests/webapp/reference.json with make_reference.py');
+  const VT = R.ves_text || { cases: {} };
+  Object.keys(VT.cases).forEach((name) => {
+    const js = parsed.ves_text.cases[name], py = VT.cases[name];
+    ['water_zones', 'depth_to_basement_m', 'investigation_depth_m',
+      'max_drilling_depth_m', 'basement_not_resolved', 'drilling_depth_capped',
+      'drilling_depth_text', 'flags', 'narrative', 'rationale'].forEach((key) => {
+      check(`ves case ${name}: ${key}`,
+        JSON.stringify(js[key]) === JSON.stringify(py[key]),
+        `js ${JSON.stringify(js[key])}\n     py ${JSON.stringify(py[key])}`);
+    });
+    check(`ves case ${name}: suitability`, close(js.suitability, py.suitability, 1e-6),
+      `js ${js.suitability} vs py ${py.suitability}`);
+  });
+  ['near_tie', 'equal', 'clear', 'same_id'].filter((name) => VT[name]).forEach((name) => {
+    ['tie', 'verdict', 'preference'].forEach((key) => {
+      const js = parsed.ves_text[name][key], py = VT[name][key];
+      check(`ranking ${name}: ${key}`, JSON.stringify(js) === JSON.stringify(py),
+        `js ${JSON.stringify(js)}\n     py ${JSON.stringify(py)}`);
+    });
+  });
+  ['rokel_verdict', 'models_tried', 'poorly_resolved', 'doi_text', 'sheets']
+    .filter((key) => key in VT).forEach((key) => {
+      const js = parsed.ves_text[key], py = VT[key];
+      check(`ves text: ${key}, word for word`, JSON.stringify(js) === JSON.stringify(py),
+        `js ${JSON.stringify(js)}\n     py ${JSON.stringify(py)}`);
+    });
 
   // --- Geographic -> UTM ---
   parsed.geo.forEach((g, i) => {

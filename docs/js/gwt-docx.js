@@ -701,16 +701,26 @@
     return row.who_health || row.sl_standard || row.who_aesthetic || '';
   }
 
-  function limitationsParagraphs(kind) {
+  /* arrays: for 'ves', the arrays the soundings were run with. The paragraph
+   * said "a Schlumberger sounding ... its largest AB/2" over a Wenner survey,
+   * whose spacing is a. */
+  function limitationsParagraphs(kind, arrays) {
     var shared = 'The findings rest on the data recorded on the field sheets and ' +
       'on the standard interpretation methods named in this report. Field data ' +
       'carry measurement error, and the methods carry assumptions that are ' +
       'stated where they are used.';
     if (kind === 'ves') {
+      var kinds = arrays && arrays.length ? arrays : ['schlumberger'];
+      var reach = kinds.map(function (a) {
+        return a === 'wenner'
+          ? 'a Wenner sounding resolves the ground to roughly half of its largest ' +
+            'electrode spacing a'
+          : 'a Schlumberger sounding resolves the ground to roughly half of its ' +
+            'largest AB/2';
+      }).join(' and ');
       return [shared, 'Resistivity models are not unique: different layer ' +
         'combinations can fit the same sounding curve almost equally well ' +
-        '(the equivalence and suppression problem), and a Schlumberger sounding ' +
-        'resolves the ground to roughly half of its largest AB/2, not to the ' +
+        '(the equivalence and suppression problem), and ' + reach + ', not to the ' +
         'spacing itself: a layer that continues to that depth has no base in ' +
         'these data. A model whose misfit is above the target does not describe ' +
         'the curve closely, and the ranking discounts it for that. The ' +
@@ -794,15 +804,38 @@
     b.provisionalStamp(context.readiness);
     b.tableOfContents();
 
-    var best = interpretations.slice().sort(function (a, c) {
+    var inversions = context.inversions || [];
+    var vesCfg = context.ves || C.defaultConfig().ves;
+    var analystOrder = !!(context.preferredOrder && context.preferredOrder.length);
+    /* One ranking for the whole document, assigned before anything reads it,
+     * on the settings the tables below are scored with, as
+     * reporting/geophysical.py does; and one tie, by the test the tie
+     * sentence and the "=1st" in the preference table use. The report used
+     * to write "Drill at X (ranked 1st)" under a table that could not
+     * separate X from the next point. An order the analyst set is a
+     * judgment, not a score, and is not second-guessed. */
+    if (interpretations.length) {
+      C.rankInterpretations(interpretations, context.preferredOrder, vesCfg);
+    }
+    var suit = interpretations.length ? C.assessSiting(interpretations, vesCfg) : [];
+    var ranked = interpretations.slice().sort(function (a, c) {
       return (a.rank || 99) - (c.rank || 99);
-    })[0];
+    });
+    var best = ranked[0];
+    var tied = (!analystOrder && suit.length >= 2 &&
+      C.tiedLeaders(suit, vesCfg.ranking_tie_points)) ? ranked.slice(0, 2) : [];
+    var at = tied.length ? ' at ' + best.sounding_id : '';
     b.executiveSummary([
       'A vertical electrical sounding survey was carried out at ' +
         (site.community || 'the site') + ' to select a drilling target. ' +
         interpretations.length + ' ' + S.plural(interpretations.length, 'sounding') +
         ' were made and interpreted as layered earth models.',
-      best ? 'The recommended drilling point is ' + best.sounding_id + ', where ' +
+      best ? (tied.length
+        ? 'Points ' + tied[0].sounding_id + ' and ' + tied[1].sounding_id +
+          ' cannot be told apart on geophysical grounds, so either may be drilled, ' +
+          'the choice between them to be made on access, sanitary distances and ' +
+          'the community\'s preference. At ' + best.sounding_id + ' '
+        : 'The recommended drilling point is ' + best.sounding_id + ', where ') +
         (best.water_zones.length
           ? 'possible water bearing zones are resolved from ' +
             best.water_zones.map(function (z) {
@@ -813,7 +846,10 @@
             'about ' + C.fmtNum(best.investigation_depth_m) + ' m and the conductive ' +
             'ground continues below that, so the thickness is a minimum'
           : '') +
-        '. A drilling depth of ' + C.drillingDepthText(best) + ' is recommended.' +
+        '. A drilling depth of ' + C.drillingDepthText(best) + ' is recommended' +
+        (tied.length
+          ? ' there, and of ' + C.drillingDepthText(tied[1]) + ' at ' + tied[1].sounding_id
+          : '') + '.' +
         (best.fit_quality === 'unreliable'
           ? ' The model at this point reproduces the readings to ' +
             C.pyFixed(best.fit_error_percent, 1) + ' percent (ERR), well above the ' +
@@ -824,14 +860,22 @@
               'target, so the layer depths are approximate.'
             : '') : '',
     ], best ? [
-      'Recommended VES point: ' + best.sounding_id,
-      'Depth to bedrock: ' + (best.depth_to_basement_m !== null
+      tied.length
+        ? 'VES points the survey cannot separate: ' + tied[0].sounding_id + ' and ' +
+          tied[1].sounding_id
+        : 'Recommended VES point: ' + best.sounding_id,
+      'Depth to bedrock' + at + ': ' + (best.depth_to_basement_m !== null
         ? C.fmtNum(best.depth_to_basement_m) + ' m' : 'not resolved'),
-      'Interpreted aquifer thickness: ' + (best.basement_not_resolved ? 'at least ' : '') +
+      'Interpreted aquifer thickness' + at + ': ' +
+        (best.basement_not_resolved ? 'at least ' : '') +
         C.fmtNum(best.aquifer_thickness_m) + ' m',
-      'Aquifer protective capacity: ' + best.protective_capacity,
-      'Recommended drilling depth: ' + C.drillingDepthText(best),
-      'Ranking confidence: ' + C.pyFixed(best.confidence === undefined ? 1 : best.confidence, 2),
+      'Aquifer protective capacity' + at + ': ' + best.protective_capacity,
+      'Recommended drilling depth: ' + (tied.length
+        ? tied.map(function (i) {
+            return C.drillingDepthText(i) + ' at ' + i.sounding_id; }).join('; ')
+        : C.drillingDepthText(best)),
+      'Ranking confidence' + at + ': ' +
+        C.pyFixed(best.confidence === undefined ? 1 : best.confidence, 2),
     ] : []);
 
     b.heading('1. Introduction', 1);
@@ -880,23 +924,41 @@
     }
     b.heading('3.2 Geophysical Survey', 2);
     b.heading('3.2.1 Resistivity Profiling', 3);
-    b.paragraph('Resistivity measurements were made with a Schlumberger array. ' +
+    /* The array each sounding was run with, from its inversion (the two lists
+     * are built in lockstep): the report said "a Schlumberger array" and "a
+     * maximum AB/2 of 60 m" over a Wenner survey whose spacing a was 60 m and
+     * whose AB/2 was 90 m. The reach of each array is worded as
+     * reporting/geophysical.py _limitations words it. */
+    var arrayOf = function (k) {
+      var inv = inversions[k];
+      return inv && String(inv.array_type || '').indexOf('wenner') === 0
+        ? 'wenner' : 'schlumberger';
+    };
+    var reach = {};
+    interpretations.forEach(function (interp, k) {
+      if (!(interp.max_spacing_m && interp.investigation_depth_m)) return;
+      var kind = arrayOf(k), was = reach[kind] || [0, 0];
+      reach[kind] = [Math.max(was[0], interp.max_spacing_m),
+        Math.max(was[1], interp.investigation_depth_m)];
+    });
+    var arrays = interpretations.map(function (interp, k) { return arrayOf(k); })
+      .filter(function (a, k, all) { return all.indexOf(a) === k; }).sort();
+    b.paragraph('Resistivity measurements were made with a ' +
+      (arrays.length ? arrays : ['schlumberger']).map(function (a) {
+        return a.charAt(0).toUpperCase() + a.slice(1);
+      }).join(' and a ') + ' array. ' +
       'Apparent resistivity is computed from the measured resistance and the ' +
       'array geometric factor.', { align: 'justify' });
     b.heading('3.2.2 Selection of VES Points', 3);
     b.paragraph('Sounding points were placed on the candidate positions agreed ' +
       'with the community.', { align: 'justify' });
     b.heading('3.2.3 Vertical Electrical Sounding (VES)', 3);
-    b.paragraph('Each sounding was expanded to a maximum AB/2 of ' +
-      (interpretations.length
-        ? C.fmtNum(Math.max.apply(null, interpretations.map(function (i) {
-            return i.max_spacing_m || 0; })))
-        : '—') + ' m. A Schlumberger sounding resolves the ground to roughly half ' +
-      'of that, so the depth of investigation is about ' +
-      (interpretations.length
-        ? C.fmtNum(Math.max.apply(null, interpretations.map(function (i) {
-            return i.investigation_depth_m; })))
-        : '—') + ' m; a layer that continues to that depth has no base in these data.',
+    b.paragraph(Object.keys(reach).length
+      ? Object.keys(reach).sort().map(function (kind) {
+          return C.depthOfInvestigationText(kind, reach[kind][0], reach[kind][1], vesCfg);
+        }).join(' ') + ' A layer that continues to that depth has no base in these data.'
+      : 'The depth of investigation is a fraction of the largest electrode spacing, ' +
+        'so any structure below it is not resolved.',
       { align: 'justify' });
 
     b.heading('4. Data Analysis and Interpretation', 1);
@@ -924,6 +986,16 @@
         caption: 'Layered model for ' + interp.sounding_id + '.',
         colWidthsCm: [1.4, 2.6, 2.2, 1.8, 1.8, 6.2],
       });
+      /* the sentences reporting/geophysical.py _sounding_block writes under
+       * the model table, worded once in the core: what else was tried, and
+       * which boundary the curve does not settle */
+      var inversion = inversions[i];
+      if (inversion) {
+        var tried = C.modelsTriedText(inversion, vesCfg);
+        if (tried) b.paragraph(tried, { align: 'justify' });
+        var weak = C.poorlyResolvedText(inversion.model);
+        if (weak) b.paragraph(weak, { align: 'justify' });
+      }
       var fig = figures.filter(function (f) { return f.soundingId === interp.sounding_id; });
       for (var k = 0; k < fig.length; k++) {
         b.figure(fig[k].image, fig[k].caption, fig[k].widthCm || 15);
@@ -932,7 +1004,7 @@
 
     if (interpretations.length) {
       b.heading('Drill-target suitability', 2);
-      b.table(C.drillingPreferenceTable(interpretations, context.preferredOrder, context.ves)
+      b.table(C.drillingPreferenceTable(interpretations, context.preferredOrder, vesCfg)
         .map(function (row) {
           return [row['No.'], row['VES Point'], row.Layer, row['Thickness (m)'],
             row['Depth (m)'], row[C.LAYER_RESISTIVITY_COLUMN],
@@ -943,9 +1015,38 @@
         caption: 'Ranked drilling preference. The resistivities are those of the ' +
           'fitted layers, not the apparent resistivities read in the field; a water ' +
           'zone marked + continues below the depth the sounding resolves, so its ' +
-          'base and the drilling depth are minima.',
+          'base and the drilling depth are minima.' +
+          (tied.length ? ' The two points marked =1st cannot be told apart on ' +
+            'geophysical grounds.' : ''),
         fontSize: 8.5,
       });
+      /* The scorecard reporting/geophysical.py _suitability_block prints under
+       * the ranked table: the suitability, the confidence that discounts it
+       * and the figure the points are ranked on, then the target or the tie,
+       * worded once in the core. The browser report showed the ranking and
+       * never the numbers it was decided on. */
+      b.paragraph('Each surveyed point is given a transparent suitability score ' +
+        'from 0 to 100. The score combines the interpreted water-bearing ' +
+        'thickness, how well the resistivity of the water zone sits within the ' +
+        'productive fractured or weathered window, the overburden profile, and ' +
+        'the presence of a fractured zone at the basement contact. The scores ' +
+        'rank the points as drilling targets.', { align: 'justify' });
+      b.table(suit.map(function (s) {
+        return [s.rank, s.sounding_id, C.pyFixed(s.suitability, 1),
+          C.pyFixed(s.confidence, 2), C.pyFixed(s.suitability * s.confidence, 1),
+          s.grade];
+      }), {
+        header: ['Rank', 'VES point', 'Suitability (0 to 100)', 'Confidence',
+          'Weighted', 'Grade'],
+        caption: 'Drill-target suitability of the surveyed points. Suitability is ' +
+          'the geological score; confidence discounts it for a model fit above ' +
+          'the target and for a water-bearing zone whose base the sounding never ' +
+          'reached; the points are ranked on the weighted figure.',
+        colWidthsCm: [1.4, 3.0, 3.6, 2.4, 2.2, 3.4],
+      });
+      b.paragraph(C.suitabilityVerdict(suit, vesCfg.ranking_tie_points) +
+        (analystOrder ? ' The drilling preference above follows the order the ' +
+          'analyst set, not these scores.' : ''), { align: 'justify' });
       /* The drill-target map, where reporting/geophysical.py _suitability_block
        * puts it: under the ranked table, above the subsurface maps. It is
        * written inside this heading rather than beside the call to
@@ -967,20 +1068,50 @@
 
     b.heading('5. Conclusions and Recommendations', 1);
     if (best) {
+      /* the points drilled for: the one ranked first, or both of a pair the
+       * ranking cannot separate */
+      var chosen = tied.length ? tied : [best];
+      /* A depth is a minimum for one of two reasons, named as
+       * reporting/geophysical.py _recommendations names them: the zone runs
+       * on below the depth of investigation, or it ends inside it but the
+       * margin drilled below it does not. */
+      var openEnded = chosen.some(function (i) { return i.basement_not_resolved; });
+      var capped = chosen.some(function (i) {
+        return i.drilling_depth_capped && !i.basement_not_resolved;
+      });
+      var reason = openEnded && capped
+        ? 'The water-bearing zone, or the margin drilled below it, runs past what ' +
+          'the survey resolves'
+        : openEnded ? 'The water-bearing zone continues below what the survey resolves'
+          : capped ? 'The margin drilled below the deepest water zone runs past what ' +
+            'the survey resolves' : '';
+      var targets = function (interp) {
+        return interp.water_zones.map(function (z) {
+          return C.zoneCell(z[0], z[1], C.zoneIsOpen(interp, z)) + ' m'; }).join(', ');
+      };
       b.bullets([
-        'Drill at ' + best.sounding_id + ' (ranked ' + C.ordinal(best.rank || 1) + ').',
-        'Recommended drilling depth: ' + C.drillingDepthText(best) + '.' +
-          (best.basement_not_resolved
-            ? ' The water-bearing zone continues below what the survey resolves: ' +
-              'drill on while the formation is water bearing, guided by the strikes ' +
-              'and the penetration rate, and stop in fresh rock.'
+        tied.length
+          ? 'Drill at ' + tied[0].sounding_id + ' or ' + tied[1].sounding_id +
+            ', which the survey cannot separate on geophysical grounds; choose ' +
+            'between them on access, sanitary distances and the community\'s ' +
+            'preference.'
+          : 'Drill at ' + best.sounding_id + ' (ranked ' + C.ordinal(best.rank || 1) + ').',
+        'Recommended drilling depth: ' + (tied.length
+          ? tied.map(function (i) {
+              return C.drillingDepthText(i) + ' at ' + i.sounding_id; }).join('; ')
+          : C.drillingDepthText(best)) + '.' +
+          (reason
+            ? ' ' + reason + ': drill on while the formation is water bearing, ' +
+              'guided by the strikes and the penetration rate, and stop in fresh rock.'
             : ''),
-        best.water_zones.length
-          ? 'Target the interpreted water bearing ' +
-            S.plural(best.water_zones.length, 'zone') + ' at ' +
-            best.water_zones.map(function (z) {
-              return C.zoneCell(z[0], z[1], C.zoneIsOpen(best, z)) + ' m'; }).join(', ') + '.'
-          : 'No clear water bearing zone was resolved; treat the hole as exploratory.',
+        tied.length
+          ? 'Target the interpreted water bearing zones: ' + tied.map(function (i) {
+              return (targets(i) || 'none resolved') + ' at ' + i.sounding_id;
+            }).join('; ') + '.'
+          : best.water_zones.length
+            ? 'Target the interpreted water bearing ' +
+              S.plural(best.water_zones.length, 'zone') + ' at ' + targets(best) + '.'
+            : 'No clear water bearing zone was resolved; treat the hole as exploratory.',
         'Case and screen against the zones confirmed by the drill cuttings, not ' +
           'against this model alone.',
       ]);
@@ -988,13 +1119,29 @@
     (context.recommendations || []).length && b.bullets(context.recommendations);
 
     b.heading('6. Limitations and Uncertainty', 1);
-    limitationsParagraphs('ves').forEach(function (text) {
+    limitationsParagraphs('ves', arrays).forEach(function (text) {
       b.paragraph(text, { align: 'justify' });
     });
 
-    if (context.verificationNotes && context.verificationNotes.length) {
+    /* The checks the sheets raised, as reporting/geophysical.py
+     * _verification_notes gathers them: every warning on a sounding the
+     * report covers, once, with the sounding named where the flag does not
+     * name it. Two overlap readings at AB/2 40 m a factor of 1.98 apart
+     * reached no document. */
+    var notes = (context.verificationNotes || []).slice();
+    (context.soundings || []).forEach(function (sounding) {
+      (sounding.flags || []).forEach(function (flag) {
+        if (flag.level !== 'warning' && flag.level !== 'error') return;
+        var text = flagText(flag.context ? flag
+          : Object.assign({}, flag, { context: sounding.sounding_id }));
+        if (notes.indexOf(text) < 0) notes.push(text);
+      });
+    });
+    if (notes.length) {
       b.heading('Annex A. Data Verification Notes', 1);
-      b.bullets(context.verificationNotes);
+      b.paragraph('The following checks were raised automatically during data ' +
+        'processing and should be verified against the field notes.');
+      b.bullets(notes);
     }
 
     b.references([REFERENCES.rwsn_professional, REFERENCES.geology, REFERENCES.bgs,

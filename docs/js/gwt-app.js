@@ -5878,10 +5878,15 @@
           derived.interpretations.forEach(function (interp) {
             interpreted[interp.sounding_id] = true;
           });
-          context.subsurface = await subsurfaceFigures(derived.interpretations,
-            (derived.soundings || []).filter(function (sounding) {
-              return interpreted[sounding.sounding_id] === true;
-            }));
+          var reported = (derived.soundings || []).filter(function (sounding) {
+            return interpreted[sounding.sounding_id] === true;
+          });
+          context.subsurface = await subsurfaceFigures(derived.interpretations, reported);
+          /* the soundings carry the warnings their sheets raised, which the
+           * report's annex lists; the inversions, in lockstep with the
+           * interpretations, carry the array and the models tried */
+          context.soundings = reported;
+          context.inversions = derived.inversions;
           context.interpretations = derived.interpretations;
           context.figures = figures;
           context.preferredOrder = store.get('ves.preferredOrder');

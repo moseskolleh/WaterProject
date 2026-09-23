@@ -38,6 +38,7 @@ import sys
 import tempfile
 import zlib
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -53,7 +54,9 @@ from groundwater.ingestion import (
 )
 from groundwater.models import (
     DrillingLog,
+    LayeredModel,
     SiteMetadata,
+    VESSounding,
     WaterQualityResult,
     WaterQualitySample,
 )
@@ -74,7 +77,19 @@ from groundwater.supervision.checklists import (
     load_checklists,
     migrate_response_keys,
 )
-from groundwater.ves.interpret import drilling_preference_table, interpret_model
+from groundwater.config import VESConfig
+from groundwater.ingestion.ves import _flag_duplicate_ids, _sounding_or_reason
+from groundwater.reporting.geophysical import (
+    depth_of_investigation_text,
+    models_tried_text,
+    poorly_resolved_text,
+)
+from groundwater.siting import ranking_tie, suitability_verdict
+from groundwater.ves.interpret import (
+    drilling_depth_text,
+    drilling_preference_table,
+    interpret_model,
+)
 from groundwater.ves.inversion import invert_sounding
 
 REPO = Path(__file__).resolve().parents[2]
@@ -121,6 +136,145 @@ def site_dict(site):
 
 def flags(items):
     return [[f.level, f.code, f.message] for f in items]
+
+
+# The interpretation and report prose over cases the Rokel pair never
+# reaches: a zone whose modelled base lies below the depth of investigation,
+# one wholly below it, a margin cut back to it, a last reading the inversion
+# dropped, poorly resolved boundaries, a near-tie, an exact tie and two
+# sheets carrying one sounding number. parity.mjs builds the same cases.
+VES_CASE_SPACINGS = [1.0, 2.0, 5.0, 10.0, 20.0, 40.0, 80.0]
+VES_CASES = [
+    # name, rho, h, err, h_factor, ab2, rho_app
+    ("zone past doi", [1000, 100, 5000], [5, 60], 8.0, None, None, None),
+    ("zone below doi", [1000, 1500, 100, 5000], [10, 40, 20], 6.0, None,
+     [1.0, 2.0, 5.0, 10.0, 20.0, 40.0, 60.0], None),
+    ("margin past doi", [1000, 100, 5000], [5, 33], 5.0, None, None, None),
+    ("last reading dropped", [1000, 100], [8], 5.0, None, None,
+     [300.0, 250.0, 200.0, 150.0, 120.0, 110.0, 0.0]),
+    ("poorly resolved", [1100, 1600, 47], [1.0, 7.0], 13.3, [3.7, 1.4], None, None),
+    ("two poorly resolved", [1100, 1600, 300, 47], [1.0, 2.0, 7.0], 5.0,
+     [3.7, 2.5, 1.1], None, None),
+    ("thin resistive at 2.5", [1000, 5000, 100], [2.5, 3], 5.0, None, None, None),
+]
+
+
+def _case_interp(sid, rho, h, err=None, h_factor=None, ab2=None, rho_app=None):
+    ab2 = ab2 or VES_CASE_SPACINGS
+    model = LayeredModel(rho, h, fit_error_percent=err, sounding_id=sid)
+    if h_factor is not None:
+        model.h_uncertainty_factor = np.array(h_factor, dtype=float)
+    sounding = VESSounding(SiteMetadata(), sid, np.array(ab2), np.full(len(ab2), np.nan),
+                           np.array(rho_app or [100.0] * len(ab2)))
+    return interpret_model(sounding, model)
+
+
+def _ves_sheet(number, array, header, rows):
+    return ([["VES FIELD DATA", None, None, None],
+             ["Client", "Ref Client", "Community", "Refville"],
+             ["Project", "Geophysical Survey", "Sounding Number", number],
+             ["District", "Bo", "Date", "1 Jan 2020"],
+             ["Array", array, "Instrument", "ABEM"],
+             [None, None, None, None],
+             header]
+            + [[k + 1] + list(r) for k, r in enumerate(rows)])
+
+
+VES_SHEETS = [
+    # a Schlumberger sheet with only its array field changed to "Wenner"
+    ("W", _ves_sheet("W 1", "Wenner", ["No.", "AB/2 (m)", "MN (m)",
+                                        "Apparent Resistivity (ohm-m)"],
+                     [[1.5, 1.0, 300.0], [3.0, 1.0, 280.0], [6.0, 1.0, 200.0],
+                      [6.0, 4.0, 190.0], [15.0, 4.0, 120.0], [30.0, 4.0, 90.0]])),
+    # three readings at one AB/2, the third the one out
+    ("S3", _ves_sheet("S 3", "Schlumberger", ["No.", "AB/2 (m)", "MN (m)",
+                                             "Apparent Resistivity (ohm-m)"],
+                      [[10.0, 1.0, 400.0], [20.0, 1.0, 250.0], [40.0, 1.0, 150.0],
+                       [40.0, 4.0, 148.0], [40.0, 10.0, 78.0], [60.0, 10.0, 60.0]])),
+    # a copied sheet whose Sounding Number was not changed
+    ("S3 copy", _ves_sheet("S 3", "Schlumberger", ["No.", "AB/2 (m)", "MN (m)",
+                                                  "Apparent Resistivity (ohm-m)"],
+                           [[10.0, 1.0, 410.0], [20.0, 1.0, 260.0], [40.0, 1.0, 140.0],
+                            [60.0, 10.0, 70.0]])),
+]
+
+
+def _trial_case(trials, chosen_rho, chosen_h, err):
+    return SimpleNamespace(trials=trials, fit_error_percent=err,
+                           model=LayeredModel(chosen_rho, chosen_h))
+
+
+MODELS_TRIED_CASES = [
+    _trial_case([(2, 4.2), (3, 0.01)], [300, 100, 150], [3, 30], 0.01),
+    _trial_case([(2, 8.0), (3, 3.5), (4, 2.0)], [300, 100, 150], [3, 30], 3.5),
+    _trial_case([(2, 15.4), (3, 8.0)], [300, 100, 150], [3, 30], 8.0),
+    _trial_case([(2, 15.4), (3, 13.3), (4, 13.1)], [300, 100, 150], [3, 30], 13.3),
+]
+
+
+def ves_text(rokel_inversions, rokel_interps) -> dict:
+    cases = {}
+    for name, rho, h, err, h_factor, ab2, rho_app in VES_CASES:
+        i = _case_interp(name, rho, h, err, h_factor, ab2, rho_app)
+        suit = assess_siting([i])[0]
+        cases[name] = {
+            "water_zones": [[clean(t), clean(b)] for t, b in i.water_zones],
+            "depth_to_basement_m": clean(i.depth_to_basement_m),
+            "investigation_depth_m": clean(i.investigation_depth_m),
+            "max_drilling_depth_m": clean(i.max_drilling_depth_m),
+            "basement_not_resolved": i.basement_not_resolved,
+            "drilling_depth_capped": i.drilling_depth_capped,
+            "drilling_depth_text": drilling_depth_text(i),
+            "flags": flags(i.flags),
+            "narrative": i.narrative,
+            "suitability": clean(suit.suitability),
+            "rationale": suit.rationale,
+        }
+
+    def ranking(interps):
+        suit = assess_siting(interps)
+        return {
+            "tie": ranking_tie(suit),
+            "verdict": suitability_verdict(suit),
+            "preference": [[r["VES Point"], r["Ranking"], r["Possible Water Zones (m)"]]
+                           for r in drilling_preference_table(interps)],
+        }
+
+    near = [_case_interp("VES 1", [1000, 100, 5000], [5, 20], 9.0),
+            _case_interp("VES 2", [1000, 100, 5000], [5, 22], 9.0)]
+    equal = [_case_interp("VES 2", [1000, 100, 5000], [5, 20], 9.0),
+             _case_interp("VES 1", [1000, 100, 5000], [5, 20], 9.0)]
+    clear = [_case_interp("VES 1", [300, 1500], [30], 5.0),
+             _case_interp("VES 2", [1000, 100, 5000], [5, 20], 5.0)]
+    # the one with no water zone first, so a weight looked up by the shared
+    # id would rank it with the other's score
+    same_id = [_case_interp("VES 1", [300, 1500], [30], 5.0),
+               _case_interp("VES 1", [1000, 100, 5000], [5, 20], 5.0)]
+
+    grids = []
+    for title, grid in VES_SHEETS:
+        sounding, _ = _sounding_or_reason(grid, source="x.xlsx", sheet_name=title)
+        grids.append((title, sounding))
+    _flag_duplicate_ids([s for _, s in grids], [t for t, _ in grids])
+
+    return {
+        "cases": cases,
+        "near_tie": ranking(near),
+        "equal": ranking(equal),
+        "clear": ranking(clear),
+        "same_id": ranking(same_id),
+        "rokel_verdict": suitability_verdict(assess_siting(rokel_interps)),
+        "models_tried": [models_tried_text(inv) for inv in rokel_inversions]
+        + [models_tried_text(case) for case in MODELS_TRIED_CASES],
+        "poorly_resolved": [poorly_resolved_text(inv.model) for inv in rokel_inversions],
+        "doi_text": [
+            depth_of_investigation_text("schlumberger", 80.0, 40.0),
+            depth_of_investigation_text("wenner", 60.0, 30.0),
+            depth_of_investigation_text(
+                "wenner", 60.0, 24.0, VESConfig(depth_of_investigation_factor=0.4)),
+        ],
+        "sheets": [[s.sounding_id, s.array_type, flags(s.flags)] for _, s in grids],
+    }
 
 
 def build() -> dict:
@@ -462,6 +616,7 @@ def build() -> dict:
         for i in rokel_interps
     ]
     out["preference"] = drilling_preference_table(rokel_interps)
+    out["ves_text"] = ves_text(rokel_inversions, rokel_interps)
 
     # A siting survey with no borehole yet: the design comes from the
     # interpretation alone. The degenerate half-space used to make this an

@@ -173,6 +173,11 @@ class LayeredModel:
     fit_error_percent: Optional[float] = None  # RMS misfit, like IPI2Win ERR
     method: str = ""  # "ipi2win-import" | "damped-lsq" | ...
     sounding_id: str = ""
+    #: Linearised 1-sigma multiplicative uncertainty of each thickness, set
+    #: by the inversion that fitted the model (None for a transcribed one).
+    #: It travels with the model so the interpretation can say a boundary
+    #: is poorly resolved instead of reading the layer count as settled.
+    h_uncertainty_factor: Optional[np.ndarray] = None
 
     def __post_init__(self) -> None:
         self.resistivities = np.asarray(self.resistivities, dtype=float)

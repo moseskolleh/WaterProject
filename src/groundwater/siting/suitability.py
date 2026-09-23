@@ -180,6 +180,27 @@ def _rationale(interp: SiteInterpretation, comp: SuitabilityComponents) -> str:
     return text
 
 
+def tied_leaders(
+    results: list["SitingSuitability"], within_points: float = 3.0
+) -> tuple["SitingSuitability", "SitingSuitability"] | None:
+    """The two highest-ranked points when the ranking cannot separate them.
+
+    One test for every place that has to know: the tie sentence, the
+    preference table's "=1st" and the summary, conclusions and
+    recommendations, which otherwise named a single winner in the same
+    document that called the two indistinguishable. Decided on the
+    confidence-weighted scores as they are, not as printed. ``None`` when
+    the ranking is clear or there is one point.
+    """
+    ranked = sorted(results, key=lambda r: r.rank if r.rank is not None else 99)
+    if len(ranked) < 2:
+        return None
+    first, second = ranked[0], ranked[1]
+    if abs(first.weighted - second.weighted) >= within_points:
+        return None
+    return first, second
+
+
 def ranking_tie(results: list["SitingSuitability"], within_points: float = 3.0) -> str:
     """One sentence when the top two points cannot be told apart.
 
@@ -188,18 +209,48 @@ def ranking_tie(results: list["SitingSuitability"], within_points: float = 3.0) 
     difference hidden by rounding gives the client a preference with no
     visible basis. Returns "" when the ranking is clear or there is one point.
     """
-    ranked = sorted(results, key=lambda r: r.rank if r.rank is not None else 99)
-    if len(ranked) < 2:
+    pair = tied_leaders(results, within_points)
+    if pair is None:
         return ""
-    first, second = ranked[0], ranked[1]
-    if abs(first.weighted - second.weighted) >= within_points:
-        return ""
+    first, second = pair
+    # "by name only" is true only of equal scores; said of 82.3 against 79.5
+    # it told the client the order was alphabetical when it was not
+    gap = first.weighted - second.weighted
+    if gap == 0:
+        order = f"{first.sounding_id} is listed first by name only"
+    else:
+        ahead = f"{gap:.1f}" if round(gap, 1) >= 0.1 else "less than 0.1"
+        order = (
+            f"{first.sounding_id} is ahead by {ahead} points, within the "
+            f"{within_points:g}-point margin the ranking cannot separate"
+        )
     return (
         f"Points {first.sounding_id} and {second.sounding_id} are indistinguishable "
         f"on geophysical grounds (confidence-weighted suitability "
-        f"{first.weighted:.1f} and {second.weighted:.1f}); {first.sounding_id} is "
-        "listed first by name only, and the choice between them should be made "
-        "on access, sanitary distances and the community's preference."
+        f"{first.weighted:.1f} and {second.weighted:.1f}); {order}, and the choice "
+        "between them should be made on access, sanitary distances and the "
+        "community's preference."
+    )
+
+
+def suitability_verdict(results: list["SitingSuitability"], within_points: float = 3.0) -> str:
+    """The paragraph under the suitability table: the target, or the tie.
+
+    Worded once for both engines. A tie gives both points' rationale, since
+    the reader is being asked to choose between them.
+    """
+    if not results:
+        return ""
+    tie = ranking_tie(results, within_points)
+    if tie:
+        pair = tied_leaders(results, within_points)
+        return " ".join([tie] + [f"Point {r.sounding_id}: {r.rationale}" for r in pair])
+    best = sorted(results, key=lambda r: r.rank if r.rank is not None else 99)[0]
+    return (
+        f"Point {best.sounding_id} ranks first (suitability "
+        f"{best.suitability:.0f} out of 100, {best.grade.lower()}, confidence "
+        f"{best.confidence:.2f}) and is the recommended drilling target. "
+        f"{best.rationale}"
     )
 
 
