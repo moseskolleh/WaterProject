@@ -1017,15 +1017,14 @@
     var mapNode = null;
     if (GWT.data.geo && GWT.data.geo.adminBoundaries) {
       var boundaries = GWT.data.geo.adminBoundaries.features || [];
+      var home = locatorHome(site, latlon);
       var legendItems = [];
       if (latlon) {
         legendItems.push({ label: 'Project site', kind: 'diamond',
           colour: charts.palette().secondary });
       }
-      if (site.district) {
-        legendItems.push({ label: site.district + ' district', colour: '#CFE0D6' });
-      }
-      legendItems.push({ label: 'other districts', colour: '#EDEAE3' });
+      if (home.legend) legendItems.push(home.legend);
+      legendItems.push({ label: 'other districts', colour: OTHER_FILL });
       mapNode = charts.siteMap({
         context: boundaries,
         /* the bundled layer is geoBoundaries; the credit named a dataset this
@@ -1033,10 +1032,9 @@
          * tell the Atlantic from unmapped ground */
         outline: nationalOutline(GWT.data.geo),
         labelContext: true,
-        contextFill: function (feature) {
-          var name = (feature.properties || {}).name || (feature.properties || {}).shapeName;
-          return name === site.district ? '#CFE0D6' : '#EDEAE3';
-        },
+        contextFill: home.fill,
+        highlight: home.highlight, highlightFill: HOME_FILL,
+        highlightLabel: home.highlight.length ? home.name : '',
         points: latlon ? [{
           lon: latlon.lon, lat: latlon.lat, label: siteLabel(),
           colour: charts.palette().secondary, size: 6.5,
@@ -1131,12 +1129,18 @@
               render();
             }, { variant: 'ghost' }),
           ])),
-        latlon ? el('p.muted', 'Interpreted position: ' + latlon.lat.toFixed(5) +
-          '°N, ' + latlon.lon.toFixed(5) + '°E' +
+        latlon ? el('p.muted', 'Interpreted position: ' + degreesText(latlon) +
           (latlon.fromUtm ? ' (converted from UTM zone ' + latlon.zone + ')' : '') +
           (latlon.chiefdom ? ' — inside ' + latlon.chiefdom + ' chiefdom' +
             (districtOf(latlon.chiefdom) ? ', ' + districtOf(latlon.chiefdom) +
               ' district' : '') : '')) : null,
+        /* a sign the reader supplied is not a sign the crew typed, and a
+         * position outside the country is on no map below: both are said
+         * where the position is shown, in the words the engine uses */
+        latlon && latlon.note
+          ? el('div.callout.callout-warn', el('p', latlon.note)) : null,
+        latlon && latlon.outside
+          ? el('div.callout.callout-bad', el('p', latlon.outside)) : null,
         /* the commonest copy-over error on a field sheet is a district that
          * does not contain the recorded position, so say so where it is seen */
         districtWarning
@@ -1286,20 +1290,44 @@
 
   /* Sierra Leone lies in UTM zones 28N and 29N; the easting alone identifies
    * the zone, so it is inferred rather than guessed. A pair of small numbers is
-   * read as degrees instead. */
+   * read as degrees instead, and read the way a pasted "lat, lon" is, through
+   * the engine's readLatLon: a longitude typed without its western sign is
+   * read as west, and the reading says so. Taken at face value, easting
+   * 13.2317 and northing 8.4657 put the site in central Africa - no marker on
+   * any map, "13.23170 E" in every report, and nothing on the page to say it
+   * was wrong.
+   *
+   * `note` is the assumption a degree reading rests on, and `outside` the
+   * sentence check_site_consistency writes for a position outside the
+   * country, UTM or degrees; the site page shows both. */
   function siteLatLon() {
     var site = store.get('site');
     var e = site.easting, n = site.northing;
     if (e === null || n === null || e === undefined || n === undefined) return null;
+    var ll;
     if (Math.abs(e) <= 180 && Math.abs(n) <= 90) {
-      return { lon: e, lat: n, fromUtm: false, chiefdom: chiefdomAt(n, e) };
+      var reading = C.readLatLon(String(n) + ', ' + String(e));
+      ll = reading.lat === null || reading.lon === null
+        ? { lat: Number(n), lon: Number(e), note: '' }
+        : { lat: reading.lat, lon: reading.lon, note: reading.message };
+      ll.fromUtm = false;
+    } else {
+      var zone = site.utm_zone || C.inferZoneForSierraLeone(e);
+      ll = utmToLatLon(e, n, zone);
+      if (!ll) return null;
+      ll.fromUtm = true; ll.zone = zone; ll.note = '';
     }
-    var zone = site.utm_zone || C.inferZoneForSierraLeone(e);
-    var ll = utmToLatLon(e, n, zone);
-    if (!ll) return null;
-    ll.fromUtm = true; ll.zone = zone;
+    ll.outside = C.outsideCountryNote(ll.lat, ll.lon);
     ll.chiefdom = chiefdomAt(ll.lat, ll.lon);
     return ll;
+  }
+
+  /* A position as a reader writes it: "8.46570° N, 13.23170° W". The site
+   * page printed the signed longitude against an E, so a correct western fix
+   * read "-13.23170°E". */
+  function degreesText(latlon) {
+    return C.pyFixed(Math.abs(latlon.lat), 5) + '° ' + (latlon.lat >= 0 ? 'N' : 'S') +
+      ', ' + C.pyFixed(Math.abs(latlon.lon), 5) + '° ' + (latlon.lon >= 0 ? 'E' : 'W');
   }
 
   /* --- the area a report should map ---------------------------------------
@@ -1311,71 +1339,42 @@
    * Only a project that records neither gets no map, and then the report says
    * so rather than leaving a gap.
    *
-   * This mirrors groundwater.mapping.area_window on the Python side, so the
+   * The window itself is the engine's C.areaWindow, a port of
+   * groundwater.mapping.area_window held to it by the parity suite, so the
    * browser report and the report the desktop toolkit writes cover the same
-   * ground.
+   * ground at the same size. The page used to work it out with rules of its
+   * own - the largest ring only, the layer's truncated chiefdom names, a
+   * district name compared as typed - and gave Dema a window a third
+   * narrower than the Python's, no map at all for Karene, Falaba, "Western
+   * Area" or "Port Loko District", and "Bureh Kasseh Ma chiefdom" in a
+   * caption.
    */
-  function ringCentroid(ring) {
-    var a = 0, cx = 0, cy = 0;
-    for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-      var cross = ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
-      a += cross;
-      cx += (ring[j][0] + ring[i][0]) * cross;
-      cy += (ring[j][1] + ring[i][1]) * cross;
-    }
-    if (!a) {
-      return [ring[0][0], ring[0][1]];
-    }
-    return [cx / (3 * a), cy / (3 * a)];
-  }
 
-  function featureRings(feature) {
-    var geometry = (feature || {}).geometry;
-    if (!geometry) return [];
-    if (geometry.type === 'Polygon') return geometry.coordinates;
-    if (geometry.type === 'MultiPolygon') {
-      return geometry.coordinates.map(function (poly) { return poly[0]; });
-    }
-    return [];
-  }
+  /* The district a location map lights, and the legend entry that names it.
+   * The fill is applied to the polygons C.homeDistrict names, and to the
+   * chiefdoms it names in place of a district the boundary layer predates;
+   * the legend names the district only when something is lit, because a key
+   * entry in a colour that is nowhere on the map is a key that lies. */
+  var HOME_FILL = '#CFE0D6';
+  var OTHER_FILL = '#EDEAE3';
 
-  function featureWindow(feature, label, minRadiusKm, factor) {
-    var rings = featureRings(feature);
-    if (!rings.length) return null;
-    var biggest = rings[0], best = 0;
-    rings.forEach(function (ring) {
-      var lonMin = Infinity, lonMax = -Infinity, latMin = Infinity, latMax = -Infinity;
-      ring.forEach(function (c) {
-        lonMin = Math.min(lonMin, c[0]); lonMax = Math.max(lonMax, c[0]);
-        latMin = Math.min(latMin, c[1]); latMax = Math.max(latMax, c[1]);
-      });
-      var area = (lonMax - lonMin) * (latMax - latMin);
-      if (area > best) { best = area; biggest = ring; }
-    });
-    var centre = ringCentroid(biggest);
-    var latSpan = 0, lonSpan = 0;
-    biggest.forEach(function (c) {
-      lonSpan = Math.max(lonSpan, Math.abs(c[0] - centre[0]));
-      latSpan = Math.max(latSpan, Math.abs(c[1] - centre[1]));
-    });
-    var km = Math.max(latSpan * 110.574,
-      lonSpan * 111.320 * Math.cos(centre[1] * Math.PI / 180));
+  function locatorHome(site, latlon) {
+    var home = C.homeDistrict(site, latlon);
+    var lit = {};
+    home.chiefdoms.forEach(function (name) { lit[name] = true; });
+    var chiefdoms = (((GWT.data.geo || {}).chiefdomBoundaries || {}).features || [])
+      .filter(function (f) { return lit[(f.properties || {}).name] === true; });
     return {
-      lon: centre[0], lat: centre[1], label: label, exact: false,
-      radiusKm: Math.max(km * (factor || 1.2), minRadiusKm || 20),
+      name: home.name,
+      fill: function (feature) {
+        var props = feature.properties || {};
+        var name = String(props.name || props.shapeName || '').trim().toLowerCase();
+        return home.districts.indexOf(name) >= 0 ? HOME_FILL : OTHER_FILL;
+      },
+      highlight: chiefdoms,
+      legend: home.districts.length || chiefdoms.length
+        ? { label: C.districtLabel(home.name), colour: HOME_FILL } : null,
     };
-  }
-
-  function adminFeature(level, name) {
-    var wanted = String(name || '').trim().toLowerCase();
-    if (!wanted) return null;
-    var set = level === 'chiefdom'
-      ? ((GWT.data.geo || {}).chiefdomBoundaries || {}).features
-      : ((GWT.data.geo || {}).adminBoundaries || {}).features;
-    return (set || []).filter(function (feature) {
-      var props = feature.properties || {};
-      return String(props.name || props.shapeName || '').trim().toLowerCase() === wanted;
-    })[0] || null;
   }
 
   /* The national outline on its own. The geology and aquifer maps need it
@@ -1454,50 +1453,13 @@
   }
 
   function areaWindow(radiusKm) {
-    var site = store.get('site') || {};
-    var latlon = siteLatLon();
-    if (latlon) {
-      return {
-        lon: latlon.lon, lat: latlon.lat, exact: true,
-        label: site.community || 'the site',
-        radiusKm: radiusKm || store.get('site.mapRadiusKm', 40),
-      };
-    }
-    var chiefdom = adminFeature('chiefdom', site.chiefdom);
-    if (chiefdom) {
-      return featureWindow(chiefdom, site.chiefdom + ' chiefdom', 12, 1.35);
-    }
-    var district = adminFeature('district', site.district);
-    if (district) {
-      return featureWindow(district, site.district + ' district', 20, 1.2);
-    }
-    return null;
+    return C.areaWindow(store.get('site') || {}, siteLatLon(),
+      radiusKm || store.get('site.mapRadiusKm', 40));
   }
 
+  /* The sentence placing the site: area_map_note, in the engine. */
   function areaNote() {
-    var site = store.get('site') || {};
-    var where = [site.community, site.chiefdom && site.chiefdom + ' chiefdom',
-      site.district && site.district + ' district'].filter(Boolean).join(', ');
-    var latlon = siteLatLon();
-    if (latlon) {
-      return (where ? 'The site is at ' + where + ', ' : 'The site is at ') +
-        Math.abs(latlon.lat).toFixed(5) + ' ' + (latlon.lat < 0 ? 'S' : 'N') + ', ' +
-        Math.abs(latlon.lon).toFixed(5) + ' ' + (latlon.lon < 0 ? 'W' : 'E') + '.';
-    }
-    var window_ = areaWindow();
-    if (!window_) {
-      return (where ? 'The site is recorded as ' + where + '. ' : '') +
-        'Neither a GPS position nor an administrative area is recorded for it, ' +
-        'so no map of the area can be drawn. A borehole that cannot be found ' +
-        'again on the ground cannot be revisited or maintained: record the ' +
-        'position on the field sheet and reissue this report.';
-    }
-    return (where ? 'The site is recorded as ' + where + '. ' : '') +
-      'No GPS position is recorded for it, so the maps below cover ' +
-      window_.label + ' rather than the borehole itself and carry no site ' +
-      'marker. Record the position on the field sheet and reissue this report: ' +
-      'a borehole that cannot be found again on the ground cannot be revisited ' +
-      'or maintained.';
+    return C.areaMapNote(store.get('site') || {}, siteLatLon());
   }
 
   /* The figures themselves, rasterised for the .docx. `detail` adds the
@@ -1510,23 +1472,20 @@
     var window_ = areaWindow();
     if (!window_) return [];
 
+    var home = locatorHome(site, latlon);
     var legendItems = [];
     if (latlon) {
       legendItems.push({ label: 'Project site', kind: 'diamond',
         colour: charts.palette().secondary });
     }
-    if (site.district) {
-      legendItems.push({ label: site.district + ' district', colour: '#CFE0D6' });
-    }
-    legendItems.push({ label: 'other districts', colour: '#EDEAE3' });
+    if (home.legend) legendItems.push(home.legend);
+    legendItems.push({ label: 'other districts', colour: OTHER_FILL });
 
     var out = [];
     var locator = charts.siteMap({
       context: (geo.adminBoundaries.features || []),
-      contextFill: function (feature) {
-        var name = (feature.properties || {}).name || (feature.properties || {}).shapeName;
-        return name === site.district ? '#CFE0D6' : '#EDEAE3';
-      },
+      contextFill: home.fill,
+      highlight: home.highlight, highlightFill: HOME_FILL,
       points: latlon ? [{
         lon: latlon.lon, lat: latlon.lat, label: siteLabel(),
         colour: charts.palette().secondary, size: 6.5,
@@ -1656,7 +1615,9 @@
    * the same thing about it. */
   function districtNote(site, latlon) {
     var stated = (site && site.district) || '';
-    if (!stated || !latlon) return '';
+    /* a position outside the country is said once, as the Python check says
+     * it, and not judged against any district as well */
+    if (!stated || !latlon || latlon.outside) return '';
     var matched = C.matchDistrict(stated);
     var resolved = matched[0], candidates = matched[1];
     if (!resolved.length) {
@@ -5843,6 +5804,12 @@
           if (!derived.interpretations || !derived.interpretations.length) {
             throw new Error('No sounding has been interpreted yet.');
           }
+          /* The geology paragraph, from the map under the site, through the
+           * engine's port of _geology_for. Nothing set it, so every browser
+           * report said "crystalline basement" - on the Bullom sands too,
+           * beside its own figures showing the Bullom Group and an
+           * intergranular aquifer. */
+          context.geologyNote = C.geologyParagraph(context.site, siteLatLon());
           for (var i = 0; i < derived.inversions.length; i++) {
             var result = derived.inversions[i];
             /* off the interpretation, which was pushed with this inversion; a

@@ -472,6 +472,9 @@ writeFileSync(process.argv[4], JSON.stringify({
     ? G.dataLink(l.url, l.options)
     : G.projectLink(l.url, l.options))),
   area: G.siteProject(input.area),
+  // the shape of every exported geology polygon: its rings and their sizes
+  unitRings: G.unitFeatures(sandbox.GWT.data.geo.geology).map(
+    (f) => f.geometry.coordinates.map((ring) => ring.length)),
 }, null, 2));
 """
 
@@ -586,6 +589,17 @@ def test_the_browser_builder_agrees_with_this_one(tmp_path):
     assert js["area"]["metadata"] == mine_area["metadata"]
     assert js["area"]["name"] == mine_area["name"]
     assert "Site" not in [layer["name"] for layer in js["area"]["layers"]]
+
+    # Both export every geology polygon with its holes. This one wrote the
+    # outer ring alone, so the dykes the Precambrian encloses were painted
+    # over in its project and not in the browser's. The shapes are compared
+    # rather than the coordinates, for the rounding reason given above.
+    from groundwater.mapping import load_geology
+
+    mine_rings = [[len(ring) for ring in f["geometry"]["coordinates"]]
+                  for f in unit_features(load_geology())]
+    assert js["unitRings"] == mine_rings
+    assert sum(len(rings) - 1 for rings in mine_rings) == 34
 
 
 # The link cases both builders are checked against. A signed URL is the one

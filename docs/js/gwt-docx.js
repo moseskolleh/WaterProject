@@ -846,12 +846,12 @@
     areaSection(b, context, '1.1 Location and setting');
 
     b.heading('2. Background and Geology of the Project Area', 1);
-    b.paragraph(context.geologyNote || 'The area lies within the crystalline ' +
-      'basement complex of Sierra Leone. Groundwater in this terrain occurs in ' +
-      'the weathered overburden (saprolite and saprock) and in the fractured ' +
-      'zone at the top of fresh bedrock. Yields depend on the thickness of the ' +
-      'weathered zone and on the degree of fracturing, both of which vary over ' +
-      'short distances, which is why a geophysical survey precedes drilling.',
+    /* The paragraph is the engine's, _geology_for word for word: the page
+     * that builds this report works it out from the site's position and
+     * passes it in. A caller that does not gets the paragraph the Python
+     * writes for a site with no position, rather than the fixed "crystalline
+     * basement" text this used to print on the Bullom sands as well. */
+    b.paragraph(context.geologyNote || C.geologyParagraph(site, null),
       { align: 'justify' });
 
     b.heading('3. Field Work', 1);

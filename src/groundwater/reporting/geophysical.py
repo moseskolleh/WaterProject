@@ -139,13 +139,18 @@ def _geology_for(site, override: str) -> str:
     if latlon is not None:
         from ..mapping import aquifer_unit_at, geology_unit_at
         from ..mapping.lithology import describe
+        from ..mapping.regional import _unit_district
 
         lat, lon = latlon
         unit = geology_unit_at(lat, lon)
         aquifer = aquifer_unit_at(lat, lon)
         parts = []
         if unit is not None:
-            told = describe(unit.glg, district)
+            # Scoped by where the polygon is, as the map key is: scoped by
+            # the sheet's district, a sheet that said Port Loko for a site on
+            # the Freetown Complex got "Paleozoic Igneous (Pi)" here and
+            # "Freetown Layered Complex" in the key of the figure beside it.
+            told = describe(unit.glg, _unit_district(unit) or district)
             parts.append(
                 "The site lies on the unit the USGS Geologic Map of Africa "
                 f"maps as {unit.unit} ({unit.glg}). "

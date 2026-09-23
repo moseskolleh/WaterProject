@@ -44,6 +44,31 @@ def test_the_geology_paragraph_comes_from_the_map_under_the_site():
     assert _geology_for(rokel, "my own words") == "my own words"
 
 
+def test_the_geology_paragraph_names_a_polygon_as_the_map_key_does():
+    """A sheet that gets the district wrong does not rename the rock.
+
+    The key on the geology map is scoped by where each polygon is; the
+    paragraph was scoped by the sheet's district. A site on the Freetown
+    Complex written down as Port Loko got "Paleozoic Igneous (Pi)" and
+    nothing else in the paragraph, the age the crosswalk itself calls
+    wrong, beside a key naming the Freetown Layered Complex.
+    """
+    from groundwater.geo import geographic_to_utm
+    from groundwater.mapping import geology_unit_at
+    from groundwater.mapping.lithology import lithology_for
+    from groundwater.mapping.regional import _unit_district
+
+    utm = geographic_to_utm(8.40, -13.18)
+    site = SiteMetadata(community="X", district="Port Loko", easting=utm.easting,
+                        northing=utm.northing, utm_zone=utm.zone)
+    unit = geology_unit_at(*site.latlon)
+    assert unit is not None and unit.glg == "Pi"
+    key = lithology_for(unit.glg, _unit_district(unit) or site.district)
+    text = _geology_for(site, "")
+    assert key is not None and key.formation_name == "Freetown Layered Complex"
+    assert "Freetown Layered Complex (Jf)" in text
+
+
 def test_the_field_work_section_reports_only_what_was_recorded(sample_data, tmp_path):
     from groundwater.ingestion import read_ves_workbook
     from groundwater.reporting import build_geophysical_report

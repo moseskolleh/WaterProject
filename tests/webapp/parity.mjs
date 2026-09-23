@@ -1389,6 +1389,81 @@ await withPage(async (page, base, consoleErrors) => {
   deep('VES-only design: from the interpretation alone',
     parsed.ves_only_design, R.ves_only_design);
 
+  // --- where a report is set ---
+  // The area each report maps, the sentence placing the site, the district
+  // the locator lights and the geology paragraph were all worked out in the
+  // page with rules of the browser's own, and none of them was held here: a
+  // chiefdom window half as wide again as the Python's, no map at all for
+  // "Western Area", and "crystalline basement" written over the Bullom sands
+  // all passed every run.
+  const regional = await page.evaluate((RR) => {
+    const C = GWT.core;
+    const windowOf = (w) => (w ? [w.lon, w.lat, w.radiusKm, w.label, w.exact] : null);
+    const homeOf = (h) => [h.name, h.districts.slice().sort(), h.chiefdoms.slice().sort()];
+    return {
+      windows: RR.windows.map((c) => {
+        const site = { community: 'T', chiefdom: c.chiefdom, district: c.district };
+        return { window: windowOf(C.areaWindow(site, null)),
+          note: C.areaMapNote(site, null), home: homeOf(C.homeDistrict(site, null)) };
+      }),
+      positions: RR.positions.map((c) => {
+        const site = { community: 'T', chiefdom: '', district: c.district };
+        const at = { lat: c.lat, lon: c.lon };
+        return { window: windowOf(C.areaWindow(site, at)), note: C.areaMapNote(site, at),
+          home: homeOf(C.homeDistrict(site, at)), geology: C.geologyParagraph(site, at) };
+      }),
+      unplaced_geology: RR.unplaced_geology.map(
+        (c) => C.geologyParagraph({ district: c.district }, null)),
+      caveats: RR.caveats.map((c) => C.scaleCaveat(c.radius_km, 5000000, c.note)),
+      utm_zones: RR.utm_zones.map((c) => C.parseUtmZone(c.value)),
+    };
+  }, R.regional);
+  const sameWindow = (a, b) => (a === null || b === null ? a === b
+    : close(a[0], b[0], 1e-9) && close(a[1], b[1], 1e-9) && close(a[2], b[2], 1e-9) &&
+      a[3] === b[3] && a[4] === b[4]);
+  const windowMisses = R.regional.windows.filter(
+    (c, i) => !sameWindow(regional.windows[i].window, c.window));
+  check(`regional: every chiefdom and district window (${R.regional.windows.length})`,
+    windowMisses.length === 0,
+    windowMisses.slice(0, 5).map((c) => JSON.stringify([c.chiefdom, c.district, c.window,
+      regional.windows[R.regional.windows.indexOf(c)].window])).join('\n     '));
+  const noteMisses = R.regional.windows.filter((c, i) => regional.windows[i].note !== c.note);
+  check('regional: the sentence placing a site with no position',
+    noteMisses.length === 0,
+    noteMisses.slice(0, 3).map((c) => c.note + '\n     vs ' +
+      regional.windows[R.regional.windows.indexOf(c)].note).join('\n     '));
+  const homeMisses = R.regional.windows.filter((c, i) =>
+    JSON.stringify(regional.windows[i].home) !== JSON.stringify(c.home));
+  check('regional: the district a locator lights, without a position',
+    homeMisses.length === 0,
+    homeMisses.slice(0, 3).map((c) => JSON.stringify(c.home) + ' vs ' + JSON.stringify(
+      regional.windows[R.regional.windows.indexOf(c)].home)).join('\n     '));
+  R.regional.positions.forEach((c, i) => {
+    const js = regional.positions[i];
+    const label = `regional: a site at ${c.lat.toFixed(4)}, ${c.lon.toFixed(4)} (${c.district})`;
+    check(`${label}: window and note`,
+      sameWindow(js.window, c.window) && js.note === c.note,
+      JSON.stringify([js.window, js.note]) + '\n     vs ' + JSON.stringify([c.window, c.note]));
+    check(`${label}: the district its locator lights`,
+      JSON.stringify(js.home) === JSON.stringify(c.home),
+      JSON.stringify(js.home) + ' vs ' + JSON.stringify(c.home));
+    check(`${label}: the geology paragraph`, js.geology === c.geology,
+      js.geology + '\n     vs ' + c.geology);
+  });
+  R.regional.unplaced_geology.forEach((c, i) => {
+    check(`regional: the geology paragraph with no position (${JSON.stringify(c.district)})`,
+      regional.unplaced_geology[i] === c.geology,
+      regional.unplaced_geology[i] + '\n     vs ' + c.geology);
+  });
+  R.regional.caveats.forEach((c, i) => {
+    check(`regional: the scale caveat for a ${c.radius_km} km radius`,
+      regional.caveats[i] === c.text, regional.caveats[i] + '\n     vs ' + c.text);
+  });
+  check('regional: the UTM zone a cell states',
+    R.regional.utm_zones.every((c, i) => regional.utm_zones[i] === c.zone),
+    JSON.stringify(regional.utm_zones) + '\n     vs ' +
+    JSON.stringify(R.regional.utm_zones.map((c) => c.zone)));
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, {});
 

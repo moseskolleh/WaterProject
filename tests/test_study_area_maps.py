@@ -918,9 +918,10 @@ def test_a_window_that_could_not_be_placed_does_not_claim_one():
     from groundwater.mapping.regional import _scale_caveat, area_window
     from groundwater.models import SiteMetadata
 
-    # "Western Area" is not a district in the boundary layer, which carries
-    # Western Area Urban and Western Area Rural, so no window resolves
-    site = SiteMetadata(community="Rokel", district="Western Area")
+    # "Freetown" is a city, not a district, so no window resolves. This used
+    # "Western Area", which is the region's two districts and now frames
+    # them as the consistency check reads it.
+    site = SiteMetadata(community="Rokel", district="Freetown")
     assert area_window(site, 30.0) is None
     assert _scale_caveat(None, 5_000_000) == ""
     assert "60 km window" in _scale_caveat(30.0, 5_000_000)
@@ -933,8 +934,9 @@ def test_the_national_map_carries_no_window_caveat():
     from groundwater.mapping.regional import plot_geological_map
     from groundwater.models import SiteMetadata
 
+    # a district no window can be placed in, so the map is the national one
     fig = plot_geological_map(
-        site=SiteMetadata(community="Rokel", district="Western Area"),
+        site=SiteMetadata(community="Rokel", district="Freetown"),
         radius_km=30.0,
     )
     text = " ".join(t.get_text() for t in fig.findobj(match=matplotlib.text.Text))

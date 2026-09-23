@@ -693,6 +693,19 @@ await withPage(async (page, base, consoleErrors) => {
     !new RegExp('^' + failed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'm')
       .test(geophysical), failed);
 
+  // The geology section is the ground under the site. Nothing in the page set
+  // it, so the document fell back to a fixed "crystalline basement complex"
+  // paragraph on every site - Rokel's included, which is on the Bullom sands,
+  // beside the report's own maps showing the Bullom Group and an
+  // intergranular aquifer. The paragraph's wording is held to the Python's in
+  // parity.mjs; what is held here is that the report the user gets carries it.
+  const geologyNote = await page.evaluate(() => window.GWT.core.geologyParagraph(
+    window.GWT.app.store.get('site'), window.GWT.app.siteLatLon()));
+  check('geophysical: the geology section describes the ground the site is on',
+    /Bullom Group/.test(geologyNote) && geophysical.includes(geologyNote) &&
+    !geophysical.includes('crystalline basement complex'),
+    geologyNote.slice(0, 240));
+
   // --- a ranking that is cut short says so -----------------------------------
   // The coverage table is read to decide where to drill next, and it is sorted
   // worst first, so the rows that fall off the end are the ones already doing
@@ -926,19 +939,139 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify({ loaded: allBad.loaded, codes: allBad.codes,
       text: allBad.text.slice(0, 260) }));
 
+  // --- where the site is, as the page and its locator show it ---------------
+  // The locator lit a district only when its name was typed exactly as the
+  // boundary layer spells it, while the legend named whatever the sheet said:
+  // "Karene" at Kamakwie, "Falaba", "Western Area" and "Port Loko District"
+  // all got a key entry in a colour that was nowhere on the map.
+  const locators = await page.evaluate(async () => {
+    const app = window.GWT.app, charts = window.GWT.charts, docx = window.GWT.docx;
+    const C = window.GWT.core;
+    const saved = JSON.parse(JSON.stringify(app.store.get('site')));
+    const out = [];
+    const cases = [
+      { district: 'Karene', lat: 9.4967, lon: -12.2405, name: 'Karene district' },
+      { district: 'Falaba', lat: 9.85, lon: -11.3, name: 'Falaba district' },
+      { district: 'Western Area', lat: 8.35, lon: -13.1, name: 'Western Area Rural district' },
+      { district: 'Port Loko District', lat: 8.77, lon: -12.79, name: 'Port Loko district' },
+      { district: 'Karene', lat: null, lon: null, name: 'Karene district' },
+      { district: 'Western Area', lat: null, lon: null, name: 'Western Area' },
+    ];
+    const realMap = charts.siteMap, realDoc = docx.supervisionReport;
+    try {
+      for (const c of cases) {
+        const utm = c.lat === null ? null : C.geographicToUtm(c.lat, c.lon);
+        app.store.set('site', Object.assign({}, saved, {
+          community: 'T', chiefdom: '', district: c.district,
+          easting: utm ? utm.easting : null, northing: utm ? utm.northing : null,
+          utm_zone: utm ? utm.zone : null }));
+        let svg = null;
+        charts.siteMap = function (spec) { svg = realMap(spec); return svg; };
+        docx.supervisionReport = async () => ({ save: async () => {} });
+        await app.buildReport('supervision');
+        const fills = svg ? [...svg.querySelectorAll('path')]
+          .map((p) => (p.getAttribute('fill') || '').toUpperCase()) : [];
+        const texts = svg ? [...svg.querySelectorAll('text')].map((t) => t.textContent) : [];
+        out.push({ case: c.district + (c.lat === null ? ' (no position)' : ''),
+          expected: c.name, lit: fills.filter((f) => f === '#CFE0D6').length,
+          legend: texts.filter((t) => / district$|^Western Area$/.test(t)) });
+      }
+    } finally {
+      charts.siteMap = realMap;
+      docx.supervisionReport = realDoc;
+      app.store.set('site', saved);
+    }
+    return out;
+  });
+  check('locator: the district the key names is lit on the map',
+    locators.every((l) => l.lit > 0 && l.legend.includes(l.expected)),
+    JSON.stringify(locators));
+
+  // A pair of degrees in the site's easting and northing fields was taken at
+  // face value, so a longitude typed without its western sign put the site in
+  // central Africa - no marker, "13.23170 E" in every report, and nothing on
+  // the page to say so - while a correct western fix printed "-13.23170°E".
+  const degrees = await page.evaluate(async () => {
+    const app = window.GWT.app;
+    const saved = JSON.parse(JSON.stringify(app.store.get('site')));
+    const out = {};
+    try {
+      for (const [key, e, n] of [['unsigned', 13.2317, 8.4657],
+        ['signed', -13.2317, 8.4657], ['abroad', 20.5, 5.25]]) {
+        app.store.set('site', Object.assign({}, saved, { community: 'T', chiefdom: '',
+          district: '', easting: e, northing: n, utm_zone: null }));
+        app.goto('site');
+        await new Promise((r) => setTimeout(r, 200));
+        const latlon = app.siteLatLon();
+        out[key] = { lat: latlon && latlon.lat, lon: latlon && latlon.lon,
+          text: document.querySelector('#page-host').textContent };
+      }
+    } finally {
+      app.store.set('site', saved);
+    }
+    return out;
+  });
+  check('site: an unsigned longitude in the degree fields is read as west, and says so',
+    degrees.unsigned.lon === -13.2317 &&
+    degrees.unsigned.text.includes('8.46570° N, 13.23170° W') &&
+    degrees.unsigned.text.includes('Longitude 13.2317 was read as 13.2317 W'),
+    JSON.stringify([degrees.unsigned.lat, degrees.unsigned.lon]));
+  check('site: a western position is printed as west, not as a negative east',
+    degrees.signed.text.includes('8.46570° N, 13.23170° W') &&
+    !degrees.signed.text.includes('°E') && !degrees.signed.text.includes('was read as'),
+    degrees.signed.text.slice(0, 200));
+  check('site: a position outside Sierra Leone is flagged, as the Python check flags it',
+    degrees.abroad.text.includes('Coordinates convert to 5.2500 N, 20.5000 E which ' +
+      'is outside Sierra Leone'),
+    degrees.abroad.text.slice(0, 200));
+
   /* A report figure is painted for paper, not for the screen it was built
    * on. The app's default theme is dark and every chart reads the live CSS
    * tokens as it is constructed, so clients were sent maps, sections and
-   * borehole drawings rasterised white on black. */
+   * borehole drawings rasterised white on black.
+   *
+   * Two builds run at once whenever two report cards are clicked one after
+   * the other, and each turns the print palette off when it finishes. While
+   * that was a switch, the first to finish turned it off under the other,
+   * whose remaining figures went into its document on the dark ground. So
+   * this runs two real builds together, on the dark theme, and reads the
+   * background of every figure the documents were handed. */
   const printed = await page.evaluate(async () => {
-    const charts = window.GWT.charts;
+    const app = window.GWT.app, charts = window.GWT.charts, docx = window.GWT.docx;
     document.documentElement.setAttribute('data-theme', 'dark');
     const onScreen = charts.palette().surface;
-    charts.usePrintPalette(true);
-    const forPaper = charts.palette();
-    charts.usePrintPalette(false);
-    const backOnScreen = charts.palette().surface;
-    return { onScreen, surface: forPaper.surface, ink: forPaper.ink, backOnScreen };
+    const captured = [];
+    const real = { geophysicalReport: docx.geophysicalReport,
+      supervisionReport: docx.supervisionReport };
+    Object.keys(real).forEach((name) => {
+      docx[name] = async (ctx) => { captured.push(ctx); return { save: async () => {} }; };
+    });
+    try {
+      await Promise.all([app.buildReport('geophysical'), app.buildReport('supervision')]);
+    } finally {
+      Object.assign(docx, real);
+    }
+    const images = [];
+    captured.forEach((ctx) => {
+      [].concat(ctx.areaMaps || [], ctx.figures || [], ctx.subsurface || [],
+        [ctx.groundProfile, ctx.suitabilityMap])
+        .forEach((f) => { if (f && f.image && f.image.dataUrl) images.push(f); });
+    });
+    const corners = [];
+    for (const f of images) {
+      const img = new Image();
+      img.src = f.image.dataUrl;
+      await img.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width; canvas.height = img.height;
+      const g = canvas.getContext('2d');
+      g.drawImage(img, 0, 0);
+      const px = g.getImageData(4, 4, 1, 1).data;
+      corners.push({ caption: String(f.caption || '').slice(0, 48),
+        rgb: [px[0], px[1], px[2]] });
+    }
+    return { onScreen, documents: captured.length, corners,
+      backOnScreen: charts.palette().surface };
   });
   const light = (hex) => {
     const v = String(hex || '').trim().replace('#', '');
@@ -946,10 +1079,13 @@ await withPage(async (page, base, consoleErrors) => {
     const n = [0, 2, 4].map((i) => parseInt(v.slice(i, i + 2), 16) / 255);
     return (0.2126 * n[0] + 0.7152 * n[1] + 0.0722 * n[2]) > 0.8;
   };
-  check('a report figure is rasterised for paper, whatever theme the app is in',
-    light(printed.surface) && !light(printed.ink) &&
-    printed.backOnScreen === printed.onScreen,
-    JSON.stringify(printed));
+  const darkFigures = printed.corners.filter((c) =>
+    (0.2126 * c.rgb[0] + 0.7152 * c.rgb[1] + 0.0722 * c.rgb[2]) / 255 <= 0.8);
+  check('two reports built at once are both rasterised for paper, whatever theme the app is in',
+    printed.documents === 2 && printed.corners.length >= 6 && darkFigures.length === 0 &&
+    !light(printed.onScreen) && printed.backOnScreen === printed.onScreen,
+    JSON.stringify({ documents: printed.documents, figures: printed.corners.length,
+      dark: darkFigures, onScreen: printed.onScreen, back: printed.backOnScreen }));
 
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));

@@ -32,15 +32,22 @@
    * black. The fallbacks below are the stylesheet's own light values, so a
    * chart built while this flag is set is a chart built for print, whatever
    * the reader of the app is looking at. Set it around the figure building,
-   * not around the rasterising: the colours are already in the SVG by then. */
-  var printPalette = false;
+   * not around the rasterising: the colours are already in the SVG by then.
+   *
+   * It is a count, not a switch. Each build turns it on and off again in its
+   * own `finally`, and builds overlap - two report cards clicked one after
+   * the other run at once - so a switch was turned off by whichever build
+   * finished first while the other was still drawing, and that one's
+   * remaining figures went into its document on the dark ground. The print
+   * palette holds until the last build that asked for it is done. */
+  var printDepth = 0;
 
   function usePrintPalette(on) {
-    printPalette = !!on;
+    printDepth = on ? printDepth + 1 : Math.max(0, printDepth - 1);
   }
 
   function token(name, fallback) {
-    if (printPalette) return fallback;
+    if (printDepth > 0) return fallback;
     if (typeof getComputedStyle === 'undefined') return fallback;
     var value = getComputedStyle(document.documentElement)
       .getPropertyValue('--' + name);
@@ -2425,97 +2432,15 @@
     return String(props.glg || props.code || '');
   }
 
-  /* Which crosswalk region a district belongs to. The Python engine holds
-   * the same table in groundwater/mapping/lithology.py as _REGIONS; a coarse
-   * USGS class covers different formations in different parts of the
-   * country, so a row applies only where its region says it does. */
-  var LITHOLOGY_REGIONS = {
-    'Western Area': ['western area', 'western area urban', 'western area rural'],
-    'coastal plain': ['bonthe', 'moyamba', 'port loko', 'kambia', 'pujehun'],
-    'north and centre': ['bombali', 'tonkolili', 'koinadugu', 'karene', 'falaba'],
-  };
-
-  function regionOf(district) {
-    var name = String(district || '').trim().toLowerCase();
-    var keys = Object.keys(LITHOLOGY_REGIONS);
-    for (var i = 0; i < keys.length; i++) {
-      if (LITHOLOGY_REGIONS[keys[i]].indexOf(name) >= 0) return keys[i];
-    }
-    return 'interior';   /* the default: everything the others do not claim */
-  }
-
-  /* What the ground is, for one USGS class in one district - or null, which
-   * is the honest answer for a class nobody has annotated and leaves the key
-   * showing the source's own wording rather than a guess.
-   *
-   * This mirrors lithology_for() in the Python engine, including its two
-   * refusals: a named district that has no row gets nothing rather than
-   * another region's rock, and with no district at all a regional row
-   * applies only if every row for the class agrees on the formation. */
-  function lithologyFor(glg, district) {
-    var rows = ((GWT.data || {}).lithologyCrosswalk) || [];
-    var mine = rows.filter(function (r) { return r.usgs_code === glg; });
-    if (!mine.length) return null;
-    if (district) {
-      var wanted = [regionOf(district), 'all'];
-      for (var w = 0; w < wanted.length; w++) {
-        for (var i = 0; i < mine.length; i++) {
-          if (mine[i].region === wanted[w]) return mine[i];
-        }
-      }
-      return null;
-    }
-    for (var j = 0; j < mine.length; j++) {
-      if (mine[j].region === 'all') return mine[j];
-    }
-    var agreed = mine.map(function (r) {
-      return r.formation_name + '\u0000' + r.formation_code;
-    });
-    var same = agreed.every(function (a) { return a === agreed[0]; });
-    return same ? mine[0] : null;
-  }
-
-  /* The chiefdom polygons, built once: the join that places a point in a
-   * district, and 166 polygons to rebuild on every redraw otherwise. */
-  var _chiefdomPolys = null;
-
-  function chiefdomPolys() {
-    if (!_chiefdomPolys) _chiefdomPolys = C.loadPolygons();
-    return _chiefdomPolys;
-  }
-
-  /* The district a point is in today.
-   *
-   * Through the chiefdom first and the crosswalk after it, as district_of
-   * does in the Python engine: the bundled district polygons are
-   * geoBoundaries as released, which predates the 2017 creation of Karene
-   * and Falaba, so a point in one of those two has no district polygon to
-   * fall in.
-   *
-   * A point inside no ring at all is placed on the chiefdom whose ring is
-   * nearest, when that ring is within C.CHIEFDOM_EDGE_TOLERANCE_M: the rings
-   * were simplified one at a time, so two that were one shared border no
-   * longer meet and leave a seam of ground in no chiefdom, and a point there
-   * is on a border rather than nowhere. It no longer falls back to the
-   * district polygons. That fallback answered with a district that no longer
-   * exists where the point was - Koinadugu for ground that is now Falaba - or
-   * with the district on the wrong side of a seam, while the chiefdom lookup
-   * answered the same point with nothing (ROADMAP data-ingestion-7). One
-   * lookup, one answer, and where there is no basis for one, none: a point
-   * further out than the tolerance is off the layer, and "" is what this
-   * returns for it. */
-  function districtAtPoint(lat, lon) {
-    var crosswalk = C.loadChiefdomDistrict() || {};
-    var polys = chiefdomPolys();
-    for (var i = 0; i < polys.length; i++) {
-      if (C.polyContains(polys[i], lon, lat)) {
-        return crosswalk[polys[i].name] || polys[i].district || '';
-      }
-    }
-    var near = C.nearestChiefdomIndex(lon, lat, C.outerRingSets(polys));
-    if (near === null) return '';
-    return crosswalk[polys[near].name] || polys[near].district || '';
-  }
+  /* Which crosswalk region a district belongs to, what the ground is for one
+   * USGS class there, and which district a polygon lies in. They live in the
+   * engine, gwt-core.js, because the geophysical report's geology paragraph
+   * reads them too: the key on the map and the paragraph beside it name one
+   * polygon one way, and the parity suite holds the paragraph to the
+   * Python's. */
+  var regionOf = C.lithologyRegionOf;
+  var lithologyFor = C.lithologyFor;
+  var unitDistrict = C.unitDistrict;
 
   /* Centroid of a ring, by the shoelace formula. */
   function ringCentroid(ring) {
@@ -2530,30 +2455,6 @@
     area /= 2;
     if (Math.abs(area) < 1e-12) return [sx / ring.length, sy / ring.length];
     return [cx / (6 * area), cy / (6 * area)];
-  }
-
-  /* The district a polygon lies in, for the crosswalk that names it.
-   *
-   * The crosswalk used to be scoped by the site's district, so the same
-   * Freetown Complex polygon was "Freetown Layered Complex" on a Rokel map
-   * and "Paleozoic Igneous", the age the crosswalk itself calls wrong, on a
-   * Kuntolo map 100 km away. A polygon is where it is. _unit_district in the
-   * Python engine. */
-  function unitDistrict(geometry) {
-    var rings = ringsOf(geometry);
-    if (!rings.length) return '';
-    var ring = rings[0];
-    var centre = ringCentroid(ring);
-    var found = districtAtPoint(centre[1], centre[0]);
-    if (found) return found;
-    /* a polygon straddling the border can have its centroid abroad; any
-     * vertex inside the country places it */
-    var stride = Math.max(1, Math.floor(ring.length / 24));
-    for (var i = 0; i < ring.length; i += stride) {
-      found = districtAtPoint(ring[i][1], ring[i][0]);
-      if (found) return found;
-    }
-    return '';
   }
 
   /* The name to put in a map key: the formation first, then its own code,
@@ -3235,7 +3136,6 @@
   /* Both bundled layers are published at 1:5,000,000. */
   var USGS_SOURCE_SCALE = 5000000;
   var BGS_SOURCE_SCALE = 5000000;
-  var HONEST_WINDOW_KM = 60;
 
   /* The BGS Africa Groundwater Atlas user guide (OR/21/063, section 2.2) on
    * what its country maps are for. Quoted rather than paraphrased: it is the
@@ -3245,26 +3145,10 @@
     'suitable for providing detailed information on geology and ' +
     'hydrogeology at a sub-national (e.g. catchment) scale".';
 
-  /* The note a small window over a small-scale dataset has earned.
-   *
-   * Empty for a national map, which is the scale the data was published at
-   * and needs no apology. `radiusKm` is the half-width of the window that
-   * was actually drawn, never the one that was asked for: a radius the site
-   * could not be placed in falls back to the national map, and a national
-   * map carrying "4% of this 60 km window" asserts something that is not on
-   * it. _scale_caveat in the Python engine, word for word. */
-  function scaleCaveat(radiusKm, sourceScale, publisherNote) {
-    if (radiusKm === null || radiusKm === undefined || !sourceScale ||
-        radiusKm > HONEST_WINDOW_KM) return '';
-    var lineKm = sourceScale * 0.0005 / 1000;   /* a 0.5 mm line on the sheet */
-    var share = lineKm / (2 * radiusKm) * 100;
-    var note = 'Drawn from a 1:' + Number(sourceScale).toLocaleString('en-US') +
-      ' dataset: a boundary on this map is placed to roughly ' +
-      C.formatG(lineKm) + ' km, which is ' + C.pyFixed(share, 0) +
-      '% of this ' + C.formatG(2 * radiusKm) + ' km window. Read the ' +
-      'contacts as regional context, not as mapped ground.';
-    return (note + ' ' + (publisherNote || '')).trim();
-  }
+  /* The note a small window over a small-scale dataset has earned: the
+   * engine's C.scaleCaveat, _scale_caveat in the Python engine word for word,
+   * where the parity suite can hold the sentence to it. */
+  var scaleCaveat = C.scaleCaveat;
 
   /* The legend is measured before the map is laid out, because how many rows
    * it needs is what decides how much height the map itself can have. */
@@ -3884,6 +3768,19 @@
           (feature.properties || {}).shapeName || ''),
       })]));
     });
+    /* Karene and Falaba have no polygon of their own in the boundary layer,
+     * which predates them, so a locator for either lights the chiefdoms the
+     * crosswalk assigns to it, over the district they were split from, as
+     * plot_admin_map does. Lit by name alone, the district was never lit and
+     * the legend named it in a colour that was nowhere on the map. */
+    var highlight = spec.highlight || [];
+    highlight.forEach(function (feature) {
+      canvas.layer.appendChild(svgEl('path', {
+        d: geometryPath(feature.geometry, canvas.project),
+        'fill-rule': 'evenodd', fill: spec.highlightFill || '#CFE0D6',
+        stroke: '#7E93A6', 'stroke-width': 0.5,
+      }));
+    });
     /* The districts were drawn as shapes with a hover title and nothing
      * written on them, so a printed location map named no district at all.
      * The same declutter the study-area map uses keeps a name off its
@@ -3891,6 +3788,17 @@
     if (spec.labelContext) {
       var nameBox = canvas.project.visibleBox();
       var nameCandidates = [];
+      /* a district lit through its chiefdoms is named once, over them, and
+       * first, so the declutter keeps it over the older district's name */
+      if (highlight.length && spec.highlightLabel) {
+        var sx = 0, sy = 0, count = 0;
+        highlight.forEach(function (feature) {
+          ringsOf(feature.geometry).forEach(function (ring) {
+            ring.forEach(function (c) { sx += c[0]; sy += c[1]; count += 1; });
+          });
+        });
+        if (count) nameCandidates.push([sx / count, sy / count, spec.highlightLabel]);
+      }
       context.forEach(function (feature) {
         var props = feature.properties || {};
         var text = String(props.name || props.shapeName || '');
