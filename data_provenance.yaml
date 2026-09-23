@@ -37,14 +37,15 @@ datasets:
     share_alike: true
     changes_made: >-
       Converted to GeoJSON, clipped to the Sierra Leone window,
-      line-simplified and reclassified by web/build_geodata.py.
+      line-simplified and reclassified by web/build_geodata.py; each
+      interior ring is kept as a hole of the unit it cuts.
     files:
       - path: WaterProjectFiles/SierraLeone_BGS_Hydrogeology/SierraLeone_HG.shp
         bytes: 50844
         sha256: 3db88331868ec11d84b243f698731c41c2c7694f19d198c40fb67c0e2cdd49cf
       - path: src/groundwater/data/sl_hydrogeology_bgs.geojson
-        bytes: 31996
-        sha256: fe7fde426f2e2f397f0d71f7d865dd47d27ffd98feb747658d3b14cd5bcc6809
+        bytes: 29760
+        sha256: 8433e4ac39eaaf69f80c64ff101d5b3e45f111ed4f849ec9fdecc858bf2ed79d
         derived: true
     embedded_in:
       - docs/js/gwt-data.js
@@ -155,7 +156,7 @@ datasets:
     reference: "United States Geological Survey (1997). Open-File Report 97-470A"
     url: https://github.com/Heed725/Africa_Geology_Data_Shapefile
     version: "OFR 97-470A"
-    retrieved: unrecorded
+    retrieved: "2026-09-23"
     licence: public-domain-usgov
     licence_evidence: >-
       Asserted at web/build_geodata.py as a work of the US Government. The
@@ -165,11 +166,13 @@ datasets:
       United States Geological Survey (1997). Geologic Map of Africa,
       Open-File Report 97-470A.
     share_alike: false
-    changes_made: Clipped to the Sierra Leone window and line-simplified.
+    changes_made: >-
+      Clipped to the Sierra Leone window and line-simplified; each
+      interior ring is kept as a hole of the unit it cuts.
     files:
       - path: src/groundwater/data/sl_geology_usgs.geojson
-        bytes: 38563
-        sha256: 926ac0f88214bb5ad60a82cea614ec5f926d2adf2686b72233cd05c04857cd53
+        bytes: 33479
+        sha256: bddfe26aa7b8b9038138de6af8ac582e3569e786726e15b64db6c18230a5dbb9
         derived: true
 
   - id: statssl_census_2015

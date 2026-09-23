@@ -66,7 +66,11 @@ two engines never disagree on a client document (see "Cross-cutting").
   Done: `Project.clear_outputs()` runs at the start of every example,
   area-centred maps are keyed by the area's name, and
   `tests/test_examples.py` runs each example into a temporary folder
-  and holds the committed set of output files to it.
+  and holds the committed set of output files to it. That held the names
+  only, and the report text changed after the reports were last
+  regenerated: they went on quoting a WHO turbidity value WHO does not set and
+  judging districts by the deleted boxes. The same test now holds the text
+  of every committed report to a fresh run.
 
 ## 1. Depth of investigation and VES interpretation
 
@@ -565,7 +569,7 @@ the browser too), `gwt-app.js` parseLatLon. Tests: `test_ingestion.py`,
   top of the unit they should cut, so the dolerite dykes in Kono, Koinadugu
   and Falaba and the igneous aquifer around Kamakwie vanish from the maps.
   Done in the build and in both renderers: a shape's rings are grouped by their winding, each outer ring with the holes that fall inside it, and the smallest containing ring wins so a hole in an island is cut from the island. A unit carries its interior rings, draws them as a compound path that leaves them open, and a point in a hole is not on the unit - on the maps, in the not-mapped test and in the lookup the geology paragraph is written from.
-  Not yet regenerated: the raw shapefiles are about 40 MB and are not committed, so `data/sl_geology_usgs.geojson` and `data/sl_hydrogeology_bgs.geojson` still carry the flattened holes. Run `python web/build_geodata.py --raw <dir>` with the sources listed at the top of that script, then `python web/build_webapp_data.py` and `python web/build_offline.py`, and the dykes come back.
+  Regenerated: both layers now carry their holes (34 in the geology, 10 in the hydrogeology), rebuilt from the committed BGS shapefile and the USGS mirror named in `web/build_geodata.py`. The note that stood here said neither could be rebuilt without the raw downloads, but the BGS source had been committed all along. The rebuild also showed that the grouping tested only a hole's first vertex: three Precambrian holes clipped at the window's edge start on the edge they share with their outer ring, read as outside it and were dropped. The ring holding most of a hole's vertices now takes it, and a hole that finds no ring is reported rather than lost. On the national maps the lake near 11°35′W, 7°35′N is water again rather than an outline over granite, and the igneous intrusions around Kamakwie are on the aquifer map.
 - [x] **H data-ingestion-8. A drilling-log interval written with an en or em
   dash ("5–10") is dropped without a word;** the only trace is an
   "interval_gap" flag blaming the log.

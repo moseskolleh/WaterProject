@@ -760,9 +760,22 @@ A hole in a map unit is cut out of it rather than painted over it. Every
 interior ring became a filled polygon carrying its parent's code, and
 thirteen of them were drawn on top of the unit they should have exposed:
 the dolerite dykes in Kono, Koinadugu and Falaba, and the igneous aquifer
-around Kamakwie, disappeared behind the ground meant to reveal them. The
-two bundled layers still carry the flattened holes, because the raw
-shapefiles are not committed; the roadmap says how to regenerate them.
+around Kamakwie, disappeared behind the ground meant to reveal them. Both
+bundled layers are rebuilt with their holes: 34 in the geology and 10 in
+the hydrogeology. An earlier note here said the rebuild had to wait for the
+raw downloads, but the BGS source had been committed all along, and the
+USGS mirror is reachable. The rebuild found that three Precambrian holes
+clipped at the window's edge had been dropped, because only a hole's first
+vertex was tested and it lay on the edge its outer ring shares. On the
+national geology map the lake near 11°35′W, 7°35′N is now water rather
+than an outline over granite.
+
+The worked examples' reports are what the code writes today. Report text
+changed after they were last regenerated, so the committed reports still
+quoted WHO turbidity and hardness values WHO does not set, judged
+districts by the deleted boxes and blamed handpumps for a corroded
+submersible. Nothing caught it, because the examples test compared file
+names; it now compares the text of every report as well.
 
 ## A note on the sixteen districts
 
