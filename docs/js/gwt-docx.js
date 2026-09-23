@@ -1327,7 +1327,10 @@
       }
       advice.push('The pump should rest for at least one hour in every ' +
         'pumping cycle and the pumping water level should be checked routinely.');
-    } else if (analysis && test && !test.has_discharge) {
+    } else if (analysis && test && !C.hasDischarge(test)) {
+      /* asked of the steps, as Python's PumpingTest.has_discharge is: the
+       * browser's test carries no such field, so this said the discharge
+       * must be supplied beside a sheet that recorded it */
       advice.push('The pumping test discharge must be supplied so the yield ' +
         'recommendation can be completed; abstraction figures remain pending.');
     }
@@ -1360,17 +1363,27 @@
    * so "below ground level" was a claim the data did not support. */
   var DATUM_TEXT = 'below the top of the casing, the datum the levels were measured from';
 
+  /* reporting/pumping._levels_in_doubt: the analysis or the sheet says the
+   * recorded levels cannot all be right. A report used to certify the curves
+   * over levels 18 m below the pump intake. */
+  function pumpLevelsInDoubt(analysis) {
+    var flags = (analysis.flags || []).concat((analysis.test && analysis.test.flags) || []);
+    return flags.some(function (f) { return C.LEVEL_FLAGS.indexOf(f.code) >= 0; });
+  }
+
   async function pumpingReport(context) {
     var b = new ReportBuilder({ style: context.style, title: 'Pumping Test Report' });
     var analysis = context.analysis, test = analysis.test, site = test.site || {};
     var rec = analysis.yield_recommendation;
     var figures = context.figures || [];
+    var levelsInDoubt = pumpLevelsInDoubt(analysis);
 
+    /* the test type in words, never the parser's "step+recovery" token */
     b.cover(['Pumping Test Report',
       (test.borehole_ref ? test.borehole_ref + ' — ' : '') + (site.community || '')],
       [], siteDetails(site, [
         ['Borehole reference', test.borehole_ref || '—'],
-        ['Test type', test.test_type || '—'],
+        ['Test type', C.testTypeText(test.test_type)],
         ['Static water level', test.static_water_level_m !== null
           ? test.static_water_level_m.toFixed(2) + ' m' : '—'],
         ['Borehole depth', test.borehole_depth_m ? C.fmtNum(test.borehole_depth_m) + ' m' : '—'],
@@ -1401,7 +1414,17 @@
               (pumpDepthWhy ? ', ' + pumpDepthWhy : '')
             : 'a depth to be confirmed') + '.' +
           (rec.is_indicative ? ' ' + rec.confidence_text : '')
-        : 'Yield results are pending: ' + (rec.pending_reason || 'inputs are missing') + '.',
+        /* reporting/pumping._executive_summary: levels the sheet shows cannot
+         * be right are never presented as curves to read a result from */
+        : (levelsInDoubt
+          ? 'The recorded water levels are inconsistent with the stated static ' +
+            'level, pump setting or borehole depth (see the data verification ' +
+            'notes), so the curves are shown as recorded and their drawdowns are ' +
+            'not to be relied on; the'
+          : 'The drawdown and recovery curves are plotted from the readings as ' +
+            'recorded, but the') +
+          ' transmissivity and safe yield are pending because ' +
+          (rec.pending_reason || 'the analysis is incomplete') + '.',
     ], [
       analysis.transmissivity_m2_per_day
         ? 'Transmissivity: ' + S.sig(analysis.transmissivity_m2_per_day, 3) + ' m²/day' +
@@ -1469,7 +1492,19 @@
       }
     }
 
+    if (analysis.max_drawdown_m !== null && analysis.max_drawdown_m !== undefined) {
+      b.paragraph('The maximum drawdown reached ' + C.fmtNum(analysis.max_drawdown_m) +
+        ' m below the static water level' +
+        (levelsInDoubt ? ', as recorded; the notes below say why the recorded ' +
+          'levels cannot all be right' : '') + '.');
+    }
     if (analysis.casing_storage_min) {
+      /* worded from the adoption: "no straight line is read from it" stood a
+       * page above a Cooper-Jacob line read inside the period and adopted as
+       * the best available */
+      var casingSource = analysis.transmissivity_source;
+      var adoptedInside = casingSource && Object.prototype.hasOwnProperty.call(
+        analysis.disqualified || {}, casingSource);
       b.paragraph('Casing storage: with a ' +
         C.formatG((context.config && context.config.pumping
           ? context.config.pumping : C.defaultConfig().pumping).casing_diameter_in) +
@@ -1477,7 +1512,19 @@
         'water standing in the casing supplies the pump for about the first ' +
         C.pyFixed(analysis.casing_storage_min, 0) + " minutes (Schafer's rule). " +
         'Drawdown inside that period is the borehole emptying, not the aquifer ' +
-        'responding, and no straight line is read from it.', { align: 'justify' });
+        'responding' +
+        (adoptedInside
+          ? '. No fit outside it can be adopted, so the ' +
+            C.METHOD_LABELS[casingSource] + ' value read inside it is used only ' +
+            'as the best available.'
+          : ', and no straight line is read from it.'), { align: 'justify' });
+    }
+    /* The analysis's own notes, as the Python report prints them: the
+     * browser report carried none, so a sheet whose levels ran below the pump
+     * reached the client with nothing to say so. */
+    if ((analysis.flags || []).length) {
+      b.paragraph('Data verification notes:', { bold: true });
+      b.bullets(analysis.flags.map(flagText));
     }
 
     b.heading('3. Analysis', 1);
@@ -1578,7 +1625,9 @@
         ? S.sig(analysis.transmissivity_m2_per_day, 3) + ' m²/day (' +
           C.METHOD_LABELS[analysis.transmissivity_source] + ')' : 'pending'],
       ['Maximum drawdown', analysis.max_drawdown_m !== null
-        ? analysis.max_drawdown_m.toFixed(2) + ' m' : '—'],
+        ? analysis.max_drawdown_m.toFixed(2) + ' m' +
+          (levelsInDoubt ? ', as recorded; see the data verification notes' : '')
+        : '—'],
       ['Specific capacity', rec.specific_capacity_m3hr_per_m
         ? C.formatG(C.roundSig(rec.specific_capacity_m3hr_per_m, 2), 2) +
           ' m³/h per m (' + rec.specific_capacity_basis + ')' : 'pending'],

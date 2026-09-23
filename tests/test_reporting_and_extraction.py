@@ -548,6 +548,14 @@ def test_the_reports_say_what_a_thirty_minute_test_is_worth(sample_data, tmp_pat
     text = _document_text(pumping)
     assert "below ground level" not in text
     assert "Casing storage" in text and "117 minutes" in text
+    # the casing paragraph and the casing flag are worded from the adoption:
+    # they said no line was read inside the period, and that every fit in it
+    # was not adopted, a page above the Cooper-Jacob line adopted from it
+    assert "no straight line is read from it" not in text
+    assert ("No fit outside it can be adopted, so the Cooper-Jacob value read "
+            "inside it is used only as the best available.") in text
+    assert "their transmissivity is reported but not adopted" not in text
+    assert "the Cooper-Jacob value is adopted only as the best available" in text
     assert "Not adopted for the yield" in text
     assert "Adopted as the best available" in text
     assert "distance criterion" in text
@@ -584,6 +592,12 @@ def test_a_two_step_fit_says_it_is_exact_by_construction(sample_data, tmp_path):
     assert "R squared 1.000" not in text
     assert "equivalent pumping time of 112 minutes" in text
     assert "(indicative)" in text
+    # step 1 ends above static and is left out of the fit; the table used to
+    # renumber the rest, printing "1 | 2.2" under "Step 1: 1.5 m3/h"
+    table = next(t for t in docx.Document(str(path)).tables
+                 if t.rows[0].cells[0].text == "Step")
+    assert [(r.cells[0].text, r.cells[1].text) for r in table.rows[1:]] == [
+        ("2", "2.2"), ("3", "3")]
 
 
 def test_the_drawing_is_captioned_as_what_it_is(sample_data, tmp_path):

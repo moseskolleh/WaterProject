@@ -18,6 +18,7 @@ from pathlib import Path
 
 from ..config import Config
 from ..hydraulics.analysis import (
+    LEVEL_FLAGS,
     METHOD_LABELS,
     TWO_POINT_NOTE,
     PumpingTestAnalysis,
@@ -55,11 +56,6 @@ class PumpingReportInputs:
     #: Absent, section 5 reports the single figure as before.
     seasonal: Any = None
 
-
-#: Flags that say the recorded levels cannot all be right. A report used to
-#: certify "the drawdown and recovery curves are valid" over levels 18 m
-#: below the pump intake.
-LEVEL_FLAGS = ("water_level_above_static", "level_below_borehole", "level_below_pump")
 
 #: Where the levels are measured from. The sheets record depth to water from
 #: the top of the casing and never the casing's stick-up above ground, so
@@ -249,13 +245,21 @@ def build_pumping_report(
             + "."
         )
     if analysis.casing_storage_min:
+        # worded from the adoption: "no straight line is read from it" stood
+        # a page above a Cooper-Jacob line read inside the period and adopted
+        # as the best available
+        source = analysis.transmissivity_source
         rb.paragraph(
             f"Casing storage: with a {config.pumping.casing_diameter_in:g} inch "
             "casing and the specific capacity at the end of the first step, the "
             "water standing in the casing supplies the pump for about the first "
             f"{analysis.casing_storage_min:.0f} minutes (Schafer's rule). Drawdown "
             "inside that period is the borehole emptying, not the aquifer "
-            "responding, and no straight line is read from it.",
+            "responding"
+            + (f". No fit outside it can be adopted, so the {METHOD_LABELS[source]} "
+               "value read inside it is used only as the best available."
+               if source is not None and source in analysis.disqualified
+               else ", and no straight line is read from it."),
             align="justify",
         )
     if inputs.include_qa_section and analysis.flags:

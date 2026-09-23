@@ -448,6 +448,16 @@
     if (changed) store.set('site', site);
   }
 
+  /* The one pump intake depth every document prints (C.pumpIntakeDepth):
+   * the deeper of the yield recommendation's and the seasonal projection's,
+   * as [depth, why]. The design was fed the yield's depth alone, so the
+   * drawing and the completion report gave one depth and the pumping report,
+   * built with the seasonal projection, another (hydraulics-6). */
+  function recommendedIntake() {
+    if (!derived.analysis || !derived.analysis.yield_recommendation) return [null, ''];
+    return C.pumpIntakeDepth(derived.analysis, currentSeasonal(derived.analysis));
+  }
+
   function rebuildDesign() {
     derived.design = null;
     var cfg = config();
@@ -465,9 +475,7 @@
         log: derived.log, interpretation: interp,
         staticWaterLevelM: swl === undefined ? null : swl,
         pumpIntakeM: custom.pumpIntake !== null && custom.pumpIntake !== undefined
-          ? custom.pumpIntake
-          : (derived.analysis && derived.analysis.yield_recommendation
-            ? derived.analysis.yield_recommendation.pump_installation_depth_m : null),
+          ? custom.pumpIntake : recommendedIntake()[0],
         rules: cfg.design, totalDepthM: totalDepth,
         screensM: custom.screens && custom.screens.length ? custom.screens : null,
       });
@@ -1969,9 +1977,7 @@
           'from the pumping test sheet'),
         field('Pump intake (m)', S.numberInput(
           custom.pumpIntake !== null && custom.pumpIntake !== undefined
-            ? custom.pumpIntake
-            : (derived.analysis && derived.analysis.yield_recommendation
-              ? derived.analysis.yield_recommendation.pump_installation_depth_m : null),
+            ? custom.pumpIntake : recommendedIntake()[0],
           function (v) { store.set('design.pumpIntake', v); rebuildDesign(); render(); }),
           'from the yield recommendation unless overridden'),
       ]),
@@ -2827,6 +2833,7 @@
     }
 
     var rec2 = analysis.yield_recommendation;
+    var intake = recommendedIntake();
     nodes.push(card('Yield recommendation', [
       rec2.safe_yield_m3_per_h ? S.statRow([
         S.stat('Safe yield', C.yieldRangeText(rec2),
@@ -2837,9 +2844,10 @@
         S.stat('Specific capacity', rec2.specific_capacity_m3hr_per_m
           ? C.formatG(C.roundSig(rec2.specific_capacity_m3hr_per_m, 2), 2) +
             ' m³/h per m' : '—', rec2.specific_capacity_basis || ''),
-        S.stat('Pump intake', rec2.pump_installation_depth_m !== null
-          ? rec2.pump_installation_depth_m.toFixed(0) + ' m' : '—',
-        'below the top of the casing'),
+        /* the depth the reports and the design print, not the day-of-test
+         * depth alone */
+        S.stat('Pump intake', intake[0] !== null ? intake[0].toFixed(0) + ' m' : '—',
+          'below the top of the casing' + (intake[1] ? ', ' + intake[1] : '')),
       ]) : el('div.callout.callout-warn', el('p',
         'Yield recommendation pending: ' + rec2.pending_reason + '.')),
       /* what the yield is worth, beside the number, as every report prints it */
@@ -2915,6 +2923,8 @@
             months, function (v) {
               store.set('seasonal', Object.assign({}, store.get('seasonal') || {},
                 { month: Number(v) || null, touched: true }));
+              /* the intake the design draws follows the projection */
+              rebuildDesign();
               render();
             }), 'Read from the field sheet where it can be'),
         field('Annual water-table swing (m)',
@@ -2923,6 +2933,7 @@
           function (v) {
             store.set('seasonal', Object.assign({}, store.get('seasonal') || {},
               { rangeM: (v === null || v === undefined) ? null : Number(v) }));
+            rebuildDesign();
             render();
           }, { min: 0, max: 30, step: 0.5 }),
         'Wet-season high to dry-season low. A single test cannot measure it'),

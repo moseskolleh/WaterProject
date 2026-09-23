@@ -510,6 +510,106 @@ await withPage(async (page, base, consoleErrors) => {
     !!pending.reason && pending.detail === pending.reason &&
     pending.unmet.includes('yield_established'), JSON.stringify(pending));
 
+  // --- the pumping report says what the sheet cannot support -----------------
+  // The browser's pumping report printed none of the analysis's notes, so
+  // Kuntolo's levels 18 m below the pump reached the client with nothing to
+  // say so; its cover printed the parser's "step+recovery" token; its step
+  // table renumbered the steps after one was left out; and the completion
+  // report asked for a discharge the sheet recorded. The Python report, and
+  // the hydraulics-8 wording, are what it is held to.
+  const kuntoloDocs = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, d = app.derived;
+    const base = { style: app.config().style, site: app.store.get('site'), figures: [] };
+    const log = { borehole_ref: 'KTL-01', total_depth_m: 70, status: 'Successful',
+      intervals: [], water_strikes_m: [] };
+    const text = async (builder) => window.__docText(await (await builder).build());
+    const withQ = (pump) => {
+      const test = JSON.parse(JSON.stringify(d.analysis.test));
+      [1.5, 2.2, 3.0].forEach((q, i) => { test.steps[i].discharge_m3_per_h = q; });
+      if (pump) test.pump_setting_m = pump;
+      return C.analysePumpingTest(test);
+    };
+    return {
+      pumping: await text(window.GWT.docx.pumpingReport(
+        Object.assign({ analysis: d.analysis }, base))),
+      stepped: await text(window.GWT.docx.pumpingReport(
+        Object.assign({ analysis: withQ() }, base))),
+      noDischarge: await text(window.GWT.docx.completionReport(
+        Object.assign({ analysis: d.analysis, log }, base))),
+      // rates on the sheet, and a pump set too shallow to leave any drawdown
+      shallowPump: await text(window.GWT.docx.completionReport(
+        Object.assign({ analysis: withQ(20), log }, base))),
+    };
+  });
+  check('pumping report: the test type is in words on the cover, never the token',
+    kuntoloDocs.pumping.includes('step drawdown test with recovery') &&
+    !kuntoloDocs.pumping.includes('step+recovery'), kuntoloDocs.pumping.slice(0, 400));
+  check('pumping report: the analysis\'s own notes are printed',
+    kuntoloDocs.pumping.includes('Data verification notes:') &&
+    kuntoloDocs.pumping.includes('[WARNING] level_below_pump: Recorded water level 78.45 m'),
+    kuntoloDocs.pumping.slice(0, 400));
+  check('pumping report: levels that cannot be right are never presented as sound curves',
+    kuntoloDocs.pumping.includes('The recorded water levels are inconsistent with ' +
+      'the stated static level, pump setting or borehole depth (see the data ' +
+      'verification notes), so the curves are shown as recorded and their drawdowns ' +
+      'are not to be relied on; the transmissivity and safe yield are pending ' +
+      'because discharge is missing on the field sheet.') &&
+    kuntoloDocs.pumping.includes('as recorded; the notes below say why the recorded ' +
+      'levels cannot all be right'), kuntoloDocs.pumping.slice(0, 1200));
+  check('pumping report: a step left out of the fit keeps the sheet\'s number',
+    /Well efficiency\n2\n2\.20\n[^\n]*\n[^\n]*\n[^\n]*\n3\n3\.00\n/.test(kuntoloDocs.stepped),
+    (kuntoloDocs.stepped.match(/Well efficiency(\n[^\n]*){12}/) || [''])[0]);
+  check('completion: a discharge is asked for only when the sheet has none',
+    kuntoloDocs.noDischarge.includes('The pumping test discharge must be supplied') &&
+    !kuntoloDocs.shallowPump.includes('The pumping test discharge must be supplied'),
+    JSON.stringify([kuntoloDocs.noDischarge.length, kuntoloDocs.shallowPump.length]));
+
+  // --- the casing paragraph follows the adoption, and the intake is one depth
+  // Dr Timbo's Cooper-Jacob line lies inside the casing-storage period and is
+  // adopted as the best available; the report said a page earlier that no
+  // line is read from that period. With an 8 m annual swing the drought case
+  // sets the intake at 55 m where the day of the test sets 52 m; the design
+  // was fed 52 m (and moved it to 54 m, below a screen) while the pumping
+  // report printed 55 m.
+  await page.evaluate(() => window.GWT.app.loadSample('dr_timbo'));
+  await page.waitForFunction(
+    () => window.GWT.app.recomputeState.running === 0 &&
+          window.GWT.app.derived.analysis !== null, { timeout: 60000 });
+  const timbo = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, d = app.derived;
+    app.store.set('seasonal', { rangeM: 8 });
+    await app.recompute();
+    const seasonal = C.seasonalYield(d.analysis, app.config().pumping, { annualRangeM: 8 });
+    const intake = C.pumpIntakeDepth(d.analysis, seasonal);
+    const pumping = await window.__docText(await (await window.GWT.docx.pumpingReport({
+      style: app.config().style, site: app.store.get('site'), figures: [],
+      analysis: d.analysis, seasonal,
+    })).build());
+    const moved = (d.design.flags || []).find((f) => f.code === 'pump_intake_moved');
+    const out = {
+      pumping, intake: intake[0],
+      yieldDepth: d.analysis.yield_recommendation.pump_installation_depth_m,
+      designIntake: d.design.pump_intake_m,
+      requested: moved ? moved.message : null,
+    };
+    app.store.set('seasonal', {});
+    await app.recompute();
+    return out;
+  });
+  check('pumping report: the casing paragraph is worded from the adoption',
+    timbo.pumping.includes('No fit outside it can be adopted, so the Cooper-Jacob ' +
+      'value read inside it is used only as the best available.') &&
+    !timbo.pumping.includes('no straight line is read from it') &&
+    timbo.pumping.includes('the Cooper-Jacob value is adopted only as the best available'),
+    timbo.pumping.slice(0, 400));
+  check('the design is given the intake the pumping report prints',
+    timbo.intake > timbo.yieldDepth &&
+    timbo.pumping.includes('Install the pump intake at ' + timbo.intake + ' m') &&
+    (timbo.designIntake === timbo.intake ||
+      (timbo.requested || '').includes('The pump intake of ' + timbo.intake + ' m')),
+    JSON.stringify({ intake: timbo.intake, yieldDepth: timbo.yieldDepth,
+      design: timbo.designIntake, moved: timbo.requested }));
+
   // --- a sounding that will not invert takes only itself out -----------------
   // The inversion is the one computation here that can fail on real readings,
   // and it fails one sounding at a time. What must never happen is the survey
