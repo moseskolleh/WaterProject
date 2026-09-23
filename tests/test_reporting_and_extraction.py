@@ -662,8 +662,8 @@ def test_the_works_lists_word_the_fill_the_design_places(sample_data, tmp_path):
             "pack (the 19 mm annulus is too thin to place one) and sanitary seal to "
             "20 m; the drilling log records no casing string as installed.") in works
     assert _construction_works(design) == [
-        "Supply and installation of casings (plain and screen) as designed in "
-        "section 5; the drilling log records no casing string as installed.",
+        ("Supply and installation of casings (plain and screen) as designed in "
+         "section 5; the drilling log records no casing string as installed."),
         "No gravel pack: the 19 mm annulus is too thin to place one.",
     ]
 

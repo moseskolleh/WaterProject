@@ -1149,17 +1149,17 @@ _SUBSURFACE_MAPS = (
     (depth_to_bedrock_map, "depth_to_bedrock", "depth to bedrock map",
      "Depth to bedrock across the surveyed ground, from the layered models."),
     (aquifer_thickness_map, "aquifer_thickness", "aquifer thickness map",
-     "Interpreted thickness of the weathered and fractured zone - the "
-     "section a borehole is completed in."),
+     ("Interpreted thickness of the weathered and fractured zone - the "
+      "section a borehole is completed in.")),
     (bedrock_elevation_map, "bedrock_elevation", "bedrock elevation map",
-     "The bedrock surface as a landform, from the ground elevation "
-     "recorded at each sounding less its depth to basement. A low in this "
-     "surface is a buried valley, which basement groundwater drains towards."),
+     ("The bedrock surface as a landform, from the ground elevation "
+      "recorded at each sounding less its depth to basement. A low in this "
+      "surface is a buried valley, which basement groundwater drains towards.")),
     (protective_capacity_map, "protective_capacity", "protective capacity map",
-     "Protective capacity of the cover over the aquifer, from the "
-     "longitudinal conductance of the overlying layers. It rates how well "
-     "the ground above the aquifer resists downward contamination; it says "
-     "nothing about yield."),
+     ("Protective capacity of the cover over the aquifer, from the "
+      "longitudinal conductance of the overlying layers. It rates how well "
+      "the ground above the aquifer resists downward contamination; it says "
+      "nothing about yield.")),
 )
 
 
@@ -1413,11 +1413,11 @@ def _executive_summary(
             f"{drilling_depth_text(second)} at {second.sounding_id}. "
         )
         key = [
-            f"Drilling points the survey cannot separate: {first.sounding_id} "
-            f"and {second.sounding_id}.",
-            f"Recommended drilling depth: {drilling_depth_text(first)} at "
-            f"{first.sounding_id}; {drilling_depth_text(second)} at "
-            f"{second.sounding_id}.",
+            (f"Drilling points the survey cannot separate: {first.sounding_id} "
+             f"and {second.sounding_id}."),
+            (f"Recommended drilling depth: {drilling_depth_text(first)} at "
+             f"{first.sounding_id}; {drilling_depth_text(second)} at "
+             f"{second.sounding_id}."),
         ]
     else:
         choice = (
@@ -1526,9 +1526,9 @@ def _recommendations(
     if tied:
         chosen = list(tied)
         items = [
-            f"Drilling should be carried out at point {tied[0].sounding_id} or "
-            f"point {tied[1].sounding_id}, which the survey cannot separate, to "
-            "confirm the existence of groundwater."
+            (f"Drilling should be carried out at point {tied[0].sounding_id} or "
+             f"point {tied[1].sounding_id}, which the survey cannot separate, to "
+             "confirm the existence of groundwater.")
         ]
     else:
         chosen = [best]
