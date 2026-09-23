@@ -986,6 +986,9 @@
       return inv && String(inv.array_type || '').indexOf('wenner') === 0
         ? 'wenner' : 'schlumberger';
     };
+    /* the kinds of array, for the limitations section's reach sentence */
+    var arrayKinds = interpretations.map(function (interp, k) { return arrayOf(k); })
+      .filter(function (a, k, all) { return all.indexOf(a) === k; }).sort();
     var reach = {};
     interpretations.forEach(function (interp, k) {
       if (!(interp.max_spacing_m && interp.investigation_depth_m)) return;
@@ -1159,7 +1162,7 @@
     (context.recommendations || []).length && b.bullets(context.recommendations);
 
     b.heading('6. Limitations and Uncertainty', 1);
-    limitationsParagraphs('ves', arrays).forEach(function (text) {
+    limitationsParagraphs('ves', arrayKinds).forEach(function (text) {
       b.paragraph(text, { align: 'justify' });
     });
 

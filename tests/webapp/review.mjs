@@ -792,7 +792,7 @@ await withPage(async (page, base, consoleErrors) => {
       'percent target.'),
     tieDoc.slice(tieDoc.indexOf('5. Conclusions'), tieDoc.indexOf('5. Conclusions') + 400));
   check('ves: a Wenner survey is described as one',
-    wennerDoc.includes('made with a Wenner array') &&
+    wennerDoc.includes('recorded with the Wenner electrode configuration') &&
     wennerDoc.includes('with a expanded to 80 m (AB/2 of 120 m)') &&
     wennerDoc.includes('a Wenner sounding resolves the ground to roughly half of its ' +
       'largest electrode spacing a') &&
