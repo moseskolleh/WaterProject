@@ -2387,6 +2387,27 @@
     return [durations, restarted];
   }
 
+  /* The minutes to add to each step's times to put it on the test's clock.
+   * Read by the same rule as stepDurationsMin: a step counted from its own
+   * start began when the step before it ended, so it moves to there, and a
+   * step that runs on from it moves with it. On a sheet whose times run
+   * through the test every offset is zero. The recorded duration and the
+   * overview used to read the restarted clocks as written, so a test that
+   * pumped for 158 minutes was printed as lasting 60 and drawn as three
+   * steps stacked on the same hour. */
+  function stepOffsetsMin(steps) {
+    var offsets = [], shift = 0.0, previousEnd = null;
+    (steps || []).forEach(function (step) {
+      var finite = (step.time_min || []).filter(function (v) { return isFinite(v); });
+      if (!finite.length) { offsets.push(shift); return; }
+      var start = arrMin(finite), end = arrMax(finite);
+      if (previousEnd !== null && start <= previousEnd) shift += previousEnd;
+      offsets.push(shift);
+      previousEnd = end;
+    });
+    return offsets;
+  }
+
   /* How long casing storage controls the drawdown, in minutes. Early in a
    * test the pump takes water standing in the casing before it takes much
    * from the aquifer, and a drawdown curve read inside that period is the
@@ -3052,9 +3073,10 @@
     }
 
     /* Step clocks. A step test whose times restart each step is read with
-     * each step's own last reading as its length. The reading is the
-     * toolkit's, not the sheet's, and the overview and the recorded duration
-     * still show the step clocks, so it is said. */
+     * each step's own last reading as its length, and the recorded duration
+     * and the overview put each step on the test's clock by the same
+     * reading. The reading is the toolkit's, not the sheet's, so it is
+     * said. */
     var stepDurations = [], pumpedTotal = 0;
     if (String(test.test_type || '').indexOf('step') === 0) {
       var timed = (test.steps || []).filter(function (s) {
@@ -3065,6 +3087,8 @@
       var restarted = clocks[1];
       pumpedTotal = stepDurations.reduce(function (a, b) { return a + b; }, 0);
       if (restarted.length) {
+        var latestReading = arrMax(timed.map(function (s) { return arrMax(s.time_min); }));
+        if (!isFinite(latestReading)) latestReading = 0;
         var one = restarted.length === 1;
         var names = one ? 'Step ' + restarted[0]
           : 'Steps ' + restarted.slice(0, -1).join(', ') + ' and ' +
@@ -3078,8 +3102,8 @@
             "start of the test: each step's own last reading is taken as its " +
             'length, and the steps pumped for ' + formatG(pumpedTotal) +
             ' minutes in all' +
-            (test.pumping_duration_min
-              ? ', not the ' + formatG(test.pumping_duration_min) +
+            (latestReading
+              ? ', not the ' + formatG(latestReading) +
                 ' minutes the latest reading gives' : '') +
             '. Check the times on the sheet.',
         });
@@ -3394,7 +3418,8 @@
     TWO_POINT_NOTE: TWO_POINT_NOTE,
     CASING_STORAGE_COEFFICIENT: CASING_STORAGE_COEFFICIENT,
     testTypeText: testTypeText, equivalentPumpingTimeMin: equivalentPumpingTimeMin,
-    stepDurationsMin: stepDurationsMin, LEVEL_FLAGS: LEVEL_FLAGS,
+    stepDurationsMin: stepDurationsMin, stepOffsetsMin: stepOffsetsMin,
+    LEVEL_FLAGS: LEVEL_FLAGS,
     levelsInDoubt: levelsInDoubt, hasDischarge: hasDischarge,
     casingStorageMin: casingStorageMin, deepestPumpingLevel: deepestPumpingLevel,
     pumpIntakeDepth: pumpIntakeDepth, confidenceText: confidenceText,
@@ -3794,6 +3819,29 @@
       return own(PARAMETER_ALIASES, stripped) ? PARAMETER_ALIASES[stripped] : stripped;
     }
     return key;
+  }
+
+  /* Faecal-oral pathogens a laboratory may name on a certificate: the
+   * bacteria, viruses and protozoa the faecal indicator E. coli stands for
+   * (quality/standards.py _FAECAL_PATHOGEN_RE). WHO sets no guideline value
+   * for any of them, because drinking water must carry none and the
+   * indicator is the routine check. They are recognised by name, not by
+   * unit: a count in CFU is as likely to be a heterotrophic plate count,
+   * which has no health significance. */
+  var FAECAL_PATHOGEN_RE = new RegExp('\\b(' + [
+    'salmonella', 's\\.? ?typhi', 'typhoid', 'shigella', 'vibrio cholerae',
+    'v\\.? ?cholerae', 'cholera', 'campylobacter', 'yersinia', 'e\\.? ?coli o157',
+    'cryptosporidium', 'giardia', 'entamoeba histolytica', 'cyclospora',
+    'hepatitis [ae]\\b', 'rotavirus', 'norovirus', 'enterovirus', 'adenovirus',
+    'astrovirus',
+  ].join('|') + ')');
+
+  /* The faecal pathogen a parameter name refers to, or ''. */
+  function faecalPathogen(name) {
+    var match = FAECAL_PATHOGEN_RE.exec(
+      String(name === null || name === undefined ? '' : name).toLowerCase()
+        .replace(/\s+/g, ' '));
+    return match ? match[1] : '';
   }
 
   var _standardsCache = null;
@@ -4746,6 +4794,50 @@
     return row;
   }
 
+  /* What a pathogen row says about the limit it is held to. */
+  var PATHOGEN_NOTE = 'a faecal pathogen, which drinking water must carry none ' +
+    'of. WHO sets no guideline value for it because the faecal indicator E. ' +
+    'coli is the routine check';
+
+  /* A faecal pathogen named on the certificate, graded by whether it was
+   * found (assess.py _assess_pathogen). "Salmonella: Present" was an unknown
+   * determinand: not evaluable, so it kept the sample from "suitable", but
+   * not a failure either, so the verdict asked for units and detection
+   * limits while the laboratory had reported Salmonella in the water.
+   * Any count or lower bound is a detection and a health failure; nothing
+   * found, or nothing at one organism per volume examined, is the
+   * requirement met. A coarser detection limit cannot show absence. */
+  function assessPathogen(row, result) {
+    function found(stated) {
+      row.status = 'exceeds_health';
+      row.remark = stated + ': ' + PATHOGEN_NOTE + '; a health concern, whatever the count';
+      return row;
+    }
+    if (result.value !== null && result.value !== undefined) {
+      if (Number(result.value) > 0) return found('detected');
+      row.status = 'within_limits';
+      row.remark = 'none counted: ' + PATHOGEN_NOTE;
+      return row;
+    }
+    if (result.greater_than !== null && result.greater_than !== undefined) {
+      return found(statedBound(result));
+    }
+    var dl = result.detection_limit;
+    if (dl !== null && dl !== undefined && Number(dl) > 1.0) {
+      row.status = 'indeterminate';
+      row.evaluable = false;
+      row.reason = 'detection_limit_above_guideline';
+      row.remark = 'reported below a detection limit of ' + formatG(Number(dl)) +
+        (result.unit ? ' ' + result.unit : '') + ', which cannot show that it ' +
+        'is absent: ' + PATHOGEN_NOTE + '. Ask the laboratory whether it was ' +
+        'found in the volume examined.';
+      return row;
+    }
+    row.status = 'below_detection';
+    row.remark = 'not detected: ' + PATHOGEN_NOTE;
+    return row;
+  }
+
   function assessResult(result, entry) {
     var guidelineUnit = entry ? (entry.unit || '') : '';
     var missing = result.value === null || result.value === undefined;
@@ -4781,7 +4873,8 @@
       return row;
     }
 
-    if (!entry) {
+    var pathogen = !entry && !!faecalPathogen(result.parameter);
+    if (!entry && !pathogen) {
       /* An unrecognised determinand is an open question, not a clean bill,
        * and a detection of one is no less of one: "Salmonella: Present" was
        * read as not measured and left the sample suitable for drinking. */
@@ -4804,6 +4897,7 @@
       return row;
     }
 
+    if (pathogen) return assessPathogen(row, result);
     if (unquantified) return assessUnquantified(row, result, entry);
 
     var limits = limitMaximums(entry);
@@ -5351,6 +5445,7 @@
   Object.assign(C, {
     parseLimit: parseLimit, limitExceededBy: limitExceededBy, limitText: limitText,
     normaliseParameter: normaliseParameter, loadStandards: loadStandards,
+    faecalPathogen: faecalPathogen,
     PROVISIONAL_NATIONAL_NOTE: PROVISIONAL_NATIONAL_NOTE,
     provisionalNationalParameters: provisionalNationalParameters,
     sampleValue: sampleValue, canonicalValues: canonicalValues,
@@ -9303,8 +9398,12 @@
     }
 
     var swl = fields.static_water_level_m === undefined ? null : fields.static_water_level_m;
+    /* on the test's clock: a step test whose times restart each step pumped
+     * for its steps' lengths added, not for its longest step */
+    var stepOffsets = stepOffsetsMin(steps);
     var pumpingDuration = steps.length
-      ? arrMax(steps.map(function (s) { return arrMax(s.time_min); })) : null;
+      ? arrMax(steps.map(function (s, i) { return arrMax(s.time_min) + stepOffsets[i]; }))
+      : null;
 
     var test = {
       site: site, borehole_ref: String(fields.borehole_ref || ''),
@@ -11391,6 +11490,33 @@
       'easting/northing and the UTM zone.';
   }
 
+  /* Where a site's recorded position puts it, read as the site page reads
+   * it: a pair small enough to be degrees is a latitude and longitude typed
+   * into the two boxes, anything else UTM in the recorded zone or the one the
+   * easting implies. {lat, lon, note, fromUtm, zone}, or null when there is
+   * no position or it does not convert. */
+  function sitePosition(site) {
+    if (!site) return null;
+    var e = site.easting, n = site.northing;
+    if (e === null || n === null || e === undefined || n === undefined ||
+        e === '' || n === '') return null;
+    e = Number(e); n = Number(n);
+    if (!isFinite(e) || !isFinite(n)) return null;
+    var ll;
+    if (Math.abs(e) <= 180 && Math.abs(n) <= 90) {
+      var reading = readLatLon(String(n) + ', ' + String(e));
+      ll = reading.lat === null || reading.lon === null
+        ? { lat: n, lon: e, note: '' }
+        : { lat: reading.lat, lon: reading.lon, note: reading.message };
+      ll.fromUtm = false;
+      return ll;
+    }
+    var zone = Number(site.utm_zone) || inferZoneForSierraLeone(e);
+    ll = utmToGeographic(e, n, zone);
+    if (!ll) return null;
+    return { lat: ll.lat, lon: ll.lon, note: '', fromUtm: true, zone: zone };
+  }
+
   Object.assign(C, {
     lithologyRegionOf: lithologyRegionOf, lithologyFor: lithologyFor,
     describeLithology: describeLithology, districtOfPoint: districtOfPoint,
@@ -11401,7 +11527,7 @@
     aquiferUnitAt: aquiferUnitAt, unitDistrict: unitDistrict,
     geologyParagraph: geologyParagraph,
     HONEST_WINDOW_KM: HONEST_WINDOW_KM, scaleCaveat: scaleCaveat,
-    outsideCountryNote: outsideCountryNote,
+    outsideCountryNote: outsideCountryNote, sitePosition: sitePosition,
   });
 
   /* ================================================================== siting
@@ -12076,6 +12202,18 @@
         return ['unmet', 'No GPS position is recorded on any sheet in this ' +
           'project. A borehole that cannot be found again on the ground ' +
           'cannot be certified, revisited or maintained.'];
+      }
+      /* check_site_consistency's one error: a position that converts to
+       * somewhere outside the country. The site page said so and the gate
+       * let the report through unstamped, where the Python holds it back. */
+      var position = sitePosition(site);
+      var outside = position ? outsideCountryNote(position.lat, position.lon) : '';
+      if (outside) return ['unmet', outside];
+      if (position && !position.fromUtm) {
+        return ['met', 'Position recorded: ' + pyFixed(Math.abs(position.lat), 5) +
+          '° ' + (position.lat >= 0 ? 'N' : 'S') + ', ' +
+          pyFixed(Math.abs(position.lon), 5) + '° ' + (position.lon >= 0 ? 'E' : 'W') +
+          '.'];
       }
       var zone = Number(site.utm_zone) || inferZoneForSierraLeone(Number(site.easting));
       return ['met', 'Position recorded: ' + Math.round(site.easting) + ' mE, ' +
@@ -17353,6 +17491,25 @@
     return '';
   }
 
+  /* maps.py suitability_label: what a suitability map writes beside a point.
+   * The rank and the weighted score, and the grade named as the grade of the
+   * suitability ("38 - Very good" paired a weighted 38 with the grade of a
+   * suitability of 75); the grid coordinates too at the recommended target.
+   * `compact` is the label of a map too dense for every label in full: the
+   * grade line gives way, except at the recommended target. */
+  function suitabilityLabel(p, recommended, compact) {
+    var text = p.label;
+    if (p.value !== null && p.value !== undefined) {
+      text += '\n' + (p.rank !== null && p.rank !== undefined
+        ? 'Rank ' + p.rank + ', ' : '') + 'weighted ' + pyFixed(p.value, 0);
+      if (recommended || !compact) text += '\n' + p.kind + ' suitability';
+    }
+    if (recommended) {
+      text += '\nE ' + pyFixed(p.easting, 0) + '  N ' + pyFixed(p.northing, 0);
+    }
+    return text;
+  }
+
   /* maps.py suitability_map_state: what a suitability map of these points
    * will show, for its caption.
    *
@@ -17376,9 +17533,9 @@
 
   var SUITABILITY_MAP_CAPTION = 'Drill-target suitability of the surveyed ' +
     'points, coloured by the confidence-weighted score; greener is more ' +
-    'suitable. Each point is labelled with its rank and weighted score, and ' +
-    'with the grade of its suitability before the confidence discount, as in ' +
-    'the table above.';
+    'suitable. Each point is labelled with its rank and weighted score, and, ' +
+    'where the map has room, with the grade of its suitability before the ' +
+    'confidence discount, as in the table above.';
 
   /* reporting/geophysical.py _suitability_block's caption.
    *
@@ -17486,22 +17643,12 @@
        * carry it, and a tie takes it off both points rather than giving it
        * to whichever sorted first */
       var recommended = p.rank === 1 && !tie;
-      var text = p.label;
-      /* the rank and the weighted score, and the grade named as the grade
-       * of the suitability: "38 - Very good" paired a weighted 38 with the
-       * grade of a suitability of 75 */
-      if (p.value !== null && p.value !== undefined) {
-        text += '\n' + (p.rank !== null && p.rank !== undefined
-          ? 'Rank ' + p.rank + ', ' : '') + 'weighted ' + pyFixed(p.value, 0) +
-          '\n' + p.kind + ' suitability';
-      }
-      if (recommended) {
-        text += '\nE ' + pyFixed(p.easting, 0) + '  N ' + pyFixed(p.northing, 0);
-      }
       return {
         label: p.label, easting: p.easting, northing: p.northing,
         value: (p.value === undefined) ? null : p.value, kind: p.kind,
-        rank: p.rank, recommended: recommended, text: text,
+        rank: p.rank, recommended: recommended,
+        text: suitabilityLabel(p, recommended, false),
+        compact_text: suitabilityLabel(p, recommended, true),
       };
     });
     var seen = {}, legend = [];
@@ -17778,7 +17925,7 @@
     rankedMapPoints: rankedMapPoints,
     suitabilityRanking: suitabilityRanking, unplacedText: unplacedText,
     suitabilityMapNote: suitabilityMapNote,
-    suitabilityMapState: suitabilityMapState,
+    suitabilityMapState: suitabilityMapState, suitabilityLabel: suitabilityLabel,
     suitabilityMapCaption: suitabilityMapCaption,
     suitabilityMapData: suitabilityMapData,
     levelledSoundings: levelledSoundings,

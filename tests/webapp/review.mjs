@@ -150,6 +150,36 @@ await withPage(async (page, base, consoleErrors) => {
     ungraded.unmet.includes('water_quality_evaluable') &&
     ungraded.detail.includes('Iron'), JSON.stringify(ungraded));
 
+  // A position is not a position in Sierra Leone just because it was typed.
+  // The site page flagged a fix outside the country and the gate passed it,
+  // where the Python holds the report back; the site page also takes a
+  // latitude and longitude in the two boxes, which only the browser does.
+  const placed = await page.evaluate(() => {
+    const state = window.GWT.app.projectState();
+    const detail = (site) => window.GWT.core.assessReadiness(
+      Object.assign({}, state, { site: Object.assign({}, state.site, site) }),
+      'completion', {}).requirements.find((q) => q.key === 'site_located');
+    return {
+      utm: detail({ easting: 778000, northing: 446000, utm_zone: 28 }),
+      degrees: detail({ easting: -13.2317, northing: 8.4657, utm_zone: null }),
+      unsigned: detail({ easting: 13.2317, northing: 8.4657, utm_zone: null }),
+      abroad: detail({ easting: -13.2317, northing: 4.0, utm_zone: null }),
+    };
+  });
+  check('a UTM fix outside the country does not pass the gate',
+    placed.utm.state === 'unmet' &&
+    placed.utm.detail.includes('which is outside Sierra Leone'), JSON.stringify(placed.utm));
+  check('a degree fix outside the country does not pass the gate',
+    placed.abroad.state === 'unmet' &&
+    placed.abroad.detail.startsWith('Coordinates convert to 4.0000 N, 13.2317 W'),
+    JSON.stringify(placed.abroad));
+  check('a degree fix is recorded as degrees, not as metres',
+    placed.degrees.state === 'met' &&
+    placed.degrees.detail === 'Position recorded: 8.46570° N, 13.23170° W.' &&
+    placed.unsigned.state === 'met' &&
+    placed.unsigned.detail === placed.degrees.detail,
+    JSON.stringify([placed.degrees, placed.unsigned]));
+
   // --- the document says what the gate says ---------------------------------
   const stamped = await issued('handover');
   check('the report is still produced, and carries the stamp',

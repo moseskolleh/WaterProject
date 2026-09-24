@@ -1455,6 +1455,68 @@ await withPage(async (page, base, consoleErrors) => {
       JSON.stringify(offlineLoad));
   }
 
+  // A dense survey's drill-target map. Every label was written to the right
+  // of its peg, so twelve pegs 60 m apart - or sixteen 50 m apart in two
+  // rows - printed their labels through each other and the map named none
+  // of them. Each label is now placed where it covers nothing.
+  const dense = await page.evaluate(() => {
+    const C = window.GWT.core, charts = window.GWT.charts;
+    function survey(nx, ny, spacing) {
+      const points = [];
+      for (let j = 0; j < ny; j++) {
+        for (let i = 0; i < nx; i++) {
+          const k = j * nx + i;
+          const value = 80 - 4 * ((k * 7) % (nx * ny));
+          points.push({ label: 'VES ' + (k + 1), easting: 710000 + spacing * i,
+            northing: 950000 + spacing * j, value: value,
+            kind: value >= 55 ? 'Good' : 'Moderate' });
+        }
+      }
+      points.slice().sort((a, b) => b.value - a.value)
+        .forEach((p, r) => { p.rank = r + 1; });
+      points.forEach((p) => {
+        p.recommended = p.rank === 1;
+        p.text = C.suitabilityLabel(p, p.recommended, false);
+        p.compact_text = C.suitabilityLabel(p, p.recommended, true);
+      });
+      return points;
+    }
+    function layout(points) {
+      const svg = charts.suitabilityMap({ title: 'Drill-target suitability',
+        cmap: 'RdYlGn', points: points, grid: null, surface: false, note: '',
+        tie_note: '', levels: C.linspace(0, 100, 11), extent: C.mapExtent(points),
+        zone: 28, legend: [{ label: 'recommended drill target', kind: 'star', value: 80 },
+          { label: 'surveyed point', kind: 'circle', value: 40 }] }, { width: 680 });
+      document.body.appendChild(svg);
+      const boxes = {};
+      svg.querySelectorAll('text[data-peg]').forEach((t) => {
+        const b = t.getBBox(), key = t.getAttribute('data-peg');
+        const o = boxes[key] || { x0: 1e9, y0: 1e9, x1: -1e9, y1: -1e9, text: [] };
+        o.x0 = Math.min(o.x0, b.x); o.y0 = Math.min(o.y0, b.y);
+        o.x1 = Math.max(o.x1, b.x + b.width); o.y1 = Math.max(o.y1, b.y + b.height);
+        o.text.push(t.textContent);
+        boxes[key] = o;
+      });
+      const leaders = svg.querySelectorAll('line[data-leader]').length;
+      svg.remove();
+      const list = Object.keys(boxes).map((k) => Object.assign({ key: k }, boxes[k]));
+      const clashes = [];
+      list.forEach((a, i) => list.slice(i + 1).forEach((b) => {
+        if (Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0) > 0.5 &&
+            Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0) > 0.5) clashes.push([a.key, b.key]);
+      }));
+      return { labels: list.length, clashes: clashes, leaders: leaders,
+        full: list.every((b) => b.text.some((line) => line.endsWith('suitability'))) };
+    }
+    return { grid: layout(survey(4, 3, 60)), strip: layout(survey(8, 2, 50)) };
+  });
+  check('a dense survey map writes every label clear of every other',
+    dense.grid.labels === 12 && dense.grid.clashes.length === 0 &&
+    dense.strip.labels === 16 && dense.strip.clashes.length === 0,
+    JSON.stringify(dense));
+  check('a dense survey map ties a moved label to its peg, and keeps it in full',
+    dense.grid.leaders > 0 && dense.grid.full, JSON.stringify(dense.grid));
+
   check('no console errors', consoleErrors.length === 0,
     consoleErrors.slice(0, 10).join('\n     '));
 });

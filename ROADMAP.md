@@ -637,28 +637,66 @@ together, and the parity suite now holds 1,298 checks (623 when the
 roadmap closed). What follows is what the fixes left open, then the
 findings by area.
 
-Still open, each by decision rather than oversight:
+Left open when the review closed, each by decision rather than oversight,
+and since closed:
 
-- [ ] **A detection of an unknown microbiological parameter is not graded
+- [x] **A detection of an unknown microbiological parameter is not graded
   a failure.** "Salmonella Present" is now not evaluable and keeps the
   sample from "suitable" rather than reading as not measured, but the only
   way the code could tell it is microbiological is the unit, and a
   heterotrophic plate count in CFU/mL would then become a false health
   failure.
-- [ ] **The short water-quality sentence in the completion and handover
+  Done in both engines, by name rather than by unit: a certificate that
+  names a faecal-oral pathogen (Salmonella, Shigella, Vibrio cholerae,
+  Campylobacter, Cryptosporidium, Giardia, the enteric viruses and the
+  rest of `_FAECAL_PATHOGEN_RE`) has it graded as one. Any count, "Present"
+  or lower bound is a health failure, with its own treatment line; none
+  counted, "Absent" or "<1" is the requirement met and no longer holds the
+  sample open; a coarser detection limit cannot show absence and is not
+  evaluable. WHO sets no guideline value for a pathogen, and the remark
+  says so rather than quoting one. A plate count names no organism and
+  stays an open question, not a failure.
+- [x] **The short water-quality sentence in the completion and handover
   summaries does not list the uncertainties.** It says the WHO values have
   not been shown to be met; the quality section of each report lists what
   is unresolved.
-- [ ] **Dense surveys still overprint their suitability-map labels.** The
+  Done: the sentence names what is unresolved, national failure and
+  unresolved results alike. The sentence is the Python's alone; the
+  browser's handover summary prints the full verdict, which already lists
+  them, and its completion summary carries no quality sentence.
+- [x] **Dense surveys still overprint their suitability-map labels.** The
   labels now carry the rank and the weighted score, which makes them wider;
   placing them apart is a layout judgement left for a real dense survey.
-- [ ] **A step test whose clock restarts at each step prints the longest
+  Done in both engines, each in its own drawing units: the target is
+  placed first and then the rest by rank, each where it was written if it
+  has room there and otherwise at the nearest place round its peg, then
+  further out on a leader line, inside the frame and clear of every peg,
+  label and piece of map furniture. When the full labels cannot all be
+  placed apart, the grade line (which the table carries for every point)
+  gives way everywhere but at the target; the caption says the grade is
+  printed where the map has room. Twelve pegs 60 m apart and sixteen 50 m
+  apart in two rows are now written with no label over another in the
+  browser; the Python writes the first clear and, on the second, still
+  leaves one overlap after the grade line has given way. The Rokel map's
+  B (2) label, which ran out
+  past the right-hand neatline, is written back into the frame, as the
+  browser already did.
+- [x] **A step test whose clock restarts at each step prints the longest
   step's clock as the test duration** in the test-details row. The
   equivalent time and the flag are right and the flag says the clock
   restarted; the parser's duration is unchanged.
-- [ ] **The browser's readiness gate does not refuse a position outside
+  Done in both engines: each step is put on the test's clock by the rule
+  that reads the step lengths, so the recorded duration is the steps'
+  lengths added (Kuntolo read that way: 158 minutes, not 60), and the
+  overview and the step drawdown figure draw the steps one after another
+  instead of stacked on the first hour. The flag still quotes the sheet's
+  own latest reading.
+- [x] **The browser's readiness gate does not refuse a position outside
   Sierra Leone**, where the Python stamps such a report provisional. The
   browser now flags the position on the site page.
+  Done: the gate reads the position the way the site page does and refuses
+  it with the Python's sentence; a latitude and longitude typed into the
+  site boxes is recorded as degrees rather than as metres.
 
 - [x] **Pumping tests (12).** A recovery line the analysis rejected was
   still adopted when every fit was disqualified (Dr Timbo-like sheet: 0.99

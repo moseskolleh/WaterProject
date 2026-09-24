@@ -529,6 +529,7 @@ def suitability_map(
             else:
                 _no_surface_note(ax, len(valued))
         handles: dict[str, object] = {}
+        labels = []
         for p in points:
             colour = cmap(p.value / 100.0) if p.value is not None else "#888888"
             recommended = p.rank == 1 and not verdict["tie"]
@@ -541,13 +542,17 @@ def suitability_map(
                 "recommended drill target" if recommended else "surveyed point",
                 handle,
             )
-            ax.annotate(
-                suitability_label(p, recommended), xy=(p.easting, p.northing),
-                xytext=(11, 6),
-                textcoords="offset points", fontsize=8.5,
-                fontweight="bold" if recommended else "normal",
-                color="#222222", zorder=7,
-            )
+            labels.append((
+                (0 if recommended else 1, p.rank if p.rank is not None else 10**6),
+                ax.annotate(
+                    suitability_label(p, recommended), xy=(p.easting, p.northing),
+                    xytext=_LABEL_WRITTEN,
+                    textcoords="offset points", fontsize=8.5,
+                    fontweight="bold" if recommended else "normal",
+                    color="#222222", zorder=7,
+                ),
+                suitability_label(p, recommended, compact=True),
+            ))
         note = suitability_map_note(verdict)
         if note:
             # why there is no star, on the face of the map: a reader who sees
@@ -567,21 +572,212 @@ def suitability_map(
                       framealpha=0.95)
         ax.set_title(title)
         fig.tight_layout()
+        labels.sort(key=lambda item: item[0])
+        placed, leaders = _separate_labels(fig, ax, [a for _, a, _ in labels])
+        if not placed:
+            # A survey too dense for every label in full: the grade line,
+            # which the table above carries for every point, gives way, and
+            # the labels are placed again. The target keeps its full label.
+            for leader in leaders:
+                leader.remove()
+            for _, ann, compact in labels:
+                ann.set_text(compact)
+            _separate_labels(fig, ax, [a for _, a, _ in labels])
         if path is not None:
             return save_figure(fig, path, style)
         return fig
 
 
-def suitability_label(p: MapPoint, recommended: bool) -> str:
+#: Where every label is written, up and to the right of its point, in points.
+_LABEL_WRITTEN = (11, 6)
+#: The directions a label is tried in around its point, the diagonals and
+#: the four quarters first and every ten degrees after them.
+_LABEL_ANGLES = (30, 150, -30, -150, 90, -90, 0, 180) + tuple(
+    a for a in range(-170, 180, 10) if a not in (30, 150, -30, -150, 90, -90, 0)
+)
+#: How far out, in points, a label is tried in each direction.
+_LABEL_RADII = tuple(range(12, 330, 8))
+#: Past this distance from its point, in points, a label gets a leader line.
+_LEADER_FROM = 16.0
+#: What a leader crossing a peg or a label costs. Far less than any overlap:
+#: a crossed leader is untidy, overlapping words cannot be read, so a label
+#: that cannot be placed clear takes a crossing before it takes an overlap.
+_CROSSING = 0.01
+
+
+def _label_slots() -> np.ndarray:
+    """Every place a label is tried, in order, as ``(dx, dy, hx, vy)`` rows.
+
+    ``dx, dy`` is the offset in points from the point to the label's anchor,
+    and ``hx, vy`` where the anchor sits on the label's box as a share of
+    its width and height from the lower left: a label to the right of its
+    point is anchored on its left edge, one above it on its bottom edge.
+    """
+    rows = []
+    for radius in _LABEL_RADII:
+        for angle in _LABEL_ANGLES:
+            dx = radius * np.cos(np.radians(angle))
+            dy = 0.6 * radius * np.sin(np.radians(angle))
+            hx = 0.0 if dx > 1 else 1.0 if dx < -1 else 0.5
+            vy = 0.0 if dy > 1 else 1.0 if dy < -1 else 0.5
+            rows.append((dx, dy, hx, vy))
+    return np.array(rows)
+
+
+_LABEL_SLOTS = _label_slots()
+_ALIGN = {0.0: ("left", "bottom"), 0.5: ("center", "center"), 1.0: ("right", "top")}
+
+
+def _separate_labels(fig, ax, annotations) -> tuple[bool, list]:
+    """Move each label to the first place where it covers nothing.
+
+    Every label was written up and to the right of its point, so on a
+    dense survey the four-line labels ran through each other and through
+    the neighbouring pegs, and the map named nobody. Labels are placed in
+    the order given - the recommended target first, then by rank, so the
+    peg somebody walks to keeps the nearest place. Each stays where it was
+    written if it has room there; otherwise it goes to the nearest place
+    round its point, and then further out, where it stays inside the map
+    and clear of every peg, of the map's furniture and of the labels
+    already placed, and where its leader line crosses none of them, or
+    else as few as it can. A label moved off its point is tied to it by
+    that leader line. Where nothing is clear, the label goes where it
+    covers least.
+
+    Returns whether every label found a place where it runs into nothing,
+    and the leader lines drawn.
+    """
+    if not annotations:
+        return True, []
+    # drawn once so the frame is measured where it will be: the equal aspect
+    # and the colour bar are only applied when the figure is drawn
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    frame = ax.get_window_extent(renderer)
+    own = set(map(id, annotations))
+    boxes = [line.get_window_extent(renderer) for line in ax.get_lines()]
+    boxes += [
+        t.get_window_extent(renderer) for t in ax.texts
+        if id(t) not in own and (t.get_text() or getattr(t, "arrow_patch", None))
+    ]
+    legend = ax.get_legend()
+    if legend is not None:
+        boxes.append(legend.get_window_extent(renderer))
+    obstacles = np.array([[b.x0, b.y0, b.x1, b.y1] for b in boxes]).reshape(-1, 4)
+    scale = fig.dpi / 72.0
+
+    def overlap(cand: np.ndarray, others: np.ndarray) -> np.ndarray:
+        """The area each candidate box shares with the others, summed."""
+        if not len(others):
+            return np.zeros(len(cand))
+        w = (np.minimum(cand[:, None, 2], others[None, :, 2])
+             - np.maximum(cand[:, None, 0], others[None, :, 0]))
+        h = (np.minimum(cand[:, None, 3], others[None, :, 3])
+             - np.maximum(cand[:, None, 1], others[None, :, 1]))
+        return (np.clip(w, 0, None) * np.clip(h, 0, None)).sum(axis=1)
+
+    def crossings(origin, dx, dy) -> float:
+        """What the pegs and labels a leader line runs through cost.
+
+        Measured from where the leader leaves its own peg to where it meets
+        the label; a leader drawn through a neighbour's label reads as
+        pointing at it.
+        """
+        length = float(np.hypot(dx, dy))
+        if length <= _LEADER_FROM:
+            return 0.0
+        start = 9.0 / length
+        x0, y0 = origin[0] + start * dx * scale, origin[1] + start * dy * scale
+        x1, y1 = origin[0] + dx * scale, origin[1] + dy * scale
+        return _CROSSING * sum(_segment_meets(x0, y0, x1, y1, b) for b in obstacles)
+
+    clear, leaders = True, []
+    for ann in annotations:
+        origin = ax.transData.transform(ann.xy)
+        # from where it is written, whatever an earlier pass did with it
+        ann.xyann = _LABEL_WRITTEN
+        ann.set_horizontalalignment("left")
+        ann.set_verticalalignment("baseline")
+        written = ann.get_window_extent(renderer)
+        box = np.array([[written.x0, written.y0, written.x1, written.y1]])
+        cost = overlap(box, obstacles)[0] + written.width * written.height - overlap(
+            box, np.array([[frame.x0, frame.y0, frame.x1, frame.y1]]))[0]
+        if cost > 1e-9:
+            # where it was written costs something: every other place, from
+            # the label's own size, nearest first
+            w, h = written.width, written.height
+            ax0 = origin[0] + _LABEL_SLOTS[:, 0] * scale - _LABEL_SLOTS[:, 2] * w
+            ay0 = origin[1] + _LABEL_SLOTS[:, 1] * scale - _LABEL_SLOTS[:, 3] * h
+            cand = np.column_stack([ax0, ay0, ax0 + w, ay0 + h])
+            inside = overlap(cand, np.array([[frame.x0, frame.y0, frame.x1, frame.y1]]))
+            costs = overlap(cand, obstacles) + (w * h - inside)
+            chosen = None
+            for i in np.flatnonzero(costs <= 1e-9):
+                extra = crossings(origin, _LABEL_SLOTS[i, 0], _LABEL_SLOTS[i, 1])
+                if chosen is None or extra < chosen[0]:
+                    chosen = (extra, int(i))
+                if extra == 0:
+                    break
+            if chosen is None:
+                chosen = (float(costs.min()), int(np.argmin(costs)))
+                # a crossed leader is untidy but legible; only words that
+                # would run into something make the map too dense
+                clear = False
+            dx, dy, hx, vy = _LABEL_SLOTS[chosen[1]]
+            ann.xyann = (float(dx), float(dy))
+            ann.set_horizontalalignment(_ALIGN[hx][0])
+            ann.set_verticalalignment(_ALIGN[vy][1])
+            if np.hypot(dx, dy) > _LEADER_FROM:
+                leader = ax.annotate(
+                    "", xy=ann.xy, xytext=(float(dx), float(dy)),
+                    textcoords="offset points",
+                    arrowprops=dict(arrowstyle="-", color="#555555", lw=0.6,
+                                    shrinkA=0, shrinkB=7),
+                    zorder=5,
+                )
+                leader.set_in_layout(False)
+                leaders.append(leader)
+            written = ann.get_window_extent(renderer)
+        obstacles = np.vstack([obstacles, [[written.x0, written.y0, written.x1, written.y1]]])
+    return clear, leaders
+
+
+def _segment_meets(x0, y0, x1, y1, box) -> bool:
+    """Whether the segment from (x0, y0) to (x1, y1) passes through ``box``,
+    given as ``(x0, y0, x1, y1)``."""
+    lo, hi = 0.0, 1.0
+    for p, q in (
+        (-(x1 - x0), x0 - box[0]), (x1 - x0, box[2] - x0),
+        (-(y1 - y0), y0 - box[1]), (y1 - y0, box[3] - y0),
+    ):
+        if p == 0:
+            if q < 0:
+                return False
+            continue
+        t = q / p
+        if p < 0:
+            lo = max(lo, t)
+        else:
+            hi = min(hi, t)
+        if lo > hi:
+            return False
+    return True
+
+
+def suitability_label(p: MapPoint, recommended: bool, compact: bool = False) -> str:
     """What a suitability map writes beside a point.
 
     The rank and the weighted score, and the grade named as the grade of
     the suitability; the grid coordinates too at the recommended target.
+    ``compact`` is the label of a map too dense for every label in full:
+    the grade line gives way, except at the recommended target.
     """
     label = p.label
     if p.value is not None:
         label += ("\n" + (f"Rank {p.rank}, " if p.rank is not None else "")
-                  + f"weighted {p.value:.0f}\n{p.kind} suitability")
+                  + f"weighted {p.value:.0f}")
+        if recommended or not compact:
+            label += f"\n{p.kind} suitability"
     if recommended:
         label += f"\nE {p.easting:.0f}  N {p.northing:.0f}"
     return label

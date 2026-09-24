@@ -586,6 +586,48 @@ def test_a_step_test_whose_times_restart_each_step_keeps_its_length():
     assert not any(f.code == "step_time_restarted" for f in analyse_pumping_test(running).flags)
 
 
+def test_a_restarted_step_clock_is_recorded_and_drawn_on_the_test_clock(sample_data):
+    """Kuntolo with each step's time counted from its own start. The parser
+    recorded the longest step's clock as the test duration, so the test
+    details row printed 60 minutes for a test that pumped for 158, and both
+    figures drew the three steps on top of one another over the first hour."""
+    import matplotlib.pyplot as plt
+    from groundwater.hydraulics.plots import plot_step_test, plot_test_overview
+    from groundwater.ingestion import common
+    from groundwater.ingestion.pumping import _assemble
+    from groundwater.models import step_offsets_min
+
+    grid, _ = common.load_grid(sample_data / "kuntolo" / "kuntolo_step_test.xlsx")
+    running = _assemble(grid, "kuntolo.xlsx")
+    for row in grid[11:]:
+        for col, offset in ((3, 60), (6, 120)):
+            if isinstance(row[col], (int, float)):
+                row[col] = row[col] - offset
+    restarted = _assemble(grid, "kuntolo_restarted.xlsx")
+
+    assert [float(np.max(s.time_min)) for s in restarted.steps] == [60.0, 60.0, 38.0]
+    assert step_offsets_min(restarted.steps) == [0.0, 60.0, 120.0]
+    assert step_offsets_min(running.steps) == [0.0, 0.0, 0.0]
+    assert restarted.pumping_duration_min == running.pumping_duration_min == 158.0
+
+    # both figures put each step where it was pumped; the running sheet is
+    # drawn exactly as it was
+    for test in (running, restarted):
+        for plot in (plot_test_overview, plot_step_test):
+            fig = plot(test)
+            lines = fig.axes[0].get_lines()[:3]
+            assert [float(np.min(line.get_xdata())) for line in lines] == [
+                float(np.min(s.time_min)) for s in running.steps]
+            assert [float(np.max(line.get_xdata())) for line in lines] == [
+                60.0, 120.0, 158.0]
+            plt.close(fig)
+
+    # the flag still says what the sheet's own clock reads
+    restart = next(f for f in analyse_pumping_test(restarted).flags
+                   if f.code == "step_time_restarted")
+    assert "158 minutes in all, not the 60 minutes the latest reading gives" in restart.message
+
+
 def test_a_step_test_is_judged_per_step_in_its_own_words():
     """A 3 x 50-minute step test inside its casing-storage period was said to
     have "pumped for 50 minutes" with "the whole test" inside the period, of

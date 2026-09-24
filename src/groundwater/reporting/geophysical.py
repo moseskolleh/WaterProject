@@ -1084,8 +1084,9 @@ def _suitability_caption(state: dict) -> str:
     caption = (
         "Drill-target suitability of the surveyed points, coloured by the "
         "confidence-weighted score; greener is more suitable. Each point is "
-        "labelled with its rank and weighted score, and with the grade of its "
-        "suitability before the confidence discount, as in the table above."
+        "labelled with its rank and weighted score, and, where the map has "
+        "room, with the grade of its suitability before the confidence "
+        "discount, as in the table above."
     )
     if state["tie"]:
         caption += (
