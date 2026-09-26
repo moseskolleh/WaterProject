@@ -21,11 +21,9 @@ from __future__ import annotations
 import csv
 import functools
 import io
-import json
 import math
 import textwrap
 from dataclasses import dataclass, field
-from importlib import resources
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -34,6 +32,7 @@ from matplotlib.patches import PathPatch
 from matplotlib.path import Path as MplPath
 
 from .._geometry import RingIndex, point_in_ring
+from .._resources import bundled_json, bundled_text
 from ..config import HouseStyle
 from ..coverage import (
     CHIEFDOM_EDGE_TOLERANCE_M,
@@ -119,22 +118,11 @@ def _ring_centroid(ring: np.ndarray) -> tuple[float, float]:
     return float(cx), float(cy)
 
 
-@functools.lru_cache(maxsize=8)
-def _bundled_geojson(name: str) -> dict:
-    """A bundled layer, parsed once per process.
-
-    district_of and chiefdom_of re-read and re-parsed 240 KB of GeoJSON on
-    every Streamlit rerun; the parsed dict is shared and never mutated by
-    the loaders, which build their own arrays from it.
-    """
-    text = (resources.files("groundwater") / "data" / name).read_text(encoding="utf-8")
-    return json.loads(text)
-
-
-def _read_geojson(name: str, path: str | Path | None) -> dict:
-    if path is not None:
-        return json.loads(Path(path).read_text(encoding="utf-8"))
-    return _bundled_geojson(name)
+# A bundled layer is parsed once per process and shared with coverage:
+# district_of and chiefdom_of used to re-read and re-parse the GeoJSON on
+# every Streamlit rerun. The loaders below build their own arrays from the
+# parsed dict and never change it.
+_read_geojson = bundled_json
 
 
 def load_geology(path: str | Path | None = None) -> list[GeologyUnit]:
@@ -263,8 +251,7 @@ def district_of(
 @functools.lru_cache(maxsize=1)
 def chiefdom_full_names() -> dict[str, str]:
     """Layer name -> full name, for the chiefdoms the layer truncated."""
-    text = (resources.files("groundwater") / "data"
-            / "sl_chiefdom_names.csv").read_text(encoding="utf-8")
+    text = bundled_text("sl_chiefdom_names.csv")
     return {
         row["layer_name"].strip(): row["full_name"].strip()
         for row in csv.DictReader(io.StringIO(text))
@@ -549,8 +536,7 @@ def _district_named(name: str) -> tuple[str, tuple[str, ...]]:
 
 @functools.lru_cache(maxsize=1)
 def _bundled_crosswalk() -> dict[str, str]:
-    text = (resources.files("groundwater") / "data"
-            / "sl_chiefdom_district.csv").read_text(encoding="utf-8")
+    text = bundled_text("sl_chiefdom_district.csv")
     return {
         row["chiefdom"].strip(): row["district"].strip()
         for row in csv.DictReader(io.StringIO(text))
@@ -567,7 +553,7 @@ def _current_district_of_chiefdom(path: str | Path | None = None) -> dict[str, s
     """
     if path is None:
         return dict(_bundled_crosswalk())
-    text = Path(path).read_text(encoding="utf-8")
+    text = bundled_text("sl_chiefdom_district.csv", path)
     return {
         row["chiefdom"].strip(): row["district"].strip()
         for row in csv.DictReader(io.StringIO(text))

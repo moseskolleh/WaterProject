@@ -25,10 +25,10 @@ from __future__ import annotations
 import csv
 import math
 from dataclasses import dataclass, field
-from importlib import resources
 from pathlib import Path
 from typing import Optional
 
+from .._resources import bundled_text
 from ..config import DesignRules
 from ..models import DataFlag
 from ..utils import fmt_num
@@ -75,12 +75,7 @@ class RateItem:
 
 def load_rates(path: str | Path | None = None) -> list[RateItem]:
     """Load the unit rate catalogue (bundled CSV unless a path is given)."""
-    if path is not None:
-        text = Path(path).read_text(encoding="utf-8")
-    else:
-        text = (
-            resources.files("groundwater") / "data" / "borehole_cost_items.csv"
-        ).read_text(encoding="utf-8")
+    text = bundled_text("borehole_cost_items.csv", path)
     rates: list[RateItem] = []
     for row in csv.DictReader(text.splitlines()):
         rates.append(

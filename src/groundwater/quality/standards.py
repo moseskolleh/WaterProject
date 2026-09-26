@@ -16,12 +16,13 @@ from __future__ import annotations
 
 import csv
 import functools
+import io
 import re
 from dataclasses import dataclass
-from importlib import resources
 from pathlib import Path
 from typing import Optional
 
+from .._resources import bundled_text
 from ..units import _normalise as normalise_unit_text
 from ..units import comparable, convert, parse_unit
 
@@ -350,9 +351,7 @@ def _bundled_rows() -> tuple[dict, ...]:
     on each rerun, and the Pyodide build pays for file IO dearly. Callers
     still get fresh StandardEntry objects, so a table they edit stays theirs.
     """
-    source = resources.files("groundwater.data").joinpath("who_guidelines.csv")
-    with source.open("r", encoding="utf-8") as fh:
-        return tuple(csv.DictReader(fh))
+    return tuple(csv.DictReader(io.StringIO(bundled_text("who_guidelines.csv"))))
 
 
 def load_standards(path: str | Path | None = None) -> dict[str, StandardEntry]:
@@ -360,8 +359,7 @@ def load_standards(path: str | Path | None = None) -> dict[str, StandardEntry]:
     if path is None:
         rows = _bundled_rows()
     else:
-        with open(path, "r", encoding="utf-8") as fh:
-            rows = list(csv.DictReader(fh))
+        rows = list(csv.DictReader(io.StringIO(bundled_text("who_guidelines.csv", path))))
     table: dict[str, StandardEntry] = {}
     for row in rows:
         entry = StandardEntry(

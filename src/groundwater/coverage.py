@@ -32,16 +32,15 @@ from __future__ import annotations
 
 import csv
 import io
-import json
 import math
 from dataclasses import dataclass, field
-from importlib import resources
 from pathlib import Path
 from typing import Iterable
 
 import numpy as np
 
 from ._geometry import RingIndex
+from ._resources import bundled_json, bundled_text
 from .waterpoints import WaterPoint
 
 POPULATION_CREDIT = (
@@ -91,14 +90,6 @@ class ChiefdomPoly:
     # Town; dropping its hole credited a city of 200,000 people's water points
     # to the rural chiefdom around it, and left the town looking unserved.
     holes: list[list[np.ndarray]] = field(default_factory=list)
-
-
-def _resource_text(name: str, path: str | Path | None) -> str:
-    if path is not None:
-        return Path(path).read_text(encoding="utf-8")
-    return (resources.files("groundwater") / "data" / name).read_text(
-        encoding="utf-8"
-    )
 
 
 def _chiefdom_index(polys: list["ChiefdomPoly"]) -> RingIndex:
@@ -184,7 +175,7 @@ def nearest_chiefdom_index(
 
 def load_district_population(path: str | Path | None = None) -> dict[str, float]:
     """District -> resident population (2015 census)."""
-    text = _resource_text("sl_population_district.csv", path)
+    text = bundled_text("sl_population_district.csv", path)
     out: dict[str, float] = {}
     for row in csv.DictReader(io.StringIO(text)):
         out[row["district"].strip()] = float(row["population"])
@@ -193,7 +184,7 @@ def load_district_population(path: str | Path | None = None) -> dict[str, float]
 
 def load_chiefdom_district(path: str | Path | None = None) -> dict[str, str]:
     """Chiefdom name -> current district (the reconciliation crosswalk)."""
-    text = _resource_text("sl_chiefdom_district.csv", path)
+    text = bundled_text("sl_chiefdom_district.csv", path)
     return {
         row["chiefdom"].strip(): row["district"].strip()
         for row in csv.DictReader(io.StringIO(text))
@@ -201,8 +192,13 @@ def load_chiefdom_district(path: str | Path | None = None) -> dict[str, str]:
 
 
 def load_chiefdom_polys(path: str | Path | None = None) -> list[ChiefdomPoly]:
-    """Chiefdom polygons from the bundled geoBoundaries layer."""
-    data = json.loads(_resource_text("sl_chiefdoms_geoboundaries.geojson", path))
+    """Chiefdom polygons from the bundled geoBoundaries layer.
+
+    The layer is parsed once per process and shared with
+    ``mapping.regional`` (see ``groundwater._resources``); the rings are
+    built fresh on each call, so they are the caller's own.
+    """
+    data = bundled_json("sl_chiefdoms_geoboundaries.geojson", path)
     polys: list[ChiefdomPoly] = []
     for feature in data.get("features", []):
         name = feature.get("properties", {}).get("name", "")
@@ -458,7 +454,7 @@ def load_service_classes(path: str | Path | None = None) -> list[ServiceClass]:
     rather than as a standard this project holds.
     """
     rows = csv.DictReader(io.StringIO(
-        _resource_text("coverage_service_classes.csv", path)))
+        bundled_text("coverage_service_classes.csv", path)))
     out = []
     for row in rows:
         top = (row.get("max_people_per_point") or "").strip()
@@ -548,7 +544,7 @@ def load_census_crosswalk(
     path: str | Path | None = None,
 ) -> dict[tuple[str, str], str]:
     """(district, census chiefdom) -> geoBoundaries chiefdom polygon."""
-    text = _resource_text("sl_census_crosswalk.csv", path)
+    text = bundled_text("sl_census_crosswalk.csv", path)
     # strip like the sibling loaders: the crosswalk is user-editable, so a
     # stray space in a hand edit must not break the (district, chiefdom) join.
     return {
@@ -570,7 +566,7 @@ def chiefdom_population(
     reconciliation panel - it shows how post-2017 chiefdoms fold into the
     pre-2017 polygons). District totals are conserved exactly by construction.
     """
-    census_text = _resource_text("sl_population_chiefdom.csv", census_path)
+    census_text = bundled_text("sl_population_chiefdom.csv", census_path)
     crosswalk = load_census_crosswalk(crosswalk_path)
     population: dict[str, float] = {}
     members: dict[str, list[str]] = {}
