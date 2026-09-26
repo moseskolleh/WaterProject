@@ -143,11 +143,21 @@ await withPage(async (page, base, consoleErrors) => {
       analysed: !!d.analysis,
       designed: !!(d.design && d.design.screens.length),
       safe: d.analysis && d.analysis.yield_recommendation.safe_yield_m3_per_h,
+      /* where the engine's share of that work ran */
+      ran: window.GWT.engine.history().filter((h) => h.outcome === 'done')
+        .map((h) => h.type + ':' + h.mode),
     };
   });
   check('no network: a survey still loads, recomputes and designs a borehole',
     offlineWork.analysed && offlineWork.designed && offlineWork.safe > 0,
     JSON.stringify(offlineWork));
+  // The worker fetches the engine for itself, from its own URL; with no
+  // network that has to come from the release too, or the page quietly does
+  // all its own computing again.
+  check('no network: the engine worker starts from the release on the device',
+    offlineWork.ran.includes('recompute:worker') &&
+    offlineWork.ran.includes('analysePumping:worker') &&
+    offlineWork.ran.every((r) => r.endsWith(':worker')), JSON.stringify(offlineWork.ran));
 
   const answers = await page.evaluate(async (FOREIGN) => {
     const out = {};

@@ -2,8 +2,19 @@
  *
  * A direct port of the `groundwater` Python package: the same formulas, the
  * same thresholds, the same deliberate field-data behaviours. Nothing here
- * touches the DOM, so it also runs inside a Web Worker (the VES inversion
- * does) and can be unit-tested headlessly.
+ * touches the DOM, so it can be unit-tested headlessly and gwt-worker.js can
+ * load it, with the tables in gwt-data.js, into a Web Worker.
+ *
+ * What runs where. In the worker: invertSounding, one sounding per request;
+ * analysePumpingTest; and what recompute derives from the sheets once they
+ * are read - readVesSheets, drillingFromGrid, pumpingFromGrid,
+ * qualityFromGrid and assessSample. On the page: reading a workbook or a Word
+ * sheet (readPumpingDocx), because both need DOMParser, which a worker does
+ * not have; interpretModel and rankInterpretations on each inverted model;
+ * and everything else - the design, the costing, the maps, the report
+ * sentences. Opened from file://, where a browser will not start a worker,
+ * or wherever the worker fails to start, the worker's share runs on the page
+ * too, through the same functions and the same calls.
  *
  * Units, held to throughout:
  *   depth, thickness, spacing      m
@@ -761,7 +772,10 @@
     return out;
   }
 
-  function invertModel(ab2, rhoApp, rho0, h0, arrayType, damping, maxIterations) {
+  /* onIteration(done, maxIterations), when given, is told after every
+   * iteration; it reads nothing back, so it cannot change the fit. */
+  function invertModel(ab2, rhoApp, rho0, h0, arrayType, damping, maxIterations,
+                       onIteration) {
     var nLayers = rho0.length;
     var theta = clipTheta(packTheta(rho0, h0), nLayers);
     var logObs = rhoApp.map(Math.log);
@@ -844,6 +858,7 @@
       }
       if (!improved) { converged = true; break; }
       if (cost < 1e-10) { converged = true; break; }
+      if (onIteration) onIteration(iterations, maxIterations);
     }
 
     var final = unpackTheta(theta, nLayers);
@@ -985,8 +1000,11 @@
   /* Full search: layer count from min_layers to max_layers, two starts each,
    * keeping the simplest model that reaches the target fit.
    *
-   * onProgress(fraction, label) is called between trials so the page can show
-   * where the inversion has got to; it is the only non-pure part of this. */
+   * onProgress(fraction, label) is called as each iteration and each trial
+   * ends, so the page can show where the inversion has got to. It is the only
+   * non-pure part of this, and it reads nothing back, so it cannot change the
+   * result. The search stops adding layers once a fit is good enough, so the
+   * last fraction reported can fall short of 1. */
   function invertSounding(sounding, options) {
     var opts = options || {};
     var cfg = (opts.config || defaultConfig()).ves;
@@ -995,11 +1013,21 @@
     var ab2 = spliced.ab2, rhoApp = spliced.rho;
     if (ab2.length < 4) throw new Error('Not enough readings to invert');
 
+    /* the iteration hook for trial si of nStarts at layer count li of nCounts */
+    function iterationProgress(li, nCounts, si, nStarts, label) {
+      if (!opts.onProgress) return null;
+      return function (done, maxIterations) {
+        opts.onProgress((li + (si + done / maxIterations) / nStarts) / nCounts, label);
+      };
+    }
+
     var candidates = [], trials = [];
 
     if (opts.initialModel) {
       var seeded = invertModel(ab2, rhoApp, opts.initialModel.resistivities,
-        opts.initialModel.thicknesses, arrayType, cfg.damping, cfg.max_iterations);
+        opts.initialModel.thicknesses, arrayType, cfg.damping, cfg.max_iterations,
+        iterationProgress(0, 1, 0, 1,
+          opts.initialModel.resistivities.length + ' layers'));
       candidates.push(seeded);
       trials.push([seeded.rho.length, seeded.err]);
     } else {
@@ -1016,7 +1044,8 @@
         var starts = startingModels(ab2, rhoApp, n2);
         for (var si = 0; si < starts.length; si++) {
           var result = invertModel(ab2, rhoApp, starts[si].rho0, starts[si].h0,
-            arrayType, cfg.damping, cfg.max_iterations);
+            arrayType, cfg.damping, cfg.max_iterations,
+            iterationProgress(li, layerRange.length, si, starts.length, n2 + ' layers'));
           if (!bestForN || result.err < bestForN.err) bestForN = result;
           if (opts.onProgress) {
             opts.onProgress((li + (si + 1) / starts.length) / layerRange.length,
@@ -2251,12 +2280,20 @@
       /* a line through two points is exact by construction: R squared is
        * 1.000 whatever the data, and B, C and the efficiencies are untested */
       two_point: q.length === 2,
-      drawdown_at: function (qDay) { return B * qDay + C * qDay * qDay; },
-      efficiency_at: function (qDay) {
-        var total = B * qDay + C * qDay * qDay;
-        return total <= 0 ? 100.0 : 100.0 * B * qDay / total;
-      },
     };
+  }
+
+  /* StepTestResult.drawdown_at and efficiency_at, at a rate in m3/day.
+   * Functions of the result rather than methods on it, as they are in
+   * Python: an analysis has to be plain data to leave the engine worker, and
+   * a method is the one thing a structured clone cannot carry. */
+  function stepDrawdownAt(stepTest, qDay) {
+    return stepTest.aquifer_loss_B * qDay + stepTest.well_loss_C * qDay * qDay;
+  }
+
+  function stepEfficiencyAt(stepTest, qDay) {
+    var total = stepDrawdownAt(stepTest, qDay);
+    return total <= 0 ? 100.0 : 100.0 * stepTest.aquifer_loss_B * qDay / total;
   }
 
   /* --- yield recommendation ------------------------------------------------
@@ -2630,7 +2667,7 @@
          * time projection from step length to design period replaces the
          * plain projection above rather than adding to it. */
         var tStepMin = test.step_length_min || test.pumping_duration_min || 180.0;
-        s = stepResult.drawdown_at(qDay);
+        s = stepDrawdownAt(stepResult, qDay);
         s += 2.303 * qDay / (4.0 * Math.PI * transmissivity) *
           Math.log(tDesign / (tStepMin / MIN_PER_DAY)) / Math.LN10;
       }
@@ -2915,11 +2952,15 @@
     return [duration || null, 'constant'];
   }
 
+  /* options.onProgress(fraction, label), when given, is told as each stage
+   * of the analysis begins, so the page can say what it is waiting for. It
+   * reads nothing back, so it cannot change the analysis. */
   function analysePumpingTest(test, config, options) {
     var opts = options || {};
     var cfg = (config && config.pumping) ? config.pumping
       : (config || defaultConfig().pumping);
     var observationRadiusM = opts.observationRadiusM;
+    var progress = opts.onProgress || function () {};
     var analysis = {
       test: test, cooper_jacob: null, theis: null, recovery: null,
       step_test: null, yield_recommendation: null,
@@ -3022,6 +3063,7 @@
     /* Cooper-Jacob and Theis on the first step: it pumps at a single rate from
      * static conditions, so the single-well solutions apply directly (later
      * steps would need superposition of the earlier rates). */
+    progress(0, 'Cooper-Jacob and Theis fits');
     if (hasSwl && test.steps && test.steps.length) {
       var step0 = test.steps[0];
       var q0 = step0.discharge_m3_per_h;
@@ -3111,6 +3153,7 @@
     }
 
     /* recovery */
+    progress(0.5, 'recovery');
     if (test.recovery_level_m && hasSwl && test.recovery_time_min) {
       var residual = test.recovery_level_m.map(function (v) { return v - swl; });
       var qRec = null;
@@ -3170,6 +3213,7 @@
     }
 
     /* step test */
+    progress(0.6, 'step test');
     if (String(test.test_type || '').indexOf('step') === 0 && hasSwl &&
         test.steps.length >= 2) {
       var withQ = test.steps.filter(function (s) {
@@ -3359,6 +3403,7 @@
       });
     }
 
+    progress(0.7, 'yield');
     analysis.yield_recommendation = recommendYield(test,
       analysis.transmissivity_m2_per_day, analysis.step_test, cfg,
       { transmissivitySource: adopted.method, noTransmissivityReason: rejected });
@@ -3412,6 +3457,7 @@
     requireDischarge: requireDischarge,
     cooperJacob: cooperJacob, theisFit: theisFit, theisRecovery: theisRecovery,
     hantushBierschenk: hantushBierschenk, recommendYield: recommendYield,
+    stepDrawdownAt: stepDrawdownAt, stepEfficiencyAt: stepEfficiencyAt,
     attachYieldEnvelope: attachYieldEnvelope, yieldRangeText: yieldRangeText,
     analysePumpingTest: analysePumpingTest,
     METHOD_LABELS: METHOD_LABELS, TEST_TYPE_WORDS: TEST_TYPE_WORDS,

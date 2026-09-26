@@ -130,6 +130,19 @@ is finite and photographs are large. If a write fails, the app says so
 across the top of the page and asks for a project file: from that point
 the file you save is the only record, so save one.
 
+The VES inversion takes a few seconds per sounding on a laptop, and
+longer on an older one; a pumping test analysis is usually quicker. In
+the browser app both run in the background. A bar across the top of the
+page says what is running and how far it has got, and the rest of the
+app can be used meanwhile. **Cancel** on the bar stops the work at once
+and keeps nothing from it: a stopped inversion leaves the Geophysics
+page as it was, with a button to run it again, and a stopped pumping
+analysis leaves the test loaded with an **Analyse now** button. Opened
+as a file (a copy on a USB stick, say) rather than from its web
+address, the app cannot run work in the background: it gives the same
+results, but the page is busy while each sounding is inverted, and a
+Cancel press is only read between soundings.
+
 **Overview** opens first and is the project dashboard: the lifecycle
 strip across the top shows how far the borehole has got (Sited →
 Drilled → Tested → Assessed → Handover), and the cards below summarise

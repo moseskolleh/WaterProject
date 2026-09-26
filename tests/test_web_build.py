@@ -122,6 +122,10 @@ def test_webapp_scripts_are_wired_up():
     # must be in place before gwt-core.js reads the standards table.
     assert scripts[0].endswith("support.js")
     assert scripts.index("js/gwt-data.js") < scripts.index("js/gwt-core.js")
+    # gwt-worker.js is GWT.engine on the page, which gwt-app.js takes at load
+    # time; its tasks call gwt-core.js when the page has to run them itself.
+    assert (scripts.index("js/gwt-core.js") < scripts.index("js/gwt-worker.js")
+            < scripts.index("js/gwt-app.js"))
     for src in scripts:
         assert (REPO / "docs" / src).exists(), f"{src} is referenced but missing"
     for href in re.findall(r'<link rel="stylesheet" href="([^"]+)"', html):
@@ -247,6 +251,61 @@ def test_the_precache_list_is_the_shell_the_page_loads():
     # The stlite build is a 60 MB Python runtime from a CDN. Putting it on
     # someone's phone unasked is a decision for the user, not the worker.
     assert not [p for p in paths if p.startswith("wasm/")]
+
+
+def test_what_the_engine_worker_imports_is_precached():
+    """A Web Worker fetches its imports itself, where no <script> tag names them.
+
+    gwt-worker.js imports the engine and its tables when it starts. Offline,
+    an import that is not in the release fails the worker, and the page is
+    left doing every inversion on its own thread again, with nothing to say
+    why.
+    """
+    builder = _load_offline_builder()
+    paths = builder.shell_assets()
+    worker = REPO / "docs" / "js" / "gwt-worker.js"
+    calls = re.findall(r"importScripts\(([^)]*)\)", worker.read_text(encoding="utf-8"))
+    imported = [
+        "js/" + url for call in calls for url in re.findall(r"'([^']+)'", call)
+    ]
+    assert "js/gwt-core.js" in imported and "js/gwt-data.js" in imported
+    assert "js/gwt-worker.js" in paths
+    missing = [path for path in imported if path not in paths]
+    assert not missing, f"the engine worker imports {missing}, which is not precached"
+
+
+def test_the_shell_follows_a_worker_s_imports(tmp_path, monkeypatch):
+    """An import only a worker makes is still part of the shell.
+
+    The engine worker's imports happen to be scripts the page loads too, so
+    the check above would pass without following them at all. This is the
+    case it exists for: a script nothing but a worker asks for.
+    """
+    builder = _load_offline_builder()
+    (tmp_path / "js").mkdir()
+    (tmp_path / "index.html").write_text(
+        '<!doctype html><script src="js/entry.js"></script>', encoding="utf-8")
+    (tmp_path / "js" / "entry.js").write_text(
+        "if (self.importScripts) self.importScripts('tables.js', \"engine.js\");\n",
+        encoding="utf-8")
+    (tmp_path / "js" / "tables.js").write_text("", encoding="utf-8")
+    (tmp_path / "js" / "engine.js").write_text("", encoding="utf-8")
+    for extra in builder.EXTRA:
+        (tmp_path / extra).write_text("", encoding="utf-8")
+    monkeypatch.setattr(builder, "DOCS", tmp_path)
+
+    paths = builder.shell_assets()
+    assert paths.index("js/entry.js") < paths.index("js/tables.js")
+    assert "js/engine.js" in paths
+
+    # and one that is not there fails the build like any missing script
+    (tmp_path / "js" / "engine.js").unlink()
+    try:
+        builder.shell_assets()
+    except builder.ShellError as exc:
+        assert "js/engine.js" in str(exc)
+    else:
+        raise AssertionError("a missing worker import was not reported")
 
 
 def test_the_worker_is_written_in_one_step(tmp_path):

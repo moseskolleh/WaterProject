@@ -3,6 +3,9 @@
  */
 import { withPage } from './harness.mjs';
 
+/* the app as a copy on disk, opened without a server */
+const FROM_DISK = new URL('../../docs/index.html', import.meta.url).href;
+
 const results = [];
 function check(name, ok, detail) {
   results.push({ name, ok });
@@ -21,6 +24,25 @@ await withPage(async (page, base, consoleErrors) => {
   await page.goto(base + '/index.html', { waitUntil: 'load' });
   await page.waitForFunction(() => window.GWT && window.GWT.app);
   check('app boots', true);
+
+  // Long Tasks from here on. The inversion and the pumping analysis run in
+  // the engine worker, and the checks below hold the page's own thread to it:
+  // a task over 50 ms here, while either is computing, is a page that has
+  // stopped answering.
+  await page.evaluate(() => {
+    window.__longTasks = [];
+    new PerformanceObserver((list) => {
+      list.getEntries().forEach((e) => window.__longTasks.push(
+        { start: e.startTime, duration: e.duration }));
+    }).observe({ type: 'longtask', buffered: true });
+    /* the long tasks that overlap any of these [from, to] windows */
+    window.__longDuring = (windows) => window.__longTasks.filter((t) =>
+      windows.some((w) => t.start < w[1] && t.start + t.duration > w[0]));
+    /* JSON that keeps a model's Infinity and a NaN, so two results can be
+     * compared across pages */
+    window.__serialise = (value) => JSON.stringify(value, (k, x) =>
+      (typeof x === 'number' && !Number.isFinite(x) ? String(x) : x));
+  });
 
   // every page renders with an empty project
   for (const key of PAGES) {
@@ -49,6 +71,20 @@ await withPage(async (page, base, consoleErrors) => {
           window.GWT.app.derived.analysis !== null,
     { timeout: 60000 });
   check('dr_timbo sample loads', true);
+
+  const pumpingRun = await page.evaluate(() => {
+    const runs = window.GWT.engine.history()
+      .filter((h) => h.type === 'analysePumping' && h.outcome === 'done');
+    return {
+      modes: runs.map((h) => h.mode),
+      long: window.__longDuring(runs.map((h) => h.ran)),
+    };
+  });
+  check('engine: the pumping test was analysed in the worker',
+    pumpingRun.modes.length > 0 && pumpingRun.modes.every((m) => m === 'worker'),
+    JSON.stringify(pumpingRun.modes));
+  check('engine: no main-thread task over 50 ms while the pumping test was analysed',
+    pumpingRun.long.length === 0, JSON.stringify(pumpingRun.long));
 
   const state = await page.evaluate(() => {
     const d = window.GWT.app.derived;
@@ -92,12 +128,26 @@ await withPage(async (page, base, consoleErrors) => {
     check(`${key}: ${minSvg}+ figures drawn`, n >= minSvg, `found ${n}`);
   }
 
-  // rokel sample: the VES chain
+  // rokel sample: the VES chain. A timer is sampled while it inverts, and the
+  // main pane is scrolled with the mouse wheel as it does, the way a hand on a
+  // trackpad would: a page frozen by the inversion shows as a gap in both.
   await page.evaluate(() => window.GWT.app.goto('overview'));
-  await page.evaluate(() => {
+  const beforeRokel = await page.evaluate(() => {
+    const probe = window.__probe = { ticks: [], scrolls: [] };
+    probe.timer = setInterval(() => probe.ticks.push(performance.now()), 20);
+    document.querySelector('#main').addEventListener('scroll',
+      () => probe.scrolls.push(performance.now()), { passive: true });
+    const last = Math.max(0, ...window.GWT.engine.history().map((h) => h.id));
     Array.from(document.querySelectorAll('button'))
       .find((b) => b.textContent.includes('Load Rokel')).click();
+    return last;
   });
+  await page.waitForFunction(() => window.GWT.app.working('invert'), { timeout: 60000 });
+  await page.mouse.move(900, 500);
+  for (let i = 0; i < 6; i += 1) {
+    await page.mouse.wheel(0, i % 2 ? -400 : 400);
+    await page.waitForTimeout(200);
+  }
   await page.waitForFunction(() => {
     const d = window.GWT.app.derived;
     return d.interpretations && d.interpretations.length > 0;
@@ -116,6 +166,308 @@ await withPage(async (page, base, consoleErrors) => {
   await page.waitForTimeout(200);
   const vesSvgs = await page.evaluate(() => document.querySelectorAll('#page-host svg').length);
   check('ves page draws curves', vesSvgs >= 2, `found ${vesSvgs}`);
+
+  // --- the engine worker ----------------------------------------------------
+  // PLAN.md step 1.2: during an inversion no main-thread task longer than
+  // 50 ms, and the page keeps scrolling. The windows are the engine's own
+  // record of when each sounding was being inverted.
+  const inverting = await page.evaluate((after) => {
+    const probe = window.__probe;
+    clearInterval(probe.timer);
+    const runs = window.GWT.engine.history()
+      .filter((h) => h.id > after && h.type === 'invert' && h.outcome === 'done');
+    const windows = runs.map((h) => h.ran);
+    const from = Math.min(...windows.map((w) => w[0]));
+    const to = Math.max(...windows.map((w) => w[1]));
+    const ticks = [from].concat(probe.ticks.filter((t) => t > from && t < to), [to]);
+    let gap = 0;
+    for (let i = 1; i < ticks.length; i += 1) gap = Math.max(gap, ticks[i] - ticks[i - 1]);
+    return {
+      modes: runs.map((h) => h.mode),
+      ms: Math.round(to - from),
+      long: window.__longDuring(windows),
+      ticks: ticks.length - 2,
+      gap: Math.round(gap),
+      scrolls: probe.scrolls.filter((t) => t > from && t < to).length,
+    };
+  }, beforeRokel);
+  check('engine: the Rokel soundings were inverted in the worker',
+    inverting.modes.length === ves.n && inverting.modes.every((m) => m === 'worker'),
+    JSON.stringify(inverting.modes));
+  check('engine: no main-thread task over 50 ms while the Rokel soundings inverted',
+    inverting.long.length === 0, JSON.stringify(inverting.long));
+  check('engine: timers kept firing and the page kept scrolling while it inverted',
+    inverting.ticks >= inverting.ms / 100 && inverting.gap < 250 && inverting.scrolls > 0,
+    JSON.stringify(inverting));
+
+  // Cancel has to stop an inversion part way through a fit, not after it. A
+  // worker busy in a fit reads no messages, so this is the worker being
+  // stopped. What was there before is kept, and the next run starts in a
+  // fresh worker and gives the same answer.
+  const cancelled = await page.evaluate(async () => {
+    const app = window.GWT.app, engine = window.GWT.engine;
+    const before = window.__serialise(app.derived.inversions);
+    app.goto('ves');
+    Array.from(document.querySelectorAll('#page-host button'))
+      .find((b) => b.textContent === 'Re-run inversion').click();
+    let bar = null, fill = 0;
+    for (let i = 0; i < 400; i += 1) {
+      await new Promise((r) => setTimeout(r, 25));
+      bar = document.querySelector('#work-status .work-bar[data-work="invert"]');
+      fill = bar ? parseFloat(bar.querySelector('.progress-fill').style.width) : 0;
+      if (bar && fill > 0 && fill < 100) break;
+    }
+    const shown = bar ? bar.textContent : '';
+    const pressed = performance.now();
+    bar.querySelector('button').click();
+    while (app.working('invert') && performance.now() - pressed < 5000) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    const stoppedIn = Math.round(performance.now() - pressed);
+    await new Promise((r) => setTimeout(r, 100));
+    const last = engine.history().filter((h) => h.type === 'invert').pop();
+    const after = {
+      kept: window.__serialise(app.derived.inversions) === before,
+      barGone: !document.querySelector('#work-status .work-bar'),
+      page: document.querySelector('#page-host').textContent.includes('Re-run inversion'),
+    };
+    await app.runInversions();
+    return {
+      fill, shown, stoppedIn, outcome: last.outcome, after,
+      again: window.__serialise(app.derived.inversions) === before,
+      rerun: engine.history().filter((h) => h.type === 'invert').slice(-2)
+        .map((h) => h.mode + ':' + h.outcome),
+    };
+  });
+  check('cancel: the work bar shows the inversion part way, with a Cancel button',
+    cancelled.fill > 0 && cancelled.fill < 100 &&
+    cancelled.shown.includes('Inverting 2 soundings') && cancelled.shown.includes('Cancel'),
+    JSON.stringify(cancelled));
+  check('cancel: Cancel stops the inversion mid-fit, at once',
+    cancelled.outcome === 'cancelled' && cancelled.stoppedIn < 1000 &&
+    cancelled.after.barGone, JSON.stringify(cancelled));
+  check('cancel: a stopped run leaves the results it would have replaced',
+    cancelled.after.kept && cancelled.after.page, JSON.stringify(cancelled.after));
+  check('cancel: the next run goes to the end in a fresh worker, with the same answer',
+    cancelled.again && cancelled.rerun.every((r) => r === 'worker:done'),
+    JSON.stringify(cancelled.rerun));
+
+  // Opened from file:// a browser will not start a worker, and a worker can
+  // fail to load; the page then runs the same tasks itself. Worker, page and
+  // a direct call to the engine have to agree on everything: the numbers, the
+  // Infinity at the foot of a model, the type of every value, and which
+  // objects are one object - an analysis and the test it holds. Structured
+  // clone is what carries a result out of the worker, and it drops functions
+  // and prototypes and copies what it keeps, so the whole graph is compared.
+  const agree = await page.evaluate(async () => {
+    const app = window.GWT.app, engine = window.GWT.engine;
+    const C = window.GWT.core, S = window.GWT.support;
+    function differ(a, b, path, seen) {
+      if (typeof a !== typeof b) return path + ': ' + typeof a + ' against ' + typeof b;
+      if (typeof a === 'function') return path + ': a function';
+      if (a === null || b === null || typeof a !== 'object') {
+        return Object.is(a, b) ? null : path + ': ' + String(a) + ' against ' + String(b);
+      }
+      if (seen.a.has(a) || seen.b.has(b)) {
+        return seen.a.get(a) === b && seen.b.get(b) === a ? null
+          : path + ': one object in one result and two in the other';
+      }
+      seen.a.set(a, b);
+      seen.b.set(b, a);
+      const ta = Object.prototype.toString.call(a), tb = Object.prototype.toString.call(b);
+      if (ta !== tb || Object.getPrototypeOf(a) !== Object.getPrototypeOf(b)) {
+        return path + ': ' + ta + ' against ' + tb;
+      }
+      if (Array.isArray(a) && a.length !== b.length) {
+        return path + ': ' + a.length + ' items against ' + b.length;
+      }
+      const ka = Object.keys(a), kb = Object.keys(b);
+      if (ka.join('|') !== kb.join('|')) return path + ': keys ' + ka + ' against ' + kb;
+      for (const k of ka) {
+        const d = differ(a[k], b[k], path + '.' + k, seen);
+        if (d) return d;
+      }
+      return null;
+    }
+    const same = (a, b) => differ(a, b, 'result', { a: new Map(), b: new Map() });
+
+    const cfg = app.config();
+    const soundings = app.derived.soundings;
+    const short = structuredClone(soundings[0]);
+    short.rho_app = short.rho_app.map((v, i) => (i < 3 ? v : 0));
+    /* the two pumping samples, and Kuntolo with its discharges entered by
+     * hand, which makes it a step test with fits to make */
+    const inputs = [];
+    for (const [key, manual] of [['dr_timbo', {}], ['kuntolo', {}],
+      ['kuntolo', { 1: 1.5, 2: 2.2, 3: '3.0' }]]) {
+      const files = window.GWT.data.samples[key].files, sources = {};
+      for (const role of Object.keys(files)) {
+        sources[role] = { name: files[role].name,
+          sheets: await S.readXlsx(S.base64ToBytes(files[role].b64)) };
+      }
+      inputs.push({ config: cfg, sources, manualDischarges: manual });
+    }
+
+    /* the engine called directly, as the page used to */
+    const direct = { invert: soundings.map((s) => C.invertSounding(s, { config: cfg })),
+      recompute: [], analyse: [] };
+    inputs.forEach((input) => {
+      const src = structuredClone(input.sources), out = {};
+      if (src.drilling) out.log = C.drillingFromGrid(src.drilling.sheets[0].rows, src.drilling.name);
+      if (src.pumping) {
+        out.test = C.pumpingFromGrid(src.pumping.sheets[0].rows, src.pumping.name);
+        out.test.steps.forEach((step) => {
+          const q = input.manualDischarges[step.step_number];
+          if (q !== undefined) step.discharge_m3_per_h = Number(q);
+        });
+      }
+      if (src.quality) {
+        out.sample = C.qualityFromGrid(src.quality.sheets[0].rows, src.quality.name);
+        out.assessment = C.assessSample(out.sample);
+      }
+      direct.recompute.push(out);
+      direct.analyse.push(C.analysePumpingTest(structuredClone(out.test), cfg));
+    });
+    try { C.invertSounding(short, { config: cfg }); direct.error = 'no error'; }
+    catch (e) { direct.error = e.name + ': ' + e.message; }
+
+    /* every request, and where each one actually ran: an answer the worker
+     * could not send back is worked out on the page instead, quietly */
+    async function through(onPage) {
+      engine.forcePage(onPage);
+      const first = Math.max(0, ...engine.history().map((h) => h.id));
+      try {
+        const r = { invert: [], recompute: [], analyse: [] };
+        for (const s of soundings) r.invert.push(await engine.invert(s, cfg));
+        for (const input of inputs) {
+          const derived = await engine.recompute(input);
+          r.recompute.push(derived);
+          r.analyse.push(await engine.analysePumping(derived.test, cfg));
+        }
+        r.error = await engine.invert(short, cfg)
+          .then(() => 'no error', (e) => e.name + ': ' + e.message);
+        r.ran = engine.history().filter((h) => h.id > first).map((h) => h.mode);
+        return r;
+      } finally {
+        engine.forcePage(false);
+      }
+    }
+    const worker = await through(false), onPage = await through(true);
+    const parsed = (r) => r.recompute.map((d) => {
+      const out = {};
+      ['log', 'test', 'sample', 'assessment'].forEach((k) => { if (d[k]) out[k] = d[k]; });
+      return out;
+    });
+    return {
+      ran: [worker.ran, onPage.ran],
+      requests: soundings.length + 2 * inputs.length + 1,
+      app: same(direct.invert, app.derived.inversions),
+      worker: [same(direct.invert, worker.invert), same(direct.recompute, parsed(worker)),
+        same(direct.analyse, worker.analyse)],
+      page: [same(direct.invert, onPage.invert), same(direct.recompute, parsed(onPage)),
+        same(direct.analyse, onPage.analyse)],
+      both: same(worker.recompute, onPage.recompute),
+      /* flags an analysis holds that are the very objects on its test */
+      shared: worker.analyse.map((a, i) => [
+        direct.analyse[i].flags.filter((f) => direct.analyse[i].test.flags.includes(f)).length,
+        a.flags.filter((f) => a.test.flags.includes(f)).length]),
+      fitted: worker.analyse.map((a) => [a.transmissivity_m2_per_day, !!a.step_test]),
+      errors: [direct.error, worker.error, onPage.error],
+    };
+  });
+  check('engine: the worker returns what a direct call to the engine returns',
+    agree.ran[0].length === agree.requests && agree.ran[0].every((m) => m === 'worker') &&
+    agree.app === null &&
+    agree.worker.every((d) => d === null), JSON.stringify(agree));
+  check('engine: the page\'s own path returns the same, to the last bit',
+    agree.ran[1].length === agree.requests && agree.ran[1].every((m) => m === 'page') &&
+    agree.page.every((d) => d === null) &&
+    agree.both === null, JSON.stringify(agree));
+  check('engine: a fitted step test is among the analyses compared',
+    agree.fitted[0][0] > 0 && agree.fitted[2][1] === true, JSON.stringify(agree.fitted));
+  check('engine: an analysis still holds its flags as the ones on its test',
+    agree.shared.some((n) => n[0] > 0) && agree.shared.every((n) => n[0] === n[1]),
+    JSON.stringify(agree.shared));
+  check('engine: an engine error comes back with its own message, either way',
+    agree.errors[0] === 'Error: Not enough readings to invert' &&
+    agree.errors.every((e) => e === agree.errors[0]), JSON.stringify(agree.errors));
+
+  // The same app as a copy on disk. No worker is asked for, the page does its
+  // own computing and says why, and the Rokel inversion is the worker's.
+  const fromDisk = await (async () => {
+    const tab = await page.context().newPage();
+    const errors = [];
+    tab.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    tab.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+    try {
+      await tab.goto(FROM_DISK, { waitUntil: 'load' });
+      await tab.waitForFunction(() => window.GWT && window.GWT.app, { timeout: 30000 });
+      const found = await tab.evaluate(async () => {
+        const app = window.GWT.app, engine = window.GWT.engine;
+        await app.loadSample('rokel');
+        return {
+          mode: engine.mode(), why: engine.unavailable(),
+          ran: engine.history().map((h) => h.type + ':' + h.mode + ':' + h.outcome),
+          inversions: JSON.stringify(app.derived.inversions, (k, x) =>
+            (typeof x === 'number' && !Number.isFinite(x) ? String(x) : x)),
+        };
+      });
+      return Object.assign(found, { errors });
+    } finally {
+      await tab.close();
+    }
+  })();
+  const inWorker = await page.evaluate(() => window.__serialise(window.GWT.app.derived.inversions));
+  check('file://: no worker is asked for, and the page says why it computes itself',
+    fromDisk.mode === 'page' && fromDisk.why === 'opened from file://' &&
+    fromDisk.ran.length > 0 && fromDisk.ran.every((r) => r.endsWith(':page:done')),
+    JSON.stringify(fromDisk.ran));
+  check('file://: the Rokel inversion comes out exactly as it does in the worker',
+    fromDisk.inversions === inWorker, `${fromDisk.inversions.length} against ${inWorker.length} chars`);
+  check('file://: no console errors', fromDisk.errors.length === 0,
+    fromDisk.errors.slice(0, 5).join('\n     '));
+
+  // A worker that is asked for and fails to load - a deploy missing the file,
+  // a proxy that mangles it. The request it had is not lost: it and every
+  // one after it runs on the page, with the same answer.
+  const noWorker = await (async () => {
+    const tab = await page.context().newPage();
+    try {
+      await tab.addInitScript(() => {
+        const Real = window.Worker;
+        window.Worker = function () { return new Real('js/not-in-this-deploy.js'); };
+      });
+      await tab.goto(base + '/index.html', { waitUntil: 'load' });
+      await tab.waitForFunction(() => window.GWT && window.GWT.app);
+      return await tab.evaluate(async () => {
+        const app = window.GWT.app, engine = window.GWT.engine;
+        await app.loadSample('dr_timbo');
+        return {
+          why: engine.unavailable(),
+          ran: engine.history().map((h) => h.type + ':' + h.mode + ':' + h.outcome),
+          analysis: JSON.stringify(app.derived.analysis,
+            (k, x) => (typeof x === 'number' && !Number.isFinite(x) ? String(x) : x)),
+        };
+      });
+    } finally {
+      await tab.close();
+    }
+  })();
+  const timboHere = await page.evaluate(() => {
+    const C = window.GWT.core, app = window.GWT.app, S = window.GWT.support;
+    return S.readXlsx(S.base64ToBytes(window.GWT.data.samples.dr_timbo.files.pumping.b64))
+      .then((sheets) => window.__serialise(C.analysePumpingTest(C.pumpingFromGrid(
+        sheets[0].rows, window.GWT.data.samples.dr_timbo.files.pumping.name), app.config())));
+  });
+  /* the tab shares this origin's storage, so it restores this page's session
+   * first, and loading the sample cancels that recompute */
+  const finished = noWorker.ran.filter((r) => !r.endsWith(':cancelled'));
+  check('a worker that fails to load: its request and every later one run on the page',
+    noWorker.why.startsWith('it did not start') &&
+    finished.join() === 'recompute:page:done,analysePumping:page:done',
+    JSON.stringify(noWorker.ran));
+  check('a worker that fails to load: the answer is the same',
+    noWorker.analysis === timboHere, `${(noWorker.analysis || '').length} against ${timboHere.length} chars`);
 
   // The visible text of a .docx, in reading order. A report that is a valid
   // ZIP with all the right OOXML parts can still be empty of the numbers it
@@ -147,6 +499,48 @@ await withPage(async (page, base, consoleErrors) => {
     () => window.GWT.app.recomputeState.running === 0 &&
           window.GWT.app.derived.analysis !== null,
     { timeout: 60000 });
+
+  // A pumping analysis stopped part way. The test stays loaded, the page says
+  // the analysis was stopped rather than failing to draw, and Analyse now
+  // brings back the same analysis and the same design.
+  const pumpingStop = await page.evaluate(async () => {
+    const app = window.GWT.app, d = app.derived;
+    const before = { analysis: window.__serialise(d.analysis),
+      design: window.__serialise(d.design) };
+    app.goto('pumping');
+    const analysing = app.reanalyseTest();
+    app.cancelWork('pumping');
+    await analysing;
+    app.render();
+    const text = document.querySelector('#page-host').textContent;
+    const stopped = { analysis: d.analysis, note: d.analysisNote, test: !!d.test,
+      says: text.includes('This test has not been analysed: the analysis was stopped'),
+      discharges: text.includes('Discharge per step') };
+    const again = Array.from(document.querySelectorAll('#page-host button'))
+      .find((b) => b.textContent === 'Analyse now');
+    if (again) again.click();
+    for (let i = 0; i < 500 && !d.analysis; i += 1) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    await new Promise((r) => setTimeout(r, 200));
+    return {
+      stopped: Object.assign(stopped, { analysis: stopped.analysis === null }),
+      button: !!again,
+      same: window.__serialise(d.analysis) === before.analysis,
+      design: window.__serialise(d.design) === before.design,
+      figures: document.querySelectorAll('#page-host svg').length,
+      last: window.GWT.engine.history().filter((h) => h.type === 'analysePumping')
+        .slice(-2).map((h) => h.outcome),
+    };
+  });
+  check('cancel: a stopped pumping analysis leaves the test loaded and says so',
+    pumpingStop.stopped.analysis && pumpingStop.stopped.test &&
+    pumpingStop.stopped.says && pumpingStop.stopped.discharges &&
+    JSON.stringify(pumpingStop.last) === JSON.stringify(['cancelled', 'done']),
+    JSON.stringify(pumpingStop));
+  check('cancel: Analyse now brings back the same analysis and design',
+    pumpingStop.button && pumpingStop.same && pumpingStop.design &&
+    pumpingStop.figures >= 2, JSON.stringify(pumpingStop));
 
   for (const kind of ['completion', 'pumping', 'quality', 'costing', 'supervision', 'handover']) {
     const outcome = await page.evaluate(async (k) => {

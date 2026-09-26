@@ -10,9 +10,10 @@ someone remembered to update.
 
 That is what this script is for. It reads the app shell the way a
 browser does - the scripts and stylesheet ``docs/index.html`` loads, the
-fonts the stylesheet loads, the icons the manifest names - and emits a
-worker whose precache list is exactly those files. A script added to
-``index.html`` is precached by the next run; nobody has to remember.
+fonts the stylesheet loads, the icons the manifest names, and what a Web
+Worker among those scripts imports - and emits a service worker whose
+precache list is exactly those files. A script added to ``index.html`` is
+precached by the next run; nobody has to remember.
 
 The release identifier is a hash of the shell rather than a number
 somebody bumps by hand, for the same reason: a forgotten bump is a
@@ -115,10 +116,28 @@ def shell_assets() -> list[str]:
             if _is_local(url):
                 paths.append(_normalise(sheet, url))
 
-    # <script src> in body order: support, data, engine, charts, app.
+    # <script src> in body order: support, data, engine, engine worker,
+    # charts, app.
+    scripts: list[str] = []
     for src in re.findall(r'<script\b[^>]*\bsrc="([^"]+)"', html):
         if _is_local(src):
-            paths.append(_normalise(index, src))
+            scripts.append(_normalise(index, src))
+    paths.extend(scripts)
+
+    # What a Web Worker imports. gwt-worker.js is started as a worker as well
+    # as loaded by the page, and a worker fetches its imports itself, relative
+    # to its own URL, where no <script> tag names them. A worker that could
+    # not import the engine with no network would leave the page doing all
+    # its own computing, so its imports are part of the shell like any script.
+    for script in scripts:
+        source = DOCS / script
+        if not source.exists():
+            continue  # reported as missing below, with the rest
+        text = source.read_text(encoding="utf-8")
+        for arguments in re.findall(r"importScripts\(([^)]*)\)", text):
+            for url in re.findall(r"""['"]([^'"]+)['"]""", arguments):
+                if _is_local(url):
+                    paths.append(_normalise(source, url))
 
     paths.extend(EXTRA)
 
