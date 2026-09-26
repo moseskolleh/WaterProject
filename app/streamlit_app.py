@@ -4068,7 +4068,9 @@ with tab_maps:
             "[GeoLibre](https://geolibre.app) is free and open source, and the "
             "file opens in its web app, its desktop app, its phone apps and in "
             "a Jupyter notebook. Nothing is uploaded: the file is written here "
-            "and downloaded to this machine."
+            "and downloaded to this machine. With a GPS fix it also draws the "
+            "separation distances as rings round the wellhead: the ground a "
+            "latrine, a burial ground or another well has to stay out of."
         )
         _area = area_window(site, float(st.session_state.get("map_radius") or 40))
         if _area is None:

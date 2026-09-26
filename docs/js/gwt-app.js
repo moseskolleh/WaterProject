@@ -1225,7 +1225,10 @@
           'and put over satellite imagery instead. GeoLibre is free and open ' +
           'source, and the file opens in its web app, its desktop app, its ' +
           'phone apps and in a Jupyter notebook. Nothing is uploaded: the ' +
-          'project is assembled in this page and saved to this machine.'),
+          'project is assembled in this page and saved to this machine. With ' +
+          'a GPS fix it also draws the separation distances as rings round ' +
+          'the wellhead: the ground a latrine, a burial ground or another ' +
+          'well has to stay out of.'),
         el('div.btn-row', [
           button('Save GeoLibre project', function () {
             saveGeolibreProject();

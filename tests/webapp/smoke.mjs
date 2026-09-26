@@ -117,6 +117,54 @@ await withPage(async (page, base, consoleErrors) => {
   const vesSvgs = await page.evaluate(() => document.querySelectorAll('#page-host svg').length);
   check('ves page draws curves', vesSvgs >= 2, `found ${vesSvgs}`);
 
+  // The GeoLibre project the site page saves, through the page's own button:
+  // with a fix it carries the separation distances as rings round the
+  // wellhead, and they do not take over the camera.
+  const geolibre = await page.evaluate(() => {
+    const app = window.GWT.app;
+    let saved = '';
+    const original = window.GWT.support.download;
+    window.GWT.support.download = (name, body) => { saved = String(body); };
+    try {
+      app.goto('site');
+      app.render();
+      Array.from(document.querySelectorAll('button'))
+        .find((b) => b.textContent === 'Save GeoLibre project').click();
+    } finally {
+      window.GWT.support.download = original;
+    }
+    const project = JSON.parse(saved || '{}');
+    const byName = {};
+    (project.layers || []).forEach((l) => { byName[l.name] = l; });
+    const rings = byName['Separation distances'];
+    const features = rings ? rings.geojson.features : [];
+    /* the Rokel survey spans kilometres and would hide a ring taking over the
+     * camera, so that is asked of the site on its own: framed on the point,
+     * not on the 2 km across the widest ring */
+    const site = byName.Site ? byName.Site.geojson.features[0].geometry.coordinates : null;
+    const alone = site ? window.GWT.geolibre.siteProject(
+      { community: 'Rokel', lon: site[0], lat: site[1], zone: 28 }) : null;
+    return {
+      layers: Object.keys(byName),
+      hasSite: !!site,
+      rings: features.length,
+      widths: features.map((f) => f.properties.min_distance_m),
+      explained: features.every((f) => /stay clear/.test(f.properties.meaning) &&
+        /not a cited standard/.test(f.properties.basis)),
+      aloneLayers: alone ? alone.layers.map((l) => l.name) : [],
+      aloneZoom: alone ? alone.mapView.zoom : null,
+      tableRows: window.GWT.core.loadSeparationDistances().length,
+    };
+  });
+  check('geolibre: a site with a fix carries its separation rings',
+    geolibre.hasSite && geolibre.rings === geolibre.tableRows && geolibre.rings > 0 &&
+    geolibre.explained, JSON.stringify(geolibre));
+  check('geolibre: the rings are widest first and do not frame the map',
+    geolibre.widths[0] === Math.max.apply(null, geolibre.widths) &&
+    geolibre.aloneLayers.indexOf('Separation distances') >= 0 &&
+    geolibre.aloneZoom > 16,
+    JSON.stringify({ widths: geolibre.widths, zoom: geolibre.aloneZoom }));
+
   // The visible text of a .docx, in reading order. A report that is a valid
   // ZIP with all the right OOXML parts can still be empty of the numbers it
   // was built to carry, so the checks below read what a client would read.

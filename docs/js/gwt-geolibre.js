@@ -242,6 +242,66 @@
     });
   }
 
+  /* Vertices per separation ring. At 64 the chord across a 3 m circle is
+   * under 30 cm, which is finer than the wellhead position is known. */
+  var RING_SEGMENTS = 64;
+
+  /* What the distances rest on, said on every ring because a ring on a map
+   * reads as a rule. data_provenance.yaml records no source for the table. */
+  var RING_BASIS = 'No source is recorded for this distance: it is common ' +
+    'field practice as written down in this toolkit, not a cited standard. ' +
+    "Use the regulator's figure where there is one.";
+
+  /* The site separation distances, drawn as the rings they are.
+   *
+   * The table says a latrine is to be kept 20 m from the borehole, a burial
+   * ground 1000 m, a building 3 m. Listed as numbers, that asks whoever reads
+   * them to hold eight radii in their head against a site they may never have
+   * stood on. Drawn round the wellhead over imagery, an encroachment is
+   * visible instead of asserted.
+   *
+   * Each ring is the ground that has to stay clear of that structure, not
+   * ground the borehole occupies or serves - a circle does not say which by
+   * itself, so every one carries a sentence saying it, and the basis the
+   * distance rests on.
+   *
+   * Generated in projected metres and unprojected vertex by vertex, so a 20 m
+   * ring is 20 m on the ground. Widest first, so the tight ones are drawn, and
+   * clicked, on top of the wide ones rather than under them.
+   * mapping.geolibre.separation_ring_features. */
+  function separationRingFeatures(lat, lon, distances, zone) {
+    var specs = GWT.core.loadSeparationDistances(distances).filter(function (d) {
+      return isFinite(d.min_distance_m);
+    }).sort(function (a, b) { return b.min_distance_m - a.min_distance_m; });
+    var centre = GWT.core.geographicToUtm(lat, lon, zone);
+    return specs.map(function (spec) {
+      var coords = [];
+      for (var step = 0; step < RING_SEGMENTS; step++) {
+        var angle = 2 * Math.PI * step / RING_SEGMENTS;
+        var ll = GWT.core.utmToGeographic(
+          centre.easting + spec.min_distance_m * Math.cos(angle),
+          centre.northing + spec.min_distance_m * Math.sin(angle),
+          centre.zone);
+        coords.push([round6(ll.lon), round6(ll.lat)]);
+      }
+      coords.push([coords[0][0], coords[0][1]]);
+      return feature({ type: 'Polygon', coordinates: [coords] }, clean({
+        structure: spec.structure,
+        min_distance_m: spec.min_distance_m,
+        note: spec.note,
+        meaning: spec.structure + ': at least ' +
+          GWT.core.formatG(spec.min_distance_m) + ' m from the borehole. ' +
+          'This ring is the ground that has to stay clear of it, not the ' +
+          'area the borehole serves.',
+        basis: RING_BASIS,
+        fill: '#C1772A',
+        'fill-opacity': 0.0,
+        stroke: '#C1772A',
+        'stroke-width': 1.5,
+      }));
+    });
+  }
+
   /* ------------------------------------------------------ layers and framing */
 
   function layer(name, features, options) {
@@ -538,6 +598,17 @@
         suitabilityFeatures(opts.suitability, opts.zone),
         { radius: 9.0, stroke: '#222222' }));
     }
+    if (hasFix && opts.separationRings !== false) {
+      /* Only round a fix. A ring round a chiefdom centroid would be a
+       * separation distance measured from a place nobody surveyed - the same
+       * mistake as marking that centroid as the site. Drawn but not framed
+       * on: the two 1000 m rings would otherwise decide the camera for every
+       * site. */
+      layers.push(layer('Separation distances',
+        separationRingFeatures(opts.lat, opts.lon, null, opts.zone),
+        { kind: 'polygon', color: '#C1772A', stroke: '#C1772A',
+          fillOpacity: 0.0, strokeWidth: 1.5 }));
+    }
     if (opts.lat != null && opts.lon != null) {
       layers.push(layer('Site', [pointFeature(opts.lon, opts.lat, clean({
         label: opts.community || 'Site',
@@ -661,6 +732,7 @@
     waterPointFeatures: waterPointFeatures,
     suitabilityFeatures: suitabilityFeatures,
     portfolioFeatures: portfolioFeatures,
+    separationRingFeatures: separationRingFeatures,
     layer: layer,
     buildProject: buildProject,
     siteProject: siteProject,
