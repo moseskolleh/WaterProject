@@ -15,6 +15,9 @@ it; boxes drawn around districts overlap over half the country, so one
 point came back as "Western Area Rural, Moyamba", and they miss ground
 the districts actually cover. The table is still bundled for the
 name-and-province list the apps offer, but nothing here consults it.
+The polygons are simplified, so a point within their drawing error of
+the stated district's edge (:data:`DISTRICT_EDGE_TOLERANCE_M`) is not
+reported against it: that is a border, not a copy-over error.
 
 The polygon layer is geoBoundaries as released, which predates the 2017
 creation of Karene and Falaba; the point is placed through the chiefdom
@@ -33,6 +36,25 @@ from ..models import DataFlag, SiteMetadata
 
 # Sierra Leone in geographic coordinates, generous margin
 _SL_BOUNDS = (-13.6, -10.0, 6.7, 10.2)  # lon_min, lon_max, lat_min, lat_max
+
+#: How far outside a stated district's drawn boundary a point may fall and
+#: still not be reported as a conflict with it, in metres.
+#:
+#: ``web/build_geodata.py`` simplifies the chiefdom rings with Douglas-Peucker
+#: at 0.0008 degrees, so every boundary this check judges by is drawn to
+#: within about 89 m of the geoBoundaries line it came from. A site 40 m over
+#: the drawn line can be on either side of the real one, and a sheet naming
+#: the neighbouring district there has not been shown to be wrong; flagging
+#: it makes the check wrong more often than the sheet. The tolerance is that
+#: drawing error and no more. A handheld fix is good to ten metres or so and
+#: does not come into it, and the 5.5 km of slack the bounding boxes allowed
+#: is what let one wrong-district statement in fourteen through them.
+#: Measured over one verified interior point per chiefdom, stated as each of
+#: the fifteen districts it is not in, 90 m lets none of the 2,490 through.
+#:
+#: It follows the simplification: rebuild the rings at another tolerance and
+#: this moves with them. The browser engine carries the same number.
+DISTRICT_EDGE_TOLERANCE_M = 90.0
 
 # "Western Area" is a region, not one of the sixteen districts: it is the
 # peninsula's two districts together. Field sheets write it constantly, so
@@ -193,6 +215,18 @@ def district_at(lat: float, lon: float) -> tuple[str, str]:
     return chiefdom_of(lat, lon)
 
 
+def within_drawing_error(lat: float, lon: float, districts: Iterable[str]) -> bool:
+    """Whether the point could be in one of these districts, as they are drawn.
+
+    True when the point is inside one of them or within
+    :data:`DISTRICT_EDGE_TOLERANCE_M` of its edge. Only asked once a
+    conflict is about to be reported, so the rings are walked rarely.
+    """
+    from ..mapping.regional import near_districts
+
+    return near_districts(lat, lon, districts, DISTRICT_EDGE_TOLERANCE_M)
+
+
 def _or_list(names: Iterable[str]) -> str:
     """A list an operator reads as a sentence: "Koinadugu or Kono"."""
     names = list(names)
@@ -277,7 +311,11 @@ def check_site_consistency(site: SiteMetadata, context: str = "") -> list[DataFl
                     ctx,
                 )
             )
-        elif found not in resolved:
+        elif found not in resolved and not within_drawing_error(lat, lon, resolved):
+            # A point just over the drawn line is not a wrong district: the
+            # line is only drawn to DISTRICT_EDGE_TOLERANCE_M, and a site on a
+            # border can fall either side of it without anybody having
+            # written anything wrong.
             flags.append(
                 DataFlag(
                     "warning",

@@ -9722,6 +9722,40 @@
     return near === null ? '' : polys[near].name;
   }
 
+  /* How far outside a stated district's drawn boundary a point may fall and
+   * still not be reported as a conflict with it, in metres.
+   *
+   * The chiefdom rings are simplified with Douglas-Peucker at 0.0008 degrees,
+   * so every boundary the district check judges by is drawn to within about
+   * 89 m of the line it came from. A site 40 m over the drawn line can be on
+   * either side of the real one, and a sheet naming the neighbouring district
+   * there has not been shown to be wrong. The tolerance is that drawing error
+   * and no more: the 5.5 km of slack the bounding boxes allowed is what let
+   * one wrong-district statement in fourteen through them. The same number as
+   * ingestion.checks.DISTRICT_EDGE_TOLERANCE_M. */
+  var DISTRICT_EDGE_TOLERANCE_M = 90.0;
+
+  /* Whether a point is inside, or within toleranceM of, these districts.
+   *
+   * A district is the chiefdoms the crosswalk puts in it today, the same
+   * rings chiefdomOfPoint places a point by, and the distance is to the ring
+   * as a line. Containment is asked as well as distance because the rings
+   * were simplified one at a time and can overlap along a shared border: a
+   * point in the overlap is inside both districts as drawn, even though
+   * chiefdomOfPoint can only return the first. mapping.regional.near_districts. */
+  function nearDistricts(lat, lon, districts, polys, toleranceM) {
+    var tolerance = toleranceM === undefined ? DISTRICT_EDGE_TOLERANCE_M : toleranceM;
+    var crosswalk = loadChiefdomDistrict();
+    var rings = [];
+    for (var i = 0; i < polys.length; i++) {
+      var poly = polys[i];
+      if (districts.indexOf(crosswalk[poly.name] || poly.district) < 0) continue;
+      if (polyContains(poly, lon, lat)) return true;
+      rings = rings.concat(poly.rings);
+    }
+    return nearestChiefdomIndex(lon, lat, [rings], tolerance) !== null;
+  }
+
   function loadDistrictPopulation(rows) {
     var source = rows || (GWT.data && GWT.data.populationDistrict) || [];
     var out = {};
@@ -10432,6 +10466,8 @@
     CHIEFDOM_EDGE_TOLERANCE_M: CHIEFDOM_EDGE_TOLERANCE_M,
     ringDistanceM: ringDistanceM, nearestChiefdomIndex: nearestChiefdomIndex,
     outerRingSets: outerRingSets,
+    DISTRICT_EDGE_TOLERANCE_M: DISTRICT_EDGE_TOLERANCE_M,
+    nearDistricts: nearDistricts,
     loadDistrictPopulation: loadDistrictPopulation,
     loadChiefdomDistrict: loadChiefdomDistrict,
     districtNames: districtNames, matchDistrict: matchDistrict,

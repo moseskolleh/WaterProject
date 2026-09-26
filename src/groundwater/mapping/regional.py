@@ -27,6 +27,7 @@ import textwrap
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
+from typing import Iterable
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -378,6 +379,35 @@ def chiefdom_of(
 def _cached_chiefdoms() -> tuple:
     """The bundled chiefdom areas, built once; callers only read them."""
     return tuple(load_chiefdoms())
+
+
+def near_districts(
+    lat: float, lon: float, districts: Iterable[str], tolerance_m: float
+) -> bool:
+    """Whether a point is inside, or within ``tolerance_m`` of, these districts.
+
+    A district is the chiefdoms the crosswalk puts in it today, the same
+    rings :func:`chiefdom_of` places a point by, and the distance is to the
+    ring as a line, measured as the seam lookup measures it. Containment is
+    asked as well as distance because the rings were simplified one at a
+    time and can overlap along a shared border: a point in the overlap is
+    inside both districts as drawn, even though :func:`chiefdom_of` can only
+    return the first.
+    """
+    current = _current_district_of_chiefdom()
+    wanted = set(districts)
+    rings = []
+    for area in _cached_chiefdoms():
+        if current.get(area.name, area.district) not in wanted:
+            continue
+        for i, ring in enumerate(area.rings):
+            inner = area.holes[i] if i < len(area.holes) else []
+            if _point_in_ring(lon, lat, ring) and not any(
+                _point_in_ring(lon, lat, hole) for hole in inner
+            ):
+                return True
+            rings.append(ring)
+    return nearest_chiefdom_index(lon, lat, [rings], tolerance_m) is not None
 
 
 def _unit_patch(unit: "GeologyUnit", **kwargs):

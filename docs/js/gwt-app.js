@@ -1651,6 +1651,10 @@
         'gap between the boundaries.';
     }
     if (resolved.indexOf(found) >= 0) return '';
+    /* a point just over the drawn line is not a wrong district: the line is
+     * only drawn to DISTRICT_EDGE_TOLERANCE_M, and a site on a border can
+     * fall either side of it without anybody having written anything wrong */
+    if (C.nearDistricts(latlon.lat, latlon.lon, resolved, polygons())) return '';
     return "Stated district '" + stated + "' does not contain the " +
       'coordinates (' + where + '), which fall in ' + latlon.chiefdom +
       ' chiefdom, ' + found + ' district. Verify against the field notes.';
