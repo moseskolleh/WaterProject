@@ -1,5 +1,6 @@
 """Vertical electrical sounding analysis."""
 
+from .._lazy import lazy_exports as _lazy_exports
 from .arrays import geometric_factor, apparent_resistivity
 from .forward import forward_schlumberger, forward_wenner, forward_for_sounding
 from .inversion import invert_sounding, InversionResult
@@ -23,3 +24,18 @@ __all__ = [
     "SiteInterpretation",
     "splice_segments",
 ]
+
+# ``plots`` pulls matplotlib and nothing here needs it, so it is bound on
+# first use rather than imported. See groundwater._lazy.
+_LAZY_MODULES = (
+    "arrays",
+    "forward",
+    "inversion",
+    "ipi2win",
+    "classify",
+    "interpret",
+    "splice",
+    "plots",
+)
+
+__getattr__, __dir__ = _lazy_exports(__name__, {}, _LAZY_MODULES)
