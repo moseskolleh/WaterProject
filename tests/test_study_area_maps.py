@@ -704,8 +704,9 @@ def test_the_units_that_are_not_in_sierra_leone_are_left_unnamed():
     window only because the clip box reaches 10.15 N. Naming them for a
     Sierra Leonean formation would put a name on another country's ground.
     """
+    from groundwater._geometry import point_in_ring
     from groundwater.mapping.lithology import lithology_for
-    from groundwater.mapping.regional import _point_in_ring, load_admin, load_geology
+    from groundwater.mapping.regional import load_admin, load_geology
 
     outline, _ = load_admin()
     units = load_geology()
@@ -714,7 +715,7 @@ def test_the_units_that_are_not_in_sierra_leone_are_left_unnamed():
         assert rings, code
         inside = sum(
             1 for ring in rings for v in ring
-            if any(_point_in_ring(v[0], v[1], r) for r in outline.rings)
+            if any(point_in_ring(v[0], v[1], r) for r in outline.rings)
         )
         assert inside == 0, f"{code} now reaches Sierra Leone; revisit the crosswalk"
         assert lithology_for(code, "Bombali") is None

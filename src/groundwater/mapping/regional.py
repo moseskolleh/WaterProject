@@ -33,6 +33,7 @@ import numpy as np
 from matplotlib.patches import PathPatch
 from matplotlib.path import Path as MplPath
 
+from .._geometry import RingIndex, point_in_ring
 from ..config import HouseStyle
 from ..coverage import (
     CHIEFDOM_EDGE_TOLERANCE_M,
@@ -228,17 +229,6 @@ def load_admin(path: str | Path | None = None) -> tuple[AdminArea, list[AdminAre
     return outline, districts
 
 
-def _point_in_ring(lon: float, lat: float, ring: np.ndarray) -> bool:
-    """Ray casting point-in-polygon test."""
-    inside = False
-    for (x1, y1), (x2, y2) in zip(ring[:-1], ring[1:], strict=True):
-        if (y1 > lat) != (y2 > lat):
-            x_cross = x1 + (lat - y1) * (x2 - x1) / (y2 - y1)
-            if lon < x_cross:
-                inside = not inside
-    return inside
-
-
 def district_of(
     lat: float, lon: float, admin_path: str | Path | None = None
 ) -> str:
@@ -266,12 +256,8 @@ def district_of(
     """
     if admin_path is None:
         return chiefdom_of(lat, lon)[1]
-    _, districts = load_admin(admin_path)
-    for district in districts:
-        for ring in district.rings:
-            if _point_in_ring(lon, lat, ring):
-                return district.name
-    return ""
+    hit = RingIndex(load_admin(admin_path)[1]).locate(lon, lat)
+    return hit.name if hit is not None else ""
 
 
 @functools.lru_cache(maxsize=1)
@@ -356,15 +342,16 @@ def chiefdom_of(
     data-ingestion-7).
     """
     current = _current_district_of_chiefdom() if path is None else {}
-    areas = _cached_chiefdoms() if path is None else load_chiefdoms(path)
-    for area in areas:
-        for i, ring in enumerate(area.rings):
-            if not _point_in_ring(lon, lat, ring):
-                continue
-            inner = area.holes[i] if i < len(area.holes) else []
-            if any(_point_in_ring(lon, lat, hole) for hole in inner):
-                continue  # inside an enclave: it belongs to the chiefdom there
-            return area.label, current.get(area.name, area.district)
+    if path is None:
+        areas, index = _cached_chiefdoms(), _cached_chiefdom_index()
+    else:
+        areas = load_chiefdoms(path)
+        index = RingIndex(areas)
+    # the first chiefdom in the layer's order that holds the point, enclaves
+    # honoured: Kenema Town is a hole in Nongowa
+    hit = index.locate(lon, lat)
+    if hit is not None:
+        return hit.label, current.get(hit.name, hit.district)
     near = nearest_chiefdom_index(
         lon, lat, (area.rings for area in areas), CHIEFDOM_EDGE_TOLERANCE_M
     )
@@ -378,6 +365,12 @@ def chiefdom_of(
 def _cached_chiefdoms() -> tuple:
     """The bundled chiefdom areas, built once; callers only read them."""
     return tuple(load_chiefdoms())
+
+
+@functools.lru_cache(maxsize=1)
+def _cached_chiefdom_index() -> RingIndex:
+    """The bundled chiefdom rings and their bounding boxes, indexed once."""
+    return RingIndex(_cached_chiefdoms())
 
 
 def _unit_patch(unit: "GeologyUnit", **kwargs):
@@ -419,9 +412,9 @@ def _point_in_unit(lon: float, lat: float, unit: "GeologyUnit") -> bool:
     rock, a window of something else - so a point in one is not on this
     unit, whatever the outer ring says.
     """
-    if not _point_in_ring(lon, lat, unit.ring):
+    if not point_in_ring(lon, lat, unit.ring):
         return False
-    return not any(_point_in_ring(lon, lat, hole) for hole in unit.holes)
+    return not any(point_in_ring(lon, lat, hole) for hole in unit.holes)
 
 
 def geology_unit_at(lat: float, lon: float,
@@ -1797,7 +1790,7 @@ def _ring_in_box(ring: np.ndarray, box: tuple[float, float, float, float]) -> bo
         (lon_min, lat_min), (lon_max, lat_min),
         (lon_max, lat_max), (lon_min, lat_max),
     )
-    if any(_point_in_ring(lon, lat, ring) for lon, lat in corners):
+    if any(point_in_ring(lon, lat, ring) for lon, lat in corners):
         return True
     return _ring_crosses_box_edge(ring, box)
 
