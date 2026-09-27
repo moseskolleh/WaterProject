@@ -166,8 +166,12 @@ def _table_for(order: int, x_stop: float) -> dict:
     """
     table = _TABLES.get(order)
     if table is None:
-        table = _TABLES[order] = _build_tables(order)
+        table = _build_tables(order)
+        # the reach is recorded before the table is published: the web app
+        # runs sessions on threads, and another one that finds the table
+        # goes straight on to read _BASE_REACH in _batchable
         _BASE_REACH[order] = float(table["panel_ends"][-1])
+        _TABLES[order] = table
     if table["panel_ends"][-1] >= x_stop or len(table["panel_ends"]) + 1 >= _MAX_ZEROS:
         return table
     # zeros of J are spaced about pi apart, so this is the count that reaches
