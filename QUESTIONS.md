@@ -38,11 +38,28 @@ need real project inputs or decisions to finish calibrating it.
    figures against the current Sierra Leone Standards Bureau drinking
    water specification and edit the CSV where they differ.
 
-7. **District extents are approximate (added during the build).** The
-   consistency checker uses approximate bounding boxes
-   (`groundwater/data/sl_districts.csv`) good enough to catch gross
-   copy-over errors. For boundary-accurate checks, supply district
-   polygons (GADM/HDX GeoJSON) and the checker can use them directly.
+7. **District placement rests on simplified chiefdom polygons (added
+   during the build, revised since).** The consistency checker no
+   longer uses bounding boxes. It places a point in a chiefdom from the
+   bundled geoBoundaries chiefdom polygons
+   (`groundwater/data/sl_chiefdoms_geoboundaries.geojson`) and reads the
+   current district, Karene and Falaba included, off the crosswalk in
+   `groundwater/data/sl_chiefdom_district.csv` - the same lookup the maps
+   and the coverage ranking use. `sl_districts.csv` is still bundled,
+   but only for the district and province names the apps offer; nothing
+   checks a point against its boxes. Two limits remain. The
+   chiefdom rings were simplified one at a time, so neighbours no
+   longer share a border exactly; a point within 50 m of a chiefdom
+   is placed on it, and a point further from every ring is reported as
+   unplaced rather than guessed. And the detached Maforki fragment,
+   which lies against Mafindor in Kono, is withheld for review
+   (`boundary_review.geojson`), so a borehole on that ground cannot be
+   placed. What would improve it:
+   the unsimplified geoBoundaries chiefdom download, or the OCHA
+   COD-AB boundaries from HDX with the sixteen current districts, so
+   that shared borders stay shared; and a gazetteer or Statistics
+   Sierra Leone source that confirms where the Maforki fragment and
+   the chiefdom-to-district crosswalk belong.
 
 8. **Costing unit rates are indicative (added with the costing
    module).** The catalogue in
