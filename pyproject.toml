@@ -75,7 +75,7 @@ markers = [
     # AppTest, the regeneration of the worked examples, and the tests that
     # took ten seconds or more in a full run: when they were marked, 59 tests
     # of 983, and 540 s of a suite that ran in 930 s on one machine.
-    "slow: minutes rather than seconds; pull request CI runs these on Python 3.12 only",
+    "slow: ten seconds or more; pull request CI runs these on Python 3.12 only",
 ]
 
 [tool.ruff]

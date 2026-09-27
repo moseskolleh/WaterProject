@@ -30,22 +30,23 @@ from what is committed under `src/groundwater/depth_spine/`. Those
 comparisons, like CI's, are against the git index, so stage a file you
 regenerated before checking it.
 
-Tests that take minutes rather than seconds - the Streamlit AppTests, the
-example regeneration, the demo and wheel builds - are marked `slow`.
-Pull request CI runs them on Python 3.12 only; `nox -s tests -- -m "not
-slow"` is the quick loop while working.
+The tests that take ten seconds or more - the Streamlit AppTests, the
+example regeneration and a few report builds - are marked `slow`, and a
+new test as slow as that should be marked too. Pull request CI runs them
+on Python 3.12 only; `nox -s tests -- -m "not slow"` is the quick loop
+while working.
 
 What the sessions run, in order:
 
 ```bash
 # check: lint, tests
-ruff check .
+python -m ruff check .    # the ruff pinned in the dev extra
 python -m pytest -q
 # check: bundles - the bundled data must match the source tables
 python web/build_boundary_review.py --check
 python web/build_webapp_data.py
 python web/build_offline.py
-git status --porcelain -- docs/js/gwt-data.js docs/sw.js    # must be empty
+git diff --exit-code -- docs/js/gwt-data.js docs/sw.js
 # check: parity, browser
 python tests/webapp/make_reference.py --check
 node tests/webapp/parity.mjs
@@ -53,9 +54,11 @@ node tests/webapp/offline.mjs
 node tests/webapp/review.mjs
 node tests/webapp/smoke.mjs
 # check: depth_spine
-(cd ui/depth-spine && npm ci && npx tsc -b && npx oxlint && npm run build:all)
-git status --porcelain -- src/groundwater/depth_spine/frontend \
-    src/groundwater/depth_spine/static/workspace.html          # must be empty
+(cd ui/depth-spine && npm ci && npx tsc -b && npm run lint && npm run build:all)
+git diff --exit-code -- src/groundwater/depth_spine/frontend \
+    src/groundwater/depth_spine/static/workspace.html
+git ls-files --others --exclude-standard \
+    -- src/groundwater/depth_spine/frontend    # must print nothing
 
 # build: every generated file, in dependency order
 (cd ui/depth-spine && npm ci && npm run build:all)

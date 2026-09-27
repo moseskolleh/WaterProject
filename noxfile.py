@@ -31,6 +31,7 @@ nox -s tests -- -m "not slow") and to ruff in the lint session.
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 
@@ -86,22 +87,26 @@ def _need_playwright(session: nox.Session) -> None:
 def _unchanged(session: nox.Session, paths: list[str], rebuild: str) -> None:
     """Fail if a fresh build differs from the committed files, as CI does.
 
-    git status rather than git diff alone, because Vite names assets by
-    content hash: a source change nobody rebuilt shows up as a new untracked
-    asset and a deleted one, not only as an edit. The stat is printed rather
-    than the diff because every one of these files is minified or generated,
-    and a one-line change to them is a screenful of noise.
+    The untracked files are listed as well as the edited ones, because Vite
+    names assets by content hash: a source change nobody rebuilt shows up as
+    a new untracked asset and a deleted one, not only as an edit. The stat is
+    printed rather than the diff because every one of these files is minified
+    or generated, and a one-line change to them is a screenful of noise.
 
-    This compares the working tree against the index, so a file regenerated
+    Both compare the working tree against the index, so a file regenerated
     here and not yet staged counts as a difference: stage it, and the check
-    holds it to what the commit will carry.
+    holds it to what the commit will carry. git status would not do that: it
+    also lists what is staged and not yet committed.
     """
-    changed = session.run(
-        "git", "status", "--porcelain", "--untracked-files=all", "--", *paths,
+    edited = session.run(
+        "git", "--no-pager", "diff", "--stat", "--", *paths, silent=True,
+    )
+    untracked = session.run(
+        "git", "ls-files", "--others", "--exclude-standard", "--", *paths,
         silent=True,
     )
-    if changed and changed.strip():
-        session.run("git", "--no-pager", "diff", "--stat", "--", *paths)
+    changed = (edited or "") + (untracked or "")
+    if changed.strip():
         session.error(
             f"a fresh build differs from the committed files:\n{changed}"
             f"Regenerate them with:\n  {rebuild}\nand commit the result."
@@ -109,7 +114,17 @@ def _unchanged(session: nox.Session, paths: list[str], rebuild: str) -> None:
 
 
 def _lint(session: nox.Session, *args: str) -> None:
-    session.run("ruff", "check", *args, ".")
+    # Through python -m, so it is the ruff the dev extra installed rather than
+    # whichever one comes first on PATH, and held to that extra's pin: another
+    # ruff version can pass here and fail in CI.
+    pin = re.search(r'"ruff==([^"]+)"', (REPO / "pyproject.toml").read_text())
+    version = session.run("python", "-m", "ruff", "--version", silent=True)
+    if pin and version.split()[-1] != pin.group(1):
+        session.error(
+            f"this is {version.strip()}, but CI runs ruff {pin.group(1)}. Run:\n"
+            f"  python -m pip install ruff=={pin.group(1)}"
+        )
+    _python(session, "-m", "ruff", "check", *args, ".")
 
 
 def _tests(session: nox.Session, *args: str) -> None:
@@ -174,7 +189,7 @@ def depth_spine(session: nox.Session) -> None:
     session.chdir(SPINE)
     session.run("npm", "ci", "--no-audit", "--no-fund")
     session.run("npx", "tsc", "-b")
-    session.run("npx", "oxlint")
+    session.run("npm", "run", "lint")
     session.run("npm", "run", "build:all")
     session.chdir(REPO)
     _unchanged(session, SPINE_OUTPUT, "nox -s build")
