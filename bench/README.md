@@ -1,0 +1,132 @@
+# Performance baseline
+
+A change that claims to make the toolkit faster quotes a before and an
+after from here (PLAN.md, "Efficiency claims are measured"). Two scripts
+take the numbers, both on the bundled examples so that two commits are
+timed on the same work, and `baseline.json` holds the last set taken on
+the machine named inside it.
+
+## Running it
+
+```bash
+python bench/run.py                                  # the Python package, ~7 min
+python bench/run.py --quick --only inversion         # one group, 2 samples
+python bench/run.py --compare bench/baseline.json    # now, beside the baseline
+
+node bench/web.mjs                                   # the browser app, ~2.5 min
+node bench/web.mjs --quick --out web.json
+python bench/run.py --from web.json --compare bench/baseline.json
+```
+
+`run.py` imports the package from this checkout's `src/`, whatever is
+installed, so it times the code beside it. `web.mjs` serves `docs/` with
+`tests/webapp/harness.mjs` and needs Playwright as the web tests do.
+Both write the same JSON layout (`--out FILE`), and `run.py --from`
+reads one or more such files instead of running anything, so one
+command merges the two into a baseline and the same `--compare` prints
+either against it:
+
+```bash
+python bench/run.py --out py.json
+node bench/web.mjs --out web.json
+python bench/run.py --from py.json --from web.json --out bench/baseline.json \
+    --notes "quiet machine, nothing else running"
+```
+
+`--only GROUP` (repeatable) is one of `import`, `forward`,
+`inversion`, `pumping`, `reports`, `recompute`. `--quick` takes 2
+samples per measure instead of 5 (`web.mjs --quick`: 1 run instead of
+3), which is enough to see that something moved and not enough to
+quote.
+
+## Comparing two commits
+
+Run both on the same machine, back to back, with nothing else busy -
+`load_average` in each run's `machine` block says how busy it was. The
+comparison prints the median of each, `now/baseline`, and both
+interquartile ranges. A ratio below 1 is faster or smaller. A
+difference smaller than the spread either side is noise, not a result;
+quote it as no change. Each run also records the commit and whether the
+tree was dirty, so a number cannot be quoted against the wrong code.
+
+## What each number means
+
+**`run.py`**, every value in seconds. Each in-process measure makes one
+warm-up call that is thrown away, then takes 5 samples; a call under
+0.2 s is repeated until one sample lasts that long and averaged. The
+reported number is the median, the spread is the interquartile range,
+and the method is written beside every measure in the JSON. So these
+are steady-state times: bytecode compiled, lookup tables and caches
+built by the warm-up.
+
+- `import/*` - the cost of importing each subsystem in a fresh
+  interpreter: the wall time of `python -c "import groundwater.X"`
+  minus that of `python -c pass` run just before it. `import/bare
+  interpreter start` is that subtracted start, for reference. Importing
+  a subpackage runs `groundwater/__init__.py` first, so each figure
+  includes it.
+- `forward/*` - one forward-model call on the Rokel A sounding's own
+  fitted model, at that sounding's electrode spacings.
+- `inversion/*` - `invert_sounding` on each sounding in each
+  `examples/data/*/*_ves.xlsx`, with the default configuration: the
+  layer-count search included.
+- `pumping/*` - `analyse_pumping_test` on each sample test: Kuntolo as
+  recorded (no discharges, so no transmissivity), Kuntolo with the
+  illustrative discharges `run_kuntolo_step_test.py` carries in its
+  comments (which reaches the Hantush-Bierschenk analysis), and the Dr
+  Timbo constant-rate test with its recovery.
+- `reports/*` - each document the package builds, from inputs made
+  beforehand, written with its figures into a temporary folder: the
+  geophysical, pumping, completion, water quality, handover, cost
+  estimate, payment certificate, supervision, asset placard and asset
+  record reports. Analyses are not in these times; drawing the figures
+  and maps is.
+- `recompute/*` - `groundwater recompute` on each example saved as the
+  apps save a project (`src_*` entries pointing at the bundled
+  samples), reading of the project file included. The Rokel one inverts
+  both soundings, so it is roughly their sum.
+
+**`web.mjs`**, times in milliseconds and sizes in bytes, the median of
+3 cold runs. Each run is a fresh browser with an empty cache on a
+throttled profile: the CPU slowed 4x (`Emulation.setCPUThrottlingRate`,
+rate 4) and DevTools' "Slow 4G" network (`Network.emulateNetworkConditions`:
+562.5 ms latency, 180,000 bytes/s down, 84,375 bytes/s up), at a
+1440 x 900 viewport.
+
+- `first paint`, `first contentful paint` - from the Paint Timing
+  entries.
+- `time to interactive` - Lighthouse's definition: the first 5 s window
+  after first contentful paint in which no long task (over 50 ms on the
+  main thread) starts and no more than two requests are in flight; TTI
+  is the start of that window, which is the end of the last long task
+  before it. The requests are the page's own, from Resource Timing; the
+  service worker's precache is not counted.
+- `bytes before first paint` - the transfer size of the document and of
+  every response that had finished by first paint.
+- `rokel inversion wall time` - load the Rokel sample from the
+  Overview, open Geophysics (VES), press "Re-run inversion", and time
+  from the click to the last change the page makes to show the models.
+  Completion is read off the page (the busy overlay or work bar gone,
+  the curves drawn, nothing changing for 2 s), not from the app's
+  internals, so the same script times the inversion on the main thread
+  and in a worker.
+- `rokel inversion wall time, CPU unthrottled` - the same, pressed again
+  with the CPU slowdown off. Chromium throttles only the page's main
+  thread; it refuses to throttle a worker ("Operation is only supported
+  for pages, not workers"). An inversion in the worker runs at full
+  speed while one on the main thread runs at a quarter of it, so across
+  that change the throttled wall time is not like for like and this one
+  is.
+- `rokel inversion longest main-thread task` and `... blocking time` -
+  the longest Long Task overlapping the throttled re-inversion, and the
+  sum of each one's excess over 50 ms. A Long Task is only reported over
+  50 ms, so 0 means none.
+
+## The committed baseline
+
+`bench/baseline.json` is committed with each release (PLAN.md step
+0.3: "Commit `bench/baseline.json` with each release"), taken on a
+quiet machine at the release commit, so that the next release's
+efficiency work has a before to quote. Its `notes` field says under
+what conditions it was taken; a baseline marked provisional was taken
+on a busy machine and is for orientation, not for quoting.
