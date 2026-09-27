@@ -883,7 +883,10 @@
    * running, how far it has got, and a button to stop it. The page stays live
    * underneath - the work is in a worker - so the bar covers nothing, and it
    * stays in view as the page scrolls. A job shows only once it has run for
-   * WORK_BAR_DELAY_MS, so a quick one never flashes it. */
+   * WORK_BAR_DELAY_MS, so a quick one never flashes it. Where the page does
+   * its own computing there is no delay: the bar has to be on screen before
+   * the page stops drawing, or there is no Cancel to press between one
+   * sounding and the next. */
   var WORK_BAR_DELAY_MS = 150;
   var work = {};
   var workIds = 0;
@@ -891,9 +894,10 @@
 
   function workBegin(key, label) {
     var job = { id: String(++workIds), key: key, label: label, detail: '',
-      fraction: 0, since: Date.now() };
+      fraction: 0, since: Date.now(),
+      delay: engine.mode() === 'page' ? 0 : WORK_BAR_DELAY_MS };
     work[key] = job;
-    setTimeout(drawWorkBarSoon, WORK_BAR_DELAY_MS);
+    setTimeout(drawWorkBarSoon, job.delay);
     return job;
   }
 
@@ -928,7 +932,7 @@
     if (!host) return;
     var now = Date.now();
     var jobs = Object.keys(work).map(function (key) { return work[key]; })
-      .filter(function (job) { return now - job.since >= WORK_BAR_DELAY_MS; });
+      .filter(function (job) { return now - job.since >= job.delay; });
     var ids = jobs.map(function (job) { return job.id; });
     Array.from(host.children).forEach(function (bar) {
       if (ids.indexOf(bar.getAttribute('data-job')) < 0) host.removeChild(bar);
@@ -978,21 +982,29 @@
    * may have started typing into the page: a redraw now would throw away a
    * value typed and not yet committed. So the page is redrawn now if no
    * field on it has focus, and otherwise as soon as that field loses it. */
-  var refreshPending = false;
+  /* The field a redraw is waiting on. It is remembered as the field rather
+   * than as a flag: a field that a redraw took away without losing focus
+   * first never blurs, and a flag would then hold back every later redraw. */
+  var refreshWaitsOn = null;
   function refresh() {
     var host = $('#page-host');
     var active = document.activeElement;
     var typing = active && active !== host && host.contains(active) &&
       /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName);
     if (!typing) {
+      refreshWaitsOn = null;
       render();
       return;
     }
-    if (refreshPending) return;
-    refreshPending = true;
+    if (refreshWaitsOn === active) return;
+    refreshWaitsOn = active;
     active.addEventListener('blur', function () {
       /* after the field's own change handler has had its turn */
-      setTimeout(function () { refreshPending = false; render(); }, 0);
+      setTimeout(function () {
+        if (refreshWaitsOn !== active) return;
+        refreshWaitsOn = null;
+        render();
+      }, 0);
     }, { once: true });
   }
 
@@ -1430,7 +1442,13 @@
           'and put over satellite imagery instead. GeoLibre is free and open ' +
           'source, and the file opens in its web app, its desktop app, its ' +
           'phone apps and in a Jupyter notebook. Nothing is uploaded: the ' +
-          'project is assembled in this page and saved to this machine.'),
+          'project is assembled in this page and saved to this machine. With ' +
+          'a GPS fix it also draws the separation distances as rings round ' +
+          'the wellhead: the ground a latrine, a burial ground or another ' +
+          'well has to stay out of. The Python app also keeps each ' +
+          'continuous surface clipped to the surveyed ground, and the ' +
+          'drill-target score, as a GeoTIFF for a GIS; this page draws the ' +
+          'surfaces only as pictures.'),
         el('div.btn-row', [
           button('Save GeoLibre project', function () {
             saveGeolibreProject();
@@ -1856,6 +1874,10 @@
         'gap between the boundaries.';
     }
     if (resolved.indexOf(found) >= 0) return '';
+    /* a point just over the drawn line is not a wrong district: the line is
+     * only drawn to DISTRICT_EDGE_TOLERANCE_M, and a site on a border can
+     * fall either side of it without anybody having written anything wrong */
+    if (C.nearDistricts(latlon.lat, latlon.lon, resolved, polygons())) return '';
     return "Stated district '" + stated + "' does not contain the " +
       'coordinates (' + where + '), which fall in ' + latlon.chiefdom +
       ' chiefdom, ' + found + ' district. Verify against the field notes.';
@@ -5541,6 +5563,11 @@
       pageHead('About & method', 'What this app computes, what it assumes, and ' +
         'where the numbers come from.'),
       card('What it is', [
+        /* the release a bug report or a finding should name; written into the
+         * bundle from pyproject.toml, so it is the same number the Python
+         * package and the Streamlit app report */
+        el('p.about-version', 'Version ' + (GWT.data.version || 'not recorded') +
+          ' of the Groundwater Investigation Toolkit.'),
         el('p', 'A standalone version of the Groundwater Investigation Toolkit ' +
           'for rural water supply boreholes in Sierra Leone. It covers the whole ' +
           'project lifecycle — geophysical siting, borehole design, drilling ' +

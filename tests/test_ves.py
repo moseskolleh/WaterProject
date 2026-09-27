@@ -4,15 +4,17 @@ import pytest
 from groundwater.models import LayeredModel, SiteMetadata, VESSounding
 from groundwater.ves import classify_curve, interpret_model, invert_sounding
 from groundwater.ves.arrays import geometric_factor
+from groundwater.ves import forward, inversion
 from groundwater.ves.forward import (
     forward_for_sounding,
     forward_schlumberger,
     forward_schlumberger_finite_mn,
+    forward_schlumberger_models,
     forward_wenner,
     two_layer_schlumberger_series,
 )
 from groundwater.ves.interpret import drilling_preference_table
-from groundwater.ves.inversion import fit_error_percent
+from groundwater.ves.inversion import _unpack, fit_error_percent
 from groundwater.ves.plots import plot_geoelectric_section
 from groundwater.ves.splice import splice_segments
 
@@ -150,6 +152,7 @@ def test_inversion_recovers_synthetic_model():
         ([200.0, 1500.0, 60.0, 4000.0], [1.5, 5.0, 25.0]),  # KH curve
     ],
 )
+@pytest.mark.slow
 def test_a_simple_model_never_hides_a_far_better_one(rho, thicknesses):
     """Parsimony accepted the simplest model under the 10 percent target.
 
@@ -656,3 +659,154 @@ def test_a_sheet_named_wenner_that_carries_schlumberger_marks_is_warned_about(tm
          [4, 15.0, 10.0, 120.0]],
     )
     assert "array_type_wenner_contradicted" not in [f.code for f in read_ves_csv(honest).flags]
+
+
+@pytest.mark.parametrize("ab2_max", [80.0, 300.0, 1000.0])
+def test_a_batch_of_models_answers_exactly_as_one_at_a_time(ab2_max):
+    """The batched forward model is the same numbers, not merely close.
+
+    The inversion's Jacobian takes differences over a 1e-4 step, so a
+    last-bit difference here is a different fitted layer sixty iterations
+    later, not a rounding detail. ``ab2_max`` walks the batch across the
+    reach threshold where it stops batching and evaluates one at a time.
+    """
+    rng = np.random.default_rng(19)
+    ab2 = np.geomspace(1.0, ab2_max, 15)
+    for n_layers in (1, 2, 3, 4):
+        rho = np.exp(rng.uniform(np.log(5), np.log(9000), size=(6, n_layers)))
+        # 0.2 m is the inversion's own thickness floor, and the reach it
+        # implies is what the batch has to decide about
+        h = np.exp(rng.uniform(np.log(0.2), np.log(80), size=(6, n_layers - 1)))
+        batched = forward_schlumberger_models(rho, h, ab2)
+        for k in range(len(rho)):
+            alone = forward_schlumberger((rho[k], h[k]), ab2)
+            assert np.array_equal(alone, batched[k])
+
+
+def test_finite_mn_readings_answer_exactly_as_one_at_a_time():
+    """Every reading's two potentials are integrated in one batch, and the
+    answer is still the one each reading gets on its own.
+
+    The spacings are ones where squaring a scalar and squaring an array
+    disagree in the last bit - ``L**2`` on a scalar goes through pow(), on
+    an array through ``x * x`` - so a combination step that moved to array
+    arithmetic would show up here rather than in a fitted layer.
+    """
+    grid = np.linspace(1.0, 250.0, 60001)
+    ab2 = np.array([v for v in grid if v**2 != v * v][:12])
+    assert len(ab2) == 12
+    mn = np.where(ab2 < 40, 1.0, 10.0)
+    mn[3] = np.nan  # no MN recorded: the ideal gradient value stands in
+    rho, h = np.array([420.0, 35.0, 2600.0]), np.array([2.5, 11.0])
+
+    batched = forward_schlumberger_finite_mn((rho, h), ab2, mn)
+    for i, (L, m) in enumerate(zip(ab2, mn, strict=True)):
+        b = m / 2.0
+        if not np.isfinite(b):
+            alone = forward_schlumberger((rho, h), np.array([L]))[0]
+        else:
+            f_in, f_out = forward._potential_integrals(
+                rho, h, np.array([L - b, L + b]), float(np.min(h))
+            )
+            alone = (L**2 - b**2) / (2.0 * b) * (f_in - f_out)
+        assert batched[i] == alone
+    with pytest.raises(ValueError, match="MN spacings"):
+        forward_schlumberger_finite_mn((rho, h), ab2, mn[:1])
+
+
+def test_a_grown_table_does_not_open_the_batch_to_far_reaching_models():
+    """The batch gate is the base table's reach, whatever has grown since.
+
+    A far-reaching sounding grows the cached quadrature table, and a gate
+    read off the cache then let every later far-reaching Jacobian through
+    as one batch - 16 MB integrand buffers, and an inversion of three
+    synthetic traverse soundings twice as slow as one model at a time.
+    """
+    forward._table_for(1, 0.0)
+    base = forward._BASE_REACH[1]
+    far = 1.5 * base / 18.0  # a decay scale whose quadrature reaches past it
+    assert not forward._batchable(1, 5, far)
+    forward._table_for(1, 18.0 * far)  # what a far sounding does to the cache
+    assert forward._TABLES[1]["panel_ends"][-1] > 18.0 * far
+    assert not forward._batchable(1, 5, far)
+    assert forward._batchable(1, 5, 0.5 * base / 18.0)
+
+
+def test_the_batched_jacobian_matches_a_column_by_column_one(rokel_ves_a):
+    """The Jacobian must not depend on how its columns were assembled.
+
+    Including the memory layout. The columns arrive from a transpose, and
+    ``J.T @ J`` in the solver dispatches on layout: an F-ordered J takes a
+    different path through BLAS and rounds differently, which twenty
+    iterations later is a different fitted layer rather than a different
+    last bit. The values alone do not catch that, so the layout is asserted
+    on the array the inversion actually builds.
+    """
+    ab2 = rokel_ves_a.ab2
+    n_layers = 3
+    theta = np.log(np.array([1105.0, 1638.0, 47.3, 1.02, 7.08]))
+    log_obs = np.log(rokel_ves_a.rho_app)
+    res = np.log(
+        np.maximum(forward_schlumberger(_unpack(theta, n_layers), ab2), 1e-9)
+    ) - log_obs
+    step = inversion.JACOBIAN_STEP
+
+    reference = np.empty((len(ab2), len(theta)))
+    for j in range(len(theta)):
+        nudged = theta.copy()
+        nudged[j] += step
+        calc = forward_schlumberger(_unpack(nudged, n_layers), ab2)
+        reference[:, j] = (np.log(np.maximum(calc, 1e-9)) - log_obs - res) / step
+
+    built = inversion._jacobian(
+        theta, res, log_obs, n_layers, ab2, "schlumberger"
+    )
+    assert np.array_equal(reference, built)
+    assert built.flags.c_contiguous
+
+
+def test_batching_does_not_move_the_inversion(rokel_ves_a, monkeypatch):
+    """The fitted model must be the same whether or not the batch was taken.
+
+    Deliberately a comparison and not a pinned number. LAPACK is not bit
+    reproducible across BLAS builds - the same reason the browser build's
+    parity check compares within a tolerance rather than byte for byte - so
+    the last digits of a fitted layer legitimately differ between machines
+    and no absolute value holds everywhere. What holds on every machine is
+    that batching changes nothing on that machine.
+    """
+    batched = invert_sounding(rokel_ves_a)
+    monkeypatch.setattr(forward, "_batchable", lambda *args, **kwargs: False)
+    one_at_a_time = invert_sounding(rokel_ves_a)
+
+    assert np.array_equal(
+        batched.model.resistivities, one_at_a_time.model.resistivities
+    )
+    assert np.array_equal(
+        batched.model.thicknesses, one_at_a_time.model.thicknesses
+    )
+    assert np.array_equal(batched.rho_calc, one_at_a_time.rho_calc)
+    assert batched.fit_error_percent == one_at_a_time.fit_error_percent
+    assert batched.n_iterations == one_at_a_time.n_iterations
+    # the uncertainty factors come off the same Jacobian
+    assert np.array_equal(
+        batched.rho_uncertainty_factor, one_at_a_time.rho_uncertainty_factor
+    )
+    assert np.array_equal(
+        batched.h_uncertainty_factor, one_at_a_time.h_uncertainty_factor
+    )
+
+
+def test_the_rokel_fit_stays_the_model_the_samples_were_built_from(rokel_ves_a):
+    """A loose pin on the fitted layers, to catch a change of substance.
+
+    The tolerance is deliberate: cross-BLAS variation moves these by about
+    1e-8, so anything tighter fails on somebody else's machine, and the
+    kind of mistake worth catching here - a different layer count, a layer
+    an order of magnitude out - is nowhere near that small.
+    """
+    result = invert_sounding(rokel_ves_a)
+    assert result.fit_error_percent == pytest.approx(13.3468506, rel=1e-6)
+    assert list(result.model.resistivities) == pytest.approx(
+        [1105.5107779, 1637.7603910, 47.2797656], rel=1e-6
+    )

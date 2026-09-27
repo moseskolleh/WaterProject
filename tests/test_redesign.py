@@ -12,6 +12,9 @@ from pathlib import Path
 
 import pytest
 
+# Every test here drives the real app script through AppTest.
+pytestmark = pytest.mark.slow
+
 
 def test_built_reports_stay_downloadable_and_the_app_loads_offline():
     """A build button is true for one rerun, so its download button vanished

@@ -17,6 +17,7 @@ review file with uncertain cells highlighted, and (for recognised
 document kinds) a filled standard template ready for the parsers.
 """
 
+from .._lazy import lazy_exports as _lazy_exports
 from .models import ExtractedDocument, ExtractedField, ExtractedTable, UncertainCell
 from .pdf_text import extract_pdf_text
 from .review import write_review_workbook, fill_ves_template
@@ -32,10 +33,9 @@ __all__ = [
     "ClaudeExtractor",
 ]
 
+# ClaudeExtractor is bound on first use: it needs the optional ``anthropic``
+# dependency, and the rest of this package works without it.
+_LAZY = {"ClaudeExtractor": ".claude"}
+_LAZY_MODULES = ("models", "pdf_text", "review", "claude")
 
-def __getattr__(name):
-    if name == "ClaudeExtractor":
-        from .claude import ClaudeExtractor
-
-        return ClaudeExtractor
-    raise AttributeError(name)
+__getattr__, __dir__ = _lazy_exports(__name__, _LAZY, _LAZY_MODULES)

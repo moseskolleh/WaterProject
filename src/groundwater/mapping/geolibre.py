@@ -66,7 +66,7 @@ import re
 from pathlib import Path
 from typing import Iterable, Sequence
 
-from ..geo import utm_to_geographic
+from ..geo import geographic_to_utm, utm_to_geographic
 from ..site_status import STATUS_COLORS, STATUS_LABELS, coerce_status
 
 __all__ = [
@@ -81,6 +81,7 @@ __all__ = [
     "portfolio_features",
     "portfolio_project",
     "project_link",
+    "separation_ring_features",
     "site_project",
     "suitability_features",
     "survey_point_features",
@@ -296,6 +297,86 @@ def portfolio_features(points: Iterable[dict]) -> list[dict]:
             }
         )
         features.append(_point(point["lon"], point["lat"], properties))
+    return features
+
+
+#: Vertices per separation ring. At 64 the chord across a 3 m circle
+#: is under 30 cm, which is finer than the wellhead position is known.
+_RING_SEGMENTS = 64
+
+#: What the distances rest on, said on every ring because a ring on a map
+#: reads as a rule. ``data_provenance.yaml`` records no source for the table.
+_RING_BASIS = (
+    "No source is recorded for this distance: it is common field practice "
+    "as written down in this toolkit, not a cited standard. Use the "
+    "regulator's figure where there is one."
+)
+
+
+def separation_ring_features(
+    lat: float,
+    lon: float,
+    distances: Iterable | None = None,
+    zone: int | None = None,
+) -> list[dict]:
+    """The site separation distances, drawn as the rings they are.
+
+    ``data/site_separation_distances.csv`` says a latrine is to be kept
+    20 m from the borehole, a burial ground 1000 m, a building 3 m. Listed
+    as numbers, that asks whoever reads them to hold eight radii in their
+    head against a site they may never have stood on. Drawn round the
+    wellhead over imagery, an encroachment is visible instead of asserted.
+
+    Each ring is the ground that has to stay clear of that structure, not
+    ground the borehole occupies or serves - a circle does not say which
+    by itself, so every one carries a sentence saying it, and the basis
+    the distance rests on.
+
+    The circles are generated in projected metres and unprojected vertex
+    by vertex, so a 20 m ring is 20 m on the ground rather than 20 m at
+    the equator. They are ordered widest first, so the tight ones are
+    drawn, and clicked, on top of the wide ones rather than under them.
+    """
+    from ..supervision.checklists import load_separation_distances
+
+    if distances is None:
+        distances = load_separation_distances()
+    utm = geographic_to_utm(lat, lon, zone)
+    features = []
+    for spec in sorted(distances, key=lambda d: -d.min_distance_m):
+        ring = []
+        for step in range(_RING_SEGMENTS):
+            angle = 2.0 * math.pi * step / _RING_SEGMENTS
+            point_lat, point_lon = utm_to_geographic(
+                utm.easting + spec.min_distance_m * math.cos(angle),
+                utm.northing + spec.min_distance_m * math.sin(angle),
+                utm.zone,
+            )
+            ring.append([_round(point_lon), _round(point_lat)])
+        ring.append(list(ring[0]))
+        features.append(
+            _feature(
+                {"type": "Polygon", "coordinates": [ring]},
+                _clean(
+                    {
+                        "structure": spec.structure,
+                        "min_distance_m": spec.min_distance_m,
+                        "note": spec.note,
+                        "meaning": (
+                            f"{spec.structure}: at least "
+                            f"{spec.min_distance_m:g} m from the borehole. This "
+                            "ring is the ground that has to stay clear of it, "
+                            "not the area the borehole serves."
+                        ),
+                        "basis": _RING_BASIS,
+                        "fill": "#C1772A",
+                        "fill-opacity": 0.0,
+                        "stroke": "#C1772A",
+                        "stroke-width": 1.5,
+                    }
+                ),
+            )
+        )
     return features
 
 
@@ -814,6 +895,7 @@ def site_project(
     geology: Iterable | None = None,
     hydrogeology: Iterable | None = None,
     window_km: float | None = None,
+    separation_rings: bool = True,
     area=None,
     metadata: dict | None = None,
 ) -> dict:
@@ -833,6 +915,13 @@ def site_project(
     the site, the same way the printed local geology and aquifer maps are
     windowed. Without it the whole country is inlined, which is correct
     and about 400 kB.
+
+    With a fix it also carries the site separation distances as rings
+    round the wellhead (:func:`separation_ring_features`), unless
+    ``separation_rings`` is false. They are drawn but not framed on: the
+    two 1000 m rings would otherwise decide the camera for every site,
+    and the ones checked most often, the 20 m latrine and the 50 m
+    borehole, are inside the survey view already.
 
     A site with no GPS fix still gets a project.
     :func:`~groundwater.mapping.regional.area_window` resolves it to the
@@ -943,6 +1032,22 @@ def site_project(
                 suitability_features(suitability, zone),
                 radius=9.0,
                 stroke="#222222",
+            )
+        )
+    if has_fix and separation_rings:
+        # Only round a fix. A ring round a chiefdom centroid would be a
+        # separation distance measured from a place nobody surveyed - the
+        # same mistake as marking that centroid as the site.
+        lat, lon = site.latlon
+        layers.append(
+            geojson_layer(
+                "Separation distances",
+                separation_ring_features(lat, lon, zone=zone),
+                kind="polygon",
+                color="#C1772A",
+                stroke="#C1772A",
+                fill_opacity=0.0,
+                stroke_width=1.5,
             )
         )
 

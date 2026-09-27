@@ -431,6 +431,11 @@ def test_subsurface_maps_render(tmp_path):
     ):
         path = fn(interps, zone=29, path=tmp_path / f"{name}.png")
         assert path.stat().st_size > 20_000, name
+    # the continuous surfaces are kept as rasters; the protective capacity
+    # is drawn in classes, and a raster of it would hand back the precision
+    # the classes withhold - the apps and the README say which is which
+    assert sorted(p.stem for p in tmp_path.glob("*.tif")) == [
+        "aquifer", "bedrock", "depth", "transverse"]
 
 
 def test_a_surface_from_two_soundings_is_refused(tmp_path):
@@ -704,8 +709,9 @@ def test_the_units_that_are_not_in_sierra_leone_are_left_unnamed():
     window only because the clip box reaches 10.15 N. Naming them for a
     Sierra Leonean formation would put a name on another country's ground.
     """
+    from groundwater._geometry import point_in_ring
     from groundwater.mapping.lithology import lithology_for
-    from groundwater.mapping.regional import _point_in_ring, load_admin, load_geology
+    from groundwater.mapping.regional import load_admin, load_geology
 
     outline, _ = load_admin()
     units = load_geology()
@@ -714,7 +720,7 @@ def test_the_units_that_are_not_in_sierra_leone_are_left_unnamed():
         assert rings, code
         inside = sum(
             1 for ring in rings for v in ring
-            if any(_point_in_ring(v[0], v[1], r) for r in outline.rings)
+            if any(point_in_ring(v[0], v[1], r) for r in outline.rings)
         )
         assert inside == 0, f"{code} now reaches Sierra Leone; revisit the crosswalk"
         assert lithology_for(code, "Bombali") is None
@@ -995,6 +1001,7 @@ def test_a_straight_traverse_draws_its_points_rather_than_crashing(tmp_path):
     assert "enclose no area" in said
 
 
+@pytest.mark.slow
 def test_a_straight_traverse_still_gets_its_report(tmp_path):
     from groundwater.reporting.geophysical import (
         GeophysicalReportInputs,

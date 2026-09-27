@@ -111,6 +111,15 @@ def test_webapp_data_is_current(sample_data):
                     f"docs/js/gwt-data.js is stale for {rel}; "
                     "run: python web/build_webapp_data.py"
                 )
+    # the About page names this release, so it has to be the one the package is
+    import groundwater
+
+    assert payload["version"] == builder.toolkit_version(), (
+        "docs/js/gwt-data.js names another version; run: python web/build_webapp_data.py"
+    )
+    assert groundwater.__version__ == builder.toolkit_version(), (
+        "the installed package is another version; reinstall with pip install -e ."
+    )
 
 
 def test_webapp_scripts_are_wired_up():
@@ -130,6 +139,25 @@ def test_webapp_scripts_are_wired_up():
         assert (REPO / "docs" / src).exists(), f"{src} is referenced but missing"
     for href in re.findall(r'<link rel="stylesheet" href="([^"]+)"', html):
         assert (REPO / "docs" / href).exists(), f"{href} is referenced but missing"
+
+
+def test_the_web_app_icon_is_the_brand_icon():
+    """docs/icon.svg was a hand-made copy of the package's brand icon with
+    nothing keeping the two the same. make_brand_assets.py writes both from
+    one drawing; this fails when either has been edited on its own."""
+    spec = importlib.util.spec_from_file_location(
+        "make_brand_assets", REPO / "web" / "make_brand_assets.py"
+    )
+    brand = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(brand)
+    drawn = brand.icon_svg().encode("utf-8")
+    package = REPO / "src" / "groundwater" / "data" / "brand" / "icon.svg"
+    assert package.read_bytes() == drawn, (
+        "brand/icon.svg is not what web/make_brand_assets.py draws; run it"
+    )
+    assert brand.WEB_ICON.read_bytes() == drawn, (
+        "docs/icon.svg differs from the brand icon; run web/make_brand_assets.py"
+    )
 
 
 def test_root_redirect_points_at_the_site():

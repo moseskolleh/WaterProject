@@ -21,18 +21,19 @@ from __future__ import annotations
 import csv
 import functools
 import io
-import json
 import math
 import textwrap
 from dataclasses import dataclass, field
-from importlib import resources
 from pathlib import Path
+from typing import Iterable
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import PathPatch
 from matplotlib.path import Path as MplPath
 
+from .._geometry import RingIndex, point_in_ring
+from .._resources import bundled_json, bundled_text
 from ..config import HouseStyle
 from ..coverage import (
     CHIEFDOM_EDGE_TOLERANCE_M,
@@ -118,22 +119,11 @@ def _ring_centroid(ring: np.ndarray) -> tuple[float, float]:
     return float(cx), float(cy)
 
 
-@functools.lru_cache(maxsize=8)
-def _bundled_geojson(name: str) -> dict:
-    """A bundled layer, parsed once per process.
-
-    district_of and chiefdom_of re-read and re-parsed 240 KB of GeoJSON on
-    every Streamlit rerun; the parsed dict is shared and never mutated by
-    the loaders, which build their own arrays from it.
-    """
-    text = (resources.files("groundwater") / "data" / name).read_text(encoding="utf-8")
-    return json.loads(text)
-
-
-def _read_geojson(name: str, path: str | Path | None) -> dict:
-    if path is not None:
-        return json.loads(Path(path).read_text(encoding="utf-8"))
-    return _bundled_geojson(name)
+# A bundled layer is parsed once per process and shared with coverage:
+# district_of and chiefdom_of used to re-read and re-parse the GeoJSON on
+# every Streamlit rerun. The loaders below build their own arrays from the
+# parsed dict and never change it.
+_read_geojson = bundled_json
 
 
 def load_geology(path: str | Path | None = None) -> list[GeologyUnit]:
@@ -228,17 +218,6 @@ def load_admin(path: str | Path | None = None) -> tuple[AdminArea, list[AdminAre
     return outline, districts
 
 
-def _point_in_ring(lon: float, lat: float, ring: np.ndarray) -> bool:
-    """Ray casting point-in-polygon test."""
-    inside = False
-    for (x1, y1), (x2, y2) in zip(ring[:-1], ring[1:], strict=True):
-        if (y1 > lat) != (y2 > lat):
-            x_cross = x1 + (lat - y1) * (x2 - x1) / (y2 - y1)
-            if lon < x_cross:
-                inside = not inside
-    return inside
-
-
 def district_of(
     lat: float, lon: float, admin_path: str | Path | None = None
 ) -> str:
@@ -266,19 +245,14 @@ def district_of(
     """
     if admin_path is None:
         return chiefdom_of(lat, lon)[1]
-    _, districts = load_admin(admin_path)
-    for district in districts:
-        for ring in district.rings:
-            if _point_in_ring(lon, lat, ring):
-                return district.name
-    return ""
+    hit = RingIndex(load_admin(admin_path)[1]).locate(lon, lat)
+    return hit.name if hit is not None else ""
 
 
 @functools.lru_cache(maxsize=1)
 def chiefdom_full_names() -> dict[str, str]:
     """Layer name -> full name, for the chiefdoms the layer truncated."""
-    text = (resources.files("groundwater") / "data"
-            / "sl_chiefdom_names.csv").read_text(encoding="utf-8")
+    text = bundled_text("sl_chiefdom_names.csv")
     return {
         row["layer_name"].strip(): row["full_name"].strip()
         for row in csv.DictReader(io.StringIO(text))
@@ -356,15 +330,16 @@ def chiefdom_of(
     data-ingestion-7).
     """
     current = _current_district_of_chiefdom() if path is None else {}
-    areas = _cached_chiefdoms() if path is None else load_chiefdoms(path)
-    for area in areas:
-        for i, ring in enumerate(area.rings):
-            if not _point_in_ring(lon, lat, ring):
-                continue
-            inner = area.holes[i] if i < len(area.holes) else []
-            if any(_point_in_ring(lon, lat, hole) for hole in inner):
-                continue  # inside an enclave: it belongs to the chiefdom there
-            return area.label, current.get(area.name, area.district)
+    if path is None:
+        areas, index = _cached_chiefdoms(), _cached_chiefdom_index()
+    else:
+        areas = load_chiefdoms(path)
+        index = RingIndex(areas)
+    # the first chiefdom in the layer's order that holds the point, enclaves
+    # honoured: Kenema Town is a hole in Nongowa
+    hit = index.locate(lon, lat)
+    if hit is not None:
+        return hit.label, current.get(hit.name, hit.district)
     near = nearest_chiefdom_index(
         lon, lat, (area.rings for area in areas), CHIEFDOM_EDGE_TOLERANCE_M
     )
@@ -378,6 +353,41 @@ def chiefdom_of(
 def _cached_chiefdoms() -> tuple:
     """The bundled chiefdom areas, built once; callers only read them."""
     return tuple(load_chiefdoms())
+
+
+@functools.lru_cache(maxsize=1)
+def _cached_chiefdom_index() -> RingIndex:
+    """The bundled chiefdom rings and their bounding boxes, indexed once."""
+    return RingIndex(_cached_chiefdoms())
+
+
+def near_districts(
+    lat: float, lon: float, districts: Iterable[str], tolerance_m: float
+) -> bool:
+    """Whether a point is inside, or within ``tolerance_m`` of, these districts.
+
+    A district is the chiefdoms the crosswalk puts in it today, the same
+    rings :func:`chiefdom_of` places a point by, and the distance is to the
+    ring as a line, measured as the seam lookup measures it. Containment is
+    asked as well as distance because the rings were simplified one at a
+    time and can overlap along a shared border: a point in the overlap is
+    inside both districts as drawn, even though :func:`chiefdom_of` can only
+    return the first.
+    """
+    current = _current_district_of_chiefdom()
+    wanted = set(districts)
+    rings = []
+    for area in _cached_chiefdoms():
+        if current.get(area.name, area.district) not in wanted:
+            continue
+        for i, ring in enumerate(area.rings):
+            inner = area.holes[i] if i < len(area.holes) else []
+            if point_in_ring(lon, lat, ring) and not any(
+                point_in_ring(lon, lat, hole) for hole in inner
+            ):
+                return True
+            rings.append(ring)
+    return nearest_chiefdom_index(lon, lat, [rings], tolerance_m) is not None
 
 
 def _unit_patch(unit: "GeologyUnit", **kwargs):
@@ -419,9 +429,9 @@ def _point_in_unit(lon: float, lat: float, unit: "GeologyUnit") -> bool:
     rock, a window of something else - so a point in one is not on this
     unit, whatever the outer ring says.
     """
-    if not _point_in_ring(lon, lat, unit.ring):
+    if not point_in_ring(lon, lat, unit.ring):
         return False
-    return not any(_point_in_ring(lon, lat, hole) for hole in unit.holes)
+    return not any(point_in_ring(lon, lat, hole) for hole in unit.holes)
 
 
 def geology_unit_at(lat: float, lon: float,
@@ -556,8 +566,7 @@ def _district_named(name: str) -> tuple[str, tuple[str, ...]]:
 
 @functools.lru_cache(maxsize=1)
 def _bundled_crosswalk() -> dict[str, str]:
-    text = (resources.files("groundwater") / "data"
-            / "sl_chiefdom_district.csv").read_text(encoding="utf-8")
+    text = bundled_text("sl_chiefdom_district.csv")
     return {
         row["chiefdom"].strip(): row["district"].strip()
         for row in csv.DictReader(io.StringIO(text))
@@ -574,7 +583,7 @@ def _current_district_of_chiefdom(path: str | Path | None = None) -> dict[str, s
     """
     if path is None:
         return dict(_bundled_crosswalk())
-    text = Path(path).read_text(encoding="utf-8")
+    text = bundled_text("sl_chiefdom_district.csv", path)
     return {
         row["chiefdom"].strip(): row["district"].strip()
         for row in csv.DictReader(io.StringIO(text))
@@ -1797,7 +1806,7 @@ def _ring_in_box(ring: np.ndarray, box: tuple[float, float, float, float]) -> bo
         (lon_min, lat_min), (lon_max, lat_min),
         (lon_max, lat_max), (lon_min, lat_max),
     )
-    if any(_point_in_ring(lon, lat, ring) for lon, lat in corners):
+    if any(point_in_ring(lon, lat, ring) for lon, lat in corners):
         return True
     return _ring_crosses_box_edge(ring, box)
 

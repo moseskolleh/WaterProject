@@ -67,6 +67,41 @@ def test_the_wheel_carries_the_static_workspace(wheel):
     assert "__SPINE_VIEW__" in body, "the payload placeholder must survive the build"
 
 
+def test_every_bundled_font_is_the_file_its_manifest_names():
+    """The fonts' provenance is a file beside them, not a sentence: a face
+    swapped for a different cut, or added without a record, fails here."""
+    import hashlib
+    import json
+
+    fonts = REPO / "src" / "groundwater" / "data" / "brand" / "fonts"
+    manifest = json.loads((fonts / "manifest.json").read_text(encoding="utf-8"))
+    recorded = {f["file"]: f for f in manifest["fonts"]}
+    assert set(recorded) == {p.name for p in fonts.glob("*.woff2")}
+    for name, entry in recorded.items():
+        body = (fonts / name).read_bytes()
+        assert hashlib.sha256(body).hexdigest() == entry["sha256"], name
+        assert len(body) == entry["bytes"], name
+        assert entry["license"] == "OFL-1.1", name
+    # the licence names every family it covers
+    notice = (fonts / "LICENSE-OFL.txt").read_text(encoding="utf-8")
+    for family in {f["family"] for f in manifest["fonts"]}:
+        assert f"\n{family}\n  Copyright" in notice, family
+    # the browser app's copies are the same files
+    for copy in (REPO / "docs" / "fonts").glob("*.woff2"):
+        assert copy.read_bytes() == (fonts / copy.name).read_bytes(), copy.name
+
+
+def test_the_wheel_carries_the_fonts_and_their_record(wheel):
+    names = set(wheel.namelist())
+    for expected in (
+        "groundwater/data/brand/fonts/LICENSE-OFL.txt",
+        "groundwater/data/brand/fonts/manifest.json",
+        "groundwater/data/brand/fonts/ibm-plex-sans-latin-400.woff2",
+        "groundwater/data/brand/fonts/ibm-plex-mono-latin-600.woff2",
+    ):
+        assert expected in names
+
+
 def test_the_wheel_carries_the_bundled_data_tables(wheel):
     names = set(wheel.namelist())
     for expected in (
@@ -129,6 +164,22 @@ def test_the_qr_oracles_are_declared_so_ci_installs_them():
     assert "segno" in packages, "the independent encoder is not in the dev extra"
     assert packages & {"opencv-python-headless", "opencv-python"}, (
         "the decoder is not in the dev extra")
+
+
+def test_the_raster_oracle_is_declared_so_ci_installs_it():
+    """The GeoTIFF checks read the file back through GDAL and skip without
+    it, so a wrongly georeferenced raster would ship looking fine."""
+    dev = _optional_dependencies().get("dev") or []
+    packages = {spec.split(">=")[0].split("<")[0].strip().lower() for spec in dev}
+    assert "rasterio" in packages, "the GeoTIFF reader is not in the dev extra"
+
+
+def test_the_geotiff_writer_needs_nothing_at_run_time():
+    """The oracle must never become a dependency of the shipped code."""
+    source = (REPO / "src" / "groundwater" / "geotiff.py").read_text(encoding="utf-8")
+    for forbidden in ("rasterio", "osgeo", "gdal"):
+        assert f"import {forbidden}" not in source, forbidden
+        assert f"from {forbidden}" not in source, forbidden
 
 
 def test_the_qr_encoder_needs_nothing_at_run_time():

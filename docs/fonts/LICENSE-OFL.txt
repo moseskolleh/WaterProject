@@ -1,8 +1,10 @@
 The typefaces in this directory are subsets of three families released under
-the SIL Open Font License, Version 1.1. They were built by scripts/build-fonts.js
-from the files Google Fonts serves; manifest.json beside them records the exact
-source URL and hash of each. The OFL permits bundling, subsetting and serving
-them with a website, and requires this notice to travel with the fonts.
+the SIL Open Font License, Version 1.1. They were built by
+scripts/build-fonts.js in moseskolleh/sustaintheworld from the files Google
+Fonts serves; the manifest.json kept with the package's copies
+(src/groundwater/data/brand/fonts/) records the exact source URL and hash of
+each. The OFL permits bundling, subsetting and serving them with a website, and
+requires this notice to travel with the fonts.
 
 Inter
   Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)

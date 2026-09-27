@@ -39,9 +39,10 @@ import io
 import os
 from dataclasses import dataclass, field
 from functools import lru_cache
-from importlib import resources
 from pathlib import Path
 from typing import Any, Iterable, Optional
+
+from ._resources import bundled_text
 
 __all__ = [
     "Requirement",
@@ -115,11 +116,7 @@ def load_sample_provenance(path: str | Path | None = None) -> dict[str, SamplePr
     opened it.
     """
     try:
-        if path is not None:
-            text = Path(path).read_text(encoding="utf-8")
-        else:
-            text = (resources.files("groundwater") / "data" /
-                    "sample_provenance.csv").read_text(encoding="utf-8")
+        text = bundled_text("sample_provenance.csv", path)
     except (OSError, ModuleNotFoundError):
         # The record is packaged with the library, so this should not
         # happen - but losing it must not take the gate down with it. An

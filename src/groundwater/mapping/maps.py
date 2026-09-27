@@ -330,6 +330,59 @@ def _clip_to_surveyed_ground(ax, grid, e, n, gx, gy):
         return grid, False
 
 
+def _keep_surface(path, grid, gx, gy, zone: int, log_scale: bool = False):
+    """Write the surface a map drew beside its picture, as a GeoTIFF.
+
+    The grid is computed to draw the map; rendering it and dropping it is
+    what made these maps answer "what does it look like" and nothing
+    else. As a raster the same numbers can be sampled at the borehole,
+    contoured at a chosen interval, or laid under imagery, in any GIS.
+
+    ``grid`` is the clipped surface, or ``None`` when there is none a
+    raster can stand for, and then a raster an earlier drawing left
+    beside the same picture is removed rather than left to describe a
+    map that no longer says it.
+
+    ``gx`` and ``gy`` are pixel *centres* from :func:`numpy.linspace`, so
+    the corner written is half a pixel out from the first one: the file
+    says ``PixelIsArea``, and a raster shifted half a pixel is a raster
+    nobody notices is wrong. A surface interpolated in log10 is written
+    un-logged, because a raster of resistivity has to hold ohm-m -
+    nobody opening it in a GIS will know to raise it to the power.
+    """
+    raster = Path(path).with_suffix(".tif")
+    if grid is None:
+        raster.unlink(missing_ok=True)
+        return None
+    from ..geotiff import utm_epsg, write_geotiff
+
+    pixel_width = float(gx[0, 1] - gx[0, 0])
+    pixel_height = float(gy[1, 0] - gy[0, 0])
+    return write_geotiff(
+        raster,
+        np.power(10.0, grid) if log_scale else grid,
+        west=float(gx.min()) - pixel_width / 2.0,
+        north=float(gy.max()) + pixel_height / 2.0,
+        pixel_width=pixel_width,
+        pixel_height=pixel_height,
+        epsg=utm_epsg(zone),
+    )
+
+
+def _raster_worthy(grid, clipped: bool, points: list[MapPoint]):
+    """The surface a raster may carry, or ``None`` when it may carry none.
+
+    Only a surface blanked outside the surveyed hull: an unclipped one
+    says on the face of the map that its values away from the points are
+    extrapolated, and a raster has no face to say it on. And none where a
+    point is a lower bound: the map writes "at least" beside it, and a
+    GIS sampling the raster there would read the floor as the value.
+    """
+    if grid is None or not clipped or any(p.minimum for p in points):
+        return None
+    return grid
+
+
 def interpolated_label(p: MapPoint, surface: bool) -> str:
     """What an interpolated map writes beside a point."""
     text = p.label
@@ -358,7 +411,13 @@ def _interpolated_map(
     style: HouseStyle | None,
     log_scale: bool = False,
     cmap: str = "viridis",
+    raster: bool = True,
 ):
+    """An interpolated survey surface, drawn and, with ``path``, kept.
+
+    With ``path`` and ``raster`` the surface is also written beside the
+    picture as a GeoTIFF of the same name (:func:`_keep_surface`).
+    """
     style = style or HouseStyle()
     valued = [p for p in points if p.value is not None]
     if len(valued) < 3:
@@ -381,8 +440,9 @@ def _interpolated_map(
     with figure_context(style):
         fig, ax = plt.subplots(
             figsize=_figsize(style, gx.min(), gx.max(), gy.min(), gy.max()))
+        clipped = False
         if grid is not None:
-            grid, _clipped = _clip_to_surveyed_ground(ax, grid, e, n, gx, gy)
+            grid, clipped = _clip_to_surveyed_ground(ax, grid, e, n, gx, gy)
             cs = ax.contourf(gx, gy, grid, levels=12, cmap=cmap, alpha=0.9)
             ax.contour(gx, gy, grid, levels=cs.levels, colors="white", linewidths=0.5)
             cbar = _colour_bar(fig, ax, cs)
@@ -411,6 +471,9 @@ def _interpolated_map(
         ax.set_title(title)
         fig.tight_layout()
         if path is not None:
+            if raster:
+                _keep_surface(path, _raster_worthy(grid, clipped, valued),
+                              gx, gy, zone, log_scale)
             return save_figure(fig, path, style)
         return fig
 
@@ -477,6 +540,7 @@ def suitability_map(
     title: str = "Drill-target suitability",
     tie: bool | None = None,
     ranking: list[str] | None = None,
+    raster: bool = True,
 ):
     """Drill-target suitability map from scored VES points.
 
@@ -500,11 +564,17 @@ def suitability_map(
     the weighted score with that grade - "29 - Good" - when 29 is Poor on
     the grade's own scale: the grade is of the score before the confidence
     discount, and the label now says which score it grades.
+
+    With ``path`` and ``raster`` the masked surface is also written beside
+    the picture as a GeoTIFF of the same name. Outside the hull it is
+    NaN: a suitability of zero there would be a score rather than the
+    absence of one.
     """
     style = style or HouseStyle()
     valued = [p for p in points if p.value is not None]
     if not points:
         raise ValueError("suitability_map needs at least one point")
+    kept = gx = gy = None
     verdict = _suitability_ranking(points, tie, ranking)
     cmap = plt.get_cmap("RdYlGn")
     with figure_context(style):
@@ -519,7 +589,8 @@ def suitability_map(
             gx, gy = np.meshgrid(np.linspace(x0, x1, 200), np.linspace(y0, y1, 200))
             grid = _surface(e, n, v, gx, gy)
             if grid is not None:
-                grid, _clipped = _clip_to_surveyed_ground(ax, grid, e, n, gx, gy)
+                grid, clipped = _clip_to_surveyed_ground(ax, grid, e, n, gx, gy)
+                kept = _raster_worthy(grid, clipped, valued)
                 cs = ax.contourf(
                     gx, gy, grid, levels=np.linspace(0, 100, 11),
                     cmap=cmap, alpha=0.75, vmin=0, vmax=100,
@@ -584,6 +655,8 @@ def suitability_map(
                 ann.set_text(compact)
             _separate_labels(fig, ax, [a for _, a, _ in labels])
         if path is not None:
+            if raster:
+                _keep_surface(path, kept, gx, gy, zone)
             return save_figure(fig, path, style)
         return fig
 

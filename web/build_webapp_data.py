@@ -32,6 +32,23 @@ sys.path.insert(0, str(REPO / "src"))
 DATA = REPO / "src" / "groundwater" / "data"
 OUT = REPO / "docs" / "js" / "gwt-data.js"
 
+
+def toolkit_version() -> str:
+    """The version pyproject.toml declares, which the About page shows.
+
+    Read from the file rather than from the installed package, so a bundle
+    built from a checkout names the release that checkout is, not whatever
+    was last pip-installed. A regex rather than tomllib, which Python 3.10
+    does not have.
+    """
+    import re
+
+    text = (REPO / "pyproject.toml").read_text(encoding="utf-8")
+    match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+    if not match:
+        raise ValueError("pyproject.toml declares no version")
+    return match.group(1)
+
 # CSV tables, emitted as arrays of row objects keyed by the header row.
 CSV_TABLES = {
     "whoGuidelines": "who_guidelines.csv",
@@ -257,7 +274,7 @@ def encode_file(path: Path) -> str:
 
 
 def build() -> Path:
-    payload: dict[str, object] = {}
+    payload: dict[str, object] = {"version": toolkit_version()}
 
     for key, name in CSV_TABLES.items():
         payload[key] = read_csv_rows(name)

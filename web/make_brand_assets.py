@@ -12,6 +12,11 @@ Outputs into ``src/groundwater/data/brand/``:
     icon.svg   hand-written vector twin, inlined as the web demo favicon
     logo.png   icon plus wordmark for the app sidebar
 
+and writes the same ``icon.svg`` to ``docs/icon.svg``, the standalone web
+app's icon (its manifest names it and its service worker precaches it).
+That copy used to be made by hand, with nothing keeping it the same as
+this one; ``tests/test_web_build.py`` now fails when the two differ.
+
 The PNGs ship as package data, so the Streamlit app can reference them
 both in a normal installation and in the browser (stlite) demo, where
 the whole package is mounted into the virtual filesystem.
@@ -32,6 +37,7 @@ from matplotlib.path import Path as MplPath
 
 REPO = Path(__file__).resolve().parents[1]
 OUT = REPO / "src" / "groundwater" / "data" / "brand"
+WEB_ICON = REPO / "docs" / "icon.svg"
 
 # The sustaintheworld design language: the droplet runs from the neon green
 # at the tip to the emerald at the bowl, the water table is drawn in the
@@ -156,17 +162,21 @@ def make_logo(out_path: Path) -> None:
     plt.close(fig)
 
 
+def icon_svg() -> str:
+    """The vector icon, in the brand colours."""
+    return ICON_SVG.format(light=ACCENT_LIGHT, accent=ACCENT, wave=WAVE)
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    (OUT / "icon.svg").write_text(
-        ICON_SVG.format(light=ACCENT_LIGHT, accent=ACCENT, wave=WAVE),
-        encoding="utf-8",
-    )
+    svg = icon_svg()
+    for path in (OUT / "icon.svg", WEB_ICON):
+        path.write_text(svg, encoding="utf-8")
     make_icon(OUT / "icon.png")
     make_logo(OUT / "logo.png")
-    for name in ("icon.svg", "icon.png", "logo.png"):
-        size = (OUT / name).stat().st_size
-        print(f"wrote {OUT / name} ({size / 1024:.1f} KB)")
+    for path in (OUT / "icon.svg", WEB_ICON, OUT / "icon.png", OUT / "logo.png"):
+        size = path.stat().st_size
+        print(f"wrote {path} ({size / 1024:.1f} KB)")
 
 
 if __name__ == "__main__":

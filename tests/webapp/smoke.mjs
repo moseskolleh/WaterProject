@@ -44,6 +44,17 @@ await withPage(async (page, base, consoleErrors) => {
       (typeof x === 'number' && !Number.isFinite(x) ? String(x) : x));
   });
 
+  // The About page names the release, from the bundle build_webapp_data.py
+  // wrote out of pyproject.toml; test_web_build.py holds that to the package.
+  const version = await page.evaluate(() => {
+    window.GWT.app.goto('about');
+    const shown = document.querySelector('#page-host .about-version');
+    return { bundled: window.GWT.data.version, shown: shown ? shown.textContent : '' };
+  });
+  check('about: the page names the release it is',
+    /^\d+\.\d+\.\d+/.test(version.bundled || '') &&
+    version.shown.includes('Version ' + version.bundled), JSON.stringify(version));
+
   // every page renders with an empty project
   for (const key of PAGES) {
     await page.evaluate((k) => window.GWT.app.goto(k), key);
@@ -353,6 +364,13 @@ await withPage(async (page, base, consoleErrors) => {
       }
     }
     const worker = await through(false), onPage = await through(true);
+    /* the Long Tasks readings have to be able to see an inversion at all, or
+     * finding none while the worker inverts proves nothing: the same
+     * soundings inverted on the page must show up in them */
+    await new Promise((r) => setTimeout(r, 200));
+    const pageInversions = engine.history().filter((h) =>
+      h.type === 'invert' && h.mode === 'page' && h.outcome === 'done').slice(-soundings.length);
+    const seen = window.__longDuring(pageInversions.map((h) => h.ran));
     const parsed = (r) => r.recompute.map((d) => {
       const out = {};
       ['log', 'test', 'sample', 'assessment'].forEach((k) => { if (d[k]) out[k] = d[k]; });
@@ -373,8 +391,13 @@ await withPage(async (page, base, consoleErrors) => {
         a.flags.filter((f) => a.test.flags.includes(f)).length]),
       fitted: worker.analyse.map((a) => [a.transmissivity_m2_per_day, !!a.step_test]),
       errors: [direct.error, worker.error, onPage.error],
+      pageLong: { inversions: pageInversions.length,
+        longest: Math.round(Math.max(0, ...seen.map((t) => t.duration))) },
     };
   });
+  check('engine: the Long Tasks readings see an inversion run on the page',
+    agree.pageLong.inversions === ves.n &&
+    agree.pageLong.longest > 50, JSON.stringify(agree.pageLong));
   check('engine: the worker returns what a direct call to the engine returns',
     agree.ran[0].length === agree.requests && agree.ran[0].every((m) => m === 'worker') &&
     agree.app === null &&
@@ -405,12 +428,26 @@ await withPage(async (page, base, consoleErrors) => {
       const found = await tab.evaluate(async () => {
         const app = window.GWT.app, engine = window.GWT.engine;
         await app.loadSample('rokel');
-        return {
+        const out = {
           mode: engine.mode(), why: engine.unavailable(),
           ran: engine.history().map((h) => h.type + ':' + h.mode + ':' + h.outcome),
           inversions: JSON.stringify(app.derived.inversions, (k, x) =>
             (typeof x === 'number' && !Number.isFinite(x) ? String(x) : x)),
         };
+        /* Here the page stops drawing while a sounding inverts, so the work
+         * bar has to be on screen in the frame before the first one starts,
+         * or there is no Cancel to press. A press read then stops the run. */
+        const kept = out.inversions;
+        const run = app.runInversions();
+        await new Promise((r) => requestAnimationFrame(r));
+        const bar = document.querySelector('#work-status .work-bar[data-work="invert"]');
+        if (bar) bar.querySelector('button').click();
+        await run;
+        out.cancel = { bar: !!bar,
+          outcome: engine.history().filter((h) => h.type === 'invert').pop().outcome,
+          kept: JSON.stringify(app.derived.inversions, (k, x) =>
+            (typeof x === 'number' && !Number.isFinite(x) ? String(x) : x)) === kept };
+        return out;
       });
       return Object.assign(found, { errors });
     } finally {
@@ -424,6 +461,9 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify(fromDisk.ran));
   check('file://: the Rokel inversion comes out exactly as it does in the worker',
     fromDisk.inversions === inWorker, `${fromDisk.inversions.length} against ${inWorker.length} chars`);
+  check('file://: the work bar is up before the page stops drawing, and Cancel works',
+    fromDisk.cancel.bar && fromDisk.cancel.outcome === 'cancelled' && fromDisk.cancel.kept,
+    JSON.stringify(fromDisk.cancel));
   check('file://: no console errors', fromDisk.errors.length === 0,
     fromDisk.errors.slice(0, 5).join('\n     '));
 
@@ -468,6 +508,54 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify(noWorker.ran));
   check('a worker that fails to load: the answer is the same',
     noWorker.analysis === timboHere, `${(noWorker.analysis || '').length} against ${timboHere.length} chars`);
+
+  // The GeoLibre project the site page saves, through the page's own button:
+  // with a fix it carries the separation distances as rings round the
+  // wellhead, and they do not take over the camera.
+  const geolibre = await page.evaluate(() => {
+    const app = window.GWT.app;
+    let saved = '';
+    const original = window.GWT.support.download;
+    window.GWT.support.download = (name, body) => { saved = String(body); };
+    try {
+      app.goto('site');
+      app.render();
+      Array.from(document.querySelectorAll('button'))
+        .find((b) => b.textContent === 'Save GeoLibre project').click();
+    } finally {
+      window.GWT.support.download = original;
+    }
+    const project = JSON.parse(saved || '{}');
+    const byName = {};
+    (project.layers || []).forEach((l) => { byName[l.name] = l; });
+    const rings = byName['Separation distances'];
+    const features = rings ? rings.geojson.features : [];
+    /* the Rokel survey spans kilometres and would hide a ring taking over the
+     * camera, so that is asked of the site on its own: framed on the point,
+     * not on the 2 km across the widest ring */
+    const site = byName.Site ? byName.Site.geojson.features[0].geometry.coordinates : null;
+    const alone = site ? window.GWT.geolibre.siteProject(
+      { community: 'Rokel', lon: site[0], lat: site[1], zone: 28 }) : null;
+    return {
+      layers: Object.keys(byName),
+      hasSite: !!site,
+      rings: features.length,
+      widths: features.map((f) => f.properties.min_distance_m),
+      explained: features.every((f) => /stay clear/.test(f.properties.meaning) &&
+        /not a cited standard/.test(f.properties.basis)),
+      aloneLayers: alone ? alone.layers.map((l) => l.name) : [],
+      aloneZoom: alone ? alone.mapView.zoom : null,
+      tableRows: window.GWT.core.loadSeparationDistances().length,
+    };
+  });
+  check('geolibre: a site with a fix carries its separation rings',
+    geolibre.hasSite && geolibre.rings === geolibre.tableRows && geolibre.rings > 0 &&
+    geolibre.explained, JSON.stringify(geolibre));
+  check('geolibre: the rings are widest first and do not frame the map',
+    geolibre.widths[0] === Math.max.apply(null, geolibre.widths) &&
+    geolibre.aloneLayers.indexOf('Separation distances') >= 0 &&
+    geolibre.aloneZoom > 16,
+    JSON.stringify({ widths: geolibre.widths, zoom: geolibre.aloneZoom }));
 
   // The visible text of a .docx, in reading order. A report that is a valid
   // ZIP with all the right OOXML parts can still be empty of the numbers it

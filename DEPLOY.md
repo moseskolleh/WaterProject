@@ -20,7 +20,7 @@ login).
 - **`docs/wasm/index.html` — the WebAssembly build.** The real Python
   package running through stlite/Pyodide, for anyone who wants the
   server app's exact behaviour in a browser. It costs a 60 MB first
-  load; the standalone app is linked from its own About page.
+  load; the standalone app's About page links to it.
 
 Enable Pages once:
 
@@ -69,21 +69,44 @@ from, so they can never drift apart. `build_offline.py` going last
 matters: run it before the bundle it is meant to describe and the
 release identifier names a shell that no longer exists.
 
+`build_demo.py` inlines the whole Python package, so it follows any change
+under `src/` or `app/` - including the Depth Spine workspace, whose built
+pages are committed inside the package. Rebuild those first when
+`ui/depth-spine/` changes:
+
+```bash
+cd ui/depth-spine && npm ci && npm run build:all
+```
+
+The icon is not edited in `docs/` either: `web/make_brand_assets.py` writes
+`docs/icon.svg` from the same drawing as the package's own icon, and a test
+fails if the two differ. `node web/build_icons.mjs` then rasterises it into
+the PNG sizes the manifest names.
+
 ### Checking it before you publish
 
 ```bash
-npm install --no-save playwright && npx playwright install chromium
-node tests/webapp/parity.mjs                     # browser engine vs the package
-node tests/webapp/smoke.mjs                      # every page and report, in Chromium
+npm install --no-save playwright@1.56.1 && npx playwright install chromium
 python tests/webapp/make_reference.py --check    # the reference values are current
+node tests/webapp/parity.mjs                     # browser engine vs the package
+node tests/webapp/offline.mjs                    # the app, and the Depth Spine, with no network
+node tests/webapp/review.mjs                     # what reaches the .docx a user downloads
+node tests/webapp/smoke.mjs                      # every page and report, in Chromium
 ```
+
+Playwright is pinned to the version CI and `CONTRIBUTING.md` use: an
+unpinned install fetches whatever is newest, whose browser build the
+checks have never run against.
 
 `parity.mjs` runs the real sample workbooks through the browser
 readers and analyses and compares the result against
 `tests/webapp/reference.json`, which holds the Python toolkit's own
 output, so the port cannot drift from the package it came from.
 `smoke.mjs` loads each sample, visits every page, builds every report
-and fails on any console error.
+and fails on any console error. `offline.mjs` takes the network away and
+checks that the service worker still serves the app and that real work
+still runs; it also renders the Depth Spine workspace through the Python
+package, so it needs the toolkit installed (`pip install -e .`).
 
 `reference.json` is committed so `parity.mjs` runs without a Python
 environment. `--check` regenerates it in memory and compares, within a
@@ -97,9 +120,13 @@ Notes:
 
 - If the repository is private, GitHub Pages needs GitHub Pro/Team;
   either make the repository public or use Option B.
-- No analytics, no CDN, no external fetches: everything the standalone
-  app needs is served from `docs/`, which is also why it keeps working
-  on a field laptop that has lost its connection.
+- No analytics and no CDN: everything the standalone app needs is
+  served from `docs/`, which is also why it keeps working on a field
+  laptop that has lost its connection. Two features go online, and
+  only when a button is pressed: looking up existing water points asks
+  the Water Point Data Exchange, and the AI reading of a photographed
+  field sheet sends it to `api.anthropic.com` under a key the user
+  enters on the Settings page.
 
 ## Option B: Streamlit Community Cloud (full version)
 
@@ -128,7 +155,9 @@ add
 ANTHROPIC_API_KEY = "sk-ant-..."
 ```
 
-and add a line `anthropic` to `requirements.txt`.
+`requirements.txt` already installs the `anthropic` SDK, so the key is
+all the AI path needs; without it the Scanned sheets tab still reads
+text PDFs through `pdfplumber`.
 
 ## What was verified
 
@@ -153,9 +182,10 @@ and add a line `anthropic` to `requirements.txt`.
   stlite 1.8.1 / Pyodide 0.29.3 runtime).
 - The built `docs/wasm/index.html` was booted in a real Chromium browser:
   the stlite runtime loads, the Python (WASM) interpreter starts and
-  all 59 inlined files (package, app, sample data) mount correctly.
-  The scientific wheels come from the public CDN at visit time, which
-  is standard Pyodide infrastructure.
+  the inlined files (package, app, sample data) mount correctly. The
+  stlite runtime and the scientific wheels come from the jsDelivr CDN at
+  visit time, which is standard Pyodide infrastructure, so this build
+  cannot start without the network; the standalone app can.
 - pyarrow is pinned below 25 in `requirements.txt`; 25.0.0 was
   observed to crash streamlit's table serialization in sandboxed
   Linux environments.

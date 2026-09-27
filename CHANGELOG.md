@@ -1,6 +1,88 @@
-# Changes pending release
+# Changelog
 
-## Corrections to the previous entry
+One section per version, newest first. PLAN.md step 0.4 closed the long
+"changes pending release" entry as 0.3.0; everything below the Stage 0 notes is
+that entry, kept as it was written.
+
+## 0.3.0
+
+### The release
+
+This is the first tagged release. The version is 0.3.0 in pyproject.toml, and the browser app's About page now names it: `build_webapp_data.py` writes the version into the bundle, and a test holds the bundle, the package and pyproject.toml to one number. A tag `v0.3.0` pushed on main runs `.github/workflows/release.yml`. The workflow refuses a tag that does not match pyproject.toml or a changelog with no section for the version. It checks that the committed service worker is current, builds the wheel, the sdist and the example packs with `nox -s release`, and publishes them as a GitHub Release. The release notes are this section, and `release.json` records the commit, the SHA-256 of every asset and the web app's release identifier from `docs/sw.js`. From this release on, the changelog has one section per version.
+
+### The browser engine runs in a worker (PLAN.md step 1.2)
+
+The VES inversion and the pumping test fits now run in a Web Worker, docs/js/gwt-worker.js. It imports gwt-data.js and gwt-core.js and answers three requests: invert (one sounding), analysePumping and recompute (what the app derives from the sheets once the page has read them, since reading a workbook needs DOMParser). Before, inverting the two Rokel soundings held the page in a single task of 2.7 s on this machine (11-12 s with the CPU throttled four times), and there was nothing to press to stop it. The page calls the worker through GWT.engine, a promise per request. A work bar in the house style shows what is running, how far it has got and a Cancel button. Cancel terminates the worker, which is the one way to stop it in the middle of a fit, and the next request starts a fresh one. The newest recompute or inversion run wins, and a stopped run leaves the results it would have replaced. Opened from file://, or wherever the worker fails to start, the same tasks run on the page, on a structured clone of the request, and give the same answers, compared in smoke.mjs as whole object graphs. There the bar goes up before the page stops drawing, so Cancel is read between soundings. The step test result's drawdown_at and efficiency_at methods became C.stepDrawdownAt and C.stepEfficiencyAt, because a structured clone cannot carry a method. The progress hooks read nothing back: parity.mjs passes 1377/1377 with reference.json untouched. build_offline.py now follows importScripts in the shell's scripts, so the worker's imports are precached, and offline.mjs checks that the worker starts with no network. Measured with Playwright on the Rokel sample, headless Chromium, 3 runs each: at 1x, no main-thread task over 50 ms appears from the click to the result, where before the longest was 2.67-2.76 s. Inversion wall time is about the same, 4.6-4.8 s before and 4.8-5.2 s after on a machine shared with other work. At 4x the page's own tasks during the run are 53-98 ms rather than 11 s. What remains is drawing the loaded sample and the first, cold interpretation of a model on the page between soundings. Chromium does not throttle a worker, so throttled wall times do not compare. smoke.mjs now collects Long Tasks and holds the page to none over 50 ms while the Rokel soundings invert and a pumping test is analysed, at 1x. It also checks that timers and scrolling keep going, that Cancel works in the worker and from file://, and that the readings do see an inversion run on the page.
+
+### PR #52's performance work, carried onto main (step 0.1)
+
+PR #52's performance work is on `main` now. It was carried over by hand rather than replayed: `main` had moved about 98 commits since the PR branched, and had already solved part of the same problem its own way.
+
+- **Forward model and inversion.** The VES forward model evaluates a sounding's spacings in one pass over the quadrature. The inversion takes its Jacobian's five nudged models in one pass too. The arithmetic is unchanged: 300 random models (Schlumberger, finite-MN and Wenner, thin layers included) and 24 synthetic inversions, uncertainty factors included, hash identically to `main`'s. That needed one correction to #52. Its vectorised finite-MN step moved 18 of 951 readings by one unit in the last place, because a scalar `L**2` goes through `pow()` and an array's goes through `x * x`. So that step still combines one reading at a time. The quadrature tables are now built on first use rather than at import.
+- **Imports.** The subpackages bind their plotting, workbook and report modules when first used. Importing `groundwater.hydraulics` for an analysis no longer imports pyplot, and importing `groundwater.reporting` no longer imports python-docx.
+- **Boundary lookups.** The two copies of the ray cast behind `district_of`, `chiefdom_of` and the coverage lookups are now one, in `groundwater._geometry`. It takes the crossing count over a whole ring at once and holds every ring's bounding box in one array, so a lookup no longer walks all 256 chiefdom rings in Python.
+- **Bundled data.** Every bundled data table and map layer, the app's district table included, is read through `groundwater._resources`. Coverage and mapping share one parse of the chiefdom layer.
+- **Figures.** `figure_context` now closes any figure a plot function leaves open when it raises.
+
+Two parts of #52 are not replayed, because `main` already does the job. Placing a national pull of water points is done by `coverage.assign_chiefdoms`. Caching the tables is already done where it is repeated: an `lru_cache` holds the WHO table, the provenance record, the crosswalks and the map layers, and the app caches the unit rates and checklists. Those parse in under half a millisecond in any case.
+
+Measured on one 4-CPU machine shared with another job (load average about 3), alternating `main` and this branch, three rounds of small timing scripts:
+- One `district_of` lookup goes from 25 ms to 0.03 ms.
+- The forward model on Rokel A goes from 0.90 ms to 0.55 ms, and the Jacobian from 4.6 ms to 2.2 ms.
+- Inverting both Rokel soundings goes from 4.8-7.8 s to 1.9-4.1 s (noisy).
+- Placing 20,000 in-country water points by district goes from 0.13 s to 0.065 s. Points off the chiefdom layer still take the per-point seam pass, and it is unchanged.
+- In a fresh interpreter, median of five: importing `groundwater.reporting` goes from 1.1 s to 0.13 s, `groundwater.mapping` from 0.88 s to 0.13 s, and `groundwater.hydraulics` from 0.81 s to 0.53 s.
+
+Answers, reports and the worked examples are unchanged.
+
+### PR #54, landed as three parts (step 0.1)
+
+The district check no longer reports a site just over a drawn border as being in the wrong district. The chiefdom rings it judges by are simplified to within about 89 m of the geoBoundaries line, so a stated district is now accepted when the point is inside it as drawn or within 90 m of its edge. Both engines do this. Measured over one verified interior point per chiefdom, stated as each of the fifteen districts it is not in, the tolerance lets none of the 2,490 wrong statements through. In random samples of placed points, just under one percent lie close enough to another district's edge for it to apply. PR #54's move of the detached Maforki fragment was not taken: that ring stays withheld for review until someone with a source moves it.
+
+The GeoLibre project from both apps now draws the separation distances in site_separation_distances.csv as rings round the wellhead, so a latrine 20 m away or a burial ground 1 km away can be seen over imagery rather than read from a table. The rings are true to the ground to within 0.08 m and are drawn only round a GPS fix. Each says it is ground that has to stay clear, and that the table has no recorded source. They add about 61 KB to a site project.
+
+The continuous survey surfaces (iso-resistivity, depth to bedrock, aquifer thickness, bedrock elevation, transverse resistance) and the drill-target score are now also written as a GeoTIFF beside each picture, so they can be sampled, contoured or laid under imagery in a GIS. A raster is written only for a surface clipped to the surveyed ground and with no lower-bound point. It holds NaN outside the ground and ohm-m rather than log10. A line of soundings, or a map with an "at least" beside a point, stays a picture. The protective-capacity map, drawn in classes, never gets a raster, because a raster would give back the precision the classes withhold. The Streamlit app offers each raster it keeps for download under its map; the browser app draws the surfaces only as pictures, and both say so. The writer needs no dependency. rasterio is a test-only dev dependency that reads each file back, so a raster in the wrong place cannot pass as correct. A 220 by 220 surface is 193,898 bytes and takes well under a millisecond to write, and drawing a five-sounding map took the same time, within noise, with the raster as without it.
+
+### PR #17's wizard fix, ported (step 0.1)
+
+A sounding that will not invert no longer crashes the Streamlit app or costs a loaded project its costing values. Before, the siting step dropped the wizard's load grace before inverting anything and had no guard around the inversion. A workbook whose readings parsed but would not invert therefore ended the run with a stack trace and stored no result. The loaded project's adjusted costing depth was then reset on the next visit to the costing step: in the test case, 85 m came back as the 72 m prefill. Now the failure appears as an error naming the sounding, and the run's progress bar is cleared. Nothing from the failed run is stored. The last successful siting result stays in place, and when there is one the error says that the results shown come from it. The grace is dropped only once a new result has been stored. This is the fix from pull request #17, ported by hand because that branch shares no history with main. The browser app already limited a failure to its own sounding and needed no change. It keeps the other soundings and names the one that failed, whereas the Streamlit app rejects the whole run.
+
+### One command for the checks, and a CI that checks more (steps 0.2 and 0.6)
+
+`nox -s check` now runs the whole check sequence in one command: ruff at the version the dev extra pins, the pytest suite, the bundle freshness checks, `make_reference.py --check`, the four browser suites, and a rebuild of the Depth Spine. CI calls the same nox sessions step by step, so a command changed in one place changes in both. The one thing CI adds is the Python version matrix: a local check covers only the interpreter it runs on. `nox -s build` regenerates the generated files in the order each depends on the last. The Depth Spine goes first, because the demo inlines the package that carries it, and `build_offline.py` goes last. `nox -s examples` reruns the worked examples and their index. `nox -s release` puts the wheel, the sdist and the example packs in `dist/`. The sessions run in the current environment rather than in virtualenvs, because that is the environment CONTRIBUTING.md installs into and the browser suites need Playwright from `node_modules`.
+
+CI now also builds and lints the Depth Spine workspace (`tsc`, `oxlint`, both Vite builds). It fails if the committed build under `src/groundwater/depth_spine/` is not what the source beside it produces, and it counts a new untracked asset as a difference, because Vite names assets by content hash. Here, with Node 22.22.2 and npm 10.9.7, a fresh build is byte-identical to the committed one.
+
+The 59 tests that drive the app through AppTest, regenerate the examples, or took ten seconds or more are marked `slow`. On pull requests they run on Python 3.12 only, in a job of their own that runs beside the fast suite on all four versions. A new nightly run takes the whole suite on every version. Measured one after the other on a shared 4-CPU machine, the full suite took 930 s, the fast part 269 s and the slow part 540 s. On the run for pull request #72, the last before this change, the Python 3.12 test job took 11 min 28 s and the whole run 11 min 29 s. This split should bring a pull request run to roughly 7 minutes; that is an estimate, and no CI run with the new workflow exists yet.
+
+The Playwright browser download and the npm downloads are cached, the pip cache follows `pyproject.toml`, every action is pinned by commit SHA, and the workflow can only read the repository. CI's lint job reads the ruff pin from `pyproject.toml` rather than repeating it. Dependabot proposes grouped weekly updates for the actions, the Python requirements and the Depth Spine's npm packages.
+
+### A performance baseline (step 0.3)
+
+There is now a performance baseline to quote against. `bench/run.py` times the Python package on the bundled examples: importing each subsystem in a fresh interpreter, one forward-model call, inverting each sample sounding, analysing each sample pumping test, building each of the ten reports, recomputing each example saved as a project, and one run of the Streamlit app's script through AppTest. It takes one warm-up and five samples and reports the median with the interquartile range. It holds numpy to one BLAS thread: on this shared 4-CPU machine, OpenBLAS's thread per CPU made the Rokel A inversion 2.3 times slower and about ten times noisier (3.5 s against 1.5 s), which would have made two commits impossible to compare. `--compare bench/baseline.json` prints each measure beside the baseline with the ratio. `bench/web.mjs` loads the browser app cold with the CPU slowed 4x and DevTools' "Slow 4G" network (562.5 ms, 180,000 B/s down). It records first paint, time to interactive by Lighthouse's definition, the bytes sent before first paint, and the wall time and longest main-thread task of a Rokel re-inversion, started from the Geophysics page and judged finished by what the page shows. Time to interactive counts requests still downloading, taken from the DevTools protocol, because Resource Timing lists a request only once it has finished. In the committed baseline (provisional, taken while the machine was shared) the app first paints at 2.5 s after 65 kB and becomes interactive at 16.2 s. A report takes 3 to 6 s to build, most of it drawing the area maps; the asset placard takes 0.17 s. Importing `groundwater.reporting` costs 1.4 s. A Streamlit rerun with every sample loaded takes 3.9 s. With the inversion in the worker, the longest main-thread task during a re-inversion is 175 ms. On c3cb529, where the inversion ran on the main thread, it was 8.9 s (one run). Chromium will not throttle a worker, so the inversion is also timed unthrottled: 3.6 s in the worker against 3.8 s on the main thread (one run). The worker changed where the work runs, not how long it takes. `bench/baseline.json` is committed with each release. The one committed now is provisional, because it was taken while the machine was shared.
+
+### The small untruths (step 0.5)
+
+The Depth Spine workspace no longer asks Google for its fonts. It was the one page in the toolkit that did: both of its builds linked the Google Fonts stylesheet for IBM Plex Sans, IBM Plex Mono and Space Grotesk. Offline it therefore drew in fallback faces, and online every render told a third party that a borehole was being looked at. The faces now come from the package's brand folder, where the main app already keeps its own. IBM Plex Sans 400 to 700 and IBM Plex Mono 600 were added there, copied unmodified from @fontsource/ibm-plex-sans and @fontsource/ibm-plex-mono 5.3.0 (SIL OFL 1.1), and IBM's Plex Sans copyright line was added to the licence. The component build ships the files beside its script. The single-file page the browser demo shows inlines them, because it is handed to the browser as a string and cannot fetch a relative file. The licence header had pointed to a manifest.json that was not in the repository. It is there now, recording the source and SHA-256 of every font file, and the test suite checks the hashes. offline.mjs loads both builds with every request off the machine refused, and requires that none was made and that all three families actually loaded. Against the previous build the same checks fail on the Google request. A build from a clean `npm ci` is byte-identical to what is committed. The static workspace grows from 257,329 to 469,250 bytes, and the WebAssembly demo, which inlines the package, grows from 3,694,714 to 4,277,166 bytes.
+
+DEPLOY.md no longer tells the reader to add `anthropic` to requirements.txt, which already installs it. It pins Playwright 1.56.1 as CONTRIBUTING.md and CI do, and lists the offline and review checks CI runs. It had claimed the standalone app made no external fetches; it now says plainly that two of its buttons go online. It also says that docs/icon.svg is generated. QUESTIONS.md item 7 had still described district bounding boxes. It now says what the checker does: it places a point through the chiefdom polygons and the chiefdom-to-district crosswalk. It names the two limits that remain. First, seams between chiefdoms, left because the layer's build simplifies each ring on its own, which a 50 m tolerance bridges. Second, the withheld Maforki fragment. It also names the boundary data and gazetteer that would help. docs/icon.svg was a hand-made copy of the brand icon. make_brand_assets.py now writes both from one drawing, and a test fails if either is edited on its own.
+
+### What this release leaves open
+
+- Editing a discharge on the Pumping test page while an inversion runs stops the inversion, and nothing re-runs it. Every recompute has always dropped the inversions; the worker only makes this reachable, because the page now stays usable while one runs.
+- With the CPU throttled four times, the page still has tasks of 53-98 ms during an inversion. One is drawing the loaded sample. The other is the first, cold interpretation of a model, which could move into the worker's invert reply.
+- `bench/` does not yet time the test suite, or the placement of water points outside the chiefdom layer. That placement still takes the per-point seam pass, 5.5-6 s for 20,000 points spread over sea and neighbouring countries.
+- The separation-distance rings are drawn in the GeoLibre export of both apps, not on the matplotlib site map. The loader's docstring cites FGN/NWRI 2010, and data_provenance.yaml records no source; the two should agree.
+- `web/make_brand_assets.py`, which the icon test names as the remedy, also rewrites icon.png and logo.png, and those do not reproduce byte for byte under matplotlib 3.11.
+- The WebAssembly demo inlines the Depth Spine component build, which cannot run under stlite, and grows by 0.58 MB with the fonts.
+- On a failed sounding the two apps differ: the browser keeps the other soundings and names the failed one, and Streamlit keeps the previous run. Neither behaviour is documented.
+
+### The repair roadmap
+
+What stood here as "Changes pending release" before PLAN.md, the work of
+the repair roadmap (ROADMAP.md), follows unchanged.
+
+#### Corrections to the previous entry
 
 The entry that stood here described a body of work that was never
 uploaded: the pull request carrying it said so in its own description
@@ -31,7 +113,7 @@ is worse than none. What it claimed, and what is true:
   polygons; there is no sixteen-district polygon layer, and this
   repository does not hold the data to derive one honestly.
 
-## What changed
+#### What changed
 
 A sounding is read to the depth it resolves, not to the length of its
 array. A Schlumberger sounding resolves the ground to about half of its
@@ -777,7 +859,7 @@ districts by the deleted boxes and blamed handpumps for a corroded
 submersible. Nothing caught it, because the examples test compared file
 names; it now compares the text of every report as well.
 
-## The fixes, reviewed
+#### The fixes, reviewed
 
 With every roadmap item ticked, the commits that ticked them were reviewed
 area by area, each finding reproduced in both engines and each fix written
@@ -857,7 +939,7 @@ degrees without its sign is read as west, with a note, instead of placing
 the site in central Africa. The study-area tint and the GeoLibre export
 keep the holes the rebuilt layers now carry.
 
-## What the review left open
+#### What the review left open
 
 A laboratory that names a pathogen is read as having named one.
 "Salmonella: Present" had become an unknown determinand: not evaluable, so
@@ -901,7 +983,7 @@ the Python's does: the site page flagged such a position and the report
 went out unstamped. A latitude and longitude typed into the site boxes is
 recorded on the gate as degrees, where it read "-13 mE, 8 mN".
 
-## A note on the sixteen districts
+#### A note on the sixteen districts
 
 The shipped district polygons are the pre-2017 fourteen, from
 geoBoundaries; Karene and Falaba have no polygon of their own. A point

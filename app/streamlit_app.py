@@ -727,12 +727,10 @@ def cov_polys():
 def cached_districts():
     """(provinces, [(district, province), ...]) from the bundled table."""
     import csv as _csv
-    from importlib import resources
 
-    text = (
-        resources.files("groundwater") / "data" / "sl_districts.csv"
-    ).read_text(encoding="utf-8")
-    rows = list(_csv.DictReader(text.splitlines()))
+    from groundwater._resources import bundled_text
+
+    rows = list(_csv.DictReader(bundled_text("sl_districts.csv").splitlines()))
     provinces: list[str] = []
     for row in rows:
         if row["province"] not in provinces:
@@ -845,6 +843,18 @@ def offer_download(path: Path, label: str, keep: bool = True) -> None:
     with open(path, "rb") as fh:
         st.download_button(label, fh.read(), file_name=path.name,
                            key=f"dl_{_html.escape(label)}_{path.name}")
+
+
+def _offer_raster(picture: Path) -> None:
+    """Download button for the GeoTIFF a map kept beside its picture.
+
+    Only an interpolated surface clipped to the surveyed ground is kept
+    (mapping.maps._keep_surface), so a map without one offers nothing
+    rather than a raster of extrapolated or lower-bound values.
+    """
+    raster = picture.with_suffix(".tif")
+    if raster.exists():
+        offer_download(raster, f"Download {raster.name} (GeoTIFF)")
 
 
 def _deliverables() -> list[tuple[str, Path]]:
@@ -1703,16 +1713,30 @@ st.markdown(
 
 
 def run_ves_inversion(soundings) -> None:
-    """Invert and interpret the soundings, storing the shared results."""
-    # a fresh siting result is a genuine source change: the wizard
-    # costing prefill must follow it, not a previously loaded project
-    st.session_state.pop("_wiz_load_grace", None)
+    """Invert and interpret the soundings, storing the shared results.
+
+    A sounding that fails to invert is named in an error and nothing is
+    stored, so the last successful result stays in place: it is still the
+    best siting answer, and the reports and costing prefill read it.
+    """
     results = []
     interps = []
     progress = st.progress(0.0)
     for i, sounding in enumerate(soundings):
-        result = invert_sounding(sounding, CONFIG.ves)
-        interp = interpret_model(sounding, result.model, CONFIG.ves)
+        try:
+            result = invert_sounding(sounding, CONFIG.ves)
+            interp = interpret_model(sounding, result.model, CONFIG.ves)
+        except Exception as exc:  # noqa: BLE001 - one bad sounding is an error, not a crash
+            # a bar left part full beside the error reads as a run still going
+            progress.empty()
+            kept = ("The results shown are from the previous successful run."
+                    if "ves_results" in st.session_state else "")
+            st.error(
+                f"Inversion failed for sounding "
+                f"{sounding.sounding_id or i + 1}: {exc}. Check its readings "
+                f"in the workbook. {kept}".rstrip()
+            )
+            return
         results.append(result)
         interps.append(interp)
         progress.progress((i + 1) / len(soundings))
@@ -1721,6 +1745,9 @@ def run_ves_inversion(soundings) -> None:
     # so it named whichever sounding was parsed first as the drill target
     rank_interpretations(interps)
     st.session_state.ves_results = (soundings, results, interps)
+    # only a stored siting result is a source change the wizard costing
+    # prefill must follow; a failed run leaves a loaded project's grace
+    st.session_state.pop("_wiz_load_grace", None)
 
 
 
@@ -2470,6 +2497,7 @@ with tab_ves:
                 smap = workdir() / "suitability_map.png"
                 suitability_map(map_points, zone, path=smap)
                 st.image(str(smap))
+                _offer_raster(smap)
             else:
                 st.info(
                     "Add GPS coordinates to the VES points (sidebar site "
@@ -4050,6 +4078,7 @@ with tab_maps:
         for map_path in st.session_state.get("subsurface_paths", []):
             st.image(map_path)
             offer_download(Path(map_path), f"Download {Path(map_path).name}")
+            _offer_raster(Path(map_path))
         if st.session_state.get("section_path"):
             st.image(st.session_state["section_path"])
             offer_download(Path(st.session_state["section_path"]),
@@ -4068,7 +4097,16 @@ with tab_maps:
             "[GeoLibre](https://geolibre.app) is free and open source, and the "
             "file opens in its web app, its desktop app, its phone apps and in "
             "a Jupyter notebook. Nothing is uploaded: the file is written here "
-            "and downloaded to this machine."
+            "and downloaded to this machine. With a GPS fix it also draws the "
+            "separation distances as rings round the wellhead: the ground a "
+            "latrine, a burial ground or another well has to stay out of. "
+            "Each continuous surface clipped to the surveyed ground, and the "
+            "drill-target score, is also kept as a GeoTIFF beside its "
+            "picture, offered under it, for sampling or contouring in a GIS. "
+            "A surface along a single line of soundings or with a "
+            "lower-bound point stays a picture, and so does the "
+            "protective-capacity map, which is drawn in classes. The browser "
+            "app draws the surfaces only as pictures."
         )
         _area = area_window(site, float(st.session_state.get("map_radius") or 40))
         if _area is None:

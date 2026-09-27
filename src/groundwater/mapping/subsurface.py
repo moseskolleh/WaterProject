@@ -494,6 +494,9 @@ def protective_capacity_map(
         ax.set_title(title)
         fig.tight_layout()
         if path is not None:
+            # No GeoTIFF beside this one, unlike the continuous surfaces: a
+            # raster would hand a GIS the conductance to the hundredth of a
+            # siemens that the classes are drawn to keep anyone from reading.
             return save_figure(fig, path, style)
         return fig
 
