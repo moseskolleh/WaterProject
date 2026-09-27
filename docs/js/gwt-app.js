@@ -5563,6 +5563,11 @@
       pageHead('About & method', 'What this app computes, what it assumes, and ' +
         'where the numbers come from.'),
       card('What it is', [
+        /* the release a bug report or a finding should name; written into the
+         * bundle from pyproject.toml, so it is the same number the Python
+         * package and the Streamlit app report */
+        el('p.about-version', 'Version ' + (GWT.data.version || 'not recorded') +
+          ' of the Groundwater Investigation Toolkit.'),
         el('p', 'A standalone version of the Groundwater Investigation Toolkit ' +
           'for rural water supply boreholes in Sierra Leone. It covers the whole ' +
           'project lifecycle — geophysical siting, borehole design, drilling ' +

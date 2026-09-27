@@ -44,6 +44,17 @@ await withPage(async (page, base, consoleErrors) => {
       (typeof x === 'number' && !Number.isFinite(x) ? String(x) : x));
   });
 
+  // The About page names the release, from the bundle build_webapp_data.py
+  // wrote out of pyproject.toml; test_web_build.py holds that to the package.
+  const version = await page.evaluate(() => {
+    window.GWT.app.goto('about');
+    const shown = document.querySelector('#page-host .about-version');
+    return { bundled: window.GWT.data.version, shown: shown ? shown.textContent : '' };
+  });
+  check('about: the page names the release it is',
+    /^\d+\.\d+\.\d+/.test(version.bundled || '') &&
+    version.shown.includes('Version ' + version.bundled), JSON.stringify(version));
+
   // every page renders with an empty project
   for (const key of PAGES) {
     await page.evaluate((k) => window.GWT.app.goto(k), key);

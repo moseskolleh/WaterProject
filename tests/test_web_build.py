@@ -111,6 +111,15 @@ def test_webapp_data_is_current(sample_data):
                     f"docs/js/gwt-data.js is stale for {rel}; "
                     "run: python web/build_webapp_data.py"
                 )
+    # the About page names this release, so it has to be the one the package is
+    import groundwater
+
+    assert payload["version"] == builder.toolkit_version(), (
+        "docs/js/gwt-data.js names another version; run: python web/build_webapp_data.py"
+    )
+    assert groundwater.__version__ == builder.toolkit_version(), (
+        "the installed package is another version; reinstall with pip install -e ."
+    )
 
 
 def test_webapp_scripts_are_wired_up():

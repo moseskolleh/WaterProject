@@ -210,8 +210,19 @@ pip install -e .[gis]       # + GeoPackage export (geopandas)
 pip install -e .[app]       # + Streamlit web interface
 pip install -e .[extract]   # + PDF text extraction (pdfplumber)
 pip install -e .[ai]        # + AI-assisted scan extraction (anthropic)
-pip install -e .[dev]       # + pytest
+pip install -e .[dev]       # + pytest, ruff, nox and the test-only oracles
 ```
+
+A tagged release (from 0.3.0 on) attaches the wheel, the sdist and the
+example packs to its GitHub Release, so a version can be installed
+without a checkout:
+
+```bash
+pip install groundwater-toolkit==0.3.0 --find-links \
+  https://github.com/moseskolleh/WaterProject/releases/expanded_assets/v0.3.0
+```
+
+`nox -s check` runs everything CI runs; see `CONTRIBUTING.md`.
 
 ## Quick start
 

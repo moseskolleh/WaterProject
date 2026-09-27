@@ -45,7 +45,7 @@ try:
     # for a checkout that was never installed
     __version__ = _metadata.version("groundwater-toolkit")
 except _metadata.PackageNotFoundError:  # pragma: no cover - uninstalled checkout
-    __version__ = "0.2.0"
+    __version__ = "0.3.0"
 
 from .project import Project
 
