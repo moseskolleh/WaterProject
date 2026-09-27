@@ -348,11 +348,14 @@ def test_a_failed_inversion_keeps_the_wizard_grace(sample_data, monkeypatch):
     at.session_state["_wiz_load_grace"] = True
     at.selectbox(key="sample_wiz_ves").select("rokel/rokel_ves.xlsx")
     at.run()
+    bars = [e.proto.value for e in at.get("progress")]
     at.button(key="wiz_run_ves").click()
     at.run()
     assert not at.exception, at.exception
     errors = " ".join(str(e.value) for e in at.error)
     assert "Inversion failed for sounding B (2)" in errors
+    # the run's part-full progress bar is cleared, not left beside the error
+    assert [e.proto.value for e in at.get("progress")] == bars
     assert "ves_results" not in at.session_state
     assert at.session_state["_wiz_load_grace"] is True
 

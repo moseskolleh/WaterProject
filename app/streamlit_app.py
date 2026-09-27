@@ -1717,6 +1717,8 @@ def run_ves_inversion(soundings) -> None:
             result = invert_sounding(sounding, CONFIG.ves)
             interp = interpret_model(sounding, result.model, CONFIG.ves)
         except Exception as exc:  # noqa: BLE001 - one bad sounding is an error, not a crash
+            # a bar left part full beside the error reads as a run still going
+            progress.empty()
             kept = ("The results shown are from the previous successful run."
                     if "ves_results" in st.session_state else "")
             st.error(
