@@ -353,6 +353,13 @@ await withPage(async (page, base, consoleErrors) => {
       }
     }
     const worker = await through(false), onPage = await through(true);
+    /* the Long Tasks readings have to be able to see an inversion at all, or
+     * finding none while the worker inverts proves nothing: the same
+     * soundings inverted on the page must show up in them */
+    await new Promise((r) => setTimeout(r, 200));
+    const pageInversions = engine.history().filter((h) =>
+      h.type === 'invert' && h.mode === 'page' && h.outcome === 'done').slice(-soundings.length);
+    const seen = window.__longDuring(pageInversions.map((h) => h.ran));
     const parsed = (r) => r.recompute.map((d) => {
       const out = {};
       ['log', 'test', 'sample', 'assessment'].forEach((k) => { if (d[k]) out[k] = d[k]; });
@@ -373,8 +380,13 @@ await withPage(async (page, base, consoleErrors) => {
         a.flags.filter((f) => a.test.flags.includes(f)).length]),
       fitted: worker.analyse.map((a) => [a.transmissivity_m2_per_day, !!a.step_test]),
       errors: [direct.error, worker.error, onPage.error],
+      pageLong: { inversions: pageInversions.length,
+        longest: Math.round(Math.max(0, ...seen.map((t) => t.duration))) },
     };
   });
+  check('engine: the Long Tasks readings see an inversion run on the page',
+    agree.pageLong.inversions === ves.n &&
+    agree.pageLong.longest > 50, JSON.stringify(agree.pageLong));
   check('engine: the worker returns what a direct call to the engine returns',
     agree.ran[0].length === agree.requests && agree.ran[0].every((m) => m === 'worker') &&
     agree.app === null &&
@@ -405,12 +417,26 @@ await withPage(async (page, base, consoleErrors) => {
       const found = await tab.evaluate(async () => {
         const app = window.GWT.app, engine = window.GWT.engine;
         await app.loadSample('rokel');
-        return {
+        const out = {
           mode: engine.mode(), why: engine.unavailable(),
           ran: engine.history().map((h) => h.type + ':' + h.mode + ':' + h.outcome),
           inversions: JSON.stringify(app.derived.inversions, (k, x) =>
             (typeof x === 'number' && !Number.isFinite(x) ? String(x) : x)),
         };
+        /* Here the page stops drawing while a sounding inverts, so the work
+         * bar has to be on screen in the frame before the first one starts,
+         * or there is no Cancel to press. A press read then stops the run. */
+        const kept = out.inversions;
+        const run = app.runInversions();
+        await new Promise((r) => requestAnimationFrame(r));
+        const bar = document.querySelector('#work-status .work-bar[data-work="invert"]');
+        if (bar) bar.querySelector('button').click();
+        await run;
+        out.cancel = { bar: !!bar,
+          outcome: engine.history().filter((h) => h.type === 'invert').pop().outcome,
+          kept: JSON.stringify(app.derived.inversions, (k, x) =>
+            (typeof x === 'number' && !Number.isFinite(x) ? String(x) : x)) === kept };
+        return out;
       });
       return Object.assign(found, { errors });
     } finally {
@@ -424,6 +450,9 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify(fromDisk.ran));
   check('file://: the Rokel inversion comes out exactly as it does in the worker',
     fromDisk.inversions === inWorker, `${fromDisk.inversions.length} against ${inWorker.length} chars`);
+  check('file://: the work bar is up before the page stops drawing, and Cancel works',
+    fromDisk.cancel.bar && fromDisk.cancel.outcome === 'cancelled' && fromDisk.cancel.kept,
+    JSON.stringify(fromDisk.cancel));
   check('file://: no console errors', fromDisk.errors.length === 0,
     fromDisk.errors.slice(0, 5).join('\n     '));
 
