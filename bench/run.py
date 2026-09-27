@@ -2,9 +2,10 @@
 
 Each measure is a thing a user waits for: importing a subsystem, one call
 of the forward model, inverting a sample sounding, analysing a sample
-pumping test, building each report the package offers, and recomputing a
-saved project the way ``groundwater recompute`` does. Every one is run on
-the bundled examples, so two commits are timed on the same work.
+pumping test, building each report the package offers, recomputing a
+saved project the way ``groundwater recompute`` does, and one run of the
+Streamlit app's script. Every one is run on the bundled examples, so two
+commits are timed on the same work.
 
 The method is the same for every in-process measure, and is written into
 the output beside each number:
@@ -64,13 +65,15 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 SRC = REPO / "src"
 DATA = REPO / "examples" / "data"
+APP = REPO / "app" / "streamlit_app.py"
 sys.path.insert(0, str(SRC))
 os.environ.setdefault("MPLBACKEND", "Agg")
 
 #: The output's own layout number; ``--from`` refuses a file in another.
 SCHEMA = 1
 TOOL = "bench/run.py"
-GROUPS = ("import", "forward", "inversion", "pumping", "reports", "recompute")
+GROUPS = ("import", "forward", "inversion", "pumping", "reports", "recompute",
+          "streamlit")
 MIN_SAMPLE_S = 0.2
 
 
@@ -499,10 +502,61 @@ def _recompute_measures() -> list[Measure]:
             for name in PROJECT_SOURCES]
 
 
+def _streamlit_measures() -> list[Measure]:
+    # A Streamlit app runs its whole script again on every click, so the time
+    # of one run is what a user waits for after each one. AppTest runs the
+    # real script in this process, as the app tests do. Streamlit is an
+    # optional extra; without it the group is left out and says so.
+    try:
+        from streamlit.testing.v1 import AppTest
+    except ImportError:
+        print("  streamlit is not installed; the streamlit group is left out",
+              file=sys.stderr)
+        return []
+
+    def started():
+        at = AppTest.from_file(str(APP), default_timeout=600)
+        at.run()
+        return at
+
+    def checked(at):
+        if at.exception:
+            raise RuntimeError(f"the Streamlit app failed: {at.exception}")
+        return at
+
+    def first_run(_tmp):
+        return lambda: checked(started())
+
+    def rerun_empty(_tmp):
+        at = checked(started())
+        return lambda: checked(at.run())
+
+    def rerun_loaded(_tmp):
+        # every sample loaded and every analysis run, as a user has it by
+        # the time they reach the costing page; the timed rerun then changes
+        # nothing, which is the cost each later click pays before its own work
+        at = checked(started())
+        for key, sample in (("sample_ves", "rokel/rokel_ves.xlsx"),
+                            ("sample_pump", "dr_timbo/dr_timbo_constant_test.xlsx"),
+                            ("sample_wq", "dr_timbo/dr_timbo_water_quality.xlsx"),
+                            ("sample_log", "dr_timbo/dr_timbo_drilling_log.xlsx")):
+            at.selectbox(key=key).select(sample)
+            checked(at.run())
+        for key in ("run_ves", "run_cost"):
+            at.button(key=key).click()
+            checked(at.run())
+        return lambda: checked(at.run())
+
+    return [Measure("streamlit", "first run, new session", first_run),
+            Measure("streamlit", "rerun, new session", rerun_empty),
+            Measure("streamlit", "rerun, every sample loaded and analysed", rerun_loaded)]
+
+
 def all_measures(groups) -> list[Measure]:
     builders = {"import": _import_measures, "forward": _forward_measures,
                 "inversion": _inversion_measures, "pumping": _pumping_measures,
-                "reports": _report_measures, "recompute": _recompute_measures}
+                "reports": _report_measures, "recompute": _recompute_measures,
+                "streamlit": _streamlit_measures}
     return [m for g in GROUPS if g in groups for m in builders[g]()]
 
 

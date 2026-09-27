@@ -17,13 +17,17 @@
  *
  * What is recorded, per run:
  *   - first paint and first contentful paint, from the Paint Timing entries;
- *   - time to interactive, following Lighthouse: the first window of 5 s
- *     after first contentful paint with no long task (over 50 ms on the main
- *     thread) starting in it and never more than two requests in flight;
- *     TTI is the start of that window, which is the end of the last long
- *     task before it, or first contentful paint if there was none. Requests
- *     are the page's own, from Resource Timing; the service worker's
- *     precache runs in another thread and is not counted;
+ *   - time to interactive, following Lighthouse: find the first window of
+ *     5 s after first contentful paint with no long task (over 50 ms on the
+ *     main thread) running in it and never more than two requests in
+ *     flight; TTI is the end of the last long task before that window, or
+ *     first contentful paint if there was none. Requests are the page's
+ *     own, as the DevTools protocol's Network events see them, so one still
+ *     downloading counts from the moment it is sent. Resource Timing will
+ *     not do for this: it lists a request only once it has finished, and a
+ *     megabyte script half-way down a slow link would look like a quiet
+ *     network. The service worker's precache runs in another target and is
+ *     not counted;
  *   - bytes transferred before first paint: the transfer size (headers and
  *     body, as sent) of the document and of every resource whose response
  *     had finished by first paint;
@@ -82,38 +86,85 @@ function parseArgs(argv) {
 /* Installed before any of the app's own script runs, so the parse and the
  * boot are in the long-task record. */
 function instrument() {
-  window.__bench = { long: [] };
+  const b = window.__bench = { long: [] };
+  const keep = (entries) => entries.forEach((e) =>
+    b.long.push({ start: e.startTime, duration: e.duration }));
   try {
-    new PerformanceObserver((list) => list.getEntries().forEach((e) =>
-      window.__bench.long.push({ start: e.startTime, duration: e.duration })))
-      .observe({ type: 'longtask', buffered: true });
-  } catch (e) { window.__bench.unsupported = String(e); }
+    b.observer = new PerformanceObserver((list) => keep(list.getEntries()));
+    b.observer.observe({ type: 'longtask', buffered: true });
+    // An observer's callback is itself a queued task and may not have run
+    // yet when the long tasks are read; this takes what is waiting for it.
+    b.flush = () => keep(b.observer.takeRecords());
+  } catch (e) { b.unsupported = String(e); b.flush = () => {}; }
 }
 
-/* Lighthouse's TTI, or null while the quiet window it needs has not yet been
- * observed in full. A window is only judged once a second has passed beyond
- * its end, because a long task is reported only after it finishes. */
-function interactive(quietMs) {
+/* What the TTI needs from the page, read in one task. Because this runs on
+ * the main thread, every long task that started before it has finished. */
+function timeline() {
+  window.__bench.flush();
   const paint = performance.getEntriesByName('first-contentful-paint')[0];
-  if (!paint) return null;
-  const fcp = paint.startTime;
-  const now = performance.now();
-  const long = window.__bench.long;
   const nav = performance.getEntriesByType('navigation')[0];
-  const requests = [{ start: 0, end: nav ? nav.responseEnd : 0 }].concat(
-    performance.getEntriesByType('resource').map((r) => ({ start: r.startTime, end: r.responseEnd })));
-  const inFlight = (t) => requests.filter((r) => r.start <= t && t < r.end).length;
-  const starts = [fcp].concat(long.map((t) => t.start + t.duration).filter((e) => e > fcp))
-    .sort((a, b) => a - b);
-  for (const start of starts) {
+  return { fcp: paint ? paint.startTime : null, now: performance.now(),
+    fetchStart: nav ? nav.fetchStart : 0, long: window.__bench.long };
+}
+
+/* Every request the page sends, from the DevTools protocol, in its own
+ * monotonic clock (ms); one not yet finished ends at Infinity. data: URLs
+ * are not requests on the network and are left out. */
+function trackRequests(cdp) {
+  const requests = new Map();
+  cdp.on('Network.requestWillBeSent', (e) => {
+    if (requests.has(e.requestId) || e.request.url.startsWith('data:')) return;
+    requests.set(e.requestId, { type: e.type, start: e.timestamp * 1000, end: Infinity });
+  });
+  const finished = (e) => {
+    const r = requests.get(e.requestId);
+    if (r) r.end = e.timestamp * 1000;
+  };
+  cdp.on('Network.loadingFinished', finished);
+  cdp.on('Network.loadingFailed', finished);
+  return requests;
+}
+
+/* Lighthouse's TTI in the page's clock, or null while the quiet window it
+ * needs has not yet been seen in full. The protocol's clock is put on the
+ * page's by the document request, which it sends at the navigation's
+ * fetchStart. */
+function interactive(page, requests, quietMs) {
+  const { fcp, now, fetchStart, long } = page;
+  if (fcp === null) return null;
+  const all = [...requests.values()];
+  const doc = all.find((r) => r.type === 'Document');
+  if (!doc) return null;
+  const shift = doc.start - fetchStart;
+  const flights = all.map((r) => ({ start: r.start - shift, end: r.end - shift }));
+  const inFlight = (t) => flights.filter((r) => r.start <= t && t < r.end).length;
+  const ends = long.map((t) => t.start + t.duration);
+  // a quiet window can open at first contentful paint, when a long task
+  // ends, or when a request finishes
+  const opens = [fcp, ...ends, ...flights.map((r) => r.end)]
+    .filter((t) => t >= fcp && Number.isFinite(t)).sort((a, b) => a - b);
+  for (const start of opens) {
     const end = start + quietMs;
+    // judged a second after it closes, so a request sent near its end has
+    // reached us from the protocol before it counts as quiet
     if (end > now - 1000) return null;
-    if (long.some((t) => t.start >= start && t.start < end)) continue;
-    const points = [start].concat(requests.map((r) => r.start).filter((t) => t > start && t < end));
+    if (long.some((t) => t.start < end && t.start + t.duration > start)) continue;
+    const points = [start, ...flights.map((r) => r.start).filter((t) => t > start && t < end)];
     if (points.some((t) => inFlight(t) > 2)) continue;
-    return start;
+    return Math.max(fcp, ...ends.filter((e) => e <= start));
   }
   return null;
+}
+
+async function timeToInteractive(page, requests) {
+  const deadline = Date.now() + 300000;
+  for (;;) {
+    const tti = interactive(await page.evaluate(timeline), requests, QUIET_MS);
+    if (tti !== null) return tti;
+    if (Date.now() > deadline) throw new Error('no quiet window within 300 s of loading');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
 }
 
 function paints() {
@@ -177,6 +228,7 @@ async function reinvert(page) {
   })()`, null, { polling: 250, timeout: 600000 });
   return page.evaluate(() => {
     const b = window.__bench;
+    b.flush();
     const end = b.changes[b.changes.length - 1];
     const during = b.long.filter((t) => t.start < end && t.start + t.duration > b.click);
     return {
@@ -190,6 +242,7 @@ async function reinvert(page) {
 async function oneRun(runIndex) {
   return withPage(async (page, base, consoleErrors) => {
     const cdp = await page.context().newCDPSession(page);
+    const requests = trackRequests(cdp);
     await cdp.send('Network.enable');
     await cdp.send('Network.emulateNetworkConditions', SLOW_4G);
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: CPU_SLOWDOWN });
@@ -199,8 +252,7 @@ async function oneRun(runIndex) {
     await page.goto(base + '/index.html', { waitUntil: 'load', timeout: 300000 });
     const loadButton = page.getByRole('button', { name: /^Load Rokel/ });
     await loadButton.waitFor({ state: 'visible', timeout: 300000 });
-    const tti = await (await page.waitForFunction(interactive, QUIET_MS,
-      { polling: 500, timeout: 300000 })).jsonValue();
+    const tti = await timeToInteractive(page, requests);
     const painted = await page.evaluate(paints);
 
     // ---- the Rokel sample, on the Geophysics page -------------------------
@@ -261,8 +313,8 @@ const measures = [
   ['first paint', 'ms', (r) => r.fp, 'Paint Timing first-paint'],
   ['first contentful paint', 'ms', (r) => r.fcp, 'Paint Timing first-contentful-paint'],
   ['time to interactive', 'ms', (r) => r.tti,
-    'Lighthouse TTI: start of the first 5 s window after FCP with no long task ' +
-    'starting in it and at most 2 page requests in flight'],
+    'Lighthouse TTI: end of the last long task before the first 5 s window after FCP ' +
+    'with no long task in it and at most 2 page requests in flight (DevTools protocol)'],
   ['bytes before first paint', 'bytes', (r) => r.bytes,
     'Resource Timing transferSize of the document and every response finished by first paint'],
   ['rokel inversion wall time', 'ms', (r) => r.inversion.wall,

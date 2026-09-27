@@ -9,7 +9,7 @@ the machine named inside it.
 ## Running it
 
 ```bash
-python bench/run.py                                  # the Python package, ~7 min
+python bench/run.py                                  # the Python package, ~8 min
 python bench/run.py --quick --only inversion         # one group, 2 samples
 python bench/run.py --compare bench/baseline.json    # now, beside the baseline
 
@@ -34,7 +34,7 @@ python bench/run.py --from py.json --from web.json --out bench/baseline.json \
 ```
 
 `--only GROUP` (repeatable) is one of `import`, `forward`,
-`inversion`, `pumping`, `reports`, `recompute`. `--quick` takes 2
+`inversion`, `pumping`, `reports`, `recompute`, `streamlit`. `--quick` takes 2
 samples per measure instead of 5 (`web.mjs --quick`: 1 run instead of
 3), which is enough to see that something moved and not enough to
 quote.
@@ -85,6 +85,13 @@ built by the warm-up.
   apps save a project (`src_*` entries pointing at the bundled
   samples), reading of the project file included. The Rokel one inverts
   both soundings, so it is roughly their sum.
+- `streamlit/*` - one run of `app/streamlit_app.py` through Streamlit's
+  `AppTest`, in this process, which is what the app does on every click:
+  the first run of a new session, a rerun of that session, and a rerun
+  once every sample is loaded and the inversion and cost estimate have
+  run (the rerun changes nothing, so it is the cost every later click
+  pays before its own work). Left out, with a message, when Streamlit is
+  not installed.
 
 **`web.mjs`**, times in milliseconds and sizes in bytes, the median of
 3 cold runs. Each run is a fresh browser with an empty cache on a
@@ -95,12 +102,15 @@ rate 4) and DevTools' "Slow 4G" network (`Network.emulateNetworkConditions`:
 
 - `first paint`, `first contentful paint` - from the Paint Timing
   entries.
-- `time to interactive` - Lighthouse's definition: the first 5 s window
-  after first contentful paint in which no long task (over 50 ms on the
-  main thread) starts and no more than two requests are in flight; TTI
-  is the start of that window, which is the end of the last long task
-  before it. The requests are the page's own, from Resource Timing; the
-  service worker's precache is not counted.
+- `time to interactive` - Lighthouse's definition: find the first 5 s
+  window after first contentful paint in which no long task (over 50 ms
+  on the main thread) runs and no more than two requests are in flight;
+  TTI is the end of the last long task before that window, or first
+  contentful paint if there was none. The requests are the page's own,
+  taken from the DevTools protocol's Network events, so a download
+  still under way counts from the moment it was sent (Resource Timing
+  lists a request only once it has finished). The service worker's
+  precache is not counted.
 - `bytes before first paint` - the transfer size of the document and of
   every response that had finished by first paint.
 - `rokel inversion wall time` - load the Rokel sample from the
