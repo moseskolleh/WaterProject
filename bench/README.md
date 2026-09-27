@@ -59,6 +59,15 @@ and the method is written beside every measure in the JSON. So these
 are steady-state times: bytecode compiled, lookup tables and caches
 built by the warm-up.
 
+numpy is held to one BLAS thread (`OPENBLAS_NUM_THREADS=1`,
+`OMP_NUM_THREADS=1`, `MKL_NUM_THREADS=1`, unless the environment already
+sets them; each run's `machine` block records what they were). The
+inversion's matrices are small, and OpenBLAS's default of one thread per
+CPU made Rokel A 2.3x slower and ten times noisier on this 4-CPU machine
+while another process was running: 1.5 s (IQR 0.04 s) with one thread
+against 3.5 s (IQR 0.45 to 0.67 s) with four, in alternating runs of
+`--repeats 3 --only inversion`.
+
 - `import/*` - the cost of importing each subsystem in a fresh
   interpreter: the wall time of `python -c "import groundwater.X"`
   minus that of `python -c pass` run just before it. `import/bare

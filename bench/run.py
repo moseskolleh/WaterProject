@@ -28,6 +28,11 @@ import in the same process costs nothing: the wall time of
 the two run back to back and subtracted pair by pair so that a slow
 moment on the machine lands in both.
 
+numpy runs with one BLAS thread (``OPENBLAS_NUM_THREADS=1`` and its
+cousins, unless already set): the inversion's matrices are too small to
+gain from more, and with more its time follows whatever else the machine
+is running.
+
 Run from the repository root:
 
     python bench/run.py                              # everything
@@ -68,6 +73,16 @@ DATA = REPO / "examples" / "data"
 APP = REPO / "app" / "streamlit_app.py"
 sys.path.insert(0, str(SRC))
 os.environ.setdefault("MPLBACKEND", "Agg")
+# One BLAS thread, set before numpy is first imported. The inversion's
+# matrices are small, and OpenBLAS's default of a thread per CPU spends more
+# time waking threads than it saves; on a machine with anything else running
+# it made Rokel A 2.3x slower and ten times noisier (1.5 s, IQR 0.04 s, with
+# one thread; 3.5 s, IQR 0.45 to 0.67 s, with four). A number that moves
+# with the neighbours' load cannot compare two commits. setdefault, so a
+# run can still ask for more and the machine block records it.
+BLAS_THREADS = ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS")
+for _name in BLAS_THREADS:
+    os.environ.setdefault(_name, "1")
 
 #: The output's own layout number; ``--from`` refuses a file in another.
 SCHEMA = 1
@@ -569,7 +584,8 @@ def method_of(measure: Measure, repeats: int, loops: int = 1) -> str:
                 f"{measure.module}\"` minus `python -c pass` run just before it; "
                 f"1 warm-up, {repeats} samples, median")
     looped = f", each sample {loops} calls averaged" if loops > 1 else ""
-    return f"in process; 1 warm-up call, {repeats} samples{looped}, median"
+    return (f"in process, OPENBLAS_NUM_THREADS={os.environ.get('OPENBLAS_NUM_THREADS')}; "
+            f"1 warm-up call, {repeats} samples{looped}, median")
 
 
 def run_measures(measures: list[Measure], repeats: int, echo=print) -> list[dict]:
@@ -630,6 +646,7 @@ def run_header(options: dict) -> dict:
             "python": platform.python_version(),
             "numpy": numpy.__version__,
             "scipy": scipy.__version__,
+            "blas_threads": {name: os.environ.get(name) for name in BLAS_THREADS},
             # a load average well above zero means another process shared the
             # machine, and the numbers are slower than they would be alone
             "load_average": list(os.getloadavg()) if hasattr(os, "getloadavg") else None,
