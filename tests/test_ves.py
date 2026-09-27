@@ -150,6 +150,7 @@ def test_inversion_recovers_synthetic_model():
         ([200.0, 1500.0, 60.0, 4000.0], [1.5, 5.0, 25.0]),  # KH curve
     ],
 )
+@pytest.mark.slow
 def test_a_simple_model_never_hides_a_far_better_one(rho, thicknesses):
     """Parsimony accepted the simplest model under the 10 percent target.
 

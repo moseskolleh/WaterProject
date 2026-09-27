@@ -10,6 +10,7 @@ WHO health failure and "faecal contamination" with E. coli at zero.
 
 from __future__ import annotations
 
+import pytest
 from docx import Document
 
 from groundwater.models import SiteMetadata, WaterQualityResult, WaterQualitySample
@@ -69,6 +70,7 @@ def test_the_geology_paragraph_names_a_polygon_as_the_map_key_does():
     assert "Freetown Layered Complex (Jf)" in text
 
 
+@pytest.mark.slow
 def test_the_field_work_section_reports_only_what_was_recorded(sample_data, tmp_path):
     from groundwater.ingestion import read_ves_workbook
     from groundwater.reporting import build_geophysical_report
@@ -209,6 +211,7 @@ def test_the_facies_section_says_what_the_water_is(sample_data):
     assert "WHO sets no health based guideline" in remark
 
 
+@pytest.mark.slow
 def test_a_provisional_report_qualifies_its_own_summary(sample_data, tmp_path):
     """The stamp on the cover was contradicted by an unqualified summary."""
     from groundwater.ingestion import read_pumping_workbook
@@ -236,6 +239,7 @@ def test_a_provisional_report_qualifies_its_own_summary(sample_data, tmp_path):
     assert "This report is provisional" not in _text(clean)
 
 
+@pytest.mark.slow
 def test_the_handover_and_completion_reports_say_what_they_hold(sample_data, tmp_path):
     """No marker-less map captioned as the water point, no blank cover
     lines, no duplicated rows, handpump care for a submersible pump, and
@@ -331,6 +335,7 @@ def test_a_tie_is_carried_through_the_whole_report(tmp_path):
     assert "The two points marked =1st cannot be told apart" in text
 
 
+@pytest.mark.slow
 def test_the_rokel_report_labels_its_half_space_and_carries_the_sheet_warnings(
         sample_data, tmp_path):
     """Every model table labelled layer 1, the surface, as the half-space; the

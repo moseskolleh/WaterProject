@@ -108,6 +108,7 @@ def _generated(root: Path) -> set[str]:
     }
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("case", [c["key"] for c in _load_catalogue().CASES])
 def test_the_committed_outputs_are_what_the_current_code_writes(case, tmp_path):
     """The example folders hold what the scripts write today, no more, no less.

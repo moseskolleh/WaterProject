@@ -245,6 +245,7 @@ def test_a_ready_report_carries_no_stamp(project, tmp_path):
     assert "NOT A CERTIFICATION" not in text
 
 
+@pytest.mark.slow
 def test_the_geophysical_report_is_stamped_when_the_site_is_unlocated(
         sample_data, tmp_path):
     """The gate declares a rule for this report, so the report must carry it.

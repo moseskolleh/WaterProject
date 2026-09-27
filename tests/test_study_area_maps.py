@@ -995,6 +995,7 @@ def test_a_straight_traverse_draws_its_points_rather_than_crashing(tmp_path):
     assert "enclose no area" in said
 
 
+@pytest.mark.slow
 def test_a_straight_traverse_still_gets_its_report(tmp_path):
     from groundwater.reporting.geophysical import (
         GeophysicalReportInputs,
