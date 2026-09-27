@@ -317,6 +317,76 @@ def test_wizard_grace_cleared_by_siting_change(sample_data):
     assert at.session_state["wiz_cost_depth"] == 95.0
 
 
+def _fail_inversion_for(monkeypatch, sounding_id):
+    """Make the inversion raise for one sounding and run for the rest.
+
+    The app imports invert_sounding from groundwater.ves on every run,
+    so patching the package attribute reaches the next run of the
+    script.
+    """
+    import groundwater.ves as ves_pkg
+
+    real = ves_pkg.invert_sounding
+
+    def invert(sounding, *args, **kwargs):
+        if sounding.sounding_id == sounding_id:
+            raise ValueError("synthetic inversion failure")
+        return real(sounding, *args, **kwargs)
+
+    monkeypatch.setattr(ves_pkg, "invert_sounding", invert)
+
+
+def test_a_failed_inversion_keeps_the_wizard_grace(sample_data, monkeypatch):
+    """Regression (PR #17): a siting run that fails part way must neither
+    crash the tab nor consume a loaded project's wizard grace, since it
+    produced no siting result to change the costing prefill."""
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["wiz_step"] = 1
+    at.run()
+    assert not at.exception
+    _fail_inversion_for(monkeypatch, "B (2)")
+    at.session_state["_wiz_load_grace"] = True
+    at.selectbox(key="sample_wiz_ves").select("rokel/rokel_ves.xlsx")
+    at.run()
+    bars = [e.proto.value for e in at.get("progress")]
+    at.button(key="wiz_run_ves").click()
+    at.run()
+    assert not at.exception, at.exception
+    errors = " ".join(str(e.value) for e in at.error)
+    assert "Inversion failed for sounding B (2)" in errors
+    # the run's part-full progress bar is cleared, not left beside the error
+    assert [e.proto.value for e in at.get("progress")] == bars
+    assert "ves_results" not in at.session_state
+    assert at.session_state["_wiz_load_grace"] is True
+
+
+def test_a_failed_inversion_keeps_the_previous_result(sample_data, monkeypatch):
+    """A failed rerun leaves the last successful siting result in place:
+    it is still the best answer anyone has, and the reports, the Overview
+    and the wizard's costing prefill all read it."""
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.run()
+    at.selectbox(key="sample_ves").select("rokel/rokel_ves.xlsx")
+    at.run()
+    at.button(key="run_ves").click()
+    at.run()
+    assert not at.exception
+    before = at.session_state["ves_results"]
+    at.session_state["_wiz_load_grace"] = True
+    _fail_inversion_for(monkeypatch, "B (2)")
+    at.button(key="run_ves").click()
+    at.run()
+    assert not at.exception, at.exception
+    errors = " ".join(str(e.value) for e in at.error)
+    assert "Inversion failed for sounding B (2)" in errors
+    assert "previous successful run" in errors
+    after = at.session_state["ves_results"]
+    assert [r.fit_error_percent for r in after[1]] == [
+        r.fit_error_percent for r in before[1]]
+    assert [i.rank for i in after[2]] == [i.rank for i in before[2]]
+    assert at.session_state["_wiz_load_grace"] is True
+
+
 def test_templates_tab(app):
     app.button(key="gen_templates").click()
     app.run()
