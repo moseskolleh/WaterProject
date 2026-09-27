@@ -14,6 +14,7 @@
 
   var GWT = global.GWT || (global.GWT = {});
   var S = GWT.support, C = GWT.core, charts = GWT.charts, docx = GWT.docx;
+  var engine = GWT.engine;
   var el = S.el, $ = S.$, card = S.card, button = S.button, field = S.field;
 
   var STORE_KEY = 'gwt.project.v1';
@@ -195,6 +196,8 @@
   var derived = {
     soundings: null, inversions: null, interpretations: null,
     log: null, test: null, analysis: null, sample: null, assessment: null,
+    /* why a test that is loaded has no analysis: stopped, or what it said */
+    analysisNote: null,
     design: null, estimate: null, programme: null,
     /* brought in by hand rather than computed from the sources: an area
      * inventory, other projects' summaries, an extracted scan */
@@ -337,11 +340,18 @@
 
   /* Rebuild every derived result from the stored sources. Called after any
    * upload, any manual entry and on load, so what a page shows and what a
-   * report contains are always the same computation. */
+   * report contains are always the same computation.
+   *
+   * The work is done in the engine worker and the page stays live while it
+   * runs, so two recomputes can overlap - a discharge typed while a sample is
+   * still loading. The newest wins. An older one's requests are cancelled
+   * and it commits nothing, and until the newest commits, the page keeps
+   * the last complete set of results rather than half of two. */
   async function recompute() {
+    var seq = ++recomputeSeq;
     recomputeState.running += 1;
     try {
-      await recomputeInner();
+      await recomputeInner(seq);
     } finally {
       recomputeState.running -= 1;
       recomputeState.generation += 1;
@@ -349,82 +359,126 @@
   }
 
   var recomputeState = { running: 0, generation: 0 };
+  var recomputeSeq = 0;
 
-  async function recomputeInner() {
+  /* The order the sheets were always read in, which is the order their
+   * notices are shown in. */
+  var SOURCE_ROLES = ['ves', 'drilling', 'pumping', 'quality'];
+  var SOURCE_LABELS = { ves: 'VES sheet', drilling: 'Drilling log',
+    pumping: 'Pumping sheet', quality: 'Water quality sheet' };
+
+  async function recomputeInner(seq) {
     var sources = store.get('sources') || {};
     var cfg = config();
+    var notices = [];
 
-    derived.soundings = null; derived.inversions = null;
-    derived.interpretations = null;
-    if (sources.ves) {
-      try {
-        var sheets = await S.readXlsx(S.base64ToBytes(sources.ves.b64));
-        var skippedSheets = [];
-        derived.soundings = C.readVesSheets(sheets, sources.ves.name, skippedSheets);
-        /* a sheet the reader could not use is named with the reason */
-        derived.skippedVesSheets = skippedSheets;
-        skippedSheets.forEach(function (flag) { S.toast(flag.message, 'warn'); });
-      } catch (e) {
-        S.toast('VES sheet: ' + e.message, 'error');
-      }
-    }
+    /* Whatever an older recompute, or an inversion, is still computing is
+     * for sources this one is about to replace. */
+    inversionRun += 1;
+    engine.cancel(['recompute', 'analysePumping', 'invert']);
 
-    derived.log = null;
-    if (sources.drilling) {
+    /* Reading a workbook or a Word sheet needs DOMParser, which a worker does
+     * not have, so the page reads the sheets and the worker derives the rest
+     * from what was read. */
+    var input = { config: cfg, sources: {},
+      manualDischarges: store.get('pumping.manualDischarges') || {} };
+    for (var r = 0; r < SOURCE_ROLES.length; r++) {
+      var role = SOURCE_ROLES[r], source = sources[role];
+      if (!source) continue;
       try {
-        var dsheets = await S.readXlsx(S.base64ToBytes(sources.drilling.b64));
-        derived.log = C.drillingFromGrid(dsheets[0].rows, sources.drilling.name);
-      } catch (e2) {
-        S.toast('Drilling log: ' + e2.message, 'error');
-      }
-    }
-
-    derived.test = null; derived.analysis = null;
-    if (sources.pumping) {
-      try {
-        var pbytes = S.base64ToBytes(sources.pumping.b64);
+        var bytes = S.base64ToBytes(source.b64);
         /* the crew is handed a Word field sheet as often as the workbook;
          * refusing it is how readings get retyped, and retyping is where the
          * transcription errors come from */
-        if (/\.docx$/i.test(sources.pumping.name || '')) {
-          derived.test = await C.readPumpingDocx(pbytes, sources.pumping.name);
-        } else {
-          var psheets = await S.readXlsx(pbytes);
-          derived.test = C.pumpingFromGrid(psheets[0].rows, sources.pumping.name);
-        }
-        applyManualDischarges(derived.test);
-        derived.analysis = C.analysePumpingTest(derived.test, cfg);
-      } catch (e3) {
-        S.toast('Pumping sheet: ' + e3.message, 'error');
+        input.sources[role] = role === 'pumping' && /\.docx$/i.test(source.name || '')
+          ? { name: source.name, test: await C.readPumpingDocx(bytes, source.name) }
+          : { name: source.name, sheets: await S.readXlsx(bytes) };
+      } catch (e) {
+        notices.push([role, SOURCE_LABELS[role] + ': ' + e.message, 'error']);
+      }
+      if (seq !== recomputeSeq) return;
+    }
+
+    var next;
+    try {
+      next = await engine.recompute(input);
+    } catch (e2) {
+      if (engine.isCancelled(e2)) return;
+      throw e2;
+    }
+    if (seq !== recomputeSeq) return;
+
+    next.analysis = null;
+    next.analysisNote = null;
+    if (next.test) {
+      var outcome = await analyseTest(next.test, cfg);
+      if (seq !== recomputeSeq) return;
+      next.test = outcome.test;
+      next.analysis = outcome.analysis;
+      next.analysisNote = outcome.note;
+      if (outcome.error) {
+        notices.push(['pumping', 'Pumping sheet: ' + outcome.error.message, 'error']);
       }
     }
 
-    derived.sample = null; derived.assessment = null;
-    if (sources.quality) {
-      try {
-        var qsheets = await S.readXlsx(S.base64ToBytes(sources.quality.b64));
-        derived.sample = C.qualityFromGrid(qsheets[0].rows, sources.quality.name);
-        derived.assessment = C.assessSample(derived.sample);
-      } catch (e4) {
-        S.toast('Water quality sheet: ' + e4.message, 'error');
-      }
-    }
+    derived.soundings = next.soundings;
+    if (next.skippedVesSheets) derived.skippedVesSheets = next.skippedVesSheets;
+    derived.inversions = null;
+    derived.interpretations = null;
+    derived.log = next.log;
+    derived.test = next.test;
+    derived.analysis = next.analysis;
+    derived.analysisNote = next.analysisNote;
+    derived.sample = next.sample;
+    derived.assessment = next.assessment;
+    notices = notices.concat(next.notices);
+    SOURCE_ROLES.forEach(function (role) {
+      notices.forEach(function (n) { if (n[0] === role) S.toast(n[1], n[2]); });
+    });
 
     adoptSiteMetadata();
     rebuildDesign();
     rebuildCosting();
   }
 
-  /* The crew often writes discharge nowhere on the sheet; the value entered on
-   * the Pumping test page belongs to the project, not to the file. */
-  function applyManualDischarges(test) {
-    var manual = store.get('pumping.manualDischarges') || {};
-    (test.steps || []).forEach(function (step) {
-      var value = manual[step.step_number];
-      if (value !== undefined && value !== null && value !== '') {
-        step.discharge_m3_per_h = Number(value);
-      }
-    });
+  var ANALYSIS_STOPPED = 'the analysis was stopped before it finished.';
+
+  /* The pumping analysis, shown in the work bar while it runs. Resolves to
+   * the test and its analysis, or to the test with no analysis and a note
+   * saying why: stopped, or the error the analysis gave (also returned, so
+   * it can be announced). Never rejects. */
+  async function analyseTest(test, cfg) {
+    var job = workBegin('pumping', 'Analysing the pumping test');
+    try {
+      var analysis = await engine.analysePumping(test, cfg, {
+        onProgress: function (fraction, stage) { workProgress(job, fraction, stage); },
+      });
+      /* the analysis holds its own copy of the test; that copy is the test */
+      return { test: analysis.test, analysis: analysis, note: null, error: null };
+    } catch (e) {
+      var stopped = engine.isCancelled(e);
+      return { test: test, analysis: null, note: stopped ? ANALYSIS_STOPPED : e.message,
+        error: stopped ? null : e };
+    } finally {
+      workEnd(job);
+    }
+  }
+
+  /* Analyse the loaded test again without re-reading any sheet: the Pumping
+   * test page's answer to an analysis that was stopped. */
+  async function reanalyseTest() {
+    var seq = recomputeSeq, test = derived.test;
+    if (!test) return;
+    engine.cancel('analysePumping');
+    var outcome = await analyseTest(test, config());
+    /* a recompute since has replaced the test this analysed */
+    if (seq !== recomputeSeq || derived.test !== test) return;
+    derived.test = outcome.test;
+    derived.analysis = outcome.analysis;
+    derived.analysisNote = outcome.note;
+    if (outcome.error) S.toast('Pumping sheet: ' + outcome.error.message, 'error');
+    rebuildDesign();
+    rebuildCosting();
   }
 
   /* The first sheet that carries a header block seeds the project metadata,
@@ -662,10 +716,13 @@
       store.replace(migrateLoadedState(Object.assign(blankState(), state)));
       applyTheme();
       await recompute();
-      await runInversions({ quiet: true });
+      /* started before the page is drawn, so the page says it is running */
+      var inverted = runInversions();
       renderChrome();
       render();
       S.toast('Project loaded.', 'ok');
+      await inverted;
+      refresh();
     } catch (e) {
       S.toast('That file is not a Groundwater Toolkit project: ' + e.message, 'error');
     }
@@ -695,10 +752,12 @@
     });
     store.replace(fresh);
     await recompute();
-    await runInversions({ quiet: false });
+    var inverted = runInversions();
     renderChrome();
     render();
     S.toast('Loaded ' + sample.label + '.', 'ok');
+    await inverted;
+    refresh();
   }
 
   /* --------------------------------------------------------------- uploading */
@@ -723,12 +782,14 @@
         var buffer = await S.readFile(file);
         var bytes = new Uint8Array(buffer);
         store.set('sources.' + role, { name: file.name, b64: S.bytesToBase64(bytes) });
-        await S.withBusy($('#page-host'), 'Reading ' + file.name + '…', async function () {
-          await recompute();
-          if (role === 'ves') await runInversions({ quiet: false });
-        });
+        await S.withBusy($('#page-host'), 'Reading ' + file.name + '…', recompute);
+        var inverted = role === 'ves' ? runInversions() : null;
         render();
         S.toast(file.name + ' loaded.', 'ok');
+        if (inverted) {
+          await inverted;
+          refresh();
+        }
       } catch (e) {
         S.toast('Could not read ' + file.name + ': ' + e.message, 'error');
       }
@@ -755,40 +816,184 @@
     ]);
   }
 
-  /* The VES inversion is the one expensive computation; it runs with a spinner
-   * and a progress note rather than freezing the page. */
-  async function runInversions(options) {
-    var opts = options || {};
-    if (!derived.soundings || !derived.soundings.length) {
+  /* The VES inversion is the one expensive computation. It runs in the engine
+   * worker a sounding at a time, with its progress in the work bar and a
+   * button there to stop it, and the page stays live meanwhile.
+   *
+   * A newer run replaces an older one, and a recompute replaces both, since
+   * it replaces the soundings they were inverting. Only the latest run
+   * commits, and only onto the soundings it inverted: an older run's results
+   * are dropped rather than written over the newer run's, and a stopped run
+   * leaves what was there before it. */
+  var inversionRun = 0;
+
+  async function runInversions() {
+    var run = ++inversionRun;
+    engine.cancel('invert');
+    var soundings = derived.soundings;
+    if (!soundings || !soundings.length) {
       derived.inversions = null; derived.interpretations = null;
       return;
     }
     var cfg = config();
-    var host = $('#page-host');
     var results = [], interpretations = [];
-    var work = async function () {
-      for (var i = 0; i < derived.soundings.length; i++) {
-        var sounding = derived.soundings[i];
-        await S.nextFrame();
+    var n = soundings.length;
+    var job = workBegin('invert', 'Inverting ' + n + ' ' + S.plural(n, 'sounding'));
+    try {
+      for (var i = 0; i < n; i++) {
+        var sounding = soundings[i];
+        var which = sounding.sounding_id + (n > 1 ? ' (' + (i + 1) + ' of ' + n + ')' : '');
+        workProgress(job, i / n, which);
         try {
-          var result = C.invertSounding(sounding, { config: cfg });
+          var result = await engine.invert(sounding, cfg, {
+            onProgress: function (fraction, layers) {
+              workProgress(job, (i + fraction) / n, which + ', ' + layers);
+            },
+          });
+          if (run !== inversionRun) return;
           results.push(result);
           interpretations.push(C.interpretModel(sounding, result.model, cfg));
         } catch (e) {
+          if (engine.isCancelled(e) || run !== inversionRun) return;
           S.toast(sounding.sounding_id + ': ' + e.message, 'warn');
         }
       }
-    };
-    if (opts.quiet) await work();
-    else {
-      await S.withBusy(host, 'Inverting ' + derived.soundings.length + ' ' +
-        S.plural(derived.soundings.length, 'sounding') + '…', work);
+    } finally {
+      workEnd(job);
     }
+    if (run !== inversionRun || derived.soundings !== soundings) return;
     derived.inversions = results;
     derived.interpretations = interpretations;
     C.rankInterpretations(interpretations, store.get('ves.preferredOrder'));
     rebuildDesign();
     rebuildCosting();
+  }
+
+  /* The VES page's buttons: start the run, draw the page as it now stands
+   * (running), and draw it again with the models once they are in. */
+  function invertAndShow() {
+    var inverted = runInversions();
+    render();
+    inverted.then(refresh);
+  }
+
+  /* ------------------------------------------------------------- work bar */
+
+  /* The engine work the page is waiting for, drawn above the page: what is
+   * running, how far it has got, and a button to stop it. The page stays live
+   * underneath - the work is in a worker - so the bar covers nothing, and it
+   * stays in view as the page scrolls. A job shows only once it has run for
+   * WORK_BAR_DELAY_MS, so a quick one never flashes it. */
+  var WORK_BAR_DELAY_MS = 150;
+  var work = {};
+  var workIds = 0;
+  var workBarFrame = null;
+
+  function workBegin(key, label) {
+    var job = { id: String(++workIds), key: key, label: label, detail: '',
+      fraction: 0, since: Date.now() };
+    work[key] = job;
+    setTimeout(drawWorkBarSoon, WORK_BAR_DELAY_MS);
+    return job;
+  }
+
+  function workProgress(job, fraction, detail) {
+    if (work[job.key] !== job) return;
+    job.fraction = Math.max(0, Math.min(1, fraction || 0));
+    if (detail) job.detail = detail;
+    drawWorkBarSoon();
+  }
+
+  function workEnd(job) {
+    if (work[job.key] === job) delete work[job.key];
+    drawWorkBarSoon();
+  }
+
+  function working(key) {
+    return !!work[key];
+  }
+
+  function drawWorkBarSoon() {
+    if (workBarFrame !== null) return;
+    workBarFrame = requestAnimationFrame(function () {
+      workBarFrame = null;
+      drawWorkBar();
+    });
+  }
+
+  /* Drawn in place: a bar rebuilt on every progress report would take the
+   * Cancel button out from under the pointer about to press it. */
+  function drawWorkBar() {
+    var host = $('#work-status');
+    if (!host) return;
+    var now = Date.now();
+    var jobs = Object.keys(work).map(function (key) { return work[key]; })
+      .filter(function (job) { return now - job.since >= WORK_BAR_DELAY_MS; });
+    var ids = jobs.map(function (job) { return job.id; });
+    Array.from(host.children).forEach(function (bar) {
+      if (ids.indexOf(bar.getAttribute('data-job')) < 0) host.removeChild(bar);
+    });
+    jobs.forEach(function (job) {
+      var bar = host.querySelector('[data-job="' + job.id + '"]');
+      if (!bar) {
+        bar = el('div.work-bar', { 'data-job': job.id, 'data-work': job.key }, [
+          el('span.spinner'),
+          el('div.work-text', [
+            el('span.work-label', job.label),
+            /* the host announces a job once, as it starts; not every step */
+            el('span.work-detail', { 'aria-live': 'off' }),
+            el('div.progress-track', { role: 'progressbar', 'aria-label': job.label,
+              'aria-valuemin': '0', 'aria-valuemax': '100' }, el('div.progress-fill')),
+          ]),
+          button('Cancel', function () { cancelWork(job.key); }, { variant: 'ghost',
+            title: 'Stop this computation; nothing it has done so far is kept' }),
+        ]);
+        host.appendChild(bar);
+      }
+      var percent = Math.round(100 * job.fraction);
+      bar.querySelector('.work-detail').textContent = job.detail;
+      bar.querySelector('.progress-fill').style.width = percent + '%';
+      bar.querySelector('.progress-track').setAttribute('aria-valuenow', String(percent));
+    });
+  }
+
+  /* The Cancel button. The worker is stopped mid-iteration if need be; on a
+   * page with no worker the press is read between soundings, since a task
+   * running on the page has it to itself until it returns. */
+  function cancelWork(key) {
+    if (!work[key]) return;
+    if (key === 'invert') {
+      inversionRun += 1;
+      engine.cancel('invert');
+      S.toast('The inversion was stopped, and nothing it had computed was ' +
+        'kept. The Geophysics page can run it again.', 'warn');
+    } else if (key === 'pumping') {
+      engine.cancel('analysePumping');
+      S.toast('The pumping analysis was stopped. The test is still loaded, and ' +
+        'the Pumping test page can run the analysis again.', 'warn');
+    }
+  }
+
+  /* Work in the worker finishes whenever it finishes, and meanwhile somebody
+   * may have started typing into the page: a redraw now would throw away a
+   * value typed and not yet committed. So the page is redrawn now if no
+   * field on it has focus, and otherwise as soon as that field loses it. */
+  var refreshPending = false;
+  function refresh() {
+    var host = $('#page-host');
+    var active = document.activeElement;
+    var typing = active && active !== host && host.contains(active) &&
+      /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName);
+    if (!typing) {
+      render();
+      return;
+    }
+    if (refreshPending) return;
+    refreshPending = true;
+    active.addEventListener('blur', function () {
+      /* after the field's own change handler has had its turn */
+      setTimeout(function () { refreshPending = false; render(); }, 0);
+    }, { once: true });
   }
 
   /* ================================================================== pages */
@@ -1691,9 +1896,7 @@
           derived.soundings.map(function (s) { return s.sounding_id; }).join(', ')) : null,
       ], {
         actions: derived.soundings ? [
-          button('Re-run inversion', function () {
-            runInversions({ quiet: false }).then(render);
-          }, { variant: 'ghost' }),
+          button('Re-run inversion', invertAndShow, { variant: 'ghost' }),
         ] : null,
       }),
     ];
@@ -1714,8 +1917,12 @@
     if (allFlags.length) nodes.push(card('Data checks', [S.checkList(allFlags)]));
 
     if (!derived.inversions || !derived.inversions.length) {
-      nodes.push(S.empty('The soundings are loaded but not yet inverted.',
-        button('Invert now', function () { runInversions({ quiet: false }).then(render); })));
+      nodes.push(working('invert')
+        ? S.empty('Inverting the soundings. Their models appear here when the ' +
+          'inversion finishes; the bar above shows how far it has got, and the ' +
+          'rest of the workspace can be used meanwhile.')
+        : S.empty('The soundings are loaded but not yet inverted.',
+          button('Invert now', invertAndShow)));
       return nodes;
     }
 
@@ -2736,11 +2943,25 @@
           tmax: C.fmtNum(Math.max.apply(null, step.time_min)),
           q: S.numberInput(step.discharge_m3_per_h, function (value) {
             store.set('pumping.manualDischarges.' + step.step_number, value);
-            recompute().then(render);
+            recompute().then(refresh);
           }, { step: 'any', class: 'input cell', style: { maxWidth: '9rem' } }),
         };
       })),
     ]));
+
+    if (!analysis) {
+      nodes.push(working('pumping')
+        ? S.empty('Analysing the pumping test. The results appear here when the ' +
+          'analysis finishes.')
+        : S.empty('This test has not been analysed: ' +
+          (derived.analysisNote || 'the analysis did not run.'),
+          button('Analyse now', function () {
+            var analysed = reanalyseTest();
+            render();
+            analysed.then(refresh);
+          })));
+      return nodes;
+    }
 
     if (analysis.flags.length) {
       nodes.push(card('Data checks', [S.checkList(analysis.flags.map(function (f) {
@@ -5170,7 +5391,7 @@
     function bindCfg(section, key) {
       return function (value) {
         store.set('config.' + section + '.' + key, value);
-        recompute().then(function () { runInversions({ quiet: true }).then(render); });
+        recompute().then(runInversions).then(refresh);
       };
     }
     function numberFields(section, keys) {
@@ -5326,9 +5547,17 @@
           'records, pumping tests, water quality, costing, supervision and ' +
           'handover — and produces client-ready Word reports.'),
         el('p', 'Everything runs in this browser. Uploaded field sheets are ' +
-          'parsed in the page, the analyses run in the page, and the reports are ' +
-          'assembled in the page. No data is sent to any server, which is what ' +
-          'makes it usable on a field laptop with an intermittent connection.'),
+          'read in the page, the analyses run in the browser, and the reports ' +
+          'are assembled in the page. No data is sent to any server, which is ' +
+          'what makes it usable on a field laptop with an intermittent ' +
+          'connection.'),
+        el('p', 'The long computations - the VES inversion and the pumping test ' +
+          'fits - run in a background thread of the browser (a Web Worker), so ' +
+          'the page stays usable while they work, shows how far they have got, ' +
+          'and can stop them. Opened as a file rather than from a web address, ' +
+          'the app cannot start that thread; it does the same work on the page ' +
+          'itself, with the same results, and the page is busy while each ' +
+          'sounding is inverted.'),
         el('p', 'Two features are the exception, and both are a button you ' +
           'press rather than something the page does on its own: looking up ' +
           'existing water points asks the Water Point Data Exchange, and the ' +
@@ -6208,17 +6437,18 @@
     });
 
     if (Object.keys(store.get('sources') || {}).length) {
-      await S.withBusy($('#page-host'), 'Restoring your session…', async function () {
-        await recompute();
-        await runInversions({ quiet: true });
-      });
+      await S.withBusy($('#page-host'), 'Restoring your session…', recompute);
+      var inverted = runInversions();
       render();
+      await inverted;
+      refresh();
     }
   }
 
   GWT.app = {
     init: init, store: store, derived: derived, goto: goto, render: render,
     recompute: recompute, runInversions: runInversions, config: config,
+    reanalyseTest: reanalyseTest, cancelWork: cancelWork, working: working,
     blankState: blankState, PAGES: PAGES, buildReport: buildReport,
     siteLatLon: siteLatLon, utmToLatLon: utmToLatLon,
     templates: TEMPLATE_SPECS, recomputeState: recomputeState,

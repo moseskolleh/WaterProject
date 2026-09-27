@@ -42,6 +42,10 @@
     <!-- filled in only when the browser stops mirroring the session to
          localStorage; see autosave handling in gwt-app.js -->
     <div id="autosave-banner" role="status" aria-live="polite"></div>
+    <!-- the engine work the page is waiting for - an inversion, a pumping
+         analysis - with its progress and a way to stop it; see the work bar
+         in gwt-app.js -->
+    <div id="work-status" class="work-status" role="status" aria-live="polite"></div>
     <noscript>
       <div class="callout callout-warn">
         <p><strong>This application needs JavaScript.</strong> Everything runs in
@@ -56,6 +60,7 @@
 <script src="js/support.js"></script>
 <script src="js/gwt-data.js"></script>
 <script src="js/gwt-core.js"></script>
+<script src="js/gwt-worker.js"></script>
 <script src="js/gwt-charts.js"></script>
 <script src="js/gwt-geolibre.js"></script>
 <script src="js/image-slot.js"></script>

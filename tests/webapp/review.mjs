@@ -760,10 +760,14 @@ await withPage(async (page, base, consoleErrors) => {
       if (seen === 1) throw new Error('this sounding will not invert');
       return real.call(C, s, o);
     };
+    /* The stub replaces the page's copy of the engine; the worker has its
+     * own, so the page's copy is the one that has to run. */
+    window.GWT.engine.forcePage(true);
     try {
-      await window.GWT.app.runInversions({ quiet: true });
+      await window.GWT.app.runInversions();
     } finally {
       C.invertSounding = real;
+      window.GWT.engine.forcePage(false);
     }
     window.GWT.app.goto('ves');
     await new Promise((r) => setTimeout(r, 200));
@@ -833,7 +837,7 @@ await withPage(async (page, base, consoleErrors) => {
   // browser report had no "Models tried", no poorly resolved boundary, no
   // suitability table, an annex nothing filled, and "a Schlumberger array"
   // whatever the sheets said.
-  await page.evaluate(() => window.GWT.app.runInversions({ quiet: true }));
+  await page.evaluate(() => window.GWT.app.runInversions());
   const rokelDoc = await issued('geophysical');
   check('ves: every sounding block says what else was tried',
     (rokelDoc.match(/Models tried: /g) || []).length === soundings.length,

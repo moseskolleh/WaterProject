@@ -1453,8 +1453,8 @@
     };
   }
 
-  /* Long computations (the VES inversion) must not freeze the page before the
-   * spinner has had a chance to paint. */
+  /* Work that holds the page (building a report, reading a PDF) must not
+   * freeze it before the spinner has had a chance to paint. */
   function nextFrame() {
     return new Promise(function (resolve) {
       requestAnimationFrame(function () { setTimeout(resolve, 0); });

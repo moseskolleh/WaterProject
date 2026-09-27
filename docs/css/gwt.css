@@ -795,6 +795,25 @@ table.data tr.row-total td { font-weight: 600; border-top: 1px solid var(--line-
 .progress-fill { height: 100%; transition: width 0.3s;
   background: linear-gradient(90deg, var(--brand), var(--brand-dark)); }
 
+/* The work bar: an inversion or a pumping analysis running in the engine
+   worker. The page underneath stays live, so the bar sits above it rather
+   than over it, and sticks to the top of the scrolling pane so its Cancel
+   button is in reach wherever the page has been scrolled to. */
+.work-status { position: sticky; top: 0; z-index: 25; }
+.work-bar {
+  display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap;
+  margin-bottom: 1rem; padding: 0.7rem 1rem;
+  border: 1px solid var(--line-strong); border-left: 3px solid var(--brand);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--bg-raised); box-shadow: var(--shadow-lift);
+}
+.work-bar .work-text { flex: 1; min-width: 12rem; display: flex; flex-wrap: wrap;
+  align-items: baseline; gap: 0.2rem 0.6rem; }
+.work-bar .work-label { font-size: 0.9rem; font-weight: 500; }
+.work-bar .work-detail { font-family: var(--mono); font-size: 0.72rem;
+  color: var(--ink-faint); }
+.work-bar .progress-track { flex-basis: 100%; margin-top: 0.3rem; }
+
 .wizard-steps { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-bottom: 1.2rem; }
 .wizard-step {
   display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.8rem;
@@ -877,7 +896,8 @@ table.data tr.row-total td { font-weight: 600; border-top: 1px solid var(--line-
 .qr-preview svg { max-width: 220px; height: auto; display: block; }
 
 @media print {
-  .app-nav, .app-top, .app-brand, .btn, .next-step, .toast-host { display: none !important; }
+  .app-nav, .app-top, .app-brand, .btn, .next-step, .toast-host,
+  .work-status { display: none !important; }
   .app { display: block; height: auto; overflow: visible; }
   .app-main { max-width: none; padding: 0; overflow: visible; background-image: none; }
   .app-main > * { max-width: none; }
