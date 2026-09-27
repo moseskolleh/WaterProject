@@ -25,7 +25,15 @@ water quality guidelines.
    iso-resistivity at a measured electrode spacing, the interpreted
    geoelectric section at the soundings' surveyed spacing and the
    apparent-resistivity pseudo-section, which is the readings
-   themselves before any inversion has been believed. Plus GIS layers
+   themselves before any inversion has been believed. Plus GIS layers,
+   and each continuous surface and the drill-target score written as a
+   georeferenced GeoTIFF beside its picture, so it can be sampled,
+   contoured or laid under imagery in any GIS rather than only looked
+   at (the Python app; the browser app draws the surfaces only as
+   pictures). A surface gets a raster only where the soundings enclose
+   ground to clip it to and none of them is a lower bound; otherwise it
+   stays a picture, as the protective-capacity map, drawn in classes,
+   always does
 3. To-scale borehole design drawings with lithology and construction columns
 4. Pumping test analysis (Cooper-Jacob, Theis, recovery, step tests) with a
    recommended safe yield and pump setting depth

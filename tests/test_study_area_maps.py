@@ -431,6 +431,11 @@ def test_subsurface_maps_render(tmp_path):
     ):
         path = fn(interps, zone=29, path=tmp_path / f"{name}.png")
         assert path.stat().st_size > 20_000, name
+    # the continuous surfaces are kept as rasters; the protective capacity
+    # is drawn in classes, and a raster of it would hand back the precision
+    # the classes withhold - the apps and the README say which is which
+    assert sorted(p.stem for p in tmp_path.glob("*.tif")) == [
+        "aquifer", "bedrock", "depth", "transverse"]
 
 
 def test_a_surface_from_two_soundings_is_refused(tmp_path):

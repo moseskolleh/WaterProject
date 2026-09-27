@@ -437,3 +437,154 @@ def test_two_spellings_of_one_district_are_not_a_disagreement():
         ("sheet 2", site("Bo")),
     ])
     assert [f.code for f in unknown] == ["inconsistent_district"]
+
+
+# A point in Koya (Port Loko), 40 m from the drawn edge of Tonkolili, and one
+# in the same chiefdom 197 m from it.
+_NEAR_TONKOLILI = (8.40887, -12.62951)
+_CLEAR_OF_TONKOLILI = (8.43877, -12.61862)
+
+
+def test_a_point_within_the_drawing_error_of_a_border_is_not_a_wrong_district():
+    """The chiefdom rings are simplified, so the line itself is only drawn to
+    about 89 m. A site 40 m from it can fall either side of the real border
+    without anybody having written anything wrong, and neither district
+    stated for it is a conflict.
+    """
+    from groundwater.ingestion.checks import district_at
+
+    lat, lon = _NEAR_TONKOLILI
+    assert district_at(lat, lon) == ("Koya (Port Loko)", "Port Loko")
+    for stated in ("Port Loko", "Tonkolili"):
+        assert check_site_consistency(_site_at(lat, lon, stated)) == [], stated
+
+
+def test_the_tolerance_forgives_a_border_and_not_a_copy_over_error():
+    """Two hundred metres from the line is not a border any more, and a
+    district two districts away is not one at any distance."""
+    lat, lon = _CLEAR_OF_TONKOLILI
+    flags = check_site_consistency(_site_at(lat, lon, "Tonkolili"))
+    assert [f.code for f in flags] == ["district_coordinate_conflict"]
+    assert "Koya (Port Loko) chiefdom, Port Loko district" in flags[0].message
+
+    lat, lon = _NEAR_TONKOLILI
+    flags = check_site_consistency(_site_at(lat, lon, "Kenema"))
+    assert [f.code for f in flags] == ["district_coordinate_conflict"]
+
+
+def test_a_point_inside_two_districts_as_drawn_is_in_either():
+    """The rings were simplified one at a time and overlap along some
+    borders. This point is inside West II and inside a Western Area Rural
+    ring too; the lookup can only return the first, and a sheet naming the
+    second has written nothing the map contradicts.
+    """
+    from groundwater.ingestion.checks import district_at
+    from groundwater.mapping.regional import near_districts
+
+    lat, lon = 8.46009, -13.24421
+    assert district_at(lat, lon)[1] == "Western Area Urban"
+    # containment, not distance, answers this: with no tolerance at all
+    assert near_districts(lat, lon, ["Western Area Rural"], 0.0)
+    assert not near_districts(lat, lon, ["Bo"], 0.0)
+
+
+def test_the_district_edge_tolerance_is_the_drawing_error():
+    """The tolerance is the simplification the rings were built with, and
+    follows it. It must not drift back toward the 0.05 degrees - 5.5 km - of
+    slack that let one wrong district in fourteen through the box test.
+    """
+    import importlib.util
+    import inspect
+    from pathlib import Path
+
+    from groundwater.ingestion.checks import DISTRICT_EDGE_TOLERANCE_M
+
+    repo = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "build_geodata", repo / "web" / "build_geodata.py")
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+    tol_deg = inspect.signature(builder.build_chiefdoms).parameters["tol"].default
+    # a degree of latitude in the metres coverage.py converts with, and a
+    # metre for the rounding of every vertex to five decimals
+    drawn_to_m = tol_deg * 110_600.0 + 1.0
+    assert drawn_to_m <= DISTRICT_EDGE_TOLERANCE_M <= drawn_to_m + 5.0, (
+        "the chiefdom rings are simplified at a different tolerance now; "
+        "move DISTRICT_EDGE_TOLERANCE_M, and its browser copy, with them")
+
+
+_JS_NEAR_DISTRICTS = r"""
+import { readFileSync, writeFileSync } from 'node:fs';
+import vm from 'node:vm';
+const sandbox = { console };
+sandbox.window = sandbox;
+vm.createContext(sandbox);
+for (const f of ['support.js', 'gwt-data.js', 'gwt-core.js']) {
+  vm.runInContext(readFileSync(process.argv[2] + '/' + f, 'utf8'), sandbox,
+    { filename: f });
+}
+const C = sandbox.GWT.core;
+const polys = C.loadPolygons();
+const cases = JSON.parse(readFileSync(process.argv[3], 'utf8'));
+writeFileSync(process.argv[4], JSON.stringify({
+  tolerance: C.DISTRICT_EDGE_TOLERANCE_M,
+  near: cases.map((c) => C.nearDistricts(c.lat, c.lon, c.districts, polys,
+    c.tolerance === null ? undefined : c.tolerance)),
+}));
+"""
+
+
+def test_the_browser_forgives_the_same_borders(tmp_path):
+    """The web app's district note is judged by the same rings at the same
+    distance, so a sheet read in the browser and by the toolkit is not
+    called wrong in one and right in the other."""
+    import json
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    import pytest
+
+    from groundwater.ingestion.checks import DISTRICT_EDGE_TOLERANCE_M
+    from groundwater.mapping.regional import near_districts
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed; run `node --version` to check")
+
+    cases = [
+        {"lat": _NEAR_TONKOLILI[0], "lon": _NEAR_TONKOLILI[1],
+         "districts": ["Tonkolili"], "tolerance": None},
+        {"lat": _CLEAR_OF_TONKOLILI[0], "lon": _CLEAR_OF_TONKOLILI[1],
+         "districts": ["Tonkolili"], "tolerance": None},
+        {"lat": _NEAR_TONKOLILI[0], "lon": _NEAR_TONKOLILI[1],
+         "districts": ["Kenema", "Bo"], "tolerance": None},
+        {"lat": 8.46009, "lon": -13.24421,
+         "districts": ["Western Area Rural"], "tolerance": 0.0},
+        {"lat": 9.8586, "lon": -11.3211,   # Falaba town, through the crosswalk
+         "districts": ["Falaba"], "tolerance": 0.0},
+        {"lat": 8.673, "lon": -10.51,      # the withheld Maforki wedge
+         "districts": ["Port Loko"], "tolerance": None},
+    ]
+    repo = Path(__file__).resolve().parents[1]
+    (tmp_path / "cases.json").write_text(json.dumps(cases), encoding="utf-8")
+    driver = tmp_path / "driver.mjs"
+    driver.write_text(_JS_NEAR_DISTRICTS, encoding="utf-8")
+    out = tmp_path / "out.json"
+    result = subprocess.run(
+        [node, str(driver), str(repo / "docs" / "js"),
+         str(tmp_path / "cases.json"), str(out)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    js = json.loads(out.read_text(encoding="utf-8"))
+
+    assert js["tolerance"] == DISTRICT_EDGE_TOLERANCE_M
+    mine = [
+        near_districts(c["lat"], c["lon"], c["districts"],
+                       DISTRICT_EDGE_TOLERANCE_M if c["tolerance"] is None
+                       else c["tolerance"])
+        for c in cases
+    ]
+    assert mine == [True, False, False, True, True, False]
+    assert js["near"] == mine

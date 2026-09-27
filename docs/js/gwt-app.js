@@ -1442,7 +1442,13 @@
           'and put over satellite imagery instead. GeoLibre is free and open ' +
           'source, and the file opens in its web app, its desktop app, its ' +
           'phone apps and in a Jupyter notebook. Nothing is uploaded: the ' +
-          'project is assembled in this page and saved to this machine.'),
+          'project is assembled in this page and saved to this machine. With ' +
+          'a GPS fix it also draws the separation distances as rings round ' +
+          'the wellhead: the ground a latrine, a burial ground or another ' +
+          'well has to stay out of. The Python app also keeps each ' +
+          'continuous surface clipped to the surveyed ground, and the ' +
+          'drill-target score, as a GeoTIFF for a GIS; this page draws the ' +
+          'surfaces only as pictures.'),
         el('div.btn-row', [
           button('Save GeoLibre project', function () {
             saveGeolibreProject();
@@ -1868,6 +1874,10 @@
         'gap between the boundaries.';
     }
     if (resolved.indexOf(found) >= 0) return '';
+    /* a point just over the drawn line is not a wrong district: the line is
+     * only drawn to DISTRICT_EDGE_TOLERANCE_M, and a site on a border can
+     * fall either side of it without anybody having written anything wrong */
+    if (C.nearDistricts(latlon.lat, latlon.lon, resolved, polygons())) return '';
     return "Stated district '" + stated + "' does not contain the " +
       'coordinates (' + where + '), which fall in ' + latlon.chiefdom +
       ' chiefdom, ' + found + ' district. Verify against the field notes.';

@@ -456,7 +456,8 @@ for (const f of ['support.js', 'gwt-data.js', 'gwt-core.js', 'gwt-geolibre.js'])
 const G = sandbox.GWT.geolibre;
 const input = JSON.parse(readFileSync(process.argv[3], 'utf8'));
 const project = G.siteProject(input.site);
-const wanted = ['Site', 'Drill-target suitability', 'Existing water points'];
+const wanted = ['Site', 'Drill-target suitability', 'Existing water points',
+  'Separation distances'];
 const computed = {};
 for (const layer of project.layers) {
   if (wanted.includes(layer.name)) computed[layer.name] = layer;
@@ -570,7 +571,8 @@ def test_the_browser_builder_agrees_with_this_one(tmp_path):
     assert js["mapView"] == mine["mapView"]
 
     by_name = {layer["name"]: layer for layer in mine["layers"]}
-    for name in ("Site", "Drill-target suitability", "Existing water points"):
+    for name in ("Site", "Drill-target suitability", "Existing water points",
+                 "Separation distances"):
         assert js["computed"][name] == by_name[name], f"{name} differs"
 
     assert js["portfolio"] == portfolio_project(portfolio)
@@ -829,3 +831,81 @@ def test_a_site_in_a_post_2017_district_can_be_exported():
         project = site_project(site=SiteMetadata(community="X", district=district))
         assert project["metadata"]["area"] == f"{district} district"
         assert project["mapView"]["zoom"] > 7.96, "framed on the country"
+
+
+# ------------------------------------------------ separation distances as rings
+
+
+def _rings(lat=8.59, lon=-13.1827):
+    from groundwater.mapping.geolibre import separation_ring_features
+
+    return separation_ring_features(lat, lon)
+
+
+def test_a_separation_ring_is_its_distance_on_the_ground():
+    """20 m must be 20 m at this latitude, not 20 m at the equator."""
+    import math
+
+    from groundwater.geo import geographic_to_utm
+
+    lat, lon = 8.59, -13.1827
+    centre = geographic_to_utm(lat, lon)
+    for ring in _rings(lat, lon):
+        radius = ring["properties"]["min_distance_m"]
+        spread = [
+            math.hypot(utm.easting - centre.easting, utm.northing - centre.northing)
+            for utm in (geographic_to_utm(point_lat, point_lon, centre.zone)
+                        for point_lon, point_lat in ring["geometry"]["coordinates"][0])
+        ]
+        # the slack is the six-decimal coordinate rounding, about 0.1 m
+        assert radius - 0.2 < min(spread) and max(spread) < radius + 0.2, (
+            radius, min(spread), max(spread))
+
+
+def test_the_rings_are_drawn_widest_first():
+    """The tight rings are the ones clicked most; drawn first, a 1000 m ring
+    would sit on top of them."""
+    widths = [ring["properties"]["min_distance_m"] for ring in _rings()]
+    assert widths == sorted(widths, reverse=True)
+    assert widths[0] == 1000 and widths[-1] == 3
+
+
+def test_every_separation_distance_is_drawn():
+    from groundwater.supervision import load_separation_distances
+
+    rings = _rings()
+    assert len(rings) == len(load_separation_distances())
+    assert {ring["properties"]["structure"] for ring in rings} == {
+        d.structure for d in load_separation_distances()
+    }
+
+
+def test_a_ring_says_what_it_means_and_what_it_rests_on():
+    """A circle on a map is not self-explanatory: it could as easily be read
+    as the area the borehole serves. And a ring reads as a rule, where the
+    table behind it records no source."""
+    latrine = [ring for ring in _rings()
+               if ring["properties"]["structure"] == "Septic tank or soakaway"][0]
+    meaning = latrine["properties"]["meaning"]
+    assert "at least 20 m from the borehole" in meaning
+    assert "stay clear" in meaning and "not the area the borehole serves" in meaning
+    assert "not a cited standard" in latrine["properties"]["basis"]
+
+
+def test_the_rings_are_drawn_but_do_not_decide_the_camera():
+    """The two 1000 m rings would otherwise frame every site the same way."""
+    project = site_project(site=_site(), zone=ZONE)
+    assert "Separation distances" in [layer["name"] for layer in project["layers"]]
+    assert project["mapView"]["zoom"] > 16, "the 1000 m rings took over the camera"
+
+
+def test_a_site_with_no_fix_gets_no_rings():
+    """A ring round a chiefdom centroid would be a separation distance from a
+    place nobody surveyed."""
+    project = site_project(site=SiteMetadata(community="Rokel", chiefdom="Koya"))
+    assert "Separation distances" not in [layer["name"] for layer in project["layers"]]
+
+
+def test_the_rings_can_be_left_out():
+    project = site_project(site=_site(), zone=ZONE, separation_rings=False)
+    assert "Separation distances" not in [layer["name"] for layer in project["layers"]]
