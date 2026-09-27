@@ -78,6 +78,11 @@ pages are committed inside the package. Rebuild those first when
 cd ui/depth-spine && npm ci && npm run build:all
 ```
 
+The icon is not edited in `docs/` either: `web/make_brand_assets.py` writes
+`docs/icon.svg` from the same drawing as the package's own icon, and a test
+fails if the two differ. `node web/build_icons.mjs` then rasterises it into
+the PNG sizes the manifest names.
+
 ### Checking it before you publish
 
 ```bash
@@ -177,10 +182,10 @@ text PDFs through `pdfplumber`.
   stlite 1.8.1 / Pyodide 0.29.3 runtime).
 - The built `docs/wasm/index.html` was booted in a real Chromium browser:
   the stlite runtime loads, the Python (WASM) interpreter starts and
-  the inlined files (package, app, sample data) mount correctly. The stlite runtime and the scientific wheels come from the
-  jsDelivr CDN at visit time, which is standard Pyodide infrastructure;
-  this build is the one page that needs the network, and the standalone
-  app is the one that does not.
+  the inlined files (package, app, sample data) mount correctly. The
+  stlite runtime and the scientific wheels come from the jsDelivr CDN at
+  visit time, which is standard Pyodide infrastructure, so this build
+  cannot start without the network; the standalone app can.
 - pyarrow is pinned below 25 in `requirements.txt`; 25.0.0 was
   observed to crash streamlit's table serialization in sandboxed
   Linux environments.

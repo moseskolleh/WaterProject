@@ -11,6 +11,8 @@
  *   - an update swapped in under a tab that is part way through a recompute
  *   - real work - loading a survey, recomputing it - with no network at all,
  *     rather than just a page that renders
+ *   - the Depth Spine workspace, which is built apart from docs/ and has
+ *     to draw in its own faces with nothing reachable but this machine
  *
  * Each of those is silent. The device works on the bench, in town, on the
  * machine that published it, and fails at a borehole three hours from the

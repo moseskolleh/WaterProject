@@ -44,22 +44,26 @@ need real project inputs or decisions to finish calibrating it.
    bundled geoBoundaries chiefdom polygons
    (`groundwater/data/sl_chiefdoms_geoboundaries.geojson`) and reads the
    current district, Karene and Falaba included, off the crosswalk in
-   `groundwater/data/sl_chiefdom_district.csv` - the same lookup the maps
-   and the coverage ranking use. `sl_districts.csv` is still bundled,
-   but only for the district and province names the apps offer; nothing
-   checks a point against its boxes. Two limits remain. The
-   chiefdom rings were simplified one at a time, so neighbours no
-   longer share a border exactly; a point within 50 m of a chiefdom
-   is placed on it, and a point further from every ring is reported as
+   `groundwater/data/sl_chiefdom_district.csv` - the same lookup the
+   maps and the coverage ranking use. `sl_districts.csv` is still
+   bundled, but only for the district and province names the apps
+   offer; nothing checks a point against its boxes. Two limits remain.
+   `web/build_geodata.py` simplifies each chiefdom ring on its own
+   (Douglas-Peucker, 0.0008 degrees), so neighbours no longer share a
+   border exactly; a point outside every ring but within 50 m of one is
+   placed on that chiefdom, and a point further out is reported as
    unplaced rather than guessed. And the detached Maforki fragment,
    which lies against Mafindor in Kono, is withheld for review
-   (`boundary_review.geojson`), so a borehole on that ground cannot be
-   placed. What would improve it:
-   the unsimplified geoBoundaries chiefdom download, or the OCHA
-   COD-AB boundaries from HDX with the sixteen current districts, so
-   that shared borders stay shared; and a gazetteer or Statistics
-   Sierra Leone source that confirms where the Maforki fragment and
-   the chiefdom-to-district crosswalk belong.
+   (`groundwater/data/boundary_review.geojson`), so a borehole on that
+   ground cannot be placed. The seams are a build choice rather than a
+   gap in the data: simplifying each shared border once, as a line both
+   neighbours use, would close them from the same source. What input
+   would improve it: the OCHA COD-AB boundaries from HDX, which carry
+   the sixteen current districts in the geometry rather than through a
+   crosswalk; the geoBoundaries release the bundled layer came from,
+   which `data_provenance.yaml` records as unrecorded; and a gazetteer
+   or Statistics Sierra Leone source that confirms where the Maforki
+   fragment and the chiefdom-to-district crosswalk belong.
 
 8. **Costing unit rates are indicative (added with the costing
    module).** The catalogue in
