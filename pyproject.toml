@@ -43,7 +43,7 @@ ai = ["anthropic>=0.78"]
 # noxfile.py, and build makes the wheel and sdist its release session ships.
 dev = [
     "pytest>=7.4", "segno>=1.6", "opencv-python-headless>=4.8", "rasterio>=1.3",
-    "ruff==0.16.4", "nox>=2024.4.15", "build>=1.0",
+    "ruff==0.16.9", "nox>=2024.4.15", "build>=1.0",
 ]
 
 [project.scripts]
