@@ -1703,16 +1703,28 @@ st.markdown(
 
 
 def run_ves_inversion(soundings) -> None:
-    """Invert and interpret the soundings, storing the shared results."""
-    # a fresh siting result is a genuine source change: the wizard
-    # costing prefill must follow it, not a previously loaded project
-    st.session_state.pop("_wiz_load_grace", None)
+    """Invert and interpret the soundings, storing the shared results.
+
+    A sounding that fails to invert is named in an error and nothing is
+    stored, so the last successful result stays in place: it is still the
+    best siting answer, and the reports and costing prefill read it.
+    """
     results = []
     interps = []
     progress = st.progress(0.0)
     for i, sounding in enumerate(soundings):
-        result = invert_sounding(sounding, CONFIG.ves)
-        interp = interpret_model(sounding, result.model, CONFIG.ves)
+        try:
+            result = invert_sounding(sounding, CONFIG.ves)
+            interp = interpret_model(sounding, result.model, CONFIG.ves)
+        except Exception as exc:  # noqa: BLE001 - one bad sounding is an error, not a crash
+            kept = ("The results shown are from the previous successful run."
+                    if "ves_results" in st.session_state else "")
+            st.error(
+                f"Inversion failed for sounding "
+                f"{sounding.sounding_id or i + 1}: {exc}. Check its readings "
+                f"in the workbook. {kept}".rstrip()
+            )
+            return
         results.append(result)
         interps.append(interp)
         progress.progress((i + 1) / len(soundings))
@@ -1721,6 +1733,9 @@ def run_ves_inversion(soundings) -> None:
     # so it named whichever sounding was parsed first as the drill target
     rank_interpretations(interps)
     st.session_state.ves_results = (soundings, results, interps)
+    # only a stored siting result is a source change the wizard costing
+    # prefill must follow; a failed run leaves a loaded project's grace
+    st.session_state.pop("_wiz_load_grace", None)
 
 
 
