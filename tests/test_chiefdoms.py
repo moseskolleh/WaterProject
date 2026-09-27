@@ -95,9 +95,9 @@ def test_no_chiefdom_claims_ground_it_is_nowhere_near():
     import json
     from pathlib import Path
 
-    from groundwater.mapping.regional import _bundled_geojson
+    from groundwater._resources import bundled_json
 
-    for feature in _bundled_geojson("sl_chiefdoms_geoboundaries.geojson")["features"]:
+    for feature in bundled_json("sl_chiefdoms_geoboundaries.geojson")["features"]:
         geometry = feature["geometry"]
         parts = (geometry["coordinates"] if geometry["type"] == "MultiPolygon"
                  else [geometry["coordinates"]])

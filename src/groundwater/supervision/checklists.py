@@ -15,9 +15,9 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass, field
-from importlib import resources
 from pathlib import Path
 
+from .._resources import bundled_text
 from ..models import DataFlag
 
 # Ordered stages of the supervision workflow, keyed as in the CSV.
@@ -65,12 +65,7 @@ def stage_title(key: str) -> str:
 
 def load_checklists(path: str | Path | None = None) -> list[ChecklistItem]:
     """Load the checklist items (bundled CSV unless a path is given)."""
-    if path is not None:
-        text = Path(path).read_text(encoding="utf-8")
-    else:
-        text = (
-            resources.files("groundwater") / "data" / "supervision_checklists.csv"
-        ).read_text(encoding="utf-8")
+    text = bundled_text("supervision_checklists.csv", path)
     items: list[ChecklistItem] = []
     counters: dict[str, int] = {}
     seen: set[str] = set()
@@ -263,12 +258,7 @@ def load_separation_distances(
     path: str | Path | None = None,
 ) -> list[SeparationDistance]:
     """Minimum borehole separation distances (FGN/NWRI 2010, via RWSN)."""
-    if path is not None:
-        text = Path(path).read_text(encoding="utf-8")
-    else:
-        text = (
-            resources.files("groundwater") / "data" / "site_separation_distances.csv"
-        ).read_text(encoding="utf-8")
+    text = bundled_text("site_separation_distances.csv", path)
     return [
         SeparationDistance(
             structure=row["structure"].strip(),

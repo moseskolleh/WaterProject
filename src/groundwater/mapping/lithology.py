@@ -32,8 +32,9 @@ import csv
 import functools
 import io
 from dataclasses import dataclass
-from importlib import resources
 from pathlib import Path
+
+from .._resources import bundled_text
 
 #: Which districts count as which region in the crosswalk. A coarse USGS
 #: class covers different formations in different parts of the country,
@@ -111,12 +112,12 @@ def region_of(district: str | None) -> str:
     return "interior"
 
 
+_CROSSWALK = "sl_lithology_usgs_crosswalk.csv"
+
+
 @functools.lru_cache(maxsize=1)
 def _rows() -> tuple[Lithology, ...]:
-    text = (
-        resources.files("groundwater") / "data" / "sl_lithology_usgs_crosswalk.csv"
-    ).read_text(encoding="utf-8")
-    return _parse(text)
+    return _parse(bundled_text(_CROSSWALK))
 
 
 def _parse(text: str) -> tuple[Lithology, ...]:
@@ -145,7 +146,7 @@ def load_crosswalk(path: str | Path | None = None) -> tuple[Lithology, ...]:
     """The lithology crosswalk, from the bundle or a replacement file."""
     if path is None:
         return _rows()
-    return _parse(Path(path).read_text(encoding="utf-8"))
+    return _parse(bundled_text(_CROSSWALK, path))
 
 
 def lithology_for(
