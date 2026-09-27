@@ -847,6 +847,18 @@ def offer_download(path: Path, label: str, keep: bool = True) -> None:
                            key=f"dl_{_html.escape(label)}_{path.name}")
 
 
+def _offer_raster(picture: Path) -> None:
+    """Download button for the GeoTIFF a map kept beside its picture.
+
+    Only an interpolated surface clipped to the surveyed ground is kept
+    (mapping.maps._keep_surface), so a map without one offers nothing
+    rather than a raster of extrapolated or lower-bound values.
+    """
+    raster = picture.with_suffix(".tif")
+    if raster.exists():
+        offer_download(raster, f"Download {raster.name} (GeoTIFF)")
+
+
 def _deliverables() -> list[tuple[str, Path]]:
     """Everything built this session that still exists on disk."""
     out = []
@@ -2470,6 +2482,7 @@ with tab_ves:
                 smap = workdir() / "suitability_map.png"
                 suitability_map(map_points, zone, path=smap)
                 st.image(str(smap))
+                _offer_raster(smap)
             else:
                 st.info(
                     "Add GPS coordinates to the VES points (sidebar site "
@@ -4050,6 +4063,7 @@ with tab_maps:
         for map_path in st.session_state.get("subsurface_paths", []):
             st.image(map_path)
             offer_download(Path(map_path), f"Download {Path(map_path).name}")
+            _offer_raster(Path(map_path))
         if st.session_state.get("section_path"):
             st.image(st.session_state["section_path"])
             offer_download(Path(st.session_state["section_path"]),
@@ -4070,7 +4084,10 @@ with tab_maps:
             "a Jupyter notebook. Nothing is uploaded: the file is written here "
             "and downloaded to this machine. With a GPS fix it also draws the "
             "separation distances as rings round the wellhead: the ground a "
-            "latrine, a burial ground or another well has to stay out of."
+            "latrine, a burial ground or another well has to stay out of. "
+            "Each interpolated surface is also kept as a GeoTIFF beside its "
+            "picture, offered under it, for sampling or contouring in a GIS; "
+            "the browser app draws the surfaces only as pictures."
         )
         _area = area_window(site, float(st.session_state.get("map_radius") or 40))
         if _area is None:

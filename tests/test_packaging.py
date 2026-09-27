@@ -131,6 +131,22 @@ def test_the_qr_oracles_are_declared_so_ci_installs_them():
         "the decoder is not in the dev extra")
 
 
+def test_the_raster_oracle_is_declared_so_ci_installs_it():
+    """The GeoTIFF checks read the file back through GDAL and skip without
+    it, so a wrongly georeferenced raster would ship looking fine."""
+    dev = _optional_dependencies().get("dev") or []
+    packages = {spec.split(">=")[0].split("<")[0].strip().lower() for spec in dev}
+    assert "rasterio" in packages, "the GeoTIFF reader is not in the dev extra"
+
+
+def test_the_geotiff_writer_needs_nothing_at_run_time():
+    """The oracle must never become a dependency of the shipped code."""
+    source = (REPO / "src" / "groundwater" / "geotiff.py").read_text(encoding="utf-8")
+    for forbidden in ("rasterio", "osgeo", "gdal"):
+        assert f"import {forbidden}" not in source, forbidden
+        assert f"from {forbidden}" not in source, forbidden
+
+
 def test_the_qr_encoder_needs_nothing_at_run_time():
     """The oracles must never become dependencies of the shipped code."""
     source = (REPO / "src" / "groundwater" / "qr.py").read_text(encoding="utf-8")
