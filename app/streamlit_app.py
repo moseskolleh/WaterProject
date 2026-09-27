@@ -4085,11 +4085,13 @@ with tab_maps:
             "and downloaded to this machine. With a GPS fix it also draws the "
             "separation distances as rings round the wellhead: the ground a "
             "latrine, a burial ground or another well has to stay out of. "
-            "Each interpolated surface clipped to the surveyed ground is also "
-            "kept as a GeoTIFF beside its picture, offered under it, for "
-            "sampling or contouring in a GIS; a surface along a single line "
-            "of soundings, or with a lower-bound point, stays a picture. The "
-            "browser app draws the surfaces only as pictures."
+            "Each continuous surface clipped to the surveyed ground, and the "
+            "drill-target score, is also kept as a GeoTIFF beside its "
+            "picture, offered under it, for sampling or contouring in a GIS. "
+            "A surface along a single line of soundings or with a "
+            "lower-bound point stays a picture, and so does the "
+            "protective-capacity map, which is drawn in classes. The browser "
+            "app draws the surfaces only as pictures."
         )
         _area = area_window(site, float(st.session_state.get("map_radius") or 40))
         if _area is None:
