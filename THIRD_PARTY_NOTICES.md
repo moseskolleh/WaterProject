@@ -180,17 +180,26 @@ as unverified for redistribution. The options, in rough order of preference:
 
 ## Fonts
 
-The browser app and the Streamlit app set their text in three faces shipped
-with the repository as Latin subsets (`docs/fonts/`, and inlined into the
-Streamlit stylesheet), so no page needs a request to a third party:
+The browser app, the Streamlit app and the Depth Spine workspace set their
+text in faces shipped with the repository as Latin subsets
+(`src/groundwater/data/brand/fonts/`, copied to `docs/fonts/` for the browser
+app, inlined into the Streamlit stylesheet, and built into the Depth Spine's
+component and single-file pages), so no page needs a request to a third party:
 
 - **Space Grotesk** (Florian Karsten) · SIL Open Font License 1.1
 - **Inter** (Rasmus Andersson) · SIL Open Font License 1.1
 - **IBM Plex Mono** (IBM) · SIL Open Font License 1.1
+- **IBM Plex Sans** (IBM) · SIL Open Font License 1.1 · Depth Spine only
 
-The licence text is at `docs/fonts/LICENSE-OFL.txt`. The subsets are the
-ones built for `moseskolleh/sustaintheworld`, whose design language this
-project's interfaces follow.
+The licence text is at `src/groundwater/data/brand/fonts/LICENSE-OFL.txt`
+(and `docs/fonts/LICENSE-OFL.txt` for the three the browser app carries).
+Space Grotesk, Inter and IBM Plex Mono 400 and 500 are the subsets built for
+`moseskolleh/sustaintheworld`, whose design language this project's
+interfaces follow. IBM Plex Sans 400, 500, 600 and 700 and IBM Plex Mono 600
+are the Latin files of `@fontsource/ibm-plex-sans` and
+`@fontsource/ibm-plex-mono` 5.3.0 from the npm registry (OFL-1.1), copied
+unmodified. `manifest.json` in the fonts folder records the source and
+SHA-256 of every file, and the test suite compares them.
 
 ## Software dependencies
 

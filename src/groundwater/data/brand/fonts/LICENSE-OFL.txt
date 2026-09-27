@@ -1,8 +1,12 @@
-The typefaces in this directory are subsets of three families released under
-the SIL Open Font License, Version 1.1. They were built by scripts/build-fonts.js
-from the files Google Fonts serves; manifest.json beside them records the exact
-source URL and hash of each. The OFL permits bundling, subsetting and serving
-them with a website, and requires this notice to travel with the fonts.
+The typefaces in this directory are Latin subsets of four families released
+under the SIL Open Font License, Version 1.1. Inter, Space Grotesk and IBM Plex
+Mono 400 and 500 are the subsets moseskolleh/sustaintheworld built with its
+scripts/build-fonts.js from the files Google Fonts serves. IBM Plex Sans and
+IBM Plex Mono 600 are the Latin files the @fontsource packages (version 5.3.0,
+OFL-1.1) publish on npm, copied unmodified; the Depth Spine workspace is what
+uses them. manifest.json beside them records the source and SHA-256 of each
+file. The OFL permits bundling, subsetting and serving them with a website, and
+requires this notice to travel with the fonts.
 
 Inter
   Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
@@ -16,7 +20,11 @@ IBM Plex Mono
   Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"
   https://github.com/IBM/plex
 
-The licence text below is the same for all three.
+IBM Plex Sans
+  Copyright 2019 IBM Corp. All rights reserved.
+  https://github.com/IBM/plex
+
+The licence text below is the same for all four.
 
 -----------------------------------------------------------
 

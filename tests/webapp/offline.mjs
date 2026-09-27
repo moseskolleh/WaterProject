@@ -11,6 +11,8 @@
  *   - an update swapped in under a tab that is part way through a recompute
  *   - real work - loading a survey, recomputing it - with no network at all,
  *     rather than just a page that renders
+ *   - the Depth Spine workspace, which is built apart from docs/ and has
+ *     to draw in its own faces with nothing reachable but this machine
  *
  * Each of those is silent. The device works on the bench, in town, on the
  * machine that published it, and fails at a borehole three hours from the
@@ -22,6 +24,7 @@
  * while proving nothing.
  */
 import { withPage } from './harness.mjs';
+import { execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
@@ -343,6 +346,86 @@ await withPage(async (page, base, consoleErrors) => {
   check('no console errors beyond the ones these checks provoke',
     unexpected.length === 0, unexpected.slice(0, 10).join('\n     '));
 }, { overlay, network });
+
+// --- the Depth Spine, with no network at all --------------------------------
+// The workspace is a separate build, drawn in Streamlit and in the browser
+// demo rather than from docs/, and it was the one page that asked Google for
+// its fonts: offline it drew in the fallback faces, and every render told a
+// third party a borehole was being looked at. Both of its builds are loaded
+// here with every request that is not to this machine refused, and each has
+// to finish drawing with its three families actually loaded from its own
+// files.
+//
+// The payload is the toolkit's own - the Dr Timbo sample through build_view
+// and render_static - so what is drawn is what the app draws. That needs the
+// package importable, which it is wherever these checks run.
+const PYTHON = process.env.PYTHON || 'python';
+const rendered = JSON.parse(execFileSync(PYTHON, ['-c', `
+import json
+from groundwater.depth_spine import build_view, load, render_static
+view = build_view(load('dr_timbo'))
+print(json.dumps({'view': view, 'page': render_static(view)}, allow_nan=False))
+`], { encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024 }));
+
+const SPINE_FAMILIES = ['IBM Plex Sans', 'IBM Plex Mono', 'Space Grotesk'];
+const SPINE = fileURLToPath(new URL('../../src/groundwater/depth_spine/frontend/', import.meta.url));
+
+/* Wait for the workspace to draw and its fonts to settle, then report which
+ * faces the page loaded. Faces load on first use, so this is what the page
+ * actually set its text in, not what it could have. */
+async function spineFonts(frame) {
+  await frame.waitForSelector('.page:not(:has(.loading))', { timeout: 30000 });
+  return frame.evaluate(async () => {
+    await document.fonts.ready;
+    const faces = [...document.fonts];
+    return {
+      loaded: [...new Set(faces.filter((f) => f.status === 'loaded')
+        .map((f) => f.family.replace(/["']/g, '')))],
+      failed: faces.filter((f) => f.status === 'error')
+        .map((f) => `${f.family} ${f.weight}`),
+      text: document.body.innerText.length,
+    };
+  });
+}
+
+await withPage(async (page, base, consoleErrors) => {
+  /* Anything addressed off this machine is refused and written down. The
+   * static page is not even allowed this server: it is handed to the browser
+   * as a string, as st.components.v1.html does, so it has to need nothing. */
+  const left = [];
+  await page.context().route('**/*', (route) => {
+    const url = route.request().url();
+    if (url.startsWith(base + '/')) return route.continue();
+    left.push(url);
+    return route.abort('internetdisconnected');
+  });
+
+  await page.setContent(rendered.page, { waitUntil: 'load' });
+  const inline = await spineFonts(page);
+  check('Depth Spine, static page: no request leaves the machine',
+    left.length === 0, JSON.stringify(left.slice(0, 5)));
+  check('Depth Spine, static page: its three families load from the page itself',
+    SPINE_FAMILIES.every((f) => inline.loaded.includes(f)) &&
+    inline.failed.length === 0 && inline.text > 0, JSON.stringify(inline));
+
+  /* The component build, served the way Streamlit serves it and given its
+   * payload the way Streamlit gives it: a render message. */
+  left.length = 0;
+  const local = [];
+  page.on('request', (r) => { if (r.url().startsWith(base + '/')) local.push(r.url()); });
+  await page.goto(base + '/index.html', { waitUntil: 'load' });
+  await page.evaluate((view) => window.postMessage(
+    { type: 'streamlit:render', args: { view } }, '*'), rendered.view);
+  const component = await spineFonts(page);
+  check('Depth Spine, component build: no request leaves the machine',
+    left.length === 0, JSON.stringify(left.slice(0, 5)));
+  check('Depth Spine, component build: its three families load from its own files',
+    SPINE_FAMILIES.every((f) => component.loaded.includes(f)) &&
+    component.failed.length === 0 && component.text > 0 &&
+    local.some((u) => u.endsWith('.woff2')), JSON.stringify(component));
+  check('Depth Spine: no console errors',
+    consoleErrors.length === 0, consoleErrors.slice(0, 10).join('\n     '));
+}, { root: SPINE });
 
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
