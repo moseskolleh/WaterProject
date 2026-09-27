@@ -727,12 +727,10 @@ def cov_polys():
 def cached_districts():
     """(provinces, [(district, province), ...]) from the bundled table."""
     import csv as _csv
-    from importlib import resources
 
-    text = (
-        resources.files("groundwater") / "data" / "sl_districts.csv"
-    ).read_text(encoding="utf-8")
-    rows = list(_csv.DictReader(text.splitlines()))
+    from groundwater._resources import bundled_text
+
+    rows = list(_csv.DictReader(bundled_text("sl_districts.csv").splitlines()))
     provinces: list[str] = []
     for row in rows:
         if row["province"] not in provinces:
