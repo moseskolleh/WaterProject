@@ -1,0 +1,938 @@
+{
+ "schema": 1,
+ "notes": "PROVISIONAL: taken at 7b46815 (main with the engine worker, plus this step's bench/) while another agent shared this 4-CPU machine; each run's machine block records its load average. numpy held to one BLAS thread. For orientation only; re-take on a quiet machine before quoting.",
+ "runs": [
+  {
+   "tool": "bench/run.py",
+   "commit": "7b46815e17c98a0634dc72343173f39acacac885",
+   "dirty": false,
+   "timestamp": "2026-09-27T22:24:10+00:00",
+   "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+    "cpu_count": 4,
+    "os": "Linux-6.18.44-fc-v37-x86_64-with-glibc2.39",
+    "python": "3.11.15",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "blas_threads": {
+     "OPENBLAS_NUM_THREADS": "1",
+     "OMP_NUM_THREADS": "1",
+     "MKL_NUM_THREADS": "1"
+    },
+    "load_average": [
+     2.42626953125,
+     2.6728515625,
+     2.4326171875
+    ]
+   },
+   "options": {
+    "repeats": 5,
+    "groups": [
+     "import",
+     "forward",
+     "inversion",
+     "pumping",
+     "reports",
+     "recompute",
+     "streamlit"
+    ]
+   }
+  },
+  {
+   "tool": "bench/web.mjs",
+   "commit": "7b46815e17c98a0634dc72343173f39acacac885",
+   "dirty": false,
+   "timestamp": "2026-09-27T22:32:50+00:00",
+   "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+    "cpu_count": 4,
+    "os": "Linux 6.18.44-fc-v37 x64",
+    "node": "v22.22.2",
+    "chromium": "141.0.7390.37",
+    "load_average": [
+     2.56,
+     2.51,
+     2.42
+    ]
+   },
+   "options": {
+    "runs": 3,
+    "cpu_slowdown": 4,
+    "network": {
+     "offline": false,
+     "latency": 562.5,
+     "downloadThroughput": 180000,
+     "uploadThroughput": 84375
+    },
+    "viewport": "1440x900",
+    "console_errors": []
+   }
+  }
+ ],
+ "measures": [
+  {
+   "id": "import/bare interpreter start",
+   "group": "import",
+   "name": "bare interpreter start",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "wall time of `python -c pass`; 1 warm-up, 5 samples, median",
+   "median": 0.01291609800000515,
+   "iqr": 0.0003322150000713009,
+   "min": 0.01270164500010651,
+   "max": 0.013222074999703182,
+   "n": 5,
+   "samples": [
+    0.013222074999703182,
+    0.012775900999713485,
+    0.01270164500010651,
+    0.013108115999784786,
+    0.01291609800000515
+   ]
+  },
+  {
+   "id": "import/groundwater",
+   "group": "import",
+   "name": "groundwater",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "fresh interpreter each sample: wall time of `python -c \"import groundwater\"` minus `python -c pass` run just before it; 1 warm-up, 5 samples, median",
+   "median": 0.1458129419997931,
+   "iqr": 0.0030952730007811624,
+   "min": 0.14132280200010428,
+   "max": 0.15781164700001682,
+   "n": 5,
+   "samples": [
+    0.1458129419997931,
+    0.14867422800034547,
+    0.14132280200010428,
+    0.1455789549995643,
+    0.15781164700001682
+   ]
+  },
+  {
+   "id": "import/groundwater.costing",
+   "group": "import",
+   "name": "groundwater.costing",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "fresh interpreter each sample: wall time of `python -c \"import groundwater.costing\"` minus `python -c pass` run just before it; 1 warm-up, 5 samples, median",
+   "median": 0.7530242729999372,
+   "iqr": 0.022576807999485027,
+   "min": 0.7139489279998088,
+   "max": 0.8022660740002721,
+   "n": 5,
+   "samples": [
+    0.7530242729999372,
+    0.8022660740002721,
+    0.7619013389994507,
+    0.7139489279998088,
+    0.7393245309999656
+   ]
+  },
+  {
+   "id": "import/groundwater.depth_spine",
+   "group": "import",
+   "name": "groundwater.depth_spine",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "fresh interpreter each sample: wall time of `python -c \"import groundwater.depth_spine\"` minus `python -c pass` run just before it; 1 warm-up, 5 samples, median",
+   "median": 1.2385966689998895,
+   "iqr": 0.06246166600021752,
+   "min": 1.154431761000069,
+   "max": 1.298488283000097,
+   "n": 5,
+   "samples": [
+    1.216035821999867,
+    1.154431761000069,
+    1.2784974880000846,
+    1.298488283000097,
+    1.2385966689998895
+   ]
+  },
+  {
+   "id": "import/groundwater.design",
+   "group": "import",
+   "name": "groundwater.design",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "fresh interpreter each sample: wall time of `python -c \"import groundwater.design\"` minus `python -c pass` run just before it; 1 warm-up, 5 samples, median",
+   "median": 1.0398200439999528,
+   "iqr": 0.07139820999964286,
+   "min": 0.9856348460002664,
+   "max": 1.2354140310003459,
+   "n": 5,
+   "samples": [
+    0.9856348460002664,
+    1.2354140310003459,
+    1.0713730659999783,
+    0.9999748560003354,
+    1.0398200439999528
+   ]
+  },
+  {
+   "id": "import/groundwater.extraction",
+   "group": "import",
+   "name": "groundwater.extraction",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "fresh interpreter each sample: wall time of `python -c \"import groundwater.extraction\"` minus `python -c pass` run just before it; 1 warm-up, 5 samples, median",
+   "median": 0.5349699070002316,
+   "iqr": 0.012442387999726634,
+   "min": 0.5234543249994204,
+   "max": 0.5946680599995489,
+   "n": 5,
+   "samples": [
+    0.5946680599995489,
+    0.5349699070002316,
+    0.5340925650002646,
+    0.5234543249994204,
+    0.5465349529999912
+   ]
+  },
+  {
+   "id": "import/groundwater.hydraulics",
+   "group": "import",
+   "name": "groundwater.hydraulics",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "fresh interpreter each sample: wall time of `python -c \"import groundwater.hydraulics\"` minus `python -c pass` run just before it; 1 warm-up, 5 samples, median",
+   "median": 1.0131453189997046,
+   "iqr": 0.056351231999542506,
+   "min": 0.9819814180004869,
+   "max": 1.0604084960000364,
+   "n": 5,
+   "samples": [
+    1.0131453189997046,
+    1.0006815110004936,
+    1.0604084960000364,
+    1.0570327430000361,
+    0.9819814180004869
+   ]
+  },
+  {
+   "id": "import/groundwater.ingestion",
+   "group": "import",
+   "name": "groundwater.ingestion",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "fresh interpreter each sample: wall time of `python -c \"import groundwater.ingestion\"` minus `python -c pass` run just before it; 1 warm-up, 5 samples, median",
+   "median": 0.5595921490003093,
+   "iqr": 0.02339008900025874,
+   "min": 0.5397207840001101,
+   "max": 0.601961086999836,
+   "n": 5,
+   "samples": [
+    0.5595921490003093,
+    0.601961086999836,
+    0.5397207840001101,
+    0.5823051760003182,
+    0.5589150870000594
+   ]
+  },
+  {
+   "id": "import/groundwater.mapping",
+   "group": "import",
+   "name": "groundwater.mapping",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "fresh interpreter each sample: wall time of `python -c \"import groundwater.mapping\"` minus `python -c pass` run just before it; 1 warm-up, 5 samples, median",
+   "median": 1.1859094589995038,
+   "iqr": 0.047603714000160835,
+   "min": 1.1715905370001565,
+   "max": 1.2732401799999025,
+   "n": 5,
+   "samples": [
+    1.1859094589995038,
+    1.1825020460000815,
+    1.2301057600002423,
+    1.2732401799999025,
+    1.1715905370001565
+   ]
+  },
+  {
+   "id": "import/groundwater.quality",
+   "group": "import",
+   "name": "groundwater.quality",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "fresh interpreter each sample: wall time of `python -c \"import groundwater.quality\"` minus `python -c pass` run just before it; 1 warm-up, 5 samples, median",
+   "median": 0.6291493400003674,
+   "iqr": 0.037272795999342634,
+   "min": 0.5978515290003088,
+   "max": 0.6614518869996573,
+   "n": 5,
+   "samples": [
+    0.6291493400003674,
+    0.5978515290003088,
+    0.658928559999822,
+    0.6216557640004794,
+    0.6614518869996573
+   ]
+  },
+  {
+   "id": "import/groundwater.reporting",
+   "group": "import",
+   "name": "groundwater.reporting",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "fresh interpreter each sample: wall time of `python -c \"import groundwater.reporting\"` minus `python -c pass` run just before it; 1 warm-up, 5 samples, median",
+   "median": 1.419863191999866,
+   "iqr": 0.03694552999968437,
+   "min": 1.313654165000571,
+   "max": 1.5630563129998336,
+   "n": 5,
+   "samples": [
+    1.419863191999866,
+    1.409387747999972,
+    1.313654165000571,
+    1.4463332779996563,
+    1.5630563129998336
+   ]
+  },
+  {
+   "id": "import/groundwater.siting",
+   "group": "import",
+   "name": "groundwater.siting",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "fresh interpreter each sample: wall time of `python -c \"import groundwater.siting\"` minus `python -c pass` run just before it; 1 warm-up, 5 samples, median",
+   "median": 0.4112741100002495,
+   "iqr": 0.027124827999614354,
+   "min": 0.38939546999972663,
+   "max": 0.4389065250002204,
+   "n": 5,
+   "samples": [
+    0.3996417940002175,
+    0.42676662199983184,
+    0.38939546999972663,
+    0.4112741100002495,
+    0.4389065250002204
+   ]
+  },
+  {
+   "id": "import/groundwater.supervision",
+   "group": "import",
+   "name": "groundwater.supervision",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "fresh interpreter each sample: wall time of `python -c \"import groundwater.supervision\"` minus `python -c pass` run just before it; 1 warm-up, 5 samples, median",
+   "median": 0.15667677999999796,
+   "iqr": 0.0035095260000161943,
+   "min": 0.15075346500043452,
+   "max": 0.19201819799991426,
+   "n": 5,
+   "samples": [
+    0.15075346500043452,
+    0.15362491399991995,
+    0.19201819799991426,
+    0.15713443999993615,
+    0.15667677999999796
+   ]
+  },
+  {
+   "id": "import/groundwater.ves",
+   "group": "import",
+   "name": "groundwater.ves",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "fresh interpreter each sample: wall time of `python -c \"import groundwater.ves\"` minus `python -c pass` run just before it; 1 warm-up, 5 samples, median",
+   "median": 0.3768526819994804,
+   "iqr": 0.023382321000099182,
+   "min": 0.3635651140002665,
+   "max": 0.4208862790001149,
+   "n": 5,
+   "samples": [
+    0.4208862790001149,
+    0.36556093599983797,
+    0.3635651140002665,
+    0.3768526819994804,
+    0.38894325699993715
+   ]
+  },
+  {
+   "id": "forward/rokel sounding A, fitted model",
+   "group": "forward",
+   "name": "rokel sounding A, fitted model",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "in process, OPENBLAS_NUM_THREADS=1; 1 warm-up call, 5 samples, each sample 174 calls averaged, median",
+   "median": 0.0009671262816100771,
+   "iqr": 5.488836206924384e-05,
+   "min": 0.0009108730114949975,
+   "max": 0.001036016183907227,
+   "n": 5,
+   "samples": [
+    0.001036016183907227,
+    0.0009503889885037232,
+    0.001005277350572967,
+    0.0009108730114949975,
+    0.0009671262816100771
+   ]
+  },
+  {
+   "id": "inversion/rokel sounding A (1)",
+   "group": "inversion",
+   "name": "rokel sounding A (1)",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "in process, OPENBLAS_NUM_THREADS=1; 1 warm-up call, 5 samples, median",
+   "median": 1.4717994820002787,
+   "iqr": 0.12293852000038896,
+   "min": 1.45359310799995,
+   "max": 1.6310727959998985,
+   "n": 5,
+   "samples": [
+    1.6310727959998985,
+    1.4717994820002787,
+    1.45359310799995,
+    1.5868673530003434,
+    1.4639288329999545
+   ]
+  },
+  {
+   "id": "inversion/rokel sounding B (2)",
+   "group": "inversion",
+   "name": "rokel sounding B (2)",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "in process, OPENBLAS_NUM_THREADS=1; 1 warm-up call, 5 samples, median",
+   "median": 1.7386626490001618,
+   "iqr": 0.050320614999691315,
+   "min": 1.6224485510001614,
+   "max": 1.9136227270000745,
+   "n": 5,
+   "samples": [
+    1.9136227270000745,
+    1.7799170279999998,
+    1.6224485510001614,
+    1.7295964130003085,
+    1.7386626490001618
+   ]
+  },
+  {
+   "id": "pumping/kuntolo step test, discharges pending",
+   "group": "pumping",
+   "name": "kuntolo step test, discharges pending",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "in process, OPENBLAS_NUM_THREADS=1; 1 warm-up call, 5 samples, each sample 521 calls averaged, median",
+   "median": 9.327059500974638e-05,
+   "iqr": 2.626959693231498e-06,
+   "min": 8.19649827260356e-05,
+   "max": 0.00011622102495156977,
+   "n": 5,
+   "samples": [
+    0.00011622102495156977,
+    8.19649827260356e-05,
+    9.254698464451002e-05,
+    9.327059500974638e-05,
+    9.517394433774151e-05
+   ]
+  },
+  {
+   "id": "pumping/kuntolo step test, example discharges",
+   "group": "pumping",
+   "name": "kuntolo step test, example discharges",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "in process, OPENBLAS_NUM_THREADS=1; 1 warm-up call, 5 samples, each sample 46 calls averaged, median",
+   "median": 0.002375711108697942,
+   "iqr": 0.00030749865217054003,
+   "min": 0.002064730434777511,
+   "max": 0.0024880896739096383,
+   "n": 5,
+   "samples": [
+    0.002375711108697942,
+    0.0024880896739096383,
+    0.002111495152170708,
+    0.002064730434777511,
+    0.002418993804341248
+   ]
+  },
+  {
+   "id": "pumping/dr_timbo constant rate and recovery",
+   "group": "pumping",
+   "name": "dr_timbo constant rate and recovery",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "in process, OPENBLAS_NUM_THREADS=1; 1 warm-up call, 5 samples, each sample 49 calls averaged, median",
+   "median": 0.0015139269183663954,
+   "iqr": 2.5915020410602948e-05,
+   "min": 0.0014940192244819405,
+   "max": 0.001634110673477357,
+   "n": 5,
+   "samples": [
+    0.0015062386938756835,
+    0.0014940192244819405,
+    0.0015139269183663954,
+    0.0015321537142862864,
+    0.001634110673477357
+   ]
+  },
+  {
+   "id": "reports/geophysical survey (rokel)",
+   "group": "reports",
+   "name": "geophysical survey (rokel)",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "in process, OPENBLAS_NUM_THREADS=1; 1 warm-up call, 5 samples, median",
+   "median": 6.246190851999927,
+   "iqr": 0.19410275299969726,
+   "min": 5.990616155000225,
+   "max": 6.528134433000105,
+   "n": 5,
+   "samples": [
+    6.528134433000105,
+    6.376250820999758,
+    6.246190851999927,
+    5.990616155000225,
+    6.1821480680000604
+   ]
+  },
+  {
+   "id": "reports/pumping test (kuntolo)",
+   "group": "reports",
+   "name": "pumping test (kuntolo)",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "in process, OPENBLAS_NUM_THREADS=1; 1 warm-up call, 5 samples, median",
+   "median": 4.1191314580000835,
+   "iqr": 0.05134750300021551,
+   "min": 4.041638832999979,
+   "max": 4.191090863000227,
+   "n": 5,
+   "samples": [
+    4.074345826999888,
+    4.1191314580000835,
+    4.125693330000104,
+    4.191090863000227,
+    4.041638832999979
+   ]
+  },
+  {
+   "id": "reports/borehole completion (dr_timbo)",
+   "group": "reports",
+   "name": "borehole completion (dr_timbo)",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "in process, OPENBLAS_NUM_THREADS=1; 1 warm-up call, 5 samples, median",
+   "median": 4.204400444999919,
+   "iqr": 0.06887168100001873,
+   "min": 4.061265230000117,
+   "max": 4.351466825999978,
+   "n": 5,
+   "samples": [
+    4.061265230000117,
+    4.237939507000192,
+    4.351466825999978,
+    4.204400444999919,
+    4.169067826000173
+   ]
+  },
+  {
+   "id": "reports/water quality (dr_timbo)",
+   "group": "reports",
+   "name": "water quality (dr_timbo)",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "in process, OPENBLAS_NUM_THREADS=1; 1 warm-up call, 5 samples, median",
+   "median": 3.5286783060000744,
+   "iqr": 0.0761671169998408,
+   "min": 3.4365894359998492,
+   "max": 3.68386786200017,
+   "n": 5,
+   "samples": [
+    3.5346321339998212,
+    3.68386786200017,
+    3.4584650169999804,
+    3.5286783060000744,
+    3.4365894359998492
+   ]
+  },
+  {
+   "id": "reports/handover (dr_timbo)",
+   "group": "reports",
+   "name": "handover (dr_timbo)",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "in process, OPENBLAS_NUM_THREADS=1; 1 warm-up call, 5 samples, median",
+   "median": 3.9276212680001663,
+   "iqr": 0.15084380000007513,
+   "min": 3.661295074999998,
+   "max": 4.022686542999963,
+   "n": 5,
+   "samples": [
+    3.661295074999998,
+    3.9753288010001597,
+    3.8244850010000846,
+    4.022686542999963,
+    3.9276212680001663
+   ]
+  },
+  {
+   "id": "reports/cost estimate (dr_timbo)",
+   "group": "reports",
+   "name": "cost estimate (dr_timbo)",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "in process, OPENBLAS_NUM_THREADS=1; 1 warm-up call, 5 samples, median",
+   "median": 3.537778980999974,
+   "iqr": 0.11676648399998157,
+   "min": 3.348562635000235,
+   "max": 3.5637945819999004,
+   "n": 5,
+   "samples": [
+    3.348562635000235,
+    3.440377185000216,
+    3.5637945819999004,
+    3.537778980999974,
+    3.5571436690001974
+   ]
+  },
+  {
+   "id": "reports/payment certificate (dr_timbo)",
+   "group": "reports",
+   "name": "payment certificate (dr_timbo)",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "in process, OPENBLAS_NUM_THREADS=1; 1 warm-up call, 5 samples, median",
+   "median": 3.0467132769999807,
+   "iqr": 0.07979339399980745,
+   "min": 2.884030211999743,
+   "max": 3.1858470329998454,
+   "n": 5,
+   "samples": [
+    2.981336527000167,
+    3.0467132769999807,
+    3.1858470329998454,
+    3.0611299209999743,
+    2.884030211999743
+   ]
+  },
+  {
+   "id": "reports/supervision (dr_timbo)",
+   "group": "reports",
+   "name": "supervision (dr_timbo)",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "in process, OPENBLAS_NUM_THREADS=1; 1 warm-up call, 5 samples, median",
+   "median": 3.051910042000145,
+   "iqr": 0.045328386999244685,
+   "min": 3.0243649209996875,
+   "max": 3.2409328470002947,
+   "n": 5,
+   "samples": [
+    3.035197189000428,
+    3.2409328470002947,
+    3.0805255759996726,
+    3.051910042000145,
+    3.0243649209996875
+   ]
+  },
+  {
+   "id": "reports/asset placard",
+   "group": "reports",
+   "name": "asset placard",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "in process, OPENBLAS_NUM_THREADS=1; 1 warm-up call, 5 samples, median",
+   "median": 0.16753932099982194,
+   "iqr": 0.0005821939994348213,
+   "min": 0.16462070199986556,
+   "max": 0.17180946100006622,
+   "n": 5,
+   "samples": [
+    0.16716105800014702,
+    0.16462070199986556,
+    0.16774325199958184,
+    0.16753932099982194,
+    0.17180946100006622
+   ]
+  },
+  {
+   "id": "reports/asset record",
+   "group": "reports",
+   "name": "asset record",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "in process, OPENBLAS_NUM_THREADS=1; 1 warm-up call, 5 samples, median",
+   "median": 2.988268755000263,
+   "iqr": 0.03722107900057381,
+   "min": 2.8844082949999574,
+   "max": 3.0370730009999534,
+   "n": 5,
+   "samples": [
+    2.988268755000263,
+    2.9673783429998366,
+    3.0370730009999534,
+    3.0045994220004104,
+    2.8844082949999574
+   ]
+  },
+  {
+   "id": "recompute/rokel saved project",
+   "group": "recompute",
+   "name": "rokel saved project",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "in process, OPENBLAS_NUM_THREADS=1; 1 warm-up call, 5 samples, median",
+   "median": 3.3123061139999663,
+   "iqr": 0.08529057500027193,
+   "min": 3.2531611070003237,
+   "max": 3.566999988000134,
+   "n": 5,
+   "samples": [
+    3.566999988000134,
+    3.2905671149997033,
+    3.3123061139999663,
+    3.2531611070003237,
+    3.3758576899999753
+   ]
+  },
+  {
+   "id": "recompute/kuntolo saved project",
+   "group": "recompute",
+   "name": "kuntolo saved project",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "in process, OPENBLAS_NUM_THREADS=1; 1 warm-up call, 5 samples, each sample 11 calls averaged, median",
+   "median": 0.018313073454547437,
+   "iqr": 0.0003341000908883181,
+   "min": 0.018240389454521475,
+   "max": 0.022679886181818307,
+   "n": 5,
+   "samples": [
+    0.022679886181818307,
+    0.018265749000006923,
+    0.018313073454547437,
+    0.018240389454521475,
+    0.01859984909089524
+   ]
+  },
+  {
+   "id": "recompute/dr_timbo saved project",
+   "group": "recompute",
+   "name": "dr_timbo saved project",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "in process, OPENBLAS_NUM_THREADS=1; 1 warm-up call, 5 samples, each sample 4 calls averaged, median",
+   "median": 0.052030794250072177,
+   "iqr": 0.0005414759999666785,
+   "min": 0.05018975699999828,
+   "max": 0.06278143374993306,
+   "n": 5,
+   "samples": [
+    0.052030794250072177,
+    0.05018975699999828,
+    0.06278143374993306,
+    0.05225866149999092,
+    0.05171718550002424
+   ]
+  },
+  {
+   "id": "streamlit/first run, new session",
+   "group": "streamlit",
+   "name": "first run, new session",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "in process, OPENBLAS_NUM_THREADS=1; 1 warm-up call, 5 samples, median",
+   "median": 0.4185609480000494,
+   "iqr": 0.0122867570003109,
+   "min": 0.40108292900004017,
+   "max": 0.4765700459997788,
+   "n": 5,
+   "samples": [
+    0.414392535999923,
+    0.40108292900004017,
+    0.4266792930002339,
+    0.4765700459997788,
+    0.4185609480000494
+   ]
+  },
+  {
+   "id": "streamlit/rerun, new session",
+   "group": "streamlit",
+   "name": "rerun, new session",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "in process, OPENBLAS_NUM_THREADS=1; 1 warm-up call, 5 samples, median",
+   "median": 0.2986692059998859,
+   "iqr": 0.0209694169998329,
+   "min": 0.27838873100017736,
+   "max": 0.3645919790001244,
+   "n": 5,
+   "samples": [
+    0.3645919790001244,
+    0.2986692059998859,
+    0.27838873100017736,
+    0.30313024899987795,
+    0.28216083200004505
+   ]
+  },
+  {
+   "id": "streamlit/rerun, every sample loaded and analysed",
+   "group": "streamlit",
+   "name": "rerun, every sample loaded and analysed",
+   "tool": "bench/run.py",
+   "unit": "s",
+   "method": "in process, OPENBLAS_NUM_THREADS=1; 1 warm-up call, 5 samples, median",
+   "median": 3.8556811630000993,
+   "iqr": 0.24678066900014528,
+   "min": 3.827667467000083,
+   "max": 4.12633536300018,
+   "n": 5,
+   "samples": [
+    3.827667467000083,
+    3.8323831990001054,
+    3.8556811630000993,
+    4.12633536300018,
+    4.079163868000251
+   ]
+  },
+  {
+   "id": "web/first paint",
+   "group": "web",
+   "name": "first paint",
+   "tool": "bench/web.mjs",
+   "unit": "ms",
+   "method": "Paint Timing first-paint; CPU 4x slower, DevTools \"Slow 4G\" (562.5 ms, 180,000 B/s down, 84,375 B/s up), cold: fresh browser and empty cache each run; median of 3",
+   "median": 2500,
+   "iqr": 36,
+   "min": 2456,
+   "max": 2528,
+   "n": 3,
+   "samples": [
+    2528,
+    2500,
+    2456
+   ]
+  },
+  {
+   "id": "web/first contentful paint",
+   "group": "web",
+   "name": "first contentful paint",
+   "tool": "bench/web.mjs",
+   "unit": "ms",
+   "method": "Paint Timing first-contentful-paint; CPU 4x slower, DevTools \"Slow 4G\" (562.5 ms, 180,000 B/s down, 84,375 B/s up), cold: fresh browser and empty cache each run; median of 3",
+   "median": 2500,
+   "iqr": 36,
+   "min": 2456,
+   "max": 2528,
+   "n": 3,
+   "samples": [
+    2528,
+    2500,
+    2456
+   ]
+  },
+  {
+   "id": "web/time to interactive",
+   "group": "web",
+   "name": "time to interactive",
+   "tool": "bench/web.mjs",
+   "unit": "ms",
+   "method": "Lighthouse TTI: end of the last long task before the first 5 s window after FCP with no long task in it and at most 2 page requests in flight (DevTools protocol); CPU 4x slower, DevTools \"Slow 4G\" (562.5 ms, 180,000 B/s down, 84,375 B/s up), cold: fresh browser and empty cache each run; median of 3",
+   "median": 16253.899999999907,
+   "iqr": 48.85000000032596,
+   "min": 16164.599999999627,
+   "max": 16262.30000000028,
+   "n": 3,
+   "samples": [
+    16262.30000000028,
+    16253.899999999907,
+    16164.599999999627
+   ]
+  },
+  {
+   "id": "web/bytes before first paint",
+   "group": "web",
+   "name": "bytes before first paint",
+   "tool": "bench/web.mjs",
+   "unit": "bytes",
+   "method": "Resource Timing transferSize of the document and every response finished by first paint; CPU 4x slower, DevTools \"Slow 4G\" (562.5 ms, 180,000 B/s down, 84,375 B/s up), cold: fresh browser and empty cache each run; median of 3",
+   "median": 64781,
+   "iqr": 0,
+   "min": 64781,
+   "max": 64781,
+   "n": 3,
+   "samples": [
+    64781,
+    64781,
+    64781
+   ]
+  },
+  {
+   "id": "web/rokel inversion wall time",
+   "group": "web",
+   "name": "rokel inversion wall time",
+   "tool": "bench/web.mjs",
+   "unit": "ms",
+   "method": "click on \"Re-run inversion\" to the last change the page makes showing the models; CPU 4x slower, DevTools \"Slow 4G\" (562.5 ms, 180,000 B/s down, 84,375 B/s up), cold: fresh browser and empty cache each run; median of 3",
+   "median": 3798.8000000002794,
+   "iqr": 27.549999999813735,
+   "min": 3753.600000000093,
+   "max": 3808.6999999997206,
+   "n": 3,
+   "samples": [
+    3753.600000000093,
+    3798.8000000002794,
+    3808.6999999997206
+   ]
+  },
+  {
+   "id": "web/rokel inversion wall time, CPU unthrottled",
+   "group": "web",
+   "name": "rokel inversion wall time, CPU unthrottled",
+   "tool": "bench/web.mjs",
+   "unit": "ms",
+   "method": "as the wall time above, run again at once with the CPU slowdown off; CPU 4x slower, DevTools \"Slow 4G\" (562.5 ms, 180,000 B/s down, 84,375 B/s up), cold: fresh browser and empty cache each run; median of 3",
+   "median": 3622.2999999998137,
+   "iqr": 21.40000000037253,
+   "min": 3588.0999999996275,
+   "max": 3630.9000000003725,
+   "n": 3,
+   "samples": [
+    3588.0999999996275,
+    3622.2999999998137,
+    3630.9000000003725
+   ]
+  },
+  {
+   "id": "web/rokel inversion longest main-thread task",
+   "group": "web",
+   "name": "rokel inversion longest main-thread task",
+   "tool": "bench/web.mjs",
+   "unit": "ms",
+   "method": "longest Long Task overlapping the inversion; 0 = none over 50 ms; CPU 4x slower, DevTools \"Slow 4G\" (562.5 ms, 180,000 B/s down, 84,375 B/s up), cold: fresh browser and empty cache each run; median of 3",
+   "median": 175,
+   "iqr": 7.5,
+   "min": 171,
+   "max": 186,
+   "n": 3,
+   "samples": [
+    171,
+    186,
+    175
+   ]
+  },
+  {
+   "id": "web/rokel inversion main-thread blocking time",
+   "group": "web",
+   "name": "rokel inversion main-thread blocking time",
+   "tool": "bench/web.mjs",
+   "unit": "ms",
+   "method": "sum over Long Tasks overlapping the inversion of (duration - 50 ms); CPU 4x slower, DevTools \"Slow 4G\" (562.5 ms, 180,000 B/s down, 84,375 B/s up), cold: fresh browser and empty cache each run; median of 3",
+   "median": 191,
+   "iqr": 9.5,
+   "min": 184,
+   "max": 203,
+   "n": 3,
+   "samples": [
+    191,
+    203,
+    184
+   ]
+  }
+ ]
+}
