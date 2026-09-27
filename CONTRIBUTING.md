@@ -7,28 +7,78 @@ about where the number came from, and a stamped cover is the honest result.
 
 ## Development and checks
 
+`noxfile.py` holds the whole sequence below as sessions, and CI calls the
+same sessions step by step, so `nox -s check` passing here means CI passes:
+
 ```bash
 python -m pip install -e '.[dev,app,extract]'
-python -m pytest -q
-ruff check .
-python tests/webapp/make_reference.py --check
-python web/build_boundary_review.py --check
-python web/build_webapp_data.py
-python web/build_demo.py
-python web/build_offline.py
 npm install --no-save playwright@1.56.1
 npx playwright install chromium
+nox -s check      # lint, tests, bundles, parity, browser, depth_spine
+nox -s build      # regenerate every generated file, in order
+nox -s examples   # rerun the worked examples and rewrite their index
+nox -s release    # wheel, sdist and example packs in dist/
+```
+
+The sessions run in the current environment rather than in virtualenvs of
+their own: the install above is what they test, the matrix in CI installs
+the same way on each Python version, and the browser suites need
+Playwright from `node_modules` beside the checkout. `check` also needs npm,
+for the Depth Spine: it runs `npm ci`, the TypeScript check, `oxlint` and
+both Vite builds in `ui/depth-spine`, then fails if the result differs
+from what is committed under `src/groundwater/depth_spine/`. Those
+comparisons, like CI's, are against the git index, so stage a file you
+regenerated before checking it.
+
+The tests that take ten seconds or more - the Streamlit AppTests, the
+example regeneration and a few report builds - are marked `slow`, and a
+new test as slow as that should be marked too. Pull request CI runs them
+on Python 3.12 only; `nox -s tests -- -m "not slow"` is the quick loop
+while working.
+
+What the sessions run, in order:
+
+```bash
+# check: lint, tests
+python -m ruff check .    # the ruff pinned in the dev extra
+python -m pytest -q
+# check: bundles - the bundled data must match the source tables
+python web/build_boundary_review.py --check
+python web/build_webapp_data.py
+python web/build_offline.py
+git diff --exit-code -- docs/js/gwt-data.js docs/sw.js
+# check: parity, browser
+python tests/webapp/make_reference.py --check
 node tests/webapp/parity.mjs
 node tests/webapp/offline.mjs
 node tests/webapp/review.mjs
 node tests/webapp/smoke.mjs
+# check: depth_spine
+(cd ui/depth-spine && npm ci && npx tsc -b && npm run lint && npm run build:all)
+git diff --exit-code -- src/groundwater/depth_spine/frontend \
+    src/groundwater/depth_spine/static/workspace.html
+git ls-files --others --exclude-standard \
+    -- src/groundwater/depth_spine/frontend    # must print nothing
+
+# build: every generated file, in dependency order
+(cd ui/depth-spine && npm ci && npm run build:all)
+python web/build_boundary_review.py
+python web/build_webapp_data.py
+python web/build_demo.py
+python web/build_offline.py
 ```
 
 Regenerate the browser bundles in that order after Python or data changes.
-`build_offline.py` goes last: it hashes the whole app shell, `gwt-data.js`
-included, so running it before the bundle it is meant to describe produces a
-release identifier for a shell that no longer exists. Both `build_offline.py`
-and `build_boundary_review.py` take `--check`, which is what CI uses.
+The Depth Spine goes first because `build_demo.py` inlines the Python
+package, and the package carries the Depth Spine build; any change under
+`src/` or `app/` changes `docs/wasm/index.html`, which the test suite holds
+to a fresh build. `build_offline.py` goes last: it hashes the whole app
+shell, `gwt-data.js` included, so running it before the bundle it is meant
+to describe produces a release identifier for a shell that no longer
+exists. Both `build_offline.py` and `build_boundary_review.py` take
+`--check`. `tests/webapp/reference.json` is not in `build`: it moves only
+when numbers are meant to, so run `python tests/webapp/make_reference.py`
+by hand when they are.
 
 A release is all of its files or none of them. A precache that cannot complete
 fails the install and leaves the device on the release it already had; an open
@@ -111,6 +161,8 @@ python examples/run_dr_timbo_completion.py
 python examples/build_catalogue.py
 python examples/build_catalogue.py --check
 ```
+
+`nox -s examples` runs those five in that order.
 
 `build_catalogue.py` writes `examples/CATALOGUE.md` from the files themselves -
 counts out of the workbook readers, verdicts off each report's own cover - and

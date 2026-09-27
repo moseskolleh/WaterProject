@@ -295,6 +295,7 @@ def test_shallow_hole_deep_swl_produces_valid_geometry():
 
 # --- app: a loaded project with a non-string UTM zone must not brick it ------
 
+@pytest.mark.slow
 def test_app_survives_integer_meta_zone():
     """A project file storing meta_zone as an int (e.g. 29) must not raise on
     every sidebar rerun."""
@@ -312,6 +313,7 @@ def test_app_survives_integer_meta_zone():
 
 # --- app: a deep sounding must not brick the guided start -------------------
 
+@pytest.mark.slow
 def test_guided_start_survives_depth_beyond_the_widget_range():
     """A sounding that resolves no water zone recommends the depth it
     resolves (about half its largest AB/2), which on a deep survey exceeds
@@ -352,6 +354,7 @@ def test_guided_start_survives_depth_beyond_the_widget_range():
 
 # --- app: checklist answers must survive moving between stages --------------
 
+@pytest.mark.slow
 def test_supervision_answers_survive_a_stage_change():
     """Only the picked stage's widgets are drawn, and Streamlit discards the
     state of widgets a run does not draw. A supervisor who answered
@@ -495,6 +498,7 @@ def test_interpret_model_handles_a_bare_half_space():
     assert interp.max_drilling_depth_m == 0.0
 
 
+@pytest.mark.slow
 def test_discharges_do_not_carry_over_to_another_borehole():
     """The discharge boxes are keyed by step number, so they outlived the
     sheet they were typed for. A second borehole whose sheet also lacks
@@ -566,6 +570,7 @@ def test_excel_date_in_the_depth_column_is_rejected_and_reported(tmp_path):
     assert any(f.code == "interval_read_as_date" for f in log.flags)
 
 
+@pytest.mark.slow
 def test_two_boreholes_do_not_share_report_figures(tmp_path):
     """Report figures were written under fixed filenames and regenerated only
     when absent. The app gives every report in a session the same figures
@@ -649,6 +654,7 @@ def test_a_national_standard_failure_is_not_reported_as_a_taste_problem(tmp_path
     assert "usable for drinking" in taste.verdict
 
 
+@pytest.mark.slow
 def test_saving_right_after_an_analysis_captures_it():
     """The sidebar renders before every page body, so a "Save project"
     button built there carried the state as it was *before* this run's

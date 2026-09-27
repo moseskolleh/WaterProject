@@ -37,8 +37,12 @@ ai = ["anthropic>=0.78"]
 # to - one encodes the same standard, the other reads the result back. They
 # are test-only: nothing the toolkit ships imports either.
 # ruff is pinned to the exact version CI runs, so "it lints here" and "it
-# lints in CI" mean the same thing.
-dev = ["pytest>=7.4", "segno>=1.6", "opencv-python-headless>=4.8", "ruff==0.16.4"]
+# lints in CI" mean the same thing. nox runs the check sequence in
+# noxfile.py, and build makes the wheel and sdist its release session ships.
+dev = [
+    "pytest>=7.4", "segno>=1.6", "opencv-python-headless>=4.8", "ruff==0.16.4",
+    "nox>=2024.4.15", "build>=1.0",
+]
 
 [project.scripts]
 # batch use without the apps: recompute saved projects, pool a portfolio,
@@ -63,6 +67,17 @@ groundwater = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# A misspelt marker would quietly put a test in the wrong half of the CI
+# split, so a marker that is not registered here is an error.
+addopts = "--strict-markers"
+markers = [
+    # Pull request CI runs these on Python 3.12 only, and the nightly run on
+    # all four versions. They are every test that drives the app through
+    # AppTest, the regeneration of the worked examples, and the tests that
+    # took ten seconds or more in a full run: when they were marked, 59 tests
+    # of 983, and 540 s of a suite that ran in 930 s on one machine.
+    "slow: ten seconds or more; pull request CI runs these on Python 3.12 only",
+]
 
 [tool.ruff]
 # Ruff's own default excludes cover dist/ but not build/, which here holds a

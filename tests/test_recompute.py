@@ -1,10 +1,13 @@
 """Recomputing analysis objects from saved project sources."""
 
+import pytest
+
 from groundwater.ingestion import read_ves_workbook
 from groundwater.recompute import recompute_results
 from groundwater.ves import interpret_model, invert_sounding
 
 
+@pytest.mark.slow
 def test_recompute_from_bundled_samples(sample_data, tmp_path):
     sources = {
         "ves": {"sample": "rokel/rokel_ves.xlsx"},

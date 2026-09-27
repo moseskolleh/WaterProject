@@ -15,6 +15,11 @@ from streamlit.testing.v1 import AppTest  # noqa: E402
 
 APP = str(Path(__file__).resolve().parents[1] / "app" / "streamlit_app.py")
 
+# Each AppTest executes the whole app script, several times over: this module
+# is a quarter of the suite's running time, so pull request CI runs it on one
+# Python version rather than four.
+pytestmark = pytest.mark.slow
+
 
 @pytest.fixture(scope="module")
 def app(sample_data):

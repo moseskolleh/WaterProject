@@ -91,6 +91,7 @@ def test_house_style_no_dashes_or_contractions(geophysical_report):
     assert not lint_text(text), lint_text(text)
 
 
+@pytest.mark.slow
 def test_all_other_reports_build(sample_data, tmp_path):
     log = read_drilling_workbook(sample_data / "dr_timbo" / "dr_timbo_drilling_log.xlsx")
     test = read_pumping_workbook(sample_data / "dr_timbo" / "dr_timbo_constant_test.xlsx")
@@ -377,6 +378,7 @@ def test_pdf_extraction_feeds_the_ves_template(tmp_path):
     assert sounding.rho_app[-1] == pytest.approx(198.3)
 
 
+@pytest.mark.slow
 def test_the_works_lists_only_claim_what_the_data_evidences(sample_data, tmp_path: Path):
     """The handover is signed by three parties and the completion report is
     what the contractor is paid against; neither may assert a pumping test,
@@ -519,6 +521,7 @@ def test_the_works_list_certifies_nothing_the_project_holds_no_record_of():
     assert built.works_completed == ["Wellhead completion with apron."]
 
 
+@pytest.mark.slow
 def test_the_reports_say_what_a_thirty_minute_test_is_worth(sample_data, tmp_path):
     """Dr Timbo's completion and handover reports printed the yield and
     "successful and sustainable" without the analysis's own warnings."""
@@ -605,6 +608,7 @@ def test_a_two_step_fit_says_it_is_exact_by_construction(sample_data, tmp_path):
         ("2", "2.2"), ("3", "3")]
 
 
+@pytest.mark.slow
 def test_the_drawing_is_captioned_as_what_it_is(sample_data, tmp_path):
     """Dr Timbo's log records no casing string; the drawing was "as-built"."""
     d = sample_data / "dr_timbo"
@@ -684,6 +688,7 @@ def test_the_works_lists_word_the_fill_the_design_places(sample_data, tmp_path):
         assert _construction_works(built)[1] == bullet
 
 
+@pytest.mark.slow
 def test_the_intake_sentences_say_what_the_design_does(sample_data, tmp_path):
     """The pumping report promised that the design "sets it just below that
     screen" while the design lifted an intake above the level the test had
