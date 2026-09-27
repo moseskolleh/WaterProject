@@ -1229,8 +1229,8 @@
           'a GPS fix it also draws the separation distances as rings round ' +
           'the wellhead: the ground a latrine, a burial ground or another ' +
           'well has to stay out of. The Python app also keeps each ' +
-          'interpolated surface as a GeoTIFF for a GIS; this page draws the ' +
-          'surfaces only as pictures.'),
+          'interpolated surface clipped to the surveyed ground as a GeoTIFF ' +
+          'for a GIS; this page draws the surfaces only as pictures.'),
         el('div.btn-row', [
           button('Save GeoLibre project', function () {
             saveGeolibreProject();
