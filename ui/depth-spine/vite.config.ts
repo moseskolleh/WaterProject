@@ -19,6 +19,11 @@ export default defineConfig(({ mode }) => {
     // Relative asset URLs so the component build works wherever Streamlit
     // mounts it.
     base: './',
+    // The fonts live in the Python package's brand folder, outside this
+    // project, so the dev server has to be allowed to read them.
+    server: {
+      fs: { allow: ['.', '../../src/groundwater/data/brand/fonts'] },
+    },
     build: {
       outDir: inline
         ? 'dist-inline'

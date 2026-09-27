@@ -191,6 +191,33 @@ def test_static_workspace_ships_with_the_package():
     assert 'src="./assets' not in markup and 'href="./assets' not in markup
 
 
+def test_neither_build_asks_another_machine_for_anything():
+    """The workspace used to load its fonts from Google, so offline it drew in
+    the fallback faces and every render told a third party a borehole was being
+    looked at. Both builds now carry the faces themselves; offline.mjs proves it
+    in a browser with the network blocked, and this catches a regression
+    without one."""
+    import re
+
+    from groundwater.depth_spine import STATIC_BUILD, frontend_dir
+
+    pages = {"static": STATIC_BUILD.read_text(encoding="utf-8")}
+    build = frontend_dir()
+    assert build is not None
+    pages["component"] = (build / "index.html").read_text(encoding="utf-8")
+    for css in sorted((build / "assets").glob("*.css")):
+        pages[css.name] = css.read_text(encoding="utf-8")
+    remote = re.compile(
+        r"""(?:href|src)=["']?(?:https?:)?//|url\(\s*["']?(?:https?:)?//|@import""",
+        re.IGNORECASE,
+    )
+    for name, text in pages.items():
+        assert not remote.search(text), f"{name} fetches from another host"
+    # and the faces are really there: inlined in one, files beside the other
+    assert pages["static"].count("url(data:font/woff2;base64,") == 8
+    assert len(list((build / "assets").glob("*.woff2"))) == 8
+
+
 def test_real_view_survives_the_static_render(dr_timbo):
     """The full payload has to serialise cleanly into the page."""
     from groundwater.depth_spine import render_static

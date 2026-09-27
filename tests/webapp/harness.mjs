@@ -17,7 +17,7 @@ const TYPES = {
   '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png',
   '.webmanifest': 'application/manifest+json',
   '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  '.md': 'text/markdown',
+  '.md': 'text/markdown', '.woff2': 'font/woff2',
 };
 
 /* Serve docs/ over http on a free port.
@@ -35,8 +35,12 @@ const TYPES = {
  * server that says no. Emulated offline mode is not enough here - it does not
  * reliably reach a worker's own fetches, and a check that quietly still had a
  * network would pass while proving nothing.
+ *
+ * `root` serves a different directory instead of docs/: the offline checks
+ * use it to load the Depth Spine's component build the way Streamlit would.
  */
 export async function serveDocs(options = {}) {
+  const root = options.root || ROOT;
   const overlay = options.overlay || {};
   const network = options.network || {};
   const server = createServer(async (req, res) => {
@@ -67,7 +71,7 @@ export async function serveDocs(options = {}) {
       }
       let path = normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, '');
       if (path.endsWith('/')) path += 'index.html';
-      const file = join(ROOT, path);
+      const file = join(root, path);
       const info = await stat(file);
       if (info.isDirectory()) throw new Error('directory');
       res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream' });

@@ -53,6 +53,7 @@ groundwater = [
     "data/*.csv", "data/*.yaml", "data/*.geojson",
     "data/brand/*.png", "data/brand/*.svg",
     "data/brand/fonts/*.woff2", "data/brand/fonts/*.txt",
+    "data/brand/fonts/*.json",
 ]
 # The Depth Spine workspace ships inside the wheel. Without these the page is
 # dead on every pip install: the component build is absent and the static
