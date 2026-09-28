@@ -4,6 +4,25 @@ One section per version, newest first. PLAN.md step 0.4 closed the long
 "changes pending release" entry as 0.3.0; everything below the Stage 0 notes is
 that entry, kept as it was written.
 
+## Unreleased
+
+### Links that go to a page, and less before the first paint (PLAN.md steps 1.4 and 1.5)
+
+Every page of the browser app now has an address, `#/<page>`. The Geophysics, Pumping test and Asset registry pages can also name one item, as in `#/ves/VES-3`, `#/pumping/KTL-01` and `#/registry/<asset id>`. The back and forward buttons move between pages, the user guide links to them, and a QR code on a field sheet can open one. An address wins over the page a saved session was left on. An address the app doesn't know opens the Overview, and an item the open project doesn't hold is flagged across the top of the page. The Streamlit app has no such addresses; step 1.1 is where its pages get their own.
+
+The first screen now loads less. The map layers and the sample workbooks moved out of `gwt-data.js`, now 86 KB, into `gwt-geo.js` (760 KB) and `gwt-samples.js` (50 KB). Those two, and the figures, the map export, the photo slots and the document writer, are fetched the first time a page, a report or a sample needs them. The five scripts left in `index.html` are deferred, and the service worker still precaches every bundle, so the app works offline as before. Time to interactive on the throttled profile (4x CPU, Slow 4G, cold, median of 5 runs) fell from 16.25 s to 9.08 s, 44 percent lower, against the plan's 40. `bench/web.mjs` now follows Lighthouse in never placing time to interactive before the end of DOMContentLoaded; without that floor a page with deferred scripts reads as interactive at first paint, and the floor does not move the figure on 0.3.0. The cost has moved rather than gone: on a cold, uninstalled visit, the first page that draws maps fetches about 1.07 MB before it draws, several seconds on Slow 4G. Once the service worker has installed, that is instant, offline included. What remains on the critical path is `gwt-core.js` and `gwt-app.js`, uncompressed; minifying them is left for later.
+
+### A saved survey reopens without inverting it again (PLAN.md step 1.6)
+
+Reopening a saved survey no longer inverts it again (PLAN.md step 1.6). Each engine saves its inversions in the project file under the SHA-256 of the sounding's id, array type, AB/2, MN and apparent resistivities, the whole VES configuration, a format number and the engine's name. For Python the engine name is the package version, the numpy and scipy versions and a digest of ves/inversion.py, forward.py, splice.py and models.py. For the browser it is the release and a SHA-256 of gwt-core.js written into gwt-data.js. Only the chosen model, its iteration count, whether it converged and the layer-count trials are stored. `restore_inversion`/`restoreInversion` rebuild the rest, and the result is identical to a fresh one on the same machine and build. A file from another machine gives that machine's answer, which can differ in the last digits, as fresh inversions on two BLAS builds do. An entry is ignored and the sounding inverted afresh when its key does not match, when a field is malformed, or when its model does not reproduce the misfit the search recorded. The entry's digest catches accidental damage, not deliberate editing. project.yaml gains an optional `inversion_cache` (schema stays 1), and `.gwt.json` gains `state.inversionCache`. The cache is mirrored to localStorage but dropped from the mirror rather than letting it stop autosave. In the browser, a recompute such as typing a discharge no longer drops the inversions or cancels a run for the same soundings, which used to leave the Geophysics page showing "not yet inverted". Opening another project stops a running inversion before the new project replaces the session. Measured on a shared 4-CPU machine: reopening the saved Rokel project in Python went from 3.10 s to 34.6 ms (median of 5), and in the browser at 4x CPU slowdown from 4.87 s to 0.38 s (median of 3).
+
+### What is still open from these steps
+
+- A page with no service worker yet (a first visit, or `file://`) fetches its bundles on demand, so a deploy landing between first paint and a later bundle could mix two releases in one tab. A release query on the bundle URLs would close it; the service worker already matches with `ignoreSearch`.
+- The Python cache key names the numpy and scipy versions but not the BLAS build, and the browser's names the release and the engine's digest but not the JavaScript engine, so a project file from another machine or browser returns that machine's inversion.
+- Any change to `gwt-core.js`, or to the hashed Python modules, invalidates every saved inversion, even a change that does not touch the inversion. That is conservative by design.
+- The Streamlit "Run inversion" button still always inverts; only loading a project uses the saved inversions.
+
 ## 0.3.0
 
 ### The release
