@@ -4,9 +4,9 @@ Generates ``docs/wasm/index.html``: a self-contained page that runs the
 Streamlit app entirely in the visitor's browser via stlite (Streamlit
 compiled to WebAssembly with Pyodide). No server is involved; uploads
 never leave the browser. The page inlines the whole ``groundwater``
-package, the app script and the bundled sample datasets, so the only
-external fetches are the stlite runtime and the Pyodide/scientific
-wheels from the jsDelivr CDN. The display fonts ship inside the
+package, the app (its script and the page modules beside it) and the
+bundled sample datasets, so the only external fetches are the stlite
+runtime and the Pyodide/scientific wheels from the jsDelivr CDN. The display fonts ship inside the
 package, so nothing is fetched from a font service.
 
 This is the *second* thing published to Pages. The site root is the
@@ -109,6 +109,7 @@ __PYODIDE_LINE__
       "theme.sidebar.backgroundColor": "#000000",
       "theme.sidebar.secondaryBackgroundColor": "#141414",
       "client.toolbarMode": "viewer",
+      "global.disableWidgetStateDuplicationWarning": true,
     },
   },
   document.getElementById("root"),
@@ -123,8 +124,16 @@ def collect_files() -> dict:
     """Gather every file the app needs, keyed by its mount path."""
     files: dict[str, dict] = {}
 
-    app_source = (REPO / "app" / "streamlit_app.py").read_text(encoding="utf-8")
-    files["streamlit_app.py"] = {"t": "text", "d": app_source}
+    # The app is its entry script, app/streamlit_app.py, and the modules it
+    # imports from beside it: the pages (app/views/), the helpers they share
+    # and the session state schema. They are mounted as they sit in app/, so
+    # the imports resolve in the browser as they do on a server.
+    app_root = REPO / "app"
+    for path in sorted(app_root.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        mount_path = path.relative_to(app_root).as_posix()
+        files[mount_path] = {"t": "text", "d": path.read_text(encoding="utf-8")}
 
     # The whole package ships, including depth_spine: importing it no longer
     # needs the component build, and it carries a self-contained static

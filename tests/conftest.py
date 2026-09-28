@@ -97,3 +97,20 @@ def established_analysis():
     from groundwater.hydraulics import analyse_pumping_test
 
     return analyse_pumping_test(synthetic_constant_test(recovery=True))
+
+
+# ---------------------------------------------------------------------------
+# The Streamlit app
+# ---------------------------------------------------------------------------
+
+def goto(at, page: str):
+    """Open one of the Streamlit app's pages, as its sidebar navigation does.
+
+    Only the page on screen runs (PLAN.md step 1.1), so a test reaches a
+    page's widgets by opening the page first. ``page`` is the title the
+    sidebar lists.
+    """
+    at.session_state["nav"] = page
+    at.run()
+    assert not at.exception, at.exception
+    return at

@@ -138,7 +138,7 @@ ignore = [
 # and groundwater are imported: Streamlit Community Cloud pulls new source on
 # every push but only reinstalls packages when requirements.txt changes, so
 # without it the app file outruns the installed package and the imports break.
-# All 40 E402 in this file are that one deliberate decision.
+# All 9 E402 in this file are that one deliberate decision.
 "app/streamlit_app.py" = ["E402"]
 # Cell writes are packed onto one line with semicolons so each block reads
 # like the region of the spreadsheet it is filling in.

@@ -673,6 +673,7 @@ def test_saving_right_after_an_analysis_captures_it():
 
     app_path = str(Path(__file__).resolve().parents[1] / "app" / "streamlit_app.py")
     at = AppTest.from_file(app_path, default_timeout=600)
+    at.session_state["nav"] = "Geophysics (VES)"
     at.run()
     at.text_input(key="meta_community").set_value("Rokel")
     at.run()
