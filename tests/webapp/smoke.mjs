@@ -301,6 +301,7 @@ await withPage(async (page, base, consoleErrors) => {
       return null;
     }
     const same = (a, b) => differ(a, b, 'result', { a: new Map(), b: new Map() });
+    window.__same = same;
 
     const cfg = app.config();
     const soundings = app.derived.soundings;
@@ -414,6 +415,206 @@ await withPage(async (page, base, consoleErrors) => {
   check('engine: an engine error comes back with its own message, either way',
     agree.errors[0] === 'Error: Not enough readings to invert' &&
     agree.errors.every((e) => e === agree.errors[0]), JSON.stringify(agree.errors));
+
+  // PLAN.md step 1.6: a saved survey reopens without inverting anything, and
+  // the models it shows are the ones the inversion gave, to the last bit and
+  // as the same object graph. A changed reading, a changed setting, another
+  // engine or a damaged entry inverts again - only what it has to - and a
+  // recompute keeps what is still good. engine.invert is watched rather than
+  // the history, which forgets and records only what finished.
+  const reused = await page.evaluate(async () => {
+    const app = window.GWT.app, engine = window.GWT.engine;
+    const C = window.GWT.core, S = window.GWT.support, same = window.__same;
+    const realInvert = engine.invert;
+    const calls = [];
+    engine.invert = function (sounding) {
+      calls.push(sounding.sounding_id);
+      return realInvert.apply(this, arguments);
+    };
+    const since = () => calls.splice(0).length;
+    const until = async (test) => {
+      for (let i = 0; i < 2400 && !test(); i += 1) await new Promise((r) => setTimeout(r, 25));
+      return test();
+    };
+    const out = {};
+    try {
+      const before = app.derived.inversions;
+      const ranks = JSON.stringify(app.derived.interpretations.map((i) => [i.sounding_id, i.rank]));
+      const saved = JSON.stringify(app.projectPayload());
+      const file = JSON.parse(saved);
+      out.entries = Object.keys(file.state.inversionCache || {}).length;
+
+      // reopening: nothing inverted, the same results
+      await app.loadProject(saved);
+      out.reopen = { calls: since(), same: same(before, app.derived.inversions),
+        ranks: JSON.stringify(app.derived.interpretations
+          .map((i) => [i.sounding_id, i.rank])) === ranks,
+        working: app.working('invert') };
+
+      // a discharge typed on the Pumping test page, the way a user types it
+      const kuntolo = window.GWT.data.samples.kuntolo.files.pumping;
+      app.store.set('sources.pumping', { name: kuntolo.name, b64: kuntolo.b64,
+        sample: kuntolo.path });
+      await app.recompute();
+      out.addSheet = { calls: since(), n: (app.derived.inversions || []).length };
+      async function typeDischarge(value) {
+        app.goto('pumping');
+        const generation = app.recomputeState.generation;
+        const input = document.querySelector('#page-host input.cell');
+        input.value = String(value);
+        input.dispatchEvent(new Event('change'));
+        await until(() => app.recomputeState.generation > generation);
+      }
+      await typeDischarge(1.5);
+      out.discharge = { calls: since(), n: (app.derived.inversions || []).length,
+        q: app.derived.test.steps[0].discharge_m3_per_h, same: same(before, app.derived.inversions) };
+
+      // ...and typed while the survey is still inverting: the run carries on
+      const mark = Math.max(0, ...engine.history().map((h) => h.id));
+      const running = app.runInversions();
+      await until(() => calls.length > 0 && app.working('invert'));
+      out.whileRunning = { typedWhileRunning: app.working('invert') };
+      await typeDischarge(2.2);
+      await running;
+      out.whileRunning.calls = since();
+      out.whileRunning.n = (app.derived.inversions || []).length;
+      out.whileRunning.q = app.derived.test.steps[0].discharge_m3_per_h;
+      out.whileRunning.cancelled = engine.history().filter((h) =>
+        h.id > mark && h.type === 'invert' && h.outcome === 'cancelled').length;
+      app.goto('ves');
+      await new Promise((r) => setTimeout(r, 100));
+      out.whileRunning.page = !document.querySelector('#page-host').textContent
+        .includes('not yet inverted');
+
+      // a changed reading: that sounding alone is inverted again
+      await app.loadProject(saved);
+      since();
+      const sheets = await S.readXlsx(S.base64ToBytes(app.store.get('sources.ves').b64));
+      const row = sheets[1].rows.find((r) => r[0] === 1 && r[3] !== undefined && r[3] !== null);
+      row[3] = String(Number(row[3]) * 1.05);
+      app.store.set('sources.ves', Object.assign({}, app.store.get('sources.ves'),
+        { b64: S.bytesToBase64(await S.writeXlsx(sheets)) }));
+      await app.recompute();
+      await app.inversionsSettled();
+      out.reading = { calls: calls.slice(), n: app.derived.inversions.length,
+        firstSame: same(before[0], app.derived.inversions[0]),
+        entries: Object.keys(app.store.get('inversionCache')).length };
+      since();
+
+      // a changed setting: every sounding again
+      await app.loadProject(saved);
+      since();
+      app.store.set('config.ves.damping', 0.021);
+      await app.recompute();
+      await app.inversionsSettled();
+      out.config = { calls: since(), n: app.derived.inversions.length };
+
+      // another engine: the same file, and nothing in it is found
+      const digest = window.GWT.data.engineDigest;
+      window.GWT.data.engineDigest = digest.replace(/^./, (c) => (c === '0' ? '1' : '0'));
+      try {
+        await app.loadProject(saved);
+        out.engine = { calls: since(), same: same(before, app.derived.inversions) };
+      } finally {
+        window.GWT.data.engineDigest = digest;
+      }
+
+      // a damaged entry and a hand-edited one, signed again to look sound:
+      // both inverted afresh, and nothing thrown
+      const damaged = JSON.parse(saved);
+      const keys = Object.keys(damaged.state.inversionCache);
+      damaged.state.inversionCache[keys[0]].result = 'junk';
+      const edited = damaged.state.inversionCache[keys[1]];
+      edited.result.resistivities[0] *= 1.5;
+      edited.digest = C.sha256Hex(keys[1] + '\n' + C.canonicalText(edited.result));
+      await app.loadProject(JSON.stringify(damaged));
+      out.damaged = { calls: since(), same: same(before, app.derived.inversions) };
+      const probe = app.derived.soundings[0], key = C.inversionCacheKey(probe, app.config());
+      out.garbage = [null, 'x', 7, [], {}, { result: {}, digest: 'x' },
+        { result: { resistivities: 'x' }, digest: C.sha256Hex(key + '\n' +
+          C.canonicalText({ resistivities: 'x' })) }]
+        .map((entry) => C.inversionFromCache(entry, key, probe, app.config()));
+
+      // another project opened while a run is going: the outgoing run is
+      // stopped there and then, so nothing it finishes is written into the
+      // incoming project's cache or put on show over its soundings, and the
+      // incoming project's own inversions are all it uses
+      await app.loadProject(saved);
+      app.store.set('config.ves.damping', 0.021);
+      await app.recompute();
+      await until(() => calls.length > 0 && app.working('invert'));
+      since();
+      await app.loadProject(saved);
+      out.loadMidRun = { calls: since(), same: same(before, app.derived.inversions),
+        keys: Object.keys(app.store.get('inversionCache')).sort().join() ===
+          Object.keys(file.state.inversionCache).sort().join() };
+
+      // a mirror that will not fit with the cache in it is kept without it,
+      // rather than not kept at all
+      const original = Storage.prototype.setItem;
+      const persistKey = Object.keys(localStorage).find((k) => k.startsWith('gwt'));
+      Storage.prototype.setItem = function (k, v) {
+        if (String(v).includes('"digest"')) {
+          const err = new Error('quota');
+          err.name = 'QuotaExceededError';
+          throw err;
+        }
+        return original.call(this, k, v);
+      };
+      let wrote;
+      try {
+        wrote = app.store.persist();
+      } finally {
+        Storage.prototype.setItem = original;
+      }
+      const mirrored = JSON.parse(localStorage.getItem(persistKey));
+      out.lighter = { wrote, ok: app.store.autosaveOk(),
+        cache: Object.keys(mirrored.inversionCache || {}).length,
+        sources: !!(mirrored.sources && mirrored.sources.ves),
+        live: Object.keys(app.store.get('inversionCache')).length };
+      app.store.persist();
+
+      // back to the survey as saved
+      await app.loadProject(saved);
+      since();
+    } finally {
+      engine.invert = realInvert;
+    }
+    return out;
+  });
+  check('cache: a saved survey carries an inversion per sounding',
+    reused.entries === ves.n, JSON.stringify(reused.entries));
+  check('cache: reopening a saved survey inverts nothing, and shows the same results',
+    reused.reopen.calls === 0 && reused.reopen.same === null && reused.reopen.ranks &&
+    !reused.reopen.working, JSON.stringify(reused.reopen));
+  check('cache: loading a pumping sheet and typing a discharge keep the inversions',
+    reused.addSheet.calls === 0 && reused.addSheet.n === ves.n &&
+    reused.discharge.calls === 0 && reused.discharge.n === ves.n &&
+    reused.discharge.q === 1.5 && reused.discharge.same === null,
+    JSON.stringify([reused.addSheet, reused.discharge]));
+  check('cache: a discharge typed while the survey inverts leaves the run going to the end',
+    reused.whileRunning.typedWhileRunning && reused.whileRunning.calls === ves.n &&
+    reused.whileRunning.cancelled === 0 && reused.whileRunning.n === ves.n &&
+    reused.whileRunning.q === 2.2 && reused.whileRunning.page,
+    JSON.stringify(reused.whileRunning));
+  check('cache: a changed reading inverts that sounding and no other',
+    reused.reading.calls.length === 1 && reused.reading.calls[0] === 'B (2)' &&
+    reused.reading.n === ves.n && reused.reading.firstSame === null &&
+    reused.reading.entries === ves.n, JSON.stringify(reused.reading));
+  check('cache: a changed setting inverts every sounding',
+    reused.config.calls === ves.n && reused.config.n === ves.n, JSON.stringify(reused.config));
+  check('cache: another engine finds nothing in the file, and gets the same answer',
+    reused.engine.calls === ves.n && reused.engine.same === null, JSON.stringify(reused.engine));
+  check('cache: opening another project mid-run keeps the run out of it',
+    reused.loadMidRun.calls === 0 && reused.loadMidRun.same === null &&
+    reused.loadMidRun.keys, JSON.stringify(reused.loadMidRun));
+  check('cache: an autosave too big with the cache in it is kept without it',
+    reused.lighter.wrote === true && reused.lighter.ok === true &&
+    reused.lighter.cache === 0 && reused.lighter.sources &&
+    reused.lighter.live === ves.n, JSON.stringify(reused.lighter));
+  check('cache: a damaged or hand-edited entry is not used',
+    reused.damaged.calls === ves.n && reused.damaged.same === null &&
+    reused.garbage.every((g) => g === null), JSON.stringify([reused.damaged, reused.garbage]));
 
   // The same app as a copy on disk. No worker is asked for, the page does its
   // own computing and says why, and the Rokel inversion is the worker's.

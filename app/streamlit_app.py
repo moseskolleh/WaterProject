@@ -253,6 +253,7 @@ from groundwater.supervision import (
 )
 from groundwater.utils import fmt_num, plural
 from groundwater.ves import interpret_model, invert_sounding
+from groundwater.ves.cache import cache_entry, inversion_key
 from groundwater.ves.interpret import (
     drilling_depth_text,
     drilling_preference_table,
@@ -1116,9 +1117,30 @@ def _apply_latlon() -> None:
 # Project file: save and restore the whole working state
 # ---------------------------------------------------------------------------
 
+def _inversion_cache_now() -> dict:
+    """The inversions on show, as the project file saves them.
+
+    Taken from the results rather than kept alongside them, so what is
+    saved is always what the pages show, whichever of the VES page or a
+    project load inverted it.
+    """
+    ves = st.session_state.get("ves_results")
+    if not ves:
+        return {}
+    entries = {}
+    for sounding, result in zip(ves[0], ves[1], strict=True):
+        key = inversion_key(sounding, CONFIG.ves)
+        entry = cache_entry(key, result) if key else None
+        if entry is not None:
+            entries[key] = entry
+    return entries
+
+
 def project_file_bytes() -> bytes:
     """Serialize the widget state that makes up a project."""
-    return serialize_project(dict(st.session_state), groundwater.__version__)
+    session = dict(st.session_state)
+    session["inversion_cache"] = _inversion_cache_now()
+    return serialize_project(session, groundwater.__version__)
 
 
 def _load_project() -> None:
@@ -1377,6 +1399,9 @@ if st.session_state.pop("_recompute_pending", False):
                         config=CONFIG,
                         sample_root=sample_data_dir(),
                         tmp_dir=workdir(),
+                        # the inversions the file carried: a survey saved
+                        # and reopened is not inverted again
+                        inversion_cache=st.session_state.get("inversion_cache"),
                     )
                 )
         except Exception as exc:  # noqa: BLE001 - last resort, still reported

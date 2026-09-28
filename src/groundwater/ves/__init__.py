@@ -29,6 +29,7 @@ __all__ = [
 # first use rather than imported. See groundwater._lazy.
 _LAZY_MODULES = (
     "arrays",
+    "cache",
     "forward",
     "inversion",
     "ipi2win",

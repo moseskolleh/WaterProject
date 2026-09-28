@@ -87,6 +87,11 @@
       procurement: { contract: null, measured: {}, variations: [],
         number: 1, date: '', previous: 0 },
       theme: 'dark',
+      /* the soundings' inversions, keyed by what they were computed from
+       * (C.inversionCacheKey), so reopening a survey does not invert it
+       * again. A cache the app may use and may throw away, never a result:
+       * see runInversions. */
+      inversionCache: {},
     };
   }
 
@@ -125,6 +130,13 @@
 
   var store = S.createStore(blankState(), {
     persistKey: STORE_KEY,
+    /* The inversion cache is the one part of the session that can always be
+     * worked out again. When the whole will not fit, the mirror is kept
+     * without it, and a refresh inverts the survey once more. */
+    persistLighter: function (state) {
+      if (!state.inversionCache || !Object.keys(state.inversionCache).length) return null;
+      return Object.assign({}, state, { inversionCache: {} });
+    },
     onPersistError: function (e, kept) {
       renderAutosaveBanner(true, kept);
       S.toast(kept ? 'Autosave has stopped — save a project file now.'
@@ -192,7 +204,9 @@
 
   /* Derived results are recomputed rather than persisted: they are large,
    * they are cheap to rebuild, and a stale analysis beside fresh data is the
-   * one thing a report must never contain. */
+   * one thing a report must never contain. The inversions are the exception
+   * that is not cheap, and the state keeps them only as a cache keyed by
+   * everything they were computed from, so a stale one cannot be found. */
   var derived = {
     soundings: null, inversions: null, interpretations: null,
     log: null, test: null, analysis: null, sample: null, assessment: null,
@@ -372,10 +386,11 @@
     var cfg = config();
     var notices = [];
 
-    /* Whatever an older recompute, or an inversion, is still computing is
-     * for sources this one is about to replace. */
-    inversionRun += 1;
-    engine.cancel(['recompute', 'analysePumping', 'invert']);
+    /* Whatever an older recompute is still computing is for sources this one
+     * is about to replace. A running inversion is left alone until this one
+     * has read the soundings: if they are the ones it is inverting, it
+     * carries on (adoptInversions). */
+    engine.cancel(['recompute', 'analysePumping']);
 
     /* Reading a workbook or a Word sheet needs DOMParser, which a worker does
      * not have, so the page reads the sheets and the worker derives the rest
@@ -423,8 +438,7 @@
 
     derived.soundings = next.soundings;
     if (next.skippedVesSheets) derived.skippedVesSheets = next.skippedVesSheets;
-    derived.inversions = null;
-    derived.interpretations = null;
+    var inverting = adoptInversions(cfg);
     derived.log = next.log;
     derived.test = next.test;
     derived.analysis = next.analysis;
@@ -439,6 +453,9 @@
     adoptSiteMetadata();
     rebuildDesign();
     rebuildCosting();
+    /* the soundings the cache could not answer, inverted without holding up
+     * the page, which is drawn again once they are in */
+    if (inverting) inverting().then(refresh);
   }
 
   var ANALYSIS_STOPPED = 'the analysis was stopped before it finished.';
@@ -706,26 +723,36 @@
     var file = await S.pickFile('.json,.gwt,application/json');
     if (!file) return;
     try {
-      var payload = JSON.parse(await S.readFile(file, 'text'));
-      var state = payload.state || payload;
-      if (!state || typeof state !== 'object') throw new Error('not a project file');
-      /* A hand-edited or old-build project file can carry a key; it must
-       * never be adopted into this session's storage. The key held for this
-       * tab is untouched - it belongs to this browser, not to the file. */
-      if (state.extraction) delete state.extraction.apiKey;
-      store.replace(migrateLoadedState(Object.assign(blankState(), state)));
-      applyTheme();
-      await recompute();
-      /* started before the page is drawn, so the page says it is running */
-      var inverted = runInversions();
-      renderChrome();
-      render();
-      S.toast('Project loaded.', 'ok');
-      await inverted;
-      refresh();
+      await loadProject(await S.readFile(file, 'text'));
     } catch (e) {
       S.toast('That file is not a Groundwater Toolkit project: ' + e.message, 'error');
     }
+  }
+
+  /* A project file's text, made the working session. The file's inversion
+   * cache comes in with the rest of its state, so a survey saved after it
+   * was inverted opens with its models and inverts nothing; a file saved
+   * before the cache existed, or by the other app, inverts as it always
+   * did. Resolves once any inversion it needed is in. */
+  async function loadProject(text) {
+    var payload = JSON.parse(text);
+    var state = payload.state || payload;
+    if (!state || typeof state !== 'object') throw new Error('not a project file');
+    /* A hand-edited or old-build project file can carry a key; it must
+     * never be adopted into this session's storage. The key held for this
+     * tab is untouched - it belongs to this browser, not to the file. */
+    if (state.extraction) delete state.extraction.apiKey;
+    stopInversionsForNewProject();
+    store.replace(migrateLoadedState(Object.assign(blankState(), state)));
+    applyTheme();
+    inversionsStopped = false;
+    /* any inversion still needed is started in here, before the page is
+     * drawn, so the page says it is running */
+    await recompute();
+    renderChrome();
+    render();
+    S.toast('Project loaded.', 'ok');
+    await inversionsSettled();
   }
 
   async function loadSample(key) {
@@ -750,14 +777,14 @@
         sample: sample.files[role].path || sample.files[role].name,
       };
     });
+    stopInversionsForNewProject();
     store.replace(fresh);
+    inversionsStopped = false;
     await recompute();
-    var inverted = runInversions();
     renderChrome();
     render();
     S.toast('Loaded ' + sample.label + '.', 'ok');
-    await inverted;
-    refresh();
+    await inversionsSettled();
   }
 
   /* --------------------------------------------------------------- uploading */
@@ -782,14 +809,11 @@
         var buffer = await S.readFile(file);
         var bytes = new Uint8Array(buffer);
         store.set('sources.' + role, { name: file.name, b64: S.bytesToBase64(bytes) });
+        if (role === 'ves') inversionsStopped = false;
         await S.withBusy($('#page-host'), 'Reading ' + file.name + '…', recompute);
-        var inverted = role === 'ves' ? runInversions() : null;
         render();
         S.toast(file.name + ' loaded.', 'ok');
-        if (inverted) {
-          await inverted;
-          refresh();
-        }
+        await inversionsSettled();
       } catch (e) {
         S.toast('Could not read ' + file.name + ': ' + e.message, 'error');
       }
@@ -820,59 +844,205 @@
    * worker a sounding at a time, with its progress in the work bar and a
    * button there to stop it, and the page stays live meanwhile.
    *
-   * A newer run replaces an older one, and a recompute replaces both, since
-   * it replaces the soundings they were inverting. Only the latest run
-   * commits, and only onto the soundings it inverted: an older run's results
-   * are dropped rather than written over the newer run's, and a stopped run
-   * leaves what was there before it. */
+   * A newer run replaces an older one. A recompute replaces a run only when
+   * the soundings it reads are not the ones the run is inverting; when they
+   * are - a discharge typed on the Pumping test page while the survey is
+   * still inverting - the run carries on and commits onto the new reading of
+   * them. Only the latest run commits, and only onto its own soundings: an
+   * older run's results are dropped rather than written over the newer
+   * run's, and a stopped run leaves what was there before it.
+   *
+   * Every sounding's inversion, or the message it failed with, is kept in
+   * the store's inversionCache as soon as it is in, under the SHA-256 of the
+   * sounding's readings, the VES settings and the engine
+   * (C.inversionCacheKey). The cache is saved with the project and mirrored
+   * with the session. A recompute, and a run asked to reuse it, take a
+   * sounding from it rather than inverting it again; Re-run inversion runs
+   * every sounding, as it says. An entry that is not sound is not used
+   * (C.inversionFromCache), and the sounding is inverted as if there were
+   * none. */
   var inversionRun = 0;
+  /* the latest run: {run, keys, soundings, running, promise} */
+  var inversionTask = null;
+  /* Cancel was pressed on an inversion: a recompute does not start it again
+   * on its own until something else asks for one */
+  var inversionsStopped = false;
 
-  async function runInversions() {
-    var run = ++inversionRun;
-    engine.cancel('invert');
-    var soundings = derived.soundings;
-    if (!soundings || !soundings.length) {
-      derived.inversions = null; derived.interpretations = null;
-      return;
-    }
-    var cfg = config();
+  function inversionKeys(soundings, cfg) {
+    return soundings.map(function (sounding) { return C.inversionCacheKey(sounding, cfg); });
+  }
+
+  function sameKeys(a, b) {
+    return !!a && !!b && a.length === b.length && a.every(function (key, i) {
+      return key !== null && key === b[i];
+    });
+  }
+
+  /* The cache's answer for one sounding: {result} or {error}, or null. */
+  function cachedInversion(key, sounding, cfg) {
+    if (!key) return null;
+    var cache = store.get('inversionCache') || {};
+    return Object.prototype.hasOwnProperty.call(cache, key)
+      ? C.inversionFromCache(cache[key], key, sounding, cfg) : null;
+  }
+
+  function rememberInversion(key, sounding, result, error) {
+    var entry = C.inversionCacheEntry(key, sounding, result, error);
+    if (!entry) return;
+    var cache = Object.assign({}, store.get('inversionCache') || {});
+    cache[key] = entry;
+    store.set('inversionCache', cache);
+  }
+
+  /* Only the current soundings' entries are kept, so the cache and the file
+   * it is saved in stay the size of the survey. */
+  function pruneInversionCache(keys) {
+    var cache = store.get('inversionCache') || {}, kept = {};
+    keys.forEach(function (key) {
+      if (key && Object.prototype.hasOwnProperty.call(cache, key)) kept[key] = cache[key];
+    });
+    if (Object.keys(kept).length !== Object.keys(cache).length) store.set('inversionCache', kept);
+  }
+
+  /* Put one run's outcomes, one per sounding, on show. */
+  function commitInversions(soundings, outcomes, cfg) {
     var results = [], interpretations = [];
-    var n = soundings.length;
-    var job = workBegin('invert', 'Inverting ' + n + ' ' + S.plural(n, 'sounding'));
-    try {
-      for (var i = 0; i < n; i++) {
-        var sounding = soundings[i];
-        var which = sounding.sounding_id + (n > 1 ? ' (' + (i + 1) + ' of ' + n + ')' : '');
-        workProgress(job, i / n, which);
-        try {
-          var result = await engine.invert(sounding, cfg, {
-            onProgress: function (fraction, layers) {
-              workProgress(job, (i + fraction) / n, which + ', ' + layers);
-            },
-          });
-          if (run !== inversionRun) return;
-          results.push(result);
-          interpretations.push(C.interpretModel(sounding, result.model, cfg));
-        } catch (e) {
-          if (engine.isCancelled(e) || run !== inversionRun) return;
-          S.toast(sounding.sounding_id + ': ' + e.message, 'warn');
-        }
-      }
-    } finally {
-      workEnd(job);
-    }
-    if (run !== inversionRun || derived.soundings !== soundings) return;
+    soundings.forEach(function (sounding, i) {
+      var outcome = outcomes[i];
+      if (!outcome || !outcome.result) return;
+      results.push(outcome.result);
+      interpretations.push(C.interpretModel(sounding, outcome.result.model, cfg));
+    });
     derived.inversions = results;
     derived.interpretations = interpretations;
     C.rankInterpretations(interpretations, store.get('ves.preferredOrder'));
+  }
+
+  /* After a recompute has read the soundings: put the cache's inversions of
+   * them on show, and say what is left to do. Returns a function that starts
+   * the run the soundings still need, or null when there is none to start -
+   * every sounding was in the cache, the run already under way is for these
+   * very soundings, or Cancel was pressed and nothing has asked since. */
+  function adoptInversions(cfg) {
+    var soundings = derived.soundings;
+    var task = inversionTask;
+    var keys = soundings && soundings.length ? inversionKeys(soundings, cfg) : null;
+    var carryOn = !!(keys && task && task.running && task.run === inversionRun &&
+      sameKeys(task.keys, keys));
+    if (carryOn) {
+      task.soundings = soundings;
+    } else {
+      inversionRun += 1;
+      engine.cancel('invert');
+    }
+    derived.inversions = null;
+    derived.interpretations = null;
+    if (!keys) {
+      inversionTask = null;
+      return null;
+    }
+    var outcomes = soundings.map(function (sounding, i) {
+      return cachedInversion(keys[i], sounding, cfg);
+    });
+    if (outcomes.every(Boolean)) {
+      commitInversions(soundings, outcomes, cfg);
+      return null;
+    }
+    if (carryOn || inversionsStopped) return null;
+    return function () { return runInversions({ reuse: true }); };
+  }
+
+  /* Invert the current soundings. With options.reuse, a sounding the cache
+   * holds is taken from it and only the others are inverted. Always
+   * resolves, once the run has committed, been replaced or been stopped. */
+  function runInversions(options) {
+    var reuse = !!(options && options.reuse);
+    var run = ++inversionRun;
+    inversionsStopped = false;
+    engine.cancel('invert');
+    var soundings = derived.soundings;
+    if (!soundings || !soundings.length) {
+      inversionTask = null;
+      derived.inversions = null; derived.interpretations = null;
+      return Promise.resolve();
+    }
+    var cfg = config();
+    var task = inversionTask = { run: run, keys: inversionKeys(soundings, cfg),
+      soundings: soundings, running: true, promise: null };
+    task.promise = invertSoundings(task, cfg, reuse).finally(function () {
+      task.running = false;
+    });
+    return task.promise;
+  }
+
+  async function invertSoundings(task, cfg, reuse) {
+    var run = task.run, soundings = task.soundings, keys = task.keys;
+    var outcomes = soundings.map(function (sounding, i) {
+      return reuse ? cachedInversion(keys[i], sounding, cfg) : null;
+    });
+    var todo = [];
+    outcomes.forEach(function (outcome, i) { if (!outcome) todo.push(i); });
+    var n = todo.length;
+    if (n) {
+      var job = workBegin('invert', 'Inverting ' + n + ' ' + S.plural(n, 'sounding'));
+      try {
+        for (var t = 0; t < n; t++) {
+          var i = todo[t], sounding = soundings[i];
+          var which = sounding.sounding_id + (n > 1 ? ' (' + (t + 1) + ' of ' + n + ')' : '');
+          workProgress(job, t / n, which);
+          try {
+            var result = await engine.invert(sounding, cfg, {
+              onProgress: function (fraction, layers) {
+                workProgress(job, (t + fraction) / n, which + ', ' + layers);
+              },
+            });
+            if (run !== inversionRun) return;
+            outcomes[i] = { result: result };
+            rememberInversion(keys[i], sounding, result, null);
+          } catch (e) {
+            if (engine.isCancelled(e) || run !== inversionRun) return;
+            outcomes[i] = { error: e.message };
+            rememberInversion(keys[i], sounding, null, e.message);
+            S.toast(sounding.sounding_id + ': ' + e.message, 'warn');
+          }
+        }
+      } finally {
+        workEnd(job);
+      }
+    }
+    /* a recompute that read these same soundings again has handed the run
+     * its reading of them; any other has replaced the run. One still reading
+     * the sources has not yet said which: it may be about to show other
+     * soundings, or another setting, so the run commits nothing and leaves
+     * the recompute to take these results from the cache (adoptInversions). */
+    if (run !== inversionRun || recomputeState.running ||
+        derived.soundings !== task.soundings) return;
+    commitInversions(task.soundings, outcomes, cfg);
+    pruneInversionCache(keys);
     rebuildDesign();
     rebuildCosting();
   }
 
+  /* Another project is about to replace the store. A run for the outgoing
+   * one is stopped here rather than when the incoming one's soundings have
+   * been read: until then it would still be the latest run, and whatever it
+   * finished would be written into the incoming project's cache. */
+  function stopInversionsForNewProject() {
+    inversionRun += 1;
+    engine.cancel('invert');
+  }
+
+  /* The inversion the page is waiting for, if any: resolves once it is done. */
+  function inversionsSettled() {
+    return inversionTask && inversionTask.running ? inversionTask.promise : Promise.resolve();
+  }
+
   /* The VES page's buttons: start the run, draw the page as it now stands
-   * (running), and draw it again with the models once they are in. */
-  function invertAndShow() {
-    var inverted = runInversions();
+   * (running), and draw it again with the models once they are in. Re-run
+   * inversion runs every sounding again; Invert now, offered after a run was
+   * stopped, takes what that run finished from the cache. */
+  function invertAndShow(reuse) {
+    var inverted = runInversions({ reuse: reuse });
     render();
     inverted.then(refresh);
   }
@@ -968,9 +1138,10 @@
     if (!work[key]) return;
     if (key === 'invert') {
       inversionRun += 1;
+      inversionsStopped = true;
       engine.cancel('invert');
-      S.toast('The inversion was stopped, and nothing it had computed was ' +
-        'kept. The Geophysics page can run it again.', 'warn');
+      S.toast('The inversion was stopped, and the results on the page are as ' +
+        'they were. The Geophysics page can run it again.', 'warn');
     } else if (key === 'pumping') {
       engine.cancel('analysePumping');
       S.toast('The pumping analysis was stopped. The test is still loaded, and ' +
@@ -1918,7 +2089,8 @@
           derived.soundings.map(function (s) { return s.sounding_id; }).join(', ')) : null,
       ], {
         actions: derived.soundings ? [
-          button('Re-run inversion', invertAndShow, { variant: 'ghost' }),
+          button('Re-run inversion', function () { invertAndShow(false); },
+            { variant: 'ghost' }),
         ] : null,
       }),
     ];
@@ -1944,7 +2116,7 @@
           'inversion finishes; the bar above shows how far it has got, and the ' +
           'rest of the workspace can be used meanwhile.')
         : S.empty('The soundings are loaded but not yet inverted.',
-          button('Invert now', invertAndShow)));
+          button('Invert now', function () { invertAndShow(true); })));
       return nodes;
     }
 
@@ -5413,7 +5585,10 @@
     function bindCfg(section, key) {
       return function (value) {
         store.set('config.' + section + '.' + key, value);
-        recompute().then(runInversions).then(refresh);
+        /* a changed setting is a different key: the recompute inverts
+         * again what the setting could change, and nothing else */
+        inversionsStopped = false;
+        recompute().then(refresh);
       };
     }
     function numberFields(section, keys) {
@@ -6464,17 +6639,18 @@
     });
 
     if (Object.keys(store.get('sources') || {}).length) {
+      /* the mirrored session carries its inversion cache, so a reload
+       * inverts nothing that was inverted before it */
       await S.withBusy($('#page-host'), 'Restoring your session…', recompute);
-      var inverted = runInversions();
       render();
-      await inverted;
-      refresh();
+      await inversionsSettled();
     }
   }
 
   GWT.app = {
     init: init, store: store, derived: derived, goto: goto, render: render,
     recompute: recompute, runInversions: runInversions, config: config,
+    inversionsSettled: inversionsSettled, loadProject: loadProject,
     reanalyseTest: reanalyseTest, cancelWork: cancelWork, working: working,
     blankState: blankState, PAGES: PAGES, buildReport: buildReport,
     siteLatLon: siteLatLon, utmToLatLon: utmToLatLon,

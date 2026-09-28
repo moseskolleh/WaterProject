@@ -120,6 +120,12 @@ def test_webapp_data_is_current(sample_data):
     assert groundwater.__version__ == builder.toolkit_version(), (
         "the installed package is another version; reinstall with pip install -e ."
     )
+    # the browser's inversion cache names its engine by this digest, so a
+    # stale one would hand back results the edited engine never computed
+    assert payload["engineDigest"] == builder.engine_digest(), (
+        "docs/js/gwt-data.js carries the digest of another gwt-core.js; "
+        "run: python web/build_webapp_data.py"
+    )
 
 
 def test_webapp_scripts_are_wired_up():

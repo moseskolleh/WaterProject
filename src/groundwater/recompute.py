@@ -41,6 +41,7 @@ from .ingestion import (
 )
 from .quality import assess_sample
 from .ves import interpret_model, invert_sounding
+from .ves.cache import cache_entry, cached_inversion, inversion_key
 from .ves.interpret import rank_interpretations
 
 _log = logging.getLogger(__name__)
@@ -163,6 +164,7 @@ def recompute_results(
     config: Config | None = None,
     sample_root=None,
     tmp_dir=".",
+    inversion_cache: dict | None = None,
 ) -> dict:
     """Rebuild the analysis objects a saved project needs.
 
@@ -172,9 +174,16 @@ def recompute_results(
     ``borehole_design``, ``drilling_log``), plus ``recompute_diagnostics``
     - always present - carrying ``{"ok": [...], "issues": [...]}``. A source
     that fails is skipped and recorded; it never aborts the others.
+
+    ``inversion_cache`` is the saved inversions a project file carried
+    (:mod:`groundwater.ves.cache`). A sounding whose entry is found and
+    sound is not inverted again; any other is, as if there were no cache.
+    When soundings were restored, ``inversion_cache`` in the result holds
+    an entry for each of them and nothing else, ready to be saved.
     """
     config = config or Config()
     discharges = discharges or {}
+    saved = inversion_cache if isinstance(inversion_cache, dict) else {}
     out: dict = {}
     issues: list[RecomputeIssue] = []
     ok: list[str] = []
@@ -212,11 +221,18 @@ def recompute_results(
             ))
         if soundings:
             kept, results, interps = [], [], []
+            entries: dict = {}
             # Per sounding, so one bad curve costs one curve rather than the
             # whole survey.
             for sounding in soundings:
                 try:
-                    result = invert_sounding(sounding, config.ves)
+                    key = inversion_key(sounding, config.ves)
+                    result = cached_inversion(saved.get(key), key, sounding, config.ves)
+                    if result is None:
+                        result = invert_sounding(sounding, config.ves)
+                    entry = cache_entry(key, result) if key else None
+                    if entry is not None:
+                        entries[key] = entry
                     interps.append(interpret_model(sounding, result.model, config.ves))
                     results.append(result)
                     kept.append(sounding)
@@ -234,6 +250,7 @@ def recompute_results(
                 # "first parsed"
                 rank_interpretations(interps)
                 out["ves_results"] = (kept, results, interps)
+                out["inversion_cache"] = entries
                 ok.append(ves_key)
             else:
                 issues.append(_issue(

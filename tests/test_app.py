@@ -549,6 +549,38 @@ def test_recompute_on_project_load(sample_data):
     assert "_recompute_pending" not in at.session_state
 
 
+def test_a_saved_survey_reopens_without_inverting(sample_data, monkeypatch):
+    """PLAN.md step 1.6: the inversions a project file carries are used."""
+    import groundwater.recompute as recompute_module
+
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.run()
+    at.session_state["src_ves"] = {"sample": "rokel/rokel_ves.xlsx"}
+    at.session_state["_recompute_pending"] = True
+    at.run()
+    assert not at.exception
+    cache = at.session_state["inversion_cache"]
+    first = at.session_state["ves_results"][1]
+    assert len(cache) == len(first) == 2
+
+    # a second session opening that file: the loader puts the file's cache in
+    # the session beside the sources, and nothing is inverted
+    def refuse(*args, **kwargs):
+        raise AssertionError("a saved survey was inverted again")
+
+    monkeypatch.setattr(recompute_module, "invert_sounding", refuse)
+    again = AppTest.from_file(APP, default_timeout=600)
+    again.run()
+    again.session_state["src_ves"] = {"sample": "rokel/rokel_ves.xlsx"}
+    again.session_state["inversion_cache"] = cache
+    again.session_state["_recompute_pending"] = True
+    again.run()
+    assert not again.exception
+    assert not again.session_state["recompute_diagnostics"]["issues"]
+    restored = again.session_state["ves_results"][1]
+    assert [r.fit_error_percent for r in restored] == [r.fit_error_percent for r in first]
+
+
 def test_depth_spine_page(app):
     """The Depth Spine page draws whatever the project has loaded.
 

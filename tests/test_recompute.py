@@ -23,6 +23,8 @@ def test_recompute_from_bundled_samples(sample_data, tmp_path):
     assert set(out) == {
         "ves_results", "pump_analysis", "wq_assessment",
         "borehole_design", "drilling_log", "recompute_diagnostics",
+        # the soundings' inversions, as a project file saves them
+        "inversion_cache",
     }
     assert out["recompute_diagnostics"]["issues"] == []
     assert set(out["recompute_diagnostics"]["ok"]) == {"ves", "pump", "wq", "log"}

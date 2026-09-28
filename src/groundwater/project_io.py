@@ -8,6 +8,12 @@ responses and remarks, and the WASH committee), the raw uploaded data files
 recompute inputs (``q_*`` step discharges and ``design_swl``). On load the
 analyses are rebuilt from the stored sources by ``groundwater.recompute``,
 so results are restored without re-uploading.
+
+The file may also carry ``inversion_cache``: the VES inversions, keyed by
+what they were computed from (:mod:`groundwater.ves.cache`), so reopening a
+survey does not invert it again. It is a cache and nothing more. A file
+without one loads exactly as before, a toolkit that predates it ignores
+it, and an entry that no longer matches its sounding is not used.
 """
 
 from __future__ import annotations
@@ -41,7 +47,9 @@ RESET_ON_LOAD_PREFIXES = (
 )
 # asset_record belongs to the outgoing borehole. Left behind, the incoming
 # project would inherit somebody else's identifier and maintenance history.
-RESET_ON_LOAD_KEYS = ("design_swl", "asset_record")
+# The saved inversions are the outgoing survey's; they would never match the
+# incoming one's soundings, but they would be saved into its file.
+RESET_ON_LOAD_KEYS = ("design_swl", "asset_record", "inversion_cache")
 
 
 def stale_on_load(session) -> list[str]:
@@ -177,7 +185,28 @@ def serialize_project(session: dict, version: str) -> bytes:
         "asset": asset if isinstance(asset, dict) else {},
         "state": state,
     }
+    cache = _inversion_cache(session.get("inversion_cache"))
+    if cache:
+        # Only when there is something in it, so a project with no soundings
+        # saves the same file it always did. It is a new top-level key rather
+        # than a new schema: an older toolkit reads the file and ignores it.
+        payload["inversion_cache"] = cache
     return yaml.safe_dump(payload, sort_keys=True).encode("utf-8")
+
+
+def _inversion_cache(value) -> dict:
+    """The saved inversions, as ``{key: entry}``, or {} for anything else.
+
+    Only the shape is checked here. Whether an entry is sound, and whether
+    it is for the sounding in hand, is decided when it is used
+    (:func:`groundwater.ves.cache.cached_inversion`).
+    """
+    if not isinstance(value, dict):
+        return {}
+    return {
+        key: entry for key, entry in value.items()
+        if isinstance(key, str) and isinstance(entry, dict)
+    }
 
 
 def deserialize_project(raw: bytes) -> dict:
@@ -258,6 +287,10 @@ def _updates_from_payload(payload: dict) -> dict:
     summary = payload.get("summary")
     if isinstance(summary, dict) and summary:
         updates["summary"] = summary
+
+    cache = _inversion_cache(payload.get("inversion_cache"))
+    if cache:
+        updates["inversion_cache"] = cache
 
     asset = payload.get("asset")
     if isinstance(asset, dict) and asset.get("asset_id"):
