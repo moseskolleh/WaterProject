@@ -2047,7 +2047,7 @@
   }
 
   /* The bundled map layers, which render() has loaded before drawing any
-   * page that reads them; see WITHOUT_MAPS. */
+   * page that reads them; see FIRST_SCREEN. */
   function mapLayers() {
     return C.geoLayers() || {};
   }
@@ -6499,15 +6499,18 @@
    * draws figures, and reads the map layers for a map or for the chiefdom
    * and district under the site's position that it states, so VIEW_BUNDLES
    * are fetched before one of them is first drawn and not before: the
-   * Overview a phone opens on has no use for 760 KB of boundaries. The
-   * procurement page labels its certificate lines with the document
-   * writer's own words, so it needs that too. */
+   * Overview a phone opens on has no use for 760 KB of boundaries. Two
+   * pages draw with the document writer's own words, so they need that too:
+   * procurement labels its certificate lines with them, and water quality
+   * its status column, so the page and the report cannot word a result
+   * differently. */
   var FIRST_SCREEN = { overview: true, guided: true, templates: true,
     extract: true, settings: true, about: true };
+  var DRAWS_WITH_DOCX = { procurement: true, quality: true };
 
   function bundlesFor(key) {
     if (FIRST_SCREEN[key]) return [];
-    return key === 'procurement' ? REPORT_BUNDLES : VIEW_BUNDLES;
+    return DRAWS_WITH_DOCX[key] ? REPORT_BUNDLES : VIEW_BUNDLES;
   }
 
   function pageTitle(key) {

@@ -2019,6 +2019,41 @@ await withPage(async (page, base, consoleErrors) => {
     items.boreholeHash === '#/pumping/' + encodeURIComponent(items.borehole),
     JSON.stringify(items));
 
+  // Every page opened by URL above restored whatever this page had open, and
+  // that project carried no water sample. The water quality page names each
+  // result's status in the document writer's words, so opened cold on a
+  // project with a sample, before anything else has fetched the writer, it
+  // drew "Something went wrong" instead of its table.
+  await page.waitForFunction(() => !window.GWT.app.recomputeState.running &&
+    !!window.GWT.app.derived.assessment, null, { timeout: 120000 });
+  /* the mirror is written 400 ms after a change; the tab restores from it */
+  await page.evaluate(() => window.GWT.app.store.persist());
+  const qualityCold = await (async () => {
+    const tab = await page.context().newPage();
+    const errors = [];
+    tab.on('pageerror', (e) => errors.push(e.message));
+    tab.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    try {
+      await tab.goto(base + '/index.html#/quality', { waitUntil: 'load' });
+      await tab.waitForFunction(() => {
+        const app = window.GWT && window.GWT.app;
+        const host = document.querySelector('#page-host');
+        return app && !app.recomputeState.running && app.derived.assessment && host &&
+          !host.textContent.includes('Loading the maps and figures');
+      }, null, { timeout: 120000 });
+      const drawn = await tab.evaluate(() => ({
+        broken: /Something went wrong/.test(document.querySelector('#page-host').textContent),
+        badges: document.querySelectorAll('#page-host table .badge').length,
+      }));
+      return Object.assign(drawn, { errors });
+    } finally {
+      await tab.close();
+    }
+  })();
+  check('addresses: the water quality page opens by its URL on a project with a sample',
+    !qualityCold.broken && qualityCold.badges > 0 && qualityCold.errors.length === 0,
+    JSON.stringify(qualityCold));
+
   // --- offline: the app installs itself ------------------------------------
   // 127.0.0.1 is a secure context, so the real worker registers here.
   const worker = await page.evaluate(async () => {
