@@ -130,6 +130,13 @@
 
   var store = S.createStore(blankState(), {
     persistKey: STORE_KEY,
+    /* The inversion cache is the one part of the session that can always be
+     * worked out again. When the whole will not fit, the mirror is kept
+     * without it, and a refresh inverts the survey once more. */
+    persistLighter: function (state) {
+      if (!state.inversionCache || !Object.keys(state.inversionCache).length) return null;
+      return Object.assign({}, state, { inversionCache: {} });
+    },
     onPersistError: function (e, kept) {
       renderAutosaveBanner(true, kept);
       S.toast(kept ? 'Autosave has stopped — save a project file now.'
@@ -735,6 +742,7 @@
      * never be adopted into this session's storage. The key held for this
      * tab is untouched - it belongs to this browser, not to the file. */
     if (state.extraction) delete state.extraction.apiKey;
+    stopInversionsForNewProject();
     store.replace(migrateLoadedState(Object.assign(blankState(), state)));
     applyTheme();
     inversionsStopped = false;
@@ -769,6 +777,7 @@
         sample: sample.files[role].path || sample.files[role].name,
       };
     });
+    stopInversionsForNewProject();
     store.replace(fresh);
     inversionsStopped = false;
     await recompute();
@@ -1002,12 +1011,25 @@
       }
     }
     /* a recompute that read these same soundings again has handed the run
-     * its reading of them; any other has replaced the run */
-    if (run !== inversionRun || derived.soundings !== task.soundings) return;
+     * its reading of them; any other has replaced the run. One still reading
+     * the sources has not yet said which: it may be about to show other
+     * soundings, or another setting, so the run commits nothing and leaves
+     * the recompute to take these results from the cache (adoptInversions). */
+    if (run !== inversionRun || recomputeState.running ||
+        derived.soundings !== task.soundings) return;
     commitInversions(task.soundings, outcomes, cfg);
     pruneInversionCache(keys);
     rebuildDesign();
     rebuildCosting();
+  }
+
+  /* Another project is about to replace the store. A run for the outgoing
+   * one is stopped here rather than when the incoming one's soundings have
+   * been read: until then it would still be the latest run, and whatever it
+   * finished would be written into the incoming project's cache. */
+  function stopInversionsForNewProject() {
+    inversionRun += 1;
+    engine.cancel('invert');
   }
 
   /* The inversion the page is waiting for, if any: resolves once it is done. */

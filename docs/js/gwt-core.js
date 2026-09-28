@@ -1232,9 +1232,12 @@
 
   /* One text for one value: keys sorted, no spaces, a number as the shortest
    * text that reads back to it, and NaN (a blank MN) and the infinities
-   * written as themselves rather than folded into null as JSON would. */
+   * written as themselves rather than folded into null as JSON would. An
+   * undefined is written as itself too: the engine reads a missing AB/2 as
+   * NaN and a null one as 0, so the two must not share a key. */
   function canonicalText(value) {
-    if (value === null || value === undefined) return 'null';
+    if (value === undefined) return 'undefined';
+    if (value === null) return 'null';
     if (typeof value === 'number') return String(value);
     if (typeof value === 'boolean') return value ? 'true' : 'false';
     if (typeof value === 'string') return JSON.stringify(value);

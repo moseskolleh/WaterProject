@@ -121,11 +121,20 @@ def _floats(values) -> list[float]:
 def inversion_key(sounding: VESSounding, config: VESConfig | None = None) -> str | None:
     """The cache key of ``invert_sounding(sounding, config)``, or None.
 
-    None when the engine cannot be named, which turns the cache off.
+    None when the engine cannot be named, which turns the cache off, and
+    when the sounding or the configuration holds a value the encoding cannot
+    write: a sounding the cache cannot key is inverted, never lost.
     """
     engine = engine_version()
     if engine is None:
         return None
+    try:
+        return _key(engine, sounding, config)
+    except (TypeError, ValueError):
+        return None
+
+
+def _key(engine: str, sounding: VESSounding, config: VESConfig | None) -> str:
     payload = {
         "cache": CACHE_FORMAT,
         "engine": engine,

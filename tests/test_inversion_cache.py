@@ -247,3 +247,53 @@ def test_the_command_line_reopens_a_saved_survey_without_inverting(
                  "--tmp-dir", str(tmp_path)])
     assert code == 0, capsys.readouterr().out
     assert counted == []
+
+
+def _sounding(**changes):
+    from groundwater.models import SiteMetadata, VESSounding
+
+    fields = dict(site=SiteMetadata(), sounding_id="V1",
+                  ab2=[1.0, 2.0, 3.0, 5.0, 8.0], mn=[0.5, 0.5, 0.5, 2.0, 2.0],
+                  rho_app=[100.0, 90.0, 80.0, 70.0, 60.0])
+    fields.update(changes)
+    return VESSounding(**fields)
+
+
+@pytest.mark.parametrize("change", [
+    {"sounding_id": "V2"},
+    {"array_type": "wenner"},
+    {"ab2": [1.0, 2.0, 3.0, 5.0, 8.5]},
+    # MN is read only by the splice, and a changed one moves where the
+    # segments join
+    {"mn": [0.5, 0.5, 2.0, 2.0, 2.0]},
+    {"mn": [0.5, 0.5, 0.5, float("nan"), 2.0]},
+    {"rho_app": [100.0, 90.0, 80.0, 70.0, 61.0]},
+    # the same numbers split differently between the arrays
+    {"ab2": [1.0, 2.0, 3.0, 5.0], "mn": [8.0, 0.5, 0.5, 0.5, 2.0, 2.0]},
+])
+def test_every_input_of_the_inversion_is_in_the_key(change):
+    assert inversion_key(_sounding(**change)) != inversion_key(_sounding())
+
+
+@pytest.mark.parametrize("field", [
+    f.name for f in dataclasses.fields(Config().ves)
+])
+def test_every_setting_is_in_the_key(field):
+    config = Config().ves
+    value = getattr(config, field)
+    other = (value[0] * 1.5, value[1]) if isinstance(value, tuple) else value * 2 + 1
+    changed = dataclasses.replace(config, **{field: other})
+    assert inversion_key(_sounding(), changed) != inversion_key(_sounding(), config)
+
+
+def test_a_sounding_the_cache_cannot_key_is_inverted_not_lost(
+        first_load, counted, sample_data, tmp_path):
+    # a setting the canonical encoding cannot write: the key is None, the
+    # cache is off for the run, and every sounding is still inverted
+    config = Config()
+    config.ves = dataclasses.replace(config.ves, damping=np.float32(0.02))
+    out = _reopen(first_load[1], sample_data, tmp_path, config=config)
+    assert counted == ["A (1)", "B (2)"]
+    assert len(out["ves_results"][1]) == 2
+    assert out["inversion_cache"] == {}
+    assert out["recompute_diagnostics"]["issues"] == []

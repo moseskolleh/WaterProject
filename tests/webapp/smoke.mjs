@@ -535,6 +535,45 @@ await withPage(async (page, base, consoleErrors) => {
           C.canonicalText({ resistivities: 'x' })) }]
         .map((entry) => C.inversionFromCache(entry, key, probe, app.config()));
 
+      // another project opened while a run is going: the outgoing run is
+      // stopped there and then, so nothing it finishes is written into the
+      // incoming project's cache or put on show over its soundings, and the
+      // incoming project's own inversions are all it uses
+      await app.loadProject(saved);
+      app.store.set('config.ves.damping', 0.021);
+      await app.recompute();
+      await until(() => calls.length > 0 && app.working('invert'));
+      since();
+      await app.loadProject(saved);
+      out.loadMidRun = { calls: since(), same: same(before, app.derived.inversions),
+        keys: Object.keys(app.store.get('inversionCache')).sort().join() ===
+          Object.keys(file.state.inversionCache).sort().join() };
+
+      // a mirror that will not fit with the cache in it is kept without it,
+      // rather than not kept at all
+      const original = Storage.prototype.setItem;
+      const persistKey = Object.keys(localStorage).find((k) => k.startsWith('gwt'));
+      Storage.prototype.setItem = function (k, v) {
+        if (String(v).includes('"digest"')) {
+          const err = new Error('quota');
+          err.name = 'QuotaExceededError';
+          throw err;
+        }
+        return original.call(this, k, v);
+      };
+      let wrote;
+      try {
+        wrote = app.store.persist();
+      } finally {
+        Storage.prototype.setItem = original;
+      }
+      const mirrored = JSON.parse(localStorage.getItem(persistKey));
+      out.lighter = { wrote, ok: app.store.autosaveOk(),
+        cache: Object.keys(mirrored.inversionCache || {}).length,
+        sources: !!(mirrored.sources && mirrored.sources.ves),
+        live: Object.keys(app.store.get('inversionCache')).length };
+      app.store.persist();
+
       // back to the survey as saved
       await app.loadProject(saved);
       since();
@@ -566,6 +605,13 @@ await withPage(async (page, base, consoleErrors) => {
     reused.config.calls === ves.n && reused.config.n === ves.n, JSON.stringify(reused.config));
   check('cache: another engine finds nothing in the file, and gets the same answer',
     reused.engine.calls === ves.n && reused.engine.same === null, JSON.stringify(reused.engine));
+  check('cache: opening another project mid-run keeps the run out of it',
+    reused.loadMidRun.calls === 0 && reused.loadMidRun.same === null &&
+    reused.loadMidRun.keys, JSON.stringify(reused.loadMidRun));
+  check('cache: an autosave too big with the cache in it is kept without it',
+    reused.lighter.wrote === true && reused.lighter.ok === true &&
+    reused.lighter.cache === 0 && reused.lighter.sources &&
+    reused.lighter.live === ves.n, JSON.stringify(reused.lighter));
   check('cache: a damaged or hand-edited entry is not used',
     reused.damaged.calls === ves.n && reused.damaged.same === null &&
     reused.garbage.every((g) => g === null), JSON.stringify([reused.damaged, reused.garbage]));
