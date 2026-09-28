@@ -15,6 +15,40 @@
   var GWT = global.GWT || (global.GWT = {});
   var S = GWT.support, C = GWT.core, charts = GWT.charts, docx = GWT.docx;
   var engine = GWT.engine;
+
+  /* The scripts the first screen does without, fetched by GWT.load (in
+   * gwt-data.js) the first time a page or a report needs them, relative to
+   * this file. The Overview a phone opens on draws no figure and builds no
+   * document, and on a slow link these were seconds of download and parsing
+   * between the user and a page that answers. web/build_offline.py
+   * precaches every file a GWT.bundles assignment names. */
+  GWT.bundles = Object.assign(GWT.bundles || {}, {
+    charts: 'gwt-charts.js', geolibre: 'gwt-geolibre.js',
+    imageSlot: 'image-slot.js', docx: 'gwt-docx.js',
+  });
+
+  /* What a working page draws with: the map layers, the figures, the map
+   * export and the photo slots. A report adds the document writer. */
+  var VIEW_BUNDLES = ['geo', 'charts', 'geolibre', 'imageSlot'];
+  var REPORT_BUNDLES = VIEW_BUNDLES.concat(['docx']);
+
+  function hasBundles(names) {
+    return names.every(function (name) { return GWT.hasBundle(name); });
+  }
+
+  /* A promise that every named bundle has run, with the modules they define
+   * bound to the names this file uses for them. */
+  function need(names) {
+    return Promise.all(names.map(function (name) { return GWT.load(name); }))
+      .then(bindModules);
+  }
+
+  /* Whoever loaded them, the modules are read from GWT, where each bundle
+   * puts its own. */
+  function bindModules() {
+    charts = GWT.charts;
+    docx = GWT.docx;
+  }
   var el = S.el, $ = S.$, card = S.card, button = S.button, field = S.field;
 
   var STORE_KEY = 'gwt.project.v1';
@@ -306,15 +340,123 @@
     });
   }
 
-  function goto(key) {
+  /* ------------------------------------------------------------------ routes */
+
+  /* Every page has an address, #/<page>, and a page that shows several
+   * things of one kind gives each an address of its own, #/<page>/<item>: a
+   * sounding on the Geophysics page (#/ves/VES-3), the borehole a pumping
+   * test was run on (#/pumping/KTL-01). The address is what the back and
+   * forward buttons move between, what the user guide links to, and what a
+   * QR code on a field sheet can carry. The store's nav is still what a page
+   * is drawn from; the address follows it, and it follows the address. */
+  var route = { item: '', focused: true };
+
+  function hashFor(key, item) {
+    return '#/' + key + (item ? '/' + encodeURIComponent(item) : '');
+  }
+
+  /* The page and item an address names. An address that names no page -
+   * mistyped, or from a release with a page this one lacks - is the Overview,
+   * and says so with `unknown`, so the address bar can be put right. */
+  function routeFrom(hash) {
+    var text = String(hash || '').replace(/^#\/?/, '');
+    if (!text) return { key: '', item: '' };
+    var parts = text.split('/');
+    var key, item;
+    try {
+      key = decodeURIComponent(parts[0]);
+      item = decodeURIComponent(parts.slice(1).join('/')).trim();
+    } catch (e) { key = ''; }
+    if (!key || !Object.prototype.hasOwnProperty.call(PAGES, key)) {
+      return { key: 'overview', item: '', unknown: true };
+    }
+    return { key: key, item: item };
+  }
+
+  /* Draw a page, as goto and the address both ask for it. */
+  function show(key, item) {
     store.set('nav', key);
-    render();
+    route.item = item || '';
+    route.focused = !route.item;
+    var drawn = render();
     $('#app-nav').classList.remove('open');
     $('#main').focus({ preventScroll: true });
-    /* the main pane is the scroll container on a wide screen and the page is
-     * on a narrow one, so both are sent back to the top */
-    $('#main').scrollTo({ top: 0, behavior: 'smooth' });
-    global.scrollTo({ top: 0, behavior: 'smooth' });
+    if (!route.item) {
+      /* the main pane is the scroll container on a wide screen and the page
+       * is on a narrow one, so both are sent back to the top */
+      $('#main').scrollTo({ top: 0, behavior: 'smooth' });
+      global.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    return drawn;
+  }
+
+  /* Go to a page, and to one item on it if an item is named. The address
+   * changes with it, which adds a step to the browser's history. The promise
+   * is the page drawn, with whatever it had to fetch first. */
+  function goto(key, item) {
+    if (!Object.prototype.hasOwnProperty.call(PAGES, key)) key = 'overview';
+    var address = hashFor(key, item);
+    if (global.location && global.location.hash !== address) {
+      /* the hashchange this fires finds the page already showing */
+      global.location.hash = address;
+    }
+    return show(key, item);
+  }
+
+  /* The address changed under the app: back, forward, a link, or a hand in
+   * the address bar. */
+  function followAddress() {
+    var wanted = routeFrom(global.location.hash);
+    if (!wanted.key) wanted = { key: 'overview', item: '' };
+    if (wanted.unknown) {
+      /* replaced rather than added, so back does not return to it */
+      global.location.replace(hashFor('overview'));
+    }
+    if (wanted.key === store.get('nav') && wanted.item === route.item) return;
+    show(wanted.key, wanted.item);
+  }
+
+  /* Mark a node as the item an address can name on this page. */
+  function itemNode(id, node) {
+    if (id && node && node.setAttribute) node.setAttribute('data-item', String(id));
+    return node;
+  }
+
+  function sameItem(a, b) {
+    return String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+  }
+
+  /* After a page is drawn: bring the item its address names into view, once
+   * per visit, or say on the page that it is not there. A link printed for
+   * one borehole and opened on a project holding another must not look as
+   * though it had worked. */
+  function showItem(host) {
+    if (!route.item) return;
+    var found = Array.prototype.find.call(host.querySelectorAll('[data-item]'),
+      function (node) { return sameItem(node.getAttribute('data-item'), route.item); });
+    if (found) {
+      found.classList.add('item-target');
+      if (!route.focused) {
+        route.focused = true;
+        found.scrollIntoView({ block: 'start' });
+      }
+      return;
+    }
+    /* not yet: the sheets are still being read or the soundings inverted,
+     * and the item may be among what they bring */
+    if (recomputeState.running || Object.keys(work).length) return;
+    var named = Array.prototype.map.call(host.querySelectorAll('[data-item]'),
+      function (node) { return node.getAttribute('data-item'); });
+    var head = host.querySelector('.page-head');
+    var note = el('div.callout.callout-warn.item-missing', [
+      el('p', el('strong', 'Nothing here is called ' + route.item)),
+      el('p', 'This address points at ' + route.item + ', which is not in the ' +
+        'project open in this browser' + (named.length ? ' (it holds ' +
+        S.joinList(named) + ')' : '') + '. Open the project it belongs to, or ' +
+        'load its field sheet.'),
+    ]);
+    if (head && head.nextSibling) host.insertBefore(note, head.nextSibling);
+    else host.insertBefore(note, host.firstChild);
   }
 
   function nextStep(note, label, page) {
@@ -758,6 +900,14 @@
   async function loadSample(key) {
     var sample = (GWT.data.samples || {})[key];
     if (!sample) return;
+    /* the workbooks themselves are a bundle of their own, fetched the first
+     * time a sample is opened */
+    try {
+      if (!GWT.hasBundle('samples')) await GWT.load('samples');
+    } catch (e) {
+      S.toast('Could not open the sample: ' + e.message, 'error');
+      return;
+    }
     var fresh = blankState();
     fresh.nav = store.get('nav');
     fresh.theme = store.get('theme', 'dark');
@@ -1408,8 +1558,8 @@
     var latlon = siteLatLon();
     var districtWarning = districtNote(site, latlon);
     var mapNode = null;
-    if (GWT.data.geo && GWT.data.geo.adminBoundaries) {
-      var boundaries = GWT.data.geo.adminBoundaries.features || [];
+    if (mapLayers() && mapLayers().adminBoundaries) {
+      var boundaries = mapLayers().adminBoundaries.features || [];
       var home = locatorHome(site, latlon);
       var legendItems = [];
       if (latlon) {
@@ -1423,7 +1573,7 @@
         /* the bundled layer is geoBoundaries; the credit named a dataset this
          * repository does not carry, and the map had no sea or neighbours to
          * tell the Atlantic from unmapped ground */
-        outline: nationalOutline(GWT.data.geo),
+        outline: nationalOutline(mapLayers()),
         labelContext: true,
         contextFill: home.fill,
         highlight: home.highlight, highlightFill: HOME_FILL,
@@ -1571,8 +1721,8 @@
           'enter a position above for the local window.'),
         el('div.grid.grid-2', [
           charts.figure(charts.thematicMap({
-            features: (GWT.data.geo.hydrogeology || {}).features || [],
-            context: (GWT.data.geo.adminBoundaries || {}).features || [],
+            features: (mapLayers().hydrogeology || {}).features || [],
+            context: (mapLayers().adminBoundaries || {}).features || [],
             key: 'unit',
             window: latlon ? { lat: latlon.lat, lon: latlon.lon, radiusKm: mapRadius } : null,
             points: latlon ? [{ lon: latlon.lon, lat: latlon.lat, label: siteLabel() }] : [],
@@ -1584,13 +1734,13 @@
             legendTitle: 'AQUIFER TYPE AND PRODUCTIVITY',
             // the BGS colours ARE the classification, so they stay
             sourceColours: true,
-            outline: nationalOutline(GWT.data.geo),
+            outline: nationalOutline(mapLayers()),
             width: 560, height: 680,
           }), 'Aquifer type and productivity (BGS Africa Groundwater Atlas, CC BY-SA 4.0)',
           { filename: 'aquifer_map' }),
           charts.figure(charts.thematicMap({
-            features: (GWT.data.geo.geology || {}).features || [],
-            context: (GWT.data.geo.adminBoundaries || {}).features || [],
+            features: (mapLayers().geology || {}).features || [],
+            context: (mapLayers().adminBoundaries || {}).features || [],
             key: 'unit',
             window: latlon ? { lat: latlon.lat, lon: latlon.lon, radiusKm: mapRadius } : null,
             points: latlon ? [{ lon: latlon.lon, lat: latlon.lat, label: siteLabel() }] : [],
@@ -1599,7 +1749,7 @@
               'Sierra Leone (Fileccia et al. 2017, MoWR/SALWACO, 1:600,000).',
             legendTitle: 'GEOLOGICAL UNIT',
             sourceScale: charts.usgsSourceScale,
-            outline: nationalOutline(GWT.data.geo),
+            outline: nationalOutline(mapLayers()),
             nameLithology: true, district: store.get('site.district') || '',
             width: 560, height: 680,
           }), 'Geology (USGS Geologic Map of Africa)', { filename: 'geology_map' }),
@@ -1662,7 +1812,7 @@
         'project with no position has nothing to centre on.', 'warn');
       return;
     }
-    var geo = GWT.data.geo || {};
+    var geo = mapLayers() || {};
     var interpretations = (derived || {}).interpretations || [];
     var zone = site.utm_zone ||
       (site.easting ? C.inferZoneForSierraLeone(site.easting) : null);
@@ -1749,7 +1899,7 @@
     var home = C.homeDistrict(site, latlon);
     var lit = {};
     home.chiefdoms.forEach(function (name) { lit[name] = true; });
-    var chiefdoms = (((GWT.data.geo || {}).chiefdomBoundaries || {}).features || [])
+    var chiefdoms = (((mapLayers() || {}).chiefdomBoundaries || {}).features || [])
       .filter(function (f) { return lit[(f.properties || {}).name] === true; });
     return {
       name: home.name,
@@ -1787,7 +1937,7 @@
     var surveyOnly = (options || {}).surveyOnly;
     var window_ = areaWindow(store.get('site.mapRadiusKm', 40));
     if (!window_) return null;
-    var geo = GWT.data.geo || {};
+    var geo = mapLayers() || {};
     var points = [];
     /* two points the ranking cannot separate get no star between them, as on
      * the drill-target map: the report's text calls them indistinguishable */
@@ -1868,7 +2018,7 @@
   /* The figures themselves, rasterised for the .docx. `detail` adds the
    * aquifer and geological setting to the locator. */
   async function areaFigures(detail) {
-    var geo = GWT.data.geo || {};
+    var geo = mapLayers() || {};
     if (!geo.adminBoundaries) return [];
     var site = store.get('site') || {};
     var latlon = siteLatLon();
@@ -2062,8 +2212,15 @@
 
   var _polys = null;
   function polygons() {
-    if (!_polys) _polys = C.loadPolygons();
-    return _polys;
+    /* not kept while empty: the layers may not have arrived yet */
+    if (!_polys && C.geoLayers()) _polys = C.loadPolygons();
+    return _polys || [];
+  }
+
+  /* The bundled map layers, which render() has loaded before drawing any
+   * page that reads them; see FIRST_SCREEN. */
+  function mapLayers() {
+    return C.geoLayers() || {};
   }
 
   /* WGS84 inverse transverse Mercator, northern hemisphere. */
@@ -2226,6 +2383,8 @@
           'resistivity: a factor near 1 is well resolved, a large one marks the ' +
           'equivalence that makes resistivity models non-unique.') : null,
       ]));
+      /* #/ves/<sounding> opens on this card */
+      itemNode(soundingId, nodes[nodes.length - 1]);
     });
 
     var preferenceRows = C.drillingPreferenceTable(derived.interpretations,
@@ -2282,7 +2441,7 @@
         rowClass: function (row) { return row.rank === 1 ? 'row-ok' : ''; },
       }),
       located.length ? charts.figure(charts.siteMap({
-        context: (GWT.data.geo.chiefdomBoundaries || {}).features || [],
+        context: (mapLayers().chiefdomBoundaries || {}).features || [],
         points: located.map(function (s) {
           var ll = utmToLatLon(s.easting, s.northing,
             store.get('site.utm_zone') || C.inferZoneForSierraLeone(s.easting));
@@ -3116,6 +3275,9 @@
     }
 
     var test = derived.test, analysis = derived.analysis;
+    /* #/pumping/<borehole> names the borehole the test was run on; a project
+     * holds one test, so the address says which borehole it has to be */
+    itemNode(test.borehole_ref, nodes[1]);
 
     nodes.push(card('Discharge per step', [
       /* what was parsed, in the words a report uses for the test type */
@@ -4700,7 +4862,7 @@
           el('p', decision.rationale),
         ]),
         charts.figure(charts.siteMap({
-          context: (GWT.data.geo.chiefdomBoundaries || {}).features || [],
+          context: (mapLayers().chiefdomBoundaries || {}).features || [],
           points: decision.nearby.slice(0, 200).map(function (p) {
             return {
               lon: p.lon, lat: p.lat,
@@ -4834,7 +4996,7 @@
       unplaced = counted.unassigned;
       var byDistrict = {};
       rows.forEach(function (r) { byDistrict[r.name] = r.people_per_point; });
-      features = (GWT.data.geo.chiefdomBoundaries || {}).features || [];
+      features = (mapLayers().chiefdomBoundaries || {}).features || [];
       /* null is an area nothing is known about; Infinity is a mapped area with
        * no functional source in it, which is the worst case rather than a
        * missing one. They were both null, so the areas most in need were the
@@ -4862,7 +5024,7 @@
       unplaced = counts.unassigned;
       var byChiefdom = {};
       rows.forEach(function (r) { byChiefdom[r.name] = r.people_per_point; });
-      features = (GWT.data.geo.chiefdomBoundaries || {}).features || [];
+      features = (mapLayers().chiefdomBoundaries || {}).features || [];
       valueFor = function (feature) {
         var name = (feature.properties || {}).name;
         if (!(name in byChiefdom)) return null;
@@ -4891,7 +5053,7 @@
         features: features, value: valueFor, name: nameFor,
         title: title, legendTitle: 'people per functional water point',
         classes: C.loadServiceClasses(),
-        outline: nationalOutline(GWT.data.geo),
+        outline: nationalOutline(mapLayers()),
         width: 640, height: 600,
       }), title, { filename: 'coverage_' + level }),
       el('p.muted', projection.note),
@@ -5194,7 +5356,7 @@
       var outstanding = state.due.filter(function (item) {
         return item.state === 'overdue' || item.state === 'unknown';
       });
-      nodes.push(card('This borehole', [
+      nodes.push(itemNode(asset.asset_id, card('This borehole', [
         el('p.asset-id', asset.asset_id),
         el('p.muted', 'The identifier is derived from the position, so two ' +
           'teams at the same wellhead with no connection between them arrive ' +
@@ -5220,7 +5382,7 @@
             message: item.detail,
           };
         })),
-      ]));
+      ])));
 
       var draft = { when: new Date().toISOString().slice(0, 10),
         kind: 'inspection', note: '', by: '', photo: '' };
@@ -5397,6 +5559,7 @@
     charts.usePrintPalette(true);
     try {
       await S.withBusy(host, 'Building the document…', async function () {
+        await need(REPORT_BUNDLES);
         var cfg = config();
         var context = {
           style: cfg.style, asset: asset, state: C.assetState(asset),
@@ -5522,7 +5685,7 @@
     var points = C.portfolioPoints(summaries);
     nodes.push(card('Where they are', [
       points.length ? charts.figure(charts.siteMap({
-        context: (GWT.data.geo.adminBoundaries || {}).features || [],
+        context: (mapLayers().adminBoundaries || {}).features || [],
         points: points.map(function (p) {
           return {
             lon: p.lon, lat: p.lat, label: p.label, size: 5.5,
@@ -6209,6 +6372,15 @@
 
   async function buildReport(kind, extra, node) {
     var host = node ? node.closest('.card') : $('#page-host');
+    /* the document writer, and the maps every report opens on; the page has
+     * usually loaded the rest already, but a report can be asked for from
+     * anywhere */
+    try {
+      await need(REPORT_BUNDLES);
+    } catch (e) {
+      S.toast('Could not build the report: ' + e.message, 'error');
+      return;
+    }
     /* Every figure this builds goes into a .docx, so it is painted for paper
      * rather than for the theme the app happens to be in; the default theme
      * is dark, and clients were sent maps and drawings on a black ground. */
@@ -6498,12 +6670,71 @@
 
   /* ------------------------------------------------------------------ render */
 
+  /* The pages drawn with the first screen's scripts alone. Every other page
+   * draws figures, and reads the map layers for a map or for the chiefdom
+   * and district under the site's position that it states, so VIEW_BUNDLES
+   * are fetched before one of them is first drawn and not before: the
+   * Overview a phone opens on has no use for 760 KB of boundaries. Two
+   * pages draw with the document writer's own words, so they need that too:
+   * procurement labels its certificate lines with them, and water quality
+   * its status column, so the page and the report cannot word a result
+   * differently. */
+  var FIRST_SCREEN = { overview: true, guided: true, templates: true,
+    extract: true, settings: true, about: true };
+  var DRAWS_WITH_DOCX = { procurement: true, quality: true };
+
+  function bundlesFor(key) {
+    if (FIRST_SCREEN[key]) return [];
+    return DRAWS_WITH_DOCX[key] ? REPORT_BUNDLES : VIEW_BUNDLES;
+  }
+
+  function pageTitle(key) {
+    var title = '';
+    NAV_GROUPS.forEach(function (group) {
+      group[1].forEach(function (page) { if (page[0] === key) title = page[1]; });
+    });
+    return title;
+  }
+
+  /* Draw the page the store names. The promise is that page drawn: at once,
+   * or once the bundles it needs have arrived, with a line saying what it is
+   * waiting for in the meantime. */
   function render() {
     var host = $('#page-host');
+    var key = Object.prototype.hasOwnProperty.call(PAGES, store.get('nav'))
+      ? store.get('nav') : 'overview';
+    var wanted = bundlesFor(key);
+    if (!hasBundles(wanted)) {
+      S.clear(host);
+      S.append(host, [
+        pageHead(pageTitle(key)),
+        S.empty('Loading the maps and figures for this page…'),
+      ]);
+      renderNav();
+      return need(wanted)
+        .then(function () {
+          /* drawn only if it is still the page asked for */
+          if (store.get('nav') === key) return render();
+          return null;
+        }, function (e) {
+          if (store.get('nav') !== key) return;
+          S.clear(host);
+          S.append(host, [
+            pageHead(pageTitle(key)),
+            el('div.callout.callout-bad', [
+              el('p', el('strong', 'This page could not be loaded.')),
+              el('p', e.message),
+              el('p', button('Try again', function () { render(); })),
+            ]),
+          ]);
+        });
+    }
+    bindModules();
     S.clear(host);
-    var page = PAGES[store.get('nav')] || PAGES.overview;
+    var page = PAGES[key];
     try {
       S.append(host, page());
+      showItem(host);
     } catch (e) {
       console.error(e);
       S.append(host, el('div.callout.callout-bad', [
@@ -6513,6 +6744,7 @@
       ]));
     }
     renderNav();
+    return Promise.resolve();
   }
 
   /* ----------------------------------------------------------- offline / PWA */
@@ -6621,9 +6853,25 @@
       store.replace(migrateLoadedState(merged));
       if (strandedKey) store.persist();
     }
+    /* An address that names a page wins over the page the session was left
+     * on: it is what the user followed to get here. */
+    var start = routeFrom(global.location.hash);
+    if (start.key) {
+      store.set('nav', start.key);
+      route.item = start.item;
+      route.focused = !start.item;
+    }
     applyTheme();
     renderChrome();
     render();
+    /* the first step of the history names its page too, so back returns to
+     * it; replaced, since it is the same step */
+    if (!start.key || start.unknown) {
+      var shown = store.get('nav');
+      global.location.replace(hashFor(
+        Object.prototype.hasOwnProperty.call(PAGES, shown) ? shown : 'overview', route.item));
+    }
+    global.addEventListener('hashchange', followAddress);
     if (strandedKey) {
       /* It sat unencrypted on disk, so removing it is not enough: it has to
        * be treated as disclosed and rotated. */
@@ -6664,6 +6912,7 @@
     projectState: projectState, reportReadiness: reportReadiness,
     getApiKey: getApiKey, setApiKey: setApiKey, forgetApiKey: forgetApiKey,
     renderAutosaveBanner: renderAutosaveBanner,
+    hashFor: hashFor, routeFrom: routeFrom,
   };
 
   if (typeof document !== 'undefined') {

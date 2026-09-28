@@ -7,7 +7,8 @@ web interface. No programming is needed.
 ## 1. Getting the templates
 
 Ask the analyst for the current template pack, or generate it from the
-**Templates** page of the web interface (sidebar, under *Delivery*).
+**Templates** page of the web interface (sidebar, under *Delivery*;
+in the browser app its address is [`#/templates`](index.html#/templates)).
 There are five templates:
 
 | Template | Used for |
@@ -116,6 +117,37 @@ install and no Python; it keeps the project in the browser and saves it
 as a `.gwt.json` file rather than a `.yaml` one. Either app can read
 the other's saved projects on the Portfolio page.
 
+In the browser app every page has an address of its own: the app's
+address followed by `#/` and the page, so the Geophysics page is
+[`index.html#/ves`](index.html#/ves) and the pumping test page is
+[`index.html#/pumping`](index.html#/pumping). The browser's back and
+forward buttons move between the pages you have visited, a bookmark
+opens the page it was made on, and an address can be written into a
+report, an email or a QR code on a field sheet. Some pages go one step
+further and name one thing on them:
+
+| Address | Opens |
+|---|---|
+| [`#/overview`](index.html#/overview) | Overview |
+| [`#/site`](index.html#/site) | Site & maps |
+| [`#/ves`](index.html#/ves), `#/ves/VES-3` | Geophysics, at sounding VES-3 |
+| [`#/design`](index.html#/design) | Borehole design |
+| [`#/pumping`](index.html#/pumping), `#/pumping/KTL-01` | Pumping test, for borehole KTL-01 |
+| [`#/quality`](index.html#/quality) | Water quality |
+| [`#/costing`](index.html#/costing) | Costing & BoQ |
+| [`#/supervision`](index.html#/supervision) | Supervision |
+| [`#/handover`](index.html#/handover) | Handover |
+| [`#/registry`](index.html#/registry), `#/registry/<asset id>` | Asset registry, for that borehole |
+| [`#/templates`](index.html#/templates) | Templates |
+
+The other pages follow the same pattern (`#/guided`, `#/spine`,
+`#/extract`, `#/procurement`, `#/waterpoints`, `#/coverage`,
+`#/portfolio`, `#/settings`, `#/about`). An address opens the page in
+whatever project the browser has open; it does not carry the project
+with it. If it names a sounding or a borehole the open project does not
+hold, the page says so across the top rather than showing another one
+in its place. An address the app does not know opens the Overview.
+
 The browser app installs. Open it once with a connection and it keeps
 itself on the device; the Overview page then offers an **Install**
 button, after which it opens full screen like any other application and
@@ -177,6 +209,8 @@ drilling.
 
 ## 7. Costing & BoQ
 
+In the browser app: [`#/costing`](index.html#/costing).
+
 Enter the planned depth, the overburden thickness if known and the
 one way distance from the contractor's base to the site, then press
 "Estimate cost". The estimate follows the RWSN Cost-Effective
@@ -196,6 +230,8 @@ contract price, and every rule of thumb applied is listed under
 
 ## 8. Supervision
 
+In the browser app: [`#/supervision`](index.html#/supervision).
+
 The checklists follow the RWSN/UNICEF supervision guidance, stage by
 stage from procurement to post-construction monitoring. Answer each
 item Yes, No or N/A as the works proceed; items marked *critical*
@@ -206,6 +242,8 @@ distances from pollution sources. When a stage is complete, download
 the signed checklist record from "Checklist record and sign off".
 
 ## 8a. Depth Spine
+
+In the browser app: [`#/spine`](index.html#/spine).
 
 The whole borehole on one depth axis: the cuttings log, the casing
 string and the water levels drawn against the same ruler, so the
@@ -230,6 +268,8 @@ person at the time.
 
 ## 9. Handover
 
+In the browser app: [`#/handover`](index.html#/handover).
+
 The closing report for the client and the community. Fill the site
 details in the sidebar once (they feed every page), then answer the
 handover questions: the pump installed, the tariff agreed, the WASH
@@ -240,6 +280,8 @@ water quality verdict - attach to the report automatically; the page
 shows what is attached before you build it.
 
 ## 10. Site maps
+
+In the browser app: [`#/site`](index.html#/site).
 
 Four tabs, from the country down to the rock under the borehole.
 Enter the UTM coordinates in the sidebar to place the site star; the
@@ -400,6 +442,8 @@ it computed itself, so a file moved from one app to the other is
 inverted once on arrival.
 
 ## 12. Scanned sheets
+
+In the browser app: [`#/extract`](index.html#/extract).
 
 There are two paths, and which one you need depends on the file.
 

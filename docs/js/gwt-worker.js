@@ -29,7 +29,9 @@
 
   /* Only what the tasks read: the engine, and the tables it takes from
    * GWT.data - the standards the assessment is made against, the lithology
-   * crosswalk the drilling log is read with. support.js belongs to the page
+   * crosswalk the drilling log is read with. The map layers are a bundle of
+   * their own, gwt-geo.js, which the engine imports here itself the first
+   * time a task reads them (GWT.loadNow). support.js belongs to the page
    * (building the DOM, and reading workbooks, which needs DOMParser) and is
    * not loaded here. */
   if (IN_WORKER) global.importScripts('gwt-data.js', 'gwt-core.js');

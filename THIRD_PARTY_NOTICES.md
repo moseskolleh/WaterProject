@@ -19,7 +19,7 @@ committed file so a silent substitution is detectable.
 
 | | |
 |---|---|
-| **Files** | `WaterProjectFiles/SierraLeone_BGS_Hydrogeology/SierraLeone_HG.{shp,shx,dbf,prj,cpg}`; derived: `src/groundwater/data/sl_hydrogeology_bgs.geojson`; embedded in `docs/js/gwt-data.js` and `docs/wasm/index.html` |
+| **Files** | `WaterProjectFiles/SierraLeone_BGS_Hydrogeology/SierraLeone_HG.{shp,shx,dbf,prj,cpg}`; derived: `src/groundwater/data/sl_hydrogeology_bgs.geojson`; embedded in `docs/js/gwt-geo.js` and `docs/wasm/index.html` |
 | **Source** | Africa Groundwater Atlas country hydrogeology maps, v1.2 user guide; Ó Dochartaigh, B. 2021, BGS Open Report OR/21/063 |
 | **Licence** | CC BY-SA 4.0 — evidenced by the licence text committed at `WaterProjectFiles/SierraLeone_BGS_Hydrogeology/AfricaGroundwaterAtlasCountryMap-LicenceInformation_V1.2.txt` |
 | **Required attribution** | "British Geological Survey. 2019/2021. Africa Groundwater Atlas Country Hydrogeology Maps. Africa Groundwater Atlas (https://www2.bgs.ac.uk/africagroundwateratlas/index.cfm)" — the wording the licence prescribes |

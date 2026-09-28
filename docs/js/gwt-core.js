@@ -9826,10 +9826,29 @@
     return inside;
   }
 
+  /* The bundled map layers, GWT.data.geo. They are a script of their own,
+   * gwt-geo.js, fetched the first time a view needs a map, because they are
+   * most of the app's data by weight and the first screen uses none of them.
+   * The engine worker imports them here, the first time a task reads them.
+   * The page loads them before it draws a view that needs them; asked for
+   * them before that, it says so loudly rather than answer that a point is
+   * in no district, which is the answer an empty layer gives. */
+  var geoMissingSaid = false;
+  function geoLayers() {
+    var data = GWT.data || {};
+    if (!data.geo && typeof GWT.loadNow === 'function') GWT.loadNow('geo');
+    if (!data.geo && !geoMissingSaid && typeof GWT.load === 'function') {
+      geoMissingSaid = true;
+      console.error('The map layers were read before gwt-geo.js was loaded; ' +
+        'call GWT.load(\'geo\') first.');
+    }
+    return data.geo || null;
+  }
+
   /* Chiefdom polygons, with bounding boxes so the point-in-polygon scan over
    * 166 chiefdoms stays cheap for a few thousand water points. */
   function loadPolygons(layer) {
-    var source = layer || (GWT.data && GWT.data.geo && GWT.data.geo.chiefdomBoundaries);
+    var source = layer || (geoLayers() || {}).chiefdomBoundaries;
     if (!source) return [];
     return (source.features || []).map(function (feature) {
       var geometry = feature.geometry || {};
@@ -10739,6 +10758,7 @@
     DRILL_NEW: DRILL_NEW, ASSESS_REHAB: ASSESS_REHAB, VERIFY_NEED: VERIFY_NEED,
     WPDX_CREDIT: WPDX_CREDIT, POPULATION_CREDIT: POPULATION_CREDIT,
     haversineM: haversineM, pointInRing: pointInRing, loadPolygons: loadPolygons,
+    geoLayers: geoLayers,
     polyContains: polyContains, chiefdomOfPoint: chiefdomOfPoint,
     CHIEFDOM_EDGE_TOLERANCE_M: CHIEFDOM_EDGE_TOLERANCE_M,
     ringDistanceM: ringDistanceM, nearestChiefdomIndex: nearestChiefdomIndex,
@@ -11326,8 +11346,9 @@
   var regionalPolysCache = null;
 
   function regionalPolys() {
-    if (!regionalPolysCache) regionalPolysCache = loadPolygons();
-    return regionalPolysCache;
+    /* not cached while empty: the layers may not have arrived yet */
+    if (!regionalPolysCache && geoLayers()) regionalPolysCache = loadPolygons();
+    return regionalPolysCache || [];
   }
 
   /* The district a point is in today: district_of in the Python engine.
@@ -11473,7 +11494,7 @@
   /* The district polygons of the bundled boundary layer, each with its outer
    * rings: load_admin's districts. */
   function adminDistricts() {
-    var features = ((((GWT.data || {}).geo || {}).adminBoundaries || {}).features) || [];
+    var features = (((geoLayers() || {}).adminBoundaries || {}).features) || [];
     return features.filter(function (f) {
       return ((f.properties || {}).level || 'ADM2') !== 'ADM0';
     }).map(function (f) {
@@ -11668,11 +11689,11 @@
   /* The USGS geology polygon under a point, and the BGS aquifer polygon:
    * geology_unit_at and aquifer_unit_at. Null outside the layer. */
   function geologyUnitAt(lat, lon) {
-    return unitAt((((GWT.data || {}).geo) || {}).geology, lat, lon);
+    return unitAt((geoLayers() || {}).geology, lat, lon);
   }
 
   function aquiferUnitAt(lat, lon) {
-    return unitAt((((GWT.data || {}).geo) || {}).hydrogeology, lat, lon);
+    return unitAt((geoLayers() || {}).hydrogeology, lat, lon);
   }
 
   /* The district a polygon lies in, for the crosswalk that names it:

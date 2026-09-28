@@ -48,7 +48,7 @@ datasets:
         sha256: 8433e4ac39eaaf69f80c64ff101d5b3e45f111ed4f849ec9fdecc858bf2ed79d
         derived: true
     embedded_in:
-      - docs/js/gwt-data.js
+      - docs/js/gwt-geo.js
       - docs/wasm/index.html
 
   - id: geoboundaries_admin

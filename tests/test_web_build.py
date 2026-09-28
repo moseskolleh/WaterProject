@@ -78,39 +78,70 @@ def _load_webapp_builder():
 
 
 def test_webapp_data_is_current(sample_data):
-    """docs/js/gwt-data.js must match the CSV, GeoJSON and sample workbooks.
+    """docs/js/gwt-data.js and its bundles must match the CSV, GeoJSON and
+    sample workbooks.
 
     The standalone app carries its own copy of the guideline table, the rate
     catalogue, the checklists, the map layers and the sample workbooks. They
     are re-emitted mechanically from ``src/groundwater/data`` and
     ``examples/data``, so a stale copy means the browser is scoring water
-    against different limits from the package.
+    against different limits from the package. The map layers and the sample
+    workbooks are written to bundles of their own, loaded on demand, and are
+    held to their sources the same way.
     """
     builder = _load_webapp_builder()
+    fresh = builder.bundle_texts()
+    assert set(fresh) == {builder.OUT, *builder.BUNDLE_OUT.values()}
+    for path, text in fresh.items():
+        assert path.exists(), (
+            f"{path.name} is missing; run: python web/build_webapp_data.py"
+        )
+        assert path.read_text(encoding="utf-8") == text, (
+            f"docs/js/{path.name} is stale; run: python web/build_webapp_data.py"
+        )
+
     committed = builder.OUT.read_text(encoding="utf-8")
     payload = json.loads(
         committed[committed.index("GWT.data = ") + len("GWT.data = "):]
-        .rsplit(";", 2)[0]
+        .split(";\n", 1)[0]
     )
-
     for key, name in builder.CSV_TABLES.items():
         assert payload[key] == builder.read_csv_rows(name), (
             f"docs/js/gwt-data.js is stale for {name}; "
             "run: python web/build_webapp_data.py"
         )
+    # the first screen's script carries no layer and no workbook: they are
+    # what the split takes off the critical path
+    assert "geo" not in payload
+    for sample in payload["samples"].values():
+        for entry in sample["files"].values():
+            assert "b64" not in entry and entry["name"] and entry["path"]
+
+    geo_text = builder.BUNDLE_OUT["geo"].read_text(encoding="utf-8")
+    geo = json.loads(
+        geo_text[geo_text.index("GWT.data.geo = ") + len("GWT.data.geo = "):]
+        .split(";\n", 1)[0]
+    )
     for key, name in builder.GEOJSON_LAYERS.items():
-        assert payload["geo"][key] == builder.read_geojson(name), (
-            f"docs/js/gwt-data.js is stale for {name}; "
+        assert geo[key] == builder.read_geojson(name), (
+            f"docs/js/gwt-geo.js is stale for {name}; "
             "run: python web/build_webapp_data.py"
         )
+    samples_text = builder.BUNDLE_OUT["samples"].read_text(encoding="utf-8")
+    sample_bytes = json.loads(
+        samples_text[samples_text.index("var bytes = ") + len("var bytes = "):]
+        .split(";\n", 1)[0]
+    )
     for key, spec in builder.SAMPLE_PROJECTS.items():
         for role, rel in spec["files"].items():
             source = REPO / "examples" / "data" / rel
-            assert payload["samples"][key]["files"][role]["b64"] == \
-                builder.encode_file(source), (
-                    f"docs/js/gwt-data.js is stale for {rel}; "
-                    "run: python web/build_webapp_data.py"
-                )
+            assert sample_bytes[key][role] == builder.encode_file(source), (
+                f"docs/js/gwt-samples.js is stale for {rel}; "
+                "run: python web/build_webapp_data.py"
+            )
+            assert payload["samples"][key]["files"][role]["name"] == source.name
+    # the loader fetches each bundle by the name the build gave it
+    assert json.dumps(builder.BUNDLES) in committed
     # the About page names this release, so it has to be the one the package is
     import groundwater
 
@@ -128,10 +159,15 @@ def test_webapp_data_is_current(sample_data):
     )
 
 
+def _scripts(html: str) -> list[str]:
+    """The scripts a page loads, in order, whatever attributes they carry."""
+    return re.findall(r'<script\b[^>]*\bsrc="([^"]+)"[^>]*></script>', html)
+
+
 def test_webapp_scripts_are_wired_up():
     """Every script index.html loads must exist, and in dependency order."""
     html = (REPO / "docs" / "index.html").read_text(encoding="utf-8")
-    scripts = re.findall(r'<script src="([^"]+)"></script>', html)
+    scripts = _scripts(html)
     assert scripts, "index.html loads no scripts"
     # support.js defines the helpers the rest use at load time, and gwt-data.js
     # must be in place before gwt-core.js reads the standards table.
@@ -141,10 +177,54 @@ def test_webapp_scripts_are_wired_up():
     # time; its tasks call gwt-core.js when the page has to run them itself.
     assert (scripts.index("js/gwt-core.js") < scripts.index("js/gwt-worker.js")
             < scripts.index("js/gwt-app.js"))
+    # gwt-app.js is last: it runs the app, and it is where the bundles the
+    # first screen does without are named.
+    assert scripts[-1] == "js/gwt-app.js"
+    # Deferred, every one, so the browser draws the shell without waiting on
+    # them; deferred scripts still run in document order, so the order above
+    # holds. One left parser-blocking between deferred ones would run first.
+    tags = re.findall(r"<script\b[^>]*\bsrc=[^>]*>", html)
+    assert all(re.search(r"\sdefer[\s>]", tag) for tag in tags), tags
     for src in scripts:
         assert (REPO / "docs" / src).exists(), f"{src} is referenced but missing"
     for href in re.findall(r'<link rel="stylesheet" href="([^"]+)"', html):
         assert (REPO / "docs" / href).exists(), f"{href} is referenced but missing"
+
+
+def _bundles() -> dict[str, str]:
+    """Every bundle a script of the app's names for GWT.load, by name, as a
+    path under docs/."""
+    found: dict[str, str] = {}
+    for script in (REPO / "docs" / "js").glob("*.js"):
+        text = script.read_text(encoding="utf-8")
+        for statement in re.findall(r"GWT\.bundles\s*=[^;]*;", text):
+            for name, url in re.findall(
+                    r"""["']?(\w+)["']?\s*:\s*["']([^"']+\.js)["']""", statement):
+                found[name] = "js/" + url
+    return found
+
+
+def test_every_bundle_loaded_on_demand_exists_and_is_precached():
+    """A bundle is fetched the first time a page needs it, not with the shell.
+
+    It is still part of the release: a device that installed the app and was
+    only ever shown the Overview has to be able to open a map at a borehole
+    with no network, so the service worker precaches every bundle the app
+    can ask for, and none of them may be missing.
+    """
+    bundles = _bundles()
+    # the map layers and the samples, from gwt-data.js; the figures, the map
+    # export, the photo slots and the document writer, from gwt-app.js
+    assert {"geo", "samples", "charts", "geolibre", "imageSlot", "docx"} <= set(bundles)
+    builder = _load_offline_builder()
+    paths = builder.shell_assets()
+    for name, path in bundles.items():
+        assert (REPO / "docs" / path).exists(), f"bundle {name}: {path} is missing"
+        assert path in paths, f"bundle {name}: {path} is not precached"
+    # and none of them is loaded by the page up front, which would undo the
+    # point of loading it on demand
+    html = (REPO / "docs" / "index.html").read_text(encoding="utf-8")
+    assert not set(bundles.values()) & set(_scripts(html))
 
 
 def test_the_web_app_icon_is_the_brand_icon():
@@ -200,7 +280,7 @@ def test_the_service_worker_precaches_every_script_the_page_loads():
     """
     docs = REPO / "docs"
     html = (docs / "index.html").read_text(encoding="utf-8")
-    scripts = re.findall(r'<script src="([^"]+)"></script>', html)
+    scripts = _scripts(html)
     worker = (docs / "sw.js").read_text(encoding="utf-8")
     precache = re.search(r"var PRECACHE = \[(.*?)\];", worker, re.DOTALL)
     assert precache, "PRECACHE list not found in sw.js"
@@ -274,7 +354,7 @@ def test_the_precache_list_is_the_shell_the_page_loads():
     docs = REPO / "docs"
     html = (docs / "index.html").read_text(encoding="utf-8")
 
-    loaded = re.findall(r'<script src="([^"]+)"></script>', html)
+    loaded = _scripts(html)
     loaded += re.findall(r'<link rel="stylesheet" href="([^"]+)"', html)
     missing = [src for src in loaded if src not in paths]
     assert not missing, f"{missing} is loaded by index.html but not precached"
@@ -342,6 +422,40 @@ def test_the_shell_follows_a_worker_s_imports(tmp_path, monkeypatch):
         raise AssertionError("a missing worker import was not reported")
 
 
+def test_the_shell_follows_the_bundles_a_script_names(tmp_path, monkeypatch):
+    """A script fetched on demand is still part of the shell.
+
+    Nothing on the first screen asks for it, so reading the page the way a
+    browser does would never meet it; the GWT.bundles assignment that names
+    it is what the build follows instead.
+    """
+    builder = _load_offline_builder()
+    (tmp_path / "js").mkdir()
+    (tmp_path / "index.html").write_text(
+        '<!doctype html><script src="js/entry.js" defer></script>', encoding="utf-8")
+    (tmp_path / "js" / "entry.js").write_text(
+        "GWT.bundles = Object.assign(GWT.bundles || {}, {\n"
+        "  maps: 'maps.js', \"figures\": \"figures.js\",\n});\n",
+        encoding="utf-8")
+    (tmp_path / "js" / "maps.js").write_text("", encoding="utf-8")
+    (tmp_path / "js" / "figures.js").write_text("", encoding="utf-8")
+    for extra in builder.EXTRA:
+        (tmp_path / extra).write_text("", encoding="utf-8")
+    monkeypatch.setattr(builder, "DOCS", tmp_path)
+
+    paths = builder.shell_assets()
+    assert paths.index("js/entry.js") < paths.index("js/maps.js")
+    assert "js/figures.js" in paths
+
+    (tmp_path / "js" / "maps.js").unlink()
+    try:
+        builder.shell_assets()
+    except builder.ShellError as exc:
+        assert "js/maps.js" in str(exc)
+    else:
+        raise AssertionError("a missing bundle was not reported")
+
+
 def test_the_worker_is_written_in_one_step(tmp_path):
     """A worker truncated half way through a write shadows the one that worked."""
     builder = _load_offline_builder()
@@ -399,3 +513,59 @@ def test_the_build_groups_a_shape_s_rings_into_one_polygon_with_its_holes():
     island_hole = [(4.5, 4.5), (5.5, 4.5), (5.5, 5.5), (4.5, 5.5), (4.5, 4.5)]
     nested = module.rings_to_polygons([outer, island, hole, island_hole])
     assert [outer, hole] in nested and [island, island_hole] in nested
+
+
+# The engine worker, started in Node: importScripts reads docs/js, and the
+# names it was asked for are written out, with what the engine answered.
+_JS_WORKER = r"""
+import { readFileSync, writeFileSync } from 'node:fs';
+import vm from 'node:vm';
+const dir = process.argv[2];
+const imported = [];
+const sandbox = { console, URL, postMessage() {},
+  location: { href: 'http://localhost/js/gwt-worker.js' } };
+sandbox.self = sandbox;
+sandbox.importScripts = (...urls) => urls.forEach((url) => {
+  const name = new URL(url, sandbox.location.href).pathname.split('/').pop();
+  imported.push(name);
+  vm.runInContext(readFileSync(dir + '/' + name, 'utf8'), sandbox, { filename: name });
+});
+vm.createContext(sandbox);
+vm.runInContext('var globalThis = this;', sandbox);
+sandbox.importScripts('gwt-worker.js');
+const started = imported.slice();
+const district = sandbox.GWT.core.districtOfPoint(8.484, -13.234);
+writeFileSync(process.argv[3], JSON.stringify({ started, imported, district }));
+"""
+
+
+def test_the_engine_worker_imports_the_map_layers_when_a_task_reads_them(tmp_path):
+    """The map layers left gwt-data.js; the worker still has them when asked.
+
+    The page loads gwt-geo.js before it draws a page that reads it. A worker
+    cannot be handed it that way, so the engine imports it, synchronously,
+    the first time anything reads the layers; a worker that answered from an
+    empty layer would put every point in no district and say nothing.
+    """
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed; run `node --version` to check")
+    driver = tmp_path / "worker.mjs"
+    driver.write_text(_JS_WORKER, encoding="utf-8")
+    out = tmp_path / "out.json"
+    result = subprocess.run(
+        [node, str(driver), str(REPO / "docs" / "js"), str(out)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    found = json.loads(out.read_text(encoding="utf-8"))
+    # starting takes the engine and its tables, not the layers
+    assert found["started"] == ["gwt-worker.js", "gwt-data.js", "gwt-core.js"]
+    # reading a district from a position fetches them, once
+    assert found["imported"].count("gwt-geo.js") == 1
+    assert found["district"] == "Western Area Urban"
