@@ -177,6 +177,9 @@ def test_webapp_scripts_are_wired_up():
     # time; its tasks call gwt-core.js when the page has to run them itself.
     assert (scripts.index("js/gwt-core.js") < scripts.index("js/gwt-worker.js")
             < scripts.index("js/gwt-app.js"))
+    # gwt-store.js is where the session is kept, which gwt-app.js opens at
+    # load time to restore it.
+    assert scripts.index("js/gwt-store.js") < scripts.index("js/gwt-app.js")
     # gwt-app.js is last: it runs the app, and it is where the bundles the
     # first screen does without are named.
     assert scripts[-1] == "js/gwt-app.js"

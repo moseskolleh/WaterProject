@@ -2,6 +2,7 @@
  * page, build every report, and fail on any console error or missing output.
  */
 import { withPage } from './harness.mjs';
+import { timeAutosaves } from './heavy.mjs';
 
 /* the app as a copy on disk, opened without a server */
 const FROM_DISK = new URL('../../docs/index.html', import.meta.url).href;
@@ -549,30 +550,33 @@ await withPage(async (page, base, consoleErrors) => {
         keys: Object.keys(app.store.get('inversionCache')).sort().join() ===
           Object.keys(file.state.inversionCache).sort().join() };
 
-      // a mirror that will not fit with the cache in it is kept without it,
-      // rather than not kept at all
-      const original = Storage.prototype.setItem;
-      const persistKey = Object.keys(localStorage).find((k) => k.startsWith('gwt'));
-      Storage.prototype.setItem = function (k, v) {
-        if (String(v).includes('"digest"')) {
+      // a mirror that has no room for the cache is kept without it, rather
+      // than not kept at all: the whole session written afresh, with the
+      // cache's store refusing every entry
+      await app.store.forget();
+      const original = IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put = function (value, key) {
+        if (this.name === 'cache') {
           const err = new Error('quota');
           err.name = 'QuotaExceededError';
           throw err;
         }
-        return original.call(this, k, v);
+        return original.call(this, value, key);
       };
       let wrote;
       try {
-        wrote = app.store.persist();
+        wrote = await app.store.persist();
       } finally {
-        Storage.prototype.setItem = original;
+        IDBObjectStore.prototype.put = original;
       }
-      const mirrored = JSON.parse(localStorage.getItem(persistKey));
+      const mirrored = await app.storage.readBack();
       out.lighter = { wrote, ok: app.store.autosaveOk(),
         cache: Object.keys(mirrored.inversionCache || {}).length,
         sources: !!(mirrored.sources && mirrored.sources.ves),
         live: Object.keys(app.store.get('inversionCache')).length };
-      app.store.persist();
+      // and offered again by the next write, which has room for it
+      await app.store.persist();
+      out.lighter.later = Object.keys((await app.storage.readBack()).inversionCache).length;
 
       // back to the survey as saved
       await app.loadProject(saved);
@@ -611,7 +615,8 @@ await withPage(async (page, base, consoleErrors) => {
   check('cache: an autosave too big with the cache in it is kept without it',
     reused.lighter.wrote === true && reused.lighter.ok === true &&
     reused.lighter.cache === 0 && reused.lighter.sources &&
-    reused.lighter.live === ves.n, JSON.stringify(reused.lighter));
+    reused.lighter.live === ves.n && reused.lighter.later === ves.n,
+    JSON.stringify(reused.lighter));
   check('cache: a damaged or hand-edited entry is not used',
     reused.damaged.calls === ves.n && reused.damaged.same === null &&
     reused.garbage.every((g) => g === null), JSON.stringify([reused.damaged, reused.garbage]));
@@ -1897,26 +1902,30 @@ await withPage(async (page, base, consoleErrors) => {
   // --- the API key never reaches long-term storage ------------------------
   // It used to be a field of the persisted state, so the store mirrored it
   // into localStorage on every change: unencrypted, surviving a browser
-  // restart, readable by anything with script access to this origin.
+  // restart, readable by anything with script access to this origin. The
+  // session is in IndexedDB now; the key is in neither.
   const credential = await page.evaluate(async () => {
     const app = window.GWT.app;
+    const stored = async () => (localStorage.getItem('gwt.project.v1') || '')
+      .includes('sk-ant-smoke-test-key') ||
+      JSON.stringify(await app.storage.readBack() || {}).includes('sk-ant-smoke-test-key');
     app.setApiKey('sk-ant-smoke-test-key', false);
     const inMemory = {
       readable: app.getApiKey(),
       inSession: sessionStorage.getItem('gwt.credential.v1'),
-      inLocal: (localStorage.getItem('gwt.project.v1') || '')
-        .includes('sk-ant-smoke-test-key'),
+      inLocal: await stored(),
       inState: JSON.stringify(app.store.state).includes('sk-ant-smoke-test-key'),
     };
-    app.store.persist();
-    inMemory.inLocalAfterPersist = (localStorage.getItem('gwt.project.v1') || '')
-      .includes('sk-ant-smoke-test-key');
+    app.store.set('site.community', 'typed with a key held');
+    inMemory.persisted = await app.store.persist();
+    inMemory.inLocalAfterPersist = await stored();
 
     // opting in puts it in sessionStorage, which the browser drops with the tab
     app.setApiKey('sk-ant-smoke-test-key', true);
     const remembered = sessionStorage.getItem('gwt.credential.v1');
-    const stillNotInLocal = !(localStorage.getItem('gwt.project.v1') || '')
-      .includes('sk-ant-smoke-test-key');
+    app.store.set('site.community', 'typed with a key remembered');
+    await app.store.persist();
+    const stillNotInLocal = !(await stored());
 
     app.forgetApiKey();
     return Object.assign(inMemory, {
@@ -1932,7 +1941,8 @@ await withPage(async (page, base, consoleErrors) => {
     credential.inState === false, JSON.stringify(credential));
   check('credentials: it is never written to long-term storage',
     credential.inLocal === false && credential.inLocalAfterPersist === false &&
-    credential.stillNotInLocal === true, JSON.stringify(credential));
+    credential.persisted === true && credential.stillNotInLocal === true,
+    JSON.stringify(credential));
   check('credentials: memory-only by default, session storage on opt-in',
     credential.inSession === null &&
     credential.remembered === 'sk-ant-smoke-test-key',
@@ -1969,68 +1979,73 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify(shared));
 
   // --- autosave failure is announced --------------------------------------
-  // localStorage quota is finite and photographs are large. Autosave dropping
-  // out silently is the worst thing this app can do to a day of fieldwork.
+  // Storage quota is finite and photographs are large. Autosave dropping out
+  // silently is the worst thing this app can do to a day of fieldwork. Quota
+  // is simulated by an IndexedDB put that throws QuotaExceededError, which
+  // abandons the write's whole transaction, as a real one does.
+  await page.evaluate(() => {
+    const original = IDBObjectStore.prototype.put;
+    window.__quota = {
+      fill() {
+        IDBObjectStore.prototype.put = function () {
+          const err = new Error('quota');
+          err.name = 'QuotaExceededError';
+          throw err;
+        };
+      },
+      free() { IDBObjectStore.prototype.put = original; },
+    };
+  });
   const autosave = await page.evaluate(async () => {
     const store = window.GWT.app.store;
-    const original = Storage.prototype.setItem;
-    Storage.prototype.setItem = function () {
-      const err = new Error('quota');
-      err.name = 'QuotaExceededError';
-      throw err;
-    };
-    const okDuringFailure = store.persist();
+    window.__quota.fill();
+    store.set('site.community', 'typed as the quota filled');
+    const okDuringFailure = await store.persist();
     const failingState = store.autosaveOk();
     const bannerShown = !!document.querySelector('#autosave-banner .callout-bad');
-    Storage.prototype.setItem = original;
-    const okAfterRecovery = store.persist();
+    window.__quota.free();
+    const okAfterRecovery = await store.persist();
+    const stored = await window.GWT.app.storage.readBack();
     return {
       okDuringFailure, failingState, bannerShown, okAfterRecovery,
       recovered: store.autosaveOk(),
       bannerCleared: !document.querySelector('#autosave-banner .callout-bad'),
       bannerText: document.querySelector('#autosave-banner')?.textContent || '',
+      caughtUp: stored.site.community === 'typed as the quota filled',
     };
   });
   check('autosave: a failed mirror write is reported, not swallowed',
     autosave.okDuringFailure === false && autosave.failingState === false &&
     autosave.bannerShown === true, JSON.stringify(autosave));
-  check('autosave: the warning clears once writing works again',
+  check('autosave: the warning clears once writing works again, and the change is kept',
     autosave.okAfterRecovery === true && autosave.recovered === true &&
-    autosave.bannerCleared === true, JSON.stringify(autosave));
+    autosave.bannerCleared === true && autosave.caughtUp === true, JSON.stringify(autosave));
 
   // A failed write used to delete the copy that had already succeeded, so the
   // first photograph that filled the quota took this morning's drilling log
   // with it and the next load opened a blank app. An hour-old copy is worth
   // having; nothing is not.
   const mirror = await page.evaluate(async () => {
-    const store = window.GWT.app.store;
-    const key = Object.keys(localStorage).find((k) => k.startsWith('gwt'));
-    store.persist();
-    const before = localStorage.getItem(key);
+    const store = window.GWT.app.store, storage = window.GWT.app.storage;
+    await store.persist();
+    const before = JSON.stringify(await storage.readBack());
 
-    const original = Storage.prototype.setItem;
-    Storage.prototype.setItem = function () {
-      const err = new Error('quota');
-      err.name = 'QuotaExceededError';
-      throw err;
-    };
+    window.__quota.fill();
     store.set('site.community', 'typed after the quota filled');
-    const failed = store.persist();
-    Storage.prototype.setItem = original;
+    const failed = await store.persist();
+    window.__quota.free();
 
-    const after = localStorage.getItem(key);
-    /* and the copy still parses back into a project, not just a string */
-    let restored = null;
-    try { restored = JSON.parse(after); } catch (e) { restored = null; }
+    /* and the copy still reads back into a project, unchanged */
+    const restored = await storage.readBack();
+    const after = JSON.stringify(restored);
     /* read the banner before restoring: a successful write clears it */
     const banner = document.querySelector('#autosave-banner')?.textContent || '';
-    store.persist();
+    await store.persist();
     return {
       failed,
-      key,
       banner,
-      survived: after !== null && after === before,
-      restorable: !!(restored && typeof restored === 'object'),
+      survived: after === before,
+      restorable: !!(restored && typeof restored === 'object' && restored.site),
     };
   });
   check('autosave: a failed write leaves the copy that already succeeded',
@@ -2055,24 +2070,19 @@ await withPage(async (page, base, consoleErrors) => {
     /* return the store to the healthy state first, so the stub below causes
      * the transition that fires onPersistError; without this the block
      * depends on whatever the previous one left behind */
-    store.persist();
-    store.forget();
+    await store.persist();
+    await store.forget();
 
-    const original = Storage.prototype.setItem;
-    Storage.prototype.setItem = function () {
-      const err = new Error('quota');
-      err.name = 'QuotaExceededError';
-      throw err;
-    };
+    window.__quota.fill();
     store.set('site.community', 'typed in a private window');
-    store.persist();
-    Storage.prototype.setItem = original;
+    await store.persist();
+    window.__quota.free();
 
     /* read the banner before restoring the store: a successful write fires
      * onPersistRecovered, which clears the host */
     const text = document.querySelector('#autosave-banner')?.textContent || '';
     const shown = !!document.querySelector('#autosave-banner .callout-bad');
-    store.persist();
+    await store.persist();
     return { shown, text };
   });
   check('autosave: a browser that never stored anything is not promised a copy',
@@ -2080,6 +2090,343 @@ await withPage(async (page, base, consoleErrors) => {
     /has not managed to store the session even once/.test(nothingKept.text) &&
     !/copy it already had is still there/.test(nothingKept.text),
     JSON.stringify(nothingKept));
+
+  // --- where the session is kept (PLAN.md step 1.3) -----------------------
+  // Each of these opens the app in a browser context of its own, so its
+  // storage starts empty and nothing here reaches the page above.
+  const browser = page.context().browser();
+  const freshTab = async (init) => {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    if (init) await context.addInitScript(init.fn, init.arg);
+    const errors = [];
+    const open = async () => {
+      const tab = await context.newPage();
+      tab.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+      tab.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+      await tab.goto(base + '/index.html', { waitUntil: 'load' });
+      await tab.waitForFunction(() => window.GWT && window.GWT.app &&
+        document.querySelector('#page-host .page-head'));
+      return tab;
+    };
+    return { context, errors, open };
+  };
+  const settled = (tab) => tab.waitForFunction(() =>
+    !window.GWT.app.recomputeState.running && !window.GWT.app.working('invert') &&
+    !window.GWT.app.working('pumping'), null, { timeout: 120000 });
+  /* the session as a digest, leaving out the page it is on */
+  const digest = (tab) => tab.evaluate(async () => {
+    const state = Object.assign({}, window.GWT.app.store.state, { nav: null });
+    const bytes = new TextEncoder().encode(JSON.stringify(state));
+    const hash = await crypto.subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('');
+  });
+
+  // A project with 50 photos and 10 workbooks autosaves in under 50 ms of
+  // main-thread time, and survives a reload. Before this step the same
+  // autosave stringified 20.6 MB into localStorage in about 90 ms, and was
+  // refused for quota every time.
+  const heavy = await (async () => {
+    const { context, errors, open } = await freshTab();
+    try {
+      const tab = await open();
+      const timed = await timeAutosaves(tab, { samples: 5 });
+      const built = timed.built, first = timed.first;
+      const times = timed.edits.map((t) => t.main);
+      const writes = timed.edits.map((t) => t.value);
+      /* a caption is one record; a replaced photo is that record, one file
+       * written and the one it replaced deleted */
+      const photoEdits = await tab.evaluate(async () => {
+        const app = window.GWT.app, S = window.GWT.support;
+        const set = JSON.parse(JSON.stringify(app.store.get('photos.completion')));
+        const keep = (p) => Object.assign({}, p);
+        const next = Object.assign({}, app.store.get('photos.completion'));
+        next.site = Object.assign(keep(next.site), { caption: 'A new caption' });
+        app.store.set('photos.completion', next);
+        await app.store.persist();
+        const caption = app.storage.stats.last;
+        const bytes = S.base64ToBytes(set.drilling.dataUrl);
+        bytes[bytes.length - 3] ^= 0xff;
+        const replaced = Object.assign({}, app.store.get('photos.completion'));
+        replaced.drilling = Object.assign(keep(replaced.drilling),
+          { dataUrl: 'data:image/jpeg;base64,' + S.bytesToBase64(bytes) });
+        app.store.set('photos.completion', replaced);
+        await app.store.persist();
+        return { caption, replaced: app.storage.stats.last };
+      });
+      await settled(tab);
+      const before = await digest(tab);
+      await tab.reload({ waitUntil: 'load' });
+      await tab.waitForFunction(() => window.GWT && window.GWT.app &&
+        document.querySelector('#page-host .page-head'));
+      await settled(tab);
+      const after = await digest(tab);
+      const reloaded = await tab.evaluate(() => {
+        const photos = window.GWT.app.store.get('photos');
+        return {
+          photos: Object.values(photos).reduce((n, set) => n +
+            Object.keys(set).filter((k) => k !== '__extra' && set[k]).length +
+            (set.__extra || []).filter((e) => e.image).length, 0),
+          workbooks: Object.keys(window.GWT.app.store.get('sources')).length,
+          caption: photos.completion.site.caption,
+        };
+      });
+      /* the first write after a reload stores only what changed after it */
+      const afterReload = await tab.evaluate(async () => {
+        window.GWT.app.store.set('site.community', 'typed after the reload');
+        await window.GWT.app.store.persist();
+        return window.GWT.app.storage.stats.last;
+      });
+      /* the Settings page says where it is kept and how much room it takes */
+      await tab.evaluate(() => window.GWT.app.goto('settings'));
+      await tab.waitForFunction(() =>
+        /In use: [\d.]+ [MG]B of about/.test(document.querySelector('#page-host').textContent),
+      null, { timeout: 10000 });
+      const settings = await tab.evaluate(() =>
+        document.querySelector('#page-host').textContent.includes('IndexedDB'));
+      return { built, first, times, writes, photoEdits, before, after, reloaded,
+        afterReload, settings, errors };
+    } finally {
+      await context.close();
+    }
+  })();
+  const heavyMedian = [...heavy.times].sort((a, b) => a - b)[2];
+  check('storage: a project with 50 photos and 10 workbooks autosaves in under 50 ms',
+    heavy.built.photos === 50 && heavy.built.workbooks === 10 && heavy.first.value.ok &&
+    heavy.writes.every((w) => w.ok) && heavyMedian < 50,
+    JSON.stringify({ built: heavy.built, mainMs: heavy.times, firstWriteMs: heavy.first.main,
+      first: heavy.first.value }));
+  check('storage: a changed field writes its record and nothing else',
+    heavy.writes.every((w) => w.last.records.join() === 'site' && w.last.blobs === 0 &&
+      w.last.orphans === 0 && w.last.removed.length === 0 && w.last.cache === 0) &&
+    heavy.afterReload.records.join() === 'site' && heavy.afterReload.blobs === 0,
+    JSON.stringify([heavy.writes[0], heavy.afterReload]));
+  check('storage: a caption writes the photo record, a replaced photo one file',
+    heavy.photoEdits.caption.records.join() === 'photos' &&
+    heavy.photoEdits.caption.blobs === 0 && heavy.photoEdits.caption.orphans === 0 &&
+    heavy.photoEdits.replaced.records.join() === 'photos' &&
+    heavy.photoEdits.replaced.blobs === 1 && heavy.photoEdits.replaced.orphans === 1,
+    JSON.stringify(heavy.photoEdits));
+  check('storage: the heavy project survives a reload exactly',
+    heavy.before === heavy.after && heavy.reloaded.photos === 50 &&
+    heavy.reloaded.workbooks === 10 && heavy.reloaded.caption === 'A new caption',
+    JSON.stringify({ before: heavy.before, after: heavy.after, reloaded: heavy.reloaded }));
+  check('storage: the Settings page shows where the session is kept, and how much room',
+    heavy.settings === true, JSON.stringify(heavy.settings));
+  check('storage: no console errors with the heavy project', heavy.errors.length === 0,
+    heavy.errors.slice(0, 5).join('\n     '));
+
+  // A session an earlier build left in localStorage is moved into IndexedDB
+  // on the first visit, and the old key goes only once the new copy reads
+  // back as the same session. A key the old build stored with it stays out.
+  const legacyPhoto = 'data:image/jpeg;base64,' +
+    Buffer.from(Array.from({ length: 30000 }, (_, i) => (i * 7919) % 251)).toString('base64');
+  const legacy = JSON.stringify({
+    nav: 'site', theme: 'dark',
+    site: { project: 'Moved from localStorage', community: 'Kuntolo' },
+    photos: { completion: { site: { dataUrl: legacyPhoto, width: 10, height: 10,
+      mime: 'image/jpeg', caption: 'Old photo' }, __extra: [] } },
+    extraction: { model: '', apiKey: 'sk-ant-left-by-an-old-build' },
+    inversionCache: {},
+  });
+  const seedLegacy = {
+    fn: (text) => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', '1');
+      localStorage.setItem('gwt.project.v1', text);
+    },
+    arg: legacy,
+  };
+  const migrated = await (async () => {
+    const { context, errors, open } = await freshTab(seedLegacy);
+    try {
+      const tab = await open();
+      await tab.waitForFunction(() => localStorage.getItem('gwt.project.v1') === null,
+        null, { timeout: 10000 }).catch(() => {});
+      const first = await tab.evaluate(async (photo) => {
+        const app = window.GWT.app;
+        const stored = await app.storage.readBack();
+        return {
+          project: app.store.get('site.project'),
+          photo: app.store.get('photos.completion.site.dataUrl') === photo,
+          legacyKey: localStorage.getItem('gwt.project.v1'),
+          storedProject: stored && stored.site.project,
+          storedPhoto: !!stored && stored.photos.completion.site.dataUrl === photo,
+          key: JSON.stringify(stored).includes('sk-ant-left-by-an-old-build') ||
+            JSON.stringify(app.store.state).includes('sk-ant-left-by-an-old-build'),
+        };
+      }, legacyPhoto);
+      await tab.reload({ waitUntil: 'load' });
+      await tab.waitForFunction(() => window.GWT && window.GWT.app &&
+        document.querySelector('#page-host .page-head'));
+      const reloaded = await tab.evaluate((photo) => ({
+        project: window.GWT.app.store.get('site.project'),
+        photo: window.GWT.app.store.get('photos.completion.site.dataUrl') === photo,
+      }), legacyPhoto);
+      return { first, reloaded, errors };
+    } finally {
+      await context.close();
+    }
+  })();
+  check('storage: an earlier build\'s localStorage session is moved into IndexedDB',
+    migrated.first.project === 'Moved from localStorage' && migrated.first.photo &&
+    migrated.first.storedProject === 'Moved from localStorage' && migrated.first.storedPhoto &&
+    migrated.reloaded.project === 'Moved from localStorage' && migrated.reloaded.photo,
+    JSON.stringify(migrated));
+  check('storage: the old key goes once moved, and the API key in it goes nowhere',
+    migrated.first.legacyKey === null && migrated.first.key === false,
+    JSON.stringify(migrated.first));
+
+  // A move that IndexedDB refuses leaves the old copy where it was, and the
+  // banner says it is no longer being updated rather than that it is gone.
+  const stuck = await (async () => {
+    const { context, open } = await freshTab({
+      fn: (text) => {
+        if (!sessionStorage.getItem('seeded')) {
+          sessionStorage.setItem('seeded', '1');
+          localStorage.setItem('gwt.project.v1', text);
+        }
+        IDBObjectStore.prototype.put = function () {
+          const err = new Error('quota');
+          err.name = 'QuotaExceededError';
+          throw err;
+        };
+      },
+      arg: legacy,
+    });
+    try {
+      const tab = await open();
+      await tab.waitForFunction(() => !!document.querySelector('#autosave-banner .callout-bad'),
+        null, { timeout: 10000 }).catch(() => {});
+      return await tab.evaluate(() => ({
+        project: window.GWT.app.store.get('site.project'),
+        legacyKept: !!localStorage.getItem('gwt.project.v1'),
+        banner: document.querySelector('#autosave-banner')?.textContent || '',
+      }));
+    } finally {
+      await context.close();
+    }
+  })();
+  check('storage: a move that is refused keeps the old copy, and says so',
+    stuck.project === 'Moved from localStorage' && stuck.legacyKept &&
+    /copy it already had is still there/.test(stuck.banner), JSON.stringify(stuck));
+
+  // Where IndexedDB is missing or throws - some private windows, some
+  // browsers on file:// - the app still runs, and says at once, in the
+  // autosave banner's words, that it is saving nothing.
+  const fallback = await (async () => {
+    const { context, errors, open } = await freshTab({
+      fn: () => {
+        Object.defineProperty(window, 'indexedDB', {
+          configurable: true,
+          get() { throw new DOMException('The user denied permission.', 'SecurityError'); },
+        });
+      },
+    });
+    try {
+      const tab = await open();
+      await tab.waitForFunction(() => !!document.querySelector('#autosave-banner .callout-bad'),
+        null, { timeout: 10000 }).catch(() => {});
+      const banner = await tab.evaluate(() =>
+        document.querySelector('#autosave-banner')?.textContent || '');
+      const works = await tab.evaluate(async () => {
+        const app = window.GWT.app;
+        await app.loadSample('dr_timbo');
+        app.store.set('site.community', 'typed with nowhere to keep it');
+        return { ok: await app.store.persist(), analysis: !!app.derived.analysis,
+          mode: app.storage.mode };
+      });
+      await tab.evaluate(() => window.GWT.app.goto('settings'));
+      await tab.waitForFunction(() => document.querySelector('#page-host').textContent
+        .includes('will not keep the session'), null, { timeout: 10000 }).catch(() => {});
+      const settings = await tab.evaluate(() =>
+        document.querySelector('#page-host').textContent.includes('will not keep the session'));
+      return { banner, works, settings, errors };
+    } finally {
+      await context.close();
+    }
+  })();
+  check('storage: with no IndexedDB the app runs, and says it is saving nothing',
+    /Nothing is being autosaved/.test(fallback.banner) &&
+    /has not managed to store the session even once/.test(fallback.banner) &&
+    fallback.works.analysis && fallback.works.ok === false && fallback.works.mode === 'none' &&
+    fallback.settings, JSON.stringify(fallback));
+  check('storage: no console errors with no IndexedDB', fallback.errors.length === 0,
+    fallback.errors.slice(0, 5).join('\n     '));
+
+  // Two tabs on one browser. Only one saves; the other says so and saves
+  // nothing, so the copy on disk is never records of two sessions mixed.
+  // "Continue here" moves the saving, and the tab that had it says so.
+  const tabs = await (async () => {
+    const { context, errors, open } = await freshTab();
+    try {
+      const first = await open();
+      await first.evaluate(async () => {
+        window.GWT.app.store.set('site.community', 'typed in the first tab');
+        await window.GWT.app.store.persist();
+      });
+      const second = await open();
+      await second.waitForFunction(() =>
+        /Another tab is saving this project/.test(
+          document.querySelector('#autosave-banner')?.textContent || ''),
+      null, { timeout: 10000 }).catch(() => {});
+      const readerView = await second.evaluate(async () => {
+        const app = window.GWT.app;
+        const opened = app.store.get('site.community');
+        app.store.set('site.community', 'typed in the second tab');
+        return { opened, role: app.storage.role, ok: await app.store.persist(),
+          banner: document.querySelector('#autosave-banner')?.textContent || '' };
+      });
+      const firstStill = await first.evaluate(async () => {
+        const app = window.GWT.app;
+        app.store.set('site.client', 'still the first tab');
+        const ok = await app.store.persist();
+        const stored = await app.storage.readBack();
+        return { ok, community: stored.site.community, client: stored.site.client,
+          banner: !!document.querySelector('#autosave-banner .callout-bad') };
+      });
+      await second.getByRole('button', { name: 'Continue here' }).click();
+      await second.waitForFunction(() => window.GWT.app.storage.role === 'writer' &&
+        !document.querySelector('#autosave-banner .callout-bad'), null, { timeout: 10000 })
+        .catch(() => {});
+      await first.waitForFunction(() => /Another tab is saving this project/.test(
+        document.querySelector('#autosave-banner')?.textContent || ''), null, { timeout: 10000 })
+        .catch(() => {});
+      const moved = await second.evaluate(async () => {
+        const app = window.GWT.app;
+        const opened = { community: app.store.get('site.community'),
+          client: app.store.get('site.client') };
+        app.store.set('site.community', 'typed after continuing here');
+        return { opened, role: app.storage.role, ok: await app.store.persist() };
+      });
+      const firstAfter = await first.evaluate(async () => {
+        const app = window.GWT.app;
+        app.store.set('site.community', 'typed in the first tab after it lost the saving');
+        const ok = await app.store.persist();
+        const stored = await app.storage.readBack();
+        return { ok, role: app.storage.role, community: stored.site.community,
+          banner: document.querySelector('#autosave-banner')?.textContent || '' };
+      });
+      return { readerView, firstStill, moved, firstAfter, errors };
+    } finally {
+      await context.close();
+    }
+  })();
+  check('tabs: a second tab opens the saved copy and saves nothing, and says so',
+    tabs.readerView.opened === 'typed in the first tab' && tabs.readerView.role === 'reader' &&
+    tabs.readerView.ok === false && /Another tab is saving this project/.test(tabs.readerView.banner) &&
+    tabs.firstStill.ok && tabs.firstStill.community === 'typed in the first tab' &&
+    tabs.firstStill.client === 'still the first tab' && !tabs.firstStill.banner,
+    JSON.stringify([tabs.readerView, tabs.firstStill]));
+  check('tabs: "Continue here" moves the saving, with what the other tab had saved',
+    tabs.moved.role === 'writer' && tabs.moved.ok &&
+    tabs.moved.opened.community === 'typed in the first tab' &&
+    tabs.moved.opened.client === 'still the first tab' &&
+    tabs.firstAfter.ok === false && tabs.firstAfter.role === 'reader' &&
+    tabs.firstAfter.community === 'typed after continuing here' &&
+    /Another tab is saving this project/.test(tabs.firstAfter.banner),
+    JSON.stringify([tabs.moved, tabs.firstAfter]));
+  check('tabs: no console errors', tabs.errors.length === 0,
+    tabs.errors.slice(0, 5).join('\n     '));
 
   // --- addresses: every page has one ---------------------------------------
   // Each page opened cold, in a tab of its own, by nothing but its URL: the

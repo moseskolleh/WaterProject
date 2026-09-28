@@ -157,10 +157,25 @@ every sample project and the standards tables, is already on the
 device.
 
 The browser app also keeps a running copy of the session in the
-browser's own storage, so a refresh never loses fieldwork. That storage
-is finite and photographs are large. If a write fails, the app says so
-across the top of the page and asks for a project file: from that point
-the file you save is the only record, so save one.
+browser's own storage (IndexedDB), so a refresh never loses fieldwork.
+Each workbook and photograph is kept there once, as a file of its own,
+and a change writes only the part of the session it touched, so typing
+does not stutter however many photos the project holds. The Settings
+page shows how much room it takes, and whether the browser has agreed
+to keep it rather than clear it when the device runs short of space.
+That storage is still finite. If a write fails, the app says so across
+the top of the page and asks for a project file: from that point the
+file you save is the only record, so save one. A browser that will not
+give the app any storage at all gets the same warning as soon as the
+app opens.
+
+Only one tab saves the session. Open the app in a second tab of the
+same browser and that tab opens the saved copy, says across the top
+that another tab is saving the project, and saves nothing itself.
+**Continue here** moves the saving to it: it opens what the other tab
+saved, and the other tab stops saving and says so. A session kept by an
+earlier version of the app, in the browser's older local storage, is
+moved across the first time the new version opens.
 
 The VES inversion takes a few seconds per sounding on a laptop, and
 longer on an older one; a pumping test analysis is usually quicker. In
@@ -426,9 +441,10 @@ it back later or on another machine to continue where you stopped.
 The two apps differ in what survives on their own. The Streamlit app
 holds its session in memory, so a refresh loses it; it saves a
 `.yaml` project file. The standalone browser app mirrors the session
-to the browser's own storage as you go, so a refresh or a closed tab
-comes back where you left it, and it warns you in red if that mirror
-ever stops being written; it saves a `.gwt.json` project file. Either
+to the browser's IndexedDB storage as you go, so a refresh or a closed
+tab comes back where you left it, and it warns you in red if that
+mirror ever stops being written; it saves a `.gwt.json` project file,
+the same file as before the mirror moved to IndexedDB. Either
 app reads the other's file, so a project started in the field on a
 phone can be finished at a desk.
 
