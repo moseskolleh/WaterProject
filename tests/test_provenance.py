@@ -73,7 +73,7 @@ def test_the_copyleft_dataset_is_marked_share_alike(provenance):
     bgs = next(d for d in provenance["datasets"] if d["id"] == "bgs_hydrogeology")
     assert bgs["licence"] == "CC-BY-SA-4.0"
     assert bgs["share_alike"] is True
-    assert "docs/js/gwt-data.js" in bgs["embedded_in"]
+    assert "docs/js/gwt-geo.js" in bgs["embedded_in"]
     assert "docs/wasm/index.html" in bgs["embedded_in"]
 
 

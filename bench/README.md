@@ -115,7 +115,14 @@ rate 4) and DevTools' "Slow 4G" network (`Network.emulateNetworkConditions`:
   window after first contentful paint in which no long task (over 50 ms
   on the main thread) runs and no more than two requests are in flight;
   TTI is the end of the last long task before that window, or first
-  contentful paint if there was none. The requests are the page's own,
+  contentful paint if there was none, and never earlier than the end of
+  DOMContentLoaded, which Lighthouse takes as a floor too. Without the
+  floor a page whose scripts are deferred reads as interactive when it
+  first paints: two large scripts still downloading are "no more than two
+  requests", and nothing of the app runs until both have arrived. The
+  bundled baseline was taken before the floor was added; the app's
+  scripts were not deferred then, and DOMContentLoaded came before the
+  window it found, so the floor would not have moved it. The requests are the page's own,
   taken from the DevTools protocol's Network events, so a download
   still under way counts from the moment it was sent (Resource Timing
   lists a request only once it has finished). The service worker's

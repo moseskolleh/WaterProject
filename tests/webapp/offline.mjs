@@ -162,6 +162,25 @@ await withPage(async (page, base, consoleErrors) => {
     offlineWork.ran.includes('analysePumping:worker') &&
     offlineWork.ran.every((r) => r.endsWith(':worker')), JSON.stringify(offlineWork.ran));
 
+  // The map layers and the figures are fetched the first time a page draws
+  // a map, not with the first screen; with no network they come from the
+  // release, which is the only place left to get them.
+  const offlineMap = await page.evaluate(async () => {
+    const before = Object.keys(window.GWT.loadedBundles || {}).sort();
+    await window.GWT.app.goto('site');
+    const host = document.querySelector('#page-host');
+    return {
+      before,
+      after: Object.keys(window.GWT.loadedBundles || {}).sort(),
+      maps: host.querySelectorAll('svg').length,
+      failed: host.textContent.includes('could not be loaded'),
+    };
+  });
+  check('no network: a page with maps loads its layers from the release and draws them',
+    !offlineMap.before.includes('geo') && offlineMap.after.includes('geo') &&
+    offlineMap.after.includes('charts') && offlineMap.maps >= 2 && !offlineMap.failed,
+    JSON.stringify(offlineMap));
+
   const answers = await page.evaluate(async (FOREIGN) => {
     const out = {};
     /* a file of the app's that genuinely was never downloaded */

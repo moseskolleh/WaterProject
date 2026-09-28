@@ -21,7 +21,12 @@
  *     5 s after first contentful paint with no long task (over 50 ms on the
  *     main thread) running in it and never more than two requests in
  *     flight; TTI is the end of the last long task before that window, or
- *     first contentful paint if there was none. Requests are the page's
+ *     first contentful paint if there was none, and never earlier than the
+ *     end of DOMContentLoaded, which Lighthouse also takes as a floor.
+ *     Without that floor a page whose scripts are deferred reads as
+ *     interactive the moment it paints: two big scripts still downloading
+ *     are "at most two requests in flight", and nothing runs until they
+ *     have both arrived, more than five seconds later. Requests are the page's
  *     own, as the DevTools protocol's Network events see them, so one still
  *     downloading counts from the moment it is sent. Resource Timing will
  *     not do for this: it lists a request only once it has finished, and a
@@ -105,7 +110,9 @@ function timeline() {
   const paint = performance.getEntriesByName('first-contentful-paint')[0];
   const nav = performance.getEntriesByType('navigation')[0];
   return { fcp: paint ? paint.startTime : null, now: performance.now(),
-    fetchStart: nav ? nav.fetchStart : 0, long: window.__bench.long };
+    fetchStart: nav ? nav.fetchStart : 0,
+    dcl: nav && nav.domContentLoadedEventEnd ? nav.domContentLoadedEventEnd : null,
+    long: window.__bench.long };
 }
 
 /* Every request the page sends, from the DevTools protocol, in its own
@@ -127,12 +134,12 @@ function trackRequests(cdp) {
 }
 
 /* Lighthouse's TTI in the page's clock, or null while the quiet window it
- * needs has not yet been seen in full. The protocol's clock is put on the
- * page's by the document request, which it sends at the navigation's
- * fetchStart. */
+ * needs has not yet been seen in full, or DOMContentLoaded has not yet
+ * finished. The protocol's clock is put on the page's by the document
+ * request, which it sends at the navigation's fetchStart. */
 function interactive(page, requests, quietMs) {
-  const { fcp, now, fetchStart, long } = page;
-  if (fcp === null) return null;
+  const { fcp, dcl, now, fetchStart, long } = page;
+  if (fcp === null || dcl === null) return null;
   const all = [...requests.values()];
   const doc = all.find((r) => r.type === 'Document');
   if (!doc) return null;
@@ -152,7 +159,7 @@ function interactive(page, requests, quietMs) {
     if (long.some((t) => t.start < end && t.start + t.duration > start)) continue;
     const points = [start, ...flights.map((r) => r.start).filter((t) => t > start && t < end)];
     if (points.some((t) => inFlight(t) > 2)) continue;
-    return Math.max(fcp, ...ends.filter((e) => e <= start));
+    return Math.max(fcp, dcl, ...ends.filter((e) => e <= start));
   }
   return null;
 }
@@ -314,7 +321,8 @@ const measures = [
   ['first contentful paint', 'ms', (r) => r.fcp, 'Paint Timing first-contentful-paint'],
   ['time to interactive', 'ms', (r) => r.tti,
     'Lighthouse TTI: end of the last long task before the first 5 s window after FCP ' +
-    'with no long task in it and at most 2 page requests in flight (DevTools protocol)'],
+    'with no long task in it and at most 2 page requests in flight (DevTools protocol), ' +
+    'and no earlier than FCP or the end of DOMContentLoaded'],
   ['bytes before first paint', 'bytes', (r) => r.bytes,
     'Resource Timing transferSize of the document and every response finished by first paint'],
   ['rokel inversion wall time', 'ms', (r) => r.inversion.wall,

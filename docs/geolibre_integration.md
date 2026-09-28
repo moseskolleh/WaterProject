@@ -72,9 +72,10 @@ So, concretely, what is missing:
    discarded.
 6. **Coverage uses straight-line radii.** `SERVICE_RADIUS_M = 500` is a
    haversine circle, not a walk.
-7. **440 KB of GeoJSON is embedded in `docs/js/gwt-data.js`** — which is
-   also what drags the BGS CC BY-SA ShareAlike obligation into our
-   bundle.
+7. **The GeoJSON is embedded in JavaScript, `docs/js/gwt-geo.js`** —
+   loaded the first time a map is drawn rather than with the first
+   screen, but still a copy in our bundle, which is also what drags the
+   BGS CC BY-SA ShareAlike obligation into it.
 
 ---
 
@@ -223,7 +224,7 @@ site maps with legend, scale bar and title block in one pass, instead of
 40 calls to `site_location_map`.
 
 **4.9 GeoParquet / PMTiles instead of embedded GeoJSON.** Converting the
-bundled layers moves 440 KB of GeoJSON out of `gwt-data.js` and lets the
+bundled layers moves the GeoJSON out of `gwt-geo.js` and lets the
 browser stream instead of embed. It also **contains the CC BY-SA
 problem**: serving the BGS hydrogeology layer as its own PMTiles file
 stops the ShareAlike obligation propagating into our JavaScript bundle

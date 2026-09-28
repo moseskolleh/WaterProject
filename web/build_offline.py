@@ -10,8 +10,9 @@ someone remembered to update.
 
 That is what this script is for. It reads the app shell the way a
 browser does - the scripts and stylesheet ``docs/index.html`` loads, the
-fonts the stylesheet loads, the icons the manifest names, and what a Web
-Worker among those scripts imports - and emits a service worker whose
+fonts the stylesheet loads, the icons the manifest names, what a Web
+Worker among those scripts imports, and the bundles a script names for
+loading on demand - and emits a service worker whose
 precache list is exactly those files. A script added to ``index.html`` is
 precached by the next run; nobody has to remember.
 
@@ -116,8 +117,7 @@ def shell_assets() -> list[str]:
             if _is_local(url):
                 paths.append(_normalise(sheet, url))
 
-    # <script src> in body order: support, data, engine, engine worker,
-    # charts, app.
+    # <script src> in body order: support, data, engine, engine worker, app.
     scripts: list[str] = []
     for src in re.findall(r'<script\b[^>]*\bsrc="([^"]+)"', html):
         if _is_local(src):
@@ -136,6 +136,22 @@ def shell_assets() -> list[str]:
         text = source.read_text(encoding="utf-8")
         for arguments in re.findall(r"importScripts\(([^)]*)\)", text):
             for url in re.findall(r"""['"]([^'"]+)['"]""", arguments):
+                if _is_local(url):
+                    paths.append(_normalise(source, url))
+
+    # What a script fetches on demand. The map layers and the sample
+    # workbooks are bundles the app loads the first time a map or a sample is
+    # wanted, named in a GWT.bundles assignment relative to the script that
+    # makes it. Nothing asks for them on the first screen, so a device that
+    # was only ever shown the Overview would otherwise open its first map with
+    # no network and find nothing to draw.
+    for script in scripts:
+        source = DOCS / script
+        if not source.exists():
+            continue
+        text = source.read_text(encoding="utf-8")
+        for statement in re.findall(r"GWT\.bundles\s*=[^;]*;", text):
+            for url in re.findall(r"""['"]([^'"]+\.js)['"]""", statement):
                 if _is_local(url):
                     paths.append(_normalise(source, url))
 

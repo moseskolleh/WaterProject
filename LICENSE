@@ -31,7 +31,7 @@ keep their own licences and in one case a different one entirely:
   * src/groundwater/data/sl_hydrogeology_bgs.geojson is derived from the BGS
     Africa Groundwater Atlas country hydrogeology map and is licensed
     CC BY-SA 4.0, not MIT. ShareAlike propagates, so every artefact that
-    embeds it - docs/js/gwt-data.js and docs/wasm/index.html, both published
+    embeds it - docs/js/gwt-geo.js and docs/wasm/index.html, both published
     from GitHub Pages - carries the same obligation.
 
   * The reference documents under WaterProjectFiles/ are third-party
