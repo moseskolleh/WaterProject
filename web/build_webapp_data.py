@@ -49,6 +49,23 @@ def toolkit_version() -> str:
         raise ValueError("pyproject.toml declares no version")
     return match.group(1)
 
+
+
+def engine_digest() -> str:
+    """The SHA-256 of the browser engine's source, gwt-core.js.
+
+    The browser's inversion cache names the engine that computed a result
+    by the release and this digest, so a change to the engine between two
+    releases is a different engine and finds none of the old one's results.
+    Line endings are normalised, so a Windows checkout builds the same
+    bundle.
+    """
+    import hashlib
+
+    source = (REPO / "docs" / "js" / "gwt-core.js").read_bytes().replace(b"\r\n", b"\n")
+    return hashlib.sha256(source).hexdigest()
+
+
 # CSV tables, emitted as arrays of row objects keyed by the header row.
 CSV_TABLES = {
     "whoGuidelines": "who_guidelines.csv",
@@ -274,7 +291,8 @@ def encode_file(path: Path) -> str:
 
 
 def build() -> Path:
-    payload: dict[str, object] = {"version": toolkit_version()}
+    payload: dict[str, object] = {"version": toolkit_version(),
+                                  "engineDigest": engine_digest()}
 
     for key, name in CSV_TABLES.items():
         payload[key] = read_csv_rows(name)

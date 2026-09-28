@@ -390,6 +390,15 @@ ever stops being written; it saves a `.gwt.json` project file. Either
 app reads the other's file, so a project started in the field on a
 phone can be finished at a desk.
 
+A project file saved after the soundings were inverted carries their
+inversions, so reopening it shows the models at once instead of
+inverting the survey again. Each one is stored under a fingerprint of
+the readings, the VES settings and the version of the app that computed
+it: change a reading or a setting, or open the file in a newer version,
+and that sounding is inverted afresh. Each app uses only the inversions
+it computed itself, so a file moved from one app to the other is
+inverted once on arrival.
+
 ## 12. Scanned sheets
 
 There are two paths, and which one you need depends on the file.
