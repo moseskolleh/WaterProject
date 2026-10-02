@@ -78,6 +78,12 @@ def engine_digest() -> str:
     releases is a different engine and finds none of the old one's results.
     Line endings are normalised, so a Windows checkout builds the same
     bundle.
+
+    The configuration defaults and the sentence catalogue that this bundle
+    carries beside the engine are not in the digest. A reworded sentence is
+    not a different inversion, and the cache key already holds the whole VES
+    configuration an inversion ran with, so a changed VES default is a
+    different key without it.
     """
     import hashlib
 
@@ -296,12 +302,7 @@ def round_coords(node):
 
 
 def read_text_catalogue() -> dict:
-    """The shared words, ``data/text/*.yaml``, by namespace.
-
-    Not covered by the engine digest: a reworded sentence is not a
-    different inversion, and invalidating every cached sounding over one
-    would only cost the user the wait.
-    """
+    """The shared words, ``data/text/*.yaml``, by namespace."""
     from groundwater.text import text_catalogue
 
     return text_catalogue()
@@ -331,6 +332,8 @@ def bundle_texts() -> dict[Path, str]:
     # the sentences both engines write, from data/text/*.yaml, read through
     # the package's own loader so the browser gets exactly what it parses
     payload["text"] = read_text_catalogue()
+    # the configuration defaults, which config.py reads from the same file
+    payload["defaults"] = json.loads((DATA / "defaults.json").read_text(encoding="utf-8"))
 
     geo = {key: read_geojson(name) for key, name in GEOJSON_LAYERS.items()}
 

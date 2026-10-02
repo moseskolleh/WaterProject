@@ -131,6 +131,17 @@ are read, so the Krio catalogue step 9.2 needs can sit beside them in a
 folder of its own, under the same ids. A sentence not yet in the catalogue is
 still worded once in each engine, and the same in both.
 
+The configuration defaults are kept the same way, in
+`src/groundwater/data/defaults.json`: `config.py` builds every field's
+default from it and keeps the reason for each value beside the field, and the
+browser's `C.defaultConfig()` is a copy of the same file out of `gwt-data.js`.
+Change a default there, regenerate the bundle, and both apps move together. A
+new setting is a field in `config.py` and a key in the file;
+`tests/test_text.py` holds the two to the same names and types. Neither the
+defaults nor the sentences are part of the engine digest in `gwt-data.js`:
+the inversion cache key already carries the whole VES configuration, and a
+reworded sentence is not a different inversion.
+
 Document-level assertions - what reaches the `.docx` a user downloads - belong
 in `tests/webapp/review.mjs`, not in parity.
 

@@ -1,10 +1,13 @@
-"""The shared words: data/text/*.yaml, and the one renderer both engines run.
+"""The shared words and constants: data/text/*.yaml, the one renderer both
+engines run, and data/defaults.json.
 
 A sentence both engines write is kept once, in the catalogue, and these
 tests hold the catalogue to that: every file is well formed, every entry is
 read by both engines, none of the catalogued sentences is still typed out in
 either engine's source, and the browser's renderer gives the same text as
-groundwater.text for the same template and values.
+groundwater.text for the same template and values. The configuration
+defaults are held the same way: one file, the shape of Config, and no copy
+of it left in either engine.
 """
 
 from __future__ import annotations
@@ -248,13 +251,15 @@ writeFileSync(process.argv[4], JSON.stringify({
     try { return C.renderText(template, values); } catch (e) { return null; }
   }),
   catalogue: sandbox.GWT.data.text,
+  defaults: C.defaultConfig(),
 }));
 """
 
 
 def test_the_browser_renders_the_same_text(tmp_path):
     """renderText in gwt-core.js gives what render_text gives, refusals
-    included, and the bundle carries the catalogue as Python reads it."""
+    included, and the bundle carries the catalogue and the configuration
+    defaults as Python reads them."""
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed; run `node --version` to check")
@@ -270,3 +275,72 @@ def test_the_browser_renders_the_same_text(tmp_path):
     assert result["catalogue"] == text_catalogue(), (
         "docs/js/gwt-data.js carries another catalogue; "
         "run: python web/build_webapp_data.py")
+    assert result["defaults"] == _defaults_json(), (
+        "docs/js/gwt-data.js carries other configuration defaults; "
+        "run: python web/build_webapp_data.py")
+
+
+# ----------------------------------------------------- the configuration defaults
+
+def _defaults_json() -> dict:
+    return json.loads((REPO / "src" / "groundwater" / "data" / "defaults.json")
+                      .read_text(encoding="utf-8"))
+
+
+def test_the_defaults_file_is_the_configuration():
+    """defaults.json has exactly the fields config.py declares, each of the
+    type its field declares, and Config() is built from it.
+
+    The type is held exactly: an int written as 10.0 would change the text
+    of the VES configuration, and with it every inversion cache key.
+    """
+    import dataclasses
+
+    from groundwater.config import Config
+
+    defaults = _defaults_json()
+    config = Config()
+    assert list(defaults) == [f.name for f in dataclasses.fields(Config)]
+    kinds = {"int": int, "float": float, "str": str, "tuple": list}
+    for section, values in defaults.items():
+        fields = dataclasses.fields(getattr(config, section))
+        assert list(values) == [f.name for f in fields], section
+        for f in fields:
+            assert type(values[f.name]) is kinds[f.type], f"{section}.{f.name}"
+    assert json.loads(json.dumps(dataclasses.asdict(config))) == defaults
+
+
+def test_no_engine_types_out_a_configuration_default():
+    """config.py reads every default from the file, and no browser script
+    carries a copy of the old DEFAULT_CONFIG literal.
+
+    A default typed out next to its key (``safety_factor: 1.5``) is what a
+    copy looks like. The costing inputs carry drilled and casing diameters
+    of their own, in both engines (costing/model.py CostingInputs and
+    gwt-core.js costingInputs); they are the costing's defaults, not this
+    file's, and are named here so that any other match fails.
+    """
+    source = (REPO / "src" / "groundwater" / "config.py").read_text(encoding="utf-8")
+    fields = re.findall(r"^    (\w+): (\w+) = (.*)$", source, re.MULTILINE)
+    assert fields
+    for name, _kind, default in fields:
+        if name in {"style", "ves", "pumping", "design"}:
+            continue
+        assert re.match(r"(tuple\()?_[A-Z]+\[\"" + name + r"\"\]", default), (
+            f"config.py types out the default of {name}: {default}")
+
+    allowed = {"borehole_diameter_in", "casing_diameter_in"}
+    js = _js_source()
+    for section, values in _defaults_json().items():
+        for key, value in values.items():
+            if isinstance(value, list) or value == "":
+                continue
+            if isinstance(value, str):
+                literal = "['\"]" + re.escape(value) + "['\"]"
+            else:
+                literal = re.escape(f"{value:g}") + r"(?:\.0+)?(?![.\d])"
+            found = re.findall(r"\b" + key + r"\s*:\s*" + literal, js)
+            if key in allowed:
+                assert len(found) <= 1, f"{section}.{key} is typed out in docs/js"
+            else:
+                assert not found, f"{section}.{key} is typed out in docs/js: {found}"

@@ -109,6 +109,8 @@ def test_the_wheel_carries_the_bundled_data_tables(wheel):
         "groundwater/data/borehole_cost_items.csv",
         "groundwater/data/sl_districts.csv",
         "groundwater/data/sl_chiefdoms_geoboundaries.geojson",
+        # every Config() is built from it
+        "groundwater/data/defaults.json",
     ):
         assert expected in names
     # the words the reports print, which the package reads at import

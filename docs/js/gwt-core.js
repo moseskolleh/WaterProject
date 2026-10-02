@@ -41,96 +41,30 @@
 
   /* ================================================================== config
    * groundwater/config.py. Every value is overridable per project, which is
-   * what the Settings page edits.
+   * what the Settings page edits. The defaults are not written out here:
+   * they are src/groundwater/data/defaults.json, which config.py reads and
+   * the build emits as GWT.data.defaults, so the two engines start from the
+   * same numbers. Why each one is what it is stays beside its field in
+   * config.py.
+   *
+   * They are not part of the engine digest either: the inversion cache key
+   * carries the whole VES configuration an inversion ran with, so a changed
+   * VES default is already a different key.
    */
 
-  var DEFAULT_CONFIG = {
-    style: {
-      accent_color: '#1F5C8B',
-      secondary_color: '#C15A2A',
-      neutral_color: '#4D4D4D',
-      background: '#FFFFFF',
-      font_name: 'Calibri',
-      base_font_size_pt: 11.0,
-      figure_width_in: 6.3,
-      organisation: '',
-      organisation_details: '',
-    },
-    ves: {
-      max_layers: 4,
-      min_layers: 2,
-      target_fit_percent: 10.0,
-      parsimony_max_error_ratio: 2.0,
-      damping: 0.02,
-      max_iterations: 60,
-      fresh_basement_min_rho: 3000.0,
-      fractured_zone_rho: [20.0, 800.0],
-      clay_max_rho: 20.0,
-      laterite_min_rho: 800.0,
-      max_drilling_margin_m: 10.0,
-      round_drilling_depth_to_m: 5.0,
-      depth_of_investigation_factor: 0.5,
-      parsimony_fallback_ratio: 1.15,
-      unreliable_fit_percent: 20.0,
-      fit_confidence_floor: 0.5,
-      unresolved_basement_confidence: 0.85,
-      ranking_tie_points: 3.0,
-    },
-    pumping: {
-      safety_factor: 1.5,
-      design_period_days: 365.0,
-      available_drawdown_fraction: 0.7,
-      pump_clearance_above_screen_m: 1.0,
-      pump_submergence_min_m: 3.0,
-      seasonal_allowance_m: 2.0,
-      cooper_jacob_u_max: 0.05,
-      /* a late-time slope below what a dipper can resolve is noise or a
-       * stabilised level, and gives a transmissivity of thousands of m2/day */
-      cooper_jacob_min_slope_m: 0.02,
-      cooper_jacob_min_r2: 0.8,
-      /* fits below this R squared are passed over when choosing which
-       * transmissivity the yield rests on */
-      min_fit_r_squared: 0.8,
-      /* a test shorter than this is projected over several log cycles of
-       * time to reach the design period, so its yield is flagged */
-      min_constant_test_min: 240.0,
-      min_step_length_min: 60.0,
-      /* Casing storage: Schafer's rule puts the end of the period the pump
-       * spends emptying the casing at 0.6 (dc^2 - dp^2) / (Q/s) minutes; the
-       * diameters default to the design rules' casing and a 1.25 inch riser */
-      casing_diameter_in: 5.0,
-      riser_diameter_in: 1.25,
-      /* a recovery line whose intercept at t/t' = 1 is more than this fraction
-       * of the drawdown the recovery started from is not a Theis recovery
-       * line: reported, but not adopted for the yield */
-      recovery_intercept_max_fraction: 0.25,
-      /* a Theis storativity above this is the casing, not the aquifer */
-      max_plausible_storativity: 0.1,
-    },
-    design: {
-      borehole_diameter_in: 6.5,
-      casing_diameter_in: 5.0,
-      casing_material: 'uPVC',
-      screen_slot_mm: 0.75,
-      screen_length_default_m: 9.0,
-      /* the one seal depth: the RWSN checklist's critical item and the
-       * costing's cement quantity both follow it */
-      sanitary_seal_depth_m: 6.0,
-      gravel_pack_above_top_screen_m: 2.0,
-      gravel_pack_material: 'well sorted siliceous gravel, 2-4 mm',
-      sump_length_m: 2.0,
-      stickup_m: 0.5,
-      min_screen_below_swl_m: 5.0,
-      apron_note: 'concrete apron with drainage channel and soakaway',
-      /* A fracture zone the driller names with its depths ("fracture zone
-       * 49-52 m") is screened with this much plain screen either side of
-       * it, rather than the whole logged interval it was written on. */
-      fracture_zone_margin_m: 1.0,
-    },
-  };
+  /* The defaults themselves, shared: read, never changed. */
+  function configDefaults() {
+    var defaults = (GWT.data || {}).defaults;
+    if (!defaults) {
+      throw new Error('gwt-data.js is not loaded, or is stale: it carries the ' +
+        'configuration defaults (src/groundwater/data/defaults.json)');
+    }
+    return defaults;
+  }
 
+  /* A copy of the defaults to change. */
   function defaultConfig() {
-    return JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+    return JSON.parse(JSON.stringify(configDefaults()));
   }
 
   /* Merge a partial override over the defaults, section by section. */
@@ -6145,7 +6079,7 @@
     var seal = sealDepthFor(log, rules, totalDepth);
     var margin = (rules.fracture_zone_margin_m === undefined ||
                   rules.fracture_zone_margin_m === null)
-      ? DEFAULT_CONFIG.design.fracture_zone_margin_m : rules.fracture_zone_margin_m;
+      ? configDefaults().design.fracture_zone_margin_m : rules.fracture_zone_margin_m;
     /* nothing is screened inside the grouted interval, whatever the log says
      * is wet there: the grout is there to keep that water out */
     var swlFloor = (swl || 0.0) + rules.min_screen_below_swl_m;
@@ -6268,7 +6202,7 @@
   function placementBasis(found, screens, rules) {
     var margin = (rules.fracture_zone_margin_m === undefined ||
                   rules.fracture_zone_margin_m === null)
-      ? DEFAULT_CONFIG.design.fracture_zone_margin_m : rules.fracture_zone_margin_m;
+      ? configDefaults().design.fracture_zone_margin_m : rules.fracture_zone_margin_m;
     var trimReason = 'the screens were trimmed to 60 percent of the hole, keeping ' +
       'the deepest sections';
     function covered(zone) {
