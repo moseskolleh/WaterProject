@@ -52,6 +52,14 @@
  *     project button and opened again with Open project, CPU slowed again,
  *     timed from the file being chosen to the last change the page makes to
  *     show the models, with the longest main-thread task in that interval.
+ *   - for autosave (PLAN.md step 1.3): a project of 50 photos and 10
+ *     workbooks (tests/webapp/heavy.mjs, about 20.6 MB as JSON) built in a
+ *     fresh browser, then the main-thread time of its autosaves, from a
+ *     Chromium trace: every main-thread task from the write being asked for
+ *     to it being on disk (or refused), clipped to that interval and summed.
+ *     The first writes the whole session; each of the next five follows one
+ *     typed field, and the median of those is the number. Taken at the 4x
+ *     CPU slowdown and again at 1x; the network plays no part.
  *
  * Each measure is the median of the runs (3, or 1 with --quick), written in
  * the same shape as bench/run.py so the two merge into one baseline:
@@ -65,6 +73,7 @@ import { writeFileSync } from 'node:fs';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { withPage } from '../tests/webapp/harness.mjs';
+import { timeAutosaves } from '../tests/webapp/heavy.mjs';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const TOOL = 'bench/web.mjs';
@@ -344,6 +353,27 @@ async function oneRun(runIndex) {
   });
 }
 
+/* The heavy project's autosaves, in a browser of their own, at the 4x CPU
+ * slowdown and then at 1x. */
+async function autosaveRun() {
+  return withPage(async (page, base) => {
+    await page.goto(base + '/index.html', { waitUntil: 'load' });
+    await page.waitForFunction(() => window.GWT && window.GWT.app &&
+      document.querySelector('#page-host .page-head'), null, { timeout: 120000 });
+    const middle = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+    const out = {};
+    for (const [name, cpu] of [['slowed', CPU_SLOWDOWN], ['full', 1]]) {
+      const t = await timeAutosaves(page, { samples: 5, cpu });
+      out[name] = { first: t.first.main, edit: middle(t.edits.map((e) => e.main)),
+        stored: t.first.value.ok && t.edits.every((e) => e.value.ok) };
+    }
+    console.error(`  autosave: ${Math.round(out.slowed.edit)} ms at ${CPU_SLOWDOWN}x, ` +
+      `${out.full.edit.toFixed(1)} ms at 1x, first write ${Math.round(out.slowed.first)} ms ` +
+      `at ${CPU_SLOWDOWN}x${out.full.stored && out.slowed.stored ? '' : '; REFUSED by storage'}`);
+    return out;
+  });
+}
+
 /* Median, interquartile range (quartiles by linear interpolation, as
  * Python's statistics.quantiles(method="inclusive")), min, max. */
 function summarise(samples) {
@@ -372,7 +402,9 @@ await browser.close();
 
 console.error(`timing the web app, ${args.runs} cold ${args.runs === 1 ? 'run' : 'runs'}`);
 const runs = [];
-for (let i = 0; i < args.runs; i += 1) runs.push(await oneRun(i));
+for (let i = 0; i < args.runs; i += 1) {
+  runs.push(Object.assign(await oneRun(i), { autosave: await autosaveRun() }));
+}
 
 const profile = 'CPU 4x slower, DevTools "Slow 4G" (562.5 ms, 180,000 B/s down, ' +
   '84,375 B/s up), cold: fresh browser and empty cache each run';
@@ -398,6 +430,16 @@ const measures = [
     'the file chosen to the last change the page makes showing the models'],
   ['rokel saved project reopen longest main-thread task', 'ms', (r) => r.reopened.longest,
     'longest Long Task overlapping the reopen; 0 = none over 50 ms'],
+  ['autosave of 50 photos and 10 workbooks, main-thread time', 'ms',
+    (r) => r.autosave.slowed.edit,
+    'median of 5 autosaves each after one typed field, project from tests/webapp/heavy.mjs ' +
+    '(20.6 MB as JSON): main-thread tasks from the write asked for to it stored or refused, ' +
+    'from a Chromium trace; CPU 4x slower, no network in play'],
+  ['autosave of 50 photos and 10 workbooks, main-thread time, CPU unthrottled', 'ms',
+    (r) => r.autosave.full.edit, 'as above at 1x'],
+  ['autosave of 50 photos and 10 workbooks, first write, main-thread time', 'ms',
+    (r) => r.autosave.slowed.first,
+    'as above for the first write, which stores the whole session; CPU 4x slower'],
 ].map(([name, unit, pick, what]) => ({
   id: `web/${name}`, group: 'web', name, tool: TOOL, unit,
   method: `${what}; ${profile}; median of ${runs.length}`,
@@ -419,7 +461,8 @@ const doc = {
       load_average: os.loadavg(),
     },
     options: { runs: runs.length, cpu_slowdown: CPU_SLOWDOWN, network: SLOW_4G,
-      viewport: '1440x900', console_errors: runs.flatMap((r) => r.errors) },
+      viewport: '1440x900', console_errors: runs.flatMap((r) => r.errors),
+      autosave_stored: runs.every((r) => r.autosave.slowed.stored && r.autosave.full.stored) },
   }],
   measures,
 };

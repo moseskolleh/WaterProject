@@ -6,8 +6,8 @@
  * step so a field team is never left wondering what to do with a result.
  *
  * Nothing leaves the browser. Uploaded sheets are parsed in the page, results
- * are held in memory and mirrored to localStorage, and the project file the
- * user downloads is the only copy that persists.
+ * are held in memory and mirrored to IndexedDB (gwt-store.js), and the project
+ * file the user downloads is the copy that is theirs to keep and share.
  */
 (function (global) {
   'use strict';
@@ -51,6 +51,8 @@
   }
   var el = S.el, $ = S.$, card = S.card, button = S.button, field = S.field;
 
+  /* where an earlier build mirrored the whole session, as one string; read
+   * once by gwt-store.js, moved across and removed */
   var STORE_KEY = 'gwt.project.v1';
 
   var NAV_GROUPS = [
@@ -129,16 +131,35 @@
     };
   }
 
-  /* Autosave is a mirror of the session into localStorage, and it is the only
-   * thing standing between a browser refresh and a lost day of fieldwork. It
-   * fails silently by design - quota is finite and photos are large - so the
-   * failure has to be said out loud, and it has to keep being said until the
-   * user has a project file on disk. */
-  function renderAutosaveBanner(broken, kept) {
+  /* Autosave is a mirror of the session into the browser's storage, and it is
+   * the only thing standing between a browser refresh and a lost day of
+   * fieldwork. It fails silently by design - quota is finite and photos are
+   * large - so the failure has to be said out loud, and it has to keep being
+   * said until the user has a project file on disk. */
+  function renderAutosaveBanner(broken, kept, elsewhere) {
     var host = document.getElementById('autosave-banner');
     if (!host) return;
     S.clear(host);
     if (!broken) return;
+    /* A second tab on the same browser would otherwise save over the first
+     * record by record, and the copy on disk would be a session neither of
+     * them had. Only one tab saves (gwt-store.js), and this is what the
+     * other one says. */
+    if (elsewhere) {
+      S.append(host, el('div.callout.callout-bad', [
+        el('p', el('strong', 'Another tab is saving this project')),
+        el('p', 'The toolkit is open in another tab or window of this ' +
+          'browser, and that one is keeping the saved copy. Nothing entered ' +
+          'in this tab is saved: refreshing or closing it loses that. Carry ' +
+          'on in the other tab, or continue here - this tab then opens the ' +
+          'copy the other one saved, and the other stops saving.'),
+        el('div.btn-row', [
+          button('Continue here', continueHere),
+          button('Save project', saveProject, { variant: 'ghost' }),
+        ]),
+      ]));
+      return;
+    }
     /* Two failures wear the same red banner and call for different urgency:
      * losing the last few minutes, or losing the whole day. Saying the first
      * when it is the second promises a backup that is not there, on exactly
@@ -162,19 +183,24 @@
     ]));
   }
 
+  /* The inversion cache is the one part of the session that can always be
+   * worked out again, so the storage keeps it apart and lets it be refused
+   * for want of room without that stopping the rest being kept; a refresh
+   * then inverts the survey once more. */
+  var storage = GWT.storage.create({
+    /* another tab took the saving over: the next write is refused, and the
+     * banner says so; this makes it say so now */
+    onLost: function () { store.persist(); },
+  });
+
   var store = S.createStore(blankState(), {
-    persistKey: STORE_KEY,
-    /* The inversion cache is the one part of the session that can always be
-     * worked out again. When the whole will not fit, the mirror is kept
-     * without it, and a refresh inverts the survey once more. */
-    persistLighter: function (state) {
-      if (!state.inversionCache || !Object.keys(state.inversionCache).length) return null;
-      return Object.assign({}, state, { inversionCache: {} });
-    },
+    storage: storage,
     onPersistError: function (e, kept) {
-      renderAutosaveBanner(true, kept);
-      S.toast(kept ? 'Autosave has stopped — save a project file now.'
-        : 'Nothing has been autosaved — save a project file now.',
+      var elsewhere = !!e && e.name === 'OpenElsewhereError';
+      renderAutosaveBanner(true, kept, elsewhere);
+      S.toast(elsewhere ? 'Another tab is saving this project; this one is not.'
+        : kept ? 'Autosave has stopped — save a project file now.'
+          : 'Nothing has been autosaved — save a project file now.',
         'error', 12000);
     },
     onPersistRecovered: function () {
@@ -185,8 +211,8 @@
 
   /* The API key is deliberately NOT part of the persisted state.
    *
-   * It used to be, and the store mirrors the whole state into localStorage on
-   * every change - so the key sat unencrypted on disk, survived closing the
+   * It used to be, and the store mirrored the whole state into localStorage
+   * on every change - so the key sat unencrypted on disk, survived closing the
    * tab, closing the browser and handing the laptop to the next person, and
    * was readable by anything with script access to this origin. It now lives
    * here, in memory for this tab, and reaches storage only if the user asks
@@ -5873,8 +5899,8 @@
               'This clears the site details, the uploaded sheets, every result ' +
               'and the saved copy in this browser. Save the project first if you ' +
               'want to keep it.'), [
-              button('Reset', function () {
-                store.forget();
+              button('Reset', async function () {
+                await store.forget();
                 forgetApiKey();
                 store.replace(blankState());
                 Object.keys(derived).forEach(function (k) { derived[k] = null; });
@@ -5887,12 +5913,56 @@
             ]);
           }, { variant: 'ghost' }),
         ]),
-        el('p.muted', 'The working session is mirrored into this browser\'s local ' +
+        el('p.muted', 'The working session is mirrored into this browser\'s ' +
           'storage so a refresh never loses fieldwork. The project file is the ' +
           'record you keep and share.'),
       ]),
+
+      card('Storage in this browser', storageSummary()),
     ];
   };
+
+  /* Where the session is kept, how much room it takes, and whether the
+   * browser has agreed to keep it. Read when the page is drawn; the figures
+   * are the browser's own estimate for this site, not this project alone. */
+  function storageSummary() {
+    var host = el('div', el('p.muted', 'Reading this browser\'s storage…'));
+    function megabytes(bytes) {
+      return bytes >= 1e9 ? (bytes / 1e9).toFixed(1) + ' GB'
+        : (bytes / 1e6).toFixed(1) + ' MB';
+    }
+    storage.estimate().then(function (info) {
+      var lines = [];
+      if (info.mode === 'none') {
+        lines.push(el('p', 'This browser will not keep the session (' +
+          ((storage.error && storage.error.message) || 'no IndexedDB') +
+          '), so nothing is autosaved here. Save a project file before ' +
+          'closing the tab.'));
+      } else {
+        lines.push(el('p', 'The session is kept in this browser\'s IndexedDB. ' +
+          'Each workbook and photograph is stored once, as a file of its own, ' +
+          'and a change writes only the part of the session it changed.'));
+        if (info.role === 'reader') {
+          lines.push(el('p', 'Another tab is the one saving it; this tab is not.'));
+        }
+      }
+      if (info.usage !== null && info.quota) {
+        lines.push(el('p', 'In use: ' + megabytes(info.usage) + ' of about ' +
+          megabytes(info.quota) + ' this browser allows this site.'));
+      }
+      if (info.persisted === true) {
+        lines.push(el('p', 'The browser has agreed to keep it until you clear ' +
+          'it yourself.'));
+      } else if (info.persisted === false) {
+        lines.push(el('p.muted', 'The browser may clear it if the device runs ' +
+          'short of space, as it can for any site it has not agreed to keep. ' +
+          'The project file is the copy to rely on.'));
+      }
+      S.clear(host);
+      S.append(host, lines);
+    });
+    return host;
+  }
 
   /* --- about ---------------------------------------------------------------- */
 
@@ -6838,10 +6908,12 @@
 
   /* -------------------------------------------------------------------- boot */
 
-  async function init() {
-    restoreApiKey();
+  /* The saved session, made the working one. Resolves to where it came
+   * from (see store.restore) and whether it carried an API key. */
+  async function adoptSaved() {
+    var from = await store.restore();
     var strandedKey = '';
-    if (store.restore()) {
+    if (from) {
       /* a mirrored session may predate a field being added */
       var merged = Object.assign(blankState(), store.state);
       /* An earlier build wrote the key into localStorage with the rest of the
@@ -6851,7 +6923,47 @@
         delete merged.extraction.apiKey;
       }
       store.replace(migrateLoadedState(merged));
-      if (strandedKey) store.persist();
+    }
+    return { from: from, strandedKey: strandedKey };
+  }
+
+  /* This tab takes the saving over from another one, and opens what that
+   * one saved: what it holds itself is at best what the other tab had when
+   * this one opened. */
+  async function continueHere() {
+    try {
+      await storage.takeOver();
+    } catch (e) {
+      S.toast('This tab could not take the saving over: ' + e.message, 'error');
+      return;
+    }
+    stopInversionsForNewProject();
+    var adopted = await adoptSaved();
+    if (!adopted.from) store.replace(blankState());
+    inversionsStopped = false;
+    await store.persist();
+    applyTheme();
+    await recompute();
+    renderChrome();
+    render();
+    await inversionsSettled();
+  }
+
+  async function init() {
+    restoreApiKey();
+    var adopted = await adoptSaved();
+    var strandedKey = adopted.strandedKey;
+    if (adopted.from === 'localStorage') {
+      /* An earlier build's session, moved into IndexedDB here. The old key
+       * goes only once the new copy has been read back as this session; a
+       * move that fails leaves it where it was, and the banner says the
+       * copy is no longer being updated. */
+      if (await store.persist()) await storage.retireLegacy(store.state);
+    } else {
+      /* Nothing changed, so nothing much is written - but a browser that
+       * will not store anything, or a tab that is not the one saving, is
+       * found out now, before anything is typed into it. */
+      store.persist();
     }
     /* An address that names a page wins over the page the session was left
      * on: it is what the user followed to get here. */
@@ -6872,6 +6984,16 @@
         Object.prototype.hasOwnProperty.call(PAGES, shown) ? shown : 'overview', route.item));
     }
     global.addEventListener('hashchange', followAddress);
+    /* The last change before the tab is put away or closed is written now
+     * rather than after the autosave's 400 ms, which the page may not live
+     * to see: a phone freezes a hidden tab, and may then discard it. Hidden
+     * is the dependable moment, since the page still runs to finish the
+     * write; on pagehide it is a best effort, as IndexedDB, unlike
+     * localStorage, does not write synchronously. */
+    global.addEventListener('pagehide', function () { store.flush(); });
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden') store.flush();
+    });
     if (strandedKey) {
       /* It sat unencrypted on disk, so removing it is not enough: it has to
        * be treated as disclosed and rotated. */
@@ -6912,6 +7034,7 @@
     projectState: projectState, reportReadiness: reportReadiness,
     getApiKey: getApiKey, setApiKey: setApiKey, forgetApiKey: forgetApiKey,
     renderAutosaveBanner: renderAutosaveBanner,
+    storage: storage, continueHere: continueHere,
     hashFor: hashFor, routeFrom: routeFrom,
   };
 
