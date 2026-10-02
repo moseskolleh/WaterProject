@@ -142,6 +142,10 @@ def test_no_catalogued_sentence_is_still_typed_out():
     """
     python, js = _joined(_python_source()), _joined(_js_source())
     for ident, text in _entries():
+        if ident.endswith(f"[{text}]"):
+            # a table row that prints its own key ("gravel pack") is the
+            # data's vocabulary, which the code compares against, not a copy
+            continue
         assert not _typed_out(text, python), f"{ident} is still typed out in src/ or app/"
         assert not _typed_out(text, js), f"{ident} is still typed out in docs/js"
 

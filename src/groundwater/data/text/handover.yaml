@@ -1,0 +1,53 @@
+# The handover report's works list, in the order the report gives it. Both
+# engines read this file: reporting/handover.py default_works and gwt-docx.js
+# handoverWorks. The template rules are in src/groundwater/text.py;
+# CONTRIBUTING.md says how to add an entry.
+#
+# This list is signed by the contractor, the client and the community, and an
+# interim payment is argued from it, so each bullet names its method and
+# carries its quantity: what a quantity surveyor checks is the drilled depth,
+# the screen run and the seal. The two engines used to word four of its seven
+# bullets differently, which handed one borehole two different certificates.
+
+works_siting: >-
+  Geophysical siting survey and borehole location selection.
+
+# {depth} is the logged total depth; the bullet waits for one rather than
+# certifying a borehole drilled to "n/a".
+works_drilling: >-
+  Drilling of the borehole to {depth:num} m.
+
+works_drilling_by: >-
+  Drilling of the borehole to {depth:num} m by {method}.
+
+# The construction says "designed" unless the drilling log records the casing
+# string as installed: it once certified 19 m of screen as completed work
+# above a drawing captioned "not an as-built record". {fill} is an entry of
+# annular_fill, or fill_none.
+works_construction: >-
+  Construction with {casing_in:g} inch {material} casing, {screen_m:num} m of
+  screen as installed, {fill} and sanitary seal to {seal_m:num} m.
+
+works_construction_designed: >-
+  Construction designed with {casing_in:g} inch {material} casing,
+  {screen_m:num} m of screen, {fill} and sanitary seal to {seal_m:num} m; the
+  drilling log records no casing string as installed.
+
+# The design's own annular fill, by the value the designer records.
+annular_fill:
+  gravel pack: gravel pack
+  formation stabiliser: formation stabiliser
+
+# A design whose annulus is too thin to fill: it once certified "gravel pack"
+# over a 19 mm annulus the design had left empty.
+fill_none: >-
+  no gravel pack (the {annulus_mm:.0f} mm annulus is too thin to place one)
+
+works_development: >-
+  Development of the borehole by air lifting until clear.
+
+works_pumping_test: >-
+  Pumping test and yield assessment.
+
+works_quality: >-
+  Water quality sampling and laboratory analysis.

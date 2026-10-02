@@ -2439,46 +2439,45 @@
    * drilled depth, the screen run and the seal.
    *
    * groundwater/reporting/handover.py builds the same list from the same
-   * records, and tests/webapp/parity.mjs holds the two to the same words, so
-   * a reworded bullet here is a reworded bullet there. They used to differ in
-   * four of seven bullets, which handed one borehole two different
+   * records and the same words, src/groundwater/data/text/handover.yaml, and
+   * tests/webapp/parity.mjs holds the two lists to each other. They used to
+   * differ in four of seven bullets, which handed one borehole two different
    * certificates: a surveyor got the casing size or the screen run, never
    * both, and never the seal. */
   function handoverWorks(context) {
     var log = context.log || {}, design = context.design;
     var works = [];
     if (context.interpretations && context.interpretations.length) {
-      works.push('Geophysical siting survey and borehole location selection.');
+      works.push(C.phrase('handover.works_siting'));
     }
     /* the depth is the first quantity anyone measures the claim against, so
      * the bullet waits for one rather than certifying a borehole drilled to
      * "n/a" off a sheet where nobody wrote the depth down */
     if (log.total_depth_m !== null && log.total_depth_m !== undefined) {
-      works.push('Drilling of the borehole to ' + C.fmtNum(log.total_depth_m) +
-        ' m' + (log.drilling_method ? ' by ' + log.drilling_method : '') + '.');
+      works.push(log.drilling_method
+        ? C.phrase('handover.works_drilling_by',
+          { depth: log.total_depth_m, method: log.drilling_method })
+        : C.phrase('handover.works_drilling', { depth: log.total_depth_m }));
     }
     if (design) {
       /* The fill is the design's own, and the bullet says "designed" unless
        * the log records the screens as installed: it certified "gravel pack"
        * over a 19 mm annulus the design had left empty, and 19 m of screen as
        * completed work above a drawing captioned "not an as-built record". */
-      var fill = design.annular_fill === 'gravel pack' ||
-        design.annular_fill === 'formation stabiliser' ? design.annular_fill
-        : 'no gravel pack (the ' + C.pyFixed(design.annulus_mm || 0, 0) +
-          ' mm annulus is too thin to place one)';
-      works.push((design.as_built ? 'Construction with ' : 'Construction designed with ') +
-        C.formatG(design.casing_diameter_in) + ' inch ' + design.casing_material +
-        ' casing, ' + C.fmtNum(design.total_screen_length_m) + ' m of screen' +
-        (design.as_built ? ' as installed' : '') + ', ' + fill +
-        ' and sanitary seal to ' + C.fmtNum(design.sanitary_seal[1]) + ' m' +
-        (design.as_built ? '.'
-          : '; the drilling log records no casing string as installed.'));
-      works.push('Development of the borehole by air lifting until clear.');
+      var fills = C.phraseTable('handover.annular_fill');
+      var fill = Object.prototype.hasOwnProperty.call(fills, design.annular_fill)
+        ? fills[design.annular_fill]
+        : C.phrase('handover.fill_none', { annulus_mm: design.annulus_mm || 0 });
+      works.push(C.phrase(design.as_built ? 'handover.works_construction'
+        : 'handover.works_construction_designed', {
+        casing_in: design.casing_diameter_in, material: design.casing_material,
+        screen_m: design.total_screen_length_m, fill: fill,
+        seal_m: design.sanitary_seal[1],
+      }));
+      works.push(C.phrase('handover.works_development'));
     }
-    if (context.analysis) works.push('Pumping test and yield assessment.');
-    if (context.assessment) {
-      works.push('Water quality sampling and laboratory analysis.');
-    }
+    if (context.analysis) works.push(C.phrase('handover.works_pumping_test'));
+    if (context.assessment) works.push(C.phrase('handover.works_quality'));
     /* No wellhead bullet: the toolkit holds no headworks record for it to be
      * conditioned on, and an unconditional one certified an apron and a
      * drainage channel on every borehole. A supervisor who built them says so
