@@ -100,13 +100,31 @@ def save_regression(case: dict, found: list) -> Path:
     digest = hashlib.sha1(body.encode()).hexdigest()[:8]
     REGRESSIONS.mkdir(exist_ok=True)
     path = REGRESSIONS / f"{case['kind']}-{slug[:40]}-{digest}.json"
-    path.write_text(json.dumps({
+    path.write_text(regression_text({
         "note": "Found by the fuzz suite on " + date.today().isoformat()
                 + ". Say here what diverged and which engine was put right.",
         "first_divergence": [where, found[0][1], found[0][2]],
         **json.loads(body),
-    }, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+    }), encoding="utf-8")
     return path
+
+
+def regression_text(case: dict) -> str:
+    """A regression file a reviewer can read: one sheet row to a line."""
+    def one(value):
+        return json.dumps(value, ensure_ascii=False)
+
+    lines = ["{"]
+    for key in ("note", "first_divergence", "kind", "options"):
+        lines.append(f" {one(key)}: {one(case[key])},")
+    lines.append(' "sheets": [')
+    for i, sheet in enumerate(case["sheets"]):
+        lines.append(f'  {{"name": {one(sheet["name"])}, "rows": [')
+        lines.append(",\n".join(f"   {one(row)}" for row in sheet["rows"]))
+        lines.append("  ]}" + ("," if i + 1 < len(case["sheets"]) else ""))
+    lines.append(" ]")
+    lines.append("}")
+    return "\n".join(lines) + "\n"
 
 
 def _regressions():

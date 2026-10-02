@@ -1,155 +1,25 @@
 {
  "note": "Found on 2026-10-02. A log stating 40 m total depth whose intervals stop at 30 m: the Python reader wrote 'Stated total depth 40.0 m differs from the deepest logged interval 30.0 m.' and the browser '40 m ... 30 m.'; the gap and overlap flags did the same. The Python reader printed the bare float; it now formats the depths with %g, as the browser and the rest of the Python reader already did.",
- "first_divergence": [
-  "flags[0][2]",
-  "Stated total depth 40 m differs from the deepest logged interval 30 m.",
-  "Stated total depth 40.0 m differs from the deepest logged interval 30.0 m."
- ],
+ "first_divergence": ["flags[0][2]", "Stated total depth 40 m differs from the deepest logged interval 30 m.", "Stated total depth 40.0 m differs from the deepest logged interval 30.0 m."],
  "kind": "drilling",
- "options": {
-  "pump": null,
-  "swl": null
- },
+ "options": {"pump": null, "swl": null},
  "sheets": [
-  {
-   "name": "Drilling Log",
-   "rows": [
-    [
-     "BOREHOLE DRILLING LOG",
-     null,
-     null,
-     null,
-     null,
-     null,
-     null
-    ],
-    [
-     "Community: Rokel",
-     null,
-     null,
-     "Client",
-     null,
-     null,
-     null
-    ],
-    [
-     "Contractor: WiNGiN Heavy Duty Machines",
-     null,
-     null,
-     "Borehole Ref. No.: BH-1",
-     null,
-     null,
-     null
-    ],
-    [
-     "Drilling start date",
-     null,
-     null,
-     "Completion date",
-     null,
-     null,
-     null
-    ],
-    [
-     "Drilling method: Air rotary (DTH hammer)",
-     null,
-     null,
-     "Total depth (m): 40",
-     null,
-     null,
-     null
-    ],
-    [
-     "District: Port Loko",
-     null,
-     null,
-     "BH status: Successful",
-     null,
-     null,
-     null
-    ],
-    [
-     "GPS Coordinate East",
-     null,
-     null,
-     "GPS Coordinate North",
-     null,
-     null,
-     null
-    ],
-    [
-     "UTM Zone (28N or 29N)",
-     null,
-     null,
-     "Elevation (m)",
-     null,
-     null,
-     null
-    ],
-    [
-     "Grouting depth (m)",
-     null,
-     null,
-     "Drill rig",
-     null,
-     null,
-     null
-    ],
-    [
-     "Screens installed (m)",
-     null,
-     null,
-     null,
-     null,
-     null,
-     null
-    ],
-    [
-     null,
-     null,
-     null,
-     null,
-     null,
-     null,
-     null
-    ],
-    [
-     "Depth interval (m)",
-     "From time",
-     "To time",
-     "Penetration rate (m/min)",
-     "Sample / lithology description",
-     "Drilling diameter (in)",
-     "Water strike depth (m)"
-    ],
-    [
-     "0-10",
-     "13:30",
-     "13:35",
-     null,
-     "Reddish brown lateritic topsoil",
-     6.5,
-     null
-    ],
-    [
-     "10-20",
-     "13:30",
-     "13:35",
-     null,
-     "Reddish brown lateritic topsoil, fracture zone 10-11 m",
-     6.5,
-     10
-    ],
-    [
-     "20-30",
-     "13:30",
-     "13:35",
-     null,
-     "Reddish brown lateritic topsoil",
-     6.5,
-     20
-    ]
-   ]
-  }
+  {"name": "Drilling Log", "rows": [
+   ["BOREHOLE DRILLING LOG", null, null, null, null, null, null],
+   ["Community: Rokel", null, null, "Client", null, null, null],
+   ["Contractor: WiNGiN Heavy Duty Machines", null, null, "Borehole Ref. No.: BH-1", null, null, null],
+   ["Drilling start date", null, null, "Completion date", null, null, null],
+   ["Drilling method: Air rotary (DTH hammer)", null, null, "Total depth (m): 40", null, null, null],
+   ["District: Port Loko", null, null, "BH status: Successful", null, null, null],
+   ["GPS Coordinate East", null, null, "GPS Coordinate North", null, null, null],
+   ["UTM Zone (28N or 29N)", null, null, "Elevation (m)", null, null, null],
+   ["Grouting depth (m)", null, null, "Drill rig", null, null, null],
+   ["Screens installed (m)", null, null, null, null, null, null],
+   [null, null, null, null, null, null, null],
+   ["Depth interval (m)", "From time", "To time", "Penetration rate (m/min)", "Sample / lithology description", "Drilling diameter (in)", "Water strike depth (m)"],
+   ["0-10", "13:30", "13:35", null, "Reddish brown lateritic topsoil", 6.5, null],
+   ["10-20", "13:30", "13:35", null, "Reddish brown lateritic topsoil, fracture zone 10-11 m", 6.5, 10],
+   ["20-30", "13:30", "13:35", null, "Reddish brown lateritic topsoil", 6.5, 20]
+  ]}
  ]
 }
