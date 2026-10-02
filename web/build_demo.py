@@ -6,8 +6,9 @@ compiled to WebAssembly with Pyodide). No server is involved; uploads
 never leave the browser. The page inlines the whole ``groundwater``
 package, the app (its script and the page modules beside it) and the
 bundled sample datasets, so the only external fetches are the stlite
-runtime and the Pyodide/scientific wheels from the jsDelivr CDN. The display fonts ship inside the
-package, so nothing is fetched from a font service.
+runtime and the Pyodide/scientific wheels from the jsDelivr CDN. The
+display fonts ship inside the package, so nothing is fetched from a font
+service.
 
 This is the *second* thing published to Pages. The site root is the
 standalone JavaScript app (``docs/index.html``), which needs no Python

@@ -36,7 +36,7 @@ if _SRC.is_dir() and str(_SRC) not in sys.path:
         del sys.modules[_mod]
 # The pages and the helpers they share sit beside this file. Streamlit puts
 # the script's folder on the path when it runs one, but AppTest and the
-# browser demo are not obliged to, so say so here.
+# browser demo are not obliged to, so it is put there here.
 _APP = Path(__file__).resolve().parent
 if str(_APP) not in sys.path:
     sys.path.insert(0, str(_APP))
