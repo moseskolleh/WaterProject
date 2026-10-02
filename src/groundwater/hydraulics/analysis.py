@@ -339,6 +339,11 @@ class PumpingTestAnalysis:
 # Individual methods
 # ---------------------------------------------------------------------------
 
+#: A fitted slope this close to zero, in metres per log cycle, is rounding in
+#: the fit and not a direction: readings are taken to the centimetre.
+SLOPE_ROUNDING_M = 1e-9
+
+
 def _line_fit(x: np.ndarray, y: np.ndarray) -> tuple[float, float, float]:
     """Least squares line with r^2."""
     A = np.vstack([x, np.ones_like(x)]).T
@@ -406,7 +411,12 @@ def cooper_jacob(
         window = (t >= fit_window_min[0]) & (t <= fit_window_min[1])
 
     slope, intercept, r2 = _line_fit(np.log10(t[window]), s[window])
-    if slope <= 0:
+    # A window of one level has a slope of zero give or take rounding, and
+    # which side of zero the rounding falls differs between lstsq and the
+    # browser's closed form: the same sheet was "does not increase" here and
+    # "flat (0.000 m per log cycle)" there. Only a slope clearly below zero
+    # is a falling drawdown; one within rounding of it is a flat one.
+    if slope < -SLOPE_ROUNDING_M:
         raise ValueError(
             "Drawdown does not increase with log time; Cooper-Jacob does not apply"
         )
@@ -416,7 +426,7 @@ def cooper_jacob(
     if slope < config.cooper_jacob_min_slope_m:
         raise ValueError(
             f"The fitted window {fit_window_min[0]:g}-{fit_window_min[1]:g} min "
-            f"is flat ({slope:.3f} m per log cycle, under "
+            f"is flat ({max(slope, 0.0):.3f} m per log cycle, under "
             f"{config.cooper_jacob_min_slope_m:g} m): the drawdown has stabilised "
             "or the slope is below reading resolution, so Cooper-Jacob does not "
             "apply"

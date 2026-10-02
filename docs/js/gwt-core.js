@@ -368,6 +368,10 @@
     return M.map(function (row) { return row.slice(n); });
   }
 
+  /* analysis.py SLOPE_ROUNDING_M: a fitted slope this close to zero, in
+   * metres per log cycle, is rounding in the fit and not a direction. */
+  var SLOPE_ROUNDING_M = 1e-9;
+
   /* Least squares straight line with r^2, matching numpy lstsq + the r^2 the
    * Python computes alongside it. */
   function lineFit(x, y) {
@@ -2235,7 +2239,12 @@
 
     var fit = lineFit(window.map(function (k) { return Math.log(t[k]) / Math.LN10; }),
                       window.map(function (k) { return s[k]; }));
-    if (fit.slope <= 0) {
+    /* A window of one level has a slope of zero give or take rounding, and
+     * which side of zero the rounding falls differs between this closed form
+     * and numpy's lstsq: the same sheet was "flat (0.000 m per log cycle)"
+     * here and "does not increase" there. Only a slope clearly below zero is
+     * a falling drawdown; one within rounding of it is a flat one. */
+    if (fit.slope < -SLOPE_ROUNDING_M) {
       throw new Error('Drawdown does not increase with log time; ' +
         'Cooper-Jacob does not apply');
     }
@@ -2244,7 +2253,7 @@
      * face; a line that does not explain the window is no better. */
     if (fit.slope < cfg.cooper_jacob_min_slope_m) {
       throw new Error('The fitted window ' + formatG(fitWindow[0]) + '-' +
-        formatG(fitWindow[1]) + ' min is flat (' + fit.slope.toFixed(3) +
+        formatG(fitWindow[1]) + ' min is flat (' + pyFixed(Math.max(fit.slope, 0), 3) +
         ' m per log cycle, under ' + formatG(cfg.cooper_jacob_min_slope_m) +
         ' m): the drawdown has stabilised or the slope is below reading ' +
         'resolution, so Cooper-Jacob does not apply');
