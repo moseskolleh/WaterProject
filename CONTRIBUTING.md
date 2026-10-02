@@ -105,8 +105,11 @@ run, one reading the other got the casing size, and neither got the seal.
 
 So a sentence both engines write is not worded twice: it is kept once, in
 `src/groundwater/data/text/*.yaml`, and both engines read it. The water
-quality recommendations are in `quality.yaml` and the handover works list in
-`handover.yaml`. The package reads an entry
+quality recommendations are in `quality.yaml`, the handover works list in
+`handover.yaml` and the works the reports cite in `references.yaml` (where
+an id ending in `_web` is the browser's wording of a work the Python reports
+cite in other words: settling each pair changes one app's reports, so it is
+a change of its own). The package reads an entry
 with `groundwater.text.phrase("quality.treat_health", parameters=...)`; the
 browser reads the same files, which `web/build_webapp_data.py` emits into
 `gwt-data.js`, with `C.phrase('quality.treat_health', {parameters: ...})`.

@@ -612,38 +612,13 @@
 
   /* ============================================================== references */
 
-  var REFERENCES = {
-    rwsn_cost: 'Danert, K. (2015). Cost-Effective Boreholes: RWSN Borehole Costing ' +
-      'Model and Guidance Notes. Rural Water Supply Network, St Gallen.',
-    rwsn_pricing: 'Carter, R. C. (2014). Costing and Pricing: a Guide for Water Well ' +
-      'Drilling Enterprises. RWSN/Skat, St Gallen.',
-    rwsn_supervision: 'Adekile, D. (2014). Supervising Water Well Drilling: a Guide ' +
-      'for Supervisors. RWSN/Skat, St Gallen.',
-    rwsn_professional: 'Danert, K., Adekile, D. and Canuto, J. (2020). Professional ' +
-      'Water Well Drilling: a UNICEF Guidance Note. UNICEF/Skat, New York.',
-    unicef_toolkit: 'UNICEF (2016). Borehole Drilling: Planning, Contracting and ' +
-      'Management. UNICEF WASH, New York.',
-    who: 'World Health Organization (2022). Guidelines for Drinking-water Quality, ' +
-      'fourth edition incorporating the first and second addenda. WHO, Geneva.',
-    geology: 'Ministry of Water Resources and SALWACO (2017). Geology of Sierra ' +
-      'Leone. Government of Sierra Leone, Freetown.',
-    // the wording the CC BY-SA licence prescribes (THIRD_PARTY_NOTICES.md)
-    bgs: 'British Geological Survey. 2019/2021. Africa Groundwater Atlas Country ' +
-      'Hydrogeology Maps. Africa Groundwater Atlas ' +
-      '(https://www2.bgs.ac.uk/africagroundwateratlas/index.cfm). Licensed CC BY-SA 4.0.',
-    bgs_guide: 'Ó Dochartaigh, B. (2021). User Guide Version 1.2: Africa Groundwater ' +
-      'Atlas Country Hydrogeology Maps. British Geological Survey Open Report OR/21/063.',
-    stop_the_rot: 'RWSN (2021). Stop the Rot: Handpump Corrosion and Premature ' +
-      'Failure in Sub-Saharan Africa. Rural Water Supply Network, St Gallen.',
-    /* The browser printed 'the national acceptability limit' in three reports
-     * and named no standard at all, while the Python reports cited this and
-     * said in the citation what the limits are worth. */
-    slsb: 'Sierra Leone Standards Bureau. Sierra Leone Standard for drinking ' +
-      'water quality (SLS). Freetown: SLSB. Edition and date not verified ' +
-      'against the issued specification: the national limits this toolkit ' +
-      'applies are provisional (WHO or regional figures carried across) ' +
-      'until confirmed against it.',
-  };
+  /* The full citations, keyed by a short id: the table reporting/citations.py
+   * CITATIONS reads, in src/groundwater/data/text/references.yaml. Which of
+   * them close which report is chosen at each report's end, as citations.py
+   * _REFERENCES_FOR chooses them there; an id ending in _web is this app's
+   * wording of a work the Python reports cite in other words. */
+  var REFERENCES = C.phraseTable('references.citations');
+
 
   var GLOSSARY = [
     ['AB/2', 'Half the distance between the current electrodes in a Schlumberger sounding.'],
@@ -1220,8 +1195,8 @@
       b.bullets(notes);
     }
 
-    b.references([REFERENCES.rwsn_professional, REFERENCES.geology, REFERENCES.bgs,
-      REFERENCES.bgs_guide]);
+    b.references([REFERENCES.rwsn_drilling_web, REFERENCES.salwaco_geology_web,
+      REFERENCES.bgs_atlas, REFERENCES.bgs_guide]);
     b.glossary(GLOSSARY);
     return b;
   }
@@ -1579,8 +1554,8 @@
     b.bullets(advice);
 
     b.signOff(context.signOff);
-    b.references([REFERENCES.rwsn_professional, REFERENCES.rwsn_supervision,
-      REFERENCES.who, REFERENCES.slsb]);
+    b.references([REFERENCES.rwsn_drilling_web, REFERENCES.rwsn_supervision,
+      REFERENCES.who_web, REFERENCES.slsb]);
     b.glossary(GLOSSARY);
     return b;
   }
@@ -1958,7 +1933,7 @@
       b.paragraph(text, { align: 'justify' });
     });
     b.signOff(context.signOff);
-    b.references([REFERENCES.rwsn_professional, REFERENCES.rwsn_supervision]);
+    b.references([REFERENCES.rwsn_drilling_web, REFERENCES.rwsn_supervision]);
     b.glossary(GLOSSARY);
     return b;
   }
@@ -2138,7 +2113,7 @@
       b.paragraph(text, { align: 'justify' });
     });
     b.signOff(context.signOff);
-    b.references([REFERENCES.who, REFERENCES.slsb, REFERENCES.stop_the_rot]);
+    b.references([REFERENCES.who_web, REFERENCES.slsb, REFERENCES.stop_the_rot]);
     b.glossary(GLOSSARY);
     return b;
   }
@@ -2278,7 +2253,8 @@
     ].concat(context.notes || []));
 
     b.signOff(context.signOff);
-    b.references([REFERENCES.rwsn_cost, REFERENCES.rwsn_pricing, REFERENCES.unicef_toolkit]);
+    b.references([REFERENCES.rwsn_costing_model, REFERENCES.rwsn_pricing,
+      REFERENCES.unicef_toolkit]);
     return b;
   }
 
@@ -2677,7 +2653,7 @@
     b.signatures(['Client representative', 'Community / committee chair',
       'Contractor', 'District water office']);
     b.signOff(context.signOff);
-    b.references([REFERENCES.rwsn_professional, REFERENCES.who, REFERENCES.slsb,
+    b.references([REFERENCES.rwsn_drilling_web, REFERENCES.who_web, REFERENCES.slsb,
       REFERENCES.unicef_toolkit]);
     b.glossary(GLOSSARY);
     return b;

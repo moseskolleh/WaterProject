@@ -161,6 +161,23 @@ def test_the_treatment_advice_is_keyed_by_standards_table_names():
     assert set(advice) <= names, sorted(set(advice) - names)
 
 
+def test_every_citation_closes_some_report_and_every_cited_one_exists():
+    """The reference table holds what the reports cite and nothing else.
+
+    citations.py drops a key it cannot find, and the browser would print
+    "undefined" under References, so a misspelt key is caught here.
+    """
+    from groundwater.reporting.citations import _REFERENCES_FOR
+
+    table = set(phrase_table("references.citations"))
+    python = {key for keys in _REFERENCES_FOR.values() for key in keys}
+    js = set(re.findall(r"\bREFERENCES\.(\w+)",
+                        (JS / "gwt-docx.js").read_text(encoding="utf-8")))
+    assert python <= table, sorted(python - table)
+    assert js <= table, sorted(js - table)
+    assert table <= python | js, f"cited by no report: {sorted(table - python - js)}"
+
+
 # --------------------------------------------------------------- the renderer
 
 # (template, values) pairs both renderers are given; an expected text of
