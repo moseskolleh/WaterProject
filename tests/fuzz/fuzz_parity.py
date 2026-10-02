@@ -115,8 +115,9 @@ def regression_text(case: dict) -> str:
         return json.dumps(value, ensure_ascii=False)
 
     lines = ["{"]
-    for key in ("note", "first_divergence", "kind", "options"):
-        lines.append(f" {one(key)}: {one(case[key])},")
+    for key in ("note", "open", "first_divergence", "kind", "options"):
+        if key in case:
+            lines.append(f" {one(key)}: {one(case[key])},")
     lines.append(' "sheets": [')
     for i, sheet in enumerate(case["sheets"]):
         lines.append(f'  {{"name": {one(sheet["name"])}, "rows": [')
@@ -133,9 +134,21 @@ def _regressions():
 
 @pytest.mark.parametrize("path", _regressions(), ids=lambda p: p.stem)
 def test_regression(path, engine, workdir):
-    """Every counterexample found so far, replayed on every run."""
+    """Every counterexample found so far, replayed on every run.
+
+    A case carrying ``"open"`` is a divergence that is a question of method
+    rather than a bug, recorded with the question and not yet answered. It
+    is held to diverging still, at the path it was found at, so the day one
+    engine changes its answer the case says so rather than passing quietly.
+    """
     case = json.loads(path.read_text(encoding="utf-8"))
     found = compare(engine, case, workdir)
+    if case.get("open"):
+        where = case["first_divergence"][0]
+        assert any(path_ == where for path_, _, _ in found), (
+            f"this open case no longer diverges at {where}; answer the question "
+            f"in its 'open' note and remove the key:\n{report(found)}")
+        pytest.xfail(case["open"])
     assert not found, report(found)
 
 
@@ -166,7 +179,13 @@ def test_engines_agree(kind, engine, workdir):
 
 
 def test_inversions_agree(engine, workdir):
-    """The inversion of generated soundings, at parity.mjs's model tolerance."""
-    strategy = ves_case().map(lambda case: {**case, "sheets": case["sheets"][:1],
-                                            "options": {"invert": True}})
+    """The inversion of generated soundings, at parity.mjs's model tolerance.
+
+    Soundings that read one resistivity at every spacing are left out: what
+    a layered inversion should say about a uniform half-space is an open
+    question, recorded in regressions/ves-uniform-half-space-boundary.json,
+    and drawing it again every night would say nothing new.
+    """
+    strategy = ves_case(varied=True).map(
+        lambda case: {**case, "sheets": case["sheets"][:1], "options": {"invert": True}})
     _fuzz(engine, workdir, strategy, INVERSIONS)

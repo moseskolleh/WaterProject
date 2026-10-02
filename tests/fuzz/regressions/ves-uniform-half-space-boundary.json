@@ -1,0 +1,24 @@
+{
+ "note": "Found on 2026-10-02. A Schlumberger sounding that reads 1444.3 ohm-m at every spacing, a uniform half-space. The layer search starts at two layers (VESConfig.min_layers = 2), both engines fit two layers of 1444.3 ohm-m to a misfit of 1e-14 percent, and the boundary between them is wherever each optimiser left it: 0.5 m in Python, 0.7 m in the browser. Any depth fits equally well, so neither is wrong against the other and loosening the tolerance would hide nothing worth hiding.",
+ "open": "What should a layered inversion report for a sounding with no layering: a one-layer model (which interpretation, design and the reports would all have to accept), two layers with the boundary marked unresolved, or a refusal? Until that is decided the two engines report different, equally meaningless, boundary depths for a uniform half-space.",
+ "first_divergence": ["inversions[0].h[0]", 0.7, 0.5000000000000001],
+ "kind": "ves",
+ "options": {"invert": true},
+ "sheets": [
+  {"name": "VES 1", "rows": [
+   ["SCHLUMBERGER ARRAY VES FIELD DATA", null, null, null],
+   ["Community", "Rokel", "District", "Port Loko"],
+   ["Sounding Number", "VES 1", "Array", "Schlumberger"],
+   ["Instrument", "Syscal Junior", null, null],
+   [null, null, null, null],
+   ["No.", "AB/2 (m)", "MN (m)", "Apparent Resistivity (ohm-m)"],
+   [1, 1.0, 0.2, 1444.3],
+   [2, 1.0, 0.4, 1444.3],
+   [3, 1.5, 0.4, 1444.3],
+   [4, 1.5, 0.8, 1444.3],
+   [5, 2.0, 0.8, 1444.3],
+   [6, 2.5, 0.8, 1444.3],
+   [7, 3.0, 0.8, 1444.3]
+  ]}
+ ]
+}

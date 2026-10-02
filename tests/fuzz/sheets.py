@@ -215,8 +215,12 @@ def _apparent(rho, h, spacing, wenner: bool) -> np.ndarray:
 
 
 @st.composite
-def ves_sheet(draw, index: int) -> dict:
-    """One VES worksheet: a header block, then No., AB/2 (or a), MN, rho."""
+def ves_sheet(draw, index: int, varied: bool = False) -> dict:
+    """One VES worksheet: a header block, then No., AB/2 (or a), MN, rho.
+
+    ``varied`` keeps the readings from all being one value, which a single
+    layer read without noise gives: see ``test_inversions_agree``.
+    """
     wenner = chance(draw, 0.3)
     rho_model, h_model = draw(layered_earth())
 
@@ -260,6 +264,9 @@ def ves_sheet(draw, index: int) -> dict:
         if chance(draw, 0.03):
             jitter = draw(st.sampled_from([-0.5, 0.6, 1.5]))  # a misread
         values.append(max(float(rho) * (1 + jitter), 0.05))
+    if varied and len({round(v, 1) for v in values}) < 2:
+        # a half-space read with a gentle drift, so the curve says something
+        values = [v * (1 + 0.2 * k / len(values)) for k, v in enumerate(values)]
 
     # The table's header row, in the wordings crews use
     tabulate_a = wenner and draw(st.booleans())
@@ -322,9 +329,9 @@ def ves_sheet(draw, index: int) -> dict:
 
 
 @st.composite
-def ves_case(draw) -> dict:
+def ves_case(draw, varied: bool = False) -> dict:
     n = draw(st.integers(1, 3))
-    sheets = [draw(ves_sheet(i)) for i in range(n)]
+    sheets = [draw(ves_sheet(i, varied)) for i in range(n)]
     # sheet names must differ in a workbook
     seen = set()
     for i, s in enumerate(sheets):
