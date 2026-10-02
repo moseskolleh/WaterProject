@@ -1759,15 +1759,18 @@
     /* The tie test has to run on the real value, not on x * 10^d: 14.05 is
      * stored as 14.05000000000000071, which Python rounds up, but 14.05 * 10
      * is exactly 140.5 in binary and looked like a tie, so banker's rounding
-     * turned it into 14.0. toPrecision(17) round-trips the double exactly,
-     * so the decimal digits below the cut say whether it is really a tie. */
+     * turned it into 14.0. The decimal digits below the cut say whether it is
+     * really a tie, and only the exact expansion can say: seventeen digits
+     * identify the double but round it, so 100.55, stored as
+     * 100.549999999999997, came out as 100.55000000000000, read as a tie and
+     * went to 100.6 where Python prints 100.5. toPrecision(100) is exact for
+     * every double it does not write in exponent form. */
     var f = Math.pow(10, d);
-    var text = Math.abs(x).toPrecision(17);
+    var text = Math.abs(x).toPrecision(100);
     var r;
     if (text.indexOf('e') < 0) {
       /* Work entirely in the decimal expansion so the cut and the tie test
-       * agree: seventeen significant digits identify a double uniquely, and
-       * a genuine tie terminates in a 5 followed by zeros. */
+       * agree: a genuine tie terminates in a 5 followed by zeros. */
       var dot = text.indexOf('.');
       var whole = dot < 0 ? text : text.slice(0, dot);
       var fraction = dot < 0 ? '' : text.slice(dot + 1);

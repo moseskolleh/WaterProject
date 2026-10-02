@@ -1,0 +1,41 @@
+{
+ "note": "Found on 2026-10-02. A deepest recorded level of 100.55 m printed in the pump-depth sentence as '100.5 m' by Python and '100.6 m' by the browser. 100.55 is stored as 100.549999999999997, which %.1f rounds down; the browser's pyRound read the value through seventeen significant digits, which round it to 100.55000000000000, took that for a tie and rounded it to even, up. The browser was wrong; pyRound now reads the exact decimal expansion.",
+ "first_divergence": ["analysis.pump_depth_basis", "Pump intake at 50 m: the static level 21.6 m plus the 2 m dry-season reserve, the 23.4 m of drawdown the long-term yield is projected to use and 3 m of submergence; the deepest level recorded, 100.6 m, is left out because the recorded levels are inconsistent with the stated static level, pump setting or borehole depth. The safety factor is kept on the rate, not spent on raising the pump.", "Pump intake at 50 m: the static level 21.6 m plus the 2 m dry-season reserve, the 23.4 m of drawdown the long-term yield is projected to use and 3 m of submergence; the deepest level recorded, 100.5 m, is left out because the recorded levels are inconsistent with the stated static level, pump setting or borehole depth. The safety factor is kept on the rate, not spent on raising the pump."],
+ "kind": "pumping",
+ "options": {},
+ "sheets": [
+  {"name": "Pumping Test", "rows": [
+   ["PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)", null, null, null, null, null, null, null, null, null, null, null, null, null, null],
+   ["Community", "Rokel", null, "Date", null, null, null, null, null, null, null, null, null, null, null],
+   ["Client", null, null, "Length of each step (min)", 45.0, null, null, null, null, null, null, null, null, null, null],
+   ["Test conducted by", "WiNGiN", null, "Start time", null, null, null, null, null, null, null, null, null, null, null],
+   ["Borehole Ref. No.", "KTL-01", null, "Depth of Borehole (m)", null, null, null, null, null, null, null, null, null, null, null],
+   ["Static water level (m)", 21.55, null, "Pump setting (m)", 60, null, null, null, null, null, null, null, null, null, null],
+   ["Test type (step or constant)", "constant", null, "District", "Port Loko", null, null, null, null, null, null, null, null, null, null],
+   [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
+   ["Discharge per step (m3/h)", "Step 1 Q", 4.06, null, "Step 2 Q", null, null, "Step 3 Q", null, null, "Step 4 Q", null, null, null, null],
+   ["Constant discharge 0-45 min", null, null, "Constant discharge 46-90 min", null, null, "Constant discharge 91-135 min", null, null, "Constant discharge 136-180 min", null, null, "Recovery", null, null],
+   ["Time (min)", "Water Level (m)", "Drawdown (m)", "Time (min)", "Water Level (m)", "Drawdown (m)", "Time (min)", "Water Level (m)", "Drawdown (m)", "Time (min)", "Water Level (m)", "Drawdown (m)", "Time (min)", "Water Level (m)", "Recovery (m)"],
+   [1.0, 71.06, 0, null, null, null, null, null, null, null, null, null, null, null, null],
+   [2.0, 76.42, 5.36, null, null, null, null, null, null, null, null, null, null, null, null],
+   [3.0, 79.56, 3.14, null, null, null, null, null, null, null, null, null, null, null, null],
+   [4.0, 81.79, 2.23, null, null, null, null, null, null, null, null, null, null, null, null],
+   [5.0, 83.51, 1.72, null, null, null, null, null, null, null, null, null, null, null, null],
+   [6.0, 84.93, 1.42, null, null, null, null, null, null, null, null, null, null, null, null],
+   [7.0, 86.12, 1.19, null, null, null, null, null, null, null, null, null, null, null, null],
+   [8.0, 87.16, 1.04, null, null, null, null, null, null, null, null, null, null, null, null],
+   [9.0, 88.07, 0.91, null, null, null, null, null, null, null, null, null, null, null, null],
+   [10.0, 88.89, 0.82, null, null, null, null, null, null, null, null, null, null, null, null],
+   [12.0, 90.3, 1.41, null, null, null, null, null, null, null, null, null, null, null, null],
+   [14.0, 91.5, 1.2, null, null, null, null, null, null, null, null, null, null, null, null],
+   [16.0, 92.53, 1.03, null, null, null, null, null, null, null, null, null, null, null, null],
+   [18.0, 93.44, 0.91, null, null, null, null, null, null, null, null, null, null, null, null],
+   [20.0, 94.26, 0.82, null, null, null, null, null, null, null, null, null, null, null, null],
+   [25.0, 95.99, 1.73, null, null, null, null, null, null, null, null, null, null, null, null],
+   [30.0, 97.4, 1.41, null, null, null, null, null, null, null, null, null, null, null, null],
+   [35.0, 98.6, 1.2, null, null, null, null, null, null, null, null, null, null, null, null],
+   [40.0, 99.63, 1.03, null, null, null, null, null, null, null, null, null, null, null, null],
+   [45.0, 100.55, 0.92, null, null, null, null, null, null, null, null, null, null, null, null]
+  ]}
+ ]
+}
