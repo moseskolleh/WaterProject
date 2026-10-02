@@ -82,8 +82,7 @@ def compare(engine: BrowserEngine, case: dict, workdir: Path,
 
     * the models of an inversion neither engine converged, where each
       reports where its iteration cap left it
-      (regressions/ves-unconverged-inversion.json). Whether each converged
-      is still compared.
+      (regressions/ves-unconverged-inversion.json).
     * a layer boundary the Python inversion itself calls poorly resolved,
       its thickness uncertain by a factor of POORLY_RESOLVED_FACTOR or more,
       which the reports already say; between two near-equal layers that
@@ -97,15 +96,19 @@ def compare(engine: BrowserEngine, case: dict, workdir: Path,
     path.write_bytes(data)
     py = python_summary(case["kind"], path, str(path), case["options"])
     js = engine.summary(case["kind"], data, str(path), case["options"])
-    # the Python model's own resolution, which is a judge here and not a
-    # quantity the browser is asked for
+    # Judges here, not answers: the Python model's own resolution, which
+    # the browser is not asked for, and whether each inversion converged,
+    # which no report prints. At a parameter bound one engine can stop for
+    # want of a better step while the other runs out its iterations, with
+    # models that agree to the tolerance.
     factors = [inv.pop("h_factor", None) for inv in py.get("inversions") or []]
+    settled = [[inv.pop("converged", None) for inv in side.get("inversions") or []
+                if isinstance(inv, dict)] for side in (js, py)]
     found = divergences(js, py)
     if open_questions:
         skipped = set()
-        pairs = zip(js.get("inversions") or [], py.get("inversions") or [], strict=False)
-        for i, (a, b) in enumerate(pairs):
-            if a.get("converged") is False and b.get("converged") is False:
+        for i, (a, b) in enumerate(zip(*settled, strict=False)):
+            if a is False and b is False:
                 skipped |= {f"inversions[{i}].{key}" for key in ("rho", "h", "err")}
             for k, factor in enumerate(factors[i] or []):
                 if factor is not None and factor >= POORLY_RESOLVED_FACTOR:
