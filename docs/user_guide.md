@@ -175,7 +175,9 @@ that another tab is saving the project, and saves nothing itself.
 **Continue here** moves the saving to it: it opens what the other tab
 saved, and the other tab stops saving and says so. A session kept by an
 earlier version of the app, in the browser's older local storage, is
-moved across the first time the new version opens.
+moved across the first time the new version opens; if you go back to an
+earlier version for a while, what it saved is the copy the new version
+opens when you return.
 
 The VES inversion takes a few seconds per sounding on a laptop, and
 longer on an older one; a pumping test analysis is usually quicker. In

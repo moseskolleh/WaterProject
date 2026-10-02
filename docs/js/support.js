@@ -1151,8 +1151,11 @@
     function persist() {
       if (!opts.storage) return Promise.resolve(true);
       clearTimeout(saveTimer);
+      saveTimer = null;
       persisting = persisting.then(function () {
-        return opts.storage.write(state).then(function () {
+        /* the state as it is when the storage gets to this write, not as
+         * it was when it was asked for: a restore may land in between */
+        return opts.storage.write(function () { return state; }).then(function () {
           if (!persistOk) {
             persistOk = true;
             failedWith = '';
@@ -1181,6 +1184,14 @@
       return persisting;
     }
 
+    /* Write now what the autosave was waiting to write, if anything. The
+     * page is being hidden or closed: the 400 ms wait would outlast it, and
+     * the storage is not synchronous as localStorage was. */
+    function flush() {
+      if (!opts.storage || saveTimer === null) return Promise.resolve(true);
+      return persist();
+    }
+
     /* False once a mirror write has failed and not yet succeeded again. */
     function autosaveOk() { return persistOk; }
 
@@ -1201,12 +1212,15 @@
 
     function forget() {
       if (!opts.storage) return Promise.resolve();
+      /* an autosave still waiting would put back what is being cleared */
+      clearTimeout(saveTimer);
+      saveTimer = null;
       return opts.storage.clear().catch(function () { /* reported by the next write */ });
     }
 
     return {
       get: get, set: set, patch: patch, remove: remove, replace: replace,
-      subscribe: subscribe, persist: persist, restore: restore, forget: forget,
+      subscribe: subscribe, persist: persist, flush: flush, restore: restore, forget: forget,
       emit: emit, autosaveOk: autosaveOk,
       get state() { return state; },
     };

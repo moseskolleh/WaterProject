@@ -37,7 +37,9 @@
  * browsers on file:// - the module says so on every write, and the app
  * reports that it is not saving, as it always has when storage fails. A
  * session left in the old localStorage key by an earlier build is read on the
- * first visit, written here, and removed only once it has been read back.
+ * first visit, written here, and removed only once it has been read back; one
+ * an earlier build writes there after that is the newer session, and is
+ * opened and moved across in its turn (see load).
  */
 (function (global) {
   'use strict';
@@ -146,13 +148,28 @@
     });
   }
 
-  function legacyRead() {
+  function legacyRaw() {
+    try { return global.localStorage.getItem(LEGACY_KEY); }
+    catch (e) { return null; }
+  }
+
+  function legacyParse(raw) {
+    if (!raw) return null;
     try {
-      var raw = global.localStorage.getItem(LEGACY_KEY);
-      if (!raw) return null;
       var saved = JSON.parse(raw);
       return saved && typeof saved === 'object' ? saved : null;
     } catch (e) { return null; }
+  }
+
+  /* The old key's text as its length and a 32-bit FNV-1a hash: enough to
+   * tell the copy that was moved from one an earlier build wrote since. */
+  function fingerprint(raw) {
+    var h = 0x811c9dc5;
+    for (var i = 0; i < raw.length; i++) {
+      h ^= raw.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return raw.length + ':' + (h >>> 0).toString(16);
   }
 
   function legacyExists() {
@@ -177,6 +194,12 @@
     var damage = null;
     var db = null;
     var persistAsked = null;
+    /* set from taking the writing over until the saved session has been
+     * read: the state this tab holds meanwhile is the one it had as a
+     * reader, older than what is on disk, and is not written over it */
+    var adopting = false;
+    /* the old localStorage copy load() handed over, as fingerprint() */
+    var legacySeen = null;
 
     /* What the copy on disk holds, as far as this tab wrote or read it. */
     var written = {
@@ -357,13 +380,18 @@
       return null;
     }
 
-    /* Write what has changed. Resolves once it is on disk; rejects, leaving
-     * the copy on disk exactly as it was, if anything in it was refused. */
-    function write(state) {
+    /* Write what has changed. `state` is the session, or a function that
+     * returns it when this write's turn comes. Resolves once it is on disk;
+     * rejects, leaving the copy on disk exactly as it was, if anything in it
+     * was refused. */
+    function write(source) {
       return queued(async function () {
         await ready;
         var no = refused();
         if (no) throw no;
+        if (adopting) return { records: [], removed: [], blobs: 0, orphans: 0,
+          cache: 0, cacheRemoved: 0, skipped: true };
+        var state = typeof source === 'function' ? source() : source;
         var plan = dehydrate(state);
         var made = plan.fresh.size ? await makeBlobs(plan.fresh) : [];
         var puts = [], texts = new Map(), live = new Set();
@@ -537,10 +565,19 @@
 
     /* The saved session: {state, from} where from is 'indexeddb', or
      * 'localStorage' for a session an earlier build left there, not yet
-     * moved (see retireLegacy); null when there is none. */
+     * moved (see retireLegacy); null when there is none.
+     *
+     * Both can be there. The copy here was moved from the old key, which
+     * then went, or was kept because the move did not read back; the old
+     * key's fingerprint was recorded either way. An old key that does not
+     * match it was written after the move, by an earlier build opened on
+     * this browser since, and is the newer session of the two: it is the
+     * one opened, and moved across again. */
     function load() {
       return queued(async function () {
         await ready;
+        adopting = false;
+        var raw = legacyRaw();
         if (mode === 'indexeddb') {
           var state;
           try {
@@ -550,28 +587,48 @@
             throw e;
           }
           if (state) {
-            /* this copy is newer than anything an earlier build left */
-            if (role === 'writer') legacyRemove();
-            return { state: state, from: 'indexeddb' };
+            if (raw === null) return { state: state, from: 'indexeddb' };
+            var print = fingerprint(raw);
+            var moved = await done(db.transaction('meta', 'readonly')
+              .objectStore('meta').get('legacy'));
+            var newer = moved === print ? null : legacyParse(raw);
+            if (!newer) {
+              if (role === 'writer' && moved === print) legacyRemove();
+              return { state: state, from: 'indexeddb' };
+            }
+            legacySeen = print;
+            return { state: newer, from: 'localStorage' };
           }
         }
-        var legacy = legacyRead();
+        var legacy = legacyParse(raw);
+        legacySeen = legacy ? fingerprint(raw) : null;
         return legacy ? { state: legacy, from: 'localStorage' } : null;
       });
     }
 
     /* Remove the old localStorage copy, once the copy here has been read
      * back and is `expected`, the session as it was moved across. Resolves
-     * true if it was removed. */
+     * true if it was removed. Its fingerprint is recorded first, removed or
+     * not, so that load() can tell it from one an earlier build writes
+     * later; and it is left if it has changed since load() read it. */
     function retireLegacy(expected) {
       return queued(async function () {
         await ready;
         if (mode !== 'indexeddb' || role !== 'writer' || !legacyExists()) return false;
-        var copy = await readBack(false);
+        var copy = null;
+        try {
+          if (legacySeen) {
+            var seen = legacySeen;
+            await asWriter(['meta'], function (tx) { tx.objectStore('meta').put(seen, 'legacy'); });
+          }
+          copy = await readBack(false);
+        } catch (e) { return false; }
         var complete = !!copy && Object.keys(expected).every(function (field) {
           return field === CACHE_FIELD || same(copy[field], expected[field]);
         });
         if (!complete) return false;
+        var raw = legacyRaw();
+        if (raw === null || fingerprint(raw) !== legacySeen) return false;
         legacyRemove();
         return true;
       });
@@ -637,6 +694,8 @@
           await holdLock(true);
         }
         await claim();
+        /* until load() has read what the other tab saved */
+        adopting = true;
       });
     }
 

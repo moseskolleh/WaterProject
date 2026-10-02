@@ -6984,6 +6984,16 @@
         Object.prototype.hasOwnProperty.call(PAGES, shown) ? shown : 'overview', route.item));
     }
     global.addEventListener('hashchange', followAddress);
+    /* The last change before the tab is put away or closed is written now
+     * rather than after the autosave's 400 ms, which the page may not live
+     * to see: a phone freezes a hidden tab, and may then discard it. Hidden
+     * is the dependable moment, since the page still runs to finish the
+     * write; on pagehide it is a best effort, as IndexedDB, unlike
+     * localStorage, does not write synchronously. */
+    global.addEventListener('pagehide', function () { store.flush(); });
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden') store.flush();
+    });
     if (strandedKey) {
       /* It sat unencrypted on disk, so removing it is not enough: it has to
        * be treated as disclosed and rotated. */

@@ -2172,9 +2172,21 @@ await withPage(async (page, base, consoleErrors) => {
       });
       /* the first write after a reload stores only what changed after it */
       const afterReload = await tab.evaluate(async () => {
-        window.GWT.app.store.set('site.community', 'typed after the reload');
-        await window.GWT.app.store.persist();
-        return window.GWT.app.storage.stats.last;
+        /* what went to IndexedDB, counted at IndexedDB rather than taken
+         * from the storage module's own account of it */
+        const original = IDBObjectStore.prototype.put;
+        const puts = [];
+        IDBObjectStore.prototype.put = function (value, key) {
+          puts.push(this.name + ':' + key);
+          return original.call(this, value, key);
+        };
+        try {
+          window.GWT.app.store.set('site.community', 'typed after the reload');
+          await window.GWT.app.store.persist();
+        } finally {
+          IDBObjectStore.prototype.put = original;
+        }
+        return Object.assign({ puts: puts.sort().join() }, window.GWT.app.storage.stats.last);
       });
       /* the Settings page says where it is kept and how much room it takes */
       await tab.evaluate(() => window.GWT.app.goto('settings'));
@@ -2198,7 +2210,8 @@ await withPage(async (page, base, consoleErrors) => {
   check('storage: a changed field writes its record and nothing else',
     heavy.writes.every((w) => w.last.records.join() === 'site' && w.last.blobs === 0 &&
       w.last.orphans === 0 && w.last.removed.length === 0 && w.last.cache === 0) &&
-    heavy.afterReload.records.join() === 'site' && heavy.afterReload.blobs === 0,
+    heavy.afterReload.records.join() === 'site' && heavy.afterReload.blobs === 0 &&
+    heavy.afterReload.puts === 'meta:saved,records:site',
     JSON.stringify([heavy.writes[0], heavy.afterReload]));
   check('storage: a caption writes the photo record, a replaced photo one file',
     heavy.photoEdits.caption.records.join() === 'photos' &&
@@ -2427,6 +2440,149 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify([tabs.moved, tabs.firstAfter]));
   check('tabs: no console errors', tabs.errors.length === 0,
     tabs.errors.slice(0, 5).join('\n     '));
+
+  // An autosave that falls due while "Continue here" is taking the saving
+  // over holds this tab's own session, which is older than what the other
+  // tab saved. It must not be written over that before this tab reads it.
+  const takeover = await (async () => {
+    const { context, errors, open } = await freshTab();
+    try {
+      const first = await open();
+      await first.evaluate(async () => {
+        window.GWT.app.store.set('site.community', 'typed in the first tab');
+        await window.GWT.app.store.persist();
+      });
+      const second = await open();
+      await second.evaluate(() => window.GWT.app.storage.ready);
+      await first.evaluate(async () => {
+        window.GWT.app.store.set('site.client', 'typed in the first tab after');
+        await window.GWT.app.store.persist();
+      });
+      const out = await second.evaluate(async () => {
+        const app = window.GWT.app;
+        app.store.set('site.community', 'typed in the second tab');
+        const moving = app.continueHere();
+        app.store.persist();
+        await moving;
+        const stored = await app.storage.readBack();
+        return { role: app.storage.role, client: app.store.get('site.client'),
+          storedClient: stored.site.client };
+      });
+      /* and the change made just before the tab is put away - switched
+       * from, or the phone locked, after which it may be frozen and never
+       * run its 400 ms autosave - is written as it is hidden */
+      out.hidden = await second.evaluate(async () => {
+        const app = window.GWT.app;
+        app.store.set('site.client', 'typed as it was hidden');
+        Object.defineProperty(document, 'visibilityState',
+          { configurable: true, get() { return 'hidden'; } });
+        document.dispatchEvent(new Event('visibilitychange'));
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        return (await app.storage.readBack()).site.client;
+      });
+      return Object.assign(out, { errors });
+    } finally {
+      await context.close();
+    }
+  })();
+  check('tabs: an autosave during "Continue here" does not overwrite the other tab\'s copy',
+    takeover.role === 'writer' && takeover.client === 'typed in the first tab after' &&
+    takeover.storedClient === 'typed in the first tab after', JSON.stringify(takeover));
+  check('storage: the last change is written as the tab is hidden, not 400 ms later',
+    takeover.hidden === 'typed as it was hidden' && takeover.errors.length === 0,
+    JSON.stringify(takeover));
+
+  // Without Web Locks (an older browser) the newest tab takes the saving
+  // over when it opens, and the one that had it is refused and says so.
+  const unlocked = await (async () => {
+    const { context, errors, open } = await freshTab({
+      fn: () => {
+        Object.defineProperty(Navigator.prototype, 'locks',
+          { configurable: true, get() { return undefined; } });
+      },
+    });
+    try {
+      const first = await open();
+      await first.evaluate(async () => {
+        window.GWT.app.store.set('site.community', 'typed in the first tab');
+        await window.GWT.app.store.persist();
+      });
+      const second = await open();
+      const newest = await second.evaluate(async () => {
+        await window.GWT.app.storage.ready;
+        return { role: window.GWT.app.storage.role,
+          community: window.GWT.app.store.get('site.community') };
+      });
+      const older = await first.evaluate(async () => {
+        const app = window.GWT.app;
+        app.store.set('site.community', 'typed in the older tab');
+        const ok = await app.store.persist();
+        const stored = await app.storage.readBack();
+        return { ok, role: app.storage.role, stored: stored.site.community,
+          banner: document.querySelector('#autosave-banner')?.textContent || '' };
+      });
+      return { newest, older, errors };
+    } finally {
+      await context.close();
+    }
+  })();
+  check('tabs: without Web Locks the newest tab saves, and the older one says it does not',
+    unlocked.newest.role === 'writer' && unlocked.newest.community === 'typed in the first tab' &&
+    unlocked.older.ok === false && unlocked.older.role === 'reader' &&
+    unlocked.older.stored === 'typed in the first tab' &&
+    /Another tab is saving this project/.test(unlocked.older.banner) &&
+    unlocked.errors.length === 0, JSON.stringify(unlocked));
+
+  // A session an earlier build wrote to localStorage after the move - the
+  // user went back to an older copy of the app for a while - is the newer
+  // one, and is opened rather than deleted. The old key kept because its
+  // move did not read back is not: the copy here has moved on from it.
+  const older = await (async () => {
+    const { context, errors, open } = await freshTab();
+    const reopen = async (tab) => {
+      await tab.reload({ waitUntil: 'load' });
+      await tab.waitForFunction(() => window.GWT && window.GWT.app &&
+        document.querySelector('#page-host .page-head'));
+      await tab.evaluate(() => window.GWT.app.storage.ready);
+    };
+    const oldSession = JSON.stringify({ nav: 'site',
+      site: { project: 'Older build', community: 'typed in an older build' } });
+    try {
+      const tab = await open();
+      await tab.evaluate(async () => {
+        window.GWT.app.store.set('site.community', 'typed in this build');
+        await window.GWT.app.store.persist();
+      });
+      await tab.evaluate((text) => localStorage.setItem('gwt.project.v1', text), oldSession);
+      await reopen(tab);
+      const taken = await tab.evaluate(async () => {
+        const app = window.GWT.app;
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        return { community: app.store.get('site.community'),
+          stored: (await app.storage.readBack()).site.community,
+          legacyKey: localStorage.getItem('gwt.project.v1') !== null };
+      });
+      await tab.evaluate(async () => {
+        window.GWT.app.store.set('site.community', 'typed after the move');
+        await window.GWT.app.store.persist();
+      });
+      await tab.evaluate((text) => localStorage.setItem('gwt.project.v1', text), oldSession);
+      await reopen(tab);
+      const kept = await tab.evaluate(() => ({
+        community: window.GWT.app.store.get('site.community'),
+        legacyKey: localStorage.getItem('gwt.project.v1') !== null }));
+      return { taken, kept, errors };
+    } finally {
+      await context.close();
+    }
+  })();
+  check('storage: an older build\'s later session is opened, not deleted',
+    older.taken.community === 'typed in an older build' &&
+    older.taken.stored === 'typed in an older build' && older.taken.legacyKey === false,
+    JSON.stringify(older));
+  check('storage: the old key already moved does not come back over newer work',
+    older.kept.community === 'typed after the move' && older.kept.legacyKey === false &&
+    older.errors.length === 0, JSON.stringify(older));
 
   // --- addresses: every page has one ---------------------------------------
   // Each page opened cold, in a tab of its own, by nothing but its URL: the
