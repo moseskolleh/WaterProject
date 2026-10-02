@@ -33,7 +33,9 @@ def test_built_reports_stay_downloadable_and_the_app_loads_offline():
     from streamlit.testing.v1 import AppTest
 
     app_file = Path(__file__).resolve().parents[1] / "app" / "streamlit_app.py"
-    assert "@import url(" not in app_file.read_text()
+    # the script and every page and helper module it imports from beside it
+    for source in app_file.parent.rglob("*.py"):
+        assert "@import url(" not in source.read_text(), source.name
 
     from conftest import goto
 

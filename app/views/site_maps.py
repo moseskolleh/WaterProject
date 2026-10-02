@@ -42,6 +42,7 @@ from shared import (
     kept_upload,
     offer_download,
     _offer_raster,
+    save_upload,
     site_from_state,
     workdir,
 )
@@ -169,8 +170,8 @@ def render() -> None:
         if _dem_file is not None and st.button(
             "Draw the topographic map", key="run_topo", type="primary"
         ):
-            dem_path = workdir() / _dem_file.name
-            dem_path.write_bytes(_dem_file.getvalue())
+            # the tile's own name, without any folder a crafted name carries
+            dem_path = save_upload(_dem_file)
             try:
                 grid = load_elevation(dem_path)
             except ValueError as exc:
