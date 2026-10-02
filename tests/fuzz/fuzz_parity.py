@@ -83,11 +83,15 @@ def compare(engine: BrowserEngine, case: dict, workdir: Path,
     * the models of an inversion neither engine converged, where each
       reports where its iteration cap left it
       (regressions/ves-unconverged-inversion.json).
-    * a layer boundary the Python inversion itself calls poorly resolved,
-      its thickness uncertain by a factor of POORLY_RESOLVED_FACTOR or more,
-      which the reports already say; between two near-equal layers that
+    * a model with a boundary the Python inversion itself calls poorly
+      resolved, its thickness uncertain by a factor of POORLY_RESOLVED_FACTOR
+      or more, which the reports already say. Such a model is one of a
+      family that fits about equally well: between two near-equal layers the
       boundary is wherever each optimiser left it
-      (regressions/ves-poorly-resolved-boundary.json).
+      (regressions/ves-poorly-resolved-boundary.json), and with several such
+      boundaries the two searches settle on different members of the family
+      (regressions/ves-equivalent-models.json). Whether each engine
+      inverted at all, and to how many layers, is still compared.
     """
     from groundwater.ves.interpret import POORLY_RESOLVED_FACTOR
 
@@ -110,11 +114,12 @@ def compare(engine: BrowserEngine, case: dict, workdir: Path,
         for i, (a, b) in enumerate(zip(*settled, strict=False)):
             if a is False and b is False:
                 skipped |= {f"inversions[{i}].{key}" for key in ("rho", "h", "err")}
-            for k, factor in enumerate(factors[i] or []):
-                if factor is not None and factor >= POORLY_RESOLVED_FACTOR:
-                    skipped.add(f"inversions[{i}].h[{k}]")
-        found = [d for d in found
-                 if d[0] not in skipped and d[0].rsplit("[", 1)[0] not in skipped]
+            if any(f is not None and f >= POORLY_RESOLVED_FACTOR
+                   for f in factors[i] or []):
+                skipped |= {f"inversions[{i}].{key}" for key in ("rho", "h", "err")}
+        # "rho[]" is a different number of layers, which is still compared
+        found = [d for d in found if d[0].endswith("[]") or (
+            d[0] not in skipped and d[0].rsplit("[", 1)[0] not in skipped)]
     return found
 
 
