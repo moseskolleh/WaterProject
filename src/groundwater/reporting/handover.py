@@ -485,7 +485,7 @@ def default_works(inputs: HandoverReportInputs) -> list[str]:
     if log is not None and log.total_depth_m is not None:
         if log.drilling_method:
             works.append(phrase("handover.works_drilling_by", depth=log.total_depth_m,
-                                method=log.drilling_method))
+                                method=str(log.drilling_method)))
         else:
             works.append(phrase("handover.works_drilling", depth=log.total_depth_m))
     design = inputs.design

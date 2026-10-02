@@ -2432,7 +2432,7 @@
     if (log.total_depth_m !== null && log.total_depth_m !== undefined) {
       works.push(log.drilling_method
         ? C.phrase('handover.works_drilling_by',
-          { depth: log.total_depth_m, method: log.drilling_method })
+          { depth: log.total_depth_m, method: String(log.drilling_method) })
         : C.phrase('handover.works_drilling', { depth: log.total_depth_m }));
     }
     if (design) {

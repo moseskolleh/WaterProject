@@ -35,6 +35,7 @@ with a hole in it.
 from __future__ import annotations
 
 import functools
+import numbers
 import re
 from importlib import resources
 
@@ -63,11 +64,13 @@ def _format(name: str, spec: str | None, value) -> str:
             )
         return value
     if spec.startswith("plural:"):
-        if isinstance(value, bool) or not isinstance(value, int):
+        if isinstance(value, bool) or not isinstance(value, numbers.Integral):
             raise TypeError(f"text: {{{name}:plural:...}} takes a whole count")
         one, other = spec[len("plural:"):].split("|")
         return one if value == 1 else other
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    # numbers.Real rather than int and float, so a numpy scalar out of a
+    # fitted array is a number here too
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
         if not (spec == "num" and value is None):
             raise TypeError(f"text: {{{name}:{spec}}} takes a number, not {value!r}")
     if spec == "num":

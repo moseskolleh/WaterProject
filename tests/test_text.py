@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 
+from groundwater.text import _TOKEN as _PLACEHOLDER
 from groundwater.text import phrase, phrase_table, render_text, text_catalogue
 
 REPO = Path(__file__).resolve().parents[1]
@@ -28,11 +29,6 @@ JS = REPO / "docs" / "js"
 GENERATED_JS = {"gwt-data.js", "gwt-geo.js", "gwt-samples.js"}
 
 _ID = re.compile(r"^[a-z][a-z0-9_]*$")
-_PLACEHOLDER = re.compile(
-    r"\{\{|\}\}"
-    r"|\{([a-z_][a-z0-9_]*)(?::(num|g|\.\d+f|plural:[^{}|]*\|[^{}|]*))?\}"
-    r"|[{}]"
-)
 
 
 def _python_source() -> str:
@@ -221,6 +217,15 @@ def test_render_text(template, values, expected):
             render_text(template, values)
     else:
         assert render_text(template, values) == expected
+
+
+def test_a_numpy_scalar_is_a_number():
+    """Values often come out of a fitted array; fmt_num always took them."""
+    import numpy as np
+
+    assert render_text("{d:num} m, {n:plural:step|steps}",
+                       {"d": np.int64(62), "n": np.int64(3)}) == "62 m, steps"
+    assert render_text("{d:.1f}", {"d": np.float32(2.25)}) == "2.2"
 
 
 def test_phrase_reads_the_catalogue():
