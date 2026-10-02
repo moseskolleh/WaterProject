@@ -21093,8 +21093,7 @@
      6.5
     ]
    ],
-   "flags": [],
-   "messages": []
+   "flags": []
   },
   {
    "grid": [
@@ -21201,16 +21200,14 @@
    "flags": [
     [
      "warning",
-     "water_strike_unreadable"
+     "water_strike_unreadable",
+     "Water strike cell \"SWL 4.5\" was not read as a depth: it names a water level but no strike depth. No strike was recorded from it; write each depth with its unit, as \"water strike at 12 m and 30 m\"."
     ],
     [
      "warning",
-     "water_strike_unreadable"
+     "water_strike_unreadable",
+     "Water strike cell \"14:30\" was not read as a depth: it names a clock time but no strike depth. No strike was recorded from it; write each depth with its unit, as \"water strike at 12 m and 30 m\"."
     ]
-   ],
-   "messages": [
-    "Water strike cell \"SWL 4.5\" was not read as a depth: it names a water level but no strike depth. No strike was recorded from it; write each depth with its unit, as \"water strike at 12 m and 30 m\".",
-    "Water strike cell \"14:30\" was not read as a depth: it names a clock time but no strike depth. No strike was recorded from it; write each depth with its unit, as \"water strike at 12 m and 30 m\"."
    ]
   },
   {
@@ -21315,8 +21312,7 @@
      8.5
     ]
    ],
-   "flags": [],
-   "messages": []
+   "flags": []
   },
   {
    "grid": [
@@ -21421,11 +21417,9 @@
    "flags": [
     [
      "warning",
-     "diameter_implausible"
+     "diameter_implausible",
+     "Drilled diameter 165 reads as more than 36 inches, wider than any water well bit, so it was not recorded; write the unit in the cell or the column header, as \"165 mm\"."
     ]
-   ],
-   "messages": [
-    "Drilled diameter 165 reads as more than 36 inches, wider than any water well bit, so it was not recorded; write the unit in the cell or the column header, as \"165 mm\"."
    ]
   },
   {
@@ -21542,11 +21536,9 @@
    "flags": [
     [
      "warning",
-     "interval_unreadable"
+     "interval_unreadable",
+     "Depth interval cell \"60 -\" was not read as a depth interval, so this row was skipped; write it as the depths from and to, as \"30-40\"."
     ]
-   ],
-   "messages": [
-    "Depth interval cell \"60 -\" was not read as a depth interval, so this row was skipped; write it as the depths from and to, as \"30-40\"."
    ]
   },
   {
@@ -21649,8 +21641,7 @@
      6.5
     ]
    ],
-   "flags": [],
-   "messages": []
+   "flags": []
   }
  ]
 }

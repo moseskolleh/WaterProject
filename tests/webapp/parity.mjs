@@ -999,15 +999,13 @@ await withPage(async (page, base, consoleErrors) => {
     });
     const drilling = specs.drilling.map((grid) => {
       const log = C.drillingFromGrid(grid, 'case.xlsx');
-      const told = ['water_strike_unreadable', 'interval_unreadable', 'diameter_implausible'];
       return {
         strikes: log.water_strikes_m,
         grout: log.grouting_depth_m,
         intervals: log.intervals.map((iv) => [iv.top_m, iv.bottom_m, iv.description,
           iv.penetration_rate_m_per_min === undefined ? null : iv.penetration_rate_m_per_min,
           iv.bit_diameter_in === undefined ? null : iv.bit_diameter_in]),
-        flags: log.flags.map((f) => [f.level, f.code]),
-        messages: log.flags.filter((f) => told.indexOf(f.code) >= 0).map((f) => f.message),
+        flags: log.flags.map((f) => [f.level, f.code, f.message]),
       };
     });
     return { design, drilling };
@@ -1025,7 +1023,7 @@ await withPage(async (page, base, consoleErrors) => {
     }
   });
   R.drilling_cases.forEach((ref, i) => {
-    for (const key of ['strikes', 'grout', 'intervals', 'flags', 'messages']) {
+    for (const key of ['strikes', 'grout', 'intervals', 'flags']) {
       check(`drilling case ${i + 1}: ${key}`,
         JSON.stringify(cases.drilling[i][key]) === JSON.stringify(ref[key]),
         `js ${JSON.stringify(cases.drilling[i][key])}\n     py ${JSON.stringify(ref[key])}`);

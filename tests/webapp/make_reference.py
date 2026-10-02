@@ -286,12 +286,9 @@ def drilling_case(grid) -> dict:
         "intervals": [[clean(iv.top_m), clean(iv.bottom_m), iv.description,
                        clean(iv.penetration_rate_m_per_min), clean(iv.bit_diameter_in)]
                       for iv in log.intervals],
-        # codes only: the messages of the gap and depth flags print a float
-        # differently in the two engines, which is not what these cases test
-        "flags": [[f.level, f.code] for f in log.flags],
-        "messages": [f.message for f in log.flags
-                     if f.code in ("water_strike_unreadable", "interval_unreadable",
-                                   "diameter_implausible")],
+        # every message in full: the gap and depth flags used to print "40.0 m"
+        # here and "40 m" in the browser, and were compared by code alone
+        "flags": flags(log.flags),
     }
 
 
