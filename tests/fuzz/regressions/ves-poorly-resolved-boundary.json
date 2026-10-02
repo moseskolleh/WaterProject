@@ -1,0 +1,41 @@
+{
+ "note": "Found on 2026-10-02. A Schlumberger sounding reading 21.1 ohm-m almost everywhere, with three misreads. Both engines converge to two layers of 20.6 and 22.2 ohm-m at the same misfit (9.53687 percent, equal to 5e-7) with the boundary at 0.8316 m in Python and 0.8304 m in the browser, 1.4e-3 apart where parity holds a model to 1e-3. The Python inversion puts that boundary's thickness uncertainty at a factor of 10, and the report already calls it poorly resolved: the data do not say where it is to better than tenfold.",
+ "open": "Should parity hold the two engines to 1e-3 on a parameter the toolkit itself reports as uncertain by a factor of 2 or more? The fuzz suite's inversion generator leaves such boundaries out of its comparison (see compare() in fuzz_parity.py); this case stays here, held to diverging, until that is decided one way or the other.",
+ "first_divergence": ["inversions[0].h[0]", 0.8304067889757619, 0.8315798681928043],
+ "kind": "ves",
+ "options": {"invert": true},
+ "sheets": [
+  {"name": "VES 1", "rows": [
+   ["SCHLUMBERGER ARRAY VES FIELD DATA", null, null, null],
+   ["Community", "Rokel", "District", "Port Loko"],
+   ["Chiefdom", "Koya", "Sounding Number", "VES 1"],
+   ["Array", "Schlumberger", "Instrument", "Syscal Junior"],
+   [null, null, null, null],
+   ["No.", "AB/2 (m)", "MN (m)", "Apparent Resistivity (ohm-m)"],
+   [1, 1.0, 1.0, 21.1],
+   [2, "1.5", 1.0, "21.1"],
+   [3, "2", 1.0, "21.1"],
+   [4, 2.5, 1.0, 21.1],
+   [5, 3.0, 1.0, 21.1],
+   [6, 4.0, 1.0, 21.1],
+   [7, 5.0, 1.0, 21.1],
+   [8, 5.0, 1.5, 21.1],
+   [9, 6.0, 1.5, 21.1],
+   [10, 7.0, 1.5, 21.1],
+   [11, 7.0, 2.0, 52.8],
+   [12, 8.0, 2.0, 21.1],
+   [13, 10.0, 2.0, 21.1],
+   [14, 12.0, 2.0, 21.1],
+   [15, 15.0, 2.0, 33.8],
+   [16, 15.0, 4.0, 21.1],
+   [17, 20.0, 4.0, 21.1],
+   [18, 25.0, 4.0, 21.1],
+   [19, 25.0, 7.6, 21.1],
+   [20, 30.0, 7.6, 21.1],
+   [21, 40.0, 7.6, 21.1],
+   [22, 40.0, 14.0, 21.1],
+   [23, 50.0, 14.0, 21.1],
+   [24, 60.0, 14.0, 21.1]
+  ]}
+ ]
+}

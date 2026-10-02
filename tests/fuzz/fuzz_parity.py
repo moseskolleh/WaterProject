@@ -74,25 +74,44 @@ def workdir():
 
 
 def compare(engine: BrowserEngine, case: dict, workdir: Path,
-            skip_unconverged: bool = False) -> list:
+            open_questions: bool = False) -> list:
     """Every place the two engines disagree on ``case``.
 
-    ``skip_unconverged`` leaves out the models of an inversion neither
-    engine converged, which is the open question in
-    regressions/ves-unconverged-inversion.json: each engine reports where
-    its iteration cap left it. Whether both converged is still compared.
+    ``open_questions`` leaves out what the open regression cases already
+    record, so a run of new cases does not find them again every night:
+
+    * the models of an inversion neither engine converged, where each
+      reports where its iteration cap left it
+      (regressions/ves-unconverged-inversion.json). Whether each converged
+      is still compared.
+    * a layer boundary the Python inversion itself calls poorly resolved,
+      its thickness uncertain by a factor of POORLY_RESOLVED_FACTOR or more,
+      which the reports already say; between two near-equal layers that
+      boundary is wherever each optimiser left it
+      (regressions/ves-poorly-resolved-boundary.json).
     """
+    from groundwater.ves.interpret import POORLY_RESOLVED_FACTOR
+
     data = workbook_bytes(case["sheets"])
     path = workdir / "case.xlsx"
     path.write_bytes(data)
     py = python_summary(case["kind"], path, str(path), case["options"])
     js = engine.summary(case["kind"], data, str(path), case["options"])
+    # the Python model's own resolution, which is a judge here and not a
+    # quantity the browser is asked for
+    factors = [inv.pop("h_factor", None) for inv in py.get("inversions") or []]
     found = divergences(js, py)
-    if skip_unconverged:
-        stalled = {f"inversions[{i}]" for i, (a, b) in enumerate(
-            zip(js.get("inversions") or [], py.get("inversions") or [], strict=False))
-            if a.get("converged") is False and b.get("converged") is False}
-        found = [d for d in found if d[0].split(".")[0] not in stalled]
+    if open_questions:
+        skipped = set()
+        pairs = zip(js.get("inversions") or [], py.get("inversions") or [], strict=False)
+        for i, (a, b) in enumerate(pairs):
+            if a.get("converged") is False and b.get("converged") is False:
+                skipped |= {f"inversions[{i}].{key}" for key in ("rho", "h", "err")}
+            for k, factor in enumerate(factors[i] or []):
+                if factor is not None and factor >= POORLY_RESOLVED_FACTOR:
+                    skipped.add(f"inversions[{i}].h[{k}]")
+        found = [d for d in found
+                 if d[0] not in skipped and d[0].rsplit("[", 1)[0] not in skipped]
     return found
 
 
@@ -198,9 +217,9 @@ def test_inversions_agree(engine, workdir):
     a layered inversion should say about a uniform half-space is an open
     question, recorded in regressions/ves-uniform-half-space-boundary.json,
     and drawing it again every night would say nothing new. For the same
-    reason the models of an inversion neither engine converged are not
-    compared (regressions/ves-unconverged-inversion.json).
+    reason the two other open questions are left out of the comparison here;
+    see ``compare``.
     """
     strategy = ves_case(varied=True).map(
         lambda case: {**case, "sheets": case["sheets"][:1], "options": {"invert": True}})
-    _fuzz(engine, workdir, strategy, INVERSIONS, skip_unconverged=True)
+    _fuzz(engine, workdir, strategy, INVERSIONS, open_questions=True)

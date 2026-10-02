@@ -98,7 +98,8 @@ def _ves(path: Path, name: str, options: dict) -> dict:
                 inversions.append({"rho": nums(r.model.resistivities),
                                    "h": nums(r.model.thicknesses),
                                    "err": num(r.fit_error_percent),
-                                   "converged": bool(r.converged)})
+                                   "converged": bool(r.converged),
+                                   "h_factor": nums(r.model.h_uncertainty_factor)})
             except Exception as exc:  # noqa: BLE001 - a crash is a divergence too
                 inversions.append(failure(exc))
         out["inversions"] = inversions
