@@ -684,6 +684,10 @@ def deepest_pumping_level(test: PumpingTest) -> Optional[float]:
     return max(levels) if levels else None
 
 
+#: Step discharges closer than this, relatively, are one rate written two ways.
+SAME_RATE_RTOL = 1e-6
+
+
 def hantush_bierschenk(
     step_discharges_m3_per_h: list[float],
     step_end_drawdowns_m: list[float],
@@ -707,7 +711,10 @@ def hantush_bierschenk(
     # Steps pumped at one rate put every point of s/Q against Q on one
     # vertical line, which any B and C fit: lstsq returned its minimum-norm
     # split and the browser all aquifer loss, and both reported efficiencies.
-    if len(np.unique(q)) < 2:
+    # "One rate" is to a part in a million, not to the last bit: 88 L/min
+    # converts to 5.279999999999999 m3/h beside a 5.28 typed in m3/h, and
+    # that ulp made the line merely near-vertical, which is no better.
+    if float(np.ptp(q)) <= SAME_RATE_RTOL * float(np.max(np.abs(q))):
         raise ValueError(
             f"Every step was pumped at {step_discharges_m3_per_h[0]:g} m3/h, so the "
             "aquifer and well losses cannot be told apart; a step test needs "

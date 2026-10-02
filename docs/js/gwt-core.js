@@ -2516,6 +2516,10 @@
    * out of the fit used to renumber the rest, so the table printed "Step 1 |
    * 2.2 m3/h" beside a test details line saying step 1 ran at 1.5 m3/h.
    * Without them the steps are numbered from one. */
+  /* analysis.py SAME_RATE_RTOL: step discharges closer than this,
+   * relatively, are one rate written two ways. */
+  var SAME_RATE_RTOL = 1e-6;
+
   function hantushBierschenk(stepDischargesM3PerH, stepEndDrawdownsM, stepNumbers) {
     var q = stepDischargesM3PerH.map(function (v) { return v * 24.0; });
     var s = stepEndDrawdownsM.slice();
@@ -2525,8 +2529,11 @@
     /* Steps pumped at one rate put every point of s/Q against Q on one
      * vertical line, which any B and C fit: this fit returned all aquifer
      * loss and numpy's lstsq its minimum-norm split, and both reported
-     * efficiencies. */
-    if (q.every(function (v) { return v === q[0]; })) {
+     * efficiencies. "One rate" is to a part in a million, not to the last
+     * bit: 88 L/min converts to 5.279999999999999 m3/h beside a 5.28 typed in
+     * m3/h, and that ulp made the line merely near-vertical, no better. */
+    var qMax = Math.max.apply(null, q.map(Math.abs));
+    if (Math.max.apply(null, q) - Math.min.apply(null, q) <= SAME_RATE_RTOL * qMax) {
       throw new Error('Every step was pumped at ' + formatG(stepDischargesM3PerH[0]) +
         ' m3/h, so the aquifer and well losses cannot be told apart; a step ' +
         'test needs steps at different discharges');
