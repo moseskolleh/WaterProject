@@ -15,6 +15,40 @@
   var GWT = global.GWT || (global.GWT = {});
   var S = GWT.support, C = GWT.core, charts = GWT.charts, docx = GWT.docx;
   var engine = GWT.engine;
+
+  /* The scripts the first screen does without, fetched by GWT.load (in
+   * gwt-data.js) the first time a page or a report needs them, relative to
+   * this file. The Overview a phone opens on draws no figure and builds no
+   * document, and on a slow link these were seconds of download and parsing
+   * between the user and a page that answers. web/build_offline.py
+   * precaches every file a GWT.bundles assignment names. */
+  GWT.bundles = Object.assign(GWT.bundles || {}, {
+    charts: 'gwt-charts.js', geolibre: 'gwt-geolibre.js',
+    imageSlot: 'image-slot.js', docx: 'gwt-docx.js',
+  });
+
+  /* What a working page draws with: the map layers, the figures, the map
+   * export and the photo slots. A report adds the document writer. */
+  var VIEW_BUNDLES = ['geo', 'charts', 'geolibre', 'imageSlot'];
+  var REPORT_BUNDLES = VIEW_BUNDLES.concat(['docx']);
+
+  function hasBundles(names) {
+    return names.every(function (name) { return GWT.hasBundle(name); });
+  }
+
+  /* A promise that every named bundle has run, with the modules they define
+   * bound to the names this file uses for them. */
+  function need(names) {
+    return Promise.all(names.map(function (name) { return GWT.load(name); }))
+      .then(bindModules);
+  }
+
+  /* Whoever loaded them, the modules are read from GWT, where each bundle
+   * puts its own. */
+  function bindModules() {
+    charts = GWT.charts;
+    docx = GWT.docx;
+  }
   var el = S.el, $ = S.$, card = S.card, button = S.button, field = S.field;
 
   var STORE_KEY = 'gwt.project.v1';
@@ -87,6 +121,11 @@
       procurement: { contract: null, measured: {}, variations: [],
         number: 1, date: '', previous: 0 },
       theme: 'dark',
+      /* the soundings' inversions, keyed by what they were computed from
+       * (C.inversionCacheKey), so reopening a survey does not invert it
+       * again. A cache the app may use and may throw away, never a result:
+       * see runInversions. */
+      inversionCache: {},
     };
   }
 
@@ -125,6 +164,13 @@
 
   var store = S.createStore(blankState(), {
     persistKey: STORE_KEY,
+    /* The inversion cache is the one part of the session that can always be
+     * worked out again. When the whole will not fit, the mirror is kept
+     * without it, and a refresh inverts the survey once more. */
+    persistLighter: function (state) {
+      if (!state.inversionCache || !Object.keys(state.inversionCache).length) return null;
+      return Object.assign({}, state, { inversionCache: {} });
+    },
     onPersistError: function (e, kept) {
       renderAutosaveBanner(true, kept);
       S.toast(kept ? 'Autosave has stopped — save a project file now.'
@@ -192,7 +238,9 @@
 
   /* Derived results are recomputed rather than persisted: they are large,
    * they are cheap to rebuild, and a stale analysis beside fresh data is the
-   * one thing a report must never contain. */
+   * one thing a report must never contain. The inversions are the exception
+   * that is not cheap, and the state keeps them only as a cache keyed by
+   * everything they were computed from, so a stale one cannot be found. */
   var derived = {
     soundings: null, inversions: null, interpretations: null,
     log: null, test: null, analysis: null, sample: null, assessment: null,
@@ -292,15 +340,123 @@
     });
   }
 
-  function goto(key) {
+  /* ------------------------------------------------------------------ routes */
+
+  /* Every page has an address, #/<page>, and a page that shows several
+   * things of one kind gives each an address of its own, #/<page>/<item>: a
+   * sounding on the Geophysics page (#/ves/VES-3), the borehole a pumping
+   * test was run on (#/pumping/KTL-01). The address is what the back and
+   * forward buttons move between, what the user guide links to, and what a
+   * QR code on a field sheet can carry. The store's nav is still what a page
+   * is drawn from; the address follows it, and it follows the address. */
+  var route = { item: '', focused: true };
+
+  function hashFor(key, item) {
+    return '#/' + key + (item ? '/' + encodeURIComponent(item) : '');
+  }
+
+  /* The page and item an address names. An address that names no page -
+   * mistyped, or from a release with a page this one lacks - is the Overview,
+   * and says so with `unknown`, so the address bar can be put right. */
+  function routeFrom(hash) {
+    var text = String(hash || '').replace(/^#\/?/, '');
+    if (!text) return { key: '', item: '' };
+    var parts = text.split('/');
+    var key, item;
+    try {
+      key = decodeURIComponent(parts[0]);
+      item = decodeURIComponent(parts.slice(1).join('/')).trim();
+    } catch (e) { key = ''; }
+    if (!key || !Object.prototype.hasOwnProperty.call(PAGES, key)) {
+      return { key: 'overview', item: '', unknown: true };
+    }
+    return { key: key, item: item };
+  }
+
+  /* Draw a page, as goto and the address both ask for it. */
+  function show(key, item) {
     store.set('nav', key);
-    render();
+    route.item = item || '';
+    route.focused = !route.item;
+    var drawn = render();
     $('#app-nav').classList.remove('open');
     $('#main').focus({ preventScroll: true });
-    /* the main pane is the scroll container on a wide screen and the page is
-     * on a narrow one, so both are sent back to the top */
-    $('#main').scrollTo({ top: 0, behavior: 'smooth' });
-    global.scrollTo({ top: 0, behavior: 'smooth' });
+    if (!route.item) {
+      /* the main pane is the scroll container on a wide screen and the page
+       * is on a narrow one, so both are sent back to the top */
+      $('#main').scrollTo({ top: 0, behavior: 'smooth' });
+      global.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    return drawn;
+  }
+
+  /* Go to a page, and to one item on it if an item is named. The address
+   * changes with it, which adds a step to the browser's history. The promise
+   * is the page drawn, with whatever it had to fetch first. */
+  function goto(key, item) {
+    if (!Object.prototype.hasOwnProperty.call(PAGES, key)) key = 'overview';
+    var address = hashFor(key, item);
+    if (global.location && global.location.hash !== address) {
+      /* the hashchange this fires finds the page already showing */
+      global.location.hash = address;
+    }
+    return show(key, item);
+  }
+
+  /* The address changed under the app: back, forward, a link, or a hand in
+   * the address bar. */
+  function followAddress() {
+    var wanted = routeFrom(global.location.hash);
+    if (!wanted.key) wanted = { key: 'overview', item: '' };
+    if (wanted.unknown) {
+      /* replaced rather than added, so back does not return to it */
+      global.location.replace(hashFor('overview'));
+    }
+    if (wanted.key === store.get('nav') && wanted.item === route.item) return;
+    show(wanted.key, wanted.item);
+  }
+
+  /* Mark a node as the item an address can name on this page. */
+  function itemNode(id, node) {
+    if (id && node && node.setAttribute) node.setAttribute('data-item', String(id));
+    return node;
+  }
+
+  function sameItem(a, b) {
+    return String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+  }
+
+  /* After a page is drawn: bring the item its address names into view, once
+   * per visit, or say on the page that it is not there. A link printed for
+   * one borehole and opened on a project holding another must not look as
+   * though it had worked. */
+  function showItem(host) {
+    if (!route.item) return;
+    var found = Array.prototype.find.call(host.querySelectorAll('[data-item]'),
+      function (node) { return sameItem(node.getAttribute('data-item'), route.item); });
+    if (found) {
+      found.classList.add('item-target');
+      if (!route.focused) {
+        route.focused = true;
+        found.scrollIntoView({ block: 'start' });
+      }
+      return;
+    }
+    /* not yet: the sheets are still being read or the soundings inverted,
+     * and the item may be among what they bring */
+    if (recomputeState.running || Object.keys(work).length) return;
+    var named = Array.prototype.map.call(host.querySelectorAll('[data-item]'),
+      function (node) { return node.getAttribute('data-item'); });
+    var head = host.querySelector('.page-head');
+    var note = el('div.callout.callout-warn.item-missing', [
+      el('p', el('strong', 'Nothing here is called ' + route.item)),
+      el('p', 'This address points at ' + route.item + ', which is not in the ' +
+        'project open in this browser' + (named.length ? ' (it holds ' +
+        S.joinList(named) + ')' : '') + '. Open the project it belongs to, or ' +
+        'load its field sheet.'),
+    ]);
+    if (head && head.nextSibling) host.insertBefore(note, head.nextSibling);
+    else host.insertBefore(note, host.firstChild);
   }
 
   function nextStep(note, label, page) {
@@ -372,10 +528,11 @@
     var cfg = config();
     var notices = [];
 
-    /* Whatever an older recompute, or an inversion, is still computing is
-     * for sources this one is about to replace. */
-    inversionRun += 1;
-    engine.cancel(['recompute', 'analysePumping', 'invert']);
+    /* Whatever an older recompute is still computing is for sources this one
+     * is about to replace. A running inversion is left alone until this one
+     * has read the soundings: if they are the ones it is inverting, it
+     * carries on (adoptInversions). */
+    engine.cancel(['recompute', 'analysePumping']);
 
     /* Reading a workbook or a Word sheet needs DOMParser, which a worker does
      * not have, so the page reads the sheets and the worker derives the rest
@@ -423,8 +580,7 @@
 
     derived.soundings = next.soundings;
     if (next.skippedVesSheets) derived.skippedVesSheets = next.skippedVesSheets;
-    derived.inversions = null;
-    derived.interpretations = null;
+    var inverting = adoptInversions(cfg);
     derived.log = next.log;
     derived.test = next.test;
     derived.analysis = next.analysis;
@@ -439,6 +595,9 @@
     adoptSiteMetadata();
     rebuildDesign();
     rebuildCosting();
+    /* the soundings the cache could not answer, inverted without holding up
+     * the page, which is drawn again once they are in */
+    if (inverting) inverting().then(refresh);
   }
 
   var ANALYSIS_STOPPED = 'the analysis was stopped before it finished.';
@@ -706,31 +865,49 @@
     var file = await S.pickFile('.json,.gwt,application/json');
     if (!file) return;
     try {
-      var payload = JSON.parse(await S.readFile(file, 'text'));
-      var state = payload.state || payload;
-      if (!state || typeof state !== 'object') throw new Error('not a project file');
-      /* A hand-edited or old-build project file can carry a key; it must
-       * never be adopted into this session's storage. The key held for this
-       * tab is untouched - it belongs to this browser, not to the file. */
-      if (state.extraction) delete state.extraction.apiKey;
-      store.replace(migrateLoadedState(Object.assign(blankState(), state)));
-      applyTheme();
-      await recompute();
-      /* started before the page is drawn, so the page says it is running */
-      var inverted = runInversions();
-      renderChrome();
-      render();
-      S.toast('Project loaded.', 'ok');
-      await inverted;
-      refresh();
+      await loadProject(await S.readFile(file, 'text'));
     } catch (e) {
       S.toast('That file is not a Groundwater Toolkit project: ' + e.message, 'error');
     }
   }
 
+  /* A project file's text, made the working session. The file's inversion
+   * cache comes in with the rest of its state, so a survey saved after it
+   * was inverted opens with its models and inverts nothing; a file saved
+   * before the cache existed, or by the other app, inverts as it always
+   * did. Resolves once any inversion it needed is in. */
+  async function loadProject(text) {
+    var payload = JSON.parse(text);
+    var state = payload.state || payload;
+    if (!state || typeof state !== 'object') throw new Error('not a project file');
+    /* A hand-edited or old-build project file can carry a key; it must
+     * never be adopted into this session's storage. The key held for this
+     * tab is untouched - it belongs to this browser, not to the file. */
+    if (state.extraction) delete state.extraction.apiKey;
+    stopInversionsForNewProject();
+    store.replace(migrateLoadedState(Object.assign(blankState(), state)));
+    applyTheme();
+    inversionsStopped = false;
+    /* any inversion still needed is started in here, before the page is
+     * drawn, so the page says it is running */
+    await recompute();
+    renderChrome();
+    render();
+    S.toast('Project loaded.', 'ok');
+    await inversionsSettled();
+  }
+
   async function loadSample(key) {
     var sample = (GWT.data.samples || {})[key];
     if (!sample) return;
+    /* the workbooks themselves are a bundle of their own, fetched the first
+     * time a sample is opened */
+    try {
+      if (!GWT.hasBundle('samples')) await GWT.load('samples');
+    } catch (e) {
+      S.toast('Could not open the sample: ' + e.message, 'error');
+      return;
+    }
     var fresh = blankState();
     fresh.nav = store.get('nav');
     fresh.theme = store.get('theme', 'dark');
@@ -750,14 +927,14 @@
         sample: sample.files[role].path || sample.files[role].name,
       };
     });
+    stopInversionsForNewProject();
     store.replace(fresh);
+    inversionsStopped = false;
     await recompute();
-    var inverted = runInversions();
     renderChrome();
     render();
     S.toast('Loaded ' + sample.label + '.', 'ok');
-    await inverted;
-    refresh();
+    await inversionsSettled();
   }
 
   /* --------------------------------------------------------------- uploading */
@@ -782,14 +959,11 @@
         var buffer = await S.readFile(file);
         var bytes = new Uint8Array(buffer);
         store.set('sources.' + role, { name: file.name, b64: S.bytesToBase64(bytes) });
+        if (role === 'ves') inversionsStopped = false;
         await S.withBusy($('#page-host'), 'Reading ' + file.name + '…', recompute);
-        var inverted = role === 'ves' ? runInversions() : null;
         render();
         S.toast(file.name + ' loaded.', 'ok');
-        if (inverted) {
-          await inverted;
-          refresh();
-        }
+        await inversionsSettled();
       } catch (e) {
         S.toast('Could not read ' + file.name + ': ' + e.message, 'error');
       }
@@ -820,59 +994,205 @@
    * worker a sounding at a time, with its progress in the work bar and a
    * button there to stop it, and the page stays live meanwhile.
    *
-   * A newer run replaces an older one, and a recompute replaces both, since
-   * it replaces the soundings they were inverting. Only the latest run
-   * commits, and only onto the soundings it inverted: an older run's results
-   * are dropped rather than written over the newer run's, and a stopped run
-   * leaves what was there before it. */
+   * A newer run replaces an older one. A recompute replaces a run only when
+   * the soundings it reads are not the ones the run is inverting; when they
+   * are - a discharge typed on the Pumping test page while the survey is
+   * still inverting - the run carries on and commits onto the new reading of
+   * them. Only the latest run commits, and only onto its own soundings: an
+   * older run's results are dropped rather than written over the newer
+   * run's, and a stopped run leaves what was there before it.
+   *
+   * Every sounding's inversion, or the message it failed with, is kept in
+   * the store's inversionCache as soon as it is in, under the SHA-256 of the
+   * sounding's readings, the VES settings and the engine
+   * (C.inversionCacheKey). The cache is saved with the project and mirrored
+   * with the session. A recompute, and a run asked to reuse it, take a
+   * sounding from it rather than inverting it again; Re-run inversion runs
+   * every sounding, as it says. An entry that is not sound is not used
+   * (C.inversionFromCache), and the sounding is inverted as if there were
+   * none. */
   var inversionRun = 0;
+  /* the latest run: {run, keys, soundings, running, promise} */
+  var inversionTask = null;
+  /* Cancel was pressed on an inversion: a recompute does not start it again
+   * on its own until something else asks for one */
+  var inversionsStopped = false;
 
-  async function runInversions() {
-    var run = ++inversionRun;
-    engine.cancel('invert');
-    var soundings = derived.soundings;
-    if (!soundings || !soundings.length) {
-      derived.inversions = null; derived.interpretations = null;
-      return;
-    }
-    var cfg = config();
+  function inversionKeys(soundings, cfg) {
+    return soundings.map(function (sounding) { return C.inversionCacheKey(sounding, cfg); });
+  }
+
+  function sameKeys(a, b) {
+    return !!a && !!b && a.length === b.length && a.every(function (key, i) {
+      return key !== null && key === b[i];
+    });
+  }
+
+  /* The cache's answer for one sounding: {result} or {error}, or null. */
+  function cachedInversion(key, sounding, cfg) {
+    if (!key) return null;
+    var cache = store.get('inversionCache') || {};
+    return Object.prototype.hasOwnProperty.call(cache, key)
+      ? C.inversionFromCache(cache[key], key, sounding, cfg) : null;
+  }
+
+  function rememberInversion(key, sounding, result, error) {
+    var entry = C.inversionCacheEntry(key, sounding, result, error);
+    if (!entry) return;
+    var cache = Object.assign({}, store.get('inversionCache') || {});
+    cache[key] = entry;
+    store.set('inversionCache', cache);
+  }
+
+  /* Only the current soundings' entries are kept, so the cache and the file
+   * it is saved in stay the size of the survey. */
+  function pruneInversionCache(keys) {
+    var cache = store.get('inversionCache') || {}, kept = {};
+    keys.forEach(function (key) {
+      if (key && Object.prototype.hasOwnProperty.call(cache, key)) kept[key] = cache[key];
+    });
+    if (Object.keys(kept).length !== Object.keys(cache).length) store.set('inversionCache', kept);
+  }
+
+  /* Put one run's outcomes, one per sounding, on show. */
+  function commitInversions(soundings, outcomes, cfg) {
     var results = [], interpretations = [];
-    var n = soundings.length;
-    var job = workBegin('invert', 'Inverting ' + n + ' ' + S.plural(n, 'sounding'));
-    try {
-      for (var i = 0; i < n; i++) {
-        var sounding = soundings[i];
-        var which = sounding.sounding_id + (n > 1 ? ' (' + (i + 1) + ' of ' + n + ')' : '');
-        workProgress(job, i / n, which);
-        try {
-          var result = await engine.invert(sounding, cfg, {
-            onProgress: function (fraction, layers) {
-              workProgress(job, (i + fraction) / n, which + ', ' + layers);
-            },
-          });
-          if (run !== inversionRun) return;
-          results.push(result);
-          interpretations.push(C.interpretModel(sounding, result.model, cfg));
-        } catch (e) {
-          if (engine.isCancelled(e) || run !== inversionRun) return;
-          S.toast(sounding.sounding_id + ': ' + e.message, 'warn');
-        }
-      }
-    } finally {
-      workEnd(job);
-    }
-    if (run !== inversionRun || derived.soundings !== soundings) return;
+    soundings.forEach(function (sounding, i) {
+      var outcome = outcomes[i];
+      if (!outcome || !outcome.result) return;
+      results.push(outcome.result);
+      interpretations.push(C.interpretModel(sounding, outcome.result.model, cfg));
+    });
     derived.inversions = results;
     derived.interpretations = interpretations;
     C.rankInterpretations(interpretations, store.get('ves.preferredOrder'));
+  }
+
+  /* After a recompute has read the soundings: put the cache's inversions of
+   * them on show, and say what is left to do. Returns a function that starts
+   * the run the soundings still need, or null when there is none to start -
+   * every sounding was in the cache, the run already under way is for these
+   * very soundings, or Cancel was pressed and nothing has asked since. */
+  function adoptInversions(cfg) {
+    var soundings = derived.soundings;
+    var task = inversionTask;
+    var keys = soundings && soundings.length ? inversionKeys(soundings, cfg) : null;
+    var carryOn = !!(keys && task && task.running && task.run === inversionRun &&
+      sameKeys(task.keys, keys));
+    if (carryOn) {
+      task.soundings = soundings;
+    } else {
+      inversionRun += 1;
+      engine.cancel('invert');
+    }
+    derived.inversions = null;
+    derived.interpretations = null;
+    if (!keys) {
+      inversionTask = null;
+      return null;
+    }
+    var outcomes = soundings.map(function (sounding, i) {
+      return cachedInversion(keys[i], sounding, cfg);
+    });
+    if (outcomes.every(Boolean)) {
+      commitInversions(soundings, outcomes, cfg);
+      return null;
+    }
+    if (carryOn || inversionsStopped) return null;
+    return function () { return runInversions({ reuse: true }); };
+  }
+
+  /* Invert the current soundings. With options.reuse, a sounding the cache
+   * holds is taken from it and only the others are inverted. Always
+   * resolves, once the run has committed, been replaced or been stopped. */
+  function runInversions(options) {
+    var reuse = !!(options && options.reuse);
+    var run = ++inversionRun;
+    inversionsStopped = false;
+    engine.cancel('invert');
+    var soundings = derived.soundings;
+    if (!soundings || !soundings.length) {
+      inversionTask = null;
+      derived.inversions = null; derived.interpretations = null;
+      return Promise.resolve();
+    }
+    var cfg = config();
+    var task = inversionTask = { run: run, keys: inversionKeys(soundings, cfg),
+      soundings: soundings, running: true, promise: null };
+    task.promise = invertSoundings(task, cfg, reuse).finally(function () {
+      task.running = false;
+    });
+    return task.promise;
+  }
+
+  async function invertSoundings(task, cfg, reuse) {
+    var run = task.run, soundings = task.soundings, keys = task.keys;
+    var outcomes = soundings.map(function (sounding, i) {
+      return reuse ? cachedInversion(keys[i], sounding, cfg) : null;
+    });
+    var todo = [];
+    outcomes.forEach(function (outcome, i) { if (!outcome) todo.push(i); });
+    var n = todo.length;
+    if (n) {
+      var job = workBegin('invert', 'Inverting ' + n + ' ' + S.plural(n, 'sounding'));
+      try {
+        for (var t = 0; t < n; t++) {
+          var i = todo[t], sounding = soundings[i];
+          var which = sounding.sounding_id + (n > 1 ? ' (' + (t + 1) + ' of ' + n + ')' : '');
+          workProgress(job, t / n, which);
+          try {
+            var result = await engine.invert(sounding, cfg, {
+              onProgress: function (fraction, layers) {
+                workProgress(job, (t + fraction) / n, which + ', ' + layers);
+              },
+            });
+            if (run !== inversionRun) return;
+            outcomes[i] = { result: result };
+            rememberInversion(keys[i], sounding, result, null);
+          } catch (e) {
+            if (engine.isCancelled(e) || run !== inversionRun) return;
+            outcomes[i] = { error: e.message };
+            rememberInversion(keys[i], sounding, null, e.message);
+            S.toast(sounding.sounding_id + ': ' + e.message, 'warn');
+          }
+        }
+      } finally {
+        workEnd(job);
+      }
+    }
+    /* a recompute that read these same soundings again has handed the run
+     * its reading of them; any other has replaced the run. One still reading
+     * the sources has not yet said which: it may be about to show other
+     * soundings, or another setting, so the run commits nothing and leaves
+     * the recompute to take these results from the cache (adoptInversions). */
+    if (run !== inversionRun || recomputeState.running ||
+        derived.soundings !== task.soundings) return;
+    commitInversions(task.soundings, outcomes, cfg);
+    pruneInversionCache(keys);
     rebuildDesign();
     rebuildCosting();
   }
 
+  /* Another project is about to replace the store. A run for the outgoing
+   * one is stopped here rather than when the incoming one's soundings have
+   * been read: until then it would still be the latest run, and whatever it
+   * finished would be written into the incoming project's cache. */
+  function stopInversionsForNewProject() {
+    inversionRun += 1;
+    engine.cancel('invert');
+  }
+
+  /* The inversion the page is waiting for, if any: resolves once it is done. */
+  function inversionsSettled() {
+    return inversionTask && inversionTask.running ? inversionTask.promise : Promise.resolve();
+  }
+
   /* The VES page's buttons: start the run, draw the page as it now stands
-   * (running), and draw it again with the models once they are in. */
-  function invertAndShow() {
-    var inverted = runInversions();
+   * (running), and draw it again with the models once they are in. Re-run
+   * inversion runs every sounding again; Invert now, offered after a run was
+   * stopped, takes what that run finished from the cache. */
+  function invertAndShow(reuse) {
+    var inverted = runInversions({ reuse: reuse });
     render();
     inverted.then(refresh);
   }
@@ -968,9 +1288,10 @@
     if (!work[key]) return;
     if (key === 'invert') {
       inversionRun += 1;
+      inversionsStopped = true;
       engine.cancel('invert');
-      S.toast('The inversion was stopped, and nothing it had computed was ' +
-        'kept. The Geophysics page can run it again.', 'warn');
+      S.toast('The inversion was stopped, and the results on the page are as ' +
+        'they were. The Geophysics page can run it again.', 'warn');
     } else if (key === 'pumping') {
       engine.cancel('analysePumping');
       S.toast('The pumping analysis was stopped. The test is still loaded, and ' +
@@ -1237,8 +1558,8 @@
     var latlon = siteLatLon();
     var districtWarning = districtNote(site, latlon);
     var mapNode = null;
-    if (GWT.data.geo && GWT.data.geo.adminBoundaries) {
-      var boundaries = GWT.data.geo.adminBoundaries.features || [];
+    if (mapLayers() && mapLayers().adminBoundaries) {
+      var boundaries = mapLayers().adminBoundaries.features || [];
       var home = locatorHome(site, latlon);
       var legendItems = [];
       if (latlon) {
@@ -1252,7 +1573,7 @@
         /* the bundled layer is geoBoundaries; the credit named a dataset this
          * repository does not carry, and the map had no sea or neighbours to
          * tell the Atlantic from unmapped ground */
-        outline: nationalOutline(GWT.data.geo),
+        outline: nationalOutline(mapLayers()),
         labelContext: true,
         contextFill: home.fill,
         highlight: home.highlight, highlightFill: HOME_FILL,
@@ -1400,8 +1721,8 @@
           'enter a position above for the local window.'),
         el('div.grid.grid-2', [
           charts.figure(charts.thematicMap({
-            features: (GWT.data.geo.hydrogeology || {}).features || [],
-            context: (GWT.data.geo.adminBoundaries || {}).features || [],
+            features: (mapLayers().hydrogeology || {}).features || [],
+            context: (mapLayers().adminBoundaries || {}).features || [],
             key: 'unit',
             window: latlon ? { lat: latlon.lat, lon: latlon.lon, radiusKm: mapRadius } : null,
             points: latlon ? [{ lon: latlon.lon, lat: latlon.lat, label: siteLabel() }] : [],
@@ -1413,13 +1734,13 @@
             legendTitle: 'AQUIFER TYPE AND PRODUCTIVITY',
             // the BGS colours ARE the classification, so they stay
             sourceColours: true,
-            outline: nationalOutline(GWT.data.geo),
+            outline: nationalOutline(mapLayers()),
             width: 560, height: 680,
           }), 'Aquifer type and productivity (BGS Africa Groundwater Atlas, CC BY-SA 4.0)',
           { filename: 'aquifer_map' }),
           charts.figure(charts.thematicMap({
-            features: (GWT.data.geo.geology || {}).features || [],
-            context: (GWT.data.geo.adminBoundaries || {}).features || [],
+            features: (mapLayers().geology || {}).features || [],
+            context: (mapLayers().adminBoundaries || {}).features || [],
             key: 'unit',
             window: latlon ? { lat: latlon.lat, lon: latlon.lon, radiusKm: mapRadius } : null,
             points: latlon ? [{ lon: latlon.lon, lat: latlon.lat, label: siteLabel() }] : [],
@@ -1428,7 +1749,7 @@
               'Sierra Leone (Fileccia et al. 2017, MoWR/SALWACO, 1:600,000).',
             legendTitle: 'GEOLOGICAL UNIT',
             sourceScale: charts.usgsSourceScale,
-            outline: nationalOutline(GWT.data.geo),
+            outline: nationalOutline(mapLayers()),
             nameLithology: true, district: store.get('site.district') || '',
             width: 560, height: 680,
           }), 'Geology (USGS Geologic Map of Africa)', { filename: 'geology_map' }),
@@ -1491,7 +1812,7 @@
         'project with no position has nothing to centre on.', 'warn');
       return;
     }
-    var geo = GWT.data.geo || {};
+    var geo = mapLayers() || {};
     var interpretations = (derived || {}).interpretations || [];
     var zone = site.utm_zone ||
       (site.easting ? C.inferZoneForSierraLeone(site.easting) : null);
@@ -1578,7 +1899,7 @@
     var home = C.homeDistrict(site, latlon);
     var lit = {};
     home.chiefdoms.forEach(function (name) { lit[name] = true; });
-    var chiefdoms = (((GWT.data.geo || {}).chiefdomBoundaries || {}).features || [])
+    var chiefdoms = (((mapLayers() || {}).chiefdomBoundaries || {}).features || [])
       .filter(function (f) { return lit[(f.properties || {}).name] === true; });
     return {
       name: home.name,
@@ -1616,7 +1937,7 @@
     var surveyOnly = (options || {}).surveyOnly;
     var window_ = areaWindow(store.get('site.mapRadiusKm', 40));
     if (!window_) return null;
-    var geo = GWT.data.geo || {};
+    var geo = mapLayers() || {};
     var points = [];
     /* two points the ranking cannot separate get no star between them, as on
      * the drill-target map: the report's text calls them indistinguishable */
@@ -1697,7 +2018,7 @@
   /* The figures themselves, rasterised for the .docx. `detail` adds the
    * aquifer and geological setting to the locator. */
   async function areaFigures(detail) {
-    var geo = GWT.data.geo || {};
+    var geo = mapLayers() || {};
     if (!geo.adminBoundaries) return [];
     var site = store.get('site') || {};
     var latlon = siteLatLon();
@@ -1891,8 +2212,15 @@
 
   var _polys = null;
   function polygons() {
-    if (!_polys) _polys = C.loadPolygons();
-    return _polys;
+    /* not kept while empty: the layers may not have arrived yet */
+    if (!_polys && C.geoLayers()) _polys = C.loadPolygons();
+    return _polys || [];
+  }
+
+  /* The bundled map layers, which render() has loaded before drawing any
+   * page that reads them; see FIRST_SCREEN. */
+  function mapLayers() {
+    return C.geoLayers() || {};
   }
 
   /* WGS84 inverse transverse Mercator, northern hemisphere. */
@@ -1918,7 +2246,8 @@
           derived.soundings.map(function (s) { return s.sounding_id; }).join(', ')) : null,
       ], {
         actions: derived.soundings ? [
-          button('Re-run inversion', invertAndShow, { variant: 'ghost' }),
+          button('Re-run inversion', function () { invertAndShow(false); },
+            { variant: 'ghost' }),
         ] : null,
       }),
     ];
@@ -1944,7 +2273,7 @@
           'inversion finishes; the bar above shows how far it has got, and the ' +
           'rest of the workspace can be used meanwhile.')
         : S.empty('The soundings are loaded but not yet inverted.',
-          button('Invert now', invertAndShow)));
+          button('Invert now', function () { invertAndShow(true); })));
       return nodes;
     }
 
@@ -2054,6 +2383,8 @@
           'resistivity: a factor near 1 is well resolved, a large one marks the ' +
           'equivalence that makes resistivity models non-unique.') : null,
       ]));
+      /* #/ves/<sounding> opens on this card */
+      itemNode(soundingId, nodes[nodes.length - 1]);
     });
 
     var preferenceRows = C.drillingPreferenceTable(derived.interpretations,
@@ -2110,7 +2441,7 @@
         rowClass: function (row) { return row.rank === 1 ? 'row-ok' : ''; },
       }),
       located.length ? charts.figure(charts.siteMap({
-        context: (GWT.data.geo.chiefdomBoundaries || {}).features || [],
+        context: (mapLayers().chiefdomBoundaries || {}).features || [],
         points: located.map(function (s) {
           var ll = utmToLatLon(s.easting, s.northing,
             store.get('site.utm_zone') || C.inferZoneForSierraLeone(s.easting));
@@ -2944,6 +3275,9 @@
     }
 
     var test = derived.test, analysis = derived.analysis;
+    /* #/pumping/<borehole> names the borehole the test was run on; a project
+     * holds one test, so the address says which borehole it has to be */
+    itemNode(test.borehole_ref, nodes[1]);
 
     nodes.push(card('Discharge per step', [
       /* what was parsed, in the words a report uses for the test type */
@@ -4528,7 +4862,7 @@
           el('p', decision.rationale),
         ]),
         charts.figure(charts.siteMap({
-          context: (GWT.data.geo.chiefdomBoundaries || {}).features || [],
+          context: (mapLayers().chiefdomBoundaries || {}).features || [],
           points: decision.nearby.slice(0, 200).map(function (p) {
             return {
               lon: p.lon, lat: p.lat,
@@ -4662,7 +4996,7 @@
       unplaced = counted.unassigned;
       var byDistrict = {};
       rows.forEach(function (r) { byDistrict[r.name] = r.people_per_point; });
-      features = (GWT.data.geo.chiefdomBoundaries || {}).features || [];
+      features = (mapLayers().chiefdomBoundaries || {}).features || [];
       /* null is an area nothing is known about; Infinity is a mapped area with
        * no functional source in it, which is the worst case rather than a
        * missing one. They were both null, so the areas most in need were the
@@ -4690,7 +5024,7 @@
       unplaced = counts.unassigned;
       var byChiefdom = {};
       rows.forEach(function (r) { byChiefdom[r.name] = r.people_per_point; });
-      features = (GWT.data.geo.chiefdomBoundaries || {}).features || [];
+      features = (mapLayers().chiefdomBoundaries || {}).features || [];
       valueFor = function (feature) {
         var name = (feature.properties || {}).name;
         if (!(name in byChiefdom)) return null;
@@ -4719,7 +5053,7 @@
         features: features, value: valueFor, name: nameFor,
         title: title, legendTitle: 'people per functional water point',
         classes: C.loadServiceClasses(),
-        outline: nationalOutline(GWT.data.geo),
+        outline: nationalOutline(mapLayers()),
         width: 640, height: 600,
       }), title, { filename: 'coverage_' + level }),
       el('p.muted', projection.note),
@@ -5022,7 +5356,7 @@
       var outstanding = state.due.filter(function (item) {
         return item.state === 'overdue' || item.state === 'unknown';
       });
-      nodes.push(card('This borehole', [
+      nodes.push(itemNode(asset.asset_id, card('This borehole', [
         el('p.asset-id', asset.asset_id),
         el('p.muted', 'The identifier is derived from the position, so two ' +
           'teams at the same wellhead with no connection between them arrive ' +
@@ -5048,7 +5382,7 @@
             message: item.detail,
           };
         })),
-      ]));
+      ])));
 
       var draft = { when: new Date().toISOString().slice(0, 10),
         kind: 'inspection', note: '', by: '', photo: '' };
@@ -5225,6 +5559,7 @@
     charts.usePrintPalette(true);
     try {
       await S.withBusy(host, 'Building the document…', async function () {
+        await need(REPORT_BUNDLES);
         var cfg = config();
         var context = {
           style: cfg.style, asset: asset, state: C.assetState(asset),
@@ -5350,7 +5685,7 @@
     var points = C.portfolioPoints(summaries);
     nodes.push(card('Where they are', [
       points.length ? charts.figure(charts.siteMap({
-        context: (GWT.data.geo.adminBoundaries || {}).features || [],
+        context: (mapLayers().adminBoundaries || {}).features || [],
         points: points.map(function (p) {
           return {
             lon: p.lon, lat: p.lat, label: p.label, size: 5.5,
@@ -5413,7 +5748,10 @@
     function bindCfg(section, key) {
       return function (value) {
         store.set('config.' + section + '.' + key, value);
-        recompute().then(runInversions).then(refresh);
+        /* a changed setting is a different key: the recompute inverts
+         * again what the setting could change, and nothing else */
+        inversionsStopped = false;
+        recompute().then(refresh);
       };
     }
     function numberFields(section, keys) {
@@ -6034,6 +6372,15 @@
 
   async function buildReport(kind, extra, node) {
     var host = node ? node.closest('.card') : $('#page-host');
+    /* the document writer, and the maps every report opens on; the page has
+     * usually loaded the rest already, but a report can be asked for from
+     * anywhere */
+    try {
+      await need(REPORT_BUNDLES);
+    } catch (e) {
+      S.toast('Could not build the report: ' + e.message, 'error');
+      return;
+    }
     /* Every figure this builds goes into a .docx, so it is painted for paper
      * rather than for the theme the app happens to be in; the default theme
      * is dark, and clients were sent maps and drawings on a black ground. */
@@ -6323,12 +6670,71 @@
 
   /* ------------------------------------------------------------------ render */
 
+  /* The pages drawn with the first screen's scripts alone. Every other page
+   * draws figures, and reads the map layers for a map or for the chiefdom
+   * and district under the site's position that it states, so VIEW_BUNDLES
+   * are fetched before one of them is first drawn and not before: the
+   * Overview a phone opens on has no use for 760 KB of boundaries. Two
+   * pages draw with the document writer's own words, so they need that too:
+   * procurement labels its certificate lines with them, and water quality
+   * its status column, so the page and the report cannot word a result
+   * differently. */
+  var FIRST_SCREEN = { overview: true, guided: true, templates: true,
+    extract: true, settings: true, about: true };
+  var DRAWS_WITH_DOCX = { procurement: true, quality: true };
+
+  function bundlesFor(key) {
+    if (FIRST_SCREEN[key]) return [];
+    return DRAWS_WITH_DOCX[key] ? REPORT_BUNDLES : VIEW_BUNDLES;
+  }
+
+  function pageTitle(key) {
+    var title = '';
+    NAV_GROUPS.forEach(function (group) {
+      group[1].forEach(function (page) { if (page[0] === key) title = page[1]; });
+    });
+    return title;
+  }
+
+  /* Draw the page the store names. The promise is that page drawn: at once,
+   * or once the bundles it needs have arrived, with a line saying what it is
+   * waiting for in the meantime. */
   function render() {
     var host = $('#page-host');
+    var key = Object.prototype.hasOwnProperty.call(PAGES, store.get('nav'))
+      ? store.get('nav') : 'overview';
+    var wanted = bundlesFor(key);
+    if (!hasBundles(wanted)) {
+      S.clear(host);
+      S.append(host, [
+        pageHead(pageTitle(key)),
+        S.empty('Loading the maps and figures for this page…'),
+      ]);
+      renderNav();
+      return need(wanted)
+        .then(function () {
+          /* drawn only if it is still the page asked for */
+          if (store.get('nav') === key) return render();
+          return null;
+        }, function (e) {
+          if (store.get('nav') !== key) return;
+          S.clear(host);
+          S.append(host, [
+            pageHead(pageTitle(key)),
+            el('div.callout.callout-bad', [
+              el('p', el('strong', 'This page could not be loaded.')),
+              el('p', e.message),
+              el('p', button('Try again', function () { render(); })),
+            ]),
+          ]);
+        });
+    }
+    bindModules();
     S.clear(host);
-    var page = PAGES[store.get('nav')] || PAGES.overview;
+    var page = PAGES[key];
     try {
       S.append(host, page());
+      showItem(host);
     } catch (e) {
       console.error(e);
       S.append(host, el('div.callout.callout-bad', [
@@ -6338,6 +6744,7 @@
       ]));
     }
     renderNav();
+    return Promise.resolve();
   }
 
   /* ----------------------------------------------------------- offline / PWA */
@@ -6446,9 +6853,25 @@
       store.replace(migrateLoadedState(merged));
       if (strandedKey) store.persist();
     }
+    /* An address that names a page wins over the page the session was left
+     * on: it is what the user followed to get here. */
+    var start = routeFrom(global.location.hash);
+    if (start.key) {
+      store.set('nav', start.key);
+      route.item = start.item;
+      route.focused = !start.item;
+    }
     applyTheme();
     renderChrome();
     render();
+    /* the first step of the history names its page too, so back returns to
+     * it; replaced, since it is the same step */
+    if (!start.key || start.unknown) {
+      var shown = store.get('nav');
+      global.location.replace(hashFor(
+        Object.prototype.hasOwnProperty.call(PAGES, shown) ? shown : 'overview', route.item));
+    }
+    global.addEventListener('hashchange', followAddress);
     if (strandedKey) {
       /* It sat unencrypted on disk, so removing it is not enough: it has to
        * be treated as disclosed and rotated. */
@@ -6464,17 +6887,18 @@
     });
 
     if (Object.keys(store.get('sources') || {}).length) {
+      /* the mirrored session carries its inversion cache, so a reload
+       * inverts nothing that was inverted before it */
       await S.withBusy($('#page-host'), 'Restoring your session…', recompute);
-      var inverted = runInversions();
       render();
-      await inverted;
-      refresh();
+      await inversionsSettled();
     }
   }
 
   GWT.app = {
     init: init, store: store, derived: derived, goto: goto, render: render,
     recompute: recompute, runInversions: runInversions, config: config,
+    inversionsSettled: inversionsSettled, loadProject: loadProject,
     reanalyseTest: reanalyseTest, cancelWork: cancelWork, working: working,
     blankState: blankState, PAGES: PAGES, buildReport: buildReport,
     siteLatLon: siteLatLon, utmToLatLon: utmToLatLon,
@@ -6488,6 +6912,7 @@
     projectState: projectState, reportReadiness: reportReadiness,
     getApiKey: getApiKey, setApiKey: setApiKey, forgetApiKey: forgetApiKey,
     renderAutosaveBanner: renderAutosaveBanner,
+    hashFor: hashFor, routeFrom: routeFrom,
   };
 
   if (typeof document !== 'undefined') {

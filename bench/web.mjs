@@ -21,7 +21,12 @@
  *     5 s after first contentful paint with no long task (over 50 ms on the
  *     main thread) running in it and never more than two requests in
  *     flight; TTI is the end of the last long task before that window, or
- *     first contentful paint if there was none. Requests are the page's
+ *     first contentful paint if there was none, and never earlier than the
+ *     end of DOMContentLoaded, which Lighthouse also takes as a floor.
+ *     Without that floor a page whose scripts are deferred reads as
+ *     interactive the moment it paints: two big scripts still downloading
+ *     are "at most two requests in flight", and nothing runs until they
+ *     have both arrived, more than five seconds later. Requests are the page's
  *     own, as the DevTools protocol's Network events see them, so one still
  *     downloading counts from the moment it is sent. Resource Timing will
  *     not do for this: it lists a request only once it has finished, and a
@@ -43,6 +48,10 @@
  *     worker therefore runs at the machine's full speed while one on the
  *     main thread runs at a quarter of it, and the throttled wall times of
  *     the two are not like for like. The unthrottled one is.
+ *   - for reopening the saved survey: the project saved with the page's Save
+ *     project button and opened again with Open project, CPU slowed again,
+ *     timed from the file being chosen to the last change the page makes to
+ *     show the models, with the longest main-thread task in that interval.
  *
  * Each measure is the median of the runs (3, or 1 with --quick), written in
  * the same shape as bench/run.py so the two merge into one baseline:
@@ -105,7 +114,9 @@ function timeline() {
   const paint = performance.getEntriesByName('first-contentful-paint')[0];
   const nav = performance.getEntriesByType('navigation')[0];
   return { fcp: paint ? paint.startTime : null, now: performance.now(),
-    fetchStart: nav ? nav.fetchStart : 0, long: window.__bench.long };
+    fetchStart: nav ? nav.fetchStart : 0,
+    dcl: nav && nav.domContentLoadedEventEnd ? nav.domContentLoadedEventEnd : null,
+    long: window.__bench.long };
 }
 
 /* Every request the page sends, from the DevTools protocol, in its own
@@ -127,12 +138,12 @@ function trackRequests(cdp) {
 }
 
 /* Lighthouse's TTI in the page's clock, or null while the quiet window it
- * needs has not yet been seen in full. The protocol's clock is put on the
- * page's by the document request, which it sends at the navigation's
- * fetchStart. */
+ * needs has not yet been seen in full, or DOMContentLoaded has not yet
+ * finished. The protocol's clock is put on the page's by the document
+ * request, which it sends at the navigation's fetchStart. */
 function interactive(page, requests, quietMs) {
-  const { fcp, now, fetchStart, long } = page;
-  if (fcp === null) return null;
+  const { fcp, dcl, now, fetchStart, long } = page;
+  if (fcp === null || dcl === null) return null;
   const all = [...requests.values()];
   const doc = all.find((r) => r.type === 'Document');
   if (!doc) return null;
@@ -152,7 +163,7 @@ function interactive(page, requests, quietMs) {
     if (long.some((t) => t.start < end && t.start + t.duration > start)) continue;
     const points = [start, ...flights.map((r) => r.start).filter((t) => t > start && t < end)];
     if (points.some((t) => inFlight(t) > 2)) continue;
-    return Math.max(fcp, ...ends.filter((e) => e <= start));
+    return Math.max(fcp, dcl, ...ends.filter((e) => e <= start));
   }
   return null;
 }
@@ -239,6 +250,56 @@ async function reinvert(page) {
   });
 }
 
+/* Save the project with the page's own Save button, then open that file with
+ * Open project, and time from the file being chosen to the last change the
+ * page makes to show the models. This is reopening a saved survey: with the
+ * inversions stored in the project file it runs none, and without them it
+ * inverts every sounding again. The page must be showing the models, and
+ * idle, when this is called. */
+async function reopen(page) {
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.locator('#top-actions').getByRole('button', { name: 'Save project' }).click(),
+  ]);
+  const saved = await download.path();
+  await page.evaluate(`(() => {
+    const b = window.__bench;
+    b.changes = []; b.chosen = null;
+    if (b.watch) b.watch.disconnect();
+    const watch = b.watch = new MutationObserver(() => b.changes.push(performance.now()));
+    for (const sel of ['#page-host', '#work-status']) {
+      const node = document.querySelector(sel);
+      if (node) watch.observe(node, { childList: true, subtree: true,
+        attributes: true, characterData: true });
+    }
+    document.addEventListener('change', (e) => { b.chosen = e.timeStamp; },
+      { capture: true, once: true });
+  })()`);
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser'),
+    page.locator('#top-actions').getByRole('button', { name: 'Open project' }).click(),
+  ]);
+  await chooser.setFiles(saved);
+  // finished: the file was read, the page shows the models and nothing
+  // working, and it has not changed for SETTLED_MS
+  await page.waitForFunction(`(() => {
+    const b = window.__bench;
+    if (b.chosen === null || !b.changes.some((t) => t > b.chosen)) return false;
+    if ((${busyNow})() || !(${modelsShown})()) return false;
+    return performance.now() - b.changes[b.changes.length - 1] > ${SETTLED_MS};
+  })()`, null, { polling: 250, timeout: 600000 });
+  return page.evaluate(() => {
+    const b = window.__bench;
+    b.flush();
+    const end = b.changes[b.changes.length - 1];
+    const during = b.long.filter((t) => t.start < end && t.start + t.duration > b.chosen);
+    return {
+      wall: end - b.chosen,
+      longest: Math.max(0, ...during.map((t) => t.duration)),
+    };
+  });
+}
+
 async function oneRun(runIndex) {
   return withPage(async (page, base, consoleErrors) => {
     const cdp = await page.context().newCDPSession(page);
@@ -268,12 +329,18 @@ async function oneRun(runIndex) {
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
     await page.waitForTimeout(SETTLED_MS);
     const unthrottled = await reinvert(page);
+
+    // ---- reopening the saved survey, throttled again -----------------------
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: CPU_SLOWDOWN });
+    await page.waitForTimeout(SETTLED_MS);
+    const reopened = await reopen(page);
     const errors = consoleErrors.filter((m) => !/favicon/i.test(m));
     console.error(`  run ${runIndex + 1}: first paint ${Math.round(painted.fp)} ms, ` +
       `TTI ${Math.round(tti)} ms, inversion ${Math.round(inversion.wall)} ms, ` +
-      `longest task ${Math.round(inversion.longest)} ms` +
+      `longest task ${Math.round(inversion.longest)} ms, ` +
+      `reopened in ${Math.round(reopened.wall)} ms` +
       (errors.length ? `; console errors: ${errors.join(' | ')}` : ''));
-    return { ...painted, tti, inversion, unthrottled, errors };
+    return { ...painted, tti, inversion, unthrottled, reopened, errors };
   });
 }
 
@@ -314,7 +381,8 @@ const measures = [
   ['first contentful paint', 'ms', (r) => r.fcp, 'Paint Timing first-contentful-paint'],
   ['time to interactive', 'ms', (r) => r.tti,
     'Lighthouse TTI: end of the last long task before the first 5 s window after FCP ' +
-    'with no long task in it and at most 2 page requests in flight (DevTools protocol)'],
+    'with no long task in it and at most 2 page requests in flight (DevTools protocol), ' +
+    'and no earlier than FCP or the end of DOMContentLoaded'],
   ['bytes before first paint', 'bytes', (r) => r.bytes,
     'Resource Timing transferSize of the document and every response finished by first paint'],
   ['rokel inversion wall time', 'ms', (r) => r.inversion.wall,
@@ -325,6 +393,11 @@ const measures = [
     'longest Long Task overlapping the inversion; 0 = none over 50 ms'],
   ['rokel inversion main-thread blocking time', 'ms', (r) => r.inversion.blocking,
     'sum over Long Tasks overlapping the inversion of (duration - 50 ms)'],
+  ['rokel saved project reopen wall time', 'ms', (r) => r.reopened.wall,
+    'the Rokel project saved with "Save project" and opened again with "Open project": ' +
+    'the file chosen to the last change the page makes showing the models'],
+  ['rokel saved project reopen longest main-thread task', 'ms', (r) => r.reopened.longest,
+    'longest Long Task overlapping the reopen; 0 = none over 50 ms'],
 ].map(([name, unit, pick, what]) => ({
   id: `web/${name}`, group: 'web', name, tool: TOOL, unit,
   method: `${what}; ${profile}; median of ${runs.length}`,

@@ -51,8 +51,9 @@ SPINE_OUTPUT = [
 ]
 
 # The bundles CI rebuilds and compares. build_offline.py is last because it
-# hashes the whole app shell, gwt-data.js included.
-BUNDLES = ["docs/js/gwt-data.js", "docs/sw.js"]
+# hashes the whole app shell, gwt-data.js and the bundles beside it included.
+BUNDLES = ["docs/js/gwt-data.js", "docs/js/gwt-geo.js", "docs/js/gwt-samples.js",
+           "docs/sw.js"]
 
 EXAMPLES = [
     "examples/run_rokel_geophysics.py",

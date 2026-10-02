@@ -494,13 +494,22 @@ def _recompute_measures() -> list[Measure]:
     # folders, not saved app projects, and carry no sources to recompute.
     # So each example is saved here the way the apps save one, and the
     # recompute is the command line's, parse of the file included.
-    def setup_for(name):
+    # The Rokel project is also timed as it is saved once it has been
+    # inverted, with the inversions in the file (PLAN.md step 1.6): that is
+    # reopening a survey, where the other is opening one for the first time.
+    def setup_for(name, inverted=False):
         def setup(tmp):
             from groundwater.cli import main
             from groundwater.project_io import serialize_project
+            from groundwater.recompute import recompute_results
             session = {f"src_{key}": {"sample": sample}
                        for key, sample in PROJECT_SOURCES[name].items()}
             session["meta_community"] = name
+            if inverted:
+                sources = {key: {"sample": sample}
+                           for key, sample in PROJECT_SOURCES[name].items()}
+                session["inversion_cache"] = recompute_results(
+                    sources, sample_root=DATA, tmp_dir=tmp)["inversion_cache"]
             project = tmp / f"{name}.yaml"
             project.write_bytes(serialize_project(session, "bench"))
             argv = ["recompute", str(project), "--sample-root", str(DATA),
@@ -514,7 +523,9 @@ def _recompute_measures() -> list[Measure]:
             return run
         return setup
     return [Measure("recompute", f"{name} saved project", setup_for(name))
-            for name in PROJECT_SOURCES]
+            for name in PROJECT_SOURCES] + [
+        Measure("recompute", "rokel saved project, inversions saved",
+                setup_for("rokel", inverted=True))]
 
 
 def _streamlit_measures() -> list[Measure]:

@@ -449,6 +449,10 @@ hr { border: 0; border-top: 1px solid var(--line-strong); margin: 1.4rem 0; }
   transition: var(--transition);
 }
 .card:hover { border-color: var(--line-strong); }
+/* the item an address names, #/ves/VES-3: marked, and kept clear of the top
+   edge when it is scrolled to */
+.card.item-target { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+[data-item] { scroll-margin-top: 1rem; }
 .card-head {
   display: flex; align-items: center; gap: 0.8rem;
   padding: 0.8rem 1.2rem;

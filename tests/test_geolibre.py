@@ -449,7 +449,8 @@ import vm from 'node:vm';
 const sandbox = { console };
 sandbox.window = sandbox;
 vm.createContext(sandbox);
-for (const f of ['support.js', 'gwt-data.js', 'gwt-core.js', 'gwt-geolibre.js']) {
+for (const f of ['support.js', 'gwt-data.js', 'gwt-geo.js', 'gwt-core.js',
+  'gwt-geolibre.js']) {
   vm.runInContext(readFileSync(process.argv[2] + '/' + f, 'utf8'), sandbox,
     { filename: f });
 }

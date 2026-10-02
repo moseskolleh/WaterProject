@@ -2958,7 +2958,7 @@
    * units are what tells land across the border from the Atlantic. The
    * Python engine takes the same rings in foreign_land_rings(). */
   function foreignLandFeatures(box) {
-    var layer = ((GWT.data || {}).geo || {}).geology || {};
+    var layer = (C.geoLayers() || {}).geology || {};
     var features = layer.features || [];
     if (!box) return features;
     return features.filter(function (feature) {

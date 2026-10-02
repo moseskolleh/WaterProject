@@ -46,7 +46,8 @@ python -m pytest -q
 python web/build_boundary_review.py --check
 python web/build_webapp_data.py
 python web/build_offline.py
-git diff --exit-code -- docs/js/gwt-data.js docs/sw.js
+git diff --exit-code -- docs/js/gwt-data.js docs/js/gwt-geo.js \
+    docs/js/gwt-samples.js docs/sw.js
 # check: parity, browser
 python tests/webapp/make_reference.py --check
 node tests/webapp/parity.mjs
@@ -73,7 +74,7 @@ The Depth Spine goes first because `build_demo.py` inlines the Python
 package, and the package carries the Depth Spine build; any change under
 `src/` or `app/` changes `docs/wasm/index.html`, which the test suite holds
 to a fresh build. `build_offline.py` goes last: it hashes the whole app
-shell, `gwt-data.js` included, so running it before the bundle it is meant
+shell, `gwt-data.js` and its bundles included, so running it before the bundle it is meant
 to describe produces a release identifier for a shell that no longer
 exists. Both `build_offline.py` and `build_boundary_review.py` take
 `--check`. `tests/webapp/reference.json` is not in `build`: it moves only

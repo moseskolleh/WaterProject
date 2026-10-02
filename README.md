@@ -402,7 +402,7 @@ The toolkit's source code is MIT licensed — see [`LICENSE`](LICENSE).
 
 The bundled data is not all MIT, and one dataset is copyleft: the BGS Africa
 Groundwater Atlas hydrogeology layer is CC BY-SA 4.0, and ShareAlike
-propagates into `docs/js/gwt-data.js` and `docs/wasm/index.html`, which embed
+propagates into `docs/js/gwt-geo.js` and `docs/wasm/index.html`, which embed
 it. [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) lists every dataset and
 document with its source, its licence and the attribution that licence
 requires; [`data_provenance.yaml`](data_provenance.yaml) is the same record in

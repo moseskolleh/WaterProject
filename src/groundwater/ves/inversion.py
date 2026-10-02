@@ -29,7 +29,13 @@ from .forward import (
 )
 from .splice import splice_segments
 
-__all__ = ["InversionResult", "invert_model", "invert_sounding", "inversion_readings"]
+__all__ = [
+    "InversionResult",
+    "invert_model",
+    "invert_sounding",
+    "inversion_readings",
+    "restore_inversion",
+]
 
 _RHO_BOUNDS = (0.5, 200000.0)
 _H_BOUNDS = (0.2, 300.0)
@@ -349,6 +355,16 @@ def invert_sounding(
     if chosen is None:
         chosen = min(candidates, key=lambda c: c[2])
 
+    return _result(sounding, ab2, rho_app, shifts, chosen, trials)
+
+
+def _result(sounding, ab2, rho_app, shifts, chosen, trials) -> InversionResult:
+    """The result of a search, from the candidate it chose.
+
+    Shared by :func:`invert_sounding` and :func:`restore_inversion`, so a
+    result rebuilt from a saved model is put together by the same code as
+    the one the search returned.
+    """
     model, calc, err, iterations, converged = chosen
     model.sounding_id = sounding.sounding_id
     rho_factor, h_factor = _parameter_uncertainty(
@@ -368,6 +384,34 @@ def invert_sounding(
         rho_uncertainty_factor=rho_factor,
         h_uncertainty_factor=h_factor,
     )
+
+
+def restore_inversion(
+    sounding: VESSounding,
+    resistivities,
+    thicknesses,
+    n_iterations: int,
+    converged: bool,
+    trials: list,
+) -> InversionResult:
+    """Rebuild what :func:`invert_sounding` returned from the model it chose.
+
+    Only what the search alone can say is taken as given: the model, how
+    many iterations it took, whether it converged, and the layer counts it
+    tried. Everything else - the readings fitted, the model's response, the
+    misfit and the uncertainty factors - is worked out again from the
+    sounding, the same way and in the same order as the search does it, so
+    it comes out to the last bit. A response or a misfit read back from a
+    file would be one more thing a damaged file could get wrong.
+    """
+    ab2, rho_app, shifts = inversion_readings(sounding)
+    rho = np.asarray(resistivities, dtype=float)
+    h = np.asarray(thicknesses, dtype=float)
+    calc = np.maximum(_forward(rho, h, ab2, sounding.array_type), 1e-9)
+    err = fit_error_percent(rho_app, calc)
+    model = LayeredModel(rho, h, fit_error_percent=err, method="damped-lsq")
+    chosen = (model, calc, err, int(n_iterations), bool(converged))
+    return _result(sounding, ab2, rho_app, shifts, chosen, list(trials))
 
 
 def _parameter_uncertainty(ab2, rho_app, model, array_type):

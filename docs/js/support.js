@@ -1143,10 +1143,24 @@
       catch (e) { return false; }
     }
 
+    /* The state as mirrored: all of it, or, when that will not fit,
+     * opts.persistLighter(state) - the same session without what can be
+     * worked out again - so a cache can never be what stops the fieldwork
+     * being mirrored. */
+    function writeMirror() {
+      try {
+        localStorage.setItem(opts.persistKey, JSON.stringify(state));
+      } catch (e) {
+        var lighter = opts.persistLighter ? opts.persistLighter(state) : null;
+        if (!lighter) throw e;
+        localStorage.setItem(opts.persistKey, JSON.stringify(lighter));
+      }
+    }
+
     function persist() {
       if (!opts.persistKey) return true;
       try {
-        localStorage.setItem(opts.persistKey, JSON.stringify(state));
+        writeMirror();
         if (!persistOk) {
           persistOk = true;
           if (opts.onPersistRecovered) opts.onPersistRecovered();

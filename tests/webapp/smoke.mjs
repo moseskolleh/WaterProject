@@ -301,6 +301,7 @@ await withPage(async (page, base, consoleErrors) => {
       return null;
     }
     const same = (a, b) => differ(a, b, 'result', { a: new Map(), b: new Map() });
+    window.__same = same;
 
     const cfg = app.config();
     const soundings = app.derived.soundings;
@@ -415,6 +416,206 @@ await withPage(async (page, base, consoleErrors) => {
     agree.errors[0] === 'Error: Not enough readings to invert' &&
     agree.errors.every((e) => e === agree.errors[0]), JSON.stringify(agree.errors));
 
+  // PLAN.md step 1.6: a saved survey reopens without inverting anything, and
+  // the models it shows are the ones the inversion gave, to the last bit and
+  // as the same object graph. A changed reading, a changed setting, another
+  // engine or a damaged entry inverts again - only what it has to - and a
+  // recompute keeps what is still good. engine.invert is watched rather than
+  // the history, which forgets and records only what finished.
+  const reused = await page.evaluate(async () => {
+    const app = window.GWT.app, engine = window.GWT.engine;
+    const C = window.GWT.core, S = window.GWT.support, same = window.__same;
+    const realInvert = engine.invert;
+    const calls = [];
+    engine.invert = function (sounding) {
+      calls.push(sounding.sounding_id);
+      return realInvert.apply(this, arguments);
+    };
+    const since = () => calls.splice(0).length;
+    const until = async (test) => {
+      for (let i = 0; i < 2400 && !test(); i += 1) await new Promise((r) => setTimeout(r, 25));
+      return test();
+    };
+    const out = {};
+    try {
+      const before = app.derived.inversions;
+      const ranks = JSON.stringify(app.derived.interpretations.map((i) => [i.sounding_id, i.rank]));
+      const saved = JSON.stringify(app.projectPayload());
+      const file = JSON.parse(saved);
+      out.entries = Object.keys(file.state.inversionCache || {}).length;
+
+      // reopening: nothing inverted, the same results
+      await app.loadProject(saved);
+      out.reopen = { calls: since(), same: same(before, app.derived.inversions),
+        ranks: JSON.stringify(app.derived.interpretations
+          .map((i) => [i.sounding_id, i.rank])) === ranks,
+        working: app.working('invert') };
+
+      // a discharge typed on the Pumping test page, the way a user types it
+      const kuntolo = window.GWT.data.samples.kuntolo.files.pumping;
+      app.store.set('sources.pumping', { name: kuntolo.name, b64: kuntolo.b64,
+        sample: kuntolo.path });
+      await app.recompute();
+      out.addSheet = { calls: since(), n: (app.derived.inversions || []).length };
+      async function typeDischarge(value) {
+        app.goto('pumping');
+        const generation = app.recomputeState.generation;
+        const input = document.querySelector('#page-host input.cell');
+        input.value = String(value);
+        input.dispatchEvent(new Event('change'));
+        await until(() => app.recomputeState.generation > generation);
+      }
+      await typeDischarge(1.5);
+      out.discharge = { calls: since(), n: (app.derived.inversions || []).length,
+        q: app.derived.test.steps[0].discharge_m3_per_h, same: same(before, app.derived.inversions) };
+
+      // ...and typed while the survey is still inverting: the run carries on
+      const mark = Math.max(0, ...engine.history().map((h) => h.id));
+      const running = app.runInversions();
+      await until(() => calls.length > 0 && app.working('invert'));
+      out.whileRunning = { typedWhileRunning: app.working('invert') };
+      await typeDischarge(2.2);
+      await running;
+      out.whileRunning.calls = since();
+      out.whileRunning.n = (app.derived.inversions || []).length;
+      out.whileRunning.q = app.derived.test.steps[0].discharge_m3_per_h;
+      out.whileRunning.cancelled = engine.history().filter((h) =>
+        h.id > mark && h.type === 'invert' && h.outcome === 'cancelled').length;
+      app.goto('ves');
+      await new Promise((r) => setTimeout(r, 100));
+      out.whileRunning.page = !document.querySelector('#page-host').textContent
+        .includes('not yet inverted');
+
+      // a changed reading: that sounding alone is inverted again
+      await app.loadProject(saved);
+      since();
+      const sheets = await S.readXlsx(S.base64ToBytes(app.store.get('sources.ves').b64));
+      const row = sheets[1].rows.find((r) => r[0] === 1 && r[3] !== undefined && r[3] !== null);
+      row[3] = String(Number(row[3]) * 1.05);
+      app.store.set('sources.ves', Object.assign({}, app.store.get('sources.ves'),
+        { b64: S.bytesToBase64(await S.writeXlsx(sheets)) }));
+      await app.recompute();
+      await app.inversionsSettled();
+      out.reading = { calls: calls.slice(), n: app.derived.inversions.length,
+        firstSame: same(before[0], app.derived.inversions[0]),
+        entries: Object.keys(app.store.get('inversionCache')).length };
+      since();
+
+      // a changed setting: every sounding again
+      await app.loadProject(saved);
+      since();
+      app.store.set('config.ves.damping', 0.021);
+      await app.recompute();
+      await app.inversionsSettled();
+      out.config = { calls: since(), n: app.derived.inversions.length };
+
+      // another engine: the same file, and nothing in it is found
+      const digest = window.GWT.data.engineDigest;
+      window.GWT.data.engineDigest = digest.replace(/^./, (c) => (c === '0' ? '1' : '0'));
+      try {
+        await app.loadProject(saved);
+        out.engine = { calls: since(), same: same(before, app.derived.inversions) };
+      } finally {
+        window.GWT.data.engineDigest = digest;
+      }
+
+      // a damaged entry and a hand-edited one, signed again to look sound:
+      // both inverted afresh, and nothing thrown
+      const damaged = JSON.parse(saved);
+      const keys = Object.keys(damaged.state.inversionCache);
+      damaged.state.inversionCache[keys[0]].result = 'junk';
+      const edited = damaged.state.inversionCache[keys[1]];
+      edited.result.resistivities[0] *= 1.5;
+      edited.digest = C.sha256Hex(keys[1] + '\n' + C.canonicalText(edited.result));
+      await app.loadProject(JSON.stringify(damaged));
+      out.damaged = { calls: since(), same: same(before, app.derived.inversions) };
+      const probe = app.derived.soundings[0], key = C.inversionCacheKey(probe, app.config());
+      out.garbage = [null, 'x', 7, [], {}, { result: {}, digest: 'x' },
+        { result: { resistivities: 'x' }, digest: C.sha256Hex(key + '\n' +
+          C.canonicalText({ resistivities: 'x' })) }]
+        .map((entry) => C.inversionFromCache(entry, key, probe, app.config()));
+
+      // another project opened while a run is going: the outgoing run is
+      // stopped there and then, so nothing it finishes is written into the
+      // incoming project's cache or put on show over its soundings, and the
+      // incoming project's own inversions are all it uses
+      await app.loadProject(saved);
+      app.store.set('config.ves.damping', 0.021);
+      await app.recompute();
+      await until(() => calls.length > 0 && app.working('invert'));
+      since();
+      await app.loadProject(saved);
+      out.loadMidRun = { calls: since(), same: same(before, app.derived.inversions),
+        keys: Object.keys(app.store.get('inversionCache')).sort().join() ===
+          Object.keys(file.state.inversionCache).sort().join() };
+
+      // a mirror that will not fit with the cache in it is kept without it,
+      // rather than not kept at all
+      const original = Storage.prototype.setItem;
+      const persistKey = Object.keys(localStorage).find((k) => k.startsWith('gwt'));
+      Storage.prototype.setItem = function (k, v) {
+        if (String(v).includes('"digest"')) {
+          const err = new Error('quota');
+          err.name = 'QuotaExceededError';
+          throw err;
+        }
+        return original.call(this, k, v);
+      };
+      let wrote;
+      try {
+        wrote = app.store.persist();
+      } finally {
+        Storage.prototype.setItem = original;
+      }
+      const mirrored = JSON.parse(localStorage.getItem(persistKey));
+      out.lighter = { wrote, ok: app.store.autosaveOk(),
+        cache: Object.keys(mirrored.inversionCache || {}).length,
+        sources: !!(mirrored.sources && mirrored.sources.ves),
+        live: Object.keys(app.store.get('inversionCache')).length };
+      app.store.persist();
+
+      // back to the survey as saved
+      await app.loadProject(saved);
+      since();
+    } finally {
+      engine.invert = realInvert;
+    }
+    return out;
+  });
+  check('cache: a saved survey carries an inversion per sounding',
+    reused.entries === ves.n, JSON.stringify(reused.entries));
+  check('cache: reopening a saved survey inverts nothing, and shows the same results',
+    reused.reopen.calls === 0 && reused.reopen.same === null && reused.reopen.ranks &&
+    !reused.reopen.working, JSON.stringify(reused.reopen));
+  check('cache: loading a pumping sheet and typing a discharge keep the inversions',
+    reused.addSheet.calls === 0 && reused.addSheet.n === ves.n &&
+    reused.discharge.calls === 0 && reused.discharge.n === ves.n &&
+    reused.discharge.q === 1.5 && reused.discharge.same === null,
+    JSON.stringify([reused.addSheet, reused.discharge]));
+  check('cache: a discharge typed while the survey inverts leaves the run going to the end',
+    reused.whileRunning.typedWhileRunning && reused.whileRunning.calls === ves.n &&
+    reused.whileRunning.cancelled === 0 && reused.whileRunning.n === ves.n &&
+    reused.whileRunning.q === 2.2 && reused.whileRunning.page,
+    JSON.stringify(reused.whileRunning));
+  check('cache: a changed reading inverts that sounding and no other',
+    reused.reading.calls.length === 1 && reused.reading.calls[0] === 'B (2)' &&
+    reused.reading.n === ves.n && reused.reading.firstSame === null &&
+    reused.reading.entries === ves.n, JSON.stringify(reused.reading));
+  check('cache: a changed setting inverts every sounding',
+    reused.config.calls === ves.n && reused.config.n === ves.n, JSON.stringify(reused.config));
+  check('cache: another engine finds nothing in the file, and gets the same answer',
+    reused.engine.calls === ves.n && reused.engine.same === null, JSON.stringify(reused.engine));
+  check('cache: opening another project mid-run keeps the run out of it',
+    reused.loadMidRun.calls === 0 && reused.loadMidRun.same === null &&
+    reused.loadMidRun.keys, JSON.stringify(reused.loadMidRun));
+  check('cache: an autosave too big with the cache in it is kept without it',
+    reused.lighter.wrote === true && reused.lighter.ok === true &&
+    reused.lighter.cache === 0 && reused.lighter.sources &&
+    reused.lighter.live === ves.n, JSON.stringify(reused.lighter));
+  check('cache: a damaged or hand-edited entry is not used',
+    reused.damaged.calls === ves.n && reused.damaged.same === null &&
+    reused.garbage.every((g) => g === null), JSON.stringify([reused.damaged, reused.garbage]));
+
   // The same app as a copy on disk. No worker is asked for, the page does its
   // own computing and says why, and the Rokel inversion is the worker's.
   const fromDisk = await (async () => {
@@ -481,10 +682,25 @@ await withPage(async (page, base, consoleErrors) => {
       await tab.waitForFunction(() => window.GWT && window.GWT.app);
       return await tab.evaluate(async () => {
         const app = window.GWT.app, engine = window.GWT.engine;
+        /* The tab shares this origin's storage, so it restores this page's
+         * session first. Fetching the sample workbooks gives that work time
+         * to finish rather than be cancelled, so it is let finish, and only
+         * what the sample asks for is counted. */
+        await window.GWT.load('samples');
+        await new Promise((resolve) => {
+          const idle = setInterval(() => {
+            if (app.recomputeState.running || app.working('invert') ||
+                app.working('pumping')) return;
+            clearInterval(idle);
+            resolve();
+          }, 50);
+        });
+        const before = engine.history().length;
         await app.loadSample('dr_timbo');
         return {
           why: engine.unavailable(),
-          ran: engine.history().map((h) => h.type + ':' + h.mode + ':' + h.outcome),
+          ran: engine.history().slice(before)
+            .map((h) => h.type + ':' + h.mode + ':' + h.outcome),
           analysis: JSON.stringify(app.derived.analysis,
             (k, x) => (typeof x === 'number' && !Number.isFinite(x) ? String(x) : x)),
         };
@@ -499,8 +715,6 @@ await withPage(async (page, base, consoleErrors) => {
       .then((sheets) => window.__serialise(C.analysePumpingTest(C.pumpingFromGrid(
         sheets[0].rows, window.GWT.data.samples.dr_timbo.files.pumping.name), app.config())));
   });
-  /* the tab shares this origin's storage, so it restores this page's session
-   * first, and loading the sample cancels that recompute */
   const finished = noWorker.ran.filter((r) => !r.endsWith(':cancelled'));
   check('a worker that fails to load: its request and every later one run on the page',
     noWorker.why.startsWith('it did not start') &&
@@ -1867,6 +2081,180 @@ await withPage(async (page, base, consoleErrors) => {
     !/copy it already had is still there/.test(nothingKept.text),
     JSON.stringify(nothingKept));
 
+  // --- addresses: every page has one ---------------------------------------
+  // Each page opened cold, in a tab of its own, by nothing but its URL: the
+  // way a link in the user guide or a QR code on a field sheet opens it.
+  const TITLES = await page.evaluate(() => Object.fromEntries(
+    Array.from(document.querySelectorAll('#app-nav .nav-item')).map((b) => [b.textContent, 1])));
+  const byUrl = await (async () => {
+    const tab = await page.context().newPage();
+    const errors = [];
+    tab.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    tab.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+    const opened = {};
+    try {
+      for (const key of PAGES) {
+        await tab.goto('about:blank');
+        await tab.goto(base + '/index.html#/' + key, { waitUntil: 'load' });
+        await tab.waitForFunction((k) => {
+          const app = window.GWT && window.GWT.app;
+          const host = document.querySelector('#page-host');
+          return app && app.store.get('nav') === k && host &&
+            !host.textContent.includes('Loading the maps and figures');
+        }, key, { timeout: 60000 });
+        opened[key] = await tab.evaluate(() => ({
+          hash: location.hash,
+          active: document.querySelector('#app-nav .nav-item.active')?.textContent || '',
+          title: document.querySelector('#page-host .page-head h1')?.textContent || '',
+          broken: Array.from(document.querySelectorAll('#page-host .callout-bad strong'))
+            .some((n) => /^(Something went wrong|This page could not be loaded)/
+              .test(n.textContent)),
+        }));
+      }
+    } finally {
+      await tab.close();
+    }
+    return { opened, errors };
+  })();
+  const wrongPage = PAGES.filter((key) => {
+    const o = byUrl.opened[key];
+    return !o || o.hash !== '#/' + key || !o.active || !TITLES[o.active] || o.broken ||
+      !o.title;
+  });
+  check('addresses: every page opens by its URL, in a fresh tab',
+    wrongPage.length === 0,
+    JSON.stringify(wrongPage.map((k) => [k, byUrl.opened[k]])));
+  check('addresses: no console errors opening pages by URL', byUrl.errors.length === 0,
+    byUrl.errors.slice(0, 5).join('\n     '));
+
+  // Back and forward move between pages, as the address records them.
+  const history = await (async () => {
+    const tab = await page.context().newPage();
+    try {
+      await tab.goto(base + '/index.html', { waitUntil: 'load' });
+      await tab.waitForFunction(() => window.GWT && window.GWT.app);
+      const at = () => tab.evaluate(() => [window.GWT.app.store.get('nav'), location.hash]);
+      const seen = { start: await at() };
+      await tab.locator('#app-nav').getByRole('button', { name: 'Geophysics (VES)' }).click();
+      await tab.locator('#app-nav').getByRole('button', { name: 'Pumping test' }).click();
+      seen.clicked = await at();
+      await tab.goBack();
+      await tab.waitForFunction(() => window.GWT.app.store.get('nav') === 'ves');
+      seen.back = await at();
+      await tab.goBack();
+      await tab.waitForFunction((k) => window.GWT.app.store.get('nav') === k, seen.start[0]);
+      seen.backAgain = await at();
+      await tab.goForward();
+      await tab.waitForFunction(() => window.GWT.app.store.get('nav') === 'ves');
+      seen.forward = await at();
+      // a mistyped or out-of-date address is the Overview, and says so in
+      // the address bar, rather than an error
+      await tab.evaluate(() => { location.hash = '#/no-such-page/at-all'; });
+      await tab.waitForFunction(() => location.hash === '#/overview');
+      seen.unknown = await at();
+      seen.broken = await tab.evaluate(() => !!document.querySelector('#page-host .callout-bad'));
+      seen.title = await tab.evaluate(() =>
+        document.querySelector('#page-host .page-head h1')?.textContent || '');
+      return seen;
+    } finally {
+      await tab.close();
+    }
+  })();
+  check('addresses: the page a session opens on has an address of its own',
+    history.start[1] === '#/' + history.start[0], JSON.stringify(history));
+  check('addresses: back and forward move between pages',
+    history.clicked.join() === 'pumping,#/pumping' && history.back.join() === 'ves,#/ves' &&
+    history.backAgain.join() === history.start.join() &&
+    history.forward.join() === 'ves,#/ves', JSON.stringify(history));
+  check('addresses: an unknown address falls back to the Overview',
+    history.unknown.join() === 'overview,#/overview' && !history.broken &&
+    history.title === 'Overview',
+    JSON.stringify(history));
+
+  // An item on a page has an address too: a sounding, a borehole.
+  await page.evaluate(() => window.GWT.app.loadSample('rokel'));
+  await page.waitForFunction(() => {
+    const app = window.GWT.app;
+    return !app.working('invert') && app.derived.interpretations &&
+      app.derived.interpretations.length > 1;
+  }, null, { timeout: 120000 });
+  const items = await page.evaluate(async () => {
+    const app = window.GWT.app;
+    const wanted = app.derived.interpretations[1].sounding_id;
+    location.hash = app.hashFor('ves', wanted);
+    /* the main pane scrolls smoothly, so the card is given time to arrive */
+    const arrived = () => {
+      const node = document.querySelector('#page-host .item-target');
+      const top = node ? node.getBoundingClientRect().top : Infinity;
+      return top >= 0 && top < window.innerHeight / 2;
+    };
+    for (let waited = 0; waited < 5000 && !arrived(); waited += 100) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    const target = document.querySelector('#page-host .item-target');
+    const out = {
+      wanted, hash: location.hash, nav: app.store.get('nav'),
+      marked: target ? target.getAttribute('data-item') : null,
+      title: target ? target.querySelector('.card-title').textContent : '',
+      inView: arrived(),
+    };
+    await app.goto('ves', 'VES-that-was-never-shot');
+    out.missing = document.querySelector('#page-host .item-missing')?.textContent || '';
+    /* the pumping test page's item is the borehole the test was run on */
+    await app.loadSample('dr_timbo');
+    out.borehole = app.derived.test.borehole_ref;
+    await app.goto('pumping', out.borehole);
+    out.boreholeMarked = document.querySelector('#page-host .item-target')
+      ?.getAttribute('data-item') || null;
+    out.boreholeHash = location.hash;
+    await app.goto('overview');
+    return out;
+  });
+  check('addresses: #/ves/<sounding> opens on that sounding',
+    items.nav === 'ves' && items.marked === items.wanted &&
+    items.title.startsWith(items.wanted) && items.inView, JSON.stringify(items));
+  check('addresses: a sounding the project does not hold is said to be missing',
+    items.missing.includes('VES-that-was-never-shot'), JSON.stringify(items.missing));
+  check('addresses: #/pumping/<borehole> opens on that borehole\'s test',
+    !!items.borehole && items.boreholeMarked === items.borehole &&
+    items.boreholeHash === '#/pumping/' + encodeURIComponent(items.borehole),
+    JSON.stringify(items));
+
+  // Every page opened by URL above restored whatever this page had open, and
+  // that project carried no water sample. The water quality page names each
+  // result's status in the document writer's words, so opened cold on a
+  // project with a sample, before anything else has fetched the writer, it
+  // drew "Something went wrong" instead of its table.
+  await page.waitForFunction(() => !window.GWT.app.recomputeState.running &&
+    !!window.GWT.app.derived.assessment, null, { timeout: 120000 });
+  /* the mirror is written 400 ms after a change; the tab restores from it */
+  await page.evaluate(() => window.GWT.app.store.persist());
+  const qualityCold = await (async () => {
+    const tab = await page.context().newPage();
+    const errors = [];
+    tab.on('pageerror', (e) => errors.push(e.message));
+    tab.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    try {
+      await tab.goto(base + '/index.html#/quality', { waitUntil: 'load' });
+      await tab.waitForFunction(() => {
+        const app = window.GWT && window.GWT.app;
+        const host = document.querySelector('#page-host');
+        return app && !app.recomputeState.running && app.derived.assessment && host &&
+          !host.textContent.includes('Loading the maps and figures');
+      }, null, { timeout: 120000 });
+      const drawn = await tab.evaluate(() => ({
+        broken: /Something went wrong/.test(document.querySelector('#page-host').textContent),
+        badges: document.querySelectorAll('#page-host table .badge').length,
+      }));
+      return Object.assign(drawn, { errors });
+    } finally {
+      await tab.close();
+    }
+  })();
+  check('addresses: the water quality page opens by its URL on a project with a sample',
+    !qualityCold.broken && qualityCold.badges > 0 && qualityCold.errors.length === 0,
+    JSON.stringify(qualityCold));
+
   // --- offline: the app installs itself ------------------------------------
   // 127.0.0.1 is a secure context, so the real worker registers here.
   const worker = await page.evaluate(async () => {
@@ -1930,8 +2318,22 @@ await withPage(async (page, base, consoleErrors) => {
     const bootedOffline = await page.evaluate(() =>
       !!(window.GWT && window.GWT.app && window.GWT.data &&
          Object.keys(window.GWT.data.samples || {}).length > 0));
+    // The bundles the first screen does without are fetched on demand, so
+    // the precache is the only place they can come from with no network.
+    const bundlesOffline = await page.evaluate(async () => {
+      const names = Object.keys(window.GWT.bundles);
+      const failed = [];
+      for (const name of names) {
+        await window.GWT.load(name).catch((e) => failed.push(name + ': ' + e.message));
+      }
+      return { names, failed, geo: !!window.GWT.data.geo,
+        sample: !!window.GWT.data.samples.rokel.files.ves.b64 };
+    });
     await page.context().setOffline(false);
     check('offline: the app boots with the network switched off', bootedOffline);
+    check('offline: every bundle loaded on demand comes from the precache',
+      bundlesOffline.failed.length === 0 && bundlesOffline.names.length >= 6 &&
+      bundlesOffline.geo && bundlesOffline.sample, JSON.stringify(bundlesOffline));
   } else {
     check('offline: the app boots with the network switched off', false,
       JSON.stringify(offlineLoad));
@@ -1941,7 +2343,8 @@ await withPage(async (page, base, consoleErrors) => {
   // of its peg, so twelve pegs 60 m apart - or sixteen 50 m apart in two
   // rows - printed their labels through each other and the map named none
   // of them. Each label is now placed where it covers nothing.
-  const dense = await page.evaluate(() => {
+  const dense = await page.evaluate(async () => {
+    await window.GWT.load('charts');
     const C = window.GWT.core, charts = window.GWT.charts;
     function survey(nx, ny, spacing) {
       const points = [];

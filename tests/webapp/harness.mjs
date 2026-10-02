@@ -61,6 +61,10 @@ export async function serveDocs(options = {}) {
         res.end('<!doctype html><meta charset="utf-8"><title>engine</title>' +
           '<script src="/js/support.js"></script>' +
           '<script src="/js/gwt-data.js"></script>' +
+          /* the map layers and sample workbooks the app fetches on demand;
+           * the checks here read both from the start, so both load up front */
+          '<script src="/js/gwt-geo.js"></script>' +
+          '<script src="/js/gwt-samples.js"></script>' +
           '<script src="/js/gwt-core.js"></script>' +
           /* gwt-docx.js builds the handover works list, which parity holds to
            * the Python wording. It touches no DOM - its only window reference

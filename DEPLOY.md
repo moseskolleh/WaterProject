@@ -56,12 +56,14 @@ their sources change:
 
 ```bash
 python web/build_webapp_data.py   # docs/js/gwt-data.js: the guideline
-                                  # table, rate catalogue, checklists,
-                                  # map layers and sample workbooks
+                                  # table, rate catalogue and checklists;
+                                  # gwt-geo.js and gwt-samples.js: the map
+                                  # layers and sample workbooks, which the
+                                  # app loads when first wanted
 python web/build_demo.py          # docs/wasm/index.html: the stlite build
 python web/build_offline.py       # docs/sw.js: the service worker and the
                                   # release identifier. LAST: it hashes the
-                                  # whole app shell, gwt-data.js included
+                                  # whole app shell, the data included
 ```
 
 CI fails if any of the three is out of date with the sources it is built

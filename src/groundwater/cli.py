@@ -85,6 +85,9 @@ def cmd_recompute(args: argparse.Namespace) -> int:
         design_swl=updates.get("design_swl"),
         sample_root=args.sample_root,
         tmp_dir=args.tmp_dir,
+        # the inversions the file carries, so a saved survey is not inverted
+        # again
+        inversion_cache=updates.get("inversion_cache"),
     )
     diagnostics = results.get("recompute_diagnostics") or {"ok": [], "issues": []}
     for label in diagnostics.get("ok", []):

@@ -8,14 +8,23 @@ every page works offline with one click.
 
 Nothing here is transcribed by hand: the CSVs and GeoJSON under
 ``src/groundwater/data`` are the single source of truth and this script
-mechanically re-emits them as ``docs/js/gwt-data.js``. Run it whenever
-that data changes:
+mechanically re-emits them as ``docs/js/gwt-data.js`` and the two
+bundles beside it. Run it whenever that data changes:
 
     python web/build_webapp_data.py
 
 The sample workbooks are embedded as the original .xlsx bytes rather
 than as pre-parsed records, so loading a sample exercises exactly the
 same reader an uploaded file does.
+
+The map layers and the sample workbooks are most of the data by weight,
+about 830 KB of what was one 910 KB file, and the first screen uses
+neither. On a phone signal every one of those bytes stood between the
+user and a page that answers, so they are written to scripts of their
+own, ``gwt-geo.js`` and ``gwt-samples.js``, which the app fetches the
+first time a map or a sample is wanted. ``gwt-data.js`` keeps the rest,
+each sample's label, site and file names included, so the Overview can
+offer the samples before their bytes have arrived.
 """
 
 from __future__ import annotations
@@ -31,6 +40,15 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 DATA = REPO / "src" / "groundwater" / "data"
 OUT = REPO / "docs" / "js" / "gwt-data.js"
+
+# The scripts loaded on demand, by the name the app asks for each by, and
+# relative to gwt-data.js. web/build_offline.py reads them out of the
+# generated file to precache them with the rest of the shell.
+BUNDLES = {
+    "geo": "gwt-geo.js",
+    "samples": "gwt-samples.js",
+}
+BUNDLE_OUT = {name: OUT.parent / file for name, file in BUNDLES.items()}
 
 
 def toolkit_version() -> str:
@@ -48,6 +66,23 @@ def toolkit_version() -> str:
     if not match:
         raise ValueError("pyproject.toml declares no version")
     return match.group(1)
+
+
+
+def engine_digest() -> str:
+    """The SHA-256 of the browser engine's source, gwt-core.js.
+
+    The browser's inversion cache names the engine that computed a result
+    by the release and this digest, so a change to the engine between two
+    releases is a different engine and finds none of the old one's results.
+    Line endings are normalised, so a Windows checkout builds the same
+    bundle.
+    """
+    import hashlib
+
+    source = (REPO / "docs" / "js" / "gwt-core.js").read_bytes().replace(b"\r\n", b"\n")
+    return hashlib.sha256(source).hexdigest()
+
 
 # CSV tables, emitted as arrays of row objects keyed by the header row.
 CSV_TABLES = {
@@ -273,18 +308,22 @@ def encode_file(path: Path) -> str:
     return base64.b64encode(path.read_bytes()).decode("ascii")
 
 
-def build() -> Path:
-    payload: dict[str, object] = {"version": toolkit_version()}
+def bundle_texts() -> dict[Path, str]:
+    """What each generated script should hold, by where it is written."""
+    payload: dict[str, object] = {"version": toolkit_version(),
+                                  "engineDigest": engine_digest()}
 
     for key, name in CSV_TABLES.items():
         payload[key] = read_csv_rows(name)
 
-    payload["geo"] = {key: read_geojson(name) for key, name in GEOJSON_LAYERS.items()}
+    geo = {key: read_geojson(name) for key, name in GEOJSON_LAYERS.items()}
 
     samples = {}
+    sample_bytes: dict[str, dict[str, str]] = {}
     for key, spec in SAMPLE_PROJECTS.items():
         files = {}
         sources: dict[str, Path] = {}
+        sample_bytes[key] = {}
         for role, rel in spec["files"].items():
             source = REPO / "examples" / "data" / rel
             if not source.exists():
@@ -295,10 +334,9 @@ def build() -> Path:
             # ``path`` is the marker the certification gate reads: it is the
             # same relative path the Streamlit picker records, so a project
             # started in either app says the same thing about where its data
-            # came from.
-            files[role] = {
-                "name": source.name, "path": rel, "b64": encode_file(source),
-            }
+            # came from. The bytes go in the samples bundle.
+            files[role] = {"name": source.name, "path": rel}
+            sample_bytes[key][role] = encode_file(source)
         samples[key] = {
             "label": spec["label"], "note": spec["note"],
             "site": site_from_workbooks(sources, spec["site"]), "files": files,
@@ -313,10 +351,32 @@ def build() -> Path:
             brand[key] = f"data:{mime};base64,{encode_file(path)}"
     payload["brand"] = brand
 
-    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-    header = (
-        "/* gwt-data.js - reference tables and sample datasets for the "
-        "Groundwater Toolkit web app.\n"
+    return {
+        OUT: render_data(payload),
+        BUNDLE_OUT["geo"]: render_geo(geo),
+        BUNDLE_OUT["samples"]: render_samples(sample_bytes),
+    }
+
+
+def build() -> Path:
+    texts = bundle_texts()
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    for path, text in texts.items():
+        path.write_text(text, encoding="utf-8")
+        print(f"wrote {path} ({path.stat().st_size / 1024:.0f} KB)")
+    print(f"  tables: {', '.join(CSV_TABLES)}")
+    print(f"  layers: {', '.join(GEOJSON_LAYERS)}")
+    print(f"  samples: {', '.join(SAMPLE_PROJECTS)}")
+    return OUT
+
+
+def _dumps(value) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _header(name: str, what: str) -> str:
+    return (
+        f"/* {name} - {what}\n"
         " *\n"
         " * GENERATED FILE - do not edit. The source of truth is the CSV and\n"
         " * GeoJSON under src/groundwater/data and the workbooks under\n"
@@ -325,24 +385,125 @@ def build() -> Path:
         " *     python web/build_webapp_data.py\n"
         " */\n"
     )
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(
-        header + "(function (global) {\n"
+
+
+# The loader both of the app's threads use. It lives in gwt-data.js because
+# that is the one script the page and the engine worker both load before any
+# other of the app's, and because the bundles it fetches are written here.
+LOADER = """
+  /* The scripts fetched on demand, by name, relative to this file. A script
+   * loaded after this one may add its own. web/build_offline.py reads every
+   * GWT.bundles assignment in the shell and precaches what it names, so a
+   * bundle is on the device before it is first wanted, network or not. */
+  GWT.bundles = Object.assign(GWT.bundles || {}, __BUNDLES__);
+
+  /* Beside this script, wherever the app is served from: a domain root, a
+   * Pages project path, or a copy opened from disk. */
+  var here = (typeof document !== 'undefined' && document.currentScript &&
+    document.currentScript.src) || (global.location && global.location.href) || '';
+  var loaded = GWT.loadedBundles || (GWT.loadedBundles = {});
+  var pending = {};
+
+  function bundleUrl(name) {
+    if (!Object.prototype.hasOwnProperty.call(GWT.bundles, name)) {
+      throw new Error('The app has no bundle called ' + name);
+    }
+    return here ? new URL(GWT.bundles[name], here).href : GWT.bundles[name];
+  }
+
+  /* Whether a bundle has run. */
+  GWT.hasBundle = function (name) { return loaded[name] === true; };
+
+  /* A promise that the named bundle has run. On the page it is a script
+   * element, which a copy opened from file:// can load where a fetch
+   * cannot. A load that fails is forgotten, so asking again tries again. */
+  GWT.load = function (name) {
+    if (loaded[name]) return Promise.resolve();
+    if (pending[name]) return pending[name];
+    if (typeof document === 'undefined') {
+      try { GWT.loadNow(name); } catch (e) { return Promise.reject(e); }
+      return Promise.resolve();
+    }
+    var url;
+    try { url = bundleUrl(name); } catch (e) { return Promise.reject(e); }
+    pending[name] = new Promise(function (resolve, reject) {
+      var script = document.createElement('script');
+      script.src = url;
+      script.onload = function () {
+        delete pending[name];
+        loaded[name] = true;
+        resolve();
+      };
+      script.onerror = function () {
+        delete pending[name];
+        script.remove();
+        reject(new Error('Could not load ' + GWT.bundles[name] + '. Open the ' +
+          'app once with a network and it is kept for use without one.'));
+      };
+      document.head.appendChild(script);
+    });
+    return pending[name];
+  };
+
+  /* A worker can import a bundle part way through a task, synchronously, so
+   * the engine never computes without the data it reads. The page has no
+   * such call: it loads what a view needs before it draws the view. */
+  if (typeof document === 'undefined' && typeof global.importScripts === 'function') {
+    GWT.loadNow = function (name) {
+      if (loaded[name]) return;
+      global.importScripts(bundleUrl(name));
+      loaded[name] = true;
+    };
+  }
+"""
+
+
+def render_data(payload: dict) -> str:
+    """gwt-data.js: the tables, the sample index and the bundle loader."""
+    return (
+        _header("gwt-data.js", "reference tables and sample index for the "
+                "Groundwater Toolkit web app.")
+        + "(function (global) {\n"
         "  'use strict';\n"
         "  var GWT = global.GWT || (global.GWT = {});\n"
-        "  GWT.data = " + body + ";\n"
-        "}(typeof window !== 'undefined' ? window : globalThis));\n",
-        encoding="utf-8",
+        "  GWT.data = " + _dumps(payload) + ";\n"
+        + LOADER.replace("__BUNDLES__", json.dumps(BUNDLES))
+        + "}(typeof window !== 'undefined' ? window : globalThis));\n"
     )
-    size_kb = OUT.stat().st_size / 1024
-    counts = ", ".join(
-        f"{len(payload[k])} {k}" for k in CSV_TABLES if isinstance(payload[k], list)
+
+
+def render_geo(geo: dict) -> str:
+    """gwt-geo.js: the boundary, geology and hydrogeology layers."""
+    return (
+        _header("gwt-geo.js", "the map layers of the Groundwater Toolkit web "
+                "app,\n * loaded the first time a map is drawn.")
+        + "(function (global) {\n"
+        "  'use strict';\n"
+        "  var GWT = global.GWT || (global.GWT = {});\n"
+        "  GWT.data.geo = " + _dumps(geo) + ";\n"
+        "  (GWT.loadedBundles || (GWT.loadedBundles = {})).geo = true;\n"
+        "}(typeof window !== 'undefined' ? window : globalThis));\n"
     )
-    print(f"wrote {OUT} ({size_kb:.0f} KB)")
-    print(f"  tables: {counts}")
-    print(f"  layers: {', '.join(GEOJSON_LAYERS)}")
-    print(f"  samples: {', '.join(samples)}")
-    return OUT
+
+
+def render_samples(sample_bytes: dict) -> str:
+    """gwt-samples.js: each sample workbook's bytes, set beside its name in
+    GWT.data.samples, which gwt-data.js carries."""
+    return (
+        _header("gwt-samples.js", "the sample workbooks of the Groundwater "
+                "Toolkit web app,\n * loaded the first time a sample is opened.")
+        + "(function (global) {\n"
+        "  'use strict';\n"
+        "  var GWT = global.GWT || (global.GWT = {});\n"
+        "  var bytes = " + _dumps(sample_bytes) + ";\n"
+        "  Object.keys(bytes).forEach(function (key) {\n"
+        "    Object.keys(bytes[key]).forEach(function (role) {\n"
+        "      GWT.data.samples[key].files[role].b64 = bytes[key][role];\n"
+        "    });\n"
+        "  });\n"
+        "  (GWT.loadedBundles || (GWT.loadedBundles = {})).samples = true;\n"
+        "}(typeof window !== 'undefined' ? window : globalThis));\n"
+    )
 
 
 if __name__ == "__main__":

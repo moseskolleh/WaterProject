@@ -93,7 +93,10 @@ against 3.5 s (IQR 0.45 to 0.67 s) with four, in alternating runs of
 - `recompute/*` - `groundwater recompute` on each example saved as the
   apps save a project (`src_*` entries pointing at the bundled
   samples), reading of the project file included. The Rokel one inverts
-  both soundings, so it is roughly their sum.
+  both soundings, so it is roughly their sum. `rokel saved project,
+  inversions saved` is the same project saved once it has been inverted,
+  with the inversions in the file (PLAN.md step 1.6): reopening a survey
+  rather than opening it for the first time.
 - `streamlit/*` - one run of `app/streamlit_app.py` through Streamlit's
   `AppTest`, in this process, which is what the app does on every click:
   the first run of a new session, a rerun of that session, and a rerun
@@ -115,7 +118,14 @@ rate 4) and DevTools' "Slow 4G" network (`Network.emulateNetworkConditions`:
   window after first contentful paint in which no long task (over 50 ms
   on the main thread) runs and no more than two requests are in flight;
   TTI is the end of the last long task before that window, or first
-  contentful paint if there was none. The requests are the page's own,
+  contentful paint if there was none, and never earlier than the end of
+  DOMContentLoaded, which Lighthouse takes as a floor too. Without the
+  floor a page whose scripts are deferred reads as interactive when it
+  first paints: two large scripts still downloading are "no more than two
+  requests", and nothing of the app runs until both have arrived. The
+  bundled baseline was taken before the floor was added; the app's
+  scripts were not deferred then, and DOMContentLoaded came before the
+  window it found, so the floor would not have moved it. The requests are the page's own,
   taken from the DevTools protocol's Network events, so a download
   still under way counts from the moment it was sent (Resource Timing
   lists a request only once it has finished). The service worker's
@@ -140,6 +150,12 @@ rate 4) and DevTools' "Slow 4G" network (`Network.emulateNetworkConditions`:
   the longest Long Task overlapping the throttled re-inversion, and the
   sum of each one's excess over 50 ms. A Long Task is only reported over
   50 ms, so 0 means none.
+- `rokel saved project reopen wall time` and `... longest main-thread
+  task` - the Rokel project saved with the Save project button and opened
+  again with Open project, with the CPU slowed 4x again, timed from the
+  file being chosen to the last change the page makes to show the models.
+  Before PLAN.md step 1.6 this inverted both soundings again; since, the
+  file carries their inversions and it inverts nothing.
 
 ## The committed baseline
 
