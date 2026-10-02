@@ -183,7 +183,8 @@ def fuzz(session: nox.Session) -> None:
     test_* file: the plain pytest run has no browser to give it.
     """
     _need_playwright(session)
-    _python(session, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+    # -rP prints each generator's count of cases, which is otherwise captured
+    _python(session, "-m", "pytest", "-q", "-rP", "-p", "no:cacheprovider",
             "tests/fuzz/fuzz_parity.py", *session.posargs, env={"MPLBACKEND": "Agg"})
 
 

@@ -193,12 +193,13 @@ def test_regression(path, engine, workdir):
 
 
 def _fuzz(engine, workdir, strategy, examples: int, **options) -> None:
-    last: dict = {}
+    last: dict = {"agreed": 0}
 
     @given(strategy)
     @_settings(examples)
     def agree(case):
         found = compare(engine, case, workdir, **options)
+        last["agreed"] += not found
         if found:
             # Hypothesis replays the shrunk case last, so this ends holding it
             last["case"], last["found"] = case, found
@@ -206,6 +207,8 @@ def _fuzz(engine, workdir, strategy, examples: int, **options) -> None:
 
     try:
         agree()
+        # nox -s fuzz passes -rP, so this reaches the log of every run
+        print(f"{last['agreed']} generated cases, the engines agreeing on each")
     except AssertionError:
         if "case" in last:
             saved = save_regression(last["case"], last["found"])
