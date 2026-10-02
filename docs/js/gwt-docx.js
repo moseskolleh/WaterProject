@@ -1965,53 +1965,14 @@
 
   /* --- 4. water quality ------------------------------------------------------ */
 
-  /* Advice for a parameter over its limit, keyed by the standards-table
-   * name (reporting/quality.py _TREATMENT_ADVICE). This report used to give
+  /* The recommendations a water quality report closes with: the list
+   * reporting/quality.py quality_recommendations writes, from the same
+   * words in src/groundwater/data/text/quality.yaml. Every health or
+   * national exceedance gets a treatment line whether or not there is
+   * advice written for its parameter. The advice for a parameter over its
+   * limit is keyed by the standards-table name; this report used to give
    * only the generic lines and the Python one only the matched advice, so
    * the same sample was told different things by the two. */
-  var NITRATE_ADVICE = 'Elevated nitrate usually indicates pollution from ' +
-    'sanitation or agriculture; investigate the sanitary protection zone. Do ' +
-    'not give the water to bottle fed infants until resolved.';
-  var TREATMENT_ADVICE = {
-    iron: 'Iron above the acceptability value causes staining and metallic ' +
-      'taste; aeration followed by sand filtration or a simple oxidation ' +
-      'filter normally resolves it.',
-    manganese: 'Manganese requires oxidation and filtration (aeration or ' +
-      'chlorination followed by filtration); monitor infant exposure in the ' +
-      'meantime.',
-    'e. coli': 'Any E. coli detection calls for shock chlorination of the ' +
-      'borehole, verification of the sanitary seal and apron, and re-sampling ' +
-      'before use.',
-    'total coliforms': 'Coliform detection calls for disinfection of the ' +
-      'borehole and pump, a sanitary inspection of the wellhead, and re-sampling.',
-    'nitrate (as no3)': NITRATE_ADVICE,
-    'nitrate (as n)': NITRATE_ADVICE,
-    'nitrate + nitrite': NITRATE_ADVICE,
-    fluoride: 'Fluoride above 1.5 mg/L requires an alternative source or ' +
-      'defluoridation (bone char or activated alumina).',
-    arsenic: 'Arsenic above 0.01 mg/L requires an alternative source or ' +
-      'specialised removal; re-test to confirm before any use for drinking.',
-    turbidity: 'High turbidity interferes with disinfection; extend ' +
-      'development of the borehole and re-sample.',
-  };
-  /* For a faecal pathogen found in the water, which has no table entry to
-   * key advice by and used to get none under "Treat before use". */
-  var PATHOGEN_ADVICE = 'A faecal pathogen in the water calls for shock ' +
-    'chlorination of the borehole, a sanitary inspection to find where the ' +
-    'contamination enters, and re-sampling for the pathogen and for E. coli ' +
-    'before the supply is used for drinking.';
-  /* pH is out of range in one of two directions, and the advice differs */
-  var PH_ADVICE_LOW = 'Low pH water is corrosive to metal fittings; a limestone ' +
-    'contactor or careful choice of corrosion resistant materials is advised.';
-  var PH_ADVICE_HIGH = 'A pH above the acceptability range reduces the ' +
-    'effectiveness of chlorine disinfection and can give the water a bitter ' +
-    'taste and deposit scale; confirm the reading and set any chlorine dose ' +
-    'to suit.';
-
-  /* The recommendations a water quality report closes with, word for word
-   * the list reporting/quality.py quality_recommendations writes. Every
-   * health or national exceedance gets a treatment line whether or not
-   * there is advice written for its parameter. */
   function qualityRecommendations(assessment) {
     var advice = [];
     var corr = assessment.corrosivity;
@@ -2020,52 +1981,45 @@
       return rows.map(function (r) { return r.parameter; }).join(', ');
     }
     if (assessment.health_exceedances.length) {
-      advice.push('Treat or replace the source before it is used for drinking: ' +
-        'health based limits are exceeded for ' +
-        names(assessment.health_exceedances) + '.');
+      advice.push(C.phrase('quality.treat_health',
+        { parameters: names(assessment.health_exceedances) }));
     }
     if (assessment.national_exceedances.length) {
-      advice.push('Treat before the supply is accepted against the national ' +
-        'standard: national limits are exceeded for ' +
-        names(assessment.national_exceedances) + '.');
+      advice.push(C.phrase('quality.treat_national',
+        { parameters: names(assessment.national_exceedances) }));
     }
+    var treatment = C.phraseTable('quality.treatment_advice');
     assessment.all_exceedances.forEach(function (r) {
       var key = C.normaliseParameter(r.parameter);
       var text;
       if (key === 'ph') {
         var low = r.value_in_guideline_unit !== null &&
           r.value_in_guideline_unit !== undefined && r.value_in_guideline_unit < 7.0;
-        text = low ? PH_ADVICE_LOW : PH_ADVICE_HIGH;
+        text = low ? C.phrase('quality.ph_low') : C.phrase('quality.ph_high');
       } else if (C.faecalPathogen(r.parameter)) {
-        text = PATHOGEN_ADVICE;
+        text = C.phrase('quality.pathogen');
       } else {
-        text = Object.prototype.hasOwnProperty.call(TREATMENT_ADVICE, key)
-          ? TREATMENT_ADVICE[key] : null;
+        text = Object.prototype.hasOwnProperty.call(treatment, key)
+          ? treatment[key] : null;
       }
       if (text && advice.indexOf(text) < 0) advice.push(text);
     });
     if (assessment.aesthetic_exceedances.length) {
-      advice.push('Acceptability limits are exceeded for ' +
-        names(assessment.aesthetic_exceedances) + ': simple treatment is ' +
-        'advisable if users complain of taste, odour or staining.');
+      advice.push(C.phrase('quality.acceptability',
+        { parameters: names(assessment.aesthetic_exceedances) }));
     }
     var state = assessment.verdict_state;
     if (state === 'indeterminate') {
       /* "No treatment is required" is a clearance, and this report has not
        * established one. Say what is outstanding instead. */
       var open = (assessment.uncertainties || []).join('; ');
-      advice.push('Do not treat this supply as safe to drink on these results. ' +
-        open.charAt(0).toUpperCase() + open.slice(1) + '. Resolve these and ' +
-        're-issue the assessment before any treatment decision is taken.');
+      advice.push(C.phrase('quality.not_cleared',
+        { outstanding: open.charAt(0).toUpperCase() + open.slice(1) }));
     } else if (state === 'pass' && !advice.length) {
-      advice.push('No treatment is required on the basis of the parameters ' +
-        'tested. Maintain the sanitary seal and apron in good condition.');
+      advice.push(C.phrase('quality.no_treatment'));
     }
-    advice.push('Disinfect the borehole after any maintenance and re-test ' +
-      'microbiological quality before the source is returned to use.');
-    advice.push('Repeat physico-chemical and bacteriological testing at least ' +
-      'once a year, and after any flooding, repair work on the wellhead or ' +
-      'change in taste, colour or odour.');
+    advice.push(C.phrase('quality.after_maintenance'));
+    advice.push(C.phrase('quality.repeat_testing'));
     return advice;
   }
 

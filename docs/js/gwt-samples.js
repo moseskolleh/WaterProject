@@ -1,8 +1,8 @@
 /* gwt-samples.js - the sample workbooks of the Groundwater Toolkit web app,
  * loaded the first time a sample is opened.
  *
- * GENERATED FILE - do not edit. The source of truth is the CSV and
- * GeoJSON under src/groundwater/data and the workbooks under
+ * GENERATED FILE - do not edit. The source of truth is the CSV,
+ * GeoJSON and YAML under src/groundwater/data and the workbooks under
  * examples/data; regenerate with:
  *
  *     python web/build_webapp_data.py

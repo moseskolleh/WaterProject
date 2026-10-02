@@ -6,8 +6,9 @@ the supervision checklists, separation distances, district and chiefdom
 populations and the map layers - plus the three sample datasets, so
 every page works offline with one click.
 
-Nothing here is transcribed by hand: the CSVs and GeoJSON under
-``src/groundwater/data`` are the single source of truth and this script
+Nothing here is transcribed by hand: the CSVs, the GeoJSON and the
+sentence catalogue (``text/*.yaml``) under ``src/groundwater/data`` are
+the single source of truth and this script
 mechanically re-emits them as ``docs/js/gwt-data.js`` and the two
 bundles beside it. Run it whenever that data changes:
 
@@ -294,6 +295,18 @@ def round_coords(node):
     return node
 
 
+def read_text_catalogue() -> dict:
+    """The shared words, ``data/text/*.yaml``, by namespace.
+
+    Not covered by the engine digest: a reworded sentence is not a
+    different inversion, and invalidating every cached sounding over one
+    would only cost the user the wait.
+    """
+    from groundwater.text import text_catalogue
+
+    return text_catalogue()
+
+
 def read_geojson(name: str) -> dict:
     with open(DATA / name, "r", encoding="utf-8") as fh:
         layer = json.load(fh)
@@ -315,6 +328,9 @@ def bundle_texts() -> dict[Path, str]:
 
     for key, name in CSV_TABLES.items():
         payload[key] = read_csv_rows(name)
+    # the sentences both engines write, from data/text/*.yaml, read through
+    # the package's own loader so the browser gets exactly what it parses
+    payload["text"] = read_text_catalogue()
 
     geo = {key: read_geojson(name) for key, name in GEOJSON_LAYERS.items()}
 
@@ -378,8 +394,8 @@ def _header(name: str, what: str) -> str:
     return (
         f"/* {name} - {what}\n"
         " *\n"
-        " * GENERATED FILE - do not edit. The source of truth is the CSV and\n"
-        " * GeoJSON under src/groundwater/data and the workbooks under\n"
+        " * GENERATED FILE - do not edit. The source of truth is the CSV,\n"
+        " * GeoJSON and YAML under src/groundwater/data and the workbooks under\n"
         " * examples/data; regenerate with:\n"
         " *\n"
         " *     python web/build_webapp_data.py\n"

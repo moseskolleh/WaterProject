@@ -1863,6 +1863,91 @@
     return count === 1 ? singular : (pluralForm || singular + 's');
   }
 
+  /* --- the shared words ---------------------------------------------------
+   * groundwater/text.py. A sentence both engines write is kept once, in
+   * src/groundwater/data/text/*.yaml, which the build emits as
+   * GWT.data.text; this is the same renderer as render_text there, rule for
+   * rule, and the grammar is documented with it. A number always names its
+   * format, because String(5.0) is "5" here and str(5.0) is "5.0" there. */
+  var TEXT_TOKEN = new RegExp('\\{\\{|\\}\\}' +
+    '|\\{([a-z_][a-z0-9_]*)(?::(num|g|\\.\\d+f|plural:[^{}|]*\\|[^{}|]*))?\\}' +
+    '|[{}]', 'g');
+
+  function formatTextValue(name, spec, value) {
+    if (spec === undefined) {
+      if (typeof value !== 'string') {
+        throw new TypeError('text: {' + name + '} takes a string; a number ' +
+          'names its format, as {' + name + ':num}');
+      }
+      return value;
+    }
+    if (spec.indexOf('plural:') === 0) {
+      if (typeof value !== 'number' || !Number.isInteger(value)) {
+        throw new TypeError('text: {' + name + ':plural:...} takes a whole count');
+      }
+      var forms = spec.slice('plural:'.length).split('|');
+      return value === 1 ? forms[0] : forms[1];
+    }
+    if (typeof value !== 'number' && !(spec === 'num' && value === null)) {
+      throw new TypeError('text: {' + name + ':' + spec + '} takes a number, not ' +
+        JSON.stringify(value));
+    }
+    if (spec === 'num') return fmtNum(value);
+    if (spec === 'g') return formatG(value);
+    return pyFixed(value, Number(spec.slice(1, -1)));
+  }
+
+  function renderText(template, values) {
+    values = values || {};
+    var used = {};
+    var text = template.replace(TEXT_TOKEN, function (token, name, spec) {
+      if (token === '{{' || token === '}}') return token.charAt(0);
+      if (name === undefined) {
+        throw new Error('text: a lone ' + JSON.stringify(token) + ' in ' +
+          JSON.stringify(template) + '; write ' + token + token);
+      }
+      if (!own(values, name)) {
+        throw new Error('text: no value for {' + name + '} in ' + JSON.stringify(template));
+      }
+      used[name] = true;
+      return formatTextValue(name, spec, values[name]);
+    });
+    var unused = Object.keys(values).filter(function (k) { return !used[k]; });
+    if (unused.length) {
+      throw new Error('text: ' + JSON.stringify(unused.sort()) + ' are not in ' +
+        JSON.stringify(template));
+    }
+    return text;
+  }
+
+  function textEntry(id) {
+    var dot = id.indexOf('.');
+    var file = ((GWT.data || {}).text || {})[id.slice(0, dot)];
+    if (dot < 0 || !file || !own(file, id.slice(dot + 1))) {
+      throw new Error('text: no entry ' + JSON.stringify(id) + ' in data/text ' +
+        '(is gwt-data.js loaded, and current?)');
+    }
+    return file[id.slice(dot + 1)];
+  }
+
+  /* The sentence id names, with values filled in. */
+  function phrase(id, values) {
+    var template = textEntry(id);
+    if (typeof template !== 'string') {
+      throw new TypeError('text: ' + JSON.stringify(id) + ' is a table; read it with phraseTable');
+    }
+    return renderText(template, values);
+  }
+
+  /* The table id names: literal text, keyed by a value from the data. */
+  function phraseTable(id) {
+    var table = textEntry(id);
+    if (typeof table !== 'object' || table === null) {
+      throw new TypeError('text: ' + JSON.stringify(id) + ' is a sentence; read it with phrase');
+    }
+    return table;
+  }
+
   /* ves/interpret.py POORLY_RESOLVED_FACTOR / poorly_resolved_boundaries:
    * [depth, factor] of each boundary whose thickness is known only to within
    * a factor of 2 or worse; empty for a model with no uncertainty. */
@@ -2167,6 +2252,7 @@
     fmtNum: fmtNum, fmtRange: fmtRange, formatG: formatG,
     roundSig: roundSig, pyRound: pyRound, pyFixed: pyFixed, expo: expo,
     ordinal: ordinal, plural: plural, pluralNoun: pluralNoun,
+    renderText: renderText, phrase: phrase, phraseTable: phraseTable,
   });
 
   /* ============================================================= hydraulics

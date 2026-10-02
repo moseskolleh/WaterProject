@@ -101,9 +101,31 @@ in the separate runtime cache instead.
 only numbers: the handover works list is compared bullet for bullet, because
 that list is what an interim payment is argued from and four of its seven
 bullets once differed - a quantity surveyor reading one document got the screen
-run, one reading the other got the casing size, and neither got the seal. Word
-a shared sentence in one engine and word it the same in the other, then run
-`python tests/webapp/make_reference.py` and the parity suite.
+run, one reading the other got the casing size, and neither got the seal.
+
+So a sentence both engines write is not worded twice: it is kept once, in
+`src/groundwater/data/text/*.yaml`, and both engines read it. The water
+quality recommendations are in `quality.yaml`. The package reads an entry
+with `groundwater.text.phrase("quality.treat_health", parameters=...)`; the
+browser reads the same files, which `web/build_webapp_data.py` emits into
+`gwt-data.js`, with `C.phrase('quality.treat_health', {parameters: ...})`.
+The two renderers are one grammar, written out in `groundwater/text.py`:
+`{name}` takes a string, a number always names its format (`{depth:num}` as
+`fmt_num` writes it, `{d:g}`, `{mm:.0f}`), `{n:plural:limit|limits}` agrees
+with a count, and anything else - a missing value, a spare one, a bare
+number, a lone brace - is an error rather than a sentence with a hole in it.
+An entry that is a mapping rather than a string is a table, looked up by a
+value from the data (`phrase_table` / `C.phraseTable`).
+
+To add a sentence: put it in the file for its report under a lower-case key,
+call it from both engines by its quoted id, run
+`python web/build_webapp_data.py`, then `python tests/webapp/make_reference.py`
+and the parity suite. `tests/test_text.py` fails if an entry is read by only
+one engine, if the bundle carries another catalogue, or if either engine
+still spells out a catalogued sentence for itself. Only the top-level files
+are read, so the Krio catalogue step 9.2 needs can sit beside them in a
+folder of its own, under the same ids. A sentence not yet in the catalogue is
+still worded once in each engine, and the same in both.
 
 Document-level assertions - what reaches the `.docx` a user downloads - belong
 in `tests/webapp/review.mjs`, not in parity.
