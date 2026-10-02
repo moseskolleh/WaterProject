@@ -268,7 +268,12 @@ def invert_sounding(
     """
     config = config or VESConfig()
     ab2, rho_app, shifts = inversion_readings(sounding, splice)
-    if len(ab2) < 4:
+    # Spacings, not readings: a Wenner sheet is not spliced, so one read
+    # twice at each of two spacings passed a count of four and had a
+    # two-layer model's three parameters fitted to two points of the curve,
+    # where a family of models fits equally well and each engine picked a
+    # different one.
+    if len(np.unique(ab2)) < 4:
         raise ValueError("Not enough readings to invert")
 
     candidates: list[tuple[LayeredModel, np.ndarray, float, int, bool]] = []

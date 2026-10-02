@@ -1015,7 +1015,13 @@
     var arrayType = sounding.array_type || 'schlumberger';
     var spliced = inversionReadings(sounding, opts);
     var ab2 = spliced.ab2, rhoApp = spliced.rho;
-    if (ab2.length < 4) throw new Error('Not enough readings to invert');
+    /* Spacings, not readings: a Wenner sheet is not spliced, so one read
+     * twice at each of two spacings passed a count of four and had a
+     * two-layer model's three parameters fitted to two points of the curve,
+     * where a family of models fits equally well and each engine picked a
+     * different one. */
+    var spacings = ab2.filter(function (v, k) { return ab2.indexOf(v) === k; });
+    if (spacings.length < 4) throw new Error('Not enough readings to invert');
 
     /* the iteration hook for trial si of nStarts at layer count li of nCounts */
     function iterationProgress(li, nCounts, si, nStarts, label) {
