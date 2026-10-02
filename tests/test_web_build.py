@@ -33,6 +33,16 @@ def test_demo_build(tmp_path, sample_data):
     assert match, "FILES blob not found"
     files = json.loads(match.group(1))
     assert "streamlit_app.py" in files
+    # the pages, their helpers and the state schema the script imports from
+    # beside it (PLAN.md step 1.1), mounted where the imports look for them
+    app_modules = sorted(p for p in (REPO / "app").rglob("*.py")
+                         if "__pycache__" not in p.parts)
+    assert {"state.py", "shared.py", "views/__init__.py",
+            "views/costing.py"} <= {p.relative_to(REPO / "app").as_posix()
+                                    for p in app_modules}
+    for path in app_modules:
+        mount = path.relative_to(REPO / "app").as_posix()
+        assert files[mount]["d"] == path.read_text(encoding="utf-8"), mount
     assert "groundwater/__init__.py" in files
     assert "groundwater/data/who_guidelines.csv" in files
     for sample in builder.SAMPLE_FILES:

@@ -528,6 +528,12 @@ def _recompute_measures() -> list[Measure]:
                 setup_for("rokel", inverted=True))]
 
 
+#: The pages a loaded rerun is timed on: the dashboard, each page that draws
+#: from a loaded sample, and the two that only read what the others produced.
+STREAMLIT_PAGES = ("Overview", "Geophysics (VES)", "Pumping test", "Water quality",
+                   "Borehole design", "Depth Spine", "Costing & BoQ", "Supervision")
+
+
 def _streamlit_measures() -> list[Measure]:
     # A Streamlit app runs its whole script again on every click, so the time
     # of one run is what a user waits for after each one. AppTest runs the
@@ -550,6 +556,12 @@ def _streamlit_measures() -> list[Measure]:
             raise RuntimeError(f"the Streamlit app failed: {at.exception}")
         return at
 
+    def goto(at, page):
+        # the session's page, as the sidebar navigation sets it; before
+        # PLAN.md step 1.1 every page ran whichever this was
+        at.session_state["nav"] = page
+        return checked(at.run())
+
     def first_run(_tmp):
         return lambda: checked(started())
 
@@ -557,25 +569,46 @@ def _streamlit_measures() -> list[Measure]:
         at = checked(started())
         return lambda: checked(at.run())
 
-    def rerun_loaded(_tmp):
+    loaded: list = []
+
+    def loaded_app():
         # every sample loaded and every analysis run, as a user has it by
-        # the time they reach the costing page; the timed rerun then changes
-        # nothing, which is the cost each later click pays before its own work
+        # the time they reach the costing page, each picked on its own page.
+        # Built once and shared: a rerun that changes nothing leaves it as it
+        # was, so each page's measure starts from the same state.
+        if loaded:
+            return loaded[0]
         at = checked(started())
-        for key, sample in (("sample_ves", "rokel/rokel_ves.xlsx"),
-                            ("sample_pump", "dr_timbo/dr_timbo_constant_test.xlsx"),
-                            ("sample_wq", "dr_timbo/dr_timbo_water_quality.xlsx"),
-                            ("sample_log", "dr_timbo/dr_timbo_drilling_log.xlsx")):
+        for page, key, sample in (
+                ("Geophysics (VES)", "sample_ves", "rokel/rokel_ves.xlsx"),
+                ("Pumping test", "sample_pump", "dr_timbo/dr_timbo_constant_test.xlsx"),
+                ("Water quality", "sample_wq", "dr_timbo/dr_timbo_water_quality.xlsx"),
+                ("Borehole design", "sample_log", "dr_timbo/dr_timbo_drilling_log.xlsx")):
+            goto(at, page)
             at.selectbox(key=key).select(sample)
             checked(at.run())
-        for key in ("run_ves", "run_cost"):
+        for page, key in (("Geophysics (VES)", "run_ves"), ("Costing & BoQ", "run_cost")):
+            goto(at, page)
             at.button(key=key).click()
             checked(at.run())
-        return lambda: checked(at.run())
+        loaded.append(at)
+        return at
 
-    return [Measure("streamlit", "first run, new session", first_run),
-            Measure("streamlit", "rerun, new session", rerun_empty),
-            Measure("streamlit", "rerun, every sample loaded and analysed", rerun_loaded)]
+    def rerun_loaded_on(page):
+        # the timed rerun changes nothing, so it is the cost each later click
+        # on that page pays before its own work
+        def setup(_tmp):
+            at = goto(loaded_app(), page)
+            return lambda: checked(at.run())
+        return setup
+
+    return ([Measure("streamlit", "first run, new session", first_run),
+             Measure("streamlit", "rerun, new session", rerun_empty),
+             Measure("streamlit", "rerun, every sample loaded and analysed",
+                     rerun_loaded_on("Overview"))]
+            + [Measure("streamlit", f"rerun on {page}, every sample loaded",
+                       rerun_loaded_on(page))
+               for page in STREAMLIT_PAGES[1:]])
 
 
 def all_measures(groups) -> list[Measure]:

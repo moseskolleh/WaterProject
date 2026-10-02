@@ -2,10 +2,12 @@
 Overview dashboard.
 
 The redesign replaced the flat tab bar with grouped sidebar navigation
-(one radio per lifecycle group) over pages that all render on every run;
-only visibility changes with the selection. These tests pin down the
+(one radio per lifecycle group). The pages all rendered on every run and
+only their visibility changed with the selection, until PLAN.md step 1.1
+made the selection pick the one page that runs. These tests pin down the
 navigation contract: a single active page, group radios kept mutually
-exclusive, and the Overview quick actions moving the selection.
+exclusive, the Overview quick actions moving the selection, and no page
+running while another is on screen.
 """
 
 from pathlib import Path
@@ -31,9 +33,14 @@ def test_built_reports_stay_downloadable_and_the_app_loads_offline():
     from streamlit.testing.v1 import AppTest
 
     app_file = Path(__file__).resolve().parents[1] / "app" / "streamlit_app.py"
-    assert "@import url(" not in app_file.read_text()
+    # the script and every page and helper module it imports from beside it
+    for source in app_file.parent.rglob("*.py"):
+        assert "@import url(" not in source.read_text(), source.name
+
+    from conftest import goto
 
     at = AppTest.from_file(str(app_file), default_timeout=600)
+    at.session_state["nav"] = "Geophysics (VES)"
     at.run()
     at.selectbox(key="sample_ves").select("rokel/rokel_ves.xlsx")
     at.run()
@@ -45,9 +52,11 @@ def test_built_reports_stay_downloadable_and_the_app_loads_offline():
     assert at.session_state["artifacts"], "the built report must be remembered"
 
     # navigate away: the download used to disappear here
+    goto(at, "Pumping test")
     at.selectbox(key="sample_pump").select("dr_timbo/dr_timbo_constant_test.xlsx")
     at.run()
     assert at.session_state["artifacts"]
+    goto(at, "Overview")
     assert any("Deliverables" in str(s.value) for s in at.subheader)
 
 
@@ -59,11 +68,16 @@ def test_every_page_offers_the_next_lifecycle_step():
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
 
+    from conftest import goto
+
     app_file = str(Path(__file__).resolve().parents[1] / "app" / "streamlit_app.py")
     at = AppTest.from_file(app_file, default_timeout=600)
     at.run()
     assert not at.exception
-    labels = {b.label for b in at.button if b.key and b.key.startswith("next_")}
+    labels = set()
+    for page in ("Geophysics (VES)", "Pumping test", "Costing & BoQ", "Supervision"):
+        goto(at, page)
+        labels |= {b.label for b in at.button if b.key and b.key.startswith("next_")}
     assert {
         "Cost this borehole →", "Start supervision →",
         "Assess water quality →", "Build the handover →",
@@ -113,12 +127,69 @@ def test_group_radio_switches_the_active_page(at):
     assert at.radio(key="nav_testing").value is None
 
 
-def test_every_page_still_renders_each_run(at):
-    """Hidden pages keep rendering (widgets from all pages coexist)."""
-    for key in ("sample_ves", "sample_pump", "sample_wq", "sample_log"):
-        assert at.selectbox(key=key) is not None
-    assert any(b.key == "run_cost" for b in at.button)
-    assert any(b.key == "gen_templates" for b in at.button)
+def test_only_the_page_on_screen_runs(sample_data, monkeypatch):
+    """PLAN.md step 1.1: every page used to run on every rerun and was then
+    hidden, so one click on the costing page re-parsed four workbooks and
+    redrew a dozen figures. Each page's function is wrapped to record that
+    it ran; opening each page in turn, with every sample loaded, runs that
+    page and no other."""
+    import importlib
+
+    from conftest import goto
+
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.run()
+    for page, key, sample in (
+            ("Geophysics (VES)", "sample_ves", "rokel/rokel_ves.xlsx"),
+            ("Pumping test", "sample_pump", "dr_timbo/dr_timbo_constant_test.xlsx"),
+            ("Water quality", "sample_wq", "dr_timbo/dr_timbo_water_quality.xlsx"),
+            ("Borehole design", "sample_log", "dr_timbo/dr_timbo_drilling_log.xlsx")):
+        goto(at, page)
+        at.selectbox(key=key).select(sample)
+        at.run()
+    assert not at.exception, at.exception
+
+    # the app has put its folder on the path, so its views import here as
+    # they do in the app
+    views = importlib.import_module("views")
+    ran: list[str] = []
+
+    def recording(title, render):
+        def page():
+            ran.append(title)
+            render()
+        return page
+
+    for title, _, name in views.MODULES:
+        module = importlib.import_module(f"views.{name}")
+        monkeypatch.setattr(module, "render", recording(title, module.render))
+
+    titles = [title for title, _, _ in views.MODULES]
+    assert titles, "no pages registered"
+    for title in titles:
+        ran.clear()
+        at.session_state["nav"] = title
+        at.run()
+        assert not at.exception, (title, at.exception)
+        at.run()  # and a rerun on the page, as a click there makes
+        assert not at.exception, (title, at.exception)
+        assert ran == [title, title], (title, ran)
+
+
+def test_every_listed_page_has_a_view():
+    """The sidebar lists every page, and every page it lists can be opened."""
+    import sys
+
+    app_dir = str(Path(APP).parent)
+    if app_dir not in sys.path:
+        sys.path.insert(0, app_dir)
+    import shared
+    import views
+
+    listed = [page for _, pages in shared.NAV_GROUPS for page in pages]
+    assert sorted(listed) == sorted(title for title, _, _ in views.MODULES)
+    for _, url, render in views.page_functions():
+        assert callable(render) and url
 
 
 def test_overview_quick_actions_navigate(sample_data):

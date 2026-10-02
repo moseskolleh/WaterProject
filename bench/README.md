@@ -102,8 +102,13 @@ against 3.5 s (IQR 0.45 to 0.67 s) with four, in alternating runs of
   the first run of a new session, a rerun of that session, and a rerun
   once every sample is loaded and the inversion and cost estimate have
   run (the rerun changes nothing, so it is the cost every later click
-  pays before its own work). Left out, with a message, when Streamlit is
-  not installed.
+  pays before its own work). That loaded rerun is timed on the Overview
+  (`rerun, every sample loaded and analysed`, the name the measure had
+  when it was the only one) and again on seven other pages (`rerun on
+  PAGE, every sample loaded`), each sample picked on its own page and the
+  page chosen as the sidebar navigation chooses it. Before PLAN.md step
+  1.1 every page ran on every rerun, so these were all one number. Left
+  out, with a message, when Streamlit is not installed.
 
 **`web.mjs`**, times in milliseconds and sizes in bytes, the median of
 3 cold runs. Each run is a fresh browser with an empty cache on a
