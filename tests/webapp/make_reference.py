@@ -2102,26 +2102,31 @@ def pdf_sheet_reference() -> dict:
 CHECK_RTOL = 1e-6
 
 
-def drifted(fresh, committed, path=""):
-    """Yield ``(path, fresh, committed)`` for every value that really differs."""
+def drifted(fresh, committed, path="", rtol=CHECK_RTOL, atol=1e-12):
+    """Yield ``(path, fresh, committed)`` for every value that really differs.
+
+    The defaults are for --check, the toolkit against its own committed
+    values. tests/fuzz compares the two engines with the same walk at the
+    tolerances parity.mjs holds each kind of quantity to.
+    """
     if isinstance(fresh, dict) and isinstance(committed, dict):
         for key in sorted(set(fresh) | set(committed)):
             if key not in fresh or key not in committed:
                 yield (f"{path}.{key}", fresh.get(key, "<missing>"),
                        committed.get(key, "<missing>"))
                 continue
-            yield from drifted(fresh[key], committed[key], f"{path}.{key}")
+            yield from drifted(fresh[key], committed[key], f"{path}.{key}", rtol, atol)
     elif isinstance(fresh, list) and isinstance(committed, list):
         if len(fresh) != len(committed):
             yield (f"{path}[]", f"{len(fresh)} items", f"{len(committed)} items")
             return
         for i, (a, b) in enumerate(zip(fresh, committed, strict=True)):
-            yield from drifted(a, b, f"{path}[{i}]")
+            yield from drifted(a, b, f"{path}[{i}]", rtol, atol)
     elif isinstance(fresh, (int, float)) and isinstance(committed, (int, float)):
         if isinstance(fresh, bool) or isinstance(committed, bool):
             if fresh != committed:
                 yield (path, fresh, committed)
-        elif not math.isclose(fresh, committed, rel_tol=CHECK_RTOL, abs_tol=1e-12):
+        elif not math.isclose(fresh, committed, rel_tol=rtol, abs_tol=atol):
             yield (path, fresh, committed)
     elif fresh != committed:
         yield (path, fresh, committed)

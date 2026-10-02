@@ -41,9 +41,10 @@ ai = ["anthropic>=0.78"]
 # ruff is pinned to the exact version CI runs, so "it lints here" and "it
 # lints in CI" mean the same thing. nox runs the check sequence in
 # noxfile.py, and build makes the wheel and sdist its release session ships.
+# hypothesis draws the field sheets tests/fuzz puts through both engines.
 dev = [
     "pytest>=7.4", "segno>=1.6", "opencv-python-headless>=4.8", "rasterio>=1.3",
-    "ruff==0.16.4", "nox>=2024.4.15", "build>=1.0",
+    "ruff==0.16.4", "nox>=2024.4.15", "build>=1.0", "hypothesis>=6.100",
 ]
 
 [project.scripts]
