@@ -539,7 +539,12 @@ def theis_fit(
     slope0 = max((s[-1] - s[len(s) // 2]) / max(np.log10(t[-1] / t[len(s) // 2]), 0.3), 0.1)
     T0 = 2.303 * q_day / (4.0 * math.pi * slope0)
     p0 = (math.log10(max(T0, 1e-2)), -3.0)
-    popt, _ = curve_fit(model, t, s, p0=p0, maxfev=20000)
+    # To the bottom of the valley rather than curve_fit's default 1.5e-8
+    # relative change in the misfit. Where the misfit is flat along the
+    # valley floor that default stopped a sheet's fit 1.1e-4 short of its
+    # minimum in T (9.7877 m2/day for 9.7866), and the browser, which runs
+    # until no step helps, reported the minimum itself.
+    popt, _ = curve_fit(model, t, s, p0=p0, maxfev=20000, ftol=1e-12, xtol=1e-12)
     T = 10.0 ** popt[0]
     S = 10.0 ** popt[1]
     rmse = float(np.sqrt(np.mean((model(t, *popt) - s) ** 2)))

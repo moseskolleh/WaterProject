@@ -607,7 +607,7 @@
   "T": 0.5358830353611498,
   "cj": 0.5358830353611498,
   "rec": 1.4021310045105808,
-  "theis": 0.4690417877974611,
+  "theis": 0.46904121808660265,
   "safe": 0.39096869216140506,
   "low": 0.21984354243082851,
   "high": 0.7062849368288179,
@@ -647,7 +647,7 @@
   "rec_intercept": 21.66478430729821,
   "rec_intercept_fraction": 0.66131820229848,
   "rec_pumping_time": 30.0,
-  "theis_S": 0.1824350549667833,
+  "theis_S": 0.18243530353716317,
   "confidence": "indicative",
   "confidence_reasons": [
    "the test pumped for 30 minutes, below the 240 needed to see late-time behaviour, so the yield is extrapolated 4.2 log cycles of time",
