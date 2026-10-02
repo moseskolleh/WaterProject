@@ -13,6 +13,8 @@ of it left in either engine.
 from __future__ import annotations
 
 import json
+import math
+import random
 import re
 import shutil
 import subprocess
@@ -250,7 +252,10 @@ for (const f of ['support.js', 'gwt-data.js', 'gwt-core.js']) {
     { filename: f });
 }
 const C = sandbox.GWT.core;
-const cases = JSON.parse(readFileSync(process.argv[3], 'utf8'));
+// JSON has no NaN or infinity, so the cases spell them {"$float": "nan"}
+const SPECIAL = { nan: NaN, inf: Infinity, '-inf': -Infinity };
+const cases = JSON.parse(readFileSync(process.argv[3], 'utf8'), (key, value) =>
+  (value && typeof value === 'object' && '$float' in value) ? SPECIAL[value.$float] : value);
 writeFileSync(process.argv[4], JSON.stringify({
   rendered: cases.map(([template, values]) => {
     try { return C.renderText(template, values); } catch (e) { return null; }
@@ -261,21 +266,35 @@ writeFileSync(process.argv[4], JSON.stringify({
 """
 
 
-def test_the_browser_renders_the_same_text(tmp_path):
-    """renderText in gwt-core.js gives what render_text gives, refusals
-    included, and the bundle carries the catalogue and the configuration
-    defaults as Python reads them."""
+def _encode(value):
+    if isinstance(value, float) and not math.isfinite(value):
+        return {"$float": repr(value)}
+    if isinstance(value, dict):
+        return {k: _encode(v) for k, v in value.items()}
+    return value
+
+
+def _browser(tmp_path, cases) -> dict:
+    """What gwt-core.js renders for each (template, values), None for a
+    refusal, with the catalogue and defaults the bundle carries."""
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed; run `node --version` to check")
     script = tmp_path / "render.mjs"
     script.write_text(_JS_RENDER, encoding="utf-8")
-    cases = tmp_path / "cases.json"
-    cases.write_text(json.dumps([[t, v] for t, v, _ in RENDER_CASES]), encoding="utf-8")
+    path = tmp_path / "cases.json"
+    path.write_text(json.dumps([[t, _encode(v)] for t, v in cases]), encoding="utf-8")
     out = tmp_path / "out.json"
-    subprocess.run([node, str(script), str(JS), str(cases), str(out)],
-                   check=True, timeout=120)
-    result = json.loads(out.read_text(encoding="utf-8"))
+    subprocess.run([node, str(script), str(JS), str(path), str(out)],
+                   check=True, timeout=300)
+    return json.loads(out.read_text(encoding="utf-8"))
+
+
+def test_the_browser_renders_the_same_text(tmp_path):
+    """renderText in gwt-core.js gives what render_text gives, refusals
+    included, and the bundle carries the catalogue and the configuration
+    defaults as Python reads them."""
+    result = _browser(tmp_path, [(t, v) for t, v, _ in RENDER_CASES])
     assert result["rendered"] == [expected for _, _, expected in RENDER_CASES]
     assert result["catalogue"] == text_catalogue(), (
         "docs/js/gwt-data.js carries another catalogue; "
@@ -283,6 +302,61 @@ def test_the_browser_renders_the_same_text(tmp_path):
     assert result["defaults"] == _defaults_json(), (
         "docs/js/gwt-data.js carries other configuration defaults; "
         "run: python web/build_webapp_data.py")
+
+
+def _generated_numbers():
+    """Numbers chosen to find where two ways of writing a number part:
+    halves and near-halves at every scale, values whose stored binary sits
+    just either side of the decimal they were typed as (1.05, 0.155), zero
+    of either sign, negatives that round to nothing, the edges of the
+    fixed and exponential forms of %g, powers of ten and their neighbours,
+    numbers past 1e21 where toFixed changes form, subnormals, NaN and the
+    infinities, and a spread of random values."""
+    rng = random.Random(17)
+    values = [0.0, -0.0, 0.5, -0.5, 1.5, 2.5, -2.5, -0.4, -0.004, 0.125, 2.675,
+              14.05, 1.05, 0.155, 0.0005, 1e-4, 9.99995e-5, 1e-5, 999.5, 999999.5,
+              123456.5, 1e15, 1e16, 1e17, 1e21, 1e22, 7.1e23, 1.5e300, 5e-324,
+              2.2e-308, math.nan, math.inf, -math.inf]
+    for e in range(-12, 22):
+        p = 10.0 ** e
+        values += [p, -p, math.nextafter(p, 0), math.nextafter(p, math.inf),
+                   p * 0.99995, p * 0.9995]
+    for _ in range(600):
+        # a short decimal ending in 5, typed as a report would carry it
+        values.append(float(f"{rng.randint(1, 99999)}5e{rng.randint(-8, 6)}")
+                      * rng.choice((1, -1)))
+        values.append(rng.uniform(-1000, 1000))
+        values.append(10 ** rng.uniform(-12, 24) * rng.choice((1, -1)))
+        values.append(float(rng.randint(-10**7, 10**7)))
+    return values
+
+
+def test_the_two_renderers_agree_on_generated_numbers(tmp_path):
+    """Every number format, both engines, the same text for a few thousand
+    numbers each.
+
+    The hand-picked cases above say what the grammar means; these find
+    where the two implementations of it part. They did: to seventeen
+    digits 1.05 reads as a tie, so {d:.1f} wrote 1.0 here and 1.1 in
+    Python, and fmt_num gave 0.001 for 0.001005 against Python's 0.00101.
+    """
+    cases = []
+    for value in _generated_numbers():
+        for spec in ("num", "g", ".0f", ".1f", ".2f", ".3f", ".6f", ".12f"):
+            cases.append((f"{{x:{spec}}}", {"x": value}))
+    for count in (0, 1, 2, -1, 1.0, 2.0, 1.5, -0.0, math.nan, math.inf, 10**6):
+        cases.append(("{n:plural:one|other}", {"n": count}))
+
+    def python(template, values):
+        try:
+            return render_text(template, values)
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    browser = _browser(tmp_path, cases)["rendered"]
+    parted = [(t, v, py, js) for (t, v), js in zip(cases, browser, strict=True)
+              if (py := python(t, v)) != js]
+    assert not parted, f"{len(parted)} of {len(cases)} differ, e.g. {parted[:8]}"
 
 
 # ----------------------------------------------------- the configuration defaults

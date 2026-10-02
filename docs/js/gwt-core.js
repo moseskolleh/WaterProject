@@ -1664,56 +1664,89 @@
    * compared against the Python output character for character, so the
    * thousands separators and the %g fallback have to match exactly. */
 
-  /* Python's round(): half goes to even, not away from zero. It governs the
-   * water-zone bounds and every fmt_num, so the two implementations disagree
-   * on exact halves unless this is used. */
+  /* |x| * 10^d rounded half to even, worked out exactly, as a BigInt. x is
+   * m * 2^k with m and k read from its bits, so nothing is rounded before
+   * the one rounding asked for, which is how Python rounds. The decimal
+   * text JavaScript offers is itself rounded, and a tail it shows as a tie
+   * need not be one: 1.05 is 1.0500000000000000444, which Python rounds to
+   * 1.1, but to seventeen digits it reads 1.0500000000000000, and half to
+   * even on that made it 1.0 here - and 0.155, just under its tie, 0.16. */
+  function exactScaledRound(x, d) {
+    var view = new DataView(new ArrayBuffer(8));
+    view.setFloat64(0, Math.abs(x));
+    var hi = view.getUint32(0), lo = view.getUint32(4);
+    var biased = (hi >>> 20) & 0x7ff;
+    var m = BigInt(hi & 0xfffff) * BigInt(4294967296) + BigInt(lo);
+    var k = -1074;                            // a subnormal
+    if (biased) { m += BigInt(4503599627370496); k = biased - 1075; }
+    var num = m, den = BigInt(1), fives = BigInt(1);
+    for (var i = 0; i < Math.abs(d); i++) fives *= BigInt(5);
+    if (d >= 0) num *= fives; else den *= fives;
+    if (k + d >= 0) num <<= BigInt(k + d); else den <<= BigInt(-(k + d));
+    var q = num / den;
+    var twice = (num - q * den) * BigInt(2);
+    if (twice > den || (twice === den && q % BigInt(2) === BigInt(1))) q += BigInt(1);
+    return q;
+  }
+
+  /* |x| rounded exactly to d decimal places (d < 0 rounds to tens,
+   * hundreds...), as decimal text. */
+  function exactFixedText(x, d) {
+    var digits = exactScaledRound(x, d).toString();
+    if (d <= 0) return digits === '0' ? '0' : digits + '0'.repeat(-d);
+    while (digits.length <= d) digits = '0' + digits;
+    return digits.slice(0, -d) + '.' + digits.slice(-d);
+  }
+
   /* Python's "%.Nf": correctly rounded with half-to-even on the exact binary
    * value. Number.prototype.toFixed rounds a tie away from zero instead, so
    * a cost of exactly $150.5/m printed as $151 here and $150 in the package,
-   * and the difference reached the downloadable site brief. */
+   * and the difference reached the downloadable site brief. It is written
+   * from the exact value, as Python writes it, so it agrees where toFixed
+   * cannot too: "-0" for a negative that rounds to nothing, every digit of
+   * a number from 1e21 up, and nan and inf. */
   function pyFixed(x, digits) {
     var d = digits || 0;
-    return pyRound(Number(x), d).toFixed(d);
+    var v = Number(x);
+    if (v !== v) return 'nan';
+    if (!isFinite(v)) return v > 0 ? 'inf' : '-inf';
+    var sign = v < 0 || Object.is(v, -0) ? '-' : '';
+    /* Within fifteen digits the rounded double prints back as exactly the
+     * decimal it was rounded to, and that is three times quicker. */
+    if (d <= 15 && Math.abs(v) < 1e15 / Math.pow(10, d)) {
+      return sign + Math.abs(pyRound(v, d)).toFixed(d);
+    }
+    return sign + exactFixedText(v, d);
   }
 
+  /* Python's round(): half goes to even, not away from zero. It governs the
+   * water-zone bounds and every fmt_num, so the two implementations disagree
+   * on exact halves unless this is used. */
   function pyRound(x, digits) {
     var d = digits || 0;
     if (!isFinite(x)) return x;
-    /* round(12345, -2) is 12300 in Python. The decimal-string path below
-     * cuts inside the fraction, which a negative cut has none of, so the
-     * scale is taken out first and put back after. */
-    if (d < 0) {
-      var scale = Math.pow(10, -d);
-      return pyRound(x / scale, 0) * scale;
-    }
-    /* The tie test has to run on the real value, not on x * 10^d: 14.05 is
-     * stored as 14.05000000000000071, which Python rounds up, but 14.05 * 10
-     * is exactly 140.5 in binary and looked like a tie, so banker's rounding
-     * turned it into 14.0. toPrecision(17) round-trips the double exactly,
-     * so the decimal digits below the cut say whether it is really a tie. */
-    var f = Math.pow(10, d);
+    /* The usual case is decided on the decimal expansion, which is quick:
+     * seventeen significant digits identify a double, and a tail below the
+     * cut that does not read as 5 followed by zeros says which way the real
+     * value lies, since the real value is within half a unit of the last
+     * of those digits. A tail that reads as a tie, a cut too deep for the
+     * kept digits to stay an exact integer, a negative cut and a number
+     * written with an exponent are rounded on the exact value instead, and
+     * read back from the decimal text, as Python reads it back. */
     var text = Math.abs(x).toPrecision(17);
-    var r;
-    if (text.indexOf('e') < 0) {
-      /* Work entirely in the decimal expansion so the cut and the tie test
-       * agree: seventeen significant digits identify a double uniquely, and
-       * a genuine tie terminates in a 5 followed by zeros. */
+    if (d >= 0 && d <= 22 && text.indexOf('e') < 0) {
       var dot = text.indexOf('.');
       var whole = dot < 0 ? text : text.slice(0, dot);
       var fraction = dot < 0 ? '' : text.slice(dot + 1);
       while (fraction.length < d) fraction += '0';
-      var head = Number(whole + fraction.slice(0, d));
+      var kept = whole + fraction.slice(0, d);
       var tail = fraction.slice(d);
-      if (/^50*$/.test(tail)) {
-        r = (head % 2 === 0) ? head : head + 1;      // half to even
-      } else {
-        r = (tail && tail.charAt(0) >= '5') ? head + 1 : head;
+      if (kept.length <= 15 && !/^50*$/.test(tail)) {
+        var r = Number(kept) + ((tail && tail.charAt(0) >= '5') ? 1 : 0);
+        return (x < 0 ? -r : r) / Math.pow(10, d);
       }
-    } else {
-      var v = Math.abs(x) * f;
-      r = Math.abs(v - Math.trunc(v)) === 0.5 ? 2 * Math.round(v / 2) : Math.round(v);
     }
-    return (x < 0 ? -r : r) / f;
+    return Number((x < 0 ? '-' : '') + exactFixedText(x, d));
   }
 
   function roundSig(value, sig) {
@@ -1729,7 +1762,10 @@
    * when the exponent falls below -4 or reaches the precision. */
   function formatG(value, precision) {
     var p = precision || 6;
-    if (value === 0) return '0';
+    /* written as Python writes them, sign of a zero included */
+    if (value === 0) return Object.is(value, -0) ? '-0' : '0';
+    if (value !== value) return 'nan';
+    if (!isFinite(value)) return value > 0 ? 'inf' : '-inf';
     var rounded = roundSig(value, p);
     /* Not Math.log10: in V8 Math.log(1e6)/Math.LN10 is 5.999999999999999, so
      * the exponent came out one too low at exact powers of ten and %g chose
@@ -1737,8 +1773,10 @@
      * string carries the exponent exactly. */
     var exp = Number(Math.abs(rounded).toExponential().split('e')[1]);
     if (exp < -4 || exp >= p) {
-      var mant = rounded / Math.pow(10, exp);
-      var mstr = mant.toFixed(p - 1).replace(/0+$/, '').replace(/\.$/, '');
+      /* the mantissa's digits as toExponential writes them, rather than
+       * rounded / 10^exp, which is Infinity below 1e-308 */
+      var mstr = rounded.toExponential(p - 1).split('e')[0]
+        .replace(/0+$/, '').replace(/\.$/, '');
       return mstr + 'e' + (exp < 0 ? '-' : '+') +
         String(Math.abs(exp)).padStart(2, '0');
     }
@@ -1762,7 +1800,7 @@
     var v = roundSig(value, sig === undefined ? 3 : sig);
     var text;
     if (Math.abs(v - Math.round(v)) < 1e-9 && Math.abs(v) < 1e15) {
-      text = pyRound(v).toLocaleString('en-US');
+      text = (pyRound(v) || 0).toLocaleString('en-US');      // an int: never -0
     } else {
       text = formatG(v);
     }

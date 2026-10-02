@@ -35,6 +35,7 @@ with a hole in it.
 from __future__ import annotations
 
 import functools
+import math
 import numbers
 import re
 from importlib import resources
@@ -64,7 +65,10 @@ def _format(name: str, spec: str | None, value) -> str:
             )
         return value
     if spec.startswith("plural:"):
-        if isinstance(value, bool) or not isinstance(value, numbers.Integral):
+        # a whole number, whatever its type: JavaScript cannot tell 2.0 from
+        # 2, so a count of 2.0 is refused by neither engine
+        if (isinstance(value, bool) or not isinstance(value, numbers.Real)
+                or not math.isfinite(value) or value != int(value)):
             raise TypeError(f"text: {{{name}:plural:...}} takes a whole count")
         one, other = spec[len("plural:"):].split("|")
         return one if value == 1 else other
