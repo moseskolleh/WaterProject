@@ -748,9 +748,21 @@ def _inversion_cache_now() -> dict:
     return entries
 
 
+#: Buttons whose keys start with a prefix the project file saves. Between
+#: clicks a button holds False in session state, so a project saved while
+#: its page was drawn carried it, and Streamlit refuses a button's value set
+#: through session state: loading that file with the guided start on screen
+#: took the page down. Files saved before this carry them, so they are left
+#: out on load as well as on save.
+UNSAVED_BUTTONS = frozenset({
+    "wiz_back", "wiz_next", "wiz_restart", "wiz_cost_run", "wiz_run_ves",
+})
+
+
 def project_file_bytes() -> bytes:
     """Serialize the widget state that makes up a project."""
-    session = dict(st.session_state)
+    session = {key: value for key, value in st.session_state.items()
+               if key not in UNSAVED_BUTTONS}
     session["inversion_cache"] = _inversion_cache_now()
     return serialize_project(session, groundwater.__version__)
 
@@ -788,7 +800,8 @@ def _load_project() -> None:
     # serialize_project reads back, so the round trip has to be closed here
     asset = updates.pop("asset", None)
     for key, value in updates.items():
-        st.session_state[key] = value
+        if key not in UNSAVED_BUTTONS:
+            st.session_state[key] = value
     if isinstance(overrides, dict):
         st.session_state.rates_overrides = overrides
     if isinstance(asset, dict) and asset:

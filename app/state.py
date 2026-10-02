@@ -35,7 +35,8 @@ Results (plain state, written by a page or by the recompute on load)
 Project inputs (saved in the project file)
     Every key starting with one of ``groundwater.project_io.PERSIST_PREFIXES``
     (``meta_``, ``org_``, ``chk_``, ``rmk_``, ``cost_``, ``fx_``, ``ho_``,
-    ``wiz_``, ``q_``, ``design_``), the stored sources ``src_<role>`` (an
+    ``wiz_``, ``q_``, ``design_``) but the guided start's buttons
+    (``shared.UNSAVED_BUTTONS``), the stored sources ``src_<role>`` (an
     uploaded file's name and bytes, or a bundled sample's path),
     ``rates_overrides`` and ``ho_committee_data``.
 
@@ -48,15 +49,21 @@ Invalidation markers
     start's costing step, which may be reached many runs later.
 
 Kept uploads
-    ``upload_kept_<key>``: an uploader's file, kept while its page is not on
-    screen (see ``shared.kept_upload``). They start with ``upload_``, so a
-    project load clears them with the uploaders.
+    ``<key>_kept``: the file in the uploader keyed ``<key>``, kept while its
+    page is not on screen (see ``shared.kept_upload``). A project load
+    clears the data uploaders' (``upload_<role>_kept``) with the uploaders
+    and their ``src_`` entries; the others (an elevation model, a scan, a
+    water point export, the files pooled on the Portfolio and the registry)
+    are not part of a project and outlive a load, as their uploaders did.
 
 Carried widget values
     ``carried(key)`` below says which widget values survive while their
     page is off screen. Everything else a page draws starts again from its
     default when the page comes back, as it would in any multipage
-    Streamlit app.
+    Streamlit app. A page's inputs reach session state, and so the project
+    file, once the page has been opened: a project saved before then leaves
+    them out, where every page used to write its defaults into every file,
+    and a load draws them at those same defaults.
 
 Fragments
     A part of a page that reruns on its own (``st.fragment``) holds only

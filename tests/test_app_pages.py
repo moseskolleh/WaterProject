@@ -104,6 +104,25 @@ def test_a_fragment_holds_no_saved_input():
     assert fragments >= 4
 
 
+def test_no_button_is_saved_in_the_project_file():
+    """A button holds False between clicks, so one keyed with a saved prefix
+    went into the project file, and Streamlit refuses a button's value set
+    through session state: loading that file took the page down."""
+    from groundwater.project_io import PERSIST_PREFIXES
+
+    import shared
+
+    buttons = set()
+    for path in _app_sources():
+        for name, call in _calls(ast.parse(path.read_text()),
+                                 {"button", "download_button", "form_submit_button"}):
+            key = _key_of(name, call)
+            if key is not None and key.startswith(PERSIST_PREFIXES):
+                buttons.add(key)
+    assert buttons, "the guided start's buttons are keyed wiz_"
+    assert buttons == set(shared.UNSAVED_BUTTONS)
+
+
 slow = pytest.mark.slow
 streamlit = pytest.importorskip("streamlit")
 
@@ -224,3 +243,34 @@ def test_the_design_follows_a_pumping_test_loaded_after_it(sample_data):
     goto(at, "Borehole design")
     assert at.session_state["borehole_design"].pump_intake_m == pytest.approx(
         design.pump_intake_m)
+
+
+@slow
+def test_a_project_saved_on_the_guided_start_loads_there(sample_data):
+    """Files saved before the buttons were left out carry wiz_next: false.
+    Loading one with the guided start on screen raised Streamlit's refusal
+    of a button value set through session state; it is now left out."""
+    import groundwater
+    from groundwater.project_io import serialize_project
+
+    at = AppTest.from_file(APP_FILE, default_timeout=600)
+    at.session_state["nav"] = "Guided start"
+    at.run()
+    at.text_input(key="meta_community").set_value("Kuntolo")
+    at.run()
+    # what Save project wrote from this page before: the inputs, and the
+    # button's False with them
+    assert at.session_state["wiz_next"] is False
+    saved = serialize_project({"meta_community": "Kuntolo", "wiz_step": 0,
+                               "wiz_next": at.session_state["wiz_next"]},
+                              groundwater.__version__)
+    assert b"wiz_next: false" in saved
+
+    at.file_uploader(key="project_upload").set_value(
+        ("kuntolo_project.yaml", saved, "application/x-yaml"))
+    at.run()
+    at.button(key="project_load").click()
+    at.run()
+    assert not at.exception, at.exception
+    assert any("Project loaded" in str(s.value) for s in at.success)
+    assert at.session_state["meta_community"] == "Kuntolo"
