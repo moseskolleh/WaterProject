@@ -2306,9 +2306,17 @@
 
   /* Least squares fit of the Theis well function s = Q/(4 pi T) W(u),
    * u = r^2 S / (4 T t), in log parameter space so T and S stay positive.
-   * Levenberg-Marquardt stands in for scipy's curve_fit. */
+   * Levenberg-Marquardt stands in for scipy's curve_fit.
+   *
+   * A drawdown that does not grow with log time is refused, at the slope
+   * cooperJacob refuses: on a flat record the least squares has no minimum,
+   * T runs off towards infinity and S towards zero, and the transmissivity
+   * reported is wherever the optimiser stopped - 1282 m2/day here and 2190
+   * in the Python package for the same sheet, both adopted at established
+   * confidence. */
   function theisFit(timeMin, drawdownM, dischargeM3PerH, options) {
     var opts = options || {};
+    var cfg = opts.config || defaultConfig().pumping;
     requireDischarge(dischargeM3PerH);
     var radiusM = opts.radiusM || 0.1;
     var t = [], s = [], i;
@@ -2319,6 +2327,15 @@
       if (td > 0 && drawdownM[i] > 0) { t.push(td); s.push(drawdownM[i]); }
     }
     if (t.length < 5) throw new Error('Not enough readings for a Theis fit');
+    var logTime = t.map(function (v) { return Math.log10(v); });
+    /* the slope itself is not printed: on a flat record it is a few parts in
+     * 1e17 either side of zero, and its sign is noise */
+    if (lineFit(logTime, s).slope < cfg.cooper_jacob_min_slope_m) {
+      throw new Error('The drawdown grows by less than ' +
+        formatG(cfg.cooper_jacob_min_slope_m) + ' m per log cycle of time across ' +
+        'the readings, so it does not follow the Theis curve and T and S ' +
+        'cannot be fitted');
+    }
     var qDay = dischargeM3PerH * 24.0;
 
     function model(tt, logT, logS) {
@@ -3336,6 +3353,7 @@
           analysis.theis = theisFit(t0, s0, q0, {
             observationWell: observationRadiusM !== null && observationRadiusM !== undefined,
             radiusM: observationRadiusM || 0.1,
+            config: cfg,
           });
         } catch (e2) {
           if (keepAny) {

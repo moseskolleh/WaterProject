@@ -485,12 +485,21 @@ def theis_fit(
     discharge_m3_per_h: float,
     radius_m: float = 0.1,
     observation_well: bool = False,
+    config: PumpingConfig | None = None,
 ) -> TheisResult:
     """Least squares fit of the Theis well function.
 
     ``s = Q / (4 pi T) W(u)``, ``u = r^2 S / (4 T t)``. Fitting is done
     in log parameter space to keep T and S positive.
+
+    A drawdown that does not grow with log time is refused, with the slope
+    ``cooper_jacob`` refuses: on a flat record the least squares has no
+    minimum, T runs off towards infinity and S towards zero, and the
+    transmissivity reported is wherever the optimiser stopped. That was a
+    storativity of 1e-316 beside thousands of m2/day adopted at established
+    confidence, and a different number in each engine.
     """
+    config = config or PumpingConfig()
     _require_discharge(discharge_m3_per_h)
     t = np.asarray(time_min, dtype=float) / MIN_PER_DAY
     s = np.asarray(drawdown_m, dtype=float)
@@ -498,6 +507,16 @@ def theis_fit(
     t, s = t[keep], s[keep]
     if len(t) < 5:
         raise ValueError("Not enough readings for a Theis fit")
+    slope = _line_fit(np.log10(t), s)[0]
+    if slope < config.cooper_jacob_min_slope_m:
+        # The slope itself is not printed: on a flat record it is a few
+        # parts in 1e17 either side of zero, and its sign is noise.
+        raise ValueError(
+            "The drawdown grows by less than "
+            f"{config.cooper_jacob_min_slope_m:g} m per log cycle of time across "
+            "the readings, so it does not follow the Theis curve and T and S "
+            "cannot be fitted"
+        )
     q_day = discharge_m3_per_h * 24.0
 
     def model(tt, logT, logS):
@@ -1276,6 +1295,7 @@ def analyse_pumping_test(
                     t[keep], s[keep], q,
                     observation_well=observation_radius_m is not None,
                     radius_m=observation_radius_m or 0.1,
+                    config=config,
                 )
             except (ValueError, RuntimeError) as exc:
                 if keep.any():
