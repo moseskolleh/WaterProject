@@ -676,6 +676,15 @@ def hantush_bierschenk(
     s = np.asarray(step_end_drawdowns_m, dtype=float)
     if len(q) < 2:
         raise ValueError("A step test needs at least two steps with discharge")
+    # Steps pumped at one rate put every point of s/Q against Q on one
+    # vertical line, which any B and C fit: lstsq returned its minimum-norm
+    # split and the browser all aquifer loss, and both reported efficiencies.
+    if len(np.unique(q)) < 2:
+        raise ValueError(
+            f"Every step was pumped at {step_discharges_m3_per_h[0]:g} m3/h, so the "
+            "aquifer and well losses cannot be told apart; a step test needs "
+            "steps at different discharges"
+        )
     sq = s / q
     C, B, r2 = _line_fit(q, sq)
     fit_note = ""

@@ -2478,6 +2478,15 @@
     if (q.length < 2) {
       throw new Error('A step test needs at least two steps with discharge');
     }
+    /* Steps pumped at one rate put every point of s/Q against Q on one
+     * vertical line, which any B and C fit: this fit returned all aquifer
+     * loss and numpy's lstsq its minimum-norm split, and both reported
+     * efficiencies. */
+    if (q.every(function (v) { return v === q[0]; })) {
+      throw new Error('Every step was pumped at ' + formatG(stepDischargesM3PerH[0]) +
+        ' m3/h, so the aquifer and well losses cannot be told apart; a step ' +
+        'test needs steps at different discharges');
+    }
     var sq = s.map(function (v, i) { return v / q[i]; });
     var fit = lineFit(q, sq);
     var C = fit.slope, B = fit.intercept, r2 = fit.r2;
