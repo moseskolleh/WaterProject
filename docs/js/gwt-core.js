@@ -9845,8 +9845,8 @@
       }));
       if (maxWl > test.borehole_depth_m) {
         flags.push({ level: 'warning', code: 'level_below_borehole',
-          message: 'Recorded water level ' + maxWl.toFixed(2) + ' m exceeds the ' +
-            'stated borehole depth ' + test.borehole_depth_m.toFixed(0) +
+          message: 'Recorded water level ' + pyFixed(maxWl, 2) + ' m exceeds the ' +
+            'stated borehole depth ' + pyFixed(test.borehole_depth_m, 0) +
             ' m; check the sheet.' });
       }
     }
@@ -9859,7 +9859,7 @@
       }));
       if (maxWlPump > test.pump_setting_m) {
         flags.push({ level: 'warning', code: 'level_below_pump',
-          message: 'Recorded water level ' + maxWlPump.toFixed(2) + ' m is below ' +
+          message: 'Recorded water level ' + pyFixed(maxWlPump, 2) + ' m is below ' +
             'the pump intake at ' + pyFixed(test.pump_setting_m, 0) + ' m. A pump ' +
             'cannot draw the level below its own intake, so the pump setting, ' +
             'the levels or the datum on the sheet is wrong; the drawdown ' +
