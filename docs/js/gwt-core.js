@@ -7549,10 +7549,34 @@
     return String(value).replace(/\s+/g, ' ').trim();
   }
 
+  /* Python's str() of the datetime openpyxl hands back for a date cell,
+   * which is what clean_text makes of one: "2015-12-08 13:45:00". The time
+   * of day used to be written as 00:00:00 whatever the cell held. */
   function formatIsoDate(d) {
-    return d.getUTCFullYear() + '-' +
-      String(d.getUTCMonth() + 1).padStart(2, '0') + '-' +
-      String(d.getUTCDate()).padStart(2, '0') + ' 00:00:00';
+    return cellDay(d) + ' ' + cellClock(d) + ':' + twoDigits(d.getUTCSeconds());
+  }
+
+  function twoDigits(n) { return String(n).padStart(2, '0'); }
+
+  function cellDay(d) {
+    return d.getUTCFullYear() + '-' + twoDigits(d.getUTCMonth() + 1) + '-' +
+      twoDigits(d.getUTCDate());
+  }
+
+  function cellClock(d) {
+    return twoDigits(d.getUTCHours()) + ':' + twoDigits(d.getUTCMinutes());
+  }
+
+  /* ingestion/common.py _date_text: a date cell in a header block as
+   * "2015-12-08", and as "2015-12-08 13:45" when it carries a time. The
+   * Python reader stopped printing the midnight on the report cover; this
+   * reader went on writing "2015-12-08 00:00:00" for the same cell. */
+  function headerDateText(value) {
+    if (!(value instanceof Date)) return value;
+    if (value.getUTCHours() || value.getUTCMinutes() || value.getUTCSeconds()) {
+      return cellDay(value) + ' ' + cellClock(value);
+    }
+    return cellDay(value);
   }
 
   var NUMBER_RE = /[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?/;
@@ -7795,7 +7819,7 @@
           if (number === null) number = parseNumber(value);
           if (number !== null) { fields[key] = number; priorities[key] = priority; }
         } else {
-          fields[key] = cleanText(value);
+          fields[key] = cleanText(headerDateText(value));
           priorities[key] = priority;
         }
       }

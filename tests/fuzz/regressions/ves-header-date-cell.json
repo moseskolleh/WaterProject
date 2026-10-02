@@ -1,0 +1,90 @@
+{
+ "note": "Found on 2026-10-02. A Date cell typed as an Excel date: the Python reader wrote '2010-01-01' and the browser '2010-01-01 00:00:00' on the site and the report cover. The Python reader had been changed to print a date cell as an ISO date (and with its clock when it has one); the browser's header reader had not, and now does.",
+ "first_divergence": [
+  "soundings[0].site.date",
+  "2010-01-01 00:00:00",
+  "2010-01-01"
+ ],
+ "kind": "ves",
+ "options": {},
+ "sheets": [
+  {
+   "name": "VES 1",
+   "rows": [
+    [
+     "SCHLUMBERGER ARRAY VES FIELD DATA",
+     null,
+     null,
+     null
+    ],
+    [
+     "Community: Rokel",
+     null,
+     "District: Port Loko",
+     null
+    ],
+    [
+     "Date",
+     {
+      "date": "2010-01-01T00:00:00"
+     },
+     "Sounding Number: VES 1",
+     null
+    ],
+    [
+     "Array: Wenner",
+     null,
+     "Instrument: Syscal Junior",
+     null
+    ],
+    [
+     null,
+     null,
+     null,
+     null
+    ],
+    [
+     "No.",
+     "AB/2 (m)",
+     "MN (m)",
+     "R (ohm)"
+    ],
+    [
+     null,
+     null,
+     null,
+     null
+    ],
+    [
+     1,
+     "2.2",
+     "1.5",
+     0.53052
+    ],
+    [
+     null,
+     null,
+     null,
+     null
+    ],
+    [
+     2,
+     "2.2",
+     "1.5",
+     0.53052
+    ]
+   ]
+  },
+  {
+   "name": "Summary",
+   "rows": [
+    [
+     "Summary of soundings"
+    ],
+    [
+     "see sheets"
+    ]
+   ]
+  }
+ ]
+}

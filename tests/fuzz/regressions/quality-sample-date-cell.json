@@ -1,0 +1,67 @@
+{
+ "note": "Found on 2026-10-02. A laboratory sheet's Sample date typed as an Excel date: '2010-01-01' in Python, '2010-01-01 00:00:00' in the browser, which was put right.",
+ "first_divergence": [
+  "date",
+  "2010-01-01 00:00:00",
+  "2010-01-01"
+ ],
+ "kind": "quality",
+ "options": {},
+ "sheets": [
+  {
+   "name": "Water Quality",
+   "rows": [
+    [
+     "WATER QUALITY LABORATORY RESULTS",
+     null,
+     null,
+     null
+    ],
+    [
+     "Community: Rokel",
+     null,
+     null,
+     "Client"
+    ],
+    [
+     "Sample ID: WQ-BH1-01",
+     null,
+     null,
+     "Borehole Ref. No.: BH-1"
+    ],
+    [
+     "Sample date",
+     {
+      "date": "2010-01-01T00:00:00"
+     },
+     null,
+     "Laboratory: Example Laboratory, Freetown"
+    ],
+    [
+     "District: Port Loko",
+     null,
+     null,
+     "Project: Borehole completion"
+    ],
+    [
+     null,
+     null,
+     null,
+     null
+    ],
+    [
+     "Parameter",
+     "Unit",
+     "Value",
+     "Method"
+    ],
+    [
+     "pH",
+     "pH units",
+     "<0.001",
+     null
+    ]
+   ]
+  }
+ ]
+}
