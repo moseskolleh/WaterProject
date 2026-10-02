@@ -2313,6 +2313,9 @@
     };
   }
 
+  /* analysis.py theis_fit's curve_fit(maxfev=20000) */
+  var THEIS_MAXFEV = 20000;
+
   /* Least squares fit of the Theis well function s = Q/(4 pi T) W(u),
    * u = r^2 S / (4 T t), in log parameter space so T and S stay positive.
    * Levenberg-Marquardt stands in for scipy's curve_fit.
@@ -2346,8 +2349,10 @@
         'cannot be fitted');
     }
     var qDay = dischargeM3PerH * 24.0;
+    var calls = 0;
 
     function model(tt, logT, logS) {
+      calls += 1;
       var T = Math.pow(10, logT), S = Math.pow(10, logS);
       var out = new Float64Array(tt.length);
       for (var k = 0; k < tt.length; k++) {
@@ -2374,7 +2379,17 @@
       return c;
     }
     var lam = 1e-3, cost = costOf(p);
-    for (var iter = 0; iter < 200; iter++) {
+    /* Until no step lowers the misfit, within the budget of model
+     * evaluations the Python package gives curve_fit (maxfev = 20000) and
+     * with its refusal when the budget runs out. A cap of 200 iterations
+     * used to stop this fit partway down a long valley - a Theis fit of
+     * 412 m2/day where scipy reached 430, the Cooper-Jacob value - wherever
+     * a large constant offset pushes S towards zero. */
+    for (;;) {
+      if (calls >= THEIS_MAXFEV) {
+        throw new Error('Optimal parameters not found: Number of calls to ' +
+          'function has reached maxfev = ' + THEIS_MAXFEV + '.');
+      }
       var base = model(t, p[0], p[1]);
       var J = [];
       var h0 = 1e-6 * Math.max(Math.abs(p[0]), 1);
