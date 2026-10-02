@@ -51,7 +51,7 @@
         try {
           var r = C.invertSounding(s);
           return { rho: nums(r.model.resistivities), h: nums(r.model.thicknesses),
-            err: num(r.fit_error_percent) };
+            err: num(r.fit_error_percent), converged: !!r.converged };
         } catch (e) { return failure(e); }
       });
     }

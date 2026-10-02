@@ -73,14 +73,27 @@ def workdir():
         yield Path(folder)
 
 
-def compare(engine: BrowserEngine, case: dict, workdir: Path) -> list:
-    """Every place the two engines disagree on ``case``."""
+def compare(engine: BrowserEngine, case: dict, workdir: Path,
+            skip_unconverged: bool = False) -> list:
+    """Every place the two engines disagree on ``case``.
+
+    ``skip_unconverged`` leaves out the models of an inversion neither
+    engine converged, which is the open question in
+    regressions/ves-unconverged-inversion.json: each engine reports where
+    its iteration cap left it. Whether both converged is still compared.
+    """
     data = workbook_bytes(case["sheets"])
     path = workdir / "case.xlsx"
     path.write_bytes(data)
     py = python_summary(case["kind"], path, str(path), case["options"])
     js = engine.summary(case["kind"], data, str(path), case["options"])
-    return divergences(js, py)
+    found = divergences(js, py)
+    if skip_unconverged:
+        stalled = {f"inversions[{i}]" for i, (a, b) in enumerate(
+            zip(js.get("inversions") or [], py.get("inversions") or [], strict=False))
+            if a.get("converged") is False and b.get("converged") is False}
+        found = [d for d in found if d[0].split(".")[0] not in stalled]
+    return found
 
 
 def report(found: list) -> str:
@@ -152,13 +165,13 @@ def test_regression(path, engine, workdir):
     assert not found, report(found)
 
 
-def _fuzz(engine, workdir, strategy, examples: int) -> None:
+def _fuzz(engine, workdir, strategy, examples: int, **options) -> None:
     last: dict = {}
 
     @given(strategy)
     @_settings(examples)
     def agree(case):
-        found = compare(engine, case, workdir)
+        found = compare(engine, case, workdir, **options)
         if found:
             # Hypothesis replays the shrunk case last, so this ends holding it
             last["case"], last["found"] = case, found
@@ -184,8 +197,10 @@ def test_inversions_agree(engine, workdir):
     Soundings that read one resistivity at every spacing are left out: what
     a layered inversion should say about a uniform half-space is an open
     question, recorded in regressions/ves-uniform-half-space-boundary.json,
-    and drawing it again every night would say nothing new.
+    and drawing it again every night would say nothing new. For the same
+    reason the models of an inversion neither engine converged are not
+    compared (regressions/ves-unconverged-inversion.json).
     """
     strategy = ves_case(varied=True).map(
         lambda case: {**case, "sheets": case["sheets"][:1], "options": {"invert": True}})
-    _fuzz(engine, workdir, strategy, INVERSIONS)
+    _fuzz(engine, workdir, strategy, INVERSIONS, skip_unconverged=True)
