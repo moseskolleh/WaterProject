@@ -564,6 +564,7 @@ def theis_recovery(
     pumping_duration_min: float,
     discharge_m3_per_h: float,
     equivalent_time: bool = False,
+    config: PumpingConfig | None = None,
 ) -> RecoveryResult:
     """Theis recovery analysis on residual drawdown against t/t'.
 
@@ -587,8 +588,20 @@ def theis_recovery(
         raise ValueError("Not enough recovery readings")
     ratio = (pumping_duration_min + tp) / tp
     slope, intercept, r2 = _line_fit(np.log10(ratio), sp)
-    if slope <= 0:
+    if slope < -SLOPE_ROUNDING_M:
         raise ValueError("Residual drawdown does not decrease; check the data")
+    # A recovery that has already finished is flat against log(t/t'), its
+    # slope rounding noise, and 2.303 Q / (4 pi slope) turned that into
+    # 6e16 m2/day here and 4e17 in the browser. The line is refused at the
+    # slope Cooper-Jacob and Theis refuse, for the same reason.
+    config = config or PumpingConfig()
+    if slope < config.cooper_jacob_min_slope_m:
+        raise ValueError(
+            "The residual drawdown falls by less than "
+            f"{config.cooper_jacob_min_slope_m:g} m per log cycle of t/t', which "
+            "reading resolution cannot tell from flat, so no transmissivity is "
+            "read from it"
+        )
     q_day = discharge_m3_per_h * 24.0
     T = 2.303 * q_day / (4.0 * math.pi * slope)
     start = float(np.nanmax(sp))
@@ -1376,7 +1389,7 @@ def analyse_pumping_test(
             try:
                 analysis.recovery = theis_recovery(
                     test.recovery_time_min, residual, t_pump, q_rec,
-                    equivalent_time=equivalent,
+                    equivalent_time=equivalent, config=config,
                 )
             except ValueError as exc:
                 flags.append(DataFlag("warning", "recovery_failed", str(exc)))

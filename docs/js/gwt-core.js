@@ -2456,7 +2456,8 @@
    *   s' = 2.303 Q / (4 pi T) log10(t/t')
    * with t since pumping started and t' since it stopped. */
   function theisRecovery(recoveryTimeMin, residualDrawdownM, pumpingDurationMin,
-                         dischargeM3PerH, equivalentTime) {
+                         dischargeM3PerH, equivalentTime, config) {
+    var cfg = config || defaultConfig().pumping;
     /* pumpingDurationMin is the time t/t' is formed with: after a step test
      * pass the equivalent time from equivalentPumpingTimeMin and say so. */
     requireDischarge(dischargeM3PerH);
@@ -2471,8 +2472,18 @@
       return Math.log((pumpingDurationMin + v) / v) / Math.LN10;
     });
     var fit = lineFit(x, sp);
-    if (fit.slope <= 0) {
+    if (fit.slope < -SLOPE_ROUNDING_M) {
       throw new Error('Residual drawdown does not decrease; check the data');
+    }
+    /* A recovery that has already finished is flat against log(t/t'), its
+     * slope rounding noise, and 2.303 Q / (4 pi slope) turned that into 4e17
+     * m2/day here and 6e16 in the Python package. The line is refused at the
+     * slope Cooper-Jacob and Theis refuse, for the same reason. */
+    if (fit.slope < cfg.cooper_jacob_min_slope_m) {
+      throw new Error('The residual drawdown falls by less than ' +
+        formatG(cfg.cooper_jacob_min_slope_m) + " m per log cycle of t/t', which " +
+        'reading resolution cannot tell from flat, so no transmissivity is ' +
+        'read from it');
     }
     var qDay = dischargeM3PerH * 24.0;
     var start = arrMax(sp);
@@ -3461,7 +3472,7 @@
       if (qRec !== null && tPump) {
         try {
           analysis.recovery = theisRecovery(test.recovery_time_min, residual,
-            tPump, qRec, equivalent);
+            tPump, qRec, equivalent, cfg);
         } catch (e3) {
           flags.push({ level: 'warning', code: 'recovery_failed', message: e3.message });
         }
