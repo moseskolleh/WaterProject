@@ -26,6 +26,7 @@
   GWT.bundles = Object.assign(GWT.bundles || {}, {
     charts: 'gwt-charts.js', geolibre: 'gwt-geolibre.js',
     imageSlot: 'image-slot.js', docx: 'gwt-docx.js',
+    vesCopilot: 'gwt-ves-copilot.js',
   });
 
   /* What a working page draws with: the map layers, the figures, the map
@@ -65,6 +66,7 @@
     ]],
     ['Investigation', [
       ['ves', 'Geophysics (VES)'],
+      ['vescopilot', 'VES co-pilot'],
       ['design', 'Borehole design'],
       ['spine', 'Depth Spine'],
       ['extract', 'Scanned sheets'],
@@ -4514,6 +4516,11 @@
     },
   };
 
+  /* PLAN.md step 2.2: the sounding checked at the peg, in gwt-ves-copilot.js */
+  PAGES.vescopilot = function () {
+    return GWT.vesCopilot.page();
+  };
+
   PAGES.templates = function () {
     return [
       pageHead('Templates', 'Blank workbooks in exactly the layout the readers ' +
@@ -6749,7 +6756,12 @@
     extract: true, settings: true, about: true };
   var DRAWS_WITH_DOCX = { procurement: true, quality: true };
 
+  /* A page that is a module of its own, with what it draws with: the VES
+   * co-pilot draws one figure and no map. */
+  var OWN_BUNDLES = { vescopilot: ['charts', 'vesCopilot'] };
+
   function bundlesFor(key) {
+    if (OWN_BUNDLES[key]) return OWN_BUNDLES[key];
     if (FIRST_SCREEN[key]) return [];
     return DRAWS_WITH_DOCX[key] ? REPORT_BUNDLES : VIEW_BUNDLES;
   }

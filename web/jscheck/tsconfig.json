@@ -32,6 +32,7 @@
     "../../docs/js/gwt-charts.js",
     "../../docs/js/gwt-geolibre.js",
     "../../docs/js/image-slot.js",
-    "../../docs/js/gwt-docx.js"
+    "../../docs/js/gwt-docx.js",
+    "../../docs/js/gwt-ves-copilot.js"
   ]
 }
