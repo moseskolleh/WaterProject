@@ -891,6 +891,21 @@
     return state;
   }
 
+  /* A field test in progress lives in the session - the VES co-pilot's
+   * under vesCopilot - and opening a project or a sample must not be what
+   * ends it: readings taken at the peg cannot be taken again once the line
+   * is rolled up. The one on this device is carried into the project opened,
+   * even over one the project file brings, since the file is still on disk
+   * and the sounding here is not. Only "Reset everything" clears it. */
+  var FIELD_SESSIONS = ['vesCopilot'];
+
+  function keepFieldSessions(next) {
+    FIELD_SESSIONS.forEach(function (key) {
+      if (store.state[key]) next[key] = store.state[key];
+    });
+    return next;
+  }
+
   async function openProject() {
     var file = await S.pickFile('.json,.gwt,application/json');
     if (!file) return;
@@ -915,7 +930,7 @@
      * tab is untouched - it belongs to this browser, not to the file. */
     if (state.extraction) delete state.extraction.apiKey;
     stopInversionsForNewProject();
-    store.replace(migrateLoadedState(Object.assign(blankState(), state)));
+    store.replace(keepFieldSessions(migrateLoadedState(Object.assign(blankState(), state))));
     applyTheme();
     inversionsStopped = false;
     /* any inversion still needed is started in here, before the page is
@@ -958,7 +973,7 @@
       };
     });
     stopInversionsForNewProject();
-    store.replace(fresh);
+    store.replace(keepFieldSessions(fresh));
     inversionsStopped = false;
     await recompute();
     renderChrome();
@@ -6756,12 +6771,12 @@
     extract: true, settings: true, about: true };
   var DRAWS_WITH_DOCX = { procurement: true, quality: true };
 
-  /* A page that is a module of its own, with what it draws with: the VES
-   * co-pilot draws one figure and no map. */
-  var OWN_BUNDLES = { vescopilot: ['charts', 'vesCopilot'] };
+  /* A page that is a module of its own, fetched with what it draws with: the
+   * VES co-pilot draws one figure and no map. */
+  var MODULE_PAGES = { vescopilot: ['charts', 'vesCopilot'] };
 
   function bundlesFor(key) {
-    if (OWN_BUNDLES[key]) return OWN_BUNDLES[key];
+    if (MODULE_PAGES[key]) return MODULE_PAGES[key];
     if (FIRST_SCREEN[key]) return [];
     return DRAWS_WITH_DOCX[key] ? REPORT_BUNDLES : VIEW_BUNDLES;
   }
@@ -6781,6 +6796,8 @@
     var host = $('#page-host');
     var key = Object.prototype.hasOwnProperty.call(PAGES, store.get('nav'))
       ? store.get('nav') : 'overview';
+    /* the co-pilot's preview fit is stopped once its page is left */
+    if (key !== 'vescopilot' && GWT.vesCopilot) GWT.vesCopilot.leave();
     var wanted = bundlesFor(key);
     if (!hasBundles(wanted)) {
       S.clear(host);

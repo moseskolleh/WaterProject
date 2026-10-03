@@ -22,9 +22,11 @@
  *
  * The browser app only; the Streamlit app says so on its Geophysics page.
  * The session is a field of the project state, so it is kept in IndexedDB
- * with the rest of the project and survives a reload. Nothing here touches
- * the DOM at load time: a Node sandbox can load this file beside support.js
- * and gwt-core.js and write the workbook (tests/test_ves_copilot.py).
+ * with the rest of the project and survives a reload; opening another
+ * project or a sample carries it over (FIELD_SESSIONS in gwt-app.js).
+ * Nothing here touches the DOM at load time: a Node sandbox can load this
+ * file beside support.js and gwt-core.js and write the workbook
+ * (tests/test_ves_copilot.py).
  */
 (function (global) {
   'use strict';
@@ -66,6 +68,19 @@
    * the instrument's manual and the noise on the day. */
   var DEFAULT_MIN_POTENTIAL_MV = 1.0;
 
+  /* How far above the 45-degree line a reading may sit, as a fraction of the
+   * resistivity, before the rise is called one no layered earth makes. Over
+   * a resistive basement the curve climbs at close to 45 degrees for decades
+   * of AB/2, so a bound with no margin calls every second good reading there
+   * an error. Two things lift a good reading over the line: the finite MN,
+   * which at a fixed MN puts the first spacings of a segment up to about 1
+   * percent above it (forward_schlumberger_finite_mn through the proposed
+   * plan, two-layer ground with a basement up to 10^4 times the cover), and
+   * the reading's own scatter, a few percent each way on a working day. Ten
+   * percent covers both, and a misread range or a slipped peg, a factor of
+   * two or ten, is far beyond it. */
+  var STEEP_RISE_ALLOWANCE = 0.10;
+
   /* The preview inversion waits for this many readings, and for this long
    * after the last change, so a reading typed in quickly after another does
    * not start a fit that is thrown away at once. */
@@ -93,13 +108,17 @@
    * @param {any} [cfg]
    */
   function propose(targetDepth, cfg) {
+    var ves = (cfg || C.defaultConfig()).ves;
     var factor = doiFactor(cfg);
-    var needed = targetDepth / factor;
-    var capped = needed > AB2_SERIES[AB2_SERIES.length - 1];
+    /* the engine's own C.depthOfInvestigation decides, not target / factor:
+     * a factor that is not a power of two divides with a rounding error, and
+     * 30 / 0.3 = 100.00000000000001 would have asked for the next spacing */
+    var reaches = function (ab2) { return C.depthOfInvestigation(ab2, ves) >= targetDepth; };
+    var capped = !reaches(AB2_SERIES[AB2_SERIES.length - 1]);
     var series = [];
     for (var i = 0; i < AB2_SERIES.length; i++) {
       series.push(AB2_SERIES[i]);
-      if (AB2_SERIES[i] >= needed) break;
+      if (reaches(AB2_SERIES[i])) break;
     }
     var widest = function (ab2) {
       var best = null;
@@ -121,7 +140,7 @@
     var maxAb2 = series[series.length - 1];
     return {
       target_m: targetDepth, factor: factor, max_ab2: maxAb2,
-      investigation_m: C.depthOfInvestigation(maxAb2, (cfg || C.defaultConfig()).ves),
+      investigation_m: C.depthOfInvestigation(maxAb2, ves),
       line_m: 2 * maxAb2, capped: capped, steps: steps,
     };
   }
@@ -189,9 +208,10 @@
       var before = readings.slice(0, n);
       var checks = [];
 
-      /* 1. A rise steeper than 45 degrees. On log-log axes the slope of the
-       * Schlumberger apparent resistivity against AB/2 cannot exceed 1 over
-       * a horizontally layered earth: the steepest rise it allows is the
+      /* 1. A rise steeper than 45 degrees, by more than the allowance above.
+       * On log-log axes the slope of the Schlumberger apparent resistivity
+       * against AB/2 cannot exceed 1 over a horizontally layered earth (with
+       * MN vanishingly small): the steepest rise it allows is the
        * ascending branch over an insulating basement, which tends to
        * rho_a = (AB/2) / S, S the conductance of the cover, a line of slope
        * exactly 1 (Koefoed 1979, Geosounding Principles 1; Zohdy, Eaton
@@ -206,18 +226,19 @@
       before.forEach(function (p) {
         if (sameSpacing(p.mn, r.mn) && p.ab2 < r.ab2 && (!prev || p.ab2 >= prev.ab2)) prev = p;
       });
-      if (prev && prev.rho > 0 && r.rho > 0) {
+      if (prev && prev.rho > 0 && r.rho > 0 &&
+          r.rho / prev.rho > (r.ab2 / prev.ab2) * (1 + STEEP_RISE_ALLOWANCE)) {
         var slope = Math.log(r.rho / prev.rho) / Math.log(r.ab2 / prev.ab2);
-        if (slope > 1) {
-          checks.push({ code: 'steep_rise', level: 'remeasure',
-            message: 'Re-measure now: from AB/2 ' + C.formatG(prev.ab2) + ' m to ' +
-              C.formatG(r.ab2) + ' m the curve rises at a slope of ' +
-              C.pyFixed(slope, 2) + ' on log-log axes, steeper than the 45 degrees ' +
-              'no layered ground can produce. Check the spacings pegged, the ' +
-              'current-electrode contact and the potential read, then take ' +
-              'this reading again; if it repeats, re-read AB/2 ' +
-              C.formatG(prev.ab2) + ' m as well.' });
-        }
+        checks.push({ code: 'steep_rise', level: 'remeasure',
+          message: 'Re-measure now: from AB/2 ' + C.formatG(prev.ab2) + ' m to ' +
+            C.formatG(r.ab2) + ' m the curve rises at a slope of ' +
+            C.pyFixed(slope, 2) + ' on log-log axes, steeper than the 45 degrees ' +
+            'no layered ground can produce, by more than the ' +
+            C.pyFixed(STEEP_RISE_ALLOWANCE * 100, 0) + ' percent a good reading ' +
+            'may scatter. Check the spacings pegged, the ' +
+            'current-electrode contact and the potential read, then take ' +
+            'this reading again; if it repeats, re-read AB/2 ' +
+            C.formatG(prev.ab2) + ' m as well.' });
       }
 
       /* 2. The overlap at an MN change: the engine's own test and threshold
@@ -523,6 +544,21 @@
     drawPreview();
   }
 
+  /* Another page is drawn: a preview waiting or running is stopped. The
+   * engine runs one task at a time, so a fit nobody is looking at would hold
+   * the Geophysics page's inversion up behind it. Coming back to the page
+   * starts it again from the readings. */
+  function leave() {
+    view = null;
+    if (preview.status === 'waiting' || preview.status === 'running') {
+      clearTimeout(preview.timer);
+      preview.run += 1;
+      if (GWT.engine) GWT.engine.cancel('previewInvert');
+      preview.status = 'stopped';
+      preview.key = '';
+    }
+  }
+
   function el(spec, attrs, children) { return S.el(spec, attrs, children); }
 
   function field(label, control, hint) { return S.field(label, control, hint); }
@@ -706,6 +742,9 @@
       return null;
     }
     var hasVI = S.isNum(form.v) && S.isNum(form.i);
+    /* a potential typed beside a resistivity the instrument showed is kept,
+     * and checked against the instrument's floor, like any other */
+    var hasV = S.isNum(form.v), hasI = S.isNum(form.i);
     var rho;
     if (hasVI) {
       if (!(form.i > 0)) {
@@ -713,14 +752,21 @@
         return null;
       }
       rho = rhoFromPotential(ab2, mn, Math.abs(form.v), form.i);
+      /* both typed: V and I are what was read, so they decide, but an
+       * instrument that disagrees has its own spacings set differently */
+      if (S.isNum(form.rho) && form.rho > 0 && Math.abs(form.rho / rho - 1) > 0.05) {
+        S.toast('The resistivity typed, ' + C.formatG(form.rho) + ' ohm-m, is not ' +
+          'K x V / I = ' + C.formatG(Math.round(rho * 1000) / 1000) + ' ohm-m; the ' +
+          'second is kept. Check the AB/2 and MN set on the instrument.', 'warn');
+      }
     } else if (S.isNum(form.rho) && form.rho > 0) {
       rho = Number(form.rho);
     } else {
       S.toast('Enter V and I, or the apparent resistivity.', 'error');
       return null;
     }
-    var reading = { ab2: ab2, mn: mn, v_mV: hasVI ? Number(form.v) : null,
-      i_mA: hasVI ? Number(form.i) : null,
+    var reading = { ab2: ab2, mn: mn, v_mV: hasV ? Number(form.v) : null,
+      i_mA: hasI ? Number(form.i) : null,
       rho: Math.round(rho * 1000) / 1000,
       at: (now || new Date()).toISOString() };
     var session = load();
@@ -1017,7 +1063,7 @@
     propose: propose, planText: planText, parsePlan: parsePlan,
     rhoFromPotential: rhoFromPotential, review: review, nextStep: nextStep,
     sounding: sounding, workbookSheets: workbookSheets, blankSession: blankSession,
-    page: page, addReading: addReading, cancelPreview: cancelPreview,
+    page: page, leave: leave, addReading: addReading, cancelPreview: cancelPreview,
     runPreview: function () { return runPreview(load()); },
     preview: function () { return preview; },
     takePosition: takePosition, downloadWorkbook: downloadWorkbook,

@@ -3083,6 +3083,49 @@ await withPage(async (page, base, consoleErrors) => {
       gps: beforeReload && beforeReload.gps, after: afterReload.rows,
       status: afterReload.status }));
 
+  // Leaving the page stops a preview that is waiting or running, so the
+  // engine's one queue is free for the Geophysics page; coming back starts
+  // it again. Opening a sample project keeps the sounding: readings taken at
+  // the peg cannot be taken again (FIELD_SESSIONS in gwt-app.js).
+  const leaving = await page.evaluate(async () => {
+    const V = window.GWT.vesCopilot, app = window.GWT.app;
+    const until = async (fn, ms) => {
+      const end = Date.now() + ms;
+      while (!fn()) {
+        if (Date.now() > end) return false;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      return true;
+    };
+    const fits = () => window.GWT.engine.history()
+      .filter((h) => h.type === 'previewInvert').length;
+    const out = { before: V.preview().status };
+    await app.goto('design');
+    out.left = V.preview().status;
+    const settled = fits();
+    /* longer than the debounce: a fit left waiting would have started */
+    await new Promise((r) => setTimeout(r, 2000));
+    out.stillStopped = V.preview().status === 'stopped' && fits() === settled;
+    await app.goto('vescopilot');
+    out.back = V.preview().status;
+    await app.loadSample('rokel');
+    out.kept = (app.store.get('vesCopilot').readings || []).length;
+    out.site = app.store.get('site').community || '';
+    /* the readings table's rows, each with its own Delete */
+    out.rows = Array.from(document.querySelectorAll('#page-host table.data tbody tr'))
+      .filter((tr) => Array.from(tr.querySelectorAll('button'))
+        .some((btn) => btn.textContent.trim() === 'Delete')).length;
+    out.refit = await until(() => V.preview().status === 'done', 60000);
+    return out;
+  });
+  await driveCopilot();
+  check('ves co-pilot: leaving the page stops the preview, coming back starts it again',
+    ['waiting', 'running'].includes(leaving.before) && leaving.left === 'stopped' &&
+    leaving.stillStopped && ['waiting', 'running'].includes(leaving.back) && leaving.refit,
+    JSON.stringify(leaving));
+  check('ves co-pilot: opening a sample project keeps the sounding being taken',
+    leaving.kept === 18 && leaving.rows === 18 && leaving.site !== '', JSON.stringify(leaving));
+
   // The workbook, from the download button, read by the browser's parser.
   const written = await page.evaluate(async (played) => {
     const S = window.GWT.support, C = window.GWT.core;

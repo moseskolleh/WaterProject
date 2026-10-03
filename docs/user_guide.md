@@ -72,8 +72,12 @@ log-log curve at once. Four things are checked at the peg:
 
 - **A rise steeper than 45 degrees.** Over layered ground the curve can
   climb no faster than one decade of resistivity per decade of AB/2.
-  Steeper than that is a misread potential, a peg in the wrong place, a
-  current electrode with no contact, or ground that is not layered.
+  Over a resistive basement it climbs at very nearly that, so a reading
+  is called out only when it sits more than 10 percent above the
+  45-degree line from the reading before it at the same MN: room for the
+  finite MN and a good reading's scatter. Steeper than that is a misread
+  potential, a peg in the wrong place, a current electrode with no
+  contact, or ground that is not layered.
 - **An MN change whose two readings disagree by more than 20 percent**,
   the same test and threshold the Geophysics page applies to an uploaded
   sheet. Re-read both before the current electrodes move.
@@ -101,8 +105,9 @@ the device clock and GPS fix in the header, the position also written as
 UTM, and V, I and the time of each reading beside the resistivity.
 Upload it on the Geophysics page. The readings are saved in the browser
 with the project a moment after each one is added, so a reload or a
-closed tab does not lose them; *Start a new sounding* clears them, and
-so does loading another project, so download the workbook first.
+closed tab does not lose them, and opening another project or a sample
+keeps them. *Start a new sounding* clears them, and so does *Reset
+everything* on the Settings page, so download the workbook first.
 
 ## 3. Pumping test sheet
 
