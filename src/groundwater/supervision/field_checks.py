@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -18,7 +17,7 @@ class FieldCheck:
     """The outcome of one field acceptance check."""
 
     name: str
-    passed: Optional[bool]  # None when the check is informational
+    passed: bool | None  # None when the check is informational
     measured: str
     limit: str
     message: str

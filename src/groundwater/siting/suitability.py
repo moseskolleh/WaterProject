@@ -181,8 +181,8 @@ def _rationale(interp: SiteInterpretation, comp: SuitabilityComponents) -> str:
 
 
 def tied_leaders(
-    results: list["SitingSuitability"], within_points: float = 3.0
-) -> tuple["SitingSuitability", "SitingSuitability"] | None:
+    results: list[SitingSuitability], within_points: float = 3.0
+) -> tuple[SitingSuitability, SitingSuitability] | None:
     """The two highest-ranked points when the ranking cannot separate them.
 
     One test for every place that has to know: the tie sentence, the
@@ -201,7 +201,7 @@ def tied_leaders(
     return first, second
 
 
-def ranking_tie(results: list["SitingSuitability"], within_points: float = 3.0) -> str:
+def ranking_tie(results: list[SitingSuitability], within_points: float = 3.0) -> str:
     """One sentence when the top two points cannot be told apart.
 
     Two weighted scores within a few points of each other are the same
@@ -233,7 +233,7 @@ def ranking_tie(results: list["SitingSuitability"], within_points: float = 3.0) 
     )
 
 
-def suitability_verdict(results: list["SitingSuitability"], within_points: float = 3.0) -> str:
+def suitability_verdict(results: list[SitingSuitability], within_points: float = 3.0) -> str:
     """The paragraph under the suitability table: the target, or the tie.
 
     Worded once for both engines. A tie gives both points' rationale, since

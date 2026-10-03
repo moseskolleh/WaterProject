@@ -285,7 +285,7 @@ def read_csv_rows(name: str) -> list[dict]:
     annotated and why. That belongs in the repository, not in a 900 KB
     bundle the browser parses on every load, so it is dropped here.
     """
-    with open(DATA / name, "r", encoding="utf-8-sig", newline="") as fh:
+    with open(DATA / name, encoding="utf-8-sig", newline="") as fh:
         body = "".join(
             line for line in fh if not line.lstrip().startswith("#")
         )
@@ -309,7 +309,7 @@ def read_text_catalogue() -> dict:
 
 
 def read_geojson(name: str) -> dict:
-    with open(DATA / name, "r", encoding="utf-8") as fh:
+    with open(DATA / name, encoding="utf-8") as fh:
         layer = json.load(fh)
     for feature in layer.get("features", []):
         geometry = feature.get("geometry") or {}

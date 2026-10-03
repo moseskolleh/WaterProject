@@ -33,7 +33,7 @@ not a record of anything.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 __all__ = [
     "Certificate",
@@ -86,7 +86,7 @@ class Variation:
     date: str
     code: str
     quantity_delta: float = 0.0
-    rate_usd: Optional[float] = None
+    rate_usd: float | None = None
     reason: str = ""
     authorised_by: str = ""
     item: str = ""
@@ -145,7 +145,7 @@ class Contract:
     def advance_usd(self) -> float:
         return self.sum_usd * self.advance_percent / 100.0
 
-    def line(self, code: str) -> Optional[ContractLine]:
+    def line(self, code: str) -> ContractLine | None:
         for entry in self.lines:
             if entry.code == code:
                 return entry
@@ -222,7 +222,7 @@ class LineValuation:
     #: The signed rate, when a variation has repriced the line. The contract
     #: amount is valued at this rate so that a rate-only variation shows up
     #: as a variation instead of vanishing from the revised sum.
-    contract_rate_usd: Optional[float] = None
+    contract_rate_usd: float | None = None
 
     @property
     def authorised_quantity(self) -> float:
@@ -258,7 +258,7 @@ class LineValuation:
         return self.overmeasure_quantity * self.rate_usd
 
     @property
-    def percent_complete(self) -> Optional[float]:
+    def percent_complete(self) -> float | None:
         if not self.authorised_quantity:
             return None
         return self.payable_quantity / self.authorised_quantity * 100.0
@@ -445,7 +445,7 @@ class Certificate:
         return self.contract_sum_usd + self.variation_usd
 
     @property
-    def percent_complete(self) -> Optional[float]:
+    def percent_complete(self) -> float | None:
         return (self.gross_usd / self.revised_sum_usd * 100.0
                 if self.revised_sum_usd else None)
 

@@ -21,7 +21,6 @@ carries, and both degrade gracefully when parameters are missing.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 from ..models import DataFlag, WaterQualitySample
 from .standards import (
@@ -81,7 +80,7 @@ class WaterQualityIndex:
 class HealthRiskAssessment:
     hazard_index: float
     hazard_quotients: dict  # parameter -> HQ
-    cancer_risk: Optional[float]  # lifetime, arsenic
+    cancer_risk: float | None  # lifetime, arsenic
     rating: str
     flags: list[DataFlag] = field(default_factory=list)
 
@@ -98,7 +97,7 @@ def _measured(sample: WaterQualitySample) -> dict[str, float]:
     return canonical_values(sample)
 
 
-def _wqi_limit(entry: StandardEntry) -> Optional[Limit]:
+def _wqi_limit(entry: StandardEntry) -> Limit | None:
     for limit in (entry.who_health, entry.who_aesthetic, entry.sl_standard):
         if limit is not None:
             return limit
@@ -117,7 +116,7 @@ def _wqi_rating(value: float) -> str:
     return "Unsuitable for drinking"
 
 
-def compute_wqi(sample: WaterQualitySample, standards_path=None) -> Optional[WaterQualityIndex]:
+def compute_wqi(sample: WaterQualitySample, standards_path=None) -> WaterQualityIndex | None:
     """Weighted-arithmetic Water Quality Index over physico-chemical data.
 
     Returns None when fewer than three usable parameters are available.
@@ -167,7 +166,7 @@ def compute_wqi(sample: WaterQualitySample, standards_path=None) -> Optional[Wat
     )
 
 
-def assess_health_risk(sample: WaterQualitySample) -> Optional[HealthRiskAssessment]:
+def assess_health_risk(sample: WaterQualitySample) -> HealthRiskAssessment | None:
     """Non-carcinogenic Hazard Index and arsenic carcinogenic risk.
 
     Returns None when none of the scored toxicants were measured.

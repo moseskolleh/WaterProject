@@ -40,7 +40,8 @@ import os
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from collections.abc import Iterable
+from typing import Any
 
 from ._resources import bundled_text
 
@@ -617,7 +618,7 @@ REPORTS: dict[str, tuple[str, ...]] = {
 def assess_readiness(
     state: dict,
     report: str = "completion",
-    overrides: Optional[dict] = None,
+    overrides: dict | None = None,
 ) -> Readiness:
     """Judge one project against what one kind of report has to stand behind.
 

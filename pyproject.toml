@@ -117,18 +117,25 @@ select = [
     "FLY",                   # static "".join() that wants to be an f-string
     "ISC",                   # implicit string concat: catches a missing comma
     "EXE",                   # shebang and executable-bit mismatches
+    "UP",                    # syntax the 3.10 floor allows: X | None, not
+                             # Optional[X]; collections.abc, not typing
+    "SIM",                   # nested ifs and try/except/pass that say less
+                             # than they could
 ]
 
-# Not selected, deliberately, so this job could land green on the day it was
-# added rather than as 400 findings someone has to triage:
-#   UP  - 147 hits, all mechanical (mostly Optional[X] -> X | None). Worth
-#         doing, but as its own reformatting change, not buried in this one.
-#   SIM - 17 hits, each a restructure of working logic. Individually
-#         arguable; several read worse as a ternary.
-#   C4  - 12 hits, nearly all `bbox=dict(...)` keyword dicts passed to
-#         matplotlib, where dict() is the idiom every example uses.
+# Not selected, deliberately: C4 - 12 hits, nearly all `bbox=dict(...)`
+# keyword dicts passed to matplotlib, where dict() is the idiom every example
+# uses. UP and SIM were deferred the same way when this job was added and
+# then cleared in one mechanical change of their own.
 
 ignore = [
+    # An if/else that assigns one name, rewritten as a ternary. Of its eight
+    # hits the ones that read better as a ternary were rewritten; the rest are
+    # two formulas side by side (the annuity payment), a branch carrying its
+    # own comment, a nested ternary, or `a + b if c else d`, whose precedence
+    # a reader has to stop and work out. Eight noqa lines would say that less
+    # well than this.
+    "SIM108",
     # Every hit is a closure defined and called inside one iteration - cell()
     # in the ingestion grid readers, remember() in the QR mask scorer. None is
     # stored, returned or deferred, so there is no late binding to catch.

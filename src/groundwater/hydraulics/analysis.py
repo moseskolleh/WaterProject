@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field, replace
-from typing import Optional
 
 import numpy as np
 from scipy.optimize import curve_fit
@@ -95,7 +94,7 @@ class CooperJacobResult:
     transmissivity_m2_per_day: float
     slope_m_per_log_cycle: float
     intercept_t0_min: float  # time where the fitted line crosses s = 0
-    storativity: Optional[float]  # only when an observation distance is given
+    storativity: float | None  # only when an observation distance is given
     fit_window_min: tuple[float, float]
     n_points: int
     r_squared: float
@@ -160,21 +159,21 @@ class StepTestResult:
 
 @dataclass
 class YieldRecommendation:
-    specific_capacity_m3hr_per_m: Optional[float]
-    available_drawdown_m: Optional[float]
-    usable_drawdown_m: Optional[float]
-    projected_drawdown_m: Optional[float]
-    long_term_yield_m3_per_h: Optional[float]
-    safe_yield_m3_per_h: Optional[float]
+    specific_capacity_m3hr_per_m: float | None
+    available_drawdown_m: float | None
+    usable_drawdown_m: float | None
+    projected_drawdown_m: float | None
+    long_term_yield_m3_per_h: float | None
+    safe_yield_m3_per_h: float | None
     safety_factor: float
     design_period_days: float
-    pump_installation_depth_m: Optional[float]
+    pump_installation_depth_m: float | None
     basis: str  # narrative of how the recommendation was derived
     pending_reason: str = ""  # non-empty when discharge or SWL is missing
     # plausible range of the safe yield over the assumptions it rests on
     # (transmissivity, storativity, effective radius, seasonal allowance)
-    safe_yield_low_m3_per_h: Optional[float] = None
-    safe_yield_high_m3_per_h: Optional[float] = None
+    safe_yield_low_m3_per_h: float | None = None
+    safe_yield_high_m3_per_h: float | None = None
     envelope_basis: str = ""
     # "established" or "indicative", with the reasons in the reader's words:
     # a short test, a test inside its casing-storage period, a transmissivity
@@ -188,7 +187,7 @@ class YieldRecommendation:
     # how the pump intake depth was arrived at, and the deepest level the test
     # itself reached
     pump_depth_basis: str = ""
-    deepest_pumping_level_m: Optional[float] = None
+    deepest_pumping_level_m: float | None = None
 
     @property
     def is_indicative(self) -> bool:
@@ -232,13 +231,13 @@ class YieldRecommendation:
 @dataclass
 class PumpingTestAnalysis:
     test: PumpingTest
-    cooper_jacob: Optional[CooperJacobResult] = None
-    theis: Optional[TheisResult] = None
-    recovery: Optional[RecoveryResult] = None
-    step_test: Optional[StepTestResult] = None
-    yield_recommendation: Optional[YieldRecommendation] = None
-    stabilised_level_m: Optional[float] = None
-    max_drawdown_m: Optional[float] = None
+    cooper_jacob: CooperJacobResult | None = None
+    theis: TheisResult | None = None
+    recovery: RecoveryResult | None = None
+    step_test: StepTestResult | None = None
+    yield_recommendation: YieldRecommendation | None = None
+    stabilised_level_m: float | None = None
+    max_drawdown_m: float | None = None
     flags: list[DataFlag] = field(default_factory=list)
     # The R squared a straight-line fit has to reach before its transmissivity
     # is adopted. Copied from PumpingConfig by analyse_pumping_test, because the
@@ -257,7 +256,7 @@ class PumpingTestAnalysis:
     # How long casing storage controls the drawdown in this borehole, from
     # the casing and riser diameters and the specific capacity. None when
     # there is no specific capacity to compute it from.
-    casing_storage_min: Optional[float] = None
+    casing_storage_min: float | None = None
 
     def fits(self) -> list[tuple[str, object]]:
         """Every method that fitted, in order of preference.
@@ -275,7 +274,7 @@ class PumpingTestAnalysis:
             if result is not None
         ]
 
-    def adopted_fit(self) -> tuple[Optional[str], Optional[object], bool]:
+    def adopted_fit(self) -> tuple[str | None, object | None, bool]:
         """``(method, result, qualifies)`` for the transmissivity the yield rests on.
 
         The first method in order of preference whose straight line reaches
@@ -324,12 +323,12 @@ class PumpingTestAnalysis:
         return ""
 
     @property
-    def transmissivity_source(self) -> Optional[str]:
+    def transmissivity_source(self) -> str | None:
         """``"recovery" | "cooper_jacob" | "theis"``, or None when nothing fitted."""
         return self.adopted_fit()[0]
 
     @property
-    def transmissivity_m2_per_day(self) -> Optional[float]:
+    def transmissivity_m2_per_day(self) -> float | None:
         """The transmissivity the yield recommendation rests on."""
         result = self.adopted_fit()[1]
         return result.transmissivity_m2_per_day if result is not None else None
@@ -644,7 +643,7 @@ def theis_recovery(
     )
 
 
-def equivalent_pumping_time_min(test: PumpingTest) -> tuple[Optional[float], bool]:
+def equivalent_pumping_time_min(test: PumpingTest) -> tuple[float | None, bool]:
     """``(minutes, is_equivalent)``: the pumping time a recovery is read against.
 
     Theis recovery assumes one rate for the whole pumping time. After a step
@@ -676,8 +675,8 @@ def equivalent_pumping_time_min(test: PumpingTest) -> tuple[Optional[float], boo
 
 
 def casing_storage_min(
-    specific_capacity_m3h_per_m: Optional[float], config: PumpingConfig | None = None
-) -> Optional[float]:
+    specific_capacity_m3h_per_m: float | None, config: PumpingConfig | None = None
+) -> float | None:
     """How long casing storage controls the drawdown, in minutes.
 
     Early in a test the pump takes water standing in the casing before it
@@ -699,7 +698,7 @@ def casing_storage_min(
     return CASING_STORAGE_COEFFICIENT * area / specific_capacity_m3h_per_m
 
 
-def deepest_pumping_level(test: PumpingTest) -> Optional[float]:
+def deepest_pumping_level(test: PumpingTest) -> float | None:
     """The deepest water level any pumping step reached, metres below datum."""
     levels = [
         float(np.nanmax(s.water_level_m))
@@ -716,7 +715,7 @@ SAME_RATE_RTOL = 1e-6
 def hantush_bierschenk(
     step_discharges_m3_per_h: list[float],
     step_end_drawdowns_m: list[float],
-    step_numbers: Optional[list[int]] = None,
+    step_numbers: list[int] | None = None,
 ) -> StepTestResult:
     """Hantush-Bierschenk analysis of a step drawdown test.
 
@@ -838,8 +837,8 @@ def _no_usable_drawdown_reason(test: PumpingTest, config: PumpingConfig) -> str:
 
 def recommend_yield(
     test: PumpingTest,
-    transmissivity: Optional[float],
-    step_result: Optional[StepTestResult],
+    transmissivity: float | None,
+    step_result: StepTestResult | None,
     config: PumpingConfig | None = None,
     assumed_storativity: float = 1e-3,
     effective_radius_m: float = 0.1,
@@ -1104,7 +1103,7 @@ _ENVELOPE_SEASONAL_M = (1.0, 4.0)
 
 
 def attach_yield_envelope(
-    analysis: "PumpingTestAnalysis", config: PumpingConfig | None = None
+    analysis: PumpingTestAnalysis, config: PumpingConfig | None = None
 ) -> None:
     """Fill the safe-yield band on ``analysis.yield_recommendation``.
 
@@ -1174,7 +1173,7 @@ def attach_yield_envelope(
     )
 
 
-def pump_intake_depth(analysis, seasonal=None) -> tuple[Optional[float], str]:
+def pump_intake_depth(analysis, seasonal=None) -> tuple[float | None, str]:
     """The one pump intake depth a report prints, and why.
 
     A report with a seasonal projection used to say "install at 39 m" in
@@ -1201,7 +1200,7 @@ def pump_intake_depth(analysis, seasonal=None) -> tuple[Optional[float], str]:
     return float(depth), ""
 
 
-def _pumped_duration_min(test: PumpingTest) -> tuple[Optional[float], str]:
+def _pumped_duration_min(test: PumpingTest) -> tuple[float | None, str]:
     """``(minutes, kind)``: how long the aquifer was stressed at one rate.
 
     A constant test is judged on the whole pumped duration; a step test on
@@ -1534,7 +1533,7 @@ def analyse_pumping_test(
     # 50 minutes" and "the whole test lies inside" the casing-storage period.
     per_step = kind == "step"
     inside: list[str] = []
-    casing_flag: Optional[DataFlag] = None
+    casing_flag: DataFlag | None = None
     if t_c:
         cj = analysis.cooper_jacob
         if cj is not None and cj.fit_window_min[1] <= t_c:

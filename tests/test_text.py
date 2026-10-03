@@ -128,9 +128,9 @@ def _typed_out(text: str, source: str) -> list[str]:
     """
     found = []
     for piece in _PLACEHOLDER.sub("\0", text).split("\0"):
-        if len(piece.strip()) >= 20:
-            if re.search(r"""['"}]""" + re.escape(piece) + r"""['"{]""", source):
-                found.append(piece)
+        if len(piece.strip()) >= 20 and re.search(
+                r"""['"}]""" + re.escape(piece) + r"""['"{]""", source):
+            found.append(piece)
     return found
 
 

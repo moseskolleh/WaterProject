@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Optional
 
 from ..models import DataFlag, WaterQualitySample
 from .standards import canonical_values, normalise_parameter
@@ -39,10 +38,10 @@ _MEQ = {
 
 @dataclass
 class CorrosivityAssessment:
-    lsi: Optional[float] = None
-    rsi: Optional[float] = None
-    aggressive_index: Optional[float] = None
-    larson_skold: Optional[float] = None
+    lsi: float | None = None
+    rsi: float | None = None
+    aggressive_index: float | None = None
+    larson_skold: float | None = None
     classification: str = "Insufficient data"
     is_aggressive: bool = False
     verdict: str = ""
@@ -51,7 +50,7 @@ class CorrosivityAssessment:
     flags: list[DataFlag] = field(default_factory=list)
 
 
-def _value(sample: WaterQualitySample, key: str) -> Optional[float]:
+def _value(sample: WaterQualitySample, key: str) -> float | None:
     """One parameter on the standards table's scale.
 
     The Langelier and Ryznar indices take log10 of concentrations in mg/L, so

@@ -945,10 +945,9 @@ def _spine_screen_editor(view: dict, state_key: str, placed) -> None:
             edited.append((float(top), float(base)))
 
         apply_col, reset_col = st.columns([1, 1])
-        if apply_col.button("Apply to the design", key=f"{state_key}_apply"):
-            if edited != placed:
-                st.session_state[state_key] = edited
-                st.rerun()
+        if apply_col.button("Apply to the design", key=f"{state_key}_apply") and edited != placed:
+            st.session_state[state_key] = edited
+            st.rerun()
         if placed and reset_col.button(
             "Back to the generated design", key=f"{state_key}_reset_editor"
         ):

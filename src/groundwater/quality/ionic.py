@@ -10,7 +10,6 @@ major ion.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from ..models import DataFlag, WaterQualitySample
 from .standards import canonical_values, normalise_parameter
@@ -48,10 +47,10 @@ class IonicBalanceResult:
     cations_meq: dict
     anions_meq: dict
     used_alkalinity_for_bicarbonate: bool
-    flag: Optional[DataFlag]
+    flag: DataFlag | None
 
 
-def _value(sample: WaterQualitySample, key: str) -> Optional[float]:
+def _value(sample: WaterQualitySample, key: str) -> float | None:
     """One ion in milliequivalents-ready mg/L.
 
     The meq factors above are per mg/L, so the value has to be on that scale
@@ -71,7 +70,7 @@ def _value(sample: WaterQualitySample, key: str) -> Optional[float]:
     return None
 
 
-def ionic_balance(sample: WaterQualitySample) -> Optional[IonicBalanceResult]:
+def ionic_balance(sample: WaterQualitySample) -> IonicBalanceResult | None:
     """Compute the charge balance; returns None when the major ions are
     not sufficiently covered by the analysis."""
     cations: dict[str, float] = {}

@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Optional
 
 from .utils import parse_number
 
@@ -216,7 +215,7 @@ _DIMENSION_HINT_OVERRIDES = {
 }
 
 
-def parse_unit(text: str, *, dimension: str | None = None) -> Optional[Unit]:
+def parse_unit(text: str, *, dimension: str | None = None) -> Unit | None:
     """Read a written unit, or ``None`` when it cannot be read with confidence.
 
     ``dimension`` disambiguates spellings that mean different things in
@@ -265,7 +264,7 @@ def comparable(a: Unit | None, b: Unit | None) -> bool:
         return False
     if a.dimension != b.dimension:
         return False
-    if a.basis and b.basis and a.basis != b.basis:
+    if a.basis and b.basis and a.basis != b.basis:  # noqa: SIM103 - one refusal per reason
         return False
     return True
 
@@ -315,8 +314,8 @@ class Quantity:
         a unit was declared and could not be read. ``value`` is ``None``.
     """
 
-    value: Optional[float]
-    raw_value: Optional[float]
+    value: float | None
+    raw_value: float | None
     unit_text: str
     status: str
     dimension: str = ""
@@ -347,7 +346,7 @@ def _is_unit_shaped(text: str) -> bool:
             or len(normalised) <= 5)
 
 
-def unit_from_label(text: str, *, dimension: str) -> tuple[str, Optional[Unit]]:
+def unit_from_label(text: str, *, dimension: str) -> tuple[str, Unit | None]:
     """The unit a column header or row label declares, if any.
 
     Returns ``(written, parsed)``. ``("", None)`` means nothing was declared;
@@ -439,7 +438,7 @@ def read_quantity(cell, *hints: str, dimension: str) -> Quantity:
 
 
 def convert(value: float, from_unit: str, to_unit: str,
-            *, dimension: str | None = None) -> Optional[float]:
+            *, dimension: str | None = None) -> float | None:
     """Convert ``value`` between two written units, or ``None`` if it cannot.
 
     ``None`` means "do not use this number against that limit" - either

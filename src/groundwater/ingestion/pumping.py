@@ -319,7 +319,7 @@ def _row_unit_hint(row: list) -> str:
     return ""
 
 
-def _find_step_discharges(grid: list[list]) -> dict[int, "Quantity"]:
+def _find_step_discharges(grid: list[list]) -> dict[int, Quantity]:
     """Read per step discharge from 'Step n Q' labelled cells.
 
     Two hazards on a real sheet, both handled here:
@@ -826,15 +826,15 @@ def _assemble(grid: list[list], source: str) -> PumpingTest:
                     s.label,
                 )
             )
-    if test.borehole_depth_m and test.pump_setting_m:
-        if test.pump_setting_m > test.borehole_depth_m:
-            flags.append(
-                DataFlag(
-                    "warning",
-                    "pump_below_borehole",
-                    "Pump setting is deeper than the borehole depth.",
-                )
+    if (test.borehole_depth_m and test.pump_setting_m
+            and test.pump_setting_m > test.borehole_depth_m):
+        flags.append(
+            DataFlag(
+                "warning",
+                "pump_below_borehole",
+                "Pump setting is deeper than the borehole depth.",
             )
+        )
     if test.borehole_depth_m and steps:
         max_wl = max(float(np.nanmax(s.water_level_m)) for s in steps)
         if max_wl > test.borehole_depth_m:
