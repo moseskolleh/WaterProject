@@ -612,38 +612,13 @@
 
   /* ============================================================== references */
 
-  var REFERENCES = {
-    rwsn_cost: 'Danert, K. (2015). Cost-Effective Boreholes: RWSN Borehole Costing ' +
-      'Model and Guidance Notes. Rural Water Supply Network, St Gallen.',
-    rwsn_pricing: 'Carter, R. C. (2014). Costing and Pricing: a Guide for Water Well ' +
-      'Drilling Enterprises. RWSN/Skat, St Gallen.',
-    rwsn_supervision: 'Adekile, D. (2014). Supervising Water Well Drilling: a Guide ' +
-      'for Supervisors. RWSN/Skat, St Gallen.',
-    rwsn_professional: 'Danert, K., Adekile, D. and Canuto, J. (2020). Professional ' +
-      'Water Well Drilling: a UNICEF Guidance Note. UNICEF/Skat, New York.',
-    unicef_toolkit: 'UNICEF (2016). Borehole Drilling: Planning, Contracting and ' +
-      'Management. UNICEF WASH, New York.',
-    who: 'World Health Organization (2022). Guidelines for Drinking-water Quality, ' +
-      'fourth edition incorporating the first and second addenda. WHO, Geneva.',
-    geology: 'Ministry of Water Resources and SALWACO (2017). Geology of Sierra ' +
-      'Leone. Government of Sierra Leone, Freetown.',
-    // the wording the CC BY-SA licence prescribes (THIRD_PARTY_NOTICES.md)
-    bgs: 'British Geological Survey. 2019/2021. Africa Groundwater Atlas Country ' +
-      'Hydrogeology Maps. Africa Groundwater Atlas ' +
-      '(https://www2.bgs.ac.uk/africagroundwateratlas/index.cfm). Licensed CC BY-SA 4.0.',
-    bgs_guide: 'Ó Dochartaigh, B. (2021). User Guide Version 1.2: Africa Groundwater ' +
-      'Atlas Country Hydrogeology Maps. British Geological Survey Open Report OR/21/063.',
-    stop_the_rot: 'RWSN (2021). Stop the Rot: Handpump Corrosion and Premature ' +
-      'Failure in Sub-Saharan Africa. Rural Water Supply Network, St Gallen.',
-    /* The browser printed 'the national acceptability limit' in three reports
-     * and named no standard at all, while the Python reports cited this and
-     * said in the citation what the limits are worth. */
-    slsb: 'Sierra Leone Standards Bureau. Sierra Leone Standard for drinking ' +
-      'water quality (SLS). Freetown: SLSB. Edition and date not verified ' +
-      'against the issued specification: the national limits this toolkit ' +
-      'applies are provisional (WHO or regional figures carried across) ' +
-      'until confirmed against it.',
-  };
+  /* The full citations, keyed by a short id: the table reporting/citations.py
+   * CITATIONS reads, in src/groundwater/data/text/references.yaml. Which of
+   * them close which report is chosen at each report's end, as citations.py
+   * _REFERENCES_FOR chooses them there; an id ending in _web is this app's
+   * wording of a work the Python reports cite in other words. */
+  var REFERENCES = C.phraseTable('references.citations');
+
 
   var GLOSSARY = [
     ['AB/2', 'Half the distance between the current electrodes in a Schlumberger sounding.'],
@@ -1220,8 +1195,8 @@
       b.bullets(notes);
     }
 
-    b.references([REFERENCES.rwsn_professional, REFERENCES.geology, REFERENCES.bgs,
-      REFERENCES.bgs_guide]);
+    b.references([REFERENCES.rwsn_drilling_web, REFERENCES.salwaco_geology_web,
+      REFERENCES.bgs_atlas, REFERENCES.bgs_guide]);
     b.glossary(GLOSSARY);
     return b;
   }
@@ -1579,8 +1554,8 @@
     b.bullets(advice);
 
     b.signOff(context.signOff);
-    b.references([REFERENCES.rwsn_professional, REFERENCES.rwsn_supervision,
-      REFERENCES.who, REFERENCES.slsb]);
+    b.references([REFERENCES.rwsn_drilling_web, REFERENCES.rwsn_supervision,
+      REFERENCES.who_web, REFERENCES.slsb]);
     b.glossary(GLOSSARY);
     return b;
   }
@@ -1958,60 +1933,21 @@
       b.paragraph(text, { align: 'justify' });
     });
     b.signOff(context.signOff);
-    b.references([REFERENCES.rwsn_professional, REFERENCES.rwsn_supervision]);
+    b.references([REFERENCES.rwsn_drilling_web, REFERENCES.rwsn_supervision]);
     b.glossary(GLOSSARY);
     return b;
   }
 
   /* --- 4. water quality ------------------------------------------------------ */
 
-  /* Advice for a parameter over its limit, keyed by the standards-table
-   * name (reporting/quality.py _TREATMENT_ADVICE). This report used to give
+  /* The recommendations a water quality report closes with: the list
+   * reporting/quality.py quality_recommendations writes, from the same
+   * words in src/groundwater/data/text/quality.yaml. Every health or
+   * national exceedance gets a treatment line whether or not there is
+   * advice written for its parameter. The advice for a parameter over its
+   * limit is keyed by the standards-table name; this report used to give
    * only the generic lines and the Python one only the matched advice, so
    * the same sample was told different things by the two. */
-  var NITRATE_ADVICE = 'Elevated nitrate usually indicates pollution from ' +
-    'sanitation or agriculture; investigate the sanitary protection zone. Do ' +
-    'not give the water to bottle fed infants until resolved.';
-  var TREATMENT_ADVICE = {
-    iron: 'Iron above the acceptability value causes staining and metallic ' +
-      'taste; aeration followed by sand filtration or a simple oxidation ' +
-      'filter normally resolves it.',
-    manganese: 'Manganese requires oxidation and filtration (aeration or ' +
-      'chlorination followed by filtration); monitor infant exposure in the ' +
-      'meantime.',
-    'e. coli': 'Any E. coli detection calls for shock chlorination of the ' +
-      'borehole, verification of the sanitary seal and apron, and re-sampling ' +
-      'before use.',
-    'total coliforms': 'Coliform detection calls for disinfection of the ' +
-      'borehole and pump, a sanitary inspection of the wellhead, and re-sampling.',
-    'nitrate (as no3)': NITRATE_ADVICE,
-    'nitrate (as n)': NITRATE_ADVICE,
-    'nitrate + nitrite': NITRATE_ADVICE,
-    fluoride: 'Fluoride above 1.5 mg/L requires an alternative source or ' +
-      'defluoridation (bone char or activated alumina).',
-    arsenic: 'Arsenic above 0.01 mg/L requires an alternative source or ' +
-      'specialised removal; re-test to confirm before any use for drinking.',
-    turbidity: 'High turbidity interferes with disinfection; extend ' +
-      'development of the borehole and re-sample.',
-  };
-  /* For a faecal pathogen found in the water, which has no table entry to
-   * key advice by and used to get none under "Treat before use". */
-  var PATHOGEN_ADVICE = 'A faecal pathogen in the water calls for shock ' +
-    'chlorination of the borehole, a sanitary inspection to find where the ' +
-    'contamination enters, and re-sampling for the pathogen and for E. coli ' +
-    'before the supply is used for drinking.';
-  /* pH is out of range in one of two directions, and the advice differs */
-  var PH_ADVICE_LOW = 'Low pH water is corrosive to metal fittings; a limestone ' +
-    'contactor or careful choice of corrosion resistant materials is advised.';
-  var PH_ADVICE_HIGH = 'A pH above the acceptability range reduces the ' +
-    'effectiveness of chlorine disinfection and can give the water a bitter ' +
-    'taste and deposit scale; confirm the reading and set any chlorine dose ' +
-    'to suit.';
-
-  /* The recommendations a water quality report closes with, word for word
-   * the list reporting/quality.py quality_recommendations writes. Every
-   * health or national exceedance gets a treatment line whether or not
-   * there is advice written for its parameter. */
   function qualityRecommendations(assessment) {
     var advice = [];
     var corr = assessment.corrosivity;
@@ -2020,52 +1956,45 @@
       return rows.map(function (r) { return r.parameter; }).join(', ');
     }
     if (assessment.health_exceedances.length) {
-      advice.push('Treat or replace the source before it is used for drinking: ' +
-        'health based limits are exceeded for ' +
-        names(assessment.health_exceedances) + '.');
+      advice.push(C.phrase('quality.treat_health',
+        { parameters: names(assessment.health_exceedances) }));
     }
     if (assessment.national_exceedances.length) {
-      advice.push('Treat before the supply is accepted against the national ' +
-        'standard: national limits are exceeded for ' +
-        names(assessment.national_exceedances) + '.');
+      advice.push(C.phrase('quality.treat_national',
+        { parameters: names(assessment.national_exceedances) }));
     }
+    var treatment = C.phraseTable('quality.treatment_advice');
     assessment.all_exceedances.forEach(function (r) {
       var key = C.normaliseParameter(r.parameter);
       var text;
       if (key === 'ph') {
         var low = r.value_in_guideline_unit !== null &&
           r.value_in_guideline_unit !== undefined && r.value_in_guideline_unit < 7.0;
-        text = low ? PH_ADVICE_LOW : PH_ADVICE_HIGH;
+        text = low ? C.phrase('quality.ph_low') : C.phrase('quality.ph_high');
       } else if (C.faecalPathogen(r.parameter)) {
-        text = PATHOGEN_ADVICE;
+        text = C.phrase('quality.pathogen');
       } else {
-        text = Object.prototype.hasOwnProperty.call(TREATMENT_ADVICE, key)
-          ? TREATMENT_ADVICE[key] : null;
+        text = Object.prototype.hasOwnProperty.call(treatment, key)
+          ? treatment[key] : null;
       }
       if (text && advice.indexOf(text) < 0) advice.push(text);
     });
     if (assessment.aesthetic_exceedances.length) {
-      advice.push('Acceptability limits are exceeded for ' +
-        names(assessment.aesthetic_exceedances) + ': simple treatment is ' +
-        'advisable if users complain of taste, odour or staining.');
+      advice.push(C.phrase('quality.acceptability',
+        { parameters: names(assessment.aesthetic_exceedances) }));
     }
     var state = assessment.verdict_state;
     if (state === 'indeterminate') {
       /* "No treatment is required" is a clearance, and this report has not
        * established one. Say what is outstanding instead. */
       var open = (assessment.uncertainties || []).join('; ');
-      advice.push('Do not treat this supply as safe to drink on these results. ' +
-        open.charAt(0).toUpperCase() + open.slice(1) + '. Resolve these and ' +
-        're-issue the assessment before any treatment decision is taken.');
+      advice.push(C.phrase('quality.not_cleared',
+        { outstanding: open.charAt(0).toUpperCase() + open.slice(1) }));
     } else if (state === 'pass' && !advice.length) {
-      advice.push('No treatment is required on the basis of the parameters ' +
-        'tested. Maintain the sanitary seal and apron in good condition.');
+      advice.push(C.phrase('quality.no_treatment'));
     }
-    advice.push('Disinfect the borehole after any maintenance and re-test ' +
-      'microbiological quality before the source is returned to use.');
-    advice.push('Repeat physico-chemical and bacteriological testing at least ' +
-      'once a year, and after any flooding, repair work on the wellhead or ' +
-      'change in taste, colour or odour.');
+    advice.push(C.phrase('quality.after_maintenance'));
+    advice.push(C.phrase('quality.repeat_testing'));
     return advice;
   }
 
@@ -2184,7 +2113,7 @@
       b.paragraph(text, { align: 'justify' });
     });
     b.signOff(context.signOff);
-    b.references([REFERENCES.who, REFERENCES.slsb, REFERENCES.stop_the_rot]);
+    b.references([REFERENCES.who_web, REFERENCES.slsb, REFERENCES.stop_the_rot]);
     b.glossary(GLOSSARY);
     return b;
   }
@@ -2324,7 +2253,8 @@
     ].concat(context.notes || []));
 
     b.signOff(context.signOff);
-    b.references([REFERENCES.rwsn_cost, REFERENCES.rwsn_pricing, REFERENCES.unicef_toolkit]);
+    b.references([REFERENCES.rwsn_costing_model, REFERENCES.rwsn_pricing,
+      REFERENCES.unicef_toolkit]);
     return b;
   }
 
@@ -2485,46 +2415,45 @@
    * drilled depth, the screen run and the seal.
    *
    * groundwater/reporting/handover.py builds the same list from the same
-   * records, and tests/webapp/parity.mjs holds the two to the same words, so
-   * a reworded bullet here is a reworded bullet there. They used to differ in
-   * four of seven bullets, which handed one borehole two different
+   * records and the same words, src/groundwater/data/text/handover.yaml, and
+   * tests/webapp/parity.mjs holds the two lists to each other. They used to
+   * differ in four of seven bullets, which handed one borehole two different
    * certificates: a surveyor got the casing size or the screen run, never
    * both, and never the seal. */
   function handoverWorks(context) {
     var log = context.log || {}, design = context.design;
     var works = [];
     if (context.interpretations && context.interpretations.length) {
-      works.push('Geophysical siting survey and borehole location selection.');
+      works.push(C.phrase('handover.works_siting'));
     }
     /* the depth is the first quantity anyone measures the claim against, so
      * the bullet waits for one rather than certifying a borehole drilled to
      * "n/a" off a sheet where nobody wrote the depth down */
     if (log.total_depth_m !== null && log.total_depth_m !== undefined) {
-      works.push('Drilling of the borehole to ' + C.fmtNum(log.total_depth_m) +
-        ' m' + (log.drilling_method ? ' by ' + log.drilling_method : '') + '.');
+      works.push(log.drilling_method
+        ? C.phrase('handover.works_drilling_by',
+          { depth: log.total_depth_m, method: String(log.drilling_method) })
+        : C.phrase('handover.works_drilling', { depth: log.total_depth_m }));
     }
     if (design) {
       /* The fill is the design's own, and the bullet says "designed" unless
        * the log records the screens as installed: it certified "gravel pack"
        * over a 19 mm annulus the design had left empty, and 19 m of screen as
        * completed work above a drawing captioned "not an as-built record". */
-      var fill = design.annular_fill === 'gravel pack' ||
-        design.annular_fill === 'formation stabiliser' ? design.annular_fill
-        : 'no gravel pack (the ' + C.pyFixed(design.annulus_mm || 0, 0) +
-          ' mm annulus is too thin to place one)';
-      works.push((design.as_built ? 'Construction with ' : 'Construction designed with ') +
-        C.formatG(design.casing_diameter_in) + ' inch ' + design.casing_material +
-        ' casing, ' + C.fmtNum(design.total_screen_length_m) + ' m of screen' +
-        (design.as_built ? ' as installed' : '') + ', ' + fill +
-        ' and sanitary seal to ' + C.fmtNum(design.sanitary_seal[1]) + ' m' +
-        (design.as_built ? '.'
-          : '; the drilling log records no casing string as installed.'));
-      works.push('Development of the borehole by air lifting until clear.');
+      var fills = C.phraseTable('handover.annular_fill');
+      var fill = Object.prototype.hasOwnProperty.call(fills, design.annular_fill)
+        ? fills[design.annular_fill]
+        : C.phrase('handover.fill_none', { annulus_mm: design.annulus_mm || 0 });
+      works.push(C.phrase(design.as_built ? 'handover.works_construction'
+        : 'handover.works_construction_designed', {
+        casing_in: design.casing_diameter_in, material: design.casing_material,
+        screen_m: design.total_screen_length_m, fill: fill,
+        seal_m: design.sanitary_seal[1],
+      }));
+      works.push(C.phrase('handover.works_development'));
     }
-    if (context.analysis) works.push('Pumping test and yield assessment.');
-    if (context.assessment) {
-      works.push('Water quality sampling and laboratory analysis.');
-    }
+    if (context.analysis) works.push(C.phrase('handover.works_pumping_test'));
+    if (context.assessment) works.push(C.phrase('handover.works_quality'));
     /* No wellhead bullet: the toolkit holds no headworks record for it to be
      * conditioned on, and an unconditional one certified an apron and a
      * drainage channel on every borehole. A supervisor who built them says so
@@ -2724,7 +2653,7 @@
     b.signatures(['Client representative', 'Community / committee chair',
       'Contractor', 'District water office']);
     b.signOff(context.signOff);
-    b.references([REFERENCES.rwsn_professional, REFERENCES.who, REFERENCES.slsb,
+    b.references([REFERENCES.rwsn_drilling_web, REFERENCES.who_web, REFERENCES.slsb,
       REFERENCES.unicef_toolkit]);
     b.glossary(GLOSSARY);
     return b;

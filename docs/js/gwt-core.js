@@ -41,96 +41,30 @@
 
   /* ================================================================== config
    * groundwater/config.py. Every value is overridable per project, which is
-   * what the Settings page edits.
+   * what the Settings page edits. The defaults are not written out here:
+   * they are src/groundwater/data/defaults.json, which config.py reads and
+   * the build emits as GWT.data.defaults, so the two engines start from the
+   * same numbers. Why each one is what it is stays beside its field in
+   * config.py.
+   *
+   * They are not part of the engine digest either: the inversion cache key
+   * carries the whole VES configuration an inversion ran with, so a changed
+   * VES default is already a different key.
    */
 
-  var DEFAULT_CONFIG = {
-    style: {
-      accent_color: '#1F5C8B',
-      secondary_color: '#C15A2A',
-      neutral_color: '#4D4D4D',
-      background: '#FFFFFF',
-      font_name: 'Calibri',
-      base_font_size_pt: 11.0,
-      figure_width_in: 6.3,
-      organisation: '',
-      organisation_details: '',
-    },
-    ves: {
-      max_layers: 4,
-      min_layers: 2,
-      target_fit_percent: 10.0,
-      parsimony_max_error_ratio: 2.0,
-      damping: 0.02,
-      max_iterations: 60,
-      fresh_basement_min_rho: 3000.0,
-      fractured_zone_rho: [20.0, 800.0],
-      clay_max_rho: 20.0,
-      laterite_min_rho: 800.0,
-      max_drilling_margin_m: 10.0,
-      round_drilling_depth_to_m: 5.0,
-      depth_of_investigation_factor: 0.5,
-      parsimony_fallback_ratio: 1.15,
-      unreliable_fit_percent: 20.0,
-      fit_confidence_floor: 0.5,
-      unresolved_basement_confidence: 0.85,
-      ranking_tie_points: 3.0,
-    },
-    pumping: {
-      safety_factor: 1.5,
-      design_period_days: 365.0,
-      available_drawdown_fraction: 0.7,
-      pump_clearance_above_screen_m: 1.0,
-      pump_submergence_min_m: 3.0,
-      seasonal_allowance_m: 2.0,
-      cooper_jacob_u_max: 0.05,
-      /* a late-time slope below what a dipper can resolve is noise or a
-       * stabilised level, and gives a transmissivity of thousands of m2/day */
-      cooper_jacob_min_slope_m: 0.02,
-      cooper_jacob_min_r2: 0.8,
-      /* fits below this R squared are passed over when choosing which
-       * transmissivity the yield rests on */
-      min_fit_r_squared: 0.8,
-      /* a test shorter than this is projected over several log cycles of
-       * time to reach the design period, so its yield is flagged */
-      min_constant_test_min: 240.0,
-      min_step_length_min: 60.0,
-      /* Casing storage: Schafer's rule puts the end of the period the pump
-       * spends emptying the casing at 0.6 (dc^2 - dp^2) / (Q/s) minutes; the
-       * diameters default to the design rules' casing and a 1.25 inch riser */
-      casing_diameter_in: 5.0,
-      riser_diameter_in: 1.25,
-      /* a recovery line whose intercept at t/t' = 1 is more than this fraction
-       * of the drawdown the recovery started from is not a Theis recovery
-       * line: reported, but not adopted for the yield */
-      recovery_intercept_max_fraction: 0.25,
-      /* a Theis storativity above this is the casing, not the aquifer */
-      max_plausible_storativity: 0.1,
-    },
-    design: {
-      borehole_diameter_in: 6.5,
-      casing_diameter_in: 5.0,
-      casing_material: 'uPVC',
-      screen_slot_mm: 0.75,
-      screen_length_default_m: 9.0,
-      /* the one seal depth: the RWSN checklist's critical item and the
-       * costing's cement quantity both follow it */
-      sanitary_seal_depth_m: 6.0,
-      gravel_pack_above_top_screen_m: 2.0,
-      gravel_pack_material: 'well sorted siliceous gravel, 2-4 mm',
-      sump_length_m: 2.0,
-      stickup_m: 0.5,
-      min_screen_below_swl_m: 5.0,
-      apron_note: 'concrete apron with drainage channel and soakaway',
-      /* A fracture zone the driller names with its depths ("fracture zone
-       * 49-52 m") is screened with this much plain screen either side of
-       * it, rather than the whole logged interval it was written on. */
-      fracture_zone_margin_m: 1.0,
-    },
-  };
+  /* The defaults themselves, shared: read, never changed. */
+  function configDefaults() {
+    var defaults = (GWT.data || {}).defaults;
+    if (!defaults) {
+      throw new Error('gwt-data.js is not loaded, or is stale: it carries the ' +
+        'configuration defaults (src/groundwater/data/defaults.json)');
+    }
+    return defaults;
+  }
 
+  /* A copy of the defaults to change. */
   function defaultConfig() {
-    return JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+    return JSON.parse(JSON.stringify(configDefaults()));
   }
 
   /* Merge a partial override over the defaults, section by section. */
@@ -1730,56 +1664,89 @@
    * compared against the Python output character for character, so the
    * thousands separators and the %g fallback have to match exactly. */
 
-  /* Python's round(): half goes to even, not away from zero. It governs the
-   * water-zone bounds and every fmt_num, so the two implementations disagree
-   * on exact halves unless this is used. */
+  /* |x| * 10^d rounded half to even, worked out exactly, as a BigInt. x is
+   * m * 2^k with m and k read from its bits, so nothing is rounded before
+   * the one rounding asked for, which is how Python rounds. The decimal
+   * text JavaScript offers is itself rounded, and a tail it shows as a tie
+   * need not be one: 1.05 is 1.0500000000000000444, which Python rounds to
+   * 1.1, but to seventeen digits it reads 1.0500000000000000, and half to
+   * even on that made it 1.0 here - and 0.155, just under its tie, 0.16. */
+  function exactScaledRound(x, d) {
+    var view = new DataView(new ArrayBuffer(8));
+    view.setFloat64(0, Math.abs(x));
+    var hi = view.getUint32(0), lo = view.getUint32(4);
+    var biased = (hi >>> 20) & 0x7ff;
+    var m = BigInt(hi & 0xfffff) * BigInt(4294967296) + BigInt(lo);
+    var k = -1074;                            // a subnormal
+    if (biased) { m += BigInt(4503599627370496); k = biased - 1075; }
+    var num = m, den = BigInt(1), fives = BigInt(1);
+    for (var i = 0; i < Math.abs(d); i++) fives *= BigInt(5);
+    if (d >= 0) num *= fives; else den *= fives;
+    if (k + d >= 0) num <<= BigInt(k + d); else den <<= BigInt(-(k + d));
+    var q = num / den;
+    var twice = (num - q * den) * BigInt(2);
+    if (twice > den || (twice === den && q % BigInt(2) === BigInt(1))) q += BigInt(1);
+    return q;
+  }
+
+  /* |x| rounded exactly to d decimal places (d < 0 rounds to tens,
+   * hundreds...), as decimal text. */
+  function exactFixedText(x, d) {
+    var digits = exactScaledRound(x, d).toString();
+    if (d <= 0) return digits === '0' ? '0' : digits + '0'.repeat(-d);
+    while (digits.length <= d) digits = '0' + digits;
+    return digits.slice(0, -d) + '.' + digits.slice(-d);
+  }
+
   /* Python's "%.Nf": correctly rounded with half-to-even on the exact binary
    * value. Number.prototype.toFixed rounds a tie away from zero instead, so
    * a cost of exactly $150.5/m printed as $151 here and $150 in the package,
-   * and the difference reached the downloadable site brief. */
+   * and the difference reached the downloadable site brief. It is written
+   * from the exact value, as Python writes it, so it agrees where toFixed
+   * cannot too: "-0" for a negative that rounds to nothing, every digit of
+   * a number from 1e21 up, and nan and inf. */
   function pyFixed(x, digits) {
     var d = digits || 0;
-    return pyRound(Number(x), d).toFixed(d);
+    var v = Number(x);
+    if (v !== v) return 'nan';
+    if (!isFinite(v)) return v > 0 ? 'inf' : '-inf';
+    var sign = v < 0 || Object.is(v, -0) ? '-' : '';
+    /* Within fifteen digits the rounded double prints back as exactly the
+     * decimal it was rounded to, and that is three times quicker. */
+    if (d <= 15 && Math.abs(v) < 1e15 / Math.pow(10, d)) {
+      return sign + Math.abs(pyRound(v, d)).toFixed(d);
+    }
+    return sign + exactFixedText(v, d);
   }
 
+  /* Python's round(): half goes to even, not away from zero. It governs the
+   * water-zone bounds and every fmt_num, so the two implementations disagree
+   * on exact halves unless this is used. */
   function pyRound(x, digits) {
     var d = digits || 0;
     if (!isFinite(x)) return x;
-    /* round(12345, -2) is 12300 in Python. The decimal-string path below
-     * cuts inside the fraction, which a negative cut has none of, so the
-     * scale is taken out first and put back after. */
-    if (d < 0) {
-      var scale = Math.pow(10, -d);
-      return pyRound(x / scale, 0) * scale;
-    }
-    /* The tie test has to run on the real value, not on x * 10^d: 14.05 is
-     * stored as 14.05000000000000071, which Python rounds up, but 14.05 * 10
-     * is exactly 140.5 in binary and looked like a tie, so banker's rounding
-     * turned it into 14.0. toPrecision(17) round-trips the double exactly,
-     * so the decimal digits below the cut say whether it is really a tie. */
-    var f = Math.pow(10, d);
+    /* The usual case is decided on the decimal expansion, which is quick:
+     * seventeen significant digits identify a double, and a tail below the
+     * cut that does not read as 5 followed by zeros says which way the real
+     * value lies, since the real value is within half a unit of the last
+     * of those digits. A tail that reads as a tie, a cut too deep for the
+     * kept digits to stay an exact integer, a negative cut and a number
+     * written with an exponent are rounded on the exact value instead, and
+     * read back from the decimal text, as Python reads it back. */
     var text = Math.abs(x).toPrecision(17);
-    var r;
-    if (text.indexOf('e') < 0) {
-      /* Work entirely in the decimal expansion so the cut and the tie test
-       * agree: seventeen significant digits identify a double uniquely, and
-       * a genuine tie terminates in a 5 followed by zeros. */
+    if (d >= 0 && d <= 22 && text.indexOf('e') < 0) {
       var dot = text.indexOf('.');
       var whole = dot < 0 ? text : text.slice(0, dot);
       var fraction = dot < 0 ? '' : text.slice(dot + 1);
       while (fraction.length < d) fraction += '0';
-      var head = Number(whole + fraction.slice(0, d));
+      var kept = whole + fraction.slice(0, d);
       var tail = fraction.slice(d);
-      if (/^50*$/.test(tail)) {
-        r = (head % 2 === 0) ? head : head + 1;      // half to even
-      } else {
-        r = (tail && tail.charAt(0) >= '5') ? head + 1 : head;
+      if (kept.length <= 15 && !/^50*$/.test(tail)) {
+        var r = Number(kept) + ((tail && tail.charAt(0) >= '5') ? 1 : 0);
+        return (x < 0 ? -r : r) / Math.pow(10, d);
       }
-    } else {
-      var v = Math.abs(x) * f;
-      r = Math.abs(v - Math.trunc(v)) === 0.5 ? 2 * Math.round(v / 2) : Math.round(v);
     }
-    return (x < 0 ? -r : r) / f;
+    return Number((x < 0 ? '-' : '') + exactFixedText(x, d));
   }
 
   function roundSig(value, sig) {
@@ -1795,7 +1762,10 @@
    * when the exponent falls below -4 or reaches the precision. */
   function formatG(value, precision) {
     var p = precision || 6;
-    if (value === 0) return '0';
+    /* written as Python writes them, sign of a zero included */
+    if (value === 0) return Object.is(value, -0) ? '-0' : '0';
+    if (value !== value) return 'nan';
+    if (!isFinite(value)) return value > 0 ? 'inf' : '-inf';
     var rounded = roundSig(value, p);
     /* Not Math.log10: in V8 Math.log(1e6)/Math.LN10 is 5.999999999999999, so
      * the exponent came out one too low at exact powers of ten and %g chose
@@ -1803,8 +1773,10 @@
      * string carries the exponent exactly. */
     var exp = Number(Math.abs(rounded).toExponential().split('e')[1]);
     if (exp < -4 || exp >= p) {
-      var mant = rounded / Math.pow(10, exp);
-      var mstr = mant.toFixed(p - 1).replace(/0+$/, '').replace(/\.$/, '');
+      /* the mantissa's digits as toExponential writes them, rather than
+       * rounded / 10^exp, which is Infinity below 1e-308 */
+      var mstr = rounded.toExponential(p - 1).split('e')[0]
+        .replace(/0+$/, '').replace(/\.$/, '');
       return mstr + 'e' + (exp < 0 ? '-' : '+') +
         String(Math.abs(exp)).padStart(2, '0');
     }
@@ -1828,7 +1800,7 @@
     var v = roundSig(value, sig === undefined ? 3 : sig);
     var text;
     if (Math.abs(v - Math.round(v)) < 1e-9 && Math.abs(v) < 1e15) {
-      text = pyRound(v).toLocaleString('en-US');
+      text = (pyRound(v) || 0).toLocaleString('en-US');      // an int: never -0
     } else {
       text = formatG(v);
     }
@@ -1861,6 +1833,91 @@
   /* The noun alone, agreeing with a count the sentence already carries. */
   function pluralNoun(count, singular, pluralForm) {
     return count === 1 ? singular : (pluralForm || singular + 's');
+  }
+
+  /* --- the shared words ---------------------------------------------------
+   * groundwater/text.py. A sentence both engines write is kept once, in
+   * src/groundwater/data/text/*.yaml, which the build emits as
+   * GWT.data.text; this is the same renderer as render_text there, rule for
+   * rule, and the grammar is documented with it. A number always names its
+   * format, because String(5.0) is "5" here and str(5.0) is "5.0" there. */
+  var TEXT_TOKEN = new RegExp('\\{\\{|\\}\\}' +
+    '|\\{([a-z_][a-z0-9_]*)(?::(num|g|\\.\\d+f|plural:[^{}|]*\\|[^{}|]*))?\\}' +
+    '|[{}]', 'g');
+
+  function formatTextValue(name, spec, value) {
+    if (spec === undefined) {
+      if (typeof value !== 'string') {
+        throw new TypeError('text: {' + name + '} takes a string; a number ' +
+          'names its format, as {' + name + ':num}');
+      }
+      return value;
+    }
+    if (spec.indexOf('plural:') === 0) {
+      if (typeof value !== 'number' || !Number.isInteger(value)) {
+        throw new TypeError('text: {' + name + ':plural:...} takes a whole count');
+      }
+      var forms = spec.slice('plural:'.length).split('|');
+      return value === 1 ? forms[0] : forms[1];
+    }
+    if (typeof value !== 'number' && !(spec === 'num' && value === null)) {
+      throw new TypeError('text: {' + name + ':' + spec + '} takes a number, not ' +
+        JSON.stringify(value));
+    }
+    if (spec === 'num') return fmtNum(value);
+    if (spec === 'g') return formatG(value);
+    return pyFixed(value, Number(spec.slice(1, -1)));
+  }
+
+  function renderText(template, values) {
+    values = values || {};
+    var used = {};
+    var text = template.replace(TEXT_TOKEN, function (token, name, spec) {
+      if (token === '{{' || token === '}}') return token.charAt(0);
+      if (name === undefined) {
+        throw new Error('text: a lone ' + JSON.stringify(token) + ' in ' +
+          JSON.stringify(template) + '; write ' + token + token);
+      }
+      if (!own(values, name)) {
+        throw new Error('text: no value for {' + name + '} in ' + JSON.stringify(template));
+      }
+      used[name] = true;
+      return formatTextValue(name, spec, values[name]);
+    });
+    var unused = Object.keys(values).filter(function (k) { return !used[k]; });
+    if (unused.length) {
+      throw new Error('text: ' + JSON.stringify(unused.sort()) + ' are not in ' +
+        JSON.stringify(template));
+    }
+    return text;
+  }
+
+  function textEntry(id) {
+    var dot = id.indexOf('.');
+    var file = ((GWT.data || {}).text || {})[id.slice(0, dot)];
+    if (dot < 0 || !file || !own(file, id.slice(dot + 1))) {
+      throw new Error('text: no entry ' + JSON.stringify(id) + ' in data/text ' +
+        '(is gwt-data.js loaded, and current?)');
+    }
+    return file[id.slice(dot + 1)];
+  }
+
+  /* The sentence id names, with values filled in. */
+  function phrase(id, values) {
+    var template = textEntry(id);
+    if (typeof template !== 'string') {
+      throw new TypeError('text: ' + JSON.stringify(id) + ' is a table; read it with phraseTable');
+    }
+    return renderText(template, values);
+  }
+
+  /* The table id names: literal text, keyed by a value from the data. */
+  function phraseTable(id) {
+    var table = textEntry(id);
+    if (typeof table !== 'object' || table === null) {
+      throw new TypeError('text: ' + JSON.stringify(id) + ' is a sentence; read it with phrase');
+    }
+    return table;
   }
 
   /* ves/interpret.py POORLY_RESOLVED_FACTOR / poorly_resolved_boundaries:
@@ -2167,6 +2224,7 @@
     fmtNum: fmtNum, fmtRange: fmtRange, formatG: formatG,
     roundSig: roundSig, pyRound: pyRound, pyFixed: pyFixed, expo: expo,
     ordinal: ordinal, plural: plural, pluralNoun: pluralNoun,
+    renderText: renderText, phrase: phrase, phraseTable: phraseTable,
   });
 
   /* ============================================================= hydraulics
@@ -6059,7 +6117,7 @@
     var seal = sealDepthFor(log, rules, totalDepth);
     var margin = (rules.fracture_zone_margin_m === undefined ||
                   rules.fracture_zone_margin_m === null)
-      ? DEFAULT_CONFIG.design.fracture_zone_margin_m : rules.fracture_zone_margin_m;
+      ? configDefaults().design.fracture_zone_margin_m : rules.fracture_zone_margin_m;
     /* nothing is screened inside the grouted interval, whatever the log says
      * is wet there: the grout is there to keep that water out */
     var swlFloor = (swl || 0.0) + rules.min_screen_below_swl_m;
@@ -6182,7 +6240,7 @@
   function placementBasis(found, screens, rules) {
     var margin = (rules.fracture_zone_margin_m === undefined ||
                   rules.fracture_zone_margin_m === null)
-      ? DEFAULT_CONFIG.design.fracture_zone_margin_m : rules.fracture_zone_margin_m;
+      ? configDefaults().design.fracture_zone_margin_m : rules.fracture_zone_margin_m;
     var trimReason = 'the screens were trimmed to 60 percent of the hole, keeping ' +
       'the deepest sections';
     function covered(zone) {

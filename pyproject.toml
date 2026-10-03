@@ -56,7 +56,8 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 groundwater = [
-    "data/*.csv", "data/*.yaml", "data/*.geojson",
+    "data/*.csv", "data/*.yaml", "data/*.geojson", "data/*.json",
+    "data/text/*.yaml",
     "data/brand/*.png", "data/brand/*.svg",
     "data/brand/fonts/*.woff2", "data/brand/fonts/*.txt",
     "data/brand/fonts/*.json",

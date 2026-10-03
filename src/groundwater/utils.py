@@ -128,7 +128,9 @@ def fmt_num(value, sig: int = 3, unit: str = "") -> str:
     Integers within tolerance print without a decimal part. ``None``
     or NaN prints as an em-dash free placeholder ``n/a``.
     """
-    if value is None or (isinstance(value, float) and not math.isfinite(value)):
+    # math.isfinite rather than a float check: a NaN out of a float32 array
+    # is not a float, and round() raised on it instead of printing n/a
+    if value is None or not math.isfinite(float(value)):
         return "n/a"
     v = round_sig(float(value), sig)
     if abs(v - round(v)) < 1e-9 and abs(v) < 1e15:

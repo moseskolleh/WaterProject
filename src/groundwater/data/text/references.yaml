@@ -1,0 +1,99 @@
+# The works the reports cite, one full bibliography entry each, keyed by a
+# short id. Both engines read this table: reporting/citations.py CITATIONS
+# and gwt-docx.js REFERENCES. Which entries close which report is the
+# engine's own choice and stays in its code (citations.py _REFERENCES_FOR;
+# the b.references calls in gwt-docx.js).
+#
+# The two apps grew their reference lists apart, and the table keeps both
+# rather than choosing between them, because choosing changes the text of
+# one app's reports. Where an entry ends in _web it is the browser's wording
+# of a work the Python reports cite in other words, and the comment above it
+# says which. Settling each pair - against the document itself - is a change
+# of its own.
+
+citations:
+  who: >-
+    World Health Organization (2022). Guidelines for Drinking-water Quality,
+    4th edition incorporating the first and second addenda. Geneva: World
+    Health Organization.
+  # who, as the browser words it
+  who_web: >-
+    World Health Organization (2022). Guidelines for Drinking-water Quality,
+    fourth edition incorporating the first and second addenda. WHO, Geneva.
+  # The browser printed "the national acceptability limit" in three reports
+  # and named no standard at all, while the Python reports cited this and
+  # said in the citation what the limits are worth.
+  slsb: >-
+    Sierra Leone Standards Bureau. Sierra Leone Standard for drinking water
+    quality (SLS). Freetown: SLSB. Edition and date not verified against the
+    issued specification: the national limits this toolkit applies are
+    provisional (WHO or regional figures carried across) until confirmed
+    against it.
+  # Two different RWSN costing documents, one cited by each app.
+  rwsn_code_of_practice: >-
+    Rural Water Supply Network (2010). Code of Practice for Cost Effective
+    Boreholes. St Gallen: RWSN.
+  rwsn_costing_model: >-
+    Danert, K. (2015). Cost-Effective Boreholes: RWSN Borehole Costing Model
+    and Guidance Notes. Rural Water Supply Network, St Gallen.
+  rwsn_drilling: >-
+    Rural Water Supply Network (2015). Professional Water Well Drilling: A
+    UNICEF Guidance Note. St Gallen: RWSN / UNICEF.
+  # rwsn_drilling, as the browser cites it: with its authors, and another year
+  rwsn_drilling_web: >-
+    Danert, K., Adekile, D. and Canuto, J. (2020). Professional Water Well
+    Drilling: a UNICEF Guidance Note. UNICEF/Skat, New York.
+  rwsn_pricing: >-
+    Carter, R. C. (2014). Costing and Pricing: a Guide for Water Well Drilling
+    Enterprises. RWSN/Skat, St Gallen.
+  rwsn_supervision: >-
+    Adekile, D. (2014). Supervising Water Well Drilling: a Guide for
+    Supervisors. RWSN/Skat, St Gallen.
+  unicef_toolkit: >-
+    UNICEF (2016). Borehole Drilling: Planning, Contracting and Management.
+    UNICEF WASH, New York.
+  stop_the_rot: >-
+    RWSN (2021). Stop the Rot: Handpump Corrosion and Premature Failure in
+    Sub-Saharan Africa. Rural Water Supply Network, St Gallen.
+  theis: >-
+    Theis, C.V. (1935). The relation between the lowering of the piezometric
+    surface and the rate and duration of discharge of a well using groundwater
+    storage. Transactions of the American Geophysical Union, 16, 519-524.
+  cooper_jacob: >-
+    Cooper, H.H. and Jacob, C.E. (1946). A generalized graphical method for
+    evaluating formation constants and summarizing well-field history.
+    Transactions of the American Geophysical Union, 27, 526-534.
+  hantush: >-
+    Hantush, M.S. (1964). Hydraulics of wells. In V.T. Chow (ed.), Advances in
+    Hydroscience, 1, 281-442.
+  niwas_singhal: >-
+    Niwas, S. and Singhal, D.C. (1981). Estimation of aquifer transmissivity
+    from Dar-Zarrouk parameters in porous media. Journal of Hydrology, 50,
+    393-399.
+  langelier: >-
+    Langelier, W.F. (1936). The analytical control of anti-corrosion water
+    treatment. Journal of the American Water Works Association, 28, 1500-1521.
+  geoboundaries: >-
+    Runfola, D. et al. (2020). geoBoundaries: A global database of political
+    administrative boundaries. PLoS ONE, 15(4). Licensed CC BY 4.0.
+  # The wording the CC BY-SA licence prescribes (see THIRD_PARTY_NOTICES.md
+  # and the licence file shipped with the shapefile); the user guide is the
+  # report the country map is documented in.
+  bgs_atlas: >-
+    British Geological Survey. 2019/2021. Africa Groundwater Atlas Country
+    Hydrogeology Maps. Africa Groundwater Atlas
+    (https://www2.bgs.ac.uk/africagroundwateratlas/index.cfm). Licensed CC
+    BY-SA 4.0.
+  bgs_guide: >-
+    Ó Dochartaigh, B. (2021). User Guide Version 1.2: Africa Groundwater Atlas
+    Country Hydrogeology Maps. British Geological Survey Open Report OR/21/063.
+  usgs_geology: >-
+    United States Geological Survey (1997). Geologic Map of Africa, Open-File
+    Report 97-470A. Public domain, 1:5,000,000.
+  salwaco_geology: >-
+    Ministry of Water Resources and SALWACO (2017). Geology of Sierra Leone.
+    Freetown.
+  # salwaco_geology, as the browser words it
+  salwaco_geology_web: >-
+    Ministry of Water Resources and SALWACO (2017). Geology of Sierra Leone.
+    Government of Sierra Leone, Freetown.

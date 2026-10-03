@@ -24,6 +24,7 @@ from ..quality.standards import (
     faecal_pathogen,
     normalise_parameter,
 )
+from ..text import phrase, phrase_table
 from ..utils import fmt_num, safe_slug, plural_noun
 from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
@@ -47,56 +48,9 @@ def _sentence(text: str) -> str:
 #: It used to be matched by substring on the name as written, so "Sulphate"
 #: got the pH advice for containing "ph", and "Faecal coliforms" and lead got
 #: nothing, which left "No treatment is required" under a verdict of
-#: "Treat before use". The browser's recommendations are the same list
-#: (gwt-docx.js qualityRecommendations).
-_NITRATE_ADVICE = (
-    "Elevated nitrate usually indicates pollution from sanitation or "
-    "agriculture; investigate the sanitary protection zone. Do not give the "
-    "water to bottle fed infants until resolved."
-)
-_TREATMENT_ADVICE = {
-    "iron": "Iron above the acceptability value causes staining and metallic "
-    "taste; aeration followed by sand filtration or a simple oxidation "
-    "filter normally resolves it.",
-    "manganese": "Manganese requires oxidation and filtration (aeration or "
-    "chlorination followed by filtration); monitor infant exposure in the "
-    "meantime.",
-    "e. coli": "Any E. coli detection calls for shock chlorination of the "
-    "borehole, verification of the sanitary seal and apron, and re-sampling "
-    "before use.",
-    "total coliforms": "Coliform detection calls for disinfection of the "
-    "borehole and pump, a sanitary inspection of the wellhead, and re-sampling.",
-    "nitrate (as no3)": _NITRATE_ADVICE,
-    "nitrate (as n)": _NITRATE_ADVICE,
-    "nitrate + nitrite": _NITRATE_ADVICE,
-    "fluoride": "Fluoride above 1.5 mg/L requires an alternative source or "
-    "defluoridation (bone char or activated alumina).",
-    "arsenic": "Arsenic above 0.01 mg/L requires an alternative source or "
-    "specialised removal; re-test to confirm before any use for drinking.",
-    "turbidity": "High turbidity interferes with disinfection; extend "
-    "development of the borehole and re-sample.",
-}
-
-#: For a faecal pathogen found in the water, which has no table entry to key
-#: advice by and used to get none under "Treat before use".
-_PATHOGEN_ADVICE = (
-    "A faecal pathogen in the water calls for shock chlorination of the "
-    "borehole, a sanitary inspection to find where the contamination enters, "
-    "and re-sampling for the pathogen and for E. coli before the supply is "
-    "used for drinking."
-)
-
-#: pH is out of range in one of two directions, and the advice for each is
-#: different: the low-pH advice used to be given for a pH of 9.2.
-_PH_ADVICE_LOW = (
-    "Low pH water is corrosive to metal fittings; a limestone contactor or "
-    "careful choice of corrosion resistant materials is advised."
-)
-_PH_ADVICE_HIGH = (
-    "A pH above the acceptability range reduces the effectiveness of chlorine "
-    "disinfection and can give the water a bitter taste and deposit scale; "
-    "confirm the reading and set any chlorine dose to suit."
-)
+#: "Treat before use". The words are in data/text/quality.yaml, which the
+#: browser's recommendations (gwt-docx.js qualityRecommendations) read too.
+_TREATMENT_ADVICE = phrase_table("quality.treatment_advice")
 
 
 def quality_recommendations(assessment: WaterQualityAssessment) -> list[str]:
@@ -115,59 +69,36 @@ def quality_recommendations(assessment: WaterQualityAssessment) -> list[str]:
         return ", ".join(r.parameter for r in rows)
 
     if assessment.health_exceedances:
-        advice.append(
-            "Treat or replace the source before it is used for drinking: "
-            "health based limits are exceeded for "
-            + names(assessment.health_exceedances) + "."
-        )
+        advice.append(phrase("quality.treat_health",
+                             parameters=names(assessment.health_exceedances)))
     if assessment.national_exceedances:
-        advice.append(
-            "Treat before the supply is accepted against the national "
-            "standard: national limits are exceeded for "
-            + names(assessment.national_exceedances) + "."
-        )
+        advice.append(phrase("quality.treat_national",
+                             parameters=names(assessment.national_exceedances)))
     for r in assessment.all_exceedances:
         key = normalise_parameter(r.parameter)
         if key == "ph":
             low = (r.value_in_guideline_unit is not None
                    and r.value_in_guideline_unit < 7.0)
-            text = _PH_ADVICE_LOW if low else _PH_ADVICE_HIGH
+            text = phrase("quality.ph_low") if low else phrase("quality.ph_high")
         elif faecal_pathogen(r.parameter):
-            text = _PATHOGEN_ADVICE
+            text = phrase("quality.pathogen")
         else:
             text = _TREATMENT_ADVICE.get(key)
         if text and text not in advice:
             advice.append(text)
     if assessment.aesthetic_exceedances:
-        advice.append(
-            "Acceptability limits are exceeded for "
-            + names(assessment.aesthetic_exceedances) + ": simple treatment "
-            "is advisable if users complain of taste, odour or staining."
-        )
+        advice.append(phrase("quality.acceptability",
+                             parameters=names(assessment.aesthetic_exceedances)))
     state = assessment.verdict_state
     if state == "indeterminate":
         # "No treatment is required" is a clearance, and this report has not
         # established one. Say what is outstanding instead.
-        advice.append(
-            "Do not treat this supply as safe to drink on these results. "
-            + _sentence("; ".join(assessment.uncertainties))
-            + ". Resolve these and re-issue the assessment before any "
-            "treatment decision is taken."
-        )
+        advice.append(phrase("quality.not_cleared",
+                             outstanding=_sentence("; ".join(assessment.uncertainties))))
     elif state == "pass" and not advice:
-        advice.append(
-            "No treatment is required on the basis of the parameters tested. "
-            "Maintain the sanitary seal and apron in good condition."
-        )
-    advice.append(
-        "Disinfect the borehole after any maintenance and re-test "
-        "microbiological quality before the source is returned to use."
-    )
-    advice.append(
-        "Repeat physico-chemical and bacteriological testing at least once a "
-        "year, and after any flooding, repair work on the wellhead or change "
-        "in taste, colour or odour."
-    )
+        advice.append(phrase("quality.no_treatment"))
+    advice.append(phrase("quality.after_maintenance"))
+    advice.append(phrase("quality.repeat_testing"))
     return advice
 
 

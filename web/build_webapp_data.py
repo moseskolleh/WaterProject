@@ -6,8 +6,9 @@ the supervision checklists, separation distances, district and chiefdom
 populations and the map layers - plus the three sample datasets, so
 every page works offline with one click.
 
-Nothing here is transcribed by hand: the CSVs and GeoJSON under
-``src/groundwater/data`` are the single source of truth and this script
+Nothing here is transcribed by hand: the CSVs, the GeoJSON and the
+sentence catalogue (``text/*.yaml``) under ``src/groundwater/data`` are
+the single source of truth and this script
 mechanically re-emits them as ``docs/js/gwt-data.js`` and the two
 bundles beside it. Run it whenever that data changes:
 
@@ -77,6 +78,12 @@ def engine_digest() -> str:
     releases is a different engine and finds none of the old one's results.
     Line endings are normalised, so a Windows checkout builds the same
     bundle.
+
+    The configuration defaults and the sentence catalogue that this bundle
+    carries beside the engine are not in the digest. A reworded sentence is
+    not a different inversion, and the cache key already holds the whole VES
+    configuration an inversion ran with, so a changed VES default is a
+    different key without it.
     """
     import hashlib
 
@@ -294,6 +301,13 @@ def round_coords(node):
     return node
 
 
+def read_text_catalogue() -> dict:
+    """The shared words, ``data/text/*.yaml``, by namespace."""
+    from groundwater.text import text_catalogue
+
+    return text_catalogue()
+
+
 def read_geojson(name: str) -> dict:
     with open(DATA / name, "r", encoding="utf-8") as fh:
         layer = json.load(fh)
@@ -315,6 +329,11 @@ def bundle_texts() -> dict[Path, str]:
 
     for key, name in CSV_TABLES.items():
         payload[key] = read_csv_rows(name)
+    # the sentences both engines write, from data/text/*.yaml, read through
+    # the package's own loader so the browser gets exactly what it parses
+    payload["text"] = read_text_catalogue()
+    # the configuration defaults, which config.py reads from the same file
+    payload["defaults"] = json.loads((DATA / "defaults.json").read_text(encoding="utf-8"))
 
     geo = {key: read_geojson(name) for key, name in GEOJSON_LAYERS.items()}
 
@@ -378,8 +397,8 @@ def _header(name: str, what: str) -> str:
     return (
         f"/* {name} - {what}\n"
         " *\n"
-        " * GENERATED FILE - do not edit. The source of truth is the CSV and\n"
-        " * GeoJSON under src/groundwater/data and the workbooks under\n"
+        " * GENERATED FILE - do not edit. The source of truth is the CSV,\n"
+        " * GeoJSON and YAML under src/groundwater/data and the workbooks under\n"
         " * examples/data; regenerate with:\n"
         " *\n"
         " *     python web/build_webapp_data.py\n"

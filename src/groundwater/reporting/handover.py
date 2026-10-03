@@ -25,6 +25,7 @@ from ..quality.assess import (
     suitability_sentence,
     unquantified_text,
 )
+from ..text import phrase, phrase_table
 from ..utils import fmt_num, safe_slug
 from .citations import GLOSSARY, references_for
 from ..quality.standards import PROVISIONAL_NATIONAL_NOTE
@@ -466,26 +467,27 @@ def default_works(inputs: HandoverReportInputs) -> list[str]:
     checks is the drilled depth, the screen run and the seal. "Cased and
     screened" is not a figure anybody can measure against.
 
-    The browser writes the same list in ``docs/js/gwt-docx.js`` and
-    ``tests/webapp/parity.mjs`` holds the two to the same words, so a
-    reworded bullet here is a reworded bullet there. They used to differ in
+    The words are in ``data/text/handover.yaml``, which the browser's
+    ``handoverWorks`` in ``docs/js/gwt-docx.js`` reads too, and
+    ``tests/webapp/parity.mjs`` holds the two lists to each other, so a
+    reworded bullet is reworded in both. They used to differ in
     four of seven bullets, which handed one borehole two different
     certificates: a surveyor got the casing size or the screen run, never
     both, and never the seal.
     """
     works = []
     if inputs.sited:
-        works.append("Geophysical siting survey and borehole location selection.")
+        works.append(phrase("handover.works_siting"))
     log = inputs.log
     # The depth is the first quantity anyone measures the claim against, so
     # the bullet waits for one rather than certifying a borehole drilled to
     # "n/a" off a sheet where nobody wrote the depth down.
     if log is not None and log.total_depth_m is not None:
-        works.append(
-            f"Drilling of the borehole to {fmt_num(log.total_depth_m)} m"
-            + (f" by {log.drilling_method}" if log.drilling_method else "")
-            + "."
-        )
+        if log.drilling_method:
+            works.append(phrase("handover.works_drilling_by", depth=log.total_depth_m,
+                                method=str(log.drilling_method)))
+        else:
+            works.append(phrase("handover.works_drilling", depth=log.total_depth_m))
     design = inputs.design
     if design is not None:
         # The fill is the design's own, and the bullet says "designed" unless
@@ -493,26 +495,21 @@ def default_works(inputs: HandoverReportInputs) -> list[str]:
         # pack" over a 19 mm annulus the design had left empty, and 19 m of
         # screen as completed work above a drawing captioned "not an
         # as-built record".
-        fill = {
-            "gravel pack": "gravel pack",
-            "formation stabiliser": "formation stabiliser",
-        }.get(design.annular_fill,
-              f"no gravel pack (the {design.annulus_mm:.0f} mm annulus is too thin "
-              "to place one)")
-        works.append(
-            ("Construction with " if design.as_built else "Construction designed with ")
-            + f"{design.casing_diameter_in:g} inch {design.casing_material} casing, "
-            f"{fmt_num(design.total_screen_length_m)} m of screen"
-            + (" as installed" if design.as_built else "")
-            + f", {fill} and sanitary seal to {fmt_num(design.sanitary_seal[1])} m"
-            + ("." if design.as_built
-               else "; the drilling log records no casing string as installed.")
-        )
-        works.append("Development of the borehole by air lifting until clear.")
+        fill = phrase_table("handover.annular_fill").get(design.annular_fill)
+        if fill is None:
+            fill = phrase("handover.fill_none", annulus_mm=design.annulus_mm)
+        works.append(phrase(
+            "handover.works_construction" if design.as_built
+            else "handover.works_construction_designed",
+            casing_in=design.casing_diameter_in, material=design.casing_material,
+            screen_m=design.total_screen_length_m, fill=fill,
+            seal_m=design.sanitary_seal[1],
+        ))
+        works.append(phrase("handover.works_development"))
     if inputs.pumping is not None:
-        works.append("Pumping test and yield assessment.")
+        works.append(phrase("handover.works_pumping_test"))
     if inputs.quality is not None:
-        works.append("Water quality sampling and laboratory analysis.")
+        works.append(phrase("handover.works_quality"))
     # No wellhead bullet. This used to be appended unconditionally, which made
     # the docstring above false in its own function: the toolkit holds no
     # headworks record of any kind, so there was nothing for it to be
