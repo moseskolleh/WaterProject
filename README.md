@@ -384,6 +384,7 @@ python -m pytest             # parsers, numerics, reports
 npm install --no-save playwright && npx playwright install chromium
 node tests/webapp/parity.mjs                    # browser engine vs this package
 node tests/webapp/smoke.mjs                     # every page and every report
+node tests/webapp/copilot.mjs                   # the pumping test co-pilot, played back
 python tests/webapp/make_reference.py --check   # the reference values are current
 ```
 
