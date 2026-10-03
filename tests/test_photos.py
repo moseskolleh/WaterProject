@@ -269,3 +269,36 @@ def test_the_supervision_report_prints_the_provenance(tmp_path):
     assert phrase("evidence.no_provenance") in cells
     text = "\n".join(p.text for p in doc.paragraphs)
     assert "Photographic Evidence" in text and phrase("evidence.presence_only") in text
+
+
+@pytest.mark.parametrize("notes, checks, numbers", [
+    ([], False, ["3.1 Photographic Evidence"]),
+    (["Grout to surface."], False,
+     ["3.1 Site Notes and Instructions", "3.2 Photographic Evidence"]),
+    ([], True, ["3.1 Field Acceptance Checks", "3.2 Photographic Evidence"]),
+    (["Grout to surface."], True, ["3.1 Site Notes and Instructions",
+                                   "3.2 Field Acceptance Checks",
+                                   "3.3 Photographic Evidence"]),
+])
+def test_the_site_record_is_numbered_as_printed(tmp_path, notes, checks, numbers):
+    """A record with photographs and nothing else printed "3.3" straight under
+    "3.", with no 3.1 or 3.2 before it."""
+    from docx import Document
+
+    from groundwater.models import SiteMetadata
+    from groundwater.reporting.supervision import (
+        SupervisionReportInputs,
+        build_supervision_report,
+    )
+    from groundwater.supervision import evaluate_checklist
+    from groundwater.supervision.field_checks import handpump_corrosion_check
+
+    items = load_checklists()
+    path = build_supervision_report(SupervisionReportInputs(
+        site=SiteMetadata(community="Rokel"), items=items, responses={},
+        assessment=evaluate_checklist(items, {}), evidence=_evidence(),
+        notes=notes, field_checks=[handpump_corrosion_check(6.0)] if checks else [],
+        figures_dir=tmp_path), tmp_path / "sup.docx")
+    headings = [p.text for p in Document(str(path)).paragraphs
+                if p.style.name.startswith("Heading") and p.text.startswith("3.")]
+    assert headings == ["3. Site Record"] + numbers

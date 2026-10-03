@@ -79,13 +79,13 @@ def _photo_bytes(photo: dict) -> bytes | None:
 
 
 def _evidence_section(rb: ReportBuilder, inputs: SupervisionReportInputs,
-                      figures: Path) -> None:
+                      figures: Path, number: str) -> None:
     """The photographs attached to checklist items, with their provenance."""
     attached = [(item, inputs.evidence[item.item_id]) for item in inputs.items
                 if isinstance(inputs.evidence.get(item.item_id), dict)]
     if not attached:
         return
-    rb.heading("3.3 Photographic Evidence", 2)
+    rb.heading(f"{number} Photographic Evidence", 2)
     rows = []
     for item, photo in attached:
         shown = describe_provenance(photo.get("provenance"))
@@ -201,8 +201,11 @@ def build_supervision_report(
                        for i in inputs.items)
     if inputs.notes or inputs.field_checks or has_evidence:
         rb.heading("3. Site Record", 1)
+    # numbered as they are printed, so a record with only photographs has a
+    # 3.1 and not a 3.3 under a section with nothing before it
+    subsection = iter(range(1, 4))
     if inputs.notes:
-        rb.heading("3.1 Site Notes and Instructions", 2)
+        rb.heading(f"3.{next(subsection)} Site Notes and Instructions", 2)
         rb.paragraph(
             "Site instructions are issued in writing and signed in "
             "duplicate by the supervisor and the driller."
@@ -211,7 +214,7 @@ def build_supervision_report(
 
     # ---- field acceptance checks -------------------------------------------
     if inputs.field_checks:
-        rb.heading("3.2 Field Acceptance Checks", 2)
+        rb.heading(f"3.{next(subsection)} Field Acceptance Checks", 2)
         rb.paragraph(
             "Measured against the acceptance limits in the RWSN and UNICEF "
             "supervision guidance. A failed check is a defect the contractor "
@@ -226,7 +229,8 @@ def build_supervision_report(
         )
 
     # ---- photographic evidence ---------------------------------------------
-    _evidence_section(rb, inputs, _figures_dir(inputs.figures_dir, out_path))
+    _evidence_section(rb, inputs, _figures_dir(inputs.figures_dir, out_path),
+                      f"3.{next(subsection)}")
 
     # ---- signatures --------------------------------------------------------
     rb.heading("4. Sign Off", 1)
