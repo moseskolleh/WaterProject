@@ -2334,7 +2334,7 @@
     if (fit.r2 < cfg.cooper_jacob_min_r2) {
       throw new Error('The straight line explains too little of the window ' +
         formatG(fitWindow[0]) + '-' + formatG(fitWindow[1]) + ' min (R squared ' +
-        fit.r2.toFixed(3) + ', under ' + formatG(cfg.cooper_jacob_min_r2) +
+        pyFixed(fit.r2, 3) + ', under ' + formatG(cfg.cooper_jacob_min_r2) +
         '), so Cooper-Jacob does not apply');
     }
     var qDay = dischargeM3PerH * 24.0;
@@ -2916,12 +2916,12 @@
     var swl = test.static_water_level_m;
     var where, gap, reserves, fix;
     if (test.pump_setting_m !== null && test.pump_setting_m !== undefined) {
-      where = 'the pump intake at ' + test.pump_setting_m.toFixed(1) + ' m';
+      where = 'the pump intake at ' + pyFixed(test.pump_setting_m, 1) + ' m';
       gap = test.pump_setting_m - swl;
       reserves = ['the ' + formatG(cfg.pump_submergence_min_m) + ' m submergence margin'];
       fix = 'set the pump deeper';
     } else {
-      where = 'the borehole bottom at ' + test.borehole_depth_m.toFixed(1) + ' m';
+      where = 'the borehole bottom at ' + pyFixed(test.borehole_depth_m, 1) + ' m';
       gap = test.borehole_depth_m - swl;
       reserves = ['the 3 m clearance above the bottom',
         'the ' + formatG(cfg.pump_submergence_min_m) + ' m submergence margin'];
@@ -2932,8 +2932,8 @@
       fix += ' or reduce the reserve';
     }
     var position = gap >= 0
-      ? 'is ' + gap.toFixed(1) + ' m below the static level of ' + swl.toFixed(1) + ' m'
-      : 'is ' + (-gap).toFixed(1) + ' m above the static level of ' + swl.toFixed(1) + ' m';
+      ? 'is ' + pyFixed(gap, 1) + ' m below the static level of ' + pyFixed(swl, 1) + ' m'
+      : 'is ' + pyFixed(-gap, 1) + ' m above the static level of ' + pyFixed(swl, 1) + ' m';
     var listed = reserves.length === 1 ? reserves[0]
       : reserves.slice(0, -1).join(', ') + ' and ' + reserves[reserves.length - 1];
     return where + ' ' + position + '; after ' + listed +
@@ -3134,14 +3134,14 @@
 
     var method = METHOD_LABELS[opts.transmissivitySource || ''] || '';
     var pct = Math.round(cfg.available_drawdown_fraction * 100) + '%';
-    var basis = 'Transmissivity ' + transmissivity.toFixed(1) + ' m2/day' +
+    var basis = 'Transmissivity ' + pyFixed(transmissivity, 1) + ' m2/day' +
       (method ? ' from the ' + method + ' fit' : '') +
-      '; drawdown projected to ' + tDesign.toFixed(0) + ' days with storativity ' +
+      '; drawdown projected to ' + pyFixed(tDesign, 0) + ' days with storativity ' +
       'assumed ' + formatG(assumedStorativity) + ' and effective radius ' +
       effectiveRadiusM + ' m; usable drawdown taken as ' + pct + ' of the ' +
-      'available drawdown ' + available.toFixed(1) + ' m (static level to pump ' +
-      'intake less ' + cfg.pump_submergence_min_m.toFixed(0) + ' m submergence), ' +
-      'after reserving a ' + cfg.seasonal_allowance_m.toFixed(0) + ' m dry-season ' +
+      'available drawdown ' + pyFixed(available, 1) + ' m (static level to pump ' +
+      'intake less ' + pyFixed(cfg.pump_submergence_min_m, 0) + ' m submergence), ' +
+      'after reserving a ' + pyFixed(cfg.seasonal_allowance_m, 0) + ' m dry-season ' +
       'water-table decline' +
       (stepResult ? '; well losses from the step test are included' : '') +
       '. A safety factor of ' + cfg.safety_factor + ' is applied to the long ' +
@@ -3224,14 +3224,14 @@
     yields.push(rec.safe_yield_m3_per_h);
     rec.safe_yield_low_m3_per_h = arrMin(yields);
     rec.safe_yield_high_m3_per_h = arrMax(yields);
-    rec.envelope_basis = 'Range over transmissivity ' + tRange[0].toFixed(1) + '-' +
-      tRange[1].toFixed(1) + ' m2/day' +
+    rec.envelope_basis = 'Range over transmissivity ' + pyFixed(tRange[0], 1) + '-' +
+      pyFixed(tRange[1], 1) + ' m2/day' +
       (fitted.length > 1 ? ' (spread between the fitted methods)' : '') +
       ', storativity ' + formatG(ENVELOPE_STORATIVITY[0]) + '-' +
       formatG(ENVELOPE_STORATIVITY[1]) + ', effective radius ' +
       ENVELOPE_RADIUS_M[0] + '-' + ENVELOPE_RADIUS_M[1] + ' m and a dry-season ' +
-      'decline of ' + ENVELOPE_SEASONAL_M[0].toFixed(0) + '-' +
-      ENVELOPE_SEASONAL_M[1].toFixed(0) + ' m. Design to the lower figure where ' +
+      'decline of ' + pyFixed(ENVELOPE_SEASONAL_M[0], 0) + '-' +
+      pyFixed(ENVELOPE_SEASONAL_M[1], 0) + ' m. Design to the lower figure where ' +
       'the supply must not fail in a dry year.';
   }
 
@@ -3310,7 +3310,7 @@
     var minR2 = analysis.min_fit_r_squared === undefined
       ? defaultConfig().pumping.min_fit_r_squared : analysis.min_fit_r_squared;
     if (r2 !== null && r2 !== undefined && r2 < minR2) {
-      return 'R squared ' + r2.toFixed(3) + ' is below the ' + formatG(minR2) +
+      return 'R squared ' + pyFixed(r2, 3) + ' is below the ' + formatG(minR2) +
         ' standard';
     }
     return '';
@@ -3410,7 +3410,7 @@
         flags.push({
           level: 'warning', code: 'drawdown_stabilised',
           message: 'The pumped water level held at about ' +
-            analysis.stabilised_level_m.toFixed(2) + ' m over the last ' +
+            pyFixed(analysis.stabilised_level_m, 2) + ' m over the last ' +
             'readings: a recharge boundary or leakage is indicated, so the ' +
             'Theis/Cooper-Jacob projection to the design period is not the ' +
             'governing check; the stabilised level is.',
@@ -3436,13 +3436,13 @@
         what = 'The test pumped for ' + formatG(duration) + ' minutes';
         shortPrefix = 'Projected from a ' + formatG(duration) + '-minute test';
       }
-      shortPrefix += ' (' + cycles.toFixed(1) + ' log cycles to ' +
+      shortPrefix += ' (' + pyFixed(cycles, 1) + ' log cycles to ' +
         formatG(cfg.design_period_days) + ' days); treat as indicative. ';
       flags.push({
         level: 'warning', code: 'short_test',
         message: what + ', below the ' + formatG(threshold) + ' minutes needed ' +
           'to see late-time behaviour; the yield is extrapolated ' +
-          cycles.toFixed(1) + ' log cycles of time to the ' +
+          pyFixed(cycles, 1) + ' log cycles of time to the ' +
           formatG(cfg.design_period_days) + '-day design period and should be ' +
           'treated as indicative.',
       });
@@ -3473,9 +3473,9 @@
         if (!(sEnd0 > 0)) {
           flags.push({
             level: 'warning', code: 'first_step_above_static',
-            message: label0 + ' ends at ' + (isFinite(sEnd0) ? sEnd0.toFixed(2) : 'nan') +
+            message: label0 + ' ends at ' + (isFinite(sEnd0) ? pyFixed(sEnd0, 2) : 'nan') +
               ' m drawdown, at or above the stated static level of ' +
-              swl.toFixed(2) + ' m, so no drawdown fit is made on it; check ' +
+              pyFixed(swl, 2) + ' m, so no drawdown fit is made on it; check ' +
               'the static level and the datum for that step.',
             context: label0,
           });
@@ -3577,7 +3577,7 @@
       }
       if (recFit && recFit.intercept_fraction > cfg.recovery_intercept_max_fraction) {
         analysis.disqualified.recovery = "the recovery line meets t/t' = 1 at " +
-          recFit.intercept_m.toFixed(1) + ' m of residual drawdown, ' +
+          pyFixed(recFit.intercept_m, 1) + ' m of residual drawdown, ' +
           pyFixed(recFit.intercept_fraction * 100, 0) + '% of the drawdown the ' +
           'recovery started from, where the method requires zero';
         analysis.invalid_fits.recovery = analysis.disqualified.recovery;
@@ -3586,15 +3586,15 @@
         flags.push({
           level: 'warning', code: 'recovery_intercept',
           message: 'The recovery line does not pass through the origin: it meets ' +
-            "t/t' = 1 at " + recFit.intercept_m.toFixed(1) + ' m of residual ' +
+            "t/t' = 1 at " + pyFixed(recFit.intercept_m, 1) + ' m of residual ' +
             'drawdown (' + pyFixed(recFit.intercept_fraction * 100, 0) + '% of the ' +
-            (Math.abs(recFit.intercept_m) /
-              Math.max(recFit.intercept_fraction, 1e-9)).toFixed(1) +
+            pyFixed(Math.abs(recFit.intercept_m) /
+              Math.max(recFit.intercept_fraction, 1e-9), 1) +
             ' m the recovery started from), where Theis recovery requires zero. ' +
             'The residual drawdown is dominated by something the method does ' +
             'not model (casing storage, a changing static level or a wrong ' +
             'pumping time), so its transmissivity of ' +
-            recFit.transmissivity_m2_per_day.toFixed(2) + ' m2/day is reported ' +
+            pyFixed(recFit.transmissivity_m2_per_day, 2) + ' m2/day is reported ' +
             'but not adopted.',
         });
       }
@@ -3620,7 +3620,7 @@
           if (!(sEnd > 0)) {
             flags.push({
               level: 'warning', code: 'step_negative_drawdown',
-              message: label + ' ends at ' + sEnd.toFixed(2) + ' m drawdown, at ' +
+              message: label + ' ends at ' + pyFixed(sEnd, 2) + ' m drawdown, at ' +
                 'or above the static level, so it is left out of the ' +
                 'Hantush-Bierschenk fit; check the static level and the datum ' +
                 'for that step.',
@@ -3772,20 +3772,20 @@
     if (!adopted.result && fittedMethods(analysis).length) {
       rejected = 'no fitted transmissivity can be adopted (' +
         fittedMethods(analysis).map(function (f) {
-          return METHOD_LABELS[f[0]] + ' ' + f[1].transmissivity_m2_per_day.toFixed(2) +
+          return METHOD_LABELS[f[0]] + ' ' + pyFixed(f[1].transmissivity_m2_per_day, 2) +
             ' m2/day, ' + (analysis.invalid_fits[f[0]] || whyNotAdopted(analysis, f[0]));
         }).join('; ') + ')';
     }
     if (adopted.result && !adopted.qualifies) {
       var scored = fittedMethods(analysis).map(function (f) {
-        return METHOD_LABELS[f[0]] + ' ' + f[1].transmissivity_m2_per_day.toFixed(2) +
+        return METHOD_LABELS[f[0]] + ' ' + pyFixed(f[1].transmissivity_m2_per_day, 2) +
           ' m2/day, ' + (whyNotAdopted(analysis, f[0]) || 'usable');
       }).join('; ');
       flags.push({
         level: 'warning', code: 'transmissivity_low_confidence',
         message: 'No method fitted to standard (' + scored + '). The ' +
           METHOD_LABELS[adopted.method] + ' value of ' +
-          adopted.result.transmissivity_m2_per_day.toFixed(2) + ' m2/day is ' +
+          pyFixed(adopted.result.transmissivity_m2_per_day, 2) + ' m2/day is ' +
           'adopted as the best available, so the yield rests on a fit that ' +
           'does not meet it.',
       });
@@ -3817,7 +3817,7 @@
         formatG(duration) + ' minutes, below ' +
         'the ' + formatG(threshold) + ' needed to see late-time behaviour, so the ' +
         'yield is extrapolated ' +
-        (Math.log(cfg.design_period_days * MIN_PER_DAY / duration) / Math.LN10).toFixed(1) +
+        pyFixed(Math.log(cfg.design_period_days * MIN_PER_DAY / duration) / Math.LN10, 1) +
         ' log cycles of time');
     }
     if (tC && duration !== null && duration <= tC) {
@@ -4455,7 +4455,7 @@
     var error = 100.0 * (totalCat - totalAn) / (totalCat + totalAn);
 
     var flag = null;
-    var signed = (error >= 0 ? '+' : '') + error.toFixed(1);
+    var signed = (error >= 0 ? '+' : '') + pyFixed(error, 1);
     if (Math.abs(error) > 10) {
       flag = {
         level: 'error', code: 'ionic_balance',
@@ -4574,7 +4574,7 @@
       var worst = keys.reduce(function (a, b) { return hq[a] >= hq[b] ? a : b; });
       flags.push({
         level: 'warning', code: 'hazard_index',
-        message: 'Non-carcinogenic Hazard Index ' + hazardIndex.toFixed(1) +
+        message: 'Non-carcinogenic Hazard Index ' + pyFixed(hazardIndex, 1) +
           ' is at or above 1 (dominated by ' + worst + '); chronic ingestion ' +
           'poses a potential health concern.',
       });
@@ -4651,7 +4651,7 @@
     if (tds === null || tds <= 0) {
       if (ec && ec > 0) {
         tds = 0.64 * ec;
-        assumptions.push('TDS estimated as 0.64 x EC = ' + tds.toFixed(0) +
+        assumptions.push('TDS estimated as 0.64 x EC = ' + pyFixed(tds, 0) +
           ' mg/L (TDS not reported).');
       } else {
         tds = 250.0;
@@ -4718,7 +4718,7 @@
     assessment.classification = classification;
     assessment.is_aggressive = aggressive;
 
-    var signedLsi = (lsi >= 0 ? '+' : '') + lsi.toFixed(1);
+    var signedLsi = (lsi >= 0 ? '+' : '') + pyFixed(lsi, 1);
     if (aggressive) {
       /* The pH sentence used to say "within the acceptability range" for a
        * sample the same report flagged at 5.9. It now says what the pH is. */
@@ -4738,7 +4738,7 @@
           'which is typical of soft basement groundwater.';
       }
       assessment.verdict = 'The water is chemically aggressive (Ryznar index ' +
-        rsi.toFixed(1) + ', Langelier index ' + signedLsi + '). It will corrode ' +
+        pyFixed(rsi, 1) + ', Langelier index ' + signedLsi + '). It will corrode ' +
         'metal fittings. ' + phNote;
       assessment.materials_note = 'Specify uPVC or stainless steel (grade 304 or ' +
         '316) for the rising main and pump components, and avoid galvanised iron ' +
@@ -4747,7 +4747,7 @@
         'metal parts of the pump for corrosion at each service.';
       if (assessment.larson_skold !== null && assessment.larson_skold > 0.8) {
         assessment.materials_note += ' The Larson-Skold ratio (' +
-          assessment.larson_skold.toFixed(1) + ') is elevated, so chloride and ' +
+          pyFixed(assessment.larson_skold, 1) + ') is elevated, so chloride and ' +
           'sulfate add to the attack on steel.';
       }
       assessment.flags.push({
@@ -4757,12 +4757,12 @@
       });
     } else if (classification === 'Scale-forming') {
       assessment.verdict = 'The water tends to deposit calcium carbonate scale ' +
-        '(Ryznar index ' + rsi.toFixed(1) + ', Langelier index ' + signedLsi + ').';
+        '(Ryznar index ' + pyFixed(rsi, 1) + ', Langelier index ' + signedLsi + ').';
       assessment.materials_note = 'Monitor the screen and pump for encrustation ' +
         'and de-scale as needed; corrosion of metal parts is a lesser concern.';
     } else {
       assessment.verdict = 'The water is close to calcium carbonate equilibrium ' +
-        '(Ryznar index ' + rsi.toFixed(1) + ', Langelier index ' + signedLsi +
+        '(Ryznar index ' + pyFixed(rsi, 1) + ', Langelier index ' + signedLsi +
         '); neither strong corrosion nor scaling is expected.';
       assessment.materials_note = 'Standard materials are acceptable; inspect ' +
         'fittings for corrosion during routine maintenance.';
@@ -5495,14 +5495,14 @@
         remark: bounded
           ? 'An upper bound on the combined index (' + formatG(combined.no3) +
             '/' + formatG(combined.gv3) + ' + ' + formatG(combined.no2) + '/' +
-            formatG(combined.gv2) + ' = ' + combined.ratio.toFixed(2) +
+            formatG(combined.gv2) + ' = ' + pyFixed(combined.ratio, 2) +
             ') exceeds 1, taking the below-detection component at its ' +
             'detection limit. The WHO combined nitrate and nitrite limit ' +
             'cannot be shown to be met; ask the laboratory for a lower ' +
             'detection limit.'
           : 'The combined index (' + formatG(combined.no3) + '/' +
             formatG(combined.gv3) + ' + ' + formatG(combined.no2) + '/' +
-            formatG(combined.gv2) + ' = ' + combined.ratio.toFixed(2) +
+            formatG(combined.gv2) + ' = ' + pyFixed(combined.ratio, 2) +
             ') exceeds 1; the WHO combined nitrate and nitrite limit is not ' +
             'met even though each is within its own guideline value.',
         guideline_unit: 'ratio',
@@ -7512,7 +7512,7 @@
     var passed = deviationMm <= allowedMm;
     return fieldCheck('Verticality (plumb test)', passed,
       formatG(deviationMm) + ' mm over ' + formatG(depthM) + ' m',
-      allowedMm.toFixed(0) + ' mm (two thirds of ' +
+      pyFixed(allowedMm, 0) + ' mm (two thirds of ' +
         formatG(casingInnerDiameterMm) + ' mm ID per 30 m)',
       passed ? 'Borehole is acceptably straight and vertical.'
         : 'Deviation exceeds the limit; the driller re-drills at own cost.');
@@ -7525,7 +7525,7 @@
     var passed = screenOpenAreaM2 >= required;
     return fieldCheck('Screen open area', passed,
       formatG(screenOpenAreaM2) + ' m2',
-      '>= ' + required.toFixed(3) + ' m2 for Q = ' + formatG(designYieldLPerS) + ' L/s',
+      '>= ' + pyFixed(required, 3) + ' m2 for Q = ' + formatG(designYieldLPerS) + ' L/s',
       passed ? 'Entrance velocity within 0.03 m/s.'
         : 'Open area too small: turbulent inflow, encrustation and a shortened ' +
           'screen life are likely; use more or larger screen.');
@@ -7539,7 +7539,7 @@
     }
     var sc = dischargeM3PerH / drawdownM;
     var passed = sc >= 1.0;
-    return fieldCheck('Specific capacity', passed, sc.toFixed(2) + ' m3/h per m',
+    return fieldCheck('Specific capacity', passed, pyFixed(sc, 2) + ' m3/h per m',
       '>= 1 m3/h per m for a handpump',
       passed ? 'Adequate for a handpump (about 1 m drawdown at 1 m3/h).'
         : 'Below the handpump rule of thumb; review the test data and the pump ' +
@@ -7554,7 +7554,7 @@
     }
     var ratio = d50PackMm / d50AquiferMm;
     var passed = ratio >= 4.0 && ratio <= 6.0;
-    return fieldCheck('Pack aquifer ratio', passed, ratio.toFixed(1),
+    return fieldCheck('Pack aquifer ratio', passed, pyFixed(ratio, 1),
       '4 to 6 (D50 pack / D50 aquifer)',
       passed ? 'Filter pack correctly sized for the formation.'
         : 'Pack aquifer ratio outside 4 to 6: risk of sand pumping (too coarse) ' +
@@ -7577,7 +7577,7 @@
       note = 'Annulus below the 50 mm minimum: gravel is likely to bridge ' +
         'during placement; use a larger bit or smaller casing.';
     }
-    return fieldCheck('Annular space', passed, annulusMm.toFixed(0) + ' mm',
+    return fieldCheck('Annular space', passed, pyFixed(annulusMm, 0) + ' mm',
       '>= 50 mm (70 mm for a true gravel pack)', note);
   }
 
@@ -12451,8 +12451,8 @@
     add('Status', statusLabel(classifyStatus(summary)));
     var latlon = summaryLatLon(summary);
     if (latlon) {
-      add('Location', latlon.lat.toFixed(5) + ' N, ' +
-        Math.abs(latlon.lon).toFixed(5) + ' W');
+      add('Location', pyFixed(latlon.lat, 5) + ' N, ' +
+        pyFixed(Math.abs(latlon.lon), 5) + ' W');
     }
     add('Total depth', summary.total_depth_m
       ? pyFixed(summary.total_depth_m, 1) + ' m' : null);
@@ -12741,7 +12741,7 @@
       if (!(log.intervals || []).length) {
         return ['unmet', 'The drilling log records no lithology.'];
       }
-      return ['met', 'Logged to ' + log.total_depth_m.toFixed(0) + ' m with ' +
+      return ['met', 'Logged to ' + pyFixed(log.total_depth_m, 0) + ' m with ' +
         plural(log.intervals.length, 'lithological interval') + '.'];
     }],
     readings_usable: ['Readable units', function (state) {
@@ -12775,7 +12775,7 @@
           missing.map(function (s) { return s.step_number; }).join(', ') + '.'];
       }
       return ['met', plural(test.steps.length, 'step') + ' with discharge, ' +
-        'static water level ' + test.static_water_level_m.toFixed(2) + ' m.'];
+        'static water level ' + pyFixed(test.static_water_level_m, 2) + ' m.'];
     }],
     yield_established: ['Yield established', function (state) {
       var analysis = state.pump_analysis;
@@ -12831,7 +12831,7 @@
       var errors = (design.flags || []).filter(function (f) { return f.level === 'error'; });
       if (errors.length) return ['unmet', errors[0].message];
       if (!(design.screens || []).length) return ['unmet', 'The design places no screen.'];
-      return ['met', Number(design.total_screen_length_m).toFixed(1) +
+      return ['met', pyFixed(Number(design.total_screen_length_m), 1) +
         ' m of screen in ' + plural(design.screens.length, 'run') + '.'];
     }],
     cost_basis: ['Cost estimate', function (state) {
@@ -13484,7 +13484,7 @@
     var items = (document.header || []).filter(function (f) { return f.needs_review; })
       .map(function (f) {
         return "header field '" + f.name + "' = '" + f.value + "' (confidence " +
-          f.confidence.toFixed(2) + ')';
+          pyFixed(f.confidence, 2) + ')';
       });
     (document.uncertain_cells || []).forEach(function (cell) {
       var table = (document.tables || [])[cell.table_index];

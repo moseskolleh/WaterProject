@@ -217,6 +217,24 @@ def _bundles() -> dict[str, str]:
     return found
 
 
+def test_the_engine_prints_fixed_decimals_as_python_does():
+    """gwt-core.js writes a fixed number of decimals with pyFixed only.
+
+    toFixed rounds an exact binary tie (1.25, 6.5) away from zero and
+    Python's "%.1f" to the even digit, so every toFixed in report prose was
+    a divergence waiting for a sheet with that number on it: the fuzz suite
+    found them one at a time (a borehole depth of 6.5 m, a static level of
+    1.25 m). The two inside pyFixed and formatG are the only ones left.
+    """
+    source = (REPO / "docs" / "js" / "gwt-core.js").read_text(encoding="utf-8")
+    calls = [line.strip() for line in source.splitlines()
+             if ".toFixed(" in line and not line.lstrip().startswith(("*", "/*", "//"))]
+    assert calls == [
+        "return sign + Math.abs(pyRound(v, d)).toFixed(d);",
+        "var out = rounded.toFixed(Math.max(0, p - 1 - exp));",
+    ]
+
+
 def test_every_bundle_loaded_on_demand_exists_and_is_precached():
     """A bundle is fetched the first time a page needs it, not with the shell.
 
