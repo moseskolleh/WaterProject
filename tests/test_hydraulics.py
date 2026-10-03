@@ -49,6 +49,67 @@ def test_recovery_method():
     assert abs(result.transmissivity_m2_per_day - T_TRUE) / T_TRUE < 0.02
 
 
+def _handpump_test(T, q=0.8, offset=0.3):
+    """A day's test at a handpump rate, read to the centimetre, with 0.3 m of
+    well loss, and its recovery: 2.303 Q / (4 pi T) is 1.5 cm a log cycle at
+    T = 300 m2/day, under the 2 cm Cooper-Jacob asks of its window."""
+    t = np.array([1, 2, 3, 5, 8, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 360,
+                  480, 720, 960, 1200, 1440], float)
+
+    def s(minutes):
+        return q * 24 / (4 * np.pi * T) * exp1(R**2 * 1e-3 / (4 * T * minutes / 1440.0))
+
+    t_rec = np.array([1, 2, 3, 5, 8, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240], float)
+    return (t, np.round(offset + s(t), 2),
+            t_rec, np.round(s(1440 + t_rec) - s(t_rec), 2))
+
+
+def test_a_slow_but_readable_drawdown_still_gives_theis_and_recovery():
+    """A handpump in an aquifer of 300 m2/day draws down 1.5 cm a log cycle.
+
+    Theis and the recovery line refuse a record that does not move by what a
+    dipper reads, which is what a flat record is; they do not refuse one
+    that moves slowly but readably across three log cycles, whose
+    transmissivity both still find to within a few percent.
+    """
+    t, s, t_rec, s_rec = _handpump_test(300.0)
+    theis = theis_fit(t, s, 0.8)
+    assert abs(theis.transmissivity_m2_per_day - 300) / 300 < 0.1
+    recovery = theis_recovery(t_rec, s_rec, 1440.0, 0.8)
+    assert abs(recovery.transmissivity_m2_per_day - 300) / 300 < 0.1
+    with pytest.raises(ValueError, match="is flat"):
+        cooper_jacob(t, s, 0.8)
+
+
+def test_a_record_that_does_not_move_is_refused_by_theis_and_recovery():
+    t, s, t_rec, s_rec = _handpump_test(300.0)
+    with pytest.raises(ValueError, match="rises by less than 0.01 m"):
+        theis_fit(t, np.full_like(s, 0.42), 0.8)
+    with pytest.raises(ValueError, match="falls by less than 0.01 m"):
+        theis_recovery(t_rec, np.zeros_like(s_rec), 1440.0, 0.8)
+    # an aquifer so transmissive that a handpump moves the level by less
+    # than a centimetre in a day
+    t, s, t_rec, s_rec = _handpump_test(20000.0)
+    with pytest.raises(ValueError, match="rises by less than"):
+        theis_fit(t, s, 0.8)
+    with pytest.raises(ValueError, match="falls by less than"):
+        theis_recovery(t_rec, s_rec, 1440.0, 0.8)
+
+
+def test_a_theis_fit_that_drives_storativity_to_underflow_is_refused():
+    """14.6 m of drawdown in the first minute and 7 cm over the next 45: the
+    fit puts the offset into S, which ran to 9e-320, where each engine
+    stopped at a different T (regressions/pumping-theis-storativity-underflow
+    in tests/fuzz)."""
+    t = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 25, 30, 35,
+                  40, 45], float)
+    s = np.array([14.58, 14.59, 14.6, 14.6, 14.61, 14.61, 14.61, 14.62, 14.62,
+                  14.62, 14.62, 14.63, 14.63, 14.63, 14.63, 14.64, 14.64, 14.64,
+                  14.65, 14.65])
+    with pytest.raises(ValueError, match="storativity below 1e-280"):
+        theis_fit(t, s, 5.0)
+
+
 def test_hantush_bierschenk_exact():
     B, C = 0.002, 1e-6
     q_day = np.array([48.0, 96.0, 144.0, 192.0])

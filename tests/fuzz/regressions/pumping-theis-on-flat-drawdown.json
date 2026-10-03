@@ -1,5 +1,5 @@
 {
- "note": "Found on 2026-10-02. A constant test whose readable drawdowns sit at one level: the Theis fit has no minimum on such a record (T runs off to infinity and S to zero; Python's S came out at 4e-316), and the engines stopped at T = 2190 and 1282 m2/day, both adopted for the yield at established confidence. Neither engine was right. Both now refuse the Theis fit on a drawdown that grows by less than the slope Cooper-Jacob already refuses (0.02 m per log cycle).",
+ "note": "Found on 2026-10-02. A constant test whose readable drawdowns sit at one level: the Theis fit has no minimum on such a record (T runs off to infinity and S to zero; Python's S came out at 4e-316), and the engines stopped at T = 2190 and 1282 m2/day, both adopted for the yield at established confidence. Neither engine was right. Both now refuse the Theis fit on a drawdown whose fitted line rises by less than 0.01 m, what a dipper reads, across the readings. (The fix first refused any whole-record slope under Cooper-Jacob's 0.02 m per log cycle, which also refused genuine handpump tests in aquifers of a few hundred m2/day that the curve fits to within a few percent; review moved it to the reading resolution.)",
  "first_divergence": ["analysis.T", 1282.3232330556634, 2189.9602363848016],
  "kind": "pumping",
  "options": {},

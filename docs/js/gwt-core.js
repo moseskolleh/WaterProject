@@ -306,6 +306,15 @@
    * metres per log cycle, is rounding in the fit and not a direction. */
   var SLOPE_ROUNDING_M = 1e-9;
 
+  /* analysis.py READING_RESOLUTION_M: what a dipper reads to. A drawdown
+   * whose fitted line moves by less than this across all its readings cannot
+   * be told from one that does not move. */
+  var READING_RESOLUTION_M = 0.01;
+
+  /* analysis.py THEIS_STORATIVITY_FLOOR: a Theis storativity below this has
+   * not been fitted; the optimiser has run down a valley towards underflow. */
+  var THEIS_STORATIVITY_FLOOR = 1e-280;
+
   /* Least squares straight line with r^2, matching numpy lstsq + the r^2 the
    * Python computes alongside it. */
   function lineFit(x, y) {
@@ -2384,15 +2393,20 @@
    * u = r^2 S / (4 T t), in log parameter space so T and S stay positive.
    * Levenberg-Marquardt stands in for scipy's curve_fit.
    *
-   * A drawdown that does not grow with log time is refused, at the slope
-   * cooperJacob refuses: on a flat record the least squares has no minimum,
-   * T runs off towards infinity and S towards zero, and the transmissivity
-   * reported is wherever the optimiser stopped - 1282 m2/day here and 2190
-   * in the Python package for the same sheet, both adopted at established
-   * confidence. */
+   * A drawdown that does not grow with log time is refused: on a flat
+   * record the least squares has no minimum, T runs off towards infinity and
+   * S towards zero, and the transmissivity reported is wherever the
+   * optimiser stopped - 1282 m2/day here and 2190 in the Python package for
+   * the same sheet, both adopted at established confidence. The test is the
+   * reading resolution across the whole record, not the 0.02 m per log cycle
+   * cooperJacob asks of its late window: a handpump rate in an aquifer of a
+   * few hundred m2/day draws down 1 to 2 cm a log cycle, and over three log
+   * cycles of readings the curve still returns T to within a few percent. A
+   * fit that drives S to the floor is refused for the same reason as a flat
+   * record: the drawdown is nearly all an offset the curve does not model,
+   * such as well loss. */
   function theisFit(timeMin, drawdownM, dischargeM3PerH, options) {
     var opts = options || {};
-    var cfg = opts.config || defaultConfig().pumping;
     requireDischarge(dischargeM3PerH);
     var radiusM = opts.radiusM || 0.1;
     var t = [], s = [], i;
@@ -2404,13 +2418,15 @@
     }
     if (t.length < 5) throw new Error('Not enough readings for a Theis fit');
     var logTime = t.map(function (v) { return Math.log10(v); });
-    /* the slope itself is not printed: on a flat record it is a few parts in
+    /* the rise itself is not printed: on a flat record it is a few parts in
      * 1e17 either side of zero, and its sign is noise */
-    if (lineFit(logTime, s).slope < cfg.cooper_jacob_min_slope_m) {
-      throw new Error('The drawdown grows by less than ' +
-        formatG(cfg.cooper_jacob_min_slope_m) + ' m per log cycle of time across ' +
-        'the readings, so it does not follow the Theis curve and T and S ' +
-        'cannot be fitted');
+    var rise = lineFit(logTime, s).slope * (arrMax(logTime) - arrMin(logTime));
+    if (rise < READING_RESOLUTION_M) {
+      throw new Error('The drawdown rises by less than ' +
+        formatG(READING_RESOLUTION_M) + ' m across the readings, which a dipper ' +
+        'cannot tell from a level that holds, so T and S cannot be fitted to ' +
+        'it: the aquifer gives this discharge with next to no drawdown, which ' +
+        'a higher rate would measure, or recharge holds the level');
     }
     var qDay = dischargeM3PerH * 24.0;
     var calls = 0;
@@ -2492,6 +2508,14 @@
     }
 
     var Tfit = Math.pow(10, p[0]), Sfit = Math.pow(10, p[1]);
+    if (!(Sfit >= THEIS_STORATIVITY_FLOOR)) {
+      /* S is not printed either: it is wherever each optimiser stopped on its
+       * way to underflow */
+      throw new Error('The Theis fit drives the storativity below ' +
+        formatG(THEIS_STORATIVITY_FLOOR) + ': the drawdown is nearly all an ' +
+        'offset the Theis curve does not model, such as well loss, so T and S ' +
+        'cannot be fitted to it');
+    }
     var fitted = model(t, p[0], p[1]), ss = 0;
     for (var k2 = 0; k2 < t.length; k2++) {
       var e2 = fitted[k2] - s[k2];
@@ -2511,8 +2535,7 @@
    *   s' = 2.303 Q / (4 pi T) log10(t/t')
    * with t since pumping started and t' since it stopped. */
   function theisRecovery(recoveryTimeMin, residualDrawdownM, pumpingDurationMin,
-                         dischargeM3PerH, equivalentTime, config) {
-    var cfg = config || defaultConfig().pumping;
+                         dischargeM3PerH, equivalentTime) {
     /* pumpingDurationMin is the time t/t' is formed with: after a step test
      * pass the equivalent time from equivalentPumpingTimeMin and say so. */
     requireDischarge(dischargeM3PerH);
@@ -2532,13 +2555,15 @@
     }
     /* A recovery that has already finished is flat against log(t/t'), its
      * slope rounding noise, and 2.303 Q / (4 pi slope) turned that into 4e17
-     * m2/day here and 6e16 in the Python package. The line is refused at the
-     * slope Cooper-Jacob and Theis refuse, for the same reason. */
-    if (fit.slope < cfg.cooper_jacob_min_slope_m) {
+     * m2/day here and 6e16 in the Python package. The line is refused when it
+     * falls by less than a dipper reads across the recovery readings, as a
+     * Theis fit is; a slow but readable recovery, 1.5 cm a log cycle from a
+     * handpump in an aquifer of 300 m2/day, still gives its transmissivity. */
+    if (fit.slope * (arrMax(x) - arrMin(x)) < READING_RESOLUTION_M) {
       throw new Error('The residual drawdown falls by less than ' +
-        formatG(cfg.cooper_jacob_min_slope_m) + " m per log cycle of t/t', which " +
-        'reading resolution cannot tell from flat, so no transmissivity is ' +
-        'read from it');
+        formatG(READING_RESOLUTION_M) + ' m across the recovery readings, which ' +
+        'a dipper cannot tell from a recovery already complete, so no ' +
+        'transmissivity is read from it');
     }
     var qDay = dischargeM3PerH * 24.0;
     var start = arrMax(sp);
@@ -3468,7 +3493,6 @@
           analysis.theis = theisFit(t0, s0, q0, {
             observationWell: observationRadiusM !== null && observationRadiusM !== undefined,
             radiusM: observationRadiusM || 0.1,
-            config: cfg,
           });
         } catch (e2) {
           if (keepAny) {
@@ -3534,7 +3558,7 @@
       if (qRec !== null && tPump) {
         try {
           analysis.recovery = theisRecovery(test.recovery_time_min, residual,
-            tPump, qRec, equivalent, cfg);
+            tPump, qRec, equivalent);
         } catch (e3) {
           flags.push({ level: 'warning', code: 'recovery_failed', message: e3.message });
         }

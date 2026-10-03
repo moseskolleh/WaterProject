@@ -343,6 +343,18 @@ class PumpingTestAnalysis:
 #: the fit and not a direction: readings are taken to the centimetre.
 SLOPE_ROUNDING_M = 1e-9
 
+#: What a dipper reads to. A drawdown whose fitted line moves by less than
+#: this across all its readings cannot be told from one that does not move.
+READING_RESOLUTION_M = 0.01
+
+#: A Theis storativity below this has not been fitted: the optimiser has run
+#: down a valley towards the smallest number a float can hold, and stopped
+#: where u = r^2 S / (4 T t) underflowed, which is a different place in each
+#: engine. The floor sits far enough above that (2.2e-308) for u to stay a
+#: normal number on any test, and below the 1e-256 that a genuine valley
+#: floor reached (regressions/pumping-theis-long-valley.json).
+THEIS_STORATIVITY_FLOOR = 1e-280
+
 
 def _line_fit(x: np.ndarray, y: np.ndarray) -> tuple[float, float, float]:
     """Least squares line with r^2."""
@@ -495,21 +507,25 @@ def theis_fit(
     discharge_m3_per_h: float,
     radius_m: float = 0.1,
     observation_well: bool = False,
-    config: PumpingConfig | None = None,
 ) -> TheisResult:
     """Least squares fit of the Theis well function.
 
     ``s = Q / (4 pi T) W(u)``, ``u = r^2 S / (4 T t)``. Fitting is done
     in log parameter space to keep T and S positive.
 
-    A drawdown that does not grow with log time is refused, with the slope
-    ``cooper_jacob`` refuses: on a flat record the least squares has no
-    minimum, T runs off towards infinity and S towards zero, and the
-    transmissivity reported is wherever the optimiser stopped. That was a
-    storativity of 1e-316 beside thousands of m2/day adopted at established
-    confidence, and a different number in each engine.
+    A drawdown that does not grow with log time is refused: on a flat record
+    the least squares has no minimum, T runs off towards infinity and S
+    towards zero, and the transmissivity reported is wherever the optimiser
+    stopped. That was a storativity of 1e-316 beside thousands of m2/day
+    adopted at established confidence, and a different number in each
+    engine. The test is the reading resolution across the whole record, not
+    the 0.02 m per log cycle ``cooper_jacob`` asks of its late window: a
+    handpump rate in an aquifer of a few hundred m2/day draws down 1 to 2 cm
+    a log cycle, and over three log cycles of readings the curve still
+    returns T to within a few percent. A fit that drives S to the floor is
+    refused for the same reason as a flat record: the drawdown is nearly all
+    an offset the curve does not model, such as well loss.
     """
-    config = config or PumpingConfig()
     _require_discharge(discharge_m3_per_h)
     t = np.asarray(time_min, dtype=float) / MIN_PER_DAY
     s = np.asarray(drawdown_m, dtype=float)
@@ -517,15 +533,17 @@ def theis_fit(
     t, s = t[keep], s[keep]
     if len(t) < 5:
         raise ValueError("Not enough readings for a Theis fit")
-    slope = _line_fit(np.log10(t), s)[0]
-    if slope < config.cooper_jacob_min_slope_m:
-        # The slope itself is not printed: on a flat record it is a few
-        # parts in 1e17 either side of zero, and its sign is noise.
+    log_t = np.log10(t)
+    rise = _line_fit(log_t, s)[0] * float(log_t.max() - log_t.min())
+    if rise < READING_RESOLUTION_M:
+        # The rise itself is not printed: on a flat record it is a few parts
+        # in 1e17 either side of zero, and its sign is noise.
         raise ValueError(
-            "The drawdown grows by less than "
-            f"{config.cooper_jacob_min_slope_m:g} m per log cycle of time across "
-            "the readings, so it does not follow the Theis curve and T and S "
-            "cannot be fitted"
+            f"The drawdown rises by less than {READING_RESOLUTION_M:g} m across "
+            "the readings, which a dipper cannot tell from a level that holds, "
+            "so T and S cannot be fitted to it: the aquifer gives this discharge "
+            "with next to no drawdown, which a higher rate would measure, or "
+            "recharge holds the level"
         )
     q_day = discharge_m3_per_h * 24.0
 
@@ -547,6 +565,14 @@ def theis_fit(
     popt, _ = curve_fit(model, t, s, p0=p0, maxfev=20000, ftol=1e-12, xtol=1e-12)
     T = 10.0 ** popt[0]
     S = 10.0 ** popt[1]
+    if not S >= THEIS_STORATIVITY_FLOOR:
+        # S is not printed either: it is wherever each optimiser stopped on
+        # its way to underflow, 9e-320 here and another number in the browser.
+        raise ValueError(
+            f"The Theis fit drives the storativity below {THEIS_STORATIVITY_FLOOR:g}: "
+            "the drawdown is nearly all an offset the Theis curve does not "
+            "model, such as well loss, so T and S cannot be fitted to it"
+        )
     rmse = float(np.sqrt(np.mean((model(t, *popt) - s) ** 2)))
     return TheisResult(
         transmissivity_m2_per_day=T,
@@ -564,7 +590,6 @@ def theis_recovery(
     pumping_duration_min: float,
     discharge_m3_per_h: float,
     equivalent_time: bool = False,
-    config: PumpingConfig | None = None,
 ) -> RecoveryResult:
     """Theis recovery analysis on residual drawdown against t/t'.
 
@@ -586,21 +611,21 @@ def theis_recovery(
     tp, sp = tp[keep], sp[keep]
     if len(tp) < 4:
         raise ValueError("Not enough recovery readings")
-    ratio = (pumping_duration_min + tp) / tp
-    slope, intercept, r2 = _line_fit(np.log10(ratio), sp)
+    log_ratio = np.log10((pumping_duration_min + tp) / tp)
+    slope, intercept, r2 = _line_fit(log_ratio, sp)
     if slope < -SLOPE_ROUNDING_M:
         raise ValueError("Residual drawdown does not decrease; check the data")
     # A recovery that has already finished is flat against log(t/t'), its
     # slope rounding noise, and 2.303 Q / (4 pi slope) turned that into
-    # 6e16 m2/day here and 4e17 in the browser. The line is refused at the
-    # slope Cooper-Jacob and Theis refuse, for the same reason.
-    config = config or PumpingConfig()
-    if slope < config.cooper_jacob_min_slope_m:
+    # 6e16 m2/day here and 4e17 in the browser. The line is refused when it
+    # falls by less than a dipper reads across the recovery readings, as a
+    # Theis fit is; a slow but readable recovery, 1.5 cm a log cycle from a
+    # handpump in an aquifer of 300 m2/day, still gives its transmissivity.
+    if slope * float(log_ratio.max() - log_ratio.min()) < READING_RESOLUTION_M:
         raise ValueError(
-            "The residual drawdown falls by less than "
-            f"{config.cooper_jacob_min_slope_m:g} m per log cycle of t/t', which "
-            "reading resolution cannot tell from flat, so no transmissivity is "
-            "read from it"
+            f"The residual drawdown falls by less than {READING_RESOLUTION_M:g} m "
+            "across the recovery readings, which a dipper cannot tell from a "
+            "recovery already complete, so no transmissivity is read from it"
         )
     q_day = discharge_m3_per_h * 24.0
     T = 2.303 * q_day / (4.0 * math.pi * slope)
@@ -1339,7 +1364,6 @@ def analyse_pumping_test(
                     t[keep], s[keep], q,
                     observation_well=observation_radius_m is not None,
                     radius_m=observation_radius_m or 0.1,
-                    config=config,
                 )
             except (ValueError, RuntimeError) as exc:
                 if keep.any():
@@ -1396,7 +1420,7 @@ def analyse_pumping_test(
             try:
                 analysis.recovery = theis_recovery(
                     test.recovery_time_min, residual, t_pump, q_rec,
-                    equivalent_time=equivalent, config=config,
+                    equivalent_time=equivalent,
                 )
             except ValueError as exc:
                 flags.append(DataFlag("warning", "recovery_failed", str(exc)))
