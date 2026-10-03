@@ -1073,6 +1073,80 @@ await withPage(async (page, base, consoleErrors) => {
     !all.held && unasked.position_source === 'none' &&
     unasked.position_note === 'not_requested', JSON.stringify({ all, unasked }));
 
+  // asked, and refused; then asked of a device that never answers, which
+  // once held the photograph for as long as the permission prompt stayed
+  // open, because the geolocation timeout starts only after permission.
+  // The device's answers are stood in for: Chromium went on serving the
+  // emulated fix after the permission was cleared.
+  const reattach = async (device) => {
+    await page.evaluate((mode) => {
+      window.GWT.app.store.remove('supervision.evidence.dev-borehole-disinfected-chlorine');
+      window.GWT.app.store.set('photoPosition', true);
+      navigator.geolocation.getCurrentPosition = mode === 'refuse'
+        ? function (ok, fail) { fail({ code: 1, message: 'User denied Geolocation' }); }
+        : function () {};
+      window.GWT.imageSlot.positionWaitMs = 400;
+      window.GWT.app.goto('supervision');
+    }, device);
+    await page.waitForTimeout(150);
+    const started = Date.now();
+    await attach('dev-borehole-disinfected-chlorine', { name: 'chlorine.jpg',
+      mimeType: 'image/jpeg', buffer: bare });
+    const provenance = await page.evaluate(() => window.GWT.app.store.get(
+      'supervision.evidence')['dev-borehole-disinfected-chlorine'].provenance);
+    return { ms: Date.now() - started, provenance };
+  };
+  const refused = await reattach('refuse');
+  check('photo evidence: a refused position is recorded as refused',
+    refused.provenance.position_source === 'none' &&
+    refused.provenance.position_note === 'refused', JSON.stringify(refused));
+  const silent = await reattach('silent');
+  check('photo evidence: a device that never answers does not hold the photograph',
+    silent.provenance.position_source === 'none' &&
+    silent.provenance.position_note === 'unavailable' && silent.ms < 10000,
+    JSON.stringify(silent));
+  await page.evaluate(() => {
+    delete navigator.geolocation.getCurrentPosition;
+    window.GWT.imageSlot.positionWaitMs = 30000;
+    window.GWT.app.store.set('photoPosition', false);
+  });
+
+  // a photograph large enough to be downscaled for storage keeps the hash
+  // of the file as attached, not of the copy the project holds
+  const largeJpeg = Buffer.from(await page.evaluate(async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 2400; canvas.height = 1600;
+    const ctx = canvas.getContext('2d');
+    for (let i = 0; i < 400; i++) {
+      ctx.fillStyle = `hsl(${(i * 37) % 360}, 60%, ${30 + (i % 40)}%)`;
+      ctx.fillRect((i * 97) % 2400, (i * 53) % 1600, 120, 90);
+    }
+    const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.9));
+    return window.GWT.support.bytesToBase64(new Uint8Array(await blob.arrayBuffer()));
+  }), 'base64');
+  await page.evaluate(() => {
+    window.GWT.app.store.remove('supervision.evidence.dev-borehole-disinfected-chlorine');
+    window.GWT.app.goto('supervision');
+  });
+  await page.waitForTimeout(150);
+  await attach('dev-borehole-disinfected-chlorine', { name: 'large.jpg',
+    mimeType: 'image/jpeg', buffer: largeJpeg });
+  const large = await page.evaluate(() => {
+    const kept = window.GWT.app.store.get(
+      'supervision.evidence')['dev-borehole-disinfected-chlorine'];
+    const S = window.GWT.support;
+    return { provenance: kept.provenance, width: kept.width,
+      keptHash: window.GWT.core.photoProvenance(
+        S.base64ToBytes(kept.dataUrl.split(',')[1]), { attached_at: 'x' }).sha256 };
+  });
+  const { createHash } = await import('node:crypto');
+  const originalHash = createHash('sha256').update(largeJpeg).digest('hex');
+  check('photo evidence: a downscaled photograph keeps the hash of the file as attached',
+    large.provenance.stored === 'downscaled' && large.width <= 1600 &&
+    large.provenance.sha256 === originalHash && large.keptHash !== originalHash &&
+    large.provenance.bytes === largeJpeg.length,
+    JSON.stringify({ large, originalHash }));
+
   // a project saved before provenance existed: a supervision photo slot
   // holding a photograph with no record, and no evidence field at all
   const old = await page.evaluate(async (b64) => {

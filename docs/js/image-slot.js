@@ -124,12 +124,31 @@
     var geo = global.navigator && global.navigator.geolocation;
     if (!geo) return Promise.resolve({ fix: null, note: 'unsupported' });
     return new Promise(function (resolve) {
-      geo.getCurrentPosition(function (pos) {
-        resolve({ fix: { lat: pos.coords.latitude, lon: pos.coords.longitude,
-          accuracy_m: pos.coords.accuracy }, note: '' });
-      }, function (err) {
-        resolve({ fix: null, note: err && err.code === 1 ? 'refused' : 'unavailable' });
-      }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+      var timer = 0;
+      /** @param {{fix: *, note: string}} result */
+      function finish(result) {
+        if (!timer) return;
+        global.clearTimeout(timer);
+        timer = 0;
+        resolve(result);
+      }
+      /* The geolocation timeout runs only once permission is given. A
+       * prompt left open, or dismissed in a browser that then calls neither
+       * callback, would hold the photograph for good, so the whole wait,
+       * prompt included, has a limit of its own. */
+      timer = global.setTimeout(function () {
+        finish({ fix: null, note: 'unavailable' });
+      }, GWT.imageSlot.positionWaitMs);
+      try {
+        geo.getCurrentPosition(function (pos) {
+          finish({ fix: { lat: pos.coords.latitude, lon: pos.coords.longitude,
+            accuracy_m: pos.coords.accuracy }, note: '' });
+        }, function (err) {
+          finish({ fix: null, note: err && err.code === 1 ? 'refused' : 'unavailable' });
+        }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+      } catch (e) {
+        finish({ fix: null, note: 'unavailable' });
+      }
     });
   }
 
@@ -392,5 +411,8 @@
   GWT.imageSlot = {
     create: create, gallery: gallery, collect: collect, count: count,
     shrink: shrink, sets: SLOT_SETS, MAX_EDGE: MAX_EDGE,
+    /* how long a photograph waits for the device's position in all,
+     * permission prompt included; then it is kept without one */
+    positionWaitMs: 30000,
   };
 }(typeof window !== 'undefined' ? window : globalThis));
