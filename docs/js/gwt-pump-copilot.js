@@ -50,13 +50,15 @@
   var KEY = 'pumpCopilot';
   var FORMAT = 1;
 
-  /* PLAN.md's schedule: log-spaced to two hours, then every 30 minutes.
-   * Equal spacing in log time is what the Cooper-Jacob line is fitted in, so
-   * the early minutes, where the curve bends fastest, are not left with two
-   * points and the late hours with forty. */
-  var SCHEDULE_MIN = [0.5, 1, 1.5, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30,
-    40, 50, 60, 75, 90, 120];
-  var LATE_EVERY_MIN = 30;
+  /* The schedule, the cautious transmissivity range and Logan's factor are
+   * written once, in src/groundwater/data/field.yaml, with the reasons for
+   * each; the printed field kit (PLAN.md step 2.5) reads the same file, so a
+   * crew with a clipboard reads at the minutes this page beeps at. */
+  var FIELD = C.fieldSchedules().pumping;
+
+  /* PLAN.md's schedule: log-spaced to two hours, then every 30 minutes. */
+  var SCHEDULE_MIN = FIELD.schedule_min;
+  var LATE_EVERY_MIN = FIELD.late_every_min;
 
   /* A rate that has moved this much since the step's first measurement is a
    * different test: the drawdown is then answering two rates at once. */
@@ -67,10 +69,10 @@
   /* Logan (1964): T is about 1.22 Q/s, with Q/s in m3/day per metre. It turns
    * a transmissivity into the specific capacity Schafer's rule needs before
    * any drawdown has been read. */
-  var LOGAN = 1.22;
+  var LOGAN = FIELD.logan_factor;
   /* the cautious range offered before pumping, m2/day: the low end is what
    * sets the time, and weathered basement is often no better */
-  var T_LOW = 1, T_HIGH = 10;
+  var T_LOW = FIELD.cautious_t_m2_per_day[0], T_HIGH = FIELD.cautious_t_m2_per_day[1];
   /* the template has four step groups */
   var MAX_STEPS = 4;
 

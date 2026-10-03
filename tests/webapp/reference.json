@@ -21643,5 +21643,4856 @@
    ],
    "flags": []
   }
- ]
+ ],
+ "field_kit": {
+  "cases": [
+   {
+    "site": {
+     "project": "Rokel 2026",
+     "project_ref": "",
+     "community": "Kuntolo",
+     "client": "Living Water International",
+     "district": "Port Loko",
+     "supervisor": "WiNGiN"
+    },
+    "boreholes": [
+     "KTL-01",
+     "KTL|02 %x",
+     " KTL-01 ",
+     "",
+     "BH\t 3\n"
+    ],
+    "config": {}
+   },
+   {
+    "site": {
+     "project": "Ignored",
+     "project_ref": " LWI/2026/07 ",
+     "community": "Rokel",
+     "client": "",
+     "district": "",
+     "supervisor": ""
+    },
+    "boreholes": [
+     "RK-1"
+    ],
+    "config": {
+     "pumping": {
+      "casing_diameter_in": 6.0,
+      "riser_diameter_in": 1.5,
+      "min_constant_test_min": 120.0,
+      "min_step_length_min": 100.0
+     },
+     "ves": {
+      "depth_of_investigation_factor": 0.3
+     }
+    }
+   },
+   {
+    "site": {
+     "project": "",
+     "project_ref": "",
+     "community": "",
+     "client": "",
+     "district": "",
+     "supervisor": ""
+    },
+    "boreholes": [
+     "\u00d8-1 K\u0254n\u0254"
+    ],
+    "config": {
+     "pumping": {
+      "casing_diameter_in": 1.25,
+      "riser_diameter_in": 1.25
+     }
+    }
+   }
+  ],
+  "content": [
+   {
+    "format": "GWT-FK/1",
+    "project": "Rokel 2026",
+    "title": "Field kit: Rokel 2026",
+    "storage": {
+     "casing_in": 5.0,
+     "riser_in": 1.25,
+     "t_low": 1,
+     "t_high": 10,
+     "low_t_min": 306.81954765000006,
+     "high_t_min": 30.681954765
+    },
+    "constant_min": 306.81954765000006,
+    "first_step_min": 306.81954765000006,
+    "planned_min": 330,
+    "sheets": [
+     {
+      "borehole": "KTL-01",
+      "payload": "GWT-FK/1|pumping|Rokel 2026|KTL-01",
+      "title": "Pumping test field sheet: borehole KTL-01",
+      "code": "Sheet code GWT-FK/1|pumping|Rokel 2026|KTL-01. Scan it, or type it in, to match this sheet to its project and borehole.",
+      "warning": "",
+      "header": [
+       [
+        "Community",
+        "Kuntolo"
+       ],
+       [
+        "Date",
+        ""
+       ],
+       [
+        "Client",
+        "Living Water International"
+       ],
+       [
+        "Length of each step (min)",
+        ""
+       ],
+       [
+        "Test conducted by",
+        "WiNGiN"
+       ],
+       [
+        "Start time",
+        ""
+       ],
+       [
+        "Borehole Ref. No.",
+        "KTL-01"
+       ],
+       [
+        "Depth of Borehole (m)",
+        ""
+       ],
+       [
+        "Static water level (m)",
+        ""
+       ],
+       [
+        "Pump setting (m)",
+        ""
+       ],
+       [
+        "Test type (step or constant)",
+        "constant"
+       ],
+       [
+        "District",
+        "Port Loko"
+       ],
+       [
+        "GPS Coordinate East",
+        ""
+       ],
+       [
+        "GPS Coordinate North",
+        ""
+       ],
+       [
+        "UTM Zone (28N or 29N)",
+        ""
+       ],
+       [
+        "Elevation (m)",
+        ""
+       ]
+      ],
+      "notes": [
+       "Casing storage: if the transmissivity is as low as 1 m2/day, the water levels of the first 307 minutes may show the 5 inch casing, with its 1.25 inch riser, emptying rather than the aquifer (31 minutes at 10 m2/day).",
+       "Constant discharge test: do not stop the pump before 307 minutes, the longer of that time and the shortest constant test the analysis accepts, 240 minutes.",
+       "Step test: run every step for at least 60 minutes, and the first for at least 307 minutes, since the drawdown is fitted on the first step.",
+       "A shorter test is safe only once the measured drawdown shows a shorter casing-storage time. The pumping test co-pilot or the office works that out from the discharge and the drawdown.",
+       "Read the water level at each minute in the Time column, counted from the moment the pump starts. After 120 minutes, read every 30 minutes.",
+       "When the pump stops, start the clock again from zero and read the recovery at the same minutes."
+      ],
+      "discharge_note": "Record the discharge of every step. Time a bucket of known volume three times; the rate in m3/h is 3.6 times the litres divided by the mean seconds. A step with no discharge is written as Not measured, with the reason.",
+      "discharge": {
+       "caption": "Discharge per step (m3/h)",
+       "header": [
+        "Step 1 Q",
+        "Step 2 Q",
+        "Step 3 Q",
+        "Step 4 Q"
+       ],
+       "rows": [
+        [
+         "",
+         "",
+         "",
+         ""
+        ]
+       ]
+      },
+      "bucket": {
+       "caption": "Bucket timings",
+       "header": [
+        "Step",
+        "Bucket (L)",
+        "Timing 1 (s)",
+        "Timing 2 (s)",
+        "Timing 3 (s)",
+        "Q (m3/h)"
+       ],
+       "rows": [
+        [
+         "Step 1",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ],
+        [
+         "Step 2",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ],
+        [
+         "Step 3",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ],
+        [
+         "Step 4",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ]
+       ]
+      },
+      "transcribe": "The tables below have the columns of the standard pumping test workbook, so a filled sheet is typed into it cell for cell.",
+      "blocks": [
+       {
+        "caption": "Constant discharge 0-60 min",
+        "header": [
+         "Time (min)",
+         "Water Level (m)",
+         "Drawdown (m)"
+        ],
+        "rows": [
+         [
+          "0.5",
+          "",
+          ""
+         ],
+         [
+          "1",
+          "",
+          ""
+         ],
+         [
+          "1.5",
+          "",
+          ""
+         ],
+         [
+          "2",
+          "",
+          ""
+         ],
+         [
+          "3",
+          "",
+          ""
+         ],
+         [
+          "4",
+          "",
+          ""
+         ],
+         [
+          "5",
+          "",
+          ""
+         ],
+         [
+          "6",
+          "",
+          ""
+         ],
+         [
+          "8",
+          "",
+          ""
+         ],
+         [
+          "10",
+          "",
+          ""
+         ],
+         [
+          "12",
+          "",
+          ""
+         ],
+         [
+          "15",
+          "",
+          ""
+         ],
+         [
+          "20",
+          "",
+          ""
+         ],
+         [
+          "25",
+          "",
+          ""
+         ],
+         [
+          "30",
+          "",
+          ""
+         ],
+         [
+          "40",
+          "",
+          ""
+         ],
+         [
+          "50",
+          "",
+          ""
+         ],
+         [
+          "60",
+          "",
+          ""
+         ]
+        ]
+       },
+       {
+        "caption": "Constant discharge 61-120 min",
+        "header": [
+         "Time (min)",
+         "Water Level (m)",
+         "Drawdown (m)"
+        ],
+        "rows": [
+         [
+          "75",
+          "",
+          ""
+         ],
+         [
+          "90",
+          "",
+          ""
+         ],
+         [
+          "120",
+          "",
+          ""
+         ]
+        ]
+       },
+       {
+        "caption": "Constant discharge 121-180 min",
+        "header": [
+         "Time (min)",
+         "Water Level (m)",
+         "Drawdown (m)"
+        ],
+        "rows": [
+         [
+          "150",
+          "",
+          ""
+         ],
+         [
+          "180",
+          "",
+          ""
+         ]
+        ]
+       },
+       {
+        "caption": "Constant discharge 181-330 min",
+        "header": [
+         "Time (min)",
+         "Water Level (m)",
+         "Drawdown (m)"
+        ],
+        "rows": [
+         [
+          "210",
+          "",
+          ""
+         ],
+         [
+          "240",
+          "",
+          ""
+         ],
+         [
+          "270",
+          "",
+          ""
+         ],
+         [
+          "300",
+          "",
+          ""
+         ],
+         [
+          "330",
+          "",
+          ""
+         ]
+        ]
+       }
+      ],
+      "recovery": {
+       "caption": "Recovery",
+       "header": [
+        "Time (min)",
+        "Water Level (m)",
+        "Recovery (m)"
+       ],
+       "rows": [
+        [
+         "0.5",
+         "",
+         ""
+        ],
+        [
+         "1",
+         "",
+         ""
+        ],
+        [
+         "1.5",
+         "",
+         ""
+        ],
+        [
+         "2",
+         "",
+         ""
+        ],
+        [
+         "3",
+         "",
+         ""
+        ],
+        [
+         "4",
+         "",
+         ""
+        ],
+        [
+         "5",
+         "",
+         ""
+        ],
+        [
+         "6",
+         "",
+         ""
+        ],
+        [
+         "8",
+         "",
+         ""
+        ],
+        [
+         "10",
+         "",
+         ""
+        ],
+        [
+         "12",
+         "",
+         ""
+        ],
+        [
+         "15",
+         "",
+         ""
+        ],
+        [
+         "20",
+         "",
+         ""
+        ],
+        [
+         "25",
+         "",
+         ""
+        ],
+        [
+         "30",
+         "",
+         ""
+        ],
+        [
+         "40",
+         "",
+         ""
+        ],
+        [
+         "50",
+         "",
+         ""
+        ],
+        [
+         "60",
+         "",
+         ""
+        ],
+        [
+         "75",
+         "",
+         ""
+        ],
+        [
+         "90",
+         "",
+         ""
+        ],
+        [
+         "120",
+         "",
+         ""
+        ],
+        [
+         "150",
+         "",
+         ""
+        ],
+        [
+         "180",
+         "",
+         ""
+        ],
+        [
+         "210",
+         "",
+         ""
+        ],
+        [
+         "240",
+         "",
+         ""
+        ],
+        [
+         "270",
+         "",
+         ""
+        ],
+        [
+         "300",
+         "",
+         ""
+        ],
+        [
+         "330",
+         "",
+         ""
+        ]
+       ]
+      }
+     },
+     {
+      "borehole": "KTL|02 %x",
+      "payload": "GWT-FK/1|pumping|Rokel 2026|KTL%7C02 %25x",
+      "title": "Pumping test field sheet: borehole KTL|02 %x",
+      "code": "Sheet code GWT-FK/1|pumping|Rokel 2026|KTL%7C02 %25x. Scan it, or type it in, to match this sheet to its project and borehole.",
+      "warning": "",
+      "header": [
+       [
+        "Community",
+        "Kuntolo"
+       ],
+       [
+        "Date",
+        ""
+       ],
+       [
+        "Client",
+        "Living Water International"
+       ],
+       [
+        "Length of each step (min)",
+        ""
+       ],
+       [
+        "Test conducted by",
+        "WiNGiN"
+       ],
+       [
+        "Start time",
+        ""
+       ],
+       [
+        "Borehole Ref. No.",
+        "KTL|02 %x"
+       ],
+       [
+        "Depth of Borehole (m)",
+        ""
+       ],
+       [
+        "Static water level (m)",
+        ""
+       ],
+       [
+        "Pump setting (m)",
+        ""
+       ],
+       [
+        "Test type (step or constant)",
+        "constant"
+       ],
+       [
+        "District",
+        "Port Loko"
+       ],
+       [
+        "GPS Coordinate East",
+        ""
+       ],
+       [
+        "GPS Coordinate North",
+        ""
+       ],
+       [
+        "UTM Zone (28N or 29N)",
+        ""
+       ],
+       [
+        "Elevation (m)",
+        ""
+       ]
+      ],
+      "notes": [
+       "Casing storage: if the transmissivity is as low as 1 m2/day, the water levels of the first 307 minutes may show the 5 inch casing, with its 1.25 inch riser, emptying rather than the aquifer (31 minutes at 10 m2/day).",
+       "Constant discharge test: do not stop the pump before 307 minutes, the longer of that time and the shortest constant test the analysis accepts, 240 minutes.",
+       "Step test: run every step for at least 60 minutes, and the first for at least 307 minutes, since the drawdown is fitted on the first step.",
+       "A shorter test is safe only once the measured drawdown shows a shorter casing-storage time. The pumping test co-pilot or the office works that out from the discharge and the drawdown.",
+       "Read the water level at each minute in the Time column, counted from the moment the pump starts. After 120 minutes, read every 30 minutes.",
+       "When the pump stops, start the clock again from zero and read the recovery at the same minutes."
+      ],
+      "discharge_note": "Record the discharge of every step. Time a bucket of known volume three times; the rate in m3/h is 3.6 times the litres divided by the mean seconds. A step with no discharge is written as Not measured, with the reason.",
+      "discharge": {
+       "caption": "Discharge per step (m3/h)",
+       "header": [
+        "Step 1 Q",
+        "Step 2 Q",
+        "Step 3 Q",
+        "Step 4 Q"
+       ],
+       "rows": [
+        [
+         "",
+         "",
+         "",
+         ""
+        ]
+       ]
+      },
+      "bucket": {
+       "caption": "Bucket timings",
+       "header": [
+        "Step",
+        "Bucket (L)",
+        "Timing 1 (s)",
+        "Timing 2 (s)",
+        "Timing 3 (s)",
+        "Q (m3/h)"
+       ],
+       "rows": [
+        [
+         "Step 1",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ],
+        [
+         "Step 2",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ],
+        [
+         "Step 3",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ],
+        [
+         "Step 4",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ]
+       ]
+      },
+      "transcribe": "The tables below have the columns of the standard pumping test workbook, so a filled sheet is typed into it cell for cell.",
+      "blocks": [
+       {
+        "caption": "Constant discharge 0-60 min",
+        "header": [
+         "Time (min)",
+         "Water Level (m)",
+         "Drawdown (m)"
+        ],
+        "rows": [
+         [
+          "0.5",
+          "",
+          ""
+         ],
+         [
+          "1",
+          "",
+          ""
+         ],
+         [
+          "1.5",
+          "",
+          ""
+         ],
+         [
+          "2",
+          "",
+          ""
+         ],
+         [
+          "3",
+          "",
+          ""
+         ],
+         [
+          "4",
+          "",
+          ""
+         ],
+         [
+          "5",
+          "",
+          ""
+         ],
+         [
+          "6",
+          "",
+          ""
+         ],
+         [
+          "8",
+          "",
+          ""
+         ],
+         [
+          "10",
+          "",
+          ""
+         ],
+         [
+          "12",
+          "",
+          ""
+         ],
+         [
+          "15",
+          "",
+          ""
+         ],
+         [
+          "20",
+          "",
+          ""
+         ],
+         [
+          "25",
+          "",
+          ""
+         ],
+         [
+          "30",
+          "",
+          ""
+         ],
+         [
+          "40",
+          "",
+          ""
+         ],
+         [
+          "50",
+          "",
+          ""
+         ],
+         [
+          "60",
+          "",
+          ""
+         ]
+        ]
+       },
+       {
+        "caption": "Constant discharge 61-120 min",
+        "header": [
+         "Time (min)",
+         "Water Level (m)",
+         "Drawdown (m)"
+        ],
+        "rows": [
+         [
+          "75",
+          "",
+          ""
+         ],
+         [
+          "90",
+          "",
+          ""
+         ],
+         [
+          "120",
+          "",
+          ""
+         ]
+        ]
+       },
+       {
+        "caption": "Constant discharge 121-180 min",
+        "header": [
+         "Time (min)",
+         "Water Level (m)",
+         "Drawdown (m)"
+        ],
+        "rows": [
+         [
+          "150",
+          "",
+          ""
+         ],
+         [
+          "180",
+          "",
+          ""
+         ]
+        ]
+       },
+       {
+        "caption": "Constant discharge 181-330 min",
+        "header": [
+         "Time (min)",
+         "Water Level (m)",
+         "Drawdown (m)"
+        ],
+        "rows": [
+         [
+          "210",
+          "",
+          ""
+         ],
+         [
+          "240",
+          "",
+          ""
+         ],
+         [
+          "270",
+          "",
+          ""
+         ],
+         [
+          "300",
+          "",
+          ""
+         ],
+         [
+          "330",
+          "",
+          ""
+         ]
+        ]
+       }
+      ],
+      "recovery": {
+       "caption": "Recovery",
+       "header": [
+        "Time (min)",
+        "Water Level (m)",
+        "Recovery (m)"
+       ],
+       "rows": [
+        [
+         "0.5",
+         "",
+         ""
+        ],
+        [
+         "1",
+         "",
+         ""
+        ],
+        [
+         "1.5",
+         "",
+         ""
+        ],
+        [
+         "2",
+         "",
+         ""
+        ],
+        [
+         "3",
+         "",
+         ""
+        ],
+        [
+         "4",
+         "",
+         ""
+        ],
+        [
+         "5",
+         "",
+         ""
+        ],
+        [
+         "6",
+         "",
+         ""
+        ],
+        [
+         "8",
+         "",
+         ""
+        ],
+        [
+         "10",
+         "",
+         ""
+        ],
+        [
+         "12",
+         "",
+         ""
+        ],
+        [
+         "15",
+         "",
+         ""
+        ],
+        [
+         "20",
+         "",
+         ""
+        ],
+        [
+         "25",
+         "",
+         ""
+        ],
+        [
+         "30",
+         "",
+         ""
+        ],
+        [
+         "40",
+         "",
+         ""
+        ],
+        [
+         "50",
+         "",
+         ""
+        ],
+        [
+         "60",
+         "",
+         ""
+        ],
+        [
+         "75",
+         "",
+         ""
+        ],
+        [
+         "90",
+         "",
+         ""
+        ],
+        [
+         "120",
+         "",
+         ""
+        ],
+        [
+         "150",
+         "",
+         ""
+        ],
+        [
+         "180",
+         "",
+         ""
+        ],
+        [
+         "210",
+         "",
+         ""
+        ],
+        [
+         "240",
+         "",
+         ""
+        ],
+        [
+         "270",
+         "",
+         ""
+        ],
+        [
+         "300",
+         "",
+         ""
+        ],
+        [
+         "330",
+         "",
+         ""
+        ]
+       ]
+      }
+     },
+     {
+      "borehole": "BH 3",
+      "payload": "GWT-FK/1|pumping|Rokel 2026|BH 3",
+      "title": "Pumping test field sheet: borehole BH 3",
+      "code": "Sheet code GWT-FK/1|pumping|Rokel 2026|BH 3. Scan it, or type it in, to match this sheet to its project and borehole.",
+      "warning": "",
+      "header": [
+       [
+        "Community",
+        "Kuntolo"
+       ],
+       [
+        "Date",
+        ""
+       ],
+       [
+        "Client",
+        "Living Water International"
+       ],
+       [
+        "Length of each step (min)",
+        ""
+       ],
+       [
+        "Test conducted by",
+        "WiNGiN"
+       ],
+       [
+        "Start time",
+        ""
+       ],
+       [
+        "Borehole Ref. No.",
+        "BH 3"
+       ],
+       [
+        "Depth of Borehole (m)",
+        ""
+       ],
+       [
+        "Static water level (m)",
+        ""
+       ],
+       [
+        "Pump setting (m)",
+        ""
+       ],
+       [
+        "Test type (step or constant)",
+        "constant"
+       ],
+       [
+        "District",
+        "Port Loko"
+       ],
+       [
+        "GPS Coordinate East",
+        ""
+       ],
+       [
+        "GPS Coordinate North",
+        ""
+       ],
+       [
+        "UTM Zone (28N or 29N)",
+        ""
+       ],
+       [
+        "Elevation (m)",
+        ""
+       ]
+      ],
+      "notes": [
+       "Casing storage: if the transmissivity is as low as 1 m2/day, the water levels of the first 307 minutes may show the 5 inch casing, with its 1.25 inch riser, emptying rather than the aquifer (31 minutes at 10 m2/day).",
+       "Constant discharge test: do not stop the pump before 307 minutes, the longer of that time and the shortest constant test the analysis accepts, 240 minutes.",
+       "Step test: run every step for at least 60 minutes, and the first for at least 307 minutes, since the drawdown is fitted on the first step.",
+       "A shorter test is safe only once the measured drawdown shows a shorter casing-storage time. The pumping test co-pilot or the office works that out from the discharge and the drawdown.",
+       "Read the water level at each minute in the Time column, counted from the moment the pump starts. After 120 minutes, read every 30 minutes.",
+       "When the pump stops, start the clock again from zero and read the recovery at the same minutes."
+      ],
+      "discharge_note": "Record the discharge of every step. Time a bucket of known volume three times; the rate in m3/h is 3.6 times the litres divided by the mean seconds. A step with no discharge is written as Not measured, with the reason.",
+      "discharge": {
+       "caption": "Discharge per step (m3/h)",
+       "header": [
+        "Step 1 Q",
+        "Step 2 Q",
+        "Step 3 Q",
+        "Step 4 Q"
+       ],
+       "rows": [
+        [
+         "",
+         "",
+         "",
+         ""
+        ]
+       ]
+      },
+      "bucket": {
+       "caption": "Bucket timings",
+       "header": [
+        "Step",
+        "Bucket (L)",
+        "Timing 1 (s)",
+        "Timing 2 (s)",
+        "Timing 3 (s)",
+        "Q (m3/h)"
+       ],
+       "rows": [
+        [
+         "Step 1",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ],
+        [
+         "Step 2",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ],
+        [
+         "Step 3",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ],
+        [
+         "Step 4",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ]
+       ]
+      },
+      "transcribe": "The tables below have the columns of the standard pumping test workbook, so a filled sheet is typed into it cell for cell.",
+      "blocks": [
+       {
+        "caption": "Constant discharge 0-60 min",
+        "header": [
+         "Time (min)",
+         "Water Level (m)",
+         "Drawdown (m)"
+        ],
+        "rows": [
+         [
+          "0.5",
+          "",
+          ""
+         ],
+         [
+          "1",
+          "",
+          ""
+         ],
+         [
+          "1.5",
+          "",
+          ""
+         ],
+         [
+          "2",
+          "",
+          ""
+         ],
+         [
+          "3",
+          "",
+          ""
+         ],
+         [
+          "4",
+          "",
+          ""
+         ],
+         [
+          "5",
+          "",
+          ""
+         ],
+         [
+          "6",
+          "",
+          ""
+         ],
+         [
+          "8",
+          "",
+          ""
+         ],
+         [
+          "10",
+          "",
+          ""
+         ],
+         [
+          "12",
+          "",
+          ""
+         ],
+         [
+          "15",
+          "",
+          ""
+         ],
+         [
+          "20",
+          "",
+          ""
+         ],
+         [
+          "25",
+          "",
+          ""
+         ],
+         [
+          "30",
+          "",
+          ""
+         ],
+         [
+          "40",
+          "",
+          ""
+         ],
+         [
+          "50",
+          "",
+          ""
+         ],
+         [
+          "60",
+          "",
+          ""
+         ]
+        ]
+       },
+       {
+        "caption": "Constant discharge 61-120 min",
+        "header": [
+         "Time (min)",
+         "Water Level (m)",
+         "Drawdown (m)"
+        ],
+        "rows": [
+         [
+          "75",
+          "",
+          ""
+         ],
+         [
+          "90",
+          "",
+          ""
+         ],
+         [
+          "120",
+          "",
+          ""
+         ]
+        ]
+       },
+       {
+        "caption": "Constant discharge 121-180 min",
+        "header": [
+         "Time (min)",
+         "Water Level (m)",
+         "Drawdown (m)"
+        ],
+        "rows": [
+         [
+          "150",
+          "",
+          ""
+         ],
+         [
+          "180",
+          "",
+          ""
+         ]
+        ]
+       },
+       {
+        "caption": "Constant discharge 181-330 min",
+        "header": [
+         "Time (min)",
+         "Water Level (m)",
+         "Drawdown (m)"
+        ],
+        "rows": [
+         [
+          "210",
+          "",
+          ""
+         ],
+         [
+          "240",
+          "",
+          ""
+         ],
+         [
+          "270",
+          "",
+          ""
+         ],
+         [
+          "300",
+          "",
+          ""
+         ],
+         [
+          "330",
+          "",
+          ""
+         ]
+        ]
+       }
+      ],
+      "recovery": {
+       "caption": "Recovery",
+       "header": [
+        "Time (min)",
+        "Water Level (m)",
+        "Recovery (m)"
+       ],
+       "rows": [
+        [
+         "0.5",
+         "",
+         ""
+        ],
+        [
+         "1",
+         "",
+         ""
+        ],
+        [
+         "1.5",
+         "",
+         ""
+        ],
+        [
+         "2",
+         "",
+         ""
+        ],
+        [
+         "3",
+         "",
+         ""
+        ],
+        [
+         "4",
+         "",
+         ""
+        ],
+        [
+         "5",
+         "",
+         ""
+        ],
+        [
+         "6",
+         "",
+         ""
+        ],
+        [
+         "8",
+         "",
+         ""
+        ],
+        [
+         "10",
+         "",
+         ""
+        ],
+        [
+         "12",
+         "",
+         ""
+        ],
+        [
+         "15",
+         "",
+         ""
+        ],
+        [
+         "20",
+         "",
+         ""
+        ],
+        [
+         "25",
+         "",
+         ""
+        ],
+        [
+         "30",
+         "",
+         ""
+        ],
+        [
+         "40",
+         "",
+         ""
+        ],
+        [
+         "50",
+         "",
+         ""
+        ],
+        [
+         "60",
+         "",
+         ""
+        ],
+        [
+         "75",
+         "",
+         ""
+        ],
+        [
+         "90",
+         "",
+         ""
+        ],
+        [
+         "120",
+         "",
+         ""
+        ],
+        [
+         "150",
+         "",
+         ""
+        ],
+        [
+         "180",
+         "",
+         ""
+        ],
+        [
+         "210",
+         "",
+         ""
+        ],
+        [
+         "240",
+         "",
+         ""
+        ],
+        [
+         "270",
+         "",
+         ""
+        ],
+        [
+         "300",
+         "",
+         ""
+        ],
+        [
+         "330",
+         "",
+         ""
+        ]
+       ]
+      }
+     }
+    ],
+    "cards": [
+     {
+      "key": "pumping",
+      "title": "Quick card: pumping test reading schedule",
+      "lines": [
+       "Read the water level at these minutes after the pump starts, then every 30 minutes.",
+       "When the pump stops, start the clock again from zero and read the recovery at the same minutes."
+      ],
+      "tables": [
+       {
+        "caption": "Reading minutes",
+        "header": [],
+        "rows": [
+         [
+          "0.5",
+          "1",
+          "1.5",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         [
+          "6",
+          "8",
+          "10",
+          "12",
+          "15",
+          "20",
+          "25"
+         ],
+         [
+          "30",
+          "40",
+          "50",
+          "60",
+          "75",
+          "90",
+          "120"
+         ]
+        ]
+       }
+      ],
+      "notes": [
+       "Casing storage: if the transmissivity is as low as 1 m2/day, the water levels of the first 307 minutes may show the 5 inch casing, with its 1.25 inch riser, emptying rather than the aquifer (31 minutes at 10 m2/day).",
+       "Constant discharge test: do not stop the pump before 307 minutes, the longer of that time and the shortest constant test the analysis accepts, 240 minutes.",
+       "Step test: run every step for at least 60 minutes, and the first for at least 307 minutes, since the drawdown is fitted on the first step.",
+       "A shorter test is safe only once the measured drawdown shows a shorter casing-storage time. The pumping test co-pilot or the office works that out from the discharge and the drawdown."
+      ]
+     },
+     {
+      "key": "ves",
+      "title": "Quick card: VES Schlumberger spacings",
+      "lines": [
+       "A sounding reaches a depth of about 0.5 times its largest AB/2. Peg down the table until the depth reached is at least the target depth, and stop there.",
+       "AB is always at least 5 times MN, and MN is widened before AB passes 20 times it. Where MN changes, read the same AB/2 again with the new MN, and keep both readings."
+      ],
+      "tables": [
+       {
+        "caption": "Schlumberger spacings",
+        "header": [
+         "No.",
+         "AB/2 (m)",
+         "MN (m)",
+         "Depth reached (m)"
+        ],
+        "rows": [
+         [
+          "1",
+          "1",
+          "0.4",
+          "0.5"
+         ],
+         [
+          "2",
+          "1.5",
+          "0.4",
+          "0.75"
+         ],
+         [
+          "3",
+          "2",
+          "0.4",
+          "1"
+         ],
+         [
+          "4",
+          "3",
+          "0.4",
+          "1.5"
+         ],
+         [
+          "5",
+          "4",
+          "0.4",
+          "2"
+         ],
+         [
+          "6",
+          "4",
+          "1",
+          "2"
+         ],
+         [
+          "7",
+          "5",
+          "1",
+          "2.5"
+         ],
+         [
+          "8",
+          "6",
+          "1",
+          "3"
+         ],
+         [
+          "9",
+          "8",
+          "1",
+          "4"
+         ],
+         [
+          "10",
+          "10",
+          "1",
+          "5"
+         ],
+         [
+          "11",
+          "10",
+          "2",
+          "5"
+         ],
+         [
+          "12",
+          "12",
+          "2",
+          "6"
+         ],
+         [
+          "13",
+          "15",
+          "2",
+          "7.5"
+         ],
+         [
+          "14",
+          "20",
+          "2",
+          "10"
+         ],
+         [
+          "15",
+          "20",
+          "5",
+          "10"
+         ],
+         [
+          "16",
+          "25",
+          "5",
+          "12.5"
+         ],
+         [
+          "17",
+          "30",
+          "5",
+          "15"
+         ],
+         [
+          "18",
+          "40",
+          "5",
+          "20"
+         ],
+         [
+          "19",
+          "50",
+          "5",
+          "25"
+         ],
+         [
+          "20",
+          "50",
+          "20",
+          "25"
+         ],
+         [
+          "21",
+          "60",
+          "20",
+          "30"
+         ],
+         [
+          "22",
+          "80",
+          "20",
+          "40"
+         ],
+         [
+          "23",
+          "100",
+          "20",
+          "50"
+         ],
+         [
+          "24",
+          "120",
+          "20",
+          "60"
+         ],
+         [
+          "25",
+          "150",
+          "20",
+          "75"
+         ],
+         [
+          "26",
+          "200",
+          "20",
+          "100"
+         ],
+         [
+          "27",
+          "200",
+          "40",
+          "100"
+         ],
+         [
+          "28",
+          "250",
+          "40",
+          "125"
+         ],
+         [
+          "29",
+          "300",
+          "40",
+          "150"
+         ],
+         [
+          "30",
+          "400",
+          "40",
+          "200"
+         ],
+         [
+          "31",
+          "400",
+          "100",
+          "200"
+         ],
+         [
+          "32",
+          "500",
+          "100",
+          "250"
+         ]
+        ]
+       }
+      ],
+      "notes": []
+     },
+     {
+      "key": "disinfection",
+      "title": "Quick card: disinfecting the borehole with chlorine",
+      "lines": [
+       "Shock dose of 20 mg of chlorine per litre: add 1 litre of 0.2 percent chlorine solution for every 100 litres of water standing in the well, and do not pump for at least 4 hours.",
+       "A 0.2 percent solution holds 2 g of chlorine per litre: dissolve about 3.1 g of 65 percent HTH powder in each litre of water.",
+       "Water in the well, in litres, is 0.785 times the square of the casing inner diameter in mm, times the water column in m, divided by 1,000."
+      ],
+      "tables": [
+       {
+        "caption": "Litres of 0.2 percent solution (L) and grams of 65 percent HTH (g), by water column and casing inner diameter.",
+        "header": [
+         "Water column (m)",
+         "100 mm: L",
+         "100 mm: g",
+         "125 mm: L",
+         "125 mm: g",
+         "150 mm: L",
+         "150 mm: g"
+        ],
+        "rows": [
+         [
+          "10",
+          "0.8",
+          "2",
+          "1.2",
+          "4",
+          "1.8",
+          "5"
+         ],
+         [
+          "20",
+          "1.6",
+          "5",
+          "2.5",
+          "8",
+          "3.5",
+          "11"
+         ],
+         [
+          "30",
+          "2.4",
+          "7",
+          "3.7",
+          "11",
+          "5.3",
+          "16"
+         ],
+         [
+          "40",
+          "3.1",
+          "10",
+          "4.9",
+          "15",
+          "7.1",
+          "22"
+         ],
+         [
+          "50",
+          "3.9",
+          "12",
+          "6.1",
+          "19",
+          "8.8",
+          "27"
+         ],
+         [
+          "60",
+          "4.7",
+          "14",
+          "7.4",
+          "23",
+          "10.6",
+          "33"
+         ]
+        ]
+       }
+      ],
+      "notes": [
+       "Basis: the toolkit's supervision checklist (borehole disinfected with chlorine at 20 mg per litre, after Adekile, 2014) and its dose calculator, which follows WHO. Where the programme's own disinfection procedure sets a different dose, it takes precedence."
+      ]
+     }
+    ],
+    "references": [
+     "Adekile, D. (2014). Supervising Water Well Drilling: a Guide for Supervisors. RWSN/Skat, St Gallen.",
+     "World Health Organization (2022). Guidelines for Drinking-water Quality, 4th edition incorporating the first and second addenda. Geneva: World Health Organization."
+    ]
+   },
+   {
+    "format": "GWT-FK/1",
+    "project": "LWI/2026/07",
+    "title": "Field kit: LWI/2026/07",
+    "storage": {
+     "casing_in": 6.0,
+     "riser_in": 1.5,
+     "t_low": 1,
+     "t_high": 10,
+     "low_t_min": 441.8201486159999,
+     "high_t_min": 44.18201486159999
+    },
+    "constant_min": 441.8201486159999,
+    "first_step_min": 441.8201486159999,
+    "planned_min": 450,
+    "sheets": [
+     {
+      "borehole": "RK-1",
+      "payload": "GWT-FK/1|pumping|LWI/2026/07|RK-1",
+      "title": "Pumping test field sheet: borehole RK-1",
+      "code": "Sheet code GWT-FK/1|pumping|LWI/2026/07|RK-1. Scan it, or type it in, to match this sheet to its project and borehole.",
+      "warning": "",
+      "header": [
+       [
+        "Community",
+        "Rokel"
+       ],
+       [
+        "Date",
+        ""
+       ],
+       [
+        "Client",
+        ""
+       ],
+       [
+        "Length of each step (min)",
+        ""
+       ],
+       [
+        "Test conducted by",
+        ""
+       ],
+       [
+        "Start time",
+        ""
+       ],
+       [
+        "Borehole Ref. No.",
+        "RK-1"
+       ],
+       [
+        "Depth of Borehole (m)",
+        ""
+       ],
+       [
+        "Static water level (m)",
+        ""
+       ],
+       [
+        "Pump setting (m)",
+        ""
+       ],
+       [
+        "Test type (step or constant)",
+        "constant"
+       ],
+       [
+        "District",
+        ""
+       ],
+       [
+        "GPS Coordinate East",
+        ""
+       ],
+       [
+        "GPS Coordinate North",
+        ""
+       ],
+       [
+        "UTM Zone (28N or 29N)",
+        ""
+       ],
+       [
+        "Elevation (m)",
+        ""
+       ]
+      ],
+      "notes": [
+       "Casing storage: if the transmissivity is as low as 1 m2/day, the water levels of the first 442 minutes may show the 6 inch casing, with its 1.5 inch riser, emptying rather than the aquifer (44 minutes at 10 m2/day).",
+       "Constant discharge test: do not stop the pump before 442 minutes, the longer of that time and the shortest constant test the analysis accepts, 120 minutes.",
+       "Step test: run every step for at least 100 minutes, and the first for at least 442 minutes, since the drawdown is fitted on the first step.",
+       "A shorter test is safe only once the measured drawdown shows a shorter casing-storage time. The pumping test co-pilot or the office works that out from the discharge and the drawdown.",
+       "Read the water level at each minute in the Time column, counted from the moment the pump starts. After 120 minutes, read every 30 minutes.",
+       "When the pump stops, start the clock again from zero and read the recovery at the same minutes."
+      ],
+      "discharge_note": "Record the discharge of every step. Time a bucket of known volume three times; the rate in m3/h is 3.6 times the litres divided by the mean seconds. A step with no discharge is written as Not measured, with the reason.",
+      "discharge": {
+       "caption": "Discharge per step (m3/h)",
+       "header": [
+        "Step 1 Q",
+        "Step 2 Q",
+        "Step 3 Q",
+        "Step 4 Q"
+       ],
+       "rows": [
+        [
+         "",
+         "",
+         "",
+         ""
+        ]
+       ]
+      },
+      "bucket": {
+       "caption": "Bucket timings",
+       "header": [
+        "Step",
+        "Bucket (L)",
+        "Timing 1 (s)",
+        "Timing 2 (s)",
+        "Timing 3 (s)",
+        "Q (m3/h)"
+       ],
+       "rows": [
+        [
+         "Step 1",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ],
+        [
+         "Step 2",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ],
+        [
+         "Step 3",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ],
+        [
+         "Step 4",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ]
+       ]
+      },
+      "transcribe": "The tables below have the columns of the standard pumping test workbook, so a filled sheet is typed into it cell for cell.",
+      "blocks": [
+       {
+        "caption": "Constant discharge 0-60 min",
+        "header": [
+         "Time (min)",
+         "Water Level (m)",
+         "Drawdown (m)"
+        ],
+        "rows": [
+         [
+          "0.5",
+          "",
+          ""
+         ],
+         [
+          "1",
+          "",
+          ""
+         ],
+         [
+          "1.5",
+          "",
+          ""
+         ],
+         [
+          "2",
+          "",
+          ""
+         ],
+         [
+          "3",
+          "",
+          ""
+         ],
+         [
+          "4",
+          "",
+          ""
+         ],
+         [
+          "5",
+          "",
+          ""
+         ],
+         [
+          "6",
+          "",
+          ""
+         ],
+         [
+          "8",
+          "",
+          ""
+         ],
+         [
+          "10",
+          "",
+          ""
+         ],
+         [
+          "12",
+          "",
+          ""
+         ],
+         [
+          "15",
+          "",
+          ""
+         ],
+         [
+          "20",
+          "",
+          ""
+         ],
+         [
+          "25",
+          "",
+          ""
+         ],
+         [
+          "30",
+          "",
+          ""
+         ],
+         [
+          "40",
+          "",
+          ""
+         ],
+         [
+          "50",
+          "",
+          ""
+         ],
+         [
+          "60",
+          "",
+          ""
+         ]
+        ]
+       },
+       {
+        "caption": "Constant discharge 61-120 min",
+        "header": [
+         "Time (min)",
+         "Water Level (m)",
+         "Drawdown (m)"
+        ],
+        "rows": [
+         [
+          "75",
+          "",
+          ""
+         ],
+         [
+          "90",
+          "",
+          ""
+         ],
+         [
+          "120",
+          "",
+          ""
+         ]
+        ]
+       },
+       {
+        "caption": "Constant discharge 121-180 min",
+        "header": [
+         "Time (min)",
+         "Water Level (m)",
+         "Drawdown (m)"
+        ],
+        "rows": [
+         [
+          "150",
+          "",
+          ""
+         ],
+         [
+          "180",
+          "",
+          ""
+         ]
+        ]
+       },
+       {
+        "caption": "Constant discharge 181-450 min",
+        "header": [
+         "Time (min)",
+         "Water Level (m)",
+         "Drawdown (m)"
+        ],
+        "rows": [
+         [
+          "210",
+          "",
+          ""
+         ],
+         [
+          "240",
+          "",
+          ""
+         ],
+         [
+          "270",
+          "",
+          ""
+         ],
+         [
+          "300",
+          "",
+          ""
+         ],
+         [
+          "330",
+          "",
+          ""
+         ],
+         [
+          "360",
+          "",
+          ""
+         ],
+         [
+          "390",
+          "",
+          ""
+         ],
+         [
+          "420",
+          "",
+          ""
+         ],
+         [
+          "450",
+          "",
+          ""
+         ]
+        ]
+       }
+      ],
+      "recovery": {
+       "caption": "Recovery",
+       "header": [
+        "Time (min)",
+        "Water Level (m)",
+        "Recovery (m)"
+       ],
+       "rows": [
+        [
+         "0.5",
+         "",
+         ""
+        ],
+        [
+         "1",
+         "",
+         ""
+        ],
+        [
+         "1.5",
+         "",
+         ""
+        ],
+        [
+         "2",
+         "",
+         ""
+        ],
+        [
+         "3",
+         "",
+         ""
+        ],
+        [
+         "4",
+         "",
+         ""
+        ],
+        [
+         "5",
+         "",
+         ""
+        ],
+        [
+         "6",
+         "",
+         ""
+        ],
+        [
+         "8",
+         "",
+         ""
+        ],
+        [
+         "10",
+         "",
+         ""
+        ],
+        [
+         "12",
+         "",
+         ""
+        ],
+        [
+         "15",
+         "",
+         ""
+        ],
+        [
+         "20",
+         "",
+         ""
+        ],
+        [
+         "25",
+         "",
+         ""
+        ],
+        [
+         "30",
+         "",
+         ""
+        ],
+        [
+         "40",
+         "",
+         ""
+        ],
+        [
+         "50",
+         "",
+         ""
+        ],
+        [
+         "60",
+         "",
+         ""
+        ],
+        [
+         "75",
+         "",
+         ""
+        ],
+        [
+         "90",
+         "",
+         ""
+        ],
+        [
+         "120",
+         "",
+         ""
+        ],
+        [
+         "150",
+         "",
+         ""
+        ],
+        [
+         "180",
+         "",
+         ""
+        ],
+        [
+         "210",
+         "",
+         ""
+        ],
+        [
+         "240",
+         "",
+         ""
+        ],
+        [
+         "270",
+         "",
+         ""
+        ],
+        [
+         "300",
+         "",
+         ""
+        ],
+        [
+         "330",
+         "",
+         ""
+        ],
+        [
+         "360",
+         "",
+         ""
+        ],
+        [
+         "390",
+         "",
+         ""
+        ],
+        [
+         "420",
+         "",
+         ""
+        ],
+        [
+         "450",
+         "",
+         ""
+        ]
+       ]
+      }
+     }
+    ],
+    "cards": [
+     {
+      "key": "pumping",
+      "title": "Quick card: pumping test reading schedule",
+      "lines": [
+       "Read the water level at these minutes after the pump starts, then every 30 minutes.",
+       "When the pump stops, start the clock again from zero and read the recovery at the same minutes."
+      ],
+      "tables": [
+       {
+        "caption": "Reading minutes",
+        "header": [],
+        "rows": [
+         [
+          "0.5",
+          "1",
+          "1.5",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         [
+          "6",
+          "8",
+          "10",
+          "12",
+          "15",
+          "20",
+          "25"
+         ],
+         [
+          "30",
+          "40",
+          "50",
+          "60",
+          "75",
+          "90",
+          "120"
+         ]
+        ]
+       }
+      ],
+      "notes": [
+       "Casing storage: if the transmissivity is as low as 1 m2/day, the water levels of the first 442 minutes may show the 6 inch casing, with its 1.5 inch riser, emptying rather than the aquifer (44 minutes at 10 m2/day).",
+       "Constant discharge test: do not stop the pump before 442 minutes, the longer of that time and the shortest constant test the analysis accepts, 120 minutes.",
+       "Step test: run every step for at least 100 minutes, and the first for at least 442 minutes, since the drawdown is fitted on the first step.",
+       "A shorter test is safe only once the measured drawdown shows a shorter casing-storage time. The pumping test co-pilot or the office works that out from the discharge and the drawdown."
+      ]
+     },
+     {
+      "key": "ves",
+      "title": "Quick card: VES Schlumberger spacings",
+      "lines": [
+       "A sounding reaches a depth of about 0.3 times its largest AB/2. Peg down the table until the depth reached is at least the target depth, and stop there.",
+       "AB is always at least 5 times MN, and MN is widened before AB passes 20 times it. Where MN changes, read the same AB/2 again with the new MN, and keep both readings."
+      ],
+      "tables": [
+       {
+        "caption": "Schlumberger spacings",
+        "header": [
+         "No.",
+         "AB/2 (m)",
+         "MN (m)",
+         "Depth reached (m)"
+        ],
+        "rows": [
+         [
+          "1",
+          "1",
+          "0.4",
+          "0.3"
+         ],
+         [
+          "2",
+          "1.5",
+          "0.4",
+          "0.45"
+         ],
+         [
+          "3",
+          "2",
+          "0.4",
+          "0.6"
+         ],
+         [
+          "4",
+          "3",
+          "0.4",
+          "0.9"
+         ],
+         [
+          "5",
+          "4",
+          "0.4",
+          "1.2"
+         ],
+         [
+          "6",
+          "4",
+          "1",
+          "1.2"
+         ],
+         [
+          "7",
+          "5",
+          "1",
+          "1.5"
+         ],
+         [
+          "8",
+          "6",
+          "1",
+          "1.8"
+         ],
+         [
+          "9",
+          "8",
+          "1",
+          "2.4"
+         ],
+         [
+          "10",
+          "10",
+          "1",
+          "3"
+         ],
+         [
+          "11",
+          "10",
+          "2",
+          "3"
+         ],
+         [
+          "12",
+          "12",
+          "2",
+          "3.6"
+         ],
+         [
+          "13",
+          "15",
+          "2",
+          "4.5"
+         ],
+         [
+          "14",
+          "20",
+          "2",
+          "6"
+         ],
+         [
+          "15",
+          "20",
+          "5",
+          "6"
+         ],
+         [
+          "16",
+          "25",
+          "5",
+          "7.5"
+         ],
+         [
+          "17",
+          "30",
+          "5",
+          "9"
+         ],
+         [
+          "18",
+          "40",
+          "5",
+          "12"
+         ],
+         [
+          "19",
+          "50",
+          "5",
+          "15"
+         ],
+         [
+          "20",
+          "50",
+          "20",
+          "15"
+         ],
+         [
+          "21",
+          "60",
+          "20",
+          "18"
+         ],
+         [
+          "22",
+          "80",
+          "20",
+          "24"
+         ],
+         [
+          "23",
+          "100",
+          "20",
+          "30"
+         ],
+         [
+          "24",
+          "120",
+          "20",
+          "36"
+         ],
+         [
+          "25",
+          "150",
+          "20",
+          "45"
+         ],
+         [
+          "26",
+          "200",
+          "20",
+          "60"
+         ],
+         [
+          "27",
+          "200",
+          "40",
+          "60"
+         ],
+         [
+          "28",
+          "250",
+          "40",
+          "75"
+         ],
+         [
+          "29",
+          "300",
+          "40",
+          "90"
+         ],
+         [
+          "30",
+          "400",
+          "40",
+          "120"
+         ],
+         [
+          "31",
+          "400",
+          "100",
+          "120"
+         ],
+         [
+          "32",
+          "500",
+          "100",
+          "150"
+         ]
+        ]
+       }
+      ],
+      "notes": []
+     },
+     {
+      "key": "disinfection",
+      "title": "Quick card: disinfecting the borehole with chlorine",
+      "lines": [
+       "Shock dose of 20 mg of chlorine per litre: add 1 litre of 0.2 percent chlorine solution for every 100 litres of water standing in the well, and do not pump for at least 4 hours.",
+       "A 0.2 percent solution holds 2 g of chlorine per litre: dissolve about 3.1 g of 65 percent HTH powder in each litre of water.",
+       "Water in the well, in litres, is 0.785 times the square of the casing inner diameter in mm, times the water column in m, divided by 1,000."
+      ],
+      "tables": [
+       {
+        "caption": "Litres of 0.2 percent solution (L) and grams of 65 percent HTH (g), by water column and casing inner diameter.",
+        "header": [
+         "Water column (m)",
+         "100 mm: L",
+         "100 mm: g",
+         "125 mm: L",
+         "125 mm: g",
+         "150 mm: L",
+         "150 mm: g"
+        ],
+        "rows": [
+         [
+          "10",
+          "0.8",
+          "2",
+          "1.2",
+          "4",
+          "1.8",
+          "5"
+         ],
+         [
+          "20",
+          "1.6",
+          "5",
+          "2.5",
+          "8",
+          "3.5",
+          "11"
+         ],
+         [
+          "30",
+          "2.4",
+          "7",
+          "3.7",
+          "11",
+          "5.3",
+          "16"
+         ],
+         [
+          "40",
+          "3.1",
+          "10",
+          "4.9",
+          "15",
+          "7.1",
+          "22"
+         ],
+         [
+          "50",
+          "3.9",
+          "12",
+          "6.1",
+          "19",
+          "8.8",
+          "27"
+         ],
+         [
+          "60",
+          "4.7",
+          "14",
+          "7.4",
+          "23",
+          "10.6",
+          "33"
+         ]
+        ]
+       }
+      ],
+      "notes": [
+       "Basis: the toolkit's supervision checklist (borehole disinfected with chlorine at 20 mg per litre, after Adekile, 2014) and its dose calculator, which follows WHO. Where the programme's own disinfection procedure sets a different dose, it takes precedence."
+      ]
+     }
+    ],
+    "references": [
+     "Adekile, D. (2014). Supervising Water Well Drilling: a Guide for Supervisors. RWSN/Skat, St Gallen.",
+     "World Health Organization (2022). Guidelines for Drinking-water Quality, 4th edition incorporating the first and second addenda. Geneva: World Health Organization."
+    ]
+   },
+   {
+    "format": "GWT-FK/1",
+    "project": "",
+    "title": "Field kit: unnamed project",
+    "storage": {
+     "casing_in": 1.25,
+     "riser_in": 1.25,
+     "t_low": 1,
+     "t_high": 10,
+     "low_t_min": null,
+     "high_t_min": null
+    },
+    "constant_min": 240.0,
+    "first_step_min": 60.0,
+    "planned_min": 240,
+    "sheets": [
+     {
+      "borehole": "\u00d8-1 K\u0254n\u0254",
+      "payload": "GWT-FK/1|pumping||\u00d8-1 K\u0254n\u0254",
+      "title": "Pumping test field sheet: borehole \u00d8-1 K\u0254n\u0254",
+      "code": "Sheet code GWT-FK/1|pumping||\u00d8-1 K\u0254n\u0254. Scan it, or type it in, to match this sheet to its project and borehole.",
+      "warning": "No project name or reference was set when this sheet was printed, so its code names the borehole only and cannot match a photographed sheet to a project.",
+      "header": [
+       [
+        "Community",
+        ""
+       ],
+       [
+        "Date",
+        ""
+       ],
+       [
+        "Client",
+        ""
+       ],
+       [
+        "Length of each step (min)",
+        ""
+       ],
+       [
+        "Test conducted by",
+        ""
+       ],
+       [
+        "Start time",
+        ""
+       ],
+       [
+        "Borehole Ref. No.",
+        "\u00d8-1 K\u0254n\u0254"
+       ],
+       [
+        "Depth of Borehole (m)",
+        ""
+       ],
+       [
+        "Static water level (m)",
+        ""
+       ],
+       [
+        "Pump setting (m)",
+        ""
+       ],
+       [
+        "Test type (step or constant)",
+        "constant"
+       ],
+       [
+        "District",
+        ""
+       ],
+       [
+        "GPS Coordinate East",
+        ""
+       ],
+       [
+        "GPS Coordinate North",
+        ""
+       ],
+       [
+        "UTM Zone (28N or 29N)",
+        ""
+       ],
+       [
+        "Elevation (m)",
+        ""
+       ]
+      ],
+      "notes": [
+       "Constant discharge test: do not stop the pump before 240 minutes, the shortest constant test the analysis accepts.",
+       "Step test: run every step for at least 60 minutes, and the first for at least 60 minutes, since the drawdown is fitted on the first step.",
+       "A shorter test is safe only once the measured drawdown shows a shorter casing-storage time. The pumping test co-pilot or the office works that out from the discharge and the drawdown.",
+       "Read the water level at each minute in the Time column, counted from the moment the pump starts. After 120 minutes, read every 30 minutes.",
+       "When the pump stops, start the clock again from zero and read the recovery at the same minutes."
+      ],
+      "discharge_note": "Record the discharge of every step. Time a bucket of known volume three times; the rate in m3/h is 3.6 times the litres divided by the mean seconds. A step with no discharge is written as Not measured, with the reason.",
+      "discharge": {
+       "caption": "Discharge per step (m3/h)",
+       "header": [
+        "Step 1 Q",
+        "Step 2 Q",
+        "Step 3 Q",
+        "Step 4 Q"
+       ],
+       "rows": [
+        [
+         "",
+         "",
+         "",
+         ""
+        ]
+       ]
+      },
+      "bucket": {
+       "caption": "Bucket timings",
+       "header": [
+        "Step",
+        "Bucket (L)",
+        "Timing 1 (s)",
+        "Timing 2 (s)",
+        "Timing 3 (s)",
+        "Q (m3/h)"
+       ],
+       "rows": [
+        [
+         "Step 1",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ],
+        [
+         "Step 2",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ],
+        [
+         "Step 3",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ],
+        [
+         "Step 4",
+         "",
+         "",
+         "",
+         "",
+         ""
+        ]
+       ]
+      },
+      "transcribe": "The tables below have the columns of the standard pumping test workbook, so a filled sheet is typed into it cell for cell.",
+      "blocks": [
+       {
+        "caption": "Constant discharge 0-60 min",
+        "header": [
+         "Time (min)",
+         "Water Level (m)",
+         "Drawdown (m)"
+        ],
+        "rows": [
+         [
+          "0.5",
+          "",
+          ""
+         ],
+         [
+          "1",
+          "",
+          ""
+         ],
+         [
+          "1.5",
+          "",
+          ""
+         ],
+         [
+          "2",
+          "",
+          ""
+         ],
+         [
+          "3",
+          "",
+          ""
+         ],
+         [
+          "4",
+          "",
+          ""
+         ],
+         [
+          "5",
+          "",
+          ""
+         ],
+         [
+          "6",
+          "",
+          ""
+         ],
+         [
+          "8",
+          "",
+          ""
+         ],
+         [
+          "10",
+          "",
+          ""
+         ],
+         [
+          "12",
+          "",
+          ""
+         ],
+         [
+          "15",
+          "",
+          ""
+         ],
+         [
+          "20",
+          "",
+          ""
+         ],
+         [
+          "25",
+          "",
+          ""
+         ],
+         [
+          "30",
+          "",
+          ""
+         ],
+         [
+          "40",
+          "",
+          ""
+         ],
+         [
+          "50",
+          "",
+          ""
+         ],
+         [
+          "60",
+          "",
+          ""
+         ]
+        ]
+       },
+       {
+        "caption": "Constant discharge 61-120 min",
+        "header": [
+         "Time (min)",
+         "Water Level (m)",
+         "Drawdown (m)"
+        ],
+        "rows": [
+         [
+          "75",
+          "",
+          ""
+         ],
+         [
+          "90",
+          "",
+          ""
+         ],
+         [
+          "120",
+          "",
+          ""
+         ]
+        ]
+       },
+       {
+        "caption": "Constant discharge 121-180 min",
+        "header": [
+         "Time (min)",
+         "Water Level (m)",
+         "Drawdown (m)"
+        ],
+        "rows": [
+         [
+          "150",
+          "",
+          ""
+         ],
+         [
+          "180",
+          "",
+          ""
+         ]
+        ]
+       },
+       {
+        "caption": "Constant discharge 181-240 min",
+        "header": [
+         "Time (min)",
+         "Water Level (m)",
+         "Drawdown (m)"
+        ],
+        "rows": [
+         [
+          "210",
+          "",
+          ""
+         ],
+         [
+          "240",
+          "",
+          ""
+         ]
+        ]
+       }
+      ],
+      "recovery": {
+       "caption": "Recovery",
+       "header": [
+        "Time (min)",
+        "Water Level (m)",
+        "Recovery (m)"
+       ],
+       "rows": [
+        [
+         "0.5",
+         "",
+         ""
+        ],
+        [
+         "1",
+         "",
+         ""
+        ],
+        [
+         "1.5",
+         "",
+         ""
+        ],
+        [
+         "2",
+         "",
+         ""
+        ],
+        [
+         "3",
+         "",
+         ""
+        ],
+        [
+         "4",
+         "",
+         ""
+        ],
+        [
+         "5",
+         "",
+         ""
+        ],
+        [
+         "6",
+         "",
+         ""
+        ],
+        [
+         "8",
+         "",
+         ""
+        ],
+        [
+         "10",
+         "",
+         ""
+        ],
+        [
+         "12",
+         "",
+         ""
+        ],
+        [
+         "15",
+         "",
+         ""
+        ],
+        [
+         "20",
+         "",
+         ""
+        ],
+        [
+         "25",
+         "",
+         ""
+        ],
+        [
+         "30",
+         "",
+         ""
+        ],
+        [
+         "40",
+         "",
+         ""
+        ],
+        [
+         "50",
+         "",
+         ""
+        ],
+        [
+         "60",
+         "",
+         ""
+        ],
+        [
+         "75",
+         "",
+         ""
+        ],
+        [
+         "90",
+         "",
+         ""
+        ],
+        [
+         "120",
+         "",
+         ""
+        ],
+        [
+         "150",
+         "",
+         ""
+        ],
+        [
+         "180",
+         "",
+         ""
+        ],
+        [
+         "210",
+         "",
+         ""
+        ],
+        [
+         "240",
+         "",
+         ""
+        ]
+       ]
+      }
+     }
+    ],
+    "cards": [
+     {
+      "key": "pumping",
+      "title": "Quick card: pumping test reading schedule",
+      "lines": [
+       "Read the water level at these minutes after the pump starts, then every 30 minutes.",
+       "When the pump stops, start the clock again from zero and read the recovery at the same minutes."
+      ],
+      "tables": [
+       {
+        "caption": "Reading minutes",
+        "header": [],
+        "rows": [
+         [
+          "0.5",
+          "1",
+          "1.5",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         [
+          "6",
+          "8",
+          "10",
+          "12",
+          "15",
+          "20",
+          "25"
+         ],
+         [
+          "30",
+          "40",
+          "50",
+          "60",
+          "75",
+          "90",
+          "120"
+         ]
+        ]
+       }
+      ],
+      "notes": [
+       "Constant discharge test: do not stop the pump before 240 minutes, the shortest constant test the analysis accepts.",
+       "Step test: run every step for at least 60 minutes, and the first for at least 60 minutes, since the drawdown is fitted on the first step.",
+       "A shorter test is safe only once the measured drawdown shows a shorter casing-storage time. The pumping test co-pilot or the office works that out from the discharge and the drawdown."
+      ]
+     },
+     {
+      "key": "ves",
+      "title": "Quick card: VES Schlumberger spacings",
+      "lines": [
+       "A sounding reaches a depth of about 0.5 times its largest AB/2. Peg down the table until the depth reached is at least the target depth, and stop there.",
+       "AB is always at least 5 times MN, and MN is widened before AB passes 20 times it. Where MN changes, read the same AB/2 again with the new MN, and keep both readings."
+      ],
+      "tables": [
+       {
+        "caption": "Schlumberger spacings",
+        "header": [
+         "No.",
+         "AB/2 (m)",
+         "MN (m)",
+         "Depth reached (m)"
+        ],
+        "rows": [
+         [
+          "1",
+          "1",
+          "0.4",
+          "0.5"
+         ],
+         [
+          "2",
+          "1.5",
+          "0.4",
+          "0.75"
+         ],
+         [
+          "3",
+          "2",
+          "0.4",
+          "1"
+         ],
+         [
+          "4",
+          "3",
+          "0.4",
+          "1.5"
+         ],
+         [
+          "5",
+          "4",
+          "0.4",
+          "2"
+         ],
+         [
+          "6",
+          "4",
+          "1",
+          "2"
+         ],
+         [
+          "7",
+          "5",
+          "1",
+          "2.5"
+         ],
+         [
+          "8",
+          "6",
+          "1",
+          "3"
+         ],
+         [
+          "9",
+          "8",
+          "1",
+          "4"
+         ],
+         [
+          "10",
+          "10",
+          "1",
+          "5"
+         ],
+         [
+          "11",
+          "10",
+          "2",
+          "5"
+         ],
+         [
+          "12",
+          "12",
+          "2",
+          "6"
+         ],
+         [
+          "13",
+          "15",
+          "2",
+          "7.5"
+         ],
+         [
+          "14",
+          "20",
+          "2",
+          "10"
+         ],
+         [
+          "15",
+          "20",
+          "5",
+          "10"
+         ],
+         [
+          "16",
+          "25",
+          "5",
+          "12.5"
+         ],
+         [
+          "17",
+          "30",
+          "5",
+          "15"
+         ],
+         [
+          "18",
+          "40",
+          "5",
+          "20"
+         ],
+         [
+          "19",
+          "50",
+          "5",
+          "25"
+         ],
+         [
+          "20",
+          "50",
+          "20",
+          "25"
+         ],
+         [
+          "21",
+          "60",
+          "20",
+          "30"
+         ],
+         [
+          "22",
+          "80",
+          "20",
+          "40"
+         ],
+         [
+          "23",
+          "100",
+          "20",
+          "50"
+         ],
+         [
+          "24",
+          "120",
+          "20",
+          "60"
+         ],
+         [
+          "25",
+          "150",
+          "20",
+          "75"
+         ],
+         [
+          "26",
+          "200",
+          "20",
+          "100"
+         ],
+         [
+          "27",
+          "200",
+          "40",
+          "100"
+         ],
+         [
+          "28",
+          "250",
+          "40",
+          "125"
+         ],
+         [
+          "29",
+          "300",
+          "40",
+          "150"
+         ],
+         [
+          "30",
+          "400",
+          "40",
+          "200"
+         ],
+         [
+          "31",
+          "400",
+          "100",
+          "200"
+         ],
+         [
+          "32",
+          "500",
+          "100",
+          "250"
+         ]
+        ]
+       }
+      ],
+      "notes": []
+     },
+     {
+      "key": "disinfection",
+      "title": "Quick card: disinfecting the borehole with chlorine",
+      "lines": [
+       "Shock dose of 20 mg of chlorine per litre: add 1 litre of 0.2 percent chlorine solution for every 100 litres of water standing in the well, and do not pump for at least 4 hours.",
+       "A 0.2 percent solution holds 2 g of chlorine per litre: dissolve about 3.1 g of 65 percent HTH powder in each litre of water.",
+       "Water in the well, in litres, is 0.785 times the square of the casing inner diameter in mm, times the water column in m, divided by 1,000."
+      ],
+      "tables": [
+       {
+        "caption": "Litres of 0.2 percent solution (L) and grams of 65 percent HTH (g), by water column and casing inner diameter.",
+        "header": [
+         "Water column (m)",
+         "100 mm: L",
+         "100 mm: g",
+         "125 mm: L",
+         "125 mm: g",
+         "150 mm: L",
+         "150 mm: g"
+        ],
+        "rows": [
+         [
+          "10",
+          "0.8",
+          "2",
+          "1.2",
+          "4",
+          "1.8",
+          "5"
+         ],
+         [
+          "20",
+          "1.6",
+          "5",
+          "2.5",
+          "8",
+          "3.5",
+          "11"
+         ],
+         [
+          "30",
+          "2.4",
+          "7",
+          "3.7",
+          "11",
+          "5.3",
+          "16"
+         ],
+         [
+          "40",
+          "3.1",
+          "10",
+          "4.9",
+          "15",
+          "7.1",
+          "22"
+         ],
+         [
+          "50",
+          "3.9",
+          "12",
+          "6.1",
+          "19",
+          "8.8",
+          "27"
+         ],
+         [
+          "60",
+          "4.7",
+          "14",
+          "7.4",
+          "23",
+          "10.6",
+          "33"
+         ]
+        ]
+       }
+      ],
+      "notes": [
+       "Basis: the toolkit's supervision checklist (borehole disinfected with chlorine at 20 mg per litre, after Adekile, 2014) and its dose calculator, which follows WHO. Where the programme's own disinfection procedure sets a different dose, it takes precedence."
+      ]
+     }
+    ],
+    "references": [
+     "Adekile, D. (2014). Supervising Water Well Drilling: a Guide for Supervisors. RWSN/Skat, St Gallen.",
+     "World Health Organization (2022). Guidelines for Drinking-water Quality, 4th edition incorporating the first and second addenda. Geneva: World Health Organization."
+    ]
+   }
+  ],
+  "codes": [
+   "GWT-FK/1|pumping|Rokel 2026|KTL-01",
+   "GWT-FK/1|pumping|A%7CB%25C|%2541",
+   "  GWT-FK/1|pumping||RK-1\n",
+   "GWT-FK/2|pumping|Rokel 2026|KTL-01",
+   "GWT-FK/1|pumping|Rokel 2026",
+   "GWT-FK/1||Rokel 2026|KTL-01",
+   "BOREHOLE SL-WAR-8FEEVKQ-T"
+  ],
+  "parsed": [
+   {
+    "format": "GWT-FK/1",
+    "sheet": "pumping",
+    "project": "Rokel 2026",
+    "borehole": "KTL-01"
+   },
+   {
+    "format": "GWT-FK/1",
+    "sheet": "pumping",
+    "project": "A|B%C",
+    "borehole": "%41"
+   },
+   {
+    "format": "GWT-FK/1",
+    "sheet": "pumping",
+    "project": "",
+    "borehole": "RK-1"
+   },
+   null,
+   null,
+   null,
+   null
+  ],
+  "minutes": {
+   "0.4": [],
+   "60": [
+    0.5,
+    1,
+    1.5,
+    2,
+    3,
+    4,
+    5,
+    6,
+    8,
+    10,
+    12,
+    15,
+    20,
+    25,
+    30,
+    40,
+    50,
+    60
+   ],
+   "120": [
+    0.5,
+    1,
+    1.5,
+    2,
+    3,
+    4,
+    5,
+    6,
+    8,
+    10,
+    12,
+    15,
+    20,
+    25,
+    30,
+    40,
+    50,
+    60,
+    75,
+    90,
+    120
+   ],
+   "121": [
+    0.5,
+    1,
+    1.5,
+    2,
+    3,
+    4,
+    5,
+    6,
+    8,
+    10,
+    12,
+    15,
+    20,
+    25,
+    30,
+    40,
+    50,
+    60,
+    75,
+    90,
+    120
+   ],
+   "240": [
+    0.5,
+    1,
+    1.5,
+    2,
+    3,
+    4,
+    5,
+    6,
+    8,
+    10,
+    12,
+    15,
+    20,
+    25,
+    30,
+    40,
+    50,
+    60,
+    75,
+    90,
+    120,
+    150,
+    180,
+    210,
+    240
+   ],
+   "330": [
+    0.5,
+    1,
+    1.5,
+    2,
+    3,
+    4,
+    5,
+    6,
+    8,
+    10,
+    12,
+    15,
+    20,
+    25,
+    30,
+    40,
+    50,
+    60,
+    75,
+    90,
+    120,
+    150,
+    180,
+    210,
+    240,
+    270,
+    300,
+    330
+   ]
+  },
+  "plans": [
+   {
+    "target_m": 0.4,
+    "factor": 0.5,
+    "max_ab2": 1,
+    "investigation_m": 0.5,
+    "line_m": 2,
+    "capped": false,
+    "steps": [
+     {
+      "ab2": 1,
+      "mn": 0.4
+     }
+    ]
+   },
+   {
+    "target_m": 0.4,
+    "factor": 0.3,
+    "max_ab2": 1.5,
+    "investigation_m": 0.44999999999999996,
+    "line_m": 3.0,
+    "capped": false,
+    "steps": [
+     {
+      "ab2": 1,
+      "mn": 0.4
+     },
+     {
+      "ab2": 1.5,
+      "mn": 0.4
+     }
+    ]
+   },
+   {
+    "target_m": 30,
+    "factor": 0.5,
+    "max_ab2": 60,
+    "investigation_m": 30.0,
+    "line_m": 120,
+    "capped": false,
+    "steps": [
+     {
+      "ab2": 1,
+      "mn": 0.4
+     },
+     {
+      "ab2": 1.5,
+      "mn": 0.4
+     },
+     {
+      "ab2": 2,
+      "mn": 0.4
+     },
+     {
+      "ab2": 3,
+      "mn": 0.4
+     },
+     {
+      "ab2": 4,
+      "mn": 0.4
+     },
+     {
+      "ab2": 4,
+      "mn": 1
+     },
+     {
+      "ab2": 5,
+      "mn": 1
+     },
+     {
+      "ab2": 6,
+      "mn": 1
+     },
+     {
+      "ab2": 8,
+      "mn": 1
+     },
+     {
+      "ab2": 10,
+      "mn": 1
+     },
+     {
+      "ab2": 10,
+      "mn": 2
+     },
+     {
+      "ab2": 12,
+      "mn": 2
+     },
+     {
+      "ab2": 15,
+      "mn": 2
+     },
+     {
+      "ab2": 20,
+      "mn": 2
+     },
+     {
+      "ab2": 20,
+      "mn": 5
+     },
+     {
+      "ab2": 25,
+      "mn": 5
+     },
+     {
+      "ab2": 30,
+      "mn": 5
+     },
+     {
+      "ab2": 40,
+      "mn": 5
+     },
+     {
+      "ab2": 50,
+      "mn": 5
+     },
+     {
+      "ab2": 50,
+      "mn": 20
+     },
+     {
+      "ab2": 60,
+      "mn": 20
+     }
+    ]
+   },
+   {
+    "target_m": 30,
+    "factor": 0.3,
+    "max_ab2": 100,
+    "investigation_m": 30.0,
+    "line_m": 200,
+    "capped": false,
+    "steps": [
+     {
+      "ab2": 1,
+      "mn": 0.4
+     },
+     {
+      "ab2": 1.5,
+      "mn": 0.4
+     },
+     {
+      "ab2": 2,
+      "mn": 0.4
+     },
+     {
+      "ab2": 3,
+      "mn": 0.4
+     },
+     {
+      "ab2": 4,
+      "mn": 0.4
+     },
+     {
+      "ab2": 4,
+      "mn": 1
+     },
+     {
+      "ab2": 5,
+      "mn": 1
+     },
+     {
+      "ab2": 6,
+      "mn": 1
+     },
+     {
+      "ab2": 8,
+      "mn": 1
+     },
+     {
+      "ab2": 10,
+      "mn": 1
+     },
+     {
+      "ab2": 10,
+      "mn": 2
+     },
+     {
+      "ab2": 12,
+      "mn": 2
+     },
+     {
+      "ab2": 15,
+      "mn": 2
+     },
+     {
+      "ab2": 20,
+      "mn": 2
+     },
+     {
+      "ab2": 20,
+      "mn": 5
+     },
+     {
+      "ab2": 25,
+      "mn": 5
+     },
+     {
+      "ab2": 30,
+      "mn": 5
+     },
+     {
+      "ab2": 40,
+      "mn": 5
+     },
+     {
+      "ab2": 50,
+      "mn": 5
+     },
+     {
+      "ab2": 50,
+      "mn": 20
+     },
+     {
+      "ab2": 60,
+      "mn": 20
+     },
+     {
+      "ab2": 80,
+      "mn": 20
+     },
+     {
+      "ab2": 100,
+      "mn": 20
+     }
+    ]
+   },
+   {
+    "target_m": 62.5,
+    "factor": 0.5,
+    "max_ab2": 150,
+    "investigation_m": 75.0,
+    "line_m": 300,
+    "capped": false,
+    "steps": [
+     {
+      "ab2": 1,
+      "mn": 0.4
+     },
+     {
+      "ab2": 1.5,
+      "mn": 0.4
+     },
+     {
+      "ab2": 2,
+      "mn": 0.4
+     },
+     {
+      "ab2": 3,
+      "mn": 0.4
+     },
+     {
+      "ab2": 4,
+      "mn": 0.4
+     },
+     {
+      "ab2": 4,
+      "mn": 1
+     },
+     {
+      "ab2": 5,
+      "mn": 1
+     },
+     {
+      "ab2": 6,
+      "mn": 1
+     },
+     {
+      "ab2": 8,
+      "mn": 1
+     },
+     {
+      "ab2": 10,
+      "mn": 1
+     },
+     {
+      "ab2": 10,
+      "mn": 2
+     },
+     {
+      "ab2": 12,
+      "mn": 2
+     },
+     {
+      "ab2": 15,
+      "mn": 2
+     },
+     {
+      "ab2": 20,
+      "mn": 2
+     },
+     {
+      "ab2": 20,
+      "mn": 5
+     },
+     {
+      "ab2": 25,
+      "mn": 5
+     },
+     {
+      "ab2": 30,
+      "mn": 5
+     },
+     {
+      "ab2": 40,
+      "mn": 5
+     },
+     {
+      "ab2": 50,
+      "mn": 5
+     },
+     {
+      "ab2": 50,
+      "mn": 20
+     },
+     {
+      "ab2": 60,
+      "mn": 20
+     },
+     {
+      "ab2": 80,
+      "mn": 20
+     },
+     {
+      "ab2": 100,
+      "mn": 20
+     },
+     {
+      "ab2": 120,
+      "mn": 20
+     },
+     {
+      "ab2": 150,
+      "mn": 20
+     }
+    ]
+   },
+   {
+    "target_m": 62.5,
+    "factor": 0.3,
+    "max_ab2": 250,
+    "investigation_m": 75.0,
+    "line_m": 500,
+    "capped": false,
+    "steps": [
+     {
+      "ab2": 1,
+      "mn": 0.4
+     },
+     {
+      "ab2": 1.5,
+      "mn": 0.4
+     },
+     {
+      "ab2": 2,
+      "mn": 0.4
+     },
+     {
+      "ab2": 3,
+      "mn": 0.4
+     },
+     {
+      "ab2": 4,
+      "mn": 0.4
+     },
+     {
+      "ab2": 4,
+      "mn": 1
+     },
+     {
+      "ab2": 5,
+      "mn": 1
+     },
+     {
+      "ab2": 6,
+      "mn": 1
+     },
+     {
+      "ab2": 8,
+      "mn": 1
+     },
+     {
+      "ab2": 10,
+      "mn": 1
+     },
+     {
+      "ab2": 10,
+      "mn": 2
+     },
+     {
+      "ab2": 12,
+      "mn": 2
+     },
+     {
+      "ab2": 15,
+      "mn": 2
+     },
+     {
+      "ab2": 20,
+      "mn": 2
+     },
+     {
+      "ab2": 20,
+      "mn": 5
+     },
+     {
+      "ab2": 25,
+      "mn": 5
+     },
+     {
+      "ab2": 30,
+      "mn": 5
+     },
+     {
+      "ab2": 40,
+      "mn": 5
+     },
+     {
+      "ab2": 50,
+      "mn": 5
+     },
+     {
+      "ab2": 50,
+      "mn": 20
+     },
+     {
+      "ab2": 60,
+      "mn": 20
+     },
+     {
+      "ab2": 80,
+      "mn": 20
+     },
+     {
+      "ab2": 100,
+      "mn": 20
+     },
+     {
+      "ab2": 120,
+      "mn": 20
+     },
+     {
+      "ab2": 150,
+      "mn": 20
+     },
+     {
+      "ab2": 200,
+      "mn": 20
+     },
+     {
+      "ab2": 200,
+      "mn": 40
+     },
+     {
+      "ab2": 250,
+      "mn": 40
+     }
+    ]
+   },
+   {
+    "target_m": 250,
+    "factor": 0.5,
+    "max_ab2": 500,
+    "investigation_m": 250.0,
+    "line_m": 1000,
+    "capped": false,
+    "steps": [
+     {
+      "ab2": 1,
+      "mn": 0.4
+     },
+     {
+      "ab2": 1.5,
+      "mn": 0.4
+     },
+     {
+      "ab2": 2,
+      "mn": 0.4
+     },
+     {
+      "ab2": 3,
+      "mn": 0.4
+     },
+     {
+      "ab2": 4,
+      "mn": 0.4
+     },
+     {
+      "ab2": 4,
+      "mn": 1
+     },
+     {
+      "ab2": 5,
+      "mn": 1
+     },
+     {
+      "ab2": 6,
+      "mn": 1
+     },
+     {
+      "ab2": 8,
+      "mn": 1
+     },
+     {
+      "ab2": 10,
+      "mn": 1
+     },
+     {
+      "ab2": 10,
+      "mn": 2
+     },
+     {
+      "ab2": 12,
+      "mn": 2
+     },
+     {
+      "ab2": 15,
+      "mn": 2
+     },
+     {
+      "ab2": 20,
+      "mn": 2
+     },
+     {
+      "ab2": 20,
+      "mn": 5
+     },
+     {
+      "ab2": 25,
+      "mn": 5
+     },
+     {
+      "ab2": 30,
+      "mn": 5
+     },
+     {
+      "ab2": 40,
+      "mn": 5
+     },
+     {
+      "ab2": 50,
+      "mn": 5
+     },
+     {
+      "ab2": 50,
+      "mn": 20
+     },
+     {
+      "ab2": 60,
+      "mn": 20
+     },
+     {
+      "ab2": 80,
+      "mn": 20
+     },
+     {
+      "ab2": 100,
+      "mn": 20
+     },
+     {
+      "ab2": 120,
+      "mn": 20
+     },
+     {
+      "ab2": 150,
+      "mn": 20
+     },
+     {
+      "ab2": 200,
+      "mn": 20
+     },
+     {
+      "ab2": 200,
+      "mn": 40
+     },
+     {
+      "ab2": 250,
+      "mn": 40
+     },
+     {
+      "ab2": 300,
+      "mn": 40
+     },
+     {
+      "ab2": 400,
+      "mn": 40
+     },
+     {
+      "ab2": 400,
+      "mn": 100
+     },
+     {
+      "ab2": 500,
+      "mn": 100
+     }
+    ]
+   },
+   {
+    "target_m": 250,
+    "factor": 0.3,
+    "max_ab2": 500,
+    "investigation_m": 150.0,
+    "line_m": 1000,
+    "capped": true,
+    "steps": [
+     {
+      "ab2": 1,
+      "mn": 0.4
+     },
+     {
+      "ab2": 1.5,
+      "mn": 0.4
+     },
+     {
+      "ab2": 2,
+      "mn": 0.4
+     },
+     {
+      "ab2": 3,
+      "mn": 0.4
+     },
+     {
+      "ab2": 4,
+      "mn": 0.4
+     },
+     {
+      "ab2": 4,
+      "mn": 1
+     },
+     {
+      "ab2": 5,
+      "mn": 1
+     },
+     {
+      "ab2": 6,
+      "mn": 1
+     },
+     {
+      "ab2": 8,
+      "mn": 1
+     },
+     {
+      "ab2": 10,
+      "mn": 1
+     },
+     {
+      "ab2": 10,
+      "mn": 2
+     },
+     {
+      "ab2": 12,
+      "mn": 2
+     },
+     {
+      "ab2": 15,
+      "mn": 2
+     },
+     {
+      "ab2": 20,
+      "mn": 2
+     },
+     {
+      "ab2": 20,
+      "mn": 5
+     },
+     {
+      "ab2": 25,
+      "mn": 5
+     },
+     {
+      "ab2": 30,
+      "mn": 5
+     },
+     {
+      "ab2": 40,
+      "mn": 5
+     },
+     {
+      "ab2": 50,
+      "mn": 5
+     },
+     {
+      "ab2": 50,
+      "mn": 20
+     },
+     {
+      "ab2": 60,
+      "mn": 20
+     },
+     {
+      "ab2": 80,
+      "mn": 20
+     },
+     {
+      "ab2": 100,
+      "mn": 20
+     },
+     {
+      "ab2": 120,
+      "mn": 20
+     },
+     {
+      "ab2": 150,
+      "mn": 20
+     },
+     {
+      "ab2": 200,
+      "mn": 20
+     },
+     {
+      "ab2": 200,
+      "mn": 40
+     },
+     {
+      "ab2": 250,
+      "mn": 40
+     },
+     {
+      "ab2": 300,
+      "mn": 40
+     },
+     {
+      "ab2": 400,
+      "mn": 40
+     },
+     {
+      "ab2": 400,
+      "mn": 100
+     },
+     {
+      "ab2": 500,
+      "mn": 100
+     }
+    ]
+   },
+   {
+    "target_m": 400,
+    "factor": 0.5,
+    "max_ab2": 500,
+    "investigation_m": 250.0,
+    "line_m": 1000,
+    "capped": true,
+    "steps": [
+     {
+      "ab2": 1,
+      "mn": 0.4
+     },
+     {
+      "ab2": 1.5,
+      "mn": 0.4
+     },
+     {
+      "ab2": 2,
+      "mn": 0.4
+     },
+     {
+      "ab2": 3,
+      "mn": 0.4
+     },
+     {
+      "ab2": 4,
+      "mn": 0.4
+     },
+     {
+      "ab2": 4,
+      "mn": 1
+     },
+     {
+      "ab2": 5,
+      "mn": 1
+     },
+     {
+      "ab2": 6,
+      "mn": 1
+     },
+     {
+      "ab2": 8,
+      "mn": 1
+     },
+     {
+      "ab2": 10,
+      "mn": 1
+     },
+     {
+      "ab2": 10,
+      "mn": 2
+     },
+     {
+      "ab2": 12,
+      "mn": 2
+     },
+     {
+      "ab2": 15,
+      "mn": 2
+     },
+     {
+      "ab2": 20,
+      "mn": 2
+     },
+     {
+      "ab2": 20,
+      "mn": 5
+     },
+     {
+      "ab2": 25,
+      "mn": 5
+     },
+     {
+      "ab2": 30,
+      "mn": 5
+     },
+     {
+      "ab2": 40,
+      "mn": 5
+     },
+     {
+      "ab2": 50,
+      "mn": 5
+     },
+     {
+      "ab2": 50,
+      "mn": 20
+     },
+     {
+      "ab2": 60,
+      "mn": 20
+     },
+     {
+      "ab2": 80,
+      "mn": 20
+     },
+     {
+      "ab2": 100,
+      "mn": 20
+     },
+     {
+      "ab2": 120,
+      "mn": 20
+     },
+     {
+      "ab2": 150,
+      "mn": 20
+     },
+     {
+      "ab2": 200,
+      "mn": 20
+     },
+     {
+      "ab2": 200,
+      "mn": 40
+     },
+     {
+      "ab2": 250,
+      "mn": 40
+     },
+     {
+      "ab2": 300,
+      "mn": 40
+     },
+     {
+      "ab2": 400,
+      "mn": 40
+     },
+     {
+      "ab2": 400,
+      "mn": 100
+     },
+     {
+      "ab2": 500,
+      "mn": 100
+     }
+    ]
+   },
+   {
+    "target_m": 400,
+    "factor": 0.3,
+    "max_ab2": 500,
+    "investigation_m": 150.0,
+    "line_m": 1000,
+    "capped": true,
+    "steps": [
+     {
+      "ab2": 1,
+      "mn": 0.4
+     },
+     {
+      "ab2": 1.5,
+      "mn": 0.4
+     },
+     {
+      "ab2": 2,
+      "mn": 0.4
+     },
+     {
+      "ab2": 3,
+      "mn": 0.4
+     },
+     {
+      "ab2": 4,
+      "mn": 0.4
+     },
+     {
+      "ab2": 4,
+      "mn": 1
+     },
+     {
+      "ab2": 5,
+      "mn": 1
+     },
+     {
+      "ab2": 6,
+      "mn": 1
+     },
+     {
+      "ab2": 8,
+      "mn": 1
+     },
+     {
+      "ab2": 10,
+      "mn": 1
+     },
+     {
+      "ab2": 10,
+      "mn": 2
+     },
+     {
+      "ab2": 12,
+      "mn": 2
+     },
+     {
+      "ab2": 15,
+      "mn": 2
+     },
+     {
+      "ab2": 20,
+      "mn": 2
+     },
+     {
+      "ab2": 20,
+      "mn": 5
+     },
+     {
+      "ab2": 25,
+      "mn": 5
+     },
+     {
+      "ab2": 30,
+      "mn": 5
+     },
+     {
+      "ab2": 40,
+      "mn": 5
+     },
+     {
+      "ab2": 50,
+      "mn": 5
+     },
+     {
+      "ab2": 50,
+      "mn": 20
+     },
+     {
+      "ab2": 60,
+      "mn": 20
+     },
+     {
+      "ab2": 80,
+      "mn": 20
+     },
+     {
+      "ab2": 100,
+      "mn": 20
+     },
+     {
+      "ab2": 120,
+      "mn": 20
+     },
+     {
+      "ab2": 150,
+      "mn": 20
+     },
+     {
+      "ab2": 200,
+      "mn": 20
+     },
+     {
+      "ab2": 200,
+      "mn": 40
+     },
+     {
+      "ab2": 250,
+      "mn": 40
+     },
+     {
+      "ab2": 300,
+      "mn": 40
+     },
+     {
+      "ab2": 400,
+      "mn": 40
+     },
+     {
+      "ab2": 400,
+      "mn": 100
+     },
+     {
+      "ab2": 500,
+      "mn": 100
+     }
+    ]
+   }
+  ],
+  "symbols": [
+   [
+    "111111100011101011010010101111111",
+    "100000101111101100000110101000001",
+    "101110101101011110011110101011101",
+    "101110101111001010010111101011101",
+    "101110101000011100111110101011101",
+    "100000101011110011010100101000001",
+    "111111101010101010101010101111111",
+    "000000000001011001010000100000000",
+    "001001111101011100111010010111110",
+    "111010001001011001110011001000011",
+    "001111111101011001111111100111001",
+    "000001010010010011111000010101000",
+    "100111100101011111100011101011000",
+    "011000011001010011100111111101000",
+    "001100100000100001110001001001001",
+    "100001010100011000011010010011001",
+    "110010111110100011111010101100011",
+    "110011001011001110110010101101011",
+    "111001101101000101010001101000011",
+    "111011010001001101111011100011001",
+    "101011111000011100101001101100111",
+    "010101000010100001000011000100010",
+    "110010110001011110100111100011101",
+    "001111010000101010001000110101000",
+    "110010101101110010101010111110000",
+    "000000001011101111100010100011111",
+    "111111101110001001000110101010001",
+    "100000101010000010111010100011010",
+    "101110100100011101000111111111011",
+    "101110100001001101111000010101101",
+    "101110101011101100100010011011111",
+    "100000100111101001110100100111000",
+    "111111100010100010010010111011101"
+   ],
+   [
+    "1111111000111101000011111010001111111",
+    "1000001011111101110010100100001000001",
+    "1011101011010010111110011100101011101",
+    "1011101011001001100000011010101011101",
+    "1011101011111111100100010000101011101",
+    "1000001010101010000110111000101000001",
+    "1111111010101010101010101010101111111",
+    "0000000000000111100111111001100000000",
+    "0010011111101001010011001110010111110",
+    "1100100010000001001010100001101000001",
+    "0100101110111000001001000111000110011",
+    "0010110101000000110011010010110000000",
+    "1010111101011110011000110001101000000",
+    "1001000101100010001100101110100001001",
+    "1111101101110011111010001001100110001",
+    "1111010000111100111100100010101001010",
+    "0010111011001000001110011000001100101",
+    "1010010110100100101111010000101101100",
+    "1110111110011101001001101101111010101",
+    "0100010100001001100011100000101011010",
+    "0010001010101110101011101100111100010",
+    "1101010001101001110111011101011000000",
+    "0010101011000111001001111001001111101",
+    "0111100010010100001001000101010100011",
+    "0101011000111110010001011100011100001",
+    "0011010111110100010000001101011000001",
+    "1110101011110100000110101101101101101",
+    "0010000100011000110000111001001000010",
+    "1101101011000111100110100001111110001",
+    "0000000011011101010001110111100011011",
+    "1111111010100001010111010010101010001",
+    "1000001010010001011000101011100011000",
+    "1011101001000100111001010001111110111",
+    "1011101001101111111111100100110110001",
+    "1011101011101100010011010100111111111",
+    "1000001000011000100100000001110011000",
+    "1111111000001100010000111010100111001"
+   ],
+   [
+    "111111100011100101010010101111111",
+    "100000101110001100010110101000001",
+    "101110101100011110011110101011101",
+    "101110101111101110000111001011101",
+    "101110101001011110100111101011101",
+    "100000101010010011001100101000001",
+    "111111101010101010101010101111111",
+    "000000000000011101010001000000000",
+    "001001111100011000111011010111110",
+    "100110001101011000110111001000011",
+    "001111110011011000011001100111001",
+    "000101001010000010011100010101000",
+    "101111101111011111100101101111000",
+    "010000011011011010000101111101000",
+    "000100111010101001110001001101001",
+    "100001000100010000011010010001000",
+    "111010111000011000010010101100011",
+    "010001001001001010000010101101011",
+    "101001101100100101001001110000011",
+    "101011010001001001101011100011001",
+    "011011111000111110110001011100111",
+    "010100000011100101011011001100010",
+    "110001110001111010101111100011101",
+    "001111010000001010001000010101000",
+    "110111100101110110111011111110000",
+    "000000001111101110100010100011111",
+    "111111101110000000100110101010001",
+    "100000101100000011011010100011010",
+    "101110100010001101000111111111011",
+    "101110100001000100011010010101101",
+    "101110101111110101100110011011111",
+    "100000100111110000010110100111000",
+    "111111100100101001110100111011101"
+   ]
+  ]
+ }
 }

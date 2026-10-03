@@ -1,0 +1,95 @@
+# The printed field kit (PLAN.md step 2.5): the pumping test sheet for each
+# borehole and the three quick cards. Both engines build the kit from these
+# sentences (groundwater/field_kit.py and fieldKit in gwt-core.js), and both
+# apps describe it beside the button in the words of `about`. The template
+# rules are in src/groundwater/text.py; CONTRIBUTING.md says how to add an
+# entry.
+
+about: >-
+  Printable sheets for a crew without a phone or tablet: a pumping test sheet
+  for each borehole, pre-filled with the site, the reading schedule and the
+  casing-storage time, and three quick cards to laminate, for the pumping
+  schedule, the VES spacings and the chlorine doses. Each sheet carries a QR
+  code naming the project and the borehole, so a photographed sheet can be
+  matched to its project.
+title: >-
+  Field kit: {name}
+sheet_title: >-
+  Pumping test field sheet: borehole {borehole}
+sheet_code: >-
+  Sheet code {payload}. Scan it, or type it in, to match this sheet to its
+  project and borehole.
+no_project: >-
+  No project name or reference was set when this sheet was printed, so its
+  code names the borehole only and cannot match a photographed sheet to a
+  project.
+storage: >-
+  Casing storage: if the transmissivity is as low as {t_low:g} m2/day, the
+  water levels of the first {low:.0f} minutes may show the {casing:g} inch
+  casing, with its {riser:g} inch riser, emptying rather than the aquifer
+  ({high:.0f} minutes at {t_high:g} m2/day).
+stop_constant: >-
+  Constant discharge test: do not stop the pump before {minutes:.0f} minutes,
+  the longer of that time and the shortest constant test the analysis
+  accepts, {min_test:.0f} minutes.
+stop_constant_no_storage: >-
+  Constant discharge test: do not stop the pump before {minutes:.0f} minutes,
+  the shortest constant test the analysis accepts.
+stop_step: >-
+  Step test: run every step for at least {step:.0f} minutes, and the first
+  for at least {first:.0f} minutes, since the drawdown is fitted on the first
+  step.
+storage_measured: >-
+  A shorter test is safe only once the measured drawdown shows a shorter
+  casing-storage time. The pumping test co-pilot or the office works that
+  out from the discharge and the drawdown.
+schedule: >-
+  Read the water level at each minute in the Time column, counted from the
+  moment the pump starts. After {last:g} minutes, read every {every:g}
+  minutes.
+recovery: >-
+  When the pump stops, start the clock again from zero and read the recovery
+  at the same minutes.
+discharge: >-
+  Record the discharge of every step. Time a bucket of known volume three
+  times; the rate in m3/h is 3.6 times the litres divided by the mean
+  seconds. A step with no discharge is written as Not measured, with the
+  reason.
+transcribe: >-
+  The tables below have the columns of the standard pumping test workbook,
+  so a filled sheet is typed into it cell for cell.
+card_pumping_title: >-
+  Quick card: pumping test reading schedule
+card_pumping_schedule: >-
+  Read the water level at these minutes after the pump starts, then every
+  {every:g} minutes.
+card_ves_title: >-
+  Quick card: VES Schlumberger spacings
+card_ves_rule: >-
+  A sounding reaches a depth of about {factor:g} times its largest AB/2. Peg
+  down the table until the depth reached is at least the target depth, and
+  stop there.
+card_ves_mn: >-
+  AB is always at least {min_ratio:g} times MN, and MN is widened before AB
+  passes {max_ratio:g} times it. Where MN changes, read the same AB/2 again
+  with the new MN, and keep both readings.
+card_dose_title: >-
+  Quick card: disinfecting the borehole with chlorine
+card_dose_rule: >-
+  Shock dose of 20 mg of chlorine per litre: add 1 litre of 0.2 percent
+  chlorine solution for every 100 litres of water standing in the well, and
+  do not pump for at least {hours:g} hours.
+card_dose_solution: >-
+  A 0.2 percent solution holds 2 g of chlorine per litre: dissolve about
+  {grams:.1f} g of 65 percent HTH powder in each litre of water.
+card_dose_volume: >-
+  Water in the well, in litres, is 0.785 times the square of the casing inner
+  diameter in mm, times the water column in m, divided by 1,000.
+card_dose_table: >-
+  Litres of 0.2 percent solution (L) and grams of 65 percent HTH (g), by
+  water column and casing inner diameter.
+card_dose_basis: >-
+  Basis: the toolkit's supervision checklist (borehole disinfected with
+  chlorine at 20 mg per litre, after Adekile, 2014) and its dose calculator,
+  which follows WHO. Where the programme's own disinfection procedure sets a
+  different dose, it takes precedence.

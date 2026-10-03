@@ -38,27 +38,13 @@
   /* the field of the project state the session lives in */
   var STATE_KEY = 'vesCopilot';
 
-  /* The AB/2 a crew pegs, in metres: about six to a decade, the usual
-   * Schlumberger progression, which spaces the readings evenly on the log
-   * axis the curve is read on. The proposal stops at the first spacing long
-   * enough for the target depth. */
-  var AB2_SERIES = [1, 1.5, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50,
-    60, 80, 100, 120, 150, 200, 250, 300, 400, 500];
-
-  /* The potential-electrode spacings MN (full MN, as the sheets record it). */
-  var MN_SERIES = [0.4, 1, 2, 5, 10, 20, 40, 100];
-
-  /* MN is never more than a fifth of AB: the exact geometric factor corrects
-   * a finite MN, but the Schlumberger reading is meant to approximate the
-   * field gradient at the centre, and AB >= 5 MN is the usual field limit
-   * for that. */
-  var MIN_AB_PER_MN = 5;
-
-  /* The potential at a fixed MN falls roughly as 1/(AB/2)^2, so a crew widens
-   * MN before AB has grown past twenty times it, where the potential has
-   * fallen some hundredfold from the first reading at that MN. A choice, not
-   * a standard: it keeps each MN for about half a decade of AB/2. */
-  var MAX_AB_PER_MN = 20;
+  /* The AB/2 series a crew pegs, the MN spacings, and the two limits on AB
+   * against MN are written once, in src/groundwater/data/field.yaml, with
+   * the reasons for each; the engine's vesSurveyPlan reads them, and so does
+   * the printed field kit's VES card (PLAN.md step 2.5). */
+  var FIELD = C.fieldSchedules().ves;
+  var AB2_SERIES = FIELD.ab2_series_m;
+  var MN_SERIES = FIELD.mn_series_m;
 
   /* The smallest potential the instrument reads reliably, in millivolts.
    * A working default, not an instrument specification: the resistivity
@@ -97,52 +83,14 @@
     return c.ves.depth_of_investigation_factor;
   }
 
-  /** The AB/2 series and the MN changes for a target depth.
-   *
-   * The largest AB/2 is the first spacing in the series at which the depth
-   * of investigation reaches the target. MN starts at the widest spacing a
-   * fifth of the first AB allows and is widened when AB passes twenty times
-   * it; at each change the last AB/2 is read again with the new MN, so the
-   * two segments overlap at one spacing.
+  /** The AB/2 series and the MN changes for a target depth: the engine's
+   * own proposal (C.vesSurveyPlan, groundwater/field_kit.py), which the
+   * printed field kit's VES card is laid out from too.
    * @param {number} targetDepth metres
    * @param {any} [cfg]
    */
   function propose(targetDepth, cfg) {
-    var ves = (cfg || C.defaultConfig()).ves;
-    var factor = doiFactor(cfg);
-    /* the engine's own C.depthOfInvestigation decides, not target / factor:
-     * a factor that is not a power of two divides with a rounding error, and
-     * 30 / 0.3 = 100.00000000000001 would have asked for the next spacing */
-    var reaches = function (ab2) { return C.depthOfInvestigation(ab2, ves) >= targetDepth; };
-    var capped = !reaches(AB2_SERIES[AB2_SERIES.length - 1]);
-    var series = [];
-    for (var i = 0; i < AB2_SERIES.length; i++) {
-      series.push(AB2_SERIES[i]);
-      if (reaches(AB2_SERIES[i])) break;
-    }
-    var widest = function (ab2) {
-      var best = null;
-      MN_SERIES.forEach(function (mn) { if (mn * MIN_AB_PER_MN <= 2 * ab2) best = mn; });
-      return best === null ? MN_SERIES[0] : best;
-    };
-    var steps = [];
-    var mn = widest(series[0]);
-    series.forEach(function (ab2, k) {
-      if (k > 0 && 2 * ab2 > MAX_AB_PER_MN * mn) {
-        var wider = widest(series[k - 1]);
-        if (wider > mn) {
-          mn = wider;
-          steps.push({ ab2: series[k - 1], mn: mn });
-        }
-      }
-      steps.push({ ab2: ab2, mn: mn });
-    });
-    var maxAb2 = series[series.length - 1];
-    return {
-      target_m: targetDepth, factor: factor, max_ab2: maxAb2,
-      investigation_m: C.depthOfInvestigation(maxAb2, ves),
-      line_m: 2 * maxAb2, capped: capped, steps: steps,
-    };
+    return C.vesSurveyPlan(targetDepth, cfg || C.defaultConfig());
   }
 
   /** The plan as the text box shows it: one "AB/2 MN" pair a line.

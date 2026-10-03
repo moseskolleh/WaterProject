@@ -426,6 +426,25 @@ def test_templates_tab(app):
     assert not app.exception
 
 
+def test_the_field_kit_is_built_from_the_templates_page(app):
+    """PLAN.md step 2.5: the Field kit button writes the sheets and cards
+    for the boreholes named, and says so when none is."""
+    goto(app, "Templates")
+    app.text_area(key="templates_fieldkit_boreholes").set_value("KTL-01\nKTL-02")
+    app.button(key="templates_fieldkit_build").click()
+    app.run()
+    assert not app.exception, app.exception
+    kit = app.session_state["artifacts"]["Download the field kit (.docx)"]
+    import docx
+
+    text = "\n".join(p.text for p in docx.Document(kit).paragraphs)
+    assert "borehole KTL-01" in text and "borehole KTL-02" in text
+    app.text_area(key="templates_fieldkit_boreholes").set_value("  ")
+    app.button(key="templates_fieldkit_build").click()
+    app.run()
+    assert any("at least one borehole" in str(e.value) for e in app.error)
+
+
 def test_portfolio_drilldown_flow(sample_data):
     """Upload saved projects, then drill into one site for its detail and
     the one-page brief."""

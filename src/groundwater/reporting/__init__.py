@@ -19,6 +19,7 @@ __all__ = [
     "build_asset_record",
     "build_completion_report",
     "build_cost_report",
+    "build_field_kit",
     "build_geophysical_report",
     "build_handover_report",
     "build_payment_certificate",
@@ -33,6 +34,7 @@ _LAZY = {
     "build_asset_record": ".registry",
     "build_completion_report": ".completion",
     "build_cost_report": ".costing",
+    "build_field_kit": ".field_kit",
     "build_geophysical_report": ".geophysical",
     "build_handover_report": ".handover",
     "build_payment_certificate": ".procurement",
@@ -54,6 +56,7 @@ _LAZY_MODULES = (
     "procurement",
     "supervision",
     "registry",
+    "field_kit",
     "citations",
     "context",
 )

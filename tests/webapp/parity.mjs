@@ -1029,6 +1029,63 @@ await withPage(async (page, base, consoleErrors) => {
         `js ${JSON.stringify(cases.drilling[i][key])}\n     py ${JSON.stringify(ref[key])}`);
     }
   });
+  // --- the field kit (PLAN.md step 2.5): every word, number and sheet code
+  // the printed sheets and cards carry, and the symbols the sheets print ---
+  const kit = await page.evaluate((ref) => {
+    const C = GWT.core;
+    const plans = [];
+    [0.4, 30, 62.5, 250, 400].forEach((depth) => {
+      ref.cases.slice(0, 2).forEach((c) => {
+        plans.push(C.vesSurveyPlan(depth, C.withConfig(c.config)));
+      });
+    });
+    const content = ref.cases.map((c) =>
+      C.fieldKitContent(c.site, c.boreholes, C.withConfig(c.config)));
+    return {
+      content,
+      parsed: ref.codes.map((text) => C.parseFieldKitPayload(text)),
+      minutes: Object.fromEntries(Object.keys(ref.minutes)
+        .map((k) => [k, C.readingMinutes(Number(k))])),
+      plans,
+      symbols: content[0].sheets.map((sheet) => C.qrEncode(sheet.payload, { ecc: 'H' })
+        .modules.map((row) => row.map((m) => (m ? '1' : '0')).join(''))),
+    };
+  }, R.field_kit);
+  /* the first place two values part, or null: numbers to parity's tolerance,
+   * everything else exactly */
+  function parted(a, b, path) {
+    if (typeof a === 'number' && typeof b === 'number') {
+      return close(a, b, 1e-9) ? null : `${path}: js ${a} vs py ${b}`;
+    }
+    if (Array.isArray(a) && Array.isArray(b)) {
+      if (a.length !== b.length) return `${path}: js ${a.length} items vs py ${b.length}`;
+      for (let i = 0; i < a.length; i++) {
+        const d = parted(a[i], b[i], `${path}[${i}]`);
+        if (d) return d;
+      }
+      return null;
+    }
+    if (a && b && typeof a === 'object' && typeof b === 'object') {
+      const keys = Array.from(new Set(Object.keys(a).concat(Object.keys(b)))).sort();
+      for (const k of keys) {
+        if (!(k in a) || !(k in b)) return `${path}.${k}: in one engine only`;
+        const d = parted(a[k], b[k], `${path}.${k}`);
+        if (d) return d;
+      }
+      return null;
+    }
+    return a === b ? null : `${path}: js ${JSON.stringify(a)} vs py ${JSON.stringify(b)}`;
+  }
+  R.field_kit.content.forEach((ref, i) => {
+    for (const key of Object.keys(ref)) {
+      const d = parted(kit.content[i][key], ref[key], key);
+      check(`field kit case ${i + 1}: ${key}`, d === null, d);
+    }
+  });
+  for (const key of ['parsed', 'minutes', 'plans', 'symbols']) {
+    const d = parted(kit[key], R.field_kit[key], key);
+    check(`field kit: ${key}`, d === null, d);
+  }
   // --- VES ---
   check('ves: sounding count', parsed.ves.length === R.ves.length,
     `js ${parsed.ves.length} vs py ${R.ves.length}`);
