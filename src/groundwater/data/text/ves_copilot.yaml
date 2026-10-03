@@ -1,0 +1,10 @@
+# The VES co-pilot (PLAN.md step 2.2) is in the browser app only, and both
+# apps say so in these words: gwt-ves-copilot.js on the co-pilot's page and
+# app/views/geophysics.py on the Streamlit Geophysics page. The template
+# rules are in src/groundwater/text.py; CONTRIBUTING.md says how to add an
+# entry.
+
+browser_only: >-
+  The VES co-pilot, which checks each reading at the peg while the crew can
+  still re-measure, is in the browser app only. The Streamlit app reads the
+  workbook it writes like any other VES template.

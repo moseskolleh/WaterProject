@@ -13,8 +13,8 @@ function check(name, ok, detail) {
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${ok || !detail ? '' : '\n     ' + detail}`);
 }
 
-const PAGES = ['overview', 'guided', 'site', 'ves', 'design', 'spine', 'pumping',
-  'quality', 'costing', 'procurement', 'supervision', 'handover',
+const PAGES = ['overview', 'guided', 'site', 'ves', 'vescopilot', 'design', 'spine',
+  'pumping', 'pumpcopilot', 'quality', 'costing', 'procurement', 'supervision', 'handover',
   'templates', 'extract',
   'waterpoints', 'coverage', 'portfolio', 'registry', 'settings', 'about'];
 
@@ -2841,6 +2841,351 @@ await withPage(async (page, base, consoleErrors) => {
     check('offline: the app boots with the network switched off', false,
       JSON.stringify(offlineLoad));
   }
+
+  // The VES co-pilot (PLAN.md step 2.2), played back with the Rokel readings
+  // through the page itself: the form, the peg's checks, the curve, the
+  // preview inversion, a reload, and the workbook it writes, read back by
+  // the browser's own parser. tests/test_ves_copilot.py reads the same kind
+  // of workbook with the Python one.
+  await page.context().grantPermissions(['geolocation'], { origin: base });
+  await page.context().setGeolocation({ latitude: 8.6, longitude: -12.9, accuracy: 5 });
+  await page.evaluate(() => window.GWT.app.goto('vescopilot'));
+  await page.waitForFunction(() => !!window.GWT.vesCopilot &&
+    !!document.querySelector('#page-host [data-vc="target"]'));
+  /* the page's controls, driven as a hand would: a value typed, the change
+   * it fires on leaving the box, then the button; put back after a reload */
+  const driveCopilot = () => page.evaluate(() => {
+    window.__vc = {
+      set(name, value) {
+        const input = document.querySelector('#page-host [data-vc="' + name + '"]');
+        input.value = value === null || value === undefined ? '' : String(value);
+        input.dispatchEvent(new Event('change'));
+      },
+      press(label) {
+        const btn = Array.from(document.querySelectorAll('#page-host button'))
+          .find((b) => b.textContent.trim() === label);
+        if (!btn) throw new Error('no button ' + label);
+        btn.click();
+      },
+      has(label) {
+        return Array.from(document.querySelectorAll('#page-host button'))
+          .some((b) => b.textContent.trim() === label);
+      },
+      peg() {
+        const node = document.querySelector('#page-host [data-vc="peg"]');
+        return node ? Array.from(node.querySelectorAll('[data-check]'))
+          .map((li) => [li.getAttribute('data-check'), li.textContent]) : null;
+      },
+      fresh() {
+        window.GWT.vesCopilot.cancelPreview('idle');
+        window.GWT.app.store.set('vesCopilot', window.GWT.vesCopilot.blankSession());
+        return window.GWT.app.render();
+      },
+      /* one reading through the form; the checks the peg then shows */
+      read(r) {
+        this.set('ab2', r.ab2); this.set('mn', r.mn);
+        this.set('v', r.v); this.set('i', r.i); this.set('rho', r.rho);
+        this.press(this.has('Replace the reading') ? 'Replace the reading' : 'Add the reading');
+        return this.peg();
+      },
+    };
+  });
+  await driveCopilot();
+  await page.evaluate(() => window.__vc.fresh());
+
+  // Before the survey: the target depth sets the line by the engines' one
+  // depth-of-investigation rule, 0.5 of the largest AB/2.
+  const proposal = await page.evaluate(() => {
+    window.__vc.set('target', 50);
+    window.__vc.press('Propose the spacings');
+    const V = window.GWT.vesCopilot;
+    const plan = window.GWT.app.store.get('vesCopilot').plan;
+    const depths = [10, 20, 35, 60, 120].map((d) => {
+      const p = V.propose(d);
+      return { d, max: p.max_ab2, doi: p.investigation_m, line: p.line_m,
+        mnChanges: p.steps.filter((s, i) => i && s.ab2 === p.steps[i - 1].ab2).length,
+        fifth: p.steps.every((s) => s.mn * 5 <= 2 * s.ab2) };
+    });
+    return { plan, depths,
+      text: document.querySelector('#page-host [data-vc="proposal"]')?.textContent || '',
+      next: document.querySelector('#page-host [data-vc="next"]')?.textContent || '' };
+  });
+  check('ves co-pilot: a 50 m target proposes AB/2 to 100 m, resolving 50 m',
+    proposal.plan.length > 0 && proposal.plan[proposal.plan.length - 1].ab2 === 100 &&
+    proposal.text.includes('AB/2 = 100 m') && proposal.text.includes('200 m of straight') &&
+    proposal.next.startsWith('Next: AB/2 1 m, MN 0.4 m'), JSON.stringify(proposal));
+  check('ves co-pilot: each target gets the shortest series that reaches it',
+    JSON.stringify(proposal.depths.map((p) => [p.d, p.max, p.doi])) ===
+      JSON.stringify([[10, 20, 10], [20, 40, 20], [35, 80, 40], [60, 120, 60],
+        [120, 250, 125]]) &&
+    proposal.depths.every((p) => p.fifth && p.mnChanges >= 1),
+    JSON.stringify(proposal.depths));
+
+  // At the peg, each of the four checks, one at a time, against the plan the
+  // 50 m target proposed.
+  const four = await page.evaluate(() => {
+    const vc = window.__vc, C = window.GWT.core;
+    const out = {};
+    // a potential under the instrument's setting (1 mV by default); the
+    // resistivity is K V / I with the engine's own Schlumberger K
+    out.low = vc.read({ ab2: 1, mn: 0.4, v: 0.5, i: 100 });
+    const first = window.GWT.app.store.get('vesCopilot').readings[0];
+    out.rho = [first.rho, C.apparentResistivity('schlumberger', 0.5 / 100, { ab2: 1, mn: 0.4 })];
+    out.minSaid = window.GWT.vesCopilot.DEFAULT_MIN_POTENTIAL_MV;
+    // the same spacing read again: a repeat, not a second reading
+    out.repeat = vc.read({ ab2: 1, mn: 0.4, v: 40, i: 100 });
+    // 1.5 m skipped on the way to 2 m
+    out.skip = vc.read({ ab2: 2, mn: 0.4, rho: 3.2 });
+    // 2 m to 3 m at slope ln(9.6/3.2)/ln(1.5) = 2.71: no layered earth does that
+    out.steep = vc.read({ ab2: 3, mn: 0.4, rho: 9.6 });
+    // 3 m to 4 m at slope 0.9: steep, but a layered earth can
+    const at4 = 9.6 * Math.pow(4 / 3, 0.9);
+    out.gentle = vc.read({ ab2: 4, mn: 0.4, rho: at4 });
+    // the MN change at 4 m: 30 percent apart, over the engine's 20
+    out.overlap = vc.read({ ab2: 4, mn: 1, rho: at4 * 1.3 });
+    out.ratio = C.OVERLAP_DISCREPANCY_RATIO;
+    // re-measured in its place, now within 5 percent
+    vc.press('Re-measure this reading');
+    out.remeasured = vc.read({ ab2: 4, mn: 1, rho: at4 * 1.05 });
+    out.count = window.GWT.app.store.get('vesCopilot').readings.length;
+    out.curveMarks = document.querySelectorAll('#page-host .vc-curve svg [data-reading]').length;
+    return out;
+  });
+  const codes = (peg) => (peg || []).map((c) => c[0]).join(',');
+  check('ves co-pilot: a potential under the instrument setting says re-measure',
+    codes(four.low) === 'low_potential' && four.low[0][1].startsWith('Re-measure now') &&
+    four.minSaid === 1 && Math.abs(four.rho[0] - four.rho[1]) < 1e-3,
+    JSON.stringify([four.low, four.rho]));
+  check('ves co-pilot: a spacing read twice is called a repeat',
+    codes(four.repeat) === 'repeated', JSON.stringify(four.repeat));
+  check('ves co-pilot: a skipped spacing is named',
+    codes(four.skip) === 'skipped' && four.skip[0][1].includes('AB/2 1.5 m'),
+    JSON.stringify(four.skip));
+  check('ves co-pilot: a rise steeper than 45 degrees says re-measure, a slope of 0.9 does not',
+    codes(four.steep) === 'steep_rise' && four.steep[0][1].includes('slope of 2.71') &&
+    codes(four.gentle) === '', JSON.stringify([four.steep, four.gentle]));
+  check('ves co-pilot: an overlap 30 percent apart says re-measure, by the engine\'s 20',
+    codes(four.overlap) === 'overlap_discrepancy' && four.ratio === 1.2 &&
+    four.overlap[0][1].includes('(ratio 1.30)'), JSON.stringify(four.overlap));
+  check('ves co-pilot: a re-measured reading takes the place of the one it repeats',
+    codes(four.remeasured) === '' && four.count === 6 && four.curveMarks === 6,
+    JSON.stringify(four));
+
+  // PLAN.md step 2.2's done-when: played back reading by reading, each Rokel
+  // overlap that disagrees by 45 to 98 percent says "re-measure now" at the
+  // peg, and the overlaps that agree say nothing.
+  const rokel = await page.evaluate(async () => {
+    await window.GWT.load('samples');
+    const S = window.GWT.support, C = window.GWT.core, vc = window.__vc;
+    const sheets = await S.readXlsx(S.base64ToBytes(window.GWT.data.samples.rokel.files.ves.b64));
+    const soundings = C.readVesSheets(sheets, 'rokel_ves.xlsx');
+    const out = { raised: [], quiet: [], played: [], atEight: [] };
+    for (const s of soundings) {
+      await vc.fresh();
+      const box = document.querySelector('#page-host textarea');
+      box.value = s.ab2.map((a, i) => a + ' ' + s.mn[i]).join('\n');
+      vc.press('Use this plan');
+      vc.set('sounding-id', s.sounding_id);
+      vc.set('instrument', 'Syscal Junior');
+      for (let i = 0; i < s.ab2.length; i++) {
+        const peg = vc.read({ ab2: s.ab2[i], mn: s.mn[i], rho: s.rho_app[i] });
+        const said = peg.filter((c) => c[0] === 'overlap_discrepancy');
+        if (said.length) {
+          out.raised.push([s.sounding_id, s.ab2[i],
+            said[0][1].startsWith('Re-measure now'), said[0][1].match(/ratio [\d.]+/)[0]]);
+        } else if (s.ab2.indexOf(s.ab2[i]) !== i) {
+          out.quiet.push([s.sounding_id, s.ab2[i]]);
+        }
+        /* before the eighth reading nothing is fitted; at it, a fit waits */
+        if (i === 6 || i === 7) out.atEight.push(window.GWT.vesCopilot.preview().status);
+      }
+      out.played.push({ id: s.sounding_id, ab2: s.ab2, mn: s.mn, rho: s.rho_app });
+    }
+    return out;
+  });
+  check('ves co-pilot: every Rokel overlap off by 45 to 98 percent said re-measure now at the peg',
+    JSON.stringify(rokel.raised) === JSON.stringify([
+      ['A (1)', 10, true, 'ratio 1.45'], ['A (1)', 40, true, 'ratio 1.98'],
+      ['B (2)', 10, true, 'ratio 1.47'], ['B (2)', 40, true, 'ratio 1.54'],
+      ['B (2)', 70, true, 'ratio 1.64']]) &&
+    JSON.stringify(rokel.quiet) === JSON.stringify([['A (1)', 3], ['A (1)', 70], ['B (2)', 3]]),
+    JSON.stringify(rokel));
+
+  // The preview: started by the eighth reading, in the worker, and it can be
+  // stopped. The page now holds sounding B (2), all eighteen readings.
+  const previewRun = await page.evaluate(async () => {
+    const V = window.GWT.vesCopilot;
+    const until = async (fn, ms) => {
+      const end = Date.now() + ms;
+      while (!fn()) {
+        if (Date.now() > end) return false;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      return true;
+    };
+    const out = {};
+    out.running = await until(() => V.preview().status === 'running', 10000);
+    window.__vc.press('Stop the preview');
+    out.stopped = V.preview().status;
+    out.stoppedText = document.querySelector('#page-host [data-vc="preview-status"]')?.textContent;
+    out.cancelled = window.GWT.engine.history()
+      .filter((h) => h.type === 'previewInvert' && h.outcome === 'cancelled').length;
+    window.__vc.press('Run the preview now');
+    out.done = await until(() => V.preview().status === 'done', 60000);
+    const node = document.querySelector('#page-host [data-vc="preview"]');
+    out.text = node ? node.textContent : '';
+    out.said = document.querySelector('#page-host .vc-preview')?.textContent || '';
+    out.modes = window.GWT.engine.history()
+      .filter((h) => h.type === 'previewInvert' && h.outcome === 'done').map((h) => h.mode);
+    out.modelLine = !!document.querySelector(
+      '#page-host .vc-curve svg path[stroke-dasharray="6 4"]');
+    return out;
+  });
+  check('ves co-pilot: the preview waits for eight readings, then starts',
+    JSON.stringify(rokel.atEight) === JSON.stringify(['idle', 'waiting', 'idle', 'waiting']),
+    JSON.stringify(rokel.atEight));
+  check('ves co-pilot: the preview inversion can be stopped',
+    previewRun.running && previewRun.stopped === 'stopped' && previewRun.cancelled >= 1 &&
+    /Preview stopped/.test(previewRun.stoppedText || ''), JSON.stringify(previewRun));
+  check('ves co-pilot: the preview runs in the worker and says it is a preview',
+    previewRun.done && previewRun.modes.length >= 1 &&
+    previewRun.modes.every((m) => m === 'worker') && previewRun.text.startsWith('Preview:') &&
+    previewRun.said.includes('A preview, not the survey\'s result') && previewRun.modelLine,
+    JSON.stringify(previewRun));
+
+  // The position, with permission, then a reload: the session is in
+  // IndexedDB with the rest of the project and comes back as it was.
+  const beforeReload = await page.evaluate(async () => {
+    window.__vc.press('Take the GPS position');
+    const end = Date.now() + 10000;
+    while (!window.GWT.app.store.get('vesCopilot').gps && Date.now() < end) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    /* the autosave, as it goes in 400 ms after a change */
+    await new Promise((r) => setTimeout(r, 1000));
+    return window.GWT.app.store.get('vesCopilot');
+  });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForFunction(() => window.GWT && window.GWT.app && window.GWT.vesCopilot &&
+    !!document.querySelector('#page-host [data-vc="target"]'), null, { timeout: 30000 });
+  await driveCopilot();
+  const afterReload = await page.evaluate(() => ({
+    session: window.GWT.app.store.get('vesCopilot'),
+    rows: document.querySelectorAll('#page-host table.data tbody tr').length,
+    status: window.GWT.vesCopilot.preview().status,
+  }));
+  check('ves co-pilot: the session survives a reload',
+    JSON.stringify(afterReload.session) === JSON.stringify(beforeReload) &&
+    beforeReload.readings.length === 18 && !!beforeReload.gps &&
+    beforeReload.gps.lat === 8.6 && afterReload.rows === 18 &&
+    ['waiting', 'running'].includes(afterReload.status),
+    JSON.stringify({ before: beforeReload && beforeReload.readings.length,
+      gps: beforeReload && beforeReload.gps, after: afterReload.rows,
+      status: afterReload.status }));
+
+  // Leaving the page stops a preview that is waiting or running, so the
+  // engine's one queue is free for the Geophysics page; coming back starts
+  // it again. Opening a sample project keeps the sounding: readings taken at
+  // the peg cannot be taken again (FIELD_SESSIONS in gwt-app.js).
+  const leaving = await page.evaluate(async () => {
+    const V = window.GWT.vesCopilot, app = window.GWT.app;
+    const until = async (fn, ms) => {
+      const end = Date.now() + ms;
+      while (!fn()) {
+        if (Date.now() > end) return false;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      return true;
+    };
+    const fits = () => window.GWT.engine.history()
+      .filter((h) => h.type === 'previewInvert').length;
+    const out = { before: V.preview().status };
+    await app.goto('design');
+    out.left = V.preview().status;
+    const settled = fits();
+    /* longer than the debounce: a fit left waiting would have started */
+    await new Promise((r) => setTimeout(r, 2000));
+    out.stillStopped = V.preview().status === 'stopped' && fits() === settled;
+    await app.goto('vescopilot');
+    out.back = V.preview().status;
+    await app.loadSample('rokel');
+    out.kept = (app.store.get('vesCopilot').readings || []).length;
+    out.site = app.store.get('site').community || '';
+    /* the readings table's rows, each with its own Delete */
+    out.rows = Array.from(document.querySelectorAll('#page-host table.data tbody tr'))
+      .filter((tr) => Array.from(tr.querySelectorAll('button'))
+        .some((btn) => btn.textContent.trim() === 'Delete')).length;
+    out.refit = await until(() => V.preview().status === 'done', 60000);
+    return out;
+  });
+  await driveCopilot();
+  check('ves co-pilot: leaving the page stops the preview, coming back starts it again',
+    ['waiting', 'running'].includes(leaving.before) && leaving.left === 'stopped' &&
+    leaving.stillStopped && ['waiting', 'running'].includes(leaving.back) && leaving.refit,
+    JSON.stringify(leaving));
+  check('ves co-pilot: opening a sample project keeps the sounding being taken',
+    leaving.kept === 18 && leaving.rows === 18 && leaving.site !== '', JSON.stringify(leaving));
+
+  // With no worker the fit would hold the page after every reading, so it
+  // waits to be asked; with the worker back it starts by itself again.
+  const onPage = await page.evaluate(async () => {
+    const V = window.GWT.vesCopilot, app = window.GWT.app, E = window.GWT.engine;
+    E.forcePage(true);
+    try {
+      await app.goto('design');
+      /* the preview of these readings is done; forget it, as a new reading would */
+      V.cancelPreview('idle');
+      await app.goto('vescopilot');
+      return { status: V.preview().status, fits: E.history().length,
+        text: document.querySelector('#page-host [data-vc="preview-status"]')?.textContent || '',
+        button: Array.from(document.querySelectorAll('#page-host button'))
+          .some((b) => b.textContent.trim() === 'Run the preview now') };
+    } finally {
+      E.forcePage(false);
+      await app.goto('design');
+      await app.goto('vescopilot');
+    }
+  });
+  await driveCopilot();
+  check('ves co-pilot: with no worker the preview waits to be asked',
+    onPage.status === 'manual' && onPage.button && /no background worker/.test(onPage.text),
+    JSON.stringify(onPage));
+
+  // The workbook, from the download button, read by the browser's parser.
+  const written = await page.evaluate(async (played) => {
+    const S = window.GWT.support, C = window.GWT.core;
+    window.GWT.vesCopilot.cancelPreview('stopped');
+    const kept = S.download;
+    let saved = null;
+    S.download = (name, blob) => { saved = { name, blob }; };
+    try {
+      window.__vc.press('Download the workbook');
+      const end = Date.now() + 10000;
+      while (!saved && Date.now() < end) await new Promise((r) => setTimeout(r, 20));
+    } finally {
+      S.download = kept;
+    }
+    const bytes = new Uint8Array(await saved.blob.arrayBuffer());
+    const skipped = [];
+    const soundings = C.readVesSheets(await S.readXlsx(bytes), saved.name, skipped);
+    const s = soundings[0];
+    const want = played[played.length - 1];
+    const utm = C.geographicToUtm(8.6, -12.9);
+    return { name: saved.name, n: soundings.length, skipped: skipped.length,
+      id: s.sounding_id, same: JSON.stringify([s.ab2, s.mn, s.rho_app]) ===
+        JSON.stringify([want.ab2, want.mn, want.rho]),
+      easting: s.site.easting, wantEasting: Math.round(utm.easting * 10) / 10,
+      zone: s.site.utm_zone, instrument: s.instrument,
+      codes: s.flags.map((f) => f.code) };
+  }, rokel.played);
+  check('ves co-pilot: the workbook reads back through the browser\'s parser',
+    written.n === 1 && written.skipped === 0 && written.id === 'B (2)' && written.same &&
+    written.easting === written.wantEasting && written.zone === 28 &&
+    written.instrument === 'Syscal Junior' &&
+    written.codes.includes('segment_overlap_discrepancy') &&
+    written.name === 'b_2_ves_copilot.xlsx', JSON.stringify(written));
+  await page.evaluate(() => window.__vc.fresh());
+  await page.context().clearPermissions();
 
   // A dense survey's drill-target map. Every label was written to the right
   // of its peg, so twelve pegs 60 m apart - or sixteen 50 m apart in two

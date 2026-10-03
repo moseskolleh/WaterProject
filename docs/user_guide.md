@@ -42,6 +42,76 @@ At every segment change (for example AB/2 = 3, 10, 40 and 70 m),
 repeat the same AB/2 with the old MN and again with the new MN. Both
 readings are used; do not delete either one.
 
+## 2a. VES co-pilot (browser app, at the peg)
+
+The browser app has a page that checks a Schlumberger sounding as it is
+taken: **VES co-pilot**, under *Investigation*, at
+[`#/vescopilot`](index.html#/vescopilot). It is in the browser app only;
+the Streamlit app's Geophysics page says so, and reads the workbook the
+co-pilot writes like any other. It works with no network once the app is
+installed.
+
+**Before the survey.** Enter the target depth and press *Propose the
+spacings*. A Schlumberger sounding resolves to about half of its largest
+AB/2, the same rule the interpretation and the drilling depth use, so a
+50 m target needs AB/2 = 100 m: 200 m of straight, open ground centred
+on the peg. Check that the ground is there before anyone unrolls a
+cable. The proposal runs 1, 1.5, 2, 3, 4, 5, 6, 8, 10 m and on, with MN
+never more than a fifth of AB, and changes MN when AB passes twenty
+times it; at each change the plan lists the same AB/2 twice, once with
+each MN. The plan is a text box, one `AB/2 MN` pair a line: edit it to
+suit the ground (or to match a paper sheet already in use) and press
+*Use this plan*.
+
+**At each reading.** The form is filled in with the next spacing on the
+plan. Enter the potential V in millivolts and the current I in
+milliamps, or the apparent resistivity if the instrument shows it, and
+press *Add the reading*. The resistivity is worked out with the exact
+Schlumberger geometric factor the parsers use, and the point goes on the
+log-log curve at once. Four things are checked at the peg:
+
+- **A rise steeper than 45 degrees.** Over layered ground the curve can
+  climb no faster than one decade of resistivity per decade of AB/2.
+  Over a resistive basement it climbs at very nearly that, so a reading
+  is called out only when it sits more than 10 percent above the
+  45-degree line from the reading before it at the same MN: room for the
+  finite MN and a good reading's scatter. Steeper than that is a misread
+  potential, a peg in the wrong place, a current electrode with no
+  contact, or ground that is not layered.
+- **An MN change whose two readings disagree by more than 20 percent**,
+  the same test and threshold the Geophysics page applies to an uploaded
+  sheet. Re-read both before the current electrodes move.
+- **A potential too small to read reliably.** The default is 1 mV; set
+  your instrument's figure under *Instrument*. Raise the current (water
+  the current electrodes), or widen MN and read the spacing at both MN.
+- **A spacing skipped or read twice**, against the plan.
+
+The first three say **Re-measure now**; press *Re-measure this reading*
+and the new reading takes the old one's place. The table keeps what each
+reading raised.
+
+**Preview inversion.** From the eighth reading the app fits a layered
+model to the readings so far, in the background, and draws it on the
+curve. It says whether basement is in view within the depth the line
+resolves so far, so the team can extend the line while it is still
+laid out. It is a preview, refitted after each reading; *Stop the
+preview* stops it, and so does leaving the page. A copy of the app
+opened straight from a file (`file://`) has no background worker, and
+the fit would hold the page for some seconds after every reading, so
+there it runs only when *Run the preview now* is pressed. The finished
+workbook is interpreted on the Geophysics page.
+
+**The workbook.** *Take the GPS position* (at the centre peg; the
+browser asks permission the first time) and *Download the workbook*. It
+is the standard VES template, with the site details from the Site page,
+the device clock and GPS fix in the header, the position also written as
+UTM, and V, I and the time of each reading beside the resistivity.
+Upload it on the Geophysics page. The readings are saved in the browser
+with the project a moment after each one is added, so a reload or a
+closed tab does not lose them, and opening another project or a sample
+keeps them. *Start a new sounding* clears them, and so does *Reset
+everything* on the Settings page, so download the workbook first.
+
 ## 3. Pumping test sheet
 
 Fill the header block including the static water level measured before
@@ -63,6 +133,100 @@ the pump started, the pump setting depth and the borehole depth. Write
   and stopwatch: litres divided by seconds, times 3.6 gives m3/h).
   Without discharge the system still draws the curves but reports
   transmissivity and yield as pending.
+
+## 3a. Pumping test co-pilot (browser app, on a phone or tablet)
+
+The browser app can sit with the crew while the test runs and fill in
+the pumping test sheet for them. Open **Pumping co-pilot** (sidebar,
+under *Testing*; address [`#/pumpcopilot`](index.html#/pumpcopilot)).
+It exists only in the browser app; the Streamlit app says so on its
+Pumping test page. Install the app on the phone and open the page once
+with a network: after that it works with none.
+
+**Before pumping.** Enter the casing and riser diameters, the hole
+depth, the pump setting, the static level (read it before the pump
+starts) and the planned rate. The page works out how long the water
+standing in the casing controls the drawdown (Schafer's casing-storage
+rule), for a cautious transmissivity range of 1 to 10 m2/day that you
+can change. Until that period is over, the level tells you about the
+casing, not the aquifer. The page then says when the test can stop at
+the earliest: "If the pump starts now, do not stop before 13:07." A
+30-minute test on a 5-inch casing in weathered basement is usually all
+casing storage, which is what happened at Dr Timbo's. Press **Record GPS
+position** to put the phone's position in the sheet; the phone asks for
+permission first.
+
+**While pumping.** Press **Start the pump** at the moment it starts. If
+the pump was started before you opened the page, enter how many minutes
+it has already run before you press it, so the readings are timed from
+the real start.
+The page counts down to each reading and beeps when one is due, on this
+schedule: 0.5, 1, 1.5, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40,
+50, 60, 75, 90 and 120 minutes, then every 30 minutes. Type the depth
+to water and press **Record level**. A reading typed from 6 seconds
+before its time to a fiftieth of the time after it (6 seconds early in
+the test, 2.4 minutes at two hours) is written at the scheduled minute,
+as you would write it on paper; any other is written at the minute it
+was actually taken. Drawdown is plotted against log time as you go, with
+the casing-storage period shaded and the pump intake drawn across.
+
+The page warns you:
+
+- when the level reaches the pump intake (and earlier, when it is
+  within 3 m of it): reduce the rate, because a pump cannot draw water
+  below itself and the readings would be worthless;
+- when a discharge measurement differs by more than 5 percent from the
+  first one of the same step: set the valve back and measure again;
+- while the test is still inside casing storage, and until the time it
+  may stop. **Stop the pump** asks again if you press it early. Once
+  levels are being read, the drawdown gives its own casing-storage
+  period, but that period keeps growing while the level is falling, so
+  the cautious figure from before pumping stands until the readings have
+  passed the measured one;
+- when the phone's clock is set back during the test, since every
+  minute is worked out from it.
+
+Each warning starts with how urgent it is in words (*Act now*,
+*Warning* or *Note*), not only in its colour.
+
+Once the readings are past casing storage, the page fits the same
+Cooper-Jacob line the analysis will, and says how much the
+transmissivity has moved over the last log cycle. "T has changed less
+than 10 percent over the last log cycle. The test can stop at the
+planned time" means the test has done its job. If the planned time is
+earlier than the shortest test the analysis can give a yield from, the
+page says so and gives the later time instead.
+
+**Discharge.** Use the bucket and stopwatch: enter the bucket volume,
+time three fillings (with the watch on the page, or type the seconds)
+and press **Record this rate**; the three timings are averaged. Measure
+again every hour or so, and after any change at the valve. A meter
+reading can be entered instead. A step with no discharge cannot be
+saved: if it really was not measured, record it as not measured and say
+why. The reason is written on the sheet.
+
+**Step tests.** Choose *Step drawdown*, give the number of steps (up to
+four) and the step length, and press **Start step 2** (and so on) at the
+moment the rate changes. The schedule starts again for each step.
+
+**Recovery.** Press **Stop the pump** at the moment it stops. The
+schedule starts again from that moment, and recovery readings are
+minutes since the pump stopped.
+
+**If the phone sleeps or the page is reloaded,** nothing is lost: every
+reading is saved on the phone as it is taken, and the clock is the
+phone's own clock, so the page reopens at the right minute and lists
+any readings that fell due while it was asleep. Do not invent a missed
+reading; take the next one.
+
+**At the end,** press **Write the workbook (.xlsx)**. It is the
+standard pumping test sheet (section 3), with the phone's clock at the
+start and stop of pumping and the GPS position in the header, and a
+second sheet logging every reading, timing and event. Upload it like
+any other sheet, or press **Use it as this project's pumping test** to
+analyse it at once; that also sets the project's casing and riser
+diameters to the ones entered here, which the readers do not take from
+the sheet. Save the project file as well (section 11).
 
 ## 4. Drilling log
 
@@ -107,8 +271,8 @@ and loading, and the page list grouped by where you are in the job:
 | Group | Pages |
 |---|---|
 | Project | Overview, Guided start, Site maps |
-| Investigation | Geophysics (VES), Borehole design, Depth Spine, Scanned sheets |
-| Testing | Pumping test, Water quality |
+| Investigation | Geophysics (VES), VES co-pilot (browser app only), Borehole design, Depth Spine, Scanned sheets |
+| Testing | Pumping test, Pumping co-pilot (browser app only), Water quality |
 | Delivery | Costing & BoQ, Supervision, Handover, Templates |
 | Area analysis | Water points, Coverage gap, Portfolio |
 
@@ -131,6 +295,7 @@ further and name one thing on them:
 | [`#/overview`](index.html#/overview) | Overview |
 | [`#/site`](index.html#/site) | Site & maps |
 | [`#/ves`](index.html#/ves), `#/ves/VES-3` | Geophysics, at sounding VES-3 |
+| [`#/vescopilot`](index.html#/vescopilot) | VES co-pilot |
 | [`#/design`](index.html#/design) | Borehole design |
 | [`#/pumping`](index.html#/pumping), `#/pumping/KTL-01` | Pumping test, for borehole KTL-01 |
 | [`#/quality`](index.html#/quality) | Water quality |

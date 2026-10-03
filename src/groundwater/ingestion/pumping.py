@@ -70,6 +70,12 @@ _DISCHARGE_TEXT_RE = re.compile(
     re.IGNORECASE,
 )
 
+# A note saying the discharge was not measured - "Not measured (step 1: ...)",
+# as the browser's pumping test co-pilot writes it - is the crew's statement
+# that there is no rate, whatever its reason mentions: "a discharge of
+# 2 m3/h by eye" there was being read as the measured one.
+_NOT_MEASURED_RE = re.compile(r"\s*not\s+measured\b", re.IGNORECASE)
+
 
 # ---------------------------------------------------------------------------
 # Locating the column groups
@@ -371,6 +377,8 @@ def _discharge_candidates_from_text(grid: list[list]) -> tuple[list[float], list
     for row in grid:
         for cell in row:
             if cell is None or isinstance(cell, (int, float)):
+                continue
+            if _NOT_MEASURED_RE.match(str(cell)):
                 continue
             for m in _DISCHARGE_TEXT_RE.finditer(str(cell)):
                 written = m.group(2).strip()

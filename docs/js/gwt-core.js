@@ -9101,6 +9101,14 @@
    * ratio beyond this is not the segment shift the splice is built for. */
   var OVERLAP_DISCREPANCY_RATIO = 1.2;
 
+  /** The overlap pairs whose readings disagree by more than the ratio, as
+   * "AB/2 40 m: 156.1 and 78.7 ohm-m (ratio 1.98)". The VES co-pilot asks
+   * the same question of each pair at the peg, so the field and the office
+   * judge an MN change by one test.
+   * @param {number[]} ab2
+   * @param {number[]} rho
+   * @returns {string[]}
+   */
   function overlapDiscrepancies(ab2, rho) {
     var unique = ab2.slice().sort(function (a, b) { return a - b; })
       .filter(function (v, k, a) { return k === 0 || v !== a[k - 1]; });
@@ -10308,6 +10316,12 @@
     return discharges;
   }
 
+  /* A note saying the discharge was not measured - "Not measured (step 1:
+   * ...)", as the pumping test co-pilot writes it - is the crew's statement
+   * that there is no rate, whatever its reason mentions: "a discharge of
+   * 2 m3/h by eye" there was being read as the measured one. */
+  var NOT_MEASURED_RE = /^\s*not\s+measured\b/i;
+
   /* Returns {values, unreadable}: a note whose unit cannot be read is
    * reported rather than converted, so it is raised as a flag instead of
    * quietly becoming a number in m3/h. */
@@ -10317,6 +10331,7 @@
       (row || []).forEach(function (cell) {
         if (cell === null || cell === undefined || typeof cell === 'number') return;
         var text = String(cell), m;
+        if (NOT_MEASURED_RE.test(text)) return;
         DISCHARGE_TEXT_RE.lastIndex = 0;
         while ((m = DISCHARGE_TEXT_RE.exec(text)) !== null) {
           var written = m[2].trim();
@@ -10744,6 +10759,8 @@
     parseWaterStrikeDepths: parseWaterStrikeDepths,
     parseBitDiameterIn: parseBitDiameterIn,
     parsePenetrationRateMPerMin: parsePenetrationRateMPerMin,
+    overlapDiscrepancies: overlapDiscrepancies,
+    OVERLAP_DISCREPANCY_RATIO: OVERLAP_DISCREPANCY_RATIO,
     LABEL_PATTERNS: LABEL_PATTERNS,
   });
 

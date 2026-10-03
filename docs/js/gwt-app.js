@@ -26,6 +26,8 @@
   GWT.bundles = Object.assign(GWT.bundles || {}, {
     charts: 'gwt-charts.js', geolibre: 'gwt-geolibre.js',
     imageSlot: 'image-slot.js', docx: 'gwt-docx.js',
+    pumpCopilot: 'gwt-pump-copilot.js',
+    vesCopilot: 'gwt-ves-copilot.js',
   });
 
   /* What a working page draws with: the map layers, the figures, the map
@@ -65,12 +67,14 @@
     ]],
     ['Investigation', [
       ['ves', 'Geophysics (VES)'],
+      ['vescopilot', 'VES co-pilot'],
       ['design', 'Borehole design'],
       ['spine', 'Depth Spine'],
       ['extract', 'Scanned sheets'],
     ]],
     ['Testing', [
       ['pumping', 'Pumping test'],
+      ['pumpcopilot', 'Pumping co-pilot'],
       ['quality', 'Water quality'],
     ]],
     ['Delivery', [
@@ -889,6 +893,22 @@
     return state;
   }
 
+  /* A field test in progress lives in the session - the pumping test
+   * co-pilot's under pumpCopilot, the VES co-pilot's under vesCopilot - and
+   * opening a project or a sample must not be what ends it: readings taken
+   * at the well or the peg cannot be taken again once the crew has packed
+   * up. The one on this device is carried into the project opened, even over
+   * one the project file brings, since the file is still on disk and the
+   * test here is not. Only "Reset everything" clears it. */
+  var FIELD_SESSIONS = ['pumpCopilot', 'vesCopilot'];
+
+  function keepFieldSessions(next) {
+    FIELD_SESSIONS.forEach(function (key) {
+      if (store.state[key]) next[key] = store.state[key];
+    });
+    return next;
+  }
+
   async function openProject() {
     var file = await S.pickFile('.json,.gwt,application/json');
     if (!file) return;
@@ -913,7 +933,7 @@
      * tab is untouched - it belongs to this browser, not to the file. */
     if (state.extraction) delete state.extraction.apiKey;
     stopInversionsForNewProject();
-    store.replace(migrateLoadedState(Object.assign(blankState(), state)));
+    store.replace(keepFieldSessions(migrateLoadedState(Object.assign(blankState(), state))));
     applyTheme();
     inversionsStopped = false;
     /* any inversion still needed is started in here, before the page is
@@ -956,7 +976,7 @@
       };
     });
     stopInversionsForNewProject();
-    store.replace(fresh);
+    store.replace(keepFieldSessions(fresh));
     inversionsStopped = false;
     await recompute();
     renderChrome();
@@ -4379,6 +4399,12 @@
     return nodes;
   };
 
+  /* --- pumping test co-pilot ------------------------------------------------ */
+
+  /* A module of its own, gwt-pump-copilot.js, which render() fetches with the
+   * charts before the page is first drawn (MODULE_PAGES). */
+  PAGES.pumpcopilot = function () { return GWT.pumpCopilot.page(); };
+
   /* --- templates ------------------------------------------------------------ */
 
   var TEMPLATE_SPECS = {
@@ -4512,6 +4538,11 @@
       note: 'Write "<0.01" for a below-detection result; the value is then ' +
         'treated as unknown rather than as a concentration equal to the limit.',
     },
+  };
+
+  /* PLAN.md step 2.2: the sounding checked at the peg, in gwt-ves-copilot.js */
+  PAGES.vescopilot = function () {
+    return GWT.vesCopilot.page();
   };
 
   PAGES.templates = function () {
@@ -6748,8 +6779,15 @@
   var FIRST_SCREEN = { overview: true, guided: true, templates: true,
     extract: true, settings: true, about: true };
   var DRAWS_WITH_DOCX = { procurement: true, quality: true };
+  /* A page that is a module of its own, fetched with what it draws with: the
+   * two field co-pilots each draw one figure and no map. */
+  var MODULE_PAGES = {
+    pumpcopilot: ['charts', 'pumpCopilot'],
+    vescopilot: ['charts', 'vesCopilot'],
+  };
 
   function bundlesFor(key) {
+    if (MODULE_PAGES[key]) return MODULE_PAGES[key];
     if (FIRST_SCREEN[key]) return [];
     return DRAWS_WITH_DOCX[key] ? REPORT_BUNDLES : VIEW_BUNDLES;
   }
@@ -6769,6 +6807,8 @@
     var host = $('#page-host');
     var key = Object.prototype.hasOwnProperty.call(PAGES, store.get('nav'))
       ? store.get('nav') : 'overview';
+    /* the co-pilot's preview fit is stopped once its page is left */
+    if (key !== 'vescopilot' && GWT.vesCopilot) GWT.vesCopilot.leave();
     var wanted = bundlesFor(key);
     if (!hasBundles(wanted)) {
       S.clear(host);
