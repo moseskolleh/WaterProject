@@ -317,6 +317,8 @@
   function saveProblems(s) {
     var problems = [];
     if (!s || !s.startedAt) return ['The test has not started.'];
+    /* the sheet records when the pump stopped, and the recovery after it */
+    if (!s.stoppedAt) problems.push('The pump has not been stopped yet.');
     if (!s.readings.some(function (r) { return r.phase === 'pumping'; })) {
       problems.push('No water level has been read while pumping.');
     }
@@ -513,8 +515,9 @@
 
   /* The engine's Cooper-Jacob line through the first step as it stands, and
    * the one through the readings of a log cycle earlier, worked out in the
-   * engine worker. Resolves to null while the test is still inside casing
-   * storage, since a line through the casing emptying is not an aquifer's. */
+   * engine worker. While the test is still inside casing storage it resolves
+   * to that state and fits nothing, since a line through the casing emptying
+   * is not an aquifer's. */
   function liveEstimate(s, t) {
     if (!s || !s.startedAt || !s.steps.length) return Promise.resolve(null);
     var ev = evaluate(s, t);

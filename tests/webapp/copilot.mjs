@@ -311,6 +311,11 @@ try {
   const chart = await page.evaluate(() => document.querySelectorAll('#page-host svg circle').length);
   check('plot: drawdown against log time, one mark a reading', chart >= 10, String(chart));
 
+  const early = await page.evaluate(() => window.GWT.pumpCopilot.save()
+    .then(() => '', (e) => e.message));
+  check('workbook: not written while the pump is still running',
+    /has not been stopped yet/.test(early), early);
+
   // stopping early asks first
   await click('button[data-cp="stop"]');
   const asked = await page.evaluate(() => document.querySelector('.modal h3')?.textContent || '');
