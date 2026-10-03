@@ -12,6 +12,7 @@
 (function (global) {
   'use strict';
 
+  /** @type {GWTNamespace} */
   var GWT = global.GWT || (global.GWT = {});
   var S = GWT.support = {};
 
@@ -334,7 +335,9 @@
     return String(text === null || text === undefined ? '' : text)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&apos;')
-      /* control characters are illegal in XML 1.0 and crash Word */
+      /* control characters are illegal in XML 1.0 and crash Word, so this
+       * matches them on purpose */
+      // oxlint-disable-next-line no-control-regex
       .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '');
   }
 
@@ -1051,7 +1054,7 @@
         style: { position: 'fixed', left: '-9999px' },
       });
       input.addEventListener('change', function () {
-        var files = Array.prototype.slice.call(input.files || []);
+        var files = Array.prototype.slice.call(/** @type {HTMLInputElement} */ (input).files || []);
         document.body.removeChild(input);
         resolve(multiple ? files : files[0] || null);
       });
@@ -1275,7 +1278,7 @@
       type: 'number', value: isNum(value) ? value : '',
     }, attrs || {}));
     input.addEventListener('change', function () {
-      onChange(parseNum(input.value));
+      onChange(parseNum(/** @type {HTMLInputElement} */ (input).value));
     });
     return input;
   }
@@ -1284,7 +1287,9 @@
     var input = el('input.input', Object.assign({
       type: 'text', value: value === null || value === undefined ? '' : value,
     }, attrs || {}));
-    input.addEventListener('change', function () { onChange(input.value); });
+    input.addEventListener('change', function () {
+      onChange(/** @type {HTMLInputElement} */ (input).value);
+    });
     return input;
   }
 
@@ -1295,13 +1300,17 @@
         var lab = typeof c === 'object' ? c.label : c;
         return el('option', { value: v, selected: String(v) === String(value) }, lab);
       }));
-    select.addEventListener('change', function () { onChange(select.value); });
+    select.addEventListener('change', function () {
+      onChange(/** @type {HTMLSelectElement} */ (select).value);
+    });
     return select;
   }
 
   function checkboxInput(value, label, onChange) {
     var input = el('input', { type: 'checkbox', checked: !!value });
-    input.addEventListener('change', function () { onChange(input.checked); });
+    input.addEventListener('change', function () {
+      onChange(/** @type {HTMLInputElement} */ (input).checked);
+    });
     return el('label.checkbox', [input, el('span', label)]);
   }
 

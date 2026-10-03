@@ -1,0 +1,20 @@
+{
+  // The engine, gwt-core.js, checked strictly: TypeScript's strict mode,
+  // null included, against the JSDoc types its public functions carry
+  // (public-api.mjs holds every one of them to having them). Two of the
+  // strict checks are off. noImplicitAny would ask for a type on every
+  // helper and callback as well as on the public functions, which is the
+  // next step rather than this one. useUnknownInCatchVariables would make
+  // every `catch (e) { ... e.message }` a type error in code where each
+  // throw is an Error.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": false,
+    "useUnknownInCatchVariables": false
+  },
+  "files": [
+    "globals.d.ts",
+    "../../docs/js/gwt-core.js"
+  ]
+}

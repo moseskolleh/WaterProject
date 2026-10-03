@@ -20,7 +20,6 @@ import io
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from .._resources import bundled_text
 from ..units import _normalise as normalise_unit_text
@@ -33,11 +32,11 @@ _RANGE_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*$")
 class Limit:
     """A guideline limit: either a maximum or an allowed range."""
 
-    maximum: Optional[float] = None
-    minimum: Optional[float] = None
+    maximum: float | None = None
+    minimum: float | None = None
 
     @classmethod
-    def parse(cls, text: str) -> Optional["Limit"]:
+    def parse(cls, text: str) -> Limit | None:
         text = (text or "").strip()
         if not text:
             return None
@@ -52,7 +51,7 @@ class Limit:
     def exceeded_by(self, value: float) -> bool:
         if self.minimum is not None and value < self.minimum:
             return True
-        if self.maximum is not None and value > self.maximum:
+        if self.maximum is not None and value > self.maximum:  # noqa: SIM103 - mirrors the minimum
             return True
         return False
 
@@ -68,9 +67,9 @@ class Limit:
 class StandardEntry:
     parameter: str
     unit: str
-    who_health: Optional[Limit]
-    who_aesthetic: Optional[Limit]
-    sl_standard: Optional[Limit]
+    who_health: Limit | None
+    who_aesthetic: Limit | None
+    sl_standard: Limit | None
     category: str
     note: str
     #: Where the national value came from. ``"provisional"`` means it has not
@@ -99,7 +98,7 @@ PROVISIONAL_NATIONAL_NOTE = (
 
 
 def provisional_national_parameters(
-    table: dict[str, "StandardEntry"] | None = None,
+    table: dict[str, StandardEntry] | None = None,
 ) -> list[str]:
     """Parameters whose national limit is still unconfirmed."""
     entries = (table or load_standards()).values()
@@ -235,7 +234,7 @@ def _parameter_basis(parameter: str) -> str:
 
 def to_standard_unit(
     value: float, reported_unit: str, entry: StandardEntry
-) -> tuple[Optional[float], str]:
+) -> tuple[float | None, str]:
     """Put a reported value on the scale the standards table uses.
 
     Returns ``(converted, reason)``. ``converted`` is ``None`` when the value

@@ -147,7 +147,7 @@ class ElevationGrid:
         bottom = corners[1, 0] * (1 - fx) + corners[1, 1] * fx
         return float(top * (1 - fy) + bottom * fy)
 
-    def window(self, lon: float, lat: float, radius_km: float) -> "ElevationGrid":
+    def window(self, lon: float, lat: float, radius_km: float) -> ElevationGrid:
         """The part of the grid inside a square window, for a local map.
 
         A whole SRTM tile is 1201x1201 samples and a 5 km site map wants
@@ -250,7 +250,7 @@ def read_esri_ascii(path: str | Path) -> ElevationGrid:
     path = Path(path)
     header: dict[str, float] = {}
     rows: list[list[float]] = []
-    with open(path, "r", encoding="utf-8") as fh:
+    with open(path, encoding="utf-8") as fh:
         for line in fh:
             parts = line.split()
             if not parts:
@@ -309,7 +309,7 @@ def read_xyz(path: str | Path) -> ElevationGrid:
     """
     path = Path(path)
     values: list[tuple[float, float, float]] = []
-    with open(path, "r", encoding="utf-8") as fh:
+    with open(path, encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
             if not line or line[0] in "#;":

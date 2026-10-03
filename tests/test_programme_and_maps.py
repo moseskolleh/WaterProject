@@ -126,8 +126,8 @@ def test_geology_layer_is_real_usgs_data():
         ring = unit.ring
         assert ring.shape[1] == 2
         assert np.allclose(ring[0], ring[-1])  # closed
-        assert (-13.6 < ring[:, 0]).all() and (ring[:, 0] < -10.0).all()
-        assert (6.6 < ring[:, 1]).all() and (ring[:, 1] < 10.2).all()
+        assert (ring[:, 0] > -13.6).all() and (ring[:, 0] < -10.0).all()
+        assert (ring[:, 1] > 6.6).all() and (ring[:, 1] < 10.2).all()
 
 
 def test_hydrogeology_layer_is_bgs_data():

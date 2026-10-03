@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from ..config import Config
 from ..hydraulics import analyse_pumping_test
@@ -30,9 +29,9 @@ class SampleProject:
     key: str
     name: str
     folder: str
-    drilling: Optional[str] = None
-    pumping: Optional[str] = None
-    quality: Optional[str] = None
+    drilling: str | None = None
+    pumping: str | None = None
+    quality: str | None = None
     note: str = ""
 
 

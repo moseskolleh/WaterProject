@@ -54,7 +54,7 @@ class Project:
     def reports(self) -> Path:
         return self.root / "reports"
 
-    def ensure_folders(self) -> "Project":
+    def ensure_folders(self) -> Project:
         for sub in SUBFOLDERS:
             (self.root / sub).mkdir(parents=True, exist_ok=True)
         return self
@@ -62,18 +62,18 @@ class Project:
     # -- persistence ----------------------------------------------------------
 
     @classmethod
-    def create(cls, root: str | Path, site: SiteMetadata | None = None) -> "Project":
+    def create(cls, root: str | Path, site: SiteMetadata | None = None) -> Project:
         project = cls(root, site).ensure_folders()
         project.save_metadata()
         return project
 
     @classmethod
-    def open(cls, root: str | Path) -> "Project":
+    def open(cls, root: str | Path) -> Project:
         root = Path(root)
         meta_path = root / "project.yaml"
         site = SiteMetadata()
         if meta_path.exists():
-            with open(meta_path, "r", encoding="utf-8") as fh:
+            with open(meta_path, encoding="utf-8") as fh:
                 data = yaml.safe_load(fh) or {}
             site_data = data.get("site", {}) or {}
             site = SiteMetadata(

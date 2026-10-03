@@ -195,7 +195,7 @@ def test_the_suitability_surface_is_kept_masked(tmp_path, rasterio):
         assert dataset.crs.to_epsg() == 32628
         assert dataset.dtypes[0] == "float32"
         scores = band[~np.isnan(band)]
-        assert scores.size and 30.0 <= scores.min() and scores.max() <= 82.0
+        assert scores.size and scores.min() >= 30.0 and scores.max() <= 82.0
         assert np.isnan(band).any(), "the hull mask did not reach the raster"
 
 

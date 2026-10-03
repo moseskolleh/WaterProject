@@ -44,9 +44,12 @@ ai = ["anthropic>=0.78"]
 # hypothesis draws the field sheets tests/fuzz puts through both engines, and
 # is pinned for the same reason: the cases a pull request draws are fixed by
 # the seed and by the version that turns the seed into sheets.
+# pyright is pinned like ruff, and for the same reason: a new release finds
+# new things. pytest-cov only reports; nothing fails on the number.
 dev = [
     "pytest>=7.4", "segno>=1.6", "opencv-python-headless>=4.8", "rasterio>=1.3",
     "ruff==0.16.4", "nox>=2024.4.15", "build>=1.0", "hypothesis==6.168.1",
+    "pyright==1.1.414", "pytest-cov>=5",
 ]
 
 [project.scripts]
@@ -117,18 +120,25 @@ select = [
     "FLY",                   # static "".join() that wants to be an f-string
     "ISC",                   # implicit string concat: catches a missing comma
     "EXE",                   # shebang and executable-bit mismatches
+    "UP",                    # syntax the 3.10 floor allows: X | None, not
+                             # Optional[X]; collections.abc, not typing
+    "SIM",                   # nested ifs and try/except/pass that say less
+                             # than they could
 ]
 
-# Not selected, deliberately, so this job could land green on the day it was
-# added rather than as 400 findings someone has to triage:
-#   UP  - 147 hits, all mechanical (mostly Optional[X] -> X | None). Worth
-#         doing, but as its own reformatting change, not buried in this one.
-#   SIM - 17 hits, each a restructure of working logic. Individually
-#         arguable; several read worse as a ternary.
-#   C4  - 12 hits, nearly all `bbox=dict(...)` keyword dicts passed to
-#         matplotlib, where dict() is the idiom every example uses.
+# Not selected, deliberately: C4 - 12 hits, nearly all `bbox=dict(...)`
+# keyword dicts passed to matplotlib, where dict() is the idiom every example
+# uses. UP and SIM were deferred the same way when this job was added and
+# then cleared in one mechanical change of their own.
 
 ignore = [
+    # An if/else that assigns one name, rewritten as a ternary. Of its eight
+    # hits the ones that read better as a ternary were rewritten; the rest are
+    # two formulas side by side (the annuity payment), a branch carrying its
+    # own comment, a nested ternary, or `a + b if c else d`, whose precedence
+    # a reader has to stop and work out. Eight noqa lines would say that less
+    # well than this.
+    "SIM108",
     # Every hit is a closure defined and called inside one iteration - cell()
     # in the ingestion grid readers, remember() in the QR mask scorer. None is
     # stored, returned or deferred, so there is no late binding to catch.
@@ -147,3 +157,73 @@ ignore = [
 # Cell writes are packed onto one line with semicolons so each block reads
 # like the region of the spreadsheet it is filling in.
 "examples/build_sample_data.py" = ["E702"]
+
+[tool.pyright]
+# Basic mode over the package, at the floor requires-python declares. Basic
+# is the mode that reads unannotated code as it is: it catches a None used as
+# a number, a call with the wrong arguments, an attribute that does not
+# exist, without asking for annotations the code does not have.
+include = ["src/groundwater"]
+typeCheckingMode = "basic"
+pythonVersion = "3.10"
+# The subpackages re-export their plotting and workbook-writing modules
+# through a module __getattr__ (_lazy.py), so that importing one does not
+# import matplotlib or openpyxl. Those names are in __all__ and are not
+# module globals until read, which is the point, and pyright cannot see
+# past the __getattr__.
+reportUnsupportedDunderAll = "none"
+# The modules that do not pass yet. Every other file in the package is
+# checked, a new one included, so this list only ever gets shorter: take a
+# module off it in the change that makes it pass. `nox -s types` checks the
+# listed modules on their own as well, and fails on one that reports no
+# error, so a module cannot stay here after it passes. Nearly all of what
+# these report is an Optional that the code has already ruled out in a way
+# pyright cannot follow (a helper that tests for None, a value read twice),
+# or numpy and matplotlib stubs stricter than the calls that work. Excluded
+# modules are still read when a checked one imports them; only their own
+# findings go unreported. claude.py imports anthropic, which only the ai
+# extra installs, and has a finding of its own with anthropic installed.
+exclude = [
+    "src/groundwater/_geometry.py",
+    "src/groundwater/costing/export.py",
+    "src/groundwater/coverage.py",
+    "src/groundwater/depth_spine/view.py",
+    "src/groundwater/design/designer.py",
+    "src/groundwater/design/drawing.py",
+    "src/groundwater/extraction/claude.py",
+    "src/groundwater/extraction/pdf_text.py",
+    "src/groundwater/extraction/review.py",
+    "src/groundwater/geo.py",
+    "src/groundwater/hydraulics/analysis.py",
+    "src/groundwater/hydraulics/plots.py",
+    "src/groundwater/ingestion/checks.py",
+    "src/groundwater/ingestion/pumping.py",
+    "src/groundwater/ingestion/templates.py",
+    "src/groundwater/ingestion/waterquality.py",
+    "src/groundwater/mapping/geolibre.py",
+    "src/groundwater/mapping/maps.py",
+    "src/groundwater/mapping/regional.py",
+    "src/groundwater/mapping/subsurface.py",
+    "src/groundwater/mapping/terrain.py",
+    "src/groundwater/planning.py",
+    "src/groundwater/plotting.py",
+    "src/groundwater/procurement.py",
+    "src/groundwater/qr.py",
+    "src/groundwater/quality/assess.py",
+    "src/groundwater/quality/diagrams.py",
+    "src/groundwater/quality/indices.py",
+    "src/groundwater/recompute.py",
+    "src/groundwater/registry.py",
+    "src/groundwater/reporting/completion.py",
+    "src/groundwater/reporting/docx_utils.py",
+    "src/groundwater/reporting/handover.py",
+    "src/groundwater/reporting/pumping.py",
+    "src/groundwater/siting/suitability.py",
+    "src/groundwater/text.py",
+    "src/groundwater/ves/cache.py",
+    "src/groundwater/ves/interpret.py",
+    "src/groundwater/ves/inversion.py",
+    "src/groundwater/ves/ipi2win.py",
+    "src/groundwater/ves/plots.py",
+    "src/groundwater/waterpoints.py",
+]

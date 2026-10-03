@@ -428,8 +428,8 @@ def pumping_case(draw) -> dict:
     # header block, as on the template
     site = draw(site_values())
     test_type = draw(st.sampled_from(
-        (["step", "Step", "step drawdown", ""] if step
-         else ["constant", "Constant rate", "constant discharge", ""])))
+        ["step", "Step", "step drawdown", ""] if step
+         else ["constant", "Constant rate", "constant discharge", ""]))
     pairs = [("Community", site.get("Community")), ("Date", site.get("Date")),
              ("Client", site.get("Client")),
              ("Length of each step (min)", typed(draw, length, 0, 0.1)),

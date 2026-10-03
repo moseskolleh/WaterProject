@@ -210,7 +210,7 @@ class Config:
     design: DesignRules = field(default_factory=DesignRules)
 
     @classmethod
-    def load(cls, path: str | Path | None = None) -> "Config":
+    def load(cls, path: str | Path | None = None) -> Config:
         """Load configuration, overlaying a YAML file if provided."""
         cfg = cls()
         if path is None:
@@ -218,7 +218,7 @@ class Config:
         path = Path(path)
         if not path.exists():
             return cfg
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             data = yaml.safe_load(fh) or {}
         for section_name, section in (
             ("style", cfg.style),

@@ -11,7 +11,7 @@ Pure and Streamlit-free, so the payload is unit-testable.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from ..config import Config
 from ..costing.model import (
@@ -35,7 +35,7 @@ def _flag(flag: DataFlag) -> dict[str, str]:
     }
 
 
-def _round(value: Optional[float], places: int = 2) -> Optional[float]:
+def _round(value: float | None, places: int = 2) -> float | None:
     return None if value is None else round(float(value), places)
 
 
@@ -50,14 +50,14 @@ class SpineInputs:
 
     name: str
     log: DrillingLog
-    analysis: Optional[PumpingTestAnalysis] = None
+    analysis: PumpingTestAnalysis | None = None
     #: A raw sample, assessed here.
-    quality: Optional[WaterQualitySample] = None
+    quality: WaterQualitySample | None = None
     #: An assessment the caller already ran - preferred over ``quality``, so
     #: the workspace shows the same object the Water quality page does rather
     #: than a second run of the same computation.
-    assessment: Optional[WaterQualityAssessment] = None
-    config: Optional[Config] = None
+    assessment: WaterQualityAssessment | None = None
+    config: Config | None = None
     mobilisation_distance_km: float = 0.0
 
 
@@ -228,7 +228,7 @@ def _methods(analysis: PumpingTestAnalysis) -> list[dict]:
 # Water quality
 # ---------------------------------------------------------------------------
 
-def _binding_limit(row) -> tuple[Optional[Limit], str]:
+def _binding_limit(row) -> tuple[Limit | None, str]:
     """The limit a row is judged against, and what kind of limit it is.
 
     The strictest applicable maximum binds. Which one it was matters in the
@@ -241,7 +241,7 @@ def _binding_limit(row) -> tuple[Optional[Limit], str]:
         ("WHO acceptability", Limit.parse(row.who_aesthetic)),
         ("national", Limit.parse(row.sl_standard)),
     ]
-    best: tuple[Optional[Limit], str] = (None, "")
+    best: tuple[Limit | None, str] = (None, "")
     for name, limit in candidates:
         if limit is None:
             continue
@@ -350,7 +350,7 @@ def _quality(assessment: WaterQualityAssessment) -> dict:
     }
 
 
-def _piper(assessment: WaterQualityAssessment) -> Optional[dict]:
+def _piper(assessment: WaterQualityAssessment) -> dict | None:
     """Cation and anion percentages for the Piper and Stiff plots.
 
     Reuses the milliequivalents the ionic balance already worked out, so the

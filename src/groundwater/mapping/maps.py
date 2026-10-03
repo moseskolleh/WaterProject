@@ -118,7 +118,7 @@ def _no_surface_note(ax, n_points: int) -> None:
     )
 
 
-def _extent(points: list["MapPoint"], pad_frac=0.25, min_pad=150.0):
+def _extent(points: list[MapPoint], pad_frac=0.25, min_pad=150.0):
     e = np.array([p.easting for p in points])
     n = np.array([p.northing for p in points])
     pe = max((e.max() - e.min()) * pad_frac, min_pad)
@@ -174,7 +174,7 @@ def _north_arrow(ax) -> None:
 
 def _plot_boundary(ax, geojson_path: str | Path, zone: int, color="#888888") -> None:
     """Overlay polygon/line features from a WGS84 GeoJSON file."""
-    with open(geojson_path, "r", encoding="utf-8") as fh:
+    with open(geojson_path, encoding="utf-8") as fh:
         data = json.load(fh)
     features = data.get("features", [data] if data.get("type") == "Feature" else [])
 

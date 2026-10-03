@@ -26,7 +26,6 @@ import csv
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 from .._resources import bundled_text
 from ..config import DesignRules
@@ -107,25 +106,25 @@ class CostingInputs:
     """
 
     total_depth_m: float
-    overburden_m: Optional[float] = None  # weathered zone drilled by rotary
-    casing_m: Optional[float] = None  # plain casing length
-    screen_m: Optional[float] = None  # screen length
+    overburden_m: float | None = None  # weathered zone drilled by rotary
+    casing_m: float | None = None  # plain casing length
+    screen_m: float | None = None  # screen length
     borehole_diameter_in: float = 6.5
     casing_diameter_in: float = 5.0
-    gravel_interval_m: Optional[float] = None  # gravel packed annulus length
-    cement_bags: Optional[float] = None  # sanitary seal and grout
+    gravel_interval_m: float | None = None  # gravel packed annulus length
+    cement_bags: float | None = None  # sanitary seal and grout
     # Depth of the grout seal the cement is worked out for when cement_bags
     # is not given. None means the design rules' default; a caller working to
     # its own rules passes the rule it draws so the BoQ prices that seal.
-    sanitary_seal_m: Optional[float] = None
-    crew_days: Optional[float] = None  # days on site including moves
+    sanitary_seal_m: float | None = None
+    crew_days: float | None = None  # days on site including moves
     development_hours: float = 6.0
     test_pumping_hours: float = 30.0  # step plus constant plus recovery
     mobilisation_distance_km: float = 0.0  # one way, base to site
     wq_samples: int = 1
     handpumps: int = 1  # set 0 when the pump is a separate contract
 
-    def resolved(self) -> tuple["CostingInputs", list[str]]:
+    def resolved(self) -> tuple[CostingInputs, list[str]]:
         """Fill missing fields from rules of thumb; return the assumptions."""
         r = CostingInputs(**self.__dict__)
         assumptions: list[str] = []
@@ -412,7 +411,7 @@ class CostEstimate:
         return rows
 
 
-def _quantity(basis: str, inputs: CostingInputs) -> Optional[float]:
+def _quantity(basis: str, inputs: CostingInputs) -> float | None:
     """Quantity for a rate item, or None when the basis is unknown."""
     table = {
         "lump_sum": 1.0,

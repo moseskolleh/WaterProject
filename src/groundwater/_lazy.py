@@ -22,7 +22,8 @@ from __future__ import annotations
 
 import importlib
 import sys
-from typing import Any, Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
+from typing import Any
 
 __all__ = ["lazy_exports"]
 

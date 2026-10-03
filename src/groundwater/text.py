@@ -74,9 +74,9 @@ def _format(name: str, spec: str | None, value) -> str:
         return one if value == 1 else other
     # numbers.Real rather than int and float, so a numpy scalar out of a
     # fitted array is a number here too
-    if isinstance(value, bool) or not isinstance(value, numbers.Real):
-        if not (spec == "num" and value is None):
-            raise TypeError(f"text: {{{name}:{spec}}} takes a number, not {value!r}")
+    if ((isinstance(value, bool) or not isinstance(value, numbers.Real))
+            and not (spec == "num" and value is None)):
+        raise TypeError(f"text: {{{name}:{spec}}} takes a number, not {value!r}")
     if spec == "num":
         return fmt_num(value)
     return format(value, spec)

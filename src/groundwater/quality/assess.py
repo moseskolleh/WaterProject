@@ -34,7 +34,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 from ..models import DataFlag, WaterQualitySample
 from .corrosivity import CorrosivityAssessment, assess_corrosivity
@@ -135,7 +134,7 @@ SUITABILITY_PHRASE = {
 }
 
 
-def suitability_sentence(assessment: "WaterQualityAssessment") -> str:
+def suitability_sentence(assessment: WaterQualityAssessment) -> str:
     """The :data:`SUITABILITY_SENTENCE` this assessment can support.
 
     The national_fail sentence says the WHO health based values are met,
@@ -208,7 +207,7 @@ STRICTER_LIMIT_UNRESOLVED = "stricter_limit_unresolved"
 @dataclass
 class ParameterAssessment:
     parameter: str
-    value: Optional[float]
+    value: float | None
     unit: str
     below_detection: bool
     who_health: str
@@ -220,9 +219,9 @@ class ParameterAssessment:
     guideline_unit: str = ""
     #: The value actually compared, in ``guideline_unit``. ``None`` when the
     #: row could not be converted, which is never the same as zero.
-    value_in_guideline_unit: Optional[float] = None
+    value_in_guideline_unit: float | None = None
     #: As reported by the laboratory, in the reported unit.
-    detection_limit: Optional[float] = None
+    detection_limit: float | None = None
     #: Whether the row could be graded against the limits that apply to it.
     evaluable: bool = True
     #: A code from :data:`INDETERMINATE_REASONS`, ``"unit_assumed"``,
@@ -231,7 +230,7 @@ class ParameterAssessment:
     #: The lower bound of a result the laboratory did not quantify, in the
     #: reported unit, and whether the bound itself is a possible value. A
     #: table printing only ``value`` showed "TNTC" and ">50" as "n/a".
-    greater_than: Optional[float] = None
+    greater_than: float | None = None
     greater_than_inclusive: bool = False
     #: Whether the national value this row was judged against is still
     #: provisional in the standards table the assessment used.
@@ -256,10 +255,10 @@ def unquantified_text(row: ParameterAssessment) -> str:
 class WaterQualityAssessment:
     sample: WaterQualitySample
     rows: list[ParameterAssessment]
-    ionic: Optional[IonicBalanceResult]
-    corrosivity: Optional[CorrosivityAssessment] = None
-    wqi: Optional[WaterQualityIndex] = None
-    health_risk: Optional[HealthRiskAssessment] = None
+    ionic: IonicBalanceResult | None
+    corrosivity: CorrosivityAssessment | None = None
+    wqi: WaterQualityIndex | None = None
+    health_risk: HealthRiskAssessment | None = None
     flags: list[DataFlag] = field(default_factory=list)
     #: Parameters from :data:`ESSENTIAL_HEALTH_PARAMETERS` that the sample
     #: does not carry an evaluable result for.
@@ -370,7 +369,7 @@ class WaterQualityAssessment:
         return "pass"
 
     @property
-    def is_potable(self) -> Optional[bool]:
+    def is_potable(self) -> bool | None:
         """``True`` safe, ``False`` not safe, ``None`` not established.
 
         ``None`` is the honest answer for an incomplete or unevaluable
@@ -497,7 +496,7 @@ def _stated_bound(result) -> str:
     return ("at least " if result.greater_than_inclusive else "more than ") + f"{bound:g}"
 
 
-def _assess_result(result, entry: Optional[StandardEntry]) -> ParameterAssessment:
+def _assess_result(result, entry: StandardEntry | None) -> ParameterAssessment:
     """Grade one laboratory result against its guideline entry."""
     who_h = str(entry.who_health) if entry and entry.who_health else ""
     who_a = str(entry.who_aesthetic) if entry and entry.who_aesthetic else ""

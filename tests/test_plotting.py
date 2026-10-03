@@ -15,11 +15,10 @@ def test_a_plot_that_fails_part_way_does_not_leave_its_figure_open():
     kept = plt.figure()
     before = set(plt.get_fignums())
     try:
-        with pytest.raises(ValueError, match="never filled in"):
-            with figure_context():
-                plt.subplots()
-                plt.figure()
-                raise ValueError("a column the field sheet never filled in")
+        with pytest.raises(ValueError, match="never filled in"), figure_context():
+            plt.subplots()
+            plt.figure()
+            raise ValueError("a column the field sheet never filled in")
         assert set(plt.get_fignums()) == before
     finally:
         plt.close(kept)

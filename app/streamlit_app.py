@@ -20,6 +20,7 @@ they share is described in ``app/state.py``. Only the page on screen runs
 
 from __future__ import annotations
 
+import contextlib
 import html as _html
 import sys
 from pathlib import Path
@@ -420,10 +421,9 @@ st.markdown(
 )
 
 if _LOGO:
-    try:
+    # a missing logo is cosmetic, not a result
+    with contextlib.suppress(Exception):
         st.logo(_LOGO, icon_image=_ICON)
-    except Exception:  # noqa: BLE001 - a missing logo is cosmetic, not a result
-        pass
 
 
 # ---------------------------------------------------------------------------

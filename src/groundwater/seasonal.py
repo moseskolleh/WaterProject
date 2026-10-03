@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, replace
-from typing import Optional
 
 from .config import PumpingConfig
 
@@ -174,10 +173,7 @@ def _decline_to_come(month: int | None, annual_range_m: float,
     difference is that now it is a stated fallback rather than the only
     behaviour.
     """
-    if month is None:
-        position = 0.0
-    else:
-        position = SEASONAL_POSITION.get(month, 0.0)
+    position = 0.0 if month is None else SEASONAL_POSITION.get(month, 0.0)
     # never negative: a test at the annual low needs no further allowance,
     # and a scenario shallower than the tested level is not a scenario
     return max(annual_range_m * (factor - position), 0.0)
@@ -188,10 +184,10 @@ class SeasonalScenario:
     key: str
     title: str
     decline_m: float
-    static_water_level_m: Optional[float]
-    available_drawdown_m: Optional[float]
-    safe_yield_m3_per_h: Optional[float]
-    pump_installation_depth_m: Optional[float]
+    static_water_level_m: float | None
+    available_drawdown_m: float | None
+    safe_yield_m3_per_h: float | None
+    pump_installation_depth_m: float | None
     note: str
 
     def as_dict(self) -> dict:
@@ -210,7 +206,7 @@ class SeasonalScenario:
 class SeasonalYield:
     """The yield under each scenario, and what a design should be sized on."""
 
-    month: Optional[int]
+    month: int | None
     season: str
     month_note: str
     annual_range_m: float
@@ -218,7 +214,7 @@ class SeasonalYield:
     scenarios: list[SeasonalScenario]
     pending_reason: str = ""
 
-    def scenario(self, key: str) -> Optional[SeasonalScenario]:
+    def scenario(self, key: str) -> SeasonalScenario | None:
         for item in self.scenarios:
             if item.key == key:
                 return item
@@ -230,20 +226,20 @@ class SeasonalYield:
         return design is not None and design.safe_yield_m3_per_h is not None
 
     @property
-    def design_yield_m3_per_h(self) -> Optional[float]:
+    def design_yield_m3_per_h(self) -> float | None:
         """What to size on: the normal annual low, not the day of the test."""
         design = self.scenario("dry_season")
         return design.safe_yield_m3_per_h if design else None
 
     @property
-    def pump_installation_depth_m(self) -> Optional[float]:
+    def pump_installation_depth_m(self) -> float | None:
         """Deep enough for the worst scenario, because the pump is fitted once."""
         depths = [s.pump_installation_depth_m for s in self.scenarios
                   if s.pump_installation_depth_m is not None]
         return max(depths) if depths else None
 
     @property
-    def dry_season_loss_percent(self) -> Optional[float]:
+    def dry_season_loss_percent(self) -> float | None:
         """How much of the tested yield the dry season takes away."""
         tested = self.scenario("as_tested")
         design = self.scenario("dry_season")

@@ -285,7 +285,7 @@ def read_csv_rows(name: str) -> list[dict]:
     annotated and why. That belongs in the repository, not in a 900 KB
     bundle the browser parses on every load, so it is dropped here.
     """
-    with open(DATA / name, "r", encoding="utf-8-sig", newline="") as fh:
+    with open(DATA / name, encoding="utf-8-sig", newline="") as fh:
         body = "".join(
             line for line in fh if not line.lstrip().startswith("#")
         )
@@ -309,7 +309,7 @@ def read_text_catalogue() -> dict:
 
 
 def read_geojson(name: str) -> dict:
-    with open(DATA / name, "r", encoding="utf-8") as fh:
+    with open(DATA / name, encoding="utf-8") as fh:
         layer = json.load(fh)
     for feature in layer.get("features", []):
         geometry = feature.get("geometry") or {}
@@ -419,7 +419,8 @@ LOADER = """
   /* Beside this script, wherever the app is served from: a domain root, a
    * Pages project path, or a copy opened from disk. */
   var here = (typeof document !== 'undefined' && document.currentScript &&
-    document.currentScript.src) || (global.location && global.location.href) || '';
+    /** @type {HTMLScriptElement} */ (document.currentScript).src) ||
+    (global.location && global.location.href) || '';
   var loaded = GWT.loadedBundles || (GWT.loadedBundles = {});
   var pending = {};
 
@@ -484,6 +485,7 @@ def render_data(payload: dict) -> str:
                 "Groundwater Toolkit web app.")
         + "(function (global) {\n"
         "  'use strict';\n"
+        "  /** @type {GWTNamespace} */\n"
         "  var GWT = global.GWT || (global.GWT = {});\n"
         "  GWT.data = " + _dumps(payload) + ";\n"
         + LOADER.replace("__BUNDLES__", json.dumps(BUNDLES))
@@ -498,6 +500,7 @@ def render_geo(geo: dict) -> str:
                 "app,\n * loaded the first time a map is drawn.")
         + "(function (global) {\n"
         "  'use strict';\n"
+        "  /** @type {GWTNamespace} */\n"
         "  var GWT = global.GWT || (global.GWT = {});\n"
         "  GWT.data.geo = " + _dumps(geo) + ";\n"
         "  (GWT.loadedBundles || (GWT.loadedBundles = {})).geo = true;\n"
@@ -513,6 +516,7 @@ def render_samples(sample_bytes: dict) -> str:
                 "Toolkit web app,\n * loaded the first time a sample is opened.")
         + "(function (global) {\n"
         "  'use strict';\n"
+        "  /** @type {GWTNamespace} */\n"
         "  var GWT = global.GWT || (global.GWT = {});\n"
         "  var bytes = " + _dumps(sample_bytes) + ";\n"
         "  Object.keys(bytes).forEach(function (key) {\n"

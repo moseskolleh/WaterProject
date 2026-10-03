@@ -64,7 +64,7 @@ import json
 import math
 import re
 from pathlib import Path
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
 
 from ..geo import geographic_to_utm, utm_to_geographic
 from ..site_status import STATUS_COLORS, STATUS_LABELS, coerce_status

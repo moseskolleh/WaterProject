@@ -12,6 +12,7 @@
 (function (global) {
   'use strict';
 
+  /** @type {GWTNamespace} */
   var GWT = global.GWT || (global.GWT = {});
   var S = GWT.support;
   var C = GWT.core;
@@ -529,7 +530,6 @@
   }
 
   ReportBuilder.prototype.build = function () {
-    var self = this;
     var withToc = this.tocIndex !== null;
     var imageTypes = {};
     this.images.forEach(function (img) {

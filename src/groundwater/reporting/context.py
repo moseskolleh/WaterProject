@@ -32,10 +32,7 @@ def _figures_dir(figures_dir, out_path) -> Path:
     always known by the time anything is drawn, and is where someone looking
     for the figures would look.
     """
-    if figures_dir is not None:
-        figures = Path(figures_dir)
-    else:
-        figures = Path(out_path).parent
+    figures = Path(figures_dir) if figures_dir is not None else Path(out_path).parent
     figures.mkdir(parents=True, exist_ok=True)
     return figures
 

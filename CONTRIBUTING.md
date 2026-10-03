@@ -14,7 +14,7 @@ same sessions step by step, so `nox -s check` passing here means CI passes:
 python -m pip install -e '.[dev,app,extract]'
 npm install --no-save playwright@1.56.1
 npx playwright install chromium
-nox -s check      # lint, tests, bundles, parity, browser, depth_spine
+nox -s check      # lint, types, tests, bundles, parity, fuzz, browser, depth_spine, js
 nox -s build      # regenerate every generated file, in order
 nox -s examples   # rerun the worked examples and rewrite their index
 nox -s release    # wheel, sdist and example packs in dist/
@@ -28,7 +28,13 @@ for the Depth Spine: it runs `npm ci`, the TypeScript check, `oxlint` and
 both Vite builds in `ui/depth-spine`, then fails if the result differs
 from what is committed under `src/groundwater/depth_spine/`. Those
 comparisons, like CI's, are against the git index, so stage a file you
-regenerated before checking it.
+regenerated before checking it. The same install serves `js`, which
+type-checks and lints the browser app in `docs/js` with the TypeScript and
+`oxlint` the Depth Spine pins; the app itself has no build, and its types
+are JSDoc comments it ignores. `gwt-core.js` is held to TypeScript's strict
+mode and every function on `GWT.core` carries a type for each parameter;
+the other scripts are checked loosely (`web/jscheck/` says what each level
+means). The test run reports line coverage, with no threshold.
 
 The tests that take ten seconds or more - the Streamlit AppTests, the
 example regeneration and a few report builds - are marked `slow`, and a
@@ -39,9 +45,11 @@ while working.
 What the sessions run, in order:
 
 ```bash
-# check: lint, tests
+# check: lint, types, tests
 python -m ruff check .    # the ruff pinned in the dev extra
-python -m pytest -q
+python -m pyright         # likewise pinned; basic mode, see pyproject.toml
+# then the modules on its exclude list, on their own: each must still fail
+python -m pytest -q --cov=groundwater --cov-report=term
 # check: bundles - the bundled data must match the source tables
 python web/build_boundary_review.py --check
 python web/build_webapp_data.py
@@ -60,6 +68,12 @@ git diff --exit-code -- src/groundwater/depth_spine/frontend \
     src/groundwater/depth_spine/static/workspace.html
 git ls-files --others --exclude-standard \
     -- src/groundwater/depth_spine/frontend    # must print nothing
+# check: js - the browser app's types and lint, with ui/depth-spine's tools
+npm --prefix ui/depth-spine exec -- tsc -p web/jscheck/tsconfig.core.json
+npm --prefix ui/depth-spine exec -- tsc -p web/jscheck/tsconfig.json
+node web/jscheck/public-api.mjs
+npm --prefix ui/depth-spine exec -- oxlint -c web/jscheck/oxlintrc.json \
+    --deny-warnings docs/js
 
 # build: every generated file, in dependency order
 (cd ui/depth-spine && npm ci && npm run build:all)

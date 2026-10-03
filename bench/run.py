@@ -64,7 +64,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
