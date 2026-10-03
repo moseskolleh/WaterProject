@@ -447,7 +447,9 @@ def convert(value: float, from_unit: str, to_unit: str,
     """
     source = parse_unit(from_unit, dimension=dimension)
     target = parse_unit(to_unit, dimension=dimension)
-    if not comparable(source, target):
+    # comparable() refuses a None as well; it is tested here too so that a
+    # type checker can see that both are units on the lines below
+    if source is None or target is None or not comparable(source, target):
         return None
     base = float(value) * source.factor + source.offset
     return (base - target.offset) / target.factor

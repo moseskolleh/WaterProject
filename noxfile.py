@@ -5,14 +5,17 @@
     nox -s build           regenerate every generated file, in order
     nox -s parity          the numerical parity of the two engines
     nox -s fuzz            the two engines on generated field sheets
+    nox -s types           Pyright on the package
+    nox -s coverage        the tests, with a line coverage report
     nox -s examples        rerun the worked examples and their index
     nox -s release         the wheel, the sdist and the example packs in dist/
 
-CI calls these same sessions (lint, tests, bundles, parity, fuzz, browser,
-depth_spine) one step at a time, so a command changed here changes in CI
-with it and "nox -s check passes" keeps meaning "CI passes". The one thing
-CI adds is the Python version matrix: it runs the tests session on four
-versions, the fast part on three of them and the whole suite on 3.12.
+CI calls these same sessions (lint, types, tests or coverage, bundles,
+parity, fuzz, browser, depth_spine) one step at a time, so a command changed
+here changes in CI with it and "nox -s check passes" keeps meaning "CI
+passes". The one thing CI adds is the Python version matrix: it runs the
+tests session on four versions, the fast part on three of them and the
+whole suite, under coverage, on 3.12.
 
 Every session runs in the environment nox was started from rather than in
 a virtualenv of its own. The flow CONTRIBUTING.md describes installs the
@@ -115,18 +118,39 @@ def _unchanged(session: nox.Session, paths: list[str], rebuild: str) -> None:
         )
 
 
-def _lint(session: nox.Session, *args: str) -> None:
-    # Through python -m, so it is the ruff the dev extra installed rather than
+def _pinned(session: nox.Session, tool: str, **kwargs) -> None:
+    # Through python -m, so it is the copy the dev extra installed rather than
     # whichever one comes first on PATH, and held to that extra's pin: another
-    # ruff version can pass here and fail in CI.
-    pin = re.search(r'"ruff==([^"]+)"', (REPO / "pyproject.toml").read_text())
-    version = session.run("python", "-m", "ruff", "--version", silent=True)
+    # version can pass here and fail in CI.
+    pin = re.search(rf'"{tool}==([^"]+)"', (REPO / "pyproject.toml").read_text())
+    version = session.run("python", "-m", tool, "--version", silent=True, **kwargs)
     if pin and version.split()[-1] != pin.group(1):
         session.error(
-            f"this is {version.strip()}, but CI runs ruff {pin.group(1)}. Run:\n"
-            f"  python -m pip install ruff=={pin.group(1)}"
+            f"this is {version.strip()}, but CI runs {tool} {pin.group(1)}. Run:\n"
+            f"  python -m pip install {tool}=={pin.group(1)}"
         )
+
+
+def _lint(session: nox.Session, *args: str) -> None:
+    _pinned(session, "ruff")
     _python(session, "-m", "ruff", "check", *args, ".")
+
+
+# The pip package is a wrapper that fetches the pyright of its own version
+# from npm on first use; this stops it printing that a newer one exists,
+# which is not something a check run should be telling anyone.
+PYRIGHT_ENV = {"PYRIGHT_PYTHON_IGNORE_WARNINGS": "1"}
+
+
+def _types(session: nox.Session) -> None:
+    _pinned(session, "pyright", env=PYRIGHT_ENV)
+    _python(session, "-m", "pyright", env=PYRIGHT_ENV)
+
+
+# Line coverage of the package, printed after the tests. It is a report and
+# not a gate: there is no threshold, so a change that adds an untested line
+# is told so rather than failed.
+COVERAGE = ["--cov=groundwater", "--cov-report=term"]
 
 
 def _tests(session: nox.Session, *args: str) -> None:
@@ -140,9 +164,21 @@ def lint(session: nox.Session) -> None:
 
 
 @nox.session
+def types(session: nox.Session) -> None:
+    """Pyright in basic mode, on the modules pyproject.toml does not exclude."""
+    _types(session)
+
+
+@nox.session
 def tests(session: nox.Session) -> None:
     """The pytest suite. CI passes -m "not slow" or -m slow through posargs."""
     _tests(session, *session.posargs)
+
+
+@nox.session
+def coverage(session: nox.Session) -> None:
+    """The pytest suite with a line coverage report, and no threshold."""
+    _tests(session, *COVERAGE, *session.posargs)
 
 
 @nox.session
@@ -219,7 +255,8 @@ def check(session: nox.Session) -> None:
     # Arguments after -- are not passed on: they would reach ruff and pytest
     # alike, and a check run with a narrowed suite is not the check CI runs.
     _lint(session)
-    _tests(session)
+    _types(session)
+    _tests(session, *COVERAGE)
     for step in (bundles, parity, fuzz, browser, depth_spine):
         session.log(f"--- {step.__name__}")
         step(session)
