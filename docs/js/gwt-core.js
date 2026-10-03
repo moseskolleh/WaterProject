@@ -10308,6 +10308,12 @@
     return discharges;
   }
 
+  /* A note saying the discharge was not measured - "Not measured (step 1:
+   * ...)", as the pumping test co-pilot writes it - is the crew's statement
+   * that there is no rate, whatever its reason mentions: "a discharge of
+   * 2 m3/h by eye" there was being read as the measured one. */
+  var NOT_MEASURED_RE = /^\s*not\s+measured\b/i;
+
   /* Returns {values, unreadable}: a note whose unit cannot be read is
    * reported rather than converted, so it is raised as a flag instead of
    * quietly becoming a number in m3/h. */
@@ -10317,6 +10323,7 @@
       (row || []).forEach(function (cell) {
         if (cell === null || cell === undefined || typeof cell === 'number') return;
         var text = String(cell), m;
+        if (NOT_MEASURED_RE.test(text)) return;
         DISCHARGE_TEXT_RE.lastIndex = 0;
         while ((m = DISCHARGE_TEXT_RE.exec(text)) !== null) {
           var written = m[2].trim();
