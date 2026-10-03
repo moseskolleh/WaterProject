@@ -121,10 +121,16 @@ def _ifd(tiff: bytes, offset: int, order: str) -> dict[int, tuple]:
     return out
 
 
+#: What JavaScript's trim() takes off an ASCII string. str.strip() with no
+#: argument also takes the control bytes 0x1C to 0x1F, so a value padded
+#: with one read in Python and not in the browser.
+_ASCII_SPACE = " \t\n\r\x0b\x0c"
+
+
 def _ascii(entry) -> str | None:
     if entry is None or entry[0] != 2:
         return None
-    return entry[2].split(b"\x00", 1)[0].decode("ascii", "replace").strip()
+    return entry[2].split(b"\x00", 1)[0].decode("ascii", "replace").strip(_ASCII_SPACE)
 
 
 def _long(entry, order: str) -> int | None:

@@ -21856,6 +21856,27 @@
      "position": "8.492933, -13.236761, accuracy not recorded (from the photograph's EXIF)",
      "hash": "SHA-256 00588c7cc27f618a"
     }
+   },
+   "control_padding": {
+    "b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/4QD0RXhpZgAATU0AKgAAAAgAAwEPAAIAAAAMAAAAModpAAQAAAABAAAAPoglAAQAAAABAAAAegAAAABHV1QgZml4dHVyZQAAApADAAIAAAAVAAAAXJARAAIAAAAIAAAAcgAAAAAgMjAyNDowMzowNSAxNDoyMjoxMAAAKzAxOjAwHAAABQAAAAEAAAAEAgMAAAABAAIAAAADTiAAAAACAAUAAAADAAAAvAADAAIAAAADVx8AAAAEAAUAAAADAAAA1AAAAAAAAAAIAAAAAQAAAAEAAAABAAAAAQAAAAEAAAANAAAAAQAAAAAAAAABAAAAAAAAAAH/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAQABgDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAABAAD/8QAFhABAQEAAAAAAAAAAAAAAAAAAwBh/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAZEQEBAAMBAAAAAAAAAAAAAAADAAECBCH/2gAMAwEAAhEDEQA/ABmUkytTKUZSd0jc62RllTjKo2UrRr5f/9k=",
+    "options": {},
+    "record": {
+     "format": 1,
+     "sha256": "6288be09e692ef266db02ffe56532eac09ac2f319864a3f76344b381128b2a2a",
+     "bytes": 560,
+     "attached_at": "2026-10-03T09:00:00Z",
+     "taken_at": "2024-03-05T14:22:10",
+     "time_source": "exif",
+     "position": null,
+     "position_source": "none",
+     "position_note": "not_requested",
+     "stored": "original"
+    },
+    "shown": {
+     "time": "2024-03-05 14:22:10 (camera clock, from the photograph's EXIF)",
+     "position": "Not recorded; the file carries none and this device was not asked",
+     "hash": "SHA-256 6288be09e692ef26"
+    }
    }
   },
   "no_record": {

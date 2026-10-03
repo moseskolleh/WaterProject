@@ -83,6 +83,26 @@ def test_a_blank_or_broken_value_is_not_read(kwargs):
     assert exif == {"taken_at": None, "gps": None}
 
 
+def test_a_value_padded_with_a_control_byte_is_not_read():
+    """Only the spaces JavaScript's trim() takes are taken off a value.
+
+    str.strip() also took 0x1C to 0x1F, so "W\\x1f" read as west here and as
+    no reference in the browser, and the two engines recorded different
+    positions for the same file. parity.mjs holds the browser to this case.
+    """
+    tiff = MAKE.build_tiff("<", taken="2024:03:05 14:22:10\x1d", offset="+05:00\x1f",
+                           lat=("N", ((8, 1), (1, 1), (1, 1))),
+                           lon=("W\x1f", ((13, 1), (0, 1), (0, 1))))
+    assert read_exif(MAKE.jpeg_with_exif(tiff)) == {"taken_at": None, "gps": None}
+    # the spaces trim() does take are still taken
+    tiff = MAKE.build_tiff("<", taken=" 2024:03:05 14:22:10\t", offset="+05:00 ",
+                           lat=("N ", ((8, 1), (1, 1), (1, 1))),
+                           lon=("\x0bW", ((13, 1), (0, 1), (0, 1))))
+    exif = read_exif(MAKE.jpeg_with_exif(tiff))
+    assert exif["taken_at"] == "2024-03-05T14:22:10+05:00"
+    assert exif["gps"]["lon"] == -13.0
+
+
 @pytest.mark.parametrize("data", [
     b"", b"not a jpeg", MAKE.BASE_JPEG, FIXTURE.read_bytes()[:60],
     # an APP1 that claims more bytes than the file has

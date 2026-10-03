@@ -1503,6 +1503,12 @@ def photo_evidence_reference() -> dict:
         "blank_clock": (make.jpeg_with_exif(make.build_tiff(
             "<", taken="0000:00:00 00:00:00", lat=make.FIXTURE_EXIF["lat"],
             lon=make.FIXTURE_EXIF["lon"])), {}),
+        # padded with a control byte that str.strip() takes and trim() does
+        # not, and with a space both take: the two once read this differently
+        "control_padding": (make.jpeg_with_exif(make.build_tiff(
+            ">", taken=" 2024:03:05 14:22:10", offset="+01:00\x1c",
+            lat=("N ", ((8, 1), (1, 1), (1, 1))),
+            lon=("W\x1f", ((13, 1), (0, 1), (0, 1))))), {}),
     }
     cases = {}
     for name, (data, options) in files.items():
