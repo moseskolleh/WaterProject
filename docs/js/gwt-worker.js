@@ -10,10 +10,10 @@
  * This one file is loaded twice and does a different job each time:
  *
  *   - started as a Web Worker, it imports the engine and its tables and
- *     answers three requests - invert, analysePumping and recompute -
- *     reporting progress on the way;
+ *     answers four requests - invert, analysePumping, recompute and the
+ *     pumping test co-pilot's cooperJacob - reporting progress on the way;
  *   - loaded by the page, it is GWT.engine: a promise per request, the
- *     progress passed on, cancel, and the same three tasks run on the page
+ *     progress passed on, cancel, and the same four tasks run on the page
  *     itself where no worker can start - a copy opened from file://, which
  *     browsers refuse a worker, or a browser that fails to load one.
  *
@@ -118,6 +118,23 @@
         }
       }
       return out;
+    },
+
+    /* Cooper-Jacob lines on readings still coming in: the pumping test
+     * co-pilot's live estimate, and the estimate one log cycle earlier that
+     * it is judged against. Each fit is the engine's own, with its default
+     * window: the same line the analysis fits to the first step once the
+     * sheet is read. A fit the engine refuses comes back as its reason, not
+     * as an error for the whole request. */
+    cooperJacob: function (payload) {
+      return payload.fits.map(function (fit) {
+        try {
+          return { fit: GWT.core.cooperJacob(fit.time, fit.drawdown, fit.discharge,
+            payload.config) };
+        } catch (e) {
+          return { refused: e && e.message !== undefined ? e.message : String(e) };
+        }
+      });
     },
   };
 
@@ -471,6 +488,10 @@
      *          manualDischarges, config } */
     recompute: function (input, options) {
       return request('recompute', input, options);
+    },
+    /* fits: [{time, drawdown, discharge}]; each answer is {fit} or {refused} */
+    cooperJacob: function (fits, config, options) {
+      return request('cooperJacob', { fits: fits, config: config }, options);
     },
     cancel: cancel,
     isCancelled: isCancelled,

@@ -1,0 +1,12 @@
+# The pumping test co-pilot (PLAN.md step 2.1) runs in the browser app only.
+# A feature that exists in one app says so in both, in the same words: the
+# browser's co-pilot page (gwt-pump-copilot.js) and the Streamlit Pumping
+# test page (app/views/pumping_test.py) both read this sentence. The
+# template rules are in src/groundwater/text.py; CONTRIBUTING.md says how to
+# add an entry.
+
+browser_only: >-
+  The pumping test co-pilot runs in the browser app only, installed on a phone
+  or tablet and working offline. It times the readings, warns while the test
+  can still be put right, and writes the standard pumping test workbook, which
+  both apps read like any other field sheet.
