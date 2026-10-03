@@ -26,6 +26,7 @@
   GWT.bundles = Object.assign(GWT.bundles || {}, {
     charts: 'gwt-charts.js', geolibre: 'gwt-geolibre.js',
     imageSlot: 'image-slot.js', docx: 'gwt-docx.js',
+    pumpCopilot: 'gwt-pump-copilot.js',
   });
 
   /* What a working page draws with: the map layers, the figures, the map
@@ -71,6 +72,7 @@
     ]],
     ['Testing', [
       ['pumping', 'Pumping test'],
+      ['pumpcopilot', 'Pumping co-pilot'],
       ['quality', 'Water quality'],
     ]],
     ['Delivery', [
@@ -889,6 +891,21 @@
     return state;
   }
 
+  /* A field test in progress lives in the session - the pumping test
+   * co-pilot's under pumpCopilot - and opening a project or a sample must not
+   * be what ends it: readings taken at the well cannot be taken again. The
+   * one on this device is carried into the project opened, even over one
+   * the project file brings, since the file is still on disk and the test
+   * here is not. Only "Reset everything" clears it. */
+  var FIELD_SESSIONS = ['pumpCopilot'];
+
+  function keepFieldSessions(next) {
+    FIELD_SESSIONS.forEach(function (key) {
+      if (store.state[key]) next[key] = store.state[key];
+    });
+    return next;
+  }
+
   async function openProject() {
     var file = await S.pickFile('.json,.gwt,application/json');
     if (!file) return;
@@ -913,7 +930,7 @@
      * tab is untouched - it belongs to this browser, not to the file. */
     if (state.extraction) delete state.extraction.apiKey;
     stopInversionsForNewProject();
-    store.replace(migrateLoadedState(Object.assign(blankState(), state)));
+    store.replace(keepFieldSessions(migrateLoadedState(Object.assign(blankState(), state))));
     applyTheme();
     inversionsStopped = false;
     /* any inversion still needed is started in here, before the page is
@@ -956,7 +973,7 @@
       };
     });
     stopInversionsForNewProject();
-    store.replace(fresh);
+    store.replace(keepFieldSessions(fresh));
     inversionsStopped = false;
     await recompute();
     renderChrome();
@@ -4379,6 +4396,12 @@
     return nodes;
   };
 
+  /* --- pumping test co-pilot ------------------------------------------------ */
+
+  /* A module of its own, gwt-pump-copilot.js, which render() fetches with the
+   * charts before the page is first drawn (MODULE_PAGES). */
+  PAGES.pumpcopilot = function () { return GWT.pumpCopilot.page(); };
+
   /* --- templates ------------------------------------------------------------ */
 
   var TEMPLATE_SPECS = {
@@ -6748,8 +6771,11 @@
   var FIRST_SCREEN = { overview: true, guided: true, templates: true,
     extract: true, settings: true, about: true };
   var DRAWS_WITH_DOCX = { procurement: true, quality: true };
+  /* A page that is a module of its own, fetched with what it draws with. */
+  var MODULE_PAGES = { pumpcopilot: ['charts', 'pumpCopilot'] };
 
   function bundlesFor(key) {
+    if (MODULE_PAGES[key]) return MODULE_PAGES[key];
     if (FIRST_SCREEN[key]) return [];
     return DRAWS_WITH_DOCX[key] ? REPORT_BUNDLES : VIEW_BUNDLES;
   }

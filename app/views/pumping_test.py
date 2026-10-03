@@ -18,6 +18,7 @@ from groundwater.hydraulics.plots import (
 )
 from groundwater.reporting.pumping import build_pumping_report, PumpingReportInputs
 from groundwater.seasonal import MONTH_NAMES, month_of, seasonal_yield
+from groundwater.text import phrase
 from groundwater.utils import fmt_num
 
 from shared import (
@@ -42,6 +43,7 @@ def render() -> None:
         "Constant discharge, step and recovery tests; missing discharges "
         "can be entered here and the yield analysis completes on the spot."
     )
+    st.caption(phrase("pumping_copilot.browser_only"))
     path = choose_input(
         "Pumping test sheet (template .xlsx or field .docx)", "pump", ["xlsx", "docx"],
         ["dr_timbo/dr_timbo_constant_test.xlsx", "kuntolo/kuntolo_step_test.xlsx"],

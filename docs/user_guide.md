@@ -64,6 +64,83 @@ the pump started, the pump setting depth and the borehole depth. Write
   Without discharge the system still draws the curves but reports
   transmissivity and yield as pending.
 
+## 3a. Pumping test co-pilot (browser app, on a phone or tablet)
+
+The browser app can sit with the crew while the test runs and fill in
+the pumping test sheet for them. Open **Pumping co-pilot** (sidebar,
+under *Testing*; address [`#/pumpcopilot`](index.html#/pumpcopilot)).
+It exists only in the browser app; the Streamlit app says so on its
+Pumping test page. Install the app on the phone and open the page once
+with a network: after that it works with none.
+
+**Before pumping.** Enter the casing and riser diameters, the hole
+depth, the pump setting, the static level (read it before the pump
+starts) and the planned rate. The page works out how long the water
+standing in the casing controls the drawdown (Schafer's casing-storage
+rule), for a cautious transmissivity range of 1 to 10 m2/day that you
+can change. Until that period is over, the level tells you about the
+casing, not the aquifer. The page then says when the test can stop at
+the earliest: "If the pump starts now, do not stop before 13:06." A
+30-minute test on a 5-inch casing in weathered basement is usually all
+casing storage, which is what happened at Dr Timbo's. Press **Record GPS
+position** to put the phone's position in the sheet; the phone asks for
+permission first.
+
+**While pumping.** Press **Start the pump** at the moment it starts.
+The page counts down to each reading and beeps when one is due, on this
+schedule: 0.5, 1, 1.5, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40,
+50, 60, 75, 90 and 120 minutes, then every 30 minutes. Type the depth
+to water and press **Record level**. A reading typed within a few
+seconds of its time is written at the scheduled minute, as you would
+write it on paper; one typed later is written at the minute it was
+actually taken. Drawdown is plotted against log time as you go, with
+the casing-storage period shaded and the pump intake drawn across.
+
+The page warns you:
+
+- when the level reaches the pump intake (and earlier, when it is
+  within 3 m of it): reduce the rate, because a pump cannot draw water
+  below itself and the readings would be worthless;
+- when a discharge measurement differs by more than 5 percent from the
+  first one of the same step: set the valve back and measure again;
+- while the test is still inside casing storage, and until the time it
+  may stop. **Stop the pump** asks again if you press it early.
+
+Once the readings are past casing storage, the page fits the same
+Cooper-Jacob line the analysis will, and says how much the
+transmissivity has moved over the last log cycle. "T has changed less
+than 10 percent over the last log cycle. The test can stop at the
+planned time." means the test has done its job.
+
+**Discharge.** Use the bucket and stopwatch: enter the bucket volume,
+time three fillings (with the watch on the page, or type the seconds)
+and press **Record this rate**; the three timings are averaged. Measure
+again every hour or so, and after any change at the valve. A meter
+reading can be entered instead. A step with no discharge cannot be
+saved: if it really was not measured, record it as not measured and say
+why. The reason is written on the sheet.
+
+**Step tests.** Choose *Step drawdown*, give the number of steps (up to
+four) and the step length, and press **Start step 2** (and so on) at the
+moment the rate changes. The schedule starts again for each step.
+
+**Recovery.** Press **Stop the pump** at the moment it stops. The
+schedule starts again from that moment, and recovery readings are
+minutes since the pump stopped.
+
+**If the phone sleeps or the page is reloaded,** nothing is lost: every
+reading is saved on the phone as it is taken, and the clock is the
+phone's own clock, so the page reopens at the right minute and lists
+any readings that fell due while it was asleep. Do not invent a missed
+reading; take the next one.
+
+**At the end,** press **Write the workbook (.xlsx)**. It is the
+standard pumping test sheet (section 3), with the phone's clock at the
+start and stop of pumping and the GPS position in the header, and a
+second sheet logging every reading, timing and event. Upload it like
+any other sheet, or press **Use it as this project's pumping test** to
+analyse it at once. Save the project file as well (section 11).
+
 ## 4. Drilling log
 
 One row per drilled interval (`0-5`, `5-10`, ...). Describe the sample
@@ -108,7 +185,7 @@ and loading, and the page list grouped by where you are in the job:
 |---|---|
 | Project | Overview, Guided start, Site maps |
 | Investigation | Geophysics (VES), Borehole design, Depth Spine, Scanned sheets |
-| Testing | Pumping test, Water quality |
+| Testing | Pumping test, Pumping co-pilot (browser app only), Water quality |
 | Delivery | Costing & BoQ, Supervision, Handover, Templates |
 | Area analysis | Water points, Coverage gap, Portfolio |
 
