@@ -12,6 +12,7 @@
 (function (global) {
   'use strict';
 
+  /** @type {GWTNamespace} */
   var GWT = global.GWT || (global.GWT = {});
   var S = GWT.support, C = GWT.core, charts = GWT.charts, docx = GWT.docx;
   var engine = GWT.engine;
@@ -55,6 +56,7 @@
    * once by gwt-store.js, moved across and removed */
   var STORE_KEY = 'gwt.project.v1';
 
+  /** @type {Array<[string, string[][]]>} */
   var NAV_GROUPS = [
     ['Project', [
       ['overview', 'Overview'],
@@ -4461,6 +4463,7 @@
     pumping: {
       label: 'Pumping test', file: 'pumping_test_template.xlsx',
       sheets: function () {
+        /** @type {Array<Array<*>>} */
         var rows = [
           ['PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)'],
           ['Community', '', '', 'Date', '', '', 'GPS Coordinate East', ''],

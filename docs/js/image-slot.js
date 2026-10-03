@@ -12,6 +12,7 @@
 (function (global) {
   'use strict';
 
+  /** @type {GWTNamespace} */
   var GWT = global.GWT || (global.GWT = {});
   var S = GWT.support;
   var el = S.el, button = S.button;

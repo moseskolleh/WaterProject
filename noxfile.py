@@ -6,12 +6,13 @@
     nox -s parity          the numerical parity of the two engines
     nox -s fuzz            the two engines on generated field sheets
     nox -s types           Pyright on the package
+    nox -s js              tsc and oxlint over the browser app in docs/js
     nox -s coverage        the tests, with a line coverage report
     nox -s examples        rerun the worked examples and their index
     nox -s release         the wheel, the sdist and the example packs in dist/
 
 CI calls these same sessions (lint, types, tests or coverage, bundles,
-parity, fuzz, browser, depth_spine) one step at a time, so a command changed
+parity, fuzz, browser, depth_spine, js) one step at a time, so a command changed
 here changes in CI with it and "nox -s check passes" keeps meaning "CI
 passes". The one thing CI adds is the Python version matrix: it runs the
 tests session on four versions, the fast part on three of them and the
@@ -250,6 +251,28 @@ def depth_spine(session: nox.Session) -> None:
 
 
 @nox.session
+def js(session: nox.Session) -> None:
+    """Type-check and lint the browser app in docs/js, which has no build.
+
+    The TypeScript and oxlint are ui/depth-spine's, at the versions its
+    lockfile pins, rather than a second package.json pinning the same two
+    tools again for Dependabot to move one at a time. Nothing here builds or
+    rewrites docs/: the app is served as it is written, and the types are
+    JSDoc comments it ignores. gwt-core.js is checked strictly, the other
+    scripts loosely; web/jscheck/tsconfig*.json say what each level means.
+    """
+    session.chdir(SPINE)
+    session.run("npm", "ci", "--no-audit", "--no-fund")
+    session.chdir(REPO)
+    spine = ["npm", "--prefix", str(SPINE), "exec", "--"]
+    session.run(*spine, "tsc", "-p", "web/jscheck/tsconfig.core.json")
+    session.run(*spine, "tsc", "-p", "web/jscheck/tsconfig.json")
+    session.run("node", "web/jscheck/public-api.mjs")
+    session.run(*spine, "oxlint", "-c", "web/jscheck/oxlintrc.json",
+                "--deny-warnings", *session.posargs, "docs/js")
+
+
+@nox.session
 def check(session: nox.Session) -> None:
     """Everything CI checks, in CI's order. Stops at the first failure."""
     # Arguments after -- are not passed on: they would reach ruff and pytest
@@ -257,7 +280,7 @@ def check(session: nox.Session) -> None:
     _lint(session)
     _types(session)
     _tests(session, *COVERAGE)
-    for step in (bundles, parity, fuzz, browser, depth_spine):
+    for step in (bundles, parity, fuzz, browser, depth_spine, js):
         session.log(f"--- {step.__name__}")
         step(session)
 

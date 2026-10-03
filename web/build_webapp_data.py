@@ -419,7 +419,8 @@ LOADER = """
   /* Beside this script, wherever the app is served from: a domain root, a
    * Pages project path, or a copy opened from disk. */
   var here = (typeof document !== 'undefined' && document.currentScript &&
-    document.currentScript.src) || (global.location && global.location.href) || '';
+    /** @type {HTMLScriptElement} */ (document.currentScript).src) ||
+    (global.location && global.location.href) || '';
   var loaded = GWT.loadedBundles || (GWT.loadedBundles = {});
   var pending = {};
 
@@ -484,6 +485,7 @@ def render_data(payload: dict) -> str:
                 "Groundwater Toolkit web app.")
         + "(function (global) {\n"
         "  'use strict';\n"
+        "  /** @type {GWTNamespace} */\n"
         "  var GWT = global.GWT || (global.GWT = {});\n"
         "  GWT.data = " + _dumps(payload) + ";\n"
         + LOADER.replace("__BUNDLES__", json.dumps(BUNDLES))
@@ -498,6 +500,7 @@ def render_geo(geo: dict) -> str:
                 "app,\n * loaded the first time a map is drawn.")
         + "(function (global) {\n"
         "  'use strict';\n"
+        "  /** @type {GWTNamespace} */\n"
         "  var GWT = global.GWT || (global.GWT = {});\n"
         "  GWT.data.geo = " + _dumps(geo) + ";\n"
         "  (GWT.loadedBundles || (GWT.loadedBundles = {})).geo = true;\n"
@@ -513,6 +516,7 @@ def render_samples(sample_bytes: dict) -> str:
                 "Toolkit web app,\n * loaded the first time a sample is opened.")
         + "(function (global) {\n"
         "  'use strict';\n"
+        "  /** @type {GWTNamespace} */\n"
         "  var GWT = global.GWT || (global.GWT = {});\n"
         "  var bytes = " + _dumps(sample_bytes) + ";\n"
         "  Object.keys(bytes).forEach(function (key) {\n"

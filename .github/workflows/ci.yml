@@ -64,9 +64,11 @@ jobs:
   # Pyright has to see what the package imports - numpy, matplotlib, the
   # extras - to tell a wrong call from an unknown one, so unlike ruff it needs
   # the toolkit installed. It runs once, on 3.12, checking against the 3.10
-  # floor that pyproject.toml names.
+  # floor that pyproject.toml names. The browser app's checks sit beside it:
+  # tsc and oxlint come from ui/depth-spine's lockfile, so its npm cache is
+  # the one to keep.
   types:
-    name: Type checks
+    name: Type checks and the browser app's lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -78,6 +80,12 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/depth-spine/package-lock.json
+
       - name: Install the toolkit and the dev/app/extract extras
         run: |
           python -m pip install --upgrade pip
@@ -85,6 +93,11 @@ jobs:
 
       - name: Pyright on the package
         run: nox -s types
+
+      # tsc over every script in docs/js, gwt-core.js strictly; every
+      # function on GWT.core typed; oxlint with warnings denied.
+      - name: Type-check and lint the browser app
+        run: nox -s js -- --format=github
 
   test:
     name: Tests (Python ${{ matrix.python-version }})

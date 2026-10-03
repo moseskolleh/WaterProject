@@ -44,6 +44,7 @@
 (function (global) {
   'use strict';
 
+  /** @type {GWTNamespace} */
   var GWT = global.GWT || (global.GWT = {});
 
   var DB_NAME = 'gwt-project';
@@ -491,11 +492,19 @@
     async function readBack(prime) {
       var tx = db.transaction(['meta', 'records', 'blobs', 'cache'], 'readonly');
       var saved = done(tx.objectStore('meta').get('saved'));
+      /* each of these is a request, and then, awaited into the same name,
+       * what it read */
+      /** @type {any} */
       var fields = done(tx.objectStore('records').getAllKeys());
+      /** @type {any} */
       var values = done(tx.objectStore('records').getAll());
+      /** @type {any} */
       var blobKeys = done(tx.objectStore('blobs').getAllKeys());
+      /** @type {any} */
       var blobValues = done(tx.objectStore('blobs').getAll());
+      /** @type {any} */
       var cacheKeys = done(tx.objectStore('cache').getAllKeys());
+      /** @type {any} */
       var cacheValues = done(tx.objectStore('cache').getAll());
       await finished(tx);
       if (!(await saved)) return null;

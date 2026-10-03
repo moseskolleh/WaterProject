@@ -1,0 +1,29 @@
+{
+  // oxlint over the browser app in docs/js, at the version ui/depth-spine
+  // pins. The correctness rules, as errors, less the ones below, each off
+  // for the reason given; nox -s js also denies warnings, so a rule left on
+  // cannot slide back to a warning nobody reads.
+  "$schema": "../../ui/depth-spine/node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "oxc", "unicorn"],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    // A catch clause that names an error it does not read is not a fault.
+    // Page builders and array callbacks keep the parameters their callers
+    // pass, used or not, so they line up with the others of their kind.
+    "no-unused-vars": ["error", { "caughtErrors": "none", "args": "none" }],
+    // `list.length && render(list)` is how the report builders say "if any".
+    "no-unused-expressions": ["error", { "allowShortCircuit": true, "allowTernary": true }],
+    // new Array(n) is a numeric buffer of n slots in the engine's linear
+    // algebra and QR encoder, which is what it is for.
+    "unicorn/no-new-array": "off",
+    // It reads a tolerance such as 1e-17 * x as multiplying by zero.
+    "oxc/erasing-op": "off",
+    // A preference, not a fault: /^.../.test() and indexOf() === 0 are the
+    // idiom these scripts were written in.
+    "unicorn/prefer-string-starts-ends-with": "off",
+    // An escaped "[" or "/" inside a character class means what it says.
+    "no-useless-escape": "off"
+  }
+}

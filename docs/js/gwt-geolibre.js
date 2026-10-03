@@ -30,6 +30,7 @@
 (function (global) {
   'use strict';
 
+  /** @type {GWTNamespace} */
   var GWT = global.GWT || (global.GWT = {});
 
   /* The hosted web build. A self-hosted deployment passes its own base. */

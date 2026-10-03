@@ -23,6 +23,7 @@
 (function (global) {
   'use strict';
 
+  /** @type {GWTNamespace} */
   var GWT = global.GWT || (global.GWT = {});
   var IN_WORKER = typeof document === 'undefined' &&
     typeof global.importScripts === 'function';
@@ -166,7 +167,7 @@
         reply = { id: request.id, error: errorOf(e) };
       }
       /* when the task itself ran, for the page's history */
-      reply.ran = [began, wallClock()];
+      /** @type {Record<string, any>} */ (reply).ran = [began, wallClock()];
       try {
         global.postMessage(reply);
       } catch (e2) {
@@ -184,7 +185,7 @@
   /* The worker is this file, started from the URL the page loaded it from,
    * which is right wherever the app is served from. */
   var SCRIPT_URL = (typeof document !== 'undefined' && document.currentScript &&
-    document.currentScript.src) || 'js/gwt-worker.js';
+    /** @type {HTMLScriptElement} */ (document.currentScript).src) || 'js/gwt-worker.js';
 
   /* How many finished requests history() keeps. */
   var HISTORY = 40;

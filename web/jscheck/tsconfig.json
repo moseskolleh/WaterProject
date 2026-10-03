@@ -1,0 +1,37 @@
+{
+  // Every script the app loads, checked loosely: tsc reads them as they are
+  // written and reports a property that does not exist, a call with the
+  // wrong arguments or a value of the wrong kind wherever it can infer
+  // the types, with no annotation asked for and null not tracked. The
+  // generated bundles are in it too; their data is JSON and their few lines
+  // of code come from web/build_webapp_data.py. tsconfig.core.json holds
+  // gwt-core.js to more than this. Nothing is emitted: the app is served as
+  // it is written.
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "target": "es2020",
+    // Newer built-ins are typed so that the code which feature-tests for
+    // them (Uint8Array.fromBase64) still type-checks.
+    "lib": ["esnext", "dom"],
+    "types": [],
+    "skipLibCheck": true,
+    "strict": false
+  },
+  "files": [
+    "globals.d.ts",
+    "../../docs/js/support.js",
+    "../../docs/js/gwt-data.js",
+    "../../docs/js/gwt-core.js",
+    "../../docs/js/gwt-worker.js",
+    "../../docs/js/gwt-store.js",
+    "../../docs/js/gwt-app.js",
+    "../../docs/js/gwt-geo.js",
+    "../../docs/js/gwt-samples.js",
+    "../../docs/js/gwt-charts.js",
+    "../../docs/js/gwt-geolibre.js",
+    "../../docs/js/image-slot.js",
+    "../../docs/js/gwt-docx.js"
+  ]
+}
