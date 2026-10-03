@@ -1,0 +1,236 @@
+"""The two engines against each other on generated field sheets.
+
+    nox -s fuzz                                  # what a pull request runs
+    FUZZ_PROFILE=nightly nox -s fuzz             # what the nightly job runs
+    FUZZ_EXAMPLES=2000 nox -s fuzz               # any number, here
+
+Parity on the three sample projects says nothing about a fourth kind of
+sheet. Here Hypothesis draws VES soundings, pumping tests, laboratory sheets
+and drilling logs (``sheets.py``), writes each as a real .xlsx, reads it with
+the Python package and hands the same bytes to ``gwt-core.js`` in headless
+Chromium (``engines.py``, ``engine.mjs``); the two answers are compared with
+``make_reference.py``'s comparison at the tolerances ``parity.mjs`` uses.
+
+A disagreement is shrunk by Hypothesis to the smallest sheet that still shows
+it and written to ``tests/fuzz/regressions/``. Commit it with a note saying
+what it was, and it is replayed on every run from then on.
+
+The module is not named ``test_*`` so the ordinary pytest run, which has no
+browser, does not collect it; ``nox -s fuzz`` names it explicitly.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import tempfile
+from datetime import date
+from pathlib import Path
+
+import pytest
+from hypothesis import HealthCheck, given, settings
+
+from engines import BrowserEngine, divergences, python_summary
+from sheets import CASES, ves_case, workbook_bytes
+
+HERE = Path(__file__).resolve().parent
+REGRESSIONS = HERE / "regressions"
+
+# Cases per generator. A pull request runs the same few hundred every time
+# (derandomized, so a red build is never luck); the nightly run draws new
+# ones each night. Inversions cost about a second each in Python, so they get
+# a small share of either budget.
+PROFILES = {
+    "pr": {"cases": 150, "inversions": 10, "derandomize": True},
+    "nightly": {"cases": 6000, "inversions": 300, "derandomize": False},
+}
+PROFILE = PROFILES[os.environ.get("FUZZ_PROFILE", "pr")]
+CASES_PER_KIND = int(os.environ.get("FUZZ_EXAMPLES", PROFILE["cases"]))
+INVERSIONS = int(os.environ.get("FUZZ_INVERSIONS", PROFILE["inversions"]))
+
+
+def _settings(examples: int):
+    return settings(
+        max_examples=examples, deadline=None, derandomize=PROFILE["derandomize"],
+        database=None, print_blob=True,
+        suppress_health_check=[HealthCheck.too_slow, HealthCheck.data_too_large,
+                               HealthCheck.large_base_example],
+    )
+
+
+@pytest.fixture(scope="module")
+def engine():
+    browser = BrowserEngine()
+    yield browser
+    browser.close()
+
+
+@pytest.fixture(scope="module")
+def workdir():
+    with tempfile.TemporaryDirectory(prefix="gwt-fuzz-") as folder:
+        yield Path(folder)
+
+
+def compare(engine: BrowserEngine, case: dict, workdir: Path,
+            open_questions: bool = False) -> list:
+    """Every place the two engines disagree on ``case``.
+
+    ``open_questions`` leaves out what the open regression cases already
+    record, so a run of new cases does not find them again every night:
+
+    * the models of an inversion neither engine converged, where each
+      reports where its iteration cap left it
+      (regressions/ves-unconverged-inversion.json).
+    * a model with a boundary the Python inversion itself calls poorly
+      resolved, its thickness uncertain by a factor of POORLY_RESOLVED_FACTOR
+      or more, which the reports already say. Such a model is one of a
+      family that fits about equally well: between two near-equal layers the
+      boundary is wherever each optimiser left it
+      (regressions/ves-poorly-resolved-boundary.json), and with several such
+      boundaries the two searches settle on different members of the family
+      (regressions/ves-equivalent-models.json). Whether each engine
+      inverted at all, and to how many layers, is still compared.
+    """
+    from groundwater.ves.interpret import POORLY_RESOLVED_FACTOR
+
+    data = workbook_bytes(case["sheets"])
+    path = workdir / "case.xlsx"
+    path.write_bytes(data)
+    py = python_summary(case["kind"], path, str(path), case["options"])
+    js = engine.summary(case["kind"], data, str(path), case["options"])
+    # Judges here, not answers: the Python model's own resolution, which
+    # the browser is not asked for, and whether each inversion converged,
+    # which no report prints. At a parameter bound one engine can stop for
+    # want of a better step while the other runs out its iterations, with
+    # models that agree to the tolerance.
+    factors = [inv.pop("h_factor", None) for inv in py.get("inversions") or []]
+    settled = [[inv.pop("converged", None) for inv in side.get("inversions") or []
+                if isinstance(inv, dict)] for side in (js, py)]
+    found = divergences(js, py)
+    if open_questions:
+        skipped = set()
+        for i, (a, b) in enumerate(zip(*settled, strict=False)):
+            if a is False and b is False:
+                skipped |= {f"inversions[{i}].{key}" for key in ("rho", "h", "err")}
+            if any(f is not None and f >= POORLY_RESOLVED_FACTOR
+                   for f in factors[i] or []):
+                skipped |= {f"inversions[{i}].{key}" for key in ("rho", "h", "err")}
+        # "rho[]" is a different number of layers, which is still compared
+        found = [d for d in found if d[0].endswith("[]") or (
+            d[0] not in skipped and d[0].rsplit("[", 1)[0] not in skipped)]
+    return found
+
+
+def report(found: list) -> str:
+    lines = [f"the engines disagree in {len(found)} place(s):"]
+    for where, js, py in found[:12]:
+        lines.append(f"  {where}\n    browser {json.dumps(js)[:400]}\n"
+                     f"    python  {json.dumps(py)[:400]}")
+    return "\n".join(lines)
+
+
+def save_regression(case: dict, found: list) -> Path:
+    """Write a shrunk counterexample where the next run replays it."""
+    where = found[0][0]
+    slug = re.sub(r"[^a-z0-9]+", "-", re.sub(r"\[\d+\]", "", where).lower()).strip("-")
+    body = json.dumps({"kind": case["kind"], "sheets": case["sheets"],
+                       "options": case["options"]}, sort_keys=True)
+    digest = hashlib.sha1(body.encode()).hexdigest()[:8]
+    REGRESSIONS.mkdir(exist_ok=True)
+    path = REGRESSIONS / f"{case['kind']}-{slug[:40]}-{digest}.json"
+    path.write_text(regression_text({
+        "note": "Found by the fuzz suite on " + date.today().isoformat()
+                + ". Say here what diverged and which engine was put right.",
+        "first_divergence": [where, found[0][1], found[0][2]],
+        **json.loads(body),
+    }), encoding="utf-8")
+    return path
+
+
+def regression_text(case: dict) -> str:
+    """A regression file a reviewer can read: one sheet row to a line."""
+    def one(value):
+        return json.dumps(value, ensure_ascii=False)
+
+    lines = ["{"]
+    for key in ("note", "open", "first_divergence", "kind", "options"):
+        if key in case:
+            lines.append(f" {one(key)}: {one(case[key])},")
+    lines.append(' "sheets": [')
+    for i, sheet in enumerate(case["sheets"]):
+        lines.append(f'  {{"name": {one(sheet["name"])}, "rows": [')
+        lines.append(",\n".join(f"   {one(row)}" for row in sheet["rows"]))
+        lines.append("  ]}" + ("," if i + 1 < len(case["sheets"]) else ""))
+    lines.append(" ]")
+    lines.append("}")
+    return "\n".join(lines) + "\n"
+
+
+def _regressions():
+    return sorted(REGRESSIONS.glob("*.json"))
+
+
+@pytest.mark.parametrize("path", _regressions(), ids=lambda p: p.stem)
+def test_regression(path, engine, workdir):
+    """Every counterexample found so far, replayed on every run.
+
+    A case carrying ``"open"`` is a divergence that is a question of method
+    rather than a bug, recorded with the question and not yet answered. It
+    is held to diverging still, at the path it was found at, so the day one
+    engine changes its answer the case says so rather than passing quietly.
+    """
+    case = json.loads(path.read_text(encoding="utf-8"))
+    found = compare(engine, case, workdir)
+    if case.get("open"):
+        where = case["first_divergence"][0]
+        assert any(path_ == where for path_, _, _ in found), (
+            f"this open case no longer diverges at {where}; answer the question "
+            f"in its 'open' note and remove the key:\n{report(found)}")
+        pytest.xfail(case["open"])
+    assert not found, report(found)
+
+
+def _fuzz(engine, workdir, strategy, examples: int, **options) -> None:
+    last: dict = {"agreed": 0}
+
+    @given(strategy)
+    @_settings(examples)
+    def agree(case):
+        found = compare(engine, case, workdir, **options)
+        last["agreed"] += not found
+        if found:
+            # Hypothesis replays the shrunk case last, so this ends holding it
+            last["case"], last["found"] = case, found
+            raise AssertionError(report(found))
+
+    try:
+        agree()
+        # nox -s fuzz passes -rP, so this reaches the log of every run
+        print(f"{last['agreed']} generated cases, the engines agreeing on each")
+    except AssertionError:
+        if "case" in last:
+            saved = save_regression(last["case"], last["found"])
+            print(f"\nshrunk counterexample written to {saved.relative_to(HERE.parents[1])}")
+        raise
+
+
+@pytest.mark.parametrize("kind", sorted(CASES))
+def test_engines_agree(kind, engine, workdir):
+    _fuzz(engine, workdir, CASES[kind](), CASES_PER_KIND)
+
+
+def test_inversions_agree(engine, workdir):
+    """The inversion of generated soundings, at parity.mjs's model tolerance.
+
+    Soundings that read one resistivity at every spacing are left out: what
+    a layered inversion should say about a uniform half-space is an open
+    question, recorded in regressions/ves-uniform-half-space-boundary.json,
+    and drawing it again every night would say nothing new. For the same
+    reason the two other open questions are left out of the comparison here;
+    see ``compare``.
+    """
+    strategy = ves_case(varied=True).map(
+        lambda case: {**case, "sheets": case["sheets"][:1], "options": {"invert": True}})
+    _fuzz(engine, workdir, strategy, INVERSIONS, open_questions=True)

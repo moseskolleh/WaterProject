@@ -1,0 +1,36 @@
+{
+ "note": "Found on 2026-10-02. A Schlumberger sounding near 40 ohm-m with one misread at 5 m. Both engines search up to four layers and both settle on four, with a first layer of absurd resistivity and every boundary poorly resolved (the Python inversion rates the thicknesses uncertain by factors of 4.4, 10 and 10), but on different members of the family: 194,000 ohm-m at a 14.43 percent fit in Python, 161,000 ohm-m at 14.57 in the browser. The multi-start searches take different paths through a misfit with many nearly equal minima.",
+ "open": "The same question as ves-poorly-resolved-boundary.json, for a whole model: what should parity mean for a model the toolkit itself reports as poorly resolved, and should the inversion offer a four-layer model whose every boundary is unresolved at all? The fuzz suite's inversion generator compares only models whose boundaries the Python inversion calls resolved (see compare() in fuzz_parity.py); this case is held to diverging until the question is answered.",
+ "first_divergence": ["inversions[0].err", 14.571492502349043, 14.432466981270625],
+ "kind": "ves",
+ "options": {"invert": true},
+ "sheets": [
+  {"name": "VES 1", "rows": [
+   ["SCHLUMBERGER ARRAY VES FIELD DATA", null, null, null],
+   ["Community", "Rokel", "District", "Port Loko"],
+   ["GPS Coordinate East", 819999, "GPS Coordinate North", 932171],
+   ["UTM Zone (28N or 29N): 28N", null, "Date", "8th December, 2015"],
+   ["Chiefdom: Koya", null, "Sounding Number", "VES 1"],
+   ["Array", "Schlumberger", "Instrument", "Syscal Junior"],
+   [null, null, null, null],
+   ["No.", "AB/2 (m)", "Apparent Resistivity (ohm-m)", null],
+   [1, 4.0, 48.2, null],
+   [2, 4.0, 47.9, null],
+   [3, 5.0, 22.1, null],
+   [4, 6.0, 42.6, null],
+   [5, 6.0, 42.1, null],
+   [6, 7.0, 41.7, null],
+   [7, 7.0, 41.7, null],
+   [8, 8.0, 41.4, null],
+   [9, 10.0, 40.6, null],
+   [10, 12.0, 40.5, null],
+   [11, 12.0, 40.7, null],
+   [12, 15.0, 40.3, null],
+   [13, 20.0, 39.9, null],
+   [14, 25.0, 40.2, null],
+   [15, 30.0, 39.9, null],
+   [16, 30.0, 40.1, null],
+   [17, 40.0, 40.2, null]
+  ]}
+ ]
+}

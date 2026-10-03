@@ -620,7 +620,7 @@ def drilling_from_grid(grid: list[list], source: str = "") -> DrillingLog:
                 DataFlag(
                     "warning",
                     "interval_overlap",
-                    f"Depth intervals overlap at {b.top_m} m.",
+                    f"Depth intervals overlap at {b.top_m:g} m.",
                 )
             )
         elif b.top_m > a.bottom_m + 1e-9:
@@ -628,7 +628,7 @@ def drilling_from_grid(grid: list[list], source: str = "") -> DrillingLog:
                 DataFlag(
                     "warning",
                     "interval_gap",
-                    f"Gap in the drilling log between {a.bottom_m} m and {b.top_m} m.",
+                    f"Gap in the drilling log between {a.bottom_m:g} m and {b.top_m:g} m.",
                 )
             )
     if total and log.intervals and abs(log.intervals[-1].bottom_m - total) > 1e-6:
@@ -636,8 +636,8 @@ def drilling_from_grid(grid: list[list], source: str = "") -> DrillingLog:
             DataFlag(
                 "warning",
                 "depth_mismatch",
-                f"Stated total depth {total} m differs from the deepest logged "
-                f"interval {log.intervals[-1].bottom_m} m.",
+                f"Stated total depth {total:g} m differs from the deepest logged "
+                f"interval {log.intervals[-1].bottom_m:g} m.",
             )
         )
     if not log.intervals:

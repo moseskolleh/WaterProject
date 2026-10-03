@@ -1,0 +1,24 @@
+{
+ "note": "Found on 2026-10-02. A drilling log whose From and To times are typed as Excel times (13:30): the Python reader kept '13:30:00', which is how openpyxl's time prints, and the browser's xlsx reader dropped any date-formatted cell under one day, so the interval's times were blank. readXlsx now reads such a cell as the time Python prints.",
+ "first_divergence": ["intervals[1][5]", "", "13:30:00"],
+ "kind": "drilling",
+ "options": {"pump": null, "swl": null},
+ "sheets": [
+  {"name": "Drilling Log", "rows": [
+   ["BOREHOLE DRILLING LOG", null, null, null, null, null, null],
+   ["Community: Rokel", null, null, "Client", null, null, null],
+   ["Contractor: WiNGiN Heavy Duty Machines", null, null, "Borehole Ref. No.: BH-1", null, null, null],
+   ["Drilling start date", null, null, "Completion date", null, null, null],
+   ["Drilling method: Air rotary (DTH hammer)", null, null, "Total depth (m)", null, null, null],
+   ["District: Port Loko", null, null, "BH status: Successful", null, null, null],
+   ["GPS Coordinate East", null, null, "GPS Coordinate North", null, null, null],
+   ["UTM Zone (28N or 29N)", null, null, "Elevation (m)", null, null, null],
+   ["Grouting depth (m)", null, null, "Drill rig", null, null, null],
+   ["Screens installed (m)", null, null, null, null, null, null],
+   [null, null, null, null, null, null, null],
+   ["Depth interval (m)", "From time", "To time", "Penetration rate (m/min)", "Sample / lithology description", "Drilling diameter (in)", "Water strike depth (m)"],
+   ["0-10", "13:30", "13:35", null, "Reddish brown lateritic topsoil", 6.5, null],
+   ["10-20", {"time": "13:30"}, {"time": "13:41"}, null, "Reddish brown lateritic topsoil", 6.5, 10]
+  ]}
+ ]
+}

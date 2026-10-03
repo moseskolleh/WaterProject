@@ -339,6 +339,11 @@ class PumpingTestAnalysis:
 # Individual methods
 # ---------------------------------------------------------------------------
 
+#: A fitted slope this close to zero, in metres per log cycle, is rounding in
+#: the fit and not a direction: readings are taken to the centimetre.
+SLOPE_ROUNDING_M = 1e-9
+
+
 def _line_fit(x: np.ndarray, y: np.ndarray) -> tuple[float, float, float]:
     """Least squares line with r^2."""
     A = np.vstack([x, np.ones_like(x)]).T
@@ -406,7 +411,12 @@ def cooper_jacob(
         window = (t >= fit_window_min[0]) & (t <= fit_window_min[1])
 
     slope, intercept, r2 = _line_fit(np.log10(t[window]), s[window])
-    if slope <= 0:
+    # A window of one level has a slope of zero give or take rounding, and
+    # which side of zero the rounding falls differs between lstsq and the
+    # browser's closed form: the same sheet was "does not increase" here and
+    # "flat (0.000 m per log cycle)" there. Only a slope clearly below zero
+    # is a falling drawdown; one within rounding of it is a flat one.
+    if slope < -SLOPE_ROUNDING_M:
         raise ValueError(
             "Drawdown does not increase with log time; Cooper-Jacob does not apply"
         )
@@ -416,7 +426,7 @@ def cooper_jacob(
     if slope < config.cooper_jacob_min_slope_m:
         raise ValueError(
             f"The fitted window {fit_window_min[0]:g}-{fit_window_min[1]:g} min "
-            f"is flat ({slope:.3f} m per log cycle, under "
+            f"is flat ({max(slope, 0.0):.3f} m per log cycle, under "
             f"{config.cooper_jacob_min_slope_m:g} m): the drawdown has stabilised "
             "or the slope is below reading resolution, so Cooper-Jacob does not "
             "apply"
@@ -485,12 +495,21 @@ def theis_fit(
     discharge_m3_per_h: float,
     radius_m: float = 0.1,
     observation_well: bool = False,
+    config: PumpingConfig | None = None,
 ) -> TheisResult:
     """Least squares fit of the Theis well function.
 
     ``s = Q / (4 pi T) W(u)``, ``u = r^2 S / (4 T t)``. Fitting is done
     in log parameter space to keep T and S positive.
+
+    A drawdown that does not grow with log time is refused, with the slope
+    ``cooper_jacob`` refuses: on a flat record the least squares has no
+    minimum, T runs off towards infinity and S towards zero, and the
+    transmissivity reported is wherever the optimiser stopped. That was a
+    storativity of 1e-316 beside thousands of m2/day adopted at established
+    confidence, and a different number in each engine.
     """
+    config = config or PumpingConfig()
     _require_discharge(discharge_m3_per_h)
     t = np.asarray(time_min, dtype=float) / MIN_PER_DAY
     s = np.asarray(drawdown_m, dtype=float)
@@ -498,6 +517,16 @@ def theis_fit(
     t, s = t[keep], s[keep]
     if len(t) < 5:
         raise ValueError("Not enough readings for a Theis fit")
+    slope = _line_fit(np.log10(t), s)[0]
+    if slope < config.cooper_jacob_min_slope_m:
+        # The slope itself is not printed: on a flat record it is a few
+        # parts in 1e17 either side of zero, and its sign is noise.
+        raise ValueError(
+            "The drawdown grows by less than "
+            f"{config.cooper_jacob_min_slope_m:g} m per log cycle of time across "
+            "the readings, so it does not follow the Theis curve and T and S "
+            "cannot be fitted"
+        )
     q_day = discharge_m3_per_h * 24.0
 
     def model(tt, logT, logS):
@@ -510,7 +539,12 @@ def theis_fit(
     slope0 = max((s[-1] - s[len(s) // 2]) / max(np.log10(t[-1] / t[len(s) // 2]), 0.3), 0.1)
     T0 = 2.303 * q_day / (4.0 * math.pi * slope0)
     p0 = (math.log10(max(T0, 1e-2)), -3.0)
-    popt, _ = curve_fit(model, t, s, p0=p0, maxfev=20000)
+    # To the bottom of the valley rather than curve_fit's default 1.5e-8
+    # relative change in the misfit. Where the misfit is flat along the
+    # valley floor that default stopped a sheet's fit 1.1e-4 short of its
+    # minimum in T (9.7877 m2/day for 9.7866), and the browser, which runs
+    # until no step helps, reported the minimum itself.
+    popt, _ = curve_fit(model, t, s, p0=p0, maxfev=20000, ftol=1e-12, xtol=1e-12)
     T = 10.0 ** popt[0]
     S = 10.0 ** popt[1]
     rmse = float(np.sqrt(np.mean((model(t, *popt) - s) ** 2)))
@@ -530,6 +564,7 @@ def theis_recovery(
     pumping_duration_min: float,
     discharge_m3_per_h: float,
     equivalent_time: bool = False,
+    config: PumpingConfig | None = None,
 ) -> RecoveryResult:
     """Theis recovery analysis on residual drawdown against t/t'.
 
@@ -553,8 +588,20 @@ def theis_recovery(
         raise ValueError("Not enough recovery readings")
     ratio = (pumping_duration_min + tp) / tp
     slope, intercept, r2 = _line_fit(np.log10(ratio), sp)
-    if slope <= 0:
+    if slope < -SLOPE_ROUNDING_M:
         raise ValueError("Residual drawdown does not decrease; check the data")
+    # A recovery that has already finished is flat against log(t/t'), its
+    # slope rounding noise, and 2.303 Q / (4 pi slope) turned that into
+    # 6e16 m2/day here and 4e17 in the browser. The line is refused at the
+    # slope Cooper-Jacob and Theis refuse, for the same reason.
+    config = config or PumpingConfig()
+    if slope < config.cooper_jacob_min_slope_m:
+        raise ValueError(
+            "The residual drawdown falls by less than "
+            f"{config.cooper_jacob_min_slope_m:g} m per log cycle of t/t', which "
+            "reading resolution cannot tell from flat, so no transmissivity is "
+            "read from it"
+        )
     q_day = discharge_m3_per_h * 24.0
     T = 2.303 * q_day / (4.0 * math.pi * slope)
     start = float(np.nanmax(sp))
@@ -637,6 +684,10 @@ def deepest_pumping_level(test: PumpingTest) -> Optional[float]:
     return max(levels) if levels else None
 
 
+#: Step discharges closer than this, relatively, are one rate written two ways.
+SAME_RATE_RTOL = 1e-6
+
+
 def hantush_bierschenk(
     step_discharges_m3_per_h: list[float],
     step_end_drawdowns_m: list[float],
@@ -657,6 +708,18 @@ def hantush_bierschenk(
     s = np.asarray(step_end_drawdowns_m, dtype=float)
     if len(q) < 2:
         raise ValueError("A step test needs at least two steps with discharge")
+    # Steps pumped at one rate put every point of s/Q against Q on one
+    # vertical line, which any B and C fit: lstsq returned its minimum-norm
+    # split and the browser all aquifer loss, and both reported efficiencies.
+    # "One rate" is to a part in a million, not to the last bit: 88 L/min
+    # converts to 5.279999999999999 m3/h beside a 5.28 typed in m3/h, and
+    # that ulp made the line merely near-vertical, which is no better.
+    if float(np.ptp(q)) <= SAME_RATE_RTOL * float(np.max(np.abs(q))):
+        raise ValueError(
+            f"Every step was pumped at {step_discharges_m3_per_h[0]:g} m3/h, so the "
+            "aquifer and well losses cannot be told apart; a step test needs "
+            "steps at different discharges"
+        )
     sq = s / q
     C, B, r2 = _line_fit(q, sq)
     fit_note = ""
@@ -1276,6 +1339,7 @@ def analyse_pumping_test(
                     t[keep], s[keep], q,
                     observation_well=observation_radius_m is not None,
                     radius_m=observation_radius_m or 0.1,
+                    config=config,
                 )
             except (ValueError, RuntimeError) as exc:
                 if keep.any():
@@ -1332,7 +1396,7 @@ def analyse_pumping_test(
             try:
                 analysis.recovery = theis_recovery(
                     test.recovery_time_min, residual, t_pump, q_rec,
-                    equivalent_time=equivalent,
+                    equivalent_time=equivalent, config=config,
                 )
             except ValueError as exc:
                 flags.append(DataFlag("warning", "recovery_failed", str(exc)))

@@ -4,10 +4,11 @@
     nox -s check           everything CI checks, in CI's order
     nox -s build           regenerate every generated file, in order
     nox -s parity          the numerical parity of the two engines
+    nox -s fuzz            the two engines on generated field sheets
     nox -s examples        rerun the worked examples and their index
     nox -s release         the wheel, the sdist and the example packs in dist/
 
-CI calls these same sessions (lint, tests, bundles, parity, browser,
+CI calls these same sessions (lint, tests, bundles, parity, fuzz, browser,
 depth_spine) one step at a time, so a command changed here changes in CI
 with it and "nox -s check passes" keeps meaning "CI passes". The one thing
 CI adds is the Python version matrix: it runs the tests session on four
@@ -172,6 +173,22 @@ def parity(session: nox.Session) -> None:
 
 
 @nox.session
+def fuzz(session: nox.Session) -> None:
+    """The two engines against each other on generated field sheets.
+
+    A few hundred cases, the same ones every run; FUZZ_PROFILE=nightly draws
+    tens of thousands of new ones, and FUZZ_EXAMPLES sets the number per
+    generator. Every counterexample committed under tests/fuzz/regressions
+    is replayed first. The module is named by path because it is not a
+    test_* file: the plain pytest run has no browser to give it.
+    """
+    _need_playwright(session)
+    # -rP prints each generator's count of cases, which is otherwise captured
+    _python(session, "-m", "pytest", "-q", "-rP", "-p", "no:cacheprovider",
+            "tests/fuzz/fuzz_parity.py", *session.posargs, env={"MPLBACKEND": "Agg"})
+
+
+@nox.session
 def browser(session: nox.Session) -> None:
     """Drive the standalone app end to end in headless Chromium."""
     _need_playwright(session)
@@ -203,7 +220,7 @@ def check(session: nox.Session) -> None:
     # alike, and a check run with a narrowed suite is not the check CI runs.
     _lint(session)
     _tests(session)
-    for step in (bundles, parity, browser, depth_spine):
+    for step in (bundles, parity, fuzz, browser, depth_spine):
         session.log(f"--- {step.__name__}")
         step(session)
 

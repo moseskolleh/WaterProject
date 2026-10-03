@@ -302,6 +302,10 @@
     return M.map(function (row) { return row.slice(n); });
   }
 
+  /* analysis.py SLOPE_ROUNDING_M: a fitted slope this close to zero, in
+   * metres per log cycle, is rounding in the fit and not a direction. */
+  var SLOPE_ROUNDING_M = 1e-9;
+
   /* Least squares straight line with r^2, matching numpy lstsq + the r^2 the
    * Python computes alongside it. */
   function lineFit(x, y) {
@@ -945,7 +949,13 @@
     var arrayType = sounding.array_type || 'schlumberger';
     var spliced = inversionReadings(sounding, opts);
     var ab2 = spliced.ab2, rhoApp = spliced.rho;
-    if (ab2.length < 4) throw new Error('Not enough readings to invert');
+    /* Spacings, not readings: a Wenner sheet is not spliced, so one read
+     * twice at each of two spacings passed a count of four and had a
+     * two-layer model's three parameters fitted to two points of the curve,
+     * where a family of models fits equally well and each engine picked a
+     * different one. */
+    var spacings = ab2.filter(function (v, k) { return ab2.indexOf(v) === k; });
+    if (spacings.length < 4) throw new Error('Not enough readings to invert');
 
     /* the iteration hook for trial si of nStarts at layer count li of nCounts */
     function iterationProgress(li, nCounts, si, nStarts, label) {
@@ -2293,7 +2303,12 @@
 
     var fit = lineFit(window.map(function (k) { return Math.log(t[k]) / Math.LN10; }),
                       window.map(function (k) { return s[k]; }));
-    if (fit.slope <= 0) {
+    /* A window of one level has a slope of zero give or take rounding, and
+     * which side of zero the rounding falls differs between this closed form
+     * and numpy's lstsq: the same sheet was "flat (0.000 m per log cycle)"
+     * here and "does not increase" there. Only a slope clearly below zero is
+     * a falling drawdown; one within rounding of it is a flat one. */
+    if (fit.slope < -SLOPE_ROUNDING_M) {
       throw new Error('Drawdown does not increase with log time; ' +
         'Cooper-Jacob does not apply');
     }
@@ -2302,7 +2317,7 @@
      * face; a line that does not explain the window is no better. */
     if (fit.slope < cfg.cooper_jacob_min_slope_m) {
       throw new Error('The fitted window ' + formatG(fitWindow[0]) + '-' +
-        formatG(fitWindow[1]) + ' min is flat (' + fit.slope.toFixed(3) +
+        formatG(fitWindow[1]) + ' min is flat (' + pyFixed(Math.max(fit.slope, 0), 3) +
         ' m per log cycle, under ' + formatG(cfg.cooper_jacob_min_slope_m) +
         ' m): the drawdown has stabilised or the slope is below reading ' +
         'resolution, so Cooper-Jacob does not apply');
@@ -2362,11 +2377,22 @@
     };
   }
 
+  /* analysis.py theis_fit's curve_fit(maxfev=20000) */
+  var THEIS_MAXFEV = 20000;
+
   /* Least squares fit of the Theis well function s = Q/(4 pi T) W(u),
    * u = r^2 S / (4 T t), in log parameter space so T and S stay positive.
-   * Levenberg-Marquardt stands in for scipy's curve_fit. */
+   * Levenberg-Marquardt stands in for scipy's curve_fit.
+   *
+   * A drawdown that does not grow with log time is refused, at the slope
+   * cooperJacob refuses: on a flat record the least squares has no minimum,
+   * T runs off towards infinity and S towards zero, and the transmissivity
+   * reported is wherever the optimiser stopped - 1282 m2/day here and 2190
+   * in the Python package for the same sheet, both adopted at established
+   * confidence. */
   function theisFit(timeMin, drawdownM, dischargeM3PerH, options) {
     var opts = options || {};
+    var cfg = opts.config || defaultConfig().pumping;
     requireDischarge(dischargeM3PerH);
     var radiusM = opts.radiusM || 0.1;
     var t = [], s = [], i;
@@ -2377,9 +2403,20 @@
       if (td > 0 && drawdownM[i] > 0) { t.push(td); s.push(drawdownM[i]); }
     }
     if (t.length < 5) throw new Error('Not enough readings for a Theis fit');
+    var logTime = t.map(function (v) { return Math.log10(v); });
+    /* the slope itself is not printed: on a flat record it is a few parts in
+     * 1e17 either side of zero, and its sign is noise */
+    if (lineFit(logTime, s).slope < cfg.cooper_jacob_min_slope_m) {
+      throw new Error('The drawdown grows by less than ' +
+        formatG(cfg.cooper_jacob_min_slope_m) + ' m per log cycle of time across ' +
+        'the readings, so it does not follow the Theis curve and T and S ' +
+        'cannot be fitted');
+    }
     var qDay = dischargeM3PerH * 24.0;
+    var calls = 0;
 
     function model(tt, logT, logS) {
+      calls += 1;
       var T = Math.pow(10, logT), S = Math.pow(10, logS);
       var out = new Float64Array(tt.length);
       for (var k = 0; k < tt.length; k++) {
@@ -2406,7 +2443,17 @@
       return c;
     }
     var lam = 1e-3, cost = costOf(p);
-    for (var iter = 0; iter < 200; iter++) {
+    /* Until no step lowers the misfit, within the budget of model
+     * evaluations the Python package gives curve_fit (maxfev = 20000) and
+     * with its refusal when the budget runs out. A cap of 200 iterations
+     * used to stop this fit partway down a long valley - a Theis fit of
+     * 412 m2/day where scipy reached 430, the Cooper-Jacob value - wherever
+     * a large constant offset pushes S towards zero. */
+    for (;;) {
+      if (calls >= THEIS_MAXFEV) {
+        throw new Error('Optimal parameters not found: Number of calls to ' +
+          'function has reached maxfev = ' + THEIS_MAXFEV + '.');
+      }
       var base = model(t, p[0], p[1]);
       var J = [];
       var h0 = 1e-6 * Math.max(Math.abs(p[0]), 1);
@@ -2464,7 +2511,8 @@
    *   s' = 2.303 Q / (4 pi T) log10(t/t')
    * with t since pumping started and t' since it stopped. */
   function theisRecovery(recoveryTimeMin, residualDrawdownM, pumpingDurationMin,
-                         dischargeM3PerH, equivalentTime) {
+                         dischargeM3PerH, equivalentTime, config) {
+    var cfg = config || defaultConfig().pumping;
     /* pumpingDurationMin is the time t/t' is formed with: after a step test
      * pass the equivalent time from equivalentPumpingTimeMin and say so. */
     requireDischarge(dischargeM3PerH);
@@ -2479,8 +2527,18 @@
       return Math.log((pumpingDurationMin + v) / v) / Math.LN10;
     });
     var fit = lineFit(x, sp);
-    if (fit.slope <= 0) {
+    if (fit.slope < -SLOPE_ROUNDING_M) {
       throw new Error('Residual drawdown does not decrease; check the data');
+    }
+    /* A recovery that has already finished is flat against log(t/t'), its
+     * slope rounding noise, and 2.303 Q / (4 pi slope) turned that into 4e17
+     * m2/day here and 6e16 in the Python package. The line is refused at the
+     * slope Cooper-Jacob and Theis refuse, for the same reason. */
+    if (fit.slope < cfg.cooper_jacob_min_slope_m) {
+      throw new Error('The residual drawdown falls by less than ' +
+        formatG(cfg.cooper_jacob_min_slope_m) + " m per log cycle of t/t', which " +
+        'reading resolution cannot tell from flat, so no transmissivity is ' +
+        'read from it');
     }
     var qDay = dischargeM3PerH * 24.0;
     var start = arrMax(sp);
@@ -2513,11 +2571,27 @@
    * out of the fit used to renumber the rest, so the table printed "Step 1 |
    * 2.2 m3/h" beside a test details line saying step 1 ran at 1.5 m3/h.
    * Without them the steps are numbered from one. */
+  /* analysis.py SAME_RATE_RTOL: step discharges closer than this,
+   * relatively, are one rate written two ways. */
+  var SAME_RATE_RTOL = 1e-6;
+
   function hantushBierschenk(stepDischargesM3PerH, stepEndDrawdownsM, stepNumbers) {
     var q = stepDischargesM3PerH.map(function (v) { return v * 24.0; });
     var s = stepEndDrawdownsM.slice();
     if (q.length < 2) {
       throw new Error('A step test needs at least two steps with discharge');
+    }
+    /* Steps pumped at one rate put every point of s/Q against Q on one
+     * vertical line, which any B and C fit: this fit returned all aquifer
+     * loss and numpy's lstsq its minimum-norm split, and both reported
+     * efficiencies. "One rate" is to a part in a million, not to the last
+     * bit: 88 L/min converts to 5.279999999999999 m3/h beside a 5.28 typed in
+     * m3/h, and that ulp made the line merely near-vertical, no better. */
+    var qMax = Math.max.apply(null, q.map(Math.abs));
+    if (Math.max.apply(null, q) - Math.min.apply(null, q) <= SAME_RATE_RTOL * qMax) {
+      throw new Error('Every step was pumped at ' + formatG(stepDischargesM3PerH[0]) +
+        ' m3/h, so the aquifer and well losses cannot be told apart; a step ' +
+        'test needs steps at different discharges');
     }
     var sq = s.map(function (v, i) { return v / q[i]; });
     var fit = lineFit(q, sq);
@@ -3394,6 +3468,7 @@
           analysis.theis = theisFit(t0, s0, q0, {
             observationWell: observationRadiusM !== null && observationRadiusM !== undefined,
             radiusM: observationRadiusM || 0.1,
+            config: cfg,
           });
         } catch (e2) {
           if (keepAny) {
@@ -3459,7 +3534,7 @@
       if (qRec !== null && tPump) {
         try {
           analysis.recovery = theisRecovery(test.recovery_time_min, residual,
-            tPump, qRec, equivalent);
+            tPump, qRec, equivalent, cfg);
         } catch (e3) {
           flags.push({ level: 'warning', code: 'recovery_failed', message: e3.message });
         }
@@ -7607,10 +7682,34 @@
     return String(value).replace(/\s+/g, ' ').trim();
   }
 
+  /* Python's str() of the datetime openpyxl hands back for a date cell,
+   * which is what clean_text makes of one: "2015-12-08 13:45:00". The time
+   * of day used to be written as 00:00:00 whatever the cell held. */
   function formatIsoDate(d) {
-    return d.getUTCFullYear() + '-' +
-      String(d.getUTCMonth() + 1).padStart(2, '0') + '-' +
-      String(d.getUTCDate()).padStart(2, '0') + ' 00:00:00';
+    return cellDay(d) + ' ' + cellClock(d) + ':' + twoDigits(d.getUTCSeconds());
+  }
+
+  function twoDigits(n) { return String(n).padStart(2, '0'); }
+
+  function cellDay(d) {
+    return d.getUTCFullYear() + '-' + twoDigits(d.getUTCMonth() + 1) + '-' +
+      twoDigits(d.getUTCDate());
+  }
+
+  function cellClock(d) {
+    return twoDigits(d.getUTCHours()) + ':' + twoDigits(d.getUTCMinutes());
+  }
+
+  /* ingestion/common.py _date_text: a date cell in a header block as
+   * "2015-12-08", and as "2015-12-08 13:45" when it carries a time. The
+   * Python reader stopped printing the midnight on the report cover; this
+   * reader went on writing "2015-12-08 00:00:00" for the same cell. */
+  function headerDateText(value) {
+    if (!(value instanceof Date)) return value;
+    if (value.getUTCHours() || value.getUTCMinutes() || value.getUTCSeconds()) {
+      return cellDay(value) + ' ' + cellClock(value);
+    }
+    return cellDay(value);
   }
 
   var NUMBER_RE = /[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?/;
@@ -7853,7 +7952,7 @@
           if (number === null) number = parseNumber(value);
           if (number !== null) { fields[key] = number; priorities[key] = priority; }
         } else {
-          fields[key] = cleanText(value);
+          fields[key] = cleanText(headerDateText(value));
           priorities[key] = priority;
         }
       }
@@ -9801,8 +9900,8 @@
       }));
       if (maxWl > test.borehole_depth_m) {
         flags.push({ level: 'warning', code: 'level_below_borehole',
-          message: 'Recorded water level ' + maxWl.toFixed(2) + ' m exceeds the ' +
-            'stated borehole depth ' + test.borehole_depth_m.toFixed(0) +
+          message: 'Recorded water level ' + pyFixed(maxWl, 2) + ' m exceeds the ' +
+            'stated borehole depth ' + pyFixed(test.borehole_depth_m, 0) +
             ' m; check the sheet.' });
       }
     }
@@ -9815,7 +9914,7 @@
       }));
       if (maxWlPump > test.pump_setting_m) {
         flags.push({ level: 'warning', code: 'level_below_pump',
-          message: 'Recorded water level ' + maxWlPump.toFixed(2) + ' m is below ' +
+          message: 'Recorded water level ' + pyFixed(maxWlPump, 2) + ' m is below ' +
             'the pump intake at ' + pyFixed(test.pump_setting_m, 0) + ' m. A pump ' +
             'cannot draw the level below its own intake, so the pump setting, ' +
             'the levels or the datum on the sheet is wrong; the drawdown ' +

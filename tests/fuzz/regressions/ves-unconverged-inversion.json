@@ -1,0 +1,23 @@
+{
+ "note": "Found on 2026-10-02. A Wenner sheet of resistances whose apparent resistivity holds at 9 ohm-m to a = 12 m and halves by 15 m, a drop no layered earth makes. The second layer's resistivity runs to the 0.5 ohm-m bound and no inversion converges: Python reports, unconverged, a fit of 15.26 percent after its 60 iterations, 15.14 after 200 and a three-layer 13.14 after 2000. The browser stops at its own 60 iterations at 15.19 percent with a different boundary (11.14 m against 11.20 m). Each engine reports where its iteration cap left it, so the difference is the cap, not either engine's arithmetic.",
+ "open": "What should be reported for an inversion that has not converged when max_iterations runs out: the model where it stopped (today, in both engines, with converged = False and nothing in the report saying so), the model with a warning, or a refusal? Until that is decided two engines that take different paths down a slope with no floor stop at different models.",
+ "first_divergence": ["inversions[0].err", 15.18703789527504, 15.255749953158288],
+ "kind": "ves",
+ "options": {"invert": true},
+ "sheets": [
+  {"name": "VES 1", "rows": [
+   ["SCHLUMBERGER ARRAY VES FIELD DATA", null, null, null],
+   ["Community", "Rokel", "District", "Port Loko"],
+   ["Sounding Number", "VES 1", "Array", "Wenner"],
+   ["Instrument", "Syscal Junior", null, null],
+   [null, null, null, null],
+   ["No.", "AB/2 (m)", "R (ohm)", null],
+   [1, 7.5, 0.28648, null],
+   [2, 10.5, 0.20463, null],
+   [3, 13.5, 0.15915, null],
+   [4, 15.0, 0.14324, null],
+   [5, 18.0, 0.11937, null],
+   [6, 22.5, 0.04775, null]
+  ]}
+ ]
+}

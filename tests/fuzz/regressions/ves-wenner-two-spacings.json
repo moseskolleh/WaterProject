@@ -1,0 +1,20 @@
+{
+ "note": "Found on 2026-10-02. A sheet whose array field reads 'Wenner alpha' with four readings at two spacings (each read twice, MN changed). A Wenner sounding is not spliced, so the four readings passed the inverter's count of four, and a two-layer model's three parameters were fitted to two points of the curve: Python and the browser reached the same misfit, 2.9083 percent, with different models (h 0.54 m and 0.47 m). Both were wrong to invert; both now count distinct spacings and refuse with 'Not enough readings to invert'.",
+ "first_divergence": ["inversions[0].h[0]", 0.46690642213124195, 0.538746552976815],
+ "kind": "ves",
+ "options": {"invert": true},
+ "sheets": [
+  {"name": "VES 1", "rows": [
+   ["SCHLUMBERGER ARRAY VES FIELD DATA", null, null, null],
+   ["Community", "Rokel", "District", "Port Loko"],
+   ["Sounding Number", "VES 1", "Array", "Wenner alpha"],
+   ["Instrument", "Syscal Junior", null, null],
+   [null, null, null, null],
+   ["No.", "AB/2 (m)", "MN (m)", "Apparent Resistivity (ohm-m)"],
+   [1, 1.0, 0.2, 3.2],
+   [2, 1.0, 0.4, 3.4],
+   [3, 1.5, 0.4, 3.5],
+   [4, 1.5, 0.5, 3.7]
+  ]}
+ ]
+}

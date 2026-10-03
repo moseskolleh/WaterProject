@@ -278,6 +278,18 @@
     return new Date(ms + Math.round(frac * 86400000));
   }
 
+  /* A time-of-day serial as Python prints the datetime.time openpyxl makes
+   * of it: "13:30:00", with microseconds only when there are any. openpyxl
+   * rounds to the millisecond, and so does this. */
+  function excelSerialToClock(serial) {
+    var ms = Math.round(serial * 86400000);
+    if (ms >= 86400000) return excelSerialToDate(1);
+    var two = function (n) { return String(n).padStart(2, '0'); };
+    var text = two(Math.floor(ms / 3600000)) + ':' + two(Math.floor(ms / 60000) % 60) +
+      ':' + two(Math.floor(ms / 1000) % 60);
+    return ms % 1000 ? text + '.' + String((ms % 1000) * 1000).padStart(6, '0') : text;
+  }
+
   function formatDate(value) {
     var d = parseDate(value);
     if (!d) return value ? String(value) : '';
@@ -645,8 +657,17 @@
               else {
                 var num = Number(raw);
                 var styleIdx = parseInt(c.getAttribute('s') || '0', 10);
-                value = (dateStyles[styleIdx] && isFinite(num) && num > 0)
-                  ? excelSerialToDate(num) : (isFinite(num) ? num : raw);
+                /* A date-formatted serial under one day is a time of day,
+                 * which openpyxl hands the Python readers as a time and they
+                 * print as "13:30:00". It used to come through as null, so
+                 * a drilling log's From and To times typed as times were
+                 * lost here and kept there. */
+                if (dateStyles[styleIdx] && isFinite(num) && num >= 0 && num < 1) {
+                  value = excelSerialToClock(num);
+                } else {
+                  value = (dateStyles[styleIdx] && isFinite(num) && num > 0)
+                    ? excelSerialToDate(num) : (isFinite(num) ? num : raw);
+                }
               }
             }
             if (typeof value === 'string') {
