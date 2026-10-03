@@ -42,7 +42,7 @@ def geometric_factor(
             raise ValueError("Schlumberger needs ab2 and mn")
         L = np.asarray(ab2, dtype=float)
         b = np.asarray(mn, dtype=float) / 2.0
-        if np.any(b <= 0) or np.any(L <= b):
+        if np.any(b <= 0) or np.any(b >= L):
             raise ValueError("Require 0 < MN/2 < AB/2 for Schlumberger")
         return np.pi * (L**2 - b**2) / (2.0 * b)
     if kind.startswith("wenner"):

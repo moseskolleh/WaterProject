@@ -33,6 +33,16 @@ def test_demo_build(tmp_path, sample_data):
     assert match, "FILES blob not found"
     files = json.loads(match.group(1))
     assert "streamlit_app.py" in files
+    # the pages, their helpers and the state schema the script imports from
+    # beside it (PLAN.md step 1.1), mounted where the imports look for them
+    app_modules = sorted(p for p in (REPO / "app").rglob("*.py")
+                         if "__pycache__" not in p.parts)
+    assert {"state.py", "shared.py", "views/__init__.py",
+            "views/costing.py"} <= {p.relative_to(REPO / "app").as_posix()
+                                    for p in app_modules}
+    for path in app_modules:
+        mount = path.relative_to(REPO / "app").as_posix()
+        assert files[mount]["d"] == path.read_text(encoding="utf-8"), mount
     assert "groundwater/__init__.py" in files
     assert "groundwater/data/who_guidelines.csv" in files
     for sample in builder.SAMPLE_FILES:
@@ -177,6 +187,9 @@ def test_webapp_scripts_are_wired_up():
     # time; its tasks call gwt-core.js when the page has to run them itself.
     assert (scripts.index("js/gwt-core.js") < scripts.index("js/gwt-worker.js")
             < scripts.index("js/gwt-app.js"))
+    # gwt-store.js is where the session is kept, which gwt-app.js opens at
+    # load time to restore it.
+    assert scripts.index("js/gwt-store.js") < scripts.index("js/gwt-app.js")
     # gwt-app.js is last: it runs the app, and it is where the bundles the
     # first screen does without are named.
     assert scripts[-1] == "js/gwt-app.js"
@@ -202,6 +215,24 @@ def _bundles() -> dict[str, str]:
                     r"""["']?(\w+)["']?\s*:\s*["']([^"']+\.js)["']""", statement):
                 found[name] = "js/" + url
     return found
+
+
+def test_the_engine_prints_fixed_decimals_as_python_does():
+    """gwt-core.js writes a fixed number of decimals with pyFixed only.
+
+    toFixed rounds an exact binary tie (1.25, 6.5) away from zero and
+    Python's "%.1f" to the even digit, so every toFixed in report prose was
+    a divergence waiting for a sheet with that number on it: the fuzz suite
+    found them one at a time (a borehole depth of 6.5 m, a static level of
+    1.25 m). The two inside pyFixed and formatG are the only ones left.
+    """
+    source = (REPO / "docs" / "js" / "gwt-core.js").read_text(encoding="utf-8")
+    calls = [line.strip() for line in source.splitlines()
+             if ".toFixed(" in line and not line.lstrip().startswith(("*", "/*", "//"))]
+    assert calls == [
+        "return sign + Math.abs(pyRound(v, d)).toFixed(d);",
+        "var out = rounded.toFixed(Math.max(0, p - 1 - exp));",
+    ]
 
 
 def test_every_bundle_loaded_on_demand_exists_and_is_precached():

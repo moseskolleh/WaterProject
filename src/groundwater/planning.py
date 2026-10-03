@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 from .waterpoints import WaterPoint
 
@@ -166,8 +166,8 @@ class Freshness:
 
     n_points: int
     n_dated: int
-    latest_year: Optional[int]
-    median_age_years: Optional[float]
+    latest_year: int | None
+    median_age_years: float | None
     n_recent: int
     state: str
 
@@ -229,8 +229,8 @@ class SeasonalCoverage:
     n_year_round: int
     n_seasonal: int
     n_unknown: int
-    people_per_point_low: Optional[float]
-    people_per_point_high: Optional[float]
+    people_per_point_low: float | None
+    people_per_point_high: float | None
 
     @property
     def is_established(self) -> bool:
@@ -308,15 +308,15 @@ class PlanningRow:
     population: float
     water_points: int
     functional_points: int
-    people_per_point: Optional[float]
+    people_per_point: float | None
     recent_functional_points: int
-    people_per_recent_point: Optional[float]
+    people_per_recent_point: float | None
     freshness: Freshness
     seasonal: SeasonalCoverage
     rank: int = 0
 
     @property
-    def staleness_gap_percent(self) -> Optional[float]:
+    def staleness_gap_percent(self) -> float | None:
         """How much worse coverage looks when only recent surveys count.
 
         A large gap is not a data-quality footnote: it is the share of this

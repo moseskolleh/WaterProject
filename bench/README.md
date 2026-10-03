@@ -102,8 +102,13 @@ against 3.5 s (IQR 0.45 to 0.67 s) with four, in alternating runs of
   the first run of a new session, a rerun of that session, and a rerun
   once every sample is loaded and the inversion and cost estimate have
   run (the rerun changes nothing, so it is the cost every later click
-  pays before its own work). Left out, with a message, when Streamlit is
-  not installed.
+  pays before its own work). That loaded rerun is timed on the Overview
+  (`rerun, every sample loaded and analysed`, the name the measure had
+  when it was the only one) and again on seven other pages (`rerun on
+  PAGE, every sample loaded`), each sample picked on its own page and the
+  page chosen as the sidebar navigation chooses it. Before PLAN.md step
+  1.1 every page ran on every rerun, so these were all one number. Left
+  out, with a message, when Streamlit is not installed.
 
 **`web.mjs`**, times in milliseconds and sizes in bytes, the median of
 3 cold runs. Each run is a fresh browser with an empty cache on a
@@ -156,6 +161,18 @@ rate 4) and DevTools' "Slow 4G" network (`Network.emulateNetworkConditions`:
   file being chosen to the last change the page makes to show the models.
   Before PLAN.md step 1.6 this inverted both soundings again; since, the
   file carries their inversions and it inverts nothing.
+- `autosave of 50 photos and 10 workbooks, main-thread time` (at 4x, and
+  `..., CPU unthrottled` at 1x) - PLAN.md step 1.3's project, built by
+  `tests/webapp/heavy.mjs` in a browser of its own: 50 canvas-drawn
+  JPEGs at the size the photo slots keep and 10 workbooks, about 20.6 MB
+  as JSON. Each of five autosaves follows one typed field; the number is
+  the median of their main-thread time, taken from a Chromium trace as
+  every main-thread task between the write being asked for and it being
+  stored or refused, clipped to that interval and summed. `..., first
+  write` is the write that stores the whole session. Before step 1.3
+  every one of these was the whole session stringified into
+  localStorage, and localStorage refused it for quota;
+  `options.autosave_stored` in the run says whether the writes went in.
 
 ## The committed baseline
 

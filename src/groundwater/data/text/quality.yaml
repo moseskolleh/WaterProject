@@ -1,0 +1,90 @@
+# The water quality report's recommendations, in the order the report gives
+# them. Both engines read this file: reporting/quality.py
+# quality_recommendations and gwt-docx.js qualityRecommendations. The
+# template rules are in src/groundwater/text.py; CONTRIBUTING.md says how to
+# add an entry.
+
+treat_health: >-
+  Treat or replace the source before it is used for drinking: health based
+  limits are exceeded for {parameters}.
+
+treat_national: >-
+  Treat before the supply is accepted against the national standard: national
+  limits are exceeded for {parameters}.
+
+# Advice for a parameter over its limit, keyed by the standards-table name
+# (normalise_parameter). It used to be matched by substring on the name as
+# written, so "Sulphate" got the pH advice for containing "ph".
+treatment_advice:
+  iron: >-
+    Iron above the acceptability value causes staining and metallic taste;
+    aeration followed by sand filtration or a simple oxidation filter normally
+    resolves it.
+  manganese: >-
+    Manganese requires oxidation and filtration (aeration or chlorination
+    followed by filtration); monitor infant exposure in the meantime.
+  e. coli: >-
+    Any E. coli detection calls for shock chlorination of the borehole,
+    verification of the sanitary seal and apron, and re-sampling before use.
+  total coliforms: >-
+    Coliform detection calls for disinfection of the borehole and pump, a
+    sanitary inspection of the wellhead, and re-sampling.
+  nitrate (as no3): &nitrate >-
+    Elevated nitrate usually indicates pollution from sanitation or
+    agriculture; investigate the sanitary protection zone. Do not give the
+    water to bottle fed infants until resolved.
+  nitrate (as n): *nitrate
+  nitrate + nitrite: *nitrate
+  fluoride: >-
+    Fluoride above 1.5 mg/L requires an alternative source or defluoridation
+    (bone char or activated alumina).
+  arsenic: >-
+    Arsenic above 0.01 mg/L requires an alternative source or specialised
+    removal; re-test to confirm before any use for drinking.
+  turbidity: >-
+    High turbidity interferes with disinfection; extend development of the
+    borehole and re-sample.
+
+# pH is out of range in one of two directions, and the advice differs: the
+# low-pH advice used to be given for a pH of 9.2.
+ph_low: >-
+  Low pH water is corrosive to metal fittings; a limestone contactor or careful
+  choice of corrosion resistant materials is advised.
+
+ph_high: >-
+  A pH above the acceptability range reduces the effectiveness of chlorine
+  disinfection and can give the water a bitter taste and deposit scale; confirm
+  the reading and set any chlorine dose to suit.
+
+# For a faecal pathogen found in the water, which has no table entry to key
+# advice by and used to get none under "Treat before use".
+pathogen: >-
+  A faecal pathogen in the water calls for shock chlorination of the borehole,
+  a sanitary inspection to find where the contamination enters, and re-sampling
+  for the pathogen and for E. coli before the supply is used for drinking.
+
+acceptability: >-
+  Acceptability limits are exceeded for {parameters}: simple treatment is
+  advisable if users complain of taste, odour or staining.
+
+# "No treatment is required" is a clearance, and a report whose verdict is
+# indeterminate has not established one: it says what is outstanding instead.
+# {outstanding} is the assessment's open questions, joined with "; " and
+# capitalised.
+not_cleared: >-
+  Do not treat this supply as safe to drink on these results. {outstanding}.
+  Resolve these and re-issue the assessment before any treatment decision is
+  taken.
+
+no_treatment: >-
+  No treatment is required on the basis of the parameters tested. Maintain the
+  sanitary seal and apron in good condition.
+
+after_maintenance: >-
+  Disinfect the borehole after any maintenance and re-test microbiological
+  quality before the source is returned to use.
+
+repeat_testing: >-
+  Repeat physico-chemical and bacteriological testing at least once a year,
+  and after any flooding, repair work on the wellhead or change in taste,
+  colour or odour.

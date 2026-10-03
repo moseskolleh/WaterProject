@@ -11,7 +11,7 @@ from __future__ import annotations
 import datetime
 import math
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 _NUMBER_RE = re.compile(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?")
 # a comma followed by exactly three digits that end the number is a thousands
@@ -128,7 +128,9 @@ def fmt_num(value, sig: int = 3, unit: str = "") -> str:
     Integers within tolerance print without a decimal part. ``None``
     or NaN prints as an em-dash free placeholder ``n/a``.
     """
-    if value is None or (isinstance(value, float) and not math.isfinite(value)):
+    # math.isfinite rather than a float check: a NaN out of a float32 array
+    # is not a float, and round() raised on it instead of printing n/a
+    if value is None or not math.isfinite(float(value)):
         return "n/a"
     v = round_sig(float(value), sig)
     if abs(v - round(v)) < 1e-9 and abs(v) < 1e15:
@@ -145,10 +147,7 @@ def fmt_range(a, b, unit: str = "m", sep: str = "-") -> str:
 
 def ordinal(n: int) -> str:
     """Return ``1st``, ``2nd``, ``3rd``, ``4th`` ... for ranking tables."""
-    if 10 <= n % 100 <= 20:
-        suffix = "th"
-    else:
-        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
     return f"{n}{suffix}"
 
 

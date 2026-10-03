@@ -10,7 +10,6 @@ metadata, negative drawdown and so on).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 import numpy as np
 
@@ -51,17 +50,17 @@ class SiteMetadata:
     district: str = ""
     country: str = "Sierra Leone"
     project_ref: str = ""
-    easting: Optional[float] = None
-    northing: Optional[float] = None
-    utm_zone: Optional[int] = None
-    elevation_m: Optional[float] = None
+    easting: float | None = None
+    northing: float | None = None
+    utm_zone: int | None = None
+    elevation_m: float | None = None
     date: str = ""
     supervisor: str = ""
     contractor: str = ""
     source: str = ""
 
     @property
-    def utm(self) -> Optional[UTMCoordinate]:
+    def utm(self) -> UTMCoordinate | None:
         if self.easting is None or self.northing is None:
             return None
         # A fixed fallback puts half the country in the Atlantic: the two
@@ -71,13 +70,13 @@ class SiteMetadata:
         return UTMCoordinate(self.easting, self.northing, zone)
 
     @property
-    def latlon(self) -> Optional[tuple[float, float]]:
+    def latlon(self) -> tuple[float, float] | None:
         utm = self.utm
         if utm is None:
             return None
         return utm_to_geographic(utm.easting, utm.northing, utm.zone)
 
-    def merged_with(self, other: "SiteMetadata") -> "SiteMetadata":
+    def merged_with(self, other: SiteMetadata) -> SiteMetadata:
         """Fill blank fields from another metadata record.
 
         A field is "blank" only when it is None or an empty string. A genuine
@@ -170,14 +169,14 @@ class LayeredModel:
 
     resistivities: np.ndarray  # ohm-m, length n
     thicknesses: np.ndarray  # m, length n-1
-    fit_error_percent: Optional[float] = None  # RMS misfit, like IPI2Win ERR
+    fit_error_percent: float | None = None  # RMS misfit, like IPI2Win ERR
     method: str = ""  # "ipi2win-import" | "damped-lsq" | ...
     sounding_id: str = ""
     #: Linearised 1-sigma multiplicative uncertainty of each thickness, set
     #: by the inversion that fitted the model (None for a transcribed one).
     #: It travels with the model so the interpretation can say a boundary
     #: is poorly resolved instead of reading the layer count as settled.
-    h_uncertainty_factor: Optional[np.ndarray] = None
+    h_uncertainty_factor: np.ndarray | None = None
 
     def __post_init__(self) -> None:
         self.resistivities = np.asarray(self.resistivities, dtype=float)
@@ -230,7 +229,7 @@ class PumpingStep:
     step_number: int
     time_min: np.ndarray  # minutes since the start of the whole test
     water_level_m: np.ndarray  # depth to water below datum
-    discharge_m3_per_h: Optional[float] = None  # None when missing on sheet
+    discharge_m3_per_h: float | None = None  # None when missing on sheet
     label: str = ""
 
     def __post_init__(self) -> None:
@@ -250,14 +249,14 @@ class PumpingTest:
     site: SiteMetadata
     borehole_ref: str = ""
     test_type: str = "step"  # "step" | "constant" | "constant+recovery"
-    static_water_level_m: Optional[float] = None
-    borehole_depth_m: Optional[float] = None
-    pump_setting_m: Optional[float] = None
-    step_length_min: Optional[float] = None
+    static_water_level_m: float | None = None
+    borehole_depth_m: float | None = None
+    pump_setting_m: float | None = None
+    step_length_min: float | None = None
     steps: list[PumpingStep] = field(default_factory=list)
-    recovery_time_min: Optional[np.ndarray] = None  # minutes since pump stop
-    recovery_level_m: Optional[np.ndarray] = None
-    pumping_duration_min: Optional[float] = None  # total pumping before recovery
+    recovery_time_min: np.ndarray | None = None  # minutes since pump stop
+    recovery_level_m: np.ndarray | None = None
+    pumping_duration_min: float | None = None  # total pumping before recovery
     flags: list[DataFlag] = field(default_factory=list)
     source: str = ""
 
@@ -282,7 +281,7 @@ class PumpingTest:
         order = np.argsort(t, kind="stable")
         return t[order], wl[order]
 
-    def residual_drawdown(self) -> Optional[np.ndarray]:
+    def residual_drawdown(self) -> np.ndarray | None:
         if self.recovery_level_m is None or self.static_water_level_m is None:
             return None
         return self.recovery_level_m - self.static_water_level_m
@@ -302,7 +301,7 @@ def step_durations_min(steps) -> tuple[list[float], list[int]]:
     """
     durations: list[float] = []
     restarted: list[int] = []
-    previous_end: Optional[float] = None
+    previous_end: float | None = None
     for step in steps:
         finite = step.time_min[np.isfinite(step.time_min)]
         if not len(finite):
@@ -331,7 +330,7 @@ def step_offsets_min(steps) -> list[float]:
     """
     offsets: list[float] = []
     shift = 0.0
-    previous_end: Optional[float] = None
+    previous_end: float | None = None
     for step in steps:
         finite = step.time_min[np.isfinite(step.time_min)]
         if not len(finite):
@@ -356,8 +355,8 @@ class LithologyInterval:
     description: str = ""
     from_time: str = ""
     to_time: str = ""
-    penetration_rate_m_per_min: Optional[float] = None
-    bit_diameter_in: Optional[float] = None
+    penetration_rate_m_per_min: float | None = None
+    bit_diameter_in: float | None = None
 
     @property
     def thickness_m(self) -> float:
@@ -368,11 +367,11 @@ class LithologyInterval:
 class DrillingLog:
     site: SiteMetadata
     borehole_ref: str = ""
-    total_depth_m: Optional[float] = None
+    total_depth_m: float | None = None
     drilling_method: str = ""
     intervals: list[LithologyInterval] = field(default_factory=list)
     water_strikes_m: list[float] = field(default_factory=list)
-    grouting_depth_m: Optional[float] = None
+    grouting_depth_m: float | None = None
     # The screens the crew actually set, when the sheet records them. With
     # these the drawing is an as-built record; without them it is a design
     # generated by the rules, and says so.
@@ -391,9 +390,9 @@ class DrillingLog:
 @dataclass
 class WaterQualityResult:
     parameter: str
-    value: Optional[float]
+    value: float | None
     unit: str = ""
-    detection_limit: Optional[float] = None
+    detection_limit: float | None = None
     below_detection: bool = False
     method: str = ""
     #: A lower bound on a result the laboratory did not quantify. ">50" is
@@ -402,7 +401,7 @@ class WaterQualityResult:
     #: finding. These used to be read as "not measured", so a sample with
     #: E. coli 0 and total coliforms TNTC came out as safe, and ">50" was
     #: read as exactly 50.
-    greater_than: Optional[float] = None
+    greater_than: float | None = None
     #: Whether the bound is itself a possible value: ">=50" and "50+" are at
     #: least 50, ">50" is more than 50. Against a limit of 50 the first is an
     #: open question and the second is an exceedance.
@@ -430,7 +429,7 @@ class WaterQualitySample:
     flags: list[DataFlag] = field(default_factory=list)
     source: str = ""
 
-    def get(self, parameter: str) -> Optional[WaterQualityResult]:
+    def get(self, parameter: str) -> WaterQualityResult | None:
         key = parameter.strip().lower()
         for r in self.results:
             if r.parameter.strip().lower() == key:

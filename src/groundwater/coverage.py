@@ -35,7 +35,7 @@ import io
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
+from collections.abc import Iterable
 
 import numpy as np
 
@@ -92,7 +92,7 @@ class ChiefdomPoly:
     holes: list[list[np.ndarray]] = field(default_factory=list)
 
 
-def _chiefdom_index(polys: list["ChiefdomPoly"]) -> RingIndex:
+def _chiefdom_index(polys: list[ChiefdomPoly]) -> RingIndex:
     """Ring index over chiefdom polygons, reusing the bounding boxes they carry.
 
     The containment test, enclaves included, is ``groundwater._geometry``'s,

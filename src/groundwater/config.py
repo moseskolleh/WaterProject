@@ -13,6 +13,17 @@ from pathlib import Path
 
 import yaml
 
+from ._resources import bundled_json
+
+# The default of every setting below is in data/defaults.json, which the
+# browser reads too (web/build_webapp_data.py emits it into gwt-data.js), so
+# the two apps cannot start from different numbers. The fields, their types
+# and the reasons for each value stay here.
+_DEFAULTS = bundled_json("defaults.json")
+_STYLE, _VES, _PUMPING, _DESIGN = (
+    _DEFAULTS["style"], _DEFAULTS["ves"], _DEFAULTS["pumping"], _DEFAULTS["design"],
+)
+
 
 # ---------------------------------------------------------------------------
 # House style (figures and reports)
@@ -20,17 +31,17 @@ import yaml
 
 @dataclass
 class HouseStyle:
-    accent_color: str = "#1F5C8B"  # muted blue used for headings and curves
-    secondary_color: str = "#C15A2A"  # burnt orange for model/overlay lines
-    neutral_color: str = "#4D4D4D"
-    background: str = "#FFFFFF"
-    font_name: str = "Calibri"
-    base_font_size_pt: float = 11.0
-    figure_dpi: int = 200
-    figure_width_in: float = 6.3  # fits A4 with 2.5 cm margins
-    organisation: str = ""
-    organisation_details: str = ""
-    logo_path: str = ""  # optional logo for report headers
+    accent_color: str = _STYLE["accent_color"]  # muted blue used for headings and curves
+    secondary_color: str = _STYLE["secondary_color"]  # burnt orange for model/overlay lines
+    neutral_color: str = _STYLE["neutral_color"]
+    background: str = _STYLE["background"]
+    font_name: str = _STYLE["font_name"]
+    base_font_size_pt: float = _STYLE["base_font_size_pt"]
+    figure_dpi: int = _STYLE["figure_dpi"]
+    figure_width_in: float = _STYLE["figure_width_in"]  # fits A4 with 2.5 cm margins
+    organisation: str = _STYLE["organisation"]
+    organisation_details: str = _STYLE["organisation_details"]
+    logo_path: str = _STYLE["logo_path"]  # optional logo for report headers
 
 
 # ---------------------------------------------------------------------------
@@ -39,24 +50,24 @@ class HouseStyle:
 
 @dataclass
 class VESConfig:
-    max_layers: int = 4
-    min_layers: int = 2
-    target_fit_percent: float = 10.0  # accept the simplest model under this
+    max_layers: int = _VES["max_layers"]
+    min_layers: int = _VES["min_layers"]
+    target_fit_percent: float = _VES["target_fit_percent"]  # accept the simplest model under this
     # ...but only while no richer model more than halves its misfit. A
     # two-layer model can sit just under the target while a three-layer one
     # fits the same curve an order of magnitude better and puts basement at
     # 65 m instead of 4 m - the difference between drilling into the aquifer
     # and stopping in the regolith.
-    parsimony_max_error_ratio: float = 2.0
-    damping: float = 0.02
-    max_iterations: int = 60
+    parsimony_max_error_ratio: float = _VES["parsimony_max_error_ratio"]
+    damping: float = _VES["damping"]
+    max_iterations: int = _VES["max_iterations"]
     # hydrogeological interpretation thresholds (ohm-m), crystalline basement
-    fresh_basement_min_rho: float = 3000.0
-    fractured_zone_rho: tuple = (20.0, 800.0)  # likely water bearing when saturated
-    clay_max_rho: float = 20.0
-    laterite_min_rho: float = 800.0  # dry laterite / duricrust near surface
-    max_drilling_margin_m: float = 10.0  # added below deepest target zone
-    round_drilling_depth_to_m: float = 5.0
+    fresh_basement_min_rho: float = _VES["fresh_basement_min_rho"]
+    fractured_zone_rho: tuple = tuple(_VES["fractured_zone_rho"])  # likely water bearing when saturated
+    clay_max_rho: float = _VES["clay_max_rho"]
+    laterite_min_rho: float = _VES["laterite_min_rho"]  # dry laterite / duricrust near surface
+    max_drilling_margin_m: float = _VES["max_drilling_margin_m"]  # added below deepest target zone
+    round_drilling_depth_to_m: float = _VES["round_drilling_depth_to_m"]
     # Depth of investigation as a fraction of the largest current-electrode
     # half-spacing AB/2. A Schlumberger sounding resolves the ground to about
     # a half to a third of its largest AB/2 (Roy and Apparao 1971; Barker
@@ -64,26 +75,26 @@ class VESConfig:
     # interpretation, every figure and the drilling-depth cap reach: an 80 m
     # spread used to put a "water zone" and a drilling depth at 80 m, which
     # was the array length and nothing the data had seen.
-    depth_of_investigation_factor: float = 0.5
+    depth_of_investigation_factor: float = _VES["depth_of_investigation_factor"]
     # When no candidate model reaches the target, the simplest model whose
     # misfit is within this ratio of the best fit is kept: extra layers must
     # earn their keep. It used to be an undocumented constant in the search.
-    parsimony_fallback_ratio: float = 1.15
+    parsimony_fallback_ratio: float = _VES["parsimony_fallback_ratio"]
     # A misfit above the target is flagged as poor; above this it is
     # unreliable and the layer depths are indicative only. IPI2Win users
     # read ERR above about 10 percent as a poor fit and above 20 as one
     # that does not describe the curve.
-    unreliable_fit_percent: float = 20.0
+    unreliable_fit_percent: float = _VES["unreliable_fit_percent"]
     # Confidence weights applied to a point's suitability when ranking. A
     # fit at the target keeps 1.0 and one at the unreliable level keeps the
     # floor; a conductive half-space whose base the sounding never reached
     # is discounted because its thickness is unknown, not measured.
-    fit_confidence_floor: float = 0.5
-    unresolved_basement_confidence: float = 0.85
+    fit_confidence_floor: float = _VES["fit_confidence_floor"]
+    unresolved_basement_confidence: float = _VES["unresolved_basement_confidence"]
     # Two points whose confidence-weighted suitabilities differ by less than
     # this are indistinguishable on geophysical grounds, and the report says
     # so instead of printing 1st and 2nd.
-    ranking_tie_points: float = 3.0
+    ranking_tie_points: float = _VES["ranking_tie_points"]
 
 
 # ---------------------------------------------------------------------------
@@ -92,27 +103,27 @@ class VESConfig:
 
 @dataclass
 class PumpingConfig:
-    safety_factor: float = 1.5  # applied to long term yield, stated in reports
-    design_period_days: float = 365.0  # projection horizon for safe yield
-    available_drawdown_fraction: float = 0.7  # usable share of available drawdown
-    pump_clearance_above_screen_m: float = 1.0
-    pump_submergence_min_m: float = 3.0  # minimum water column above pump
-    seasonal_allowance_m: float = 2.0  # dry season decline allowance
-    cooper_jacob_u_max: float = 0.05  # validity criterion for straight line fit
+    safety_factor: float = _PUMPING["safety_factor"]  # applied to long term yield, stated in reports
+    design_period_days: float = _PUMPING["design_period_days"]  # projection horizon for safe yield
+    available_drawdown_fraction: float = _PUMPING["available_drawdown_fraction"]  # usable share of available drawdown
+    pump_clearance_above_screen_m: float = _PUMPING["pump_clearance_above_screen_m"]
+    pump_submergence_min_m: float = _PUMPING["pump_submergence_min_m"]  # minimum water column above pump
+    seasonal_allowance_m: float = _PUMPING["seasonal_allowance_m"]  # dry season decline allowance
+    cooper_jacob_u_max: float = _PUMPING["cooper_jacob_u_max"]  # validity criterion for straight line fit
     # A late-time slope below what a dipper can resolve (2 cm per log cycle)
     # is reading noise or a level that has stabilised, and 2.303 Q / (4 pi
     # slope) turns it into a transmissivity of thousands of m2/day that no
     # basement borehole has. The fit is refused rather than reported.
-    cooper_jacob_min_slope_m: float = 0.02  # m per log cycle
-    cooper_jacob_min_r2: float = 0.8  # the line has to explain the window
+    cooper_jacob_min_slope_m: float = _PUMPING["cooper_jacob_min_slope_m"]  # m per log cycle
+    cooper_jacob_min_r2: float = _PUMPING["cooper_jacob_min_r2"]  # the line has to explain the window
     # Fits below this R squared are passed over when choosing which
     # transmissivity the yield rests on (recovery first, then Cooper-Jacob,
     # then Theis, which is a curve fit with no R squared and always eligible).
-    min_fit_r_squared: float = 0.8
+    min_fit_r_squared: float = _PUMPING["min_fit_r_squared"]
     # A test shorter than this is projected over several log cycles of time
     # to reach the design period, so its yield is flagged as indicative.
-    min_constant_test_min: float = 240.0  # pumped duration of a constant test
-    min_step_length_min: float = 60.0  # length of each step in a step test
+    min_constant_test_min: float = _PUMPING["min_constant_test_min"]  # pumped duration of a constant test
+    min_step_length_min: float = _PUMPING["min_step_length_min"]  # length of each step in a step test
     # Casing storage. Early in a test the pump empties the water standing in
     # the casing before the aquifer supplies much of anything, and the
     # drawdown fits see the borehole emptying rather than the ground. Schafer
@@ -121,19 +132,19 @@ class PumpingConfig:
     # and m3/h per m is the constant CASING_STORAGE_COEFFICIENT in
     # hydraulics.analysis. The diameters default to the design rules' casing
     # and a 1.25 inch riser; a sheet that records neither uses them.
-    casing_diameter_in: float = 5.0
-    riser_diameter_in: float = 1.25
+    casing_diameter_in: float = _PUMPING["casing_diameter_in"]
+    riser_diameter_in: float = _PUMPING["riser_diameter_in"]
     # A recovery line that does not pass near the origin is not a Theis
     # recovery line: theory has s' = 0 at t/t' = 1, and an intercept that is
     # a large fraction of the drawdown the recovery started from says the
     # residual drawdown is dominated by something the method does not model
     # (casing storage, a rising static level, a wrong pumping time). Such a
     # fit is reported, but not adopted for the yield.
-    recovery_intercept_max_fraction: float = 0.25
+    recovery_intercept_max_fraction: float = _PUMPING["recovery_intercept_max_fraction"]
     # A Theis fit whose storativity comes out above this is fitting the
     # casing, not the aquifer: no aquifer has a storage coefficient of 0.18,
     # and a single pumped well cannot resolve S anyway.
-    max_plausible_storativity: float = 0.1
+    max_plausible_storativity: float = _PUMPING["max_plausible_storativity"]
 
 
 # ---------------------------------------------------------------------------
@@ -143,28 +154,28 @@ class PumpingConfig:
 
 @dataclass
 class DesignRules:
-    borehole_diameter_in: float = 6.5  # drilled diameter
-    casing_diameter_in: float = 5.0  # uPVC production casing
-    casing_material: str = "uPVC"
-    screen_slot_mm: float = 0.75
-    screen_length_default_m: float = 9.0
+    borehole_diameter_in: float = _DESIGN["borehole_diameter_in"]  # drilled diameter
+    casing_diameter_in: float = _DESIGN["casing_diameter_in"]  # uPVC production casing
+    casing_material: str = _DESIGN["casing_material"]
+    screen_slot_mm: float = _DESIGN["screen_slot_mm"]
+    screen_length_default_m: float = _DESIGN["screen_length_default_m"]
     # Cement grout from the surface. This is the one number: the bundled
     # RWSN checklist's critical item ("sanitary seal in the top 6 m") and the
     # costing's cement quantity both follow it, so a supervisor applying the
     # toolkit's own checklist to the toolkit's own drawing no longer has to
     # answer No, and the BoQ no longer prices a 15 m seal the drawing did not
     # show.
-    sanitary_seal_depth_m: float = 6.0
-    gravel_pack_above_top_screen_m: float = 2.0
-    gravel_pack_material: str = "well sorted siliceous gravel, 2-4 mm"
-    sump_length_m: float = 2.0  # plain casing below the lowest screen
-    stickup_m: float = 0.5  # casing stick-up above ground
-    min_screen_below_swl_m: float = 5.0  # keep screens well below static level
-    apron_note: str = "concrete apron with drainage channel and soakaway"
+    sanitary_seal_depth_m: float = _DESIGN["sanitary_seal_depth_m"]
+    gravel_pack_above_top_screen_m: float = _DESIGN["gravel_pack_above_top_screen_m"]
+    gravel_pack_material: str = _DESIGN["gravel_pack_material"]
+    sump_length_m: float = _DESIGN["sump_length_m"]  # plain casing below the lowest screen
+    stickup_m: float = _DESIGN["stickup_m"]  # casing stick-up above ground
+    min_screen_below_swl_m: float = _DESIGN["min_screen_below_swl_m"]  # keep screens well below static level
+    apron_note: str = _DESIGN["apron_note"]
     # A fracture zone the driller names with its depths ("fracture zone
     # 49-52 m") is screened with this much plain screen either side of it,
     # rather than the whole logged interval it was written on.
-    fracture_zone_margin_m: float = 1.0
+    fracture_zone_margin_m: float = _DESIGN["fracture_zone_margin_m"]
 
 
 # ---------------------------------------------------------------------------
@@ -199,7 +210,7 @@ class Config:
     design: DesignRules = field(default_factory=DesignRules)
 
     @classmethod
-    def load(cls, path: str | Path | None = None) -> "Config":
+    def load(cls, path: str | Path | None = None) -> Config:
         """Load configuration, overlaying a YAML file if provided."""
         cfg = cls()
         if path is None:
@@ -207,7 +218,7 @@ class Config:
         path = Path(path)
         if not path.exists():
             return cfg
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             data = yaml.safe_load(fh) or {}
         for section_name, section in (
             ("style", cfg.style),

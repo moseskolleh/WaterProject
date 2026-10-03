@@ -29,7 +29,7 @@ for it.
 from __future__ import annotations
 
 import functools
-from typing import Iterable
+from collections.abc import Iterable
 
 from ..geo import infer_zone_for_sierra_leone, utm_distance_m, utm_to_geographic
 from ..models import DataFlag, SiteMetadata

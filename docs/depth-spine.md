@@ -71,7 +71,7 @@ src/groundwater/depth_spine/
   projects.py                       loads the bundled samples via normal ingestion
   __init__.py                       the component wrapper
 
-app/streamlit_app.py                the Depth Spine page and the round-trip
+app/views/depth_spine.py            the Depth Spine page and the round-trip
 tests/test_depth_spine.py           payload, override and clipping behaviour
 ```
 
@@ -129,7 +129,7 @@ Three, all small and additive:
    no longer requires either build — the component is declared on first use —
    so the demo can import it and use the static path.
 
-3. **`_next_step` in `app/streamlit_app.py`** takes an optional `key`. It
+3. **`_next_step` in `app/shared.py`** takes an optional `key`. It
    derived the widget key from the destination page alone, so two pages routing
    to the same next page collided; the Depth Spine and Borehole design pages both
    lead to Costing & BoQ.

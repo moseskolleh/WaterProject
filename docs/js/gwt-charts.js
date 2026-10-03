@@ -14,6 +14,7 @@
 (function (global) {
   'use strict';
 
+  /** @type {GWTNamespace} */
   var GWT = global.GWT || (global.GWT = {});
   var S = GWT.support;
   var C = GWT.core;
@@ -457,7 +458,7 @@
         y: f.margin.top + f.plotH - boxH + 6, cx: 1, cy: 1 },
     ];
     if (!points || !points.length) return corners[0];
-    var best = null;
+    var best = /** @type {{corner: any, hits: number}|null} */ (null);
     corners.forEach(function (corner) {
       var x0 = corner.x - 10, x1 = x0 + boxW + 14;
       var y0 = corner.y - 16, y1 = y0 + boxH + 8;
@@ -544,7 +545,7 @@
       var pt = f.svg.createSVGPoint();
       pt.x = event.clientX; pt.y = event.clientY;
       var local = pt.matrixTransform(f.svg.getScreenCTM().inverse());
-      var best = null;
+      var best = /** @type {{d: number, point: any, series: any}|null} */ (null);
       series.forEach(function (s) {
         s.points.forEach(function (point) {
           var d = Math.abs(point.px - local.x);
@@ -842,7 +843,7 @@
     var p = f.palette;
 
     /* the fitted line, drawn across the whole plot so its slope is readable */
-    var xLo = f.fx.domainLo, dom = padDomain(t.concat([cj.intercept_t0_min]), true);
+    var dom = padDomain(t.concat([cj.intercept_t0_min]), true);
     var lineX = [dom[0], dom[1]];
     f.plot.appendChild(polyline(lineX.map(function (x) {
       return [f.fx(x), f.fy(cj.slope_m_per_log_cycle *
@@ -3268,7 +3269,6 @@
       legend = layoutFor(legendItems);
       rect = frameFor(heightOf(legend));
     }
-    var legendH = heightOf(legend);
 
     var svg = svgEl('svg', {
       viewBox: '0 0 ' + width + ' ' + height, width: '100%', xmlns: NS,
@@ -4551,7 +4551,6 @@
       yLabel: 'Depth (m)', yDown: true, grid: false,
       xDomain: [0, 1], yDomain: [0, depthMax], xTicks: [],
     });
-    var p = f.palette;
     var range = C.rhoColourRange([model]);
 
     model.resistivities.forEach(function (rho, i) {
@@ -5348,6 +5347,7 @@
    * same place mirrored to the left, which is where a label that ran off
    * the right-hand edge used to be flipped to. */
   var LABEL_SLOTS = (function () {
+    /** @type {Array<*>} */
     var slots = [null, 'flip'];
     var angles = [30, 150, -30, -150, 90, -90, 0, 180];
     for (var a = -170; a < 180; a += 10) {

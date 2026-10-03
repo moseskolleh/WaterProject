@@ -302,7 +302,7 @@ class AssetEvent:
     photo: str = ""          # a data URL or a path; opaque here
     event_id: str = ""
 
-    def identified_for(self, asset_id: str) -> "AssetEvent":
+    def identified_for(self, asset_id: str) -> AssetEvent:
         """A copy carrying its content-derived id."""
         return AssetEvent(
             when=self.when, kind=self.kind, note=self.note, by=self.by,
@@ -413,7 +413,7 @@ class Asset:
         place = self.community or "(unnamed site)"
         return f"{place} ({self.district})" if self.district else place
 
-    def with_events(self, *streams) -> "Asset":
+    def with_events(self, *streams) -> Asset:
         """A copy carrying the merged union of this asset's events and more."""
         return Asset(**{**self.__dict__,
                         "events": merge_events(self.asset_id, self.events,

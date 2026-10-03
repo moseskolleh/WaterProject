@@ -14,3 +14,10 @@ secondaryBackgroundColor = "#141414"
 
 [browser]
 gatherUsageStats = false
+
+[global]
+# app/state.py keeps a widget's value while its page is off screen by writing
+# the value back to itself on every run, Streamlit's documented way of doing
+# it. Streamlit logs a warning, with a stack trace, the first time a widget
+# with a default is drawn from such a value; here that is by design.
+disableWidgetStateDuplicationWarning = true

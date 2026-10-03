@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field, replace
-from typing import Optional
 
 import numpy as np
 from scipy.optimize import curve_fit
@@ -95,7 +94,7 @@ class CooperJacobResult:
     transmissivity_m2_per_day: float
     slope_m_per_log_cycle: float
     intercept_t0_min: float  # time where the fitted line crosses s = 0
-    storativity: Optional[float]  # only when an observation distance is given
+    storativity: float | None  # only when an observation distance is given
     fit_window_min: tuple[float, float]
     n_points: int
     r_squared: float
@@ -160,21 +159,21 @@ class StepTestResult:
 
 @dataclass
 class YieldRecommendation:
-    specific_capacity_m3hr_per_m: Optional[float]
-    available_drawdown_m: Optional[float]
-    usable_drawdown_m: Optional[float]
-    projected_drawdown_m: Optional[float]
-    long_term_yield_m3_per_h: Optional[float]
-    safe_yield_m3_per_h: Optional[float]
+    specific_capacity_m3hr_per_m: float | None
+    available_drawdown_m: float | None
+    usable_drawdown_m: float | None
+    projected_drawdown_m: float | None
+    long_term_yield_m3_per_h: float | None
+    safe_yield_m3_per_h: float | None
     safety_factor: float
     design_period_days: float
-    pump_installation_depth_m: Optional[float]
+    pump_installation_depth_m: float | None
     basis: str  # narrative of how the recommendation was derived
     pending_reason: str = ""  # non-empty when discharge or SWL is missing
     # plausible range of the safe yield over the assumptions it rests on
     # (transmissivity, storativity, effective radius, seasonal allowance)
-    safe_yield_low_m3_per_h: Optional[float] = None
-    safe_yield_high_m3_per_h: Optional[float] = None
+    safe_yield_low_m3_per_h: float | None = None
+    safe_yield_high_m3_per_h: float | None = None
     envelope_basis: str = ""
     # "established" or "indicative", with the reasons in the reader's words:
     # a short test, a test inside its casing-storage period, a transmissivity
@@ -188,7 +187,7 @@ class YieldRecommendation:
     # how the pump intake depth was arrived at, and the deepest level the test
     # itself reached
     pump_depth_basis: str = ""
-    deepest_pumping_level_m: Optional[float] = None
+    deepest_pumping_level_m: float | None = None
 
     @property
     def is_indicative(self) -> bool:
@@ -232,13 +231,13 @@ class YieldRecommendation:
 @dataclass
 class PumpingTestAnalysis:
     test: PumpingTest
-    cooper_jacob: Optional[CooperJacobResult] = None
-    theis: Optional[TheisResult] = None
-    recovery: Optional[RecoveryResult] = None
-    step_test: Optional[StepTestResult] = None
-    yield_recommendation: Optional[YieldRecommendation] = None
-    stabilised_level_m: Optional[float] = None
-    max_drawdown_m: Optional[float] = None
+    cooper_jacob: CooperJacobResult | None = None
+    theis: TheisResult | None = None
+    recovery: RecoveryResult | None = None
+    step_test: StepTestResult | None = None
+    yield_recommendation: YieldRecommendation | None = None
+    stabilised_level_m: float | None = None
+    max_drawdown_m: float | None = None
     flags: list[DataFlag] = field(default_factory=list)
     # The R squared a straight-line fit has to reach before its transmissivity
     # is adopted. Copied from PumpingConfig by analyse_pumping_test, because the
@@ -257,7 +256,7 @@ class PumpingTestAnalysis:
     # How long casing storage controls the drawdown in this borehole, from
     # the casing and riser diameters and the specific capacity. None when
     # there is no specific capacity to compute it from.
-    casing_storage_min: Optional[float] = None
+    casing_storage_min: float | None = None
 
     def fits(self) -> list[tuple[str, object]]:
         """Every method that fitted, in order of preference.
@@ -275,7 +274,7 @@ class PumpingTestAnalysis:
             if result is not None
         ]
 
-    def adopted_fit(self) -> tuple[Optional[str], Optional[object], bool]:
+    def adopted_fit(self) -> tuple[str | None, object | None, bool]:
         """``(method, result, qualifies)`` for the transmissivity the yield rests on.
 
         The first method in order of preference whose straight line reaches
@@ -324,12 +323,12 @@ class PumpingTestAnalysis:
         return ""
 
     @property
-    def transmissivity_source(self) -> Optional[str]:
+    def transmissivity_source(self) -> str | None:
         """``"recovery" | "cooper_jacob" | "theis"``, or None when nothing fitted."""
         return self.adopted_fit()[0]
 
     @property
-    def transmissivity_m2_per_day(self) -> Optional[float]:
+    def transmissivity_m2_per_day(self) -> float | None:
         """The transmissivity the yield recommendation rests on."""
         result = self.adopted_fit()[1]
         return result.transmissivity_m2_per_day if result is not None else None
@@ -338,6 +337,23 @@ class PumpingTestAnalysis:
 # ---------------------------------------------------------------------------
 # Individual methods
 # ---------------------------------------------------------------------------
+
+#: A fitted slope this close to zero, in metres per log cycle, is rounding in
+#: the fit and not a direction: readings are taken to the centimetre.
+SLOPE_ROUNDING_M = 1e-9
+
+#: What a dipper reads to. A drawdown whose fitted line moves by less than
+#: this across all its readings cannot be told from one that does not move.
+READING_RESOLUTION_M = 0.01
+
+#: A Theis storativity below this has not been fitted: the optimiser has run
+#: down a valley towards the smallest number a float can hold, and stopped
+#: where u = r^2 S / (4 T t) underflowed, which is a different place in each
+#: engine. The floor sits far enough above that (2.2e-308) for u to stay a
+#: normal number on any test, and below the 1e-256 that a genuine valley
+#: floor reached (regressions/pumping-theis-long-valley.json).
+THEIS_STORATIVITY_FLOOR = 1e-280
+
 
 def _line_fit(x: np.ndarray, y: np.ndarray) -> tuple[float, float, float]:
     """Least squares line with r^2."""
@@ -406,7 +422,12 @@ def cooper_jacob(
         window = (t >= fit_window_min[0]) & (t <= fit_window_min[1])
 
     slope, intercept, r2 = _line_fit(np.log10(t[window]), s[window])
-    if slope <= 0:
+    # A window of one level has a slope of zero give or take rounding, and
+    # which side of zero the rounding falls differs between lstsq and the
+    # browser's closed form: the same sheet was "does not increase" here and
+    # "flat (0.000 m per log cycle)" there. Only a slope clearly below zero
+    # is a falling drawdown; one within rounding of it is a flat one.
+    if slope < -SLOPE_ROUNDING_M:
         raise ValueError(
             "Drawdown does not increase with log time; Cooper-Jacob does not apply"
         )
@@ -416,7 +437,7 @@ def cooper_jacob(
     if slope < config.cooper_jacob_min_slope_m:
         raise ValueError(
             f"The fitted window {fit_window_min[0]:g}-{fit_window_min[1]:g} min "
-            f"is flat ({slope:.3f} m per log cycle, under "
+            f"is flat ({max(slope, 0.0):.3f} m per log cycle, under "
             f"{config.cooper_jacob_min_slope_m:g} m): the drawdown has stabilised "
             "or the slope is below reading resolution, so Cooper-Jacob does not "
             "apply"
@@ -490,6 +511,19 @@ def theis_fit(
 
     ``s = Q / (4 pi T) W(u)``, ``u = r^2 S / (4 T t)``. Fitting is done
     in log parameter space to keep T and S positive.
+
+    A drawdown that does not grow with log time is refused: on a flat record
+    the least squares has no minimum, T runs off towards infinity and S
+    towards zero, and the transmissivity reported is wherever the optimiser
+    stopped. That was a storativity of 1e-316 beside thousands of m2/day
+    adopted at established confidence, and a different number in each
+    engine. The test is the reading resolution across the whole record, not
+    the 0.02 m per log cycle ``cooper_jacob`` asks of its late window: a
+    handpump rate in an aquifer of a few hundred m2/day draws down 1 to 2 cm
+    a log cycle, and over three log cycles of readings the curve still
+    returns T to within a few percent. A fit that drives S to the floor is
+    refused for the same reason as a flat record: the drawdown is nearly all
+    an offset the curve does not model, such as well loss.
     """
     _require_discharge(discharge_m3_per_h)
     t = np.asarray(time_min, dtype=float) / MIN_PER_DAY
@@ -498,6 +532,18 @@ def theis_fit(
     t, s = t[keep], s[keep]
     if len(t) < 5:
         raise ValueError("Not enough readings for a Theis fit")
+    log_t = np.log10(t)
+    rise = _line_fit(log_t, s)[0] * float(log_t.max() - log_t.min())
+    if rise < READING_RESOLUTION_M:
+        # The rise itself is not printed: on a flat record it is a few parts
+        # in 1e17 either side of zero, and its sign is noise.
+        raise ValueError(
+            f"The drawdown rises by less than {READING_RESOLUTION_M:g} m across "
+            "the readings, which a dipper cannot tell from a level that holds, "
+            "so T and S cannot be fitted to it: the aquifer gives this discharge "
+            "with next to no drawdown, which a higher rate would measure, or "
+            "recharge holds the level"
+        )
     q_day = discharge_m3_per_h * 24.0
 
     def model(tt, logT, logS):
@@ -510,9 +556,22 @@ def theis_fit(
     slope0 = max((s[-1] - s[len(s) // 2]) / max(np.log10(t[-1] / t[len(s) // 2]), 0.3), 0.1)
     T0 = 2.303 * q_day / (4.0 * math.pi * slope0)
     p0 = (math.log10(max(T0, 1e-2)), -3.0)
-    popt, _ = curve_fit(model, t, s, p0=p0, maxfev=20000)
+    # To the bottom of the valley rather than curve_fit's default 1.5e-8
+    # relative change in the misfit. Where the misfit is flat along the
+    # valley floor that default stopped a sheet's fit 1.1e-4 short of its
+    # minimum in T (9.7877 m2/day for 9.7866), and the browser, which runs
+    # until no step helps, reported the minimum itself.
+    popt, _ = curve_fit(model, t, s, p0=p0, maxfev=20000, ftol=1e-12, xtol=1e-12)
     T = 10.0 ** popt[0]
     S = 10.0 ** popt[1]
+    if not S >= THEIS_STORATIVITY_FLOOR:
+        # S is not printed either: it is wherever each optimiser stopped on
+        # its way to underflow, 9e-320 here and another number in the browser.
+        raise ValueError(
+            f"The Theis fit drives the storativity below {THEIS_STORATIVITY_FLOOR:g}: "
+            "the drawdown is nearly all an offset the Theis curve does not "
+            "model, such as well loss, so T and S cannot be fitted to it"
+        )
     rmse = float(np.sqrt(np.mean((model(t, *popt) - s) ** 2)))
     return TheisResult(
         transmissivity_m2_per_day=T,
@@ -551,10 +610,22 @@ def theis_recovery(
     tp, sp = tp[keep], sp[keep]
     if len(tp) < 4:
         raise ValueError("Not enough recovery readings")
-    ratio = (pumping_duration_min + tp) / tp
-    slope, intercept, r2 = _line_fit(np.log10(ratio), sp)
-    if slope <= 0:
+    log_ratio = np.log10((pumping_duration_min + tp) / tp)
+    slope, intercept, r2 = _line_fit(log_ratio, sp)
+    if slope < -SLOPE_ROUNDING_M:
         raise ValueError("Residual drawdown does not decrease; check the data")
+    # A recovery that has already finished is flat against log(t/t'), its
+    # slope rounding noise, and 2.303 Q / (4 pi slope) turned that into
+    # 6e16 m2/day here and 4e17 in the browser. The line is refused when it
+    # falls by less than a dipper reads across the recovery readings, as a
+    # Theis fit is; a slow but readable recovery, 1.5 cm a log cycle from a
+    # handpump in an aquifer of 300 m2/day, still gives its transmissivity.
+    if slope * float(log_ratio.max() - log_ratio.min()) < READING_RESOLUTION_M:
+        raise ValueError(
+            f"The residual drawdown falls by less than {READING_RESOLUTION_M:g} m "
+            "across the recovery readings, which a dipper cannot tell from a "
+            "recovery already complete, so no transmissivity is read from it"
+        )
     q_day = discharge_m3_per_h * 24.0
     T = 2.303 * q_day / (4.0 * math.pi * slope)
     start = float(np.nanmax(sp))
@@ -572,7 +643,7 @@ def theis_recovery(
     )
 
 
-def equivalent_pumping_time_min(test: PumpingTest) -> tuple[Optional[float], bool]:
+def equivalent_pumping_time_min(test: PumpingTest) -> tuple[float | None, bool]:
     """``(minutes, is_equivalent)``: the pumping time a recovery is read against.
 
     Theis recovery assumes one rate for the whole pumping time. After a step
@@ -604,8 +675,8 @@ def equivalent_pumping_time_min(test: PumpingTest) -> tuple[Optional[float], boo
 
 
 def casing_storage_min(
-    specific_capacity_m3h_per_m: Optional[float], config: PumpingConfig | None = None
-) -> Optional[float]:
+    specific_capacity_m3h_per_m: float | None, config: PumpingConfig | None = None
+) -> float | None:
     """How long casing storage controls the drawdown, in minutes.
 
     Early in a test the pump takes water standing in the casing before it
@@ -627,7 +698,7 @@ def casing_storage_min(
     return CASING_STORAGE_COEFFICIENT * area / specific_capacity_m3h_per_m
 
 
-def deepest_pumping_level(test: PumpingTest) -> Optional[float]:
+def deepest_pumping_level(test: PumpingTest) -> float | None:
     """The deepest water level any pumping step reached, metres below datum."""
     levels = [
         float(np.nanmax(s.water_level_m))
@@ -637,10 +708,14 @@ def deepest_pumping_level(test: PumpingTest) -> Optional[float]:
     return max(levels) if levels else None
 
 
+#: Step discharges closer than this, relatively, are one rate written two ways.
+SAME_RATE_RTOL = 1e-6
+
+
 def hantush_bierschenk(
     step_discharges_m3_per_h: list[float],
     step_end_drawdowns_m: list[float],
-    step_numbers: Optional[list[int]] = None,
+    step_numbers: list[int] | None = None,
 ) -> StepTestResult:
     """Hantush-Bierschenk analysis of a step drawdown test.
 
@@ -657,6 +732,18 @@ def hantush_bierschenk(
     s = np.asarray(step_end_drawdowns_m, dtype=float)
     if len(q) < 2:
         raise ValueError("A step test needs at least two steps with discharge")
+    # Steps pumped at one rate put every point of s/Q against Q on one
+    # vertical line, which any B and C fit: lstsq returned its minimum-norm
+    # split and the browser all aquifer loss, and both reported efficiencies.
+    # "One rate" is to a part in a million, not to the last bit: 88 L/min
+    # converts to 5.279999999999999 m3/h beside a 5.28 typed in m3/h, and
+    # that ulp made the line merely near-vertical, which is no better.
+    if float(np.ptp(q)) <= SAME_RATE_RTOL * float(np.max(np.abs(q))):
+        raise ValueError(
+            f"Every step was pumped at {step_discharges_m3_per_h[0]:g} m3/h, so the "
+            "aquifer and well losses cannot be told apart; a step test needs "
+            "steps at different discharges"
+        )
     sq = s / q
     C, B, r2 = _line_fit(q, sq)
     fit_note = ""
@@ -750,8 +837,8 @@ def _no_usable_drawdown_reason(test: PumpingTest, config: PumpingConfig) -> str:
 
 def recommend_yield(
     test: PumpingTest,
-    transmissivity: Optional[float],
-    step_result: Optional[StepTestResult],
+    transmissivity: float | None,
+    step_result: StepTestResult | None,
     config: PumpingConfig | None = None,
     assumed_storativity: float = 1e-3,
     effective_radius_m: float = 0.1,
@@ -1016,7 +1103,7 @@ _ENVELOPE_SEASONAL_M = (1.0, 4.0)
 
 
 def attach_yield_envelope(
-    analysis: "PumpingTestAnalysis", config: PumpingConfig | None = None
+    analysis: PumpingTestAnalysis, config: PumpingConfig | None = None
 ) -> None:
     """Fill the safe-yield band on ``analysis.yield_recommendation``.
 
@@ -1086,7 +1173,7 @@ def attach_yield_envelope(
     )
 
 
-def pump_intake_depth(analysis, seasonal=None) -> tuple[Optional[float], str]:
+def pump_intake_depth(analysis, seasonal=None) -> tuple[float | None, str]:
     """The one pump intake depth a report prints, and why.
 
     A report with a seasonal projection used to say "install at 39 m" in
@@ -1113,7 +1200,7 @@ def pump_intake_depth(analysis, seasonal=None) -> tuple[Optional[float], str]:
     return float(depth), ""
 
 
-def _pumped_duration_min(test: PumpingTest) -> tuple[Optional[float], str]:
+def _pumped_duration_min(test: PumpingTest) -> tuple[float | None, str]:
     """``(minutes, kind)``: how long the aquifer was stressed at one rate.
 
     A constant test is judged on the whole pumped duration; a step test on
@@ -1446,7 +1533,7 @@ def analyse_pumping_test(
     # 50 minutes" and "the whole test lies inside" the casing-storage period.
     per_step = kind == "step"
     inside: list[str] = []
-    casing_flag: Optional[DataFlag] = None
+    casing_flag: DataFlag | None = None
     if t_c:
         cj = analysis.cooper_jacob
         if cj is not None and cj.fit_window_min[1] <= t_c:

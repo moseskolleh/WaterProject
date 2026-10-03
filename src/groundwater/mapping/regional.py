@@ -25,7 +25,7 @@ import math
 import textwrap
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
+from collections.abc import Iterable
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -390,7 +390,7 @@ def near_districts(
     return nearest_chiefdom_index(lon, lat, [rings], tolerance_m) is not None
 
 
-def _unit_patch(unit: "GeologyUnit", **kwargs):
+def _unit_patch(unit: GeologyUnit, **kwargs):
     """The polygon, with the ground its holes cut left unpainted.
 
     A hole used to be a filled polygon of its own carrying the parent's
@@ -422,7 +422,7 @@ def _unit_patch(unit: "GeologyUnit", **kwargs):
     return PathPatch(path, **kwargs)
 
 
-def _point_in_unit(lon: float, lat: float, unit: "GeologyUnit") -> bool:
+def _point_in_unit(lon: float, lat: float, unit: GeologyUnit) -> bool:
     """Inside the polygon, and not in a hole that cuts it.
 
     A hole is ground the unit does not cover - a dyke cutting the country

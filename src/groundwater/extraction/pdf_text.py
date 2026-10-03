@@ -32,7 +32,8 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from collections.abc import Iterable
+from typing import Any
 
 from ..ingestion.common import match_label, split_inline_value
 from ..utils import clean_text, parse_number
@@ -286,7 +287,7 @@ def _split_line(line: str) -> list[str]:
     return [p for p in re.split(r"\t+|\s{3,}", line) if p.strip()]
 
 
-def _clean_table(raw: Iterable[Iterable]) -> Optional[tuple[list[str], list[list[str]]]]:
+def _clean_table(raw: Iterable[Iterable]) -> tuple[list[str], list[list[str]]] | None:
     rows = [[clean_text(c) for c in row] for row in raw if any(clean_text(c) for c in row)]
     if len(rows) < 2:
         return None

@@ -833,7 +833,7 @@ def ground_profile_along_traverse(
     )
 
 
-def _wide_gaps(profile: "TraverseProfile", reach_m: float) -> list[bool]:
+def _wide_gaps(profile: TraverseProfile, reach_m: float) -> list[bool]:
     """Which gaps between neighbouring stations are too wide to correlate."""
     if reach_m <= 0 or len(profile.chainage_m) < 2:
         return []
@@ -841,7 +841,7 @@ def _wide_gaps(profile: "TraverseProfile", reach_m: float) -> list[bool]:
     return [bool(gap > reach_m * CORRELATION_REACH_MULTIPLE) for gap in gaps]
 
 
-def _correlation_note(profile: "TraverseProfile", reach_m: float,
+def _correlation_note(profile: TraverseProfile, reach_m: float,
                       wide: list[bool] | None = None) -> str:
     """What is not correlated on the section, and why.
 

@@ -19,7 +19,8 @@ every candidate point in one call.
 
 from __future__ import annotations
 
-from typing import Iterable, Sequence, TypeVar
+from collections.abc import Iterable, Sequence
+from typing import TypeVar
 
 import numpy as np
 

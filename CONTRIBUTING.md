@@ -14,7 +14,7 @@ same sessions step by step, so `nox -s check` passing here means CI passes:
 python -m pip install -e '.[dev,app,extract]'
 npm install --no-save playwright@1.56.1
 npx playwright install chromium
-nox -s check      # lint, tests, bundles, parity, browser, depth_spine
+nox -s check      # lint, types, tests, bundles, parity, fuzz, browser, depth_spine, js
 nox -s build      # regenerate every generated file, in order
 nox -s examples   # rerun the worked examples and rewrite their index
 nox -s release    # wheel, sdist and example packs in dist/
@@ -28,7 +28,13 @@ for the Depth Spine: it runs `npm ci`, the TypeScript check, `oxlint` and
 both Vite builds in `ui/depth-spine`, then fails if the result differs
 from what is committed under `src/groundwater/depth_spine/`. Those
 comparisons, like CI's, are against the git index, so stage a file you
-regenerated before checking it.
+regenerated before checking it. The same install serves `js`, which
+type-checks and lints the browser app in `docs/js` with the TypeScript and
+`oxlint` the Depth Spine pins; the app itself has no build, and its types
+are JSDoc comments it ignores. `gwt-core.js` is held to TypeScript's strict
+mode and every function on `GWT.core` carries a type for each parameter;
+the other scripts are checked loosely (`web/jscheck/` says what each level
+means). The test run reports line coverage, with no threshold.
 
 The tests that take ten seconds or more - the Streamlit AppTests, the
 example regeneration and a few report builds - are marked `slow`, and a
@@ -39,9 +45,11 @@ while working.
 What the sessions run, in order:
 
 ```bash
-# check: lint, tests
+# check: lint, types, tests
 python -m ruff check .    # the ruff pinned in the dev extra
-python -m pytest -q
+python -m pyright         # likewise pinned; basic mode, see pyproject.toml
+# then the modules on its exclude list, on their own: each must still fail
+python -m pytest -q --cov=groundwater --cov-report=term
 # check: bundles - the bundled data must match the source tables
 python web/build_boundary_review.py --check
 python web/build_webapp_data.py
@@ -60,6 +68,12 @@ git diff --exit-code -- src/groundwater/depth_spine/frontend \
     src/groundwater/depth_spine/static/workspace.html
 git ls-files --others --exclude-standard \
     -- src/groundwater/depth_spine/frontend    # must print nothing
+# check: js - the browser app's types and lint, with ui/depth-spine's tools
+npm --prefix ui/depth-spine exec -- tsc -p web/jscheck/tsconfig.core.json
+npm --prefix ui/depth-spine exec -- tsc -p web/jscheck/tsconfig.json
+node web/jscheck/public-api.mjs
+npm --prefix ui/depth-spine exec -- oxlint -c web/jscheck/oxlintrc.json \
+    --deny-warnings docs/js
 
 # build: every generated file, in dependency order
 (cd ui/depth-spine && npm ci && npm run build:all)
@@ -101,9 +115,46 @@ in the separate runtime cache instead.
 only numbers: the handover works list is compared bullet for bullet, because
 that list is what an interim payment is argued from and four of its seven
 bullets once differed - a quantity surveyor reading one document got the screen
-run, one reading the other got the casing size, and neither got the seal. Word
-a shared sentence in one engine and word it the same in the other, then run
-`python tests/webapp/make_reference.py` and the parity suite.
+run, one reading the other got the casing size, and neither got the seal.
+
+So a sentence both engines write is not worded twice: it is kept once, in
+`src/groundwater/data/text/*.yaml`, and both engines read it. The water
+quality recommendations are in `quality.yaml`, the handover works list in
+`handover.yaml` and the works the reports cite in `references.yaml` (where
+an id ending in `_web` is the browser's wording of a work the Python reports
+cite in other words: settling each pair changes one app's reports, so it is
+a change of its own). The package reads an entry
+with `groundwater.text.phrase("quality.treat_health", parameters=...)`; the
+browser reads the same files, which `web/build_webapp_data.py` emits into
+`gwt-data.js`, with `C.phrase('quality.treat_health', {parameters: ...})`.
+The two renderers are one grammar, written out in `groundwater/text.py`:
+`{name}` takes a string, a number always names its format (`{depth:num}` as
+`fmt_num` writes it, `{d:g}`, `{mm:.0f}`), `{n:plural:limit|limits}` agrees
+with a count, and anything else - a missing value, a spare one, a bare
+number, a lone brace - is an error rather than a sentence with a hole in it.
+An entry that is a mapping rather than a string is a table, looked up by a
+value from the data (`phrase_table` / `C.phraseTable`).
+
+To add a sentence: put it in the file for its report under a lower-case key,
+call it from both engines by its quoted id, run
+`python web/build_webapp_data.py`, then `python tests/webapp/make_reference.py`
+and the parity suite. `tests/test_text.py` fails if an entry is read by only
+one engine, if the bundle carries another catalogue, or if either engine
+still spells out a catalogued sentence for itself. Only the top-level files
+are read, so the Krio catalogue step 9.2 needs can sit beside them in a
+folder of its own, under the same ids. A sentence not yet in the catalogue is
+still worded once in each engine, and the same in both.
+
+The configuration defaults are kept the same way, in
+`src/groundwater/data/defaults.json`: `config.py` builds every field's
+default from it and keeps the reason for each value beside the field, and the
+browser's `C.defaultConfig()` is a copy of the same file out of `gwt-data.js`.
+Change a default there, regenerate the bundle, and both apps move together. A
+new setting is a field in `config.py` and a key in the file;
+`tests/test_text.py` holds the two to the same names and types. Neither the
+defaults nor the sentences are part of the engine digest in `gwt-data.js`:
+the inversion cache key already carries the whole VES configuration, and a
+reworded sentence is not a different inversion.
 
 Document-level assertions - what reaches the `.docx` a user downloads - belong
 in `tests/webapp/review.mjs`, not in parity.

@@ -19,7 +19,7 @@ import csv
 import json
 import sys
 from pathlib import Path
-from typing import Sequence
+from collections.abc import Sequence
 
 
 def _summary_of(updates: dict) -> dict:

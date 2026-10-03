@@ -286,12 +286,9 @@ def drilling_case(grid) -> dict:
         "intervals": [[clean(iv.top_m), clean(iv.bottom_m), iv.description,
                        clean(iv.penetration_rate_m_per_min), clean(iv.bit_diameter_in)]
                       for iv in log.intervals],
-        # codes only: the messages of the gap and depth flags print a float
-        # differently in the two engines, which is not what these cases test
-        "flags": [[f.level, f.code] for f in log.flags],
-        "messages": [f.message for f in log.flags
-                     if f.code in ("water_strike_unreadable", "interval_unreadable",
-                                   "diameter_implausible")],
+        # every message in full: the gap and depth flags used to print "40.0 m"
+        # here and "40 m" in the browser, and were compared by code alone
+        "flags": flags(log.flags),
     }
 
 
@@ -1436,7 +1433,7 @@ def build() -> dict:
                      (-2.5, 0), (45.05, 1), (150.5, 0))
     ]
     out["formatting"] = [
-        {"value": v, "text": "%g" % v}
+        {"value": v, "text": f"{v:g}"}
         for v in (1e6, 1e15, 999999.6, 1e5, 1e7, 1234567, 0.0001, 0.00001,
                   2.93, 0.0, 0.005, 1e-7)
     ]
@@ -2102,26 +2099,31 @@ def pdf_sheet_reference() -> dict:
 CHECK_RTOL = 1e-6
 
 
-def drifted(fresh, committed, path=""):
-    """Yield ``(path, fresh, committed)`` for every value that really differs."""
+def drifted(fresh, committed, path="", rtol=CHECK_RTOL, atol=1e-12):
+    """Yield ``(path, fresh, committed)`` for every value that really differs.
+
+    The defaults are for --check, the toolkit against its own committed
+    values. tests/fuzz compares the two engines with the same walk at the
+    tolerances parity.mjs holds each kind of quantity to.
+    """
     if isinstance(fresh, dict) and isinstance(committed, dict):
         for key in sorted(set(fresh) | set(committed)):
             if key not in fresh or key not in committed:
                 yield (f"{path}.{key}", fresh.get(key, "<missing>"),
                        committed.get(key, "<missing>"))
                 continue
-            yield from drifted(fresh[key], committed[key], f"{path}.{key}")
+            yield from drifted(fresh[key], committed[key], f"{path}.{key}", rtol, atol)
     elif isinstance(fresh, list) and isinstance(committed, list):
         if len(fresh) != len(committed):
             yield (f"{path}[]", f"{len(fresh)} items", f"{len(committed)} items")
             return
         for i, (a, b) in enumerate(zip(fresh, committed, strict=True)):
-            yield from drifted(a, b, f"{path}[{i}]")
+            yield from drifted(a, b, f"{path}[{i}]", rtol, atol)
     elif isinstance(fresh, (int, float)) and isinstance(committed, (int, float)):
         if isinstance(fresh, bool) or isinstance(committed, bool):
             if fresh != committed:
                 yield (path, fresh, committed)
-        elif not math.isclose(fresh, committed, rel_tol=CHECK_RTOL, abs_tol=1e-12):
+        elif not math.isclose(fresh, committed, rel_tol=rtol, abs_tol=atol):
             yield (path, fresh, committed)
     elif fresh != committed:
         yield (path, fresh, committed)

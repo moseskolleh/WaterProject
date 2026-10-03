@@ -1,8 +1,9 @@
 """End to end tests of the Streamlit app using the bundled samples.
 
-These drive the same flow a demo visitor uses: pick a bundled sample,
-run the analysis, build the report. AppTest executes the real app
-script, so every tab's code path runs.
+These drive the same flow a demo visitor uses: open a page, pick a
+bundled sample, run the analysis, build the report. AppTest executes the
+real app script. Only the page on screen runs (PLAN.md step 1.1), so each
+test opens its page first, with ``goto``, as the sidebar navigation does.
 """
 
 from pathlib import Path
@@ -12,6 +13,8 @@ import pytest
 streamlit = pytest.importorskip("streamlit")
 
 from streamlit.testing.v1 import AppTest  # noqa: E402
+
+from conftest import goto  # noqa: E402
 
 APP = str(Path(__file__).resolve().parents[1] / "app" / "streamlit_app.py")
 
@@ -31,12 +34,17 @@ def app(sample_data):
 
 def test_app_renders(app):
     assert app.title[0].value == "Groundwater Investigation Toolkit"
-    # bundled samples offered in every data tab
-    for key in ("sample_ves", "sample_pump", "sample_wq", "sample_log"):
+    # bundled samples offered on every data page
+    for page, key in (("Geophysics (VES)", "sample_ves"),
+                      ("Pumping test", "sample_pump"),
+                      ("Water quality", "sample_wq"),
+                      ("Borehole design", "sample_log")):
+        goto(app, page)
         assert app.selectbox(key=key) is not None
 
 
 def test_ves_flow_with_sample(app):
+    goto(app, "Geophysics (VES)")
     app.selectbox(key="sample_ves").select("rokel/rokel_ves.xlsx")
     app.run()
     assert not app.exception
@@ -57,6 +65,7 @@ def test_ves_flow_with_sample(app):
 
 
 def test_pumping_flow_with_sample(app):
+    goto(app, "Pumping test")
     app.selectbox(key="sample_pump").select("dr_timbo/dr_timbo_constant_test.xlsx")
     app.run()
     assert not app.exception
@@ -68,6 +77,7 @@ def test_pumping_flow_with_sample(app):
 
 
 def test_pending_pumping_sample(app):
+    goto(app, "Pumping test")
     app.selectbox(key="sample_pump").select("kuntolo/kuntolo_step_test.xlsx")
     app.run()
     assert not app.exception
@@ -76,6 +86,7 @@ def test_pending_pumping_sample(app):
 
 
 def test_quality_flow_with_sample(app):
+    goto(app, "Water quality")
     app.selectbox(key="sample_wq").select("dr_timbo/dr_timbo_water_quality.xlsx")
     app.run()
     assert not app.exception
@@ -87,6 +98,7 @@ def test_quality_flow_with_sample(app):
 
 
 def test_design_flow_with_sample(app):
+    goto(app, "Borehole design")
     app.selectbox(key="sample_log").select("dr_timbo/dr_timbo_drilling_log.xlsx")
     app.run()
     assert not app.exception
@@ -99,8 +111,10 @@ def test_the_design_page_designs_against_the_pumping_test(app):
     no pump intake at all, so the intake checks never ran here and the two
     pages disagreed about the same borehole.
     """
+    goto(app, "Pumping test")
     app.selectbox(key="sample_pump").select("dr_timbo/dr_timbo_constant_test.xlsx")
     app.run()
+    goto(app, "Borehole design")
     app.selectbox(key="sample_log").select("dr_timbo/dr_timbo_drilling_log.xlsx")
     app.run()
     assert not app.exception
@@ -116,6 +130,7 @@ def test_the_design_page_designs_against_the_pumping_test(app):
 
 
 def test_costing_flow(app):
+    goto(app, "Costing & BoQ")
     app.button(key="run_cost").click()
     app.run()
     assert not app.exception
@@ -131,6 +146,7 @@ def test_supervision_flow(app):
     from groundwater.supervision import load_checklists
 
     first = load_checklists()[0]
+    goto(app, "Supervision")
     # the radio is keyed chkw_ and writes through to the chk_ answer store,
     # so an answer survives a stage the run does not draw
     app.radio(key=f"chkw_{first.item_id}").set_value("Yes")
@@ -143,6 +159,7 @@ def test_supervision_flow(app):
 
 
 def test_programme_flow(app):
+    goto(app, "Costing & BoQ")
     app.button(key="run_programme").click()
     app.run()
     assert not app.exception
@@ -152,6 +169,7 @@ def test_programme_flow(app):
 
 
 def test_handover_flow(app):
+    goto(app, "Handover")
     app.button(key="build_handover").click()
     app.run()
     assert not app.exception
@@ -159,6 +177,7 @@ def test_handover_flow(app):
 
 def test_maps_flow(app):
     """With no position and no area recorded, the national maps still draw."""
+    goto(app, "Site maps")
     app.button(key="run_maps").click()
     app.run()
     assert not app.exception
@@ -174,7 +193,7 @@ def test_a_recorded_district_is_enough_for_a_study_area_map(app):
     """No GPS fix is not no map: the district is still an area worth drawing."""
     app.session_state["meta_district"] = "Port Loko"
     app.session_state["meta_community"] = "Kuntoloh"
-    app.run()
+    goto(app, "Site maps")
     app.button(key="run_maps").click()
     app.run()
     assert not app.exception
@@ -185,9 +204,11 @@ def test_a_recorded_district_is_enough_for_a_study_area_map(app):
 
 def test_subsurface_maps_flow(app):
     """The maps built from the survey's own soundings, not from a dataset."""
+    goto(app, "Geophysics (VES)")
     app.selectbox(key="sample_ves").select("rokel/rokel_ves.xlsx")
     app.run()
     assert not app.exception
+    goto(app, "Site maps")
     app.button(key="run_subsurface").click()
     app.run()
     assert not app.exception
@@ -220,6 +241,7 @@ def test_project_state_tracked(app):
 
 def test_guided_wizard_flow(app):
     """Walk the wizard: site details -> siting -> costing -> done."""
+    goto(app, "Guided start")
     # step 0 gate: needs community and district from the sidebar
     app.text_input(key="meta_community").set_value("Kuntolo")
     app.selectbox(key="meta_district").select("Bombali")
@@ -260,6 +282,7 @@ def test_wizard_unlocks_after_first_ves_run(sample_data):
     reported state: reaching step 1 cold and running the analysis once.
     """
     at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["nav"] = "Guided start"
     at.run()
     at.text_input(key="meta_community").set_value("Kuntolo")
     at.selectbox(key="meta_district").select("Bombali")
@@ -280,6 +303,7 @@ def test_wizard_grace_survives_until_costing_step(sample_data):
     keep its restored wizard costing values when the costing step is
     finally visited, even though the load rerun has long passed."""
     at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["nav"] = "Guided start"
     # state as the project loader would leave it: saved at the final
     # step with a siting-derived signature that the fresh session
     # cannot reproduce, plus the wizard grace marker
@@ -304,6 +328,7 @@ def test_wizard_grace_cleared_by_siting_change(sample_data):
     invalidate the load grace, so costing follows the new depth
     instead of the stale loaded values."""
     at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["nav"] = "Guided start"
     at.session_state["wiz_step"] = 1
     at.session_state["wiz_cost_depth"] = 85.0
     at.session_state["wiz_cost_over"] = 12.0
@@ -346,6 +371,7 @@ def test_a_failed_inversion_keeps_the_wizard_grace(sample_data, monkeypatch):
     crash the tab nor consume a loaded project's wizard grace, since it
     produced no siting result to change the costing prefill."""
     at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["nav"] = "Guided start"
     at.session_state["wiz_step"] = 1
     at.run()
     assert not at.exception
@@ -370,6 +396,7 @@ def test_a_failed_inversion_keeps_the_previous_result(sample_data, monkeypatch):
     it is still the best answer anyone has, and the reports, the Overview
     and the wizard's costing prefill all read it."""
     at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["nav"] = "Geophysics (VES)"
     at.run()
     at.selectbox(key="sample_ves").select("rokel/rokel_ves.xlsx")
     at.run()
@@ -393,6 +420,7 @@ def test_a_failed_inversion_keeps_the_previous_result(sample_data, monkeypatch):
 
 
 def test_templates_tab(app):
+    goto(app, "Templates")
     app.button(key="gen_templates").click()
     app.run()
     assert not app.exception
@@ -417,6 +445,7 @@ def test_portfolio_drilldown_flow(sample_data):
     }}, "0.2.0")
 
     at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["nav"] = "Portfolio"
     at.run()
     at.file_uploader(key="portfolio_upload").set_value([
         ("rokel.yaml", rokel, "application/x-yaml"),
@@ -445,6 +474,7 @@ def test_coverage_tab_csv_flow(sample_data):
         "8.0000,-14.0000,Functional,Borehole\n"      # offshore -> unassigned
     )
     at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["nav"] = "Coverage gap"
     at.run()
     assert not at.exception
     # default source is the CSV upload; feed the export
@@ -491,6 +521,7 @@ def test_coverage_says_why_when_every_row_was_discarded(sample_data):
         ",,Non-Functional,Borehole\n"
     )
     at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["nav"] = "Coverage gap"
     at.run()
     assert not at.exception
     at.file_uploader(key="cov_csv").set_value(
@@ -514,6 +545,7 @@ def test_waterpoints_tab_guarded(sample_data):
     """The water points tab renders and, given coordinates, shows the lookup
     control - without touching the network (no button click)."""
     at = AppTest.from_file(APP, default_timeout=600)
+    at.session_state["nav"] = "Water points"
     at.run()
     assert not at.exception
     # no coordinates yet: the tab shows its guidance, no lookup control
@@ -590,10 +622,14 @@ def test_depth_spine_page(app):
     """
     from groundwater.depth_spine.view import SpineInputs, build_view
 
+    goto(app, "Borehole design")
     app.selectbox(key="sample_log").select("dr_timbo/dr_timbo_drilling_log.xlsx")
     app.run()
     assert not app.exception
     log = app.session_state["drilling_log"]
+    # and the page itself draws it
+    goto(app, "Depth Spine")
+    assert any(h.value == "Depth Spine" for h in app.header)
 
     view = build_view(SpineInputs(name="test", log=log))
     assert view["section"]["totalDepth"] == log.total_depth_m
@@ -614,8 +650,10 @@ def test_the_static_level_box_shows_the_level_the_design_uses(sample_data):
     at = AppTest.from_file(APP, default_timeout=600)
     at.run()
     assert not at.exception, at.exception
+    goto(at, "Pumping test")
     at.selectbox(key="sample_pump").select("dr_timbo/dr_timbo_constant_test.xlsx")
     at.run()
+    goto(at, "Borehole design")
     at.selectbox(key="sample_log").select("dr_timbo/dr_timbo_drilling_log.xlsx")
     at.run()
     assert not at.exception, at.exception
@@ -642,16 +680,18 @@ def test_the_design_takes_the_intake_the_pumping_report_prints(sample_data):
 
     at = AppTest.from_file(APP, default_timeout=600)
     at.run()
+    goto(at, "Pumping test")
     at.selectbox(key="sample_pump").select("dr_timbo/dr_timbo_constant_test.xlsx")
     at.run()
     at.number_input(key="seasonal_range").set_value(8.0)
     at.run()
+    month = at.selectbox(key="seasonal_month").value
+    goto(at, "Borehole design")
     at.selectbox(key="sample_log").select("dr_timbo/dr_timbo_drilling_log.xlsx")
     at.run()
     assert not at.exception, at.exception
 
     analysis = at.session_state["pump_analysis"]
-    month = at.selectbox(key="seasonal_month").value
     seasonal = seasonal_yield(analysis, month=(month or None), annual_range_m=8.0)
     reported, _ = pump_intake_depth(analysis, seasonal)
     # the swing has to move the depth, or this test proves nothing

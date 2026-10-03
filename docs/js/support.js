@@ -12,6 +12,7 @@
 (function (global) {
   'use strict';
 
+  /** @type {GWTNamespace} */
   var GWT = global.GWT || (global.GWT = {});
   var S = GWT.support = {};
 
@@ -278,6 +279,18 @@
     return new Date(ms + Math.round(frac * 86400000));
   }
 
+  /* A time-of-day serial as Python prints the datetime.time openpyxl makes
+   * of it: "13:30:00", with microseconds only when there are any. openpyxl
+   * rounds to the millisecond, and so does this. */
+  function excelSerialToClock(serial) {
+    var ms = Math.round(serial * 86400000);
+    if (ms >= 86400000) return excelSerialToDate(1);
+    var two = function (n) { return String(n).padStart(2, '0'); };
+    var text = two(Math.floor(ms / 3600000)) + ':' + two(Math.floor(ms / 60000) % 60) +
+      ':' + two(Math.floor(ms / 1000) % 60);
+    return ms % 1000 ? text + '.' + String((ms % 1000) * 1000).padStart(6, '0') : text;
+  }
+
   function formatDate(value) {
     var d = parseDate(value);
     if (!d) return value ? String(value) : '';
@@ -322,7 +335,9 @@
     return String(text === null || text === undefined ? '' : text)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&apos;')
-      /* control characters are illegal in XML 1.0 and crash Word */
+      /* control characters are illegal in XML 1.0 and crash Word, so this
+       * matches them on purpose */
+      // oxlint-disable-next-line no-control-regex
       .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '');
   }
 
@@ -645,8 +660,17 @@
               else {
                 var num = Number(raw);
                 var styleIdx = parseInt(c.getAttribute('s') || '0', 10);
-                value = (dateStyles[styleIdx] && isFinite(num) && num > 0)
-                  ? excelSerialToDate(num) : (isFinite(num) ? num : raw);
+                /* A date-formatted serial under one day is a time of day,
+                 * which openpyxl hands the Python readers as a time and they
+                 * print as "13:30:00". It used to come through as null, so
+                 * a drilling log's From and To times typed as times were
+                 * lost here and kept there. */
+                if (dateStyles[styleIdx] && isFinite(num) && num >= 0 && num < 1) {
+                  value = excelSerialToClock(num);
+                } else {
+                  value = (dateStyles[styleIdx] && isFinite(num) && num > 0)
+                    ? excelSerialToDate(num) : (isFinite(num) ? num : raw);
+                }
               }
             }
             if (typeof value === 'string') {
@@ -1030,7 +1054,7 @@
         style: { position: 'fixed', left: '-9999px' },
       });
       input.addEventListener('change', function () {
-        var files = Array.prototype.slice.call(input.files || []);
+        var files = Array.prototype.slice.call(/** @type {HTMLInputElement} */ (input).files || []);
         document.body.removeChild(input);
         resolve(multiple ? files : files[0] || null);
       });
@@ -1043,7 +1067,8 @@
 
   /* One observable object holding the whole working session. Pages read from
    * it, write to it, and re-render on change. It round-trips to a .gwt project
-   * file and is mirrored into localStorage so a refresh never loses fieldwork. */
+   * file and is mirrored into opts.storage (GWT.storage, in gwt-store.js) so
+   * a refresh never loses fieldwork. */
   function createStore(initial, options) {
     var opts = options || {};
     var state = JSON.parse(JSON.stringify(initial || {}));
@@ -1120,7 +1145,7 @@
       listeners.forEach(function (fn) {
         try { fn(path, state); } catch (e) { console.error(e); }
       });
-      if (opts.persistKey) {
+      if (opts.storage) {
         clearTimeout(saveTimer);
         saveTimer = setTimeout(persist, 400);
       }
@@ -1131,86 +1156,95 @@
      * this app can do to someone, so the transition is reported rather than
      * swallowed. */
     var persistOk = true;
+    var failedWith = '';
+    var persisting = Promise.resolve(true);
 
-    /* Whether a copy from an earlier successful write is still readable. A
-     * browser that has refused every write since the tab opened - a private
-     * window, or a quota that was already full - is holding nothing at all,
-     * and telling someone their morning is mirrored when it is not is worse
-     * than any amount of staleness. */
-    function mirrorExists() {
-      if (!opts.persistKey) return false;
-      try { return localStorage.getItem(opts.persistKey) !== null; }
-      catch (e) { return false; }
-    }
-
-    /* The state as mirrored: all of it, or, when that will not fit,
-     * opts.persistLighter(state) - the same session without what can be
-     * worked out again - so a cache can never be what stops the fieldwork
-     * being mirrored. */
-    function writeMirror() {
-      try {
-        localStorage.setItem(opts.persistKey, JSON.stringify(state));
-      } catch (e) {
-        var lighter = opts.persistLighter ? opts.persistLighter(state) : null;
-        if (!lighter) throw e;
-        localStorage.setItem(opts.persistKey, JSON.stringify(lighter));
-      }
-    }
-
+    /* Write the session to storage. Resolves true once it is there, false if
+     * it was refused. Writes go one after another, each of the state as it
+     * is when its turn comes.
+     *
+     * A refused write leaves the copy that is already there exactly where it
+     * is. An earlier build removed it, on the reasoning that a mirror which
+     * has stopped updating is misleading - and what that actually did was
+     * delete this morning's drilling log the first time a photograph filled
+     * the quota, and the next load opened a blank app. An hour-old copy is
+     * worth having; nothing is not, and a warning is not a backup. Storage
+     * writes a session in one transaction, so there is never a half-written
+     * copy to clear up either. The banner says the copy has stopped being
+     * updated, which is true of it rather than of its absence. */
     function persist() {
-      if (!opts.persistKey) return true;
-      try {
-        writeMirror();
-        if (!persistOk) {
-          persistOk = true;
-          if (opts.onPersistRecovered) opts.onPersistRecovered();
-        }
-        return true;
-      } catch (e) {
-        /* The copy that is already there is left exactly where it is. This
-         * used to remove it, on the reasoning that a mirror which has stopped
-         * updating is misleading - but the whole state goes in one setItem,
-         * which either replaces the old value or throws and leaves it intact,
-         * so there was never a half-written mirror to clear up. What the
-         * removal actually did was delete this morning's drilling log the
-         * first time a photograph filled the quota, and the next load opened
-         * a blank app. An hour-old copy is worth having; nothing is not, and
-         * a warning is not a backup. The banner says the copy has stopped
-         * being updated, which is now true of it rather than of its absence. */
-        if (persistOk) {
+      if (!opts.storage) return Promise.resolve(true);
+      clearTimeout(saveTimer);
+      saveTimer = null;
+      persisting = persisting.then(function () {
+        /* the state as it is when the storage gets to this write, not as
+         * it was when it was asked for: a restore may land in between */
+        return opts.storage.write(function () { return state; }).then(function () {
+          if (!persistOk) {
+            persistOk = true;
+            failedWith = '';
+            if (opts.onPersistRecovered) opts.onPersistRecovered();
+          }
+          return true;
+        }, function (e) {
+          /* reported once, and again only if the reason changes: a full
+           * disk, then another tab taking the writing over */
+          var reason = (e && e.name) || 'Error';
+          if (!persistOk && reason === failedWith) return false;
           persistOk = false;
-          /* Reading storage here is safe: it happens on the transition into
-           * failure, not on every retry. */
-          if (opts.onPersistError) opts.onPersistError(e, mirrorExists());
-        }
-        return false;
-      }
+          failedWith = reason;
+          /* Whether a copy from an earlier write is still readable. A
+           * browser that has refused every write since the tab opened - a
+           * private window, or a quota that was already full - is holding
+           * nothing at all, and telling someone their morning is mirrored
+           * when it is not is worse than any amount of staleness. */
+          return opts.storage.hasCopy().catch(function () { return false; })
+            .then(function (kept) {
+              if (opts.onPersistError) opts.onPersistError(e, kept);
+              return false;
+            });
+        });
+      });
+      return persisting;
+    }
+
+    /* Write now what the autosave was waiting to write, if anything. The
+     * page is being hidden or closed: the 400 ms wait would outlast it, and
+     * the storage is not synchronous as localStorage was. */
+    function flush() {
+      if (!opts.storage || saveTimer === null) return Promise.resolve(true);
+      return persist();
     }
 
     /* False once a mirror write has failed and not yet succeeded again. */
     function autosaveOk() { return persistOk; }
 
+    /* Take the saved session as this one. Resolves to where it came from
+     * ('indexeddb', or 'localStorage' for an earlier build's copy), or null
+     * when there was nothing to take. */
     function restore() {
-      if (!opts.persistKey) return false;
-      try {
-        var raw = localStorage.getItem(opts.persistKey);
-        if (!raw) return false;
-        var saved = JSON.parse(raw);
-        if (!saved || typeof saved !== 'object') return false;
-        state = saved;
-        return true;
-      } catch (e) { return false; }
+      if (!opts.storage) return Promise.resolve(null);
+      return opts.storage.load().then(function (saved) {
+        if (!saved || !saved.state || typeof saved.state !== 'object') return null;
+        state = saved.state;
+        return saved.from;
+      }, function (e) {
+        console.error(e);
+        return null;
+      });
     }
 
     function forget() {
-      if (opts.persistKey) {
-        try { localStorage.removeItem(opts.persistKey); } catch (e) { /* ignore */ }
-      }
+      if (!opts.storage) return Promise.resolve();
+      /* an autosave still waiting would put back what is being cleared */
+      clearTimeout(saveTimer);
+      saveTimer = null;
+      return opts.storage.clear().catch(function () { /* reported by the next write */ });
     }
 
     return {
       get: get, set: set, patch: patch, remove: remove, replace: replace,
-      subscribe: subscribe, persist: persist, restore: restore, forget: forget,
+      subscribe: subscribe, persist: persist, flush: flush, restore: restore, forget: forget,
       emit: emit, autosaveOk: autosaveOk,
       get state() { return state; },
     };
@@ -1244,7 +1278,7 @@
       type: 'number', value: isNum(value) ? value : '',
     }, attrs || {}));
     input.addEventListener('change', function () {
-      onChange(parseNum(input.value));
+      onChange(parseNum(/** @type {HTMLInputElement} */ (input).value));
     });
     return input;
   }
@@ -1253,7 +1287,9 @@
     var input = el('input.input', Object.assign({
       type: 'text', value: value === null || value === undefined ? '' : value,
     }, attrs || {}));
-    input.addEventListener('change', function () { onChange(input.value); });
+    input.addEventListener('change', function () {
+      onChange(/** @type {HTMLInputElement} */ (input).value);
+    });
     return input;
   }
 
@@ -1264,13 +1300,17 @@
         var lab = typeof c === 'object' ? c.label : c;
         return el('option', { value: v, selected: String(v) === String(value) }, lab);
       }));
-    select.addEventListener('change', function () { onChange(select.value); });
+    select.addEventListener('change', function () {
+      onChange(/** @type {HTMLSelectElement} */ (select).value);
+    });
     return select;
   }
 
   function checkboxInput(value, label, onChange) {
     var input = el('input', { type: 'checkbox', checked: !!value });
-    input.addEventListener('change', function () { onChange(input.checked); });
+    input.addEventListener('change', function () {
+      onChange(/** @type {HTMLInputElement} */ (input).checked);
+    });
     return el('label.checkbox', [input, el('span', label)]);
   }
 

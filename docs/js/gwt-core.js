@@ -1,3 +1,4 @@
+// @ts-check
 /* gwt-core.js - the groundwater science engine, in the browser.
  *
  * A direct port of the `groundwater` Python package: the same formulas, the
@@ -27,8 +28,39 @@
 (function (global) {
   'use strict';
 
+  /** @type {GWTNamespace} */
   var GWT = global.GWT || (global.GWT = {});
+  /** @type {Record<string, any>} */
   var C = GWT.core = {};
+
+  /* The types the JSDoc in this file names. web/jscheck checks them, and
+   * nothing at run time reads them. Numbers, strings and arrays are typed as
+   * what they are. A record - a sounding, a model, a test, a project - is
+   * typed as an open record: the engine adds fields to records as it goes,
+   * and a type listing every field would be a second copy of the Python
+   * dataclasses to keep in step. The name still says which record a
+   * function takes, and a null passed where a record is wanted is still
+   * caught. */
+  /** @typedef {Record<string, any>} Rec  any other record */
+  /** @typedef {Record<string, any>} Config  what withConfig returns */
+  /** @typedef {Record<string, any>} Sounding  one VES sounding as read */
+  /** @typedef {Record<string, any>} LayeredModel  what layeredModel returns */
+  /** @typedef {Record<string, any>} Interpretation  what interpretModel returns */
+  /** @typedef {Record<string, any>} VesConfig  a Config's ves section */
+  /** @typedef {Record<string, any>} PumpingConfig  a Config's pumping section */
+  /** @typedef {Record<string, any>} DesignConfig  a Config's design section */
+  /** @typedef {Record<string, any>} PumpingTest  one pumping test as read */
+  /** @typedef {Record<string, any>} PumpingAnalysis  what analysePumpingTest returns */
+  /** @typedef {Record<string, any>} QualitySample  one laboratory sample as read */
+  /** @typedef {Record<string, any>} QualityAssessment  what assessSample returns */
+  /** @typedef {{minimum: number|null, maximum: number}} Limit  a guideline limit */
+  /** @typedef {Record<string, any>} DrillingLog  one drilling log as read */
+  /** @typedef {Record<string, any>} Design  what designBorehole returns */
+  /** @typedef {Array<Array<*>>} Grid  a sheet's cells, row by row: numbers, strings, Dates and nulls */
+  /** @typedef {Record<string, any>} Polygon  one chiefdom of loadPolygons */
+  /** @typedef {Record<string, any>} WaterPoint  one water point of parseWpdxRecords */
+  /** @typedef {Record<string, any>} MapPoint  one point on a survey-scale map */
+  /** @typedef {{nx: number, ny: number, x: number[], y: number[], z: Array<number|null>|null}} SurfaceGrid */
 
   /* Own-key lookup. Several tables here are indexed with free text off a
    * field sheet, and a plain `map[key]` finds Object.prototype: a borehole
@@ -41,99 +73,36 @@
 
   /* ================================================================== config
    * groundwater/config.py. Every value is overridable per project, which is
-   * what the Settings page edits.
+   * what the Settings page edits. The defaults are not written out here:
+   * they are src/groundwater/data/defaults.json, which config.py reads and
+   * the build emits as GWT.data.defaults, so the two engines start from the
+   * same numbers. Why each one is what it is stays beside its field in
+   * config.py.
+   *
+   * They are not part of the engine digest either: the inversion cache key
+   * carries the whole VES configuration an inversion ran with, so a changed
+   * VES default is already a different key.
    */
 
-  var DEFAULT_CONFIG = {
-    style: {
-      accent_color: '#1F5C8B',
-      secondary_color: '#C15A2A',
-      neutral_color: '#4D4D4D',
-      background: '#FFFFFF',
-      font_name: 'Calibri',
-      base_font_size_pt: 11.0,
-      figure_width_in: 6.3,
-      organisation: '',
-      organisation_details: '',
-    },
-    ves: {
-      max_layers: 4,
-      min_layers: 2,
-      target_fit_percent: 10.0,
-      parsimony_max_error_ratio: 2.0,
-      damping: 0.02,
-      max_iterations: 60,
-      fresh_basement_min_rho: 3000.0,
-      fractured_zone_rho: [20.0, 800.0],
-      clay_max_rho: 20.0,
-      laterite_min_rho: 800.0,
-      max_drilling_margin_m: 10.0,
-      round_drilling_depth_to_m: 5.0,
-      depth_of_investigation_factor: 0.5,
-      parsimony_fallback_ratio: 1.15,
-      unreliable_fit_percent: 20.0,
-      fit_confidence_floor: 0.5,
-      unresolved_basement_confidence: 0.85,
-      ranking_tie_points: 3.0,
-    },
-    pumping: {
-      safety_factor: 1.5,
-      design_period_days: 365.0,
-      available_drawdown_fraction: 0.7,
-      pump_clearance_above_screen_m: 1.0,
-      pump_submergence_min_m: 3.0,
-      seasonal_allowance_m: 2.0,
-      cooper_jacob_u_max: 0.05,
-      /* a late-time slope below what a dipper can resolve is noise or a
-       * stabilised level, and gives a transmissivity of thousands of m2/day */
-      cooper_jacob_min_slope_m: 0.02,
-      cooper_jacob_min_r2: 0.8,
-      /* fits below this R squared are passed over when choosing which
-       * transmissivity the yield rests on */
-      min_fit_r_squared: 0.8,
-      /* a test shorter than this is projected over several log cycles of
-       * time to reach the design period, so its yield is flagged */
-      min_constant_test_min: 240.0,
-      min_step_length_min: 60.0,
-      /* Casing storage: Schafer's rule puts the end of the period the pump
-       * spends emptying the casing at 0.6 (dc^2 - dp^2) / (Q/s) minutes; the
-       * diameters default to the design rules' casing and a 1.25 inch riser */
-      casing_diameter_in: 5.0,
-      riser_diameter_in: 1.25,
-      /* a recovery line whose intercept at t/t' = 1 is more than this fraction
-       * of the drawdown the recovery started from is not a Theis recovery
-       * line: reported, but not adopted for the yield */
-      recovery_intercept_max_fraction: 0.25,
-      /* a Theis storativity above this is the casing, not the aquifer */
-      max_plausible_storativity: 0.1,
-    },
-    design: {
-      borehole_diameter_in: 6.5,
-      casing_diameter_in: 5.0,
-      casing_material: 'uPVC',
-      screen_slot_mm: 0.75,
-      screen_length_default_m: 9.0,
-      /* the one seal depth: the RWSN checklist's critical item and the
-       * costing's cement quantity both follow it */
-      sanitary_seal_depth_m: 6.0,
-      gravel_pack_above_top_screen_m: 2.0,
-      gravel_pack_material: 'well sorted siliceous gravel, 2-4 mm',
-      sump_length_m: 2.0,
-      stickup_m: 0.5,
-      min_screen_below_swl_m: 5.0,
-      apron_note: 'concrete apron with drainage channel and soakaway',
-      /* A fracture zone the driller names with its depths ("fracture zone
-       * 49-52 m") is screened with this much plain screen either side of
-       * it, rather than the whole logged interval it was written on. */
-      fracture_zone_margin_m: 1.0,
-    },
-  };
-
-  function defaultConfig() {
-    return JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+  /* The defaults themselves, shared: read, never changed. */
+  function configDefaults() {
+    var defaults = (GWT.data || {}).defaults;
+    if (!defaults) {
+      throw new Error('gwt-data.js is not loaded, or is stale: it carries the ' +
+        'configuration defaults (src/groundwater/data/defaults.json)');
+    }
+    return defaults;
   }
 
-  /* Merge a partial override over the defaults, section by section. */
+  /* A copy of the defaults to change. */
+  function defaultConfig() {
+    return JSON.parse(JSON.stringify(configDefaults()));
+  }
+
+  /** Merge a partial override over the defaults, section by section.
+   * @param {Rec|null} [overrides] a partial configuration, section by section
+   * @returns {Config}
+   */
   function withConfig(overrides) {
     var cfg = defaultConfig();
     if (!overrides) return cfg;
@@ -178,6 +147,10 @@
    * checked against the analytic two-layer image series in the test harness.
    */
 
+  /**
+   * @param {number} x
+   * @returns {number}
+   */
   function besselJ0(x) {
     var ax = Math.abs(x), y, z, xx, p, q;
     if (ax < 8.0) {
@@ -198,6 +171,10 @@
     return Math.sqrt(0.636619772 / ax) * (Math.cos(xx) * p - z * Math.sin(xx) * q);
   }
 
+  /**
+   * @param {number} x
+   * @returns {number}
+   */
   function besselJ1(x) {
     var ax = Math.abs(x), y, z, xx, p, q, ans;
     if (ax < 8.0) {
@@ -219,8 +196,12 @@
     return x < 0.0 ? -ans : ans;
   }
 
-  /* Zeros of J0 / J1: McMahon's asymptotic expansion, refined by Newton.
-   * Matches scipy.special.jn_zeros to better than 1e-10. */
+  /** Zeros of J0 / J1: McMahon's asymptotic expansion, refined by Newton.
+   * Matches scipy.special.jn_zeros to better than 1e-10.
+   * @param {number} order 0 or 1
+   * @param {number} count
+   * @returns {Float64Array}
+   */
   function besselZeros(order, count) {
     var out = new Float64Array(count);
     var mu = 4.0 * order * order;
@@ -254,6 +235,10 @@
    * Legendre polynomial, so any order is available; 8 and 10 are the ones the
    * quadrature uses and they are memoised. */
   var _glCache = {};
+  /**
+   * @param {number} n
+   * @returns {{nodes: Float64Array, weights: Float64Array}}
+   */
   function gaussLegendre(n) {
     if (_glCache[n]) return _glCache[n];
     var nodes = new Float64Array(n), weights = new Float64Array(n);
@@ -284,6 +269,10 @@
   /* Exponential integral E1(x), the Theis well function W(u).
    * Series below 1, Lentz continued fraction above; ~1e-15 relative. */
   var EULER = 0.5772156649015329;
+  /**
+   * @param {number} x
+   * @returns {number}
+   */
   function exp1(x) {
     if (!(x > 0)) return x === 0 ? Infinity : NaN;
     if (x > 700) return 0;
@@ -311,9 +300,13 @@
 
   /* --- small dense linear algebra ----------------------------------------- */
 
-  /* Solve A x = b in place by Gaussian elimination with partial pivoting.
+  /** Solve A x = b in place by Gaussian elimination with partial pivoting.
    * Returns null when the system is singular, which the caller treats the way
-   * numpy's LinAlgError is treated: raise the damping and retry. */
+   * numpy's LinAlgError is treated: raise the damping and retry.
+   * @param {number[][]} A
+   * @param {ArrayLike<number>} b
+   * @returns {number[]|null}
+   */
   function solveLinear(A, b) {
     var n = b.length;
     var M = A.map(function (row, i) { return row.slice().concat([b[i]]); });
@@ -340,8 +333,11 @@
     return x;
   }
 
-  /* Inverse via Gauss-Jordan; falls back to a ridge-regularised inverse when
-   * singular, standing in for numpy's pinv in the uncertainty estimate. */
+  /** Inverse via Gauss-Jordan; falls back to a ridge-regularised inverse when
+   * singular, standing in for numpy's pinv in the uncertainty estimate.
+   * @param {number[][]} A
+   * @returns {number[][]|null}
+   */
   function invertMatrix(A) {
     var n = A.length;
     var M = A.map(function (row, i) {
@@ -368,8 +364,24 @@
     return M.map(function (row) { return row.slice(n); });
   }
 
-  /* Least squares straight line with r^2, matching numpy lstsq + the r^2 the
-   * Python computes alongside it. */
+  /* analysis.py SLOPE_ROUNDING_M: a fitted slope this close to zero, in
+   * metres per log cycle, is rounding in the fit and not a direction. */
+  var SLOPE_ROUNDING_M = 1e-9;
+
+  /* analysis.py READING_RESOLUTION_M: what a dipper reads to. A drawdown
+   * whose fitted line moves by less than this across all its readings cannot
+   * be told from one that does not move. */
+  var READING_RESOLUTION_M = 0.01;
+
+  /* analysis.py THEIS_STORATIVITY_FLOOR: a Theis storativity below this has
+   * not been fitted; the optimiser has run down a valley towards underflow. */
+  var THEIS_STORATIVITY_FLOOR = 1e-280;
+
+  /** Least squares straight line with r^2, matching numpy lstsq + the r^2 the
+   * Python computes alongside it.
+   * @param {ArrayLike<number>} x
+   * @param {ArrayLike<number>} y
+   */
   function lineFit(x, y) {
     var n = x.length;
     var sx = 0, sy = 0, sxx = 0, sxy = 0;
@@ -394,8 +406,13 @@
     };
   }
 
-  /* Linear interpolation on a monotonically increasing xp, numpy.interp
-   * semantics: values outside the range clamp to the end points. */
+  /** Linear interpolation on a monotonically increasing xp, numpy.interp
+   * semantics: values outside the range clamp to the end points.
+   * @param {number} x
+   * @param {ArrayLike<number>} xp
+   * @param {ArrayLike<number>} fp
+   * @returns {number}
+   */
   function interp(x, xp, fp) {
     var n = xp.length;
     if (x <= xp[0]) return fp[0];
@@ -410,6 +427,12 @@
     return fp[lo] + (fp[hi] - fp[lo]) * (x - xp[lo]) / span;
   }
 
+  /**
+   * @param {number} a
+   * @param {number} b
+   * @param {number} n
+   * @returns {number[]}
+   */
   function geomspace(a, b, n) {
     if (n <= 1) return [a];
     var out = [], la = Math.log(a), lb = Math.log(b);
@@ -422,6 +445,11 @@
    * matching the field sheets, not MN/2.
    */
 
+  /**
+   * @param {string} arrayType
+   * @param {Record<string, number>} spacings ab2 and mn, a, or a and n
+   * @returns {number}
+   */
   function geometricFactor(arrayType, spacings) {
     var kind = String(arrayType || '').trim().toLowerCase();
     if (kind.indexOf('schlum') === 0) {
@@ -442,6 +470,12 @@
     throw new Error('Unknown array type: ' + arrayType);
   }
 
+  /**
+   * @param {string} arrayType
+   * @param {number} resistanceOhm
+   * @param {Record<string, number>} spacings
+   * @returns {number}
+   */
   function apparentResistivity(arrayType, resistanceOhm, spacings) {
     return geometricFactor(arrayType, spacings) * resistanceOhm;
   }
@@ -529,12 +563,17 @@
     return lo;
   }
 
-  /* T(lambda): stable downward Koefoed/Pekeris recurrence from the half space.
+  /** T(lambda): stable downward Koefoed/Pekeris recurrence from the half space.
    *   T_n = rho_n
    *   T_i = (T_{i+1} + rho_i tanh(lam h_i)) / (1 + T_{i+1} tanh(lam h_i) / rho_i)
    * Written scalar and branchy on purpose: tanh saturates for lam*h above ~20,
    * which is most of the abscissa, and skipping the call there is most of the
-   * inversion's speed. */
+   * inversion's speed.
+   * @param {number} lam
+   * @param {ArrayLike<number>} rho
+   * @param {ArrayLike<number>} h
+   * @returns {number}
+   */
   function resistivityTransform(lam, rho, h) {
     var nH = h.length;
     var T = rho[nH];
@@ -559,7 +598,12 @@
     return acc;
   }
 
-  /* Ideal (gradient, MN -> 0) Schlumberger apparent resistivity. */
+  /** Ideal (gradient, MN -> 0) Schlumberger apparent resistivity.
+   * @param {ArrayLike<number>} rho
+   * @param {ArrayLike<number>} h
+   * @param {ArrayLike<number>} ab2
+   * @returns {Float64Array}
+   */
   function forwardSchlumberger(rho, h, ab2) {
     var hMin = h.length ? arrMin(h) : 1.0;
     var decayH = 2.0 * Math.max(hMin, MIN_DECAY_H);
@@ -585,8 +629,14 @@
     return (rho[0] + hankelIntegral(g, 0, r / (2.0 * Math.max(hMin, MIN_DECAY_H)))) / r;
   }
 
-  /* What the instrument actually measures at each (AB/2, MN) pair, including
-   * the small jumps at segment changes. */
+  /** What the instrument actually measures at each (AB/2, MN) pair, including
+   * the small jumps at segment changes.
+   * @param {ArrayLike<number>} rho
+   * @param {ArrayLike<number>} h
+   * @param {ArrayLike<number>} ab2
+   * @param {ArrayLike<number>} mn
+   * @returns {Float64Array}
+   */
   function forwardSchlumbergerFiniteMn(rho, h, ab2, mn) {
     var hMin = h.length ? arrMin(h) : 1.0;
     var out = new Float64Array(ab2.length);
@@ -603,6 +653,12 @@
     return out;
   }
 
+  /**
+   * @param {ArrayLike<number>} rho
+   * @param {ArrayLike<number>} h
+   * @param {ArrayLike<number>} a
+   * @returns {Float64Array}
+   */
   function forwardWenner(rho, h, a) {
     var hMin = h.length ? arrMin(h) : 1.0;
     var out = new Float64Array(a.length);
@@ -615,15 +671,29 @@
     return out;
   }
 
+  /**
+   * @param {ArrayLike<number>} rho
+   * @param {ArrayLike<number>} h
+   * @param {ArrayLike<number>} ab2
+   * @param {string} [arrayType]
+   * @returns {Float64Array}
+   */
   function forwardCurve(rho, h, ab2, arrayType) {
     return String(arrayType || '').indexOf('wenner') === 0
       ? forwardWenner(rho, h, ab2)
       : forwardSchlumberger(rho, h, ab2);
   }
 
-  /* Analytic two-layer ideal Schlumberger curve from image theory, used to
+  /** Analytic two-layer ideal Schlumberger curve from image theory, used to
    * validate the numerical Hankel evaluation:
-   *   rho_a(L) = rho1 [1 + 2 sum_n k^n L^3 / (L^2 + (2 n h)^2)^(3/2)] */
+   *   rho_a(L) = rho1 [1 + 2 sum_n k^n L^3 / (L^2 + (2 n h)^2)^(3/2)]
+   * @param {number} rho1
+   * @param {number} rho2
+   * @param {number} h
+   * @param {ArrayLike<number>} ab2
+   * @param {number} [nTerms]
+   * @returns {Float64Array}
+   */
   function twoLayerSchlumbergerSeries(rho1, rho2, h, ab2, nTerms) {
     var terms = nTerms || 4000;
     var k = (rho2 - rho1) / (rho2 + rho1);
@@ -649,11 +719,15 @@
    * values of the deep branch that drive the aquifer interpretation.
    */
 
-  /* A new segment starts at each change of MN. A blank MN continues the
+  /** A new segment starts at each change of MN. A blank MN continues the
    * current segment rather than starting one, so a single missing cell does
    * not inject a spurious one-point segment and an absent MN column does not
-   * split every reading into its own. */
+   * split every reading into its own.
+   * @param {Sounding} sounding
+   * @returns {number[][]}
+   */
   function soundingSegments(sounding) {
+    /** @type {number[][]} */
     var segments = [], lastMn = null;
     for (var i = 0; i < sounding.ab2.length; i++) {
       var raw = sounding.mn ? sounding.mn[i] : null;
@@ -667,10 +741,14 @@
     return segments;
   }
 
+  /**
+   * @param {Sounding} sounding
+   * @param {string} [mode] 'merge', 'first' or 'last'
+   */
   function spliceSegments(sounding, mode) {
     var m = mode || 'merge';
     var segments = soundingSegments(sounding);
-    var i, j;
+    var i;
     if (segments.length <= 1) {
       var order = sounding.ab2.map(function (v, k) { return k; })
         .sort(function (a, b) { return sounding.ab2[a] - sounding.ab2[b] || a - b; });
@@ -738,6 +816,11 @@
   var RHO_BOUNDS = [0.5, 200000.0];
   var H_BOUNDS = [0.2, 300.0];
 
+  /**
+   * @param {ArrayLike<number>} rhoObs
+   * @param {ArrayLike<number>} rhoCalc
+   * @returns {number}
+   */
   function fitErrorPercent(rhoObs, rhoCalc) {
     var s = 0;
     for (var i = 0; i < rhoObs.length; i++) {
@@ -772,8 +855,17 @@
     return out;
   }
 
-  /* onIteration(done, maxIterations), when given, is told after every
-   * iteration; it reads nothing back, so it cannot change the fit. */
+  /** onIteration(done, maxIterations), when given, is told after every
+   * iteration; it reads nothing back, so it cannot change the fit.
+   * @param {number[]} ab2
+   * @param {number[]} rhoApp
+   * @param {ArrayLike<number>} rho0
+   * @param {ArrayLike<number>} h0
+   * @param {string} arrayType
+   * @param {number} damping
+   * @param {number} maxIterations
+   * @param {((done: number, maxIterations: number) => void)|null} [onIteration]
+   */
   function invertModel(ab2, rhoApp, rho0, h0, arrayType, damping, maxIterations,
                        onIteration) {
     var nLayers = rho0.length;
@@ -873,10 +965,14 @@
     };
   }
 
-  /* Deterministic starting models read off the smoothed field curve.
+  /** Deterministic starting models read off the smoothed field curve.
    * Thicknesses grow logarithmically over the depth range the spacings cover
    * (depth of investigation taken as AB/2 x depth_factor); two depth-scale
-   * variants bracket it. */
+   * variants bracket it.
+   * @param {number[]} ab2
+   * @param {number[]} rho
+   * @param {number} nLayers
+   */
   function startingModels(ab2, rho, nLayers) {
     var logAb2 = ab2.map(Math.log), logRho = rho.map(Math.log);
     var starts = [];
@@ -908,10 +1004,16 @@
     return starts;
   }
 
-  /* Linearised 1-sigma multiplicative uncertainty per model parameter: the
+  /** Linearised 1-sigma multiplicative uncertainty per model parameter: the
    * covariance is sigma^2 (J'J)^-1, and because the parameters are logarithms,
    * exp(sigma_i) is the factor on each resistivity and thickness. Factors near
-   * 1 are well resolved; large factors mark equivalence and suppression. */
+   * 1 are well resolved; large factors mark equivalence and suppression.
+   * @param {number[]} ab2
+   * @param {number[]} rhoApp
+   * @param {ArrayLike<number>} rho
+   * @param {ArrayLike<number>} h
+   * @param {string} arrayType
+   */
   function parameterUncertainty(ab2, rhoApp, rho, h, arrayType) {
     var nLayers = rho.length;
     var theta = packTheta(rho, h);
@@ -969,11 +1071,14 @@
     return { rho: factors.slice(0, nLayers), h: factors.slice(nLayers) };
   }
 
-  /* ves/inversion.py inversion_readings: the readings the inversion fits,
+  /** ves/inversion.py inversion_readings: the readings the inversion fits,
    * spliced where the array has segments, sorted by spacing, and only the
    * finite, positive apparent resistivities. The interpretation reads its
    * depth of investigation from the same readings, so a last reading
-   * recorded as 0 cannot lend it a depth the model never saw. */
+   * recorded as 0 cannot lend it a depth the model never saw.
+   * @param {Sounding} sounding
+   * @param {Rec} [options] splice, spliceMode
+   */
   function inversionReadings(sounding, options) {
     var opts = options || {};
     var arrayType = sounding.array_type || 'schlumberger';
@@ -997,21 +1102,30 @@
     return { ab2: ab2, rho: rho, shifts: spliced.shifts };
   }
 
-  /* Full search: layer count from min_layers to max_layers, two starts each,
+  /** Full search: layer count from min_layers to max_layers, two starts each,
    * keeping the simplest model that reaches the target fit.
    *
    * onProgress(fraction, label) is called as each iteration and each trial
    * ends, so the page can show where the inversion has got to. It is the only
    * non-pure part of this, and it reads nothing back, so it cannot change the
    * result. The search stops adding layers once a fit is good enough, so the
-   * last fraction reported can fall short of 1. */
+   * last fraction reported can fall short of 1.
+   * @param {Sounding} sounding
+   * @param {Rec} [options] config, nLayers, initialModel, onProgress, splice, spliceMode
+   */
   function invertSounding(sounding, options) {
     var opts = options || {};
     var cfg = (opts.config || defaultConfig()).ves;
     var arrayType = sounding.array_type || 'schlumberger';
     var spliced = inversionReadings(sounding, opts);
     var ab2 = spliced.ab2, rhoApp = spliced.rho;
-    if (ab2.length < 4) throw new Error('Not enough readings to invert');
+    /* Spacings, not readings: a Wenner sheet is not spliced, so one read
+     * twice at each of two spacings passed a count of four and had a
+     * two-layer model's three parameters fitted to two points of the curve,
+     * where a family of models fits equally well and each engine picked a
+     * different one. */
+    var spacings = ab2.filter(function (v, k) { return ab2.indexOf(v) === k; });
+    if (spacings.length < 4) throw new Error('Not enough readings to invert');
 
     /* the iteration hook for trial si of nStarts at layer count li of nCounts */
     function iterationProgress(li, nCounts, si, nStarts, label) {
@@ -1040,6 +1154,8 @@
           }());
       for (var li = 0; li < layerRange.length; li++) {
         var n2 = layerRange[li];
+        /** startingModels always gives two starts, so this holds a model by the
+         * time it is read. @type {any} */
         var bestForN = null;
         var starts = startingModels(ab2, rhoApp, n2);
         for (var si = 0; si < starts.length; si++) {
@@ -1135,12 +1251,15 @@
     };
   }
 
-  /* ves/inversion.py restore_inversion: what invertSounding returned, rebuilt
+  /** ves/inversion.py restore_inversion: what invertSounding returned, rebuilt
    * from the model it chose. Only what the search alone can say is taken as
    * given - the model, its iteration count, whether it converged and the
    * layer counts tried. The readings fitted, the model's response, the misfit
    * and the uncertainty factors are worked out again from the sounding, the
-   * same way the search does it, so they come out to the last bit. */
+   * same way the search does it, so they come out to the last bit.
+   * @param {Sounding} sounding
+   * @param {Rec} stored an inversion cache record
+   */
   function restoreInversion(sounding, stored) {
     var arrayType = sounding.array_type || 'schlumberger';
     var spliced = inversionReadings(sounding);
@@ -1193,6 +1312,10 @@
     0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
   ];
 
+  /**
+   * @param {string} text
+   * @returns {string}
+   */
   function sha256Hex(text) {
     var bytes = new TextEncoder().encode(String(text));
     var n = bytes.length;
@@ -1230,11 +1353,14 @@
     return hash.map(function (x) { return ('00000000' + x.toString(16)).slice(-8); }).join('');
   }
 
-  /* One text for one value: keys sorted, no spaces, a number as the shortest
+  /** One text for one value: keys sorted, no spaces, a number as the shortest
    * text that reads back to it, and NaN (a blank MN) and the infinities
    * written as themselves rather than folded into null as JSON would. An
    * undefined is written as itself too: the engine reads a missing AB/2 as
-   * NaN and a null one as 0, so the two must not share a key. */
+   * NaN and a null one as 0, so the two must not share a key.
+   * @param {*} value
+   * @returns {string}
+   */
   function canonicalText(value) {
     if (value === undefined) return 'undefined';
     if (value === null) return 'null';
@@ -1257,7 +1383,11 @@
     return 'gwt-core ' + data.version + ' code ' + String(data.engineDigest).slice(0, 16);
   }
 
-  /* The cache key of invertSounding(sounding, {config: config}), or null. */
+  /** The cache key of invertSounding(sounding, {config: config}), or null.
+   * @param {Sounding} sounding
+   * @param {Config} [config]
+   * @returns {string|null}
+   */
   function inversionCacheKey(sounding, config) {
     var engine = inversionEngine();
     if (!engine) return null;
@@ -1277,11 +1407,16 @@
     return sha256Hex(key + '\n' + canonicalText(record));
   }
 
-  /* What to save under key for one sounding: its inversion, or the message
+  /** What to save under key for one sounding: its inversion, or the message
    * the inversion failed with - a failure is as determined as a result, and
    * would otherwise be tried again at every recompute. Plain JSON, so it
    * comes back unchanged from the store and the project file. Null if it
-   * will not keep. */
+   * will not keep.
+   * @param {string|null} key
+   * @param {Sounding} sounding
+   * @param {Rec|null} result
+   * @param {*} [error]
+   */
   function inversionCacheEntry(key, sounding, result, error) {
     if (!key) return null;
     var record;
@@ -1317,11 +1452,16 @@
     return typeof value === 'number' && Math.floor(value) === value && value >= lo && value <= hi;
   }
 
-  /* The saved inversion of a sounding, as {result} or {error}, or null to
+  /** The saved inversion of a sounding, as {result} or {error}, or null to
    * invert it afresh. key is inversionCacheKey of this sounding and
    * configuration. Anything short of a well-formed entry whose digest
    * matches under this key, and whose model reproduces the misfit the
-   * search recorded for it, is null. Never throws. */
+   * search recorded for it, is null. Never throws.
+   * @param {*} entry whatever the store or the project file held
+   * @param {string|null} key
+   * @param {Sounding} sounding
+   * @param {Config} [config]
+   */
   function inversionFromCache(entry, key, sounding, config) {
     try {
       if (!key || !entry || typeof entry !== 'object') return null;
@@ -1354,7 +1494,11 @@
     }
   }
 
-  /* A layered model with the derived depth arrays the rest of the code reads. */
+  /** A layered model with the derived depth arrays the rest of the code reads.
+   * @param {ArrayLike<number>} resistivities
+   * @param {ArrayLike<number>} thicknesses
+   * @param {Rec} [extra] further fields to set on the model
+   */
   function layeredModel(resistivities, thicknesses, extra) {
     var rho = Array.prototype.slice.call(resistivities);
     var h = Array.prototype.slice.call(thicknesses);
@@ -1383,6 +1527,10 @@
 
   var TRIPLET = { '10': 'K', '01': 'H', '11': 'A', '00': 'Q' };
 
+  /**
+   * @param {LayeredModel} model
+   * @returns {string}
+   */
   function classifyCurve(model) {
     var rho = model.resistivities;
     if (rho.length < 2) return 'uniform';
@@ -1409,6 +1557,10 @@
        'or increasing saturation with depth',
   };
 
+  /**
+   * @param {string} curveType
+   * @returns {string}
+   */
   function describeCurveType(curveType) {
     if (curveType.indexOf('2-layer') === 0) {
       if (curveType.indexOf('descending') >= 0) {
@@ -1437,7 +1589,7 @@
    */
 
   function unitLabel(rho, isTop, isBottom, cfg) {
-    var lo = cfg.fractured_zone_rho[0], hi = cfg.fractured_zone_rho[1];
+    var hi = cfg.fractured_zone_rho[1];
     if (isTop) {
       if (rho >= cfg.laterite_min_rho) return ['dry lateritic topsoil / duricrust', false];
       if (rho >= hi) return ['compact laterite / dry overburden', false];
@@ -1462,15 +1614,23 @@
     return ['weathered / fractured zone, potentially water bearing when saturated', true];
   }
 
-  /* How deep a sounding with this largest AB/2 actually resolves: one rule
-   * for the interpretation, every figure and the drilling-depth cap. */
+  /** How deep a sounding with this largest AB/2 actually resolves: one rule
+   * for the interpretation, every figure and the drilling-depth cap.
+   * @param {number} maxSpacing
+   * @param {VesConfig} [cfg]
+   * @returns {number}
+   */
   function depthOfInvestigation(maxSpacing, cfg) {
     var c = cfg || defaultConfig().ves;
     return maxSpacing * c.depth_of_investigation_factor;
   }
 
-  /* 1.0 at or under the target misfit, falling linearly to the floor at the
-   * unreliable level and staying there. */
+  /** 1.0 at or under the target misfit, falling linearly to the floor at the
+   * unreliable level and staying there.
+   * @param {number|null} [err]
+   * @param {VesConfig} [cfg]
+   * @returns {number}
+   */
   function fitConfidence(err, cfg) {
     var c = cfg || defaultConfig().ves;
     if (err === null || err === undefined) return 1.0;
@@ -1481,22 +1641,42 @@
     return 1.0 - (1.0 - c.fit_confidence_floor) * frac;
   }
 
-  /* "8 m to 40 m", or open-ended "8 m to at least 40 m". */
+  /** "8 m to 40 m", or open-ended "8 m to at least 40 m".
+   * @param {number} top
+   * @param {number} bottom
+   * @param {boolean} [openEnded]
+   * @returns {string}
+   */
   function zoneText(top, bottom, openEnded) {
     return openEnded
       ? Math.trunc(top) + ' m to at least ' + Math.trunc(bottom) + ' m'
       : Math.trunc(top) + ' m to ' + Math.trunc(bottom) + ' m';
   }
 
+  /**
+   * @param {number} top
+   * @param {number} bottom
+   * @param {boolean} [openEnded]
+   * @returns {string}
+   */
   function zoneCell(top, bottom, openEnded) {
     return Math.trunc(top) + '-' + Math.trunc(bottom) + (openEnded ? '+' : '');
   }
 
+  /**
+   * @param {Interpretation} interp
+   * @param {number[]} zone [top, bottom]
+   * @returns {boolean}
+   */
   function zoneIsOpen(interp, zone) {
     var last = interp.water_zones[interp.water_zones.length - 1];
     return !!interp.basement_not_resolved && last && zone[0] === last[0] && zone[1] === last[1];
   }
 
+  /**
+   * @param {Interpretation} interp
+   * @returns {string}
+   */
   function drillingDepthText(interp) {
     var depth = pyFixed(interp.max_drilling_depth_m, 0) + ' m';
     var minimum = interp.basement_not_resolved || interp.drilling_depth_capped;
@@ -1549,6 +1729,12 @@
     return total > 0 ? Math.exp(acc / total) : 100.0;
   }
 
+  /**
+   * @param {Sounding|null} sounding
+   * @param {LayeredModel} model
+   * @param {Config} [config]
+   * @returns {Interpretation}
+   */
   function interpretModel(sounding, model, config) {
     var cfg = (config || defaultConfig()).ves;
     var rho = model.resistivities;
@@ -1730,58 +1916,104 @@
    * compared against the Python output character for character, so the
    * thousands separators and the %g fallback have to match exactly. */
 
-  /* Python's round(): half goes to even, not away from zero. It governs the
-   * water-zone bounds and every fmt_num, so the two implementations disagree
-   * on exact halves unless this is used. */
-  /* Python's "%.Nf": correctly rounded with half-to-even on the exact binary
-   * value. Number.prototype.toFixed rounds a tie away from zero instead, so
-   * a cost of exactly $150.5/m printed as $151 here and $150 in the package,
-   * and the difference reached the downloadable site brief. */
-  function pyFixed(x, digits) {
-    var d = digits || 0;
-    return pyRound(Number(x), d).toFixed(d);
+  /* |x| * 10^d rounded half to even, worked out exactly, as a BigInt. x is
+   * m * 2^k with m and k read from its bits, so nothing is rounded before
+   * the one rounding asked for, which is how Python rounds. The decimal
+   * text JavaScript offers is itself rounded, and a tail it shows as a tie
+   * need not be one: 1.05 is 1.0500000000000000444, which Python rounds to
+   * 1.1, but to seventeen digits it reads 1.0500000000000000, and half to
+   * even on that made it 1.0 here - and 0.155, just under its tie, 0.16. */
+  function exactScaledRound(x, d) {
+    var view = new DataView(new ArrayBuffer(8));
+    view.setFloat64(0, Math.abs(x));
+    var hi = view.getUint32(0), lo = view.getUint32(4);
+    var biased = (hi >>> 20) & 0x7ff;
+    var m = BigInt(hi & 0xfffff) * BigInt(4294967296) + BigInt(lo);
+    var k = -1074;                            // a subnormal
+    if (biased) { m += BigInt(4503599627370496); k = biased - 1075; }
+    var num = m, den = BigInt(1), fives = BigInt(1);
+    for (var i = 0; i < Math.abs(d); i++) fives *= BigInt(5);
+    if (d >= 0) num *= fives; else den *= fives;
+    if (k + d >= 0) num <<= BigInt(k + d); else den <<= BigInt(-(k + d));
+    var q = num / den;
+    var twice = (num - q * den) * BigInt(2);
+    if (twice > den || (twice === den && q % BigInt(2) === BigInt(1))) q += BigInt(1);
+    return q;
   }
 
+  /* |x| rounded exactly to d decimal places (d < 0 rounds to tens,
+   * hundreds...), as decimal text. */
+  function exactFixedText(x, d) {
+    var digits = exactScaledRound(x, d).toString();
+    if (d <= 0) return digits === '0' ? '0' : digits + '0'.repeat(-d);
+    while (digits.length <= d) digits = '0' + digits;
+    return digits.slice(0, -d) + '.' + digits.slice(-d);
+  }
+
+  /** Python's "%.Nf": correctly rounded with half-to-even on the exact binary
+   * value. Number.prototype.toFixed rounds a tie away from zero instead, so
+   * a cost of exactly $150.5/m printed as $151 here and $150 in the package,
+   * and the difference reached the downloadable site brief. It is written
+   * from the exact value, as Python writes it, so it agrees where toFixed
+   * cannot too: "-0" for a negative that rounds to nothing, every digit of
+   * a number from 1e21 up, and nan and inf.
+   * @param {number} x
+   * @param {number} [digits]
+   * @returns {string}
+   */
+  function pyFixed(x, digits) {
+    var d = digits || 0;
+    var v = Number(x);
+    if (v !== v) return 'nan';
+    if (!isFinite(v)) return v > 0 ? 'inf' : '-inf';
+    var sign = v < 0 || Object.is(v, -0) ? '-' : '';
+    /* Within fifteen digits the rounded double prints back as exactly the
+     * decimal it was rounded to, and that is three times quicker. */
+    if (d <= 15 && Math.abs(v) < 1e15 / Math.pow(10, d)) {
+      return sign + Math.abs(pyRound(v, d)).toFixed(d);
+    }
+    return sign + exactFixedText(v, d);
+  }
+
+  /** Python's round(): half goes to even, not away from zero. It governs the
+   * water-zone bounds and every fmt_num, so the two implementations disagree
+   * on exact halves unless this is used.
+   * @param {number} x
+   * @param {number} [digits]
+   * @returns {number}
+   */
   function pyRound(x, digits) {
     var d = digits || 0;
     if (!isFinite(x)) return x;
-    /* round(12345, -2) is 12300 in Python. The decimal-string path below
-     * cuts inside the fraction, which a negative cut has none of, so the
-     * scale is taken out first and put back after. */
-    if (d < 0) {
-      var scale = Math.pow(10, -d);
-      return pyRound(x / scale, 0) * scale;
-    }
-    /* The tie test has to run on the real value, not on x * 10^d: 14.05 is
-     * stored as 14.05000000000000071, which Python rounds up, but 14.05 * 10
-     * is exactly 140.5 in binary and looked like a tie, so banker's rounding
-     * turned it into 14.0. toPrecision(17) round-trips the double exactly,
-     * so the decimal digits below the cut say whether it is really a tie. */
-    var f = Math.pow(10, d);
+    /* The usual case is decided on the decimal expansion, which is quick:
+     * seventeen significant digits identify a double, and a tail below the
+     * cut that does not read as 5 followed by zeros says which way the real
+     * value lies, since the real value is within half a unit of the last
+     * of those digits. A tail that reads as a tie, a cut too deep for the
+     * kept digits to stay an exact integer, a negative cut and a number
+     * written with an exponent are rounded on the exact value instead, and
+     * read back from the decimal text, as Python reads it back. */
     var text = Math.abs(x).toPrecision(17);
-    var r;
-    if (text.indexOf('e') < 0) {
-      /* Work entirely in the decimal expansion so the cut and the tie test
-       * agree: seventeen significant digits identify a double uniquely, and
-       * a genuine tie terminates in a 5 followed by zeros. */
+    if (d >= 0 && d <= 22 && text.indexOf('e') < 0) {
       var dot = text.indexOf('.');
       var whole = dot < 0 ? text : text.slice(0, dot);
       var fraction = dot < 0 ? '' : text.slice(dot + 1);
       while (fraction.length < d) fraction += '0';
-      var head = Number(whole + fraction.slice(0, d));
+      var kept = whole + fraction.slice(0, d);
       var tail = fraction.slice(d);
-      if (/^50*$/.test(tail)) {
-        r = (head % 2 === 0) ? head : head + 1;      // half to even
-      } else {
-        r = (tail && tail.charAt(0) >= '5') ? head + 1 : head;
+      if (kept.length <= 15 && !/^50*$/.test(tail)) {
+        var r = Number(kept) + ((tail && tail.charAt(0) >= '5') ? 1 : 0);
+        return (x < 0 ? -r : r) / Math.pow(10, d);
       }
-    } else {
-      var v = Math.abs(x) * f;
-      r = Math.abs(v - Math.trunc(v)) === 0.5 ? 2 * Math.round(v / 2) : Math.round(v);
     }
-    return (x < 0 ? -r : r) / f;
+    return Number((x < 0 ? '-' : '') + exactFixedText(x, d));
   }
 
+  /**
+   * @param {number} value
+   * @param {number} [sig]
+   * @returns {number}
+   */
   function roundSig(value, sig) {
     if (value === 0 || !isFinite(value)) return value;
     var exp = Number(Math.abs(value).toExponential().split('e')[1]);
@@ -1791,11 +2023,18 @@
     return pyRound(value, (sig || 3) - 1 - exp);
   }
 
-  /* Python's "%g": 6 significant digits, trailing zeros stripped, exponential
-   * when the exponent falls below -4 or reaches the precision. */
+  /** Python's "%g": 6 significant digits, trailing zeros stripped, exponential
+   * when the exponent falls below -4 or reaches the precision.
+   * @param {number} value
+   * @param {number} [precision]
+   * @returns {string}
+   */
   function formatG(value, precision) {
     var p = precision || 6;
-    if (value === 0) return '0';
+    /* written as Python writes them, sign of a zero included */
+    if (value === 0) return Object.is(value, -0) ? '-0' : '0';
+    if (value !== value) return 'nan';
+    if (!isFinite(value)) return value > 0 ? 'inf' : '-inf';
     var rounded = roundSig(value, p);
     /* Not Math.log10: in V8 Math.log(1e6)/Math.LN10 is 5.999999999999999, so
      * the exponent came out one too low at exact powers of ten and %g chose
@@ -1803,8 +2042,10 @@
      * string carries the exponent exactly. */
     var exp = Number(Math.abs(rounded).toExponential().split('e')[1]);
     if (exp < -4 || exp >= p) {
-      var mant = rounded / Math.pow(10, exp);
-      var mstr = mant.toFixed(p - 1).replace(/0+$/, '').replace(/\.$/, '');
+      /* the mantissa's digits as toExponential writes them, rather than
+       * rounded / 10^exp, which is Infinity below 1e-308 */
+      var mstr = rounded.toExponential(p - 1).split('e')[0]
+        .replace(/0+$/, '').replace(/\.$/, '');
       return mstr + 'e' + (exp < 0 ? '-' : '+') +
         String(Math.abs(exp)).padStart(2, '0');
     }
@@ -1813,13 +2054,23 @@
     return out;
   }
 
-  /* Python's "%.2e": the exponent is padded to at least two digits, which
-   * toExponential does not do. */
+  /** Python's "%.2e": the exponent is padded to at least two digits, which
+   * toExponential does not do.
+   * @param {number} value
+   * @param {number} [digits]
+   * @returns {string}
+   */
   function expo(value, digits) {
     var text = Number(value).toExponential(digits === undefined ? 2 : digits);
     return text.replace(/e([+-])(\d)$/, 'e$10$2');
   }
 
+  /**
+   * @param {number|null|undefined} value anything else is 'n/a' too
+   * @param {number} [sig]
+   * @param {string} [unit]
+   * @returns {string}
+   */
   function fmtNum(value, sig, unit) {
     if (value === null || value === undefined || typeof value !== 'number' ||
         !isFinite(value)) {
@@ -1828,18 +2079,29 @@
     var v = roundSig(value, sig === undefined ? 3 : sig);
     var text;
     if (Math.abs(v - Math.round(v)) < 1e-9 && Math.abs(v) < 1e15) {
-      text = pyRound(v).toLocaleString('en-US');
+      text = (pyRound(v) || 0).toLocaleString('en-US');      // an int: never -0
     } else {
       text = formatG(v);
     }
     return unit ? (text + ' ' + unit).trim() : text;
   }
 
+  /**
+   * @param {number|null|undefined} a
+   * @param {number|null|undefined} b
+   * @param {string} [unit]
+   * @param {string} [sep]
+   * @returns {string}
+   */
   function fmtRange(a, b, unit, sep) {
     return (fmtNum(a) + (sep === undefined ? '-' : sep) + fmtNum(b) + ' ' +
       (unit === undefined ? 'm' : unit)).trim();
   }
 
+  /**
+   * @param {number|null} [n]
+   * @returns {string}
+   */
   function ordinal(n) {
     if (n === null || n === undefined) return '';
     var v = n % 100;
@@ -1848,19 +2110,126 @@
     return String(n) + suffix;
   }
 
-  /* groundwater/utils.py plural / plural_noun. "1 point", "2 points": the
+  /** groundwater/utils.py plural / plural_noun. "1 point", "2 points": the
    * noun agrees with the count. Readiness gates and flags printed "2 step(s)
    * with discharge" and "1 lithological interval(s)", which is a form, not a
    * sentence, and the browser has to say what the package says character for
    * character. The third argument carries a plural that is not just +"s"
-   * ("series", "analyses"), as the Python helpers' plural_form does. */
+   * ("series", "analyses"), as the Python helpers' plural_form does.
+   * @param {number} count
+   * @param {string} singular
+   * @param {string} [pluralForm]
+   * @returns {string}
+   */
   function plural(count, singular, pluralForm) {
     return String(count) + ' ' + pluralNoun(count, singular, pluralForm);
   }
 
-  /* The noun alone, agreeing with a count the sentence already carries. */
+  /** The noun alone, agreeing with a count the sentence already carries.
+   * @param {number} count
+   * @param {string} singular
+   * @param {string} [pluralForm]
+   * @returns {string}
+   */
   function pluralNoun(count, singular, pluralForm) {
     return count === 1 ? singular : (pluralForm || singular + 's');
+  }
+
+  /* --- the shared words ---------------------------------------------------
+   * groundwater/text.py. A sentence both engines write is kept once, in
+   * src/groundwater/data/text/*.yaml, which the build emits as
+   * GWT.data.text; this is the same renderer as render_text there, rule for
+   * rule, and the grammar is documented with it. A number always names its
+   * format, because String(5.0) is "5" here and str(5.0) is "5.0" there. */
+  var TEXT_TOKEN = new RegExp('\\{\\{|\\}\\}' +
+    '|\\{([a-z_][a-z0-9_]*)(?::(num|g|\\.\\d+f|plural:[^{}|]*\\|[^{}|]*))?\\}' +
+    '|[{}]', 'g');
+
+  function formatTextValue(name, spec, value) {
+    if (spec === undefined) {
+      if (typeof value !== 'string') {
+        throw new TypeError('text: {' + name + '} takes a string; a number ' +
+          'names its format, as {' + name + ':num}');
+      }
+      return value;
+    }
+    if (spec.indexOf('plural:') === 0) {
+      if (typeof value !== 'number' || !Number.isInteger(value)) {
+        throw new TypeError('text: {' + name + ':plural:...} takes a whole count');
+      }
+      var forms = spec.slice('plural:'.length).split('|');
+      return value === 1 ? forms[0] : forms[1];
+    }
+    if (typeof value !== 'number' && !(spec === 'num' && value === null)) {
+      throw new TypeError('text: {' + name + ':' + spec + '} takes a number, not ' +
+        JSON.stringify(value));
+    }
+    if (spec === 'num') return fmtNum(value);
+    if (spec === 'g') return formatG(value);
+    return pyFixed(value, Number(spec.slice(1, -1)));
+  }
+
+  /**
+   * @param {string} template
+   * @param {Record<string, *>} [values]
+   * @returns {string}
+   */
+  function renderText(template, values) {
+    values = values || {};
+    var used = {};
+    var text = template.replace(TEXT_TOKEN, function (token, name, spec) {
+      if (token === '{{' || token === '}}') return token.charAt(0);
+      if (name === undefined) {
+        throw new Error('text: a lone ' + JSON.stringify(token) + ' in ' +
+          JSON.stringify(template) + '; write ' + token + token);
+      }
+      if (!own(values, name)) {
+        throw new Error('text: no value for {' + name + '} in ' + JSON.stringify(template));
+      }
+      used[name] = true;
+      return formatTextValue(name, spec, values[name]);
+    });
+    var unused = Object.keys(values).filter(function (k) { return !used[k]; });
+    if (unused.length) {
+      throw new Error('text: ' + JSON.stringify(unused.sort()) + ' are not in ' +
+        JSON.stringify(template));
+    }
+    return text;
+  }
+
+  function textEntry(id) {
+    var dot = id.indexOf('.');
+    var file = ((GWT.data || {}).text || {})[id.slice(0, dot)];
+    if (dot < 0 || !file || !own(file, id.slice(dot + 1))) {
+      throw new Error('text: no entry ' + JSON.stringify(id) + ' in data/text ' +
+        '(is gwt-data.js loaded, and current?)');
+    }
+    return file[id.slice(dot + 1)];
+  }
+
+  /** The sentence id names, with values filled in.
+   * @param {string} id
+   * @param {Record<string, *>} [values]
+   * @returns {string}
+   */
+  function phrase(id, values) {
+    var template = textEntry(id);
+    if (typeof template !== 'string') {
+      throw new TypeError('text: ' + JSON.stringify(id) + ' is a table; read it with phraseTable');
+    }
+    return renderText(template, values);
+  }
+
+  /** The table id names: literal text, keyed by a value from the data.
+   * @param {string} id
+   * @returns {Record<string, *>}
+   */
+  function phraseTable(id) {
+    var table = textEntry(id);
+    if (typeof table !== 'object' || table === null) {
+      throw new TypeError('text: ' + JSON.stringify(id) + ' is a sentence; read it with phrase');
+    }
+    return table;
   }
 
   /* ves/interpret.py POORLY_RESOLVED_FACTOR / poorly_resolved_boundaries:
@@ -1868,6 +2237,10 @@
    * a factor of 2 or worse; empty for a model with no uncertainty. */
   var POORLY_RESOLVED_FACTOR = 2.0;
 
+  /**
+   * @param {LayeredModel} model
+   * @returns {number[][]}
+   */
   function poorlyResolvedBoundaries(model) {
     var factors = model.h_uncertainty_factor;
     if (!factors) return [];
@@ -1878,7 +2251,10 @@
     return out;
   }
 
-  /* "a", "a and b", "a, b and c" */
+  /** "a", "a and b", "a, b and c"
+   * @param {string[]} items
+   * @returns {string}
+   */
   function andJoin(items) {
     return items.length === 1 ? items[0]
       : items.slice(0, -1).join(', ') + ' and ' + items[items.length - 1];
@@ -1974,14 +2350,24 @@
   /* Ranks in place, 1 = most preferred. Every caller reading `rank` must rank
    * first: an unranked set leaves every rank null and "best" then falls back to
    * whichever sounding happened to be parsed first. */
-  /* The one number the points are ranked on: the suitability scorecard's
+  /** The one number the points are ranked on: the suitability scorecard's
    * geological score discounted by the interpretation's confidence, so the
-   * preference table, the summary and the suitability section agree. */
+   * preference table, the summary and the suitability section agree.
+   * @param {Interpretation} interp
+   * @param {VesConfig} [cfg]
+   * @returns {number}
+   */
   function rankingWeight(interp, cfg) {
     var result = C.assessSiting([interp], cfg)[0];
     return result.suitability * result.confidence;
   }
 
+  /**
+   * @param {Interpretation[]} interpretations
+   * @param {string[]|null} [preferredOrder]
+   * @param {VesConfig} [cfg]
+   * @returns {Interpretation[]}
+   */
   function rankInterpretations(interpretations, preferredOrder, cfg) {
     /* Held beside the interpretation itself, not keyed by its sounding id: a
      * sheet copied without renumbering gives two soundings one id, and a
@@ -2015,6 +2401,11 @@
 
   var LAYER_RESISTIVITY_COLUMN = 'Layer resistivity (ohm-m)';
 
+  /**
+   * @param {Interpretation[]} interpretations
+   * @param {string[]|null} [preferredOrder]
+   * @param {VesConfig} [cfg]
+   */
   function drillingPreferenceTable(interpretations, preferredOrder, cfg) {
     var c = cfg || defaultConfig().ves;
     var ranked = rankInterpretations(interpretations, preferredOrder, c);
@@ -2050,9 +2441,15 @@
     });
   }
 
-  /* reporting/geophysical.py depth_of_investigation_text: how deep the
+  /** reporting/geophysical.py depth_of_investigation_text: how deep the
    * soundings of one array resolve, in the array's own terms. A Wenner
-   * sounding's spacing is a, and it used to be reported as a maximum AB/2. */
+   * sounding's spacing is a, and it used to be reported as a maximum AB/2.
+   * @param {string|null|undefined} arrayType
+   * @param {number} maxSpacing
+   * @param {number} doi
+   * @param {VesConfig} [cfg]
+   * @returns {string}
+   */
   function depthOfInvestigationText(arrayType, maxSpacing, doi, cfg) {
     var c = cfg || defaultConfig().ves;
     var fraction = c.depth_of_investigation_factor;
@@ -2071,8 +2468,12 @@
       fmtNum(doi) + ' m, and any structure below it is not resolved.';
   }
 
-  /* reporting/geophysical.py models_tried_text: what else was tried, so the
-   * model in the table is seen as one choice among the candidates. */
+  /** reporting/geophysical.py models_tried_text: what else was tried, so the
+   * model in the table is seen as one choice among the candidates.
+   * @param {Rec} inversion what invertSounding returns
+   * @param {VesConfig} [cfg]
+   * @returns {string}
+   */
   function modelsTriedText(inversion, cfg) {
     var c = cfg || defaultConfig().ves;
     var trials = (inversion.trials || []).filter(function (t) {
@@ -2119,8 +2520,11 @@
     return 'Models tried: ' + tried + '. Of these ' + why + '.';
   }
 
-  /* reporting/geophysical.py poorly_resolved_text: each boundary whose
-   * thickness factor is 2 or more, by the test the narrative softens on. */
+  /** reporting/geophysical.py poorly_resolved_text: each boundary whose
+   * thickness factor is 2 or more, by the test the narrative softens on.
+   * @param {LayeredModel} model
+   * @returns {string}
+   */
   function poorlyResolvedText(model) {
     var weak = poorlyResolvedBoundaries(model);
     if (!weak.length) return '';
@@ -2167,6 +2571,7 @@
     fmtNum: fmtNum, fmtRange: fmtRange, formatG: formatG,
     roundSig: roundSig, pyRound: pyRound, pyFixed: pyFixed, expo: expo,
     ordinal: ordinal, plural: plural, pluralNoun: pluralNoun,
+    renderText: renderText, phrase: phrase, phraseTable: phraseTable,
   });
 
   /* ============================================================= hydraulics
@@ -2182,6 +2587,10 @@
    * the constant the Python carries and the numbers are compared against it.
    */
 
+  /**
+   * @param {number|string|null|undefined} q m3/h
+   * @returns {number}
+   */
   function requireDischarge(q) {
     /* A rate of zero is not a measurement, and T is proportional to Q. */
     if (q === null || q === undefined) {
@@ -2196,9 +2605,15 @@
     return v;
   }
 
-  /* Cooper-Jacob straight line on drawdown against log time.
+  /** Cooper-Jacob straight line on drawdown against log time.
    * With no explicit window the fit uses the last full log cycle (at least 6
-   * points), which is where u is smallest and the approximation holds. */
+   * points), which is where u is smallest and the approximation holds.
+   * @param {ArrayLike<number>} timeMin
+   * @param {ArrayLike<number>} drawdownM
+   * @param {number} dischargeM3PerH
+   * @param {PumpingConfig|null} [config]
+   * @param {Rec} [options] fitWindowMin, observationRadiusM, assumedStorativity
+   */
   function cooperJacob(timeMin, drawdownM, dischargeM3PerH, config, options) {
     var opts = options || {};
     var cfg = (config || defaultConfig().pumping);
@@ -2235,7 +2650,12 @@
 
     var fit = lineFit(window.map(function (k) { return Math.log(t[k]) / Math.LN10; }),
                       window.map(function (k) { return s[k]; }));
-    if (fit.slope <= 0) {
+    /* A window of one level has a slope of zero give or take rounding, and
+     * which side of zero the rounding falls differs between this closed form
+     * and numpy's lstsq: the same sheet was "flat (0.000 m per log cycle)"
+     * here and "does not increase" there. Only a slope clearly below zero is
+     * a falling drawdown; one within rounding of it is a flat one. */
+    if (fit.slope < -SLOPE_ROUNDING_M) {
       throw new Error('Drawdown does not increase with log time; ' +
         'Cooper-Jacob does not apply');
     }
@@ -2244,7 +2664,7 @@
      * face; a line that does not explain the window is no better. */
     if (fit.slope < cfg.cooper_jacob_min_slope_m) {
       throw new Error('The fitted window ' + formatG(fitWindow[0]) + '-' +
-        formatG(fitWindow[1]) + ' min is flat (' + fit.slope.toFixed(3) +
+        formatG(fitWindow[1]) + ' min is flat (' + pyFixed(Math.max(fit.slope, 0), 3) +
         ' m per log cycle, under ' + formatG(cfg.cooper_jacob_min_slope_m) +
         ' m): the drawdown has stabilised or the slope is below reading ' +
         'resolution, so Cooper-Jacob does not apply');
@@ -2252,7 +2672,7 @@
     if (fit.r2 < cfg.cooper_jacob_min_r2) {
       throw new Error('The straight line explains too little of the window ' +
         formatG(fitWindow[0]) + '-' + formatG(fitWindow[1]) + ' min (R squared ' +
-        fit.r2.toFixed(3) + ', under ' + formatG(cfg.cooper_jacob_min_r2) +
+        pyFixed(fit.r2, 3) + ', under ' + formatG(cfg.cooper_jacob_min_r2) +
         '), so Cooper-Jacob does not apply');
     }
     var qDay = dischargeM3PerH * 24.0;
@@ -2304,9 +2724,30 @@
     };
   }
 
-  /* Least squares fit of the Theis well function s = Q/(4 pi T) W(u),
+  /* analysis.py theis_fit's curve_fit(maxfev=20000) */
+  var THEIS_MAXFEV = 20000;
+
+  /** Least squares fit of the Theis well function s = Q/(4 pi T) W(u),
    * u = r^2 S / (4 T t), in log parameter space so T and S stay positive.
-   * Levenberg-Marquardt stands in for scipy's curve_fit. */
+   * Levenberg-Marquardt stands in for scipy's curve_fit.
+   *
+   * A drawdown that does not grow with log time is refused: on a flat
+   * record the least squares has no minimum, T runs off towards infinity and
+   * S towards zero, and the transmissivity reported is wherever the
+   * optimiser stopped - 1282 m2/day here and 2190 in the Python package for
+   * the same sheet, both adopted at established confidence. The test is the
+   * reading resolution across the whole record, not the 0.02 m per log cycle
+   * cooperJacob asks of its late window: a handpump rate in an aquifer of a
+   * few hundred m2/day draws down 1 to 2 cm a log cycle, and over three log
+   * cycles of readings the curve still returns T to within a few percent. A
+   * fit that drives S to the floor is refused for the same reason as a flat
+   * record: the drawdown is nearly all an offset the curve does not model,
+   * such as well loss.
+   * @param {ArrayLike<number>} timeMin
+   * @param {ArrayLike<number>} drawdownM
+   * @param {number} dischargeM3PerH
+   * @param {Rec} [options] radiusM, observationWell
+   */
   function theisFit(timeMin, drawdownM, dischargeM3PerH, options) {
     var opts = options || {};
     requireDischarge(dischargeM3PerH);
@@ -2319,9 +2760,22 @@
       if (td > 0 && drawdownM[i] > 0) { t.push(td); s.push(drawdownM[i]); }
     }
     if (t.length < 5) throw new Error('Not enough readings for a Theis fit');
+    var logTime = t.map(function (v) { return Math.log10(v); });
+    /* the rise itself is not printed: on a flat record it is a few parts in
+     * 1e17 either side of zero, and its sign is noise */
+    var rise = lineFit(logTime, s).slope * (arrMax(logTime) - arrMin(logTime));
+    if (rise < READING_RESOLUTION_M) {
+      throw new Error('The drawdown rises by less than ' +
+        formatG(READING_RESOLUTION_M) + ' m across the readings, which a dipper ' +
+        'cannot tell from a level that holds, so T and S cannot be fitted to ' +
+        'it: the aquifer gives this discharge with next to no drawdown, which ' +
+        'a higher rate would measure, or recharge holds the level');
+    }
     var qDay = dischargeM3PerH * 24.0;
+    var calls = 0;
 
     function model(tt, logT, logS) {
+      calls += 1;
       var T = Math.pow(10, logT), S = Math.pow(10, logS);
       var out = new Float64Array(tt.length);
       for (var k = 0; k < tt.length; k++) {
@@ -2348,7 +2802,17 @@
       return c;
     }
     var lam = 1e-3, cost = costOf(p);
-    for (var iter = 0; iter < 200; iter++) {
+    /* Until no step lowers the misfit, within the budget of model
+     * evaluations the Python package gives curve_fit (maxfev = 20000) and
+     * with its refusal when the budget runs out. A cap of 200 iterations
+     * used to stop this fit partway down a long valley - a Theis fit of
+     * 412 m2/day where scipy reached 430, the Cooper-Jacob value - wherever
+     * a large constant offset pushes S towards zero. */
+    for (;;) {
+      if (calls >= THEIS_MAXFEV) {
+        throw new Error('Optimal parameters not found: Number of calls to ' +
+          'function has reached maxfev = ' + THEIS_MAXFEV + '.');
+      }
       var base = model(t, p[0], p[1]);
       var J = [];
       var h0 = 1e-6 * Math.max(Math.abs(p[0]), 1);
@@ -2387,6 +2851,14 @@
     }
 
     var Tfit = Math.pow(10, p[0]), Sfit = Math.pow(10, p[1]);
+    if (!(Sfit >= THEIS_STORATIVITY_FLOOR)) {
+      /* S is not printed either: it is wherever each optimiser stopped on its
+       * way to underflow */
+      throw new Error('The Theis fit drives the storativity below ' +
+        formatG(THEIS_STORATIVITY_FLOOR) + ': the drawdown is nearly all an ' +
+        'offset the Theis curve does not model, such as well loss, so T and S ' +
+        'cannot be fitted to it');
+    }
     var fitted = model(t, p[0], p[1]), ss = 0;
     for (var k2 = 0; k2 < t.length; k2++) {
       var e2 = fitted[k2] - s[k2];
@@ -2402,9 +2874,15 @@
     };
   }
 
-  /* Theis recovery on residual drawdown against t/t':
+  /** Theis recovery on residual drawdown against t/t':
    *   s' = 2.303 Q / (4 pi T) log10(t/t')
-   * with t since pumping started and t' since it stopped. */
+   * with t since pumping started and t' since it stopped.
+   * @param {ArrayLike<number>} recoveryTimeMin
+   * @param {ArrayLike<number>} residualDrawdownM
+   * @param {number} pumpingDurationMin
+   * @param {number} dischargeM3PerH
+   * @param {boolean} [equivalentTime]
+   */
   function theisRecovery(recoveryTimeMin, residualDrawdownM, pumpingDurationMin,
                          dischargeM3PerH, equivalentTime) {
     /* pumpingDurationMin is the time t/t' is formed with: after a step test
@@ -2421,8 +2899,20 @@
       return Math.log((pumpingDurationMin + v) / v) / Math.LN10;
     });
     var fit = lineFit(x, sp);
-    if (fit.slope <= 0) {
+    if (fit.slope < -SLOPE_ROUNDING_M) {
       throw new Error('Residual drawdown does not decrease; check the data');
+    }
+    /* A recovery that has already finished is flat against log(t/t'), its
+     * slope rounding noise, and 2.303 Q / (4 pi slope) turned that into 4e17
+     * m2/day here and 6e16 in the Python package. The line is refused when it
+     * falls by less than a dipper reads across the recovery readings, as a
+     * Theis fit is; a slow but readable recovery, 1.5 cm a log cycle from a
+     * handpump in an aquifer of 300 m2/day, still gives its transmissivity. */
+    if (fit.slope * (arrMax(x) - arrMin(x)) < READING_RESOLUTION_M) {
+      throw new Error('The residual drawdown falls by less than ' +
+        formatG(READING_RESOLUTION_M) + ' m across the recovery readings, which ' +
+        'a dipper cannot tell from a recovery already complete, so no ' +
+        'transmissivity is read from it');
     }
     var qDay = dischargeM3PerH * 24.0;
     var start = arrMax(sp);
@@ -2455,11 +2945,32 @@
    * out of the fit used to renumber the rest, so the table printed "Step 1 |
    * 2.2 m3/h" beside a test details line saying step 1 ran at 1.5 m3/h.
    * Without them the steps are numbered from one. */
+  /* analysis.py SAME_RATE_RTOL: step discharges closer than this,
+   * relatively, are one rate written two ways. */
+  var SAME_RATE_RTOL = 1e-6;
+
+  /**
+   * @param {number[]} stepDischargesM3PerH
+   * @param {number[]} stepEndDrawdownsM
+   * @param {Array<number|string>|null} [stepNumbers]
+   */
   function hantushBierschenk(stepDischargesM3PerH, stepEndDrawdownsM, stepNumbers) {
     var q = stepDischargesM3PerH.map(function (v) { return v * 24.0; });
     var s = stepEndDrawdownsM.slice();
     if (q.length < 2) {
       throw new Error('A step test needs at least two steps with discharge');
+    }
+    /* Steps pumped at one rate put every point of s/Q against Q on one
+     * vertical line, which any B and C fit: this fit returned all aquifer
+     * loss and numpy's lstsq its minimum-norm split, and both reported
+     * efficiencies. "One rate" is to a part in a million, not to the last
+     * bit: 88 L/min converts to 5.279999999999999 m3/h beside a 5.28 typed in
+     * m3/h, and that ulp made the line merely near-vertical, no better. */
+    var qMax = Math.max.apply(null, q.map(Math.abs));
+    if (Math.max.apply(null, q) - Math.min.apply(null, q) <= SAME_RATE_RTOL * qMax) {
+      throw new Error('Every step was pumped at ' + formatG(stepDischargesM3PerH[0]) +
+        ' m3/h, so the aquifer and well losses cannot be told apart; a step ' +
+        'test needs steps at different discharges');
     }
     var sq = s.map(function (v, i) { return v / q[i]; });
     var fit = lineFit(q, sq);
@@ -2514,14 +3025,23 @@
     };
   }
 
-  /* StepTestResult.drawdown_at and efficiency_at, at a rate in m3/day.
+  /** StepTestResult.drawdown_at and efficiency_at, at a rate in m3/day.
    * Functions of the result rather than methods on it, as they are in
    * Python: an analysis has to be plain data to leave the engine worker, and
-   * a method is the one thing a structured clone cannot carry. */
+   * a method is the one thing a structured clone cannot carry.
+   * @param {Rec} stepTest what hantushBierschenk returns
+   * @param {number} qDay
+   * @returns {number}
+   */
   function stepDrawdownAt(stepTest, qDay) {
     return stepTest.aquifer_loss_B * qDay + stepTest.well_loss_C * qDay * qDay;
   }
 
+  /**
+   * @param {Rec} stepTest what hantushBierschenk returns
+   * @param {number} qDay
+   * @returns {number}
+   */
   function stepEfficiencyAt(stepTest, qDay) {
     var total = stepDrawdownAt(stepTest, qDay);
     return total <= 0 ? 100.0 : 100.0 * stepTest.aquifer_loss_B * qDay / total;
@@ -2554,7 +3074,10 @@
     constant: 'constant discharge test',
   };
 
-  /* "constant+recovery" -> "constant discharge test with recovery" */
+  /** "constant+recovery" -> "constant discharge test with recovery"
+   * @param {string|null} [testType]
+   * @returns {string}
+   */
   function testTypeText(testType) {
     var text = String(testType === null || testType === undefined ? '' : testType);
     var plus = text.indexOf('+');
@@ -2579,16 +3102,22 @@
     'drawdowns the yield is computed from are as recorded and not to be ' +
     'relied on';
 
-  /* True when the sheet's own levels contradict its static level, pump or depth. */
+  /** True when the sheet's own levels contradict its static level, pump or depth.
+   * @param {PumpingTest|null} [test]
+   * @returns {boolean}
+   */
   function levelsInDoubt(test) {
     return ((test && test.flags) || []).some(function (f) {
       return LEVEL_FLAGS.indexOf(f.code) >= 0;
     });
   }
 
-  /* Python's PumpingTest.has_discharge: any step with a rate. The browser's
+  /** Python's PumpingTest.has_discharge: any step with a rate. The browser's
    * test object is plain data and its rates are edited after parsing, so this
-   * is asked of the steps each time rather than stored. */
+   * is asked of the steps each time rather than stored.
+   * @param {PumpingTest|null} [test]
+   * @returns {boolean}
+   */
   function hasDischarge(test) {
     return ((test && test.steps) || []).some(function (s) {
       return s.discharge_m3_per_h !== null && s.discharge_m3_per_h !== undefined;
@@ -2600,13 +3129,16 @@
     'by construction: the R squared of 1.000 tests nothing, and B, C and the ' +
     'efficiencies are indicative until a third step is pumped';
 
-  /* [minutes, isEquivalent]: the pumping time a recovery is read against.
+  /** [minutes, isEquivalent]: the pumping time a recovery is read against.
    * Theis recovery assumes one rate for the whole pumping time. After a step
    * test the last rate was pumped for the last step only; using the last rate
    * with the total time says the aquifer was stressed harder than it was and
    * biases the transmissivity. The usual correction is the discharge-weighted
    * equivalent time, sum(Q_i dt_i) / Q_last. A constant test, or a step test
-   * missing a rate, uses the recorded duration. */
+   * missing a rate, uses the recorded duration.
+   * @param {PumpingTest} test
+   * @returns {[number|null, boolean]}
+   */
   function equivalentPumpingTimeMin(test) {
     var steps = (test.steps || []).filter(function (s) {
       return s.time_min && s.time_min.length;
@@ -2629,7 +3161,7 @@
     return [volume / qLast, true];
   }
 
-  /* [minutes per step, restarted step numbers]: how long each step pumped.
+  /** [minutes per step, restarted step numbers]: how long each step pumped.
    * A step's times normally run on from the step before (61, 62 ... after a
    * step ending at 60), and its length is its last reading less that step's.
    * Some sheets count each step from its own start instead, so a step opens
@@ -2637,7 +3169,9 @@
    * then its length, and the lengths add. Differencing those steps against
    * the step before gave them no length at all: the recovery after such a
    * step test was read against 30 minutes where the steps had pumped 158. A
-   * step with no readable time pumped for no measurable time. */
+   * step with no readable time pumped for no measurable time.
+   * @param {Rec[]|null} [steps]
+   */
   function stepDurationsMin(steps) {
     var durations = [], restarted = [], previousEnd = null;
     (steps || []).forEach(function (step) {
@@ -2655,14 +3189,17 @@
     return [durations, restarted];
   }
 
-  /* The minutes to add to each step's times to put it on the test's clock.
+  /** The minutes to add to each step's times to put it on the test's clock.
    * Read by the same rule as stepDurationsMin: a step counted from its own
    * start began when the step before it ended, so it moves to there, and a
    * step that runs on from it moves with it. On a sheet whose times run
    * through the test every offset is zero. The recorded duration and the
    * overview used to read the restarted clocks as written, so a test that
    * pumped for 158 minutes was printed as lasting 60 and drawn as three
-   * steps stacked on the same hour. */
+   * steps stacked on the same hour.
+   * @param {Rec[]|null} [steps]
+   * @returns {number[]}
+   */
   function stepOffsetsMin(steps) {
     var offsets = [], shift = 0.0, previousEnd = null;
     (steps || []).forEach(function (step) {
@@ -2676,13 +3213,17 @@
     return offsets;
   }
 
-  /* How long casing storage controls the drawdown, in minutes. Early in a
+  /** How long casing storage controls the drawdown, in minutes. Early in a
    * test the pump takes water standing in the casing before it takes much
    * from the aquifer, and a drawdown curve read inside that period is the
    * borehole emptying, not the ground responding. A 5 inch casing with a
    * 1.25 inch riser and a specific capacity of 0.09 m3/h per m gives about
    * two hours: a thirty-minute test on such a borehole never leaves the
-   * casing. */
+   * casing.
+   * @param {number|null|undefined} specificCapacity m3/h per m
+   * @param {PumpingConfig} [config]
+   * @returns {number|null}
+   */
   function casingStorageMin(specificCapacity, config) {
     var cfg = config || defaultConfig().pumping;
     if (!specificCapacity || specificCapacity <= 0) return null;
@@ -2693,7 +3234,10 @@
     return CASING_STORAGE_COEFFICIENT * area / specificCapacity;
   }
 
-  /* The deepest water level any pumping step reached, metres below datum. */
+  /** The deepest water level any pumping step reached, metres below datum.
+   * @param {PumpingTest} test
+   * @returns {number|null}
+   */
   function deepestPumpingLevel(test) {
     var levels = [];
     (test.steps || []).forEach(function (s) {
@@ -2703,10 +3247,14 @@
     return levels.length ? arrMax(levels) : null;
   }
 
-  /* The one pump intake depth a report prints, and why. A report with a
+  /** The one pump intake depth a report prints, and why. A report with a
    * seasonal projection used to say "install at 39 m" in its recommendation
    * and "set the intake at 40 m" three paragraphs later. The deeper of the
-   * two is the depth, everywhere, and the reason travels with it. */
+   * two is the depth, everywhere, and the reason travels with it.
+   * @param {PumpingAnalysis|null} analysis
+   * @param {Rec|null} [seasonal] a seasonal projection
+   * @returns {[number|null, string]}
+   */
   function pumpIntakeDepth(analysis, seasonal) {
     var rec = analysis ? analysis.yield_recommendation : null;
     var depth = rec ? rec.pump_installation_depth_m : null;
@@ -2727,7 +3275,10 @@
     return [Number(depth), ''];
   }
 
-  /* One sentence for a report: what the yield rests on. */
+  /** One sentence for a report: what the yield rests on.
+   * @param {Rec|null} [rec] a yield recommendation
+   * @returns {string}
+   */
   function confidenceText(rec) {
     if (!rec || rec.safe_yield_m3_per_h === null || rec.safe_yield_m3_per_h === undefined) {
       return '';
@@ -2759,12 +3310,12 @@
     var swl = test.static_water_level_m;
     var where, gap, reserves, fix;
     if (test.pump_setting_m !== null && test.pump_setting_m !== undefined) {
-      where = 'the pump intake at ' + test.pump_setting_m.toFixed(1) + ' m';
+      where = 'the pump intake at ' + pyFixed(test.pump_setting_m, 1) + ' m';
       gap = test.pump_setting_m - swl;
       reserves = ['the ' + formatG(cfg.pump_submergence_min_m) + ' m submergence margin'];
       fix = 'set the pump deeper';
     } else {
-      where = 'the borehole bottom at ' + test.borehole_depth_m.toFixed(1) + ' m';
+      where = 'the borehole bottom at ' + pyFixed(test.borehole_depth_m, 1) + ' m';
       gap = test.borehole_depth_m - swl;
       reserves = ['the 3 m clearance above the bottom',
         'the ' + formatG(cfg.pump_submergence_min_m) + ' m submergence margin'];
@@ -2775,14 +3326,21 @@
       fix += ' or reduce the reserve';
     }
     var position = gap >= 0
-      ? 'is ' + gap.toFixed(1) + ' m below the static level of ' + swl.toFixed(1) + ' m'
-      : 'is ' + (-gap).toFixed(1) + ' m above the static level of ' + swl.toFixed(1) + ' m';
+      ? 'is ' + pyFixed(gap, 1) + ' m below the static level of ' + pyFixed(swl, 1) + ' m'
+      : 'is ' + pyFixed(-gap, 1) + ' m above the static level of ' + pyFixed(swl, 1) + ' m';
     var listed = reserves.length === 1 ? reserves[0]
       : reserves.slice(0, -1).join(', ') + ' and ' + reserves[reserves.length - 1];
     return where + ' ' + position + '; after ' + listed +
       ' no usable drawdown remains - ' + fix;
   }
 
+  /**
+   * @param {PumpingTest} test
+   * @param {number|null|undefined} transmissivity m2/day
+   * @param {Rec|null} [stepResult] what hantushBierschenk returns
+   * @param {PumpingConfig} [config]
+   * @param {Rec} [options] assumedStorativity, effectiveRadiusM, transmissivitySource, noTransmissivityReason
+   */
   function recommendYield(test, transmissivity, stepResult, config, options) {
     var opts = options || {};
     var cfg = config || defaultConfig().pumping;
@@ -2892,14 +3450,14 @@
 
     function projectedDrawdown(qM3PerH) {
       var qDay = qM3PerH * 24.0;
-      var s = 2.303 * qDay / (4.0 * Math.PI * transmissivity) * logTerm;
+      var s = 2.303 * qDay / (4.0 * Math.PI * /** @type {number} */ (transmissivity)) * logTerm;
       if (stepResult) {
         /* B Q + C Q^2 is the drawdown at the step duration; the Cooper-Jacob
          * time projection from step length to design period replaces the
          * plain projection above rather than adding to it. */
         var tStepMin = test.step_length_min || test.pumping_duration_min || 180.0;
         s = stepDrawdownAt(stepResult, qDay);
-        s += 2.303 * qDay / (4.0 * Math.PI * transmissivity) *
+        s += 2.303 * qDay / (4.0 * Math.PI * /** @type {number} */ (transmissivity)) *
           Math.log(tDesign / (tStepMin / MIN_PER_DAY)) / Math.LN10;
       }
       return s;
@@ -2977,14 +3535,14 @@
 
     var method = METHOD_LABELS[opts.transmissivitySource || ''] || '';
     var pct = Math.round(cfg.available_drawdown_fraction * 100) + '%';
-    var basis = 'Transmissivity ' + transmissivity.toFixed(1) + ' m2/day' +
+    var basis = 'Transmissivity ' + pyFixed(transmissivity, 1) + ' m2/day' +
       (method ? ' from the ' + method + ' fit' : '') +
-      '; drawdown projected to ' + tDesign.toFixed(0) + ' days with storativity ' +
+      '; drawdown projected to ' + pyFixed(tDesign, 0) + ' days with storativity ' +
       'assumed ' + formatG(assumedStorativity) + ' and effective radius ' +
       effectiveRadiusM + ' m; usable drawdown taken as ' + pct + ' of the ' +
-      'available drawdown ' + available.toFixed(1) + ' m (static level to pump ' +
-      'intake less ' + cfg.pump_submergence_min_m.toFixed(0) + ' m submergence), ' +
-      'after reserving a ' + cfg.seasonal_allowance_m.toFixed(0) + ' m dry-season ' +
+      'available drawdown ' + pyFixed(/** @type {number} */ (available), 1) + ' m (static level to pump ' +
+      'intake less ' + pyFixed(cfg.pump_submergence_min_m, 0) + ' m submergence), ' +
+      'after reserving a ' + pyFixed(cfg.seasonal_allowance_m, 0) + ' m dry-season ' +
       'water-table decline' +
       (stepResult ? '; well losses from the step test are included' : '') +
       '. A safety factor of ' + cfg.safety_factor + ' is applied to the long ' +
@@ -3022,6 +3580,11 @@
   var ENVELOPE_RADIUS_M = [0.075, 0.15];
   var ENVELOPE_SEASONAL_M = [1.0, 4.0];
 
+  /**
+   * @param {PumpingAnalysis} analysis
+   * @param {PumpingConfig} [config]
+   * @returns {void}
+   */
   function attachYieldEnvelope(analysis, config) {
     var cfg = config || defaultConfig().pumping;
     var rec = analysis.yield_recommendation;
@@ -3067,18 +3630,21 @@
     yields.push(rec.safe_yield_m3_per_h);
     rec.safe_yield_low_m3_per_h = arrMin(yields);
     rec.safe_yield_high_m3_per_h = arrMax(yields);
-    rec.envelope_basis = 'Range over transmissivity ' + tRange[0].toFixed(1) + '-' +
-      tRange[1].toFixed(1) + ' m2/day' +
+    rec.envelope_basis = 'Range over transmissivity ' + pyFixed(tRange[0], 1) + '-' +
+      pyFixed(tRange[1], 1) + ' m2/day' +
       (fitted.length > 1 ? ' (spread between the fitted methods)' : '') +
       ', storativity ' + formatG(ENVELOPE_STORATIVITY[0]) + '-' +
       formatG(ENVELOPE_STORATIVITY[1]) + ', effective radius ' +
       ENVELOPE_RADIUS_M[0] + '-' + ENVELOPE_RADIUS_M[1] + ' m and a dry-season ' +
-      'decline of ' + ENVELOPE_SEASONAL_M[0].toFixed(0) + '-' +
-      ENVELOPE_SEASONAL_M[1].toFixed(0) + ' m. Design to the lower figure where ' +
+      'decline of ' + pyFixed(ENVELOPE_SEASONAL_M[0], 0) + '-' +
+      pyFixed(ENVELOPE_SEASONAL_M[1], 0) + ' m. Design to the lower figure where ' +
       'the supply must not fail in a dry year.';
   }
 
-  /* "2.4 m3/h (1.8 to 3.1)" - never a bare number for an assumed one. */
+  /** "2.4 m3/h (1.8 to 3.1)" - never a bare number for an assumed one.
+   * @param {Rec|null} [rec] a yield recommendation
+   * @returns {string}
+   */
   function yieldRangeText(rec) {
     if (!rec || rec.safe_yield_m3_per_h === null) return 'pending';
     var text = formatG(roundSig(rec.safe_yield_m3_per_h, 2), 2) + ' m3/h';
@@ -3098,7 +3664,7 @@
       ['theis', analysis.theis]].filter(function (f) { return !!f[1]; });
   }
 
-  /* {method, result, qualifies} for the transmissivity the yield rests on.
+  /** {method, result, qualifies} for the transmissivity the yield rests on.
    * The first method in order of preference whose straight line reaches
    * min_fit_r_squared is adopted, skipping any the analysis disqualified;
    * Theis is a curve fit with no R squared and is always eligible, which
@@ -3112,7 +3678,9 @@
    * pick used to run over every fit, so a recovery line meeting t/t' = 1 at
    * 60% of its drawdown won on its R squared of 0.99 and the yield rested on
    * the one result the analysis had rejected. When nothing is left the
-   * method is null and the yield is pending. */
+   * method is null and the yield is pending.
+   * @param {PumpingAnalysis} analysis
+   */
   function adoptedFit(analysis) {
     var fits = fittedMethods(analysis);
     var disqualified = analysis.disqualified || {};
@@ -3141,19 +3709,23 @@
     return { method: best[0], result: best[1], qualifies: false };
   }
 
-  /* The reason a fitted method was passed over, or an empty string. */
+  /** The reason a fitted method was passed over, or an empty string.
+   * @param {PumpingAnalysis} analysis
+   * @param {string} name 'recovery', 'cooper_jacob' or 'theis'
+   * @returns {string}
+   */
   function whyNotAdopted(analysis, name) {
     var disqualified = analysis.disqualified || {};
     if (Object.prototype.hasOwnProperty.call(disqualified, name)) {
       return disqualified[name];
     }
-    var result = null;
+    var result = /** @type {Rec|null} */ (null);
     fittedMethods(analysis).forEach(function (f) { if (f[0] === name) result = f[1]; });
     var r2 = result ? result.r_squared : null;
     var minR2 = analysis.min_fit_r_squared === undefined
       ? defaultConfig().pumping.min_fit_r_squared : analysis.min_fit_r_squared;
     if (r2 !== null && r2 !== undefined && r2 < minR2) {
-      return 'R squared ' + r2.toFixed(3) + ' is below the ' + formatG(minR2) +
+      return 'R squared ' + pyFixed(r2, 3) + ' is below the ' + formatG(minR2) +
         ' standard';
     }
     return '';
@@ -3183,15 +3755,20 @@
     return [duration || null, 'constant'];
   }
 
-  /* options.onProgress(fraction, label), when given, is told as each stage
+  /** options.onProgress(fraction, label), when given, is told as each stage
    * of the analysis begins, so the page can say what it is waiting for. It
-   * reads nothing back, so it cannot change the analysis. */
+   * reads nothing back, so it cannot change the analysis.
+   * @param {PumpingTest} test
+   * @param {Config|PumpingConfig|null} [config] the whole configuration or its pumping section
+   * @param {Rec} [options] observationRadiusM, onProgress
+   */
   function analysePumpingTest(test, config, options) {
     var opts = options || {};
     var cfg = (config && config.pumping) ? config.pumping
       : (config || defaultConfig().pumping);
     var observationRadiusM = opts.observationRadiusM;
     var progress = opts.onProgress || function () {};
+    /** @type {PumpingAnalysis} */
     var analysis = {
       test: test, cooper_jacob: null, theis: null, recovery: null,
       step_test: null, yield_recommendation: null,
@@ -3253,7 +3830,7 @@
         flags.push({
           level: 'warning', code: 'drawdown_stabilised',
           message: 'The pumped water level held at about ' +
-            analysis.stabilised_level_m.toFixed(2) + ' m over the last ' +
+            pyFixed(analysis.stabilised_level_m, 2) + ' m over the last ' +
             'readings: a recharge boundary or leakage is indicated, so the ' +
             'Theis/Cooper-Jacob projection to the design period is not the ' +
             'governing check; the stabilised level is.',
@@ -3279,13 +3856,13 @@
         what = 'The test pumped for ' + formatG(duration) + ' minutes';
         shortPrefix = 'Projected from a ' + formatG(duration) + '-minute test';
       }
-      shortPrefix += ' (' + cycles.toFixed(1) + ' log cycles to ' +
+      shortPrefix += ' (' + pyFixed(cycles, 1) + ' log cycles to ' +
         formatG(cfg.design_period_days) + ' days); treat as indicative. ';
       flags.push({
         level: 'warning', code: 'short_test',
         message: what + ', below the ' + formatG(threshold) + ' minutes needed ' +
           'to see late-time behaviour; the yield is extrapolated ' +
-          cycles.toFixed(1) + ' log cycles of time to the ' +
+          pyFixed(cycles, 1) + ' log cycles of time to the ' +
           formatG(cfg.design_period_days) + '-day design period and should be ' +
           'treated as indicative.',
       });
@@ -3316,9 +3893,9 @@
         if (!(sEnd0 > 0)) {
           flags.push({
             level: 'warning', code: 'first_step_above_static',
-            message: label0 + ' ends at ' + (isFinite(sEnd0) ? sEnd0.toFixed(2) : 'nan') +
+            message: label0 + ' ends at ' + (isFinite(sEnd0) ? pyFixed(sEnd0, 2) : 'nan') +
               ' m drawdown, at or above the stated static level of ' +
-              swl.toFixed(2) + ' m, so no drawdown fit is made on it; check ' +
+              pyFixed(swl, 2) + ' m, so no drawdown fit is made on it; check ' +
               'the static level and the datum for that step.',
             context: label0,
           });
@@ -3413,14 +3990,14 @@
         flags.push({
           level: 'info', code: 'recovery_equivalent_time',
           message: 'The recovery is read against an equivalent pumping time of ' +
-            pyFixed(tPump, 0) + ' minutes at the last rate of ' + formatG(qRec) +
+            pyFixed(/** @type {number} */ (tPump), 0) + ' minutes at the last rate of ' + formatG(qRec) +
             ' m3/h (the volume pumped over all the steps at that rate), not ' +
             'the ' + formatG(pumpedTotal) + ' minutes the test ran.',
         });
       }
       if (recFit && recFit.intercept_fraction > cfg.recovery_intercept_max_fraction) {
         analysis.disqualified.recovery = "the recovery line meets t/t' = 1 at " +
-          recFit.intercept_m.toFixed(1) + ' m of residual drawdown, ' +
+          pyFixed(recFit.intercept_m, 1) + ' m of residual drawdown, ' +
           pyFixed(recFit.intercept_fraction * 100, 0) + '% of the drawdown the ' +
           'recovery started from, where the method requires zero';
         analysis.invalid_fits.recovery = analysis.disqualified.recovery;
@@ -3429,15 +4006,15 @@
         flags.push({
           level: 'warning', code: 'recovery_intercept',
           message: 'The recovery line does not pass through the origin: it meets ' +
-            "t/t' = 1 at " + recFit.intercept_m.toFixed(1) + ' m of residual ' +
+            "t/t' = 1 at " + pyFixed(recFit.intercept_m, 1) + ' m of residual ' +
             'drawdown (' + pyFixed(recFit.intercept_fraction * 100, 0) + '% of the ' +
-            (Math.abs(recFit.intercept_m) /
-              Math.max(recFit.intercept_fraction, 1e-9)).toFixed(1) +
+            pyFixed(Math.abs(recFit.intercept_m) /
+              Math.max(recFit.intercept_fraction, 1e-9), 1) +
             ' m the recovery started from), where Theis recovery requires zero. ' +
             'The residual drawdown is dominated by something the method does ' +
             'not model (casing storage, a changing static level or a wrong ' +
             'pumping time), so its transmissivity of ' +
-            recFit.transmissivity_m2_per_day.toFixed(2) + ' m2/day is reported ' +
+            pyFixed(recFit.transmissivity_m2_per_day, 2) + ' m2/day is reported ' +
             'but not adopted.',
         });
       }
@@ -3463,7 +4040,7 @@
           if (!(sEnd > 0)) {
             flags.push({
               level: 'warning', code: 'step_negative_drawdown',
-              message: label + ' ends at ' + sEnd.toFixed(2) + ' m drawdown, at ' +
+              message: label + ' ends at ' + pyFixed(sEnd, 2) + ' m drawdown, at ' +
                 'or above the static level, so it is left out of the ' +
                 'Hantush-Bierschenk fit; check the static level and the datum ' +
                 'for that step.',
@@ -3585,7 +4162,7 @@
       var words = { cooper_jacob: 'Cooper-Jacob', theis: 'Theis' };
       var several = inside.length > 1;
       var casingText = 'With a ' + formatG(cfg.casing_diameter_in) + ' inch casing and a ' +
-        'specific capacity of ' + formatG(roundSig(qFirst / sFirst, 2), 2) +
+        'specific capacity of ' + formatG(roundSig(qFirst / /** @type {number} */ (sFirst), 2), 2) +
         ' m3/h per m, casing storage controls the drawdown for the first ' +
         pyFixed(tC, 0) + " minutes (Schafer's rule)" +
         (duration !== null && duration <= tC
@@ -3615,20 +4192,20 @@
     if (!adopted.result && fittedMethods(analysis).length) {
       rejected = 'no fitted transmissivity can be adopted (' +
         fittedMethods(analysis).map(function (f) {
-          return METHOD_LABELS[f[0]] + ' ' + f[1].transmissivity_m2_per_day.toFixed(2) +
+          return METHOD_LABELS[f[0]] + ' ' + pyFixed(f[1].transmissivity_m2_per_day, 2) +
             ' m2/day, ' + (analysis.invalid_fits[f[0]] || whyNotAdopted(analysis, f[0]));
         }).join('; ') + ')';
     }
     if (adopted.result && !adopted.qualifies) {
       var scored = fittedMethods(analysis).map(function (f) {
-        return METHOD_LABELS[f[0]] + ' ' + f[1].transmissivity_m2_per_day.toFixed(2) +
+        return METHOD_LABELS[f[0]] + ' ' + pyFixed(f[1].transmissivity_m2_per_day, 2) +
           ' m2/day, ' + (whyNotAdopted(analysis, f[0]) || 'usable');
       }).join('; ');
       flags.push({
         level: 'warning', code: 'transmissivity_low_confidence',
         message: 'No method fitted to standard (' + scored + '). The ' +
           METHOD_LABELS[adopted.method] + ' value of ' +
-          adopted.result.transmissivity_m2_per_day.toFixed(2) + ' m2/day is ' +
+          pyFixed(adopted.result.transmissivity_m2_per_day, 2) + ' m2/day is ' +
           'adopted as the best available, so the yield rests on a fit that ' +
           'does not meet it.',
       });
@@ -3660,7 +4237,7 @@
         formatG(duration) + ' minutes, below ' +
         'the ' + formatG(threshold) + ' needed to see late-time behaviour, so the ' +
         'yield is extrapolated ' +
-        (Math.log(cfg.design_period_days * MIN_PER_DAY / duration) / Math.LN10).toFixed(1) +
+        pyFixed(Math.log(cfg.design_period_days * MIN_PER_DAY / duration) / Math.LN10, 1) +
         ' log cycles of time');
     }
     if (tC && duration !== null && duration <= tC) {
@@ -3728,11 +4305,16 @@
     gpm: 1, gph: 1, 'gal/min': 1, 'gal/h': 1, ppt: 1, jtu: 1,
   };
 
+  /** @type {Array<[RegExp, string]>} */
   var UNIT_CHAR_FIXES = [
     [/µ/g, 'u'], [/μ/g, 'u'], [/³/g, '3'], [/²/g, '2'],
     [/°/g, 'deg '], [/⁄/g, '/'], [/’/g, ''],
   ];
 
+  /**
+   * @param {*} text
+   * @returns {string}
+   */
   function normaliseUnit(text) {
     var s = String(text === null || text === undefined ? '' : text);
     UNIT_CHAR_FIXES.forEach(function (pair) { s = s.replace(pair[0], pair[1]); });
@@ -3833,6 +4415,10 @@
     'length|m': { canonical: 'm', dimension: 'length', factor: 1.0, offset: 0.0 },
   };
 
+  /**
+   * @param {*} text
+   * @param {string|null} [dimension]
+   */
   function parseUnit(text, dimension) {
     var normalised = normaliseUnit(text);
     if (!normalised) return null;
@@ -3849,9 +4435,13 @@
     return Object.assign({}, entry, { basis: basis });
   }
 
-  /* A basis stated on one side only is accepted - a laboratory writing plain
+  /** A basis stated on one side only is accepted - a laboratory writing plain
    * "mg/L" for hardness against a "mg/L as CaCO3" guideline means the same
-   * thing. Two *different* stated bases are refused. */
+   * thing. Two *different* stated bases are refused.
+   * @param {Rec|null|undefined} a what parseUnit returns
+   * @param {Rec|null|undefined} b
+   * @returns {boolean}
+   */
   function unitsComparable(a, b) {
     if (!a || !b) return false;
     if (a.dimension !== b.dimension) return false;
@@ -3859,8 +4449,14 @@
     return true;
   }
 
-  /* null means "do not use this number against that limit". It never means
-   * zero and must never be treated as a pass. */
+  /** null means "do not use this number against that limit". It never means
+   * zero and must never be treated as a pass.
+   * @param {number|string} value
+   * @param {*} fromUnit
+   * @param {*} toUnit
+   * @param {string|null} [dimension]
+   * @returns {number|null}
+   */
   function convertUnit(value, fromUnit, toUnit, dimension) {
     var source = parseUnit(fromUnit, dimension);
     var target = parseUnit(toUnit, dimension);
@@ -3869,6 +4465,11 @@
     return (base - target.offset) / target.factor;
   }
 
+  /**
+   * @param {*} text
+   * @param {string|null} [dimension]
+   * @returns {string}
+   */
   function canonicalUnit(text, dimension) {
     var unit = parseUnit(text, dimension);
     return unit ? unit.canonical
@@ -3897,6 +4498,10 @@
       normalised.length <= 5;
   }
 
+  /**
+   * @param {*} text
+   * @param {string|null} [dimension]
+   */
   function unitFromLabel(text, dimension) {
     var raw = String(text === null || text === undefined ? '' : text);
     var firstWritten = '';
@@ -3936,11 +4541,15 @@
     return tail;
   }
 
-  /* Read a value off a sheet and put it in the canonical unit. The unit is
+  /** Read a value off a sheet and put it in the canonical unit. The unit is
    * taken from the cell's own text first - a crew that types "0.81 L/s" into
    * a column headed m3/h means L/s - then from each hint in turn. Status is
    * "absent" | "ok" | "converted" | "assumed" | "unknown"; on "unknown" the
-   * value is null and the caller must refuse it rather than default. */
+   * value is null and the caller must refuse it rather than default.
+   * @param {*} cell
+   * @param {Array<*>|null} hints the labels the unit may be written in
+   * @param {string} dimension
+   */
   function readQuantity(cell, hints, dimension) {
     var canonical = CANONICAL_UNITS[dimension];
     var raw = parseNumber(cell);
@@ -3955,7 +4564,7 @@
           status: 'unknown', dimension: dimension };
       }
       return {
-        value: convertUnit(raw, written, canonical, dimension),
+        value: convertUnit(/** @type {number} */ (raw), written, canonical, dimension),
         raw_value: raw, unit_text: written,
         status: unit.canonical === canonical ? 'ok' : 'converted',
         dimension: dimension,
@@ -3988,7 +4597,10 @@
 
   var RANGE_RE = /^\s*(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*$/;
 
-  /* A guideline limit: either a maximum or an allowed range like "6.5-8.5". */
+  /** A guideline limit: either a maximum or an allowed range like "6.5-8.5".
+   * @param {*} text
+   * @returns {Limit|null}
+   */
   function parseLimit(text) {
     var s = String(text === null || text === undefined ? '' : text).trim();
     if (!s) return null;
@@ -3999,6 +4611,11 @@
     return { minimum: null, maximum: v };
   }
 
+  /**
+   * @param {Limit|null|undefined} limit
+   * @param {number} value
+   * @returns {boolean}
+   */
   function limitExceededBy(limit, value) {
     if (!limit) return false;
     if (limit.minimum !== null && limit.minimum !== undefined && value < limit.minimum) return true;
@@ -4006,6 +4623,10 @@
     return false;
   }
 
+  /**
+   * @param {Limit|null|undefined} limit
+   * @returns {string}
+   */
   function limitText(limit) {
     if (!limit) return '';
     if (limit.minimum !== null && limit.minimum !== undefined) {
@@ -4085,9 +4706,12 @@
    * that is a symbol or a unit, not a basis ("(as NO3)") */
   var TRAILING_QUALIFIER_RE = /\s*\((?!\s*as\s)[^)]*\)\s*$/;
 
-  /* The standards-table key a certificate's parameter name refers to. The
+  /** The standards-table key a certificate's parameter name refers to. The
    * assessment is fail-closed - an unknown name makes the whole sample "not
-   * proven safe" - so name resolution is load-bearing. */
+   * proven safe" - so name resolution is load-bearing.
+   * @param {*} name
+   * @returns {string}
+   */
   function normaliseParameter(name) {
     var key = String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
     if (own(PARAMETER_ALIASES, key)) return PARAMETER_ALIASES[key];
@@ -4113,7 +4737,10 @@
     'astrovirus',
   ].join('|') + ')');
 
-  /* The faecal pathogen a parameter name refers to, or ''. */
+  /** The faecal pathogen a parameter name refers to, or ''.
+   * @param {*} name
+   * @returns {string}
+   */
   function faecalPathogen(name) {
     var match = FAECAL_PATHOGEN_RE.exec(
       String(name === null || name === undefined ? '' : name).toLowerCase()
@@ -4122,10 +4749,15 @@
   }
 
   var _standardsCache = null;
+  /**
+   * @param {Rec[]|null} [rows] the bundled table when not given
+   * @returns {Record<string, Rec>}
+   */
   function loadStandards(rows) {
     var source = rows || (GWT.data && GWT.data.whoGuidelines);
     if (!source) return {};
     if (!rows && _standardsCache) return _standardsCache;
+    /** @type {Record<string, Rec>} */
     var table = {};
     source.forEach(function (row) {
       var entry = {
@@ -4159,6 +4791,10 @@
     'Confirm the figures before treating a national exceedance as a ' +
     'compliance finding.';
 
+  /**
+   * @param {Record<string, Rec>} [table]
+   * @returns {string[]}
+   */
   function provisionalNationalParameters(table) {
     var entries = table || loadStandards();
     return Object.keys(entries).map(function (key) { return entries[key]; })
@@ -4196,16 +4832,21 @@
 
   /* A result below the detection limit counts as zero; a result with no value
    * at all counts as not measured. */
-  /* Every measured result on the standards table's scale, keyed by
+  /** Every measured result on the standards table's scale, keyed by
    * normalised parameter name. groundwater/quality/standards.py
    * canonical_values(). A result whose unit cannot be reconciled with its
    * guideline is LEFT OUT rather than passed through raw: the aggregate
    * indices built on these numbers - the quality index, the hazard index,
    * the ionic balance, the corrosivity indices - all assume mg/L, and a
    * sample reported in ug/L quietly produced a hazard index a thousand
-   * times too high and an "unsuitable for drinking" rating for clean water. */
+   * times too high and an "unsuitable for drinking" rating for clean water.
+   * @param {QualitySample} sample
+   * @param {Rec[]|null} [standardsRows]
+   * @returns {Record<string, number>}
+   */
   function canonicalValues(sample, standardsRows) {
     var table = loadStandards(standardsRows);
+    /** @type {Record<string, number>} */
     var values = {};
     (sample.results || []).forEach(function (result) {
       if (result.value === null || result.value === undefined) return;
@@ -4223,6 +4864,11 @@
     return values;
   }
 
+  /**
+   * @param {QualitySample} sample
+   * @param {string} key
+   * @returns {number|null}
+   */
   function sampleValue(sample, key) {
     var canonical = canonicalValues(sample);
     if (Object.prototype.hasOwnProperty.call(canonical, key)) return canonical[key];
@@ -4268,8 +4914,10 @@
     return missing;
   }
 
+  /** @param {QualitySample} sample */
   function ionicBalance(sample) {
-    var cations = {}, anions = {};
+    var cations = /** @type {Record<string, number>} */ ({}),
+      anions = /** @type {Record<string, number>} */ ({});
     Object.keys(CATION_MEQ).forEach(function (key) {
       var v = sampleValue(sample, key);
       if (v !== null) cations[key] = v * CATION_MEQ[key];
@@ -4298,7 +4946,7 @@
     var error = 100.0 * (totalCat - totalAn) / (totalCat + totalAn);
 
     var flag = null;
-    var signed = (error >= 0 ? '+' : '') + error.toFixed(1);
+    var signed = (error >= 0 ? '+' : '') + pyFixed(error, 1);
     if (Math.abs(error) > 10) {
       flag = {
         level: 'error', code: 'ionic_balance',
@@ -4355,6 +5003,10 @@
     return 'Unsuitable for drinking';
   }
 
+  /**
+   * @param {QualitySample} sample
+   * @param {Rec[]|null} [standardsRows]
+   */
   function computeWqi(sample, standardsRows) {
     var table = loadStandards(standardsRows);
     var values = measuredValues(sample, standardsRows);
@@ -4395,6 +5047,7 @@
     };
   }
 
+  /** @param {QualitySample} sample */
   function assessHealthRisk(sample) {
     var values = measuredValues(sample);
     var hq = {}, intakeFactor = INTAKE_L_PER_DAY / BODY_WEIGHT_KG;
@@ -4417,7 +5070,7 @@
       var worst = keys.reduce(function (a, b) { return hq[a] >= hq[b] ? a : b; });
       flags.push({
         level: 'warning', code: 'hazard_index',
-        message: 'Non-carcinogenic Hazard Index ' + hazardIndex.toFixed(1) +
+        message: 'Non-carcinogenic Hazard Index ' + pyFixed(hazardIndex, 1) +
           ' is at or above 1 (dominated by ' + worst + '); chronic ingestion ' +
           'poses a potential health concern.',
       });
@@ -4455,6 +5108,10 @@
     bicarbonate: 1 / 61.017, carbonate: 2 / 60.009,
   };
 
+  /**
+   * @param {number} rsi
+   * @returns {[string, boolean]}
+   */
   function classifyRsi(rsi) {
     if (rsi < 6.0) return ['Scale-forming', false];
     if (rsi <= 7.0) return ['Balanced (near CaCO3 equilibrium)', false];
@@ -4476,7 +5133,9 @@
     return formatG(ph);
   }
 
+  /** @param {QualitySample} sample */
   function assessCorrosivity(sample) {
+    /** @type {Rec} */
     var assessment = {
       lsi: null, rsi: null, aggressive_index: null, larson_skold: null,
       classification: 'Insufficient data', is_aggressive: false,
@@ -4494,7 +5153,7 @@
     if (tds === null || tds <= 0) {
       if (ec && ec > 0) {
         tds = 0.64 * ec;
-        assumptions.push('TDS estimated as 0.64 x EC = ' + tds.toFixed(0) +
+        assumptions.push('TDS estimated as 0.64 x EC = ' + pyFixed(tds, 0) +
           ' mg/L (TDS not reported).');
       } else {
         tds = 250.0;
@@ -4561,7 +5220,7 @@
     assessment.classification = classification;
     assessment.is_aggressive = aggressive;
 
-    var signedLsi = (lsi >= 0 ? '+' : '') + lsi.toFixed(1);
+    var signedLsi = (lsi >= 0 ? '+' : '') + pyFixed(lsi, 1);
     if (aggressive) {
       /* The pH sentence used to say "within the acceptability range" for a
        * sample the same report flagged at 5.9. It now says what the pH is. */
@@ -4581,7 +5240,7 @@
           'which is typical of soft basement groundwater.';
       }
       assessment.verdict = 'The water is chemically aggressive (Ryznar index ' +
-        rsi.toFixed(1) + ', Langelier index ' + signedLsi + '). It will corrode ' +
+        pyFixed(rsi, 1) + ', Langelier index ' + signedLsi + '). It will corrode ' +
         'metal fittings. ' + phNote;
       assessment.materials_note = 'Specify uPVC or stainless steel (grade 304 or ' +
         '316) for the rising main and pump components, and avoid galvanised iron ' +
@@ -4590,7 +5249,7 @@
         'metal parts of the pump for corrosion at each service.';
       if (assessment.larson_skold !== null && assessment.larson_skold > 0.8) {
         assessment.materials_note += ' The Larson-Skold ratio (' +
-          assessment.larson_skold.toFixed(1) + ') is elevated, so chloride and ' +
+          pyFixed(assessment.larson_skold, 1) + ') is elevated, so chloride and ' +
           'sulfate add to the attack on steel.';
       }
       assessment.flags.push({
@@ -4600,12 +5259,12 @@
       });
     } else if (classification === 'Scale-forming') {
       assessment.verdict = 'The water tends to deposit calcium carbonate scale ' +
-        '(Ryznar index ' + rsi.toFixed(1) + ', Langelier index ' + signedLsi + ').';
+        '(Ryznar index ' + pyFixed(rsi, 1) + ', Langelier index ' + signedLsi + ').';
       assessment.materials_note = 'Monitor the screen and pump for encrustation ' +
         'and de-scale as needed; corrosion of metal parts is a lesser concern.';
     } else {
       assessment.verdict = 'The water is close to calcium carbonate equilibrium ' +
-        '(Ryznar index ' + rsi.toFixed(1) + ', Langelier index ' + signedLsi +
+        '(Ryznar index ' + pyFixed(rsi, 1) + ', Langelier index ' + signedLsi +
         '); neither strong corrosion nor scaling is expected.';
       assessment.materials_note = 'Standard materials are acceptable; inspect ' +
         'fittings for corrosion during routine maintenance.';
@@ -5121,6 +5780,7 @@
     var unquantified = missing && result.greater_than !== null &&
       result.greater_than !== undefined;
     var unreadable = missing && !!result.unreadable;
+    /** @type {Rec} */
     var row = {
       parameter: result.parameter,
       value: missing ? null : Number(result.value),
@@ -5201,9 +5861,12 @@
     return row;
   }
 
-  /* How a result the laboratory did not quantify reads in a table: ">50",
+  /** How a result the laboratory did not quantify reads in a table: ">50",
    * "≥50", or "detected" for a count seen and not numbered; '' for any
-   * other row (assess.py unquantified_text). */
+   * other row (assess.py unquantified_text).
+   * @param {Rec} row a row of assessSample's table
+   * @returns {string}
+   */
   function unquantifiedText(row) {
     if ((row.value !== null && row.value !== undefined) ||
         row.greater_than === null || row.greater_than === undefined) {
@@ -5272,6 +5935,11 @@
       gv3: a[1], gv2: b[1], bounded: a[2] || b[2] };
   }
 
+  /**
+   * @param {QualitySample} sample
+   * @param {Rec[]|null} [standardsRows]
+   * @returns {QualityAssessment}
+   */
   function assessSample(sample, standardsRows) {
     var table = loadStandards(standardsRows);
     var rows = [], flags = (sample.flags || []).slice();
@@ -5338,14 +6006,14 @@
         remark: bounded
           ? 'An upper bound on the combined index (' + formatG(combined.no3) +
             '/' + formatG(combined.gv3) + ' + ' + formatG(combined.no2) + '/' +
-            formatG(combined.gv2) + ' = ' + combined.ratio.toFixed(2) +
+            formatG(combined.gv2) + ' = ' + pyFixed(combined.ratio, 2) +
             ') exceeds 1, taking the below-detection component at its ' +
             'detection limit. The WHO combined nitrate and nitrite limit ' +
             'cannot be shown to be met; ask the laboratory for a lower ' +
             'detection limit.'
           : 'The combined index (' + formatG(combined.no3) + '/' +
             formatG(combined.gv3) + ' + ' + formatG(combined.no2) + '/' +
-            formatG(combined.gv2) + ' = ' + combined.ratio.toFixed(2) +
+            formatG(combined.gv2) + ' = ' + pyFixed(combined.ratio, 2) +
             ') exceeds 1; the WHO combined nitrate and nitrite limit is not ' +
             'met even though each is within its own guideline value.',
         guideline_unit: 'ratio',
@@ -5446,8 +6114,11 @@
     return assessment;
   }
 
-  /* Every reason this sample cannot support a "suitable" verdict. Empty means
-   * nothing is unresolved. */
+  /** Every reason this sample cannot support a "suitable" verdict. Empty means
+   * nothing is unresolved.
+   * @param {QualityAssessment} assessment
+   * @returns {string[]}
+   */
   function qualityUncertainties(assessment) {
     var reasons = [];
     if (!assessment.rows.length) {
@@ -5477,6 +6148,10 @@
     return reasons;
   }
 
+  /**
+   * @param {QualityAssessment} assessment
+   * @returns {string}
+   */
   function qualityVerdictState(assessment) {
     if (assessment.health_exceedances.length) return 'health_fail';
     if (assessment.national_exceedances.length) return 'national_fail';
@@ -5485,7 +6160,10 @@
     return 'pass';
   }
 
-  /* One-line suitability statement for the reports. */
+  /** One-line suitability statement for the reports.
+   * @param {QualityAssessment} assessment
+   * @returns {string}
+   */
   function qualityVerdict(assessment) {
     var state = assessment.verdict_state || qualityVerdictState(assessment);
     var health = assessment.health_exceedances;
@@ -5549,7 +6227,14 @@
 
   var SQ3 = Math.sqrt(3.0);
 
-  /* Barycentric (a bottom-left, b bottom-right, c top) to xy. */
+  /** Barycentric (a bottom-left, b bottom-right, c top) to xy.
+   * @param {number} a bottom left
+   * @param {number} b bottom right
+   * @param {number} c top
+   * @param {number[]} origin [x, y]
+   * @param {number} size
+   * @returns {{x: number, y: number}|null}
+   */
   function ternaryXy(a, b, c, origin, size) {
     var total = a + b + c;
     if (total <= 0) return null;
@@ -5560,9 +6245,12 @@
     };
   }
 
-  /* The three Piper points for one sample: cation triangle, anion triangle and
+  /** The three Piper points for one sample: cation triangle, anion triangle and
    * the diamond, the latter being the intersection of the +60 degree line
-   * through the cation point and the -60 degree line through the anion point. */
+   * through the cation point and the -60 degree line through the anion point.
+   * @param {QualitySample} sample
+   * @param {{size: number, gap: number}} [geometry]
+   */
   function piperPoints(sample, geometry) {
     var g = geometry || { size: 1.0, gap: 0.18 };
     var size = g.size, gap = g.gap;
@@ -5589,13 +6277,21 @@
     };
   }
 
-  /* The dominant-ion name a hydrogeologist would write in the report. */
+  /** The dominant-ion name a hydrogeologist would write in the report.
+   * @param {number} ca
+   * @param {number} mg
+   * @param {number} nak
+   * @param {number} cl
+   * @param {number} so4
+   * @param {number} hco3
+   * @returns {string}
+   */
   function piperFacies(ca, mg, nak, cl, so4, hco3) {
     var catTotal = ca + mg + nak, anTotal = cl + so4 + hco3;
     if (catTotal <= 0 || anTotal <= 0) return '';
-    var cations = [['Ca', ca], ['Mg', mg], ['Na+K', nak]]
+    var cations = /** @type {Array<[string, number]>} */ ([['Ca', ca], ['Mg', mg], ['Na+K', nak]])
       .sort(function (a, b) { return b[1] - a[1]; });
-    var anions = [['Cl', cl], ['SO4', so4], ['HCO3', hco3]]
+    var anions = /** @type {Array<[string, number]>} */ ([['Cl', cl], ['SO4', so4], ['HCO3', hco3]])
       .sort(function (a, b) { return b[1] - a[1]; });
     var catName = cations[0][1] / catTotal >= 0.5 ? cations[0][0] : 'mixed';
     var anName = anions[0][1] / anTotal >= 0.5 ? anions[0][0] : 'mixed';
@@ -5603,11 +6299,13 @@
     return catName + '-' + anName + ' water type';
   }
 
-  /* groundwater/quality/diagrams.py facies_of. The Piper diagram used to be
+  /** groundwater/quality/diagrams.py facies_of. The Piper diagram used to be
    * the whole of a section headed "Hydrochemical Facies", with nothing said
    * about what it showed, so the sentence is built here, beside the geometry
    * the diagram is drawn from, and the report only prints it. Null without a
-   * complete major-ion analysis, exactly as the Python returns None. */
+   * complete major-ion analysis, exactly as the Python returns None.
+   * @param {QualitySample} sample
+   */
   function faciesOf(sample) {
     var ionic = ionicBalance(sample);
     if (!ionic) return null;
@@ -5704,7 +6402,9 @@
     };
   }
 
-  /* Stiff polygon: Na+K / Ca / Mg on the left, Cl / HCO3 / SO4 on the right. */
+  /** Stiff polygon: Na+K / Ca / Mg on the left, Cl / HCO3 / SO4 on the right.
+   * @param {QualitySample} sample
+   */
   function stiffRows(sample) {
     var ionic = ionicBalance(sample);
     if (!ionic) return null;
@@ -5820,7 +6520,10 @@
    * grouted off, not screened, whatever the strike column says. */
   var CLAYEY_RE = /\bclay|laterit|topsoil|top soil/i;
 
-  /* The class of a description as a whole. */
+  /** The class of a description as a whole.
+   * @param {*} description
+   * @returns {{key: string, label: string, colour: string, hatch: string, pattern?: RegExp}}
+   */
   function lithologyClass(description) {
     var text = String(description || '').toLowerCase();
     for (var i = 0; i < LITHOLOGY_CLASSES.length; i++) {
@@ -5829,11 +6532,15 @@
     return LITHOLOGY_OTHER;
   }
 
+  /**
+   * @param {*} description
+   * @returns {boolean}
+   */
   function isClayey(description) {
     return CLAYEY_RE.test(String(description || '').toLowerCase());
   }
 
-  /* Read every depth range a fracture phrase names, to the end of its clause
+  /** Read every depth range a fracture phrase names, to the end of its clause
    * (lithology.read_fractures). Only the first range right after the phrase
    * used to be read, so "fractures at 30-31 m and 33-34 m" left 33-34 m
    * behind plain casing, and "between 49 and 52 m", "49 m to 52 m", "49-52
@@ -5845,7 +6552,11 @@
    * fracture phrase names depths that could not be read as a zone near the
    * row, so the caller treats the whole logged interval as the target as
    * well; and the spans of the dash-normalised text that name the zones
-   * read, for taking them out. */
+   * read, for taking them out.
+   * @param {*} description
+   * @param {number|null} [top]
+   * @param {number|null} [bottom]
+   */
   function readFractures(description, top, bottom) {
     var text = normaliseDashes(String(description || ''));
     var ranges = [], cuts = [], unread = false;
@@ -5868,8 +6579,8 @@
           return g !== undefined;
         }).map(Number);
         var low = Math.min.apply(null, numbers), high = Math.max.apply(null, numbers);
-        var near = !hasRow || (low >= top - NAMED_ZONE_REACH_M &&
-          high <= bottom + NAMED_ZONE_REACH_M);
+        var near = !hasRow || (low >= /** @type {number} */ (top) - NAMED_ZONE_REACH_M &&
+          high <= /** @type {number} */ (bottom) + NAMED_ZONE_REACH_M);
         if (high > low && near) {
           ranges.push([low, high]);
           read.push([match.index, match.index + match[0].length]);
@@ -5893,16 +6604,26 @@
     return { ranges: ranges, unread: unread, cuts: cuts, text: text };
   }
 
-  /* Depth ranges a description names as fractured, in metres. */
+  /** Depth ranges a description names as fractured, in metres.
+   * @param {*} description
+   * @param {number|null} [top]
+   * @param {number|null} [bottom]
+   * @returns {number[][]}
+   */
   function fractureRanges(description, top, bottom) {
     return readFractures(description, top, bottom).ranges;
   }
 
-  /* The description with its named fracture ranges taken out: "Light colour
+  /** The description with its named fracture ranges taken out: "Light colour
    * granite, fracture zone 49-52 m" -> "Light colour granite", so the rock
    * around a named zone is classed as what it is. A fracture phrase whose
    * depths could not all be read is left in, so the row it is written on is
-   * still classed as fractured. */
+   * still classed as fractured.
+   * @param {*} description
+   * @param {number|null} [top]
+   * @param {number|null} [bottom]
+   * @returns {string}
+   */
   function hostDescription(description, top, bottom) {
     var reading = readFractures(description, top, bottom);
     var kept = '', cursor = 0;
@@ -5914,22 +6635,28 @@
     return kept.replace(/\s+/g, ' ').replace(/^[ ,;.]+/, '').replace(/[ ,;.]+$/, '');
   }
 
-  /* The class of the rock a row is logged as, once any zone it names is out
+  /** The class of the rock a row is logged as, once any zone it names is out
    * (lithology.host_class). "Light colour granite, fracture zone 49-52 m" is
    * basement rock with a fracture zone drawn in it as a band of its own; the
-   * class of the whole description would call the row a fracture zone. */
+   * class of the whole description would call the row a fracture zone.
+   * @param {*} description
+   * @param {number|null} [top]
+   * @param {number|null} [bottom]
+   */
   function hostClass(description, top, bottom) {
     return lithologyClass(fractureRanges(description, top, bottom).length
       ? hostDescription(description, top, bottom) : description);
   }
 
-  /* The log split into bands, each with its class. A fracture zone named
+  /** The log split into bands, each with its class. A fracture zone named
    * with its depths is a band of its own wherever those depths fall, which
    * is not always the row it was written on: the driller logs "fracture zone
    * 60-62 m" against the 55-60 m interval he was drilling when he saw it.
    * The rest of every interval is the rock the description names once the
    * zone is taken out of it. Pass one interval to band it alone (the named
-   * zones of the others are then unknown). */
+   * zones of the others are then unknown).
+   * @param {Rec[]|Rec|null} intervals a log's intervals, or one interval
+   */
   function lithologyBands(intervals) {
     var list = Array.isArray(intervals) ? intervals : (intervals ? [intervals] : []);
     var named = [];
@@ -5982,9 +6709,14 @@
   var AS_BUILT_NOTE = 'As built: the screens are those recorded as installed on ' +
     'the drilling log; the rest of the string follows the design rules.';
 
-  /* The cement seal: the recorded grout depth, never less than the rule. Dr
+  /** The cement seal: the recorded grout depth, never less than the rule. Dr
    * Timbo's log records grouting to 20 m; the drawing showed a 6 m seal
-   * with a screen and a gravel pack inside the grouted interval. */
+   * with a screen and a gravel pack inside the grouted interval.
+   * @param {DrillingLog|null} log
+   * @param {DesignConfig} rules
+   * @param {number|null} [totalDepthM]
+   * @returns {number}
+   */
   function sealDepthFor(log, rules, totalDepthM) {
     var grout = log ? Number(log.grouting_depth_m || 0.0) : 0.0;
     /* A grout recorded at or below the top of the sump cannot be what was
@@ -6001,22 +6733,29 @@
     return Math.max(rules.sanitary_seal_depth_m, grout);
   }
 
-  /* The shallowest pump intake the pumping test supports: the deepest level
+  /** The shallowest pump intake the pumping test supports: the deepest level
    * the test drew the water to, with the submergence margin under it, the
    * floor the yield recommendation itself never sets the intake above. Null
-   * when the test gives no level (designer.pump_intake_floor). */
+   * when the test gives no level (designer.pump_intake_floor).
+   * @param {Rec|null} recommendation a yield recommendation
+   * @param {number} submergenceM
+   * @returns {number|null}
+   */
   function pumpIntakeFloor(recommendation, submergenceM) {
     var deepest = recommendation ? recommendation.deepest_pumping_level_m : null;
     if (deepest === null || deepest === undefined) return null;
     return Number(deepest) + Number(submergenceM);
   }
 
-  /* The drilled diameter the log records, from its diameter column. The
+  /** The drilled diameter the log records, from its diameter column. The
    * deepest interval with a diameter is the production diameter; a hole
-   * reamed wider at the top is logged that way. */
+   * reamed wider at the top is logged that way.
+   * @param {DrillingLog|null} [log]
+   * @returns {number|null}
+   */
   function loggedDiameterIn(log) {
     if (!log) return null;
-    var deepest = null;
+    var deepest = /** @type {Rec|null} */ (null);
     (log.intervals || []).forEach(function (iv) {
       if (!iv.bit_diameter_in) return;
       if (deepest === null || iv.bottom_m > deepest.bottom_m) deepest = iv;
@@ -6024,6 +6763,11 @@
     return deepest === null ? null : Number(deepest.bit_diameter_in);
   }
 
+  /**
+   * @param {DrillingLog|null} log
+   * @param {number} depth
+   * @returns {Rec|null}
+   */
   function intervalAt(log, depth) {
     if (!log) return null;
     var intervals = log.intervals || [];
@@ -6042,7 +6786,7 @@
   var NEGATION_PHRASES = ['no water', 'not reached', 'without water',
     'water table not'];
 
-  /* The basis sentences are written from the zones that survive clipping,
+  /** The basis sentences are written from the zones that survive clipping,
    * not from the candidates: a strike above the static-level floor used to
    * leave "screens positioned against the water strikes (8 m)" in the client
    * document beside "no aquifer intervals identified", and blocked the VES
@@ -6054,12 +6798,18 @@
    * per depth the log names ({ kind: 'strike' | 'zone' | 'interval', label,
    * candidate, clipped, cut }), the sentences that do not depend on
    * what survives (a strike in clay or in the grout, a clayey interval), and
-   * the VES sentence when the VES zones were used. */
+   * the VES sentence when the VES zones were used.
+   * @param {DrillingLog|null} log
+   * @param {Interpretation|null} interpretation
+   * @param {number|null} swl
+   * @param {number} totalDepth
+   * @param {DesignConfig} rules
+   */
   function targetZones(log, interpretation, swl, totalDepth, rules) {
     var seal = sealDepthFor(log, rules, totalDepth);
     var margin = (rules.fracture_zone_margin_m === undefined ||
                   rules.fracture_zone_margin_m === null)
-      ? DEFAULT_CONFIG.design.fracture_zone_margin_m : rules.fracture_zone_margin_m;
+      ? configDefaults().design.fracture_zone_margin_m : rules.fracture_zone_margin_m;
     /* nothing is screened inside the grouted interval, whatever the log says
      * is wet there: the grout is there to keep that water out */
     var swlFloor = (swl || 0.0) + rules.min_screen_below_swl_m;
@@ -6182,7 +6932,7 @@
   function placementBasis(found, screens, rules) {
     var margin = (rules.fracture_zone_margin_m === undefined ||
                   rules.fracture_zone_margin_m === null)
-      ? DEFAULT_CONFIG.design.fracture_zone_margin_m : rules.fracture_zone_margin_m;
+      ? configDefaults().design.fracture_zone_margin_m : rules.fracture_zone_margin_m;
     var trimReason = 'the screens were trimmed to 60 percent of the hole, keeping ' +
       'the deepest sections';
     function covered(zone) {
@@ -6315,6 +7065,7 @@
     var screens = spec.screens, rules = spec.rules, log = spec.log || null;
     var totalDepthM = spec.totalDepthM, swl = spec.swl;
     var asBuilt = !!spec.asBuilt;
+    /** @type {Rec[]} */
     var segments = [], cursor = 0.0;
     var sumpTop = totalDepthM - rules.sump_length_m;
     screens.forEach(function (s) {
@@ -6574,7 +7325,10 @@
     return design;
   }
 
-  /* What the annulus below the seal holds, for a drawing or a table. */
+  /** What the annulus below the seal holds, for a drawing or a table.
+   * @param {Design} design
+   * @returns {string}
+   */
   function annularFillLabel(design) {
     var fill = design.annular_fill === undefined ? 'gravel pack' : design.annular_fill;
     var mm = pyFixed(design.annulus_mm || 0.0, 0);
@@ -6589,8 +7343,11 @@
     return 'gravel pack (' + material + ')';
   }
 
-  /* Depths print as written (14.5, not 14): the table used to round 14.5 m
-   * to "14" beside a drawing that said 14.5. */
+  /** Depths print as written (14.5, not 14): the table used to round 14.5 m
+   * to "14" beside a drawing that said 14.5.
+   * @param {Design} design
+   * @returns {string[][]}
+   */
   function designSummaryRows(design) {
     var rows = [
       ['Total depth', formatG(design.total_depth_m) + ' m'],
@@ -6623,6 +7380,10 @@
     return rows;
   }
 
+  /**
+   * @param {Rec} [options] rules, log, interpretation, totalDepthM, staticWaterLevelM, screensM, pumpIntakeM, pumpIntakeFloorM
+   * @returns {Design}
+   */
   function designBorehole(options) {
     var opts = options || {};
     var rules = opts.rules || defaultConfig().design;
@@ -6760,6 +7521,7 @@
   var DEFAULT_EXCHANGE_RATE_SLE_PER_USD = 23.0;
   var DRY_STAGES = ['Siting', 'Mobilisation', 'Drilling'];
 
+  /** @param {Rec[]|null} [rows] the bundled rates when not given */
   function loadRates(rows) {
     var source = rows || (GWT.data && GWT.data.costItems) || [];
     return source.map(function (row) {
@@ -6776,8 +7538,14 @@
     });
   }
 
-  /* Volume of the borehole/casing annulus; the allowance covers washout and
-   * placement losses (1.3 is common for gravel pack ordering). */
+  /** Volume of the borehole/casing annulus; the allowance covers washout and
+   * placement losses (1.3 is common for gravel pack ordering).
+   * @param {number} boreholeDiameterIn
+   * @param {number} casingDiameterIn
+   * @param {number} intervalM
+   * @param {number} [allowance]
+   * @returns {number}
+   */
   function annulusVolumeM3(boreholeDiameterIn, casingDiameterIn, intervalM, allowance) {
     var toM = 0.0254;
     var dBore = boreholeDiameterIn * toM, dCasing = casingDiameterIn * toM;
@@ -6785,6 +7553,10 @@
     return area * Math.max(0.0, intervalM) * (allowance === undefined ? 1.0 : allowance);
   }
 
+  /**
+   * @param {Rec|null} [values]
+   * @returns {Rec}
+   */
   function costingInputs(values) {
     return Object.assign({
       total_depth_m: 0, overburden_m: null, casing_m: null, screen_m: null,
@@ -6807,6 +7579,7 @@
     return Math.max(4.0, Math.ceil(volume * 20.0));
   }
 
+  /** @param {Rec} inputs what costingInputs returns */
   function resolveCostingInputs(inputs) {
     var r = Object.assign({}, inputs);
     var assumptions = [];
@@ -6853,9 +7626,13 @@
     return { inputs: r, assumptions: assumptions };
   }
 
-  /* Casing and screen lengths, diameters and the gravel packed interval come
+  /** Casing and screen lengths, diameters and the gravel packed interval come
    * straight from the design so the bill of quantities always matches the
-   * drawing. */
+   * drawing.
+   * @param {Design} design
+   * @param {Rec} [options] overburdenM, mobilisationDistanceKm
+   * @returns {Rec}
+   */
   function inputsFromDesign(design, options) {
     var opts = options || {};
     var screenM = design.total_screen_length_m;
@@ -6900,10 +7677,14 @@
     return basis in table ? table[basis] : null;
   }
 
-  /* Percentage defaults follow the RWSN costing and pricing guidance:
+  /** Percentage defaults follow the RWSN costing and pricing guidance:
    * overheads on top of direct works cost, then a margin that keeps the
    * business viable; the contingency is a client-side planning allowance,
-   * shown separately so the contract price stays honest. */
+   * shown separately so the contract price stays honest.
+   * @param {Rec} inputs what costingInputs returns
+   * @param {Rec[]|null} [rates] what loadRates returns
+   * @param {Rec} [options] overheadsPercent, marginPercent, contingencyPercent, vatPercent, exchangeRate
+   */
   function estimateBoreholeCost(inputs, rates, options) {
     var opts = options || {};
     if (inputs.total_depth_m <= 0) throw new Error('total depth must be positive');
@@ -7020,10 +7801,14 @@
     return estimate;
   }
 
-  /* Cost a package of boreholes sharing one mobilisation: mobilise the rig
+  /** Cost a package of boreholes sharing one mobilisation: mobilise the rig
    * once, move it between nearby sites, and let the successful wells carry the
    * cost of the expected dry holes. A dry attempt only pays for siting, set up
-   * and drilling. */
+   * and drilling.
+   * @param {Rec} perWell what costingInputs returns, for one borehole
+   * @param {number} nBoreholes
+   * @param {Rec} [options]
+   */
   function estimateProgrammeCost(perWell, nBoreholes, options) {
     var opts = options || {};
     if (nBoreholes < 1) throw new Error('a programme needs at least one borehole');
@@ -7099,14 +7884,17 @@
   /* The programme roll-up as a report table. Mirrors
    * ProgrammeEstimate.summary_rows on the Python side, so the package
    * estimate reads the same in either engine's cost report. */
-  /* The single-borehole cost summary, the table section 4 of the costing
+  /** The single-borehole cost summary, the table section 4 of the costing
    * report prints. The browser used to inline eight fixed rows here and had
    * no VAT branch at all, so with VAT set - and the browser offers the input -
    * the document showed a contract price, then a contingency computed on a
    * VAT-inclusive budget, and no line saying where the difference went. The
    * reader could not reconcile the total on the page they were asked to sign.
    * groundwater.costing.model.Estimate.summary_rows is the same table; parity
-   * holds the two to the same rows. */
+   * holds the two to the same rows.
+   * @param {Rec} estimate what estimateBoreholeCost returns
+   * @returns {string[][]}
+   */
   function costSummaryRows(estimate) {
     function pair(usd) {
       return [thousandsFixed(usd, 0), thousandsFixed(estimate.in_local(usd), 0)];
@@ -7132,6 +7920,10 @@
     return rows;
   }
 
+  /**
+   * @param {Rec} programme what estimateProgrammeCost returns
+   * @returns {string[][]}
+   */
   function programmeSummaryRows(programme) {
     function pair(usd) {
       return [thousandsFixed(usd, 0), thousandsFixed(programme.in_local(usd), 0)];
@@ -7182,6 +7974,10 @@
   var STAGE_ORDER = STAGE_TITLES.map(function (s) { return s[0]; });
   var RESPONSE_STATES = ['pending', 'yes', 'no', 'na'];
 
+  /**
+   * @param {string} key
+   * @returns {string}
+   */
   function stageTitle(key) {
     for (var i = 0; i < STAGE_TITLES.length; i++) {
       if (STAGE_TITLES[i][0] === key) return STAGE_TITLES[i][1];
@@ -7190,6 +7986,7 @@
     return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
   }
 
+  /** @param {Rec[]|null} [rows] the bundled checklists when not given */
   function loadChecklists(rows) {
     var source = rows || (GWT.data && GWT.data.supervisionChecklists) || [];
     var counters = {}, seen = {};
@@ -7214,8 +8011,12 @@
     });
   }
 
-  /* positional id -> stable id, for every item whose id changed */
+  /** positional id -> stable id, for every item whose id changed
+   * @param {Rec[]|null} [items] what loadChecklists returns
+   * @returns {Record<string, string>}
+   */
   function legacyItemIds(items) {
+    /** @type {Record<string, string>} */
     var out = {};
     (items || loadChecklists()).forEach(function (item) {
       if (item.legacy_id && item.legacy_id !== item.item_id) out[item.legacy_id] = item.item_id;
@@ -7223,22 +8024,27 @@
     return out;
   }
 
-  /* responses saved before the CSV carried ids are keyed by position; carry
+  /** responses saved before the CSV carried ids are keyed by position; carry
    * them onto the questions they answered. Nothing is guessed: a key that is
-   * already stable, or that the current CSV does not know, is left alone. */
+   * already stable, or that the current CSV does not know, is left alone.
+   * @param {Record<string, *>|null} responses keyed by item id
+   * @param {Rec[]|null} [items] what loadChecklists returns
+   * @returns {Record<string, *>}
+   */
   function migrateChecklistResponses(responses, items) {
     var legacy = legacyItemIds(items);
     var out = {};
     Object.keys(responses || {}).forEach(function (key) {
       var target = own(legacy, key) ? legacy[key] : key;
       if (own(out, target)) return;
-      var value = responses[key];
+      var value = /** @type {Record<string, *>} */ (responses)[key];
       out[target] = (value && typeof value === 'object' && value.item_id === key)
         ? Object.assign({}, value, { item_id: target }) : value;
     });
     return out;
   }
 
+  /** @param {Rec[]|null} [rows] the bundled table when not given */
   function loadSeparationDistances(rows) {
     var source = rows || (GWT.data && GWT.data.separationDistances) || [];
     return source.map(function (row) {
@@ -7250,6 +8056,10 @@
     });
   }
 
+  /**
+   * @param {Rec[]} items what loadChecklists returns
+   * @param {Rec[]|Record<string, Rec>|null} [responses] a list of responses, or responses keyed by item id
+   */
   function evaluateChecklist(items, responses) {
     var byId = {};
     if (Array.isArray(responses)) {
@@ -7332,8 +8142,11 @@
     };
   }
 
-  /* Three 20 litre samples at the end of the pumping test; the settled sand in
-   * each must not exceed 10 ppm by volume. */
+  /** Three 20 litre samples at the end of the pumping test; the settled sand in
+   * each must not exceed 10 ppm by volume.
+   * @param {number[]|null} samplesCm3
+   * @param {number} [sampleVolumeL]
+   */
   function sandContentCheck(samplesCm3, sampleVolumeL) {
     var volume = sampleVolumeL === undefined ? 20.0 : sampleVolumeL;
     var limitCm3 = volume * 1000.0 * 10e-6;
@@ -7348,32 +8161,43 @@
           "development; a replacement borehole may be at the driller's cost.");
   }
 
-  /* Plumb test: deviation must not exceed two thirds of the casing inner
-   * diameter per 30 m of depth. */
+  /** Plumb test: deviation must not exceed two thirds of the casing inner
+   * diameter per 30 m of depth.
+   * @param {number} deviationMm
+   * @param {number} depthM
+   * @param {number} casingInnerDiameterMm
+   */
   function verticalityCheck(deviationMm, depthM, casingInnerDiameterMm) {
     var allowedMm = (2.0 / 3.0) * casingInnerDiameterMm * (depthM / 30.0);
     var passed = deviationMm <= allowedMm;
     return fieldCheck('Verticality (plumb test)', passed,
       formatG(deviationMm) + ' mm over ' + formatG(depthM) + ' m',
-      allowedMm.toFixed(0) + ' mm (two thirds of ' +
+      pyFixed(allowedMm, 0) + ' mm (two thirds of ' +
         formatG(casingInnerDiameterMm) + ' mm ID per 30 m)',
       passed ? 'Borehole is acceptably straight and vertical.'
         : 'Deviation exceeds the limit; the driller re-drills at own cost.');
   }
 
-  /* Screen entrance velocity rule: open area A >= Q/30 (A in m2, Q in L/s)
-   * keeps the entrance velocity below 0.03 m/s. */
+  /** Screen entrance velocity rule: open area A >= Q/30 (A in m2, Q in L/s)
+   * keeps the entrance velocity below 0.03 m/s.
+   * @param {number} designYieldLPerS
+   * @param {number} screenOpenAreaM2
+   */
   function screenOpenAreaCheck(designYieldLPerS, screenOpenAreaM2) {
     var required = designYieldLPerS / 30.0;
     var passed = screenOpenAreaM2 >= required;
     return fieldCheck('Screen open area', passed,
       formatG(screenOpenAreaM2) + ' m2',
-      '>= ' + required.toFixed(3) + ' m2 for Q = ' + formatG(designYieldLPerS) + ' L/s',
+      '>= ' + pyFixed(required, 3) + ' m2 for Q = ' + formatG(designYieldLPerS) + ' L/s',
       passed ? 'Entrance velocity within 0.03 m/s.'
         : 'Open area too small: turbulent inflow, encrustation and a shortened ' +
           'screen life are likely; use more or larger screen.');
   }
 
+  /**
+   * @param {number} dischargeM3PerH
+   * @param {number} drawdownM
+   */
   function specificCapacityCheck(dischargeM3PerH, drawdownM) {
     if (drawdownM <= 0) {
       return fieldCheck('Specific capacity', null, 'n/a',
@@ -7382,14 +8206,17 @@
     }
     var sc = dischargeM3PerH / drawdownM;
     var passed = sc >= 1.0;
-    return fieldCheck('Specific capacity', passed, sc.toFixed(2) + ' m3/h per m',
+    return fieldCheck('Specific capacity', passed, pyFixed(sc, 2) + ' m3/h per m',
       '>= 1 m3/h per m for a handpump',
       passed ? 'Adequate for a handpump (about 1 m drawdown at 1 m3/h).'
         : 'Below the handpump rule of thumb; review the test data and the pump ' +
           'setting before acceptance.');
   }
 
-  /* Filter pack sizing: pack D50 / aquifer D50 should be 4 to 6. */
+  /** Filter pack sizing: pack D50 / aquifer D50 should be 4 to 6.
+   * @param {number} d50PackMm
+   * @param {number} d50AquiferMm
+   */
   function packAquiferRatioCheck(d50PackMm, d50AquiferMm) {
     if (d50AquiferMm <= 0) {
       return fieldCheck('Pack aquifer ratio', null, 'n/a', '4 to 6',
@@ -7397,15 +8224,18 @@
     }
     var ratio = d50PackMm / d50AquiferMm;
     var passed = ratio >= 4.0 && ratio <= 6.0;
-    return fieldCheck('Pack aquifer ratio', passed, ratio.toFixed(1),
+    return fieldCheck('Pack aquifer ratio', passed, pyFixed(ratio, 1),
       '4 to 6 (D50 pack / D50 aquifer)',
       passed ? 'Filter pack correctly sized for the formation.'
         : 'Pack aquifer ratio outside 4 to 6: risk of sand pumping (too coarse) ' +
           'or a choked screen (too fine).');
   }
 
-  /* At least 50 mm all round for placement; a gravel pack needs 70 mm to work
-   * as a filter, thinner is only a formation stabiliser. */
+  /** At least 50 mm all round for placement; a gravel pack needs 70 mm to work
+   * as a filter, thinner is only a formation stabiliser.
+   * @param {number} boreholeDiameterIn
+   * @param {number} casingOdMm
+   */
   function annularSpaceCheck(boreholeDiameterIn, casingOdMm) {
     var boreholeMm = boreholeDiameterIn * 25.4;
     var annulusMm = (boreholeMm - casingOdMm) / 2.0;
@@ -7420,12 +8250,16 @@
       note = 'Annulus below the 50 mm minimum: gravel is likely to bridge ' +
         'during placement; use a larger bit or smaller casing.';
     }
-    return fieldCheck('Annular space', passed, annulusMm.toFixed(0) + ' mm',
+    return fieldCheck('Annular space', passed, pyFixed(annulusMm, 0) + ' mm',
       '>= 50 mm (70 mm for a true gravel pack)', note);
   }
 
-  /* Paying per metre invites overstated depths; the daily logs signed by the
-   * rig operator and the supervisor are the audit trail. */
+  /** Paying per metre invites overstated depths; the daily logs signed by the
+   * rig operator and the supervisor are the audit trail.
+   * @param {number} loggedM
+   * @param {number} claimedM
+   * @param {number} [toleranceM]
+   */
   function metresReconciliationCheck(loggedM, claimedM, toleranceM) {
     var tolerance = toleranceM === undefined ? 3.0 : toleranceM;
     var difference = claimedM - loggedM;
@@ -7446,8 +8280,10 @@
       'difference within ' + formatG(tolerance) + ' m', message);
   }
 
-  /* Below pH 6.5 galvanised iron risers and rods corrode rapidly, failing
-   * within months to two years and shedding iron into the supply. */
+  /** Below pH 6.5 galvanised iron risers and rods corrode rapidly, failing
+   * within months to two years and shedding iron into the supply.
+   * @param {number} ph
+   */
   function handpumpCorrosionCheck(ph) {
     var atRisk = ph < 6.5;
     return fieldCheck('Handpump corrosion risk', !atRisk, 'pH ' + formatG(ph),
@@ -7459,8 +8295,11 @@
         : 'Corrosion risk low; standard components acceptable.');
   }
 
-  /* WHO shock dose: 1 L of 0.2 percent solution per 100 L of well volume gives
-   * 20 mg/L; do not pump for at least 4 hours. */
+  /** WHO shock dose: 1 L of 0.2 percent solution per 100 L of well volume gives
+   * 20 mg/L; do not pump for at least 4 hours.
+   * @param {number} waterColumnM
+   * @param {number} casingInnerDiameterMm
+   */
   function disinfectionDose(waterColumnM, casingInnerDiameterMm) {
     var radiusM = casingInnerDiameterMm / 2000.0;
     var volumeL = Math.PI * radiusM * radiusM * Math.max(0.0, waterColumnM) * 1000.0;
@@ -7478,7 +8317,11 @@
     };
   }
 
-  /* Python's "{:,.1f}". */
+  /** Python's "{:,.1f}".
+   * @param {number|string} value
+   * @param {number} decimals
+   * @returns {string}
+   */
   function thousandsFixed(value, decimals) {
     return Number(value).toLocaleString('en-US', {
       minimumFractionDigits: decimals, maximumFractionDigits: decimals,
@@ -7543,23 +8386,55 @@
    * hands the Python readers.
    */
 
+  /**
+   * @param {*} value a cell
+   * @returns {string}
+   */
   function cleanText(value) {
     if (value === null || value === undefined) return '';
     if (value instanceof Date) return formatIsoDate(value);
     return String(value).replace(/\s+/g, ' ').trim();
   }
 
+  /* Python's str() of the datetime openpyxl hands back for a date cell,
+   * which is what clean_text makes of one: "2015-12-08 13:45:00". The time
+   * of day used to be written as 00:00:00 whatever the cell held. */
   function formatIsoDate(d) {
-    return d.getUTCFullYear() + '-' +
-      String(d.getUTCMonth() + 1).padStart(2, '0') + '-' +
-      String(d.getUTCDate()).padStart(2, '0') + ' 00:00:00';
+    return cellDay(d) + ' ' + cellClock(d) + ':' + twoDigits(d.getUTCSeconds());
+  }
+
+  function twoDigits(n) { return String(n).padStart(2, '0'); }
+
+  function cellDay(d) {
+    return d.getUTCFullYear() + '-' + twoDigits(d.getUTCMonth() + 1) + '-' +
+      twoDigits(d.getUTCDate());
+  }
+
+  function cellClock(d) {
+    return twoDigits(d.getUTCHours()) + ':' + twoDigits(d.getUTCMinutes());
+  }
+
+  /* ingestion/common.py _date_text: a date cell in a header block as
+   * "2015-12-08", and as "2015-12-08 13:45" when it carries a time. The
+   * Python reader stopped printing the midnight on the report cover; this
+   * reader went on writing "2015-12-08 00:00:00" for the same cell. */
+  function headerDateText(value) {
+    if (!(value instanceof Date)) return value;
+    if (value.getUTCHours() || value.getUTCMinutes() || value.getUTCSeconds()) {
+      return cellDay(value) + ' ' + cellClock(value);
+    }
+    return cellDay(value);
   }
 
   var NUMBER_RE = /[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?/;
 
-  /* Handles plain numbers, leading zeros ("078.7", GPS "0708958"), appended
+  /** Handles plain numbers, leading zeros ("078.7", GPS "0708958"), appended
    * units ("80m", "19.28M", "2,933lts/hr"), thousands separators and stray
-   * whitespace. Returns null when no number can be found. */
+   * whitespace. Returns null when no number can be found.
+   * @param {*} value a cell
+   * @param {number|null} [fallback]
+   * @returns {number|null}
+   */
   function parseNumber(value, fallback) {
     var dflt = fallback === undefined ? null : fallback;
     if (value === null || value === undefined) return dflt;
@@ -7587,11 +8462,14 @@
 
   var INTERVAL_RE = /(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)/i;
 
-  /* Depths are unsigned, so the hyphen is a range separator, never a minus.
+  /** Depths are unsigned, so the hyphen is a range separator, never a minus.
    * A date is never an interval: Excel silently turns "5-10" typed into a
    * General cell into 10 May, and reading that as text yielded a 5 to 2026 m
    * interval, which then placed screens and priced casing against a
-   * two-kilometre hole. */
+   * two-kilometre hole.
+   * @param {*} value a cell
+   * @returns {number[]|null}
+   */
   function parseDepthInterval(value) {
     if (value === null || value === undefined || value instanceof Date) return null;
     var m = INTERVAL_RE.exec(String(value));
@@ -7604,7 +8482,7 @@
    * horizontal dashes, the true minus sign and the full-width hyphen. */
   var DASH_RE = /[\u2010-\u2015\u2212\ufe58\ufe63\uff0d]/g;
 
-  /* Replace every dash a text cell can carry with the plain hyphen.
+  /** Replace every dash a text cell can carry with the plain hyphen.
    *
    * Word turns "5-10" into "5–10" as the crew types it and the en dash
    * survives the copy into Excel, so a depth interval or a screen range
@@ -7612,7 +8490,9 @@
    * list. The row was then dropped in silence and the only trace was an
    * "interval_gap" flag blaming the log for a gap the crew never left. A
    * value that is not text is handed back untouched, so a Date or a number
-   * still reaches its own parser as itself. */
+   * still reaches its own parser as itself.
+   * @param {*} value a cell; anything but text is handed back as it is
+   */
   function normaliseDashes(value) {
     if (typeof value !== 'string') return value;
     return value.replace(DASH_RE, '-');
@@ -7698,13 +8578,17 @@
    * drawn at 10-20 m inside it. */
   var RANGE_BOTTOM_KEYS = ['grouting_depth_m'];
 
-  /* Priority is the pattern index within the key's list: 0 is the most
+  /** Priority is the pattern index within the key's list: 0 is the most
    * specific wording ("Depth of Borehole"), higher numbers are generic
    * fallbacks ("Depth"). A more specific match later in the sheet may
-   * overwrite a generic one. */
+   * overwrite a generic one.
+   * @param {*} text
+   * @returns {[string, number]|null}
+   */
   function matchLabelPriority(text) {
     var label = cleanText(text).replace(/:+$/, '').trim();
     if (!label) return null;
+    /** @type {[string, number]|null} */
     var best = null;
     var keys = Object.keys(COMPILED_LABELS);
     for (var i = 0; i < keys.length; i++) {
@@ -7722,12 +8606,19 @@
     return best;
   }
 
+  /**
+   * @param {*} text
+   * @returns {string|null}
+   */
   function matchLabel(text) {
     var m = matchLabelPriority(text);
     return m ? m[0] : null;
   }
 
-  /* Split "Community: Kuntoloh" into label and inline value. */
+  /** Split "Community: Kuntoloh" into label and inline value.
+   * @param {*} cellText
+   * @returns {[string, string|null]}
+   */
   function splitInlineValue(cellText) {
     var text = cleanText(cellText);
     var idx = text.indexOf(':');
@@ -7751,6 +8642,11 @@
     return below;
   }
 
+  /**
+   * @param {Grid} grid
+   * @param {number} [maxRows]
+   * @returns {Rec}
+   */
   function extractHeaderFields(grid, maxRows) {
     var limit = maxRows === undefined ? 30 : maxRows;
     var fields = {}, priorities = {};
@@ -7795,7 +8691,7 @@
           if (number === null) number = parseNumber(value);
           if (number !== null) { fields[key] = number; priorities[key] = priority; }
         } else {
-          fields[key] = cleanText(value);
+          fields[key] = cleanText(headerDateText(value));
           priorities[key] = priority;
         }
       }
@@ -7803,6 +8699,10 @@
     return fields;
   }
 
+  /**
+   * @param {Rec} fields what extractHeaderFields returns
+   * @param {string} [source]
+   */
   function siteFromFields(fields, source) {
     /* The zone cell is read with parseUtmZone, which takes the number that
      * follows a label and refuses anything naming no single zone. Read with
@@ -7823,6 +8723,10 @@
     };
   }
 
+  /**
+   * @param {Array<*>|null} [row]
+   * @returns {string[]}
+   */
   function rowText(row) {
     return (row || []).map(function (c) { return cleanText(c).toLowerCase(); });
   }
@@ -7900,6 +8804,7 @@
    * and a flag says what was assumed and why, because an assumption made in
    * silence is how the wrong array reaches a client report. */
   function detectArray(grid, headerRow, cols, fields) {
+    /** @type {Rec[]} */
     var flags = [];
     var declaredText = cleanText(fields.array_type);
     var declared = arrayNamedIn(declaredText);
@@ -7948,6 +8853,7 @@
   function findVesDataHeader(grid) {
     for (var r = 0; r < grid.length; r++) {
       var texts = rowText(grid[r]);
+      /** @type {Record<string, number>} */
       var cols = {};
       for (var c = 0; c < texts.length; c++) {
         var t = texts[c];
@@ -7989,14 +8895,25 @@
     return null;
   }
 
+  /**
+   * @param {Grid} grid
+   * @param {string} [source]
+   * @param {string} [sheetName]
+   * @returns {Sounding|null}
+   */
   function soundingFromGrid(grid, source, sheetName) {
     return soundingOrReason(grid, source, sheetName)[0];
   }
 
-  /* [sounding | null, reason]: the sounding on a sheet, or why there is none.
+  /** [sounding | null, reason]: the sounding on a sheet, or why there is none.
    * A sheet the reader could not use was dropped without a word, so a
    * three-sheet workbook with one mislabelled sheet came back as two
-   * soundings and nothing said so. */
+   * soundings and nothing said so.
+   * @param {Grid} grid
+   * @param {string} [source]
+   * @param {string} [sheetName]
+   * @returns {[Sounding|null, string]}
+   */
   function soundingOrReason(grid, source, sheetName) {
     var fields = extractHeaderFields(grid);
     var site = siteFromFields(fields, source);
@@ -8126,6 +9043,7 @@
     }
 
     var soundingId = String(fields.sounding_id || sheetName || 'VES 1') || 'VES 1';
+    /** @type {Sounding} */
     var sounding = {
       site: site, sounding_id: soundingId,
       ab2: ab2, mn: mn, rho_app: rho,
@@ -8145,8 +9063,8 @@
         break;
       }
     }
-    for (var k = 0; k < mn.length; k++) {
-      if (isFinite(mn[k]) && ab2[k] <= mn[k] / 2) {
+    for (var mk = 0; mk < mn.length; mk++) {
+      if (isFinite(mn[mk]) && ab2[mk] <= mn[mk] / 2) {
         flags.push({ level: 'warning', code: 'mn_exceeds_ab',
           message: 'MN/2 is not smaller than AB/2 for some readings.',
           context: soundingId });
@@ -8208,8 +9126,13 @@
   }
 
   /* One worksheet per sounding. */
-  /* skipped, when given, receives one warning flag per sheet that yielded
-   * no sounding, naming the sheet and the reason */
+  /** skipped, when given, receives one warning flag per sheet that yielded
+   * no sounding, naming the sheet and the reason
+   * @param {Array<{name: string, rows: Grid}>} sheets
+   * @param {string} [source]
+   * @param {Rec[]} [skipped] receives a flag for each sheet that held no sounding
+   * @returns {Sounding[]}
+   */
   function readVesSheets(sheets, source, skipped) {
     var out = [], titles = [];
     sheets.forEach(function (sheet) {
@@ -8266,6 +9189,7 @@
   function findLogHeader(grid) {
     for (var r = 0; r < grid.length; r++) {
       var texts = rowText(grid[r]);
+      /** @type {Record<string, number>} */
       var cols = {};
       for (var c = 0; c < texts.length; c++) {
         var t = texts[c];
@@ -8411,6 +9335,10 @@
    * number, none of which is a depth. */
   var FRACTION_RE = /\d\s*\/\s*\d/;
 
+  /**
+   * @param {*} value a cell
+   * @returns {[number[], string]}
+   */
   function parseWaterStrikeDepths(value) {
     if (value === null || value === undefined) return [[], ''];
     if (value instanceof Date) {
@@ -8505,7 +9433,7 @@
     return match ? match[0] : null;
   }
 
-  /* The drilled diameter in inches, converting the unit the cell carries.
+  /** The drilled diameter in inches, converting the unit the cell carries.
    *
    * Crews quote a bit in millimetres as often as in inches, and the column
    * was read as a bare number, so "165 mm" was recorded as a 165 inch hole
@@ -8516,7 +9444,11 @@
    * the design rules are written in.
    *
    * A converted diameter is kept to two decimals: 165 mm is the metric name
-   * of a 6.5 in bit, and 6.5 in is what the completion log should print. */
+   * of a 6.5 in bit, and 6.5 in is what the completion log should print.
+   * @param {*} value a cell
+   * @param {string|null} [unit] the unit the column header names
+   * @returns {number|null}
+   */
   function parseBitDiameterIn(value, unit) {
     if (value === null || value === undefined) return null;
     if (typeof value === 'boolean') return null;
@@ -8554,7 +9486,7 @@
     return number;
   }
 
-  /* The penetration rate in metres per minute, whichever way up it is
+  /** The penetration rate in metres per minute, whichever way up it is
    * written.
    *
    * A driller times a rod with a stopwatch and writes what the watch says, so
@@ -8564,7 +9496,11 @@
    * minute (ROADMAP data-ingestion-15), twenty-five times too fast. A cell
    * with no unit is in `unit`, the unit its column header names; with none,
    * metres per minute, which is the unit the template column asks for
-   * ("Penetration rate (m/min)"). */
+   * ("Penetration rate (m/min)").
+   * @param {*} value a cell
+   * @param {string|null} [unit] the unit the column header names
+   * @returns {number|null}
+   */
   function parsePenetrationRateMPerMin(value, unit) {
     if (value === null || value === undefined) return null;
     if (typeof value === 'boolean') return null;
@@ -8577,11 +9513,14 @@
     return rateInMPerMin(number, match[2]);
   }
 
-  /* "25-35; 48-53 m" -> [[25, 35], [48, 53]]: the as-built screens a crew
+  /** "25-35; 48-53 m" -> [[25, 35], [48, 53]]: the as-built screens a crew
    * writes on the sheet, as ranges separated by anything. A cell with no
    * range in it records no screens. The dashes are normalised first so a
    * range typed with an en or em dash is read as the range it is rather than
-   * dropped (ROADMAP data-ingestion-8). */
+   * dropped (ROADMAP data-ingestion-8).
+   * @param {*} value a cell
+   * @returns {number[][]}
+   */
   function parseInstalledScreens(value) {
     var text = normaliseDashes(cleanText(value)), out = [], match;
     var re = new RegExp(SCREEN_RANGE_SOURCE, 'g');
@@ -8593,6 +9532,11 @@
     return out.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
   }
 
+  /**
+   * @param {Grid} grid
+   * @param {string} [source]
+   * @returns {DrillingLog}
+   */
   function drillingFromGrid(grid, source) {
     var fields = extractHeaderFields(grid, grid.length);
     var site = siteFromFields(fields, source);
@@ -8602,7 +9546,7 @@
     if (located) {
       var cols = located.cols;
       var headerCell = function (key) {
-        var c = cols[key], headerRow = grid[located.row] || [];
+        var c = cols[key], headerRow = grid[/** @type {Rec} */ (located).row] || [];
         return (c !== undefined && c < headerRow.length) ? headerRow[c] : null;
       };
       /* the unit the column header names is the unit of a bare number */
@@ -8747,6 +9691,7 @@
       }
     }
 
+    /** @type {DrillingLog} */
     var log = {
       site: site, borehole_ref: String(fields.borehole_ref || ''),
       total_depth_m: total === undefined ? null : total,
@@ -8837,6 +9782,7 @@
 
   /* Words that introduce a lower bound, and whether the bound itself is a
    * possible value. ">=50" is at least 50; ">50" is more than 50. */
+  /** @type {Array<[string, boolean]>} */
   var LOWER_BOUND_WORDS = [['>=', true], ['=>', true], ['>', false],
     ['at least', true], ['more than', false], ['greater than', false],
     ['above', false], ['over', false]];
@@ -8891,14 +9837,16 @@
     return [parseNumber(m[1]), unit];
   }
 
-  /* What a laboratory's result cell says: waterquality.py _read_cell.
+  /** What a laboratory's result cell says: waterquality.py _read_cell.
    *
    * kind is number, below (a non-detect, with the limit it states if any),
    * above (a lower bound: ">50", "TNTC"), empty, text (words that are not a
    * result, such as "Not analysed") or unreadable: a cell that starts like a
    * qualified result and could not be read. That last one used to fall
    * through to a plain number parse, which read "ND (DL 0.05)" as a measured
-   * 0.05, ">50 mg/L" as exactly 50 and "Absent/100 mL" as a count of 100. */
+   * 0.05, ">50 mg/L" as exactly 50 and "Absent/100 mL" as a count of 100.
+   * @param {*} rawValue a cell
+   */
   function readQualityCell(rawValue) {
     function reading(kind, number, unit, inclusive) {
       return { kind: kind, number: number === undefined ? null : number,
@@ -8995,6 +9943,11 @@
     return [convertUnit(number, cellUnit, rowUnit), rowUnit];
   }
 
+  /**
+   * @param {Grid} grid
+   * @param {string} [source]
+   * @returns {QualitySample}
+   */
   function qualityFromGrid(grid, source) {
     var fields = extractHeaderFields(grid);
     var site = siteFromFields(fields, source);
@@ -9057,6 +10010,7 @@
       });
     }
 
+    /** @type {QualitySample} */
     var sample = {
       site: site, sample_id: String(fields.sample_id || ''),
       borehole_ref: String(fields.borehole_ref || ''),
@@ -9125,7 +10079,9 @@
   function blockSpanMin(heading) {
     var match = BLOCK_SPAN_RE.exec(normaliseDashes(String(heading || '')));
     if (!match) return null;
+    /** @type {number|null} */
     var first = parseFloat(match[1]);
+    /** @type {number|null} */
     var last = parseFloat(match[2]);
     var written = (match[3] || '').trim();
     if (written) {
@@ -9208,6 +10164,7 @@
       for (var gi = 0; gi < timeCols.length; gi++) {
         var start = timeCols[gi];
         var end = gi + 1 < timeCols.length ? timeCols[gi + 1] : texts.length;
+        /** @type {Record<string, number>} */
         var roles = {};
         for (var cc = start + 1; cc < end; cc++) {
           var role = columnRole(texts[cc]);
@@ -9487,6 +10444,11 @@
     };
   }
 
+  /**
+   * @param {Grid} grid
+   * @param {string} [source]
+   * @returns {PumpingTest}
+   */
   function pumpingFromGrid(grid, source) {
     var fields = extractHeaderFields(grid, grid.length);
     var site = siteFromFields(fields, source);
@@ -9519,9 +10481,9 @@
      * and every transmissivity fitted to it, silently. */
     function seriesOfKind(kind) {
       var out = [];
-      located.groups.forEach(function (g) {
+      /** @type {Rec} */ (located).groups.forEach(function (g) {
         if (g.kind !== kind) return;
-        var series = readSeries(grid, located.row, g);
+        var series = readSeries(grid, /** @type {Rec} */ (located).row, g);
         if (series.unitText.indexOf('?') === 0) {
           flags.push({
             level: 'error', code: 'time_unit_unknown',
@@ -9682,6 +10644,7 @@
       ? arrMax(steps.map(function (s, i) { return arrMax(s.time_min) + stepOffsets[i]; }))
       : null;
 
+    /** @type {PumpingTest} */
     var test = {
       site: site, borehole_ref: String(fields.borehole_ref || ''),
       test_type: testType, static_water_level_m: swl,
@@ -9743,8 +10706,8 @@
       }));
       if (maxWl > test.borehole_depth_m) {
         flags.push({ level: 'warning', code: 'level_below_borehole',
-          message: 'Recorded water level ' + maxWl.toFixed(2) + ' m exceeds the ' +
-            'stated borehole depth ' + test.borehole_depth_m.toFixed(0) +
+          message: 'Recorded water level ' + pyFixed(maxWl, 2) + ' m exceeds the ' +
+            'stated borehole depth ' + pyFixed(test.borehole_depth_m, 0) +
             ' m; check the sheet.' });
       }
     }
@@ -9757,7 +10720,7 @@
       }));
       if (maxWlPump > test.pump_setting_m) {
         flags.push({ level: 'warning', code: 'level_below_pump',
-          message: 'Recorded water level ' + maxWlPump.toFixed(2) + ' m is below ' +
+          message: 'Recorded water level ' + pyFixed(maxWlPump, 2) + ' m is below ' +
             'the pump intake at ' + pyFixed(test.pump_setting_m, 0) + ' m. A pump ' +
             'cannot draw the level below its own intake, so the pump setting, ' +
             'the levels or the datum on the sheet is wrong; the drawdown ' +
@@ -9804,6 +10767,13 @@
   var POPULATION_CREDIT = 'Population: 2015 Population and Housing Census, ' +
     'Statistics Sierra Leone. Boundaries: geoBoundaries, CC BY 4.0.';
 
+  /**
+   * @param {number} lat1
+   * @param {number} lon1
+   * @param {number} lat2
+   * @param {number} lon2
+   * @returns {number}
+   */
   function haversineM(lat1, lon1, lat2, lon2) {
     var rad = Math.PI / 180;
     var p1 = lat1 * rad, p2 = lat2 * rad;
@@ -9813,7 +10783,12 @@
     return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(a));
   }
 
-  /* Ray casting on a closed ring. */
+  /** Ray casting on a closed ring.
+   * @param {number} lon
+   * @param {number} lat
+   * @param {number[][]} ring
+   * @returns {boolean}
+   */
   function pointInRing(lon, lat, ring) {
     var inside = false;
     for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -9845,8 +10820,11 @@
     return data.geo || null;
   }
 
-  /* Chiefdom polygons, with bounding boxes so the point-in-polygon scan over
-   * 166 chiefdoms stays cheap for a few thousand water points. */
+  /** Chiefdom polygons, with bounding boxes so the point-in-polygon scan over
+   * 166 chiefdoms stays cheap for a few thousand water points.
+   * @param {Rec|null} [layer] a GeoJSON FeatureCollection; the bundled chiefdoms when not given
+   * @returns {Rec[]}
+   */
   function loadPolygons(layer) {
     var source = layer || (geoLayers() || {}).chiefdomBoundaries;
     if (!source) return [];
@@ -9872,6 +10850,12 @@
     }).filter(function (p) { return p.rings.length; });
   }
 
+  /**
+   * @param {Polygon} poly
+   * @param {number} lon
+   * @param {number} lat
+   * @returns {boolean}
+   */
   function polyContains(poly, lon, lat) {
     for (var i = 0; i < poly.rings.length; i++) {
       var b = poly.bboxes[i];
@@ -9916,12 +10900,17 @@
   var M_PER_DEG_LAT = 110600.0;
   var M_PER_DEG_LON = 111320.0;
 
-  /* Metres from a point to the nearest segment of a ring.
+  /** Metres from a point to the nearest segment of a ring.
    *
    * Distance to the ring as a line, not to its vertices: a simplified ring can
    * run hundreds of metres between two vertices, and a point in the seam
    * beside that stretch is metres from the border and far from either end of
-   * it. haversineM is point to point and cannot answer this. */
+   * it. haversineM is point to point and cannot answer this.
+   * @param {number} lon
+   * @param {number} lat
+   * @param {number[][]} ring
+   * @returns {number}
+   */
   function ringDistanceM(lon, lat, ring) {
     var scale = M_PER_DEG_LON * Math.cos(lat * Math.PI / 180);
     var best = Infinity;
@@ -9946,7 +10935,7 @@
     return best;
   }
 
-  /* Which of the areas a point in none of them is nearest to, if any is near.
+  /** Which of the areas a point in none of them is nearest to, if any is near.
    *
    * ringSets is each area's outer rings, in the layer's own order. Returns the
    * index of the area whose ring is nearest, when that ring is closer than
@@ -9957,7 +10946,13 @@
    * already follows. Interior rings are not candidates: a point in the seam
    * between an enclave and the chiefdom around it (Kenema Town inside Nongowa)
    * belongs to the enclave it is touching, not to the hole it fell in.
-   * coverage.nearest_chiefdom_index. */
+   * coverage.nearest_chiefdom_index.
+   * @param {number} lon
+   * @param {number} lat
+   * @param {number[][][][]} ringSets each area's outer rings
+   * @param {number} [toleranceM]
+   * @returns {number|null}
+   */
   function nearestChiefdomIndex(lon, lat, ringSets, toleranceM) {
     var tolerance = toleranceM === undefined ? CHIEFDOM_EDGE_TOLERANCE_M : toleranceM;
     /* the ring's bounding box grown by the tolerance: a point outside that box
@@ -9990,13 +10985,16 @@
     return bestIndex;
   }
 
-  /* The outer rings of each polygon, in the layer's order, as
-   * nearestChiefdomIndex takes them. */
+  /** The outer rings of each polygon, in the layer's order, as
+   * nearestChiefdomIndex takes them.
+   * @param {Polygon[]} polys
+   * @returns {number[][][][]}
+   */
   function outerRingSets(polys) {
     return polys.map(function (poly) { return poly.rings; });
   }
 
-  /* The chiefdom polygon holding a point, or "" when no chiefdom is near it.
+  /** The chiefdom polygon holding a point, or "" when no chiefdom is near it.
    *
    * A point no polygon contains is placed on the chiefdom whose ring is
    * nearest, when that ring is within CHIEFDOM_EDGE_TOLERANCE_M - the seams
@@ -10009,7 +11007,12 @@
    *
    * Every count and grouping below goes through this one function, so the
    * browser closes a seam at one distance and in one place, as the Python
-   * does. */
+   * does.
+   * @param {number} lat
+   * @param {number} lon
+   * @param {Polygon[]} polys
+   * @returns {string}
+   */
   function chiefdomOfPoint(lat, lon, polys) {
     for (var i = 0; i < polys.length; i++) {
       if (polyContains(polys[i], lon, lat)) return polys[i].name;
@@ -10031,14 +11034,21 @@
    * ingestion.checks.DISTRICT_EDGE_TOLERANCE_M. */
   var DISTRICT_EDGE_TOLERANCE_M = 90.0;
 
-  /* Whether a point is inside, or within toleranceM of, these districts.
+  /** Whether a point is inside, or within toleranceM of, these districts.
    *
    * A district is the chiefdoms the crosswalk puts in it today, the same
    * rings chiefdomOfPoint places a point by, and the distance is to the ring
    * as a line. Containment is asked as well as distance because the rings
    * were simplified one at a time and can overlap along a shared border: a
    * point in the overlap is inside both districts as drawn, even though
-   * chiefdomOfPoint can only return the first. mapping.regional.near_districts. */
+   * chiefdomOfPoint can only return the first. mapping.regional.near_districts.
+   * @param {number} lat
+   * @param {number} lon
+   * @param {string[]} districts
+   * @param {Polygon[]} polys
+   * @param {number} [toleranceM]
+   * @returns {boolean}
+   */
   function nearDistricts(lat, lon, districts, polys, toleranceM) {
     var tolerance = toleranceM === undefined ? DISTRICT_EDGE_TOLERANCE_M : toleranceM;
     var crosswalk = loadChiefdomDistrict();
@@ -10052,8 +11062,13 @@
     return nearestChiefdomIndex(lon, lat, [rings], tolerance) !== null;
   }
 
+  /**
+   * @param {Rec[]|null} [rows] the bundled table when not given
+   * @returns {Record<string, number>}
+   */
   function loadDistrictPopulation(rows) {
     var source = rows || (GWT.data && GWT.data.populationDistrict) || [];
+    /** @type {Record<string, number>} */
     var out = {};
     source.forEach(function (row) {
       out[String(row.district).trim()] = Number(row.population);
@@ -10061,9 +11076,11 @@
     return out;
   }
 
-  /* The fixed scale the coverage map is coloured by, the same table the
+  /** The fixed scale the coverage map is coloured by, the same table the
    * Python engine reads. Colouring by a scale recomputed from each map made
-   * two maps of one country incomparable. */
+   * two maps of one country incomparable.
+   * @param {Rec[]|null} [rows] the bundled table when not given
+   */
   function loadServiceClasses(rows) {
     var source = rows || (GWT.data && GWT.data.coverageServiceClasses) || [];
     return source.map(function (row) {
@@ -10079,8 +11096,13 @@
     });
   }
 
+  /**
+   * @param {Rec[]|null} [rows] the bundled crosswalk when not given
+   * @returns {Record<string, string>}
+   */
   function loadChiefdomDistrict(rows) {
     var source = rows || (GWT.data && GWT.data.chiefdomDistrict) || [];
+    /** @type {Record<string, string>} */
     var out = {};
     source.forEach(function (row) {
       out[String(row.chiefdom).trim()] = String(row.district).trim();
@@ -10172,7 +11194,7 @@
     return a.slice().sort().join('|') === b.slice().sort().join('|');
   }
 
-  /* Read a district name off a sheet: [resolved, candidates].
+  /** Read a district name off a sheet: [resolved, candidates].
    *
    * resolved is the districts the name can only mean - one district, or the
    * two of the Western Area for a name that means the region. It is empty
@@ -10183,7 +11205,10 @@
    * Urban"). Matching on the first substring hit, which is what this did,
    * read "Ko" as Port Loko and "Western Area" as Western Area Urban; a name
    * that could be two districts is worth refusing, and saying which two,
-   * rather than silently picking one of them. */
+   * rather than silently picking one of them.
+   * @param {*} name
+   * @returns {[string[], string[]]}
+   */
   function matchDistrict(name) {
     var key = districtKey(name);
     if (!key) return [[], []];
@@ -10215,17 +11240,23 @@
     return [[], []];
   }
 
-  /* The districts a district name written on a sheet can only mean. */
+  /** The districts a district name written on a sheet can only mean.
+   * @param {*} name
+   * @returns {string[]}
+   */
   function districtsNamed(name) {
     return matchDistrict(name)[0];
   }
 
-  /* The name a district written on a sheet is printed under: the district it
+  /** The name a district written on a sheet is printed under: the district it
    * resolves to - "Port Loko" for "Port Loko District" - or the region's own
    * name for a name that means a region, and the sheet's words as written for
    * a name that resolves to nothing. Printed as typed, the name went into
    * client documents as "Port Loko District district". district_display_name
-   * in the Python engine. */
+   * in the Python engine.
+   * @param {*} name
+   * @returns {string}
+   */
   function districtDisplayName(name) {
     var resolved = matchDistrict(name)[0];
     if (resolved.length === 1) return resolved[0];
@@ -10240,9 +11271,12 @@
     return String(name === null || name === undefined ? '' : name).trim();
   }
 
-  /* How a report names the district a sheet states: "Port Loko district". A
+  /** How a report names the district a sheet states: "Port Loko district". A
    * region is not a district, so "Western Area" is printed as itself rather
-   * than as "Western Area district". district_label in the Python engine. */
+   * than as "Western Area district". district_label in the Python engine.
+   * @param {*} name
+   * @returns {string}
+   */
   function districtLabel(name) {
     var shown = districtDisplayName(name);
     if (!shown) return '';
@@ -10250,17 +11284,23 @@
     return shown + ' district';
   }
 
-  /* A list an operator reads as a sentence: "Koinadugu or Kono". */
+  /** A list an operator reads as a sentence: "Koinadugu or Kono".
+   * @param {string[]|null} [names]
+   * @returns {string}
+   */
   function orList(names) {
     var list = (names || []).slice();
     if (list.length < 2) return list.join('');
     return list.slice(0, list.length - 1).join(', ') + ' or ' + list[list.length - 1];
   }
 
-  /* Population per chiefdom polygon, aggregated from the census through the
+  /** Population per chiefdom polygon, aggregated from the census through the
    * crosswalk. District totals are conserved exactly by construction, and the
    * member list drives the reconciliation panel that shows how post-2017
-   * chiefdoms fold into the pre-2017 polygons. */
+   * chiefdoms fold into the pre-2017 polygons.
+   * @param {Rec[]|null} [censusRows]
+   * @param {Rec[]|null} [crosswalkRows]
+   */
   function chiefdomPopulation(censusRows, crosswalkRows) {
     var census = censusRows || (GWT.data && GWT.data.populationChiefdom) || [];
     var crossSource = crosswalkRows || (GWT.data && GWT.data.censusCrosswalk) || [];
@@ -10285,6 +11325,10 @@
     return { population: population, members: members };
   }
 
+  /**
+   * @param {WaterPoint[]} points
+   * @param {Polygon[]} polys
+   */
   function countPointsByChiefdom(points, polys) {
     var counts = {}, unassigned = [];
     points.forEach(function (wp) {
@@ -10297,6 +11341,11 @@
     return { counts: counts, unassigned: unassigned };
   }
 
+  /**
+   * @param {WaterPoint[]} points
+   * @param {Polygon[]} polys
+   * @param {Record<string, string>} chiefdomDistrict
+   */
   function countPointsByDistrict(points, polys, chiefdomDistrict) {
     var counts = {}, unassigned = [];
     points.forEach(function (wp) {
@@ -10310,9 +11359,13 @@
     return { counts: counts, unassigned: unassigned };
   }
 
-  /* The points themselves rather than a tally: the counts are enough to
+  /** The points themselves rather than a tally: the counts are enough to
    * divide a population by, but not enough to say when they were surveyed or
-   * whether they last the dry season. */
+   * whether they last the dry season.
+   * @param {WaterPoint[]} points
+   * @param {Polygon[]} polys
+   * @param {Record<string, string>} chiefdomDistrict
+   */
   function groupPointsByDistrict(points, polys, chiefdomDistrict) {
     var grouped = {}, unassigned = [];
     points.forEach(function (wp) {
@@ -10324,6 +11377,10 @@
     return { grouped: grouped, unassigned: unassigned };
   }
 
+  /**
+   * @param {WaterPoint[]} points
+   * @param {Polygon[]} polys
+   */
   function groupPointsByChiefdom(points, polys) {
     var grouped = {}, unassigned = [];
     points.forEach(function (wp) {
@@ -10350,6 +11407,10 @@
     return rows;
   }
 
+  /**
+   * @param {Record<string, number>} population
+   * @param {Record<string, {total: number, functional: number}>} counts
+   */
   function coverageRows(population, counts) {
     var rows = Object.keys(population).map(function (name) {
       var bucket = counts[name] || { total: 0, functional: 0 };
@@ -10364,6 +11425,11 @@
     return rankCoverage(rows);
   }
 
+  /**
+   * @param {Record<string, number>} population
+   * @param {Record<string, {total: number, functional: number}>} counts
+   * @param {Record<string, string>} chiefdomDistrict
+   */
   function chiefdomCoverageRows(population, counts, chiefdomDistrict) {
     var rows = Object.keys(population).map(function (name) {
       var bucket = counts[name] || { total: 0, functional: 0 };
@@ -10379,14 +11445,16 @@
     return rankCoverage(rows);
   }
 
-  /* worst_served_* is the highest FINITE people-per-point, reported separately
+  /** worst_served_* is the highest FINITE people-per-point, reported separately
    * from the ranking because areas with no functional source have an undefined
-   * ratio, sort to rank 1 and are counted by n_no_source instead. */
+   * ratio, sort to rank 1 and are counted by n_no_source instead.
+   * @param {Rec[]} rows what coverageRows returns
+   */
   function coverageStats(rows) {
     var served = rows.filter(function (r) { return r.people_per_point !== null; });
     var worstServed = served.reduce(function (a, b) {
       return (!a || b.people_per_point > a.people_per_point) ? b : a;
-    }, null);
+    }, /** @type {Rec|null} */ (null));
     var totalPop = rows.reduce(function (a, r) { return a + r.population; }, 0);
     var totalFunctional = rows.reduce(function (a, r) { return a + r.functional_points; }, 0);
     return {
@@ -10415,9 +11483,13 @@
     return null;
   }
 
-  /* status_clean text is authoritative when present; status_id is the
+  /** status_clean text is authoritative when present; status_id is the
    * fallback. A source that is functional but needs repair still delivers
-   * water, so it counts as functional. */
+   * water, so it counts as functional.
+   * @param {*} statusText
+   * @param {*} [statusId]
+   * @returns {boolean|null}
+   */
   function functionalFrom(statusText, statusId) {
     var text = String(statusText || '').trim().toLowerCase();
     if (text) {
@@ -10427,6 +11499,7 @@
       }
       /* whole word, so "functionality" in "unknown functionality" does not
        * read as functional */
+      /** @type {string[]} */
       var words = text.match(/[a-z]+/g) || [];
       if (words.indexOf('functional') >= 0) return true;
     }
@@ -10449,6 +11522,11 @@
   var IMPROVED_WORDS = ['borehole', 'tubewell', 'tube well', 'protected',
     'piped', 'hand pump', 'handpump', 'mechani'];
 
+  /**
+   * @param {*} source
+   * @param {*} [technology]
+   * @returns {boolean}
+   */
   function improvedSource(source, technology) {
     var text = (String(source || '') + ' ' + String(technology || '')).toLowerCase();
     var i;
@@ -10491,11 +11569,15 @@
     return months >= 0 && months <= 12 ? months : null;
   }
 
-  /* `skipped` is optional and is how the page finds out what this threw away.
+  /** `skipped` is optional and is how the page finds out what this threw away.
    * A record with no usable position cannot be counted against a chiefdom or
    * measured from a site, so dropping it is right - but an export that is half
    * unusable and an export that is complete produce the same answer on the
-   * page, and the difference decides whether a community reads as served. */
+   * page, and the difference decides whether a community reads as served.
+   * @param {Array<*>|null} records WPdx+ rows, from the API or a CSV
+   * @param {Rec[]} [skipped] receives a flag saying what was dropped, and why
+   * @returns {WaterPoint[]}
+   */
   function parseWpdxRecords(records, skipped) {
     var out = [];
     var unplaced = 0;
@@ -10573,6 +11655,13 @@
    * touches the network, and it fails soft: offline, blocked by a browser
    * extension or refused by the CDN, the page says so and the CSV upload path
    * still does the whole job. */
+  /**
+   * @param {number} lat
+   * @param {number} lon
+   * @param {number} radiusM
+   * @param {Rec} [options] limit, domain, resource
+   * @returns {string}
+   */
   function wpdxUrl(lat, lon, radiusM, options) {
     var opts = options || {};
     var limit = opts.limit || 5000;
@@ -10595,12 +11684,19 @@
     return error;
   }
 
+  /**
+   * @param {number} lat
+   * @param {number} lon
+   * @param {number} [radiusM]
+   * @param {Rec} [options] limit, domain, resource, timeoutS
+   * @returns {Promise<Array<*>>}
+   */
   async function fetchWaterPoints(lat, lon, radiusM, options) {
     var opts = options || {};
     var url = wpdxUrl(lat, lon, radiusM || DEFAULT_SEARCH_RADIUS_M, opts);
     var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     var timer = controller
-      ? setTimeout(function () { controller.abort(); }, (opts.timeoutS || 30) * 1000)
+      ? setTimeout(function () { /** @type {AbortController} */ (controller).abort(); }, (opts.timeoutS || 30) * 1000)
       : null;
     var response;
     try {
@@ -10637,19 +11733,32 @@
     return data;
   }
 
-  /* Fetch, parse and distance-filter in one call.
+  /** Fetch, parse and distance-filter in one call.
    *
    * The query is a bounding box, so it returns the corners of the square as
    * well as the circle the operator asked for. Without this last step a point
    * 1.4 km away lands in a 1 km search: the rehabilitate-or-drill decision
    * re-filters and would ignore it, but the functionality totals and anything
-   * built on the stored inventory would silently count it. */
+   * built on the stored inventory would silently count it.
+   * @param {number} lat
+   * @param {number} lon
+   * @param {number} [radiusM]
+   * @param {Rec} [options]
+   * @param {Rec[]} [skipped]
+   */
   async function waterPointsNear(lat, lon, radiusM, options, skipped) {
     var radius = radiusM || DEFAULT_SEARCH_RADIUS_M;
     var raw = await fetchWaterPoints(lat, lon, radius, options);
     return pointsWithin(parseWpdxRecords(raw, skipped), lat, lon, radius);
   }
 
+  /**
+   * @param {WaterPoint[]} points
+   * @param {number} lat
+   * @param {number} lon
+   * @param {number} radiusM
+   * @returns {WaterPoint[]}
+   */
   function pointsWithin(points, lat, lon, radiusM) {
     var out = [];
     points.forEach(function (point) {
@@ -10662,6 +11771,7 @@
     return out;
   }
 
+  /** @param {WaterPoint[]} points */
   function functionalitySummary(points) {
     var functional = points.filter(function (p) { return p.functional === true; }).length;
     var nonFunctional = points.filter(function (p) { return p.functional === false; }).length;
@@ -10674,10 +11784,15 @@
     };
   }
 
-  /* A working improved source inside the service radius means the community
+  /** A working improved source inside the service radius means the community
    * may already be served; otherwise a broken improved source nearby is a
    * rehabilitation candidate, usually cheaper than a new borehole; otherwise
-   * new construction is justified. */
+   * new construction is justified.
+   * @param {WaterPoint[]} points
+   * @param {number} lat
+   * @param {number} lon
+   * @param {Rec} [options] searchRadiusM, serviceRadiusM
+   */
   function rehabVsDrill(points, lat, lon, options) {
     var opts = options || {};
     var searchRadius = opts.searchRadiusM || DEFAULT_SEARCH_RADIUS_M;
@@ -10793,10 +11908,18 @@
    * cannot overlap (zone 28N runs about 620000-800000, zone 29N 200000-500000).
    */
 
+  /**
+   * @param {number|string} easting
+   * @returns {number}
+   */
   function inferZoneForSierraLeone(easting) {
     return Number(easting) > 550000 ? 28 : 29;
   }
 
+  /**
+   * @param {number} lon
+   * @returns {number}
+   */
   function utmZoneFromLon(lon) {
     return Math.floor((lon + 180) / 6) + 1;
   }
@@ -10820,6 +11943,11 @@
     49561 * Math.pow(GEO_N, 4) / 161280,
   ];
 
+  /**
+   * @param {number} lat
+   * @param {number} lon
+   * @param {number|null} [zone]
+   */
   function geographicToUtm(lat, lon, zone) {
     var band = zone || utmZoneFromLon(lon);
     var lam0 = (-183.0 + 6.0 * band) * Math.PI / 180;
@@ -10859,9 +11987,15 @@
     4397 * Math.pow(GEO_N, 4) / 161280,
   ];
 
-  /* WGS84 UTM -> geographic, the same Krueger inverse the package uses, so a
+  /** WGS84 UTM -> geographic, the same Krueger inverse the package uses, so a
    * position converted here and a position converted there are the same
-   * position rather than two that happen to be close. */
+   * position rather than two that happen to be close.
+   * @param {number} easting
+   * @param {number} northing
+   * @param {number} zone
+   * @param {string|null} [hemisphere] 'N' unless it says 'S'
+   * @returns {{lat: number, lon: number}|null}
+   */
   function utmToGeographic(easting, northing, zone, hemisphere) {
     var y = northing;
     if (String(hemisphere || 'N').toUpperCase().charAt(0) === 'S') y -= 10000000.0;
@@ -10897,12 +12031,18 @@
     return isFinite(out.lat) && isFinite(out.lon) ? out : null;
   }
 
-  /* Distance in metres between two WGS84 points, along the ellipsoid.
+  /** Distance in metres between two WGS84 points, along the ellipsoid.
    * Vincenty's inverse formula - the same one groundwater/geo.py uses, so the
    * two engines report the same separation rather than two that happen to be
    * close. Vincenty does not converge for near-antipodal points; nothing in a
    * country survey is antipodal, but the spherical value is returned rather
-   * than failing if it ever happens. */
+   * than failing if it ever happens.
+   * @param {number} lat1
+   * @param {number} lon1
+   * @param {number} lat2
+   * @param {number} lon2
+   * @returns {number}
+   */
   function geodesicDistanceM(lat1, lon1, lat2, lon2) {
     if (lat1 === lat2 && lon1 === lon2) return 0.0;
     var b = GEO_A * (1 - GEO_F);
@@ -10958,11 +12098,15 @@
     return 2 * radius * Math.asin(Math.min(1.0, Math.sqrt(a)));
   }
 
-  /* Ground distance between two UTM points, each read in its own zone.
+  /** Ground distance between two UTM points, each read in its own zone.
    * Subtracting eastings from different zones is meaningless: the false
    * easting restarts at every central meridian, so two sites a couple of
    * kilometres apart either side of the 12 degrees W boundary between zones
-   * 28N and 29N differ by hundreds of thousands of metres on paper. */
+   * 28N and 29N differ by hundreds of thousands of metres on paper.
+   * @param {{easting: number, northing: number, zone: number, hemisphere?: string|null}} a
+   * @param {{easting: number, northing: number, zone: number, hemisphere?: string|null}} b
+   * @returns {number|null}
+   */
   function utmDistanceM(a, b) {
     var p = utmToGeographic(a.easting, a.northing, a.zone, a.hemisphere);
     var q = utmToGeographic(b.easting, b.northing, b.zone, b.hemisphere);
@@ -10982,7 +12126,7 @@
    * zone, so it is taken out before the numbers in the cell are counted. */
   var DATUM_RE = /WGS\s*-?\s*84(?!\d)/gi;
 
-  /* The UTM zone a cell states, or null when it states no single zone.
+  /** The UTM zone a cell states, or null when it states no single zone.
    *
    * Sheets write the zone as "28N", "28", "zone 28" or - when the operator
    * copies the label into the value cell - "Zone 28". Reading such a cell
@@ -11001,7 +12145,10 @@
    * 28N", which is how a handheld GPS and a GIS write the zone, were refused
    * for naming two numbers, and the sheet was then flagged "UTM zone not
    * recorded" when it had recorded one. Nor is a spreadsheet's float: a zone
-   * cell read back as "28.0" states zone 28. */
+   * cell read back as "28.0" states zone 28.
+   * @param {*} value a cell
+   * @returns {number|null}
+   */
   function parseUtmZone(value) {
     if (value === null || value === undefined) return null;
     if (typeof value === 'boolean') return null;
@@ -11050,6 +12197,7 @@
    * rather than returned so the token loop can refuse from where it stands,
    * the way the Python parser raises. */
   function coordinateRefused(code, message) {
+    /** @type {Error & {refusedCoordinate?: boolean, code?: string}} */
     var refusal = new Error(message);
     refusal.refusedCoordinate = true;
     refusal.code = code;
@@ -11063,7 +12211,7 @@
    * a hemisphere of its own. */
   function latLonComponents(raw) {
     var components = [];
-    var current = null;
+    var current = /** @type {Rec|null} */ (null);
 
     function openComponent(letter) {
       current = { numbers: [], letter: letter === undefined ? null : letter,
@@ -11185,7 +12333,7 @@
     return negative ? -magnitude : magnitude;
   }
 
-  /* Read "lat, lon" as a field crew writes it, saying what was assumed:
+  /** Read "lat, lon" as a field crew writes it, saying what was assumed:
    * { lat, lon, code, message } with lat and lon null when the text was
    * refused and message then saying why, in a sentence an operator can act
    * on. A reading that succeeded carries a code and a message only when
@@ -11200,7 +12348,10 @@
    * zone-33 position under the zone the browser wrote beside it - but it is
    * the parser's reading rather than the sheet's, so it comes back under the
    * longitude_west_assumed code with a sentence saying what was assumed.
-   * Nothing downstream may present it as read. */
+   * Nothing downstream may present it as read.
+   * @param {*} text
+   * @returns {{lat: number|null, lon: number|null, code?: string, message?: string}}
+   */
   function readLatLon(text) {
     var raw = String(text === null || text === undefined ? '' : text).trim();
     if (!raw) {
@@ -11282,6 +12433,10 @@
     'north and centre': ['bombali', 'tonkolili', 'koinadugu', 'karene', 'falaba'],
   };
 
+  /**
+   * @param {string|null} [district]
+   * @returns {string}
+   */
   function lithologyRegionOf(district) {
     var name = String(district || '').trim().toLowerCase();
     var keys = Object.keys(LITHOLOGY_REGIONS);
@@ -11291,14 +12446,18 @@
     return 'interior';   /* the default: everything the others do not claim */
   }
 
-  /* What the ground is, for one USGS class in one district - or null, which
+  /** What the ground is, for one USGS class in one district - or null, which
    * is the honest answer for a class nobody has annotated and leaves the key
    * showing the source's own wording rather than a guess.
    *
    * This mirrors lithology_for() in the Python engine, including its two
    * refusals: a named district that has no row gets nothing rather than
    * another region's rock, and with no district at all a regional row
-   * applies only if every row for the class agrees on the formation. */
+   * applies only if every row for the class agrees on the formation.
+   * @param {string} glg a USGS class
+   * @param {string|null} [district]
+   * @returns {Rec|null}
+   */
   function lithologyFor(glg, district) {
     var rows = ((GWT.data || {}).lithologyCrosswalk) || [];
     var mine = rows.filter(function (r) { return r.usgs_code === glg; });
@@ -11322,12 +12481,16 @@
     return same ? mine[0] : null;
   }
 
-  /* A sentence for a report: the formation, the rock, and what it means.
-   * describe() in lithology.py. */
+  /** A sentence for a report: the formation, the rock, and what it means.
+   * describe() in lithology.py.
+   * @param {string} glg a USGS class
+   * @param {string|null} [district]
+   * @returns {string}
+   */
   function describeLithology(glg, district) {
     var row = lithologyFor(glg, district);
     if (!row) return '';
-    var text = function (key) { return String(row[key] || '').trim(); };
+    var text = function (key) { return String(/** @type {Rec} */ (row)[key] || '').trim(); };
     var parts = [text('formation_code')
       ? text('formation_name') + ' (' + text('formation_code').replace(/;/g, ', ') + ')'
       : text('formation_name')];
@@ -11351,14 +12514,18 @@
     return regionalPolysCache || [];
   }
 
-  /* The district a point is in today: district_of in the Python engine.
+  /** The district a point is in today: district_of in the Python engine.
    *
    * Through the chiefdom first and the crosswalk after it: the bundled
    * district polygons are geoBoundaries as released, which predates the 2017
    * creation of Karene and Falaba, so a point in one of those two has no
    * district polygon to fall in. A point in the seam beside a chiefdom is
    * placed on it, within CHIEFDOM_EDGE_TOLERANCE_M; further out it is off
-   * the layer, and "" is the answer (ROADMAP data-ingestion-7). */
+   * the layer, and "" is the answer (ROADMAP data-ingestion-7).
+   * @param {number} lat
+   * @param {number} lon
+   * @returns {string}
+   */
   function districtOfPoint(lat, lon) {
     var crosswalk = loadChiefdomDistrict() || {};
     var polys = regionalPolys();
@@ -11406,7 +12573,10 @@
     return [cx / (6 * area), cy / (6 * area)];
   }
 
-  /* Centroid of the largest ring: AdminArea.label_point. */
+  /** Centroid of the largest ring: AdminArea.label_point.
+   * @param {number[][][]} rings
+   * @returns {number[]}
+   */
   function labelPoint(rings) {
     var best = rings[0], bestArea = -1;
     rings.forEach(function (ring) {
@@ -11416,13 +12586,16 @@
     return regionalRingCentroid(best);
   }
 
-  /* Half the span of every ring together, in km: _ring_span_km.
+  /** Half the span of every ring together, in km: _ring_span_km.
    *
    * All the rings, and the span across them. The window used to be sized
    * from the largest ring alone, by its farthest vertex from that ring's
    * centroid, so a chiefdom or district in several parts - Dema, Bonthe - was
    * framed at a different size in each engine, and the scale caveat quoted a
-   * different window in each engine's copy of the same report. */
+   * different window in each engine's copy of the same report.
+   * @param {number[][][]} rings
+   * @returns {number}
+   */
   function ringSpanKm(rings) {
     var lonMin = Infinity, lonMax = -Infinity, latMin = Infinity, latMax = -Infinity;
     var latSum = 0, count = 0;
@@ -11467,16 +12640,22 @@
     return out;
   }
 
-  /* The name a chiefdom is printed under: AdminArea.label. */
+  /** The name a chiefdom is printed under: AdminArea.label.
+   * @param {string} layerName
+   * @returns {string}
+   */
   function chiefdomLabel(layerName) {
     var full = chiefdomFullNames();
     return (own(full, layerName) && full[layerName]) || layerName;
   }
 
-  /* The layer's key for a chiefdom written either way: canonical_chiefdom.
+  /** The layer's key for a chiefdom written either way: canonical_chiefdom.
    * An operator typing "Bureh Kasseh Maconteh", the chiefdom's name, got the
    * district window instead of the chiefdom, because the layer only knows
-   * "Bureh Kasseh Ma". */
+   * "Bureh Kasseh Ma".
+   * @param {*} name
+   * @returns {string}
+   */
   function canonicalChiefdom(name) {
     var written = String(name === null || name === undefined ? '' : name).trim();
     var wanted = written.toLowerCase();
@@ -11530,14 +12709,18 @@
     return { label: districtLabel(written), names: resolved.length ? resolved : [written] };
   }
 
-  /* The window a local map of this site should cover, if there is one:
+  /** The window a local map of this site should cover, if there is one:
    * area_window in the Python engine.
    *
    * A GPS fix gives a point. Without one the recorded chiefdom, or failing
    * that the district, still gives an area, and an area is what most of these
    * maps are asked for: where in the country this is, and what the ground is
    * like around it. Only a site that records neither gets nothing. `latlon`
-   * is the site's position as the page reads it, or null. */
+   * is the site's position as the page reads it, or null.
+   * @param {Rec|null} site
+   * @param {{lat: number, lon: number}|null} [latlon]
+   * @param {number} [radiusKm]
+   */
   function areaWindow(site, latlon, radiusKm) {
     if (!site) return null;
     if (latlon) {
@@ -11585,7 +12768,7 @@
       radiusKm: Math.max(extent[2] * 1.2, 20.0), label: named.label, exact: false };
   }
 
-  /* Which district a location map lights, and under what name:
+  /** Which district a location map lights, and under what name:
    * _home_district in the Python engine. { name, districts, chiefdoms }:
    * the name for the legend, the district polygons to light (lower case, as
    * the layer's names compare), and the chiefdoms to light in their place.
@@ -11597,7 +12780,10 @@
    * peninsula, and Karene or Falaba, which the boundary layer predates, light
    * the chiefdoms the crosswalk assigns to them. The locator used to light a
    * polygon only when its name was typed exactly, so the legend named a
-   * district in a colour that appeared nowhere on the map. */
+   * district in a colour that appeared nowhere on the map.
+   * @param {Rec|null} site
+   * @param {{lat: number, lon: number}|null} [latlon]
+   */
   function homeDistrict(site, latlon) {
     var none = { name: '', districts: [], chiefdoms: [] };
     if (!site) return none;
@@ -11631,9 +12817,13 @@
     return { name: districtDisplayName(name), districts: lit, chiefdoms: chiefdoms };
   }
 
-  /* One sentence placing the site, for the paragraph above the map:
+  /** One sentence placing the site, for the paragraph above the map:
    * area_map_note in the Python engine. `latlon` is the site's position, or
-   * null. */
+   * null.
+   * @param {Rec|null} site
+   * @param {{lat: number, lon: number}|null} [latlon]
+   * @returns {string}
+   */
   function areaMapNote(site, latlon) {
     if (!site) return 'No site metadata was supplied with this report.';
     /* the district as the area window resolves it: written as typed, a
@@ -11661,10 +12851,15 @@
       pyFixed(Math.abs(latlon.lon), 5) + ' ' + (latlon.lon >= 0 ? 'E' : 'W') + '.';
   }
 
-  /* Inside the polygon, and not in a hole that cuts it: _point_in_unit. A
+  /** Inside the polygon, and not in a hole that cuts it: _point_in_unit. A
    * hole is ground the unit does not cover - a dyke cutting the country rock,
    * a window of something else - so a point in one is not on this unit,
-   * whatever the outer ring says. */
+   * whatever the outer ring says.
+   * @param {number} lon
+   * @param {number} lat
+   * @param {Rec|null} geometry a GeoJSON Polygon or MultiPolygon
+   * @returns {boolean}
+   */
   function pointInUnit(lon, lat, geometry) {
     if (!geometry) return false;
     var parts = geometry.type === 'MultiPolygon' ? geometry.coordinates
@@ -11686,21 +12881,33 @@
     return null;
   }
 
-  /* The USGS geology polygon under a point, and the BGS aquifer polygon:
-   * geology_unit_at and aquifer_unit_at. Null outside the layer. */
+  /** The USGS geology polygon under a point, and the BGS aquifer polygon:
+   * geology_unit_at and aquifer_unit_at. Null outside the layer.
+   * @param {number} lat
+   * @param {number} lon
+   * @returns {Rec|null}
+   */
   function geologyUnitAt(lat, lon) {
     return unitAt((geoLayers() || {}).geology, lat, lon);
   }
 
+  /**
+   * @param {number} lat
+   * @param {number} lon
+   * @returns {Rec|null}
+   */
   function aquiferUnitAt(lat, lon) {
     return unitAt((geoLayers() || {}).hydrogeology, lat, lon);
   }
 
-  /* The district a polygon lies in, for the crosswalk that names it:
+  /** The district a polygon lies in, for the crosswalk that names it:
    * _unit_district. The crosswalk used to be scoped by the site's district, so
    * the same Freetown Complex polygon was "Freetown Layered Complex" on a
    * Rokel map and "Paleozoic Igneous", the age the crosswalk itself calls
-   * wrong, on a Kuntolo map 100 km away. A polygon is where it is. */
+   * wrong, on a Kuntolo map 100 km away. A polygon is where it is.
+   * @param {Rec|null} geometry a GeoJSON Polygon or MultiPolygon
+   * @returns {string}
+   */
   function unitDistrict(geometry) {
     var rings = outerRings(geometry);
     if (!rings.length) return '';
@@ -11737,7 +12944,7 @@
     'Groundwater quality and quantity can be high if the borehole is properly ' +
     'located through appropriate hydrogeological and geophysical investigations.';
 
-  /* The geology paragraph of the geophysical report, from the map under the
+  /** The geology paragraph of the geophysical report, from the map under the
    * site: _geology_for in reporting/geophysical.py.
    *
    * With a position it names the USGS unit the site sits on and the BGS
@@ -11746,7 +12953,12 @@
    * disagree. The browser report said "crystalline basement complex" of every
    * site, the Bullom sands included, beside its own figures showing the
    * Bullom Group and an intergranular aquifer. Without a position the
-   * district's region decides. */
+   * district's region decides.
+   * @param {Rec|null} site
+   * @param {{lat: number, lon: number}|null} [latlon]
+   * @param {string|null} [override] the analyst's own paragraph
+   * @returns {string}
+   */
   function geologyParagraph(site, latlon, override) {
     if (override) return override;
     var district = (site && site.district) || '';
@@ -11784,7 +12996,7 @@
    * figure says what it is made of. */
   var HONEST_WINDOW_KM = 60;
 
-  /* The note a small window over a small-scale dataset has earned:
+  /** The note a small window over a small-scale dataset has earned:
    * _scale_caveat, word for word.
    *
    * Empty for a national map, which is the scale the data was published at
@@ -11793,7 +13005,12 @@
    * "4% of this 60 km window" asserts something that is not on it. The window
    * is given to the kilometre: a chiefdom or district window is the area's own
    * size, and "this 43.4293 km window" claimed a precision the sentence is
-   * there to disown. */
+   * there to disown.
+   * @param {number|null|undefined} radiusKm
+   * @param {number|null} [sourceScale]
+   * @param {string|null} [publisherNote]
+   * @returns {string}
+   */
   function scaleCaveat(radiusKm, sourceScale, publisherNote) {
     if (radiusKm === null || radiusKm === undefined || !sourceScale ||
         radiusKm > HONEST_WINDOW_KM) return '';
@@ -11811,10 +13028,14 @@
    * in ingestion/checks.py, [lonMin, lonMax, latMin, latMax]. */
   var SL_BOUNDS = [-13.6, -10.0, 6.7, 10.2];
 
-  /* The coordinates_outside_country sentence check_site_consistency writes,
+  /** The coordinates_outside_country sentence check_site_consistency writes,
    * or '' for a position inside the country. The browser never said it: a
    * degree pair typed without its western sign was drawn in central Africa,
-   * off every map, with nothing on the page to say so. */
+   * off every map, with nothing on the page to say so.
+   * @param {number} lat
+   * @param {number} lon
+   * @returns {string}
+   */
   function outsideCountryNote(lat, lon) {
     if (lon >= SL_BOUNDS[0] && lon <= SL_BOUNDS[1] &&
         lat >= SL_BOUNDS[2] && lat <= SL_BOUNDS[3]) return '';
@@ -11824,11 +13045,13 @@
       'easting/northing and the UTM zone.';
   }
 
-  /* Where a site's recorded position puts it, read as the site page reads
+  /** Where a site's recorded position puts it, read as the site page reads
    * it: a pair small enough to be degrees is a latitude and longitude typed
    * into the two boxes, anything else UTM in the recorded zone or the one the
    * easting implies. {lat, lon, note, fromUtm, zone}, or null when there is
-   * no position or it does not convert. */
+   * no position or it does not convert.
+   * @param {Rec|null} site
+   */
   function sitePosition(site) {
     if (!site) return null;
     var e = site.easting, n = site.northing;
@@ -11836,6 +13059,7 @@
         e === '' || n === '') return null;
     e = Number(e); n = Number(n);
     if (!isFinite(e) || !isFinite(n)) return null;
+    /** @type {Rec|null} */
     var ll;
     if (Math.abs(e) <= 180 && Math.abs(n) <= 90) {
       var reading = readLatLon(String(n) + ', ' + String(e));
@@ -11882,6 +13106,10 @@
   };
   var THICKNESS_TARGET_M = 25.0;
 
+  /**
+   * @param {number} score
+   * @returns {string}
+   */
   function suitabilityGrade(score) {
     if (score >= 75) return 'Very good';
     if (score >= 55) return 'Good';
@@ -11889,7 +13117,10 @@
     return 'Poor';
   }
 
-  /* Thickness-weighted geometric mean resistivity across the water zones. */
+  /** Thickness-weighted geometric mean resistivity across the water zones.
+   * @param {Interpretation} interp
+   * @returns {number|null}
+   */
   function zoneGeomeanRho(interp) {
     var acc = 0.0, total = 0.0;
     interp.water_zones.forEach(function (zone) {
@@ -11987,10 +13218,14 @@
     return text;
   }
 
-  /* siting/suitability.py tied_leaders: the two highest-ranked points when the
+  /** siting/suitability.py tied_leaders: the two highest-ranked points when the
    * ranking cannot separate them, else null. One test for the tie sentence,
    * the preference table's "=1st" and the report's summary and conclusions,
-   * decided on the confidence-weighted scores as they are, not as printed. */
+   * decided on the confidence-weighted scores as they are, not as printed.
+   * @param {Rec[]} results what assessSiting returns
+   * @param {number} [withinPoints]
+   * @returns {Rec[]|null}
+   */
   function tiedLeaders(results, withinPoints) {
     var within = withinPoints === undefined ? 3.0 : withinPoints;
     var ranked = results.slice().sort(function (a, b) {
@@ -12004,7 +13239,11 @@
     return [first, second];
   }
 
-  /* One sentence when the top two points cannot be told apart; '' otherwise. */
+  /** One sentence when the top two points cannot be told apart; '' otherwise.
+   * @param {Rec[]} results what assessSiting returns
+   * @param {number} [withinPoints]
+   * @returns {string}
+   */
   function rankingTie(results, withinPoints) {
     var within = withinPoints === undefined ? 3.0 : withinPoints;
     var pair = tiedLeaders(results, within);
@@ -12027,14 +13266,18 @@
       'community\'s preference.';
   }
 
-  /* siting/suitability.py suitability_verdict: the paragraph under the
+  /** siting/suitability.py suitability_verdict: the paragraph under the
    * suitability table, the target or the tie. A tie gives both points'
-   * rationale, since the reader is being asked to choose between them. */
+   * rationale, since the reader is being asked to choose between them.
+   * @param {Rec[]|null} results what assessSiting returns
+   * @param {number} [withinPoints]
+   * @returns {string}
+   */
   function suitabilityVerdict(results, withinPoints) {
     if (!results || !results.length) return '';
     var tie = rankingTie(results, withinPoints);
     if (tie) {
-      return [tie].concat(tiedLeaders(results, withinPoints).map(function (r) {
+      return [tie].concat(/** @type {Rec[]} */ (tiedLeaders(results, withinPoints)).map(function (r) {
         return 'Point ' + r.sounding_id + ': ' + r.rationale;
       })).join(' ');
     }
@@ -12048,10 +13291,15 @@
       'drilling target. ' + best.rationale;
   }
 
-  /* Score and rank candidate VES points, most suitable first (rank 1 = best),
-   * so the head of the list is the recommended drilling target. */
+  /** Score and rank candidate VES points, most suitable first (rank 1 = best),
+   * so the head of the list is the recommended drilling target.
+   * @param {Interpretation[]|null} interpretations
+   * @param {VesConfig} [vesConfig]
+   * @returns {Rec[]}
+   */
   function assessSiting(interpretations, vesConfig) {
     var cfg = vesConfig || defaultConfig().ves;
+    /** @type {Rec[]} */
     var results = (interpretations || []).map(function (interp) {
       var comp = {
         aquifer_thickness: Math.min(interp.aquifer_thickness_m / THICKNESS_TARGET_M, 1.0),
@@ -12135,6 +13383,7 @@
 
   /* Ordered, first match wins. The order is load-bearing: every rule that
    * recognises a negation must be tried before the word being negated. */
+  /** @type {Array<[RegExp, string]>} */
   var STATUS_RULES = [
     [/\b(dry|no\s+water|water\s+not\s+struck|failed|failure|unsuccessful|not\s+successful|abandon\w*|collapsed|backfilled|plugged|caved)\b/, 'dry'],
     [/\b(un|non|not)[\s-]*(productive|producing)\b|\b(low|poor|insufficient|inadequate|marginal|nil)\s+(yield|productivity|production)\b|\bproductivity\s+(low|poor)\b/, 'dry'],
@@ -12144,21 +13393,36 @@
     [/\bsuccess(ful)?\b|\bcomplet(e|ed)\b|\bproductive\b|\b(equipped|commissioned|handed\s+over|operational|functional)\b/, 'successful'],
   ];
 
+  /**
+   * @param {*} raw
+   * @returns {string}
+   */
   function normaliseStatus(raw) {
     var text = String(raw === null || raw === undefined ? '' : raw)
       .toLowerCase().replace(/[_/\\|,;()[\].–—-]+/g, ' ');
     return text.replace(/\s+/g, ' ').trim();
   }
 
+  /**
+   * @param {string} value
+   * @returns {string}
+   */
   function statusLabel(value) {
     return STATUS_LABELS[value] || STATUS_LABELS.other;
   }
 
+  /**
+   * @param {string} value
+   * @returns {string}
+   */
   function statusColor(value) {
     return STATUS_COLORS[value] || STATUS_COLORS.other;
   }
 
-  /* Classify free text, or null when it is not recognised. */
+  /** Classify free text, or null when it is not recognised.
+   * @param {*} raw
+   * @returns {string|null}
+   */
   function classifyStatusText(raw) {
     var key = normaliseStatus(raw);
     if (!key) return null;
@@ -12171,6 +13435,10 @@
     return null;
   }
 
+  /**
+   * @param {Rec|null} summary a project summary
+   * @returns {string}
+   */
   function classifyStatus(summary) {
     var raw = String((summary && summary.status) || '').trim();
     if (!raw) {
@@ -12180,12 +13448,16 @@
     return classifyStatusText(raw) || 'other';
   }
 
+  /**
+   * @param {Rec|null} summary a project summary
+   * @returns {{lat: number, lon: number}|null}
+   */
   function summaryLatLon(summary) {
     var easting = summary && summary.easting, northing = summary && summary.northing;
     if (!easting || !northing) return null;
     /* the same fallback SiteMetadata.utm uses: a hard-coded zone dropped every
      * zone-less project six degrees off, into the Atlantic and off the map */
-    var zone = Number(summary.utm_zone) || inferZoneForSierraLeone(Number(easting));
+    var zone = Number(/** @type {Rec} */ (summary).utm_zone) || inferZoneForSierraLeone(Number(easting));
     try {
       return utmToGeographic(Number(easting), Number(northing), zone);
     } catch (e) { return null; }
@@ -12203,8 +13475,11 @@
     fail: 'health_fail', aesthetic: 'indeterminate', pass: 'pass',
   };
 
-  /* Returns [state, fromLegacyFile]; state is null when the project carries
-   * no water quality result at all. */
+  /** Returns [state, fromLegacyFile]; state is null when the project carries
+   * no water quality result at all.
+   * @param {Rec|null} summary a project summary
+   * @returns {[string|null, boolean]}
+   */
   function summaryVerdictState(summary) {
     var raw = String((summary && summary.water_verdict) || '').trim().toLowerCase();
     if (!raw) return [null, false];
@@ -12215,6 +13490,7 @@
     return [own(LEGACY_VERDICTS, raw) ? LEGACY_VERDICTS[raw] : null, true];
   }
 
+  /** @param {Rec[]|null} summaries project summaries */
   function portfolioRows(summaries) {
     return (summaries || []).map(function (s) {
       var read = summaryVerdictState(s);
@@ -12236,6 +13512,7 @@
     });
   }
 
+  /** @param {Rec[]|null} summaries project summaries */
   function portfolioPoints(summaries) {
     var points = [];
     (summaries || []).forEach(function (s) {
@@ -12249,8 +13526,12 @@
     return points;
   }
 
-  /* "1. Rokel (Port Loko)" - the index keeps a selector unambiguous when two
-   * sites share a community name. */
+  /** "1. Rokel (Port Loko)" - the index keeps a selector unambiguous when two
+   * sites share a community name.
+   * @param {Rec|null} summary a project summary
+   * @param {number|null} [index]
+   * @returns {string}
+   */
   function portfolioSiteLabel(summary, index) {
     var community = (summary && summary.community) || '(unnamed site)';
     var district = summary && summary.district;
@@ -12259,6 +13540,10 @@
       ? label : (index + 1) + '. ' + label;
   }
 
+  /**
+   * @param {Rec} summary a project summary
+   * @returns {Array<[string, *]>}
+   */
   function portfolioSiteDetail(summary) {
     var rows = [];
     function add(label, value) {
@@ -12270,8 +13555,8 @@
     add('Status', statusLabel(classifyStatus(summary)));
     var latlon = summaryLatLon(summary);
     if (latlon) {
-      add('Location', latlon.lat.toFixed(5) + ' N, ' +
-        Math.abs(latlon.lon).toFixed(5) + ' W');
+      add('Location', pyFixed(latlon.lat, 5) + ' N, ' +
+        pyFixed(Math.abs(latlon.lon), 5) + ' W');
     }
     add('Total depth', summary.total_depth_m
       ? pyFixed(summary.total_depth_m, 1) + ' m' : null);
@@ -12287,6 +13572,10 @@
     return rows;
   }
 
+  /**
+   * @param {Rec} summary a project summary
+   * @returns {string}
+   */
   function portfolioOnePager(summary) {
     var title = portfolioSiteLabel(summary);
     var header = 'SITE BRIEF - ' + title;
@@ -12300,6 +13589,7 @@
     return lines.join('\n');
   }
 
+  /** @param {Rec[]|null} summaries project summaries */
   function portfolioStats(summaries) {
     var list = summaries || [];
     var drilled = list.filter(function (s) { return s.total_depth_m; });
@@ -12423,32 +13713,36 @@
     if (state.wq_assessment && state.wq_assessment.sample) {
       candidates.push(state.wq_assessment.sample.site);
     }
-    var merged = null;
+    var merged = /** @type {Rec|null} */ (null);
     candidates.forEach(function (site) {
       if (!site) return;
       if (!merged) { merged = Object.assign({}, site); return; }
       Object.keys(site).forEach(function (key) {
-        var current = merged[key];
+        var current = /** @type {Rec} */ (merged)[key];
         if ((current === null || current === undefined || current === '') &&
             site[key] !== null && site[key] !== undefined && site[key] !== '') {
-          merged[key] = site[key];
+          /** @type {Rec} */ (merged)[key] = site[key];
         }
       });
     });
     return merged;
   }
 
-  /* What each bundled example file actually contains, the same record the
+  /** What each bundled example file actually contains, the same record the
    * Python engine reads. Keyed by basename: the browser bundles
    * "dr_timbo/dr_timbo_water_quality.xlsx", the Streamlit picker offers the
    * same relative path and the example script opens it straight off disk,
-   * and it is one file whichever of those did it. */
+   * and it is one file whichever of those did it.
+   * @param {Rec[]|null} [rows] the bundled table when not given
+   * @returns {Record<string, Rec>}
+   */
   function loadSampleProvenance(rows) {
     var source = rows || (GWT.data && GWT.data.sampleProvenance) || [];
+    /** @type {Record<string, Rec>} */
     var out = {};
     source.forEach(function (row) {
       var file = String(row.file || '').trim();
-      var base = file.split('/').pop().toLowerCase();
+      var base = /** @type {string} */ (file.split('/').pop()).toLowerCase();
       if (!base) return;
       out[base] = {
         file: file,
@@ -12459,8 +13753,12 @@
     return out;
   }
 
-  /* The provenance record for one loaded source, if it is a bundled file.
-   * Either key is matched, so a file is recognised however it was loaded. */
+  /** The provenance record for one loaded source, if it is a bundled file.
+   * Either key is matched, so a file is recognised however it was loaded.
+   * @param {*} source a loaded source record
+   * @param {Record<string, Rec>} [known] what loadSampleProvenance returns
+   * @returns {Rec|null}
+   */
   function sourceProvenance(source, known) {
     if (!source || typeof source !== 'object') return null;
     var table = known || loadSampleProvenance();
@@ -12468,7 +13766,7 @@
     for (var i = 0; i < keys.length; i += 1) {
       var value = source[keys[i]];
       if (!value) continue;
-      var base = String(value).split('/').pop().toLowerCase();
+      var base = /** @type {string} */ (String(value).split('/').pop()).toLowerCase();
       if (table[base]) return table[base];
     }
     return null;
@@ -12560,7 +13858,7 @@
       if (!(log.intervals || []).length) {
         return ['unmet', 'The drilling log records no lithology.'];
       }
-      return ['met', 'Logged to ' + log.total_depth_m.toFixed(0) + ' m with ' +
+      return ['met', 'Logged to ' + pyFixed(log.total_depth_m, 0) + ' m with ' +
         plural(log.intervals.length, 'lithological interval') + '.'];
     }],
     readings_usable: ['Readable units', function (state) {
@@ -12594,7 +13892,7 @@
           missing.map(function (s) { return s.step_number; }).join(', ') + '.'];
       }
       return ['met', plural(test.steps.length, 'step') + ' with discharge, ' +
-        'static water level ' + test.static_water_level_m.toFixed(2) + ' m.'];
+        'static water level ' + pyFixed(test.static_water_level_m, 2) + ' m.'];
     }],
     yield_established: ['Yield established', function (state) {
       var analysis = state.pump_analysis;
@@ -12650,7 +13948,7 @@
       var errors = (design.flags || []).filter(function (f) { return f.level === 'error'; });
       if (errors.length) return ['unmet', errors[0].message];
       if (!(design.screens || []).length) return ['unmet', 'The design places no screen.'];
-      return ['met', Number(design.total_screen_length_m).toFixed(1) +
+      return ['met', pyFixed(Number(design.total_screen_length_m), 1) +
         ' m of screen in ' + plural(design.screens.length, 'run') + '.'];
     }],
     cost_basis: ['Cost estimate', function (state) {
@@ -12707,6 +14005,11 @@
     procurement: ['field_data', 'site_located', 'no_errors'],
   };
 
+  /**
+   * @param {Rec|null} state the project
+   * @param {string} report the report the gate is for
+   * @param {Record<string, *>|null} [overrides] keyed by requirement, a reason or {reason, by}
+   */
   function assessReadiness(state, report, overrides) {
     var kind = READINESS_REPORTS[report] ? report : 'completion';
     var keys = READINESS_REPORTS[kind];
@@ -12815,7 +14118,10 @@
   var AQUIFER_HINTS = ['fracture', 'water', 'aquifer'];
   var NOT_AQUIFER = ['no water', 'not reached', 'without water'];
 
-  /* Only for shading the log - screen placement uses targetZones. */
+  /** Only for shading the log - screen placement uses targetZones.
+   * @param {*} description
+   * @returns {boolean}
+   */
   function looksLikeAquifer(description) {
     var text = String(description || '').toLowerCase();
     var i;
@@ -12964,18 +14270,23 @@
     };
   }
 
-  /* The limit a row is judged against, and what kind of limit it is.
+  /** The limit a row is judged against, and what kind of limit it is.
    *
    * The strictest applicable maximum binds. Which one it was matters in the
    * report - a national limit exceeded is a compliance failure, an
    * acceptability limit exceeded is a taste complaint - so the name travels
-   * with the number. */
+   * with the number.
+   * @param {Rec} row a row of assessSample's table
+   * @returns {[Limit|null, string]}
+   */
   function bindingLimit(row) {
+    /** @type {Array<[string, Limit|null]>} */
     var candidates = [
       ['WHO health', parseLimit(row.who_health)],
       ['WHO acceptability', parseLimit(row.who_aesthetic)],
       ['national', parseLimit(row.sl_standard)],
     ];
+    /** @type {[Limit|null, string]} */
     var best = [null, ''];
     for (var i = 0; i < candidates.length; i++) {
       var name = candidates[i][0], limit = candidates[i][1];
@@ -13019,6 +14330,7 @@
     };
   }
 
+  /** @param {QualityAssessment} assessment */
   function spineQuality(assessment) {
     var rows = (assessment.rows || []).map(function (r) {
       var pair = bindingLimit(r);
@@ -13132,7 +14444,9 @@
           label: label, amount: spineRound(totals[label]),
           share: spineRound(totals[label] / direct * 100, 1),
         };
-      }).sort(function (a, b) { return b.amount - a.amount; });
+      }).sort(function (/** @type {Rec} */ a, /** @type {Rec} */ b) {
+        return b.amount - a.amount;
+      });
     }
 
     return {
@@ -13161,12 +14475,15 @@
     };
   }
 
-  /* Derive the whole workspace from the analysis objects.
+  /** Derive the whole workspace from the analysis objects.
    *
    * ``screensM`` is the analyst's screen placement from the section. Passing it
    * re-runs the design and everything downstream of it - the annulus, the
    * checks and the bill of quantities - so the drawing and the BoQ are always
-   * the same design. */
+   * the same design.
+   * @param {Rec} inputs config, analysis, log, interpretation, assessment and the rest the workspace reads
+   * @param {number[][]|null} [screensM] the analyst's screen placement
+   */
   function buildSpineView(inputs, screensM) {
     var config = inputs.config || defaultConfig();
     var analysis = inputs.analysis || null;
@@ -13220,6 +14537,7 @@
       if (ll) latlon = [ll.lat, ll.lon];
     }
 
+    /** @type {Rec} */
     var payload = {
       project: inputs.name || site.community || 'Borehole',
       site: {
@@ -13272,6 +14590,10 @@
     water_quality: ['water quality', 'laboratory', 'parameter', 'guideline'],
   };
 
+  /**
+   * @param {*} text
+   * @returns {string}
+   */
   function guessDocumentKind(text) {
     var lower = String(text || '').toLowerCase();
     var best = 'unknown', bestScore = 0;
@@ -13284,6 +14606,11 @@
     return bestScore > 0 ? best : 'unknown';
   }
 
+  /**
+   * @param {string} name
+   * @param {*} value
+   * @param {number|string} [confidence]
+   */
   function extractedField(name, value, confidence) {
     var conf = confidence === undefined ? 1.0 : Number(confidence);
     return {
@@ -13292,18 +14619,26 @@
     };
   }
 
+  /**
+   * @param {Rec} table an extracted table
+   * @param {number} index
+   * @returns {number}
+   */
   function confidenceForRow(table, index) {
     var list = table.row_confidence || [];
     return index < list.length ? list[index] : 1.0;
   }
 
-  /* Everything a human still has to look at, in the words the review sheet
-   * uses. Mirrors ExtractedDocument.review_items. */
+  /** Everything a human still has to look at, in the words the review sheet
+   * uses. Mirrors ExtractedDocument.review_items.
+   * @param {Rec} document an extracted document
+   * @returns {string[]}
+   */
   function reviewItems(document) {
     var items = (document.header || []).filter(function (f) { return f.needs_review; })
       .map(function (f) {
         return "header field '" + f.name + "' = '" + f.value + "' (confidence " +
-          f.confidence.toFixed(2) + ')';
+          pyFixed(f.confidence, 2) + ')';
       });
     (document.uncertain_cells || []).forEach(function (cell) {
       var table = (document.tables || [])[cell.table_index];
@@ -13337,6 +14672,7 @@
     if (typeof DecompressionStream === 'undefined') {
       throw new Error('This browser cannot decompress PDF streams.');
     }
+    /** @type {CompressionFormat[]} */
     var formats = ['deflate', 'deflate-raw'];
     for (var i = 0; i < formats.length; i++) {
       try {
@@ -13543,7 +14879,8 @@
     var tm = null, tlm = null, font = null, leading = 0, fontSize = 1;
     var stack = [];
     var token = /\/([^\s/<>\[\]()]+)|(\((?:\\.|[^\\()])*\))|(<[0-9A-Fa-f\s]*>)|(\[)|(\])|(-?[\d.]+)|([A-Za-z'"*]+)/g;
-    var hit, operands = [], inArray = false, arrayItems = [];
+    var hit, operands = /** @type {Rec[]} */ ([]), inArray = false,
+      arrayItems = /** @type {Rec[]} */ ([]);
 
     function place(bytes) {
       if (!tm) return;
@@ -13751,8 +15088,12 @@
   var NUMERIC_COLUMN_MARKERS = ['(m)', 'm)', 'ohm', 'rate', 'level', 'depth',
     'time', 'value', 'ab/2', 'mn'];
 
-  /* Numeric columns should parse as numbers; an empty cell in a numeric column
-   * and non-numeric junk are both review items. */
+  /** Numeric columns should parse as numbers; an empty cell in a numeric column
+   * and non-numeric junk are both review items.
+   * @param {*} cell
+   * @param {*} column the column's header
+   * @returns {[number, string]}
+   */
   function cellConfidence(cell, column) {
     var lower = String(column || '').toLowerCase();
     var numeric = NUMERIC_COLUMN_MARKERS.some(function (marker) {
@@ -13768,6 +15109,10 @@
     return line.split(/\t+|\s{3,}/).filter(function (part) { return part.trim(); });
   }
 
+  /**
+   * @param {Uint8Array} bytes
+   * @param {string} [sourceName]
+   */
   async function extractPdfText(bytes, sourceName) {
     var objects = await pdfObjects(bytes);
     var numbers = Object.keys(objects).map(Number).sort(function (a, b) { return a - b; });
@@ -13801,6 +15146,7 @@
         while ((fontHit = fontRe.exec(resourceMatch[1])) !== null) {
           var fontObject = objects[Number(fontHit[2])];
           if (!fontObject) continue;
+          /** @type {Rec} */
           var spec = { twoByte: /\/Type0\b/.test(fontObject.dict), map: null };
           var toUnicode = pdfRefs(fontObject.dict, 'ToUnicode');
           if (toUnicode.length && objects[toUnicode[0]]) {
@@ -13880,8 +15226,10 @@
 
   /* --- the review workbook --------------------------------------------------- */
 
+  /** @param {Rec} document an extracted document */
   function reviewWorkbookSheets(document) {
     var sheets = [];
+    /** @type {Array<Array<*>>} */
     var headerRows = [['Field', 'Value', 'Confidence']];
     (document.header || []).forEach(function (field) {
       var flag = field.needs_review;
@@ -13915,6 +15263,7 @@
     });
 
     var items = reviewItems(document);
+    /** @type {Array<Array<*>>} */
     var reviewRows = [['Items needing manual review']];
     if (items.length) {
       items.forEach(function (item) { reviewRows.push([{ v: item, flag: true }]); });
@@ -13930,9 +15279,12 @@
     return sheets;
   }
 
-  /* The standard VES template, filled from an extracted VES sheet. Header
+  /** The standard VES template, filled from an extracted VES sheet. Header
    * fields go through the same label patterns the parsers use, so the filled
-   * workbook reads back through the normal reader after review. */
+   * workbook reads back through the normal reader after review.
+   * @param {Rec} document an extracted document of kind 'ves'
+   * @param {Grid} blankRows the template's own rows
+   */
   function fillVesTemplateSheets(document, blankRows) {
     if (document.document_kind !== 'ves') {
       throw new Error("Filling the VES template needs a document of kind 'ves'.");
@@ -13992,11 +15344,13 @@
     }
     rows.length = firstReading;
     table.rows.forEach(function (row, index) {
+      /** @type {Array<*>} */
       var out = [index + 1, '', '', ''];
-      [[colAb2, 1], [colMn, 2], [colRho, 3]].forEach(function (pair) {
-        if (pair[0] === null || pair[0] >= row.length) return;
-        out[pair[1]] = { v: row[pair[0]], flag: (index + ':' + pair[0]) in flagged };
-      });
+      /** @type {Array<[number|null, number]>} */ ([[colAb2, 1], [colMn, 2], [colRho, 3]])
+        .forEach(function (pair) {
+          if (pair[0] === null || pair[0] >= row.length) return;
+          out[pair[1]] = { v: row[pair[0]], flag: (index + ':' + pair[0]) in flagged };
+        });
       rows.push(out);
     });
     return rows;
@@ -14092,6 +15446,10 @@
     'guessing silently.',
   ].join('\n');
 
+  /**
+   * @param {Rec} payload what the model returned
+   * @param {string} [source]
+   */
   function extractionDocumentFrom(payload, source) {
     return {
       source: source,
@@ -14119,6 +15477,7 @@
     };
   }
 
+  /** @param {Rec} [options] apiKey, base64, mediaType, model, source */
   async function extractWithClaude(options) {
     var opts = options || {};
     if (!opts.apiKey) {
@@ -14189,6 +15548,11 @@
    * walks: paragraphs give the header block, and the table carrying the most
    * Time/Water Level column groups gives the readings.
    */
+  /**
+   * @param {Uint8Array|ArrayBuffer} bytes
+   * @param {string} [source]
+   * @returns {Promise<PumpingTest>}
+   */
   async function readPumpingDocx(bytes, source) {
     var files = await GWT.support.unzip(bytes);
     var xml = files['word/document.xml'];
@@ -14235,7 +15599,7 @@
     var headerGrid = [];
     var tables = [];
     for (var i = 0; i < body.childNodes.length; i++) {
-      var node = body.childNodes[i];
+      var node = /** @type {Element} */ (body.childNodes[i]);
       if (node.nodeType !== 1) continue;
       if (node.localName === 'p') {
         var text = textOf(node).trim();
@@ -14291,7 +15655,6 @@
   var QR_ECC_LEVELS = { L: 0.07, M: 0.15, Q: 0.25, H: 0.30 };
   var QR_MAX_VERSION = 10;
   var QR_ECC_BITS = { L: 1, M: 0, Q: 3, H: 2 };
-  var QR_TOTAL_CODEWORDS = [26, 44, 70, 100, 134, 172, 196, 242, 292, 346];
 
   /* (ec codewords per block, g1 blocks, g1 data, g2 blocks, g2 data) */
   var QR_BLOCKS = {
@@ -14357,6 +15720,11 @@
     return remainder.slice(data.length);
   }
 
+  /**
+   * @param {number} version 1 to 40
+   * @param {string} ecc 'L', 'M', 'Q' or 'H'
+   * @returns {number}
+   */
   function qrCapacityBytes(version, ecc) {
     var b = QR_BLOCKS[version][ecc];
     var dataCodewords = b[1] * b[2] + b[3] * b[4];
@@ -14568,6 +15936,10 @@
       (core && history[6] >= unit * 4 && history[0] >= unit ? 1 : 0);
   }
 
+  /**
+   * @param {boolean[][]} modules
+   * @returns {number}
+   */
   function qrPenalty(modules) {
     var size = modules.length, score = 0, i, j;
     var lines = modules.map(function (row) { return row.slice(); });
@@ -14639,7 +16011,10 @@
     return out;
   }
 
-  /* options: {ecc, minVersion, mask} */
+  /** options: {ecc, minVersion, mask}
+   * @param {string} text
+   * @param {Rec} [options] ecc, minVersion, mask
+   */
   function qrEncode(text, options) {
     var opts = options || {};
     var ecc = opts.ecc || 'H';
@@ -14671,8 +16046,12 @@
     return { version: version, ecc: ecc, mask: bestMask, size: size, modules: best };
   }
 
-  /* The symbol as an SVG string. The quiet zone is not decoration: a symbol
-   * printed hard against a frame is much harder for a phone to find. */
+  /** The symbol as an SVG string. The quiet zone is not decoration: a symbol
+   * printed hard against a frame is much harder for a phone to find.
+   * @param {{size: number, modules: boolean[][]}} code what qrEncode returns
+   * @param {Rec} [options] scale, border
+   * @returns {string}
+   */
   function qrSvg(code, options) {
     var opts = options || {};
     var scale = opts.scale || 4, border = opts.border === undefined ? 4 : opts.border;
@@ -14722,9 +16101,12 @@
   var UNKNOWN_DISTRICT = 'XX';
   var ASSET_ID_RE = /^SL-([A-Z]{2,4})-([0-9A-Z]{7})-([0-9A-Z])$/;
 
-  /* ISO 7064 MOD 37,36: every single wrong character and every transposition
+  /** ISO 7064 MOD 37,36: every single wrong character and every transposition
    * of two adjacent ones, which between them are almost all the mistakes
-   * people make copying a code off a plate into a phone. */
+   * people make copying a code off a plate into a phone.
+   * @param {*} body
+   * @returns {string}
+   */
   function checkCharacter(body) {
     var product = 36;
     var text = String(body || '').toUpperCase();
@@ -14770,6 +16152,10 @@
     return body + '-' + checkCharacter(body);
   }
 
+  /**
+   * @param {Rec|null} site
+   * @returns {string}
+   */
   function mintAssetId(site) {
     var s = site || {};
     if (s.easting === null || s.easting === undefined ||
@@ -14782,6 +16168,10 @@
       positionCode(s.easting, s.northing, zone));
   }
 
+  /**
+   * @param {*} text
+   * @returns {string|null}
+   */
   function parseAssetId(text) {
     var raw = String(text === null || text === undefined ? '' : text)
       .replace(/[\s_]+/g, '').toUpperCase().replace(/–/g, '-');
@@ -14799,6 +16189,7 @@
     return candidate;
   }
 
+  /** @param {*} text */
   function validateAssetId(text) {
     var raw = String(text === null || text === undefined ? '' : text).trim();
     if (!raw) return { ok: false, reason: 'No identifier was entered.' };
@@ -14859,6 +16250,14 @@
     return value >>> 0;
   }
 
+  /**
+   * @param {string} assetId
+   * @param {string} when an ISO day
+   * @param {string} kind
+   * @param {*} [note]
+   * @param {*} [by]
+   * @returns {string}
+   */
   function eventId(assetId, when, kind, note, by) {
     var digest = hash32(assetId + '|' + when + '|' + kind + '|' +
       String(note || '').trim() + '|' + String(by || '').trim());
@@ -14868,14 +16267,21 @@
     return when + '/' + kind + '/' + tail;
   }
 
+  /**
+   * @param {string} kind
+   * @returns {string}
+   */
   function eventLabel(kind) {
     return own(EVENT_KINDS, kind) ? EVENT_KINDS[kind][0] : 'Other';
   }
 
   var ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-  /* Days since the epoch, or null when the date cannot be read. Kept as a
-   * day number rather than a Date so arithmetic never meets a time zone. */
+  /** Days since the epoch, or null when the date cannot be read. Kept as a
+   * day number rather than a Date so arithmetic never meets a time zone.
+   * @param {*} text
+   * @returns {number|null}
+   */
   function isoDay(text) {
     var match = ISO_DATE_RE.exec(String(text === null || text === undefined ? '' : text).trim());
     if (!match) return null;
@@ -14892,14 +16298,22 @@
     return [31, isLeap(year) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
   }
 
+  /**
+   * @param {number|null} [day]
+   * @returns {string|null}
+   */
   function dayToIso(day) {
     if (day === null || day === undefined) return null;
     var d = new Date(day * 86400000);
     return d.toISOString().slice(0, 10);
   }
 
-  /* Clamped rather than rolled over: six months from 31 August is 28
-   * February, not 3 March, and a due date that drifts forward is missed. */
+  /** Clamped rather than rolled over: six months from 31 August is 28
+   * February, not 3 March, and a due date that drifts forward is missed.
+   * @param {string} iso
+   * @param {number} months
+   * @returns {string|null}
+   */
   function addMonths(iso, months) {
     var match = ISO_DATE_RE.exec(iso);
     if (!match) return null;
@@ -14924,6 +16338,11 @@
     };
   }
 
+  /**
+   * @param {Rec} event
+   * @param {string} assetId
+   * @returns {Rec}
+   */
   function identifiedFor(event, assetId) {
     return Object.assign({}, event, {
       event_id: event.event_id ||
@@ -14931,13 +16350,16 @@
     });
   }
 
-  /* The whole offline story: two phones out of touch for a fortnight each
+  /** The whole offline story: two phones out of touch for a fortnight each
    * hold part of the history, and merging is a union over content-derived
-   * identifiers - commutative, idempotent, and needing no clock agreement. */
+   * identifiers - commutative, idempotent, and needing no clock agreement.
+   * @param {string} assetId followed by any number of event lists
+   */
   function mergeEvents(assetId) {
     var merged = {}, order = [];
     for (var s = 1; s < arguments.length; s++) {
       (arguments[s] || []).forEach(function (raw) {
+        /** @type {Rec|null} */
         var event = coerceEvent(raw);
         if (!event) return;
         event = identifiedFor(event, assetId);
@@ -14957,6 +16379,10 @@
     });
   }
 
+  /**
+   * @param {Rec|null} asset
+   * @returns {[number, number]|null}
+   */
   function assetLatLon(asset) {
     if (!asset || asset.easting === null || asset.easting === undefined ||
         asset.northing === null || asset.northing === undefined) return null;
@@ -14971,6 +16397,10 @@
     return fix ? [fix.lat, fix.lon] : null;
   }
 
+  /**
+   * @param {Rec|null} asset
+   * @returns {string}
+   */
   function assetLabel(asset) {
     var place = (asset && asset.community) || '(unnamed site)';
     return asset && asset.district ? place + ' (' + asset.district + ')' : place;
@@ -14988,7 +16418,10 @@
           'is no commissioning date to count from. ' + why };
     }
     var dueOn = addMonths(anchor, months);
-    var dueDay = isoDay(dueOn), todayDay = isoDay(today);
+    /* both are days that read: dueOn is counted from a recorded day that
+     * did, and today is the clock's own date unless a caller passes one */
+    var dueDay = /** @type {number} */ (isoDay(dueOn)),
+      todayDay = /** @type {number} */ (isoDay(today));
     if (todayDay > dueDay + graceDays) {
       var never = last ? '' : 'has never been done; it ';
       return { key: key, title: title, due_on: dueOn, state: 'overdue',
@@ -15003,11 +16436,17 @@
       detail: 'Next ' + title.toLowerCase() + ' due ' + dueOn + '.' };
   }
 
+  /**
+   * @param {Rec} asset
+   * @param {string|null} [today] an ISO day; today when not given
+   * @param {Rec|null} [schedule]
+   */
   function assetState(asset, today, schedule) {
     var when = today || new Date().toISOString().slice(0, 10);
     var plan = Object.assign({}, DEFAULT_SCHEDULE, schedule || {});
     var events = mergeEvents(asset.asset_id, asset.events || []);
-    var todayDay = isoDay(when);
+    /* the clock's own date unless the caller passes one */
+    var todayDay = /** @type {number} */ (isoDay(when));
     var dated = events.filter(function (e) { return isoDay(e.when) !== null; })
       .sort(function (a, b) {
         if (a.when !== b.when) return a.when < b.when ? -1 : 1;
@@ -15021,7 +16460,7 @@
       'it is working is not known.';
     var commissioned = null, lastInspection = null, lastSample = null;
     dated.forEach(function (event) {
-      if (isoDay(event.when) > todayDay) return;
+      if (/** @type {number} */ (isoDay(event.when)) > todayDay) return;
       var establishes = EVENT_KINDS[event.kind][1];
       if (establishes) {
         fn = establishes;
@@ -15034,7 +16473,7 @@
       if (event.kind === 'water_sample') lastSample = event.when;
     });
 
-    var outFor = fn === 'non_functional' && since ? todayDay - isoDay(since) : null;
+    var outFor = fn === 'non_functional' && since ? todayDay - /** @type {number} */ (isoDay(since)) : null;
     if (undated && fn === 'unknown') {
       detail = undated + ' record(s) carry a date nobody can read, so nothing ' +
         'can be established from them.';
@@ -15061,8 +16500,11 @@
     };
   }
 
-  /* Plain text, not a link. A link is only useful where there is a network,
-   * and the reason this symbol is on the headworks is that there is not one. */
+  /** Plain text, not a link. A link is only useful where there is a network,
+   * and the reason this symbol is on the headworks is that there is not one.
+   * @param {Rec} asset
+   * @returns {string}
+   */
   function qrPayload(asset) {
     var lines = ['BOREHOLE ' + asset.asset_id, assetLabel(asset)];
     var latlon = assetLatLon(asset);
@@ -15080,6 +16522,10 @@
     return lines.join('\n');
   }
 
+  /**
+   * @param {Rec} asset
+   * @param {Rec} [state] what assetState returns
+   */
   function placardLines(asset, state) {
     var rows = [['Identifier', asset.asset_id],
       ['Community', asset.community || '-']];
@@ -15104,10 +16550,12 @@
     return rows;
   }
 
+  /** @param {*} payload */
   function assetFromDict(payload) {
     if (!payload || typeof payload !== 'object') return null;
     var assetId = parseAssetId(payload.asset_id);
     if (!assetId) return null;
+    /** @type {Rec} */
     var asset = {
       asset_id: assetId,
       community: payload.community || '', district: payload.district || '',
@@ -15125,10 +16573,12 @@
     return asset;
   }
 
-  /* Nothing is invented here: no commissioning event is written, because a
+  /** Nothing is invented here: no commissioning event is written, because a
    * borehole is commissioned by somebody deciding it is, on a day, and that
    * decision is a record with a name on it rather than a side effect of
-   * opening a page. */
+   * opening a page.
+   * @param {Rec} state the project
+   */
   function assetFromProject(state) {
     var site = projectSite(state || {});
     if (!site || site.easting === null || site.easting === undefined) return null;
@@ -15151,6 +16601,11 @@
     };
   }
 
+  /**
+   * @param {Rec[]|null} assets
+   * @param {string|null} [today]
+   * @param {Rec|null} [schedule]
+   */
   function registryRows(assets, today, schedule) {
     return (assets || []).map(function (asset) {
       var state = assetState(asset, today, schedule);
@@ -15168,9 +16623,13 @@
     });
   }
 
-  /* n_unknown sits beside the working and broken counts and is never folded
+  /** n_unknown sits beside the working and broken counts and is never folded
    * into either: a register where most points are unknown looks very like
-   * one where most points are working, unless the number is on the page. */
+   * one where most points are working, unless the number is on the page.
+   * @param {Rec[]|null} assets
+   * @param {string|null} [today]
+   * @param {Rec|null} [schedule]
+   */
   function registryStats(assets, today, schedule) {
     var list = assets || [];
     var counts = { functional: 0, non_functional: 0, decommissioned: 0, unknown: 0 };
@@ -15256,6 +16715,10 @@
       'in exactly the year it is needed most.']
   };
 
+  /**
+   * @param {*} text the test's date as written
+   * @returns {{month: number|null, note: string}}
+   */
   function monthOf(text) {
     var raw = String(text === null || text === undefined ? '' : text).trim();
     if (!raw) return { month: null, note: 'No date is recorded for the test.' };
@@ -15312,6 +16775,10 @@
     return "'" + body.replace(/'/g, "\\'") + "'";
   }
 
+  /**
+   * @param {number|string|null} [month]
+   * @returns {string}
+   */
   function seasonOf(month) {
     return month && own(SEASON_OF_MONTH, String(month))
       ? SEASON_OF_MONTH[month] : 'unknown';
@@ -15323,6 +16790,11 @@
     return Math.max(rangeM * (factor - position), 0.0);
   }
 
+  /**
+   * @param {Rec} result what seasonalYield returns
+   * @param {string} key
+   * @returns {Rec|null}
+   */
   function seasonalScenario(result, key) {
     var found = null;
     (result.scenarios || []).forEach(function (item) {
@@ -15366,7 +16838,11 @@
     return text + '.';
   }
 
-  /* options: {month, annualRangeM} */
+  /** options: {month, annualRangeM}
+   * @param {PumpingAnalysis|null} analysis
+   * @param {PumpingConfig} [config]
+   * @param {Rec} [options] month, annualRangeM
+   */
   function seasonalYield(analysis, config, options) {
     var opts = options || {};
     var cfg = config || defaultConfig().pumping;
@@ -15394,6 +16870,7 @@
       source = 'the configured dry-season allowance, not a measurement';
     }
 
+    /** @type {Rec} */
     var result = {
       month: month, season: seasonOf(month), month_note: note,
       annual_range_m: band, range_source: source, scenarios: [],
@@ -15418,7 +16895,7 @@
         'The yield recommendation is pending, so it cannot be projected ' +
         'through the year.');
     }
-    var transmissivity = analysis.transmissivity_m2_per_day;
+    var transmissivity = /** @type {PumpingAnalysis} */ (analysis).transmissivity_m2_per_day;
     if (transmissivity === null || transmissivity === undefined) {
       return finish('No transmissivity was fitted, so the seasonal projection ' +
         'has nothing to run on.');
@@ -15434,7 +16911,7 @@
         static_water_level_m: test.static_water_level_m + decline
       });
       var variant = Object.assign({}, cfg, { seasonal_allowance_m: 0.0 });
-      var trial = recommendYield(lowered, transmissivity, analysis.step_test,
+      var trial = recommendYield(lowered, transmissivity, /** @type {PumpingAnalysis} */ (analysis).step_test,
         variant);
       var noteText = spec[2];
       if (key === 'as_tested' && month) {
@@ -15542,7 +17019,11 @@
     return text;
   }
 
-  /* options: {rate, rates} */
+  /** options: {rate, rates}
+   * @param {Record<string, number>} population
+   * @param {number|string} toYear
+   * @param {Rec} [options] rate, rates
+   */
   function projectPopulation(population, toYear, options) {
     var opts = options || {};
     var national = (opts.rate === undefined || opts.rate === null)
@@ -15571,6 +17052,11 @@
     return { projected: projected, projection: projection };
   }
 
+  /**
+   * @param {WaterPoint[]|null} points
+   * @param {number} asOfYear
+   * @returns {Rec}
+   */
   function pointFreshness(points, asOfYear) {
     var list = points || [];
     var years = list.map(function (p) { return p.report_year; })
@@ -15602,9 +17088,12 @@
     };
   }
 
-  /* The dry-season band as a planner reads it: best case to worst.
+  /** The dry-season band as a planner reads it: best case to worst.
    * people_per_point_high is the kinder end - it credits the points nobody
-   * asked about with working all year - so it comes first. */
+   * asked about with working all year - so it comes first.
+   * @param {Rec} cov what seasonalCoverage returns
+   * @returns {string}
+   */
   function seasonalBandText(cov) {
     var best = cov.people_per_point_high, worst = cov.people_per_point_low;
     var absent = function (v) { return v === null || v === undefined; };
@@ -15616,8 +17105,11 @@
     return thousandsFixed(best, 0) + ' to ' + thousandsFixed(worst, 0);
   }
 
-  /* A band, not a number: low counts only the points a survey confirmed work
-   * all year, high also counts the ones nobody asked about. */
+  /** A band, not a number: low counts only the points a survey confirmed work
+   * all year, high also counts the ones nobody asked about.
+   * @param {WaterPoint[]|null} points
+   * @param {number} population
+   */
   function seasonalCoverage(points, population) {
     var functional = (points || []).filter(function (p) { return p.functional; });
     var yearRound = 0, seasonal = 0;
@@ -15657,7 +17149,11 @@
     return (row.people_per_recent_point / row.people_per_point - 1) * 100;
   }
 
-  /* options: {asOfYear, rate, rates} */
+  /** options: {asOfYear, rate, rates}
+   * @param {Record<string, number>} population
+   * @param {Record<string, WaterPoint[]>|null} pointsByArea
+   * @param {Rec} [options] asOfYear, rate, rates
+   */
   function planningRows(population, pointsByArea, options) {
     var opts = options || {};
     var asOfYear = Number(opts.asOfYear);
@@ -15688,10 +17184,14 @@
     return { rows: rows, projection: out.projection };
   }
 
+  /**
+   * @param {Rec[]|null} rows what planningRows returns
+   * @param {Rec} projection what projectPopulation returns
+   */
   function planningStats(rows, projection) {
     var list = rows || [];
     var served = list.filter(function (r) { return r.people_per_point !== null; });
-    var worst = null;
+    var worst = /** @type {Rec|null} */ (null);
     served.forEach(function (r) {
       if (!worst || r.people_per_point > worst.people_per_point) worst = r;
     });
@@ -15753,12 +17253,20 @@
    * the certificate.
    * =================================================================== */
 
+  /**
+   * @param {Rec} contract
+   * @returns {number}
+   */
   function contractSum(contract) {
     return (contract.lines || []).reduce(function (total, line) {
       return total + line.quantity * line.rate_usd;
     }, 0);
   }
 
+  /**
+   * @param {Rec} contract
+   * @returns {number}
+   */
   function contractAdvance(contract) {
     return contractSum(contract) * (contract.advance_percent || 0) / 100;
   }
@@ -15768,12 +17276,17 @@
    * signed rather than a reference to the live one. */
   var RATE_BASES = ['price', 'cost', 'price_with_vat'];
 
-  /* basis says what the frozen rates include: the estimate's line rates are
+  /** basis says what the frozen rates include: the estimate's line rates are
    * the contractor's direct costs, and the figure the same estimate recommends
    * as the contract price is cost plus overheads plus margin, so 'price' (the
    * default) uplifts every rate by that factor. Freezing at the bare cost
    * rates - kept as 'cost' - paid the contractor a third below the price the
-   * toolkit had just recommended. */
+   * toolkit had just recommended.
+   * @param {Rec} estimate what estimateBoreholeCost returns
+   * @param {string} ref
+   * @param {Rec} [terms]
+   * @param {string} [basis] 'price', 'cost' or 'price_with_vat'
+   */
   function contractFromEstimate(estimate, ref, terms, basis) {
     var kind = basis || 'price';
     if (RATE_BASES.indexOf(kind) < 0) {
@@ -15822,9 +17335,13 @@
     });
   }
 
-  /* Returns {lines, problems}. The problems are written for the person who
+  /** Returns {lines, problems}. The problems are written for the person who
    * has to fix them, and are never fatal: a certificate with a problem on it
-   * is still worth issuing, as long as the problem is printed on its face. */
+   * is still worth issuing, as long as the problem is printed on its face.
+   * @param {Rec} contract
+   * @param {Rec[]|null} measurements
+   * @param {Rec[]|null} [variations]
+   */
   function valueWork(contract, measurements, variations) {
     var problems = [], varied = {}, order = [];
     (variations || []).forEach(function (v) {
@@ -15952,7 +17469,11 @@
     return { lines: lines, problems: problems };
   }
 
-  /* options: {number, date, variations, previouslyCertifiedUsd, preparedBy} */
+  /** options: {number, date, variations, previouslyCertifiedUsd, preparedBy}
+   * @param {Rec} contract
+   * @param {Rec[]|null} measurements
+   * @param {Rec} [options] number, date, variations, previouslyCertifiedUsd, preparedBy
+   */
   function certify(contract, measurements, options) {
     var opts = options || {};
     var valued = valueWork(contract, measurements, opts.variations || []);
@@ -16016,14 +17537,22 @@
     };
   }
 
-  /* Python's "${:,.0f}". Rounded through pyRound first: a retention of
+  /** Python's "${:,.0f}". Rounded through pyRound first: a retention of
    * exactly 344.5 is 344 in Python and 345 through toLocaleString, and a
    * certificate that differs from the toolkit's by a dollar is a
-   * certificate somebody has to reconcile by hand. */
+   * certificate somebody has to reconcile by hand.
+   * @param {number|string} value
+   * @returns {string}
+   */
   function money0(value) {
     return '$' + thousandsFixed(pyRound(Number(value), 0), 0);
   }
 
+  /**
+   * @param {Rec} contract
+   * @param {Rec} certificate what certify returns
+   * @returns {string[][]}
+   */
   function contractSummaryRows(contract, certificate) {
     var rows = [['Contract', contract.ref]];
     if (contract.contractor) rows.push(['Contractor', contract.contractor]);
@@ -16082,6 +17611,7 @@
   /* mapping/subsurface.py PROTECTIVE_CLASSES: lower bound, upper bound, name,
    * colour. The map, its key and the word in the report all read this one
    * table, so a point's colour and the sentence beside it cannot disagree. */
+  /** @type {Array<[number, number, string, string]>} */
   var PROTECTIVE_CLASSES = [
     [0.0, 0.1, 'poor', '#B2182B'],
     [0.1, 0.2, 'weak', '#EF8A62'],
@@ -16128,6 +17658,12 @@
     return thousandsFixed(pyRound(Number(value), 0), 0);
   }
 
+  /**
+   * @param {number} a
+   * @param {number} b
+   * @param {number} n
+   * @returns {number[]}
+   */
   function linspace(a, b, n) {
     var out = [], i;
     if (n <= 1) return [a];
@@ -16146,7 +17682,7 @@
       item.site_northing !== null && item.site_northing !== undefined;
   }
 
-  /* maps.py to_zone: a recorded position re-expressed in the UTM zone `zone`.
+  /** maps.py to_zone: a recorded position re-expressed in the UTM zone `zone`.
    *
    * Sierra Leone straddles the 28N/29N boundary at 12 degrees W, and a survey
    * on that line can record its soundings in both zones: 829580 E in zone 28
@@ -16154,7 +17690,12 @@
    * numbers. Every survey-scale figure subtracts eastings, so each sounding is
    * brought into one zone, through its latitude and longitude, before any of
    * them is drawn. The zone a position was recorded in is read off its
-   * easting, which in Sierra Leone identifies it. */
+   * easting, which in Sierra Leone identifies it.
+   * @param {number|string} easting
+   * @param {number|string} northing
+   * @param {number} zone
+   * @returns {number[]}
+   */
   function toZone(easting, northing, zone) {
     var own = inferZoneForSierraLeone(Number(easting));
     if (own === zone) return [Number(easting), Number(northing)];
@@ -16164,24 +17705,31 @@
     return [utm.easting, utm.northing];
   }
 
-  /* subsurface.py survey_zone: the zone the survey's own figures are drawn
-   * in, the first positioned sounding's; null when none carries a position. */
+  /** subsurface.py survey_zone: the zone the survey's own figures are drawn
+   * in, the first positioned sounding's; null when none carries a position.
+   * @param {Interpretation[]|null} interpretations
+   * @returns {number|null}
+   */
   function surveyZone(interpretations) {
     var first = (interpretations || []).filter(hasPosition)[0];
     return first ? inferZoneForSierraLeone(Number(first.site_easting)) : null;
   }
 
-  /* subsurface.py _positioned: a sounding with no recorded position cannot be
+  /** subsurface.py _positioned: a sounding with no recorded position cannot be
    * put on a map or on a line, and is dropped rather than placed at a guess.
    * The rest are brought into one zone (by default the first positioned
    * sounding's): three soundings 400 m apart either side of 12 W came out as
    * a 660 km map and a "659732 m along" section. A sounding that needed
-   * moving is a copy, so the caller's keeps the position it recorded. */
+   * moving is a copy, so the caller's keeps the position it recorded.
+   * @param {Interpretation[]|null} interpretations
+   * @param {number|null} [zone] the first positioned sounding's when not given
+   * @returns {Interpretation[]}
+   */
   function positionedSoundings(interpretations, zone) {
     var placed = (interpretations || []).filter(hasPosition);
     var target = (zone === null || zone === undefined) ? surveyZone(placed) : zone;
     return placed.map(function (item) {
-      var moved = toZone(item.site_easting, item.site_northing, target);
+      var moved = toZone(item.site_easting, item.site_northing, /** @type {number} */ (target));
       if (moved[0] === Number(item.site_easting) &&
           moved[1] === Number(item.site_northing)) {
         return item;
@@ -16198,7 +17746,7 @@
    * the browser, but with two columns the answer is closed form.
    */
 
-  /* Both singular values of the centred positions.
+  /** Both singular values of the centred positions.
    *
    * Taken from a QR factorisation rather than from the normal matrix: the
    * normal matrix squares the condition number, and the smaller singular
@@ -16207,6 +17755,9 @@
    * "twice is enough": one pass of Gram-Schmidt loses the residual to
    * cancellation precisely when the second column is nearly parallel to the
    * first, which is the straight-traverse case this test exists for.
+   * @param {number[]} x
+   * @param {number[]} y
+   * @returns {number[]}
    */
   function singularValues2(x, y) {
     var n = x.length, i, r11 = 0.0, r12 = 0.0, r22 = 0.0, correction = 0.0;
@@ -16236,11 +17787,15 @@
     return [big, small];
   }
 
-  /* The first right singular vector of the centred positions: the direction
+  /** The first right singular vector of the centred positions: the direction
    * of the best-fit line by total least squares, which is the eigenvector of
    * the 2-by-2 normal matrix for its larger eigenvalue. The direction, unlike
    * the smaller singular value, is well conditioned whenever there is a line
-   * to find at all, so the normal matrix is good enough for it. */
+   * to find at all, so the normal matrix is good enough for it.
+   * @param {number[]} x
+   * @param {number[]} y
+   * @returns {number[]}
+   */
   function principalAxis(x, y) {
     var sxx = 0.0, sxy = 0.0, syy = 0.0, i;
     for (i = 0; i < x.length; i += 1) {
@@ -16266,7 +17821,7 @@
     return [vx / norm, vy / norm];
   }
 
-  /* maps.py points_enclose_an_area.
+  /** maps.py points_enclose_an_area.
    *
    * Three pegs on one line - the standard VES layout, and what a
    * tape-and-compass traverse or chainages typed by hand produce exactly -
@@ -16275,7 +17830,12 @@
    * "except ValueError" between the map and the report and took the whole
    * geophysical report down. The test is the smaller singular value of the
    * centred coordinates against the larger: below the tolerance the points
-   * are a line to numerical precision. */
+   * are a line to numerical precision.
+   * @param {number[]} eastings
+   * @param {number[]} northings
+   * @param {number} [tolerance]
+   * @returns {boolean}
+   */
   function pointsEncloseAnArea(eastings, northings, tolerance) {
     var tol = tolerance === undefined ? AREA_TOLERANCE : tolerance;
     if (eastings.length < 3) return false;
@@ -16289,7 +17849,7 @@
 
   /* --- the traverse ------------------------------------------------------- */
 
-  /* subsurface.py traverse_profile: the soundings projected onto the best-fit
+  /** subsurface.py traverse_profile: the soundings projected onto the best-fit
    * line through their recorded positions.
    *
    * The line is the principal axis of the positions, not the line joining the
@@ -16300,6 +17860,8 @@
    * Returns `reason` instead of raising when fewer than two soundings carry a
    * position, because every figure built on the traverse is skipped with that
    * reason printed rather than the report ending there.
+   * @param {Interpretation[]|null} interpretations
+   * @returns {Rec}
    */
   function traverseProfile(interpretations) {
     var all = interpretations || [];
@@ -16410,8 +17972,12 @@
     };
   }
 
-  /* subsurface.py _wide_gaps: which gaps between neighbouring stations are too
-   * wide to correlate a horizon across. */
+  /** subsurface.py _wide_gaps: which gaps between neighbouring stations are too
+   * wide to correlate a horizon across.
+   * @param {Rec|null} profile what traverseProfile returns
+   * @param {number} reachM
+   * @returns {boolean[]}
+   */
   function wideGaps(profile, reachM) {
     if (!profile || profile.reason) return [];
     if (!(reachM > 0) || profile.chainage_m.length < 2) return [];
@@ -16420,11 +17986,16 @@
     });
   }
 
-  /* subsurface.py _correlation_note: what is not correlated on the section,
+  /** subsurface.py _correlation_note: what is not correlated on the section,
    * and why. A sounding sees the ground under it, to a lateral reach of
    * roughly its largest electrode half-spacing; joining a layer boundary
    * across a gap many times that is drawing a line between two points and
-   * calling it a horizon. */
+   * calling it a horizon.
+   * @param {Rec|null} profile what traverseProfile returns
+   * @param {number} reachM
+   * @param {boolean[]|null} [wide] what wideGaps returns
+   * @returns {string}
+   */
   function correlationNote(profile, reachM, wide) {
     if (!profile || profile.reason) return '';
     if (!(reachM > 0) || profile.chainage_m.length < 2) return '';
@@ -16444,11 +18015,14 @@
       'across them would be a proposal drawn as a horizon.';
   }
 
-  /* ves/plots.py _rho_norm: the log colour scale spanning the decades the
+  /** ves/plots.py _rho_norm: the log colour scale spanning the decades the
    * drawn models occupy. The fixed 10-5,000 ohm-m ramp it replaced coloured
    * 3 ohm-m saline clay the same as 10 ohm-m fresh-water clay and 20,000
    * ohm-m basement the same as 5,000, with nothing on the bar to say it had
-   * clipped. */
+   * clipped.
+   * @param {LayeredModel[]|null} models
+   * @returns {number[]}
+   */
   function rhoColourRange(models) {
     var rho = [];
     (models || []).forEach(function (model) {
@@ -16463,7 +18037,7 @@
     return [lo, hi];
   }
 
-  /* subsurface.py geoelectric_section_along_traverse, plus the geometry
+  /** subsurface.py geoelectric_section_along_traverse, plus the geometry
    * ves/plots.py plot_geoelectric_section derives from what it is handed.
    *
    * Everything the section needs and nothing it draws: the stations at their
@@ -16472,6 +18046,8 @@
    * boundary, the note that says which do not, and the title.
    *
    * options: {title, depthMaxM} - the Python's two overridable arguments.
+   * @param {Interpretation[]|null} interpretations
+   * @param {Rec} [options] title, depthMaxM
    */
   function geoelectricSectionGeometry(interpretations, options) {
     var opts = options || {};
@@ -16621,7 +18197,7 @@
     };
   }
 
-  /* subsurface.py apparent_resistivity_pseudosection: the measurements
+  /** subsurface.py apparent_resistivity_pseudosection: the measurements
    * themselves, laid out along the traverse, before any inversion has been
    * believed. The vertical axis is AB/2 - the electrode half-spacing - and is
    * left as such rather than converted to a depth, because the pseudo-depth
@@ -16631,6 +18207,8 @@
    *
    * `profile` places the stations; without one the soundings are laid out in
    * the order given, evenly spaced, and the note says so.
+   * @param {Sounding[]|null} soundings
+   * @param {Rec|null} [profile] what traverseProfile returns
    */
   function pseudosectionGeometry(soundings, profile) {
     var list = soundings || [];
@@ -16791,10 +18369,13 @@
     };
   }
 
-  /* subsurface.py spacing_name: what the soundings' electrode spacing is
+  /** subsurface.py spacing_name: what the soundings' electrode spacing is
    * called. A Wenner sounding is read against the spacing a, and a
    * pseudo-section of Wenner readings labelled "AB/2 (m)" named a spacing
-   * nobody set out. */
+   * nobody set out.
+   * @param {Sounding[]|null} soundings
+   * @returns {string}
+   */
   function spacingName(soundings) {
     var wenner = {};
     (soundings || []).forEach(function (sounding) {
@@ -16805,8 +18386,11 @@
     return 'AB/2';
   }
 
-  /* subsurface.py spacing_note: the pseudo-section's warning that its
-   * vertical axis is not a depth. */
+  /** subsurface.py spacing_note: the pseudo-section's warning that its
+   * vertical axis is not a depth.
+   * @param {string} name
+   * @returns {string}
+   */
   function spacingNote(name) {
     if (name === 'a') {
       return 'The Wenner spacing a is the electrode spacing, not a depth: a ' +
@@ -16820,8 +18404,12 @@
       'a wider spread, not a measured horizon.';
   }
 
-  /* reporting/geophysical.py's pseudo-section caption, naming the spacing the
-   * readings were taken with. */
+  /** reporting/geophysical.py's pseudo-section caption, naming the spacing the
+   * readings were taken with.
+   * @param {string} spacing
+   * @param {Rec|null} [profile]
+   * @returns {string}
+   */
   function pseudosectionCaption(spacing, profile) {
     var caption = 'Apparent resistivity along the traverse, as measured. Unlike ' +
       'every other section in this report it involves no inversion: each point ' +
@@ -16846,14 +18434,18 @@
    * below, because the browser has none of them.
    */
 
-  /* A Delaunay triangulation of the points, as index triples.
+  /** A Delaunay triangulation of the points, as index triples.
    *
    * Bowyer-Watson, which is enough for the dozens of points a survey has. The
    * coordinates are shifted and scaled by ONE factor for both axes before
    * triangulating: a similarity transform leaves a Delaunay triangulation
    * unchanged, where scaling the axes separately would quietly produce a
    * different triangulation from the Python's - and UTM eastings squared lose
-   * the precision the circumcircle test needs. */
+   * the precision the circumcircle test needs.
+   * @param {number[]} xs
+   * @param {number[]} ys
+   * @returns {number[][]}
+   */
   function delaunayTriangles(xs, ys) {
     var count = xs.length, i;
     if (count < 3) return [];
@@ -16927,7 +18519,11 @@
     return orientation >= 0 ? det > 0 : det < 0;
   }
 
-  /* The convex hull of the points, counter-clockwise, by monotone chain. */
+  /** The convex hull of the points, counter-clockwise, by monotone chain.
+   * @param {number[]} eastings
+   * @param {number[]} northings
+   * @returns {number[][]}
+   */
   function convexHull(eastings, northings) {
     var order = eastings.map(function (value, index) { return index; })
       .sort(function (a, b) {
@@ -16956,12 +18552,17 @@
     });
   }
 
-  /* The crossing test matplotlib's Path.contains_points uses, written its way
+  /** The crossing test matplotlib's Path.contains_points uses, written its way
    * on purpose: the divisions of the textbook version answer differently for
    * a grid point sitting exactly on a hull edge, and a square four-peg survey
    * puts a whole diagonal of grid points exactly on one. Multiplying instead
    * of dividing keeps the comparison exact, so the browser blanks the same
-   * cells the Python does rather than a line of them more or fewer. */
+   * cells the Python does rather than a line of them more or fewer.
+   * @param {number[][]} polygon
+   * @param {number} x
+   * @param {number} y
+   * @returns {boolean}
+   */
   function pointInPolygon(polygon, x, y) {
     var inside = false, i;
     var x0 = polygon[polygon.length - 1][0], y0 = polygon[polygon.length - 1][1];
@@ -16980,21 +18581,34 @@
     return inside;
   }
 
-  /* The grid the surfaces are sampled on: a rectangle of nx by ny points,
+  /** The grid the surfaces are sampled on: a rectangle of nx by ny points,
    * with the values row-major, z[j * nx + i] for x[i], y[j], and null where
-   * nothing is drawn. */
+   * nothing is drawn.
+   * @param {number} x0
+   * @param {number} x1
+   * @param {number} y0
+   * @param {number} y1
+   * @param {number} n
+   * @returns {SurfaceGrid}
+   */
   function gridFrom(x0, x1, y0, y1, n) {
     return { nx: n, ny: n, x: linspace(x0, x1, n), y: linspace(y0, y1, n), z: null };
   }
 
-  /* maps.py _surface: the interpolated surface, or null when the points
+  /** maps.py _surface: the interpolated surface, or null when the points
    * cannot support one.
    *
    * The linear interpolant needs a triangulation, which needs an area; the
    * nearest-neighbour fill outside it is what the maps show at the edges. Any
    * triangulation failure is reported as "no surface" rather than as an
    * exception, because the figure is one of several in a report and none of
-   * them should cost the document the others. */
+   * them should cost the document the others.
+   * @param {number[]} eastings
+   * @param {number[]} northings
+   * @param {number[]} values
+   * @param {SurfaceGrid} grid
+   * @returns {Array<number|null>|null}
+   */
   function surfaceGrid(eastings, northings, values, grid) {
     if (!pointsEncloseAnArea(eastings, northings)) return null;
     var z = [], i, j;
@@ -17055,7 +18669,7 @@
     return z;
   }
 
-  /* maps.py _clip_to_surveyed_ground: blank the interpolated surface outside
+  /** maps.py _clip_to_surveyed_ground: blank the interpolated surface outside
    * the ground the survey covered.
    *
    * An interpolated resistivity or thickness surface is read as data: a
@@ -17066,7 +18680,12 @@
    * looks like every other shade on the map. Points that enclose no area have
    * no hull to clip to: that is an ordinary survey, not an error, so the
    * surface stands and the figure says on its own face that the values away
-   * from the line are extrapolated. */
+   * from the line are extrapolated.
+   * @param {Array<number|null>} z
+   * @param {number[]} eastings
+   * @param {number[]} northings
+   * @param {SurfaceGrid} grid
+   */
   function clipToSurveyedGround(z, eastings, northings, grid) {
     var hull = convexHull(eastings, northings);
     if (hull.length < 3) {
@@ -17086,8 +18705,11 @@
     return { z: masked, clipped: true, hull: hull, note: '' };
   }
 
-  /* maps.py _no_surface_note: said on the map itself, because a caption can be
-   * skipped and a line across the middle of the figure cannot. */
+  /** maps.py _no_surface_note: said on the map itself, because a caption can be
+   * skipped and a line across the middle of the figure cannot.
+   * @param {number} nPoints
+   * @returns {string}
+   */
   function noSurfaceNote(nPoints) {
     return nPoints >= 3
       ? 'Surface not drawn: the survey points lie on one line and enclose no ' +
@@ -17171,9 +18793,16 @@
     return [Math.pow(10, decimalExponent(span / n)), offset];
   }
 
-  /* ticker.MaxNLocator.tick_values, for the contour's parameters: at most
+  /** ticker.MaxNLocator.tick_values, for the contour's parameters: at most
    * `nbins` intervals, and one tick is enough (min_n_ticks is 1 here, where
-   * an axis would want two). */
+   * an axis would want two).
+   * @param {number} vmin
+   * @param {number} vmax
+   * @param {number} nbins
+   * @param {number[]} [steps]
+   * @param {number} [minTicks]
+   * @returns {number[]}
+   */
   function locatorTicks(vmin, vmax, nbins, steps, minTicks) {
     var table = steps || LOCATOR_STEPS;
     var wanted = minTicks === undefined ? 1 : minTicks;
@@ -17217,18 +18846,27 @@
     return ticks.map(function (tick) { return tick + offset; });
   }
 
-  /* maps.py _format_grid: at most five or six round-numbered grid lines an
+  /** maps.py _format_grid: at most five or six round-numbered grid lines an
    * axis. A seven-digit northing labelled every 25 m printed nine of them on
    * top of one another, which is why the axis asks for round numbers rather
    * than an even division of the extent. An axis wants two ticks where a
-   * contour is content with one. */
+   * contour is content with one.
+   * @param {number} lo
+   * @param {number} hi
+   * @returns {number[]}
+   */
   function mapGridTicks(lo, hi) {
     return locatorTicks(lo, hi, 5, [1, 2, 2.5, 5, 10], 2);
   }
 
-  /* contour.ContourSet._autolev: the ticks trimmed to one level below the
+  /** contour.ContourSet._autolev: the ticks trimmed to one level below the
    * data and one above, unless that leaves fewer than three, in which case
-   * the whole set stands. */
+   * the whole set stands.
+   * @param {number} vmin
+   * @param {number} vmax
+   * @param {number} [count]
+   * @returns {number[]}
+   */
   function contourLevels(vmin, vmax, count) {
     if (!isFinite(vmin) || !isFinite(vmax)) return [];
     var levels = locatorTicks(vmin, vmax, (count || 12) + 1, LOCATOR_STEPS, 1);
@@ -17244,7 +18882,12 @@
     return levels.slice(first, last);
   }
 
-  /* maps.py _extent: the padded ground the map covers. */
+  /** maps.py _extent: the padded ground the map covers.
+   * @param {MapPoint[]} points
+   * @param {number} [padFrac]
+   * @param {number} [minPad]
+   * @returns {number[]}
+   */
   function mapExtent(points, padFrac, minPad) {
     var frac = padFrac === undefined ? 0.25 : padFrac;
     var floorPad = minPad === undefined ? 150.0 : minPad;
@@ -17256,17 +18899,27 @@
     return [arrMin(e) - pad, arrMax(e) + pad, arrMin(n) - pad, arrMax(n) + pad];
   }
 
-  /* maps.py _figsize: a figure shaped like the ground it shows. A fixed
+  /** maps.py _figsize: a figure shaped like the ground it shows. A fixed
    * height squashed a traverse three times longer than it is wide into a strip
-   * a third of the figure tall, beside a colour bar that ran the full height. */
+   * a third of the figure tall, beside a colour bar that ran the full height.
+   * @param {number} widthIn
+   * @param {number} x0
+   * @param {number} x1
+   * @param {number} y0
+   * @param {number} y1
+   * @returns {number}
+   */
   function mapFigureHeightIn(widthIn, x0, x1, y0, y1) {
     var aspect = (y1 - y0) / Math.max(x1 - x0, 1e-9);
     return Math.min(Math.max(widthIn * 0.82 * aspect + 0.9, 3.4), 6.6);
   }
 
-  /* maps.py _format_grid's axis labels: every map says which UTM zone its
+  /** maps.py _format_grid's axis labels: every map says which UTM zone its
    * metres are in, because two eastings in different zones are not comparable
-   * numbers. */
+   * numbers.
+   * @param {number|string|null} zone
+   * @returns {{x: string, y: string}}
+   */
   function mapAxisLabels(zone) {
     return {
       x: 'Easting (m), UTM zone ' + zone + 'N / WGS84',
@@ -17287,6 +18940,12 @@
    * on below the depth the sounding resolves. */
   var OPEN_ENDED_MINIMA = ['aquifer_thickness_m'];
 
+  /**
+   * @param {Interpretation[]|null} interpretations
+   * @param {string} attribute
+   * @param {number|null} [zone]
+   * @returns {MapPoint[]}
+   */
   function subsurfaceMapPoints(interpretations, attribute, zone) {
     var points = [];
     positionedSoundings(interpretations, zone).forEach(function (item) {
@@ -17305,10 +18964,14 @@
     return points;
   }
 
-  /* subsurface.py bedrock_elevation_points: ground level less the depth to
+  /** subsurface.py bedrock_elevation_points: ground level less the depth to
    * basement, which needs both numbers at the same sounding. A survey that
    * recorded no elevations gives an empty list rather than a bedrock surface
-   * at sea level, which is what subtracting a depth from nothing amounts to. */
+   * at sea level, which is what subtracting a depth from nothing amounts to.
+   * @param {Interpretation[]|null} interpretations
+   * @param {number|null} [zone]
+   * @returns {MapPoint[]}
+   */
   function bedrockElevationPoints(interpretations, zone) {
     var points = [];
     positionedSoundings(interpretations, zone).forEach(function (item) {
@@ -17327,14 +18990,21 @@
     return points;
   }
 
-  /* subsurface.py _require_points, as the sentence rather than the exception.
+  /** subsurface.py _require_points, as the sentence rather than the exception.
    *
    * The reason used to be the same whatever the shortfall - "record the GPS
    * position of every sounding" - which sent the Rokel reader looking for
    * positions both soundings carried, when what they lacked was a basement
    * the curves never reached. Given the interpretations, the shortfall is
    * split into its causes: the soundings with no position, and `lacking`,
-   * the caller's sentence for the positioned ones that have no value. */
+   * the caller's sentence for the positioned ones that have no value.
+   * @param {MapPoint[]} points
+   * @param {string} what
+   * @param {number} [need]
+   * @param {Interpretation[]|null} [interpretations]
+   * @param {string} [lacking]
+   * @returns {string|null}
+   */
   function requirePointsReason(points, what, need, interpretations, lacking) {
     var wanted = need === undefined ? 3 : need;
     if (points.length >= wanted) return null;
@@ -17355,8 +19025,12 @@
     return reason;
   }
 
-  /* subsurface.py _unresolved_basement: the positioned soundings with no
-   * basement, and what that costs a map. */
+  /** subsurface.py _unresolved_basement: the positioned soundings with no
+   * basement, and what that costs a map.
+   * @param {Interpretation[]|null} interpretations
+   * @param {string} quantity
+   * @returns {string}
+   */
   function unresolvedBasement(interpretations, quantity) {
     var placed = (interpretations || []).filter(hasPosition);
     var missing = placed.filter(function (item) {
@@ -17388,11 +19062,13 @@
     return '';
   }
 
-  /* maps.py _interpolated_map, without the drawing: the grid, the range the
+  /** maps.py _interpolated_map, without the drawing: the grid, the range the
    * colours span, the levels they are banded at and the value at every
    * station - or the reason the Python would have raised instead.
    *
    * options: {logScale, gridN}. gridN defaults to the Python's 220.
+   * @param {MapPoint[]|null} points
+   * @param {Rec} [options] logScale, gridN
    */
   function interpolatedMapData(points, options) {
     var opts = options || {};
@@ -17470,7 +19146,10 @@
     };
   }
 
-  /* subsurface.py _protective_colour. */
+  /** subsurface.py _protective_colour.
+   * @param {number|null} [conductance]
+   * @returns {string}
+   */
   function protectiveColour(conductance) {
     if (conductance === null || conductance === undefined) return '#BBBBBB';
     for (var k = 0; k < PROTECTIVE_CLASSES.length; k += 1) {
@@ -17482,14 +19161,17 @@
     return PROTECTIVE_CLASSES[PROTECTIVE_CLASSES.length - 1][3];
   }
 
-  /* subsurface.py protective_capacity_map, without the drawing.
+  /** subsurface.py protective_capacity_map, without the drawing.
    *
    * Drawn in classes rather than on a continuous ramp, because the decision
    * this map informs is categorical - is this aquifer protected enough to site
    * a borehole near a latrine or a cattle crossing - and a smooth ramp invites
    * reading a difference between 0.68 and 0.71 siemens that the method does
    * not support. Unlike the other three it draws with one point: the class of
-   * a single sounding is still a finding. */
+   * a single sounding is still a finding.
+   * @param {MapPoint[]|null} points
+   * @param {Rec} [options] gridN
+   */
   function protectiveCapacityMapData(points, options) {
     var opts = options || {};
     var valued = (points || []).filter(function (p) {
@@ -17601,11 +19283,15 @@
     },
   ];
 
-  /* reporting/geophysical.py _subsurface_caption: a subsurface map's caption,
+  /** reporting/geophysical.py _subsurface_caption: a subsurface map's caption,
    * written from what the map shows. The captions were fixed strings, and
    * "the surface is blanked outside the hull of the soundings" sat under a
    * figure of three collinear soundings that said on its own face "surface
-   * not drawn". */
+   * not drawn".
+   * @param {string} what
+   * @param {MapPoint[]} points
+   * @returns {{caption: string, surface: boolean}}
+   */
   function subsurfaceCaption(what, points) {
     var surface = points.length >= 3 && pointsEncloseAnArea(
       points.map(function (p) { return Number(p.easting); }),
@@ -17630,6 +19316,10 @@
     return { caption: caption, surface: surface };
   }
 
+  /**
+   * @param {string} key
+   * @returns {Rec|null}
+   */
   function subsurfaceMapSpec(key) {
     var found = null;
     SUBSURFACE_MAP_SPECS.forEach(function (spec) {
@@ -17638,11 +19328,15 @@
     return found;
   }
 
-  /* One of the four maps: its points, its surface and its strings, or the
+  /** One of the four maps: its points, its surface and its strings, or the
    * reason the Python would have refused to draw it. The refusal is kept per
    * figure, the way the report keeps it: a survey whose curves never reached
    * basement has no depth-to-bedrock map but still has an aquifer thickness
-   * map, and one that recorded no elevations has both but no bedrock surface. */
+   * map, and one that recorded no elevations has both but no bedrock surface.
+   * @param {Interpretation[]|null} interpretations
+   * @param {string} key
+   * @param {Rec} [options] zone, gridN
+   */
   function subsurfaceMapData(interpretations, key, options) {
     var spec = subsurfaceMapSpec(key);
     if (!spec) return { key: key, reason: 'no such subsurface map: ' + key };
@@ -17680,22 +19374,28 @@
     return Object.assign(head, data, { caption: told.caption, surface_said: told.surface });
   }
 
-  /* reporting/geophysical.py _add_subsurface_figures' own gate, which comes
+  /** reporting/geophysical.py _add_subsurface_figures' own gate, which comes
    * before any of the four maps and before the section: with fewer than two
    * positioned soundings the whole section of the report is skipped - no
    * figure, and no "not drawn" line either, because a survey that recorded one
    * GPS position has nothing to say about the ground between soundings. The
    * protective capacity map is the one that draws from a single sounding, so a
    * report that does not ask this first prints one under a heading the package
-   * never writes at all. */
+   * never writes at all.
+   * @param {Interpretation[]|null} interpretations
+   * @returns {boolean}
+   */
   function subsurfaceFiguresApply(interpretations) {
     return positionedSoundings(interpretations).length >= 2;
   }
 
-  /* All four, in the report's order, each either drawable or carrying its
+  /** All four, in the report's order, each either drawable or carrying its
    * reason. The caller draws the ones with no reason and lists the others as
    * "<name>: <reason>", which is what _add_subsurface_figures does - after
-   * subsurfaceFiguresApply, which decides whether the section is written. */
+   * subsurfaceFiguresApply, which decides whether the section is written.
+   * @param {Interpretation[]|null} interpretations
+   * @param {Rec} [options]
+   */
   function subsurfaceMapSet(interpretations, options) {
     return SUBSURFACE_MAP_SPECS.map(function (spec) {
       return subsurfaceMapData(interpretations, spec.key, options);
@@ -17704,7 +19404,7 @@
 
   /* --- the drill-target suitability map ------------------------------------ */
 
-  /* siting/suitability.py suitability_map_points: the scored points that can
+  /** siting/suitability.py suitability_map_points: the scored points that can
    * go on a map, valued by the number the ranking was decided on.
    *
    * A point with no recorded position is dropped rather than placed at a
@@ -17713,7 +19413,11 @@
    * about which peg to drill. Every point is in the zone `zone` (by default
    * the first placed point's): a survey on the 28N/29N boundary records its
    * soundings in both, and a map that subtracted the two sets of eastings drew
-   * 400 m of ground 660 km wide. */
+   * 400 m of ground 660 km wide.
+   * @param {Rec[]|null} results what assessSiting returns
+   * @param {number|null} [zone]
+   * @returns {MapPoint[]}
+   */
   function suitabilityMapPoints(results, zone) {
     var points = [], target = (zone === undefined) ? null : zone;
     (results || []).forEach(function (result) {
@@ -17741,10 +19445,13 @@
     return points;
   }
 
-  /* The valued points in rank order: what maps.py reads the recommended
+  /** The valued points in rank order: what maps.py reads the recommended
    * target and the runner-up off. A point carrying no rank was never ranked
    * and is left out rather than sorted to the front, which is what
-   * `if p.rank is not None` does in the Python. */
+   * `if p.rank is not None` does in the Python.
+   * @param {MapPoint[]|null} points
+   * @returns {MapPoint[]}
+   */
   function rankedMapPoints(points) {
     return (points || []).filter(function (p) {
       return p && p.value !== null && p.value !== undefined &&
@@ -17758,7 +19465,7 @@
     });
   }
 
-  /* maps.py _suitability_ranking: what the ranking lets a suitability map say
+  /** maps.py _suitability_ranking: what the ranking lets a suitability map say
    * about which peg to drill.
    *
    * `tie` is the ranking's own verdict on its two leaders, rankingTie() on
@@ -17773,7 +19480,11 @@
    * recommended point with no recorded position is not on the map at all:
    * the caption used to promise a star over a map with no star on it, naming
    * the runner-up as the target. Left unset, every ranked point is taken to
-   * be on the map. */
+   * be on the map.
+   * @param {MapPoint[]|null} points
+   * @param {boolean|null} [tie] what rankingTie decided; decided here when not given
+   * @param {string[]|null} [ranking] every scored sounding's label in rank order
+   */
   function suitabilityRanking(points, tie, ranking) {
     var ranked = rankedMapPoints(points);
     var order = ranking || ranked.map(function (p) { return p.label; });
@@ -17796,8 +19507,12 @@
     };
   }
 
-  /* maps.py unplaced_text: the sentence a map owes its reader for a leading
-   * point it cannot show. */
+  /** maps.py unplaced_text: the sentence a map owes its reader for a leading
+   * point it cannot show.
+   * @param {string[]} unplaced
+   * @param {string} [where]
+   * @returns {string}
+   */
   function unplacedText(unplaced, where) {
     var on = where || 'this map';
     if (!unplaced.length) return '';
@@ -17808,8 +19523,11 @@
       on + '.';
   }
 
-  /* maps.py suitability_map_note: the line across the top of a suitability
-   * map that has no star. */
+  /** maps.py suitability_map_note: the line across the top of a suitability
+   * map that has no star.
+   * @param {Rec} verdict what suitabilityRanking returns
+   * @returns {string}
+   */
   function suitabilityMapNote(verdict) {
     if (verdict.tie) {
       var note = verdict.leaders[0] + ' and ' + verdict.leaders[1] + ' are ' +
@@ -17825,12 +19543,17 @@
     return '';
   }
 
-  /* maps.py suitability_label: what a suitability map writes beside a point.
+  /** maps.py suitability_label: what a suitability map writes beside a point.
    * The rank and the weighted score, and the grade named as the grade of the
    * suitability ("38 - Very good" paired a weighted 38 with the grade of a
    * suitability of 75); the grid coordinates too at the recommended target.
    * `compact` is the label of a map too dense for every label in full: the
-   * grade line gives way, except at the recommended target. */
+   * grade line gives way, except at the recommended target.
+   * @param {MapPoint} p
+   * @param {boolean} [recommended]
+   * @param {boolean} [compact]
+   * @returns {string}
+   */
   function suitabilityLabel(p, recommended, compact) {
     var text = p.label;
     if (p.value !== null && p.value !== undefined) {
@@ -17844,7 +19567,7 @@
     return text;
   }
 
-  /* maps.py suitability_map_state: what a suitability map of these points
+  /** maps.py suitability_map_state: what a suitability map of these points
    * will show, for its caption.
    *
    * A caption used to promise "the interpolated surface is blanked outside
@@ -17852,7 +19575,11 @@
    * on it at all, and "the star is the recommended target" over a map whose
    * recommended point had no position and so no star. The rules are the
    * figure's, so the report asks for them here instead of restating them and
-   * drifting. `tie` and `ranking` are the ones the map is drawn with. */
+   * drifting. `tie` and `ranking` are the ones the map is drawn with.
+   * @param {MapPoint[]|null} points
+   * @param {boolean|null} [tie]
+   * @param {string[]|null} [ranking]
+   */
   function suitabilityMapState(points, tie, ranking) {
     var valued = (points || []).filter(function (p) {
       return p && p.value !== null && p.value !== undefined;
@@ -17871,7 +19598,7 @@
     'where the map has room, with the grade of its suitability before the ' +
     'confidence discount, as in the table above.';
 
-  /* reporting/geophysical.py _suitability_block's caption.
+  /** reporting/geophysical.py _suitability_block's caption.
    *
    * Each clause is a claim about the figure underneath it: that a star marks
    * the target, or that no star does because the two best points cannot be
@@ -17879,7 +19606,10 @@
    * is interpolated ground, or that there is no colour between them at all.
    * Written from anything but the state the figure was drawn from, a caption
    * promises a reader something the figure does not show, and the reader
-   * believes the caption. */
+   * believes the caption.
+   * @param {Rec} state what suitabilityMapState returns
+   * @returns {string}
+   */
   function suitabilityMapCaption(state) {
     var caption = SUITABILITY_MAP_CAPTION;
     var unplaced = state.unplaced || [];
@@ -17904,7 +19634,7 @@
     return caption;
   }
 
-  /* maps.py suitability_map without the drawing, plus the caption the report
+  /** maps.py suitability_map without the drawing, plus the caption the report
    * earns from it: the scored pegs, the interpolated surface where the survey
    * supports one, the star on the recommended target and the words that go
    * under the figure.
@@ -17922,7 +19652,10 @@
    * has to score them here, and whose ranking_tie_points decides the tie, as
    * rankingTie() decides it for the text: the map used to pin its own three
    * points on rounded values. `zone` is the zone every point is drawn in,
-   * by default the first positioned sounding's. */
+   * by default the first positioned sounding's.
+   * @param {Interpretation[]|null} interpretations
+   * @param {Rec} [options] results, ves, zone, gridN
+   */
   function suitabilityMapData(interpretations, options) {
     var opts = options || {};
     var ves = opts.ves || defaultConfig().ves;
@@ -18032,32 +19765,43 @@
   var GROUND_PROFILE_CAPTION = 'Ground surface along the survey traverse, ' +
     'from the elevation recorded at each sounding.';
 
-  /* reporting/geophysical.py _ground_profile_figure's filter: the soundings
+  /** reporting/geophysical.py _ground_profile_figure's filter: the soundings
    * that carry a position and a recorded ground level. A position without a
    * level has no height to draw and a level without a position has no
-   * chainage to draw it at. */
+   * chainage to draw it at.
+   * @param {Interpretation[]|null} interpretations
+   * @returns {Interpretation[]}
+   */
   function levelledSoundings(interpretations) {
     return positionedSoundings(interpretations).filter(function (item) {
       return item.site_elevation_m !== null && item.site_elevation_m !== undefined;
     });
   }
 
-  /* ves/plots.py model_depth_m: the depth a figure of one sounding's model is
+  /** ves/plots.py model_depth_m: the depth a figure of one sounding's model is
    * drawn to - the depth of investigation, or deeper where a fitted interface
    * lies below it, because the model shown has to be the model fitted. The
    * curve's model panel ran past the depth of investigation for that reason
    * while the layer column stopped there, so a basement at 61 m under a 50 m
    * depth of investigation was on one figure and not the other, both
    * captioned as drawn to 50 m; the browser's panel used a third rule. One
-   * rule now serves every figure of a sounding in both engines. */
+   * rule now serves every figure of a sounding in both engines.
+   * @param {LayeredModel|null} model
+   * @param {number|null} [investigationDepthM]
+   * @returns {number}
+   */
   function modelDepthM(model, investigationDepthM) {
     var tops = (model && model.depths_top) || [];
     var deepest = model && model.n_layers > 1 ? Number(tops[tops.length - 1]) : 0.0;
     return Math.max(Number(investigationDepthM) || 0.0, deepest * 1.2 + 2.0);
   }
 
-  /* reporting/geophysical.py _drawn_depth_text: how deep a figure of one
-   * sounding's model is drawn, for its caption. */
+  /** reporting/geophysical.py _drawn_depth_text: how deep a figure of one
+   * sounding's model is drawn, for its caption.
+   * @param {LayeredModel|null} model
+   * @param {number|null} [investigationDepthM]
+   * @returns {string}
+   */
   function drawnDepthText(model, investigationDepthM) {
     var doi = Number(investigationDepthM) || 0.0;
     var drawn = modelDepthM(model, doi);
@@ -18067,12 +19811,19 @@
       ' m), below which the readings do not resolve the model';
   }
 
-  /* reporting/geophysical.py _study_area_caption: the study-area caption,
+  /** reporting/geophysical.py _study_area_caption: the study-area caption,
    * worded from what was overlaid on the map. It used to promise the survey
    * points and a star on the recommended point whatever the map held: over a
    * map with no sounding on it, over a recommended point with no recorded
    * position, and over two points the ranking calls indistinguishable, one of
-   * which carried the star. `marked` are the soundings drawn on the map. */
+   * which carried the star. `marked` are the soundings drawn on the map.
+   * @param {string} community
+   * @param {string[]} marked the soundings drawn on the map
+   * @param {string} preferred the recommended point, or ""
+   * @param {string[]} leaders
+   * @param {boolean} tie
+   * @returns {string}
+   */
   function studyAreaCaption(community, marked, preferred, leaders, tie) {
     if (!marked.length) {
       return 'Study area at ' + community + ', with its location in Sierra Leone ' +
@@ -18096,7 +19847,7 @@
     return caption;
   }
 
-  /* subsurface.py ground_profile_state, and mapping/terrain.py
+  /** subsurface.py ground_profile_state, and mapping/terrain.py
    * plot_ground_profile as reporting/geophysical.py _ground_profile_figure
    * calls it: the land surface along the traverse, from the survey's own
    * levels, against chainage, under the rules the section follows.
@@ -18113,7 +19864,9 @@
    * levelled ones used to be handed over, so a station nobody levelled
    * vanished and the "N of M stations recorded no elevation" note could never
    * be printed. `runs` are the stations the line may join: a gap wider than
-   * the reach starts a new run, and no line or fill crosses it. */
+   * the reach starts a new run, and no line or fill crosses it.
+   * @param {Interpretation[]|null} interpretations
+   */
   function groundProfileData(interpretations) {
     var all = interpretations || [];
     if (levelledSoundings(all).length < 2) return null;
