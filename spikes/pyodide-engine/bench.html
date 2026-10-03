@@ -1,0 +1,181 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Pyodide engine spike</title>
+<!-- The page measure.mjs drives. It loads the app's own reader and engine
+     from /app/ (docs/), reads the Rokel sample as the app does, and offers
+     the driver a few calls on window.bench; it draws nothing. -->
+<script src="/app/js/support.js"></script>
+<script src="/app/js/gwt-data.js"></script>
+<script src="/app/js/gwt-samples.js"></script>
+<script src="/app/js/gwt-core.js"></script>
+<script src="/spike/pyodide-worker.js"></script>
+<script>
+'use strict';
+(function () {
+  var C = GWT.core, S = GWT.support, D = GWT.data;
+
+  /* The Rokel soundings, read from the sample workbook by the app's reader */
+  async function soundings() {
+    var sheets = await S.readXlsx(S.base64ToBytes(D.samples.rokel.files.ves.b64));
+    return C.readVesSheets(sheets, 'rokel_ves.xlsx');
+  }
+
+  /* The JavaScript engine's answer in the shape engine.py gives */
+  function jsShape(sounding, inv, i, msInvert, msInterpret) {
+    return {
+      id: sounding.sounding_id,
+      model: { rho: inv.model.resistivities, h: inv.model.thicknesses,
+        err: inv.fit_error_percent, iterations: inv.n_iterations,
+        converged: inv.converged, trials: inv.trials },
+      interpretation: { water_zones: i.water_zones,
+        max_drilling_depth_m: i.max_drilling_depth_m,
+        investigation_depth_m: i.investigation_depth_m,
+        max_spacing_m: i.max_spacing_m,
+        basement_not_resolved: i.basement_not_resolved,
+        confidence: i.confidence, fit_quality: i.fit_quality,
+        flags: i.flags.map(function (f) { return [f.level, f.code, f.message]; }),
+        narrative: i.narrative },
+      ms: { invert: msInvert, interpret: msInterpret },
+    };
+  }
+
+  /* Start a worker and wait for it to say it is ready: the start time is
+   * from new Worker() to that message, on this page's clock. */
+  function startWorker(url, name) {
+    return new Promise(function (resolve, reject) {
+      var t0 = performance.now();
+      var w = new Worker(url, { name: name });
+      w.onmessage = function (e) {
+        if (e.data && e.data.ready) {
+          w.onmessage = null;
+          resolve({ worker: w, ms: performance.now() - t0, ready: e.data });
+        } else if (e.data && e.data.failed) {
+          reject(new Error(e.data.failed));
+        }
+      };
+      w.onerror = function (e) { reject(new Error('worker error: ' + e.message)); };
+    });
+  }
+
+  var nextId = 1;
+  function ask(w, payload) {
+    return new Promise(function (resolve, reject) {
+      var id = nextId++;
+      var t0 = performance.now();
+      w.onmessage = function (e) {
+        var d = e.data || {};
+        if (d.id !== id || d.progress) return;   // an old answer, or progress
+        if (d.error) { reject(new Error(d.error.message)); return; }
+        resolve({ result: d.result, ran: d.ran[1] - d.ran[0],
+          roundtrip: performance.now() - t0, heapBytes: d.heapBytes });
+      };
+      w.postMessage({ id: id, type: 'invert', payload: payload });
+    });
+  }
+
+  var workers = {};
+
+  window.bench = {
+    soundings: soundings,
+
+    /* which: 'js' (docs/js/gwt-worker.js), 'py' (pyodide-worker.js), or
+     * 'py-numpy' (the same, started with numpy alone; it cannot invert) */
+    startWorker: async function (which) {
+      var url = which === 'js' ? '/app/js/gwt-worker.js' : '/spike/pyodide-worker.js';
+      var started = await startWorker(url, which === 'py-numpy' ? 'numpy-only' : which);
+      workers[which] = started.worker;
+      return { ms: started.ms, phases: started.ready.phases || null,
+        versions: started.ready.versions || null,
+        heapBytes: started.ready.heapBytes || null };
+    },
+
+    /* Both soundings, in the worker, one after the other: the task's own time
+     * (what the worker spent computing) and the round trip. The JavaScript
+     * worker returns the model; the page interprets it, as the app does. */
+    invertInWorker: async function (which) {
+      var list = await soundings(), cfg = C.defaultConfig(), out = [];
+      for (var k = 0; k < list.length; k++) {
+        var r = await ask(workers[which], { sounding: list[k], config: cfg });
+        var result = r.result;
+        if (which === 'js') {
+          var t = performance.now();
+          var interp = C.interpretModel(list[k], result.model, cfg);
+          result = jsShape(list[k], result, interp, r.ran, performance.now() - t);
+        }
+        out.push({ id: list[k].sounding_id, ran: r.ran, roundtrip: r.roundtrip,
+          heapBytes: r.heapBytes || null, result: result });
+      }
+      return out;
+    },
+
+    stopWorker: function (which) {
+      if (workers[which]) workers[which].terminate();
+      delete workers[which];
+    },
+
+    /* The same work on this page's own thread, for the CPU-throttled runs */
+    jsOnPage: async function () {
+      var list = await soundings(), cfg = C.defaultConfig(), out = [];
+      for (var k = 0; k < list.length; k++) {
+        var t0 = performance.now();
+        var inv = C.invertSounding(list[k], { config: cfg });
+        var t1 = performance.now();
+        var interp = C.interpretModel(list[k], inv.model, cfg);
+        var t2 = performance.now();
+        out.push({ id: list[k].sounding_id, ran: t2 - t0,
+          result: jsShape(list[k], inv, interp, t1 - t0, t2 - t1) });
+      }
+      return out;
+    },
+
+    pyStartOnPage: async function () {
+      var t0 = performance.now();
+      window.__py = await PyEngine.start();
+      return { ms: performance.now() - t0, phases: window.__py.phases,
+        heapBytes: window.__py.heapBytes() };
+    },
+
+    pyOnPage: async function () {
+      var list = await soundings(), cfg = C.defaultConfig(), out = [];
+      for (var k = 0; k < list.length; k++) {
+        var t0 = performance.now();
+        var result = window.__py.invert({ sounding: list[k], config: cfg });
+        out.push({ id: list[k].sounding_id, ran: performance.now() - t0,
+          heapBytes: window.__py.heapBytes(), result: result });
+      }
+      return out;
+    },
+
+    /* What the service worker holds, by stored body size */
+    cachedBytes: async function () {
+      var cache = await caches.open('pyodide-spike-v1');
+      var keys = await cache.keys(), total = 0, files = [];
+      for (var k = 0; k < keys.length; k++) {
+        var res = await cache.match(keys[k]);
+        var n = (await res.arrayBuffer()).byteLength;
+        total += n;
+        files.push([new URL(keys[k].url).pathname, n]);
+      }
+      return { total: total, files: files };
+    },
+
+    memory: async function () {
+      if (!window.crossOriginIsolated || !performance.measureUserAgentSpecificMemory) {
+        return null;
+      }
+      var m;
+      try {
+        m = await performance.measureUserAgentSpecificMemory();
+      } catch (e) {
+        return { unavailable: String(e.message) };
+      }
+      return { bytes: m.bytes, breakdown: m.breakdown.filter(function (b) {
+        return b.bytes > 0;
+      }).map(function (b) {
+        return { bytes: b.bytes, types: b.types,
+          scope: b.attribution.map(function (a) { return a.scope + ' ' + a.url; }) };
+      }) };
+    },
+  };
+}());
+</script>
