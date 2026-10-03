@@ -3126,6 +3126,31 @@ await withPage(async (page, base, consoleErrors) => {
   check('ves co-pilot: opening a sample project keeps the sounding being taken',
     leaving.kept === 18 && leaving.rows === 18 && leaving.site !== '', JSON.stringify(leaving));
 
+  // With no worker the fit would hold the page after every reading, so it
+  // waits to be asked; with the worker back it starts by itself again.
+  const onPage = await page.evaluate(async () => {
+    const V = window.GWT.vesCopilot, app = window.GWT.app, E = window.GWT.engine;
+    E.forcePage(true);
+    try {
+      await app.goto('design');
+      /* the preview of these readings is done; forget it, as a new reading would */
+      V.cancelPreview('idle');
+      await app.goto('vescopilot');
+      return { status: V.preview().status, fits: E.history().length,
+        text: document.querySelector('#page-host [data-vc="preview-status"]')?.textContent || '',
+        button: Array.from(document.querySelectorAll('#page-host button'))
+          .some((b) => b.textContent.trim() === 'Run the preview now') };
+    } finally {
+      E.forcePage(false);
+      await app.goto('design');
+      await app.goto('vescopilot');
+    }
+  });
+  await driveCopilot();
+  check('ves co-pilot: with no worker the preview waits to be asked',
+    onPage.status === 'manual' && onPage.button && /no background worker/.test(onPage.text),
+    JSON.stringify(onPage));
+
   // The workbook, from the download button, read by the browser's parser.
   const written = await page.evaluate(async (played) => {
     const S = window.GWT.support, C = window.GWT.core;

@@ -483,6 +483,18 @@
     /* the same readings again - the page drawn once more - leave the
      * preview as it is: waiting, running, done, failed or stopped */
     if (key === preview.key && preview.status !== 'idle') return;
+    /* With no worker - a copy opened from file:// - the fit runs on the page
+     * and holds it for some seconds, which after every reading would freeze
+     * the form the crew is typing into. There it runs only when asked. */
+    if (GWT.engine && GWT.engine.mode() === 'page') {
+      clearTimeout(preview.timer);
+      preview.run += 1;
+      GWT.engine.cancel('previewInvert');
+      preview.status = 'manual';
+      preview.key = key;
+      drawPreview();
+      return;
+    }
     /* a fit of the readings before this one is stopped now, not when the
      * next starts: its answer would be for a curve that has moved on */
     clearTimeout(preview.timer);
@@ -901,6 +913,14 @@
       nodes.push(el('div.btn-row', S.button('Stop the preview', function () {
         cancelPreview('stopped');
       }, { variant: 'ghost' })));
+    } else if (status === 'manual') {
+      nodes.push(el('p', { 'data-vc': 'preview-status' }, 'This copy of the app ' +
+        'has no background worker (' + GWT.engine.unavailable() + '), so the fit ' +
+        'would hold the page for some seconds after every reading. Run it when ' +
+        'there is a pause.'));
+      nodes.push(el('div.btn-row', S.button('Run the preview now', function () {
+        runPreview(load());
+      })));
     } else if (status === 'stopped') {
       nodes.push(el('p', { 'data-vc': 'preview-status' }, 'Preview stopped. The ' +
         'next reading starts it again.'));

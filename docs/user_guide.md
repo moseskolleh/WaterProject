@@ -95,8 +95,11 @@ model to the readings so far, in the background, and draws it on the
 curve. It says whether basement is in view within the depth the line
 resolves so far, so the team can extend the line while it is still
 laid out. It is a preview, refitted after each reading; *Stop the
-preview* stops it. The finished workbook is interpreted on the
-Geophysics page.
+preview* stops it, and so does leaving the page. A copy of the app
+opened straight from a file (`file://`) has no background worker, and
+the fit would hold the page for some seconds after every reading, so
+there it runs only when *Run the preview now* is pressed. The finished
+workbook is interpreted on the Geophysics page.
 
 **The workbook.** *Take the GPS position* (at the centre peg; the
 browser asks permission the first time) and *Download the workbook*. It
