@@ -29,14 +29,31 @@ def known_boreholes() -> list[str]:
     return refs
 
 
+#: What was typed into either page's box, kept for the session. Streamlit
+#: forgets a widget's value when its page is left, so without this the
+#: boreholes typed on one page were gone on the next; the browser app keeps
+#: them the same way, for the session and not in the project.
+DRAFT_KEY = "fieldkit_draft"
+
+
+def _keep_draft(widget_key: str) -> None:
+    st.session_state[DRAFT_KEY] = st.session_state[widget_key]
+
+
 def field_kit_panel(key: str, known: list[str] | None = None) -> None:
     """The kit's description, the boreholes to print for, and the button."""
     st.subheader("Field kit")
     st.caption(phrase("field_kit.about"))
+    widget_key = f"{key}_fieldkit_boreholes"
+    draft = st.session_state.get(DRAFT_KEY)
+    # set on every run, not passed as the widget's default: Streamlit keeps a
+    # keyed widget's first value, so a test loaded on this page would not
+    # have offered its borehole until the page was opened again
+    st.session_state[widget_key] = draft if draft is not None else "\n".join(
+        known if known is not None else known_boreholes())
     names = st.text_area(
         "Boreholes (one identifier a line, as the sheet should print it)",
-        value="\n".join(known if known is not None else known_boreholes()),
-        key=f"{key}_fieldkit_boreholes",
+        key=widget_key, on_change=_keep_draft, args=(widget_key,),
     )
     if st.button("Field kit (.docx)", key=f"{key}_fieldkit_build"):
         folder = workdir() / "field_kit"
