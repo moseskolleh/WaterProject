@@ -223,10 +223,11 @@ try {
     short: document.querySelector('[data-cp="plan-short"]')?.textContent || '',
   }));
   /* 5 inch casing, 1.25 inch riser, 1 m2/day through Logan's 1.22:
-   * 693 x (0.127^2 - 0.03175^2) x 1.22 x 24 = 306.8 min, past 240 */
+   * 693 x (0.127^2 - 0.03175^2) x 1.22 x 24 = 306.8 min, past 240; 13:06:48
+   * is not stopped before 13:07 */
   check('before pumping: the form writes the session', plan.swl === 9.44, String(plan.swl));
-  check('before pumping: Schafer\'s period for the cautious range sets "do not stop before 13:06"',
-    plan.text.includes('do not stop before 13:06') && plan.text.includes('casing-storage'),
+  check('before pumping: Schafer\'s period for the cautious range sets "do not stop before 13:07"',
+    plan.text.includes('do not stop before 13:07') && plan.text.includes('casing-storage'),
     plan.text);
   check('before pumping: a 30-minute plan is called too short', /shorter than that/.test(plan.short),
     plan.short);
@@ -271,6 +272,12 @@ try {
   const first = await page.evaluate(() => window.GWT.pumpCopilot.session().readings[0]);
   check('reading: taken 3 s after the 1-minute beep, written at minute 1',
     first && first.min === 1 && first.level === 13.1 && first.scheduled, JSON.stringify(first));
+  /* At minute 1 the drawdown says 13 minutes of casing storage, a floor that
+   * grows to 117 by minute 30: it must not pull the advice before the
+   * cautious 13:07 the crew was given before the pump started. */
+  const minute1 = (await warnings()).find((w) => w[0] === 'do_not_stop');
+  check('advice: the first reading does not bring "do not stop before" forward',
+    !!minute1 && /^Warning: Do not stop before 13:07/.test(minute1[1]), JSON.stringify(minute1));
 
   // the bucket: 20 litres, three timings, averaged into the rate
   await page.fill('input[data-cp="bucket-timings"]', '24.5, 24.6, 24.7');
@@ -289,12 +296,14 @@ try {
   await redraw();
   const at30 = await warnings();
   const doNotStop = at30.find((w) => w[0] === 'do_not_stop');
-  check('Dr Timbo at 30 minutes: "do not stop"', !!doNotStop && /^Do not stop before 12:00/.test(doNotStop[1]),
+  check('Dr Timbo at 30 minutes: "do not stop"', !!doNotStop && /^Warning: Do not stop before 13:07/.test(doNotStop[1]),
     JSON.stringify(at30));
   const storage = at30.find((w) => w[0] === 'casing_storage');
-  /* 2.93 m3/h over 32.82 m: 0.0892 m3/h per m, 117 minutes of storage */
-  check('Dr Timbo at 30 minutes: still inside casing storage, until about 09:57',
-    !!storage && storage[1].includes('until about 09:57'), JSON.stringify(storage));
+  /* 2.93 m3/h over 32.82 m: 0.0892 m3/h per m, at least 117.5 minutes of
+   * storage, and the cautious 306.8 until the readings pass that */
+  check('Dr Timbo at 30 minutes: still inside casing storage, at least until 09:58',
+    !!storage && storage[1].includes('until about 13:07') &&
+    storage[1].includes('at least 1 h 58 min, ending about 09:58'), JSON.stringify(storage));
   check('Dr Timbo at 30 minutes: no intake or drift warning',
     !codes(at30).includes('level_at_intake') && !codes(at30).includes('discharge_drift'),
     JSON.stringify(codes(at30)));
@@ -319,7 +328,7 @@ try {
   // stopping early asks first
   await click('button[data-cp="stop"]');
   const asked = await page.evaluate(() => document.querySelector('.modal h3')?.textContent || '');
-  check('stop: stopping before the time asks first', /^Stop before 12:00/.test(asked), asked);
+  check('stop: stopping before the time asks first', /^Stop before 13:07/.test(asked), asked);
   await click('.modal button:has-text("Stop anyway")');
 
   /* ------------------------------------------------------ recovery */
@@ -484,7 +493,8 @@ try {
   check('Kuntolo: one step explained is not enough while two are not',
     stillBlocked.length === 2 && /Step 2/.test(stillBlocked[0]), JSON.stringify(stillBlocked));
   await page.evaluate(() => {
-    window.GWT.pumpCopilot.setNotMeasured(1, 'No bucket on site; the flow meter was not fitted.');
+    /* a reason that names a rate is still a reason, not a measured rate */
+    window.GWT.pumpCopilot.setNotMeasured(1, 'Bucket overflowed; a discharge of 1.2 m3/h by eye.');
     window.GWT.pumpCopilot.setNotMeasured(2, 'No bucket on site; the flow meter was not fitted.');
   });
   await redraw();
@@ -496,6 +506,7 @@ try {
   check('Kuntolo: read back as three steps with no discharge, and flagged so',
     kb.type === 'step+recovery' && kb.steps.length === 3 &&
     kb.steps.every((s) => s.q === null) && kb.flags.includes('missing_discharge') &&
+    !kb.flags.includes('discharge_from_text') && !kb.flags.includes('discharge_ambiguous') &&
     kb.flags.includes('level_below_pump') &&
     JSON.stringify(kb.steps.map((s) => s.t)) ===
       JSON.stringify(KUNTOLO_STEPS.map((st) => st.map((r) => r[0]))),
@@ -524,6 +535,14 @@ try {
     m = await page.evaluate((x) => window.GWT.pumpCopilot.nextSlot(x), m);
     await at(D0 + m * MIN);
     await page.evaluate((l) => window.GWT.pumpCopilot.record(l), Math.round(synthetic(m) * 100) / 100);
+    if (m === 40) {
+      /* five minutes before the 50-minute reading is not the 50-minute reading */
+      await at(D0 + 45 * MIN);
+      const r45 = await page.evaluate((l) => window.GWT.pumpCopilot.record(l),
+        Math.round(synthetic(45) * 100) / 100);
+      check('reading: one taken at 45 minutes is written at 45, not at the 50 to come',
+        r45.min === 45 && !r45.scheduled, JSON.stringify(r45));
+    }
     if (m === 20) {
       await page.evaluate(() => window.GWT.pumpCopilot.addDischarge(5.4, 'flow meter'));
       await redraw();
@@ -544,7 +563,23 @@ try {
   }));
   check('estimate: after storage, a steady T says the test can stop at the planned time',
     stable.state === 'fit:stable' && stable.text.includes('T has changed less than 10 percent over ' +
-      'the last log cycle. The test can stop at the planned time.'), JSON.stringify(stable));
+      'the last log cycle. The test can stop at the planned time, 18:00.'), JSON.stringify(stable));
+  /* the same settled line on a test planned shorter than the analysis's
+   * minimum: a steady T is not a long enough test */
+  const short = await page.evaluate(async () => {
+    const P = window.GWT.pumpCopilot;
+    const est = await P.liveEstimate(P.session(), window.__t);
+    return P.estimateNote(Object.assign({}, est, { plannedStop: est.stopBefore - 60 * 60000 }));
+  });
+  check('estimate: a settled T on a test planned too short does not say it can stop',
+    !short.includes('can stop at the planned time') && /do not stop before/.test(short), short);
+  /* the clock set back during the test is said, before a reading is written wrong */
+  const setBack = await page.evaluate(() => {
+    const P = window.GWT.pumpCopilot;
+    return P.evaluate(P.session(), window.__t - 30 * 60000).warnings.map((w) => w.code);
+  });
+  check('clock: a device clock set back during the test is warned of',
+    setBack.includes('clock_back'), JSON.stringify(setBack));
   check('estimate: the Cooper-Jacob line is the engine\'s, worked out in the worker',
     stable.modes.length > 0 && stable.modes.every((x) => x === 'worker'), JSON.stringify(stable.modes));
   /* the line is fitted at the mean of the step's three rates, 5.0, 5.4 and
@@ -553,6 +588,22 @@ try {
   const expected = 50 * (15.4 / 3) / 5;
   check('estimate: the synthetic aquifer\'s transmissivity comes back within 2 percent',
     Math.abs(T - expected) / expected < 0.02, `${T} against ${expected}`);
+
+  /* ------------------------------------- a pump started before the page */
+  const late = await page.evaluate(() => {
+    const P = window.GWT.pumpCopilot;
+    P.discard();
+    window.__t += 24 * 3600000;
+    ['staticM', 'pumpSettingM', 'plannedRate', 'alreadyRunMin'].forEach((k, i) =>
+      P.setSetup(k, [5, 40, 2, 10][i]));
+    P.start();
+    const s = P.session();
+    return { started: s.startedAt, now: window.__t, sched: P.scheduleAt(s, window.__t) };
+  });
+  check('start: a pump already running 10 minutes is on the sheet\'s clock from when it started',
+    late.started === late.now - 10 * MIN && Math.abs(late.sched.elapsed - 10) < 1e-9 &&
+    late.sched.next === 12, JSON.stringify(late));
+  await page.evaluate(() => window.GWT.pumpCopilot.discard());
 
   /* -------------------------------------------------------- offline */
   const sw = await readFile(new URL('../../docs/sw.js', import.meta.url), 'utf-8');

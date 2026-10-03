@@ -80,20 +80,24 @@ standing in the casing controls the drawdown (Schafer's casing-storage
 rule), for a cautious transmissivity range of 1 to 10 m2/day that you
 can change. Until that period is over, the level tells you about the
 casing, not the aquifer. The page then says when the test can stop at
-the earliest: "If the pump starts now, do not stop before 13:06." A
+the earliest: "If the pump starts now, do not stop before 13:07." A
 30-minute test on a 5-inch casing in weathered basement is usually all
 casing storage, which is what happened at Dr Timbo's. Press **Record GPS
 position** to put the phone's position in the sheet; the phone asks for
 permission first.
 
-**While pumping.** Press **Start the pump** at the moment it starts.
+**While pumping.** Press **Start the pump** at the moment it starts. If
+the pump was started before you opened the page, enter how many minutes
+it has already run before you press it, so the readings are timed from
+the real start.
 The page counts down to each reading and beeps when one is due, on this
 schedule: 0.5, 1, 1.5, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40,
 50, 60, 75, 90 and 120 minutes, then every 30 minutes. Type the depth
-to water and press **Record level**. A reading typed within a few
-seconds of its time is written at the scheduled minute, as you would
-write it on paper; one typed later is written at the minute it was
-actually taken. Drawdown is plotted against log time as you go, with
+to water and press **Record level**. A reading typed from 6 seconds
+before its time to a fiftieth of the time after it (6 seconds early in
+the test, 2.4 minutes at two hours) is written at the scheduled minute,
+as you would write it on paper; any other is written at the minute it
+was actually taken. Drawdown is plotted against log time as you go, with
 the casing-storage period shaded and the pump intake drawn across.
 
 The page warns you:
@@ -104,13 +108,24 @@ The page warns you:
 - when a discharge measurement differs by more than 5 percent from the
   first one of the same step: set the valve back and measure again;
 - while the test is still inside casing storage, and until the time it
-  may stop. **Stop the pump** asks again if you press it early.
+  may stop. **Stop the pump** asks again if you press it early. Once
+  levels are being read, the drawdown gives its own casing-storage
+  period, but that period keeps growing while the level is falling, so
+  the cautious figure from before pumping stands until the readings have
+  passed the measured one;
+- when the phone's clock is set back during the test, since every
+  minute is worked out from it.
+
+Each warning starts with how urgent it is in words (*Act now*,
+*Warning* or *Note*), not only in its colour.
 
 Once the readings are past casing storage, the page fits the same
 Cooper-Jacob line the analysis will, and says how much the
 transmissivity has moved over the last log cycle. "T has changed less
 than 10 percent over the last log cycle. The test can stop at the
-planned time." means the test has done its job.
+planned time" means the test has done its job. If the planned time is
+earlier than the shortest test the analysis can give a yield from, the
+page says so and gives the later time instead.
 
 **Discharge.** Use the bucket and stopwatch: enter the bucket volume,
 time three fillings (with the watch on the page, or type the seconds)
@@ -139,7 +154,9 @@ standard pumping test sheet (section 3), with the phone's clock at the
 start and stop of pumping and the GPS position in the header, and a
 second sheet logging every reading, timing and event. Upload it like
 any other sheet, or press **Use it as this project's pumping test** to
-analyse it at once. Save the project file as well (section 11).
+analyse it at once; that also sets the project's casing and riser
+diameters to the ones entered here, which the readers do not take from
+the sheet. Save the project file as well (section 11).
 
 ## 4. Drilling log
 

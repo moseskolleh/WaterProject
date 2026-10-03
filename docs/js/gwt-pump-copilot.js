@@ -94,6 +94,12 @@
     return pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
 
+  /* A time not to stop before, rounded up to the minute: 13:06:48 is "not
+   * before 13:07", since stopping at 13:06 would be short. */
+  function laterClockText(ms) {
+    return clockText(Math.ceil(ms / 60000) * 60000);
+  }
+
   function dateText(ms) {
     var d = new Date(ms);
     return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
@@ -159,11 +165,15 @@
   }
 
   /* How far from a scheduled minute a reading may be and still be written
-   * as that minute, as the crew writes it on a paper sheet: 6 seconds early
-   * on, a tenth of the time later. A reading further off is written at the
-   * minute it was actually taken. */
-  function slotTolerance(slot) {
-    return Math.max(0.1, 0.1 * slot);
+   * as that minute, as the crew writes it on a paper sheet: up to 6 seconds
+   * before it, and up to 6 seconds or a fiftieth of the time after it,
+   * whichever is longer (2.4 minutes at two hours). A reading further off is
+   * written at the minute it was actually taken, which the device knows: a
+   * tenth either side, as this once allowed, wrote a level read at 45
+   * minutes as the 50-minute one. */
+  var EARLY_TOLERANCE_MIN = 0.1;
+  function slotTolerance(slot, early) {
+    return early ? EARLY_TOLERANCE_MIN : Math.max(EARLY_TOLERANCE_MIN, 0.02 * slot);
   }
 
   /* -------------------------------------------------------------- session */
@@ -198,7 +208,7 @@
         casingIn: cfg.casing_diameter_in, riserIn: cfg.riser_diameter_in,
         pumpSettingM: null, depthM: null, staticM: null, plannedRate: null,
         plannedMin: cfg.min_constant_test_min, stepLengthMin: cfg.min_step_length_min,
-        steps: 3, tLow: T_LOW, tHigh: T_HIGH,
+        steps: 3, tLow: T_LOW, tHigh: T_HIGH, alreadyRunMin: null,
       },
       startedAt: null, stoppedAt: null,
       steps: [], readings: [], gps: null, events: [], savedAt: null,
@@ -287,7 +297,7 @@
       return v !== null && v > sched.last + 1e-9;
     });
     for (var i = 0; i < candidates.length; i++) {
-      if (Math.abs(e - candidates[i]) <= slotTolerance(candidates[i])) {
+      if (Math.abs(e - candidates[i]) <= slotTolerance(candidates[i], e < candidates[i])) {
         return { min: candidates[i], scheduled: true };
       }
     }
@@ -368,7 +378,24 @@
     if (!(sLast > 0) || !(q > 0)) return null;
     var tc = C.casingStorageMin(q / sLast, cfg);
     return tc === null ? null : { min: tc, rate: q, measured: isNum(measured),
-      drawdown: sLast };
+      drawdown: sLast, lastMin: series.time[series.time.length - 1] };
+  }
+
+  /* The casing-storage period the advice rests on. While the readings are
+   * still inside the period the drawdown so far gives, that period is only a
+   * floor: the level is still falling, so the specific capacity is still
+   * dropping and the period still growing (at minute 1 of the Dr Timbo test
+   * it said 13 minutes, at minute 30 it said 117). Taking it alone moved
+   * "do not stop before" earlier than the cautious figure the crew was given
+   * before the pump started, the moment the first level was typed in. So
+   * until the readings have passed it - or step 1, which the fits are made
+   * on, is over - the advice keeps the cautious figure as well, and takes
+   * the longer of the two. */
+  function adviceStorage(s, live, cautious) {
+    if (!live) return cautious;
+    var settled = live.lastMin > live.min || s.steps.length > 1;
+    if (settled || !isNum(cautious)) return live.min;
+    return Math.max(live.min, cautious);
   }
 
   /* The shortest test that can give a transmissivity, in minutes of
@@ -414,10 +441,10 @@
       out.warnings.push({ level: level, code: code, message: message });
     }
     out.live = s.startedAt ? liveStorage(s, cfg) : null;
-    var tc = out.live ? out.live.min : out.storageRange[1];
+    var tc = adviceStorage(s, out.live, out.storageRange[1]);
     out.tc = tc;
     out.plan = shortestPlan(setup, tc, cfg);
-    var startMs = s.startedAt || t;
+    var startMs = s.startedAt || t - alreadyRun(setup) * 60000;
     out.stopBefore = startMs + out.plan.total * 60000;
     if (out.plan.firstStep !== null) {
       out.firstStepBefore = startMs + out.plan.firstStep * 60000;
@@ -434,7 +461,7 @@
     if (s.phase === 'pumping') {
       var elapsed = out.pumpingMin;
       if (elapsed < out.plan.total) {
-        warn('warning', 'do_not_stop', 'Do not stop before ' + clockText(out.stopBefore) +
+        warn('warning', 'do_not_stop', 'Do not stop before ' + laterClockText(out.stopBefore) +
           '. The shortest test that can give a transmissivity here runs ' +
           minutesText(out.plan.total) + (out.plan.storageBinds
             ? ', set by the casing-storage period'
@@ -445,17 +472,30 @@
       if (setup.testType === 'step' && sched.step === 0 && out.firstStepBefore &&
           t < out.firstStepBefore) {
         warn('warning', 'first_step', 'Do not change to step 2 before ' +
-          clockText(out.firstStepBefore) + ': the drawdown fits are made on step 1, ' +
+          laterClockText(out.firstStepBefore) + ': the drawdown fits are made on step 1, ' +
           'and it has to run past casing storage first.');
       }
       if (isNum(tc) && elapsed < tc && (sched.step === 0 || sched.step === null)) {
+        var live = out.live;
+        var cautious = 'for ' + S.sig(setup.tLow, 2) + ' m2/day';
+        var basis;
+        if (!live) {
+          basis = cautious + ' until drawdown is read';
+        } else if (tc > live.min) {
+          /* the measured period is a floor until the readings pass it */
+          basis = cautious + '; the drawdown read so far gives at least ' +
+            minutesText(live.min) + ', ending about ' + laterClockText(startMs + live.min * 60000) +
+            (live.measured ? '' : ' at the planned rate') +
+            ', and that grows while the level is still falling';
+        } else {
+          basis = 'from the drawdown read so far' + (live.measured ? ''
+            : ', at the planned rate until the discharge is measured') +
+            '; it grows while the level is still falling';
+        }
         warn('warning', 'casing_storage', 'Still inside casing storage until about ' +
-          clockText(startMs + tc * 60000) + ' (' + minutesText(tc) + ' of pumping' +
-          (out.live ? (out.live.measured ? '' : ', at the planned rate until the ' +
-            'discharge is measured') : ', for ' + S.sig(setup.tLow, 2) +
-            ' m2/day until drawdown is read') + '). The level is still mostly the ' +
-          'casing emptying, not the aquifer answering, so no transmissivity can be ' +
-          'read from it yet.');
+          laterClockText(startMs + tc * 60000) + ' (' + minutesText(tc) + ' of pumping, ' +
+          basis + '). The level is still mostly the casing emptying, not the aquifer ' +
+          'answering, so no transmissivity can be read from it yet.');
       }
       var step = s.steps[sched.step];
       var rates = (step.discharges || []).map(function (d) { return d.rate; });
@@ -504,6 +544,20 @@
         '. Take the next one as soon as it is due; a missed reading is not made up ' +
         'by guessing it.');
     }
+    /* Every minute here is worked out from the device clock, so a clock set
+     * back during the test - by hand, or by the network correcting it - puts
+     * the test's minutes back with it. That cannot be worked round, only
+     * said, before the next reading is written at the wrong minute. */
+    var latestAt = Math.max.apply(null, [s.startedAt].concat(
+      s.readings.map(function (r) { return r.at; }),
+      s.events.map(function (e) { return e.at; })).filter(isNum));
+    if (latestAt > t + 60000) {
+      warn('bad', 'clock_back', 'The device clock reads ' + clockText(t) + ', earlier than ' +
+        'the last thing recorded here (' + clockText(latestAt) + '): it has been set back ' +
+        'during the test, and the minutes worked out from it are wrong by as much. ' +
+        'Write down the true time on paper, take the readings by your watch, and ' +
+        'note the change on the sheet.');
+    }
     if (s.phase === 'recovery') {
       warn('info', 'recovery', 'Recovery: the pump stopped at ' + clockText(s.stoppedAt) +
         ' and the schedule started again from that moment.');
@@ -524,7 +578,10 @@
     var series = firstStepSeries(s);
     var q = meanRate(s.steps[0]);
     var tEnd = series.time.length ? series.time[series.time.length - 1] : 0;
-    var base = { tc: ev.tc, tEnd: tEnd, rate: q };
+    /* when it may stop: the planned time, unless that is earlier than the
+     * shortest test the analysis can read a transmissivity from */
+    var base = { tc: ev.tc, tEnd: tEnd, rate: q,
+      plannedStop: ev.plannedStop, stopBefore: ev.stopBefore };
     if (!isNum(ev.tc) || tEnd <= ev.tc) {
       return Promise.resolve(Object.assign(base, { state: 'storage' }));
     }
@@ -573,8 +630,18 @@
       ' min (' + S.sig(est.fit.slope_m_per_log_cycle, 3) + ' m per log cycle, R squared ' +
       est.fit.r_squared.toFixed(3) + ').';
     if (est.stability === 'stable') {
+      /* A settled T is not a long enough test: one shorter than the
+       * engine's minimum is projected over too many log cycles, and the
+       * analysis calls its yield indicative however steady the line. */
+      if (isNum(est.stopBefore) && !(est.plannedStop >= est.stopBefore)) {
+        return head + ' T has changed less than 10 percent over the last log cycle, ' +
+          'but the test is not yet long enough for a yield: do not stop before ' +
+          laterClockText(est.stopBefore) + ', later than the planned ' +
+          clockText(est.plannedStop) + '.';
+      }
       return head + ' T has changed less than 10 percent over the last log cycle. ' +
-        'The test can stop at the planned time.';
+        'The test can stop at the planned time' +
+        (isNum(est.plannedStop) ? ', ' + clockText(est.plannedStop) : '') + '.';
     }
     if (est.stability === 'moving') {
       return head + ' T has changed ' + S.sig(est.change * 100, 2) + ' percent over ' +
@@ -583,7 +650,7 @@
     }
     if (est.stability === 'early') {
       return head + ' The test is not yet a full log cycle clear of casing storage ' +
-        '(that comes at ' + clockText(est.stableFrom) + '), so how steady T is cannot ' +
+        '(that comes at ' + laterClockText(est.stableFrom) + '), so how steady T is cannot ' +
         'be judged yet.';
     }
     return head + ' The line a log cycle earlier could not be fitted, so how steady T ' +
@@ -628,21 +695,34 @@
     return problems;
   }
 
+  /* Minutes the pump had run before the co-pilot was started, when the
+   * crew opened the page late. Started at the press instead, every minute on
+   * the sheet would be short by that much, and the early ones, where the
+   * curve is read in log time, wrong by a factor. */
+  function alreadyRun(setup) {
+    return isNum(setup.alreadyRunMin) && setup.alreadyRunMin > 0 ? setup.alreadyRunMin : 0;
+  }
+
   function start() {
     var t = now();
     primeSound();
     update(function (s) {
       var problems = startProblems(s.setup);
       if (problems.length) throw new Error(problems.join(' '));
+      var before = alreadyRun(s.setup);
       s.phase = 'pumping';
-      s.startedAt = t;
+      s.startedAt = t - before * 60000;
       s.stoppedAt = null;
       s.steps = [{ startMin: 0, plannedRate: s.setup.plannedRate, discharges: [],
         notMeasured: '' }];
       s.readings = [];
       s.savedAt = null;
       logEvent(s, 'Pump started at ' + S.sig(s.setup.plannedRate, 3) +
-        ' m3/h planned', t);
+        ' m3/h planned', s.startedAt);
+      if (before) {
+        logEvent(s, 'Co-pilot started ' + before + ' min after the pump; the readings ' +
+          'before it were not taken here', t);
+      }
     });
   }
 
@@ -991,6 +1071,24 @@
     /* rates typed on the Pumping test page belonged to the sheet before
      * this one; this sheet carries its own, or its reasons for having none */
     store.set('pumping.manualDischarges', {});
+    /* The readers take no casing from the sheet: the analysis works out the
+     * casing-storage period with the project's own setting. The diameters
+     * measured at this borehole are the ones the crew was advised on, and
+     * leaving the project's at another size gave the report a different
+     * period from the one the crew stopped by. */
+    var cfg = app().config().pumping, moved = [];
+    [['casingIn', 'casing_diameter_in', 'casing'], ['riserIn', 'riser_diameter_in', 'riser']]
+      .forEach(function (k) {
+        var v = s.setup[k[0]];
+        if (isNum(v) && v !== cfg[k[1]]) {
+          store.set('config.pumping.' + k[1], v);
+          moved.push(k[2] + ' ' + C.formatG(cfg[k[1]]) + ' to ' + C.formatG(v) + ' in');
+        }
+      });
+    if (moved.length) {
+      S.toast('The project\'s pumping analysis now uses the diameters measured here (' +
+        moved.join(', ') + ').', 'ok', 8000);
+    }
     await app().recompute();
     app().goto('pumping');
   }
@@ -1144,12 +1242,21 @@
       ', at ' + clockText(sched.nextAt);
   }
 
+  /* Read in sunlight, on a screen turned down to save the battery, by
+   * someone who may not tell red from amber: each warning says how urgent it
+   * is in words, not in its colour alone. */
+  var TONES = {
+    bad: ['callout-bad', 'Act now: '],
+    warning: ['callout-warn', 'Warning: '],
+    info: ['callout-info', 'Note: '],
+  };
+
   function warningsView(warnings) {
     if (!warnings.length) return el('p.muted', 'No warnings.');
-    var tone = { bad: 'callout-bad', warning: 'callout-warn', info: 'callout-info' };
     return warnings.map(function (w) {
-      return el('div.callout.' + (tone[w.level] || 'callout-info'),
-        { 'data-warning': w.code }, el('p', w.message));
+      var tone = TONES[w.level] || TONES.info;
+      return el('div.callout.' + tone[0], { 'data-warning': w.code },
+        el('p', [el('strong', tone[1]), w.message]));
     });
   }
 
@@ -1191,6 +1298,8 @@
           step ? n('stepLengthMin', 'Step length (min)') : null,
           n('tLow', 'Transmissivity, low end (m2/day)'),
           n('tHigh', 'Transmissivity, high end (m2/day)'),
+          n('alreadyRunMin', 'Minutes the pump has already run',
+            'Only if it started before this page did; leave empty otherwise'),
         ].filter(Boolean)),
       ]),
       card('Before pumping', [
@@ -1200,22 +1309,26 @@
           'Logan\'s T ≈ 1.22 Q/s. Over that range, storage lasts ' +
           (isNum(range[0]) && isNum(range[1])
             ? minutesText(range[0]) + ' to ' + minutesText(range[1]) : '—') +
-          '. The low end sets the time; once the level is being read, the measured ' +
-          'drawdown takes its place.'),
+          '. The low end sets the time. Once the level is being read, the drawdown ' +
+          'gives a period of its own; that one only grows while the level is ' +
+          'falling, so it takes over from the cautious figure when the readings ' +
+          'have passed it.'),
         el('div.callout.callout-warn', { 'data-cp': 'plan' }, [
-          el('p', el('strong', 'If the pump starts now, do not stop before ' +
-            clockText(ev.stopBefore) + '.')),
+          el('p', el('strong', (alreadyRun(setup) ? 'The pump started at ' +
+            clockText(now() - alreadyRun(setup) * 60000) + '; ' : 'If the pump starts now, ') +
+            'do not stop before ' +
+            laterClockText(ev.stopBefore) + '.')),
           el('p', 'The shortest test that can give a transmissivity here is ' +
             minutesText(ev.plan.total) + (ev.plan.storageBinds
               ? ', set by the casing-storage period.'
               : ', the minimum ' + (step ? 'step length' : 'test length') +
                 ' the analysis asks for, which is longer than casing storage.') +
             (step && ev.firstStepBefore ? ' Step 1 must run until ' +
-              clockText(ev.firstStepBefore) + '.' : '')),
+              laterClockText(ev.firstStepBefore) + '.' : '')),
           ev.planned < ev.plan.total
             ? el('p', { 'data-cp': 'plan-short' }, 'The test as planned, ' +
               minutesText(ev.planned) + ', is shorter than that. Plan to pump until ' +
-              clockText(ev.stopBefore) + ' at least.')
+              laterClockText(ev.stopBefore) + ' at least.')
             : el('p', 'As planned, the pump stops at ' + clockText(ev.plannedStop) + '.'),
         ]),
         el('div.btn-row', [
@@ -1400,7 +1513,7 @@
       card(pumping ? 'Pumping' : 'Recovery', [
         el('p', { 'data-cp': 'elapsed' }, elapsedText(s, sched)),
         el('p', { style: { fontSize: '2.2rem', fontWeight: '600', margin: '0.2rem 0' },
-          'data-cp': 'countdown', 'aria-live': 'polite' },
+          'data-cp': 'countdown' },
           sched.due !== null ? 'Read now: the ' + minuteText(sched.due) + '-minute reading'
             : countdownText(sched.seconds)),
         el('p.muted', { 'data-cp': 'next' }, nextText(sched)),
@@ -1412,9 +1525,11 @@
           s.readings.length ? button('Undo last reading', act(undoReading),
             { variant: 'ghost' }) : null,
         ]),
-        el('div', { 'data-cp': 'warnings' }, warningsView(ev.warnings)),
+        /* the countdown changes every second and is not announced; the
+         * warnings change only when something does, and are */
+        el('div', { 'data-cp': 'warnings', 'aria-live': 'polite' }, warningsView(ev.warnings)),
         pumping ? el('p.muted', 'Planned stop ' + clockText(ev.plannedStop) +
-          '; do not stop before ' + clockText(ev.stopBefore) + '.') : null,
+          '; do not stop before ' + laterClockText(ev.stopBefore) + '.') : null,
       ]),
       card('Drawdown against log time', [chartView(s, ev), estimateView(s)]),
       dischargeView(s, pumping ? k : Math.max(0, Math.min(stepPick, s.steps.length - 1))),
@@ -1434,7 +1549,7 @@
           ]) : null,
         pumping ? button('Stop the pump', function () {
           if (now() < ev.stopBefore) {
-            S.modal('Stop before ' + clockText(ev.stopBefore) + '?', el('p',
+            S.modal('Stop before ' + laterClockText(ev.stopBefore) + '?', el('p',
               'Stopping now gives a test too short to read a transmissivity from. ' +
               'Stop only if the pump has to.'), [
               button('Stop anyway', function () {
