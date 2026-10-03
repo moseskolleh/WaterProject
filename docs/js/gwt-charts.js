@@ -842,7 +842,7 @@
     var p = f.palette;
 
     /* the fitted line, drawn across the whole plot so its slope is readable */
-    var xLo = f.fx.domainLo, dom = padDomain(t.concat([cj.intercept_t0_min]), true);
+    var dom = padDomain(t.concat([cj.intercept_t0_min]), true);
     var lineX = [dom[0], dom[1]];
     f.plot.appendChild(polyline(lineX.map(function (x) {
       return [f.fx(x), f.fy(cj.slope_m_per_log_cycle *
@@ -3268,7 +3268,6 @@
       legend = layoutFor(legendItems);
       rect = frameFor(heightOf(legend));
     }
-    var legendH = heightOf(legend);
 
     var svg = svgEl('svg', {
       viewBox: '0 0 ' + width + ' ' + height, width: '100%', xmlns: NS,
@@ -4551,7 +4550,6 @@
       yLabel: 'Depth (m)', yDown: true, grid: false,
       xDomain: [0, 1], yDomain: [0, depthMax], xTicks: [],
     });
-    var p = f.palette;
     var range = C.rhoColourRange([model]);
 
     model.resistivities.forEach(function (rho, i) {

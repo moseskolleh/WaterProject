@@ -529,7 +529,6 @@
   }
 
   ReportBuilder.prototype.build = function () {
-    var self = this;
     var withToc = this.tocIndex !== null;
     var imageTypes = {};
     this.images.forEach(function (img) {

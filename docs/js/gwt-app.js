@@ -2303,8 +2303,6 @@
       return nodes;
     }
 
-    var cfg = config();
-
     /* A sounding that would not invert is only ever announced by a toast, which
      * is gone by the time anyone reads the page. Say on the page which ones are
      * missing: a survey reported on four soundings when five were shot is a
@@ -2508,7 +2506,6 @@
   PAGES.design = function () {
     var custom = store.get('design');
     var interp = bestInterpretation();
-    var cfg = config();
     var nodes = [
       pageHead('Borehole design', 'Screens against the aquifer and below the ' +
         'static level, plain casing, a sump, gravel pack, backfill and a cement ' +
@@ -5379,9 +5376,6 @@
       var state = C.assetState(asset);
       var tone = state.function === 'functional' ? 'ok'
         : (state.function === 'non_functional' ? 'bad' : 'warn');
-      var outstanding = state.due.filter(function (item) {
-        return item.state === 'overdue' || item.state === 'unknown';
-      });
       nodes.push(itemNode(asset.asset_id, card('This borehole', [
         el('p.asset-id', asset.asset_id),
         el('p.muted', 'The identifier is derived from the position, so two ' +
@@ -5770,7 +5764,6 @@
 
   PAGES.settings = function () {
     var cfg = config();
-    var overrides = store.get('config') || {};
     function bindCfg(section, key) {
       return function (value) {
         store.set('config.' + section + '.' + key, value);

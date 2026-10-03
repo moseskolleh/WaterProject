@@ -617,7 +617,7 @@
   function spliceSegments(sounding, mode) {
     var m = mode || 'merge';
     var segments = soundingSegments(sounding);
-    var i, j;
+    var i;
     if (segments.length <= 1) {
       var order = sounding.ab2.map(function (v, k) { return k; })
         .sort(function (a, b) { return sounding.ab2[a] - sounding.ab2[b] || a - b; });
@@ -1390,7 +1390,7 @@
    */
 
   function unitLabel(rho, isTop, isBottom, cfg) {
-    var lo = cfg.fractured_zone_rho[0], hi = cfg.fractured_zone_rho[1];
+    var hi = cfg.fractured_zone_rho[1];
     if (isTop) {
       if (rho >= cfg.laterite_min_rho) return ['dry lateritic topsoil / duricrust', false];
       if (rho >= hi) return ['compact laterite / dry overburden', false];
@@ -14472,7 +14472,6 @@
   var QR_ECC_LEVELS = { L: 0.07, M: 0.15, Q: 0.25, H: 0.30 };
   var QR_MAX_VERSION = 10;
   var QR_ECC_BITS = { L: 1, M: 0, Q: 3, H: 2 };
-  var QR_TOTAL_CODEWORDS = [26, 44, 70, 100, 134, 172, 196, 242, 292, 346];
 
   /* (ec codewords per block, g1 blocks, g1 data, g2 blocks, g2 data) */
   var QR_BLOCKS = {
