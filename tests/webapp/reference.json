@@ -1040,13 +1040,15 @@
     "procurement-01",
     "procurement",
     "Prequalification",
-    true
+    true,
+    false
    ],
    [
     "prc-contractor-completed-least",
     "procurement-02",
     "procurement",
     "Prequalification",
+    false,
     false
    ],
    [
@@ -1054,6 +1056,7 @@
     "procurement-03",
     "procurement",
     "Prequalification",
+    false,
     false
    ],
    [
@@ -1061,6 +1064,7 @@
     "procurement-04",
     "procurement",
     "Prequalification",
+    false,
     false
    ],
    [
@@ -1068,20 +1072,23 @@
     "procurement-05",
     "procurement",
     "Contract",
-    true
+    true,
+    false
    ],
    [
     "prc-dry-hole-low",
     "procurement-06",
     "procurement",
     "Contract",
-    true
+    true,
+    false
    ],
    [
     "prc-bill-quantities-checked",
     "procurement-07",
     "procurement",
     "Contract",
+    false,
     false
    ],
    [
@@ -1089,6 +1096,7 @@
     "procurement-08",
     "procurement",
     "Contract",
+    false,
     false
    ],
    [
@@ -1096,27 +1104,31 @@
     "procurement-09",
     "procurement",
     "Supervision",
-    true
+    true,
+    false
    ],
    [
     "pre-drilling-rig-inspected",
     "pre_contract-01",
     "pre_contract",
     "Equipment",
-    true
+    true,
+    false
    ],
    [
     "pre-compressor-run-hour",
     "pre_contract-02",
     "pre_contract",
     "Equipment",
-    true
+    true,
+    false
    ],
    [
     "pre-mud-pump-generator",
     "pre_contract-03",
     "pre_contract",
     "Equipment",
+    false,
     false
    ],
    [
@@ -1124,6 +1136,7 @@
     "pre_contract-04",
     "pre_contract",
     "Equipment",
+    false,
     false
    ],
    [
@@ -1131,6 +1144,7 @@
     "pre_contract-05",
     "pre_contract",
     "Equipment",
+    false,
     false
    ],
    [
@@ -1138,20 +1152,23 @@
     "pre_contract-06",
     "pre_contract",
     "Equipment",
-    true
+    true,
+    false
    ],
    [
     "pre-drill-bits-hammer",
     "pre_contract-07",
     "pre_contract",
     "Equipment",
-    true
+    true,
+    false
    ],
    [
     "pre-geophysical-survey-equipment",
     "pre_contract-08",
     "pre_contract",
     "Equipment",
+    false,
     false
    ],
    [
@@ -1159,6 +1176,7 @@
     "pre_contract-09",
     "pre_contract",
     "Personnel",
+    false,
     false
    ],
    [
@@ -1166,6 +1184,7 @@
     "pre_contract-10",
     "pre_contract",
     "Personnel",
+    false,
     false
    ],
    [
@@ -1173,13 +1192,15 @@
     "pre_contract-11",
     "pre_contract",
     "Personnel",
-    true
+    true,
+    false
    ],
    [
     "sit-convenient-point-use",
     "siting-01",
     "siting",
     "Water users",
+    false,
     false
    ],
    [
@@ -1187,13 +1208,15 @@
     "siting-02",
     "siting",
     "Water users",
-    true
+    true,
+    false
    ],
    [
     "sit-expected-yield-renewable",
     "siting-03",
     "siting",
     "Hydrogeology",
+    false,
     false
    ],
    [
@@ -1201,6 +1224,7 @@
     "siting-04",
     "siting",
     "Hydrogeology",
+    false,
     false
    ],
    [
@@ -1208,6 +1232,7 @@
     "siting-05",
     "siting",
     "Hydrogeology",
+    false,
     false
    ],
    [
@@ -1215,13 +1240,15 @@
     "siting-06",
     "siting",
     "Contamination",
-    true
+    true,
+    false
    ],
    [
     "sit-access-allowed-physically",
     "siting-07",
     "siting",
     "Logistics",
+    false,
     false
    ],
    [
@@ -1229,20 +1256,23 @@
     "siting-08",
     "siting",
     "Logistics",
-    true
+    true,
+    false
    ],
    [
     "mob-contract-signed-pre",
     "mobilisation-01",
     "mobilisation",
     "Contract",
-    true
+    true,
+    false
    ],
    [
     "mob-programme-works-submitted",
     "mobilisation-02",
     "mobilisation",
     "Contract",
+    false,
     false
    ],
    [
@@ -1250,6 +1280,7 @@
     "mobilisation-03",
     "mobilisation",
     "Community",
+    false,
     false
    ],
    [
@@ -1257,20 +1288,23 @@
     "mobilisation-04",
     "mobilisation",
     "Equipment",
-    true
+    true,
+    false
    ],
    [
     "mob-material-samples-approved",
     "mobilisation-05",
     "mobilisation",
     "Materials",
-    true
+    true,
+    false
    ],
    [
     "mob-data-collection-forms",
     "mobilisation-06",
     "mobilisation",
     "Records",
+    false,
     false
    ],
    [
@@ -1278,6 +1312,7 @@
     "mobilisation-07",
     "mobilisation",
     "Records",
+    false,
     false
    ],
    [
@@ -1285,6 +1320,7 @@
     "mobilisation-08",
     "mobilisation",
     "Camp",
+    false,
     false
    ],
    [
@@ -1292,13 +1328,15 @@
     "drilling-01",
     "drilling",
     "Safety",
-    true
+    true,
+    false
    ],
    [
     "drl-rig-positioned-exactly",
     "drilling-02",
     "drilling",
     "Set up",
+    false,
     false
    ],
    [
@@ -1306,13 +1344,15 @@
     "drilling-03",
     "drilling",
     "Records",
-    true
+    true,
+    false
    ],
    [
     "drl-penetration-rate-recorded",
     "drilling-04",
     "drilling",
     "Records",
+    false,
     false
    ],
    [
@@ -1320,6 +1360,7 @@
     "drilling-05",
     "drilling",
     "Fluids",
+    false,
     false
    ],
    [
@@ -1327,6 +1368,7 @@
     "drilling-06",
     "drilling",
     "Fluids",
+    false,
     false
    ],
    [
@@ -1334,13 +1376,15 @@
     "drilling-07",
     "drilling",
     "Samples",
-    true
+    true,
+    false
    ],
    [
     "drl-strata-log-prepared",
     "drilling-08",
     "drilling",
     "Samples",
+    false,
     false
    ],
    [
@@ -1348,6 +1392,7 @@
     "drilling-09",
     "drilling",
     "Water",
+    false,
     false
    ],
    [
@@ -1355,20 +1400,23 @@
     "drilling-10",
     "drilling",
     "Decision",
-    true
+    true,
+    false
    ],
    [
     "drl-daily-drilling-log",
     "drilling-11",
     "drilling",
     "Records",
-    true
+    true,
+    false
    ],
    [
     "des-casing-screen-assemblage",
     "design-01",
     "design",
     "Preparation",
+    true,
     true
    ],
    [
@@ -1376,6 +1424,7 @@
     "design-02",
     "design",
     "Materials",
+    false,
     false
    ],
    [
@@ -1383,6 +1432,7 @@
     "design-03",
     "design",
     "Installation",
+    false,
     false
    ],
    [
@@ -1390,20 +1440,23 @@
     "design-04",
     "design",
     "Installation",
-    true
+    true,
+    false
    ],
    [
     "des-screens-placed-against",
     "design-05",
     "design",
     "Screens",
-    true
+    true,
+    false
    ],
    [
     "des-screen-open-area",
     "design-06",
     "design",
     "Screens",
+    false,
     false
    ],
    [
@@ -1411,13 +1464,15 @@
     "design-07",
     "design",
     "Annulus",
-    true
+    true,
+    false
    ],
    [
     "des-backfill-placed-6",
     "design-08",
     "design",
     "Annulus",
+    true,
     true
    ],
    [
@@ -1425,27 +1480,31 @@
     "development-01",
     "development",
     "Development",
-    true
+    true,
+    false
    ],
    [
     "dev-pumping-test-carried",
     "development-02",
     "development",
     "Testing",
-    true
+    true,
+    false
    ],
    [
     "dev-sand-content-end",
     "development-03",
     "development",
     "Acceptance",
-    true
+    true,
+    false
    ],
    [
     "dev-turbidity-within-stipulated",
     "development-04",
     "development",
     "Acceptance",
+    false,
     false
    ],
    [
@@ -1453,20 +1512,23 @@
     "development-05",
     "development",
     "Acceptance",
-    true
+    true,
+    false
    ],
    [
     "dev-water-sampled-correctly",
     "development-06",
     "development",
     "Quality",
-    true
+    true,
+    false
    ],
    [
     "dev-borehole-disinfected-chlorine",
     "development-07",
     "development",
     "Quality",
+    true,
     true
    ],
    [
@@ -1474,6 +1536,7 @@
     "development-08",
     "development",
     "Platform",
+    false,
     false
    ],
    [
@@ -1481,13 +1544,15 @@
     "development-09",
     "development",
     "Decision",
-    true
+    true,
+    false
    ],
    [
     "dem-installation-work-complete",
     "demobilisation-01",
     "demobilisation",
     "Completion",
+    false,
     false
    ],
    [
@@ -1495,13 +1560,15 @@
     "demobilisation-02",
     "demobilisation",
     "Completion",
-    true
+    true,
+    false
    ],
    [
     "dem-cleared-waste-removed",
     "demobilisation-03",
     "demobilisation",
     "Site",
+    false,
     false
    ],
    [
@@ -1509,6 +1576,7 @@
     "demobilisation-04",
     "demobilisation",
     "Site",
+    false,
     false
    ],
    [
@@ -1516,27 +1584,31 @@
     "demobilisation-05",
     "demobilisation",
     "Certificate",
-    true
+    true,
+    false
    ],
    [
     "hnd-drilling-report-completed",
     "handover-01",
     "handover",
     "Reporting",
-    true
+    true,
+    false
    ],
    [
     "hnd-handover-date-agreed",
     "handover-02",
     "handover",
     "Handover",
-    true
+    true,
+    false
    ],
    [
     "hnd-defect-liability-monitoring",
     "handover-03",
     "handover",
     "Follow up",
+    false,
     false
    ],
    [
@@ -1544,6 +1616,7 @@
     "handover-04",
     "handover",
     "Follow up",
+    false,
     false
    ],
    [
@@ -1551,6 +1624,7 @@
     "handover-05",
     "handover",
     "Payment",
+    false,
     false
    ],
    [
@@ -1558,13 +1632,15 @@
     "post_construction-01",
     "post_construction",
     "Water safety",
-    true
+    true,
+    false
    ],
    [
     "pst-sanitary-inspection-completed",
     "post_construction-02",
     "post_construction",
     "Water safety",
+    false,
     false
    ],
    [
@@ -1572,6 +1648,7 @@
     "post_construction-03",
     "post_construction",
     "Monitoring",
+    false,
     false
    ],
    [
@@ -1579,6 +1656,7 @@
     "post_construction-04",
     "post_construction",
     "Monitoring",
+    false,
     false
    ],
    [
@@ -1586,6 +1664,7 @@
     "post_construction-05",
     "post_construction",
     "Monitoring",
+    false,
     false
    ],
    [
@@ -1593,7 +1672,8 @@
     "post_construction-06",
     "post_construction",
     "Records",
-    true
+    true,
+    false
    ]
   ],
   "legacy": {
@@ -21643,5 +21723,257 @@
    ],
    "flags": []
   }
- ]
+ ],
+ "photo_evidence": {
+  "attached_at": "2026-10-03T09:00:00Z",
+  "cases": {
+   "fixture": {
+    "b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/4QEGRXhpZgAASUkqAAgAAAADAA8BAgAMAAAAMgAAAGmHBAABAAAAPgAAACWIBAABAAAAeAAAAAAAAABHV1QgZml4dHVyZQACAAOQAgAUAAAAXAAAABGQAgAHAAAAcAAAAAAAAAAyMDI0OjAzOjA1IDE0OjIyOjEwACswMDowMAAABgAAAAEABAAAAAIDAAABAAIAAgAAAE4AAAACAAUAAwAAAMYAAAADAAIAAgAAAFcAAAAEAAUAAwAAAN4AAAAfAAUAAQAAAPYAAAAAAAAACAAAAAEAAAAdAAAAAQAAAIANAABkAAAADQAAAAEAAAAOAAAAAQAAANIEAABkAAAABQAAAAEAAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAQABgDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAABAAD/8QAFhABAQEAAAAAAAAAAAAAAAAAAwBh/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAZEQEBAAMBAAAAAAAAAAAAAAADAAECBCH/2gAMAwEAAhEDEQA/ABmUkytTKUZSd0jc62RllTjKo2UrRr5f/9k=",
+    "options": {},
+    "record": {
+     "format": 1,
+     "sha256": "e6257f661f81ee22f4202e43543f70f728defb29af23bb3224db9941dd5cbaa3",
+     "bytes": 578,
+     "attached_at": "2026-10-03T09:00:00Z",
+     "taken_at": "2024-03-05T14:22:10+00:00",
+     "time_source": "exif",
+     "position": {
+      "lat": 8.492933333333333,
+      "lon": -13.236761111111111,
+      "accuracy_m": 5.0
+     },
+     "position_source": "exif",
+     "position_note": "",
+     "stored": "original"
+    },
+    "shown": {
+     "time": "2024-03-05 14:22:10+00:00 (camera clock, from the photograph's EXIF)",
+     "position": "8.492933, -13.236761, within 5 m (from the photograph's EXIF)",
+     "hash": "SHA-256 e6257f661f81ee22"
+    }
+   },
+   "big_endian": {
+    "b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/4QEGRXhpZgAATU0AKgAAAAgAAwEPAAIAAAAMAAAAModpAAQAAAABAAAAPoglAAQAAAABAAAAeAAAAABHV1QgZml4dHVyZQAAApADAAIAAAAUAAAAXJARAAIAAAAHAAAAcAAAAAAyMDI0OjAzOjA1IDE0OjIyOjEwACswMDowMAAAAAYAAAABAAAABAIDAAAAAQACAAAAAk4AAAAAAgAFAAAAAwAAAMYAAwACAAAAAlcAAAAABAAFAAAAAwAAAN4AHwAFAAAAAQAAAPYAAAAAAAAACAAAAAEAAAAdAAAAAQAADYAAAABkAAAADQAAAAEAAAAOAAAAAQAABNIAAABkAAAABQAAAAH/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAQABgDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAABAAD/8QAFhABAQEAAAAAAAAAAAAAAAAAAwBh/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAZEQEBAAMBAAAAAAAAAAAAAAADAAECBCH/2gAMAwEAAhEDEQA/ABmUkytTKUZSd0jc62RllTjKo2UrRr5f/9k=",
+    "options": {},
+    "record": {
+     "format": 1,
+     "sha256": "27bdd876e13de5c652b6608ef16ff19b57565f77dcf442df4e5b0d39bfa279ee",
+     "bytes": 578,
+     "attached_at": "2026-10-03T09:00:00Z",
+     "taken_at": "2024-03-05T14:22:10+00:00",
+     "time_source": "exif",
+     "position": {
+      "lat": 8.492933333333333,
+      "lon": -13.236761111111111,
+      "accuracy_m": 5.0
+     },
+     "position_source": "exif",
+     "position_note": "",
+     "stored": "original"
+    },
+    "shown": {
+     "time": "2024-03-05 14:22:10+00:00 (camera clock, from the photograph's EXIF)",
+     "position": "8.492933, -13.236761, within 5 m (from the photograph's EXIF)",
+     "hash": "SHA-256 27bdd876e13de5c6"
+    }
+   },
+   "no_exif_device_fix": {
+    "b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAQABgDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAABAAD/8QAFhABAQEAAAAAAAAAAAAAAAAAAwBh/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAZEQEBAAMBAAAAAAAAAAAAAAADAAECBCH/2gAMAwEAAhEDEQA/ABmUkytTKUZSd0jc62RllTjKo2UrRr5f/9k=",
+    "options": {
+     "device_fix": {
+      "lat": 8.4801,
+      "lon": -13.2302,
+      "accuracy_m": 12.5
+     }
+    },
+    "record": {
+     "format": 1,
+     "sha256": "88373960c17be118978be807659c52123590ea173c9d6214e267e27522e6bd0d",
+     "bytes": 314,
+     "attached_at": "2026-10-03T09:00:00Z",
+     "taken_at": "2026-10-03T09:00:00Z",
+     "time_source": "device",
+     "position": {
+      "lat": 8.4801,
+      "lon": -13.2302,
+      "accuracy_m": 12.5
+     },
+     "position_source": "device",
+     "position_note": "",
+     "stored": "original"
+    },
+    "shown": {
+     "time": "2026-10-03 09:00:00 (this device's clock when the photograph was attached; the file carries no capture time)",
+     "position": "8.480100, -13.230200, within 12.5 m (this device's position when the photograph was attached)",
+     "hash": "SHA-256 88373960c17be118"
+    }
+   },
+   "no_exif_refused": {
+    "b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAQABgDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAABAAD/8QAFhABAQEAAAAAAAAAAAAAAAAAAwBh/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAZEQEBAAMBAAAAAAAAAAAAAAADAAECBCH/2gAMAwEAAhEDEQA/ABmUkytTKUZSd0jc62RllTjKo2UrRr5f/9k=",
+    "options": {
+     "position_note": "refused",
+     "stored": "downscaled"
+    },
+    "record": {
+     "format": 1,
+     "sha256": "88373960c17be118978be807659c52123590ea173c9d6214e267e27522e6bd0d",
+     "bytes": 314,
+     "attached_at": "2026-10-03T09:00:00Z",
+     "taken_at": "2026-10-03T09:00:00Z",
+     "time_source": "device",
+     "position": null,
+     "position_source": "none",
+     "position_note": "refused",
+     "stored": "downscaled"
+    },
+    "shown": {
+     "time": "2026-10-03 09:00:00 (this device's clock when the photograph was attached; the file carries no capture time)",
+     "position": "Not recorded; the file carries none and the device's position was refused",
+     "hash": "SHA-256 88373960c17be118"
+    }
+   },
+   "blank_clock": {
+    "b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/4QDeRXhpZgAASUkqAAgAAAADAA8BAgAMAAAAMgAAAGmHBAABAAAAPgAAACWIBAABAAAAZAAAAAAAAABHV1QgZml4dHVyZQABAAOQAgAUAAAAUAAAAAAAAAAwMDAwOjAwOjAwIDAwOjAwOjAwAAUAAAABAAQAAAACAwAAAQACAAIAAABOAAAAAgAFAAMAAACmAAAAAwACAAIAAABXAAAABAAFAAMAAAC+AAAAAAAAAAgAAAABAAAAHQAAAAEAAACADQAAZAAAAA0AAAABAAAADgAAAAEAAADSBAAAZAAAAP/bAEMAEAsMDgwKEA4NDhIREBMYKBoYFhYYMSMlHSg6Mz08OTM4N0BIXE5ARFdFNzhQbVFXX2JnaGc+TXF5cGR4XGVnY//bAEMBERISGBUYLxoaL2NCOEJjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY//AABEIABAAGAMBIgACEQEDEQH/xAAWAAEBAQAAAAAAAAAAAAAAAAAEAAP/xAAWEAEBAQAAAAAAAAAAAAAAAAADAGH/xAAVAQEBAAAAAAAAAAAAAAAAAAAEBf/EABkRAQEAAwEAAAAAAAAAAAAAAAMAAQIEIf/aAAwDAQACEQMRAD8AGZSTK1MpRlJ3SNzrZGWVOMqjZStGvl//2Q==",
+    "options": {},
+    "record": {
+     "format": 1,
+     "sha256": "00588c7cc27f618a9bfb2026c5b687f9fc0f274d50001faf1d4018bebc204cea",
+     "bytes": 538,
+     "attached_at": "2026-10-03T09:00:00Z",
+     "taken_at": "2026-10-03T09:00:00Z",
+     "time_source": "device",
+     "position": {
+      "lat": 8.492933333333333,
+      "lon": -13.236761111111111,
+      "accuracy_m": null
+     },
+     "position_source": "exif",
+     "position_note": "",
+     "stored": "original"
+    },
+    "shown": {
+     "time": "2026-10-03 09:00:00 (this device's clock when the photograph was attached; the file carries no capture time)",
+     "position": "8.492933, -13.236761, accuracy not recorded (from the photograph's EXIF)",
+     "hash": "SHA-256 00588c7cc27f618a"
+    }
+   }
+  },
+  "no_record": {
+   "time": "No provenance recorded: attached before photographs carried their capture time, position and hash.",
+   "position": "",
+   "hash": ""
+  },
+  "gate": {
+   "none": [
+    [
+     "field_data",
+     "met",
+     "No input is a bundled example file."
+    ],
+    [
+     "site_located",
+     "unmet",
+     "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained."
+    ],
+    [
+     "photo_evidence",
+     "unmet",
+     "Design and installation: \"Casing and screen assemblage sketched, laid out on the ground, measured piece by piece, totalled against the sketch and photographed before installation\" needs a photograph and has none. Design and installation: \"Backfill placed to 6 m below ground and the sanitary seal in the top 6 m (cement slurry at 25 litres of water per 50 kg bag, or bentonite)\" needs a photograph and has none. Development and completion: \"Borehole disinfected with chlorine at 20 mg per litre (1 litre of 0.2 percent solution per 100 litres of well volume) and left for at least 4 hours\" needs a photograph and has none. The gate checks that a photograph is attached, not whether it shows the work done well; that judgement stays with the supervisor."
+    ]
+   ],
+   "one": [
+    [
+     "field_data",
+     "met",
+     "No input is a bundled example file."
+    ],
+    [
+     "site_located",
+     "unmet",
+     "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained."
+    ],
+    [
+     "photo_evidence",
+     "unmet",
+     "Design and installation: \"Casing and screen assemblage sketched, laid out on the ground, measured piece by piece, totalled against the sketch and photographed before installation\" needs a photograph and has none. Development and completion: \"Borehole disinfected with chlorine at 20 mg per litre (1 litre of 0.2 percent solution per 100 litres of well volume) and left for at least 4 hours\" needs a photograph and has none. The gate checks that a photograph is attached, not whether it shows the work done well; that judgement stays with the supervisor."
+    ]
+   ],
+   "all": [
+    [
+     "field_data",
+     "met",
+     "No input is a bundled example file."
+    ],
+    [
+     "site_located",
+     "unmet",
+     "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained."
+    ],
+    [
+     "photo_evidence",
+     "met",
+     "Each of the 3 items that need a photograph has one. The gate checks that a photograph is attached, not whether it shows the work done well; that judgement stays with the supervisor."
+    ]
+   ],
+   "na": [
+    [
+     "field_data",
+     "met",
+     "No input is a bundled example file."
+    ],
+    [
+     "site_located",
+     "unmet",
+     "No GPS position is recorded on any sheet in this project. A borehole that cannot be found again on the ground cannot be certified, revisited or maintained."
+    ],
+    [
+     "photo_evidence",
+     "met",
+     "No checklist item in use needs a photograph."
+    ]
+   ]
+  },
+  "gate_states": {
+   "none": {},
+   "one": {
+    "supervision": {
+     "evidence": {
+      "des-backfill-placed-6": {
+       "b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/4QEGRXhpZgAASUkqAAgAAAADAA8BAgAMAAAAMgAAAGmHBAABAAAAPgAAACWIBAABAAAAeAAAAAAAAABHV1QgZml4dHVyZQACAAOQAgAUAAAAXAAAABGQAgAHAAAAcAAAAAAAAAAyMDI0OjAzOjA1IDE0OjIyOjEwACswMDowMAAABgAAAAEABAAAAAIDAAABAAIAAgAAAE4AAAACAAUAAwAAAMYAAAADAAIAAgAAAFcAAAAEAAUAAwAAAN4AAAAfAAUAAQAAAPYAAAAAAAAACAAAAAEAAAAdAAAAAQAAAIANAABkAAAADQAAAAEAAAAOAAAAAQAAANIEAABkAAAABQAAAAEAAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAQABgDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAABAAD/8QAFhABAQEAAAAAAAAAAAAAAAAAAwBh/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAZEQEBAAMBAAAAAAAAAAAAAAADAAECBCH/2gAMAwEAAhEDEQA/ABmUkytTKUZSd0jc62RllTjKo2UrRr5f/9k="
+      }
+     }
+    }
+   },
+   "all": {
+    "supervision": {
+     "evidence": {
+      "des-casing-screen-assemblage": {
+       "b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/4QEGRXhpZgAASUkqAAgAAAADAA8BAgAMAAAAMgAAAGmHBAABAAAAPgAAACWIBAABAAAAeAAAAAAAAABHV1QgZml4dHVyZQACAAOQAgAUAAAAXAAAABGQAgAHAAAAcAAAAAAAAAAyMDI0OjAzOjA1IDE0OjIyOjEwACswMDowMAAABgAAAAEABAAAAAIDAAABAAIAAgAAAE4AAAACAAUAAwAAAMYAAAADAAIAAgAAAFcAAAAEAAUAAwAAAN4AAAAfAAUAAQAAAPYAAAAAAAAACAAAAAEAAAAdAAAAAQAAAIANAABkAAAADQAAAAEAAAAOAAAAAQAAANIEAABkAAAABQAAAAEAAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAQABgDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAABAAD/8QAFhABAQEAAAAAAAAAAAAAAAAAAwBh/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAZEQEBAAMBAAAAAAAAAAAAAAADAAECBCH/2gAMAwEAAhEDEQA/ABmUkytTKUZSd0jc62RllTjKo2UrRr5f/9k="
+      },
+      "des-backfill-placed-6": {
+       "b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/4QEGRXhpZgAASUkqAAgAAAADAA8BAgAMAAAAMgAAAGmHBAABAAAAPgAAACWIBAABAAAAeAAAAAAAAABHV1QgZml4dHVyZQACAAOQAgAUAAAAXAAAABGQAgAHAAAAcAAAAAAAAAAyMDI0OjAzOjA1IDE0OjIyOjEwACswMDowMAAABgAAAAEABAAAAAIDAAABAAIAAgAAAE4AAAACAAUAAwAAAMYAAAADAAIAAgAAAFcAAAAEAAUAAwAAAN4AAAAfAAUAAQAAAPYAAAAAAAAACAAAAAEAAAAdAAAAAQAAAIANAABkAAAADQAAAAEAAAAOAAAAAQAAANIEAABkAAAABQAAAAEAAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAQABgDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAABAAD/8QAFhABAQEAAAAAAAAAAAAAAAAAAwBh/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAZEQEBAAMBAAAAAAAAAAAAAAADAAECBCH/2gAMAwEAAhEDEQA/ABmUkytTKUZSd0jc62RllTjKo2UrRr5f/9k="
+      },
+      "dev-borehole-disinfected-chlorine": {
+       "b64": "/9j/4AAQSkZJRgABAQAAAQABAAD/4QEGRXhpZgAASUkqAAgAAAADAA8BAgAMAAAAMgAAAGmHBAABAAAAPgAAACWIBAABAAAAeAAAAAAAAABHV1QgZml4dHVyZQACAAOQAgAUAAAAXAAAABGQAgAHAAAAcAAAAAAAAAAyMDI0OjAzOjA1IDE0OjIyOjEwACswMDowMAAABgAAAAEABAAAAAIDAAABAAIAAgAAAE4AAAACAAUAAwAAAMYAAAADAAIAAgAAAFcAAAAEAAUAAwAAAN4AAAAfAAUAAQAAAPYAAAAAAAAACAAAAAEAAAAdAAAAAQAAAIANAABkAAAADQAAAAEAAAAOAAAAAQAAANIEAABkAAAABQAAAAEAAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAQABgDASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAABAAD/8QAFhABAQEAAAAAAAAAAAAAAAAAAwBh/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAZEQEBAAMBAAAAAAAAAAAAAAADAAECBCH/2gAMAwEAAhEDEQA/ABmUkytTKUZSd0jc62RllTjKo2UrRr5f/9k="
+      }
+     }
+    }
+   },
+   "na": {
+    "supervision": {
+     "responses": {
+      "des-casing-screen-assemblage": {
+       "status": "na"
+      },
+      "des-backfill-placed-6": {
+       "status": "na"
+      },
+      "dev-borehole-disinfected-chlorine": {
+       "status": "na"
+      }
+     }
+    }
+   }
+  }
+ }
 }

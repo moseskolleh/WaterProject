@@ -2321,8 +2321,26 @@
     /* the supervisor's photographs: taken to be evidence, so they belong in
      * the record rather than in the project file alone */
     var figures = context.figures || [];
-    if (figures.length) {
+    var evidence = context.evidence || [];
+    if (figures.length || evidence.length) {
       b.heading('3.1 Photographic record', 2);
+      /* where each photograph's time and position came from, and its hash:
+       * a photograph is evidence only as far as that can be said of it */
+      if (evidence.length) {
+        b.table(evidence.map(function (entry) {
+          var shown = C.describePhotoProvenance(entry.photo.provenance);
+          return [entry.item ? entry.item.text : (entry.photo.caption || entry.photo.label || ''),
+            shown.time, shown.position, shown.hash];
+        }), {
+          header: ['Photograph', 'Taken', 'Position', 'Hash'],
+          caption: 'Photographs in this record, with where each time and position came from.',
+          fontSize: 8, colWidthsCm: [4.6, 4.0, 4.6, 2.4],
+        });
+        if (evidence.some(function (entry) {
+          return (entry.photo.provenance || {}).stored === 'downscaled';
+        })) b.paragraph(C.phrase('evidence.hash_downscaled'));
+        b.paragraph(C.phrase('evidence.presence_only'));
+      }
       figures.forEach(function (f) {
         b.figure(f.image, f.caption, f.widthCm || 13);
       });

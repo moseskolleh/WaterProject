@@ -1,6 +1,7 @@
 /* Drive the whole app in headless Chromium: load each sample, visit every
  * page, build every report, and fail on any console error or missing output.
  */
+import { readFile } from 'node:fs/promises';
 import { withPage } from './harness.mjs';
 import { timeAutosaves } from './heavy.mjs';
 
@@ -987,6 +988,128 @@ await withPage(async (page, base, consoleErrors) => {
   });
   check('project round trip', roundTrip.same && roundTrip.analysis,
     JSON.stringify(roundTrip));
+
+  // --- photo evidence (PLAN.md step 2.4) ---
+  // A checklist item that needs a photograph holds the supervision record
+  // back, in the catalogue's words, until one is attached through the page;
+  // the photograph attached carries the record Python makes of the same
+  // file; a device fix is recorded as one; and a project whose photographs
+  // predate provenance opens and says they have none.
+  const photoRef = JSON.parse(await readFile(
+    new URL('reference.json', import.meta.url), 'utf8')).photo_evidence;
+  const fixtureJpeg = await readFile(new URL('fixtures/photo_exif.jpg', import.meta.url));
+  const savedState = await page.evaluate(() => {
+    const store = window.GWT.app.store;
+    const saved = JSON.stringify(store.state);
+    store.set('supervision.evidence', {});
+    store.set('supervision.responses', {});
+    store.set('photoPosition', false);
+    window.GWT.app.goto('supervision');
+    return saved;
+  });
+  await page.waitForTimeout(150);
+  const photoItems = ['des-casing-screen-assemblage', 'des-backfill-placed-6',
+    'dev-borehole-disinfected-chlorine'];
+  const gateText = () => page.evaluate((ids) => {
+    const C = window.GWT.core;
+    const items = C.loadChecklists().filter((i) => ids.indexOf(i.item_id) >= 0);
+    const text = document.querySelector('#page-host').textContent;
+    return {
+      held: text.includes('Photo evidence — '),
+      says: items.map((i) => text.includes(C.phrase('evidence.photo_missing',
+        { stage: C.stageTitle(i.checklist), item: i.text }))),
+      caveat: text.includes(C.phrase('evidence.presence_only')),
+    };
+  }, photoItems);
+  const attach = async (key, file) => {
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'),
+      page.click(`.img-slot[data-key="${key}"] .img-slot-drop`)]);
+    await chooser.setFiles(file);
+    await page.waitForFunction((k) =>
+      !!(window.GWT.app.store.get('supervision.evidence') || {})[k], key);
+    await page.waitForTimeout(150);
+  };
+  const before = await gateText();
+  check('photo evidence: each missing photograph holds the supervision record, in the catalogue\'s words',
+    before.held && before.says.every(Boolean) && before.caveat, JSON.stringify(before));
+
+  await attach('des-backfill-placed-6', { name: 'seal.jpg', mimeType: 'image/jpeg',
+    buffer: fixtureJpeg });
+  const attached = await page.evaluate(() =>
+    window.GWT.app.store.get('supervision.evidence')['des-backfill-placed-6'].provenance);
+  const expected = Object.assign({}, photoRef.cases.fixture.record);
+  const sorted = (x) => JSON.stringify(Object.fromEntries(Object.keys(x).sort()
+    .filter((k) => k !== 'attached_at').map((k) => [k, x[k]])));
+  check('photo evidence: a photograph attached in the page carries the record Python makes of it',
+    sorted(attached) === sorted(expected) && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(attached.attached_at),
+    `js ${JSON.stringify(attached)}\n     py ${JSON.stringify(expected)}`);
+  const one = await gateText();
+  check('photo evidence: an attached photograph lifts only its own item',
+    one.held && JSON.stringify(one.says) === '[true,false,true]', JSON.stringify(one));
+
+  // a file with no EXIF, attached with the device's position allowed
+  const app1 = fixtureJpeg.indexOf(Buffer.from([0xff, 0xe1]));
+  const bare = Buffer.concat([fixtureJpeg.subarray(0, app1),
+    fixtureJpeg.subarray(app1 + 2 + fixtureJpeg.readUInt16BE(app1 + 2))]);
+  await page.context().grantPermissions(['geolocation']);
+  await page.context().setGeolocation({ latitude: 8.4801, longitude: -13.2302, accuracy: 20 });
+  await page.evaluate(() => window.GWT.app.store.set('photoPosition', true));
+  await attach('des-casing-screen-assemblage', { name: 'screen.jpg',
+    mimeType: 'image/jpeg', buffer: bare });
+  const fixed = await page.evaluate(() =>
+    window.GWT.app.store.get('supervision.evidence')['des-casing-screen-assemblage'].provenance);
+  check('photo evidence: without EXIF, the device clock and an allowed fix, each said to be',
+    fixed.time_source === 'device' && fixed.taken_at === fixed.attached_at &&
+    fixed.position_source === 'device' && fixed.position.accuracy_m === 20 &&
+    Math.abs(fixed.position.lat - 8.4801) < 1e-9 && fixed.bytes === bare.length,
+    JSON.stringify(fixed));
+  await page.evaluate(() => window.GWT.app.store.set('photoPosition', false));
+  await attach('dev-borehole-disinfected-chlorine', { name: 'chlorine.jpg',
+    mimeType: 'image/jpeg', buffer: bare });
+  const unasked = await page.evaluate(() =>
+    window.GWT.app.store.get('supervision.evidence')['dev-borehole-disinfected-chlorine'].provenance);
+  const all = await gateText();
+  check('photo evidence: with every photograph present the gate no longer holds the record',
+    !all.held && unasked.position_source === 'none' &&
+    unasked.position_note === 'not_requested', JSON.stringify({ all, unasked }));
+
+  // a project saved before provenance existed: a supervision photo slot
+  // holding a photograph with no record, and no evidence field at all
+  const old = await page.evaluate(async (b64) => {
+    const app = window.GWT.app, C = window.GWT.core, docx = window.GWT.docx;
+    const state = JSON.parse(JSON.stringify(app.blankState()));
+    delete state.supervision.evidence;
+    delete state.photoPosition;
+    state.photos = { supervision: { materials: { dataUrl: 'data:image/jpeg;base64,' + b64,
+      width: 24, height: 16, mime: 'image/jpeg', caption: 'Casing as delivered' } } };
+    await app.loadProject(JSON.stringify({ format: 'groundwater-toolkit-project',
+      version: 1, state: state }));
+    app.goto('supervision');
+    await new Promise((r) => setTimeout(r, 150));
+    const text = document.querySelector('#page-host').textContent;
+    const items = C.loadChecklists();
+    const kept = { item: items.find((i) => i.item_id === 'des-backfill-placed-6'),
+      photo: { provenance: null } };
+    const builder = await docx.supervisionReport({ style: app.config().style,
+      site: app.store.get('site'), items: items, responses: {},
+      evaluation: C.evaluateChecklist(items, {}),
+      evidence: window.GWT.imageSlot.collect(app.store.get('photos.supervision'), 'supervision')
+        .map((photo) => ({ item: null, photo: photo })).concat([kept]),
+      figures: [] });
+    const doc = await window.__docText(await builder.build());
+    return {
+      shows: text.includes(C.phrase('evidence.no_provenance')),
+      held: text.includes('Photo evidence — '),
+      report: doc.includes(C.phrase('evidence.no_provenance')),
+      invented: /SHA-256 [0-9a-f]{16}/.test(doc),
+    };
+  }, fixtureJpeg.toString('base64'));
+  check('photo evidence: an older project opens and says its photographs have no recorded provenance',
+    old.shows && old.held && old.report && !old.invented, JSON.stringify(old));
+  await page.evaluate(async (saved) => {
+    window.GWT.app.store.replace(JSON.parse(saved));
+    await window.GWT.app.recompute();
+  }, savedState);
 
   // templates actually generate valid workbooks
   const tmpl = await page.evaluate(async () => {

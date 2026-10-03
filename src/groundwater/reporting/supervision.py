@@ -9,12 +9,14 @@ expects.
 
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from ..config import Config
 from ..models import SiteMetadata
+from ..photos import describe_provenance
 from ..supervision.checklists import (
     ChecklistAssessment,
     ChecklistItem,
@@ -25,6 +27,7 @@ from ..supervision.field_checks import FieldCheck
 from .citations import GLOSSARY, references_for
 from .context import _figures_dir
 from .docx_utils import ReportBuilder
+from ..text import phrase
 from .context import add_area_section
 
 _STATUS_LABEL = {
@@ -59,6 +62,54 @@ class SupervisionReportInputs:
     #: :func:`groundwater.readiness.assess_readiness`. When it is not
     #: certifiable the cover carries a PROVISIONAL stamp listing why.
     readiness: Any = None
+    #: Photographs attached to checklist items, keyed by item id:
+    #: ``{"name", "mime", "b64" or "bytes", "provenance"}``. Each is printed
+    #: with where its time and position came from and its hash, and a
+    #: photograph attached before provenance was recorded says so.
+    evidence: dict = field(default_factory=dict)
+
+
+def _photo_bytes(photo: dict) -> bytes | None:
+    if photo.get("bytes") is not None:
+        return bytes(photo["bytes"])
+    try:
+        return base64.b64decode(photo.get("b64") or "", validate=True) or None
+    except (ValueError, TypeError):
+        return None
+
+
+def _evidence_section(rb: ReportBuilder, inputs: SupervisionReportInputs,
+                      figures: Path) -> None:
+    """The photographs attached to checklist items, with their provenance."""
+    attached = [(item, inputs.evidence[item.item_id]) for item in inputs.items
+                if isinstance(inputs.evidence.get(item.item_id), dict)]
+    if not attached:
+        return
+    rb.heading("3.3 Photographic Evidence", 2)
+    rows = []
+    for item, photo in attached:
+        shown = describe_provenance(photo.get("provenance"))
+        rows.append([item.text, str(photo.get("name") or ""), shown["time"],
+                     shown["position"], shown["hash"]])
+    rb.table(rows, header=["Item", "Photograph", "Taken", "Position", "Hash"],
+             caption="Photographs attached to checklist items, with where "
+                     "each time and position came from.",
+             font_size_pt=8.0)
+    if any((photo.get("provenance") or {}).get("stored") == "downscaled"
+           for _, photo in attached):
+        rb.paragraph(phrase("evidence.hash_downscaled"))
+    rb.paragraph(phrase("evidence.presence_only"))
+    for item, photo in attached:
+        data = _photo_bytes(photo)
+        if not data:
+            continue
+        suffix = ".png" if "png" in str(photo.get("mime") or "").lower() else ".jpg"
+        path = figures / f"evidence_{item.item_id}{suffix}"
+        path.write_bytes(data)
+        try:
+            rb.figure(path, item.text, width_cm=12)
+        except Exception:  # noqa: BLE001 - an image Word cannot take is still listed above
+            continue
 
 
 def build_supervision_report(
@@ -146,7 +197,9 @@ def build_supervision_report(
         )
 
     # ---- 3 notes ----------------------------------------------------------
-    if inputs.notes or inputs.field_checks:
+    has_evidence = any(isinstance(inputs.evidence.get(i.item_id), dict)
+                       for i in inputs.items)
+    if inputs.notes or inputs.field_checks or has_evidence:
         rb.heading("3. Site Record", 1)
     if inputs.notes:
         rb.heading("3.1 Site Notes and Instructions", 2)
@@ -171,6 +224,9 @@ def build_supervision_report(
             header=["Check", "Measured", "Acceptance limit", "Result", "Note"],
             caption="Field acceptance checks.",
         )
+
+    # ---- photographic evidence ---------------------------------------------
+    _evidence_section(rb, inputs, _figures_dir(inputs.figures_dir, out_path))
 
     # ---- signatures --------------------------------------------------------
     rb.heading("4. Sign Off", 1)

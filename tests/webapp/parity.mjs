@@ -217,7 +217,8 @@ await withPage(async (page, base, consoleErrors) => {
     // the Python keys carry a widget prefix; the browser keys the item alone
     Object.keys(prefixed).forEach((k) => { migrated[prefixed[k].slice(0, 4) + k] = prefixed[k]; });
     out.checklists = {
-      ids: items.map((i) => [i.item_id, i.legacy_id, i.checklist, i.section, i.critical]),
+      ids: items.map((i) => [i.item_id, i.legacy_id, i.checklist, i.section, i.critical,
+        i.photo_required]),
       legacy: C.legacyItemIds(items),
       migrated: migrated,
     };
@@ -1966,6 +1967,46 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify(survey.wenner));
   same('survey rokel: depth each model is drawn to', parsed.rokel_drawn_depth,
     SF.rokel_drawn_depth);
+
+  // --- photo evidence (PLAN.md step 2.4) ---
+  // The same bytes give the same provenance record, field for field and to
+  // the last bit of each coordinate, and the same words on a report; and the
+  // supervision gate says the same of the same photographs.
+  const PE = R.photo_evidence;
+  const photos = await page.evaluate((PE) => {
+    const C = GWT.core, S = GWT.support;
+    const out = { cases: {}, no_record: C.describePhotoProvenance(null), gate: {} };
+    Object.keys(PE.cases).forEach((name) => {
+      const c = PE.cases[name];
+      const record = C.photoProvenance(S.base64ToBytes(c.b64),
+        Object.assign({ attached_at: PE.attached_at }, c.options));
+      out.cases[name] = { record: record, shown: C.describePhotoProvenance(record) };
+    });
+    Object.keys(PE.gate_states).forEach((name) => {
+      out.gate[name] = C.assessReadiness(PE.gate_states[name], 'supervision', {})
+        .requirements.map((q) => [q.key, q.state, q.detail]);
+    });
+    return out;
+  }, PE);
+  const canonical = (value) => JSON.stringify(value, (key, x) =>
+    (x && typeof x === 'object' && !Array.isArray(x)
+      ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
+  Object.keys(PE.cases).forEach((name) => {
+    check(`photo provenance ${name}: the same record`,
+      canonical(photos.cases[name].record) === canonical(PE.cases[name].record),
+      `js ${canonical(photos.cases[name].record)}\n     py ${canonical(PE.cases[name].record)}`);
+    check(`photo provenance ${name}: the same words on a report`,
+      canonical(photos.cases[name].shown) === canonical(PE.cases[name].shown),
+      `js ${canonical(photos.cases[name].shown)}\n     py ${canonical(PE.cases[name].shown)}`);
+  });
+  check('photo provenance: a photograph without a record is said to have none',
+    canonical(photos.no_record) === canonical(PE.no_record),
+    `js ${canonical(photos.no_record)}\n     py ${canonical(PE.no_record)}`);
+  Object.keys(PE.gate).forEach((name) => {
+    check(`photo evidence gate ${name}: the same requirements and words`,
+      JSON.stringify(photos.gate[name]) === JSON.stringify(PE.gate[name]),
+      `js ${JSON.stringify(photos.gate[name]).slice(0, 600)}\n     py ${JSON.stringify(PE.gate[name]).slice(0, 600)}`);
+  });
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, {});
