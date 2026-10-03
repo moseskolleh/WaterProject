@@ -42,6 +42,76 @@ At every segment change (for example AB/2 = 3, 10, 40 and 70 m),
 repeat the same AB/2 with the old MN and again with the new MN. Both
 readings are used; do not delete either one.
 
+## 2a. VES co-pilot (browser app, at the peg)
+
+The browser app has a page that checks a Schlumberger sounding as it is
+taken: **VES co-pilot**, under *Investigation*, at
+[`#/vescopilot`](index.html#/vescopilot). It is in the browser app only;
+the Streamlit app's Geophysics page says so, and reads the workbook the
+co-pilot writes like any other. It works with no network once the app is
+installed.
+
+**Before the survey.** Enter the target depth and press *Propose the
+spacings*. A Schlumberger sounding resolves to about half of its largest
+AB/2, the same rule the interpretation and the drilling depth use, so a
+50 m target needs AB/2 = 100 m: 200 m of straight, open ground centred
+on the peg. Check that the ground is there before anyone unrolls a
+cable. The proposal runs 1, 1.5, 2, 3, 4, 5, 6, 8, 10 m and on, with MN
+never more than a fifth of AB, and changes MN when AB passes twenty
+times it; at each change the plan lists the same AB/2 twice, once with
+each MN. The plan is a text box, one `AB/2 MN` pair a line: edit it to
+suit the ground (or to match a paper sheet already in use) and press
+*Use this plan*.
+
+**At each reading.** The form is filled in with the next spacing on the
+plan. Enter the potential V in millivolts and the current I in
+milliamps, or the apparent resistivity if the instrument shows it, and
+press *Add the reading*. The resistivity is worked out with the exact
+Schlumberger geometric factor the parsers use, and the point goes on the
+log-log curve at once. Four things are checked at the peg:
+
+- **A rise steeper than 45 degrees.** Over layered ground the curve can
+  climb no faster than one decade of resistivity per decade of AB/2.
+  Over a resistive basement it climbs at very nearly that, so a reading
+  is called out only when it sits more than 10 percent above the
+  45-degree line from the reading before it at the same MN: room for the
+  finite MN and a good reading's scatter. Steeper than that is a misread
+  potential, a peg in the wrong place, a current electrode with no
+  contact, or ground that is not layered.
+- **An MN change whose two readings disagree by more than 20 percent**,
+  the same test and threshold the Geophysics page applies to an uploaded
+  sheet. Re-read both before the current electrodes move.
+- **A potential too small to read reliably.** The default is 1 mV; set
+  your instrument's figure under *Instrument*. Raise the current (water
+  the current electrodes), or widen MN and read the spacing at both MN.
+- **A spacing skipped or read twice**, against the plan.
+
+The first three say **Re-measure now**; press *Re-measure this reading*
+and the new reading takes the old one's place. The table keeps what each
+reading raised.
+
+**Preview inversion.** From the eighth reading the app fits a layered
+model to the readings so far, in the background, and draws it on the
+curve. It says whether basement is in view within the depth the line
+resolves so far, so the team can extend the line while it is still
+laid out. It is a preview, refitted after each reading; *Stop the
+preview* stops it, and so does leaving the page. A copy of the app
+opened straight from a file (`file://`) has no background worker, and
+the fit would hold the page for some seconds after every reading, so
+there it runs only when *Run the preview now* is pressed. The finished
+workbook is interpreted on the Geophysics page.
+
+**The workbook.** *Take the GPS position* (at the centre peg; the
+browser asks permission the first time) and *Download the workbook*. It
+is the standard VES template, with the site details from the Site page,
+the device clock and GPS fix in the header, the position also written as
+UTM, and V, I and the time of each reading beside the resistivity.
+Upload it on the Geophysics page. The readings are saved in the browser
+with the project a moment after each one is added, so a reload or a
+closed tab does not lose them, and opening another project or a sample
+keeps them. *Start a new sounding* clears them, and so does *Reset
+everything* on the Settings page, so download the workbook first.
+
 ## 3. Pumping test sheet
 
 Fill the header block including the static water level measured before
@@ -201,7 +271,7 @@ and loading, and the page list grouped by where you are in the job:
 | Group | Pages |
 |---|---|
 | Project | Overview, Guided start, Site maps |
-| Investigation | Geophysics (VES), Borehole design, Depth Spine, Scanned sheets |
+| Investigation | Geophysics (VES), VES co-pilot (browser app only), Borehole design, Depth Spine, Scanned sheets |
 | Testing | Pumping test, Pumping co-pilot (browser app only), Water quality |
 | Delivery | Costing & BoQ, Supervision, Handover, Templates |
 | Area analysis | Water points, Coverage gap, Portfolio |
@@ -225,6 +295,7 @@ further and name one thing on them:
 | [`#/overview`](index.html#/overview) | Overview |
 | [`#/site`](index.html#/site) | Site & maps |
 | [`#/ves`](index.html#/ves), `#/ves/VES-3` | Geophysics, at sounding VES-3 |
+| [`#/vescopilot`](index.html#/vescopilot) | VES co-pilot |
 | [`#/design`](index.html#/design) | Borehole design |
 | [`#/pumping`](index.html#/pumping), `#/pumping/KTL-01` | Pumping test, for borehole KTL-01 |
 | [`#/quality`](index.html#/quality) | Water quality |

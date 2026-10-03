@@ -27,6 +27,7 @@
     charts: 'gwt-charts.js', geolibre: 'gwt-geolibre.js',
     imageSlot: 'image-slot.js', docx: 'gwt-docx.js',
     pumpCopilot: 'gwt-pump-copilot.js',
+    vesCopilot: 'gwt-ves-copilot.js',
   });
 
   /* What a working page draws with: the map layers, the figures, the map
@@ -66,6 +67,7 @@
     ]],
     ['Investigation', [
       ['ves', 'Geophysics (VES)'],
+      ['vescopilot', 'VES co-pilot'],
       ['design', 'Borehole design'],
       ['spine', 'Depth Spine'],
       ['extract', 'Scanned sheets'],
@@ -892,12 +894,13 @@
   }
 
   /* A field test in progress lives in the session - the pumping test
-   * co-pilot's under pumpCopilot - and opening a project or a sample must not
-   * be what ends it: readings taken at the well cannot be taken again. The
-   * one on this device is carried into the project opened, even over one
-   * the project file brings, since the file is still on disk and the test
-   * here is not. Only "Reset everything" clears it. */
-  var FIELD_SESSIONS = ['pumpCopilot'];
+   * co-pilot's under pumpCopilot, the VES co-pilot's under vesCopilot - and
+   * opening a project or a sample must not be what ends it: readings taken
+   * at the well or the peg cannot be taken again once the crew has packed
+   * up. The one on this device is carried into the project opened, even over
+   * one the project file brings, since the file is still on disk and the
+   * test here is not. Only "Reset everything" clears it. */
+  var FIELD_SESSIONS = ['pumpCopilot', 'vesCopilot'];
 
   function keepFieldSessions(next) {
     FIELD_SESSIONS.forEach(function (key) {
@@ -4537,6 +4540,11 @@
     },
   };
 
+  /* PLAN.md step 2.2: the sounding checked at the peg, in gwt-ves-copilot.js */
+  PAGES.vescopilot = function () {
+    return GWT.vesCopilot.page();
+  };
+
   PAGES.templates = function () {
     return [
       pageHead('Templates', 'Blank workbooks in exactly the layout the readers ' +
@@ -6771,8 +6779,12 @@
   var FIRST_SCREEN = { overview: true, guided: true, templates: true,
     extract: true, settings: true, about: true };
   var DRAWS_WITH_DOCX = { procurement: true, quality: true };
-  /* A page that is a module of its own, fetched with what it draws with. */
-  var MODULE_PAGES = { pumpcopilot: ['charts', 'pumpCopilot'] };
+  /* A page that is a module of its own, fetched with what it draws with: the
+   * two field co-pilots each draw one figure and no map. */
+  var MODULE_PAGES = {
+    pumpcopilot: ['charts', 'pumpCopilot'],
+    vescopilot: ['charts', 'vesCopilot'],
+  };
 
   function bundlesFor(key) {
     if (MODULE_PAGES[key]) return MODULE_PAGES[key];
@@ -6795,6 +6807,8 @@
     var host = $('#page-host');
     var key = Object.prototype.hasOwnProperty.call(PAGES, store.get('nav'))
       ? store.get('nav') : 'overview';
+    /* the co-pilot's preview fit is stopped once its page is left */
+    if (key !== 'vescopilot' && GWT.vesCopilot) GWT.vesCopilot.leave();
     var wanted = bundlesFor(key);
     if (!hasBundles(wanted)) {
       S.clear(host);

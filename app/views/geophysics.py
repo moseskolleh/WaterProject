@@ -14,6 +14,7 @@ from groundwater.reporting.geophysical import (
     GeophysicalReportInputs,
 )
 from groundwater.siting import assess_siting, suitability_map_points
+from groundwater.text import phrase
 from groundwater.ves.interpret import (
     drilling_depth_text,
     drilling_preference_table,
@@ -44,6 +45,8 @@ def render() -> None:
         "Upload the VES workbook, run the inversion and get sounding "
         "curves, water zones and a drilling preference table."
     )
+    # the co-pilot is a browser page; a feature in one app says so in both
+    st.caption(phrase("ves_copilot.browser_only"))
     path = choose_input(
         "VES workbook (standard template)", "ves", ["xlsx"],
         ["rokel/rokel_ves.xlsx"],

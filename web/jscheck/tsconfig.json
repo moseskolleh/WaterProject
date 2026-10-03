@@ -33,6 +33,7 @@
     "../../docs/js/gwt-geolibre.js",
     "../../docs/js/image-slot.js",
     "../../docs/js/gwt-docx.js",
-    "../../docs/js/gwt-pump-copilot.js"
+    "../../docs/js/gwt-pump-copilot.js",
+    "../../docs/js/gwt-ves-copilot.js"
   ]
 }
