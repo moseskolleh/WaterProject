@@ -1,0 +1,56 @@
+# The schedules and field rules the field tools work to, written once.
+#
+# The pumping test co-pilot (docs/js/gwt-pump-copilot.js), the VES co-pilot
+# (docs/js/gwt-ves-copilot.js) and the printed field kit (PLAN.md step 2.5:
+# groundwater/field_kit.py and its port in gwt-core.js) all read this file, so
+# a crew with a phone and a crew with a clipboard read the water level at the
+# same minutes and peg the same spacings. Python reads it through
+# groundwater.field_kit; web/build_webapp_data.py emits it into gwt-data.js as
+# GWT.data.field. These are field practice, not analysis settings, so they
+# are not part of the configuration (defaults.json) and do not enter any
+# inversion's cache key.
+
+pumping:
+  # PLAN.md's schedule: log-spaced to two hours, then every late_every_min.
+  # Equal spacing in log time is what the Cooper-Jacob line is fitted in, so
+  # the early minutes, where the curve bends fastest, are not left with two
+  # points and the late hours with forty. The recovery restarts it at the
+  # moment the pump stops.
+  schedule_min: [0.5, 1, 1.5, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50,
+                 60, 75, 90, 120]
+  late_every_min: 30
+  # The cautious transmissivity range offered before pumping, m2/day. The low
+  # end is what sets the casing-storage time, and weathered basement is often
+  # no better. A working choice that wants a hydrogeologist's confirmation.
+  cautious_t_m2_per_day: [1, 10]
+  # Logan (1964): T is about 1.22 Q/s, with Q/s in m3/day per metre. It turns
+  # a transmissivity into the specific capacity Schafer's rule needs before
+  # any drawdown has been read.
+  logan_factor: 1.22
+
+ves:
+  # The AB/2 a crew pegs, in metres: about six to a decade, the usual
+  # Schlumberger progression, which spaces the readings evenly on the log
+  # axis the curve is read on. A plan stops at the first spacing long enough
+  # for the target depth, by the depth-of-investigation rule in defaults.json.
+  ab2_series_m: [1, 1.5, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 60,
+                 80, 100, 120, 150, 200, 250, 300, 400, 500]
+  # The potential-electrode spacings MN (full MN, as the sheets record it).
+  mn_series_m: [0.4, 1, 2, 5, 10, 20, 40, 100]
+  # MN is never more than a fifth of AB: the exact geometric factor corrects
+  # a finite MN, but the Schlumberger reading is meant to approximate the
+  # field gradient at the centre, and AB >= 5 MN is the usual field limit.
+  min_ab_per_mn: 5
+  # The potential at a fixed MN falls roughly as 1/(AB/2)^2, so a crew widens
+  # MN before AB has grown past twenty times it, where the potential has
+  # fallen some hundredfold from the first reading at that MN. A choice, not
+  # a standard: it keeps each MN for about half a decade of AB/2.
+  max_ab_per_mn: 20
+
+disinfection_card:
+  # The grid the laminated dose card is printed for. These are the wells it
+  # is read for, not a standard: the doses in it are the toolkit's own
+  # (supervision.field_checks.disinfection_dose), and the card also gives the
+  # rule per 100 litres for a well outside the grid.
+  casing_id_mm: [100, 125, 150]
+  water_column_m: [10, 20, 30, 40, 50, 60]

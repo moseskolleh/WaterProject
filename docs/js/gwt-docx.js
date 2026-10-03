@@ -2891,8 +2891,51 @@
     return b;
   }
 
+  /* --- the field kit --------------------------------------------------------
+   * reporting/field_kit.py: C.fieldKitContent laid out, one pumping test
+   * sheet for each borehole with its QR code at the top, then the three quick
+   * cards, one to a page, for laminating. The words and the numbers are all
+   * in the content, which parity holds to the Python engine's; this only
+   * places them. context.symbols holds each sheet's QR image, in order.
+   * ---------------------------------------------------------------------- */
+
+  function fieldKit(context) {
+    var content = context.content;
+    var b = new ReportBuilder({ style: context.style, title: content.title });
+    var table = function (t, widths) {
+      b.table(t.rows, { header: t.header.length ? t.header : null, caption: t.caption,
+        colWidthsCm: widths, fontSize: 10 });
+    };
+    content.sheets.forEach(function (sheet, k) {
+      if (k) b.pageBreak();
+      b.paragraph(sheet.title, { bold: true, size: 14 });
+      b.figure((context.symbols || [])[k], sheet.code, 4.0);
+      if (sheet.warning) b.paragraph(sheet.warning, { bold: true });
+      b.keyValueTable(sheet.header);
+      sheet.notes.forEach(function (note) { b.paragraph(note); });
+      b.paragraph(sheet.discharge_note);
+      table(sheet.discharge);
+      table(sheet.bucket);
+      b.paragraph(sheet.transcribe, { italic: true });
+      sheet.blocks.forEach(function (block) { table(block, [3.0, 4.5, 4.5]); });
+      table(sheet.recovery, [3.0, 4.5, 4.5]);
+    });
+    content.cards.forEach(function (card) {
+      b.pageBreak();
+      b.paragraph(card.title, { bold: true, size: 14 });
+      card.lines.forEach(function (line) { b.paragraph(line); });
+      card.tables.forEach(function (t) { table(t); });
+      card.notes.forEach(function (note) {
+        b.paragraph(note, { italic: card.key === 'disinfection' });
+      });
+    });
+    b.references(content.references);
+    return b;
+  }
+
   GWT.docx = {
     ReportBuilder: ReportBuilder,
+    fieldKit: fieldKit,
     geophysicalReport: geophysicalReport,
     completionReport: completionReport,
     pumpingReport: pumpingReport,

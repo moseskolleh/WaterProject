@@ -63,6 +63,7 @@ node tests/webapp/offline.mjs
 node tests/webapp/review.mjs
 node tests/webapp/smoke.mjs
 node tests/webapp/copilot.mjs
+node tests/webapp/fieldkit.mjs
 # check: depth_spine
 (cd ui/depth-spine && npm ci && npx tsc -b && npm run lint && npm run build:all)
 git diff --exit-code -- src/groundwater/depth_spine/frontend \

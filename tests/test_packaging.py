@@ -111,6 +111,8 @@ def test_the_wheel_carries_the_bundled_data_tables(wheel):
         "groundwater/data/sl_chiefdoms_geoboundaries.geojson",
         # every Config() is built from it
         "groundwater/data/defaults.json",
+        # the co-pilots' and the field kit's schedules
+        "groundwater/data/field.yaml",
     ):
         assert expected in names
     # the words the reports print, which the package reads at import

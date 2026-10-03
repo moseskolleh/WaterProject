@@ -6,6 +6,7 @@ import streamlit as st
 
 from groundwater.ingestion.templates import write_all_templates
 
+from field_kit_panel import field_kit_panel
 from shared import (
     offer_download,
     workdir,
@@ -18,3 +19,6 @@ def render() -> None:
     if st.button("Generate templates", key="gen_templates"):
         for template in write_all_templates(template_dir):
             offer_download(template, f"Download {template.name}")
+
+    st.divider()
+    field_kit_panel("templates")

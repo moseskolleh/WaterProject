@@ -31,6 +31,48 @@ General rules for all templates:
   Loko, 29N in the east). The system flags coordinates that do not
   match the stated district.
 
+## 1a. The field kit (for teams without a device)
+
+A crew with no phone or tablet to run the co-pilots on takes the field
+kit instead: **Field kit** on the Templates page, or on the Pumping
+test page, in either app (in the browser app,
+[`#/templates`](index.html#/templates)). Type the borehole identifiers,
+one a line, as the sheets should print them; the boxes start with the
+ones the project's sheets already name. The kit is one Word document
+to print:
+
+- **A pumping test sheet for each borehole**, pre-filled with the
+  community, client, district and borehole number. It states the
+  casing-storage time for the project's casing and riser at a cautious
+  transmissivity of 1 m2/day, and so how long the pump must run. Its
+  Time column holds the reading schedule the pumping co-pilot uses,
+  for the pumping and again for the recovery. Its tables have the
+  columns of `template_pumping_test.xlsx`, so a filled sheet is typed
+  into the template cell for cell.
+- **Three quick cards to laminate**: the pumping schedule, the VES
+  spacings (AB/2, MN and the depth each reaches, as the VES co-pilot
+  proposes them), and the chlorine doses for disinfecting a borehole,
+  by casing diameter and water column.
+
+Each sheet carries a QR code, and the same code printed under it, so
+that a photographed sheet can be matched to its project and borehole
+when it is read back. The code is one line of four fields separated by
+`|`:
+
+```
+GWT-FK/1|pumping|<project>|<borehole>
+```
+
+`GWT-FK/1` is the format and its version; `pumping` is the sheet;
+`<project>` is the project reference, or the project name where there
+is no reference (the Streamlit app has no reference field, so there it
+is the name), and is empty when neither is set; `<borehole>` is the
+identifier as printed. In the last two fields each run of spaces, tabs
+and line breaks becomes one space, the ends are trimmed, `%` is written
+`%25` and `|` is written `%7C`. A code longer than the symbol can hold
+(122 bytes at error-correction level H) is refused rather than cut
+short; `groundwater/field_kit.py` has the full definition.
+
 ## 2. VES sheet
 
 One worksheet per sounding. Fill the header block, then the readings:

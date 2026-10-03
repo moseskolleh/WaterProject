@@ -334,6 +334,11 @@ def bundle_texts() -> dict[Path, str]:
     payload["text"] = read_text_catalogue()
     # the configuration defaults, which config.py reads from the same file
     payload["defaults"] = json.loads((DATA / "defaults.json").read_text(encoding="utf-8"))
+    # the co-pilots' and the field kit's schedules, data/field.yaml, as the
+    # package parses it
+    from groundwater.field_kit import field_schedules
+
+    payload["field"] = field_schedules()
 
     geo = {key: read_geojson(name) for key, name in GEOJSON_LAYERS.items()}
 
