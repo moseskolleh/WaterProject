@@ -471,6 +471,59 @@ def _cost_basis(state: dict) -> tuple[str, str]:
     return "met", f"Estimate priced for a {depth:.0f} m borehole."
 
 
+def _response_status(response) -> str:
+    """A checklist answer as its code, however the app holds it."""
+    status = getattr(response, "status", None)
+    if status is None and isinstance(response, dict):
+        status = response.get("status")
+    if status is None and isinstance(response, str):
+        status = response
+    return str(status or "pending").strip().lower()
+
+
+def _has_photo(value) -> bool:
+    """Whether an item's evidence holds a photograph, in either app's shape.
+
+    The browser keeps ``{"dataUrl": ...}``, the Streamlit app ``{"b64":
+    ...}``. Only presence is asked: the gate does not open the image.
+    """
+    return isinstance(value, dict) and bool(
+        value.get("dataUrl") or value.get("b64") or value.get("bytes"))
+
+
+def _photo_evidence(state: dict) -> tuple[str, str]:
+    """Every checklist item that needs a photograph has one.
+
+    Which items need one is the checklist CSV's ``photo`` column, so a
+    project changes the list without changing code. An item answered N/A
+    needs none: a screen that was never installed has no make-up to
+    photograph. Presence is all this checks. Whether the photograph shows a
+    seal placed well is the supervisor's judgement, and the detail says so
+    whether the requirement is met or not, so a met one is never read as a
+    verdict on the work.
+    """
+    from .supervision.checklists import load_checklists, stage_title
+    from .text import phrase
+
+    supervision = state.get("supervision") or {}
+    items = supervision.get("items")
+    if items is None:
+        items = load_checklists()
+    responses = supervision.get("responses") or {}
+    evidence = supervision.get("evidence") or {}
+    wanted = [i for i in items if i.photo_required
+              and _response_status(responses.get(i.item_id)) != "na"]
+    caveat = phrase("evidence.presence_only")
+    if not wanted:
+        return "met", phrase("evidence.none_required")
+    missing = [i for i in wanted if not _has_photo(evidence.get(i.item_id))]
+    if missing:
+        return "unmet", " ".join(
+            [phrase("evidence.photo_missing", stage=stage_title(i.checklist), item=i.text)
+             for i in missing] + [caveat])
+    return "met", phrase("evidence.photos_present", n=len(wanted)) + " " + caveat
+
+
 def _field_data(state: dict) -> tuple[str, str]:
     """The report describes this borehole, not a worked example.
 
@@ -566,6 +619,7 @@ REQUIREMENTS: dict[str, tuple[str, Any]] = {
     "water_quality_evaluable": ("Water quality evaluable", _water_quality_evaluable),
     "design_derived": ("Borehole design", _design_derived),
     "cost_basis": ("Cost estimate", _cost_basis),
+    "photo_evidence": ("Photo evidence", _photo_evidence),
     "no_errors": ("No fatal data problems", _no_errors),
 }
 
@@ -600,7 +654,9 @@ REPORTS: dict[str, tuple[str, ...]] = {
     # An estimate is priced before anything is drilled, so it is judged on
     # its own inputs, not on a log and an as-built design it cannot have.
     "costing": ("field_data", "site_located", "cost_basis", "no_errors"),
-    "supervision": ("field_data", "site_located"),
+    # A supervision record vouches that the critical steps were done, and for
+    # the ones the checklist says need it, a photograph is the evidence.
+    "supervision": ("field_data", "site_located", "photo_evidence"),
     # The asset documents and the payment certificate. Without an entry each
     # of these fell back to the completion set, so a plate for the headworks
     # was stamped PROVISIONAL for want of a water quality panel - which a
@@ -625,7 +681,9 @@ def assess_readiness(
     ``state`` is keyed as the app's session is - ``site``, ``drilling_log``,
     ``pump_analysis``, ``wq_assessment``, ``borehole_design``,
     ``cost_estimate`` - so the app can pass its session straight in and a
-    test can pass a dict.
+    test can pass a dict. ``supervision`` is ``{"responses": {item id:
+    answer}, "evidence": {item id: photograph}}`` (and optionally
+    ``"items"``, the checklist when it is not the bundled one).
 
     ``overrides`` maps a requirement key to ``{"reason": ..., "by": ...}``
     (a bare string is taken as the reason). An override is recorded on the

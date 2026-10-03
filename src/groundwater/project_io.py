@@ -9,6 +9,10 @@ recompute inputs (``q_*`` step discharges and ``design_swl``). On load the
 analyses are rebuilt from the stored sources by ``groundwater.recompute``,
 so results are restored without re-uploading.
 
+The file may also carry ``evidence``: the photographs attached to
+supervision checklist items, each with the provenance record made when it
+was attached (:mod:`groundwater.photos`).
+
 The file may also carry ``inversion_cache``: the VES inversions, keyed by
 what they were computed from (:mod:`groundwater.ves.cache`), so reopening a
 survey does not invert it again. It is a cache and nothing more. A file
@@ -49,7 +53,9 @@ RESET_ON_LOAD_PREFIXES = (
 # project would inherit somebody else's identifier and maintenance history.
 # The saved inversions are the outgoing survey's; they would never match the
 # incoming one's soundings, but they would be saved into its file.
-RESET_ON_LOAD_KEYS = ("design_swl", "asset_record", "inversion_cache")
+# The supervision photographs are the outgoing borehole's evidence, and left
+# behind they would vouch for the incoming one's seal.
+RESET_ON_LOAD_KEYS = ("design_swl", "asset_record", "inversion_cache", "sup_evidence")
 
 
 def stale_on_load(session) -> list[str]:
@@ -191,7 +197,38 @@ def serialize_project(session: dict, version: str) -> bytes:
         # saves the same file it always did. It is a new top-level key rather
         # than a new schema: an older toolkit reads the file and ignores it.
         payload["inversion_cache"] = cache
+    evidence = _evidence(session.get("sup_evidence"))
+    if evidence:
+        # likewise only when there is some, and as a key an older toolkit
+        # ignores rather than a new schema
+        payload["evidence"] = evidence
     return yaml.safe_dump(payload, sort_keys=True).encode("utf-8")
+
+
+def _evidence(value) -> dict:
+    """The supervision photographs, ``{item id: photograph}``, or {}.
+
+    A photograph is its file name, type and base64 bytes, and the provenance
+    record :func:`groundwater.photos.photo_provenance` made when it was
+    attached. One without a record keeps none: nothing is filled in for it.
+    """
+    if not isinstance(value, dict):
+        return {}
+    out = {}
+    for key, photo in value.items():
+        if not isinstance(key, str) or not isinstance(photo, dict):
+            continue
+        b64 = photo.get("b64")
+        if not isinstance(b64, str) or not b64:
+            continue
+        provenance = photo.get("provenance")
+        out[key] = {
+            "name": str(photo.get("name") or "photo"),
+            "mime": str(photo.get("mime") or "image/jpeg"),
+            "b64": b64,
+            "provenance": provenance if isinstance(provenance, dict) else None,
+        }
+    return out
 
 
 def _inversion_cache(value) -> dict:
@@ -291,6 +328,10 @@ def _updates_from_payload(payload: dict) -> dict:
     cache = _inversion_cache(payload.get("inversion_cache"))
     if cache:
         updates["inversion_cache"] = cache
+
+    evidence = _evidence(payload.get("evidence"))
+    if evidence:
+        updates["evidence"] = evidence
 
     asset = payload.get("asset")
     if isinstance(asset, dict) and asset.get("asset_id"):

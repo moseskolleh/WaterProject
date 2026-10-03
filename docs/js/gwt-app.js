@@ -115,9 +115,13 @@
         exchange: 23, programme_n: 1, success_rate: 100, inter_site_km: 15,
         rateOverrides: {},
       },
-      supervision: { responses: {}, notes: [], checks: {} },
+      /* evidence: the photograph each checklist item that needs one has,
+       * keyed by item id, as a photo slot keeps it */
+      supervision: { responses: {}, notes: [], checks: {}, evidence: {} },
       handover: { committee: [], notes: [], date: '', pumpType: '', tariffNote: '' },
       photos: {},
+      /* ask this device for its position when a photograph carries none */
+      photoPosition: false,
       coverage: { level: 'district' },
       waterpoints: { radius: 1000 },
       spine: { stage: 'design', ledger: {}, signatory: '' },
@@ -4322,6 +4326,8 @@
       }, { addLabel: '+ Add a note' }),
     ]));
 
+    var required = evidenceCard(items, responses);
+    if (required) nodes.push(required);
     nodes.push(photoCard('supervision', 'Supervision photographs'));
     nodes.push(reportCard('Supervision record', 'supervision',
       'The summary, the full checklist record stage by stage, the field ' +
@@ -6112,7 +6118,58 @@
     return card(title, [
       GWT.imageSlot.gallery(setName, values, function (next) {
         store.set('photos.' + setName, next);
-      }),
+      }, { askPosition: askPhotoPosition }),
+      photoPositionToggle(),
+    ], { note: 'Photos stay on this machine and travel inside the project file.' });
+  }
+
+  function askPhotoPosition() { return !!store.get('photoPosition'); }
+
+  /* A photograph's position comes from its own EXIF where it has one. Some
+   * phones' browsers strip that before a page sees the file, so this device
+   * can be asked instead, and the record says which it was. Off until it is
+   * ticked: the browser asks for permission the first time. */
+  function photoPositionToggle() {
+    return el('div', [
+      S.checkboxInput(store.get('photoPosition'),
+        'Ask this device for its position when a photograph carries none',
+        function (v) { store.set('photoPosition', !!v); }),
+      el('p.muted', 'Each photograph keeps its capture time, its position and ' +
+        'the SHA-256 of the file as attached, with where each came from.'),
+    ]);
+  }
+
+  /* One photo slot for each checklist item that needs a photograph (the
+   * CSV's photo column), bound to supervision.evidence. */
+  function evidenceCard(items, responses) {
+    var wanted = items.filter(function (item) { return item.photo_required; });
+    if (!wanted.length) return null;
+    var evidence = store.get('supervision.evidence') || {};
+    return card('Photographs the checklist requires', [
+      el('p.muted', 'The supervision record is held back until each of these ' +
+        'items has a photograph, or is answered N/A. Only presence is ' +
+        'checked: whether the photograph shows the work done well is for ' +
+        'the supervisor to judge.'),
+      el('div.img-grid', wanted.map(function (item) {
+        var na = (responses[item.item_id] || {}).status === 'na';
+        return GWT.imageSlot.create({
+          key: item.item_id,
+          label: C.stageTitle(item.checklist) + ': ' + item.section +
+            (na ? ' (answered N/A)' : ''),
+          hint: item.text,
+          value: evidence[item.item_id] || null,
+          askPosition: askPhotoPosition,
+          onChange: function (v) {
+            var had = !!(store.get('supervision.evidence') || {})[item.item_id];
+            if (v) store.set('supervision.evidence.' + item.item_id, v);
+            else store.remove('supervision.evidence.' + item.item_id);
+            /* a photograph arriving or going moves the gate on this page; a
+             * caption being typed does not, and redrawing would lose focus */
+            if (had !== !!v) render();
+          },
+        });
+      })),
+      photoPositionToggle(),
     ], { note: 'Photos stay on this machine and travel inside the project file.' });
   }
 
@@ -6154,6 +6211,12 @@
       wq_assessment: derived.assessment,
       borehole_design: derived.design,
       cost_estimate: derived.estimate,
+      /* the answers and the photographs, for the photo evidence the
+       * supervision record needs */
+      supervision: {
+        responses: store.get('supervision.responses') || {},
+        evidence: store.get('supervision.evidence') || {},
+      },
     };
   }
 
@@ -6708,8 +6771,19 @@
           context.notes = store.get('supervision.notes') || [];
           context.boreholeRef = (derived.log && derived.log.borehole_ref) ||
             (derived.test && derived.test.borehole_ref) || '';
+          /* the photographs the checklist requires, each listed with its
+           * provenance and embedded ahead of the general photo plate */
+          var evidence = store.get('supervision.evidence') || {};
+          context.evidence = items.filter(function (item) {
+            return evidence[item.item_id] && evidence[item.item_id].dataUrl;
+          }).map(function (item) {
+            var photo = evidence[item.item_id];
+            figures.push({ image: photo, caption: photo.caption || item.text, widthCm: 12 });
+            return { item: item, photo: photo };
+          });
           GWT.imageSlot.collect(store.get('photos.supervision'), 'supervision')
             .forEach(function (photo) {
+              context.evidence.push({ item: null, photo: photo });
               figures.push({ image: photo, caption: photo.caption, widthCm: 13 });
             });
           context.figures = figures;

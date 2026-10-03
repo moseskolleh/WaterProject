@@ -298,12 +298,15 @@ datasets:
           built from the costing guide's worked example. Example figures,
           not quoted Sierra Leone rates.
       - path: src/groundwater/data/supervision_checklists.csv
-        bytes: 14502
-        sha256: 1c080962f5368d53067bb0116f4e68eccd638849d9233afa0e01304a0ec45e8e
+        bytes: 14751
+        sha256: a763253bc3cc339a91ad3e0148110c60cab0363c04712926713931f9ce10d11f
         note: >-
           Procurement, drilling and handover checklist items drawn from the
           supervision and procurement guides, one row per check, with the
-          items those guides treat as go/no-go marked critical.
+          items those guides treat as go/no-go marked critical. The photo
+          column (screen make-up, sanitary seal, disinfection) is this
+          toolkit's choice of which critical items need a photograph, not
+          the guides'.
 
   - id: sphere_service_classes
     name: Sphere Handbook - water supply service levels

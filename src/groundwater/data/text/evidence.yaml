@@ -1,0 +1,66 @@
+# Photo evidence (PLAN.md step 2.4): what the readiness gate says about the
+# checklist items that need a photograph, and how a report states where a
+# photograph's time and position came from. Both engines read this file:
+# groundwater/readiness.py and groundwater/photos.py, and gwt-core.js. The
+# template rules are in src/groundwater/text.py; CONTRIBUTING.md says how to
+# add an entry.
+
+# One per item, in checklist order. {stage} is the stage's title.
+photo_missing: >-
+  {stage}: "{item}" needs a photograph and has none.
+
+# Said whatever the gate finds, so nobody reads a met requirement as a
+# verdict on the photographs themselves.
+presence_only: >-
+  The gate checks that a photograph is attached, not whether it shows the
+  work done well; that judgement stays with the supervisor.
+
+photos_present: >-
+  Each of the {n:num} {n:plural:item|items} that need a photograph has one.
+
+none_required: >-
+  No checklist item in use needs a photograph.
+
+# A photograph attached before photographs carried provenance. Nothing is
+# filled in for it: a time or a place guessed afterwards would read as one
+# that was recorded.
+no_provenance: >-
+  No provenance recorded: attached before photographs carried their capture
+  time, position and hash.
+
+time: >-
+  {time} ({source})
+
+time_sources:
+  exif: camera clock, from the photograph's EXIF
+  device: this device's clock when the photograph was attached; the file carries no capture time
+
+position: >-
+  {lat:.6f}, {lon:.6f}, {accuracy} ({source})
+
+accuracy_m: >-
+  within {m:num} m
+
+accuracy_unknown: >-
+  accuracy not recorded
+
+position_sources:
+  exif: from the photograph's EXIF
+  device: this device's position when the photograph was attached
+
+# Why a photograph has no position, keyed by the code each app records.
+position_notes:
+  not_requested: Not recorded; the file carries none and this device was not asked
+  refused: Not recorded; the file carries none and the device's position was refused
+  unavailable: Not recorded; the file carries none and the device gave no position
+  unsupported: Not recorded; the file carries none and this app cannot ask the device
+
+hash: >-
+  SHA-256 {short}
+
+# Printed under the evidence table when any photograph was downscaled for
+# storage, as the browser app does with large ones.
+hash_downscaled: >-
+  Each hash is of the file as it was attached. A copy the project keeps
+  downscaled has different bytes, so its own hash differs from the one
+  recorded.

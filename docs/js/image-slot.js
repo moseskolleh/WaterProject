@@ -4,7 +4,9 @@
  * in progress, the drill cuttings laid out, the handover ceremony. Each report
  * has named places those belong. A slot takes a picture by drag, by file
  * picker or by paste, downscales it in the browser, keeps a caption with it and
- * hands the bytes to the .docx writer.
+ * hands the bytes to the .docx writer. Each photograph also keeps the
+ * provenance of the file as it arrived (GWT.core.photoProvenance): its capture
+ * time, its position where it or the device gives one, and its SHA-256.
  *
  * Nothing is uploaded anywhere: the image never leaves the machine, it lives in
  * the project state and travels inside the .gwt project file.
@@ -79,7 +81,10 @@
     });
   }
 
-  /* Returns {dataUrl, width, height, mime, bytes} with the long edge capped. */
+  /* Returns {dataUrl, width, height, mime, name, downscaled} with the long
+   * edge capped. downscaled says the bytes kept are not the file's own, so
+   * the provenance record can say its hash is of a file the project no
+   * longer holds. */
   async function shrink(file) {
     var dataUrl = await S.readFile(file, 'dataUrl');
     var img = await loadImage(dataUrl);
@@ -93,7 +98,7 @@
     if (scale === 1 && (file.size || 0) < 700000) {
       return {
         dataUrl: dataUrl, width: img.naturalWidth, height: img.naturalHeight,
-        mime: file.type || mime, name: file.name || 'photo',
+        mime: file.type || mime, name: file.name || 'photo', downscaled: false,
       };
     }
     var canvas = document.createElement('canvas');
@@ -105,8 +110,97 @@
     ctx.drawImage(img, 0, 0, w, h);
     return {
       dataUrl: canvas.toDataURL(mime, JPEG_QUALITY),
-      width: w, height: h, mime: mime, name: file.name || 'photo',
+      width: w, height: h, mime: mime, name: file.name || 'photo', downscaled: true,
     };
+  }
+
+  /* ------------------------------------------------------------ provenance */
+
+  /* This device's position, asked for only when the page says to (a box the
+   * user ticks) and only for a photograph whose file carries none. Resolves
+   * {fix, note}: a fix, or the code saying why there is none. */
+  function devicePosition(ask) {
+    if (!ask) return Promise.resolve({ fix: null, note: 'not_requested' });
+    var geo = global.navigator && global.navigator.geolocation;
+    if (!geo) return Promise.resolve({ fix: null, note: 'unsupported' });
+    return new Promise(function (resolve) {
+      var timer = 0;
+      /** @param {{fix: *, note: string}} result */
+      function finish(result) {
+        if (!timer) return;
+        global.clearTimeout(timer);
+        timer = 0;
+        resolve(result);
+      }
+      /* The geolocation timeout runs only once permission is given. A
+       * prompt left open, or dismissed in a browser that then calls neither
+       * callback, would hold the photograph for good, so the whole wait,
+       * prompt included, has a limit of its own. */
+      timer = global.setTimeout(function () {
+        finish({ fix: null, note: 'unavailable' });
+      }, GWT.imageSlot.positionWaitMs);
+      try {
+        geo.getCurrentPosition(function (pos) {
+          finish({ fix: { lat: pos.coords.latitude, lon: pos.coords.longitude,
+            accuracy_m: pos.coords.accuracy }, note: '' });
+        }, function (err) {
+          finish({ fix: null, note: err && err.code === 1 ? 'refused' : 'unavailable' });
+        }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+      } catch (e) {
+        finish({ fix: null, note: 'unavailable' });
+      }
+    });
+  }
+
+  /* The browser's own SHA-256, off this thread, where it has one (a secure
+   * context: https, or localhost). Otherwise '' and the engine's written-out
+   * one is used, which gives the same hash: a 6 MB photograph then holds
+   * the page for about 120 ms. */
+  async function nativeSha256(bytes) {
+    var subtle = global.crypto && global.crypto.subtle;
+    if (!subtle) return '';
+    try {
+      var digest = new Uint8Array(await subtle.digest('SHA-256', bytes));
+      return Array.prototype.map.call(digest, function (b) {
+        return ('0' + b.toString(16)).slice(-2);
+      }).join('');
+    } catch (e) {
+      return '';
+    }
+  }
+
+  /* This device's clock, in UTC, as a provenance record writes it. */
+  function utcNow() {
+    return new Date().toISOString().slice(0, 19) + 'Z';
+  }
+
+  /* The photograph as a slot keeps it: downscaled where it is large, with
+   * the provenance of the file as it arrived. The hash is taken of those
+   * bytes, before anything is done to them, and the attach time is read
+   * before the device is asked for its position, which can take seconds. */
+  async function takePhoto(file, askPosition) {
+    var C = GWT.core;
+    var attachedAt = utcNow();
+    var original = new Uint8Array(/** @type {ArrayBuffer} */ (await S.readFile(file)));
+    var exif = C.readExif(original);
+    var where = exif.gps ? { fix: null, note: '' }
+      : await devicePosition(askPosition ? askPosition() : false);
+    var shrunk = await shrink(file);
+    var provenance = C.photoProvenance(original, {
+      attached_at: attachedAt, device_fix: where.fix, position_note: where.note,
+      stored: shrunk.downscaled ? 'downscaled' : 'original',
+      sha256: await nativeSha256(original),
+    });
+    delete shrunk.downscaled;
+    return Object.assign(shrunk, { provenance: provenance });
+  }
+
+  /* Where a kept photograph's time and position came from, in the words the
+   * reports print; one attached before records existed says it has none. */
+  function provenanceNote(value) {
+    var shown = GWT.core.describePhotoProvenance(value && value.provenance);
+    return el('div.img-slot-provenance.muted', [shown.time, shown.position, shown.hash]
+      .filter(Boolean).map(function (line) { return el('div', line); }));
   }
 
   function fileFromDrop(event) {
@@ -135,7 +229,7 @@
         return;
       }
       try {
-        var shrunk = await shrink(file);
+        var shrunk = await takePhoto(file, spec.askPosition);
         value = Object.assign({ caption: (value && value.caption) || '' }, shrunk);
         emit();
         render();
@@ -171,6 +265,7 @@
           S.textInput(value.caption || '', function (v) {
             value.caption = v; emit();
           }, { class: 'input', placeholder: 'Caption printed under the figure' }),
+          provenanceNote(value),
         ]);
       } else {
         body = el('div.img-slot-drop', {
@@ -241,7 +336,7 @@
       S.clear(host);
       var grid = el('div.img-grid', slots.map(function (slot) {
         return create({
-          key: slot.key, label: slot.label, hint: slot.hint,
+          key: slot.key, label: slot.label, hint: slot.hint, askPosition: opts.askPosition,
           value: current[slot.key],
           onChange: function (v) {
             if (v) current[slot.key] = v; else delete current[slot.key];
@@ -251,6 +346,7 @@
       }).concat(extras.map(function (extra, i) {
         return create({
           key: 'extra_' + i, label: extra.label || ('Additional photo ' + (i + 1)),
+          askPosition: opts.askPosition,
           value: extra.image,
           onChange: function (v) {
             if (v) { extras[i].image = v; fire(); }
@@ -290,7 +386,7 @@
           key: slot.key, label: slot.label,
           caption: v.caption || slot.label,
           dataUrl: v.dataUrl, mime: v.mime || 'image/jpeg',
-          width: v.width, height: v.height,
+          width: v.width, height: v.height, provenance: v.provenance || null,
         });
       }
     });
@@ -301,6 +397,7 @@
           caption: extra.image.caption || extra.label || 'Additional photo',
           dataUrl: extra.image.dataUrl, mime: extra.image.mime || 'image/jpeg',
           width: extra.image.width, height: extra.image.height,
+          provenance: extra.image.provenance || null,
         });
       }
     });
@@ -314,5 +411,8 @@
   GWT.imageSlot = {
     create: create, gallery: gallery, collect: collect, count: count,
     shrink: shrink, sets: SLOT_SETS, MAX_EDGE: MAX_EDGE,
+    /* how long a photograph waits for the device's position in all,
+     * permission prompt included; then it is kept without one */
+    positionWaitMs: 30000,
   };
 }(typeof window !== 'undefined' ? window : globalThis));

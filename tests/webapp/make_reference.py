@@ -662,7 +662,8 @@ def build() -> dict:
     # the CSV, and carry a positional answer onto the same stable id.
     _items = load_checklists()
     out["checklists"] = {
-        "ids": [[i.item_id, i.legacy_id, i.checklist, i.section, i.critical]
+        "ids": [[i.item_id, i.legacy_id, i.checklist, i.section, i.critical,
+                 i.photo_required]
                 for i in _items],
         "legacy": legacy_item_ids(_items),
         "migrated": migrate_response_keys(
@@ -1467,7 +1468,81 @@ def build() -> dict:
     out["survey_figures"] = survey_figures_reference(rokel_interps)
     out["design_cases"] = [design_case(spec) for spec in DESIGN_CASES]
     out["drilling_cases"] = [drilling_case(grid) for grid in DRILLING_CASES]
+    out["photo_evidence"] = photo_evidence_reference()
     return out
+
+
+# ----------------------------------------------- photo evidence (step 2.4)
+
+def photo_evidence_reference() -> dict:
+    """The provenance both engines record for the same files, and the gate.
+
+    The files are the committed fixture, whose EXIF was written by hand, and
+    variants of it from the same builder: big-endian, no metadata at all
+    (so the device clock and a device fix are used), and a blank clock.
+    The bytes travel in this file, so the browser reads exactly these.
+    """
+    import base64
+    import importlib.util
+
+    from groundwater.photos import describe_provenance, photo_provenance
+    from groundwater.readiness import assess_readiness
+
+    spec = importlib.util.spec_from_file_location(
+        "make_photo_fixture", OUT.parent / "fixtures" / "make_photo_fixture.py")
+    make = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(make)
+    attached = "2026-10-03T09:00:00Z"
+    files = {
+        "fixture": ((OUT.parent / "fixtures" / "photo_exif.jpg").read_bytes(), {}),
+        "big_endian": (make.jpeg_with_exif(make.build_tiff(">", **make.FIXTURE_EXIF)), {}),
+        "no_exif_device_fix": (make.BASE_JPEG, {
+            "device_fix": {"lat": 8.4801, "lon": -13.2302, "accuracy_m": 12.5}}),
+        "no_exif_refused": (make.BASE_JPEG, {"position_note": "refused",
+                                             "stored": "downscaled"}),
+        "blank_clock": (make.jpeg_with_exif(make.build_tiff(
+            "<", taken="0000:00:00 00:00:00", lat=make.FIXTURE_EXIF["lat"],
+            lon=make.FIXTURE_EXIF["lon"])), {}),
+        # padded with a control byte that str.strip() takes and trim() does
+        # not, and with a space both take: the two once read this differently
+        "control_padding": (make.jpeg_with_exif(make.build_tiff(
+            ">", taken=" 2024:03:05 14:22:10", offset="+01:00\x1c",
+            lat=("N ", ((8, 1), (1, 1), (1, 1))),
+            lon=("W\x1f", ((13, 1), (0, 1), (0, 1))))), {}),
+    }
+    cases = {}
+    for name, (data, options) in files.items():
+        record = photo_provenance(data, attached, **options)
+        cases[name] = {
+            "b64": base64.b64encode(data).decode("ascii"),
+            "options": options,
+            "record": record,
+            "shown": describe_provenance(record),
+        }
+    photo = {"b64": cases["fixture"]["b64"]}
+    gate = {
+        "none": {},
+        "one": {"supervision": {"evidence": {"des-backfill-placed-6": photo}}},
+        "all": {"supervision": {"evidence": {
+            key: photo for key in ("des-casing-screen-assemblage",
+                                   "des-backfill-placed-6",
+                                   "dev-borehole-disinfected-chlorine")}}},
+        "na": {"supervision": {"responses": {
+            "des-casing-screen-assemblage": {"status": "na"},
+            "des-backfill-placed-6": {"status": "na"},
+            "dev-borehole-disinfected-chlorine": {"status": "na"}}}},
+    }
+    return {
+        "attached_at": attached,
+        "cases": cases,
+        "no_record": describe_provenance(None),
+        "gate": {
+            name: [[r.key, r.state, r.detail]
+                   for r in assess_readiness(state, "supervision").requirements]
+            for name, state in gate.items()
+        },
+        "gate_states": gate,
+    }
 
 
 # ------------------------------------------------- pumping sheets at the edges
