@@ -9101,6 +9101,14 @@
    * ratio beyond this is not the segment shift the splice is built for. */
   var OVERLAP_DISCREPANCY_RATIO = 1.2;
 
+  /** The overlap pairs whose readings disagree by more than the ratio, as
+   * "AB/2 40 m: 156.1 and 78.7 ohm-m (ratio 1.98)". The VES co-pilot asks
+   * the same question of each pair at the peg, so the field and the office
+   * judge an MN change by one test.
+   * @param {number[]} ab2
+   * @param {number[]} rho
+   * @returns {string[]}
+   */
   function overlapDiscrepancies(ab2, rho) {
     var unique = ab2.slice().sort(function (a, b) { return a - b; })
       .filter(function (v, k, a) { return k === 0 || v !== a[k - 1]; });
@@ -10744,6 +10752,8 @@
     parseWaterStrikeDepths: parseWaterStrikeDepths,
     parseBitDiameterIn: parseBitDiameterIn,
     parsePenetrationRateMPerMin: parsePenetrationRateMPerMin,
+    overlapDiscrepancies: overlapDiscrepancies,
+    OVERLAP_DISCREPANCY_RATIO: OVERLAP_DISCREPANCY_RATIO,
     LABEL_PATTERNS: LABEL_PATTERNS,
   });
 

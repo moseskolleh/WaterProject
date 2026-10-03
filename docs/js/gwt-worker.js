@@ -10,10 +10,10 @@
  * This one file is loaded twice and does a different job each time:
  *
  *   - started as a Web Worker, it imports the engine and its tables and
- *     answers three requests - invert, analysePumping and recompute -
- *     reporting progress on the way;
+ *     answers its requests - invert (and the co-pilot's previewInvert),
+ *     analysePumping and recompute - reporting progress on the way;
  *   - loaded by the page, it is GWT.engine: a promise per request, the
- *     progress passed on, cancel, and the same three tasks run on the page
+ *     progress passed on, cancel, and the same tasks run on the page
  *     itself where no worker can start - a copy opened from file://, which
  *     browsers refuse a worker, or a browser that fails to load one.
  *
@@ -57,6 +57,16 @@
      * model itself: the interpretation is cheap, and it keeps the model it
      * was made from as the same object the inversion result holds. */
     invert: function (payload, progress) {
+      return GWT.core.invertSounding(payload.sounding,
+        { config: payload.config, onProgress: progress });
+    },
+
+    /* The same inversion, for the VES co-pilot's preview. It is a task of
+     * its own because cancelling works by task: the co-pilot stops its
+     * preview each time a reading comes in, and the Geophysics page stops
+     * its run whenever the project changes, and neither may stop the
+     * other's. */
+    previewInvert: function (payload, progress) {
       return GWT.core.invertSounding(payload.sounding,
         { config: payload.config, onProgress: progress });
     },
@@ -462,6 +472,10 @@
     /* invertSounding for one sounding */
     invert: function (sounding, config, options) {
       return request('invert', { sounding: sounding, config: config }, options);
+    },
+    /* invertSounding for the VES co-pilot's preview, cancelled on its own */
+    previewInvert: function (sounding, config, options) {
+      return request('previewInvert', { sounding: sounding, config: config }, options);
     },
     /* analysePumpingTest; the test to keep is the analysis's own .test */
     analysePumping: function (test, config, options) {
