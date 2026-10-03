@@ -36,8 +36,10 @@ nox -s tests -- -m "not slow") and to ruff in the lint session.
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
+import tempfile
 from pathlib import Path
 
 import nox
@@ -146,6 +148,44 @@ PYRIGHT_ENV = {"PYRIGHT_PYTHON_IGNORE_WARNINGS": "1"}
 def _types(session: nox.Session) -> None:
     _pinned(session, "pyright", env=PYRIGHT_ENV)
     _python(session, "-m", "pyright", env=PYRIGHT_ENV)
+    _excluded_still_fail(session)
+
+
+def _excluded_still_fail(session: nox.Session) -> None:
+    # pyproject.toml's exclude is the list of modules that do not pass yet,
+    # and it is meant only to get shorter. Pyright cannot say that a module
+    # on it has started passing, so this asks: the excluded modules are
+    # checked on their own, under the same settings without the exclude, and
+    # one that reports no error has to come off the list in the change that
+    # made it pass. A path that no longer exists has to come off too.
+    text = (REPO / "pyproject.toml").read_text()
+    section = text.split("[tool.pyright]", 1)[1].split("\n[", 1)[0]
+    block = re.search(r"^exclude = \[(.*?)\]", section, re.S | re.M)
+    excluded = re.findall(r'"([^"]+)"', block.group(1)) if block else []
+    gone = [path for path in excluded if not (REPO / path).is_file()]
+    if gone:
+        session.error("no such module on pyright's exclude list in "
+                      "pyproject.toml; take it off:\n  " + "\n  ".join(gone))
+    if not excluded:
+        return
+    # typeCheckingMode, pythonVersion and the report* overrides: every
+    # setting in the section that is a single quoted value
+    settings = dict(re.findall(r'^(\w+) = "([^"]*)"', section, re.M))
+    with tempfile.TemporaryDirectory() as tmp:
+        config = Path(tmp) / "pyrightconfig.json"
+        config.write_text(json.dumps(settings))
+        # Pyright exits 1 when it finds errors, which here is the expected
+        # outcome; the JSON says which files they are in.
+        report = session.run("python", "-m", "pyright", "--outputjson",
+                             "-p", str(config), *excluded, silent=True,
+                             success_codes=[0, 1], env=PYRIGHT_ENV)
+    failing = {Path(d["file"]).resolve() for d in json.loads(report)["generalDiagnostics"]
+               if d["severity"] == "error"}
+    passing = [path for path in excluded if (REPO / path).resolve() not in failing]
+    if passing:
+        session.error("these modules pass pyright now; take them off the "
+                      "exclude list in pyproject.toml:\n  " + "\n  ".join(passing))
+    session.log(f"all {len(excluded)} modules on pyright's exclude list still fail")
 
 
 # Line coverage of the package, printed after the tests. It is a report and

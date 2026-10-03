@@ -27,6 +27,8 @@ updates:
   # The Depth Spine workspace. A bump here can change the committed build under
   # src/groundwater/depth_spine/, and CI fails until that is rebuilt, so
   # these pull requests need "nox -s build" run on them before they merge.
+  # Its TypeScript and oxlint also check the browser app in docs/js
+  # ("nox -s js"), so a bump of either can find new things there too.
   - package-ecosystem: npm
     directory: /ui/depth-spine
     schedule:

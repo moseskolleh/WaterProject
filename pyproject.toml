@@ -174,13 +174,15 @@ pythonVersion = "3.10"
 reportUnsupportedDunderAll = "none"
 # The modules that do not pass yet. Every other file in the package is
 # checked, a new one included, so this list only ever gets shorter: take a
-# module off it in the change that makes it pass. Nearly all of what these
-# report is an Optional that the code has already ruled out in a way
+# module off it in the change that makes it pass. `nox -s types` checks the
+# listed modules on their own as well, and fails on one that reports no
+# error, so a module cannot stay here after it passes. Nearly all of what
+# these report is an Optional that the code has already ruled out in a way
 # pyright cannot follow (a helper that tests for None, a value read twice),
 # or numpy and matplotlib stubs stricter than the calls that work. Excluded
 # modules are still read when a checked one imports them; only their own
 # findings go unreported. claude.py imports anthropic, which only the ai
-# extra installs.
+# extra installs, and has a finding of its own with anthropic installed.
 exclude = [
     "src/groundwater/_geometry.py",
     "src/groundwater/costing/export.py",

@@ -48,6 +48,7 @@ What the sessions run, in order:
 # check: lint, types, tests
 python -m ruff check .    # the ruff pinned in the dev extra
 python -m pyright         # likewise pinned; basic mode, see pyproject.toml
+# then the modules on its exclude list, on their own: each must still fail
 python -m pytest -q --cov=groundwater --cov-report=term
 # check: bundles - the bundled data must match the source tables
 python web/build_boundary_review.py --check

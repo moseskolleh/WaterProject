@@ -32,15 +32,15 @@ const exported = [];
       ts.isObjectLiteralExpression(node.arguments[1])) {
     for (const property of node.arguments[1].properties) {
       if (ts.isPropertyAssignment(property)) {
-        exported.push([property.name.getText(source), property.initializer.getText(source)]);
+        exported.push([property.name.getText(source), property.initializer]);
       } else if (ts.isShorthandPropertyAssignment(property)) {
-        exported.push([property.name.text, property.name.text]);
+        exported.push([property.name.text, property.name]);
       }
     }
   }
   if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
       ts.isPropertyAccessExpression(node.left) && node.left.expression.getText(source) === 'C') {
-    exported.push([node.left.name.text, node.right.getText(source)]);
+    exported.push([node.left.name.text, node.right]);
   }
   ts.forEachChild(node, visit);
 }(source));
@@ -48,7 +48,10 @@ const exported = [];
 let functions = 0;
 const untyped = [];
 for (const [name, value] of exported) {
-  const fn = declared.get(value);
+  // A function written in place is held to the same rule as one declared
+  // by name, so that `C.x = function (a) {...}` is no way round it.
+  const fn = ts.isFunctionExpression(value) || ts.isArrowFunction(value)
+    ? value : declared.get(value.getText(source));
   if (!fn) continue;   // a constant, a table or a namespace object
   functions += 1;
   const missing = fn.parameters.filter((p) => !ts.getJSDocType(p))
