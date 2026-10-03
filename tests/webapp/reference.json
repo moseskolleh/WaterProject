@@ -25217,7 +25217,9 @@
    "GWT-FK/2|pumping|Rokel 2026|KTL-01",
    "GWT-FK/1|pumping|Rokel 2026",
    "GWT-FK/1||Rokel 2026|KTL-01",
-   "BOREHOLE SL-WAR-8FEEVKQ-T"
+   "BOREHOLE SL-WAR-8FEEVKQ-T",
+   "\ufeffGWT-FK/1|pumping|P|B",
+   "GWT-FK/1|pumping|P|B\u0085"
   ],
   "parsed": [
    {
@@ -25241,7 +25243,43 @@
    null,
    null,
    null,
-   null
+   null,
+   null,
+   {
+    "format": "GWT-FK/1",
+    "sheet": "pumping",
+    "project": "P",
+    "borehole": "B\u0085"
+   }
+  ],
+  "names": [
+   [
+    "\ufeffRokel",
+    "BH-1\ufeff"
+   ],
+   [
+    "x\u0085",
+    "\u001cFS\u001f"
+   ],
+   [
+    "\u00a0K\u0254n\u0254\u00a0",
+    "\u3000\u00d8-1 \ud83d\udca7\u2028"
+   ],
+   [
+    "A|B%C%7C%25",
+    " %7c|| "
+   ],
+   [
+    "line 1\r\nline 2",
+    "\t\u000bBH\f 3 "
+   ]
+  ],
+  "payloads": [
+   "GWT-FK/1|pumping|\ufeffRokel|BH-1\ufeff",
+   "GWT-FK/1|pumping|x\u0085|\u001cFS\u001f",
+   "GWT-FK/1|pumping|\u00a0K\u0254n\u0254\u00a0|\u3000\u00d8-1 \ud83d\udca7\u2028",
+   "GWT-FK/1|pumping|A%7CB%25C%257C%2525|%257c%7C%7C",
+   "GWT-FK/1|pumping|line 1 line 2|BH 3"
   ],
   "minutes": {
    "0.4": [],

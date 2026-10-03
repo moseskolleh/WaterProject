@@ -40,7 +40,9 @@ text, four fields separated by ``|``::
 4. The borehole identifier, as the sheet's "Borehole Ref. No." prints it.
 
 In the project and borehole fields, each run of spaces, tabs and line
-breaks becomes one space and the ends are trimmed; then ``%`` is written
+breaks becomes one space and the ends are trimmed of it (of nothing else:
+a byte-order mark or a Unicode space is kept, as it is everywhere inside
+the field); then ``%`` is written
 ``%25`` and ``|`` is written ``%7C``, so no field can contain the
 separator. Nothing else is escaped: the text is UTF-8, as the QR symbol's
 byte mode carries it. The symbol is printed at error-correction level H,
@@ -93,9 +95,13 @@ PAYLOAD_FORMAT = "GWT-FK/1"
 #: The one sheet the kit prints, named in the code's second field.
 PUMPING_SHEET = "pumping"
 
-# The whitespace a field's runs collapse over: written out rather than \s,
-# which Python and JavaScript read as different sets of Unicode spaces.
+# The whitespace a field's runs collapse over, and the only whitespace a
+# field or a code is trimmed of: written out rather than \s, str.strip() or
+# String.trim(), which Python and JavaScript read as different sets (a
+# byte-order mark, U+0085 and U+001C to U+001F), and gave the two engines
+# different codes for the same name.
 _SPACE = re.compile(r"[ \t\n\r\f\v]+")
+_SPACE_CHARS = " \t\n\r\f\v"
 _ESCAPED = re.compile(r"%(25|7C)")
 
 
@@ -216,7 +222,7 @@ def ves_survey_plan(target_m: float, config: VESConfig | None = None) -> dict:
 # ------------------------------------------------------------- the sheet code
 
 def _clean_field(text: Any) -> str:
-    return _SPACE.sub(" ", "" if text is None else str(text)).strip()
+    return _SPACE.sub(" ", "" if text is None else str(text)).strip(" ")
 
 
 def _escape(text: str) -> str:
@@ -248,7 +254,7 @@ def parse_field_kit_payload(text: str) -> PayloadFields | None:
 
     Only version 1 is read; a code of a later version is not guessed at.
     """
-    parts = str(text).strip().split("|")
+    parts = str(text).strip(_SPACE_CHARS).split("|")
     if len(parts) != 4 or parts[0] != PAYLOAD_FORMAT or not parts[1]:
         return None
     return PayloadFields(parts[0], parts[1], _unescape(parts[2]), _unescape(parts[3]))

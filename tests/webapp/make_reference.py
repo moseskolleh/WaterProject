@@ -1505,6 +1505,20 @@ FIELD_KIT_CODES = [
     "GWT-FK/1|pumping|Rokel 2026",
     "GWT-FK/1||Rokel 2026|KTL-01",
     "BOREHOLE SL-WAR-8FEEVKQ-T",
+    # trimmed of the six ASCII spaces only, which str.strip() and
+    # String.trim() are not: a byte-order mark and U+0085 are kept
+    "\ufeffGWT-FK/1|pumping|P|B",
+    "GWT-FK/1|pumping|P|B\u0085",
+]
+
+# names to make codes of, with the characters str.strip() and String.trim()
+# disagree about, unicode, the escapes, and runs of spaces
+FIELD_KIT_NAMES = [
+    ["\ufeffRokel", "BH-1\ufeff"],
+    ["x\u0085", "\u001cFS\u001f"],
+    ["\u00a0K\u0254n\u0254\u00a0", "\u3000\u00d8-1 \U0001f4a7\u2028"],
+    ["A|B%C%7C%25", " %7c|| "],
+    ["line 1\r\nline 2", "\t\vBH\f 3 "],
 ]
 
 
@@ -1536,6 +1550,9 @@ def field_kit_reference() -> dict:
         "codes": FIELD_KIT_CODES,
         "parsed": [asdict(p) if (p := fk.parse_field_kit_payload(text)) else None
                    for text in FIELD_KIT_CODES],
+        "names": FIELD_KIT_NAMES,
+        "payloads": [fk.field_kit_payload(project, borehole)
+                     for project, borehole in FIELD_KIT_NAMES],
         "minutes": {str(until): fk.reading_minutes(until)
                     for until in (0.4, 60, 120, 121, 240, 330)},
         "plans": plans,

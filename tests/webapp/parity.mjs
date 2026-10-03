@@ -1044,6 +1044,7 @@ await withPage(async (page, base, consoleErrors) => {
     return {
       content,
       parsed: ref.codes.map((text) => C.parseFieldKitPayload(text)),
+      payloads: ref.names.map((pair) => C.fieldKitPayload(pair[0], pair[1])),
       minutes: Object.fromEntries(Object.keys(ref.minutes)
         .map((k) => [k, C.readingMinutes(Number(k))])),
       plans,
@@ -1082,7 +1083,7 @@ await withPage(async (page, base, consoleErrors) => {
       check(`field kit case ${i + 1}: ${key}`, d === null, d);
     }
   });
-  for (const key of ['parsed', 'minutes', 'plans', 'symbols']) {
+  for (const key of ['parsed', 'payloads', 'minutes', 'plans', 'symbols']) {
     const d = parted(kit[key], R.field_kit[key], key);
     check(`field kit: ${key}`, d === null, d);
   }

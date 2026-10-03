@@ -157,6 +157,18 @@ def test_the_code_is_the_documented_format():
     assert PAYLOAD_FORMAT == "GWT-FK/1"
 
 
+def test_a_field_is_trimmed_of_the_ascii_spaces_only():
+    """str.strip() takes U+0085 and U+001C to U+001F off the ends, which
+    String.trim() keeps, and String.trim() takes a byte-order mark, which
+    str.strip() keeps, so the two engines made different codes for one
+    name. Both now trim the six ASCII spaces and nothing else; parity holds
+    the browser to it on these names and more."""
+    assert field_kit_payload("﻿Rokel", "BH-1\x85") == "GWT-FK/1|pumping|﻿Rokel|BH-1\x85"
+    assert field_kit_payload("\x1cP\x1f", " B　") == "GWT-FK/1|pumping|\x1cP\x1f| B　"
+    assert parse_field_kit_payload("﻿GWT-FK/1|pumping|P|B") is None
+    assert parse_field_kit_payload(" \t\nGWT-FK/1|pumping|P|B\x85\r\n").borehole == "B\x85"
+
+
 @pytest.mark.parametrize("project,borehole", [
     ("Rokel 2026", "KTL-01"), ("A|B%C", "%41"), ("", "RK-1"), ("Kɔnɔ", "Ø-1|%7C"),
 ])

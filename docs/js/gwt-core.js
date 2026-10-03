@@ -20049,8 +20049,12 @@
 
   var FIELD_KIT_FORMAT = 'GWT-FK/1';
   var FIELD_KIT_PUMPING = 'pumping';
-  /* written out rather than \s, which Python reads as another set */
+  /* written out rather than \s, and the only whitespace a field or a code is
+   * trimmed of: String.trim() and Python's str.strip() part over a
+   * byte-order mark, U+0085 and U+001C to U+001F, which gave the two engines
+   * different codes for the same name */
   var FIELD_SPACE = /[ \t\n\r\f\v]+/g;
+  var FIELD_ENDS = /^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g;
 
   /** data/field.yaml, shared: read, never changed.
    * @returns {Rec} */
@@ -20165,7 +20169,7 @@
 
   function fieldText(text) {
     return String(text === null || text === undefined ? '' : text)
-      .replace(FIELD_SPACE, ' ').trim();
+      .replace(FIELD_SPACE, ' ').replace(FIELD_ENDS, '');
   }
 
   /** The text a sheet's QR code carries (field_kit.py's notes say how).
@@ -20186,7 +20190,7 @@
    * @param {string} text
    * @returns {{format: string, sheet: string, project: string, borehole: string}|null} */
   function parseFieldKitPayload(text) {
-    var parts = String(text).trim().split('|');
+    var parts = String(text).replace(FIELD_ENDS, '').split('|');
     if (parts.length !== 4 || parts[0] !== FIELD_KIT_FORMAT || !parts[1]) return null;
     var unescape = function (/** @type {string} */ value) {
       return value.replace(/%(25|7C)/g, function (_, code) { return code === '25' ? '%' : '|'; });
