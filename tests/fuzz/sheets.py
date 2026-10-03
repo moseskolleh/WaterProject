@@ -218,8 +218,10 @@ def _apparent(rho, h, spacing, wenner: bool) -> np.ndarray:
 def ves_sheet(draw, index: int, varied: bool = False) -> dict:
     """One VES worksheet: a header block, then No., AB/2 (or a), MN, rho.
 
-    ``varied`` keeps the readings from all being one value, which a single
-    layer read without noise gives: see ``test_inversions_agree``.
+    ``varied`` is for a sounding that will be inverted: it keeps the readings
+    from all being one value, which a single layer read without noise gives
+    (see ``test_inversions_agree``), and the spread from being too short to
+    invert.
     """
     wenner = chance(draw, 0.3)
     rho_model, h_model = draw(layered_earth())
@@ -227,7 +229,12 @@ def ves_sheet(draw, index: int, varied: bool = False) -> dict:
     # The spread: Schlumberger spacings from a start, for as many readings as
     # the crew took - a very short spread is one to three readings.
     start = draw(st.integers(0, 6))
-    count = draw(st.one_of(st.integers(1, 4), st.integers(5, 22)))
+    # A sounding drawn to be inverted has a spread long enough to invert: a
+    # short one is refused by both engines alike, and the readers above
+    # already meet short spreads in the parsing cases. Drawn from both, the
+    # inversion cases spent about half their budget on refusals.
+    count = draw(st.integers(5, 22) if varied
+                 else st.one_of(st.integers(1, 4), st.integers(5, 22)))
     spacings = SCHLUMBERGER_SPACINGS[start:start + count]
     if not spacings:
         spacings = [SCHLUMBERGER_SPACINGS[start]]
