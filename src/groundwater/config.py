@@ -157,7 +157,8 @@ class PumpingConfig:
     bootstrap_replicates: int = _PUMPING["bootstrap_replicates"]
     bootstrap_seed: int = _PUMPING["bootstrap_seed"]
     # The Bourdet derivative: neighbours at least this many log cycles apart
-    # (Bourdet, Ayoub and Pirard 1989 smooth with L of 0.1 to 0.5), the
+    # (Bourdet, Ayoub and Pirard's L; 0.2 smooths a dipper's centimetre
+    # without flattening a regime half a cycle long), the
     # width in log cycles of the window its log-log slope is read over, and
     # the span a run of one slope class must cover to be named a regime.
     diagnostic_l_log10: float = _PUMPING["diagnostic_l_log10"]

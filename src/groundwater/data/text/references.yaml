@@ -87,6 +87,13 @@ citations:
   hall_horowitz_jing: >-
     Hall, P., Horowitz, J.L. and Jing, B.-Y. (1995). On blocking rules for the
     bootstrap with dependent data. Biometrika, 82(3), 561-574.
+  politis_romano: >-
+    Politis, D.N. and Romano, J.P. (1992). A circular block-resampling
+    procedure for stationary data. In R. LePage and L. Billard (eds),
+    Exploring the Limits of Bootstrap, 263-270. Wiley, New York.
+  davison_hinkley: >-
+    Davison, A.C. and Hinkley, D.V. (1997). Bootstrap Methods and their
+    Application. Cambridge University Press.
   niwas_singhal: >-
     Niwas, S. and Singhal, D.C. (1981). Estimation of aquifer transmissivity
     from Dar-Zarrouk parameters in porous media. Journal of Hydrology, 50,

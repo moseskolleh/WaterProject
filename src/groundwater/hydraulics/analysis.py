@@ -1668,7 +1668,7 @@ def analyse_pumping_test(
         )
     elif pc is not None and th is not None and pc.rmse_m > th.rmse_m:
         analysis.papadopulos_cooper_invalid = (
-            f"it fits the readings worse than the Theis curve (RMSE "
+            f"it fits the readings no better than the Theis curve (RMSE "
             f"{pc.rmse_m:.3g} m against {th.rmse_m:.3g} m), so casing storage "
             "does not explain them"
         )

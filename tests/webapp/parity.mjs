@@ -2078,10 +2078,14 @@ await withPage(async (page, base, consoleErrors) => {
 
   // --- the pumping test's spread, derivative and large-diameter fit (PLAN.md
   // step 3.2). The generator's stream and the Bessel functions are held to
-  // the last digits; a fit is held to 1e-6, except the Papadopulos-Cooper
-  // fit and what rests on it: its valley floor is flat to within the
-  // Stehfest inversion's rounding, and the two engines' optimisers stop
-  // 1e-5 apart on it, inside a covariance band of a factor of two or more.
+  // the last digits, and everything else to 1e-6, except the
+  // Papadopulos-Cooper fit's own numbers on a sheet it fits badly: there its
+  // valley floor is flat to within the Stehfest inversion's rounding, and the
+  // two engines' optimisers stop up to 2.6e-4 apart in storativity (wide_band,
+  // RMSE 1.76 m; 4e-5 in T) at the same misfit to 1e-10. Those are held to
+  // 1e-3 relative, not absolute: alpha and S are a few thousandths, and an
+  // absolute 1e-3 would pass them at any value. Where the fit is adopted it
+  // agrees to 1e-6, and the band and yield resting on it are held there.
   const PS = R.pumping_spread;
   const spreadJs = await page.evaluate(([PS, edge]) => {
     const C = GWT.core;
@@ -2176,10 +2180,19 @@ await withPage(async (page, base, consoleErrors) => {
   Object.keys(PS.cases).forEach((name) => {
     const js = spreadJs.cases[name], py = Object.assign({}, PS.cases[name]);
     delete py.grid;
-    const loose = py.source === 'papadopulos_cooper' ? 1e-3 : 1e-6;
     for (const key of Object.keys(py)) {
-      const tol = key === 'pc' ? 1e-3 : (key === 'diagnostic' ? 1e-9 : loose);
-      const d = within(js[key], py[key], `${name}.${key}`, tol);
+      let d;
+      if (key === 'pc' && py.pc && js.pc) {
+        const rel = py.source === 'papadopulos_cooper' ? 1e-6 : 1e-3;
+        d = py.pc.length === js.pc.length ? null : `${name}.pc: lengths differ`;
+        py.pc.forEach((v, i) => {
+          const a = js.pc[i];
+          const ok = (v === null || a === null) ? a === v : Math.abs(a - v) <= rel * Math.abs(v);
+          if (!ok && !d) d = `${name}.pc[${i}]: js ${a} vs py ${v}`;
+        });
+      } else {
+        d = within(js[key], py[key], `${name}.${key}`, key === 'diagnostic' ? 1e-9 : 1e-6);
+      }
       check(`pumping spread ${name}: ${key}`, d === null, d);
     }
   });

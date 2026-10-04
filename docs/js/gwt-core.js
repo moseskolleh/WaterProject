@@ -4203,7 +4203,7 @@
         formatG(roundSig(pcFit.storativity, 2), 2) + ' is above ' +
         formatG(cfg.max_plausible_storativity) + ', which no aquifer has';
     } else if (pcFit && thFit && pcFit.rmse_m > thFit.rmse_m) {
-      analysis.papadopulos_cooper_invalid = 'it fits the readings worse than the ' +
+      analysis.papadopulos_cooper_invalid = 'it fits the readings no better than the ' +
         'Theis curve (RMSE ' + formatG(roundSig(pcFit.rmse_m, 3), 3) + ' m against ' +
         formatG(roundSig(thFit.rmse_m, 3), 3) + ' m), so casing storage does not ' +
         'explain them';

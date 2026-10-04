@@ -267,18 +267,22 @@ def _coverage(method, cases, phi=0.0, seed=7):
     return hits / cases
 
 
+# The draws are seeded, so each rate is one exact number; the limits sit
+# about two standard errors either side of it, so a change that narrows or
+# widens the bands by a tenth fails here rather than passing unseen.
 @pytest.mark.parametrize("method, cases, low, high", [
-    ("cooper_jacob", 300, 0.62, 0.86),
-    ("theis", 120, 0.58, 0.86),
+    ("cooper_jacob", 300, 0.69, 0.79),
+    ("theis", 120, 0.56, 0.72),
 ])
 def test_bands_contain_the_truth_at_the_stated_rate(method, cases, low, high, capsys):
     """Independent reading errors of 2 cm, read to the centimetre.
 
-    Measured: Cooper-Jacob 0.74 (300 tests), Theis 0.64 (120 tests), against
-    the 0.80 a P10 to P90 band names. The shortfall is the percentile
-    bootstrap's on a handful of readings - the Cooper-Jacob window holds
-    eight - and the band is read as a lower bound on the spread, never as a
-    guarantee.
+    Measured: Cooper-Jacob 0.737 (300 tests), Theis 0.642 (120 tests),
+    against the 0.80 a P10 to P90 band names. The Cooper-Jacob window holds
+    thirteen readings; resampled singly rather than in blocks of three they
+    give 0.777. The Theis fit's own covariance band holds the truth in 0.667
+    of the same tests. The band is read as a lower bound on the spread, never
+    as a guarantee, and the reports say so beside it.
     """
     rate = _coverage(method, cases)
     with capsys.disabled():
@@ -286,11 +290,13 @@ def test_bands_contain_the_truth_at_the_stated_rate(method, cases, low, high, ca
     assert low <= rate <= high
 
 
-def test_correlated_errors_narrow_the_band():
-    """Consecutive errors correlated at 0.3 (a pump rate that wanders): the
-    blocks carry some of it, and the band holds the truth less often: 0.62."""
-    rate = _coverage("cooper_jacob", 300, phi=0.3)
-    assert 0.5 <= rate <= 0.75
+@pytest.mark.parametrize("phi, low, high", [(0.3, 0.57, 0.68), (0.6, 0.42, 0.54)])
+def test_correlated_errors_narrow_the_band(phi, low, high):
+    """Consecutive errors correlated (a pump rate that wanders): the blocks
+    carry some of it, and the band holds the truth less often: 0.623 at 0.3
+    and 0.477 at 0.6, the rates the reports print."""
+    rate = _coverage("cooper_jacob", 300, phi=phi)
+    assert low <= rate <= high
 
 
 @pytest.mark.slow
@@ -298,7 +304,7 @@ def test_large_diameter_bands_contain_the_truth():
     """The Papadopulos-Cooper refits cost about 7 ms each in Python, so 24
     tests of 400 resamples take about a minute. Measured: 0.67."""
     rate = _coverage("papadopulos_cooper", 24)
-    assert rate >= 0.5
+    assert 0.5 <= rate <= 0.85
 
 
 def test_too_few_readings_give_no_band():
@@ -411,3 +417,60 @@ def test_sustainable_only_where_the_band_holds_at_the_dry_season_level():
     assert "not called sustainable" in sustainable_sentence(rec, None)
     rec.is_indicative = True
     assert sustainable_sentence(rec, holds) is None
+
+
+# ------------------------------------------------- what the reports may claim
+
+def test_the_band_sentence_does_not_claim_the_rate_its_percentiles_name():
+    """A band that holds the truth 64 to 74 times in a hundred is not printed
+    as a bare "P10 to P90": the measured rates go beside it, in the words
+    both engines print."""
+    text = spread_paragraphs(_timbo())
+    band = text[0]
+    assert "(P10 to P90)" in band
+    assert "64 to 74 tests in a hundred, not 80" in band
+    assert "48 when consecutive errors" in band
+    assert "least the spread can be" in band
+    theis = next(line for line in text if line.startswith("The Theis fit's own covariance"))
+    assert "nominally P10 to P90" in theis and "67 tests in a hundred" in theis
+
+
+def test_the_regime_limits_say_a_named_regime_can_be_scatter():
+    text = diagnostic_thresholds_text()
+    assert "one test in a hundred" in text
+    assert "not a finding on its own" in text
+
+
+def test_the_large_diameter_fit_rejected_on_misfit_says_no_better():
+    """The rule rejects a misfit above the Theis curve's. Two RMSEs printed to
+    three figures can read alike - 1.76 m against 1.76 m on the scattered
+    sheet reference.json carries as wide_band, rebuilt here - so the reason
+    reads "no better than", which is true of a worse fit and an equal one."""
+    from groundwater.hydraulics.spread import papadopulos_cooper_text
+
+    times = np.array([1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 60], float)
+    wobble = np.array([0.1, -0.2, 0.15, -0.1, 0.3, -0.4, 0.5, -0.3, 0.6, -0.5, 0.7,
+                       -0.6, 0.8, -0.7, 0.9, -0.2])
+    levels = 5.0 + np.round(1.2 * np.log10(times) + 2.0 + 3.5 * wobble, 2)
+    test = PumpingTest(
+        site=SiteMetadata(), test_type="constant", static_water_level_m=5.0,
+        borehole_depth_m=60.0, pump_setting_m=50.0, pumping_duration_min=60.0,
+        steps=[PumpingStep(step_number=1, discharge_m3_per_h=2.0, time_min=times,
+                           water_level_m=levels, label="Constant")],
+    )
+    analysis = analyse_pumping_test(test)
+    pc, th = analysis.papadopulos_cooper, analysis.theis
+    assert f"{pc.rmse_m:.3g}" == f"{th.rmse_m:.3g}" and pc.rmse_m > th.rmse_m
+    assert analysis.papadopulos_cooper_invalid.startswith(
+        "it fits the readings no better than the Theis curve")
+    text = papadopulos_cooper_text(analysis)
+    assert "Its storativity is not given" in text and "two engines" not in text
+
+
+def test_every_source_the_spread_names_is_a_pumping_reference():
+    from groundwater.reporting.citations import references_for
+
+    cited = " ".join(references_for("pumping"))
+    for author in ("Kuensch", "Politis", "Hall, P.", "Davison", "Bourdet",
+                   "Stehfest", "Papadopulos", "Renard, P."):
+        assert author in cited

@@ -19,19 +19,28 @@ Four things live here, each mirrored rule for rule in ``docs/js/gwt-core.js``
   from the last reading to the first (Politis and Romano's circular blocks)
   so the late readings are drawn as often as the rest. The block length is
   the smallest whole number whose cube is at least the number of readings,
-  the n^(1/3) order Hall, Horowitz and Jing (1995) show is right for a
-  variance or a percentile, and never less than two. The draws come from
-  mulberry32, a 32-bit generator small enough to be written identically in
-  both engines, from a fixed seed, so the same sheet gives the same band in
-  either app on every run.
+  the n^(1/3) order Hall, Horowitz and Jing (1995) give for a variance (for
+  a distribution's tail they give n^(1/4), which on eight to sixty-four
+  readings is the same length or one shorter), and never less than two.
+  The draws come from mulberry32, a 32-bit generator small enough to be
+  written identically in both engines, from a fixed seed, so the same sheet
+  gives the same band in either app on every run.
 
   On synthetic tests with independent 2 cm reading errors read to the
   centimetre, the P10 to P90 band holds the true transmissivity in 74
   percent of Cooper-Jacob fits, 64 of Theis fits and 67 of Papadopulos-Cooper
-  fits, not the 80 the percentiles name: with eight to twenty-four readings
-  the percentile bootstrap runs narrow. With errors correlated at 0.3 from one reading to
-  the next it is 62 percent, and at 0.6, 48 (tests/test_pumping_spread.py).
-  Read the band as the least the spread can be.
+  fits, not the 80 the percentiles name. With errors correlated at 0.3 from
+  one reading to the next it is 62 percent, and at 0.6, 48
+  (tests/test_pumping_spread.py). On the Cooper-Jacob line (thirteen readings
+  in the window) the blocks are most of the shortfall: on independent errors
+  the band from blocks is 14 percent narrower than one from single readings,
+  which holds the truth in 78 percent, and at a correlation of 0.6 the
+  blocks gain back only two points (48 percent against 45). On the Theis fit
+  its own covariance holds the truth in only 67 percent, so the shortfall
+  there is the curve fit's, not the resampling's. A Student-t widening for
+  the few degrees of freedom recovers under one point, so none is applied:
+  the reports print these rates beside the band instead, and the band is to
+  be read as the least the spread can be.
 * **The Theis fit's own covariance**, which ``curve_fit`` returns and the
   analysis used to throw away. It is the band the fit gives when every
   reading's error is independent; the bootstrap does not assume that, and
@@ -580,7 +589,8 @@ def bootstrap_fit(analysis, method: str, config: PumpingConfig | None = None) ->
     mean = sum(residuals) / n
     # Centred, and scaled up by sqrt(n / (n - 2)): a fit of two parameters
     # leaves residuals smaller than the reading errors behind them by that
-    # factor on average (Davison and Hinkley 1997, section 6.2.3), and
+    # factor on average (Davison and Hinkley 1997, on resampling the
+    # residuals of a linear model), and
     # resampling them unscaled gave a band too narrow on eight readings.
     inflate = math.sqrt(n / (n - 2.0))
     residuals = [(r - mean) * inflate for r in residuals]

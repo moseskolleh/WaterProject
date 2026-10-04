@@ -9,6 +9,10 @@ spread_transmissivity: >-
   Resampling the {method} residuals in blocks of {block:g} consecutive readings
   ({replicates:g} resamples of {n:g} readings, a circular block bootstrap) puts
   the transmissivity between {low:num} and {high:num} m2/day (P10 to P90).
+  The band is narrower than its percentiles name: on synthetic tests with
+  independent 2 cm reading errors a band drawn this way held the true value
+  in 64 to 74 tests in a hundred, not 80, and in 48 when consecutive errors
+  ran together. Read it as the least the spread can be.
 spread_failed: >-
   {failed:g} of the resamples gave no fit and are left out of the band.
 spread_withheld: >-
@@ -40,7 +44,8 @@ spread_pump: >-
   drawdown available, not by the rate.
 theis_covariance: >-
   The Theis fit's own covariance puts its transmissivity between {low:num} and
-  {high:num} m2/day (P10 to P90). That band assumes every reading's error is
+  {high:num} m2/day (nominally P10 to P90; on the same synthetic tests it held
+  the true value in 67 tests in a hundred). That band assumes every reading's error is
   independent of the next, which the bootstrap does not.
 
 pc_fit: >-
@@ -49,8 +54,7 @@ pc_fit: >-
   (casing radius {rc:.3f} m; Laplace solution inverted by Stehfest's method),
   gives T = {t:num} m2/day with an RMSE of {rmse:num} m. Its storativity is
   not given: in the pumped well it trades off against the well radius, as the
-  Theis fit's does, and on a poor fit the two engines leave it at different
-  points of a flat valley.
+  Theis fit's does, and on a poor fit the readings barely constrain it.
 pc_reported: >-
   It is reported beside the other fits and adopted only when none of them
   can be.
@@ -87,7 +91,12 @@ diagnostic_thresholds: >-
   {unit_max:g} casing storage, {half_min:g} to {half_max:g} linear flow, within
   {flat:g} of zero radial flow, and {falling:g} or less a falling derivative;
   a run must hold for three points and {span:g} of a log cycle. These limits
-  are judgements, set in the configuration.
+  are judgements, set in the configuration. A derivative is a difference of
+  readings and carries their scatter: on synthetic radial-flow tests with 1 to
+  2 cm reading errors, a boundary was named in about one test in a hundred,
+  and where the derivative was under about 0.1 m some regime other than
+  radial flow was named in up to half. A named regime is a reason to look at
+  the plot, not a finding on its own.
 regimes:
   wellbore_storage: a unit slope, casing storage
   storage_ending: a falling derivative, the end of casing storage

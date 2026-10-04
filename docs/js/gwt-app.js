@@ -3435,8 +3435,9 @@
           analysis.papadopulos_cooper ? {
             method: 'Papadopulos-Cooper',
             T: S.sig(analysis.papadopulos_cooper.transmissivity_m2_per_day, 4),
-            note: 'S = ' + S.sig(analysis.papadopulos_cooper.storativity, 2) + ' — ' +
-              (analysis.papadopulos_cooper_invalid ||
+            /* no storativity: the paragraph below says why it is not given,
+             * and the Streamlit page and both reports leave it out too */
+            note: (analysis.papadopulos_cooper_invalid ||
                 C.phraseTable('pumping.pc_status')[
                   analysis.transmissivity_source === 'papadopulos_cooper'
                     ? 'adopted' : 'reported']),

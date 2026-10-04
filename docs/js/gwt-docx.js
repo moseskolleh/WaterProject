@@ -1971,7 +1971,8 @@
     b.signOff(context.signOff);
     b.references([REFERENCES.rwsn_drilling_web, REFERENCES.rwsn_supervision,
       REFERENCES.papadopulos_cooper, REFERENCES.stehfest, REFERENCES.bourdet,
-      REFERENCES.renard_diagnostic, REFERENCES.kunsch, REFERENCES.hall_horowitz_jing]);
+      REFERENCES.renard_diagnostic, REFERENCES.kunsch, REFERENCES.hall_horowitz_jing,
+      REFERENCES.politis_romano, REFERENCES.davison_hinkley]);
     b.glossary(GLOSSARY);
     return b;
   }

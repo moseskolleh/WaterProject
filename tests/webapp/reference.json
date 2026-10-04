@@ -28055,13 +28055,13 @@
     "range_text": "0.39 m3/h (0.22 to 0.71)",
     "confidence": "indicative",
     "text": [
-     "Resampling the Cooper-Jacob residuals in blocks of 2 consecutive readings (400 resamples of 8 readings, a circular block bootstrap) puts the transmissivity between 0.482 and 0.612 m2/day (P10 to P90).",
+     "Resampling the Cooper-Jacob residuals in blocks of 2 consecutive readings (400 resamples of 8 readings, a circular block bootstrap) puts the transmissivity between 0.482 and 0.612 m2/day (P10 to P90). The band is narrower than its percentiles name: on synthetic tests with independent 2 cm reading errors a band drawn this way held the true value in 64 to 74 tests in a hundred, not 80, and in 48 when consecutive errors ran together. Read it as the least the spread can be.",
      "With the static level lowered by the 2 m dry-season reserve, as the recommendation is, that band puts the safe yield between 0.354 and 0.443 m3/h.",
      "At the low end of the band the long-term yield is 0.53 m3/h, which still covers the recommended 0.391 m3/h: the safety factor absorbs the spread in the data at the dry-season level.",
      "The pump intake moves between 51 and 52 m below the top of the casing over a dry-season decline of 1 to 4 m. The transmissivity band does not move it: the intake is set by the drawdown available, not by the rate.",
-     "The Theis fit's own covariance puts its transmissivity between 0.417 and 0.527 m2/day (P10 to P90). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
+     "The Theis fit's own covariance puts its transmissivity between 0.417 and 0.527 m2/day (nominally P10 to P90; on the same synthetic tests it held the true value in 67 tests in a hundred). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
      "The Bourdet derivative of the first step's drawdown, ds/d ln t with neighbours at least 0.2 of a log cycle apart, is read from the slope of its log-log curve: a unit slope is casing storage, a plateau radial flow, a half slope linear flow along a fracture, and a fall or a rise after the plateau a boundary. On this test no run of three derivative points holds one slope over enough of a log cycle to name a regime.",
-     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 10 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 0.214 m2/day with an RMSE of 0.858 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the two engines leave it at different points of a flat valley. It is not adopted: its storativity of 0.53 is above 0.1, which no aquifer has.",
+     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 10 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 0.214 m2/day with an RMSE of 0.858 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the readings barely constrain it. It is not adopted: its storativity of 0.53 is above 0.1, which no aquifer has.",
      ""
     ]
    },
@@ -28144,13 +28144,13 @@
     "range_text": "0.17 m3/h (0.095 to 0.31)",
     "confidence": "indicative",
     "text": [
-     "Resampling the Papadopulos-Cooper residuals in blocks of 3 consecutive readings (400 resamples of 13 readings, a circular block bootstrap) puts the transmissivity between 0.297 and 0.299 m2/day (P10 to P90).",
+     "Resampling the Papadopulos-Cooper residuals in blocks of 3 consecutive readings (400 resamples of 13 readings, a circular block bootstrap) puts the transmissivity between 0.297 and 0.299 m2/day (P10 to P90). The band is narrower than its percentiles name: on synthetic tests with independent 2 cm reading errors a band drawn this way held the true value in 64 to 74 tests in a hundred, not 80, and in 48 when consecutive errors ran together. Read it as the least the spread can be.",
      "With the static level lowered by the 2 m dry-season reserve, as the recommendation is, that band puts the safe yield between 0.17 and 0.172 m3/h.",
      "At the low end of the band the long-term yield is 0.256 m3/h, which still covers the recommended 0.171 m3/h: the safety factor absorbs the spread in the data at the dry-season level.",
      "The pump intake moves between 38 and 39 m below the top of the casing over a dry-season decline of 1 to 4 m. The transmissivity band does not move it: the intake is set by the drawdown available, not by the rate.",
-     "The Theis fit's own covariance puts its transmissivity between 0.127 and 0.15 m2/day (P10 to P90). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
+     "The Theis fit's own covariance puts its transmissivity between 0.127 and 0.15 m2/day (nominally P10 to P90; on the same synthetic tests it held the true value in 67 tests in a hundred). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
      "The Bourdet derivative of the first step's drawdown, ds/d ln t with neighbours at least 0.2 of a log cycle apart, is read from the slope of its log-log curve: a unit slope is casing storage, a plateau radial flow, a half slope linear flow along a fracture, and a fall or a rise after the plateau a boundary. On this test no run of three derivative points holds one slope over enough of a log cycle to name a regime.",
-     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 13 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 0.298 m2/day with an RMSE of 0.00271 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the two engines leave it at different points of a flat valley. No other fit can be adopted, so this value is adopted as the best available, and the yield that rests on it is indicative.",
+     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 13 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 0.298 m2/day with an RMSE of 0.00271 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the readings barely constrain it. No other fit can be adopted, so this value is adopted as the best available, and the yield that rests on it is indicative.",
      ""
     ]
    },
@@ -28171,7 +28171,7 @@
      2.223900157298663,
      29.60638849920017
     ],
-    "pc_invalid": "it fits the readings worse than the Theis curve (RMSE 1.76 m against 1.76 m), so casing storage does not explain them",
+    "pc_invalid": "it fits the readings no better than the Theis curve (RMSE 1.76 m against 1.76 m), so casing storage does not explain them",
     "boot": {
      "method": "theis",
      "replicates": 400,
@@ -28242,14 +28242,14 @@
     "range_text": "2.9 m3/h (1.7 to 5.2)",
     "confidence": "indicative",
     "text": [
-     "Resampling the Theis curve fit residuals in blocks of 3 consecutive readings (400 resamples of 16 readings, a circular block bootstrap) puts the transmissivity between 3.6 and 12.1 m2/day (P10 to P90).",
+     "Resampling the Theis curve fit residuals in blocks of 3 consecutive readings (400 resamples of 16 readings, a circular block bootstrap) puts the transmissivity between 3.6 and 12.1 m2/day (P10 to P90). The band is narrower than its percentiles name: on synthetic tests with independent 2 cm reading errors a band drawn this way held the true value in 64 to 74 tests in a hundred, not 80, and in 48 when consecutive errors ran together. Read it as the least the spread can be.",
      "2 of the resamples gave no fit and are left out of the band.",
      "With the static level lowered by the 2 m dry-season reserve, as the recommendation is, that band puts the safe yield between 1.8 and 5.7 m3/h.",
      "At the low end of the band the long-term yield is 2.71 m3/h, below the recommended 2.93 m3/h: the safety factor does not absorb the spread in the data at the dry-season level, so the rate is not called sustainable.",
      "The pump intake moves between 38 and 39 m below the top of the casing over a dry-season decline of 1 to 4 m. The transmissivity band does not move it: the intake is set by the drawdown available, not by the rate.",
-     "The Theis fit's own covariance puts its transmissivity between 2.59 and 13.9 m2/day (P10 to P90). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
+     "The Theis fit's own covariance puts its transmissivity between 2.59 and 13.9 m2/day (nominally P10 to P90; on the same synthetic tests it held the true value in 67 tests in a hundred). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
      "The Bourdet derivative of the first step's drawdown, ds/d ln t with neighbours at least 0.2 of a log cycle apart, is read from the slope of its log-log curve: a unit slope is casing storage, a plateau radial flow, a half slope linear flow along a fracture, and a fall or a rise after the plateau a boundary. On this test no run of three derivative points holds one slope over enough of a log cycle to name a regime.",
-     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 16 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 8.11 m2/day with an RMSE of 1.76 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the two engines leave it at different points of a flat valley. It is not adopted: it fits the readings worse than the Theis curve (RMSE 1.76 m against 1.76 m), so casing storage does not explain them.",
+     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 16 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 8.11 m2/day with an RMSE of 1.76 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the readings barely constrain it. It is not adopted: it fits the readings no better than the Theis curve (RMSE 1.76 m against 1.76 m), so casing storage does not explain them.",
      ""
     ]
    },
@@ -28323,13 +28323,13 @@
     "range_text": "0.39 m3/h (0.22 to 0.71)",
     "confidence": "indicative",
     "text": [
-     "Resampling the Cooper-Jacob residuals in blocks of 2 consecutive readings (400 resamples of 8 readings, a circular block bootstrap) puts the transmissivity between 0.482 and 0.612 m2/day (P10 to P90).",
+     "Resampling the Cooper-Jacob residuals in blocks of 2 consecutive readings (400 resamples of 8 readings, a circular block bootstrap) puts the transmissivity between 0.482 and 0.612 m2/day (P10 to P90). The band is narrower than its percentiles name: on synthetic tests with independent 2 cm reading errors a band drawn this way held the true value in 64 to 74 tests in a hundred, not 80, and in 48 when consecutive errors ran together. Read it as the least the spread can be.",
      "With the static level lowered by the 2 m dry-season reserve, as the recommendation is, that band puts the safe yield between 0.354 and 0.443 m3/h.",
      "At the low end of the band the long-term yield is 0.53 m3/h, which still covers the recommended 0.391 m3/h: the safety factor absorbs the spread in the data at the dry-season level.",
      "The pump intake moves between 51 and 52 m below the top of the casing over a dry-season decline of 1 to 4 m. The transmissivity band does not move it: the intake is set by the drawdown available, not by the rate.",
-     "The Theis fit's own covariance puts its transmissivity between 0.417 and 0.527 m2/day (P10 to P90). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
+     "The Theis fit's own covariance puts its transmissivity between 0.417 and 0.527 m2/day (nominally P10 to P90; on the same synthetic tests it held the true value in 67 tests in a hundred). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
      "The Bourdet derivative of the first step's drawdown, ds/d ln t with neighbours at least 0.2 of a log cycle apart, is read from the slope of its log-log curve: a unit slope is casing storage, a plateau radial flow, a half slope linear flow along a fracture, and a fall or a rise after the plateau a boundary. On this test no run of three derivative points holds one slope over enough of a log cycle to name a regime.",
-     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 10 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 0.214 m2/day with an RMSE of 0.858 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the two engines leave it at different points of a flat valley. It is not adopted: its storativity of 0.53 is above 0.1, which no aquifer has.",
+     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 10 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 0.214 m2/day with an RMSE of 0.858 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the readings barely constrain it. It is not adopted: its storativity of 0.53 is above 0.1, which no aquifer has.",
      ""
     ]
    },
@@ -28429,13 +28429,13 @@
     "range_text": "0.39 m3/h (0.22 to 0.71)",
     "confidence": "indicative",
     "text": [
-     "Resampling the Cooper-Jacob residuals in blocks of 2 consecutive readings (400 resamples of 8 readings, a circular block bootstrap) puts the transmissivity between 0.482 and 0.612 m2/day (P10 to P90).",
+     "Resampling the Cooper-Jacob residuals in blocks of 2 consecutive readings (400 resamples of 8 readings, a circular block bootstrap) puts the transmissivity between 0.482 and 0.612 m2/day (P10 to P90). The band is narrower than its percentiles name: on synthetic tests with independent 2 cm reading errors a band drawn this way held the true value in 64 to 74 tests in a hundred, not 80, and in 48 when consecutive errors ran together. Read it as the least the spread can be.",
      "With the static level lowered by the 2 m dry-season reserve, as the recommendation is, that band puts the safe yield between 0.354 and 0.443 m3/h.",
      "At the low end of the band the long-term yield is 0.53 m3/h, which still covers the recommended 0.391 m3/h: the safety factor absorbs the spread in the data at the dry-season level.",
      "The pump intake moves between 51 and 52 m below the top of the casing over a dry-season decline of 1 to 4 m. The transmissivity band does not move it: the intake is set by the drawdown available, not by the rate.",
-     "The Theis fit's own covariance puts its transmissivity between 0.417 and 0.527 m2/day (P10 to P90). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
+     "The Theis fit's own covariance puts its transmissivity between 0.417 and 0.527 m2/day (nominally P10 to P90; on the same synthetic tests it held the true value in 67 tests in a hundred). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
      "The Bourdet derivative of the first step's drawdown, ds/d ln t with neighbours at least 0.2 of a log cycle apart, is read from the slope of its log-log curve: a unit slope is casing storage, a plateau radial flow, a half slope linear flow along a fracture, and a fall or a rise after the plateau a boundary. On this test no run of three derivative points holds one slope over enough of a log cycle to name a regime.",
-     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 10 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 0.214 m2/day with an RMSE of 0.858 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the two engines leave it at different points of a flat valley. It is not adopted: its storativity of 0.53 is above 0.1, which no aquifer has.",
+     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 10 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 0.214 m2/day with an RMSE of 0.858 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the readings barely constrain it. It is not adopted: its storativity of 0.53 is above 0.1, which no aquifer has.",
      ""
     ]
    },
@@ -28509,13 +28509,13 @@
     "range_text": "0.0067 m3/h (0.0067 to 0.021)",
     "confidence": "indicative",
     "text": [
-     "Resampling the Cooper-Jacob residuals in blocks of 2 consecutive readings (400 resamples of 8 readings, a circular block bootstrap) puts the transmissivity between 0.482 and 0.612 m2/day (P10 to P90).",
+     "Resampling the Cooper-Jacob residuals in blocks of 2 consecutive readings (400 resamples of 8 readings, a circular block bootstrap) puts the transmissivity between 0.482 and 0.612 m2/day (P10 to P90). The band is narrower than its percentiles name: on synthetic tests with independent 2 cm reading errors a band drawn this way held the true value in 64 to 74 tests in a hundred, not 80, and in 48 when consecutive errors ran together. Read it as the least the spread can be.",
      "With the static level lowered by the 2 m dry-season reserve, as the recommendation is, that band puts the safe yield between 0.00667 and 0.00667 m3/h.",
      "At the low end of the band the long-term yield is 0.01 m3/h, which still covers the recommended 0.00667 m3/h: the safety factor absorbs the spread in the data at the dry-season level.",
      "The pump intake moves between 15 and 15 m below the top of the casing over a dry-season decline of 1 to 4 m. The transmissivity band does not move it: the intake is set by the drawdown available, not by the rate.",
-     "The Theis fit's own covariance puts its transmissivity between 0.417 and 0.527 m2/day (P10 to P90). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
+     "The Theis fit's own covariance puts its transmissivity between 0.417 and 0.527 m2/day (nominally P10 to P90; on the same synthetic tests it held the true value in 67 tests in a hundred). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
      "The Bourdet derivative of the first step's drawdown, ds/d ln t with neighbours at least 0.2 of a log cycle apart, is read from the slope of its log-log curve: a unit slope is casing storage, a plateau radial flow, a half slope linear flow along a fracture, and a fall or a rise after the plateau a boundary. On this test no run of three derivative points holds one slope over enough of a log cycle to name a regime.",
-     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 10 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 0.214 m2/day with an RMSE of 0.858 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the two engines leave it at different points of a flat valley. It is not adopted: its storativity of 0.53 is above 0.1, which no aquifer has.",
+     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 10 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 0.214 m2/day with an RMSE of 0.858 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the readings barely constrain it. It is not adopted: its storativity of 0.53 is above 0.1, which no aquifer has.",
      ""
     ]
    },
@@ -28589,13 +28589,13 @@
     "range_text": "0.22 m3/h (0.12 to 0.4)",
     "confidence": "indicative",
     "text": [
-     "Resampling the Cooper-Jacob residuals in blocks of 2 consecutive readings (400 resamples of 8 readings, a circular block bootstrap) puts the transmissivity between 0.482 and 0.612 m2/day (P10 to P90).",
+     "Resampling the Cooper-Jacob residuals in blocks of 2 consecutive readings (400 resamples of 8 readings, a circular block bootstrap) puts the transmissivity between 0.482 and 0.612 m2/day (P10 to P90). The band is narrower than its percentiles name: on synthetic tests with independent 2 cm reading errors a band drawn this way held the true value in 64 to 74 tests in a hundred, not 80, and in 48 when consecutive errors ran together. Read it as the least the spread can be.",
      "With the static level lowered by the 2 m dry-season reserve, as the recommendation is, that band puts the safe yield between 0.199 and 0.249 m3/h.",
      "At the low end of the band the long-term yield is 0.298 m3/h, which still covers the recommended 0.22 m3/h: the safety factor absorbs the spread in the data at the dry-season level.",
      "The pump intake moves between 42 and 42 m below the top of the casing over a dry-season decline of 1 to 4 m. The transmissivity band does not move it: the intake is set by the drawdown available, not by the rate.",
-     "The Theis fit's own covariance puts its transmissivity between 0.417 and 0.527 m2/day (P10 to P90). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
+     "The Theis fit's own covariance puts its transmissivity between 0.417 and 0.527 m2/day (nominally P10 to P90; on the same synthetic tests it held the true value in 67 tests in a hundred). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
      "The Bourdet derivative of the first step's drawdown, ds/d ln t with neighbours at least 0.2 of a log cycle apart, is read from the slope of its log-log curve: a unit slope is casing storage, a plateau radial flow, a half slope linear flow along a fracture, and a fall or a rise after the plateau a boundary. On this test no run of three derivative points holds one slope over enough of a log cycle to name a regime.",
-     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 10 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 0.214 m2/day with an RMSE of 0.858 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the two engines leave it at different points of a flat valley. It is not adopted: its storativity of 0.53 is above 0.1, which no aquifer has.",
+     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 10 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 0.214 m2/day with an RMSE of 0.858 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the readings barely constrain it. It is not adopted: its storativity of 0.53 is above 0.1, which no aquifer has.",
      ""
     ]
    },
@@ -28616,7 +28616,7 @@
      5.510248053618339,
      6.93568089345165
     ],
-    "pc_invalid": "it fits the readings worse than the Theis curve (RMSE 0.497 m against 0.00331 m), so casing storage does not explain them",
+    "pc_invalid": "it fits the readings no better than the Theis curve (RMSE 0.497 m against 0.00331 m), so casing storage does not explain them",
     "boot": {
      "method": "cooper_jacob",
      "replicates": 400,
@@ -28731,13 +28731,13 @@
     "range_text": "2.8 m3/h (2.3 to 3.4)",
     "confidence": "established",
     "text": [
-     "Resampling the Cooper-Jacob residuals in blocks of 3 consecutive readings (400 resamples of 24 readings, a circular block bootstrap) puts the transmissivity between 4.29 and 4.3 m2/day (P10 to P90).",
+     "Resampling the Cooper-Jacob residuals in blocks of 3 consecutive readings (400 resamples of 24 readings, a circular block bootstrap) puts the transmissivity between 4.29 and 4.3 m2/day (P10 to P90). The band is narrower than its percentiles name: on synthetic tests with independent 2 cm reading errors a band drawn this way held the true value in 64 to 74 tests in a hundred, not 80, and in 48 when consecutive errors ran together. Read it as the least the spread can be.",
      "With the static level lowered by the 2 m dry-season reserve, as the recommendation is, that band puts the safe yield between 2.8 and 2.8 m3/h.",
      "At the low end of the band the long-term yield is 4.2 m3/h, which still covers the recommended 2.8 m3/h: the safety factor absorbs the spread in the data at the dry-season level.",
      "The pump intake moves between 51 and 52 m below the top of the casing over a dry-season decline of 1 to 4 m. The transmissivity band does not move it: the intake is set by the drawdown available, not by the rate.",
-     "The Theis fit's own covariance puts its transmissivity between 4.29 and 4.29 m2/day (P10 to P90). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
+     "The Theis fit's own covariance puts its transmissivity between 4.29 and 4.29 m2/day (nominally P10 to P90; on the same synthetic tests it held the true value in 67 tests in a hundred). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
      "The Bourdet derivative of the first step's drawdown, ds/d ln t with neighbours at least 0.2 of a log cycle apart, is read from the slope of its log-log curve: a unit slope is casing storage, a plateau radial flow, a half slope linear flow along a fracture, and a fall or a rise after the plateau a boundary. On this test it shows a plateau, radial flow from 15 to 150 minutes (slope 0.00). The level of the plateau gives a transmissivity of about 4.29 m2/day, a check on the fitted values rather than one adopted.",
-     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 32 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 6.18 m2/day with an RMSE of 0.497 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the two engines leave it at different points of a flat valley. It is not adopted: it fits the readings worse than the Theis curve (RMSE 0.497 m against 0.00331 m), so casing storage does not explain them.",
+     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 32 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 6.18 m2/day with an RMSE of 0.497 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the readings barely constrain it. It is not adopted: it fits the readings no better than the Theis curve (RMSE 0.497 m against 0.00331 m), so casing storage does not explain them.",
      "The borehole is successful and sustainable when operated as recommended: at the dry-season level, the long-term yield at the low end of the spread in the test data still covers the recommended rate."
     ]
    },
@@ -28773,7 +28773,7 @@
     "range_text": "0.41 m3/h (0.28 to 0.56)",
     "confidence": "indicative",
     "text": [
-     "Resampling the Theis recovery residuals in blocks of 4 consecutive readings (400 resamples of 44 readings, a circular block bootstrap) puts the transmissivity between 0.401 and 0.698 m2/day (P10 to P90).",
+     "Resampling the Theis recovery residuals in blocks of 4 consecutive readings (400 resamples of 44 readings, a circular block bootstrap) puts the transmissivity between 0.401 and 0.698 m2/day (P10 to P90). The band is narrower than its percentiles name: on synthetic tests with independent 2 cm reading errors a band drawn this way held the true value in 64 to 74 tests in a hundred, not 80, and in 48 when consecutive errors ran together. Read it as the least the spread can be.",
      "With the static level lowered by the 2 m dry-season reserve, as the recommendation is, that band puts the safe yield between 0.341 and 0.521 m3/h.",
      "At the low end of the band the long-term yield is 0.512 m3/h, which still covers the recommended 0.411 m3/h: the safety factor absorbs the spread in the data at the dry-season level.",
      "The pump intake moves between 49 and 50 m below the top of the casing over a dry-season decline of 1 to 4 m. The transmissivity band does not move it: the intake is set by the drawdown available, not by the rate.",
@@ -28868,11 +28868,11 @@
     "range_text": "1.4 m3/h (1.1 to 1.7)",
     "confidence": "indicative",
     "text": [
-     "Resampling the Cooper-Jacob residuals in blocks of 3 consecutive readings (400 resamples of 10 readings, a circular block bootstrap) puts the transmissivity between 2.5 and 2.5 m2/day (P10 to P90).",
+     "Resampling the Cooper-Jacob residuals in blocks of 3 consecutive readings (400 resamples of 10 readings, a circular block bootstrap) puts the transmissivity between 2.5 and 2.5 m2/day (P10 to P90). The band is narrower than its percentiles name: on synthetic tests with independent 2 cm reading errors a band drawn this way held the true value in 64 to 74 tests in a hundred, not 80, and in 48 when consecutive errors ran together. Read it as the least the spread can be.",
      "With the static level lowered by the 2 m dry-season reserve, as the recommendation is, that band puts the safe yield between 1.4 and 1.4 m3/h.",
      "At the low end of the band the long-term yield is 2.1 m3/h, which still covers the recommended 1.4 m3/h: the safety factor absorbs the spread in the data at the dry-season level.",
      "The pump intake moves between 47 and 48 m below the top of the casing over a dry-season decline of 1 to 4 m. The transmissivity band does not move it: the intake is set by the drawdown available, not by the rate.",
-     "The Theis fit's own covariance puts its transmissivity between 2.5 and 2.5 m2/day (P10 to P90). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
+     "The Theis fit's own covariance puts its transmissivity between 2.5 and 2.5 m2/day (nominally P10 to P90; on the same synthetic tests it held the true value in 67 tests in a hundred). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
      "The Bourdet derivative of the first step's drawdown, ds/d ln t with neighbours at least 0.2 of a log cycle apart, is read from the slope of its log-log curve: a unit slope is casing storage, a plateau radial flow, a half slope linear flow along a fracture, and a fall or a rise after the plateau a boundary. On this test it shows a plateau, radial flow from 3 to 30 minutes (slope 0.00). The level of the plateau gives a transmissivity of about 2.5 m2/day, a check on the fitted values rather than one adopted.",
      "",
      ""
