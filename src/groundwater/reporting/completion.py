@@ -20,7 +20,8 @@ from ..design.designer import BoreholeDesign
 from ..design.drawing import draw_borehole_design
 from ..hydraulics.analysis import PumpingTestAnalysis
 from ..hydraulics.analysis import METHOD_LABELS, test_type_text
-from ..hydraulics.plots import plot_test_overview
+from ..hydraulics.plots import plot_diagnostic, plot_test_overview
+from ..hydraulics.spread import diagnostic_text, spread_paragraphs, sustainable_sentence
 from ..models import DrillingLog
 from ..quality.assess import (
     SUITABILITY_PHRASE,
@@ -400,6 +401,13 @@ def build_completion_report(
         overview = figures / f"test_overview_{slug}.png"
         plot_test_overview(test, path=overview, style=config.style)
         rb.figure(overview, "Constant discharge test and recovery record.")
+        # the flow regime, beside the record it is read from (PLAN.md step 3.2)
+        if analysis.diagnostic is not None:
+            diagnostic = figures / f"diagnostic_{slug}.png"
+            plot_diagnostic(analysis.diagnostic, path=diagnostic, style=config.style)
+            rb.figure(diagnostic, "Drawdown and its Bourdet derivative, with the flow "
+                      "regimes the derivative's slope names.")
+        rb.paragraph(diagnostic_text(analysis.diagnostic), align="justify")
         # the maximum drawdown below is measured at the end of the last step,
         # so the rate quoted beside it has to be that step's, not step 1's
         q = test.steps[-1].discharge_m3_per_h if test.steps else None
@@ -435,6 +443,8 @@ def build_completion_report(
                 if yr.is_indicative else "established",
             ])
         rb.table(rows, header=["Item", "Value"], caption="Pumping test summary.")
+        for line in spread_paragraphs(analysis, config.pumping):
+            rb.paragraph(line, align="justify")
         section += 1
 
     # ---- characteristics and installation ------------------------------------------
@@ -500,8 +510,11 @@ def build_completion_report(
     # "Successful and sustainable" is two claims. The log supports the
     # first; only an established yield supports the second, and a
     # 30-minute test inside its casing storage used to be certified as both.
+    # Since step 3.2 an established yield is called sustainable only where
+    # its band holds at the dry-season level.
     if yr and yr.safe_yield_m3_per_h and not yr.is_indicative:
-        bullets.append("The borehole is successful and sustainable when operated as recommended.")
+        bullets.append(sustainable_sentence(
+            yr, getattr(inputs.pumping, "spread", None)) or "")
     elif yr and yr.safe_yield_m3_per_h:
         bullets.append(
             ("The borehole is recorded as successful. " if successful else "")

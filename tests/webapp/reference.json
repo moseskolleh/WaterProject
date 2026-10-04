@@ -27069,5 +27069,1815 @@
    null,
    null
   ]
+ },
+ "pumping_spread": {
+  "mulberry32": {
+   "1": [
+    0.6270739405881613,
+    0.002735721180215478,
+    0.5274470399599522,
+    0.9810509674716741,
+    0.9683778982143849,
+    0.281103502959013,
+    0.6128388606011868,
+    0.7207431411370635,
+    0.425796952098608,
+    0.9948229456786066,
+    0.45527112716808915,
+    0.48878831742331386,
+    0.13893358339555562,
+    0.40374476509168744,
+    0.24752389639616013,
+    0.15449313493445516,
+    0.48914389545097947,
+    0.0673698834143579,
+    0.3946193160954863,
+    0.7671080259606242,
+    0.28586167353205383,
+    0.19087357842363417,
+    0.042729709995910525,
+    0.42738195578567684,
+    0.590382493333891,
+    0.7986842156387866,
+    0.29486987087875605,
+    0.2054697866551578,
+    0.6581296445801854,
+    0.5460823616012931,
+    0.758442840538919,
+    0.19281403115019202,
+    0.7209477317519486,
+    0.4541360163129866,
+    0.770413824589923,
+    0.9945340014528483,
+    0.23933332320302725,
+    0.7570012940559536,
+    0.15327094192616642,
+    0.3233316196128726,
+    0.41319697513245046,
+    0.2492126589640975,
+    0.15208827191963792,
+    0.7261048289947212,
+    0.5763414488174021,
+    0.1272108720149845,
+    0.2646576233673841,
+    0.04872346459887922,
+    0.6222200409974903,
+    0.8657720659393817
+   ],
+   "32": [
+    0.3876417982392013,
+    0.7942133496981114,
+    0.2546933765988797,
+    0.8629631246440113,
+    0.5591895803809166,
+    0.46243063104338944,
+    0.00911808107048273,
+    0.5609531044028699,
+    0.7811038168147206,
+    0.8629801825154573,
+    0.2867764122784138,
+    0.10799977974966168,
+    0.21172864898107946,
+    0.7034383742138743,
+    0.52200598269701,
+    0.30100960307754576,
+    0.25867978343740106,
+    0.2749471408315003,
+    0.6559977987781167,
+    0.5891350724268705,
+    0.37478777673095465,
+    0.5149923956487328,
+    0.18277255771681666,
+    0.9047048473730683,
+    0.8678243453614414,
+    0.2449100709054619,
+    0.2611514909658581,
+    0.47177992668002844,
+    0.985126408515498,
+    0.767223150935024,
+    0.8194194631651044,
+    0.12392852525226772,
+    0.4436075605917722,
+    0.9087158557958901,
+    0.9015288595110178,
+    0.6551114169415087,
+    0.8251896561123431,
+    0.7672050483524799,
+    0.051528662675991654,
+    0.03637649095617235,
+    0.22041684901341796,
+    0.45938878902234137,
+    0.7487293407320976,
+    0.6690153731033206,
+    0.0736431775148958,
+    0.7002519406378269,
+    0.7158501064404845,
+    0.9060759290587157,
+    0.6391889043152332,
+    0.6744763425085694
+   ],
+   "4294967295": [
+    0.8964226141106337,
+    0.189478256739676,
+    0.7156526781618595,
+    0.9440599093213677,
+    0.8452364315744489,
+    0.5391399988438934,
+    0.6804977387655526,
+    0.4755720964167267,
+    0.13585773925296962,
+    0.9884445976931602,
+    0.8714674517977983,
+    0.18934845877811313,
+    0.3436866346746683,
+    0.7386848733294755,
+    0.4759919897187501,
+    0.7567116804420948,
+    0.9159235202241689,
+    0.10207696096040308,
+    0.1436101261060685,
+    0.3921705954708159,
+    0.9202409950084984,
+    0.9238722093869001,
+    0.7916392679326236,
+    0.8520552832633257,
+    0.1153229579795152,
+    0.09125144220888615,
+    0.5151041666977108,
+    0.2751815707888454,
+    0.3076603573281318,
+    0.01972890179604292,
+    0.4548310365062207,
+    0.2538063288666308,
+    0.5144624633248895,
+    0.4345122929662466,
+    0.2099072653800249,
+    0.3966394728049636,
+    0.5396128965076059,
+    0.6065731556154788,
+    0.14838816551491618,
+    0.26715306425467134,
+    0.8875240164343268,
+    0.7962313089519739,
+    0.028675136156380177,
+    0.27624681894667447,
+    0.29593162541277707,
+    0.7472640245687217,
+    0.6291584454011172,
+    0.7526657804846764,
+    0.16520738089457154,
+    0.9613309928681701
+   ]
+  },
+  "blocks": [
+   [
+    1,
+    2
+   ],
+   [
+    5,
+    2
+   ],
+   [
+    8,
+    2
+   ],
+   [
+    9,
+    3
+   ],
+   [
+    26,
+    3
+   ],
+   [
+    27,
+    3
+   ],
+   [
+    28,
+    4
+   ],
+   [
+    64,
+    4
+   ],
+   [
+    65,
+    5
+   ],
+   [
+    125,
+    5
+   ]
+  ],
+  "quantile": {
+   "values": [
+    3.0,
+    1.0,
+    4.0,
+    1.5,
+    9.0,
+    2.6,
+    5.35
+   ],
+   "q": [
+    [
+     0,
+     1.0
+    ],
+    [
+     0.1,
+     1.3
+    ],
+    [
+     0.25,
+     2.05
+    ],
+    [
+     0.5,
+     3.0
+    ],
+    [
+     0.9,
+     6.810000000000001
+    ],
+    [
+     1,
+     9.0
+    ]
+   ]
+  },
+  "bessel": [
+   [
+    1e-06,
+    13.931456005075448,
+    1000000.9999932843
+   ],
+   [
+    0.01,
+    4.768694028544461,
+    100.97864845824002
+   ],
+   [
+    0.5,
+    1.5241093857739092,
+    2.7310097082117855
+   ],
+   [
+    1.999,
+    0.8417601901891837,
+    1.0338018208600275
+   ],
+   [
+    2.0,
+    0.8415682150707712,
+    1.0334768470686888
+   ],
+   [
+    2.001,
+    0.8413763728735403,
+    1.0331521611403636
+   ],
+   [
+    7.5,
+    0.45052369910491563,
+    0.47966893379102066
+   ],
+   [
+    40.0,
+    0.19755558495729816,
+    0.20000996725443346
+   ],
+   [
+    900.0,
+    0.0417713391525488,
+    0.0417945390130337
+   ]
+  ],
+  "well_function": [
+   [
+    1.0,
+    0.1,
+    0.09191314338223595
+   ],
+   [
+    0.01,
+    0.1,
+    3.275272108505006
+   ],
+   [
+    0.0001,
+    0.1,
+    8.617654959028439
+   ],
+   [
+    1e-06,
+    0.1,
+    13.238058959736133
+   ],
+   [
+    1.0,
+    0.001,
+    0.0009991318797196154
+   ],
+   [
+    0.01,
+    0.001,
+    0.09834148176605137
+   ],
+   [
+    0.0001,
+    0.001,
+    5.5258686649060875
+   ],
+   [
+    1e-06,
+    0.001,
+    13.211398896300347
+   ],
+   [
+    1.0,
+    1e-05,
+    9.9999226498672e-06
+   ],
+   [
+    0.01,
+    1e-05,
+    0.0009998329127638389
+   ],
+   [
+    0.0001,
+    1e-05,
+    0.0993095862242567
+   ],
+   [
+    1e-06,
+    1e-05,
+    6.7777253558655906
+   ]
+  ],
+  "regimes": {
+   "radial": {
+    "t": [
+     0.5,
+     0.609308277668017,
+     0.7425131544695307,
+     0.9048388225913521,
+     1.1026515691205863,
+     1.3437094568976016,
+     1.6374665897370084,
+     1.9954438950631563,
+     2.431680965768182,
+     2.963286682180622,
+     3.6111102091120957,
+     4.400558683966967,
+     5.3625936650098955,
+     6.534945419721197,
+     7.9635926766896405,
+     9.704565875766797,
+     11.826144638558555,
+     14.41153564234593,
+     17.562135921578076,
+     21.401509581096708,
+     26.080233884707194,
+     31.781804778939993,
+     38.729833462074176,
+     47.19681624229109,
+     57.51482163200854,
+     70.0885138179647,
+     85.41102327747011,
+     104.08328697411648,
+     126.83761664044978,
+     154.56641947741724,
+     188.35719767419474,
+     229.5351994024755,
+     279.7153940242145,
+     340.8658099402499,
+     415.38471914121436,
+     506.19469557909275,
+     616.857236255966,
+     751.7124403803517,
+     916.0492246995484,
+     1116.3127507216077,
+     1360.3571989620589,
+     1657.7538038257208,
+     2020.1662300133062,
+     2461.808012424998,
+     3000.0
+    ],
+    "s": [
+     4.55870888959957,
+     4.709555752172094,
+     4.860437976806989,
+     5.011349225857157,
+     5.162284296604229,
+     5.31323891831746,
+     5.464209585503636,
+     5.615193420925925,
+     5.766188063098715,
+     5.917191573899509,
+     6.068202362710501,
+     6.219219124138984,
+     6.370240786890365,
+     6.521266471799623,
+     6.6722954573826545,
+     6.823327151561461,
+     6.9743610684576,
+     7.125396809346035,
+     7.276434047023925,
+     7.4274725129823596,
+     7.5785119868785715,
+     7.72955228789626,
+     7.880593267655432,
+     8.031634804393967,
+     8.182676798192793,
+     8.33371916705755,
+     8.484761843703112,
+     8.635804772914893,
+     8.786847909383505,
+     8.937891215927838,
+     9.088934662036907,
+     9.239978222673269,
+     9.391021877291093,
+     9.542065609030407,
+     9.693109404055845,
+     9.844153251014069,
+     9.995197140588488,
+     10.146241065133879,
+     10.297285018376549,
+     10.448328995168287,
+     10.599372991284458,
+     10.750417003258312,
+     10.90146102824502,
+     11.052505063910115,
+     11.203549108337922
+    ],
+    "regimes": [
+     [
+      "radial_flow",
+      0.9048388225913521,
+      1657.7538038257208,
+      2.0139361823087626e-05,
+      39
+     ]
+    ],
+    "plateau": 5.000098499602831
+   },
+   "storage": {
+    "t": [
+     0.5,
+     0.609308277668017,
+     0.7425131544695307,
+     0.9048388225913521,
+     1.1026515691205863,
+     1.3437094568976016,
+     1.6374665897370084,
+     1.9954438950631563,
+     2.431680965768182,
+     2.963286682180622,
+     3.6111102091120957,
+     4.400558683966967,
+     5.3625936650098955,
+     6.534945419721197,
+     7.9635926766896405,
+     9.704565875766797,
+     11.826144638558555,
+     14.41153564234593,
+     17.562135921578076,
+     21.401509581096708,
+     26.080233884707194,
+     31.781804778939993,
+     38.729833462074176,
+     47.19681624229109,
+     57.51482163200854,
+     70.0885138179647,
+     85.41102327747011,
+     104.08328697411648,
+     126.83761664044978,
+     154.56641947741724,
+     188.35719767419474,
+     229.5351994024755,
+     279.7153940242145,
+     340.8658099402499,
+     415.38471914121436,
+     506.19469557909275,
+     616.857236255966,
+     751.7124403803517,
+     916.0492246995484,
+     1116.3127507216077,
+     1360.3571989620589,
+     1657.7538038257208,
+     2020.1662300133062,
+     2461.808012424998,
+     3000.0
+    ],
+    "s": [
+     1.3561035962614363,
+     1.6441056414842752,
+     1.991594633545207,
+     2.4101507000210844,
+     2.9133088467310078,
+     3.5167599444200746,
+     4.238512261024216,
+     5.098978106213404,
+     6.120936492906097,
+     7.329306773971423,
+     8.750651310739697,
+     10.412310277429606,
+     12.341064045632985,
+     14.561226610267333,
+     17.092109142714737,
+     19.944870913558244,
+     23.11890994695765,
+     26.598145816699756,
+     30.34780090652372,
+     34.31254733089114,
+     38.41705589276275,
+     42.56990499827811,
+     46.671310253858664,
+     50.62413672847185,
+     54.34632537992988,
+     57.78172918534271,
+     60.90615722655635,
+     63.72665682770565,
+     66.27442413684534,
+     68.59406959211331,
+     70.73297313942665,
+     72.73366611715733,
+     74.63027265851505,
+     76.44827326208666,
+     78.20605593187308,
+     79.91688854314428,
+     81.59056277470707,
+     83.2345162349359,
+     84.85452928874133,
+     86.45515661144442,
+     88.04001457610872,
+     89.6119900796114,
+     91.17339977434658,
+     92.72611381870762,
+     94.27165113587984
+    ],
+    "regimes": [
+     [
+      "wellbore_storage",
+      0.9048388225913521,
+      3.6111102091120957,
+      0.8634092075446747,
+      8
+     ],
+     [
+      "storage_ending",
+      47.19681624229109,
+      229.5351994024755,
+      -0.402640610689445,
+      9
+     ],
+     [
+      "radial_flow",
+      506.19469557909275,
+      1657.7538038257208,
+      -0.06656022408010143,
+      7
+     ]
+    ],
+    "plateau": 0.4673826796209762
+   },
+   "linear": {
+    "t": [
+     0.5,
+     0.609308277668017,
+     0.7425131544695307,
+     0.9048388225913521,
+     1.1026515691205863,
+     1.3437094568976016,
+     1.6374665897370084,
+     1.9954438950631563,
+     2.431680965768182,
+     2.963286682180622,
+     3.6111102091120957,
+     4.400558683966967,
+     5.3625936650098955,
+     6.534945419721197,
+     7.9635926766896405,
+     9.704565875766797,
+     11.826144638558555,
+     14.41153564234593,
+     17.562135921578076,
+     21.401509581096708,
+     26.080233884707194,
+     31.781804778939993,
+     38.729833462074176,
+     47.19681624229109,
+     57.51482163200854,
+     70.0885138179647,
+     85.41102327747011,
+     104.08328697411648,
+     126.83761664044978,
+     154.56641947741724,
+     188.35719767419474,
+     229.5351994024755,
+     279.7153940242145,
+     340.8658099402499,
+     415.38471914121436,
+     506.19469557909275,
+     616.857236255966,
+     751.7124403803517,
+     916.0492246995484,
+     1116.3127507216077,
+     1360.3571989620589,
+     1657.7538038257208,
+     2020.1662300133062,
+     2461.808012424998,
+     3000.0
+    ],
+    "s": [
+     0.21213203435596426,
+     0.23417460364036385,
+     0.2585076089832904,
+     0.2853690488354014,
+     0.31502165198737175,
+     0.3477554472913173,
+     0.38389060040111783,
+     0.4237805452774868,
+     0.46781544108669215,
+     0.5164259883044772,
+     0.5700876413500723,
+     0.6293252589536089,
+     0.6947182377416693,
+     0.7669061792520044,
+     0.8465951458058733,
+     0.934564566425997,
+     1.0316748603461605,
+     1.1388758526771623,
+     1.257216064541822,
+     1.3878529685448324,
+     1.5320643098850804,
+     1.6912606038409927,
+     1.8669989318654352,
+     2.0609981712282517,
+     2.2751558071659113,
+     2.511566491976038,
+     2.7725425325812965,
+     3.060636506949246,
+     3.3786662305768647,
+     3.7297423172342015,
+     4.117298603535761,
+     4.5451257349189795,
+     5.017408241530611,
+     5.5387654666561295,
+     6.114296748008662,
+     6.749631293790673,
+     7.450983241360628,
+     8.225212437027487,
+     9.07989153145341,
+     10.02338004691754,
+     11.06490614088458,
+     12.214656865598593,
+     13.483877806521296,
+     14.884983074167394,
+     16.431676725154983
+    ],
+    "regimes": [
+     [
+      "linear_flow",
+      0.9048388225913521,
+      1657.7538038257208,
+      0.5,
+      39
+     ]
+    ],
+    "plateau": null
+   },
+   "recharge": {
+    "t": [
+     0.5,
+     0.609308277668017,
+     0.7425131544695307,
+     0.9048388225913521,
+     1.1026515691205863,
+     1.3437094568976016,
+     1.6374665897370084,
+     1.9954438950631563,
+     2.431680965768182,
+     2.963286682180622,
+     3.6111102091120957,
+     4.400558683966967,
+     5.3625936650098955,
+     6.534945419721197,
+     7.9635926766896405,
+     9.704565875766797,
+     11.826144638558555,
+     14.41153564234593,
+     17.562135921578076,
+     21.401509581096708,
+     26.080233884707194,
+     31.781804778939993,
+     38.729833462074176,
+     47.19681624229109,
+     57.51482163200854,
+     70.0885138179647,
+     85.41102327747011,
+     104.08328697411648,
+     126.83761664044978,
+     154.56641947741724,
+     188.35719767419474,
+     229.5351994024755,
+     279.7153940242145,
+     340.8658099402499,
+     415.38471914121436,
+     506.19469557909275,
+     616.857236255966,
+     751.7124403803517,
+     916.0492246995484,
+     1116.3127507216077,
+     1360.3571989620589,
+     1657.7538038257208,
+     2020.1662300133062,
+     2461.808012424998,
+     3000.0
+    ],
+    "s": [
+     4.55870888959957,
+     4.709555752172094,
+     4.860437976806989,
+     5.011349225857157,
+     5.162284296604229,
+     5.31323891831746,
+     5.464209585503636,
+     5.615193420925925,
+     5.766188063098715,
+     5.917191573899509,
+     6.068202362710501,
+     6.219219124138984,
+     6.370240786890365,
+     6.521266471799623,
+     6.6722954573826545,
+     6.823327151561392,
+     6.974361068447484,
+     7.125396808722739,
+     7.276434028085585,
+     7.427472191038389,
+     7.578508590733079,
+     7.7295280866667655,
+     7.880468366777774,
+     8.031140550562013,
+     8.181105354214514,
+     8.329548038665273,
+     8.475223983845831,
+     8.616526548906522,
+     8.751670544313798,
+     8.878931790147961,
+     8.996867907468543,
+     9.10446649097689,
+     9.201202445358051,
+     9.287016023938518,
+     9.362238173266272,
+     9.427491505916654,
+     9.483589212520938,
+     9.531445830284138,
+     9.572006295516346,
+     9.606194412908065,
+     9.634878808644526,
+     9.65885308383182,
+     9.678826634798396,
+     9.695422949272047,
+     9.70918277388856
+    ],
+    "regimes": [
+     [
+      "radial_flow",
+      0.9048388225913521,
+      70.0885138179647,
+      9.757415987093867e-05,
+      23
+     ],
+     [
+      "recharge_boundary",
+      126.83761664044978,
+      1657.7538038257208,
+      -0.7093929367196419,
+      14
+     ]
+    ],
+    "plateau": 5.0015690256748355
+   },
+   "barrier": {
+    "t": [
+     0.5,
+     0.609308277668017,
+     0.7425131544695307,
+     0.9048388225913521,
+     1.1026515691205863,
+     1.3437094568976016,
+     1.6374665897370084,
+     1.9954438950631563,
+     2.431680965768182,
+     2.963286682180622,
+     3.6111102091120957,
+     4.400558683966967,
+     5.3625936650098955,
+     6.534945419721197,
+     7.9635926766896405,
+     9.704565875766797,
+     11.826144638558555,
+     14.41153564234593,
+     17.562135921578076,
+     21.401509581096708,
+     26.080233884707194,
+     31.781804778939993,
+     38.729833462074176,
+     47.19681624229109,
+     57.51482163200854,
+     70.0885138179647,
+     85.41102327747011,
+     104.08328697411648,
+     126.83761664044978,
+     154.56641947741724,
+     188.35719767419474,
+     229.5351994024755,
+     279.7153940242145,
+     340.8658099402499,
+     415.38471914121436,
+     506.19469557909275,
+     616.857236255966,
+     751.7124403803517,
+     916.0492246995484,
+     1116.3127507216077,
+     1360.3571989620589,
+     1657.7538038257208,
+     2020.1662300133062,
+     2461.808012424998,
+     3000.0
+    ],
+    "s": [
+     4.55870888959957,
+     4.709555752172094,
+     4.860437976806989,
+     5.011349225857157,
+     5.162284296604229,
+     5.31323891831746,
+     5.464209585503636,
+     5.615193420925925,
+     5.766188063098715,
+     5.917191573899509,
+     6.068202362710501,
+     6.219219124138984,
+     6.370240786890365,
+     6.521266471799623,
+     6.6722954573826545,
+     6.82332715156153,
+     6.974361068467715,
+     7.125396809969331,
+     7.276434065962266,
+     7.42747283492633,
+     7.578515383024064,
+     7.729576489125754,
+     7.8807181685330905,
+     8.032129058225921,
+     8.184248242171071,
+     8.337890295449828,
+     8.494299703560392,
+     8.655082996923264,
+     8.822025274453212,
+     8.996850641707715,
+     9.181001416605271,
+     9.375489954369648,
+     9.580841309224136,
+     9.797115194122297,
+     10.023980634845417,
+     10.260814996111483,
+     10.506805068656037,
+     10.761036299983619,
+     11.022563741236752,
+     11.29046357742851,
+     11.56386717392439,
+     11.841980922684803,
+     12.124095421691644,
+     12.409587178548183,
+     12.697915442787284
+    ],
+    "regimes": [
+     [
+      "radial_flow",
+      0.9048388225913521,
+      85.41102327747011,
+      0.0005283776713772569,
+      24
+     ],
+     [
+      "no_flow_boundary",
+      104.08328697411648,
+      616.857236255966,
+      0.2223694645284401,
+      10
+     ],
+     [
+      "radial_flow",
+      751.7124403803517,
+      1657.7538038257208,
+      0.10639636480245866,
+      5
+     ]
+    ],
+    "plateau": 5.000436028896377
+   }
+  },
+  "cases": {
+   "dr_timbo": {
+    "grid": "[[\"PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)\", null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Community\", \"Dr. Timbo's Residence\", null, \"Date\", \"10/05/2018\", null, \"GPS Coordinate East\", null, null, null, null, null, null, null, null], [\"Client\", \"Dr. Timbo\", null, \"Length of each step (min)\", null, null, \"GPS Coordinate North\", null, null, null, null, null, null, null, null], [\"Test conducted by\", \"WiNGiN\", null, \"Start time\", \"17:14\", null, \"UTM Zone (28N or 29N)\", null, null, null, null, null, null, null, null], [\"Borehole Ref. No.\", \"BH-1\", null, \"Depth of Borehole (m)\", 70, null, \"Elevation (m)\", null, null, null, null, null, null, null, null], [\"Static water level (m)\", 9.44, null, \"Pump setting (m)\", 67, null, null, null, null, null, null, null, null, null, null], [\"Test type (step or constant)\", \"constant\", null, \"District\", \"Western Area Rural\", null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Discharge per step (m3/h)\", \"Step 1 Q\", 2.93, null, \"Step 2 Q\", null, null, \"Step 3 Q\", null, null, \"Step 4 Q\", null, null, null, null], [\"Constant discharge 0-60 min\", null, null, \"Constant discharge 61-120 min\", null, null, \"Constant discharge 121-180 min\", null, null, \"Constant discharge 181-240 min\", null, null, \"Recovery\", null, null], [\"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Recovery (m)\"], [0, 9.44, 0, null, null, null, null, null, null, null, null, null, 0, 42.26, 0], [1, 13.1, 3.66, null, null, null, null, null, null, null, null, null, 1, 42.2, 0.06], [2, 15.5, 2.4, null, null, null, null, null, null, null, null, null, 2, 41.78, 0.42], [3, 17.41, 1.91, null, null, null, null, null, null, null, null, null, 3, 41.39, 0.39], [4, 18.37, 0.96, null, null, null, null, null, null, null, null, null, 4, 41.14, 0.25], [5, 19.34, 0.97, null, null, null, null, null, null, null, null, null, 5, 39.67, 1.47], [10, 27.34, 8, null, null, null, null, null, null, null, null, null, 10, 38.38, 1.29], [15, 30.76, 3.42, null, null, null, null, null, null, null, null, null, 15, 37.26, 1.12], [20, 33.34, 2.58, null, null, null, null, null, null, null, null, null, 20, 35.26, 2], [25, 37.77, 4.43, null, null, null, null, null, null, null, null, null, 25, 35.18, 0.08], [30, 42.26, 4.49, null, null, null, null, null, null, null, null, null, 30, 34.58, 0.6], [null, null, null, null, null, null, null, null, null, null, null, null, 35, 33.85, 0.73], [null, null, null, null, null, null, null, null, null, null, null, null, 40, 33.18, 0.67], [null, null, null, null, null, null, null, null, null, null, null, null, 45, 32.55, 0.63], [null, null, null, null, null, null, null, null, null, null, null, null, 50, 31.95, 0.6], [null, null, null, null, null, null, null, null, null, null, null, null, 55, 31.05, 0.9], [null, null, null, null, null, null, null, null, null, null, null, null, 60, 30.38, 0.67], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Notes: record depth to water in metres below the measuring point. The Drawdown and Recovery columns are the change between successive readings; the analysis recomputes true drawdown from the static water level. Recovery time is minutes since the pump stopped. Record the discharge of every step; results stay provisional until discharge is supplied.\", null, null, null, null, null, null, null, null, null, null, null, null, null, null]]",
+    "source": "cooper_jacob",
+    "T": 0.5358830353611498,
+    "theis": [
+     0.46904121808660265,
+     0.417183536845365,
+     0.5273450288277074
+    ],
+    "pc": [
+     0.2139518178509749,
+     0.5347206029503261,
+     1.4145170640387243,
+     0.8582271114682928,
+     0.10129751655054499,
+     0.45189045023523294
+    ],
+    "pc_invalid": "its storativity of 0.53 is above 0.1, which no aquifer has",
+    "boot": {
+     "method": "cooper_jacob",
+     "replicates": 400,
+     "failed": 0,
+     "block_length": 2,
+     "seed": 32,
+     "n_points": 8,
+     "p10": 0.4818127427873614,
+     "p50": 0.5384737347817701,
+     "p90": 0.6117670229160203,
+     "reason": ""
+    },
+    "spread": [
+     0.3536574083191261,
+     0.44299854119738763,
+     0.5304861124786892,
+     true,
+     51.0,
+     52.0
+    ],
+    "diagnostic": {
+     "t": [
+      2.0,
+      3.0,
+      4.0,
+      5.0,
+      10.0,
+      15.0
+     ],
+     "d": [
+      3.8015014327424197,
+      3.8241983898241423,
+      6.573398453563024,
+      7.072063039156557,
+      10.098865286222747,
+      12.666611598833084
+     ],
+     "slopes": [
+      null,
+      0.7652022896032944,
+      1.2356035272216215,
+      1.2356035272216215,
+      null,
+      null
+     ],
+     "regimes": [],
+     "plateau": null
+    },
+    "safe": 0.39096869216140506,
+    "range_text": "0.39 m3/h (0.22 to 0.71)",
+    "confidence": "indicative",
+    "text": [
+     "Resampling the Cooper-Jacob residuals in blocks of 2 consecutive readings (400 resamples of 8 readings, a circular block bootstrap) puts the transmissivity between 0.482 and 0.612 m2/day (P10 to P90).",
+     "With the static level lowered by the 2 m dry-season reserve, as the recommendation is, that band puts the safe yield between 0.354 and 0.443 m3/h.",
+     "At the low end of the band the long-term yield is 0.53 m3/h, which still covers the recommended 0.391 m3/h: the safety factor absorbs the spread in the data at the dry-season level.",
+     "The pump intake moves between 51 and 52 m below the top of the casing over a dry-season decline of 1 to 4 m. The transmissivity band does not move it: the intake is set by the drawdown available, not by the rate.",
+     "The Theis fit's own covariance puts its transmissivity between 0.417 and 0.527 m2/day (P10 to P90). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
+     "The Bourdet derivative of the first step's drawdown, ds/d ln t with neighbours at least 0.2 of a log cycle apart, is read from the slope of its log-log curve: a unit slope is casing storage, a plateau radial flow, a half slope linear flow along a fracture, and a fall or a rise after the plateau a boundary. On this test no run of three derivative points holds one slope over enough of a log cycle to name a regime.",
+     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 10 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 0.214 m2/day with an RMSE of 0.858 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the two engines leave it at different points of a flat valley. It is not adopted: its storativity of 0.53 is above 0.1, which no aquifer has.",
+     ""
+    ]
+   },
+   "large_diameter": {
+    "grid": "[[\"PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)\", null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Community\", \"Dr. Timbo's Residence\", null, \"Date\", \"10/05/2018\", null, \"GPS Coordinate East\", null, null, null, null, null, null, null, null], [\"Client\", \"Dr. Timbo\", null, \"Length of each step (min)\", null, null, \"GPS Coordinate North\", null, null, null, null, null, null, null, null], [\"Test conducted by\", \"WiNGiN\", null, \"Start time\", \"17:14\", null, \"UTM Zone (28N or 29N)\", null, null, null, null, null, null, null, null], [\"Borehole Ref. No.\", \"BH-1\", null, \"Depth of Borehole (m)\", 60, null, \"Elevation (m)\", null, null, null, null, null, null, null, null], [\"Static water level (m)\", 5.0, null, \"Pump setting (m)\", 50, null, null, null, null, null, null, null, null, null, null], [\"Test type (step or constant)\", \"constant\", null, \"District\", \"Western Area Rural\", null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Discharge per step (m3/h)\", \"Step 1 Q\", 1.0, null, \"Step 2 Q\", null, null, \"Step 3 Q\", null, null, \"Step 4 Q\", null, null, null, null], [\"Constant discharge 0-60 min\", null, null, \"Constant discharge 61-120 min\", null, null, \"Constant discharge 121-180 min\", null, null, \"Constant discharge 181-240 min\", null, null, \"Recovery\", null, null], [\"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Recovery (m)\"], [0, 5.0, null, null, null, null, null, null, null, null, null, null, 0, 30.69, null], [1, 6.35, null, null, null, null, null, null, null, null, null, null, 1, 30.66, null], [2, 7.63, null, null, null, null, null, null, null, null, null, null, 2, 30.64, null], [3, 8.86, null, null, null, null, null, null, null, null, null, null, 3, 30.62, null], [4, 10.04, null, null, null, null, null, null, null, null, null, null, 4, 30.61, null], [5, 11.18, null, null, null, null, null, null, null, null, null, null, 5, 30.6, null], [6, 12.27, null, null, null, null, null, null, null, null, null, null, 10, 30.57, null], [8, 14.35, null, null, null, null, null, null, null, null, null, null, 15, 30.55, null], [10, 16.3, null, null, null, null, null, null, null, null, null, null, 20, 30.54, null], [12, 18.14, null, null, null, null, null, null, null, null, null, null, 30, 30.52, null], [15, 20.68, null, null, null, null, null, null, null, null, null, null, null, null, null], [20, 24.47, null, null, null, null, null, null, null, null, null, null, null, null, null], [25, 27.78, null, null, null, null, null, null, null, null, null, null, null, null, null], [30, 30.69, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null]]",
+    "source": "papadopulos_cooper",
+    "T": 0.2978251487677272,
+    "theis": [
+     0.13798796282796688,
+     0.12718226913160272,
+     0.14971173273933255
+    ],
+    "pc": [
+     0.2978251487677272,
+     0.00104472836079331,
+     0.002763660284405805,
+     0.0027133421748896853,
+     0.29660702903062547,
+     0.29904827113642124
+    ],
+    "pc_invalid": "",
+    "boot": {
+     "method": "papadopulos_cooper",
+     "replicates": 400,
+     "failed": 0,
+     "block_length": 3,
+     "seed": 32,
+     "n_points": 13,
+     "p10": 0.2965895807762406,
+     "p50": 0.29783514519768584,
+     "p90": 0.2988454457311269,
+     "reason": ""
+    },
+    "spread": [
+     0.17040444785053596,
+     0.17162408802292328,
+     0.25560667177580393,
+     true,
+     38.0,
+     39.0
+    ],
+    "diagnostic": {
+     "t": [
+      2.0,
+      3.0,
+      4.0,
+      5.0,
+      6.0,
+      8.0,
+      10.0,
+      12.0,
+      15.0
+     ],
+     "d": [
+      2.6617723504401374,
+      3.8253199633236634,
+      4.8474553373869185,
+      5.688991500256681,
+      6.6292377255712935,
+      8.167214216142453,
+      9.542888445609885,
+      10.727204786199069,
+      12.182375194866593
+     ],
+     "slopes": [
+      null,
+      0.8334163970002205,
+      0.7862379203826112,
+      0.7729755112421699,
+      0.7445045828282826,
+      0.7222114020191753,
+      0.6675834551796967,
+      0.636537201696635,
+      0.6010716456300208
+     ],
+     "regimes": [],
+     "plateau": null
+    },
+    "safe": 0.17107252447575183,
+    "range_text": "0.17 m3/h (0.095 to 0.31)",
+    "confidence": "indicative",
+    "text": [
+     "Resampling the Papadopulos-Cooper residuals in blocks of 3 consecutive readings (400 resamples of 13 readings, a circular block bootstrap) puts the transmissivity between 0.297 and 0.299 m2/day (P10 to P90).",
+     "With the static level lowered by the 2 m dry-season reserve, as the recommendation is, that band puts the safe yield between 0.17 and 0.172 m3/h.",
+     "At the low end of the band the long-term yield is 0.256 m3/h, which still covers the recommended 0.171 m3/h: the safety factor absorbs the spread in the data at the dry-season level.",
+     "The pump intake moves between 38 and 39 m below the top of the casing over a dry-season decline of 1 to 4 m. The transmissivity band does not move it: the intake is set by the drawdown available, not by the rate.",
+     "The Theis fit's own covariance puts its transmissivity between 0.127 and 0.15 m2/day (P10 to P90). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
+     "The Bourdet derivative of the first step's drawdown, ds/d ln t with neighbours at least 0.2 of a log cycle apart, is read from the slope of its log-log curve: a unit slope is casing storage, a plateau radial flow, a half slope linear flow along a fracture, and a fall or a rise after the plateau a boundary. On this test no run of three derivative points holds one slope over enough of a log cycle to name a regime.",
+     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 13 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 0.298 m2/day with an RMSE of 0.00271 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the two engines leave it at different points of a flat valley. No other fit can be adopted, so this value is adopted as the best available, and the yield that rests on it is indicative.",
+     ""
+    ]
+   },
+   "wide_band": {
+    "grid": "[[\"PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)\", null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Community\", \"Dr. Timbo's Residence\", null, \"Date\", \"10/05/2018\", null, \"GPS Coordinate East\", null, null, null, null, null, null, null, null], [\"Client\", \"Dr. Timbo\", null, \"Length of each step (min)\", null, null, \"GPS Coordinate North\", null, null, null, null, null, null, null, null], [\"Test conducted by\", \"WiNGiN\", null, \"Start time\", \"17:14\", null, \"UTM Zone (28N or 29N)\", null, null, null, null, null, null, null, null], [\"Borehole Ref. No.\", \"BH-1\", null, \"Depth of Borehole (m)\", 60, null, \"Elevation (m)\", null, null, null, null, null, null, null, null], [\"Static water level (m)\", 5.0, null, \"Pump setting (m)\", 50, null, null, null, null, null, null, null, null, null, null], [\"Test type (step or constant)\", \"constant\", null, \"District\", \"Western Area Rural\", null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [\"Discharge per step (m3/h)\", \"Step 1 Q\", 2.0, null, \"Step 2 Q\", null, null, \"Step 3 Q\", null, null, \"Step 4 Q\", null, null, null, null], [\"Constant discharge 0-60 min\", null, null, \"Constant discharge 61-120 min\", null, null, \"Constant discharge 121-180 min\", null, null, \"Constant discharge 181-240 min\", null, null, \"Recovery\", null, null], [\"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Drawdown (m)\", \"Time (min)\", \"Water Level (m)\", \"Recovery (m)\"], [0, 5.0, null, null, null, null, null, null, null, null, null, null, null, null, null], [1, 7.35, null, null, null, null, null, null, null, null, null, null, null, null, null], [2, 6.66, null, null, null, null, null, null, null, null, null, null, null, null, null], [3, 8.1, null, null, null, null, null, null, null, null, null, null, null, null, null], [4, 7.37, null, null, null, null, null, null, null, null, null, null, null, null, null], [5, 8.89, null, null, null, null, null, null, null, null, null, null, null, null, null], [6, 6.53, null, null, null, null, null, null, null, null, null, null, null, null, null], [8, 9.83, null, null, null, null, null, null, null, null, null, null, null, null, null], [10, 7.15, null, null, null, null, null, null, null, null, null, null, null, null, null], [12, 10.4, null, null, null, null, null, null, null, null, null, null, null, null, null], [15, 6.66, null, null, null, null, null, null, null, null, null, null, null, null, null], [20, 11.01, null, null, null, null, null, null, null, null, null, null, null, null, null], [25, 6.58, null, null, null, null, null, null, null, null, null, null, null, null, null], [30, 11.57, null, null, null, null, null, null, null, null, null, null, null, null, null], [40, 6.47, null, null, null, null, null, null, null, null, null, null, null, null, null], [50, 12.19, null, null, null, null, null, null, null, null, null, null, null, null, null], [60, 8.43, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null]]",
+    "source": "theis",
+    "T": 5.995857862430217,
+    "theis": [
+     5.995857862430217,
+     2.585320040823791,
+     13.905555574856791
+    ],
+    "pc": [
+     8.114286908929003,
+     0.005446318153272136,
+     0.014407355769500764,
+     1.760578698713612,
+     2.223900157298663,
+     29.60638849920017
+    ],
+    "pc_invalid": "it fits the readings worse than the Theis curve (RMSE 1.76 m against 1.76 m), so casing storage does not explain them",
+    "boot": {
+     "method": "theis",
+     "replicates": 400,
+     "failed": 2,
+     "block_length": 3,
+     "seed": 32,
+     "n_points": 16,
+     "p10": 3.6002803105666814,
+     "p50": 6.0992871956626935,
+     "p90": 12.08950660586908,
+     "reason": ""
+    },
+    "spread": [
+     1.8037765821351675,
+     5.702797026472531,
+     2.705664873202751,
+     false,
+     38.0,
+     39.0
+    ],
+    "diagnostic": {
+     "t": [
+      2.0,
+      3.0,
+      4.0,
+      5.0,
+      6.0,
+      8.0,
+      10.0,
+      12.0,
+      15.0,
+      20.0,
+      25.0,
+      30.0
+     ],
+     "d": [
+      0.014426950408890048,
+      1.2723396200355894,
+      2.2866716398090077,
+      1.782686931073389,
+      -0.26225542920510786,
+      -1.0130650917814576,
+      3.061509993023788,
+      3.056360791542963,
+      -2.347199716088283,
+      -2.0914968881890785,
+      -0.196936326007066,
+      3.7042270636205323
+     ],
+     "slopes": [
+      null,
+      5.339118566646577,
+      0.7252324238384071,
+      0.7252324238384071,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+     ],
+     "regimes": [],
+     "plateau": null
+    },
+    "safe": 2.927431516692877,
+    "range_text": "2.9 m3/h (1.7 to 5.2)",
+    "confidence": "indicative",
+    "text": [
+     "Resampling the Theis curve fit residuals in blocks of 3 consecutive readings (400 resamples of 16 readings, a circular block bootstrap) puts the transmissivity between 3.6 and 12.1 m2/day (P10 to P90).",
+     "2 of the resamples gave no fit and are left out of the band.",
+     "With the static level lowered by the 2 m dry-season reserve, as the recommendation is, that band puts the safe yield between 1.8 and 5.7 m3/h.",
+     "At the low end of the band the long-term yield is 2.71 m3/h, below the recommended 2.93 m3/h: the safety factor does not absorb the spread in the data at the dry-season level, so the rate is not called sustainable.",
+     "The pump intake moves between 38 and 39 m below the top of the casing over a dry-season decline of 1 to 4 m. The transmissivity band does not move it: the intake is set by the drawdown available, not by the rate.",
+     "The Theis fit's own covariance puts its transmissivity between 2.59 and 13.9 m2/day (P10 to P90). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
+     "The Bourdet derivative of the first step's drawdown, ds/d ln t with neighbours at least 0.2 of a log cycle apart, is read from the slope of its log-log curve: a unit slope is casing storage, a plateau radial flow, a half slope linear flow along a fracture, and a fall or a rise after the plateau a boundary. On this test no run of three derivative points holds one slope over enough of a log cycle to name a regime.",
+     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 16 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 8.11 m2/day with an RMSE of 1.76 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the two engines leave it at different points of a flat valley. It is not adopted: it fits the readings worse than the Theis curve (RMSE 1.76 m against 1.76 m), so casing storage does not explain them.",
+     ""
+    ]
+   },
+   "rejected_recovery": {
+    "grid": null,
+    "source": "cooper_jacob",
+    "T": 0.5358830353611498,
+    "theis": [
+     0.46904121808660265,
+     0.417183536845365,
+     0.5273450288277074
+    ],
+    "pc": [
+     0.2139518178509749,
+     0.5347206029503261,
+     1.4145170640387243,
+     0.8582271114682928,
+     0.10129751655054499,
+     0.45189045023523294
+    ],
+    "pc_invalid": "its storativity of 0.53 is above 0.1, which no aquifer has",
+    "boot": {
+     "method": "cooper_jacob",
+     "replicates": 400,
+     "failed": 0,
+     "block_length": 2,
+     "seed": 32,
+     "n_points": 8,
+     "p10": 0.4818127427873614,
+     "p50": 0.5384737347817701,
+     "p90": 0.6117670229160203,
+     "reason": ""
+    },
+    "spread": [
+     0.3536574083191261,
+     0.44299854119738763,
+     0.5304861124786892,
+     true,
+     51.0,
+     52.0
+    ],
+    "diagnostic": {
+     "t": [
+      2.0,
+      3.0,
+      4.0,
+      5.0,
+      10.0,
+      15.0
+     ],
+     "d": [
+      3.8015014327424197,
+      3.8241983898241423,
+      6.573398453563024,
+      7.072063039156557,
+      10.098865286222747,
+      12.666611598833084
+     ],
+     "slopes": [
+      null,
+      0.7652022896032944,
+      1.2356035272216215,
+      1.2356035272216215,
+      null,
+      null
+     ],
+     "regimes": [],
+     "plateau": null
+    },
+    "safe": 0.39096869216140506,
+    "range_text": "0.39 m3/h (0.22 to 0.71)",
+    "confidence": "indicative",
+    "text": [
+     "Resampling the Cooper-Jacob residuals in blocks of 2 consecutive readings (400 resamples of 8 readings, a circular block bootstrap) puts the transmissivity between 0.482 and 0.612 m2/day (P10 to P90).",
+     "With the static level lowered by the 2 m dry-season reserve, as the recommendation is, that band puts the safe yield between 0.354 and 0.443 m3/h.",
+     "At the low end of the band the long-term yield is 0.53 m3/h, which still covers the recommended 0.391 m3/h: the safety factor absorbs the spread in the data at the dry-season level.",
+     "The pump intake moves between 51 and 52 m below the top of the casing over a dry-season decline of 1 to 4 m. The transmissivity band does not move it: the intake is set by the drawdown available, not by the rate.",
+     "The Theis fit's own covariance puts its transmissivity between 0.417 and 0.527 m2/day (P10 to P90). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
+     "The Bourdet derivative of the first step's drawdown, ds/d ln t with neighbours at least 0.2 of a log cycle apart, is read from the slope of its log-log curve: a unit slope is casing storage, a plateau radial flow, a half slope linear flow along a fracture, and a fall or a rise after the plateau a boundary. On this test no run of three derivative points holds one slope over enough of a log cycle to name a regime.",
+     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 10 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 0.214 m2/day with an RMSE of 0.858 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the two engines leave it at different points of a flat valley. It is not adopted: its storativity of 0.53 is above 0.1, which no aquifer has.",
+     ""
+    ]
+   },
+   "every_fit_rejected": {
+    "grid": null,
+    "source": null,
+    "T": null,
+    "theis": null,
+    "pc": null,
+    "pc_invalid": "",
+    "boot": null,
+    "spread": [
+     null,
+     null,
+     null,
+     false,
+     null,
+     null
+    ],
+    "diagnostic": null,
+    "safe": null,
+    "range_text": "pending",
+    "confidence": "established",
+    "text": [
+     "The first step has fewer than five positive drawdowns, so no derivative is drawn.",
+     "",
+     ""
+    ]
+   },
+   "negative_intercept": {
+    "grid": null,
+    "source": "cooper_jacob",
+    "T": 0.5358830353611498,
+    "theis": [
+     0.46904121808660265,
+     0.417183536845365,
+     0.5273450288277074
+    ],
+    "pc": [
+     0.2139518178509749,
+     0.5347206029503261,
+     1.4145170640387243,
+     0.8582271114682928,
+     0.10129751655054499,
+     0.45189045023523294
+    ],
+    "pc_invalid": "its storativity of 0.53 is above 0.1, which no aquifer has",
+    "boot": {
+     "method": "cooper_jacob",
+     "replicates": 400,
+     "failed": 0,
+     "block_length": 2,
+     "seed": 32,
+     "n_points": 8,
+     "p10": 0.4818127427873614,
+     "p50": 0.5384737347817701,
+     "p90": 0.6117670229160203,
+     "reason": ""
+    },
+    "spread": [
+     0.3536574083191261,
+     0.44299854119738763,
+     0.5304861124786892,
+     true,
+     51.0,
+     52.0
+    ],
+    "diagnostic": {
+     "t": [
+      2.0,
+      3.0,
+      4.0,
+      5.0,
+      10.0,
+      15.0
+     ],
+     "d": [
+      3.8015014327424197,
+      3.8241983898241423,
+      6.573398453563024,
+      7.072063039156557,
+      10.098865286222747,
+      12.666611598833084
+     ],
+     "slopes": [
+      null,
+      0.7652022896032944,
+      1.2356035272216215,
+      1.2356035272216215,
+      null,
+      null
+     ],
+     "regimes": [],
+     "plateau": null
+    },
+    "safe": 0.39096869216140506,
+    "range_text": "0.39 m3/h (0.22 to 0.71)",
+    "confidence": "indicative",
+    "text": [
+     "Resampling the Cooper-Jacob residuals in blocks of 2 consecutive readings (400 resamples of 8 readings, a circular block bootstrap) puts the transmissivity between 0.482 and 0.612 m2/day (P10 to P90).",
+     "With the static level lowered by the 2 m dry-season reserve, as the recommendation is, that band puts the safe yield between 0.354 and 0.443 m3/h.",
+     "At the low end of the band the long-term yield is 0.53 m3/h, which still covers the recommended 0.391 m3/h: the safety factor absorbs the spread in the data at the dry-season level.",
+     "The pump intake moves between 51 and 52 m below the top of the casing over a dry-season decline of 1 to 4 m. The transmissivity band does not move it: the intake is set by the drawdown available, not by the rate.",
+     "The Theis fit's own covariance puts its transmissivity between 0.417 and 0.527 m2/day (P10 to P90). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
+     "The Bourdet derivative of the first step's drawdown, ds/d ln t with neighbours at least 0.2 of a log cycle apart, is read from the slope of its log-log curve: a unit slope is casing storage, a plateau radial flow, a half slope linear flow along a fracture, and a fall or a rise after the plateau a boundary. On this test no run of three derivative points holds one slope over enough of a log cycle to name a regime.",
+     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 10 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 0.214 m2/day with an RMSE of 0.858 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the two engines leave it at different points of a flat valley. It is not adopted: its storativity of 0.53 is above 0.1, which no aquifer has.",
+     ""
+    ]
+   },
+   "level_below_pump": {
+    "grid": null,
+    "source": "cooper_jacob",
+    "T": 0.5358830353611498,
+    "theis": [
+     0.46904121808660265,
+     0.417183536845365,
+     0.5273450288277074
+    ],
+    "pc": [
+     0.2139518178509749,
+     0.5347206029503261,
+     1.4145170640387243,
+     0.8582271114682928,
+     0.10129751655054499,
+     0.45189045023523294
+    ],
+    "pc_invalid": "its storativity of 0.53 is above 0.1, which no aquifer has",
+    "boot": {
+     "method": "cooper_jacob",
+     "replicates": 400,
+     "failed": 0,
+     "block_length": 2,
+     "seed": 32,
+     "n_points": 8,
+     "p10": 0.4818127427873614,
+     "p50": 0.5384737347817701,
+     "p90": 0.6117670229160203,
+     "reason": ""
+    },
+    "spread": [
+     0.006666666666666667,
+     0.006666666666666667,
+     0.01,
+     true,
+     15.0,
+     15.0
+    ],
+    "diagnostic": {
+     "t": [
+      2.0,
+      3.0,
+      4.0,
+      5.0,
+      10.0,
+      15.0
+     ],
+     "d": [
+      3.8015014327424197,
+      3.8241983898241423,
+      6.573398453563024,
+      7.072063039156557,
+      10.098865286222747,
+      12.666611598833084
+     ],
+     "slopes": [
+      null,
+      0.7652022896032944,
+      1.2356035272216215,
+      1.2356035272216215,
+      null,
+      null
+     ],
+     "regimes": [],
+     "plateau": null
+    },
+    "safe": 0.006666666666666667,
+    "range_text": "0.0067 m3/h (0.0067 to 0.021)",
+    "confidence": "indicative",
+    "text": [
+     "Resampling the Cooper-Jacob residuals in blocks of 2 consecutive readings (400 resamples of 8 readings, a circular block bootstrap) puts the transmissivity between 0.482 and 0.612 m2/day (P10 to P90).",
+     "With the static level lowered by the 2 m dry-season reserve, as the recommendation is, that band puts the safe yield between 0.00667 and 0.00667 m3/h.",
+     "At the low end of the band the long-term yield is 0.01 m3/h, which still covers the recommended 0.00667 m3/h: the safety factor absorbs the spread in the data at the dry-season level.",
+     "The pump intake moves between 15 and 15 m below the top of the casing over a dry-season decline of 1 to 4 m. The transmissivity band does not move it: the intake is set by the drawdown available, not by the rate.",
+     "The Theis fit's own covariance puts its transmissivity between 0.417 and 0.527 m2/day (P10 to P90). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
+     "The Bourdet derivative of the first step's drawdown, ds/d ln t with neighbours at least 0.2 of a log cycle apart, is read from the slope of its log-log curve: a unit slope is casing storage, a plateau radial flow, a half slope linear flow along a fracture, and a fall or a rise after the plateau a boundary. On this test no run of three derivative points holds one slope over enough of a log cycle to name a regime.",
+     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 10 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 0.214 m2/day with an RMSE of 0.858 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the two engines leave it at different points of a flat valley. It is not adopted: its storativity of 0.53 is above 0.1, which no aquifer has.",
+     ""
+    ]
+   },
+   "shallow_hole": {
+    "grid": null,
+    "source": "cooper_jacob",
+    "T": 0.5358830353611498,
+    "theis": [
+     0.46904121808660265,
+     0.417183536845365,
+     0.5273450288277074
+    ],
+    "pc": [
+     0.2139518178509749,
+     0.5347206029503261,
+     1.4145170640387243,
+     0.8582271114682928,
+     0.10129751655054499,
+     0.45189045023523294
+    ],
+    "pc_invalid": "its storativity of 0.53 is above 0.1, which no aquifer has",
+    "boot": {
+     "method": "cooper_jacob",
+     "replicates": 400,
+     "failed": 0,
+     "block_length": 2,
+     "seed": 32,
+     "n_points": 8,
+     "p10": 0.4818127427873614,
+     "p50": 0.5384737347817701,
+     "p90": 0.6117670229160203,
+     "reason": ""
+    },
+    "spread": [
+     0.19889864897095447,
+     0.24914453724875915,
+     0.2983479734564317,
+     true,
+     42.0,
+     42.0
+    ],
+    "diagnostic": {
+     "t": [
+      2.0,
+      3.0,
+      4.0,
+      5.0,
+      10.0,
+      15.0
+     ],
+     "d": [
+      3.8015014327424197,
+      3.8241983898241423,
+      6.573398453563024,
+      7.072063039156557,
+      10.098865286222747,
+      12.666611598833084
+     ],
+     "slopes": [
+      null,
+      0.7652022896032944,
+      1.2356035272216215,
+      1.2356035272216215,
+      null,
+      null
+     ],
+     "regimes": [],
+     "plateau": null
+    },
+    "safe": 0.21988269673308855,
+    "range_text": "0.22 m3/h (0.12 to 0.4)",
+    "confidence": "indicative",
+    "text": [
+     "Resampling the Cooper-Jacob residuals in blocks of 2 consecutive readings (400 resamples of 8 readings, a circular block bootstrap) puts the transmissivity between 0.482 and 0.612 m2/day (P10 to P90).",
+     "With the static level lowered by the 2 m dry-season reserve, as the recommendation is, that band puts the safe yield between 0.199 and 0.249 m3/h.",
+     "At the low end of the band the long-term yield is 0.298 m3/h, which still covers the recommended 0.22 m3/h: the safety factor absorbs the spread in the data at the dry-season level.",
+     "The pump intake moves between 42 and 42 m below the top of the casing over a dry-season decline of 1 to 4 m. The transmissivity band does not move it: the intake is set by the drawdown available, not by the rate.",
+     "The Theis fit's own covariance puts its transmissivity between 0.417 and 0.527 m2/day (P10 to P90). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
+     "The Bourdet derivative of the first step's drawdown, ds/d ln t with neighbours at least 0.2 of a log cycle apart, is read from the slope of its log-log curve: a unit slope is casing storage, a plateau radial flow, a half slope linear flow along a fracture, and a fall or a rise after the plateau a boundary. On this test no run of three derivative points holds one slope over enough of a log cycle to name a regime.",
+     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 10 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 0.214 m2/day with an RMSE of 0.858 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the two engines leave it at different points of a flat valley. It is not adopted: its storativity of 0.53 is above 0.1, which no aquifer has.",
+     ""
+    ]
+   },
+   "blocks_by_heading": {
+    "grid": null,
+    "source": "cooper_jacob",
+    "T": 4.293568164453823,
+    "theis": [
+     4.288697790206394,
+     4.286960199547345,
+     4.290436085145668
+    ],
+    "pc": [
+     6.182016025833309,
+     0.0004770342067974255,
+     0.001261917012215481,
+     0.49653862002991844,
+     5.510248053618339,
+     6.93568089345165
+    ],
+    "pc_invalid": "it fits the readings worse than the Theis curve (RMSE 0.497 m against 0.00331 m), so casing storage does not explain them",
+    "boot": {
+     "method": "cooper_jacob",
+     "replicates": 400,
+     "failed": 0,
+     "block_length": 3,
+     "seed": 32,
+     "n_points": 24,
+     "p10": 4.28970974801817,
+     "p50": 4.293431241349577,
+     "p90": 4.2975768285030895,
+     "reason": ""
+    },
+    "spread": [
+     2.7988907043920643,
+     2.8037626701833105,
+     4.198336056588096,
+     true,
+     51.0,
+     52.0
+    ],
+    "diagnostic": {
+     "t": [
+      2.0,
+      3.0,
+      4.0,
+      5.0,
+      10.0,
+      15.0,
+      20.0,
+      25.0,
+      30.0,
+      40.0,
+      50.0,
+      60.0,
+      65.0,
+      70.0,
+      75.0,
+      80.0,
+      85.0,
+      90.0,
+      100.0,
+      110.0,
+      120.0,
+      130.0,
+      140.0,
+      150.0
+     ],
+     "d": [
+      1.3056390120045123,
+      1.3084409081119088,
+      1.3067635594791494,
+      1.3060115476312006,
+      1.2984255368000677,
+      1.295078105567793,
+      1.3056390120045112,
+      1.3061466015525793,
+      1.3060115476311986,
+      1.3085492442561717,
+      1.3044463219899438,
+      1.3060115476311995,
+      1.2951802328423878,
+      1.3015340498503458,
+      1.300688414238191,
+      1.2977384121977884,
+      1.3015219034770942,
+      1.3029462038281219,
+      1.304446321989947,
+      1.3066541528136573,
+      1.2977384121977842,
+      1.3056887821803727,
+      1.304743272897784,
+      1.3044463219899434
+     ],
+     "slopes": [
+      null,
+      0.00014939163582755095,
+      -0.003676784082888461,
+      -0.003676784082888461,
+      null,
+      0.007985606885637112,
+      0.011846333768597632,
+      0.009159709056706941,
+      3.584188044248748e-05,
+      -0.005125049994668088,
+      -0.006493775491742877,
+      -0.004573026912318546,
+      -0.002016399467627147,
+      -0.003158783322304117,
+      0.0011763902437347323,
+      0.0017749231313687619,
+      0.002023012311128505,
+      0.0036266256007323906,
+      0.0036266256007323906,
+      0.0061687428309974614,
+      0.004419969710387105,
+      0.005069021844876827,
+      0.005254138190081105,
+      0.0025307316413790957
+     ],
+     "regimes": [
+      [
+       "radial_flow",
+       15.0,
+       150.0,
+       0.0025307316413790957,
+       19
+      ]
+     ],
+     "plateau": 4.289856703781009
+    },
+    "safe": 2.8012802178752345,
+    "range_text": "2.8 m3/h (2.3 to 3.4)",
+    "confidence": "established",
+    "text": [
+     "Resampling the Cooper-Jacob residuals in blocks of 3 consecutive readings (400 resamples of 24 readings, a circular block bootstrap) puts the transmissivity between 4.29 and 4.3 m2/day (P10 to P90).",
+     "With the static level lowered by the 2 m dry-season reserve, as the recommendation is, that band puts the safe yield between 2.8 and 2.8 m3/h.",
+     "At the low end of the band the long-term yield is 4.2 m3/h, which still covers the recommended 2.8 m3/h: the safety factor absorbs the spread in the data at the dry-season level.",
+     "The pump intake moves between 51 and 52 m below the top of the casing over a dry-season decline of 1 to 4 m. The transmissivity band does not move it: the intake is set by the drawdown available, not by the rate.",
+     "The Theis fit's own covariance puts its transmissivity between 4.29 and 4.29 m2/day (P10 to P90). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
+     "The Bourdet derivative of the first step's drawdown, ds/d ln t with neighbours at least 0.2 of a log cycle apart, is read from the slope of its log-log curve: a unit slope is casing storage, a plateau radial flow, a half slope linear flow along a fracture, and a fall or a rise after the plateau a boundary. On this test it shows a plateau, radial flow from 15 to 150 minutes (slope 0.00). The level of the plateau gives a transmissivity of about 4.29 m2/day, a check on the fitted values rather than one adopted.",
+     "The Papadopulos-Cooper solution for a well of large diameter, fitted to all 32 readings of the first step including those inside casing storage (casing radius 0.061 m; Laplace solution inverted by Stehfest's method), gives T = 6.18 m2/day with an RMSE of 0.497 m. Its storativity is not given: in the pumped well it trades off against the well radius, as the Theis fit's does, and on a poor fit the two engines leave it at different points of a flat valley. It is not adopted: it fits the readings worse than the Theis curve (RMSE 0.497 m against 0.00331 m), so casing storage does not explain them.",
+     "The borehole is successful and sustainable when operated as recommended: at the dry-season level, the long-term yield at the low end of the spread in the test data still covers the recommended rate."
+    ]
+   },
+   "step_restart": {
+    "grid": null,
+    "source": "recovery",
+    "T": 0.5049478950866564,
+    "theis": null,
+    "pc": null,
+    "pc_invalid": "",
+    "boot": {
+     "method": "recovery",
+     "replicates": 400,
+     "failed": 0,
+     "block_length": 4,
+     "seed": 32,
+     "n_points": 44,
+     "p10": 0.401354052804144,
+     "p50": 0.49706753105999424,
+     "p90": 0.6983772974826481,
+     "reason": ""
+    },
+    "spread": [
+     0.3411657696078867,
+     0.5207894722465517,
+     0.51174865441183,
+     true,
+     49.0,
+     50.0
+    ],
+    "diagnostic": null,
+    "safe": 0.41071772567909975,
+    "range_text": "0.41 m3/h (0.28 to 0.56)",
+    "confidence": "indicative",
+    "text": [
+     "Resampling the Theis recovery residuals in blocks of 4 consecutive readings (400 resamples of 44 readings, a circular block bootstrap) puts the transmissivity between 0.401 and 0.698 m2/day (P10 to P90).",
+     "With the static level lowered by the 2 m dry-season reserve, as the recommendation is, that band puts the safe yield between 0.341 and 0.521 m3/h.",
+     "At the low end of the band the long-term yield is 0.512 m3/h, which still covers the recommended 0.411 m3/h: the safety factor absorbs the spread in the data at the dry-season level.",
+     "The pump intake moves between 49 and 50 m below the top of the casing over a dry-season decline of 1 to 4 m. The transmissivity band does not move it: the intake is set by the drawdown available, not by the rate.",
+     "The first step has fewer than five positive drawdowns, so no derivative is drawn.",
+     "",
+     ""
+    ]
+   },
+   "short_steps": {
+    "grid": null,
+    "source": "cooper_jacob",
+    "T": 2.499346578994622,
+    "theis": [
+     2.498110288045273,
+     2.4977630619608644,
+     2.498457562399254
+    ],
+    "pc": null,
+    "pc_invalid": "",
+    "boot": {
+     "method": "cooper_jacob",
+     "replicates": 400,
+     "failed": 0,
+     "block_length": 3,
+     "seed": 32,
+     "n_points": 10,
+     "p10": 2.498863366778744,
+     "p50": 2.499314985683494,
+     "p90": 2.499774852787466,
+     "reason": ""
+    },
+    "spread": [
+     1.4006305469429916,
+     1.4008627597761885,
+     2.1009458204144873,
+     true,
+     47.0,
+     48.0
+    ],
+    "diagnostic": {
+     "t": [
+      2.0,
+      3.0,
+      4.0,
+      5.0,
+      6.0,
+      8.0,
+      10.0,
+      15.0,
+      20.0,
+      25.0,
+      30.0
+     ],
+     "d": [
+      0.7646283716711509,
+      0.7638289045569967,
+      0.7646283716711498,
+      0.764762370115725,
+      0.7639614338939924,
+      0.7649417173646216,
+      0.7639614338939902,
+      0.7635242647587991,
+      0.7646283716711498,
+      0.7647623701157248,
+      0.7639614338939927
+     ],
+     "slopes": [
+      null,
+      0.0003729312471284899,
+      0.0005033015335601757,
+      0.0009689909970893963,
+      -0.0005839553516584345,
+      -0.0006421360812544026,
+      -0.0010262666842428374,
+      0.001392681837365142,
+      0.0010585861890930756,
+      0.0010585861890930756,
+      -0.0020440028511654264
+     ],
+     "regimes": [
+      [
+       "radial_flow",
+       3.0,
+       30.0,
+       0.0004381163903443328,
+       10
+      ]
+     ],
+     "plateau": 2.498851307459349
+    },
+    "safe": 1.4007536633575413,
+    "range_text": "1.4 m3/h (1.1 to 1.7)",
+    "confidence": "indicative",
+    "text": [
+     "Resampling the Cooper-Jacob residuals in blocks of 3 consecutive readings (400 resamples of 10 readings, a circular block bootstrap) puts the transmissivity between 2.5 and 2.5 m2/day (P10 to P90).",
+     "With the static level lowered by the 2 m dry-season reserve, as the recommendation is, that band puts the safe yield between 1.4 and 1.4 m3/h.",
+     "At the low end of the band the long-term yield is 2.1 m3/h, which still covers the recommended 1.4 m3/h: the safety factor absorbs the spread in the data at the dry-season level.",
+     "The pump intake moves between 47 and 48 m below the top of the casing over a dry-season decline of 1 to 4 m. The transmissivity band does not move it: the intake is set by the drawdown available, not by the rate.",
+     "The Theis fit's own covariance puts its transmissivity between 2.5 and 2.5 m2/day (P10 to P90). That band assumes every reading's error is independent of the next, which the bootstrap does not.",
+     "The Bourdet derivative of the first step's drawdown, ds/d ln t with neighbours at least 0.2 of a log cycle apart, is read from the slope of its log-log curve: a unit slope is casing storage, a plateau radial flow, a half slope linear flow along a fracture, and a fall or a rise after the plateau a boundary. On this test it shows a plateau, radial flow from 3 to 30 minutes (slope 0.00). The level of the plateau gives a transmissivity of about 2.5 m2/day, a check on the fitted values rather than one adopted.",
+     "",
+     ""
+    ]
+   }
+  }
  }
 }

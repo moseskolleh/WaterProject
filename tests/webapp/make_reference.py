@@ -1471,6 +1471,7 @@ def build() -> dict:
     out["photo_evidence"] = photo_evidence_reference()
     out["field_kit"] = field_kit_reference()
     out["airlift"] = airlift_reference()
+    out["pumping_spread"] = pumping_spread_reference()
     return out
 
 
@@ -1509,6 +1510,185 @@ def airlift_reference() -> dict:
         except ValueError:
             results.append(None)
     return {"cases": AIRLIFT_CASES, "results": results}
+
+
+# ------------------------------------- pumping spread and diagnostics (step 3.2)
+
+def _large_diameter_grid() -> list[list]:
+    """Dr Timbo's sheet rewritten as a thirty-minute test on a borehole whose
+    casing holds most of what is pumped (T = 0.3 m2/day): every fit is
+    disqualified and the Papadopulos-Cooper fit is adopted."""
+    from groundwater.hydraulics.spread import pc_model
+    from groundwater.ingestion import common
+
+    grid, _ = common.load_grid(DATA / "dr_timbo" / "dr_timbo_constant_test.xlsx")
+    grid = json.loads(json.dumps(grid, default=str))
+    for row in grid[11:]:
+        for c in range(15):
+            row[c] = None
+    grid[4][4], grid[5][1], grid[5][4], grid[8][2] = 60, 5.0, 50, 1.0
+    times = [0, 1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30]
+    drawdown = pc_model(24.0, 0.1, 0.0615)(
+        np.array(times[1:], float) / 1440.0, math.log10(0.3), -3.0)
+    levels = [5.0] + [round(5.0 + float(s), 2) for s in drawdown]
+    for i, (t, level) in enumerate(zip(times, levels, strict=True)):
+        grid[11 + i][0], grid[11 + i][1] = t, level
+    for i, t in enumerate([0, 1, 2, 3, 4, 5, 10, 15, 20, 30]):
+        grid[11 + i][12] = t
+        grid[11 + i][13] = round(levels[-1] - 0.05 * math.log1p(t), 2)
+    return grid
+
+
+def _wide_band_grid() -> list[list]:
+    """An hour's test whose readings scatter by up to three metres about a
+    straight line on log time: the Theis fit is adopted, two resamples fail,
+    and the band is too wide for the safety factor, so the rate is not called
+    sustainable."""
+    from groundwater.ingestion import common
+
+    grid, _ = common.load_grid(DATA / "dr_timbo" / "dr_timbo_constant_test.xlsx")
+    grid = json.loads(json.dumps(grid, default=str))
+    for row in grid[11:]:
+        for c in range(15):
+            row[c] = None
+    grid[4][4], grid[5][1], grid[5][4], grid[8][2] = 60, 5.0, 50, 2.0
+    times = [0, 1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 60]
+    wobble = [0, 0.1, -0.2, 0.15, -0.1, 0.3, -0.4, 0.5, -0.3, 0.6, -0.5, 0.7, -0.6,
+              0.8, -0.7, 0.9, -0.2]
+    for i, t in enumerate(times):
+        s = 0.0 if t == 0 else 1.2 * math.log10(t) + 2.0 + 3.5 * wobble[i]
+        grid[11 + i][0], grid[11 + i][1] = t, round(5.0 + s, 2)
+    return grid
+
+
+def _spread_summary(analysis) -> dict:
+    """What step 3.2 adds to an analysis, as parity.mjs reads it back."""
+    from groundwater.hydraulics.spread import (
+        diagnostic_text,
+        papadopulos_cooper_text,
+        spread_paragraphs,
+        sustainable_sentence,
+    )
+
+    th, pc, sp, dg = (analysis.theis, analysis.papadopulos_cooper, analysis.spread,
+                      analysis.diagnostic)
+    boot = sp.bootstrap if sp else None
+    rec = analysis.yield_recommendation
+    return clean({
+        "source": analysis.transmissivity_source,
+        "T": analysis.transmissivity_m2_per_day,
+        "theis": [th.transmissivity_m2_per_day, th.transmissivity_low_m2_per_day,
+                  th.transmissivity_high_m2_per_day] if th else None,
+        "pc": [pc.transmissivity_m2_per_day, pc.storativity, pc.alpha, pc.rmse_m,
+               pc.transmissivity_low_m2_per_day, pc.transmissivity_high_m2_per_day]
+              if pc else None,
+        "pc_invalid": analysis.papadopulos_cooper_invalid,
+        "boot": {k: getattr(boot, k) for k in (
+            "method", "replicates", "failed", "block_length", "seed", "n_points",
+            "p10", "p50", "p90", "reason")} if boot else None,
+        "spread": [sp.safe_yield_low_m3_per_h, sp.safe_yield_high_m3_per_h,
+                   sp.long_term_low_m3_per_h, sp.holds_at_dry_season,
+                   sp.pump_depth_low_m, sp.pump_depth_high_m] if sp else None,
+        "diagnostic": {
+            "t": dg.derivative_time_min, "d": dg.derivative_m, "slopes": dg.slopes,
+            "regimes": [[r.key, r.start_min, r.end_min, r.slope, r.n_points]
+                        for r in dg.regimes],
+            "plateau": dg.plateau_transmissivity_m2_per_day,
+        } if dg else None,
+        "safe": rec.safe_yield_m3_per_h if rec else None,
+        "range_text": rec.yield_range_text if rec else None,
+        "confidence": rec.confidence if rec else None,
+        "text": spread_paragraphs(analysis) + [
+            diagnostic_text(dg), papadopulos_cooper_text(analysis),
+            sustainable_sentence(rec, sp) or ""],
+    })
+
+
+def _regime_curves() -> dict:
+    """Synthetic drawdowns with one regime each, as minutes and metres."""
+    from scipy.special import exp1
+
+    from groundwater.hydraulics.spread import pc_model
+
+    t = np.geomspace(0.5, 3000, 45)
+
+    def theis(radius=0.1):
+        u = radius**2 * 1e-3 / (4 * 5.0 * t / 1440)
+        return 48.0 / (4 * math.pi * 5.0) * exp1(u)
+
+    return {
+        "radial": theis(),
+        "storage": pc_model(48.0, 0.1, 0.0615)(t / 1440, math.log10(0.5), -3.0),
+        "linear": 0.3 * np.sqrt(t),
+        "recharge": theis() - theis(60.0),
+        "barrier": theis() + theis(60.0),
+    }, t
+
+
+def pumping_spread_reference() -> dict:
+    """The bands, the derivative and the large-diameter fit, in both engines.
+
+    The generator's stream, the Bessel functions and the well function are
+    compared value for value; each pumping sheet's analysis is compared
+    through _spread_summary, its sentences word for word.
+    """
+    from types import SimpleNamespace
+
+    from scipy.special import k0e, k1e
+
+    from groundwater.hydraulics.spread import (
+        Mulberry32,
+        block_length,
+        diagnose,
+        pc_well_function,
+        quantile,
+    )
+    from groundwater.ingestion.pumping import _assemble
+
+    out: dict = {}
+    streams = {}
+    for seed in (1, 32, 4294967295):
+        rng = Mulberry32(seed)
+        streams[str(seed)] = [rng.next_float() for _ in range(50)]
+    out["mulberry32"] = streams
+    out["blocks"] = [[n, block_length(n)] for n in (1, 5, 8, 9, 26, 27, 28, 64, 65, 125)]
+    values = [3.0, 1.0, 4.0, 1.5, 9.0, 2.6, 5.35]
+    out["quantile"] = {"values": values,
+                       "q": [[q, quantile(values, q)] for q in (0, 0.1, 0.25, 0.5, 0.9, 1)]}
+    out["bessel"] = [[x, float(k0e(x)), float(k1e(x))]
+                     for x in (1e-6, 0.01, 0.5, 1.999, 2.0, 2.001, 7.5, 40.0, 900.0)]
+    out["well_function"] = [[u, a, pc_well_function(u, a)]
+                            for a in (1e-1, 1e-3, 1e-5) for u in (1.0, 1e-2, 1e-4, 1e-6)]
+
+    curves, t = _regime_curves()
+    regimes = {}
+    for name, s in curves.items():
+        test = SimpleNamespace(static_water_level_m=0.0, steps=[SimpleNamespace(
+            time_min=t, water_level_m=np.asarray(s), discharge_m3_per_h=2.0)])
+        dg = diagnose(SimpleNamespace(test=test))
+        regimes[name] = {
+            "t": clean(t), "s": clean(np.asarray(s)),
+            "regimes": clean([[r.key, r.start_min, r.end_min, r.slope, r.n_points]
+                              for r in dg.regimes]),
+            "plateau": clean(dg.plateau_transmissivity_m2_per_day),
+        }
+    out["regimes"] = regimes
+
+    from groundwater.ingestion import common
+
+    # the edge sheets travel in pumping_cases already; parity reads them there
+    edge = _pumping_case_grids()
+    timbo, _ = common.load_grid(DATA / "dr_timbo" / "dr_timbo_constant_test.xlsx")
+    own = {"dr_timbo": json.loads(json.dumps(timbo, default=str)),
+           "large_diameter": _large_diameter_grid(),
+           "wide_band": _wide_band_grid()}
+    cases = {}
+    for name, grid in list(own.items()) + list(edge.items()):
+        test = _assemble(grid, f"{name}.xlsx")
+        cases[name] = {"grid": json.dumps(grid) if name in own else None,
+                       **_spread_summary(analyse_pumping_test(test))}
+    out["cases"] = cases
+    return out
 
 
 # ----------------------------------------------- photo evidence (step 2.4)

@@ -1397,6 +1397,10 @@
 
     if (analysis) {
       b.heading(section + '. Pumping Test', 1);
+      /* the flow regime the readings show (completion.py, PLAN.md step 3.2);
+       * the browser's completion report carries no pumping figure, so the
+       * derivative is described and not drawn */
+      b.paragraph(C.diagnosticText(analysis.diagnostic), { align: 'justify' });
       var steps = (test && test.steps) || [];
       var last = steps.length ? steps[steps.length - 1] : null;
       /* the maximum drawdown is measured at the end of the last step, so the
@@ -1435,6 +1439,9 @@
       }
       b.table(rows, { header: ['Item', 'Value'], caption: 'Pumping test summary.',
         colWidthsCm: [5.6, 10.0] });
+      C.spreadParagraphs(analysis, completionPumpingConfig(context)).forEach(function (line) {
+        b.paragraph(line, { align: 'justify' });
+      });
       section += 1;
     }
 
@@ -1503,8 +1510,9 @@
      * first; only an established yield supports the second, and a
      * 30-minute test inside its casing storage used to be certified as both. */
     if (rec && rec.safe_yield_m3_per_h && !rec.is_indicative) {
-      advice.push('The borehole is successful and sustainable when operated ' +
-        'as recommended.');
+      /* since step 3.2, "sustainable" only where the band holds at the
+       * dry-season level (spread.py sustainable_sentence) */
+      advice.push(C.sustainableSentence(rec, analysis ? analysis.spread : null) || '');
     } else if (rec && rec.safe_yield_m3_per_h) {
       advice.push((successful ? 'The borehole is recorded as successful. ' : '') +
         'Whether it is sustainable at the recommended rate is indicative, not ' +
@@ -1575,8 +1583,16 @@
     return flags.some(function (f) { return C.LEVEL_FLAGS.indexOf(f.code) >= 0; });
   }
 
+  /* The pumping configuration the analysis ran with, which the app passes
+   * as context.config; the defaults where a caller passes none. */
+  function completionPumpingConfig(context) {
+    return context.config && context.config.pumping
+      ? context.config.pumping : C.defaultConfig().pumping;
+  }
+
   async function pumpingReport(context) {
     var b = new ReportBuilder({ style: context.style, title: 'Pumping Test Report' });
+    var pumpingConfig = completionPumpingConfig(context);
     var analysis = context.analysis, test = analysis.test, site = test.site || {};
     var rec = analysis.yield_recommendation;
     var figures = context.figures || [];
@@ -1732,6 +1748,14 @@
     }
 
     b.heading('3. Analysis', 1);
+    /* the flow regime first: it says which of the models below the readings
+     * can be read with; its figure is the first of the figures below */
+    if (analysis.diagnostic) b.heading('Flow regime (diagnostic plot)', 2);
+    b.paragraph(C.diagnosticText(analysis.diagnostic), { align: 'justify' });
+    if (analysis.diagnostic) {
+      b.paragraph(C.diagnosticThresholdsText(pumpingConfig), { align: 'justify',
+        italic: true });
+    }
     if (analysis.cooper_jacob) {
       b.heading('Cooper-Jacob straight line', 2);
       b.paragraph('The straight line fitted to drawdown against the logarithm ' +
@@ -1775,6 +1799,10 @@
             'reported for completeness only.'), { align: 'justify' });
       notAdopted('theis');
     }
+    if (analysis.papadopulos_cooper) {
+      b.heading('Papadopulos-Cooper large-diameter solution', 2);
+      b.paragraph(C.papadopulosCooperText(analysis), { align: 'justify' });
+    }
     if (analysis.step_test) {
       var st = analysis.step_test;
       b.heading('Step drawdown analysis', 2);
@@ -1801,11 +1829,16 @@
     b.heading('4. Results Summary', 1);
     /* every method that fitted, what it gave and what it is worth */
     var methodRows = [];
-    ['cooper_jacob', 'theis', 'recovery'].forEach(function (key) {
+    ['cooper_jacob', 'theis', 'recovery', 'papadopulos_cooper'].forEach(function (key) {
       var result = analysis[key];
       if (!result) return;
       var status;
-      if (key === analysis.transmissivity_source) {
+      if (key === 'papadopulos_cooper') {
+        /* it has no R squared and no casing-storage period to fail */
+        status = analysis.papadopulos_cooper_invalid ||
+          C.phraseTable('pumping.pc_status')[
+            key === analysis.transmissivity_source ? 'adopted' : 'reported'];
+      } else if (key === analysis.transmissivity_source) {
         status = adoptedInfo.qualifies ? 'adopted'
           : 'adopted as the best available; ' + C.whyNotAdopted(analysis, key);
       } else {
@@ -1862,6 +1895,9 @@
       ], { header: ['Quantity', 'Value'], caption: 'Yield recommendation.',
         colWidthsCm: [7.0, 8.6] });
       if (rec.envelope_basis) b.paragraph(rec.envelope_basis, { align: 'justify' });
+      C.spreadParagraphs(analysis, pumpingConfig).forEach(function (line) {
+        b.paragraph(line, { align: 'justify' });
+      });
       if (rec.pump_depth_basis) b.paragraph(rec.pump_depth_basis, { align: 'justify' });
       b.paragraph(rec.confidence_text, { align: 'justify', bold: rec.is_indicative });
       b.bullets([
@@ -1933,7 +1969,9 @@
       b.paragraph(text, { align: 'justify' });
     });
     b.signOff(context.signOff);
-    b.references([REFERENCES.rwsn_drilling_web, REFERENCES.rwsn_supervision]);
+    b.references([REFERENCES.rwsn_drilling_web, REFERENCES.rwsn_supervision,
+      REFERENCES.papadopulos_cooper, REFERENCES.stehfest, REFERENCES.bourdet,
+      REFERENCES.renard_diagnostic, REFERENCES.kunsch, REFERENCES.hall_horowitz_jing]);
     b.glossary(GLOSSARY);
     return b;
   }

@@ -2076,6 +2076,114 @@ await withPage(async (page, base, consoleErrors) => {
       `js ${JSON.stringify(photos.gate[name]).slice(0, 600)}\n     py ${JSON.stringify(PE.gate[name]).slice(0, 600)}`);
   });
 
+  // --- the pumping test's spread, derivative and large-diameter fit (PLAN.md
+  // step 3.2). The generator's stream and the Bessel functions are held to
+  // the last digits; a fit is held to 1e-6, except the Papadopulos-Cooper
+  // fit and what rests on it: its valley floor is flat to within the
+  // Stehfest inversion's rounding, and the two engines' optimisers stop
+  // 1e-5 apart on it, inside a covariance band of a factor of two or more.
+  const PS = R.pumping_spread;
+  const spreadJs = await page.evaluate(([PS, edge]) => {
+    const C = GWT.core;
+    const out = { mulberry32: {}, regimes: {}, cases: {} };
+    Object.keys(PS.mulberry32).forEach((seed) => {
+      const rng = C.mulberry32(Number(seed));
+      out.mulberry32[seed] = PS.mulberry32[seed].map(() => rng.nextFloat());
+    });
+    out.blocks = PS.blocks.map(([n]) => [n, C.blockLength(n)]);
+    out.quantile = PS.quantile.q.map(([q]) => [q, C.quantileOf(PS.quantile.values, q)]);
+    out.bessel = PS.bessel.map(([x]) => [x, C.besselK0e(x), C.besselK1e(x)]);
+    out.well_function = PS.well_function.map(([u, a]) => [u, a, C.pcWellFunction(u, a)]);
+    Object.keys(PS.regimes).forEach((name) => {
+      const c = PS.regimes[name];
+      const dg = C.diagnosePumping({ test: { static_water_level_m: 0, steps: [
+        { time_min: c.t, water_level_m: c.s, discharge_m3_per_h: 2 }] } });
+      out.regimes[name] = {
+        regimes: dg.regimes.map((r) => [r.key, r.start_min, r.end_min, r.slope, r.n_points]),
+        plateau: dg.plateau_transmissivity_m2_per_day,
+      };
+    });
+    Object.keys(PS.cases).forEach((name) => {
+      const grid = JSON.parse(PS.cases[name].grid || edge[name]);
+      const a = C.analysePumpingTest(C.pumpingFromGrid(grid, name + '.xlsx'));
+      const th = a.theis, pc = a.papadopulos_cooper, sp = a.spread, dg = a.diagnostic;
+      const boot = sp ? sp.bootstrap : null, rec = a.yield_recommendation;
+      out.cases[name] = {
+        source: a.transmissivity_source, T: a.transmissivity_m2_per_day,
+        theis: th ? [th.transmissivity_m2_per_day, th.transmissivity_low_m2_per_day,
+          th.transmissivity_high_m2_per_day] : null,
+        pc: pc ? [pc.transmissivity_m2_per_day, pc.storativity, pc.alpha, pc.rmse_m,
+          pc.transmissivity_low_m2_per_day, pc.transmissivity_high_m2_per_day] : null,
+        pc_invalid: a.papadopulos_cooper_invalid,
+        boot: boot ? ['method', 'replicates', 'failed', 'block_length', 'seed', 'n_points',
+          'p10', 'p50', 'p90', 'reason'].reduce((o, k) => { o[k] = boot[k]; return o; }, {})
+          : null,
+        spread: sp ? [sp.safe_yield_low_m3_per_h, sp.safe_yield_high_m3_per_h,
+          sp.long_term_low_m3_per_h, sp.holds_at_dry_season, sp.pump_depth_low_m,
+          sp.pump_depth_high_m] : null,
+        diagnostic: dg ? { t: dg.derivative_time_min, d: dg.derivative_m, slopes: dg.slopes,
+          regimes: dg.regimes.map((r) => [r.key, r.start_min, r.end_min, r.slope, r.n_points]),
+          plateau: dg.plateau_transmissivity_m2_per_day } : null,
+        safe: rec ? rec.safe_yield_m3_per_h : null,
+        range_text: rec ? C.yieldRangeText(rec) : null,
+        confidence: rec ? rec.confidence : null,
+        text: C.spreadParagraphs(a).concat([C.diagnosticText(dg), C.papadopulosCooperText(a),
+          C.sustainableSentence(rec, sp) || '']),
+      };
+    });
+    return out;
+  }, [PS, Object.fromEntries(Object.entries(R.pumping_cases).map(([k, v]) => [k, v.grid]))]);
+
+  function within(a, b, path, tol) {
+    if (typeof a === 'number' && typeof b === 'number') {
+      return close(a, b, tol) ? null : `${path}: js ${a} vs py ${b}`;
+    }
+    if (Array.isArray(a) && Array.isArray(b)) {
+      if (a.length !== b.length) return `${path}: js ${a.length} items vs py ${b.length}`;
+      for (let i = 0; i < a.length; i++) {
+        const d = within(a[i], b[i], `${path}[${i}]`, tol);
+        if (d) return d;
+      }
+      return null;
+    }
+    if (a && b && typeof a === 'object' && typeof b === 'object') {
+      for (const k of Array.from(new Set(Object.keys(a).concat(Object.keys(b)))).sort()) {
+        if (!(k in a) || !(k in b)) return `${path}.${k}: in one engine only`;
+        const d = within(a[k], b[k], `${path}.${k}`, tol);
+        if (d) return d;
+      }
+      return null;
+    }
+    return a === b ? null : `${path}: js ${JSON.stringify(a)} vs py ${JSON.stringify(b)}`;
+  }
+  Object.keys(PS.mulberry32).forEach((seed) => {
+    check(`mulberry32 seed ${seed}: the same 50 draws`,
+      JSON.stringify(spreadJs.mulberry32[seed]) === JSON.stringify(PS.mulberry32[seed]),
+      `js ${spreadJs.mulberry32[seed].slice(0, 3)} vs py ${PS.mulberry32[seed].slice(0, 3)}`);
+  });
+  for (const key of ['blocks', 'quantile', 'bessel', 'well_function']) {
+    const ref = key === 'quantile' ? PS.quantile.q : PS[key];
+    /* the well function sums twelve terms of alternating sign up to 7e6,
+     * which carries a last-digit difference in exp or log to 1e-10 */
+    const d = within(spreadJs[key], ref, key, key === 'well_function' ? 1e-9 : 1e-12);
+    check(`pumping spread: ${key}`, d === null, d);
+  }
+  Object.keys(PS.regimes).forEach((name) => {
+    const d = within(spreadJs.regimes[name],
+      { regimes: PS.regimes[name].regimes, plateau: PS.regimes[name].plateau }, name, 1e-9);
+    check(`flow regime of a synthetic ${name} curve`, d === null, d);
+  });
+  Object.keys(PS.cases).forEach((name) => {
+    const js = spreadJs.cases[name], py = Object.assign({}, PS.cases[name]);
+    delete py.grid;
+    const loose = py.source === 'papadopulos_cooper' ? 1e-3 : 1e-6;
+    for (const key of Object.keys(py)) {
+      const tol = key === 'pc' ? 1e-3 : (key === 'diagnostic' ? 1e-9 : loose);
+      const d = within(js[key], py[key], `${name}.${key}`, tol);
+      check(`pumping spread ${name}: ${key}`, d === null, d);
+    }
+  });
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, {});
 

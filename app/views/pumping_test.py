@@ -12,9 +12,16 @@ from groundwater.hydraulics.analysis import (
 )
 from groundwater.hydraulics.plots import (
     plot_cooper_jacob,
+    plot_diagnostic,
     plot_recovery,
     plot_step_test,
     plot_test_overview,
+)
+from groundwater.hydraulics.spread import (
+    diagnostic_text,
+    diagnostic_thresholds_text,
+    papadopulos_cooper_text,
+    spread_paragraphs,
 )
 from groundwater.reporting.pumping import build_pumping_report, PumpingReportInputs
 from groundwater.seasonal import MONTH_NAMES, month_of, seasonal_yield
@@ -107,6 +114,17 @@ def render() -> None:
             st.image(str(figure(plot_step_test, test, analysis.step_test,
                                 file_name="steps.png")))
 
+        # the flow regime the readings show, and the large-diameter fit that
+        # models the casing storage the straight lines read as aquifer
+        if analysis.diagnostic is not None:
+            st.image(str(figure(plot_diagnostic, analysis.diagnostic,
+                                file_name="diagnostic.png")))
+        st.caption(diagnostic_text(analysis.diagnostic))
+        if analysis.diagnostic is not None:
+            st.caption(diagnostic_thresholds_text(CONFIG.pumping))
+        if analysis.papadopulos_cooper is not None:
+            st.caption(papadopulos_cooper_text(analysis))
+
         st.subheader("Results")
         yr = analysis.yield_recommendation
         if yr is not None and yr.safe_yield_m3_per_h:
@@ -136,6 +154,9 @@ def render() -> None:
                 f"{yr.safe_yield_high_m3_per_h:.2g} m³/h**. "
                 + yr.envelope_basis
             )
+        # the bands from the data themselves, beside the assumptions' range
+        for line in spread_paragraphs(analysis, CONFIG.pumping):
+            st.caption(line)
         cols = st.columns(4)
         cols[0].metric(
             "Transmissivity",

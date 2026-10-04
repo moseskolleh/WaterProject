@@ -176,6 +176,27 @@ the pump started, the pump setting depth and the borehole depth. Write
   Without discharge the system still draws the curves but reports
   transmissivity and yield as pending.
 
+What the pumping test page and report make of the sheet, besides the
+straight-line fits:
+
+- **A diagnostic plot.** Drawdown and its derivative on log-log axes.
+  The slope of the derivative names the flow regime: about 1 while the
+  pump empties the casing, flat for radial flow through the aquifer,
+  about 1/2 for flow along a single fracture, and a fall or a rise
+  after the flat part for a recharge or a no-flow boundary. The slope
+  limits are settings, printed under the plot.
+- **A band on every figure that matters.** The transmissivity the yield
+  rests on is given from the 10th to the 90th percentile of refits to
+  the readings' own scatter, and the safe yield and the pump intake are
+  given as bands too. Read the band as the least the spread can be: on
+  test data it held the true value about seven times in ten, not eight.
+  A yield is called sustainable only where the bottom of its band still
+  covers the recommended rate at the dry-season level.
+- **The early readings are used.** A test that never got past casing
+  storage is fitted with the Papadopulos-Cooper solution for a
+  large-diameter well, which models the water drawn from the casing.
+  Its result is still marked indicative: run the test longer.
+
 ## 3a. Pumping test co-pilot (browser app, on a phone or tablet)
 
 The browser app can sit with the crew while the test runs and fill in

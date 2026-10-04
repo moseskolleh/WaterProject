@@ -23,6 +23,7 @@ Methods
 
 from __future__ import annotations
 
+import contextlib
 import math
 from dataclasses import dataclass, field, replace
 
@@ -33,6 +34,17 @@ from scipy.special import exp1
 from ..config import PumpingConfig
 from ..models import DataFlag, PumpingTest, step_durations_min
 from ..utils import plural
+from .spread import (
+    Diagnostic,
+    PapadopulosCooperResult,
+    PumpingSpread,
+    Z_P90,
+    attach_spread,
+    casing_radius_m,
+    diagnose,
+    papadopulos_cooper_fit,
+    pow10,
+)
 
 MIN_PER_DAY = 1440.0
 
@@ -42,6 +54,7 @@ METHOD_LABELS = {
     "recovery": "Theis recovery",
     "cooper_jacob": "Cooper-Jacob",
     "theis": "Theis curve fit",
+    "papadopulos_cooper": "Papadopulos-Cooper",
 }
 
 #: Schafer's (1978) casing-storage rule, ``t_c = 0.6 (dc^2 - dp^2) / (Q/s)``
@@ -110,6 +123,12 @@ class TheisResult:
     rmse_m: float
     discharge_m3_per_h: float
     radius_m: float
+    # P10 and P90 of T from the covariance curve_fit returns, which used to be
+    # discarded, and that covariance of (log10 T, log10 S). It assumes every
+    # reading's error is independent; the bootstrap in spread.py does not.
+    transmissivity_low_m2_per_day: float | None = None
+    transmissivity_high_m2_per_day: float | None = None
+    log_covariance: list[list[float]] | None = None
 
 
 @dataclass
@@ -257,6 +276,19 @@ class PumpingTestAnalysis:
     # the casing and riser diameters and the specific capacity. None when
     # there is no specific capacity to compute it from.
     casing_storage_min: float | None = None
+    # The Papadopulos-Cooper large-diameter fit to every reading of the first
+    # step, casing storage included. It is not one of fits(): it is adopted
+    # only where every one of those is disqualified, so a test with a fit
+    # outside the casing-storage period keeps the transmissivity it had. A
+    # storativity no aquifer has, or a worse fit than the Theis curve's, makes
+    # it invalid, with this reason.
+    papadopulos_cooper: PapadopulosCooperResult | None = None
+    papadopulos_cooper_invalid: str = ""
+    # The Bourdet derivative of the first step and the flow regimes it shows,
+    # and the bands on the adopted transmissivity, the yield and the pump
+    # setting (spread.py).
+    diagnostic: Diagnostic | None = None
+    spread: PumpingSpread | None = None
 
     def fits(self) -> list[tuple[str, object]]:
         """Every method that fitted, in order of preference.
@@ -291,7 +323,14 @@ class PumpingTestAnalysis:
         adopted: the pick used to run over every fit, so a recovery line
         meeting t/t' = 1 at 60% of its drawdown won on its R squared of 0.99
         and the yield rested on the one result the analysis had rejected.
-        When nothing is left the method is None and the yield is pending.
+        Where every fit is disqualified, the Papadopulos-Cooper fit comes
+        before the casing-storage fallback when it ran and is valid: it models
+        the water drawn from the casing that those fits read as aquifer, and a
+        thirty-minute test inside a 269-minute casing period gave 0.30 m2/day
+        from it against a true 0.3, where the Cooper-Jacob line read inside
+        the period gave 0.20. It is still adopted only as the best available.
+        Without it, when nothing is left the method is None and the yield is
+        pending.
         """
         fits = self.fits()
         for name, result in fits:
@@ -300,9 +339,12 @@ class PumpingTestAnalysis:
             r2 = getattr(result, "r_squared", None)
             if r2 is None or r2 >= self.min_fit_r_squared:
                 return name, result, True
-        pool = [item for item in fits if item[0] not in self.disqualified] or [
-            item for item in fits if item[0] not in self.invalid_fits
-        ]
+        pool = [item for item in fits if item[0] not in self.disqualified]
+        if not pool:
+            pc = self.papadopulos_cooper
+            if pc is not None and not self.papadopulos_cooper_invalid:
+                return "papadopulos_cooper", pc, False
+            pool = [item for item in fits if item[0] not in self.invalid_fits]
         if not pool:
             return None, None, False
         # the best of the poor fits: the highest R squared among the straight
@@ -561,7 +603,7 @@ def theis_fit(
     # valley floor that default stopped a sheet's fit 1.1e-4 short of its
     # minimum in T (9.7877 m2/day for 9.7866), and the browser, which runs
     # until no step helps, reported the minimum itself.
-    popt, _ = curve_fit(model, t, s, p0=p0, maxfev=20000, ftol=1e-12, xtol=1e-12)
+    popt, pcov = curve_fit(model, t, s, p0=p0, maxfev=20000, ftol=1e-12, xtol=1e-12)
     T = 10.0 ** popt[0]
     S = 10.0 ** popt[1]
     if not S >= THEIS_STORATIVITY_FLOOR:
@@ -573,6 +615,13 @@ def theis_fit(
             "model, such as well loss, so T and S cannot be fitted to it"
         )
     rmse = float(np.sqrt(np.mean((model(t, *popt) - s) ** 2)))
+    # curve_fit returns inf where the Jacobian is singular; no band then
+    covariance = pcov.tolist() if np.all(np.isfinite(pcov)) else None
+    low = high = None
+    if covariance is not None and covariance[0][0] >= 0:
+        sigma = math.sqrt(covariance[0][0])
+        low = pow10(popt[0] - Z_P90 * sigma)
+        high = pow10(popt[0] + Z_P90 * sigma)
     return TheisResult(
         transmissivity_m2_per_day=T,
         storativity=S,
@@ -580,6 +629,9 @@ def theis_fit(
         rmse_m=rmse,
         discharge_m3_per_h=discharge_m3_per_h,
         radius_m=radius_m,
+        transmissivity_low_m2_per_day=low,
+        transmissivity_high_m2_per_day=high,
+        log_covariance=covariance,
     )
 
 
@@ -1129,6 +1181,9 @@ def attach_yield_envelope(
         if r.transmissivity_m2_per_day
         and (name not in analysis.disqualified or name == adopted)
     ]
+    if adopted == "papadopulos_cooper":
+        # adopted only when every other fit was rejected, so it is the band
+        fitted = [analysis.papadopulos_cooper.transmissivity_m2_per_day]
     if not fitted:
         return
     # when only one method fitted there is no spread to measure, so allow the
@@ -1367,6 +1422,19 @@ def analyse_pumping_test(
             except (ValueError, RuntimeError) as exc:
                 if keep.any():
                     flags.append(DataFlag("warning", "theis_failed", str(exc)))
+            # The large-diameter fit takes the same readings, the early ones
+            # inside casing storage included. It is a pumped-well solution, so
+            # an observation well is left to the others. Its failures raise no
+            # flag: it is reported beside the fits, and a refusal here says
+            # nothing the Theis fit's flag does not. It starts from the
+            # readings, not from the Theis optimum, which each engine reaches
+            # by its own optimiser: on a flat valley floor the two starts
+            # ended 2e-4 apart in T.
+            rc = casing_radius_m(config)
+            if observation_radius_m is None and rc is not None and keep.any():
+                with contextlib.suppress(ValueError):
+                    analysis.papadopulos_cooper = papadopulos_cooper_fit(
+                        t[keep], s[keep], q, 0.1, rc)
 
     # ---- step clocks ----------------------------------------------------------
     # A step test whose times restart each step is read with each step's own
@@ -1585,6 +1653,26 @@ def analyse_pumping_test(
             )
         )
 
+    # The large-diameter fit is held to what it claims: a storativity an
+    # aquifer can have, and readings it describes no worse than the Theis
+    # curve does without the casing. A sheet whose drawdown is mostly well
+    # loss - ten metres in the first minute - drove it to a storativity of
+    # 5e-6 and a misfit of 1.7 m, and it would otherwise have been adopted
+    # over a Cooper-Jacob line read inside the casing period.
+    pc = analysis.papadopulos_cooper
+    th = analysis.theis
+    if pc is not None and pc.storativity > config.max_plausible_storativity:
+        analysis.papadopulos_cooper_invalid = (
+            f"its storativity of {pc.storativity:.2g} is above "
+            f"{config.max_plausible_storativity:g}, which no aquifer has"
+        )
+    elif pc is not None and th is not None and pc.rmse_m > th.rmse_m:
+        analysis.papadopulos_cooper_invalid = (
+            f"it fits the readings worse than the Theis curve (RMSE "
+            f"{pc.rmse_m:.3g} m against {th.rmse_m:.3g} m), so casing storage "
+            "does not explain them"
+        )
+
     # ---- transmissivity ---------------------------------------------------------
     method, fit, qualifies = analysis.adopted_fit()
     if casing_flag is not None:
@@ -1653,6 +1741,10 @@ def analyse_pumping_test(
         no_transmissivity_reason=rejected,
     )
     attach_yield_envelope(analysis, config)
+    # the regime the readings show and the spread of what was adopted; the
+    # central figures above are not moved by either
+    analysis.diagnostic = diagnose(analysis, config)
+    attach_spread(analysis, config)
     recommendation = analysis.yield_recommendation
     if short_prefix and recommendation.safe_yield_m3_per_h is not None:
         recommendation.basis = short_prefix + recommendation.basis
