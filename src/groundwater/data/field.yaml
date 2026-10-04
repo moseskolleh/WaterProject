@@ -1,7 +1,8 @@
 # The schedules and field rules the field tools work to, written once.
 #
 # The pumping test co-pilot (docs/js/gwt-pump-copilot.js), the VES co-pilot
-# (docs/js/gwt-ves-copilot.js) and the printed field kit (PLAN.md step 2.5:
+# (docs/js/gwt-ves-copilot.js), the drilling log co-pilot
+# (docs/js/gwt-drill-copilot.js) and the printed field kit (PLAN.md step 2.5:
 # groundwater/field_kit.py and its port in gwt-core.js) all read this file, so
 # a crew with a phone and a crew with a clipboard read the water level at the
 # same minutes and peg the same spacings. Python reads it through
@@ -46,6 +47,25 @@ ves:
   # fallen some hundredfold from the first reading at that MN. A choice, not
   # a standard: it keeps each MN for about half a decade of AB/2.
   max_ab_per_mn: 20
+
+drilling:
+  # The airlift yield a water strike carries (PLAN.md step 2.3), measured as
+  # the supervision checklist asks (drl-water-strikes-recorded): with a timed
+  # container, Q = V / t over the mean of the timings, or with a V-notch
+  # weir plate on the discharge. The notch is read by the Kindsvater-Shen
+  # equation, as ISO 1438 and the USBR Water Measurement Manual (2001, ch. 7)
+  # give it, without its small head correction:
+  #   Q = Ce x 8/15 x sqrt(2 g) x tan(angle / 2) x h^2.5
+  # which for a 90-degree notch and Ce = 0.58 is about 1.37 h^2.5 m3/s, h in
+  # metres. The coefficient holds for a fully contracted notch read between
+  # the heads below; outside them the engines still give the figure but say
+  # it is outside the range. The angle, the coefficient and the head range
+  # are the standard's for a sharp-crested plate, and a field plate cut by a
+  # workshop is not one: they want a hydrogeologist's confirmation for the
+  # plates these crews carry.
+  vnotch_angle_deg: 90
+  vnotch_discharge_coefficient: 0.58
+  vnotch_head_range_mm: [50, 380]
 
 disinfection_card:
   # The grid the laminated dose card is printed for. These are the wells it

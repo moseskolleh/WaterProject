@@ -20471,6 +20471,73 @@
     };
   }
 
+  /* standard gravity, m/s2, in the V-notch equation */
+  var GRAVITY = 9.80665;
+
+  /** @param {*} v @returns {v is number} */
+  function positiveReading(v) { return isFiniteNum(v) && v > 0; }
+
+  /** The airlift yield of a water strike, in litres per second: the drilling
+   * log co-pilot's estimate (field_kit.py airlift_yield). method is 'bucket'
+   * (a container of volume_l litres timed filling, timings_s), 'vnotch' (the
+   * head over a V-notch plate, head_mm, by the Kindsvater-Shen equation with
+   * data/field.yaml's angle and coefficient) or 'none' (not measured, for
+   * the reason given). Returns {method, q_l_per_s, basis, flags}; a reading
+   * that cannot give a yield throws.
+   * @param {string} method
+   * @param {{volume_l?: number|null, timings_s?: number[]|null,
+   *   head_mm?: number|null, reason?: string}} [options]
+   * @returns {{method: string, q_l_per_s: number|null, basis: string,
+   *   flags: Array<{code: string, message: string}>}} */
+  function airliftYield(method, options) {
+    var opts = options || {};
+    /** @type {Array<{code: string, message: string}>} */
+    var flags = [];
+    var q, basis;
+    if (method === 'bucket') {
+      var times = (opts.timings_s || []).map(Number);
+      var volume = opts.volume_l;
+      /* each reading a finite number above zero, as field_kit.py asks: an
+       * infinite time gave a yield of zero */
+      if (!positiveReading(volume) || !times.length || !times.every(positiveReading)) {
+        throw new Error('a timed container needs its volume and at least one ' +
+          'time, each more than zero');
+      }
+      var sum = 0;
+      times.forEach(function (t) { sum += t; });
+      var mean = sum / times.length;
+      q = volume / mean;
+      basis = phrase('drilling_copilot.airlift_bucket',
+        { volume: volume, mean: mean, n: times.length });
+    } else if (method === 'vnotch') {
+      var head = opts.head_mm;
+      if (!positiveReading(head)) {
+        throw new Error('a V-notch reading needs the head over the notch, more than zero');
+      }
+      var drilling = fieldSchedules().drilling;
+      var angle = drilling.vnotch_angle_deg, ce = drilling.vnotch_discharge_coefficient;
+      var low = drilling.vnotch_head_range_mm[0], high = drilling.vnotch_head_range_mm[1];
+      var h = head / 1000;
+      q = ce * 8 / 15 * Math.sqrt(2 * GRAVITY) *
+        Math.tan((angle / 2) * (Math.PI / 180)) * Math.pow(h, 2.5) * 1000;
+      basis = phrase('drilling_copilot.airlift_vnotch',
+        { angle: angle, head: head, ce: ce, half: angle / 2 });
+      if (!(low <= head && head <= high)) {
+        flags.push({ code: 'vnotch_head_outside', message: phrase(
+          'drilling_copilot.vnotch_outside', { head: head, low: low, high: high }) });
+      }
+    } else if (method === 'none') {
+      var text = fieldText(opts.reason);
+      if (!text) throw new Error('an airlift not measured needs the reason');
+      return { method: 'none', q_l_per_s: null,
+        basis: phrase('drilling_copilot.airlift_not_measured', { reason: text }),
+        flags: flags };
+    } else {
+      throw new Error('unknown airlift method ' + JSON.stringify(method));
+    }
+    return { method: method, q_l_per_s: q, basis: basis, flags: flags };
+  }
+
   function fieldText(text) {
     return String(text === null || text === undefined ? '' : text)
       .replace(FIELD_SPACE, ' ').replace(FIELD_ENDS, '');
@@ -20737,7 +20804,7 @@
   Object.assign(C, {
     FIELD_KIT_FORMAT: FIELD_KIT_FORMAT,
     fieldSchedules: fieldSchedules, readingMinutes: readingMinutes,
-    cautiousStorage: cautiousStorage, vesSurveyPlan: vesSurveyPlan,
+    cautiousStorage: cautiousStorage, vesSurveyPlan: vesSurveyPlan, airliftYield: airliftYield,
     fieldKitPayload: fieldKitPayload, parseFieldKitPayload: parseFieldKitPayload,
     projectIdentifier: projectIdentifier, fieldKitContent: fieldKitContent,
   });

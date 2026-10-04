@@ -28,6 +28,7 @@
     imageSlot: 'image-slot.js', docx: 'gwt-docx.js',
     pumpCopilot: 'gwt-pump-copilot.js',
     vesCopilot: 'gwt-ves-copilot.js',
+    drillCopilot: 'gwt-drill-copilot.js',
   });
 
   /* What a working page draws with: the map layers, the figures, the map
@@ -69,6 +70,7 @@
       ['ves', 'Geophysics (VES)'],
       ['vescopilot', 'VES co-pilot'],
       ['design', 'Borehole design'],
+      ['drillcopilot', 'Drilling co-pilot'],
       ['spine', 'Depth Spine'],
       ['extract', 'Scanned sheets'],
     ]],
@@ -898,13 +900,13 @@
   }
 
   /* A field test in progress lives in the session - the pumping test
-   * co-pilot's under pumpCopilot, the VES co-pilot's under vesCopilot - and
-   * opening a project or a sample must not be what ends it: readings taken
-   * at the well or the peg cannot be taken again once the crew has packed
-   * up. The one on this device is carried into the project opened, even over
+   * co-pilot's under pumpCopilot, the VES co-pilot's under vesCopilot, the
+   * drilling log co-pilot's under drillCopilot - and opening a project or a
+   * sample must not be what ends it: readings taken at the well, the peg or
+   * the rig cannot be taken again once the crew has packed up. The one on this device is carried into the project opened, even over
    * one the project file brings, since the file is still on disk and the
    * test here is not. Only "Reset everything" clears it. */
-  var FIELD_SESSIONS = ['pumpCopilot', 'vesCopilot'];
+  var FIELD_SESSIONS = ['pumpCopilot', 'vesCopilot', 'drillCopilot'];
 
   function keepFieldSessions(next) {
     FIELD_SESSIONS.forEach(function (key) {
@@ -4558,6 +4560,11 @@
     return GWT.vesCopilot.page();
   };
 
+  /* PLAN.md step 2.3: the drilling log kept at the rig, in gwt-drill-copilot.js */
+  PAGES.drillcopilot = function () {
+    return GWT.drillCopilot.page();
+  };
+
   /* --- the field kit (PLAN.md step 2.5) --------------------------------------
    * Printed sheets for a crew with no device: one pumping test sheet for each
    * borehole named, and the three quick cards. The content is the engine's
@@ -6921,10 +6928,12 @@
     extract: true, settings: true, about: true };
   var DRAWS_WITH_DOCX = { procurement: true, quality: true };
   /* A page that is a module of its own, fetched with what it draws with: the
-   * two field co-pilots each draw one figure and no map. */
+   * pumping and VES co-pilots each draw one figure and no map, and the
+   * drilling log co-pilot draws none but takes a photograph an interval. */
   var MODULE_PAGES = {
     pumpcopilot: ['charts', 'pumpCopilot'],
     vescopilot: ['charts', 'vesCopilot'],
+    drillcopilot: ['imageSlot', 'drillCopilot'],
   };
 
   function bundlesFor(key) {
@@ -6950,6 +6959,7 @@
       ? store.get('nav') : 'overview';
     /* the co-pilot's preview fit is stopped once its page is left */
     if (key !== 'vescopilot' && GWT.vesCopilot) GWT.vesCopilot.leave();
+    if (key !== 'drillcopilot' && GWT.drillCopilot) GWT.drillCopilot.leave();
     var wanted = bundlesFor(key);
     if (!hasBundles(wanted)) {
       S.clear(host);

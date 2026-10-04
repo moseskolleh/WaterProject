@@ -26885,5 +26885,189 @@
     "111111100100101001110100111011101"
    ]
   ]
+ },
+ "airlift": {
+  "cases": [
+   [
+    "bucket",
+    {
+     "volume_l": 20,
+     "timings_s": [
+      25,
+      24.6,
+      25.4
+     ]
+    }
+   ],
+   [
+    "bucket",
+    {
+     "volume_l": 10,
+     "timings_s": [
+      7.3
+     ]
+    }
+   ],
+   [
+    "bucket",
+    {
+     "volume_l": 200,
+     "timings_s": [
+      61.5,
+      59.25
+     ]
+    }
+   ],
+   [
+    "vnotch",
+    {
+     "head_mm": 34
+    }
+   ],
+   [
+    "vnotch",
+    {
+     "head_mm": 50
+    }
+   ],
+   [
+    "vnotch",
+    {
+     "head_mm": 87.5
+    }
+   ],
+   [
+    "vnotch",
+    {
+     "head_mm": 380
+    }
+   ],
+   [
+    "vnotch",
+    {
+     "head_mm": 410
+    }
+   ],
+   [
+    "none",
+    {
+     "reason": "  compressor\tdown,  no airlift "
+    }
+   ],
+   [
+    "bucket",
+    {
+     "volume_l": 20,
+     "timings_s": []
+    }
+   ],
+   [
+    "bucket",
+    {
+     "volume_l": 0,
+     "timings_s": [
+      20
+     ]
+    }
+   ],
+   [
+    "bucket",
+    {
+     "volume_l": 20,
+     "timings_s": [
+      20,
+      0
+     ]
+    }
+   ],
+   [
+    "vnotch",
+    {
+     "head_mm": 0
+    }
+   ],
+   [
+    "none",
+    {
+     "reason": " \t "
+    }
+   ],
+   [
+    "airlift",
+    {}
+   ]
+  ],
+  "results": [
+   {
+    "method": "bucket",
+    "q_l_per_s": 0.8,
+    "basis": "Timed container: 20 L filled in a mean of 25.0 s over 3 timings.",
+    "flags": []
+   },
+   {
+    "method": "bucket",
+    "q_l_per_s": 1.36986301369863,
+    "basis": "Timed container: 10 L filled in a mean of 7.3 s over 1 timing.",
+    "flags": []
+   },
+   {
+    "method": "bucket",
+    "q_l_per_s": 3.3126293995859215,
+    "basis": "Timed container: 200 L filled in a mean of 60.4 s over 2 timings.",
+    "flags": []
+   },
+   {
+    "method": "vnotch",
+    "q_l_per_s": 0.29201109290724137,
+    "basis": "90-degree V-notch: head 34 mm, Q = 0.58 x 8/15 x sqrt(2g) x tan(45 degrees) x h^2.5 (Kindsvater-Shen, ISO 1438).",
+    "flags": [
+     {
+      "code": "vnotch_head_outside",
+      "message": "A head of 34 mm is outside the 50 to 380 mm the notch's coefficient holds for, so the figure is rougher than the notch can give; time a container as well."
+     }
+    ]
+   },
+   {
+    "method": "vnotch",
+    "q_l_per_s": 0.7658206416068392,
+    "basis": "90-degree V-notch: head 50 mm, Q = 0.58 x 8/15 x sqrt(2g) x tan(45 degrees) x h^2.5 (Kindsvater-Shen, ISO 1438).",
+    "flags": []
+   },
+   {
+    "method": "vnotch",
+    "q_l_per_s": 3.1025742925627933,
+    "basis": "90-degree V-notch: head 87.5 mm, Q = 0.58 x 8/15 x sqrt(2g) x tan(45 degrees) x h^2.5 (Kindsvater-Shen, ISO 1438).",
+    "flags": []
+   },
+   {
+    "method": "vnotch",
+    "q_l_per_s": 121.94417185263715,
+    "basis": "90-degree V-notch: head 380 mm, Q = 0.58 x 8/15 x sqrt(2g) x tan(45 degrees) x h^2.5 (Kindsvater-Shen, ISO 1438).",
+    "flags": []
+   },
+   {
+    "method": "vnotch",
+    "q_l_per_s": 147.45574541523712,
+    "basis": "90-degree V-notch: head 410 mm, Q = 0.58 x 8/15 x sqrt(2g) x tan(45 degrees) x h^2.5 (Kindsvater-Shen, ISO 1438).",
+    "flags": [
+     {
+      "code": "vnotch_head_outside",
+      "message": "A head of 410 mm is outside the 50 to 380 mm the notch's coefficient holds for, so the figure is rougher than the notch can give; time a container as well."
+     }
+    ]
+   },
+   {
+    "method": "none",
+    "q_l_per_s": null,
+    "basis": "Not measured: compressor down, no airlift.",
+    "flags": []
+   },
+   null,
+   null,
+   null,
+   null,
+   null,
+   null
+  ]
  }
 }
