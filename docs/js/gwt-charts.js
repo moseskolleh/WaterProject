@@ -586,6 +586,11 @@
   function vesCurve(result, options) {
     var opts = options || {};
     var ab2 = result.ab2, obs = result.rho_obs, calc = result.rho_calc;
+    /* the fan: the responses of a thinned set of the models that fit (the
+     * range of models, PLAN.md step 3.1), at the same spacings */
+    var fan = opts.fan || [];
+    var fanValues = [];
+    fan.forEach(function (curve) { fanValues = fanValues.concat(curve); });
     var f = frame({
       width: opts.width || 720, height: opts.height || 430,
       title: opts.title || ('Sounding curve - ' + (result.model.sounding_id || 'VES')),
@@ -593,9 +598,16 @@
         ? 'a (m)' : 'AB/2 (m)',
       yLabel: 'Apparent resistivity (ohm-m)',
       xLog: true, yLog: true,
-      xDomain: padDomain(ab2, true), yDomain: padDomain(obs.concat(calc), true),
+      xDomain: padDomain(ab2, true),
+      yDomain: padDomain(obs.concat(calc, fanValues), true),
     });
     var p = f.palette;
+
+    fan.forEach(function (curve) {
+      f.plot.appendChild(polyline(curve.map(function (v, i) {
+        return [f.fx(ab2[i]), f.fy(v)];
+      }), { stroke: p.muted, 'stroke-width': 1, 'stroke-opacity': 0.35 }));
+    });
 
     if (calc && calc.length) {
       f.plot.appendChild(polyline(calc.map(function (v, i) {
@@ -612,7 +624,8 @@
     legend(f, [
       { label: 'Measured', kind: 'circle', colour: p.accent },
       { label: 'Model response', kind: 'line', colour: p.secondary },
-    ], { avoid: points });
+    ].concat(fan.length
+      ? [{ label: 'Models that fit', kind: 'line', colour: p.muted }] : []), { avoid: points });
 
     if (opts.hover !== false) {
       addHover(f, [{ label: 'Measured', points: points }], {
@@ -882,6 +895,88 @@
       addHover(f, [{ label: 'Drawdown', points: pts }], {
         format: function (pt) {
           return 't = ' + S.sig(pt.x, 4) + ' min · s = ' + pt.y.toFixed(2) + ' m';
+        },
+      });
+    }
+    return f.svg;
+  }
+
+  /* The diagnostic plot (hydraulics/plots.py plot_diagnostic): drawdown and
+   * its Bourdet derivative on log-log axes, the regimes the derivative's
+   * slope names shaded and labelled, and guides of slope 1 and 1/2 from the
+   * first derivative point. Null when the analysis drew no derivative. */
+  var REGIME_LABELS = {
+    wellbore_storage: 'casing storage', storage_ending: 'end of storage',
+    radial_flow: 'radial flow', linear_flow: 'linear flow',
+    recharge_boundary: 'recharge boundary', no_flow_boundary: 'no-flow boundary',
+    closed_boundary: 'closed boundary',
+  };
+
+  function diagnosticPlot(analysis, options) {
+    var opts = options || {};
+    var d = analysis.diagnostic;
+    if (!d) return null;
+    var t = d.time_min, s = d.drawdown_m;
+    var dt = [], dd = [];
+    d.derivative_time_min.forEach(function (x, i) {
+      if (d.derivative_m[i] > 0) { dt.push(x); dd.push(d.derivative_m[i]); }
+    });
+    var f = frame({
+      width: opts.width || 720, height: opts.height || 420,
+      title: opts.title || 'Diagnostic plot (Bourdet derivative)',
+      xLabel: 'Time since pumping started (min, log scale)',
+      yLabel: 'Drawdown and derivative (m)',
+      xLog: true, yLog: true,
+      xDomain: padDomain(t, true), yDomain: padDomain(s.concat(dd), true),
+    });
+    var p = f.palette;
+
+    d.regimes.forEach(function (r, k) {
+      var x0 = f.fx(r.start_min), x1 = f.fx(r.end_min);
+      f.plot.insertBefore(svgEl('rect', {
+        x: x0, y: f.margin.top, width: Math.max(0, x1 - x0), height: f.plotH,
+        fill: p.accent, 'fill-opacity': k % 2 ? 0.11 : 0.06,
+      }), f.plot.firstChild);
+      f.plot.appendChild(svgEl('text', {
+        x: (x0 + x1) / 2, y: f.margin.top + 14, 'text-anchor': 'middle',
+        'font-size': 10.5, fill: p.inkSoft, text: REGIME_LABELS[r.key] || r.key,
+      }));
+    });
+
+    if (dt.length) {
+      /* slope guides through the first derivative point */
+      var x0g = dt[0], y0g = dd[0];
+      var x1g = Math.max(Math.min(x0g * 10, t[t.length - 1]), x0g * 1.5);
+      [1, 0.5].forEach(function (slope) {
+        f.plot.appendChild(polyline([[f.fx(x0g), f.fy(y0g)],
+          [f.fx(x1g), f.fy(y0g * Math.pow(x1g / x0g, slope))]],
+        { stroke: p.neutral, 'stroke-width': 1, 'stroke-dasharray': '2 3' }));
+      });
+    }
+
+    var pts = [], dpts = [];
+    t.forEach(function (x, i) {
+      var px = f.fx(x), py = f.fy(s[i]);
+      f.plot.appendChild(marker(px, py, 'circle', p.accent, p.surface));
+      pts.push({ px: px, py: py, x: x, y: s[i] });
+    });
+    dt.forEach(function (x, i) {
+      var px = f.fx(x), py = f.fy(dd[i]);
+      f.plot.appendChild(marker(px, py, 'triangle', p.secondary, p.surface));
+      dpts.push({ px: px, py: py, x: x, y: dd[i] });
+    });
+
+    legend(f, [
+      { label: 'Drawdown s', kind: 'circle', colour: p.accent },
+      { label: 'Derivative ds/d ln t (L = ' + C.formatG(d.l_log10) + ' log cycle)',
+        kind: 'triangle', colour: p.secondary },
+      { label: 'Slopes 1 and 1/2', kind: 'line', colour: p.neutral },
+    ], { avoid: pts.concat(dpts) });
+
+    if (opts.hover !== false) {
+      addHover(f, [{ label: 'Drawdown', points: pts }, { label: 'Derivative', points: dpts }], {
+        format: function (pt) {
+          return 't = ' + S.sig(pt.x, 4) + ' min · ' + S.sig(pt.y, 3) + ' m';
         },
       });
     }
@@ -5716,7 +5811,7 @@
     suitabilityMap: suitabilityMap, groundProfile: groundProfile,
     rampColour: rampColour, colourRamps: COLOUR_RAMPS, colourBar: colourBar,
     testOverview: testOverview, cooperJacob: cooperJacob,
-    recovery: recoveryPlot, stepTest: stepTestPlot,
+    recovery: recoveryPlot, stepTest: stepTestPlot, diagnostic: diagnosticPlot,
     piper: piper, stiff: stiff, boreholeDesign: boreholeDesign,
     lithologyColour: lithologyColour,
     depthSpine: depthSpine, guidelineSpine: guidelineSpine,

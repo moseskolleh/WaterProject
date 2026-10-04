@@ -2036,6 +2036,117 @@ await withPage(async (page, base, consoleErrors) => {
   same('survey rokel: depth each model is drawn to', parsed.rokel_drawn_depth,
     SF.rokel_drawn_depth);
 
+  // --- the range of models (PLAN.md step 3.1) ---
+  // The generator, its step and the Latin hypercube are integer and exactly
+  // rounded arithmetic in both engines, so they are compared to the bit. A
+  // short run of the sampler on each Rokel sounding takes the same accept
+  // decision at every step, and its numbers agree to 1e-4 relative (6e-6 was
+  // the largest difference measured): the chains start from the two
+  // engines' own inversions, which agree to parity's model tolerance, not to
+  // the bit, and every forward call carries the difference along. A run at
+  // the default settings is compared on its percentiles within 2 percent,
+  // its share of unresolved basement within 2 points and its drilling depth
+  // within one rounding step: over thousands of steps, a uniform landing
+  // within a last bit of an acceptance probability would send the chains
+  // different ways, after which only their statistics agree. On this
+  // machine the default run, too, took the same decision at every step.
+  const VR = R.ves_range;
+  const ranges = await page.evaluate(async (VR) => {
+    const C = GWT.core, D = GWT.data;
+    const sheets = await GWT.support.readXlsx(GWT.support.base64ToBytes(D.samples.rokel.files.ves.b64));
+    const soundings = C.readVesSheets(sheets, 'rokel_ves.xlsx');
+    const inversions = soundings.map((s) => C.invertSounding(s));
+    const streams = {};
+    Object.keys(VR.streams).forEach((key) => {
+      const [seed, stream] = key.split('/').map(Number);
+      const rng = C.rangeStream(seed, stream);
+      streams[key] = VR.streams[key].map(() => rng.next());
+    });
+    const sym = C.rangeStream(2, 3);
+    const short = C.withConfig({ ves_range: VR.short_settings });
+    const asText = (r) => Object.assign(r, { text: C.modelRangeText(r),
+      caption: C.modelRangeCaption(r) });
+    return {
+      streams,
+      symmetric: VR.symmetric.map(() => sym.symmetric()),
+      lhs: C.latinHypercube(C.rangeStream(1, 0), 6, [0.0, -1.0, 2.0], [1.0, 3.0, 2.5]),
+      short: soundings.map((s, i) => asText(C.sampleModelRange(s, inversions[i], short))),
+      synthetic: VR.synthetic.map((c) => {
+        const s = { sounding_id: c.id, array_type: c.array, ab2: c.ab2,
+          mn: c.ab2.map(() => NaN), rho_app: c.rho, flags: [] };
+        return asText(C.sampleModelRange(s, C.invertSounding(s), short));
+      }),
+      default: soundings.map((s, i) => C.sampleModelRange(s, inversions[i], C.defaultConfig())),
+      text_cases: VR.text_cases.map((c) => [C.modelRangeText(c.range),
+        C.modelRangeCaption(c.range), C.modelRangeRows(c.range),
+        C.modelRangeTableCaption(c.range)]),
+    };
+  }, VR);
+  check('range: the generator gives the same words',
+    JSON.stringify(ranges.streams) === JSON.stringify(VR.streams),
+    `js ${JSON.stringify(ranges.streams)}\n     py ${JSON.stringify(VR.streams)}`);
+  check('range: the same steps, to the bit',
+    ranges.symmetric.every((v, i) => v === VR.symmetric[i]),
+    `js ${ranges.symmetric}\n     py ${VR.symmetric}`);
+  check('range: the same Latin hypercube, to the bit',
+    JSON.stringify(ranges.lhs) === JSON.stringify(VR.lhs),
+    `js ${JSON.stringify(ranges.lhs)}\n     py ${JSON.stringify(VR.lhs)}`);
+  // numbers within rtol, everything else exactly
+  const within = (rtol) => {
+    const walk = (a, b) => {
+      if (typeof b === 'number' && typeof a === 'number') return close(a, b, rtol);
+      if (Array.isArray(b)) {
+        return Array.isArray(a) && a.length === b.length && b.every((v, i) => walk(a[i], v));
+      }
+      if (b && typeof b === 'object') {
+        return !!a && typeof a === 'object' &&
+          Object.keys(b).every((k) => walk(a[k], b[k]));
+      }
+      return a === b;
+    };
+    return walk;
+  };
+  VR.short.concat(VR.synthetic.map((c) => c.range)).forEach((py, i) => {
+    const js = ranges.short.concat(ranges.synthetic)[i];
+    const name = `range ${py.sounding_id}, short run`;
+    check(`${name}: the same accept decisions`,
+      JSON.stringify(js.accepted) === JSON.stringify(py.accepted),
+      `js ${js.accepted} vs py ${py.accepted}`);
+    ['text', 'caption'].forEach((key) => {
+      check(`${name}: ${key}, word for word`, JSON.stringify(js[key]) === JSON.stringify(py[key]),
+        `js ${JSON.stringify(js[key])}\n     py ${JSON.stringify(py[key])}`);
+    });
+    const { text, caption, ...numbers } = py;
+    check(`${name}: every number to 1e-4`, within(1e-4)(js, numbers),
+      `js ${JSON.stringify(js).slice(0, 700)}\n     py ${JSON.stringify(numbers).slice(0, 700)}`);
+  });
+  VR.text_cases.forEach((c, i) => {
+    const js = ranges.text_cases[i];
+    check(`range sentences, case ${i}: word for word`,
+      JSON.stringify(js) === JSON.stringify([c.text, c.caption, c.rows, c.table_caption]),
+      `js ${JSON.stringify(js)}\n     py ${JSON.stringify([c.text, c.caption, c.rows,
+        c.table_caption])}`);
+  });
+  VR.default.forEach((py, i) => {
+    const js = ranges.default[i];
+    const name = `range ${py.sounding_id}, default settings`;
+    const bands = (r) => [r.basement_m, r.weathered_m].concat(r.resistivity, r.interface_m);
+    check(`${name}: the percentiles within 2 percent`,
+      within(2e-2)(bands(js), bands(py)),
+      `js ${JSON.stringify(bands(js))}\n     py ${JSON.stringify(bands(py))}`);
+    check(`${name}: unresolved basement within 2 points`,
+      Math.abs(js.basement_unresolved - py.basement_unresolved) <= 0.02,
+      `js ${js.basement_unresolved} vs py ${py.basement_unresolved}`);
+    check(`${name}: drilling depth within one rounding step`,
+      Math.abs(js.drilling_depth_m - py.drilling_depth_m) <= 5.0 &&
+      js.drilling_depth_capped === py.drilling_depth_capped,
+      `js ${js.drilling_depth_m} ${js.drilling_depth_capped} vs py ${py.drilling_depth_m} ` +
+      `${py.drilling_depth_capped}`);
+    check(`${name}: the same sample count, chains and starts`,
+      js.n_samples === py.n_samples && js.chains === py.chains && js.starts === py.starts &&
+      js.n_layers === py.n_layers, JSON.stringify([js.n_samples, js.chains, js.starts]));
+  });
+
   // --- photo evidence (PLAN.md step 2.4) ---
   // The same bytes give the same provenance record, field for field and to
   // the last bit of each coordinate, and the same words on a report; and the
@@ -2074,6 +2185,127 @@ await withPage(async (page, base, consoleErrors) => {
     check(`photo evidence gate ${name}: the same requirements and words`,
       JSON.stringify(photos.gate[name]) === JSON.stringify(PE.gate[name]),
       `js ${JSON.stringify(photos.gate[name]).slice(0, 600)}\n     py ${JSON.stringify(PE.gate[name]).slice(0, 600)}`);
+  });
+
+  // --- the pumping test's spread, derivative and large-diameter fit (PLAN.md
+  // step 3.2). The generator's stream and the Bessel functions are held to
+  // the last digits, and everything else to 1e-6, except the
+  // Papadopulos-Cooper fit's own numbers on a sheet it fits badly: there its
+  // valley floor is flat to within the Stehfest inversion's rounding, and the
+  // two engines' optimisers stop up to 2.6e-4 apart in storativity (wide_band,
+  // RMSE 1.76 m; 4e-5 in T) at the same misfit to 1e-10. Those are held to
+  // 1e-3 relative, not absolute: alpha and S are a few thousandths, and an
+  // absolute 1e-3 would pass them at any value. Where the fit is adopted it
+  // agrees to 1e-6, and the band and yield resting on it are held there.
+  const PS = R.pumping_spread;
+  const spreadJs = await page.evaluate(([PS, edge]) => {
+    const C = GWT.core;
+    const out = { mulberry32: {}, regimes: {}, cases: {} };
+    Object.keys(PS.mulberry32).forEach((seed) => {
+      const rng = C.mulberry32(Number(seed));
+      out.mulberry32[seed] = PS.mulberry32[seed].map(() => rng.nextFloat());
+    });
+    out.blocks = PS.blocks.map(([n]) => [n, C.blockLength(n)]);
+    out.quantile = PS.quantile.q.map(([q]) => [q, C.quantileOf(PS.quantile.values, q)]);
+    out.bessel = PS.bessel.map(([x]) => [x, C.besselK0e(x), C.besselK1e(x)]);
+    out.well_function = PS.well_function.map(([u, a]) => [u, a, C.pcWellFunction(u, a)]);
+    Object.keys(PS.regimes).forEach((name) => {
+      const c = PS.regimes[name];
+      const dg = C.diagnosePumping({ test: { static_water_level_m: 0, steps: [
+        { time_min: c.t, water_level_m: c.s, discharge_m3_per_h: 2 }] } });
+      out.regimes[name] = {
+        regimes: dg.regimes.map((r) => [r.key, r.start_min, r.end_min, r.slope, r.n_points]),
+        plateau: dg.plateau_transmissivity_m2_per_day,
+      };
+    });
+    Object.keys(PS.cases).forEach((name) => {
+      const grid = JSON.parse(PS.cases[name].grid || edge[name]);
+      const a = C.analysePumpingTest(C.pumpingFromGrid(grid, name + '.xlsx'));
+      const th = a.theis, pc = a.papadopulos_cooper, sp = a.spread, dg = a.diagnostic;
+      const boot = sp ? sp.bootstrap : null, rec = a.yield_recommendation;
+      out.cases[name] = {
+        source: a.transmissivity_source, T: a.transmissivity_m2_per_day,
+        theis: th ? [th.transmissivity_m2_per_day, th.transmissivity_low_m2_per_day,
+          th.transmissivity_high_m2_per_day] : null,
+        pc: pc ? [pc.transmissivity_m2_per_day, pc.storativity, pc.alpha, pc.rmse_m,
+          pc.transmissivity_low_m2_per_day, pc.transmissivity_high_m2_per_day] : null,
+        pc_invalid: a.papadopulos_cooper_invalid,
+        boot: boot ? ['method', 'replicates', 'failed', 'block_length', 'seed', 'n_points',
+          'p10', 'p50', 'p90', 'reason'].reduce((o, k) => { o[k] = boot[k]; return o; }, {})
+          : null,
+        spread: sp ? [sp.safe_yield_low_m3_per_h, sp.safe_yield_high_m3_per_h,
+          sp.long_term_low_m3_per_h, sp.holds_at_dry_season, sp.pump_depth_low_m,
+          sp.pump_depth_high_m] : null,
+        diagnostic: dg ? { t: dg.derivative_time_min, d: dg.derivative_m, slopes: dg.slopes,
+          regimes: dg.regimes.map((r) => [r.key, r.start_min, r.end_min, r.slope, r.n_points]),
+          plateau: dg.plateau_transmissivity_m2_per_day } : null,
+        safe: rec ? rec.safe_yield_m3_per_h : null,
+        range_text: rec ? C.yieldRangeText(rec) : null,
+        confidence: rec ? rec.confidence : null,
+        text: C.spreadParagraphs(a).concat([C.diagnosticText(dg), C.papadopulosCooperText(a),
+          C.sustainableSentence(rec, sp) || '']),
+      };
+    });
+    return out;
+  }, [PS, Object.fromEntries(Object.entries(R.pumping_cases).map(([k, v]) => [k, v.grid]))]);
+
+  function spreadWithin(a, b, path, tol) {
+    if (typeof a === 'number' && typeof b === 'number') {
+      return close(a, b, tol) ? null : `${path}: js ${a} vs py ${b}`;
+    }
+    if (Array.isArray(a) && Array.isArray(b)) {
+      if (a.length !== b.length) return `${path}: js ${a.length} items vs py ${b.length}`;
+      for (let i = 0; i < a.length; i++) {
+        const d = spreadWithin(a[i], b[i], `${path}[${i}]`, tol);
+        if (d) return d;
+      }
+      return null;
+    }
+    if (a && b && typeof a === 'object' && typeof b === 'object') {
+      for (const k of Array.from(new Set(Object.keys(a).concat(Object.keys(b)))).sort()) {
+        if (!(k in a) || !(k in b)) return `${path}.${k}: in one engine only`;
+        const d = spreadWithin(a[k], b[k], `${path}.${k}`, tol);
+        if (d) return d;
+      }
+      return null;
+    }
+    return a === b ? null : `${path}: js ${JSON.stringify(a)} vs py ${JSON.stringify(b)}`;
+  }
+  Object.keys(PS.mulberry32).forEach((seed) => {
+    check(`mulberry32 seed ${seed}: the same 50 draws`,
+      JSON.stringify(spreadJs.mulberry32[seed]) === JSON.stringify(PS.mulberry32[seed]),
+      `js ${spreadJs.mulberry32[seed].slice(0, 3)} vs py ${PS.mulberry32[seed].slice(0, 3)}`);
+  });
+  for (const key of ['blocks', 'quantile', 'bessel', 'well_function']) {
+    const ref = key === 'quantile' ? PS.quantile.q : PS[key];
+    /* the well function sums twelve terms of alternating sign up to 7e6,
+     * which carries a last-digit difference in exp or log to 1e-10 */
+    const d = spreadWithin(spreadJs[key], ref, key, key === 'well_function' ? 1e-9 : 1e-12);
+    check(`pumping spread: ${key}`, d === null, d);
+  }
+  Object.keys(PS.regimes).forEach((name) => {
+    const d = spreadWithin(spreadJs.regimes[name],
+      { regimes: PS.regimes[name].regimes, plateau: PS.regimes[name].plateau }, name, 1e-9);
+    check(`flow regime of a synthetic ${name} curve`, d === null, d);
+  });
+  Object.keys(PS.cases).forEach((name) => {
+    const js = spreadJs.cases[name], py = Object.assign({}, PS.cases[name]);
+    delete py.grid;
+    for (const key of Object.keys(py)) {
+      let d;
+      if (key === 'pc' && py.pc && js.pc) {
+        const rel = py.source === 'papadopulos_cooper' ? 1e-6 : 1e-3;
+        d = py.pc.length === js.pc.length ? null : `${name}.pc: lengths differ`;
+        py.pc.forEach((v, i) => {
+          const a = js.pc[i];
+          const ok = (v === null || a === null) ? a === v : Math.abs(a - v) <= rel * Math.abs(v);
+          if (!ok && !d) d = `${name}.pc[${i}]: js ${a} vs py ${v}`;
+        });
+      } else {
+        d = spreadWithin(js[key], py[key], `${name}.${key}`, key === 'diagnostic' ? 1e-9 : 1e-6);
+      }
+      check(`pumping spread ${name}: ${key}`, d === null, d);
+    }
   });
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));

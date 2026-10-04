@@ -34,10 +34,10 @@ python bench/run.py --from py.json --from web.json --out bench/baseline.json \
 ```
 
 `--only GROUP` (repeatable) is one of `import`, `forward`,
-`inversion`, `pumping`, `reports`, `recompute`, `streamlit`. `--quick` takes 2
-samples per measure instead of 5 (`web.mjs --quick`: 1 run instead of
-3), which is enough to see that something moved and not enough to
-quote.
+`inversion`, `range`, `pumping`, `reports`, `recompute`, `streamlit`.
+`--quick` takes 2 samples per measure instead of 5 (`web.mjs --quick`:
+1 run instead of 3), which is enough to see that something moved and
+not enough to quote.
 
 ## Comparing two commits
 
@@ -79,6 +79,11 @@ against 3.5 s (IQR 0.45 to 0.67 s) with four, in alternating runs of
 - `inversion/*` - `invert_sounding` on each sounding in each
   `examples/data/*/*_ves.xlsx`, with the default configuration: the
   layer-count search included.
+- `range/*` - `sample_model_range` (PLAN.md step 3.1) on each Rokel
+  sounding at the default settings, around its own inversion, which is
+  made beforehand: 8 Latin hypercube starts polished by the inversion's
+  fit, then 4 chains of 500 burn-in steps and 4,000 kept samples between
+  them, each step one forward call.
 - `pumping/*` - `analyse_pumping_test` on each sample test: Kuntolo as
   recorded (no discharges, so no transmissivity), Kuntolo with the
   illustrative discharges `run_kuntolo_step_test.py` carries in its
@@ -173,6 +178,30 @@ rate 4) and DevTools' "Slow 4G" network (`Network.emulateNetworkConditions`:
   every one of these was the whole session stringified into
   localStorage, and localStorage refused it for quota;
   `options.autosave_stored` in the run says whether the writes went in.
+
+## The range of models: why 4,000 samples
+
+PLAN.md step 3.1 asks for the default sample count to be set from a
+measurement here. On 4 October 2026, on this repository's 4-CPU
+machine (load average 1.4 from another agent's work), `run.py --only
+forward --only range` timed one forward call on Rokel A at 366 us (IQR
+25 us), against the 0.85 ms the plan estimated from the older baseline
+(967 us there), and the default range at 4.95 s on Rokel A (three
+layers) and 1.30 s on Rokel B (two). The same ranges took 7.7 to 7.9 s
+and 0.63 to 0.70 s in the browser app's engine worker, three runs in
+headless Chromium: the browser's forward model is slower on the thin
+layers the chains visit.
+
+The number was then chosen by what more samples buy. Rokel A sampled
+with five seeds at each of three counts, the P10 and P90 of the base of
+its second layer and of the weathered zone moved across the seeds by up
+to 1.0 m at 2,000 samples, 0.7 m at 4,000 and 0.9 m at 8,000, and the
+P90 of the half-space resistivity (about 60 ohm-m) by 12.3, 8.6 and 8.5
+ohm-m. Past 4,000 the spread is the chains settling in different
+equivalent models, not too few samples in each, and doubling the count
+doubles the wait without narrowing it. So the default is 4,000, with
+500 burn-in steps a chain: about 5 s a sounding here, and a few times
+that on a field laptop, which the worker and its progress bar carry.
 
 ## The committed baseline
 

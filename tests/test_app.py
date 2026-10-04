@@ -59,6 +59,15 @@ def test_ves_flow_with_sample(app):
     soundings, results, interps = app.session_state["ves_results"]
     assert len(results) == 2 and results[0].fit_error_percent < 21.5
 
+    # the range of models, beside each best fit, asked for with its button
+    app.button(key="ves_range").click()
+    app.run()
+    assert not app.exception
+    kept, ranges = app.session_state["ves_ranges"]
+    assert kept is results and len(ranges) == 2
+    shown = " ".join(str(i.value) for i in app.info)
+    assert "of the models that fit" in shown and "Metropolis-Hastings" in shown
+
     app.button(key="build_geo_report").click()
     app.run()
     assert not app.exception

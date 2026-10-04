@@ -176,6 +176,27 @@ the pump started, the pump setting depth and the borehole depth. Write
   Without discharge the system still draws the curves but reports
   transmissivity and yield as pending.
 
+What the pumping test page and report make of the sheet, besides the
+straight-line fits:
+
+- **A diagnostic plot.** Drawdown and its derivative on log-log axes.
+  The slope of the derivative names the flow regime: about 1 while the
+  pump empties the casing, flat for radial flow through the aquifer,
+  about 1/2 for flow along a single fracture, and a fall or a rise
+  after the flat part for a recharge or a no-flow boundary. The slope
+  limits are settings, printed under the plot.
+- **A band on every figure that matters.** The transmissivity the yield
+  rests on is given from the 10th to the 90th percentile of refits to
+  the readings' own scatter, and the safe yield and the pump intake are
+  given as bands too. Read the band as the least the spread can be: on
+  test data it held the true value about seven times in ten, not eight.
+  A yield is called sustainable only where the bottom of its band still
+  covers the recommended rate at the dry-season level.
+- **The early readings are used.** A test that never got past casing
+  storage is fitted with the Papadopulos-Cooper solution for a
+  large-diameter well, which models the water drawn from the casing.
+  Its result is still marked indicative: run the test longer.
+
 ## 3a. Pumping test co-pilot (browser app, on a phone or tablet)
 
 The browser app can sit with the crew while the test runs and fill in
@@ -464,6 +485,20 @@ address, the app cannot run work in the background: it gives the same
 results, but the page is busy while each sounding is inverted, and a
 Cancel press is only read between soundings.
 
+Once the soundings are inverted, **Sample the range of models** on the
+Geophysics page (the Streamlit app has the same button) samples the
+models that fit each sounding about as well as its best fit, and says
+what they agree on: "Basement between 22 and 34 m (P10 to P90); not
+resolved in 30 percent of the models that fit", the thickness of the
+water-bearing weathered zone, and a drilling depth read from the 90th
+percentile and still cut back to the depth the sounding resolves. A grey
+fan of the sampled models is drawn over the curve, and the report prints
+the same sentences under each sounding's best fit, which is left as it
+was. It takes a few seconds a sounding, with its own bar and Cancel; the
+settings are under `ves_range` in the project's configuration, and the
+error each reading is given (3 percent, plus the measured disagreement
+at each MN overlap) is provisional.
+
 **Overview** opens first and is the project dashboard: the lifecycle
 strip across the top shows how far the borehole has got (Sited →
 Drilled → Tested → Assessed → Handover), and the cards below summarise
@@ -729,7 +764,10 @@ the readings, the VES settings and the version of the app that computed
 it: change a reading or a setting, or open the file in a newer version,
 and that sounding is inverted afresh. Each app uses only the inversions
 it computed itself, so a file moved from one app to the other is
-inverted once on arrival.
+inverted once on arrival. The range of models is not saved: an
+inversion is checked on the way back in by fitting its model to the
+readings again, and a range could only be taken on trust, so it is
+sampled again when it is asked for.
 
 ## 12. Scanned sheets
 

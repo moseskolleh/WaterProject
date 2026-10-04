@@ -11,8 +11,8 @@
  *
  *   - started as a Web Worker, it imports the engine and its tables and
  *     answers its requests - invert (and the VES co-pilot's previewInvert),
- *     analysePumping, recompute and the pumping test co-pilot's cooperJacob -
- *     reporting progress on the way;
+ *     sampleRange, analysePumping, recompute and the pumping test co-pilot's
+ *     cooperJacob - reporting progress on the way;
  *   - loaded by the page, it is GWT.engine: a promise per request, the
  *     progress passed on, cancel, and the same tasks run on the page
  *     itself where no worker can start - a copy opened from file://, which
@@ -70,6 +70,15 @@
     previewInvert: function (payload, progress) {
       return GWT.core.invertSounding(payload.sounding,
         { config: payload.config, onProgress: progress });
+    },
+
+    /* The range of models that fit one sounding (PLAN.md step 3.1): a few
+     * thousand forward calls and a handful of fits, seconds of work, so it
+     * runs here with its progress in the work bar. A task of its own, so
+     * stopping it does not stop an inversion, nor an inversion it. */
+    sampleRange: function (payload, progress) {
+      return GWT.core.sampleModelRange(payload.sounding, payload.inversion,
+        payload.config, progress);
     },
 
     /* The analysis holds the test it was made from as analysis.test, and
@@ -494,6 +503,11 @@
     /* invertSounding for the VES co-pilot's preview, cancelled on its own */
     previewInvert: function (sounding, config, options) {
       return request('previewInvert', { sounding: sounding, config: config }, options);
+    },
+    /* sampleModelRange for one sounding and the inversion of it */
+    sampleRange: function (sounding, inversion, config, options) {
+      return request('sampleRange', { sounding: sounding, inversion: inversion,
+        config: config }, options);
     },
     /* analysePumpingTest; the test to keep is the analysis's own .test */
     analysePumping: function (test, config, options) {

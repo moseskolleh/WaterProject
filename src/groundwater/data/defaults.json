@@ -48,7 +48,18 @@
     "casing_diameter_in": 5.0,
     "riser_diameter_in": 1.25,
     "recovery_intercept_max_fraction": 0.25,
-    "max_plausible_storativity": 0.1
+    "max_plausible_storativity": 0.1,
+    "bootstrap_replicates": 400,
+    "bootstrap_seed": 32,
+    "diagnostic_l_log10": 0.2,
+    "diagnostic_window_log10": 0.5,
+    "diagnostic_min_span_log10": 0.3,
+    "regime_unit_slope_min": 0.75,
+    "regime_unit_slope_max": 1.25,
+    "regime_half_slope_min": 0.35,
+    "regime_half_slope_max": 0.65,
+    "regime_flat_max": 0.15,
+    "regime_falling_max": -0.25
   },
   "design": {
     "borehole_diameter_in": 6.5,
@@ -64,5 +75,14 @@
     "min_screen_below_swl_m": 5.0,
     "apron_note": "concrete apron with drainage channel and soakaway",
     "fracture_zone_margin_m": 1.0
+  },
+  "ves_range": {
+    "seed": 1,
+    "starts": 8,
+    "chains": 4,
+    "samples": 4000,
+    "burn_in": 500,
+    "base_error_percent": 3.0,
+    "fan_models": 40
   }
 }

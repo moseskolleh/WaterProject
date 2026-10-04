@@ -59,6 +59,12 @@ from ..ves.interpret import (
     zone_text,
 )
 from ..ves.inversion import InversionResult
+from ..ves.model_range import (
+    model_range_caption,
+    model_range_rows,
+    model_range_table_caption,
+    model_range_text,
+)
 from ..ves.plots import model_depth_m, plot_model_pseudosection, plot_sounding_curve
 from .citations import GLOSSARY, references_for
 from .context import context_map_figures
@@ -120,6 +126,11 @@ class GeophysicalReportInputs:
     #: for it on the same readings, so a difference is shown, not hidden.
     reference_models: dict | None = None
     reference_label: str = "IPI2Win model (as reported)"
+    #: The range of models that fit each sounding
+    #: (:func:`groundwater.ves.model_range.sample_model_range`), in lockstep
+    #: with ``inversions``; None, or a None in it, where none was sampled.
+    #: It is printed and drawn beside the best fit, never in its place.
+    model_ranges: list | None = None
     geology_text: str = ""
     reconnaissance_date: str = ""
     reconnaissance_notes: str = ""
@@ -446,13 +457,15 @@ def build_geophysical_report(
     # every caller: a short list silently drops a point's whole analysis block
     # while the preference table below still ranks it
     references = inputs.reference_models or {}
-    for sounding, inversion, interp in zip(
-        soundings, inputs.inversions, inputs.interpretations, strict=True
+    ranges = inputs.model_ranges or [None] * len(inputs.inversions)
+    for sounding, inversion, interp, model_range in zip(
+        soundings, inputs.inversions, inputs.interpretations, ranges, strict=True
     ):
         _sounding_block(rb, sounding, inversion, interp, inputs.figures_dir,
                         config=config.ves,
                         reference_model=references.get(sounding.sounding_id),
-                        reference_label=inputs.reference_label)
+                        reference_label=inputs.reference_label,
+                        model_range=model_range)
 
     # ---- preference table -----------------------------------------------------
     rows = drilling_preference_table(inputs.interpretations, config=config.ves)
@@ -797,6 +810,7 @@ def _sounding_block(
     config: VESConfig | None = None,
     reference_model=None,
     reference_label: str = "reference model",
+    model_range=None,
 ) -> None:
     """One data analysis block per sounding: tables, figures, narrative."""
     config = config or VESConfig()
@@ -864,6 +878,7 @@ def _sounding_block(
         sounding, inversion.model, inversion.rho_calc, inversion.ab2, path=curve_path,
         depth_max=interp.investigation_depth_m or None,
         reference_model=reference_model, reference_label=reference_label,
+        model_range=model_range,
     )
     rb.figure(
         curve_path,
@@ -871,7 +886,8 @@ def _sounding_block(
         # followed by a figure captioned "Schlumberger array VES curve"
         f"{array_name} array VES curve and model at point {sid}."
         + (f" The dashed line is the {reference_label}." if reference_model is not None else "")
-        + f" The model panel is drawn {_drawn_depth_text(inversion.model, interp)}.",
+        + f" The model panel is drawn {_drawn_depth_text(inversion.model, interp)}."
+        + (f" {model_range_caption(model_range)}" if model_range is not None else ""),
     )
 
     # model table (IPI2Win layout) with linearised uncertainty factors
@@ -910,6 +926,12 @@ def _sounding_block(
     weak = poorly_resolved_text(inversion.model)
     if weak:
         rb.paragraph(weak, align="justify")
+    # the range of models that fit, beside the best fit (PLAN.md step 3.1)
+    if model_range is not None:
+        rb.paragraph(" ".join(model_range_text(model_range)), align="justify")
+        rb.table(model_range_rows(model_range), header=["", "P10", "P50", "P90"],
+                 caption=model_range_table_caption(model_range),
+                 col_widths_cm=[6.4, 2.2, 2.2, 2.2])
     if reference_model is not None:
         _reference_model_block(rb, sid, inversion, reference_model, reference_label,
                                sounding.array_type)

@@ -862,6 +862,34 @@ await withPage(async (page, base, consoleErrors) => {
       'about 40 m'),
     (rokelDoc.match(/[^\n]*(array\. |expanded to)[^\n]*/g) || []).join(' | ').slice(0, 600));
 
+  // The range of models (PLAN.md step 3.1) reaches the document beside each
+  // best fit, in the words reporting/geophysical.py prints, with the fan
+  // named in the curve's caption; a short run, to keep the suite quick.
+  const rangeSettings = await page.evaluate(async () => {
+    const app = window.GWT.app;
+    const saved = app.store.get('config');
+    app.store.set('config', Object.assign({}, saved || {}, {
+      ves_range: { samples: 600, burn_in: 100, starts: 2, chains: 2 } }));
+    await app.sampleRanges();
+    return saved === undefined ? null : saved;
+  });
+  const rangedDoc = await issued('geophysical');
+  const rangeWords = await page.evaluate((saved) => {
+    const app = window.GWT.app, C = window.GWT.core;
+    const words = app.derived.inversions.map((inv) => {
+      const r = app.rangeFor(inv);
+      return r ? [C.modelRangeText(r).join(' '), C.modelRangeCaption(r)] : null;
+    });
+    app.store.set('config', saved);
+    return words;
+  }, rangeSettings);
+  check('ves: the range of models is printed beside each best fit, with its fan',
+    rangeWords.length === soundings.length && rangeWords.every((w) => w &&
+      rangedDoc.includes(w[0]) && rangedDoc.includes(w[1])) &&
+    !rokelDoc.includes('Metropolis-Hastings') &&
+    (rangedDoc.match(/Models tried: /g) || []).length === soundings.length,
+    JSON.stringify(rangeWords).slice(0, 600));
+
   /* Two points the ranking cannot separate, and a Wenner survey: built
    * straight from interpretations, since no bundled survey is either. */
   const [tieDoc, wennerDoc] = await page.evaluate(async () => {

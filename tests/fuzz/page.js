@@ -99,9 +99,27 @@
         B: a.step_test ? num(a.step_test.aquifer_loss_B) : null,
         C: a.step_test ? num(a.step_test.well_loss_C) : null,
         flags: flagRows(a.flags),
+        spread: spread(a),
       };
     } catch (e) { out.analysis = failure(e); }
     return out;
+  }
+
+  /* engines.py _spread: PLAN.md step 3.2's bands and regimes, the
+   * Papadopulos-Cooper band left out */
+  function spread(a) {
+    var sp = a.spread, boot = sp ? sp.bootstrap : null, th = a.theis;
+    var exact = !!boot && boot.method !== 'papadopulos_cooper';
+    return {
+      method: boot ? boot.method : null,
+      p10: exact ? num(boot.p10) : null,
+      p90: exact ? num(boot.p90) : null,
+      holds: sp ? !!sp.holds_at_dry_season : null,
+      pump: sp ? [num(sp.pump_depth_low_m), num(sp.pump_depth_high_m)] : null,
+      regimes: a.diagnostic ? a.diagnostic.regimes.map(function (r) { return r.key; }) : null,
+      theis_band: th ? [num(th.transmissivity_low_m2_per_day),
+        num(th.transmissivity_high_m2_per_day)] : null,
+    };
   }
 
   function quality(sheets, name) {

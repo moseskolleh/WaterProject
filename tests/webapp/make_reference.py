@@ -33,8 +33,10 @@ from __future__ import annotations
 import argparse
 import base64
 import csv
+import dataclasses
 import json
 import math
+import re
 import sys
 import tempfile
 import zlib
@@ -83,7 +85,7 @@ from groundwater.supervision.checklists import (
     load_checklists,
     migrate_response_keys,
 )
-from groundwater.config import VESConfig
+from groundwater.config import Config, VESConfig
 from groundwater.ingestion.ves import _flag_duplicate_ids, _sounding_or_reason
 from groundwater.reporting.geophysical import (
     depth_of_investigation_text,
@@ -97,6 +99,15 @@ from groundwater.ves.interpret import (
     interpret_model,
 )
 from groundwater.ves.inversion import invert_sounding
+from groundwater.ves.model_range import (
+    Stream,
+    latin_hypercube,
+    model_range_caption,
+    model_range_rows,
+    model_range_table_caption,
+    model_range_text,
+    sample_model_range,
+)
 
 REPO = Path(__file__).resolve().parents[2]
 DATA = REPO / "examples" / "data"
@@ -428,6 +439,169 @@ def ves_text(rokel_inversions, rokel_interps) -> dict:
                 "wenner", 60.0, 24.0, VESConfig(depth_of_investigation_factor=0.4)),
         ],
         "sheets": [[s.sounding_id, s.array_type, flags(s.flags)] for _, s in grids],
+    }
+
+
+# ------------------------------------------- the range of models (step 3.1)
+#
+# The generator's words, the step it draws and a Latin hypercube, which the
+# two engines compute to the bit; a short run of the sampler on each Rokel
+# sounding, compared closely (parity.mjs says how closely, and why not to
+# the bit); and a run at the default settings, whose percentiles are
+# compared within a looser tolerance, since over thousands of steps one
+# accept decision taken differently on a last-bit difference would send the
+# two chains different ways.
+
+RANGE_SHORT = {"samples": 200, "burn_in": 100, "starts": 4, "chains": 2}
+
+
+def _range_soundings() -> list:
+    """Two soundings the Rokel pair does not cover, as readings both engines
+    read: basement within reach under a weathered zone (the sentences with
+    a band), and a Wenner sheet that reads one spacing twice."""
+    from groundwater.models import SiteMetadata, VESSounding
+    from groundwater.ves.forward import forward_schlumberger, forward_wenner
+
+    out = []
+    ab2 = np.array([1, 1.5, 2, 3, 4, 6, 8, 10, 15, 20, 30, 40, 60, 80, 100], dtype=float)
+    noise = np.exp(0.03 * np.sin(1.7 * np.arange(len(ab2))))
+    rho = forward_schlumberger((np.array([300.0, 60.0, 5000.0]), np.array([2.0, 15.0])), ab2)
+    out.append(VESSounding(site=SiteMetadata(), sounding_id="basement in reach",
+                           ab2=ab2, mn=np.full(len(ab2), np.nan), rho_app=rho * noise))
+    a = np.array([1, 2, 3, 4, 6, 8, 8, 12, 16, 24, 32, 48, 64], dtype=float)
+    rho = forward_wenner((np.array([200.0, 40.0, 4000.0]), np.array([2.0, 10.0])), a)
+    rho = rho * np.exp(0.03 * np.sin(1.7 * np.arange(len(a))))
+    rho[6] *= 1.3  # the repeat at 8 m disagrees
+    out.append(VESSounding(site=SiteMetadata(), sounding_id="wenner repeat", ab2=a,
+                           mn=np.full(len(a), np.nan), rho_app=rho, array_type="wenner"))
+    return out
+
+
+def _range_dict(r, text: bool = True, fan: bool = True) -> dict:
+    out = clean(dataclasses.asdict(r))
+    if text:
+        out["text"] = model_range_text(r)
+        out["caption"] = model_range_caption(r)
+    if not fan:
+        for key in ("fan", "fan_curves", "start_points"):
+            out.pop(key)
+    return out
+
+
+def _range_text_cases() -> list:
+    """Every branch of the sentences, on ranges built by hand: the plan's
+    own example, basement always, rarely and never in reach, a share under
+    1 percent, a dry profile, a capped depth, a better fit found, overlaps
+    and widened errors, and basement in exactly the share that quotes it."""
+    from groundwater.ves.model_range import Band, ModelRange
+
+    base = dict(
+        sounding_id="VES 1", n_layers=3, n_samples=4000, chains=4, starts=8, seed=1,
+        base_error_percent=3.0, overlap_spacings=[], error_scale=1.0, acceptance=0.25,
+        accepted=[250, 250, 250, 250], investigation_depth_m=50.0,
+        basement_m=Band(22.3, 27.0, 34.2), basement_unresolved=0.3,
+        weathered_m=Band(12.0, 15.0, 19.6),
+        resistivity=[Band(310.4, 452.0, 1234.5), Band(41.25, 60.0, 88.88),
+                     Band(2999.5, 5000.0, 12500.0)],
+        interface_m=[Band(1.52, 2.0, 2.648), Band(18.05, 22.5, 30.0)],
+        drilling_depth_m=35.0, drilling_depth_capped=False,
+        chosen_error_percent=4.0, best_error_percent=4.0, ab2=[],
+    )
+    changes = [
+        {}, {"basement_unresolved": 0.0}, {"basement_unresolved": 0.95},
+        {"basement_m": None, "basement_unresolved": 1.0}, {"basement_unresolved": 0.002},
+        {"basement_unresolved": 0.997}, {"weathered_m": Band(0.0, 0.0, 0.2)},
+        {"drilling_depth_m": 50.0, "drilling_depth_capped": True},
+        {"best_error_percent": 2.0, "n_layers": 4},
+        {"overlap_spacings": [10.0, 40.0], "error_scale": 2.5, "chains": 1},
+        {"overlap_spacings": [7.5], "base_error_percent": 2.5, "starts": 0},
+        # basement in exactly a tenth of the models, as 400 of 4,000 store it:
+        # the band is quoted at the threshold, not lost to a last bit
+        {"basement_unresolved": 1.0 - 400 / 4000},
+    ]
+    out = []
+    for change in changes:
+        r = ModelRange(**{**base, **change})
+        out.append({"range": clean(dataclasses.asdict(r)), "text": model_range_text(r),
+                    "caption": model_range_caption(r), "rows": model_range_rows(r),
+                    "table_caption": model_range_table_caption(r)})
+    return out
+
+
+# --check holds the range to the tolerances parity.mjs holds the browser to,
+# not to CHECK_RTOL. Its chains start from Levenberg-Marquardt fits, which a
+# different BLAS build, or OpenBLAS with more threads, rounds differently;
+# on a flat equivalence valley that moves a polished start by a few parts in
+# a million, and every sample of the chain started there moves with it. One
+# thread against four on this machine moved the short runs by 2e-6. Only the
+# sampler's runs are loosened: the generator's words, its steps, the Latin
+# hypercube and the hand-built sentence cases involve no fit, so they are
+# held to CHECK_RTOL like every other entry.
+RANGE_RTOL = {".ves_range.default": 2e-2, ".ves_range.short": 1e-4,
+              ".ves_range.synthetic": 1e-4}
+
+
+def range_tolerated(path: str, fresh, committed) -> bool:
+    """Whether a difference --check found is inside the range's tolerance."""
+    for prefix, rtol in RANGE_RTOL.items():
+        if path.startswith(prefix + ".") or path.startswith(prefix + "["):
+            return (isinstance(fresh, (int, float)) and isinstance(committed, (int, float))
+                    and not isinstance(fresh, bool)
+                    and math.isclose(fresh, committed, rel_tol=rtol, abs_tol=1e-12))
+    return False
+
+
+# The Papadopulos-Cooper fit's own numbers on a sheet it fits badly sit on a
+# valley floor flat to within the Stehfest inversion's rounding, so another
+# BLAS build or scipy stops the optimiser a few parts in a hundred thousand
+# away (3e-5 relative, Python on the CI runner against this machine). --check
+# holds them to the 1e-3 relative parity.mjs holds the browser to; where the
+# fit is adopted it is held to CHECK_RTOL, as is everything resting on it.
+PC_RTOL = 1e-3
+_PC_PATH = re.compile(r"^\.pumping_spread\.cases\.([^.]+)\.pc\[\d+\]$")
+
+
+def pc_tolerated(path: str, fresh, committed, reference: dict) -> bool:
+    """Whether a difference --check found is a badly fitting large-diameter
+    fit's own number, inside parity's tolerance for it."""
+    match = _PC_PATH.match(path)
+    if not match:
+        return False
+    case = reference.get("pumping_spread", {}).get("cases", {}).get(match.group(1)) or {}
+    if case.get("source") == "papadopulos_cooper":
+        return False
+    return (isinstance(fresh, (int, float)) and isinstance(committed, (int, float))
+            and not isinstance(fresh, bool)
+            and math.isclose(fresh, committed, rel_tol=PC_RTOL, abs_tol=1e-12))
+
+
+def ves_range_reference(soundings, inversions) -> dict:
+    streams = {}
+    for seed, stream in ((1, 0), (1, 1), (20261004, 7), (0, 0), (-1, 3)):
+        rng = Stream(seed, stream)
+        streams[f"{seed}/{stream}"] = [rng.next_u32() for _ in range(6)]
+    rng = Stream(2, 3)
+    symmetric = [rng.symmetric() for _ in range(8)]
+    lhs = latin_hypercube(Stream(1, 0), 6, [0.0, -1.0, 2.0], [1.0, 3.0, 2.5])
+    short = Config()
+    for key, value in RANGE_SHORT.items():
+        setattr(short.ves_range, key, value)
+    synthetic = [{
+        "id": s.sounding_id, "array": s.array_type,
+        "ab2": clean(s.ab2), "rho": clean(s.rho_app),
+        "range": _range_dict(sample_model_range(s, invert_sounding(s), short)),
+    } for s in _range_soundings()]
+    return {
+        "streams": streams,
+        "symmetric": symmetric,
+        "lhs": lhs,
+        "short_settings": RANGE_SHORT,
+        "short": [_range_dict(sample_model_range(s, inv, short))
+                  for s, inv in zip(soundings, inversions, strict=True)],
+        "default": [_range_dict(sample_model_range(s, inv, Config()), text=False, fan=False)
+                    for s, inv in zip(soundings, inversions, strict=True)],
+        "synthetic": synthetic,
+        "text_cases": _range_text_cases(),
     }
 
 
@@ -775,6 +949,7 @@ def build() -> dict:
     ]
     out["preference"] = drilling_preference_table(rokel_interps)
     out["ves_text"] = ves_text(rokel_inversions, rokel_interps)
+    out["ves_range"] = ves_range_reference(soundings, rokel_inversions)
 
     # A siting survey with no borehole yet: the design comes from the
     # interpretation alone. The degenerate half-space used to make this an
@@ -1471,6 +1646,7 @@ def build() -> dict:
     out["photo_evidence"] = photo_evidence_reference()
     out["field_kit"] = field_kit_reference()
     out["airlift"] = airlift_reference()
+    out["pumping_spread"] = pumping_spread_reference()
     return out
 
 
@@ -1509,6 +1685,185 @@ def airlift_reference() -> dict:
         except ValueError:
             results.append(None)
     return {"cases": AIRLIFT_CASES, "results": results}
+
+
+# ------------------------------------- pumping spread and diagnostics (step 3.2)
+
+def _large_diameter_grid() -> list[list]:
+    """Dr Timbo's sheet rewritten as a thirty-minute test on a borehole whose
+    casing holds most of what is pumped (T = 0.3 m2/day): every fit is
+    disqualified and the Papadopulos-Cooper fit is adopted."""
+    from groundwater.hydraulics.spread import pc_model
+    from groundwater.ingestion import common
+
+    grid, _ = common.load_grid(DATA / "dr_timbo" / "dr_timbo_constant_test.xlsx")
+    grid = json.loads(json.dumps(grid, default=str))
+    for row in grid[11:]:
+        for c in range(15):
+            row[c] = None
+    grid[4][4], grid[5][1], grid[5][4], grid[8][2] = 60, 5.0, 50, 1.0
+    times = [0, 1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30]
+    drawdown = pc_model(24.0, 0.1, 0.0615)(
+        np.array(times[1:], float) / 1440.0, math.log10(0.3), -3.0)
+    levels = [5.0] + [round(5.0 + float(s), 2) for s in drawdown]
+    for i, (t, level) in enumerate(zip(times, levels, strict=True)):
+        grid[11 + i][0], grid[11 + i][1] = t, level
+    for i, t in enumerate([0, 1, 2, 3, 4, 5, 10, 15, 20, 30]):
+        grid[11 + i][12] = t
+        grid[11 + i][13] = round(levels[-1] - 0.05 * math.log1p(t), 2)
+    return grid
+
+
+def _wide_band_grid() -> list[list]:
+    """An hour's test whose readings scatter by up to three metres about a
+    straight line on log time: the Theis fit is adopted, two resamples fail,
+    and the band is too wide for the safety factor, so the rate is not called
+    sustainable."""
+    from groundwater.ingestion import common
+
+    grid, _ = common.load_grid(DATA / "dr_timbo" / "dr_timbo_constant_test.xlsx")
+    grid = json.loads(json.dumps(grid, default=str))
+    for row in grid[11:]:
+        for c in range(15):
+            row[c] = None
+    grid[4][4], grid[5][1], grid[5][4], grid[8][2] = 60, 5.0, 50, 2.0
+    times = [0, 1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 60]
+    wobble = [0, 0.1, -0.2, 0.15, -0.1, 0.3, -0.4, 0.5, -0.3, 0.6, -0.5, 0.7, -0.6,
+              0.8, -0.7, 0.9, -0.2]
+    for i, t in enumerate(times):
+        s = 0.0 if t == 0 else 1.2 * math.log10(t) + 2.0 + 3.5 * wobble[i]
+        grid[11 + i][0], grid[11 + i][1] = t, round(5.0 + s, 2)
+    return grid
+
+
+def _spread_summary(analysis) -> dict:
+    """What step 3.2 adds to an analysis, as parity.mjs reads it back."""
+    from groundwater.hydraulics.spread import (
+        diagnostic_text,
+        papadopulos_cooper_text,
+        spread_paragraphs,
+        sustainable_sentence,
+    )
+
+    th, pc, sp, dg = (analysis.theis, analysis.papadopulos_cooper, analysis.spread,
+                      analysis.diagnostic)
+    boot = sp.bootstrap if sp else None
+    rec = analysis.yield_recommendation
+    return clean({
+        "source": analysis.transmissivity_source,
+        "T": analysis.transmissivity_m2_per_day,
+        "theis": [th.transmissivity_m2_per_day, th.transmissivity_low_m2_per_day,
+                  th.transmissivity_high_m2_per_day] if th else None,
+        "pc": [pc.transmissivity_m2_per_day, pc.storativity, pc.alpha, pc.rmse_m,
+               pc.transmissivity_low_m2_per_day, pc.transmissivity_high_m2_per_day]
+              if pc else None,
+        "pc_invalid": analysis.papadopulos_cooper_invalid,
+        "boot": {k: getattr(boot, k) for k in (
+            "method", "replicates", "failed", "block_length", "seed", "n_points",
+            "p10", "p50", "p90", "reason")} if boot else None,
+        "spread": [sp.safe_yield_low_m3_per_h, sp.safe_yield_high_m3_per_h,
+                   sp.long_term_low_m3_per_h, sp.holds_at_dry_season,
+                   sp.pump_depth_low_m, sp.pump_depth_high_m] if sp else None,
+        "diagnostic": {
+            "t": dg.derivative_time_min, "d": dg.derivative_m, "slopes": dg.slopes,
+            "regimes": [[r.key, r.start_min, r.end_min, r.slope, r.n_points]
+                        for r in dg.regimes],
+            "plateau": dg.plateau_transmissivity_m2_per_day,
+        } if dg else None,
+        "safe": rec.safe_yield_m3_per_h if rec else None,
+        "range_text": rec.yield_range_text if rec else None,
+        "confidence": rec.confidence if rec else None,
+        "text": spread_paragraphs(analysis) + [
+            diagnostic_text(dg), papadopulos_cooper_text(analysis),
+            sustainable_sentence(rec, sp) or ""],
+    })
+
+
+def _regime_curves() -> dict:
+    """Synthetic drawdowns with one regime each, as minutes and metres."""
+    from scipy.special import exp1
+
+    from groundwater.hydraulics.spread import pc_model
+
+    t = np.geomspace(0.5, 3000, 45)
+
+    def theis(radius=0.1):
+        u = radius**2 * 1e-3 / (4 * 5.0 * t / 1440)
+        return 48.0 / (4 * math.pi * 5.0) * exp1(u)
+
+    return {
+        "radial": theis(),
+        "storage": pc_model(48.0, 0.1, 0.0615)(t / 1440, math.log10(0.5), -3.0),
+        "linear": 0.3 * np.sqrt(t),
+        "recharge": theis() - theis(60.0),
+        "barrier": theis() + theis(60.0),
+    }, t
+
+
+def pumping_spread_reference() -> dict:
+    """The bands, the derivative and the large-diameter fit, in both engines.
+
+    The generator's stream, the Bessel functions and the well function are
+    compared value for value; each pumping sheet's analysis is compared
+    through _spread_summary, its sentences word for word.
+    """
+    from types import SimpleNamespace
+
+    from scipy.special import k0e, k1e
+
+    from groundwater.hydraulics.spread import (
+        Mulberry32,
+        block_length,
+        diagnose,
+        pc_well_function,
+        quantile,
+    )
+    from groundwater.ingestion.pumping import _assemble
+
+    out: dict = {}
+    streams = {}
+    for seed in (1, 32, 4294967295):
+        rng = Mulberry32(seed)
+        streams[str(seed)] = [rng.next_float() for _ in range(50)]
+    out["mulberry32"] = streams
+    out["blocks"] = [[n, block_length(n)] for n in (1, 5, 8, 9, 26, 27, 28, 64, 65, 125)]
+    values = [3.0, 1.0, 4.0, 1.5, 9.0, 2.6, 5.35]
+    out["quantile"] = {"values": values,
+                       "q": [[q, quantile(values, q)] for q in (0, 0.1, 0.25, 0.5, 0.9, 1)]}
+    out["bessel"] = [[x, float(k0e(x)), float(k1e(x))]
+                     for x in (1e-6, 0.01, 0.5, 1.999, 2.0, 2.001, 7.5, 40.0, 900.0)]
+    out["well_function"] = [[u, a, pc_well_function(u, a)]
+                            for a in (1e-1, 1e-3, 1e-5) for u in (1.0, 1e-2, 1e-4, 1e-6)]
+
+    curves, t = _regime_curves()
+    regimes = {}
+    for name, s in curves.items():
+        test = SimpleNamespace(static_water_level_m=0.0, steps=[SimpleNamespace(
+            time_min=t, water_level_m=np.asarray(s), discharge_m3_per_h=2.0)])
+        dg = diagnose(SimpleNamespace(test=test))
+        regimes[name] = {
+            "t": clean(t), "s": clean(np.asarray(s)),
+            "regimes": clean([[r.key, r.start_min, r.end_min, r.slope, r.n_points]
+                              for r in dg.regimes]),
+            "plateau": clean(dg.plateau_transmissivity_m2_per_day),
+        }
+    out["regimes"] = regimes
+
+    from groundwater.ingestion import common
+
+    # the edge sheets travel in pumping_cases already; parity reads them there
+    edge = _pumping_case_grids()
+    timbo, _ = common.load_grid(DATA / "dr_timbo" / "dr_timbo_constant_test.xlsx")
+    own = {"dr_timbo": json.loads(json.dumps(timbo, default=str)),
+           "large_diameter": _large_diameter_grid(),
+           "wide_band": _wide_band_grid()}
+    cases = {}
+    for name, grid in list(own.items()) + list(edge.items()):
+        test = _assemble(grid, f"{name}.xlsx")
+        cases[name] = {"grid": json.dumps(grid) if name in own else None,
+                       **_spread_summary(analyse_pumping_test(test))}
+    out["cases"] = cases
+    return out
 
 
 # ----------------------------------------------- photo evidence (step 2.4)
@@ -2355,9 +2710,12 @@ def main() -> int:
         print(f"{OUT} is missing; run this without --check to create it")
         return 1
     committed = json.loads(OUT.read_text(encoding="utf-8"))
-    differences = list(drifted(fresh, committed))
+    differences = [d for d in drifted(fresh, committed)
+                   if not range_tolerated(*d) and not pc_tolerated(*d, committed)]
     if not differences:
-        print(f"{OUT} agrees with this toolkit to {CHECK_RTOL:g} relative")
+        print(f"{OUT} agrees with this toolkit to {CHECK_RTOL:g} relative "
+              "(the range of models to RANGE_RTOL, a badly fitting large-diameter "
+              "fit to PC_RTOL)")
         return 0
     print(f"{OUT} disagrees with this toolkit in {len(differences)} place(s):")
     for path, a, b in differences[:20]:

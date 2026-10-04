@@ -152,10 +152,34 @@ def _pumping(path: Path, name: str, options: dict) -> dict:
             "B": num(a.step_test.aquifer_loss_B) if a.step_test else None,
             "C": num(a.step_test.well_loss_C) if a.step_test else None,
             "flags": flag_rows(a.flags),
+            "spread": _spread(a),
         }
     except Exception as exc:  # noqa: BLE001
         out["analysis"] = failure(exc)
     return out
+
+
+def _spread(a) -> dict:
+    """PLAN.md step 3.2: the bootstrap band, the bands it gives, the regimes.
+
+    The band of a Papadopulos-Cooper fit is left out: that fit's valley floor
+    is flat to within the Stehfest inversion's rounding, and parity.mjs holds
+    it to 1e-3, not to the 1e-4 the fitted quantities here are held to.
+    """
+    sp = a.spread
+    boot = sp.bootstrap if sp else None
+    exact = boot is not None and boot.method != "papadopulos_cooper"
+    th = a.theis
+    return {
+        "method": boot.method if boot else None,
+        "p10": num(boot.p10) if exact else None,
+        "p90": num(boot.p90) if exact else None,
+        "holds": bool(sp.holds_at_dry_season) if sp else None,
+        "pump": [num(sp.pump_depth_low_m), num(sp.pump_depth_high_m)] if sp else None,
+        "regimes": [r.key for r in a.diagnostic.regimes] if a.diagnostic else None,
+        "theis_band": [num(th.transmissivity_low_m2_per_day),
+                       num(th.transmissivity_high_m2_per_day)] if th else None,
+    }
 
 
 def _quality(path: Path, name: str, options: dict) -> dict:

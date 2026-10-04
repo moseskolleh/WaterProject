@@ -23,6 +23,7 @@ _DEFAULTS = bundled_json("defaults.json")
 _STYLE, _VES, _PUMPING, _DESIGN = (
     _DEFAULTS["style"], _DEFAULTS["ves"], _DEFAULTS["pumping"], _DEFAULTS["design"],
 )
+_RANGE = _DEFAULTS["ves_range"]
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +146,36 @@ class PumpingConfig:
     # casing, not the aquifer: no aquifer has a storage coefficient of 0.18,
     # and a single pumped well cannot resolve S anyway.
     max_plausible_storativity: float = _PUMPING["max_plausible_storativity"]
+    # The spread of the adopted fit (hydraulics/spread.py): resamples in the
+    # moving-block bootstrap of its residuals, and the seed of the generator
+    # that draws them, fixed so a sheet gives the same band on every run and
+    # in both apps. 400 resamples put the 10th and 90th percentiles within
+    # about 0.015 in probability of where an endless run would. Measured on a
+    # 24-reading test: 1.4 ms (Cooper-Jacob), 8 ms (Theis) and 0.76 s
+    # (Papadopulos-Cooper) in the browser, 3.8 s for the last at a 4x CPU
+    # slowdown, and 2.6 s for it in Python. The large-diameter fit is
+    # adopted only where every other fit is disqualified.
+    bootstrap_replicates: int = _PUMPING["bootstrap_replicates"]
+    bootstrap_seed: int = _PUMPING["bootstrap_seed"]
+    # The Bourdet derivative: neighbours at least this many log cycles apart
+    # (Bourdet, Ayoub and Pirard's L; 0.2 smooths a dipper's centimetre
+    # without flattening a regime half a cycle long), the
+    # width in log cycles of the window its log-log slope is read over, and
+    # the span a run of one slope class must cover to be named a regime.
+    diagnostic_l_log10: float = _PUMPING["diagnostic_l_log10"]
+    diagnostic_window_log10: float = _PUMPING["diagnostic_window_log10"]
+    diagnostic_min_span_log10: float = _PUMPING["diagnostic_min_span_log10"]
+    # The log-log slopes of the derivative that name a regime: about 1 for
+    # casing storage, about 1/2 for linear flow along a fracture, about 0
+    # for radial flow, and a clear fall for a recharge boundary or leakage.
+    # These are judgements, set where a hydrogeologist reading the plot by
+    # eye would draw them, and listed in the report so they can be argued.
+    regime_unit_slope_min: float = _PUMPING["regime_unit_slope_min"]
+    regime_unit_slope_max: float = _PUMPING["regime_unit_slope_max"]
+    regime_half_slope_min: float = _PUMPING["regime_half_slope_min"]
+    regime_half_slope_max: float = _PUMPING["regime_half_slope_max"]
+    regime_flat_max: float = _PUMPING["regime_flat_max"]
+    regime_falling_max: float = _PUMPING["regime_falling_max"]
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +210,40 @@ class DesignRules:
 
 
 # ---------------------------------------------------------------------------
+# The range of VES models (PLAN.md step 3.1)
+#
+# A section of its own rather than more VESConfig fields: the inversion cache
+# key carries the whole VESConfig, and none of these changes what the
+# inversion returns, so adding them there would have thrown away every saved
+# inversion for nothing.
+# ---------------------------------------------------------------------------
+
+@dataclass
+class VESRangeConfig:
+    # The sampler's random numbers come from this seed, through a generator
+    # both engines implement to the bit, so one sounding gives one range.
+    seed: int = _RANGE["seed"]
+    # Starting models drawn by Latin hypercube and polished by the same
+    # Levenberg-Marquardt fit the inversion uses, beside the inversion's own.
+    starts: int = _RANGE["starts"]
+    # Metropolis-Hastings chains, each started from one of the best fits.
+    chains: int = _RANGE["chains"]
+    # Models kept over all the chains, after burn-in. Each costs one forward
+    # call; bench/README.md says what that costs and why this number.
+    samples: int = _RANGE["samples"]
+    # Steps each chain takes and throws away first, while it finds its
+    # step size; they cost a forward call each too.
+    burn_in: int = _RANGE["burn_in"]
+    # The error on every reading, in percent of the apparent resistivity,
+    # before the measured disagreement at any MN overlap is added to it.
+    # Provisional: the instrument's repeatability is about 1 percent; this
+    # allows for electrode contact and small lateral changes as well.
+    base_error_percent: float = _RANGE["base_error_percent"]
+    # How many of the sampled models are drawn as the fan over the curve.
+    fan_models: int = _RANGE["fan_models"]
+
+
+# ---------------------------------------------------------------------------
 # Top level configuration
 # ---------------------------------------------------------------------------
 
@@ -208,6 +273,7 @@ class Config:
     ves: VESConfig = field(default_factory=VESConfig)
     pumping: PumpingConfig = field(default_factory=PumpingConfig)
     design: DesignRules = field(default_factory=DesignRules)
+    ves_range: VESRangeConfig = field(default_factory=VESRangeConfig)
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> Config:
@@ -225,6 +291,7 @@ class Config:
             ("ves", cfg.ves),
             ("pumping", cfg.pumping),
             ("design", cfg.design),
+            ("ves_range", cfg.ves_range),
         ):
             overrides = data.get(section_name, {}) or {}
             for key, value in overrides.items():
@@ -239,10 +306,10 @@ class Config:
                     continue
                 setattr(section, key, _coerce_like(getattr(section, key), value, key))
         for key in data:
-            if key not in ("style", "ves", "pumping", "design"):
+            if key not in ("style", "ves", "pumping", "design", "ves_range"):
                 warnings.warn(
                     f"{path.name}: unknown section '{key}' is ignored "
-                    "(expected style, ves, pumping or design)",
+                    "(expected style, ves, pumping, design or ves_range)",
                     stacklevel=2,
                 )
         return cfg

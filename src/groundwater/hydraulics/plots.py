@@ -22,6 +22,7 @@ from .analysis import (
     StepTestResult,
     TheisResult,
 )
+from .spread import Diagnostic
 
 __all__ = [
     "plot_test_overview",
@@ -29,6 +30,7 @@ __all__ = [
     "plot_theis",
     "plot_recovery",
     "plot_step_test",
+    "plot_diagnostic",
 ]
 
 
@@ -306,6 +308,68 @@ def plot_step_test(
                 fontsize=9,
             )
             ax2.legend(loc="best", fontsize=8)
+        fig.tight_layout()
+        if path is not None:
+            return save_figure(fig, path, style)
+        return fig
+
+
+#: Short names for the regimes on the diagnostic plot; the report's text
+#: gives them in full (pumping.regimes in the text catalogue).
+REGIME_LABELS = {
+    "wellbore_storage": "casing storage",
+    "storage_ending": "end of storage",
+    "radial_flow": "radial flow",
+    "linear_flow": "linear flow",
+    "recharge_boundary": "recharge boundary",
+    "no_flow_boundary": "no-flow boundary",
+    "closed_boundary": "closed boundary",
+}
+
+
+def plot_diagnostic(
+    diagnostic: Diagnostic,
+    path: str | Path | None = None,
+    style: HouseStyle | None = None,
+    title: str = "Diagnostic plot (Bourdet derivative)",
+):
+    """Drawdown and its Bourdet derivative on log-log axes, regimes marked.
+
+    The derivative is ds/d ln t, so a plateau at height d is radial flow with
+    T = Q / (4 pi d); guides of slope 1 and 1/2 are drawn from the first
+    derivative point so a unit or a half slope can be read by eye.
+    """
+    style = style or HouseStyle()
+    t = np.asarray(diagnostic.time_min, dtype=float)
+    s = np.asarray(diagnostic.drawdown_m, dtype=float)
+    dt = np.asarray(diagnostic.derivative_time_min, dtype=float)
+    dd = np.asarray(diagnostic.derivative_m, dtype=float)
+    positive = dd > 0
+    with figure_context(style):
+        fig, ax = plt.subplots(figsize=(style.figure_width_in * 0.85, 3.4))
+        for k, regime in enumerate(diagnostic.regimes):
+            ax.axvspan(regime.start_min, regime.end_min, color=style.accent_color,
+                       alpha=0.06 + 0.05 * (k % 2), lw=0)
+            ax.text((regime.start_min * regime.end_min) ** 0.5, 0.97,
+                    REGIME_LABELS.get(regime.key, regime.key),
+                    transform=ax.get_xaxis_transform(), ha="center", va="top",
+                    fontsize=7, color="#444444")
+        ax.loglog(t, s, "o", ms=4, mfc="white", mec=style.accent_color, mew=1.2,
+                  label="drawdown s")
+        if positive.any():
+            ax.loglog(dt[positive], dd[positive], "^", ms=4.5,
+                      color=style.secondary_color,
+                      label=f"derivative ds/d ln t (L = {diagnostic.l_log10:g} log cycle)")
+            # slope guides through the first derivative point
+            x0, y0 = dt[positive][0], dd[positive][0]
+            guide = np.array([x0, max(min(x0 * 10.0, t.max()), x0 * 1.5)])
+            ax.loglog(guide, y0 * guide / x0, ":", color="#999999", lw=1.0,
+                      label="slopes 1 and 1/2")
+            ax.loglog(guide, y0 * np.sqrt(guide / x0), ":", color="#999999", lw=1.0)
+        ax.set_xlabel("Time since pumping started (min)")
+        ax.set_ylabel("Drawdown and derivative (m)")
+        ax.set_title(title)
+        ax.legend(loc="lower right", fontsize=7.5)
         fig.tight_layout()
         if path is not None:
             return save_figure(fig, path, style)

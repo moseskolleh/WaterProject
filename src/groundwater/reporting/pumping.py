@@ -27,12 +27,20 @@ from ..hydraulics.analysis import (
 )
 from ..hydraulics.plots import (
     plot_cooper_jacob,
+    plot_diagnostic,
     plot_recovery,
     plot_step_test,
     plot_test_overview,
     plot_theis,
 )
+from ..hydraulics.spread import (
+    diagnostic_text,
+    diagnostic_thresholds_text,
+    papadopulos_cooper_text,
+    spread_paragraphs,
+)
 from ..seasonal import MONTH_NAMES
+from ..text import phrase_table
 from ..utils import fmt_num, safe_slug
 from .citations import GLOSSARY, references_for
 from .docx_utils import ReportBuilder
@@ -271,6 +279,20 @@ def build_pumping_report(
     swl = test.static_water_level_m
     section = 0
 
+    # The flow regime first: it says which of the models below the readings
+    # can be read with (PLAN.md step 3.2).
+    if analysis.diagnostic is not None:
+        section += 1
+        rb.heading(f"3.{section} Flow regime (diagnostic plot)", 2)
+        diag_path = figures / f"diagnostic_{slug}.png"
+        plot_diagnostic(analysis.diagnostic, path=diag_path, style=config.style)
+        rb.figure(diag_path, "Drawdown and its Bourdet derivative on log-log axes, "
+                  "with the flow regimes the derivative's slope names.")
+    rb.paragraph(diagnostic_text(analysis.diagnostic), align="justify")
+    if analysis.diagnostic is not None:
+        rb.paragraph(diagnostic_thresholds_text(config.pumping), align="justify",
+                     italic=True)
+
     if analysis.cooper_jacob is not None:
         section += 1
         cj = analysis.cooper_jacob
@@ -315,6 +337,11 @@ def build_pumping_report(
             align="justify",
         )
         _not_adopted(rb, analysis, "theis")
+
+    if analysis.papadopulos_cooper is not None:
+        section += 1
+        rb.heading(f"3.{section} Papadopulos-Cooper large-diameter solution", 2)
+        rb.paragraph(papadopulos_cooper_text(analysis), align="justify")
 
     if analysis.recovery is not None:
         section += 1
@@ -397,10 +424,14 @@ def build_pumping_report(
     source = analysis.transmissivity_source
     _, _, qualifies = analysis.adopted_fit()
     rows = []
-    for key in ("cooper_jacob", "theis", "recovery"):
+    for key in ("cooper_jacob", "theis", "recovery", "papadopulos_cooper"):
         result = getattr(analysis, key)
         if result is not None:
-            if key == source:
+            if key == "papadopulos_cooper":
+                # it has no R squared and no casing-storage period to fail
+                status = analysis.papadopulos_cooper_invalid or phrase_table(
+                    "pumping.pc_status")["adopted" if key == source else "reported"]
+            elif key == source:
                 status = ("adopted" if qualifies
                           else "adopted as the best available; "
                           + analysis.why_not_adopted(key))
@@ -450,6 +481,8 @@ def build_pumping_report(
         rb.paragraph(yr.basis, align="justify")
         if yr.envelope_basis:
             rb.paragraph(yr.envelope_basis, align="justify")
+        for line in spread_paragraphs(analysis, config.pumping):
+            rb.paragraph(line, align="justify")
         if yr.pump_depth_basis:
             rb.paragraph(yr.pump_depth_basis, align="justify")
         if yr.safe_yield_m3_per_h:

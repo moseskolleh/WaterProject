@@ -98,6 +98,7 @@ def plot_sounding_curve(
     depth_max: float | None = None,
     reference_model: LayeredModel | None = None,
     reference_label: str = "reference model",
+    model_range=None,
 ):
     """Log-log sounding curve with optional fitted model panel.
 
@@ -112,6 +113,9 @@ def plot_sounding_curve(
     investigation dashed where the panel runs past it.
     ``reference_model`` (an imported IPI2Win model, say) is drawn dashed
     on both panels so the two interpretations can be read together.
+    ``model_range`` (:func:`groundwater.ves.model_range.sample_model_range`)
+    draws its fan of sampled models in grey under the best fit, on both
+    panels.
     """
     style = style or HouseStyle()
     with figure_context(style):
@@ -145,6 +149,10 @@ def plot_sounding_curve(
                 ab2_s, rho_s, "-", color=style.accent_color, lw=1.0, alpha=0.8,
                 label="spliced curve",
             )
+        if model_range is not None:
+            for k, curve in enumerate(model_range.fan_curves):
+                ax.loglog(model_range.ab2, curve, "-", color="#999999", lw=0.6,
+                          alpha=0.4, label="models that fit" if k == 0 else None)
         if model is not None:
             if rho_calc is None or ab2_calc is None:
                 ab2_calc = np.geomspace(sounding.ab2.min(), sounding.ab2.max(), 60)
@@ -189,6 +197,10 @@ def plot_sounding_curve(
             # shown is not the model fitted
             depth_max = model_depth_m(model, doi)
             _mark_investigation_depth(axm, doi, depth_max)
+            if model_range is not None:
+                for rho_k, h_k in model_range.fan:
+                    z_k, r_k = _model_step(LayeredModel(rho_k, h_k), depth_max)
+                    axm.plot(r_k, z_k, color="#999999", lw=0.6, alpha=0.4)
             z, r = _model_step(model, depth_max)
             axm.plot(r, z, color=style.secondary_color, lw=2.0, label="fitted model")
             if reference_model is not None:
