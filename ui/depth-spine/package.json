@@ -12,17 +12,17 @@
     "build:all": "npm run build && npm run build:inline"
   },
   "dependencies": {
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.3",
-    "oxlint": "^1.71.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "oxlint": "^1.86.0",
     "typescript": "~6.0.2",
-    "vite": "^8.1.1",
+    "vite": "^8.3.1",
     "vite-plugin-singlefile": "^2.3.3"
   },
   "description": "Depth Spine borehole workspace \u2014 Geomentaqua Groundwater Investigation Toolkit"
