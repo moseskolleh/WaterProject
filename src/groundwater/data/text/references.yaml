@@ -66,6 +66,34 @@ citations:
   hantush: >-
     Hantush, M.S. (1964). Hydraulics of wells. In V.T. Chow (ed.), Advances in
     Hydroscience, 1, 281-442.
+  # The spread and the diagnostic plot of the pumping test (PLAN.md step
+  # 3.2, hydraulics/spread.py), cited alike by both apps' pumping reports.
+  papadopulos_cooper: >-
+    Papadopulos, I.S. and Cooper, H.H. (1967). Drawdown in a well of large
+    diameter. Water Resources Research, 3(1), 241-244.
+  stehfest: >-
+    Stehfest, H. (1970). Algorithm 368: Numerical inversion of Laplace
+    transforms. Communications of the ACM, 13(1), 47-49.
+  bourdet: >-
+    Bourdet, D., Ayoub, J.A. and Pirard, Y.M. (1989). Use of pressure
+    derivative in well-test interpretation. SPE Formation Evaluation, 4(2),
+    293-302.
+  renard_diagnostic: >-
+    Renard, P., Glenz, D. and Mejias, M. (2009). Understanding diagnostic plots
+    for well-test interpretation. Hydrogeology Journal, 17(3), 589-600.
+  kunsch: >-
+    Kuensch, H.R. (1989). The jackknife and the bootstrap for general
+    stationary observations. The Annals of Statistics, 17(3), 1217-1241.
+  hall_horowitz_jing: >-
+    Hall, P., Horowitz, J.L. and Jing, B.-Y. (1995). On blocking rules for the
+    bootstrap with dependent data. Biometrika, 82(3), 561-574.
+  politis_romano: >-
+    Politis, D.N. and Romano, J.P. (1992). A circular block-resampling
+    procedure for stationary data. In R. LePage and L. Billard (eds),
+    Exploring the Limits of Bootstrap, 263-270. Wiley, New York.
+  davison_hinkley: >-
+    Davison, A.C. and Hinkley, D.V. (1997). Bootstrap Methods and their
+    Application. Cambridge University Press.
   niwas_singhal: >-
     Niwas, S. and Singhal, D.C. (1981). Estimation of aquifer transmissivity
     from Dar-Zarrouk parameters in porous media. Journal of Hydrology, 50,

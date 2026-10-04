@@ -146,6 +146,36 @@ class PumpingConfig:
     # casing, not the aquifer: no aquifer has a storage coefficient of 0.18,
     # and a single pumped well cannot resolve S anyway.
     max_plausible_storativity: float = _PUMPING["max_plausible_storativity"]
+    # The spread of the adopted fit (hydraulics/spread.py): resamples in the
+    # moving-block bootstrap of its residuals, and the seed of the generator
+    # that draws them, fixed so a sheet gives the same band on every run and
+    # in both apps. 400 resamples put the 10th and 90th percentiles within
+    # about 0.015 in probability of where an endless run would. Measured on a
+    # 24-reading test: 1.4 ms (Cooper-Jacob), 8 ms (Theis) and 0.76 s
+    # (Papadopulos-Cooper) in the browser, 3.8 s for the last at a 4x CPU
+    # slowdown, and 2.6 s for it in Python. The large-diameter fit is
+    # adopted only where every other fit is disqualified.
+    bootstrap_replicates: int = _PUMPING["bootstrap_replicates"]
+    bootstrap_seed: int = _PUMPING["bootstrap_seed"]
+    # The Bourdet derivative: neighbours at least this many log cycles apart
+    # (Bourdet, Ayoub and Pirard's L; 0.2 smooths a dipper's centimetre
+    # without flattening a regime half a cycle long), the
+    # width in log cycles of the window its log-log slope is read over, and
+    # the span a run of one slope class must cover to be named a regime.
+    diagnostic_l_log10: float = _PUMPING["diagnostic_l_log10"]
+    diagnostic_window_log10: float = _PUMPING["diagnostic_window_log10"]
+    diagnostic_min_span_log10: float = _PUMPING["diagnostic_min_span_log10"]
+    # The log-log slopes of the derivative that name a regime: about 1 for
+    # casing storage, about 1/2 for linear flow along a fracture, about 0
+    # for radial flow, and a clear fall for a recharge boundary or leakage.
+    # These are judgements, set where a hydrogeologist reading the plot by
+    # eye would draw them, and listed in the report so they can be argued.
+    regime_unit_slope_min: float = _PUMPING["regime_unit_slope_min"]
+    regime_unit_slope_max: float = _PUMPING["regime_unit_slope_max"]
+    regime_half_slope_min: float = _PUMPING["regime_half_slope_min"]
+    regime_half_slope_max: float = _PUMPING["regime_half_slope_max"]
+    regime_flat_max: float = _PUMPING["regime_flat_max"]
+    regime_falling_max: float = _PUMPING["regime_falling_max"]
 
 
 # ---------------------------------------------------------------------------

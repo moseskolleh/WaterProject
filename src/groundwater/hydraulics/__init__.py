@@ -44,6 +44,7 @@ __all__ = [
     "plot_theis",
     "plot_recovery",
     "plot_step_test",
+    "plot_diagnostic",
 ]
 
 # Deferred: these pull matplotlib, openpyxl or python-docx, which the
@@ -54,6 +55,7 @@ _LAZY = {
     "plot_theis": ".plots",
     "plot_recovery": ".plots",
     "plot_step_test": ".plots",
+    "plot_diagnostic": ".plots",
 }
 
 # The submodules stayed reachable as attributes of the package while
@@ -61,6 +63,7 @@ _LAZY = {
 _LAZY_MODULES = (
     "analysis",
     "plots",
+    "spread",
 )
 
 __getattr__, __dir__ = _lazy_exports(__name__, _LAZY, _LAZY_MODULES)

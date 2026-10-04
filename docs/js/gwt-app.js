@@ -3471,6 +3471,11 @@
     ]));
 
     var methodFigures = [];
+    /* the flow regime first: it says which model the readings can be read
+     * with (PLAN.md step 3.2) */
+    var diag = charts.diagnostic(analysis);
+    if (diag) methodFigures.push(charts.figure(diag, 'Diagnostic plot (Bourdet derivative)',
+      { filename: 'diagnostic' }));
     var cj = charts.cooperJacob(analysis);
     if (cj) methodFigures.push(charts.figure(cj, 'Cooper-Jacob straight line fit',
       { filename: 'cooper_jacob' }));
@@ -3511,7 +3516,22 @@
                 : ' — not resolvable from a single pumped well') +
               methodStatus(analysis, 'theis', ''),
           } : null,
+          analysis.papadopulos_cooper ? {
+            method: 'Papadopulos-Cooper',
+            T: S.sig(analysis.papadopulos_cooper.transmissivity_m2_per_day, 4),
+            /* no storativity: the paragraph below says why it is not given,
+             * and the Streamlit page and both reports leave it out too */
+            note: (analysis.papadopulos_cooper_invalid ||
+                C.phraseTable('pumping.pc_status')[
+                  analysis.transmissivity_source === 'papadopulos_cooper'
+                    ? 'adopted' : 'reported']),
+          } : null,
         ].filter(Boolean)),
+        el('p.muted', C.diagnosticText(analysis.diagnostic)),
+        analysis.diagnostic
+          ? el('p.muted', C.diagnosticThresholdsText(config().pumping)) : null,
+        analysis.papadopulos_cooper
+          ? el('p.muted', C.papadopulosCooperText(analysis)) : null,
         Object.keys(analysis.disqualified || {}).length ? el('p.muted',
           'Not adopted for the yield: ' +
           Object.keys(analysis.disqualified).map(function (k) {
@@ -3548,6 +3568,10 @@
         : null,
       el('p', rec2.basis),
       rec2.envelope_basis ? el('div.callout', el('p', rec2.envelope_basis)) : null,
+      /* the bands from the data themselves, beside the assumptions' range */
+      C.spreadParagraphs(analysis, config().pumping).length
+        ? el('div.callout', C.spreadParagraphs(analysis, config().pumping)
+          .map(function (line) { return el('p', line); })) : null,
       rec2.pump_depth_basis ? el('p.muted', rec2.pump_depth_basis) : null,
       pumpIntakeMovedNote(),
       rec2.safe_yield_m3_per_h ? el('p.muted',
@@ -6861,6 +6885,8 @@
           context.assessment = derived.assessment;
           context.pumpType = store.get('handover.pumpType') || '';
           context.figures = figures;
+          /* the bands are worded with the reserve the analysis took */
+          context.config = cfg;
           builder = await docx.completionReport(context);
 
         } else if (kind === 'pumping') {
@@ -6870,6 +6896,11 @@
               derived.analysis, { hover: false })),
             caption: 'Water level through the pumping and recovery phases',
           });
+          /* the flow regime first, as the report reads it first */
+          var diagFig = charts.diagnostic(derived.analysis, { hover: false });
+          if (diagFig) figures.push({ image: await charts.toPng(diagFig),
+            caption: 'Drawdown and its Bourdet derivative on log-log axes, with ' +
+              "the flow regimes the derivative's slope names" });
           var cjFig = charts.cooperJacob(derived.analysis, { hover: false });
           if (cjFig) figures.push({ image: await charts.toPng(cjFig),
             caption: 'Cooper-Jacob straight line fit' });
@@ -6885,6 +6916,7 @@
             });
           context.analysis = derived.analysis;
           context.figures = figures;
+          context.config = cfg;
           builder = await docx.pumpingReport(context);
 
         } else if (kind === 'quality') {

@@ -1,0 +1,117 @@
+# What the pumping test results are worth (PLAN.md step 3.2): the spread of
+# the adopted transmissivity, the yield and the pump setting as bands, the
+# flow regime the Bourdet derivative shows, and the Papadopulos-Cooper fit.
+# Both engines write these sentences: hydraulics/spread.py and the "pumping
+# spread" section of gwt-core.js. The template rules are in
+# src/groundwater/text.py; CONTRIBUTING.md says how to add an entry.
+
+spread_transmissivity: >-
+  Resampling the {method} residuals in blocks of {block:g} consecutive readings
+  ({replicates:g} resamples of {n:g} readings, a circular block bootstrap) puts
+  the transmissivity between {low:num} and {high:num} m2/day (P10 to P90).
+  The band is narrower than its percentiles name: on synthetic tests with
+  independent 2 cm reading errors a band drawn this way held the true value
+  in 64 to 74 tests in a hundred, not 80, and in 48 when consecutive errors
+  ran together. Read it as the least the spread can be.
+spread_failed: >-
+  {failed:g} of the resamples gave no fit and are left out of the band.
+spread_withheld: >-
+  No band is given for the {method} transmissivity: {reason}.
+spread_reasons:
+  too_few: it rests on fewer than five readings, too few to resample
+  mostly_failed: more than half of the resampled readings gave no fit
+spread_yield: >-
+  With the static level lowered by the {reserve:g} m dry-season reserve, as
+  the recommendation is, that band puts the safe yield between {low:num} and
+  {high:num} m3/h.
+spread_yield_open: >-
+  With the static level lowered by the {reserve:g} m dry-season reserve, as
+  the recommendation is, that band puts the safe yield at {low:num} m3/h or
+  more; at the top of the band the drawdown no longer limits it.
+spread_holds: >-
+  At the low end of the band the long-term yield is {long_term:num} m3/h,
+  which still covers the recommended {rate:num} m3/h: the safety factor
+  absorbs the spread in the data at the dry-season level.
+spread_does_not_hold: >-
+  At the low end of the band the long-term yield is {long_term:num} m3/h,
+  below the recommended {rate:num} m3/h: the safety factor does not absorb the
+  spread in the data at the dry-season level, so the rate is not called
+  sustainable.
+spread_pump: >-
+  The pump intake moves between {low:num} and {high:num} m below the top of
+  the casing over a dry-season decline of {decline_low:g} to {decline_high:g}
+  m. The transmissivity band does not move it: the intake is set by the
+  drawdown available, not by the rate.
+theis_covariance: >-
+  The Theis fit's own covariance puts its transmissivity between {low:num} and
+  {high:num} m2/day (nominally P10 to P90; on the same synthetic tests it held
+  the true value in 67 tests in a hundred). That band assumes every reading's error is
+  independent of the next, which the bootstrap does not.
+
+pc_fit: >-
+  The Papadopulos-Cooper solution for a well of large diameter, fitted to all
+  {n:g} readings of the first step including those inside casing storage
+  (casing radius {rc:.3f} m; Laplace solution inverted by Stehfest's method),
+  gives T = {t:num} m2/day with an RMSE of {rmse:num} m. Its storativity is
+  not given: in the pumped well it trades off against the well radius, as the
+  Theis fit's does, and on a poor fit the readings barely constrain it.
+pc_reported: >-
+  It is reported beside the other fits and adopted only when none of them
+  can be.
+pc_adopted: >-
+  No other fit can be adopted, so this value is adopted as the best
+  available, and the yield that rests on it is indicative.
+pc_invalid: >-
+  It is not adopted: {why}.
+pc_status:
+  reported: reported; adopted only where every other fit is disqualified
+  adopted: adopted as the best available; every other fit is disqualified
+
+diagnostic_method: >-
+  The Bourdet derivative of the first step's drawdown, ds/d ln t with
+  neighbours at least {l:g} of a log cycle apart, is read from the slope of
+  its log-log curve: a unit slope is casing storage, a plateau radial flow, a
+  half slope linear flow along a fracture, and a fall or a rise after the
+  plateau a boundary.
+diagnostic_shows: >-
+  On this test it shows {spans}.
+diagnostic_unnamed: >-
+  On this test no run of three derivative points holds one slope over enough
+  of a log cycle to name a regime.
+diagnostic_none: >-
+  The first step has fewer than five positive drawdowns, so no derivative is
+  drawn.
+diagnostic_plateau: >-
+  The level of the plateau gives a transmissivity of about {t:num} m2/day, a
+  check on the fitted values rather than one adopted.
+regime_span: >-
+  {what} from {start:g} to {end:g} minutes (slope {slope:.2f})
+diagnostic_thresholds: >-
+  The derivative's log-log slope names a regime as follows: {unit_min:g} to
+  {unit_max:g} casing storage, {half_min:g} to {half_max:g} linear flow, within
+  {flat:g} of zero radial flow, and {falling:g} or less a falling derivative;
+  a run must hold for three points and {span:g} of a log cycle. These limits
+  are judgements, set in the configuration. A derivative is a difference of
+  readings and carries their scatter: on synthetic radial-flow tests with 1 to
+  2 cm reading errors, a boundary was named in about one test in a hundred,
+  and where the derivative was under about 0.1 m some regime other than
+  radial flow was named in up to half. A named regime is a reason to look at
+  the plot, not a finding on its own.
+regimes:
+  wellbore_storage: a unit slope, casing storage
+  storage_ending: a falling derivative, the end of casing storage
+  radial_flow: a plateau, radial flow
+  linear_flow: a half slope, linear flow along a fracture
+  recharge_boundary: a falling derivative after the plateau, a recharge boundary or leakage
+  no_flow_boundary: a rising derivative after the plateau, a no-flow boundary
+  closed_boundary: a unit slope after the plateau, a closed boundary
+
+sustainable: >-
+  The borehole is successful and sustainable when operated as recommended: at
+  the dry-season level, the long-term yield at the low end of the spread in
+  the test data still covers the recommended rate.
+sustainable_not_held: >-
+  The yield is established, but it is not called sustainable: at the
+  dry-season level the test does not show the recommended rate holding across
+  the spread of its own data (see the pumping test report). Confirm it by
+  monitoring the pumping level through a dry season.
