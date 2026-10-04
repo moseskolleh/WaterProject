@@ -26,7 +26,7 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
-from groundwater.design.lithology import lithology_class
+from groundwater.design.lithology import fracture_ranges, host_class, lithology_class
 from groundwater.field_kit import airlift_yield
 from groundwater.geo import geographic_to_utm
 from groundwater.ingestion.drilling import read_drilling_workbook
@@ -95,7 +95,24 @@ try { D.endInterval({ bottom_m: 5, lithology: 'clay', note: 'soft saprolite' });
 catch (e) { out.errors.slip = e.message; }
 try { D.endInterval({ bottom_m: 5, lithology: 'topsoil', note: 'water strike at 4 m' }); }
 catch (e) { out.errors.strikeInNote = e.message; }
+// the same words with a Kelvin sign for the k, which only the readers'
+// lower-casing turns into "strike"
+try { D.endInterval({ bottom_m: 5, lithology: 'topsoil', note: 'water stri\u212Ae at 4 m' }); }
+catch (e) { out.errors.strikeKelvin = e.message; }
+// a fracture zone with a depth range in the note: the readers draw the range
+// as the zone and the rest of the row as what is left of the description
+try { D.endInterval({ bottom_m: 5, lithology: 'fracture', note: '2-3 m' }); }
+catch (e) { out.errors.zoneInRow = e.message; }
+try { D.endInterval({ bottom_m: 5, lithology: 'fracture', note: 'fractured 6-7 m' }); }
+catch (e) { out.errors.zoneOutside = e.message; }
 D.cancelCurrent();
+for (const [key, reading] of Object.entries({
+  nanTime: ['bucket', { volume_l: 20, timings_s: [NaN] }],
+  infiniteTime: ['bucket', { volume_l: 20, timings_s: [Infinity] }],
+  infiniteHead: ['vnotch', { head_mm: Infinity }],
+})) {
+  try { GWT.core.airliftYield(reading[0], reading[1]); } catch (e) { out.errors[key] = e.message; }
+}
 job.intervals.forEach(([top, bottom, key, note, from, to], i) => {
   const day = job.days[i < 6 ? 0 : 1];
   t = at(day, from);
@@ -110,9 +127,27 @@ job.intervals.forEach(([top, bottom, key, note, from, to], i) => {
 });
 try { D.setStrike(9, { depth_m: 70, method: 'none', reason: 'compressor down' }); }
 catch (e) { out.errors.outside = e.message; }
+// the reason is printed in the airlift basis column the readers search
+try {
+  D.setStrike(9, { depth_m: 47, method: 'none',
+    reason: 'an earlier water strike at 46 m too weak to measure' });
+} catch (e) { out.errors.strikeInReason = e.message; }
+// the device clock set back an hour before the next interval
+t = at(job.days[1], '09:00');
+try { D.startInterval(); } catch (e) { out.errors.clockBack = e.message; }
 t = at(job.days[1], '17:00');
 D.signDay(job.days[1], 'M. Kamara');
 out.statuses.signed = job.days.map((d) => D.dayStatus(D.session(), d));
+// the same log reopened on a device set nine hours ahead, where day one's
+// last interval ended after midnight
+process.env.TZ = 'Asia/Tokyo';
+out.statuses.elsewhere = job.days.map((d) => D.dayStatus(D.session(), d));
+out.daysElsewhere = D.days(D.session());
+process.env.TZ = 'Africa/Freetown';
+// a stored yield edited outside the page is what the sheets would print
+const edited = JSON.parse(JSON.stringify(D.session()));
+edited.intervals[2].strike.q_l_per_s *= 2;
+out.statuses.editedYield = D.dayStatus(edited, job.days[0]);
 // a correction to a signed day needs a reason, and leaves it amended
 try { D.correctInterval(13, { note: 'light colour granite, fresh, hard' }); }
 catch (e) { out.errors.unreasoned = e.message; }
@@ -125,6 +160,18 @@ writeFileSync(output + '/drilling.xlsx',
 writeFileSync(output + '/daily.xlsx', await S.writeXlsx(D.dailySheets(session)));
 out.session = session;
 out.digests = job.days.map((d) => D.dayDigest(session, d));
+// a day countersigned and then emptied: its one interval taken off the log
+state.drillCopilot = D.blankSession(job.site);
+t = at('2026-10-05', '08:00');
+D.startInterval();
+t = at('2026-10-05', '08:10');
+D.endInterval({ bottom_m: 5, lithology: 'topsoil' }, { stop: true });
+D.signDay('2026-10-05', 'M. Kamara');
+t = at('2026-10-05', '08:20');
+D.undoLast('logged on the wrong hole');
+const emptied = D.session();
+out.emptied = { days: D.days(emptied), status: D.dayStatus(emptied, '2026-10-05'),
+  countersigns: D.drillingSheets(emptied, job.site, t)[2].rows };
 writeFileSync(output + '/result.json', JSON.stringify(out));
 """
 
@@ -230,13 +277,71 @@ def test_only_a_class_from_the_table_is_logged(playback):
     assert errors["freeText"] == "Choose the formation from the list."
     assert "would read as Saprolite, not Clay" in errors["slip"]
     assert "Enter the water strike in its own box" in errors["strikeInNote"]
+    # what both readers do with the cell before they look for the words
+    assert "water strike" in "water stri\u212ae at 4 m".lower()
+    assert "Enter the water strike in its own box" in errors["strikeKelvin"]
     assert "within the interval" in errors["outside"]
+
+
+def test_a_note_naming_a_zone_s_depths_is_refused(playback):
+    """A depth range after a fracture zone is a zone of its own to both
+    readers: the rest of the row reads as what is left of the description,
+    and a range outside the row is drawn in another row."""
+    assert lithology_class("Fracture zone, 2-3 m").key == "fracture"
+    assert host_class("Fracture zone, 2-3 m", 0, 5).key == "other"
+    assert fracture_ranges("Fracture zone, fractured 6-7 m", 0, 5) == [(6.0, 7.0)]
+    errors = playback["errors"]
+    assert ("2-3 m as a fracture zone of its own, and the rest of this interval "
+            "as Other material") in errors["zoneInRow"]
+    assert "6-7 m as a fracture zone of its own, outside this interval" in errors["zoneOutside"]
+
+
+def test_a_reason_naming_a_strike_is_not_written_where_it_is_read(playback, tmp_path):
+    """The reason an airlift was not measured is printed in the airlift basis
+    column, and the reader takes a strike from any cell that names one."""
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Depth interval (m)", "Water strike depth (m)", "Airlift basis"])
+    ws.append(["45-50", 47, "Not measured: an earlier water strike at 46 m too weak to measure."])
+    wb.save(tmp_path / "log.xlsx")
+    assert read_drilling_workbook(tmp_path / "log.xlsx").water_strikes_m == [46.0, 47.0]
+    assert "without naming the water strike" in playback["errors"]["strikeInReason"]
+
+
+def test_the_clock_and_the_airlift_readings_are_held_to_what_can_be(playback):
+    """An interval cannot start before the last one ended, and a timing or a
+    head that is not a finite number gives no yield in either engine."""
+    errors = playback["errors"]
+    assert "before the last interval ended at 10:00" in errors["clockBack"]
+    for key in ("nanTime", "infiniteTime"):
+        assert "a timed container needs" in errors[key]
+    assert "needs the head over the notch" in errors["infiniteHead"]
+    for options in ({"volume_l": 20, "timings_s": [float("nan")]},
+                    {"volume_l": 20, "timings_s": [float("inf")]},
+                    {"volume_l": float("inf"), "timings_s": [20]}):
+        with pytest.raises(ValueError):
+            airlift_yield("bucket", **options)
+    with pytest.raises(ValueError):
+        airlift_yield("vnotch", head_mm=float("inf"))
 
 
 def test_each_day_is_countersigned_and_a_later_change_shows(playback):
     """Both days signed; the change to day two after its countersign needed a
     reason, was kept, and leaves the day amended until it is signed again."""
     assert playback["statuses"]["signed"] == ["signed", "signed"]
+    # each interval keeps the day it was logged on, whatever zone the
+    # device that reopens the log is set to
+    assert playback["statuses"]["elsewhere"] == ["signed", "signed"]
+    assert playback["daysElsewhere"] == [DAY_ONE, DAY_TWO]
+    # the yield the sheets print is in what the countersign covers
+    assert playback["statuses"]["editedYield"] == "amended"
+    # a signed day emptied of its intervals keeps its countersign, amended
+    emptied = playback["emptied"]
+    assert emptied["days"] == ["2026-10-05"] and emptied["status"] == "amended"
+    assert emptied["countersigns"][1][:3] == ["2026-10-05", "amended after signing",
+                                              "M. Kamara"]
     assert "Give the reason for the change" in playback["errors"]["unreasoned"]
     assert playback["statuses"]["amended"] == ["signed", "amended"]
     session = playback["session"]

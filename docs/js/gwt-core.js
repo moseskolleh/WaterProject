@@ -20474,6 +20474,9 @@
   /* standard gravity, m/s2, in the V-notch equation */
   var GRAVITY = 9.80665;
 
+  /** @param {*} v @returns {v is number} */
+  function positiveReading(v) { return isFiniteNum(v) && v > 0; }
+
   /** The airlift yield of a water strike, in litres per second: the drilling
    * log co-pilot's estimate (field_kit.py airlift_yield). method is 'bucket'
    * (a container of volume_l litres timed filling, timings_s), 'vnotch' (the
@@ -20494,8 +20497,9 @@
     if (method === 'bucket') {
       var times = (opts.timings_s || []).map(Number);
       var volume = opts.volume_l;
-      if (!(typeof volume === 'number' && volume > 0) || !times.length ||
-          !(Math.min.apply(null, times) > 0)) {
+      /* each reading a finite number above zero, as field_kit.py asks: an
+       * infinite time gave a yield of zero */
+      if (!positiveReading(volume) || !times.length || !times.every(positiveReading)) {
         throw new Error('a timed container needs its volume and at least one ' +
           'time, each more than zero');
       }
@@ -20507,7 +20511,7 @@
         { volume: volume, mean: mean, n: times.length });
     } else if (method === 'vnotch') {
       var head = opts.head_mm;
-      if (!(typeof head === 'number' && head > 0)) {
+      if (!positiveReading(head)) {
         throw new Error('a V-notch reading needs the head over the notch, more than zero');
       }
       var drilling = fieldSchedules().drilling;

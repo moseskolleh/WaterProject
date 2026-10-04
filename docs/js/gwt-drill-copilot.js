@@ -84,6 +84,15 @@
     return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
   }
 
+  /* The day an interval was logged on, as it was named when it was logged.
+   * Worked out again from the clock, it follows whatever time zone the
+   * device is set to now, and a log reopened under another one moved its
+   * evening intervals to the next day: the countersigned day then read as
+   * amended, and the next as unsigned, with nothing changed. */
+  function dayOfInterval(iv) {
+    return typeof iv.day === 'string' && iv.day ? iv.day : dayOf(iv.ended_at);
+  }
+
   /* The device clock with its offset from UTC, so whoever reads the sheet
    * can tell local time from a clock that was simply wrong. */
   function deviceClockText(ms) {
@@ -131,24 +140,48 @@
     return k ? k.label + (text ? ', ' + text : '') : '';
   }
 
+  /* Whether a text names a water strike as both readers look for one: the
+   * words in lower case, wherever the cell is. Lower-cased first, as they
+   * do it, so a letter that only lower-cases to an ASCII one (the Kelvin
+   * sign for a k) cannot slip past here and be read there. */
+  function namesStrike(text) {
+    return /water\s*strike/.test(cleanNote(text).toLowerCase());
+  }
+
   /** Whether a class and a note can be logged together: {description} when
    * the row reads back as the class picked, {problem} when it would not.
    * The readers class a row from its description, first match in the
    * table's order, so a note that names another class's word first can
    * change what the row is; and a note that names a water strike is read
-   * as one by both readers, wherever it is written.
-   * @param {string} key @param {string} [note] */
-  function checkLithology(key, note) {
+   * as one by both readers, wherever it is written. Given the interval's
+   * depths, the row is read as the drawings and the design read it
+   * (C.hostClass, lithology.host_class): a depth range after a fracture
+   * zone is a zone of its own, and the rest of the row is what is left of
+   * the description, so "Fracture zone, 27-28 m" on a 25-30 m row is a
+   * metre of fracture in four of Other material.
+   * @param {string} key @param {string} [note]
+   * @param {number} [top] @param {number} [bottom] */
+  function checkLithology(key, note, top, bottom) {
     var k = classOf(key);
     if (!k) return { problem: 'Choose the formation from the list.' };
     var text = cleanNote(note);
-    if (/water\s*strike/i.test(text)) {
+    if (namesStrike(text)) {
       return { problem: 'Enter the water strike in its own box, with its depth and ' +
         'airlift yield; written in the description, the readers would take a ' +
         'number in it for a strike depth.' };
     }
     var desc = description(key, text);
-    var read = C.lithologyClass(desc);
+    var depths = isNum(top) && isNum(bottom);
+    var zones = depths ? C.fractureRanges(desc, top, bottom) : [];
+    var read = depths ? C.hostClass(desc, top, bottom) : C.lithologyClass(desc);
+    var spilt = zones.filter(function (z) { return z[0] < top || z[1] > bottom; });
+    if (zones.length && (read.key !== k.key || spilt.length)) {
+      var zone = (spilt.length ? spilt : zones)[0];
+      return { problem: 'Written as "' + desc + '", the readers would take ' +
+        C.formatG(zone[0]) + '-' + C.formatG(zone[1]) + ' m as a fracture zone of its ' +
+        'own' + (spilt.length ? ', outside this interval' : ', and the rest of this ' +
+        'interval as ' + read.label) + '. Log the zone as an interval of its own.' };
+    }
     if (read.key !== k.key) {
       return { problem: 'Written as "' + desc + '", this row would read as ' +
         read.label + ', not ' + k.label + '. Log it as ' + read.label +
@@ -220,18 +253,22 @@
 
   /** What a countersign covers for one day, as canonical text: each
    * interval's depths, times, class, note, bit and strike with its
-   * airlift reading. A cuttings photograph is not in it: it carries its
+   * airlift reading and the yield and basis it gave. A cuttings photograph is not in it: it carries its
    * own capture time and hash, and is often added after the day is
    * signed. */
   function dayRecord(s, day) {
-    return s.intervals.filter(function (iv) { return dayOf(iv.ended_at) === day; })
+    return s.intervals.filter(function (iv) { return dayOfInterval(iv) === day; })
       .map(function (iv) {
         var st = iv.strike;
+        /* the yield and its basis as stored, since they are what the
+         * sheets print: worked out again here, a stored figure edited
+         * outside the page would be printed and not show */
         return [iv.top_m, iv.bottom_m, iv.started_at, iv.ended_at, iv.lithology,
           iv.note || '', isNum(iv.bit_in) ? iv.bit_in : null,
           st ? [st.depth_m, st.method, st.volume_l === undefined ? null : st.volume_l,
             st.timings_s || null, st.head_mm === undefined ? null : st.head_mm,
-            st.reason || ''] : null];
+            st.reason || '', isNum(st.q_l_per_s) ? st.q_l_per_s : null,
+            st.basis || ''] : null];
       });
   }
 
@@ -244,11 +281,15 @@
     return C.sha256Hex(C.canonicalText(dayRecord(s, day)));
   }
 
-  /** The days the log has intervals on, in order. */
+  /** The days the log has intervals on, and the days countersigned, in
+   * order. A signed day whose intervals were all taken off the log has
+   * none left to list it by, and its countersign went out of the sheets
+   * with them; listed, it reads as amended after signing. */
   function days(s) {
-    var out = [];
+    var signed = s.signatures || {};
+    var out = Object.keys(signed).filter(function (d) { return (signed[d] || []).length; });
     s.intervals.forEach(function (iv) {
-      var d = dayOf(iv.ended_at);
+      var d = dayOfInterval(iv);
       if (out.indexOf(d) < 0) out.push(d);
     });
     return out.sort();
@@ -291,7 +332,7 @@
    * is signed again. Refusing the change would only send the correction to
    * a notebook the log never sees. */
   function amend(s, iv, what, reason) {
-    var day = dayOf(iv.ended_at);
+    var day = dayOfInterval(iv);
     if (!signedDay(s, day)) return;
     var why = cleanNote(reason);
     if (!why) {
@@ -313,6 +354,15 @@
       if (s.current) throw new Error('An interval is already being drilled.');
       var t = now();
       if (isNum(opts.alreadyMin) && opts.alreadyMin > 0) t -= opts.alreadyMin * 60000;
+      /* A clock set back between intervals would start this one before the
+       * last ended: its rate would still come out, from a time that never
+       * was, and its day could be one already countersigned. */
+      var last = s.intervals[s.intervals.length - 1];
+      if (last && !(t >= last.ended_at)) {
+        throw new Error('The device clock reads ' + clockText(t) + ', before the last ' +
+          'interval ended at ' + clockText(last.ended_at) + '; check the clock before ' +
+          'starting.');
+      }
       s.current = { top_m: nextTop(s), started_at: t };
       logEvent(s, 'Drilling from ' + C.formatG(s.current.top_m) + ' m');
       return s.current;
@@ -329,13 +379,13 @@
   function endInterval(form, options) {
     var opts = options || {};
     var bottom = Number(form.bottom_m);
-    var lith = checkLithology(form.lithology, form.note);
     return update(function (s) {
       var cur = s.current;
       if (!cur) throw new Error('Start the interval first: its time starts the rate.');
       if (!(bottom > cur.top_m)) {
         throw new Error('The depth reached has to be below ' + C.formatG(cur.top_m) + ' m.');
       }
+      var lith = checkLithology(form.lithology, form.note, cur.top_m, bottom);
       if (lith.problem) throw new Error(lith.problem);
       var t = now();
       if (!(t > cur.started_at)) {
@@ -347,7 +397,7 @@
       var bit = typed !== null && typed !== undefined && typed !== '' && Number(typed) > 0
         ? Number(typed) : s.setup.bitIn;
       var iv = { top_m: cur.top_m, bottom_m: bottom, started_at: cur.started_at,
-        ended_at: t, lithology: form.lithology, note: cleanNote(form.note),
+        ended_at: t, day: dayOf(t), lithology: form.lithology, note: cleanNote(form.note),
         bit_in: isNum(bit) ? bit : null, strike: null, photo: null };
       if (signedDay(s, dayOf(t))) {
         amend(s, iv, 'interval logged after the countersign',
@@ -378,7 +428,7 @@
       if (!iv) throw new Error('No interval ' + (index + 1) + '.');
       var key = changes.lithology !== undefined ? changes.lithology : iv.lithology;
       var note = changes.note !== undefined ? changes.note : iv.note;
-      var lith = checkLithology(key, note);
+      var lith = checkLithology(key, note, iv.top_m, iv.bottom_m);
       if (lith.problem) throw new Error(lith.problem);
       var bit = changes.bit_in !== undefined && changes.bit_in !== null &&
         changes.bit_in !== '' ? Number(changes.bit_in) : iv.bit_in;
@@ -427,6 +477,13 @@
       options = { head_mm: Number(reading.head_mm) };
     } else {
       options = { reason: reading.reason };
+      /* the reason is printed in the airlift basis column of the drilling
+       * log, where both readers would take a strike depth from it */
+      if (namesStrike(reading.reason)) {
+        throw new Error('Give the reason the airlift was not measured without naming ' +
+          'the water strike: written on the log, the readers would take a number ' +
+          'in it for another strike.');
+      }
     }
     var result = C.airliftYield(reading.method, options);
     return update(function (s) {
@@ -627,7 +684,7 @@
     var st = s.setup;
     var cumulative = 0;
     return days(s).map(function (day) {
-      var ivs = s.intervals.filter(function (iv) { return dayOf(iv.ended_at) === day; });
+      var ivs = s.intervals.filter(function (iv) { return dayOfInterval(iv) === day; });
       var list = (s.signatures || {})[day] || [];
       var last = list[list.length - 1];
       var status = dayStatus(s, day);
@@ -876,7 +933,7 @@
     var items = rows.map(function (row) {
       var iv = row.iv, i = row.i;
       var strike = iv.strike;
-      var day = dayOf(iv.ended_at);
+      var day = dayOfInterval(iv);
       var signed = signedDay(s, day);
       var slot = GWT.imageSlot ? GWT.imageSlot.create({
         key: 'cuttings-' + i, label: 'Cuttings, ' + rangeText(iv) + ' m',
@@ -910,7 +967,7 @@
     ].concat(items).concat([el('div.btn-row', button('Undo the last interval',
       act(function () {
         var last = s.intervals[s.intervals.length - 1];
-        var reason = signedDay(s, dayOf(last.ended_at))
+        var reason = signedDay(s, dayOfInterval(last))
           ? global.prompt('The day is countersigned. Why is the interval coming off?')
           : '';
         if (reason === null) return null;
@@ -948,7 +1005,7 @@
       ]),
       el('div.btn-row', [
         button('Record the strike', act(function () {
-          var reason = signedDay(s, dayOf(iv.ended_at))
+          var reason = signedDay(s, dayOfInterval(iv))
             ? global.prompt('The day is countersigned. Why is the strike being recorded now?')
             : '';
           if (reason === null) return null;
@@ -957,7 +1014,7 @@
             reason: f.reason }, reason || '');
         }), { variant: 'primary', 'data-strike': 'save' }),
         iv.strike ? button('Remove it', act(function () {
-          var reason = signedDay(s, dayOf(iv.ended_at))
+          var reason = signedDay(s, dayOfInterval(iv))
             ? global.prompt('The day is countersigned. Why is the strike coming off?') : '';
           if (reason === null) return null;
           return clearStrike(i, reason || '');
@@ -973,7 +1030,7 @@
         'and written, as amended after signing until it is signed again.'),
     ].concat(list.map(function (day) {
       var status = dayStatus(s, day);
-      var ivs = s.intervals.filter(function (iv) { return dayOf(iv.ended_at) === day; });
+      var ivs = s.intervals.filter(function (iv) { return dayOfInterval(iv) === day; });
       var metres = 0;
       ivs.forEach(function (iv) { metres += iv.bottom_m - iv.top_m; });
       var signs = (s.signatures || {})[day] || [];

@@ -298,13 +298,17 @@ by, so the formation is never a word the design reads as something else.
 The note goes after the class, and a note that would make the row read as
 another class is refused: "Weathered rock, sandy" would read as sand and
 gravel, and saprolite logged as "Clay, soft saprolite" would read as
-saprolite. A water strike is never written in the note: it has its own
-box.
+saprolite. A fracture zone is logged as an interval of its own: a depth
+range in the note ("Fracture zone, 27-28 m") is read as a zone inside the
+row, with the rest of the row as other material, and is refused. A water
+strike is never written in the note: it has its own box.
 
 **The penetration rate** is the time from *Start drilling* to the log of
 the interval, on the device clock, over its length, in minutes per metre.
 Rod changes inside an interval count in it; press *Log it and stop* and
-*Start drilling* again to keep a long stop out.
+*Start drilling* again to keep a long stop out. An interval cannot start
+before the last one ended: if the device clock has been set back, it is
+refused until the clock is right.
 
 **A water strike** is recorded on the interval it was struck in, with its
 airlift yield: a container timed filling (up to three timings; the yield
@@ -312,7 +316,9 @@ is the volume over the mean time), or the head over a 90-degree V-notch
 plate, read by the Kindsvater-Shen equation. A notch head under 50 mm or
 over 380 mm is outside the range the notch's coefficient holds for, and
 the page says so; time a container as well. If the yield could not be
-measured, say why. It is an estimate while drilling, not a pumping test.
+measured, say why, without naming the strike: the reason is written in
+the log, where the readers would take a number in it for another strike.
+It is an estimate while drilling, not a pumping test.
 
 **Cuttings.** Each interval takes a photograph of its cuttings, laid out
 beside the metre mark. It keeps the capture time, the position and the
@@ -322,7 +328,10 @@ of its interval.
 **Each day** the supervisor types their name and presses *Countersign*.
 The name, the device time and a SHA-256 digest of the day's entries are
 kept. A change to a day after it is signed needs a reason, and the day
-then shows as *amended after signing* until it is countersigned again.
+then shows as *amended after signing* until it is countersigned again
+(or changed back to exactly what was signed). Each interval keeps the day
+it was logged on, so a log opened on a device set to another time zone
+keeps its days and their countersigns.
 This is a record, not a cryptographic signature: it shows a change, but
 anyone with the file could change a day and its digest together.
 

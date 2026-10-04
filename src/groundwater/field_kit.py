@@ -57,7 +57,7 @@ import functools
 import math
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeGuard
 
 import yaml
 
@@ -226,6 +226,10 @@ def ves_survey_plan(target_m: float, config: VESConfig | None = None) -> dict:
 _GRAVITY = 9.80665
 
 
+def _positive(value: float | None) -> TypeGuard[float]:
+    return value is not None and math.isfinite(value) and value > 0
+
+
 def airlift_yield(method: str, *, volume_l: float | None = None,
                   timings_s: list[float] | None = None, head_mm: float | None = None,
                   reason: str = "") -> dict:
@@ -252,7 +256,11 @@ def airlift_yield(method: str, *, volume_l: float | None = None,
     flags: list[dict] = []
     if method == "bucket":
         times = [float(t) for t in (timings_s or [])]
-        if not (volume_l is not None and volume_l > 0) or not times or min(times) <= 0:
+        # each reading a finite number above zero: min() let a NaN timing
+        # through to a NaN yield, which the browser refused, and an infinite
+        # time gave a yield of zero
+        if (not _positive(volume_l) or not times
+                or not all(_positive(t) for t in times)):
             raise ValueError("a timed container needs its volume and at least one "
                              "time, each more than zero")
         mean = sum(times) / len(times)
@@ -260,7 +268,7 @@ def airlift_yield(method: str, *, volume_l: float | None = None,
         basis = phrase("drilling_copilot.airlift_bucket",
                        volume=float(volume_l), mean=mean, n=len(times))
     elif method == "vnotch":
-        if not (head_mm is not None and head_mm > 0):
+        if not _positive(head_mm):
             raise ValueError("a V-notch reading needs the head over the notch, "
                              "more than zero")
         drilling = field_schedules()["drilling"]
