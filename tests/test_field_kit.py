@@ -24,6 +24,7 @@ from groundwater.config import Config, PumpingConfig
 from groundwater.field_kit import (
     PAYLOAD_FORMAT,
     PayloadFields,
+    airlift_yield,
     cautious_storage,
     field_kit_content,
     field_kit_payload,
@@ -315,3 +316,36 @@ def test_the_kit_follows_the_configuration():
     assert content["storage"]["casing_in"] == 6.0
     assert content["constant_min"] == pytest.approx(
         casing_storage_min(1 / (1.22 * 24), config.pumping))
+
+
+# ------------------------------------------------------------ airlift yield
+
+def test_the_airlift_yield_of_a_timed_container_is_volume_over_mean_time():
+    result = airlift_yield("bucket", volume_l=20, timings_s=[25, 24.6, 25.4])
+    assert result["q_l_per_s"] == pytest.approx(0.8)
+    assert result["basis"] == "Timed container: 20 L filled in a mean of 25.0 s over 3 timings."
+    assert not result["flags"]
+
+
+def test_the_v_notch_reads_as_the_published_90_degree_formula():
+    """Kindsvater-Shen at Ce = 0.58 against Thomson's 1.38 h^2.5 m3/s, the
+    form most field tables print for a 90-degree notch: within 1 percent
+    over the head range the coefficient holds for, and a head outside it
+    is said to be."""
+    for head_mm in (50, 100, 200, 380):
+        q = airlift_yield("vnotch", head_mm=head_mm)
+        assert q["q_l_per_s"] == pytest.approx(1.38 * (head_mm / 1000) ** 2.5 * 1000, rel=0.01)
+        assert not q["flags"]
+    low = airlift_yield("vnotch", head_mm=34)
+    assert [f["code"] for f in low["flags"]] == ["vnotch_head_outside"]
+
+
+def test_an_airlift_reading_that_gives_no_yield_is_refused():
+    for method, options in (("bucket", {"volume_l": 20, "timings_s": []}),
+                            ("bucket", {"volume_l": 20, "timings_s": [10, 0]}),
+                            ("vnotch", {"head_mm": 0}), ("none", {"reason": "  "}),
+                            ("pump", {})):
+        with pytest.raises(ValueError):
+            airlift_yield(method, **options)
+    assert airlift_yield("none", reason=" compressor  down ")["basis"] == (
+        "Not measured: compressor down.")

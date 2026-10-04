@@ -20,6 +20,9 @@
  *     the same, cell for cell, as the copies committed in fixtures/, which
  *     tests/test_pumping_copilot.py reads with the Python reader.
  *
+ * The drilling log co-pilot (PLAN.md step 2.3) is played back after it, on
+ * GWT.drillCopilotClock: drillingPlayback below says what it checks.
+ *
  *     node tests/webapp/copilot.mjs                    # check
  *     node tests/webapp/copilot.mjs --write-fixtures   # rewrite fixtures/
  */
@@ -186,6 +189,232 @@ async function lastDownload(count) {
     const d = window.__downloads[window.__downloads.length - 1];
     return d ? { name: d.name, bytes: d.bytes } : null;
   });
+}
+
+/* The drilling log co-pilot (PLAN.md step 2.3), on its own clock: a
+ * formation can only be one of the lithology classes; the rate comes from
+ * the clock; a water strike carries the engine's airlift yield; a cuttings
+ * photograph keeps its provenance and its depths; a day is countersigned,
+ * and a later change shows; and the log is read back by this app's own
+ * reader. tests/test_drilling_copilot.py reads the same sheets in Python. */
+const DRILL = Date.UTC(2026, 9, 10, 7, 0, 0);
+
+async function drillClock(ms) {
+  await page.evaluate((t) => {
+    window.__t = t;
+    sessionStorage.setItem('__t', String(t));
+  }, ms);
+}
+
+async function wireDrill() {
+  await page.waitForFunction(() => window.GWT && window.GWT.app && window.GWT.drillCopilot,
+    null, { timeout: 30000 });
+  await page.evaluate(() => {
+    window.__t = Number(sessionStorage.getItem('__t'));
+    window.GWT.drillCopilotClock = () => window.__t;
+  });
+}
+
+async function drillingPlayback() {
+  await drillClock(DRILL);
+  await page.evaluate(() => window.GWT.app.goto('drillcopilot'));
+  await wireDrill();
+  await page.evaluate(() => {
+    window.GWT.drillCopilot.discard();
+    window.GWT.app.store.set('photoPosition', false);
+    window.GWT.app.render();
+  });
+  await page.waitForSelector('[data-dc="start"]');
+  const opened = await page.evaluate(() => ({
+    head: document.querySelector('#page-host h1')?.textContent,
+    said: document.querySelector('#page-host .callout-info')?.textContent,
+    nav: !!Array.from(document.querySelectorAll('#app-nav .nav-item'))
+      .find((n) => n.textContent.includes('Drilling co-pilot')),
+    hash: location.hash,
+  }));
+  check('drilling: the page opens at #/drillcopilot, with a nav entry',
+    opened.head === 'Drilling log co-pilot' && opened.nav && opened.hash === '#/drillcopilot',
+    JSON.stringify(opened));
+  check('drilling: the page says it is in the browser app only, in the catalogue\'s words',
+    opened.said === await page.evaluate(() => window.GWT.core.phrase('drilling_copilot.browser_only')),
+    opened.said);
+
+  await page.evaluate(() => {
+    const D = window.GWT.drillCopilot;
+    [['community', "Dr. Timbo's Residence"], ['boreholeRef', 'BH-1'], ['method', 'DTH hammer'],
+      ['driller', 'A. Sesay'], ['bitIn', 6.5]].forEach(([k, v]) => D.setSetup(k, v));
+  });
+  await click('[data-dc="start"]');
+  await page.waitForSelector('select[data-dc="lithology"]');
+
+  /* 1. the formation is a list of the classes, and nothing typed in */
+  const control = await page.evaluate(() => {
+    const select = document.querySelector('select[data-dc="lithology"]');
+    const C = window.GWT.core;
+    return {
+      options: Array.from(select.options).filter((o) => o.value).map((o) => o.textContent).sort(),
+      classes: C.LITHOLOGY_CLASSES.concat([C.LITHOLOGY_OTHER]).map((c) => c.label).sort(),
+      typed: !!document.querySelector('input[data-dc="lithology"], textarea[data-dc="lithology"]'),
+    };
+  });
+  check('drilling: the formation is chosen from the lithology classes, with no box to type one',
+    JSON.stringify(control.options) === JSON.stringify(control.classes) && !control.typed,
+    JSON.stringify(control));
+  const refused = await page.evaluate(() => {
+    const D = window.GWT.drillCopilot;
+    const out = {};
+    for (const [name, form] of [['words', { bottom_m: 5, lithology: 'Reddish brown clay' }],
+      ['slip', { bottom_m: 5, lithology: 'clay', note: 'soft saprolite' }]]) {
+      try { D.endInterval(form); out[name] = 'logged'; } catch (e) { out[name] = e.message; }
+    }
+    out.count = D.session().intervals.length;
+    return out;
+  });
+  check('drilling: a formation typed in as words is not logged',
+    refused.words === 'Choose the formation from the list.', JSON.stringify(refused));
+  check('drilling: saprolite cannot be logged as clay by a note that names it',
+    /would read as Saprolite, not Clay/.test(refused.slip) && refused.count === 0,
+    JSON.stringify(refused));
+
+  /* 2. the rate from the clock: 12 minutes for 5 m through the form, then
+   * 15 minutes for the next 5 m */
+  await drillClock(DRILL + 12 * MIN);
+  await page.fill('input[data-dc="bottom"]', '5');
+  await page.dispatchEvent('input[data-dc="bottom"]', 'change');
+  await page.selectOption('select[data-dc="lithology"]', 'topsoil');
+  await page.fill('input[data-dc="note"]', 'reddish brown, lateritic');
+  await page.dispatchEvent('input[data-dc="note"]', 'change');
+  await click('[data-dc="log"]');
+  await drillClock(DRILL + 27 * MIN);
+  const logged = await page.evaluate(() => {
+    const D = window.GWT.drillCopilot;
+    D.endInterval({ bottom_m: 10, lithology: 'saprolite', note: 'clayey' }, { stop: true });
+    D.draw();
+    const s = D.session();
+    return { rates: s.intervals.map((iv) => D.penetrationMinPerM(iv)),
+      descriptions: s.intervals.map((iv) => D.description(iv.lithology, iv.note)),
+      shown: document.querySelector('[data-interval="0"]')?.textContent || '' };
+  });
+  check('drilling: the penetration rate is the clock\'s, 2.4 and 3.0 min/m',
+    JSON.stringify(logged.rates) === '[2.4,3]' && logged.shown.includes('2.40 min/m'),
+    JSON.stringify(logged));
+
+  /* 3. a water strike with its airlift yield */
+  const strike = await page.evaluate(() => {
+    const D = window.GWT.drillCopilot, C = window.GWT.core;
+    const reading = { depth_m: 8, method: 'bucket', volume_l: 20, timings_s: [25, 24.6, 25.4] };
+    const st = D.setStrike(1, reading);
+    let vnotch = null;
+    try { D.setStrike(0, { depth_m: 4, method: 'vnotch', head_mm: 34 }); vnotch = D.session().intervals[0].strike; }
+    catch (e) { vnotch = e.message; }
+    D.draw();
+    return { st, engine: C.airliftYield('bucket', { volume_l: 20, timings_s: [25, 24.6, 25.4] }),
+      vnotch, text: document.querySelector('[data-interval="1"] [data-dc="strike"]')?.textContent || '' };
+  });
+  check('drilling: a water strike carries the engine\'s airlift yield, 0.8 L/s from a timed container',
+    Math.abs(strike.st.q_l_per_s - 0.8) < 1e-12 && strike.st.basis === strike.engine.basis &&
+    strike.text.includes('0.80 L/s by airlift'), JSON.stringify(strike));
+  check('drilling: a V-notch head below its range gives a yield and says so',
+    strike.vnotch && strike.vnotch.flags.map((f) => f.code).join() === 'vnotch_head_outside',
+    JSON.stringify(strike.vnotch));
+
+  /* 4. a cuttings photograph, attached in the slot, with its provenance and depths */
+  const photoRef = JSON.parse(await readFile(new URL('reference.json', import.meta.url), 'utf8'))
+    .photo_evidence.cases.fixture.record;
+  const jpeg = await readFile(new URL('fixtures/photo_exif.jpg', import.meta.url));
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'),
+    page.click('.img-slot[data-key="cuttings-1"] .img-slot-drop')]);
+  await chooser.setFiles({ name: 'cuttings.jpg', mimeType: 'image/jpeg', buffer: jpeg });
+  await page.waitForFunction(() => !!window.GWT.drillCopilot.session().intervals[1].photo,
+    null, { timeout: 15000 });
+  const photo = await page.evaluate(() => window.GWT.drillCopilot.session().intervals[1].photo);
+  const sorted = (x) => JSON.stringify(Object.fromEntries(Object.keys(x).sort()
+    .filter((k) => k !== 'attached_at').map((k) => [k, x[k]])));
+  check('drilling: a cuttings photograph keeps the provenance record Python makes of it',
+    sorted(photo.provenance) === sorted(photoRef), `js ${sorted(photo.provenance)}\n     py ${sorted(photoRef)}`);
+  check('drilling: and the depths of the interval it is of',
+    JSON.stringify(photo.depth) === '{"top_m":5,"bottom_m":10}', JSON.stringify(photo.depth));
+
+  /* 5. the day countersigned, and a change after it shown */
+  await page.evaluate(() => window.GWT.drillCopilot.draw());
+  await page.fill('input[data-sign="2026-10-10"]', 'M. Kamara');
+  await page.dispatchEvent('input[data-sign="2026-10-10"]', 'change');
+  await drillClock(DRILL + 9 * 60 * MIN);
+  await click('[data-sign-button="2026-10-10"]');
+  const signed = await page.evaluate(() => {
+    const D = window.GWT.drillCopilot;
+    const s = D.session();
+    const out = { status: document.querySelector('[data-day="2026-10-10"]')?.getAttribute('data-status'),
+      sig: s.signatures['2026-10-10'] };
+    try { D.correctInterval(0, { note: 'reddish brown' }); out.unreasoned = 'changed'; }
+    catch (e) { out.unreasoned = e.message; }
+    D.correctInterval(0, { note: 'reddish brown' }, 'lateritic was the next interval');
+    D.draw();
+    out.after = document.querySelector('[data-day="2026-10-10"]')?.getAttribute('data-status');
+    out.amendments = D.session().amendments;
+    return out;
+  });
+  check('drilling: the supervisor countersigns the day, with the name and the device time',
+    signed.status === 'signed' && signed.sig.length === 1 && signed.sig[0].name === 'M. Kamara' &&
+    signed.sig[0].at === DRILL + 9 * 60 * MIN && signed.sig[0].metres === 10, JSON.stringify(signed));
+  check('drilling: a change after the countersign needs a reason and leaves the day amended',
+    /Give the reason/.test(signed.unreasoned) && signed.after === 'amended' &&
+    signed.amendments.length === 1 && signed.amendments[0].reason === 'lateritic was the next interval',
+    JSON.stringify(signed));
+
+  /* 6. kept across a reload, mid-interval, on the device clock */
+  await page.evaluate(() => window.GWT.drillCopilot.startInterval());
+  await drillClock(DRILL + 9 * 60 * MIN + 5 * MIN);
+  await page.reload({ waitUntil: 'load' });
+  await wireDrill();
+  const kept = await page.evaluate(() => {
+    const s = window.GWT.drillCopilot.session();
+    return { n: s.intervals.length, current: s.current,
+      shown: document.querySelector('[data-dc="drilling"]')?.textContent || '' };
+  });
+  check('drilling: a reload comes back to the log and the interval being drilled',
+    kept.n === 2 && kept.current && kept.current.top_m === 10 &&
+    kept.current.started_at === DRILL + 9 * 60 * MIN, JSON.stringify(kept));
+  await page.evaluate(() => window.GWT.drillCopilot.cancelCurrent());
+
+  /* 7. the drilling log, read back by this app's own reader */
+  const back = await page.evaluate(async () => {
+    const D = window.GWT.drillCopilot, S = window.GWT.support, C = window.GWT.core;
+    const bytes = await D.drillingWorkbook(D.session());
+    const sheets = await S.readXlsx(new Uint8Array(bytes).buffer);
+    const log = C.drillingFromGrid(sheets[0].rows, 'copilot.xlsx');
+    const daily = await S.readXlsx(new Uint8Array(await D.dailyWorkbook(D.session())).buffer);
+    return {
+      names: sheets.map((s) => s.name), daily: daily.map((s) => s.name),
+      intervals: log.intervals.map((iv) => [iv.top_m, iv.bottom_m, C.lithologyClass(iv.description).key,
+        iv.from_time, iv.to_time, iv.penetration_rate_m_per_min, iv.bit_diameter_in]),
+      strikes: log.water_strikes_m, ref: log.borehole_ref, depth: log.total_depth_m,
+      flags: log.flags.map((f) => f.code),
+      photoRow: sheets[1].rows[1],
+      sha: D.session().intervals[1].photo.provenance.sha256,
+    };
+  });
+  check('drilling: the log is read back by the engine\'s reader as it was logged',
+    JSON.stringify(back.intervals) === JSON.stringify([
+      [0, 5, 'topsoil', '07:00', '07:12', 1 / 2.4, 6.5],
+      [5, 10, 'saprolite', '07:12', '07:27', 1 / 3, 6.5]]) &&
+    JSON.stringify(back.strikes) === '[4,8]' && back.ref === 'BH-1' && back.depth === 10 &&
+    back.flags.length === 0, JSON.stringify(back));
+  check('drilling: the workbook lists the cuttings photograph by its depths and hash, and a daily sheet a day',
+    JSON.stringify(back.names) === '["Drilling Log","Cuttings photos","Countersigns"]' &&
+    back.photoRow[0] === 5 && back.photoRow[1] === 10 && back.photoRow[3] === back.sha &&
+    JSON.stringify(back.daily) === '["Daily 2026-10-10"]', JSON.stringify(back));
+  const used = await page.evaluate(async () => {
+    await window.GWT.drillCopilot.useInProject();
+    const derived = window.GWT.app.derived;
+    return { source: (window.GWT.app.store.get('sources') || {}).drilling?.name,
+      nav: window.GWT.app.store.get('nav'),
+      depth: derived && derived.log ? derived.log.total_depth_m : null };
+  });
+  check('drilling: "use it as this project\'s drilling log" hands the sheet to the design',
+    used.source === 'bh_1_drilling_log.xlsx' && used.nav === 'design' && used.depth === 10,
+    JSON.stringify(used));
+  await page.evaluate(() => window.GWT.drillCopilot.discard());
 }
 
 try {
@@ -605,9 +834,14 @@ try {
     late.sched.next === 12, JSON.stringify(late));
   await page.evaluate(() => window.GWT.pumpCopilot.discard());
 
+  /* ---------------------------------------- the drilling log co-pilot */
+  await drillingPlayback();
+
   /* -------------------------------------------------------- offline */
   const sw = await readFile(new URL('../../docs/sw.js', import.meta.url), 'utf-8');
   check('offline: the co-pilot is precached with the app shell', sw.includes("'js/gwt-pump-copilot.js'"));
+  check('offline: the drilling log co-pilot is precached with the app shell',
+    sw.includes("'js/gwt-drill-copilot.js'"));
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 } catch (e) {

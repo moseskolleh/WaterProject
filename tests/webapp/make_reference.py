@@ -1470,7 +1470,45 @@ def build() -> dict:
     out["drilling_cases"] = [drilling_case(grid) for grid in DRILLING_CASES]
     out["photo_evidence"] = photo_evidence_reference()
     out["field_kit"] = field_kit_reference()
+    out["airlift"] = airlift_reference()
     return out
+
+
+# ----------------------------------------------- airlift yield (step 2.3)
+
+#: The drilling co-pilot's airlift readings: containers timed once and
+#: more than once, notch heads inside, at the edges of and outside the range
+#: the coefficient holds for, a reason with untidy spaces, and readings that
+#: give no yield, which both engines refuse.
+AIRLIFT_CASES = [
+    ["bucket", {"volume_l": 20, "timings_s": [25, 24.6, 25.4]}],
+    ["bucket", {"volume_l": 10, "timings_s": [7.3]}],
+    ["bucket", {"volume_l": 200, "timings_s": [61.5, 59.25]}],
+    ["vnotch", {"head_mm": 34}],
+    ["vnotch", {"head_mm": 50}],
+    ["vnotch", {"head_mm": 87.5}],
+    ["vnotch", {"head_mm": 380}],
+    ["vnotch", {"head_mm": 410}],
+    ["none", {"reason": "  compressor\tdown,  no airlift "}],
+    ["bucket", {"volume_l": 20, "timings_s": []}],
+    ["bucket", {"volume_l": 0, "timings_s": [20]}],
+    ["bucket", {"volume_l": 20, "timings_s": [20, 0]}],
+    ["vnotch", {"head_mm": 0}],
+    ["none", {"reason": " \t "}],
+    ["airlift", {}],
+]
+
+
+def airlift_reference() -> dict:
+    from groundwater.field_kit import airlift_yield
+
+    results = []
+    for method, options in AIRLIFT_CASES:
+        try:
+            results.append(airlift_yield(method, **options))
+        except ValueError:
+            results.append(None)
+    return {"cases": AIRLIFT_CASES, "results": results}
 
 
 # ----------------------------------------------- photo evidence (step 2.4)

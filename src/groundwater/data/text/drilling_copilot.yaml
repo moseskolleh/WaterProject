@@ -1,0 +1,30 @@
+# The drilling log co-pilot (PLAN.md step 2.3). It is in the browser app only,
+# and both apps say so in these words: gwt-drill-copilot.js on the co-pilot's
+# page and app/views/borehole_design.py on the Streamlit Borehole design page.
+# The airlift basis and its warning are written by both engines' airlift
+# yield estimate (groundwater.field_kit.airlift_yield and C.airliftYield).
+# The template rules are in src/groundwater/text.py; CONTRIBUTING.md says how
+# to add an entry.
+
+browser_only: >-
+  The drilling log co-pilot, which logs each interval against the lithology
+  classes with its times, water strikes, airlift yield and cuttings photo, and
+  takes the supervisor's countersign each day, is in the browser app only. The
+  Streamlit app reads the drilling log it writes like any other drilling log
+  template.
+
+airlift_bucket: >-
+  Timed container: {volume:g} L filled in a mean of {mean:.1f} s over {n:g}
+  {n:plural:timing|timings}.
+
+airlift_vnotch: >-
+  {angle:g}-degree V-notch: head {head:g} mm, Q = {ce:g} x 8/15 x sqrt(2g) x
+  tan({half:g} degrees) x h^2.5 (Kindsvater-Shen, ISO 1438).
+
+airlift_not_measured: >-
+  Not measured: {reason}.
+
+vnotch_outside: >-
+  A head of {head:g} mm is outside the {low:g} to {high:g} mm the notch's
+  coefficient holds for, so the figure is rougher than the notch can give;
+  time a container as well.

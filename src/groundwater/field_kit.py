@@ -79,6 +79,7 @@ from .ves.interpret import depth_of_investigation
 __all__ = [
     "PAYLOAD_FORMAT",
     "PayloadFields",
+    "airlift_yield",
     "cautious_storage",
     "field_kit_content",
     "field_kit_payload",
@@ -217,6 +218,73 @@ def ves_survey_plan(target_m: float, config: VESConfig | None = None) -> dict:
         "max_ab2": max_ab2, "investigation_m": depth_of_investigation(max_ab2, config),
         "line_m": 2 * max_ab2, "capped": capped, "steps": steps,
     }
+
+
+# ------------------------------------------------------------ airlift yield
+
+#: Standard gravity, m/s2, in the V-notch equation.
+_GRAVITY = 9.80665
+
+
+def airlift_yield(method: str, *, volume_l: float | None = None,
+                  timings_s: list[float] | None = None, head_mm: float | None = None,
+                  reason: str = "") -> dict:
+    """The airlift yield of a water strike, in litres per second.
+
+    The drilling log co-pilot's estimate (step 2.3), which reads it from here
+    in the browser (``C.airliftYield``). ``method`` is how it was measured:
+
+    - ``"bucket"``: a container of ``volume_l`` litres timed filling, once
+      or more (``timings_s``); the yield is the volume over the mean time;
+    - ``"vnotch"``: the head over a V-notch plate on the discharge, in mm,
+      read by the Kindsvater-Shen equation with the angle and coefficient in
+      ``data/field.yaml``;
+    - ``"none"``: not measured, for the ``reason`` given.
+
+    Returns ``{"method", "q_l_per_s", "basis", "flags"}``: the yield (None
+    when not measured), the sentence the sheets print for how it was got,
+    and ``{"code", "message"}`` for a reading outside the range the method
+    holds for. An estimate during drilling, not a pumping test: the air
+    lifts the water and the well has not been developed. A reading that
+    cannot give a yield (no volume, a time of zero, no reason) raises
+    ``ValueError``.
+    """
+    flags: list[dict] = []
+    if method == "bucket":
+        times = [float(t) for t in (timings_s or [])]
+        if not (volume_l is not None and volume_l > 0) or not times or min(times) <= 0:
+            raise ValueError("a timed container needs its volume and at least one "
+                             "time, each more than zero")
+        mean = sum(times) / len(times)
+        q = float(volume_l) / mean
+        basis = phrase("drilling_copilot.airlift_bucket",
+                       volume=float(volume_l), mean=mean, n=len(times))
+    elif method == "vnotch":
+        if not (head_mm is not None and head_mm > 0):
+            raise ValueError("a V-notch reading needs the head over the notch, "
+                             "more than zero")
+        drilling = field_schedules()["drilling"]
+        angle = drilling["vnotch_angle_deg"]
+        ce = drilling["vnotch_discharge_coefficient"]
+        low, high = drilling["vnotch_head_range_mm"]
+        h = float(head_mm) / 1000.0
+        q = (ce * 8.0 / 15.0 * math.sqrt(2.0 * _GRAVITY)
+             * math.tan(math.radians(angle / 2.0)) * h ** 2.5 * 1000.0)
+        basis = phrase("drilling_copilot.airlift_vnotch", angle=angle,
+                       head=float(head_mm), ce=ce, half=angle / 2.0)
+        if not low <= head_mm <= high:
+            flags.append({"code": "vnotch_head_outside", "message": phrase(
+                "drilling_copilot.vnotch_outside", head=float(head_mm), low=low, high=high)})
+    elif method == "none":
+        text = _SPACE.sub(" ", str(reason or "")).strip(_SPACE_CHARS)
+        if not text:
+            raise ValueError("an airlift not measured needs the reason")
+        return {"method": "none", "q_l_per_s": None,
+                "basis": phrase("drilling_copilot.airlift_not_measured", reason=text),
+                "flags": flags}
+    else:
+        raise ValueError(f"unknown airlift method {method!r}")
+    return {"method": method, "q_l_per_s": q, "basis": basis, "flags": flags}
 
 
 # ------------------------------------------------------------- the sheet code
