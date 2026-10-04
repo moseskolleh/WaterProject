@@ -115,9 +115,13 @@
         exchange: 23, programme_n: 1, success_rate: 100, inter_site_km: 15,
         rateOverrides: {},
       },
-      supervision: { responses: {}, notes: [], checks: {} },
+      /* evidence: the photograph each checklist item that needs one has,
+       * keyed by item id, as a photo slot keeps it */
+      supervision: { responses: {}, notes: [], checks: {}, evidence: {} },
       handover: { committee: [], notes: [], date: '', pumpType: '', tariffNote: '' },
       photos: {},
+      /* ask this device for its position when a photograph carries none */
+      photoPosition: false,
       coverage: { level: 'district' },
       waterpoints: { radius: 1000 },
       spine: { stage: 'design', ledger: {}, signatory: '' },
@@ -3316,6 +3320,9 @@
       nodes.push(S.empty('No pumping test loaded. Upload a sheet, or load the ' +
         'Dr Timbo or Kuntoloh sample from the Overview page.',
         button('Overview', function () { goto('overview'); }, { variant: 'ghost' })));
+      /* the kit is printed before a test is run, so it is here before one is
+       * loaded */
+      nodes.push(fieldKitCard());
       return nodes;
     }
 
@@ -3361,6 +3368,7 @@
             render();
             analysed.then(refresh);
           })));
+      nodes.push(fieldKitCard());
       return nodes;
     }
 
@@ -3469,6 +3477,7 @@
     nodes.push(reportCard('Pumping test report', 'pumping',
       'Test details, the full field data tables, each analysis method with its ' +
       'figure, the results summary and the yield recommendation.'));
+    nodes.push(fieldKitCard());
     nodes.push(nextStep('Next, assess the water quality.', 'Water quality', 'quality'));
     return nodes;
   };
@@ -4322,6 +4331,8 @@
       }, { addLabel: '+ Add a note' }),
     ]));
 
+    var required = evidenceCard(items, responses);
+    if (required) nodes.push(required);
     nodes.push(photoCard('supervision', 'Supervision photographs'));
     nodes.push(reportCard('Supervision record', 'supervision',
       'The summary, the full checklist record stage by stage, the field ' +
@@ -4503,7 +4514,9 @@
             'Time (min)', 'Water Level (m)', 'Drawdown (m)',
             'Time (min)', 'Water Level (m)', 'Recovery (m)'],
         ];
-        [1, 2, 3, 4, 5, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60].forEach(function (t) {
+        /* the co-pilots' and the field kit's schedule (data/field.yaml), to
+         * the end of the hour each group covers */
+        C.readingMinutes(60).forEach(function (t) {
           rows.push([t, '', '', t, '', '', t, '', '']);
         });
         return [{ name: 'Pumping Test', rows: rows }];
@@ -4545,6 +4558,65 @@
     return GWT.vesCopilot.page();
   };
 
+  /* --- the field kit (PLAN.md step 2.5) --------------------------------------
+   * Printed sheets for a crew with no device: one pumping test sheet for each
+   * borehole named, and the three quick cards. The content is the engine's
+   * (C.fieldKitContent, held to groundwater/field_kit.py by parity); the
+   * Streamlit app builds the same kit on its Templates and Pumping test
+   * pages. The boreholes typed in are kept for the session, not the project.
+   * ---------------------------------------------------------------------- */
+
+  var fieldKitDraft = null;
+
+  function knownBoreholes() {
+    var refs = [derived.log && derived.log.borehole_ref,
+      derived.test && derived.test.borehole_ref].filter(Boolean);
+    return refs.filter(function (ref, i) { return refs.indexOf(ref) === i; });
+  }
+
+  function fieldKitCard() {
+    var box = /** @type {HTMLTextAreaElement} */ (el('textarea.input', {
+      rows: 3, 'data-fieldkit': 'boreholes',
+      placeholder: 'One borehole identifier a line, as the sheet should print it',
+    }));
+    box.value = fieldKitDraft === null ? knownBoreholes().join('\n') : fieldKitDraft;
+    box.addEventListener('input', function () { fieldKitDraft = box.value; });
+    var build = button('Field kit (.docx)', function (event) {
+      buildFieldKit(box.value.split(/\r?\n/), event.target);
+    });
+    build.setAttribute('data-fieldkit', 'build');
+    return card('Field kit', [
+      el('p.muted', C.phrase('field_kit.about')),
+      field('Boreholes', box),
+      el('div.btn-row', [build]),
+    ]);
+  }
+
+  async function buildFieldKit(boreholes, node) {
+    var host = node ? node.closest('.card') : $('#page-host');
+    try {
+      await S.withBusy(host, 'Building the field kit…', async function () {
+        await need(REPORT_BUNDLES);
+        var cfg = config();
+        var content = C.fieldKitContent(store.get('site'), boreholes, cfg);
+        if (!content.sheets.length) {
+          throw new Error('name at least one borehole, one a line.');
+        }
+        var builder = GWT.docx.fieldKit({
+          style: cfg.style, content: content,
+          symbols: content.sheets.map(function (sheet) {
+            return qrDataUrl(sheet.payload, { ecc: 'H', scale: 8 });
+          }),
+        });
+        var bytes = await builder.build();
+        S.download('field_kit_' + S.slug(content.project || siteLabel()) + '.docx', bytes);
+      });
+      S.toast('Field kit ready.', 'ok');
+    } catch (err) {
+      S.toast('Could not build the field kit: ' + err.message, 'error');
+    }
+  }
+
   PAGES.templates = function () {
     return [
       pageHead('Templates', 'Blank workbooks in exactly the layout the readers ' +
@@ -4571,6 +4643,7 @@
           }
         }),
       ]),
+      fieldKitCard(),
     ];
   };
 
@@ -6112,7 +6185,58 @@
     return card(title, [
       GWT.imageSlot.gallery(setName, values, function (next) {
         store.set('photos.' + setName, next);
-      }),
+      }, { askPosition: askPhotoPosition }),
+      photoPositionToggle(),
+    ], { note: 'Photos stay on this machine and travel inside the project file.' });
+  }
+
+  function askPhotoPosition() { return !!store.get('photoPosition'); }
+
+  /* A photograph's position comes from its own EXIF where it has one. Some
+   * phones' browsers strip that before a page sees the file, so this device
+   * can be asked instead, and the record says which it was. Off until it is
+   * ticked: the browser asks for permission the first time. */
+  function photoPositionToggle() {
+    return el('div', [
+      S.checkboxInput(store.get('photoPosition'),
+        'Ask this device for its position when a photograph carries none',
+        function (v) { store.set('photoPosition', !!v); }),
+      el('p.muted', 'Each photograph keeps its capture time, its position and ' +
+        'the SHA-256 of the file as attached, with where each came from.'),
+    ]);
+  }
+
+  /* One photo slot for each checklist item that needs a photograph (the
+   * CSV's photo column), bound to supervision.evidence. */
+  function evidenceCard(items, responses) {
+    var wanted = items.filter(function (item) { return item.photo_required; });
+    if (!wanted.length) return null;
+    var evidence = store.get('supervision.evidence') || {};
+    return card('Photographs the checklist requires', [
+      el('p.muted', 'The supervision record is held back until each of these ' +
+        'items has a photograph, or is answered N/A. Only presence is ' +
+        'checked: whether the photograph shows the work done well is for ' +
+        'the supervisor to judge.'),
+      el('div.img-grid', wanted.map(function (item) {
+        var na = (responses[item.item_id] || {}).status === 'na';
+        return GWT.imageSlot.create({
+          key: item.item_id,
+          label: C.stageTitle(item.checklist) + ': ' + item.section +
+            (na ? ' (answered N/A)' : ''),
+          hint: item.text,
+          value: evidence[item.item_id] || null,
+          askPosition: askPhotoPosition,
+          onChange: function (v) {
+            var had = !!(store.get('supervision.evidence') || {})[item.item_id];
+            if (v) store.set('supervision.evidence.' + item.item_id, v);
+            else store.remove('supervision.evidence.' + item.item_id);
+            /* a photograph arriving or going moves the gate on this page; a
+             * caption being typed does not, and redrawing would lose focus */
+            if (had !== !!v) render();
+          },
+        });
+      })),
+      photoPositionToggle(),
     ], { note: 'Photos stay on this machine and travel inside the project file.' });
   }
 
@@ -6154,6 +6278,12 @@
       wq_assessment: derived.assessment,
       borehole_design: derived.design,
       cost_estimate: derived.estimate,
+      /* the answers and the photographs, for the photo evidence the
+       * supervision record needs */
+      supervision: {
+        responses: store.get('supervision.responses') || {},
+        evidence: store.get('supervision.evidence') || {},
+      },
     };
   }
 
@@ -6708,8 +6838,19 @@
           context.notes = store.get('supervision.notes') || [];
           context.boreholeRef = (derived.log && derived.log.borehole_ref) ||
             (derived.test && derived.test.borehole_ref) || '';
+          /* the photographs the checklist requires, each listed with its
+           * provenance and embedded ahead of the general photo plate */
+          var evidence = store.get('supervision.evidence') || {};
+          context.evidence = items.filter(function (item) {
+            return evidence[item.item_id] && evidence[item.item_id].dataUrl;
+          }).map(function (item) {
+            var photo = evidence[item.item_id];
+            figures.push({ image: photo, caption: photo.caption || item.text, widthCm: 12 });
+            return { item: item, photo: photo };
+          });
           GWT.imageSlot.collect(store.get('photos.supervision'), 'supervision')
             .forEach(function (photo) {
+              context.evidence.push({ item: null, photo: photo });
               figures.push({ image: photo, caption: photo.caption, widthCm: 13 });
             });
           context.figures = figures;

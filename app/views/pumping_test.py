@@ -21,6 +21,7 @@ from groundwater.seasonal import MONTH_NAMES, month_of, seasonal_yield
 from groundwater.text import phrase
 from groundwater.utils import fmt_num
 
+from field_kit_panel import field_kit_panel
 from shared import (
     app_config,
     _band,
@@ -197,6 +198,10 @@ def render() -> None:
             )
 
         _through_the_year(test, analysis)
+
+    # printed before a test is run, so it is here whether or not one is loaded
+    st.divider()
+    field_kit_panel("pump")
 
     _next_step("Assess water quality →", "Water quality",
                "Yield established. Check the water is safe to drink.")

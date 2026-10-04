@@ -29,6 +29,9 @@ _REFERENCES_FOR = {
     "handover": ["rwsn_drilling", "who", "slsb"],
     "cost": ["rwsn_code_of_practice", "rwsn_drilling"],
     "supervision": ["rwsn_drilling", "rwsn_code_of_practice"],
+    # the dose card: the supervision guide the checklist item follows, and
+    # WHO, which the dose calculator names
+    "field_kit": ["rwsn_supervision", "who"],
 }
 
 

@@ -662,7 +662,8 @@ def build() -> dict:
     # the CSV, and carry a positional answer onto the same stable id.
     _items = load_checklists()
     out["checklists"] = {
-        "ids": [[i.item_id, i.legacy_id, i.checklist, i.section, i.critical]
+        "ids": [[i.item_id, i.legacy_id, i.checklist, i.section, i.critical,
+                 i.photo_required]
                 for i in _items],
         "legacy": legacy_item_ids(_items),
         "migrated": migrate_response_keys(
@@ -1467,7 +1468,175 @@ def build() -> dict:
     out["survey_figures"] = survey_figures_reference(rokel_interps)
     out["design_cases"] = [design_case(spec) for spec in DESIGN_CASES]
     out["drilling_cases"] = [drilling_case(grid) for grid in DRILLING_CASES]
+    out["photo_evidence"] = photo_evidence_reference()
+    out["field_kit"] = field_kit_reference()
     return out
+
+
+# ----------------------------------------------- photo evidence (step 2.4)
+
+def photo_evidence_reference() -> dict:
+    """The provenance both engines record for the same files, and the gate.
+
+    The files are the committed fixture, whose EXIF was written by hand, and
+    variants of it from the same builder: big-endian, no metadata at all
+    (so the device clock and a device fix are used), and a blank clock.
+    The bytes travel in this file, so the browser reads exactly these.
+    """
+    import base64
+    import importlib.util
+
+    from groundwater.photos import describe_provenance, photo_provenance
+    from groundwater.readiness import assess_readiness
+
+    spec = importlib.util.spec_from_file_location(
+        "make_photo_fixture", OUT.parent / "fixtures" / "make_photo_fixture.py")
+    make = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(make)
+    attached = "2026-10-03T09:00:00Z"
+    files = {
+        "fixture": ((OUT.parent / "fixtures" / "photo_exif.jpg").read_bytes(), {}),
+        "big_endian": (make.jpeg_with_exif(make.build_tiff(">", **make.FIXTURE_EXIF)), {}),
+        "no_exif_device_fix": (make.BASE_JPEG, {
+            "device_fix": {"lat": 8.4801, "lon": -13.2302, "accuracy_m": 12.5}}),
+        "no_exif_refused": (make.BASE_JPEG, {"position_note": "refused",
+                                             "stored": "downscaled"}),
+        "blank_clock": (make.jpeg_with_exif(make.build_tiff(
+            "<", taken="0000:00:00 00:00:00", lat=make.FIXTURE_EXIF["lat"],
+            lon=make.FIXTURE_EXIF["lon"])), {}),
+        # padded with a control byte that str.strip() takes and trim() does
+        # not, and with a space both take: the two once read this differently
+        "control_padding": (make.jpeg_with_exif(make.build_tiff(
+            ">", taken=" 2024:03:05 14:22:10", offset="+01:00\x1c",
+            lat=("N ", ((8, 1), (1, 1), (1, 1))),
+            lon=("W\x1f", ((13, 1), (0, 1), (0, 1))))), {}),
+    }
+    cases = {}
+    for name, (data, options) in files.items():
+        record = photo_provenance(data, attached, **options)
+        cases[name] = {
+            "b64": base64.b64encode(data).decode("ascii"),
+            "options": options,
+            "record": record,
+            "shown": describe_provenance(record),
+        }
+    photo = {"b64": cases["fixture"]["b64"]}
+    gate = {
+        "none": {},
+        "one": {"supervision": {"evidence": {"des-backfill-placed-6": photo}}},
+        "all": {"supervision": {"evidence": {
+            key: photo for key in ("des-casing-screen-assemblage",
+                                   "des-backfill-placed-6",
+                                   "dev-borehole-disinfected-chlorine")}}},
+        "na": {"supervision": {"responses": {
+            "des-casing-screen-assemblage": {"status": "na"},
+            "des-backfill-placed-6": {"status": "na"},
+            "dev-borehole-disinfected-chlorine": {"status": "na"}}}},
+    }
+    return {
+        "attached_at": attached,
+        "cases": cases,
+        "no_record": describe_provenance(None),
+        "gate": {
+            name: [[r.key, r.state, r.detail]
+                   for r in assess_readiness(state, "supervision").requirements]
+            for name, state in gate.items()
+        },
+        "gate_states": gate,
+    }
+
+
+# ------------------------------------------------------------- the field kit
+
+# The kit for three projects: the plain one; one named by its reference only,
+# with a wider casing, a shorter minimum test and another depth rule; and one
+# with no name at all and a riser as wide as the casing, which leaves no
+# casing storage to state. Every word, number and sheet code is compared.
+FIELD_KIT_CASES = [
+    {"site": {"project": "Rokel 2026", "project_ref": "", "community": "Kuntolo",
+              "client": "Living Water International", "district": "Port Loko",
+              "supervisor": "WiNGiN"},
+     "boreholes": ["KTL-01", "KTL|02 %x", " KTL-01 ", "", "BH\t 3\n"],
+     "config": {}},
+    {"site": {"project": "Ignored", "project_ref": " LWI/2026/07 ",
+              "community": "Rokel", "client": "", "district": "", "supervisor": ""},
+     "boreholes": ["RK-1"],
+     "config": {"pumping": {"casing_diameter_in": 6.0, "riser_diameter_in": 1.5,
+                            "min_constant_test_min": 120.0,
+                            "min_step_length_min": 100.0},
+                "ves": {"depth_of_investigation_factor": 0.3}}},
+    {"site": {"project": "", "project_ref": "", "community": "", "client": "",
+              "district": "", "supervisor": ""},
+     "boreholes": ["\u00d8-1 K\u0254n\u0254"],
+     "config": {"pumping": {"casing_diameter_in": 1.25, "riser_diameter_in": 1.25}}},
+]
+
+# sheet codes to read: the kit's own, and texts that are not one
+FIELD_KIT_CODES = [
+    "GWT-FK/1|pumping|Rokel 2026|KTL-01",
+    "GWT-FK/1|pumping|A%7CB%25C|%2541",
+    "  GWT-FK/1|pumping||RK-1\n",
+    "GWT-FK/2|pumping|Rokel 2026|KTL-01",
+    "GWT-FK/1|pumping|Rokel 2026",
+    "GWT-FK/1||Rokel 2026|KTL-01",
+    "BOREHOLE SL-WAR-8FEEVKQ-T",
+    # trimmed of the six ASCII spaces only, which str.strip() and
+    # String.trim() are not: a byte-order mark and U+0085 are kept
+    "\ufeffGWT-FK/1|pumping|P|B",
+    "GWT-FK/1|pumping|P|B\u0085",
+]
+
+# names to make codes of, with the characters str.strip() and String.trim()
+# disagree about, unicode, the escapes, and runs of spaces
+FIELD_KIT_NAMES = [
+    ["\ufeffRokel", "BH-1\ufeff"],
+    ["x\u0085", "\u001cFS\u001f"],
+    ["\u00a0K\u0254n\u0254\u00a0", "\u3000\u00d8-1 \U0001f4a7\u2028"],
+    ["A|B%C%7C%25", " %7c|| "],
+    ["line 1\r\nline 2", "\t\vBH\f 3 "],
+]
+
+
+def field_kit_reference() -> dict:
+    from dataclasses import asdict
+
+    from groundwater import field_kit as fk
+    from groundwater import qr
+    from groundwater.config import Config
+
+    def config_for(overrides: dict) -> Config:
+        config = Config()
+        for section, values in overrides.items():
+            for key, value in values.items():
+                setattr(getattr(config, section), key, value)
+        return config
+
+    content = []
+    for case in FIELD_KIT_CASES:
+        config = config_for(case["config"])
+        site = SiteMetadata(**case["site"])
+        content.append(fk.field_kit_content(site, case["boreholes"], config))
+    plans = [fk.ves_survey_plan(depth, config_for(case["config"]).ves)
+             for depth in (0.4, 30, 62.5, 250, 400)
+             for case in FIELD_KIT_CASES[:2]]
+    return {
+        "cases": FIELD_KIT_CASES,
+        "content": content,
+        "codes": FIELD_KIT_CODES,
+        "parsed": [asdict(p) if (p := fk.parse_field_kit_payload(text)) else None
+                   for text in FIELD_KIT_CODES],
+        "names": FIELD_KIT_NAMES,
+        "payloads": [fk.field_kit_payload(project, borehole)
+                     for project, borehole in FIELD_KIT_NAMES],
+        "minutes": {str(until): fk.reading_minutes(until)
+                    for until in (0.4, 60, 120, 121, 240, 330)},
+        "plans": plans,
+        # every module of the first kit's printed symbols, at the level the
+        # sheets print them
+        "symbols": [["".join("1" if cell else "0" for cell in row)
+                     for row in qr.encode(sheet["payload"], ecc="H").modules]
+                    for sheet in content[0]["sheets"]],
+    }
 
 
 # ------------------------------------------------- pumping sheets at the edges

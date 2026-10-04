@@ -158,6 +158,43 @@ def test_supervision_flow(app):
     assert not app.exception
 
 
+def test_supervision_photo_evidence_holds_the_record_until_attached(app):
+    """The gate lists each item missing its photograph, in the catalogue's
+    words, and a photograph kept with its provenance lifts it."""
+    import base64
+
+    from groundwater.photos import photo_provenance
+    from groundwater.supervision import load_checklists
+    from groundwater.text import phrase
+
+    wanted = [i for i in load_checklists() if i.photo_required]
+    app.session_state["sup_evidence"] = {}
+    goto(app, "Supervision")
+    app.selectbox(key="sup_stage").select("design")
+    app.run()
+    assert not app.exception
+    shown = " ".join(str(m.value) for m in app.markdown)
+    assert "**Photo evidence**" in shown
+    assert phrase("evidence.photo_missing", stage="Design and installation",
+                  item=wanted[0].text) in shown
+    # what the page's uploader keeps: the file and the record made of it
+    data = (Path(__file__).resolve().parent / "webapp" / "fixtures"
+            / "photo_exif.jpg").read_bytes()
+    app.session_state["sup_evidence"] = {item.item_id: {
+        "name": "photo.jpg", "mime": "image/jpeg",
+        "b64": base64.b64encode(data).decode("ascii"),
+        "provenance": photo_provenance(data, "2026-10-03T09:00:00Z",
+                                       position_note="unsupported"),
+    } for item in wanted}
+    app.run()
+    assert not app.exception
+    shown = " ".join(str(m.value) for m in app.markdown)
+    assert "**Photo evidence**" not in shown
+    captions = " ".join(str(c.value) for c in app.caption)
+    assert "SHA-256 " in captions and "camera clock" in captions
+    app.session_state["sup_evidence"] = {}
+
+
 def test_programme_flow(app):
     goto(app, "Costing & BoQ")
     app.button(key="run_programme").click()
@@ -424,6 +461,47 @@ def test_templates_tab(app):
     app.button(key="gen_templates").click()
     app.run()
     assert not app.exception
+
+
+def test_the_field_kit_is_built_from_the_templates_page(app):
+    """PLAN.md step 2.5: the Field kit button writes the sheets and cards
+    for the boreholes named, and says so when none is."""
+    goto(app, "Templates")
+    app.text_area(key="templates_fieldkit_boreholes").set_value("KTL-01\nKTL-02")
+    app.button(key="templates_fieldkit_build").click()
+    app.run()
+    assert not app.exception, app.exception
+    kit = app.session_state["artifacts"]["Download the field kit (.docx)"]
+    import docx
+
+    text = "\n".join(p.text for p in docx.Document(kit).paragraphs)
+    assert "borehole KTL-01" in text and "borehole KTL-02" in text
+    app.text_area(key="templates_fieldkit_boreholes").set_value("  ")
+    app.button(key="templates_fieldkit_build").click()
+    app.run()
+    assert any("at least one borehole" in str(e.value) for e in app.error)
+
+
+def test_the_field_kit_box_offers_a_loaded_test_and_keeps_what_was_typed(sample_data):
+    """The box offers the borehole of a test loaded on the same page, and
+    what is typed into it is still there on the other page and on coming
+    back, as in the browser app. Streamlit keeps a keyed widget's first
+    value and forgets it when the page is left, so neither held before."""
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.run()
+    goto(at, "Pumping test")
+    assert at.text_area(key="pump_fieldkit_boreholes").value == ""
+    at.selectbox(key="sample_pump").select("dr_timbo/dr_timbo_constant_test.xlsx")
+    at.run()
+    ref = at.session_state["pump_analysis"].test.borehole_ref
+    assert ref and at.text_area(key="pump_fieldkit_boreholes").value == ref
+    at.text_area(key="pump_fieldkit_boreholes").set_value("TYPED-1\nTYPED-2")
+    at.run()
+    goto(at, "Templates")
+    assert at.text_area(key="templates_fieldkit_boreholes").value == "TYPED-1\nTYPED-2"
+    goto(at, "Pumping test")
+    assert at.text_area(key="pump_fieldkit_boreholes").value == "TYPED-1\nTYPED-2"
+    assert not at.exception, at.exception
 
 
 def test_portfolio_drilldown_flow(sample_data):

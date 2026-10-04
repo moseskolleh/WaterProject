@@ -38,7 +38,9 @@ Project inputs (saved in the project file)
     ``wiz_``, ``q_``, ``design_``) but the guided start's buttons
     (``shared.UNSAVED_BUTTONS``), the stored sources ``src_<role>`` (an
     uploaded file's name and bytes, or a bundled sample's path),
-    ``rates_overrides`` and ``ho_committee_data``.
+    ``rates_overrides``, ``ho_committee_data`` and ``sup_evidence`` (the
+    photographs attached to supervision checklist items, each with its
+    provenance record, saved under ``evidence``).
 
 Invalidation markers
     ``pump_source_sig``, ``cost_design_sig``, ``wiz_prefill_sig`` and

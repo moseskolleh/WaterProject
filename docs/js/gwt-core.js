@@ -1297,10 +1297,10 @@
 
   var INVERSION_CACHE_FORMAT = 1;
 
-  /* SHA-256 of a string's UTF-8 bytes, as hex. Written out because
-   * crypto.subtle answers only asynchronously and only in a secure context,
-   * and a copy of the app opened from a laptop's disk or a LAN address is
-   * not always one. */
+  /* SHA-256 of a string's UTF-8 bytes, or of the bytes themselves, as hex.
+   * Written out because crypto.subtle answers only asynchronously and only
+   * in a secure context, and a copy of the app opened from a laptop's disk
+   * or a LAN address is not always one. */
   var SHA256_K = [
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
     0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
@@ -1313,11 +1313,13 @@
   ];
 
   /**
-   * @param {string} text
+   * @param {string|Uint8Array} text
    * @returns {string}
    */
   function sha256Hex(text) {
-    var bytes = new TextEncoder().encode(String(text));
+    var bytes = ArrayBuffer.isView(text)
+      ? new Uint8Array(text.buffer, text.byteOffset, text.byteLength)
+      : new TextEncoder().encode(String(text));
     var n = bytes.length;
     var padded = new Uint8Array(((n + 9 + 63) >> 6) << 6);
     padded.set(bytes);
@@ -8007,6 +8009,8 @@
         text: String(row.item || '').trim(),
         critical: String(row.critical || '').trim().toLowerCase() === 'yes',
         guidance: String(row.guidance || '').trim(),
+        /* evidenced by a photograph: the CSV's photo column, none without it */
+        photo_required: String(row.photo || '').trim().toLowerCase() === 'yes',
       };
     });
   }
@@ -13691,6 +13695,268 @@
     portfolioOnePager: portfolioOnePager, portfolioStats: portfolioStats,
   });
 
+  /* ================================================================= photos
+   * groundwater/photos.py. Where a photograph came from: its capture time,
+   * its position and its hash, recorded when it is attached.
+   *
+   * The hash is of the bytes as attached, before the app downscales a large
+   * photograph for storage; `stored` says which copy is kept. The time is
+   * the EXIF DateTimeOriginal where the file carries one, otherwise this
+   * device's clock at attach, and the record says which. The position is
+   * the EXIF GPS where the file carries it, otherwise a device fix taken at
+   * attach if one was given, otherwise none, with the reason. Nothing is
+   * filled in for a photograph attached before records existed.
+   *
+   * The EXIF reader is written out here and in Python, tag for tag, so the
+   * two engines read the same values from the same file: a library would
+   * have been a dependency, and a third reader to keep in step. */
+
+  var PROVENANCE_FORMAT = 1;
+  var EXIF_TYPE_SIZE = /** @type {Record<number, number>} */ (
+    { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1, 9: 4, 10: 8 });
+  var EXIF_TIME = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
+  var EXIF_OFFSET = /^[+-]\d{2}:\d{2}$/;
+
+  /** The TIFF block of a JPEG's first Exif APP1 segment, or null.
+   * @param {Uint8Array} data
+   * @returns {Uint8Array|null}
+   */
+  function exifTiffBlock(data) {
+    if (data.length < 2 || data[0] !== 0xFF || data[1] !== 0xD8) return null;
+    var pos = 2;
+    while (pos + 4 <= data.length) {
+      if (data[pos] !== 0xFF) return null;
+      var marker = data[pos + 1];
+      if (marker === 0xFF) { pos += 1; continue; }
+      /* start of scan or end of image: no metadata follows */
+      if (marker === 0xDA || marker === 0xD9) return null;
+      var length = (data[pos + 2] << 8) | data[pos + 3];
+      if (length < 2) return null;
+      var body = data.subarray(pos + 4, Math.min(data.length, pos + 2 + length));
+      if (marker === 0xE1 && body.length >= 6 && body[0] === 0x45 && body[1] === 0x78 &&
+          body[2] === 0x69 && body[3] === 0x66 && body[4] === 0 && body[5] === 0) {
+        return body.subarray(6);
+      }
+      pos += 2 + length;
+    }
+    return null;
+  }
+
+  /** {tag: [type, count, value bytes]} for one IFD; {} where it is broken.
+   * @param {Uint8Array} tiff
+   * @param {number} offset
+   * @param {boolean} little
+   * @returns {Record<number, Array<*>>}
+   */
+  function exifIfd(tiff, offset, little) {
+    /** @type {Record<number, Array<*>>} */
+    var out = {};
+    if (offset < 8 || offset + 2 > tiff.length) return out;
+    var view = new DataView(tiff.buffer, tiff.byteOffset, tiff.byteLength);
+    var count = view.getUint16(offset, little);
+    for (var i = 0; i < count; i++) {
+      var at = offset + 2 + 12 * i;
+      if (at + 12 > tiff.length) break;
+      var tag = view.getUint16(at, little), kind = view.getUint16(at + 2, little);
+      var n = view.getUint32(at + 4, little);
+      var size = EXIF_TYPE_SIZE[kind];
+      if (!size) continue;
+      var total = size * n;
+      var raw;
+      if (total <= 4) {
+        raw = tiff.subarray(at + 8, at + 8 + total);
+      } else {
+        var start = view.getUint32(at + 8, little);
+        if (start + total > tiff.length) continue;
+        raw = tiff.subarray(start, start + total);
+      }
+      out[tag] = [kind, n, raw];
+    }
+    return out;
+  }
+
+  /** @param {Array<*>|undefined} entry @returns {string|null} */
+  function exifAscii(entry) {
+    if (!entry || entry[0] !== 2) return null;
+    var text = '';
+    for (var i = 0; i < entry[2].length && entry[2][i] !== 0; i++) {
+      var c = entry[2][i];
+      text += c < 128 ? String.fromCharCode(c) : '�';
+    }
+    return text.trim();
+  }
+
+  /** @param {Array<*>|undefined} entry @param {boolean} little @returns {number|null} */
+  function exifLong(entry, little) {
+    if (!entry || entry[1] < 1) return null;
+    var view = new DataView(entry[2].buffer, entry[2].byteOffset, entry[2].byteLength);
+    if (entry[0] === 4) return view.getUint32(0, little);
+    if (entry[0] === 3) return view.getUint16(0, little);
+    return null;
+  }
+
+  /** An unsigned RATIONAL entry as numbers; null if any denominator is 0.
+   * @param {Array<*>|undefined} entry @param {boolean} little @returns {number[]|null} */
+  function exifRationals(entry, little) {
+    if (!entry || entry[0] !== 5) return null;
+    var view = new DataView(entry[2].buffer, entry[2].byteOffset, entry[2].byteLength);
+    var out = [];
+    for (var i = 0; i < entry[1]; i++) {
+      var num = view.getUint32(8 * i, little), den = view.getUint32(8 * i + 4, little);
+      if (den === 0) return null;
+      out.push(num / den);
+    }
+    return out;
+  }
+
+  /** @param {Array<*>|undefined} entry @param {string|null} ref
+   * @param {boolean} little @param {number} limit @returns {number|null} */
+  function exifDegrees(entry, ref, little, limit) {
+    var parts = exifRationals(entry, little);
+    if (!parts || parts.length !== 3 || ['N', 'S', 'E', 'W'].indexOf(ref || '') < 0) return null;
+    /* added in this order in both engines, so the two give the same double */
+    var value = parts[0] + parts[1] / 60.0 + parts[2] / 3600.0;
+    if (ref === 'S' || ref === 'W') value = -value;
+    return Math.abs(value) <= limit ? value : null;
+  }
+
+  /**
+   * The capture time and GPS position a JPEG's EXIF carries, as
+   * {taken_at, gps: {lat, lon, accuracy_m} | null}; never throws.
+   * @param {Uint8Array} data the file's bytes
+   * @returns {Rec}
+   */
+  function readExif(data) {
+    /** @type {Rec} */
+    var out = { taken_at: null, gps: null };
+    try {
+      var bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+      var tiff = exifTiffBlock(bytes);
+      if (!tiff || tiff.length < 8) return out;
+      var little;
+      if (tiff[0] === 0x49 && tiff[1] === 0x49) little = true;
+      else if (tiff[0] === 0x4D && tiff[1] === 0x4D) little = false;
+      else return out;
+      var view = new DataView(tiff.buffer, tiff.byteOffset, tiff.byteLength);
+      if (view.getUint16(2, little) !== 42) return out;
+      var ifd0 = exifIfd(tiff, view.getUint32(4, little), little);
+      var exifAt = exifLong(ifd0[0x8769], little);
+      if (exifAt !== null) {
+        var exif = exifIfd(tiff, exifAt, little);
+        var match = EXIF_TIME.exec(exifAscii(exif[0x9003]) || '');
+        /* a camera with no clock set writes zeros, or spaces, which say
+         * nothing about when the photograph was taken */
+        if (match && Number(match[2]) >= 1 && Number(match[2]) <= 12 &&
+            Number(match[3]) >= 1 && Number(match[3]) <= 31) {
+          var offset = exifAscii(exif[0x9011]) || '';
+          out.taken_at = match[1] + '-' + match[2] + '-' + match[3] + 'T' + match[4] +
+            ':' + match[5] + ':' + match[6] + (EXIF_OFFSET.test(offset) ? offset : '');
+        }
+      }
+      var gpsAt = exifLong(ifd0[0x8825], little);
+      if (gpsAt !== null) {
+        var gps = exifIfd(tiff, gpsAt, little);
+        var lat = exifDegrees(gps[2], exifAscii(gps[1]), little, 90);
+        var lon = exifDegrees(gps[4], exifAscii(gps[3]), little, 180);
+        /* 0, 0 is what a camera without a fix writes, not a place in the sea */
+        if (lat !== null && lon !== null && !(lat === 0 && lon === 0)) {
+          var error = exifRationals(gps[0x1F], little);
+          out.gps = { lat: lat, lon: lon,
+            accuracy_m: error && error.length === 1 ? error[0] : null };
+        }
+      }
+    } catch (e) { /* a malformed file has no metadata, and is still a photograph */ }
+    return out;
+  }
+
+  /**
+   * The provenance record for one photograph, from its original bytes. The
+   * same record groundwater.photos.photo_provenance makes, field for field.
+   * @param {Uint8Array} data the file as attached
+   * @param {Rec} options attached_at (UTC, as this device's clock read),
+   *   device_fix ({lat, lon, accuracy_m}, used only when the file carries no
+   *   position), position_note (why there is none), stored, and sha256 when
+   *   the caller has already hashed the same bytes (the page does it with
+   *   crypto.subtle, where a 6 MB file costs 120 ms on this thread)
+   * @returns {Rec}
+   */
+  function photoProvenance(data, options) {
+    var opts = options || {};
+    var bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    var exif = readExif(bytes);
+    var attachedAt = String(opts.attached_at || '');
+    /** @type {Rec} */
+    var record = {
+      format: PROVENANCE_FORMAT,
+      sha256: opts.sha256 ? String(opts.sha256) : sha256Hex(bytes),
+      bytes: bytes.length,
+      attached_at: attachedAt,
+      taken_at: exif.taken_at || attachedAt,
+      time_source: exif.taken_at ? 'exif' : 'device',
+      position: null,
+      position_source: 'none',
+      position_note: opts.position_note === undefined ? 'not_requested' : opts.position_note,
+      stored: opts.stored || 'original',
+    };
+    var fix = opts.device_fix;
+    if (exif.gps) {
+      record.position = exif.gps;
+      record.position_source = 'exif';
+      record.position_note = '';
+    } else if (fix && fix.lat !== null && fix.lat !== undefined &&
+               fix.lon !== null && fix.lon !== undefined) {
+      record.position = { lat: Number(fix.lat), lon: Number(fix.lon),
+        accuracy_m: fix.accuracy_m === null || fix.accuracy_m === undefined
+          ? null : Number(fix.accuracy_m) };
+      record.position_source = 'device';
+      record.position_note = '';
+    }
+    return record;
+  }
+
+  /**
+   * A provenance record as a report prints it: {time, position, hash}. A
+   * photograph with no record gets the catalogue's "no provenance recorded"
+   * and nothing else, so nothing is printed that was never recorded.
+   * @param {Rec|null|undefined} record
+   * @returns {{time: string, position: string, hash: string}}
+   */
+  function describePhotoProvenance(record) {
+    if (!record || typeof record !== 'object' || !record.sha256) {
+      return { time: phrase('evidence.no_provenance'), position: '', hash: '' };
+    }
+    var timeSources = phraseTable('evidence.time_sources');
+    var shownTime = String(record.taken_at || '').replace(/T/g, ' ').replace(/Z$/, '');
+    var time = phrase('evidence.time', { time: shownTime,
+      source: own(timeSources, record.time_source) ? timeSources[record.time_source] : '' });
+    var where;
+    var position = record.position;
+    if (position && typeof position === 'object' && position.lat !== null &&
+        position.lat !== undefined) {
+      var sources = phraseTable('evidence.position_sources');
+      var accuracy = position.accuracy_m;
+      where = phrase('evidence.position', {
+        lat: Number(position.lat), lon: Number(position.lon),
+        accuracy: accuracy === null || accuracy === undefined
+          ? phrase('evidence.accuracy_unknown')
+          : phrase('evidence.accuracy_m', { m: Number(accuracy) }),
+        source: own(sources, record.position_source) ? sources[record.position_source] : '',
+      });
+    } else {
+      var notes = phraseTable('evidence.position_notes');
+      where = own(notes, record.position_note || '') ? notes[record.position_note]
+        : notes.not_requested;
+    }
+    return { time: time, position: where,
+      hash: phrase('evidence.hash', { short: String(record.sha256).slice(0, 16) }) };
+  }
+
+  Object.assign(C, {
+    PROVENANCE_FORMAT: PROVENANCE_FORMAT,
+    readExif: readExif, photoProvenance: photoProvenance,
+    describePhotoProvenance: describePhotoProvenance,
+  });
+
   /* ============================================================== readiness
    * groundwater/readiness.py. Whether a project's results are complete
    * enough to certify.
@@ -13975,6 +14241,42 @@
       if (!depth) return ['unmet', 'The cost estimate has no total depth to price against.'];
       return ['met', 'Estimate priced for a ' + Math.round(depth) + ' m borehole.'];
     }],
+    /* Every checklist item that needs a photograph has one. Which items do
+     * is the checklist CSV's photo column, and one answered N/A needs none.
+     * Presence is all this checks, and the detail says so whether or not it
+     * is met, so a met requirement is never read as a verdict on the work. */
+    photo_evidence: ['Photo evidence', function (state) {
+      var supervision = state.supervision || {};
+      var items = supervision.items || loadChecklists();
+      var responses = supervision.responses || {};
+      var evidence = supervision.evidence || {};
+      /** @param {*} response */
+      function status(response) {
+        var value = response && typeof response === 'object' ? response.status : response;
+        return String(value || 'pending').trim().toLowerCase();
+      }
+      /* the browser keeps {dataUrl}, the Streamlit app {b64} */
+      /** @param {*} photo */
+      function present(photo) {
+        return !!(photo && typeof photo === 'object' &&
+          (photo.dataUrl || photo.b64 || photo.bytes));
+      }
+      var wanted = items.filter(function (/** @type {Rec} */ item) {
+        return item.photo_required && status(responses[item.item_id]) !== 'na';
+      });
+      var caveat = phrase('evidence.presence_only');
+      if (!wanted.length) return ['met', phrase('evidence.none_required')];
+      var missing = wanted.filter(function (/** @type {Rec} */ item) {
+        return !present(evidence[item.item_id]);
+      });
+      if (missing.length) {
+        return ['unmet', missing.map(function (/** @type {Rec} */ item) {
+          return phrase('evidence.photo_missing',
+            { stage: stageTitle(item.checklist), item: item.text });
+        }).concat([caveat]).join(' ')];
+      }
+      return ['met', phrase('evidence.photos_present', { n: wanted.length }) + ' ' + caveat];
+    }],
     no_errors: ['No fatal data problems', function (state) {
       var analysis = state.pump_analysis;
       var flags = readinessFlags([state.drilling_log, analysis, state.wq_assessment,
@@ -14010,7 +14312,9 @@
     /* an estimate is priced before anything is drilled, so it is judged on
      * its own inputs, not on a log and an as-built design it cannot have */
     costing: ['field_data', 'site_located', 'cost_basis', 'no_errors'],
-    supervision: ['field_data', 'site_located'],
+    /* a supervision record vouches that the critical steps were done, and
+     * for the ones the checklist says need it, a photograph is the evidence */
+    supervision: ['field_data', 'site_located', 'photo_evidence'],
     /* The asset documents and the payment certificate. Without an entry each
      * of these fell back to the completion set, so a plate for the headworks
      * was stamped PROVISIONAL for want of a water quality panel - which a
@@ -20034,6 +20338,408 @@
     suitabilityMapData: suitabilityMapData,
     levelledSoundings: levelledSoundings,
     groundProfileData: groundProfileData,
+  });
+
+  /* ============================================================== field kit
+   * groundwater/field_kit.py: the printed sheets and quick cards for a crew
+   * with no device (PLAN.md step 2.5), as plain data both engines build the
+   * same way; gwt-docx.js fieldKit lays it out. The schedules are the
+   * co-pilots' own, written once in src/groundwater/data/field.yaml and
+   * emitted as GWT.data.field, which both co-pilots read through
+   * fieldSchedules. The sheet code's format is in field_kit.py's notes:
+   *
+   *   GWT-FK/1|pumping|<project>|<borehole>
+   */
+
+  var FIELD_KIT_FORMAT = 'GWT-FK/1';
+  var FIELD_KIT_PUMPING = 'pumping';
+  /* written out rather than \s, and the only whitespace a field or a code is
+   * trimmed of: String.trim() and Python's str.strip() part over a
+   * byte-order mark, U+0085 and U+001C to U+001F, which gave the two engines
+   * different codes for the same name */
+  var FIELD_SPACE = /[ \t\n\r\f\v]+/g;
+  var FIELD_ENDS = /^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g;
+
+  /** data/field.yaml, shared: read, never changed.
+   * @returns {Rec} */
+  function fieldSchedules() {
+    var field = (GWT.data || {}).field;
+    if (!field) {
+      throw new Error('gwt-data.js is not loaded, or is stale: it carries the ' +
+        'field schedules (src/groundwater/data/field.yaml)');
+    }
+    return field;
+  }
+
+  /** The scheduled reading minutes up to and including untilMin: the
+   * log-spaced list, then every late_every_min after its last minute.
+   * @param {number} untilMin
+   * @returns {number[]} */
+  function readingMinutes(untilMin) {
+    var pumping = fieldSchedules().pumping;
+    var schedule = pumping.schedule_min;
+    var out = schedule.filter(function (/** @type {number} */ m) {
+      return m <= untilMin + 1e-9;
+    });
+    for (var late = schedule[schedule.length - 1] + pumping.late_every_min;
+      late <= untilMin + 1e-9; late += pumping.late_every_min) {
+      out.push(late);
+    }
+    return out;
+  }
+
+  /* the scheduled minute a test of `minutes` reads last */
+  function firstReadingAtOrAfter(minutes) {
+    var pumping = fieldSchedules().pumping;
+    var schedule = pumping.schedule_min;
+    for (var i = 0; i < schedule.length; i++) {
+      if (schedule[i] >= minutes - 1e-9) return schedule[i];
+    }
+    var last = schedule[schedule.length - 1], every = pumping.late_every_min;
+    return last + every * Math.ceil((minutes - last) / every - 1e-9);
+  }
+
+  /** Schafer's casing-storage time at the pumping co-pilot's cautious
+   * transmissivity range, through Logan's factor (field_kit.py
+   * cautious_storage). low_t_min is the longer time, the one the advice
+   * rests on.
+   * @param {PumpingConfig} [config]
+   * @returns {Rec} */
+  function cautiousStorage(config) {
+    var cfg = config || defaultConfig().pumping;
+    var pumping = fieldSchedules().pumping;
+    var tLow = pumping.cautious_t_m2_per_day[0], tHigh = pumping.cautious_t_m2_per_day[1];
+    var storage = function (/** @type {number} */ t) {
+      return casingStorageMin(t / (pumping.logan_factor * 24), cfg);
+    };
+    return {
+      casing_in: cfg.casing_diameter_in, riser_in: cfg.riser_diameter_in,
+      t_low: tLow, t_high: tHigh, low_t_min: storage(tLow), high_t_min: storage(tHigh),
+    };
+  }
+
+  /** The AB/2 series and the MN changes that reach targetDepth: the VES
+   * co-pilot's proposal (field_kit.py ves_survey_plan). MN starts at the
+   * widest spacing min_ab_per_mn allows at the first AB and is widened when
+   * AB passes max_ab_per_mn times it; at each change the last AB/2 is read
+   * again with the new MN.
+   * @param {number} targetDepth metres
+   * @param {Config} [config]
+   * @returns {Rec} */
+  function vesSurveyPlan(targetDepth, config) {
+    var ves = (config || defaultConfig()).ves;
+    var field = fieldSchedules().ves;
+    var seriesAll = field.ab2_series_m, mnSeries = field.mn_series_m;
+    /* the engine's own rule decides, not target / factor: 30 / 0.3 is
+     * 100.00000000000001, which would ask for the next spacing */
+    var reaches = function (/** @type {number} */ ab2) {
+      return depthOfInvestigation(ab2, ves) >= targetDepth;
+    };
+    var capped = !reaches(seriesAll[seriesAll.length - 1]);
+    /** @type {number[]} */
+    var series = [];
+    for (var i = 0; i < seriesAll.length; i++) {
+      series.push(seriesAll[i]);
+      if (reaches(seriesAll[i])) break;
+    }
+    var widest = function (/** @type {number} */ ab2) {
+      /** @type {number|null} */
+      var best = null;
+      mnSeries.forEach(function (/** @type {number} */ mn) {
+        if (mn * field.min_ab_per_mn <= 2 * ab2) best = mn;
+      });
+      return best === null ? mnSeries[0] : best;
+    };
+    /** @type {Array<{ab2: number, mn: number}>} */
+    var steps = [];
+    var mn = widest(series[0]);
+    series.forEach(function (ab2, k) {
+      if (k > 0 && 2 * ab2 > field.max_ab_per_mn * mn) {
+        var wider = widest(series[k - 1]);
+        if (wider > mn) {
+          mn = wider;
+          steps.push({ ab2: series[k - 1], mn: mn });
+        }
+      }
+      steps.push({ ab2: ab2, mn: mn });
+    });
+    var maxAb2 = series[series.length - 1];
+    return {
+      target_m: targetDepth, factor: ves.depth_of_investigation_factor, max_ab2: maxAb2,
+      investigation_m: depthOfInvestigation(maxAb2, ves), line_m: 2 * maxAb2,
+      capped: capped, steps: steps,
+    };
+  }
+
+  function fieldText(text) {
+    return String(text === null || text === undefined ? '' : text)
+      .replace(FIELD_SPACE, ' ').replace(FIELD_ENDS, '');
+  }
+
+  /** The text a sheet's QR code carries (field_kit.py's notes say how).
+   * @param {string} project
+   * @param {string} borehole
+   * @param {string} [sheet]
+   * @returns {string} */
+  function fieldKitPayload(project, borehole, sheet) {
+    var escape = function (/** @type {*} */ text) {
+      return fieldText(text).replace(/%/g, '%25').replace(/\|/g, '%7C');
+    };
+    return [FIELD_KIT_FORMAT, sheet || FIELD_KIT_PUMPING, escape(project),
+      escape(borehole)].join('|');
+  }
+
+  /** The fields of a sheet code, or null for text that is not one. Only
+   * version 1 is read.
+   * @param {string} text
+   * @returns {{format: string, sheet: string, project: string, borehole: string}|null} */
+  function parseFieldKitPayload(text) {
+    var parts = String(text).replace(FIELD_ENDS, '').split('|');
+    if (parts.length !== 4 || parts[0] !== FIELD_KIT_FORMAT || !parts[1]) return null;
+    var unescape = function (/** @type {string} */ value) {
+      return value.replace(/%(25|7C)/g, function (_, code) { return code === '25' ? '%' : '|'; });
+    };
+    return { format: parts[0], sheet: parts[1], project: unescape(parts[2]),
+      borehole: unescape(parts[3]) };
+  }
+
+  /** The project as a sheet code names it: its reference, else its name.
+   * @param {Rec} site
+   * @returns {string} */
+  function projectIdentifier(site) {
+    return fieldText(site.project_ref) || fieldText(site.project);
+  }
+
+  function gText(value) { return renderText('{v:g}', { v: value }); }
+
+  /* ingestion/templates.py PUMPING_HEADER, PUMPING_COLUMNS and
+   * RECOVERY_COLUMNS: the labels the printed sheet shares with the workbook */
+  var FIELD_PUMPING_HEADER = ['Community', 'Date', 'Client', 'Length of each step (min)',
+    'Test conducted by', 'Start time', 'Borehole Ref. No.', 'Depth of Borehole (m)',
+    'Static water level (m)', 'Pump setting (m)', 'Test type (step or constant)',
+    'District', 'GPS Coordinate East', 'GPS Coordinate North', 'UTM Zone (28N or 29N)',
+    'Elevation (m)'];
+  var FIELD_PUMPING_COLUMNS = ['Time (min)', 'Water Level (m)', 'Drawdown (m)'];
+  var FIELD_RECOVERY_COLUMNS = ['Time (min)', 'Water Level (m)', 'Recovery (m)'];
+
+  function fieldPumpingBlocks(minutes, planned) {
+    var last = Math.max(240, Math.ceil(planned));
+    var headings = ['Constant discharge 0-60 min', 'Constant discharge 61-120 min',
+      'Constant discharge 121-180 min', 'Constant discharge 181-' + last + ' min'];
+    /** @type {number[][]} */
+    var groups = [[], [], [], []];
+    /* the co-pilot's hourly blocks: a reading belongs to the block whose
+     * heading starts at or before it */
+    minutes.forEach(function (/** @type {number} */ m) {
+      groups[m < 61 ? 0 : m < 121 ? 1 : m < 181 ? 2 : 3].push(m);
+    });
+    /** @type {Rec[]} */
+    var out = [];
+    groups.forEach(function (group, i) {
+      if (!group.length) return;
+      out.push({ caption: headings[i], header: FIELD_PUMPING_COLUMNS.slice(),
+        rows: group.map(function (m) { return [gText(m), '', '']; }) });
+    });
+    return out;
+  }
+
+  function fieldSheet(site, project, borehole, plan, notes) {
+    var payload = fieldKitPayload(project, borehole);
+    /** @type {Rec} */
+    var values = {
+      'Community': site.community, 'Client': site.client,
+      'Test conducted by': site.supervisor, 'Borehole Ref. No.': borehole,
+      'Test type (step or constant)': 'constant', 'District': site.district,
+    };
+    var minutes = readingMinutes(plan.planned_min);
+    var steps = [1, 2, 3, 4];
+    return {
+      borehole: borehole,
+      payload: payload,
+      title: phrase('field_kit.sheet_title', { borehole: borehole }),
+      code: phrase('field_kit.sheet_code', { payload: payload }),
+      warning: project ? '' : phrase('field_kit.no_project'),
+      header: FIELD_PUMPING_HEADER.map(function (label) {
+        return [label, fieldText(own(values, label) ? values[label] : '')];
+      }),
+      notes: notes,
+      discharge_note: phrase('field_kit.discharge'),
+      discharge: {
+        caption: 'Discharge per step (m3/h)',
+        header: steps.map(function (i) { return 'Step ' + i + ' Q'; }),
+        rows: [['', '', '', '']],
+      },
+      bucket: {
+        caption: 'Bucket timings',
+        header: ['Step', 'Bucket (L)', 'Timing 1 (s)', 'Timing 2 (s)', 'Timing 3 (s)',
+          'Q (m3/h)'],
+        rows: steps.map(function (i) { return ['Step ' + i, '', '', '', '', '']; }),
+      },
+      transcribe: phrase('field_kit.transcribe'),
+      blocks: fieldPumpingBlocks(minutes, plan.planned_min),
+      recovery: { caption: 'Recovery', header: FIELD_RECOVERY_COLUMNS.slice(),
+        rows: minutes.map(function (m) { return [gText(m), '', '']; }) },
+    };
+  }
+
+  function fieldPlan(cfg) {
+    var storage = cautiousStorage(cfg);
+    var low = storage.low_t_min;
+    var constant = Math.max(cfg.min_constant_test_min, low || 0);
+    return {
+      storage: storage, constant_min: constant,
+      first_step_min: Math.max(cfg.min_step_length_min, low || 0),
+      step_min: cfg.min_step_length_min,
+      planned_min: firstReadingAtOrAfter(constant),
+    };
+  }
+
+  /* The sheet's sentences, by name, in the order the sheet prints them, as
+   * [key, text] pairs. */
+  function fieldPumpingNotes(plan, cfg) {
+    var storage = plan.storage;
+    var pumping = fieldSchedules().pumping;
+    /** @type {string[][]} */
+    var notes = [];
+    if (storage.low_t_min !== null && storage.high_t_min !== null) {
+      notes.push(['storage', phrase('field_kit.storage', {
+        casing: storage.casing_in, riser: storage.riser_in, low: storage.low_t_min,
+        t_low: storage.t_low, high: storage.high_t_min, t_high: storage.t_high })]);
+      notes.push(['stop_constant', phrase('field_kit.stop_constant',
+        { minutes: plan.constant_min, min_test: cfg.min_constant_test_min })]);
+    } else {
+      /* a riser as wide as the casing leaves nothing to store */
+      notes.push(['stop_constant', phrase('field_kit.stop_constant_no_storage',
+        { minutes: plan.constant_min })]);
+    }
+    notes.push(['stop_step', phrase('field_kit.stop_step',
+      { step: plan.step_min, first: plan.first_step_min })]);
+    notes.push(['storage_measured', phrase('field_kit.storage_measured')]);
+    notes.push(['schedule', phrase('field_kit.schedule', {
+      last: pumping.schedule_min[pumping.schedule_min.length - 1],
+      every: pumping.late_every_min })]);
+    notes.push(['recovery', phrase('field_kit.recovery')]);
+    return notes;
+  }
+
+  function fieldPumpingCard(notes) {
+    var pumping = fieldSchedules().pumping;
+    var schedule = pumping.schedule_min.map(gText);
+    var rows = [];
+    /* seven to a row, so the card stays one card */
+    for (var i = 0; i < schedule.length; i += 7) {
+      rows.push(schedule.slice(i, i + 7).concat(['', '', '', '', '', '', '']).slice(0, 7));
+    }
+    var recovery = notes.filter(function (n) { return n[0] === 'recovery'; })[0][1];
+    return {
+      key: 'pumping',
+      title: phrase('field_kit.card_pumping_title'),
+      lines: [phrase('field_kit.card_pumping_schedule', { every: pumping.late_every_min }),
+        recovery],
+      tables: [{ caption: 'Reading minutes', header: [], rows: rows }],
+      /* the sheet's own advice, less the sentences about its Time column */
+      notes: notes.filter(function (n) { return n[0] !== 'schedule' && n[0] !== 'recovery'; })
+        .map(function (n) { return n[1]; }),
+    };
+  }
+
+  function fieldVesCard(cfg) {
+    var field = fieldSchedules().ves;
+    var plan = vesSurveyPlan(depthOfInvestigation(
+      field.ab2_series_m[field.ab2_series_m.length - 1], cfg.ves), cfg);
+    return {
+      key: 'ves',
+      title: phrase('field_kit.card_ves_title'),
+      lines: [phrase('field_kit.card_ves_rule', { factor: plan.factor }),
+        phrase('field_kit.card_ves_mn', { min_ratio: field.min_ab_per_mn,
+          max_ratio: field.max_ab_per_mn })],
+      tables: [{ caption: 'Schlumberger spacings',
+        header: ['No.', 'AB/2 (m)', 'MN (m)', 'Depth reached (m)'],
+        rows: plan.steps.map(function (/** @type {Rec} */ s, /** @type {number} */ k) {
+          return [String(k + 1), gText(s.ab2), gText(s.mn),
+            gText(depthOfInvestigation(s.ab2, cfg.ves))];
+        }) }],
+      notes: [],
+    };
+  }
+
+  function fieldDoseCard() {
+    var grid = fieldSchedules().disinfection_card;
+    var header = ['Water column (m)'];
+    grid.casing_id_mm.forEach(function (/** @type {number} */ d) {
+      header.push(gText(d) + ' mm: L', gText(d) + ' mm: g');
+    });
+    /** @type {number|null} */
+    var hours = null;
+    /** @type {number|null} */
+    var gramsPerLitre = null;
+    var rows = grid.water_column_m.map(function (/** @type {number} */ column) {
+      var row = [gText(column)];
+      grid.casing_id_mm.forEach(function (/** @type {number} */ d) {
+        var dose = disinfectionDose(column, d);
+        hours = dose.contact_hours;
+        gramsPerLitre = dose.hth_grams / dose.solution_02pct_l;
+        row.push(renderText('{v:.1f}', { v: dose.solution_02pct_l }),
+          renderText('{v:.0f}', { v: dose.hth_grams }));
+      });
+      return row;
+    });
+    return {
+      key: 'disinfection',
+      title: phrase('field_kit.card_dose_title'),
+      lines: [phrase('field_kit.card_dose_rule', { hours: hours }),
+        phrase('field_kit.card_dose_solution', { grams: gramsPerLitre }),
+        phrase('field_kit.card_dose_volume')],
+      tables: [{ caption: phrase('field_kit.card_dose_table'), header: header, rows: rows }],
+      notes: [phrase('field_kit.card_dose_basis')],
+    };
+  }
+
+  /** Everything the field kit prints, as plain data: one pumping test sheet
+   * for each borehole named (blank names dropped, repeats printed once) and
+   * the three quick cards (field_kit.py field_kit_content).
+   * @param {Rec} site the project's header block
+   * @param {string[]} boreholes
+   * @param {Config} [config]
+   * @returns {Rec} */
+  function fieldKitContent(site, boreholes, config) {
+    var cfg = config || defaultConfig();
+    var project = projectIdentifier(site);
+    /** @type {string[]} */
+    var names = [];
+    (boreholes || []).forEach(function (name) {
+      var cleaned = fieldText(name);
+      if (cleaned && names.indexOf(cleaned) < 0) names.push(cleaned);
+    });
+    var plan = fieldPlan(cfg.pumping);
+    var notes = fieldPumpingNotes(plan, cfg.pumping);
+    var noteTexts = notes.map(function (n) { return n[1]; });
+    var citations = phraseTable('references.citations');
+    return {
+      format: FIELD_KIT_FORMAT,
+      project: project,
+      title: phrase('field_kit.title', { name: project || fieldText(site.community) ||
+        'unnamed project' }),
+      storage: plan.storage,
+      constant_min: plan.constant_min,
+      first_step_min: plan.first_step_min,
+      planned_min: plan.planned_min,
+      sheets: names.map(function (name) {
+        return fieldSheet(site, project, name, plan, noteTexts.slice());
+      }),
+      cards: [fieldPumpingCard(notes), fieldVesCard(cfg), fieldDoseCard()],
+      /* the supervision guide the checklist item follows, and WHO, which the
+       * dose calculator names (citations.py _REFERENCES_FOR field_kit) */
+      references: [citations.rwsn_supervision, citations.who],
+    };
+  }
+
+  Object.assign(C, {
+    FIELD_KIT_FORMAT: FIELD_KIT_FORMAT,
+    fieldSchedules: fieldSchedules, readingMinutes: readingMinutes,
+    cautiousStorage: cautiousStorage, vesSurveyPlan: vesSurveyPlan,
+    fieldKitPayload: fieldKitPayload, parseFieldKitPayload: parseFieldKitPayload,
+    projectIdentifier: projectIdentifier, fieldKitContent: fieldKitContent,
   });
 
   /* __SECTION_MARK__ */

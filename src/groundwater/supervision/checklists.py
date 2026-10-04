@@ -8,7 +8,11 @@ live in an editable CSV (``data/supervision_checklists.csv``) so a
 project can adapt them without code changes.
 
 Critical items are the ones whose failure should stop acceptance of
-the works (safety, records, acceptance criteria and sign offs).
+the works (safety, records, acceptance criteria and sign offs). An item
+whose ``photo`` column says yes needs a photograph as its evidence (the
+screen make-up, the sanitary seal, the disinfection): the readiness gate
+holds the supervision record back until one is attached, and a project
+CSV adds or drops one without code changes.
 """
 
 from __future__ import annotations
@@ -54,6 +58,9 @@ class ChecklistItem:
     #: inserting one row re-mapped every later answer to a different
     #: question; the loader keeps it so those answers can be carried across.
     legacy_id: str = ""
+    #: Whether the item is evidenced by a photograph (the CSV's ``photo``
+    #: column). A CSV without the column requires none.
+    photo_required: bool = False
 
 
 def stage_title(key: str) -> str:
@@ -89,6 +96,7 @@ def load_checklists(path: str | Path | None = None) -> list[ChecklistItem]:
                 critical=(row.get("critical") or "").strip().lower() == "yes",
                 guidance=(row.get("guidance") or "").strip(),
                 legacy_id=positional,
+                photo_required=(row.get("photo") or "").strip().lower() == "yes",
             )
         )
     return items

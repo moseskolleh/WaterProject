@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import base64
+
 import streamlit as st
 
+from groundwater.photos import describe_provenance, photo_provenance, utc_now_text
 from groundwater.reporting.supervision import (
     build_supervision_report,
     SupervisionReportInputs,
@@ -29,6 +32,62 @@ from shared import (
     site_from_state,
     workdir,
 )
+
+def _attach_evidence(item_id: str) -> None:
+    """Keep the photograph just uploaded, with its provenance (on change).
+
+    The record is made here, once, when the file arrives: made on every
+    rerun, its attach time would move each time the page was drawn. This
+    app runs on a server and cannot ask the phone or laptop in front of it
+    for a position, so a photograph whose file carries none is recorded
+    with none, and says why.
+    """
+    upload = st.session_state.get(f"upload_ev_{item_id}")
+    if upload is None:
+        return
+    data = upload.getvalue()
+    evidence = dict(st.session_state.get("sup_evidence") or {})
+    evidence[item_id] = {
+        "name": upload.name,
+        "mime": upload.type or "image/jpeg",
+        "b64": base64.b64encode(data).decode("ascii"),
+        "provenance": photo_provenance(
+            data, attached_at=utc_now_text(), position_note="unsupported"),
+    }
+    st.session_state["sup_evidence"] = evidence
+
+
+def _remove_evidence(item_id: str) -> None:
+    evidence = dict(st.session_state.get("sup_evidence") or {})
+    evidence.pop(item_id, None)
+    st.session_state["sup_evidence"] = evidence
+    st.session_state.pop(f"upload_ev_{item_id}", None)
+
+
+def _evidence_slot(item) -> None:
+    """The photograph a checklist item needs, and where it came from."""
+    photo = (st.session_state.get("sup_evidence") or {}).get(item.item_id)
+    if isinstance(photo, dict) and photo.get("b64"):
+        shown = describe_provenance(photo.get("provenance"))
+        c1, c2 = st.columns([1, 3])
+        try:
+            c1.image(base64.b64decode(photo["b64"]), width=140)
+        except Exception:  # noqa: BLE001 - an image the browser cannot draw is still evidence on file
+            c1.caption(photo.get("name") or "photo")
+        c2.caption("📷 " + " · ".join(
+            part for part in (photo.get("name"), shown["time"], shown["position"],
+                              shown["hash"]) if part))
+        c2.button("Remove photograph", key=f"ev_remove_{item.item_id}",
+                  on_click=_remove_evidence, args=(item.item_id,))
+    else:
+        st.file_uploader(
+            "Photograph (this item needs one)", type=["jpg", "jpeg", "png"],
+            key=f"upload_ev_{item.item_id}", on_change=_attach_evidence,
+            args=(item.item_id,),
+            help="Its capture time and GPS position are read from the file "
+                 "where it carries them, and its SHA-256 is recorded.",
+        )
+
 
 def render() -> None:
     st.header("Drilling supervision")
@@ -118,6 +177,8 @@ def render() -> None:
                 args=(item.item_id,),
                 label_visibility="collapsed",
             )
+            if item.photo_required:
+                _evidence_slot(item)
             if st.session_state.get(f"chk_{item.item_id}") == "No":
                 st.text_input(
                     "Remark / action", key=f"rmkw_{item.item_id}",
@@ -217,6 +278,7 @@ def render() -> None:
                     field_checks=st.session_state.get("field_checks", []),
                     figures_dir=workdir(),
                     readiness=_sup_gate,
+                    evidence=st.session_state.get("sup_evidence") or {},
                 ),
                 workdir() / "Supervision_Checklist_Report.docx",
                 app_config(),

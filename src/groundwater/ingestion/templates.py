@@ -88,28 +88,39 @@ def write_ves_template(path: str | Path, n_soundings: int = 2, n_rows: int = 24)
     return Path(path)
 
 
+#: The pumping test header block, as (label cell, label, value cell). The
+#: printed field kit (groundwater.field_kit) carries the same labels in the
+#: same order, so a sheet filled in on paper is typed into this one cell for
+#: cell.
+PUMPING_HEADER = (
+    ("A2", "Community", "B2"), ("D2", "Date", "E2"),
+    ("A3", "Client", "B3"), ("D3", "Length of each step (min)", "E3"),
+    ("A4", "Test conducted by", "B4"), ("D4", "Start time", "E4"),
+    ("A5", "Borehole Ref. No.", "B5"), ("D5", "Depth of Borehole (m)", "E5"),
+    ("A6", "Static water level (m)", "B6"), ("D6", "Pump setting (m)", "E6"),
+    ("A7", "Test type (step or constant)", "B7"), ("D7", "District", "E7"),
+    ("G2", "GPS Coordinate East", "H2"), ("G3", "GPS Coordinate North", "H3"),
+    ("G4", "UTM Zone (28N or 29N)", "H4"), ("G5", "Elevation (m)", "H5"),
+)
+#: The discharge row's label, and the columns of each pumping group and of
+#: the recovery group.
+PUMPING_DISCHARGE_LABEL = "Discharge per step (m3/h)"
+PUMPING_COLUMNS = ("Time (min)", "Water Level (m)", "Drawdown (m)")
+RECOVERY_COLUMNS = ("Time (min)", "Water Level (m)", "Recovery (m)")
+
+
 def write_pumping_template(path: str | Path) -> Path:
     """Pumping test template: header, four step groups and recovery."""
     wb = Workbook()
     ws = wb.active
     ws.title = "Pumping Test"
     _title(ws, "A1", "PUMPING TEST FIELD SHEET (STEP / CONSTANT DISCHARGE)", "A1:O1")
-    pairs = [
-        ("A2", "Community", "B2"), ("D2", "Date", "E2"),
-        ("A3", "Client", "B3"), ("D3", "Length of each step (min)", "E3"),
-        ("A4", "Test conducted by", "B4"), ("D4", "Start time", "E4"),
-        ("A5", "Borehole Ref. No.", "B5"), ("D5", "Depth of Borehole (m)", "E5"),
-        ("A6", "Static water level (m)", "B6"), ("D6", "Pump setting (m)", "E6"),
-        ("A7", "Test type (step or constant)", "B7"), ("D7", "District", "E7"),
-        ("G2", "GPS Coordinate East", "H2"), ("G3", "GPS Coordinate North", "H3"),
-        ("G4", "UTM Zone (28N or 29N)", "H4"), ("G5", "Elevation (m)", "H5"),
-    ]
-    for lab_cell, lab, val_cell in pairs:
+    for lab_cell, lab, val_cell in PUMPING_HEADER:
         _label(ws, lab_cell, lab)
         _value(ws, val_cell)
 
     # Discharge row: one value per step group; leave blank if not measured
-    _label(ws, "A9", "Discharge per step (m3/h)")
+    _label(ws, "A9", PUMPING_DISCHARGE_LABEL)
     for i, col in enumerate(("B", "E", "H", "K")):
         _label(ws, f"{col}9", f"Step {i + 1} Q")
         _value(ws, f"{chr(ord(col) + 1)}9")
@@ -120,14 +131,10 @@ def write_pumping_template(path: str | Path) -> Path:
     for _g, (label, c0) in enumerate(zip(groups, start_cols, strict=True)):
         cell = ws.cell(row=header_row - 1, column=c0, value=f"Constant discharge {label}")
         cell.font = Font(bold=True, size=10, color=ACCENT)
-        _table_header(
-            ws, header_row, ["Time (min)", "Water Level (m)", "Drawdown (m)"], start_col=c0
-        )
+        _table_header(ws, header_row, list(PUMPING_COLUMNS), start_col=c0)
     cell = ws.cell(row=header_row - 1, column=13, value="Recovery")
     cell.font = Font(bold=True, size=10, color=ACCENT)
-    _table_header(
-        ws, header_row, ["Time (min)", "Water Level (m)", "Recovery (m)"], start_col=13
-    )
+    _table_header(ws, header_row, list(RECOVERY_COLUMNS), start_col=13)
     for r in range(header_row + 1, header_row + 41):
         for c in list(range(1, 12 + 1)) + [13, 14, 15]:
             ws.cell(row=r, column=c).border = BORDER

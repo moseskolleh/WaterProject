@@ -217,7 +217,8 @@ await withPage(async (page, base, consoleErrors) => {
     // the Python keys carry a widget prefix; the browser keys the item alone
     Object.keys(prefixed).forEach((k) => { migrated[prefixed[k].slice(0, 4) + k] = prefixed[k]; });
     out.checklists = {
-      ids: items.map((i) => [i.item_id, i.legacy_id, i.checklist, i.section, i.critical]),
+      ids: items.map((i) => [i.item_id, i.legacy_id, i.checklist, i.section, i.critical,
+        i.photo_required]),
       legacy: C.legacyItemIds(items),
       migrated: migrated,
     };
@@ -1029,6 +1030,64 @@ await withPage(async (page, base, consoleErrors) => {
         `js ${JSON.stringify(cases.drilling[i][key])}\n     py ${JSON.stringify(ref[key])}`);
     }
   });
+  // --- the field kit (PLAN.md step 2.5): every word, number and sheet code
+  // the printed sheets and cards carry, and the symbols the sheets print ---
+  const kit = await page.evaluate((ref) => {
+    const C = GWT.core;
+    const plans = [];
+    [0.4, 30, 62.5, 250, 400].forEach((depth) => {
+      ref.cases.slice(0, 2).forEach((c) => {
+        plans.push(C.vesSurveyPlan(depth, C.withConfig(c.config)));
+      });
+    });
+    const content = ref.cases.map((c) =>
+      C.fieldKitContent(c.site, c.boreholes, C.withConfig(c.config)));
+    return {
+      content,
+      parsed: ref.codes.map((text) => C.parseFieldKitPayload(text)),
+      payloads: ref.names.map((pair) => C.fieldKitPayload(pair[0], pair[1])),
+      minutes: Object.fromEntries(Object.keys(ref.minutes)
+        .map((k) => [k, C.readingMinutes(Number(k))])),
+      plans,
+      symbols: content[0].sheets.map((sheet) => C.qrEncode(sheet.payload, { ecc: 'H' })
+        .modules.map((row) => row.map((m) => (m ? '1' : '0')).join(''))),
+    };
+  }, R.field_kit);
+  /* the first place two values part, or null: numbers to parity's tolerance,
+   * everything else exactly */
+  function parted(a, b, path) {
+    if (typeof a === 'number' && typeof b === 'number') {
+      return close(a, b, 1e-9) ? null : `${path}: js ${a} vs py ${b}`;
+    }
+    if (Array.isArray(a) && Array.isArray(b)) {
+      if (a.length !== b.length) return `${path}: js ${a.length} items vs py ${b.length}`;
+      for (let i = 0; i < a.length; i++) {
+        const d = parted(a[i], b[i], `${path}[${i}]`);
+        if (d) return d;
+      }
+      return null;
+    }
+    if (a && b && typeof a === 'object' && typeof b === 'object') {
+      const keys = Array.from(new Set(Object.keys(a).concat(Object.keys(b)))).sort();
+      for (const k of keys) {
+        if (!(k in a) || !(k in b)) return `${path}.${k}: in one engine only`;
+        const d = parted(a[k], b[k], `${path}.${k}`);
+        if (d) return d;
+      }
+      return null;
+    }
+    return a === b ? null : `${path}: js ${JSON.stringify(a)} vs py ${JSON.stringify(b)}`;
+  }
+  R.field_kit.content.forEach((ref, i) => {
+    for (const key of Object.keys(ref)) {
+      const d = parted(kit.content[i][key], ref[key], key);
+      check(`field kit case ${i + 1}: ${key}`, d === null, d);
+    }
+  });
+  for (const key of ['parsed', 'payloads', 'minutes', 'plans', 'symbols']) {
+    const d = parted(kit[key], R.field_kit[key], key);
+    check(`field kit: ${key}`, d === null, d);
+  }
   // --- VES ---
   check('ves: sounding count', parsed.ves.length === R.ves.length,
     `js ${parsed.ves.length} vs py ${R.ves.length}`);
@@ -1966,6 +2025,46 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify(survey.wenner));
   same('survey rokel: depth each model is drawn to', parsed.rokel_drawn_depth,
     SF.rokel_drawn_depth);
+
+  // --- photo evidence (PLAN.md step 2.4) ---
+  // The same bytes give the same provenance record, field for field and to
+  // the last bit of each coordinate, and the same words on a report; and the
+  // supervision gate says the same of the same photographs.
+  const PE = R.photo_evidence;
+  const photos = await page.evaluate((PE) => {
+    const C = GWT.core, S = GWT.support;
+    const out = { cases: {}, no_record: C.describePhotoProvenance(null), gate: {} };
+    Object.keys(PE.cases).forEach((name) => {
+      const c = PE.cases[name];
+      const record = C.photoProvenance(S.base64ToBytes(c.b64),
+        Object.assign({ attached_at: PE.attached_at }, c.options));
+      out.cases[name] = { record: record, shown: C.describePhotoProvenance(record) };
+    });
+    Object.keys(PE.gate_states).forEach((name) => {
+      out.gate[name] = C.assessReadiness(PE.gate_states[name], 'supervision', {})
+        .requirements.map((q) => [q.key, q.state, q.detail]);
+    });
+    return out;
+  }, PE);
+  const canonical = (value) => JSON.stringify(value, (key, x) =>
+    (x && typeof x === 'object' && !Array.isArray(x)
+      ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
+  Object.keys(PE.cases).forEach((name) => {
+    check(`photo provenance ${name}: the same record`,
+      canonical(photos.cases[name].record) === canonical(PE.cases[name].record),
+      `js ${canonical(photos.cases[name].record)}\n     py ${canonical(PE.cases[name].record)}`);
+    check(`photo provenance ${name}: the same words on a report`,
+      canonical(photos.cases[name].shown) === canonical(PE.cases[name].shown),
+      `js ${canonical(photos.cases[name].shown)}\n     py ${canonical(PE.cases[name].shown)}`);
+  });
+  check('photo provenance: a photograph without a record is said to have none',
+    canonical(photos.no_record) === canonical(PE.no_record),
+    `js ${canonical(photos.no_record)}\n     py ${canonical(PE.no_record)}`);
+  Object.keys(PE.gate).forEach((name) => {
+    check(`photo evidence gate ${name}: the same requirements and words`,
+      JSON.stringify(photos.gate[name]) === JSON.stringify(PE.gate[name]),
+      `js ${JSON.stringify(photos.gate[name]).slice(0, 600)}\n     py ${JSON.stringify(PE.gate[name]).slice(0, 600)}`);
+  });
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, {});

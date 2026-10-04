@@ -592,6 +592,24 @@ def _project_state() -> dict:
         "wq_assessment": st.session_state.get("wq_assessment"),
         "borehole_design": st.session_state.get("borehole_design"),
         "cost_estimate": st.session_state.get("cost_estimate"),
+        "supervision": {
+            "items": cached_checklists(),
+            "responses": supervision_answers(),
+            "evidence": st.session_state.get("sup_evidence") or {},
+        },
+    }
+
+
+#: The supervision page's radio labels, as the checklist's answer codes.
+ANSWER_CODES = {"Pending": "pending", "Yes": "yes", "No": "no", "N/A": "na"}
+
+
+def supervision_answers() -> dict[str, str]:
+    """Each checklist item's answer code, from the ``chk_`` keys."""
+    return {
+        item.item_id: ANSWER_CODES.get(
+            st.session_state.get(f"chk_{item.item_id}", "Pending"), "pending")
+        for item in cached_checklists()
     }
 
 
@@ -799,6 +817,9 @@ def _load_project() -> None:
     # the file names it "asset"; the session key it belongs under is the one
     # serialize_project reads back, so the round trip has to be closed here
     asset = updates.pop("asset", None)
+    evidence = updates.pop("evidence", None)
+    if isinstance(evidence, dict) and evidence:
+        st.session_state["sup_evidence"] = evidence
     for key, value in updates.items():
         if key not in UNSAVED_BUTTONS:
             st.session_state[key] = value
