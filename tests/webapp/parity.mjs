@@ -2036,6 +2036,117 @@ await withPage(async (page, base, consoleErrors) => {
   same('survey rokel: depth each model is drawn to', parsed.rokel_drawn_depth,
     SF.rokel_drawn_depth);
 
+  // --- the range of models (PLAN.md step 3.1) ---
+  // The generator, its step and the Latin hypercube are integer and exactly
+  // rounded arithmetic in both engines, so they are compared to the bit. A
+  // short run of the sampler on each Rokel sounding takes the same accept
+  // decision at every step, and its numbers agree to 1e-4 relative (6e-6 was
+  // the largest difference measured): the chains start from the two
+  // engines' own inversions, which agree to parity's model tolerance, not to
+  // the bit, and every forward call carries the difference along. A run at
+  // the default settings is compared on its percentiles within 2 percent,
+  // its share of unresolved basement within 2 points and its drilling depth
+  // within one rounding step: over thousands of steps, a uniform landing
+  // within a last bit of an acceptance probability would send the chains
+  // different ways, after which only their statistics agree. On this
+  // machine the default run, too, took the same decision at every step.
+  const VR = R.ves_range;
+  const ranges = await page.evaluate(async (VR) => {
+    const C = GWT.core, D = GWT.data;
+    const sheets = await GWT.support.readXlsx(GWT.support.base64ToBytes(D.samples.rokel.files.ves.b64));
+    const soundings = C.readVesSheets(sheets, 'rokel_ves.xlsx');
+    const inversions = soundings.map((s) => C.invertSounding(s));
+    const streams = {};
+    Object.keys(VR.streams).forEach((key) => {
+      const [seed, stream] = key.split('/').map(Number);
+      const rng = C.rangeStream(seed, stream);
+      streams[key] = VR.streams[key].map(() => rng.next());
+    });
+    const sym = C.rangeStream(2, 3);
+    const short = C.withConfig({ ves_range: VR.short_settings });
+    const asText = (r) => Object.assign(r, { text: C.modelRangeText(r),
+      caption: C.modelRangeCaption(r) });
+    return {
+      streams,
+      symmetric: VR.symmetric.map(() => sym.symmetric()),
+      lhs: C.latinHypercube(C.rangeStream(1, 0), 6, [0.0, -1.0, 2.0], [1.0, 3.0, 2.5]),
+      short: soundings.map((s, i) => asText(C.sampleModelRange(s, inversions[i], short))),
+      synthetic: VR.synthetic.map((c) => {
+        const s = { sounding_id: c.id, array_type: c.array, ab2: c.ab2,
+          mn: c.ab2.map(() => NaN), rho_app: c.rho, flags: [] };
+        return asText(C.sampleModelRange(s, C.invertSounding(s), short));
+      }),
+      default: soundings.map((s, i) => C.sampleModelRange(s, inversions[i], C.defaultConfig())),
+      text_cases: VR.text_cases.map((c) => [C.modelRangeText(c.range),
+        C.modelRangeCaption(c.range), C.modelRangeRows(c.range),
+        C.modelRangeTableCaption(c.range)]),
+    };
+  }, VR);
+  check('range: the generator gives the same words',
+    JSON.stringify(ranges.streams) === JSON.stringify(VR.streams),
+    `js ${JSON.stringify(ranges.streams)}\n     py ${JSON.stringify(VR.streams)}`);
+  check('range: the same steps, to the bit',
+    ranges.symmetric.every((v, i) => v === VR.symmetric[i]),
+    `js ${ranges.symmetric}\n     py ${VR.symmetric}`);
+  check('range: the same Latin hypercube, to the bit',
+    JSON.stringify(ranges.lhs) === JSON.stringify(VR.lhs),
+    `js ${JSON.stringify(ranges.lhs)}\n     py ${JSON.stringify(VR.lhs)}`);
+  // numbers within rtol, everything else exactly
+  const within = (rtol) => {
+    const walk = (a, b) => {
+      if (typeof b === 'number' && typeof a === 'number') return close(a, b, rtol);
+      if (Array.isArray(b)) {
+        return Array.isArray(a) && a.length === b.length && b.every((v, i) => walk(a[i], v));
+      }
+      if (b && typeof b === 'object') {
+        return !!a && typeof a === 'object' &&
+          Object.keys(b).every((k) => walk(a[k], b[k]));
+      }
+      return a === b;
+    };
+    return walk;
+  };
+  VR.short.concat(VR.synthetic.map((c) => c.range)).forEach((py, i) => {
+    const js = ranges.short.concat(ranges.synthetic)[i];
+    const name = `range ${py.sounding_id}, short run`;
+    check(`${name}: the same accept decisions`,
+      JSON.stringify(js.accepted) === JSON.stringify(py.accepted),
+      `js ${js.accepted} vs py ${py.accepted}`);
+    ['text', 'caption'].forEach((key) => {
+      check(`${name}: ${key}, word for word`, JSON.stringify(js[key]) === JSON.stringify(py[key]),
+        `js ${JSON.stringify(js[key])}\n     py ${JSON.stringify(py[key])}`);
+    });
+    const { text, caption, ...numbers } = py;
+    check(`${name}: every number to 1e-4`, within(1e-4)(js, numbers),
+      `js ${JSON.stringify(js).slice(0, 700)}\n     py ${JSON.stringify(numbers).slice(0, 700)}`);
+  });
+  VR.text_cases.forEach((c, i) => {
+    const js = ranges.text_cases[i];
+    check(`range sentences, case ${i}: word for word`,
+      JSON.stringify(js) === JSON.stringify([c.text, c.caption, c.rows, c.table_caption]),
+      `js ${JSON.stringify(js)}\n     py ${JSON.stringify([c.text, c.caption, c.rows,
+        c.table_caption])}`);
+  });
+  VR.default.forEach((py, i) => {
+    const js = ranges.default[i];
+    const name = `range ${py.sounding_id}, default settings`;
+    const bands = (r) => [r.basement_m, r.weathered_m].concat(r.resistivity, r.interface_m);
+    check(`${name}: the percentiles within 2 percent`,
+      within(2e-2)(bands(js), bands(py)),
+      `js ${JSON.stringify(bands(js))}\n     py ${JSON.stringify(bands(py))}`);
+    check(`${name}: unresolved basement within 2 points`,
+      Math.abs(js.basement_unresolved - py.basement_unresolved) <= 0.02,
+      `js ${js.basement_unresolved} vs py ${py.basement_unresolved}`);
+    check(`${name}: drilling depth within one rounding step`,
+      Math.abs(js.drilling_depth_m - py.drilling_depth_m) <= 5.0 &&
+      js.drilling_depth_capped === py.drilling_depth_capped,
+      `js ${js.drilling_depth_m} ${js.drilling_depth_capped} vs py ${py.drilling_depth_m} ` +
+      `${py.drilling_depth_capped}`);
+    check(`${name}: the same sample count, chains and starts`,
+      js.n_samples === py.n_samples && js.chains === py.chains && js.starts === py.starts &&
+      js.n_layers === py.n_layers, JSON.stringify([js.n_samples, js.chains, js.starts]));
+  });
+
   // --- photo evidence (PLAN.md step 2.4) ---
   // The same bytes give the same provenance record, field for field and to
   // the last bit of each coordinate, and the same words on a report; and the

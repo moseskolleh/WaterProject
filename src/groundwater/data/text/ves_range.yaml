@@ -1,0 +1,71 @@
+# The range of VES models (PLAN.md step 3.1): what a sounding's sampled
+# models say about basement, the weathered zone and the drilling depth, in
+# the words both engines write. The Python geophysical report and the
+# Streamlit Geophysics page read them through groundwater.ves.model_range;
+# the browser's Geophysics page and report through C.modelRangeText. The
+# template rules are in src/groundwater/text.py; CONTRIBUTING.md says how to
+# add an entry.
+
+basement: >-
+  Basement between {p10:.0f} and {p90:.0f} m (P10 to P90); not resolved in
+  {share} percent of the models that fit.
+
+basement_always: >-
+  Basement between {p10:.0f} and {p90:.0f} m (P10 to P90), and resolved in
+  every model that fits.
+
+basement_unresolved: >-
+  Basement not resolved in {share} percent of the models that fit, within the
+  {doi:.0f} m the sounding resolves.
+
+weathered: >-
+  Water-bearing weathered zone {p10:.0f} to {p90:.0f} m thick (P10 to P90),
+  counted from 3 m down to the {doi:.0f} m the sounding resolves.
+
+weathered_none: >-
+  No water-bearing weathered zone in at least 90 percent of the models that
+  fit.
+
+drilling: >-
+  Drilling depth from the P90 of the models that fit: about {depth:.0f} m.
+
+drilling_capped: >-
+  Drilling depth from the P90 of the models that fit: at least {depth:.0f} m,
+  cut back to the {doi:.0f} m the sounding resolves.
+
+basis: >-
+  Basis: {samples:g} models of {layers:g} layers sampled by Metropolis-Hastings
+  in {chains:g} {chains:plural:chain|chains}, started from the best of {fits:g}
+  fits (the inversion's own and {starts:g} from Latin hypercube starting
+  models), with an error of {base:g} percent on each reading{overlap}{widened}.
+  The error model is provisional.
+
+basis_overlap: >-
+  , plus the measured disagreement at the MN {count:plural:overlap|overlaps}
+  at AB/2 {spacings} m
+
+basis_widened: >-
+  ; the errors were widened {factor:.1f} times, to the misfit the best model
+  reaches
+
+better_fit: >-
+  The wider search found a {layers:g}-layer model that fits to {err:.1f}
+  percent, against {chosen:.1f} percent for the model reported above, and the
+  range is sampled around it.
+
+caption: >-
+  The grey fan is {count:g} of the sampled models that fit.
+
+# The rows of the range table under each sounding's sentences: the label of
+# each quantity, then its P10, P50 and P90.
+row_basement: Depth to basement (m)
+
+row_weathered: Water-bearing weathered zone (m)
+
+row_resistivity: Resistivity of layer {layer:g} (ohm-m)
+
+row_interface: Base of layer {layer:g} (m)
+
+table_caption: >-
+  The range of models at point {sid}: P10, P50 and P90 of the models that
+  fit, from the same sample as the sentences above.

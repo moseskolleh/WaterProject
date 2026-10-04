@@ -1047,6 +1047,14 @@
         var weak = C.poorlyResolvedText(inversion.model);
         if (weak) b.paragraph(weak, { align: 'justify' });
       }
+      /* the range of models that fit, where one was sampled (PLAN.md step
+       * 3.1), in the words reporting/geophysical.py _sounding_block prints */
+      var range = (context.ranges || [])[i];
+      if (range) {
+        b.paragraph(C.modelRangeText(range).join(' '), { align: 'justify' });
+        b.table(C.modelRangeRows(range), { header: ['', 'P10', 'P50', 'P90'],
+          caption: C.modelRangeTableCaption(range), colWidthsCm: [6.4, 2.2, 2.2, 2.2] });
+      }
       var fig = figures.filter(function (f) { return f.soundingId === interp.sounding_id; });
       for (var k = 0; k < fig.length; k++) {
         b.figure(fig[k].image, fig[k].caption, fig[k].widthCm || 15);

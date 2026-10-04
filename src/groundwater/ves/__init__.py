@@ -35,6 +35,7 @@ _LAZY_MODULES = (
     "ipi2win",
     "classify",
     "interpret",
+    "model_range",
     "splice",
     "plots",
 )

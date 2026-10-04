@@ -20,6 +20,11 @@ from groundwater.ves.interpret import (
     drilling_preference_table,
     zone_cell,
 )
+from groundwater.ves.model_range import (
+    model_range_rows,
+    model_range_text,
+    sample_model_range,
+)
 from groundwater.ves.plots import plot_sounding_curve
 
 from shared import (
@@ -38,6 +43,36 @@ from shared import (
     workdir,
     _working,
 )
+
+
+def _ranges_for(results) -> list:
+    """The range of models sampled around these very inversions, or Nones.
+
+    Kept against the inversions they were sampled around, so a new run of
+    the inversion shows no range until one is sampled again."""
+    kept = st.session_state.get("ves_ranges")
+    if kept is not None and kept[0] is results:
+        return kept[1]
+    return [None] * len(results)
+
+
+def _sample_ranges(soundings, results) -> list:
+    """Sample the range of models for every sounding, with a progress bar.
+
+    A few seconds a sounding: thousands of forward calls and a handful of
+    fits, which is why it waits for its button rather than running with the
+    inversion."""
+    ranges = []
+    progress = st.progress(0.0, text="Sampling the range of models")
+    for i, (sounding, result) in enumerate(zip(soundings, results, strict=True)):
+        def told(fraction, _label, i=i, sid=sounding.sounding_id):
+            progress.progress(min((i + fraction) / len(results), 1.0),
+                              text=f"Sampling the range of models: {sid}")
+        ranges.append(sample_model_range(sounding, result, app_config(), told))
+    progress.empty()
+    st.session_state.ves_ranges = (results, ranges)
+    return ranges
+
 
 def render() -> None:
     st.header("VES survey analysis")
@@ -72,7 +107,17 @@ def render() -> None:
 
     if "ves_results" in st.session_state:
         soundings, results, interps = st.session_state.ves_results
-        for sounding, result, interp in zip(soundings, results, interps, strict=True):
+        ranges = _ranges_for(results)
+        if st.button(
+            "Sample the range of models", key="ves_range",
+            help="Sample the models that fit each sounding about as well as its "
+            "best fit, for the P10 to P90 of basement, the weathered zone and "
+            "the drilling depth. A few seconds a sounding.",
+        ):
+            ranges = _sample_ranges(soundings, results)
+        for sounding, result, interp, model_range in zip(
+            soundings, results, interps, ranges, strict=True
+        ):
             with st.container(border=True):
                 st.subheader(f"{sounding.sounding_id}")
                 col_fig, col_txt = st.columns([3, 2])
@@ -80,6 +125,7 @@ def render() -> None:
                     plot_sounding_curve,
                     sounding, result.model, result.rho_calc, result.ab2,
                     file_name=f"curve_{sounding.sounding_id.replace(' ', '_')}.png",
+                    model_range=model_range,
                 )
                 col_fig.image(str(fig_path))
                 col_txt.metric(
@@ -110,6 +156,11 @@ def render() -> None:
                     "resolves: its base and the drilling depth are minima.",
                 )
                 col_txt.write(interp.narrative)
+                if model_range is not None:
+                    # beside the best fit, never in place of it
+                    col_txt.info(" ".join(model_range_text(model_range)))
+                    col_txt.table([dict(zip(("", "P10", "P50", "P90"), row, strict=True))
+                                   for row in model_range_rows(model_range)])
         st.subheader("Drilling preference")
         st.table(drilling_preference_table(interps))
 
@@ -191,6 +242,7 @@ def render() -> None:
                     flags=check_all([(s.sounding_id, s.site) for s in soundings]),
                     include_qa_annex=True,
                     readiness=_geo_gate,
+                    model_ranges=ranges,
                 ),
                 workdir() / "Geophysical_Survey_Report.docx",
                 app_config(),

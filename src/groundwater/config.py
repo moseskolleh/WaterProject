@@ -23,6 +23,7 @@ _DEFAULTS = bundled_json("defaults.json")
 _STYLE, _VES, _PUMPING, _DESIGN = (
     _DEFAULTS["style"], _DEFAULTS["ves"], _DEFAULTS["pumping"], _DEFAULTS["design"],
 )
+_RANGE = _DEFAULTS["ves_range"]
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +180,40 @@ class DesignRules:
 
 
 # ---------------------------------------------------------------------------
+# The range of VES models (PLAN.md step 3.1)
+#
+# A section of its own rather than more VESConfig fields: the inversion cache
+# key carries the whole VESConfig, and none of these changes what the
+# inversion returns, so adding them there would have thrown away every saved
+# inversion for nothing.
+# ---------------------------------------------------------------------------
+
+@dataclass
+class VESRangeConfig:
+    # The sampler's random numbers come from this seed, through a generator
+    # both engines implement to the bit, so one sounding gives one range.
+    seed: int = _RANGE["seed"]
+    # Starting models drawn by Latin hypercube and polished by the same
+    # Levenberg-Marquardt fit the inversion uses, beside the inversion's own.
+    starts: int = _RANGE["starts"]
+    # Metropolis-Hastings chains, each started from one of the best fits.
+    chains: int = _RANGE["chains"]
+    # Models kept over all the chains, after burn-in. Each costs one forward
+    # call; bench/README.md says what that costs and why this number.
+    samples: int = _RANGE["samples"]
+    # Steps each chain takes and throws away first, while it finds its
+    # step size; they cost a forward call each too.
+    burn_in: int = _RANGE["burn_in"]
+    # The error on every reading, in percent of the apparent resistivity,
+    # before the measured disagreement at any MN overlap is added to it.
+    # Provisional: the instrument's repeatability is about 1 percent; this
+    # allows for electrode contact and small lateral changes as well.
+    base_error_percent: float = _RANGE["base_error_percent"]
+    # How many of the sampled models are drawn as the fan over the curve.
+    fan_models: int = _RANGE["fan_models"]
+
+
+# ---------------------------------------------------------------------------
 # Top level configuration
 # ---------------------------------------------------------------------------
 
@@ -208,6 +243,7 @@ class Config:
     ves: VESConfig = field(default_factory=VESConfig)
     pumping: PumpingConfig = field(default_factory=PumpingConfig)
     design: DesignRules = field(default_factory=DesignRules)
+    ves_range: VESRangeConfig = field(default_factory=VESRangeConfig)
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> Config:
@@ -225,6 +261,7 @@ class Config:
             ("ves", cfg.ves),
             ("pumping", cfg.pumping),
             ("design", cfg.design),
+            ("ves_range", cfg.ves_range),
         ):
             overrides = data.get(section_name, {}) or {}
             for key, value in overrides.items():
@@ -239,10 +276,10 @@ class Config:
                     continue
                 setattr(section, key, _coerce_like(getattr(section, key), value, key))
         for key in data:
-            if key not in ("style", "ves", "pumping", "design"):
+            if key not in ("style", "ves", "pumping", "design", "ves_range"):
                 warnings.warn(
                     f"{path.name}: unknown section '{key}' is ignored "
-                    "(expected style, ves, pumping or design)",
+                    "(expected style, ves, pumping, design or ves_range)",
                     stacklevel=2,
                 )
         return cfg

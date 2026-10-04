@@ -464,6 +464,20 @@ address, the app cannot run work in the background: it gives the same
 results, but the page is busy while each sounding is inverted, and a
 Cancel press is only read between soundings.
 
+Once the soundings are inverted, **Sample the range of models** on the
+Geophysics page (the Streamlit app has the same button) samples the
+models that fit each sounding about as well as its best fit, and says
+what they agree on: "Basement between 22 and 34 m (P10 to P90); not
+resolved in 30 percent of the models that fit", the thickness of the
+water-bearing weathered zone, and a drilling depth read from the 90th
+percentile and still cut back to the depth the sounding resolves. A grey
+fan of the sampled models is drawn over the curve, and the report prints
+the same sentences under each sounding's best fit, which is left as it
+was. It takes a few seconds a sounding, with its own bar and Cancel; the
+settings are under `ves_range` in the project's configuration, and the
+error each reading is given (3 percent, plus the measured disagreement
+at each MN overlap) is provisional.
+
 **Overview** opens first and is the project dashboard: the lifecycle
 strip across the top shows how far the borehole has got (Sited →
 Drilled → Tested → Assessed → Handover), and the cards below summarise
@@ -729,7 +743,10 @@ the readings, the VES settings and the version of the app that computed
 it: change a reading or a setting, or open the file in a newer version,
 and that sounding is inverted afresh. Each app uses only the inversions
 it computed itself, so a file moved from one app to the other is
-inverted once on arrival.
+inverted once on arrival. The range of models is not saved: an
+inversion is checked on the way back in by fitting its model to the
+readings again, and a range could only be taken on trust, so it is
+sampled again when it is asked for.
 
 ## 12. Scanned sheets
 
