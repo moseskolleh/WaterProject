@@ -265,6 +265,69 @@ await withPage(async (page, base, consoleErrors) => {
     cancelled.again && cancelled.rerun.every((r) => r === 'worker:done'),
     JSON.stringify(cancelled.rerun));
 
+  // The range of models (PLAN.md step 3.1) is sampled in the engine worker,
+  // a sounding at a time, with its progress in the work bar, and it is shown
+  // beside the best fit: the sentences the engine writes, and a fan of the
+  // models that fit drawn over the curve. A short run here; the default
+  // settings are timed in bench/ and compared with Python in parity.mjs.
+  const ranged = await page.evaluate(async () => {
+    const app = window.GWT.app, engine = window.GWT.engine, C = window.GWT.core;
+    const saved = app.store.get('config');
+    app.store.set('config', Object.assign({}, saved || {}, {
+      ves_range: { samples: 1200, burn_in: 200, starts: 3, chains: 2 } }));
+    app.goto('ves');
+    const mark = Math.max(0, ...engine.history().map((h) => h.id));
+    const inversions = app.derived.inversions.slice();
+    Array.from(document.querySelectorAll('#page-host button'))
+      .find((b) => b.textContent === 'Sample the range of models').click();
+    let fill = 0, shown = '';
+    for (let i = 0; i < 800 && !(fill > 0 && fill < 100); i += 1) {
+      await new Promise((r) => setTimeout(r, 25));
+      const bar = document.querySelector('#work-status .work-bar[data-work="range"]');
+      if (bar) {
+        fill = parseFloat(bar.querySelector('.progress-fill').style.width) || 0;
+        shown = bar.textContent;
+      }
+    }
+    const began = performance.now();
+    while (app.working('range') && performance.now() - began < 60000) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    await new Promise((r) => setTimeout(r, 200));
+    const runs = engine.history().filter((h) => h.id > mark && h.type === 'sampleRange');
+    const callouts = Array.from(document.querySelectorAll('#page-host .callout-info'))
+      .map((c) => c.textContent).filter((t) => t.includes('Range of models that fit'));
+    const legends = Array.from(document.querySelectorAll('#page-host svg'))
+      .filter((svg) => svg.textContent.includes('Models that fit')).length;
+    /* the same sounding, inversion and settings, straight to the engine */
+    const id = app.derived.interpretations[1].sounding_id;
+    const sounding = app.derived.soundings.find((s) => s.sounding_id === id);
+    const direct = C.modelRangeText(C.sampleModelRange(sounding, inversions[1],
+      app.config())).join(' ');
+    app.store.set('config', saved);
+    app.render();
+    const after = Array.from(document.querySelectorAll('#page-host .callout-info'))
+      .filter((c) => c.textContent.includes('Range of models that fit')).length;
+    return { fill, shown, modes: runs.map((h) => h.mode + ':' + h.outcome), callouts,
+      legends, direct, after, n: inversions.length };
+  });
+  check('range: sampled in the worker, a sounding at a time',
+    ranged.modes.length === ranged.n && ranged.modes.every((m) => m === 'worker:done'),
+    JSON.stringify(ranged.modes));
+  check('range: the work bar shows it part way, with a Cancel button',
+    ranged.fill > 0 && ranged.fill < 100 &&
+    ranged.shown.includes('Sampling the range of models') && ranged.shown.includes('Cancel'),
+    JSON.stringify([ranged.fill, ranged.shown]));
+  check('range: each sounding shows the sentences beside its best fit, and its fan',
+    ranged.callouts.length === ranged.n && ranged.legends === ranged.n &&
+    ranged.callouts.every((t) => /Basement (between|not resolved)/.test(t)),
+    JSON.stringify(ranged.callouts));
+  check('range: the worker\'s range is the engine\'s, word for word',
+    ranged.callouts[1] && ranged.callouts[1].includes(ranged.direct),
+    `page ${ranged.callouts[1]}\n     direct ${ranged.direct}`);
+  check('range: a range sampled with other settings is not shown as this one',
+    ranged.after === 0, String(ranged.after));
+
   // Opened from file:// a browser will not start a worker, and a worker can
   // fail to load; the page then runs the same tasks itself. Worker, page and
   // a direct call to the engine have to agree on everything: the numbers, the

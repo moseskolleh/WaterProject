@@ -421,15 +421,31 @@ def _sounding_or_reason(
 OVERLAP_DISCREPANCY_RATIO = 1.2
 
 
-def _overlap_discrepancies(ab2: np.ndarray, rho: np.ndarray) -> list[str]:
-    """Overlap pairs whose readings disagree by more than the ratio, as
-    "AB/2 40 m: 156.1 and 78.7 ohm-m (ratio 1.98)"."""
-    out: list[str] = []
+def _overlaps(ab2: np.ndarray, rho: np.ndarray):
+    """``(AB/2, readings, ratio)`` at every spacing read more than once: the
+    usable readings there, and the largest over the smallest."""
     for value in np.unique(ab2):
         readings = rho[(ab2 == value) & np.isfinite(rho) & (rho > 0)]
         if len(readings) < 2:
             continue
-        ratio = float(np.max(readings) / np.min(readings))
+        yield value, readings, float(np.max(readings) / np.min(readings))
+
+
+def overlap_ratios(ab2: np.ndarray, rho: np.ndarray) -> list[tuple[float, float]]:
+    """``(AB/2, ratio)`` at every MN overlap, whether or not it is flagged.
+
+    The range of models (``groundwater.ves.model_range``) reads the measured
+    disagreement at each overlap as part of that reading's error, so the
+    flag and the error model judge an MN change from the same two numbers.
+    """
+    return [(float(value), ratio) for value, _, ratio in _overlaps(ab2, rho)]
+
+
+def _overlap_discrepancies(ab2: np.ndarray, rho: np.ndarray) -> list[str]:
+    """Overlap pairs whose readings disagree by more than the ratio, as
+    "AB/2 40 m: 156.1 and 78.7 ohm-m (ratio 1.98)"."""
+    out: list[str] = []
+    for value, readings, ratio in _overlaps(ab2, rho):
         if ratio > OVERLAP_DISCREPANCY_RATIO:
             # the pair the ratio is of, in field order: with three readings at
             # one spacing the first two can agree while the third is the one out

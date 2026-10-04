@@ -801,7 +801,7 @@ def _load_project() -> None:
     for stale in stale_on_load(st.session_state):
         st.session_state.pop(stale, None)
     for result_key in (
-        "ves_results", "pump_analysis", "wq_assessment", "borehole_design",
+        "ves_results", "ves_ranges", "pump_analysis", "wq_assessment", "borehole_design",
         "drilling_log", "cost_estimate", "cost_artifacts",
         "wp_result", "handover_built", "_design_follows_page",
         # cleared too, so a project with no sources at all cannot inherit the

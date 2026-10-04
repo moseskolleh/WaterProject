@@ -1,0 +1,15 @@
+sounding,quantity,p10,p50,p90
+A (1),depth to basement (m),,,
+A (1),weathered zone thickness (m),30.81,31.52,33.01
+A (1),layer 1 resistivity (ohm-m),893.7,1403,1590
+A (1),layer 2 resistivity (ohm-m),0.5872,1451,2044
+A (1),layer 3 resistivity (ohm-m),40.5,46.06,63.81
+A (1),base of layer 1 (m),0.315,5.25,8.898
+A (1),base of layer 2 (m),6.986,8.481,9.189
+A (1),models with no basement in reach (percent),,99.9,
+B (2),depth to basement (m),,,
+B (2),weathered zone thickness (m),31.17,31.93,32.54
+B (2),layer 1 resistivity (ohm-m),1070,1202,1356
+B (2),layer 2 resistivity (ohm-m),30.68,38.19,46.8
+B (2),base of layer 1 (m),7.459,8.074,8.828
+B (2),models with no basement in reach (percent),,100.0,

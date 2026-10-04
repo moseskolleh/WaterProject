@@ -87,7 +87,7 @@ for _name in BLAS_THREADS:
 #: The output's own layout number; ``--from`` refuses a file in another.
 SCHEMA = 1
 TOOL = "bench/run.py"
-GROUPS = ("import", "forward", "inversion", "pumping", "reports", "recompute",
+GROUPS = ("import", "forward", "inversion", "range", "pumping", "reports", "recompute",
           "streamlit")
 MIN_SAMPLE_S = 0.2
 
@@ -320,6 +320,24 @@ def _inversion_measures() -> list[Measure]:
             out.append(Measure("inversion",
                                f"{path.parent.name} sounding {sounding.sounding_id}",
                                setup))
+    return out
+
+
+def _range_measures() -> list[Measure]:
+    # The range of models (PLAN.md step 3.1) at the default settings, around
+    # the inversion's own fit: the Latin hypercube starts polished, the
+    # chains' burn-in and the kept samples. Each Rokel sounding, since a
+    # three-layer model and a two-layer one cost differently per call.
+    out = []
+    path = DATA / "rokel" / "rokel_ves.xlsx"
+    for index in range(2):
+        def setup(_tmp, index=index):
+            from groundwater.ves.model_range import sample_model_range
+            sounding = INPUTS.soundings(path)[index]
+            inversion = INPUTS.inversion(path, index)
+            return lambda: sample_model_range(sounding, inversion, INPUTS.config)
+        out.append(Measure("range", f"rokel sounding {'AB'[index]}, default settings",
+                           setup))
     return out
 
 
@@ -613,7 +631,8 @@ def _streamlit_measures() -> list[Measure]:
 
 def all_measures(groups) -> list[Measure]:
     builders = {"import": _import_measures, "forward": _forward_measures,
-                "inversion": _inversion_measures, "pumping": _pumping_measures,
+                "inversion": _inversion_measures, "range": _range_measures,
+                "pumping": _pumping_measures,
                 "reports": _report_measures, "recompute": _recompute_measures,
                 "streamlit": _streamlit_measures}
     return [m for g in GROUPS if g in groups for m in builders[g]()]

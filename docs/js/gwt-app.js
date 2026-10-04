@@ -1251,6 +1251,64 @@
     inverted.then(refresh);
   }
 
+  /* The range of models (PLAN.md step 3.1), asked for with a button: a few
+   * seconds a sounding in the engine worker, with its progress in the work
+   * bar and Cancel there. A range belongs to the inversion it was sampled
+   * around and the settings it was sampled with, so it is kept against the
+   * inversion object itself and its settings beside it: a new inversion, or
+   * a changed range setting, finds no range and the button is offered
+   * again. It is not saved with the project. Unlike an inversion, a range
+   * cannot be checked on the way back in by recomputing a misfit, so a
+   * saved one would have to be taken on trust; it is sampled again instead. */
+  var ranges = new WeakMap();
+  var rangeRun = 0;
+
+  function rangeFor(inversion) {
+    var kept = inversion ? ranges.get(inversion) : null;
+    if (!kept) return null;
+    return JSON.stringify(kept.settings) === JSON.stringify(config().ves_range)
+      ? kept.range : null;
+  }
+
+  async function sampleRanges() {
+    var run = ++rangeRun;
+    engine.cancel('sampleRange');
+    var inversions = derived.inversions || [];
+    var soundings = derived.soundings || [];
+    var cfg = config();
+    var n = inversions.length;
+    if (!n) return;
+    var job = workBegin('range', 'Sampling the range of models for ' + n + ' ' +
+      S.plural(n, 'sounding'));
+    render();
+    try {
+      for (var t = 0; t < n; t++) {
+        var inversion = inversions[t];
+        var id = derived.interpretations[t].sounding_id;
+        var sounding = soundings.filter(function (s) { return s.sounding_id === id; })[0];
+        if (!sounding) continue;
+        var which = id + (n > 1 ? ' (' + (t + 1) + ' of ' + n + ')' : '');
+        workProgress(job, t / n, which);
+        try {
+          var range = await engine.sampleRange(sounding, inversion, cfg, {
+            onProgress: function (fraction, label) {
+              workProgress(job, (t + fraction) / n, which + ', ' + label);
+            },
+          });
+          if (run !== rangeRun) return;
+          ranges.set(inversion, { range: range, settings: cfg.ves_range });
+        } catch (e) {
+          if (engine.isCancelled(e) || run !== rangeRun) return;
+          S.toast(id + ': ' + e.message, 'warn');
+        }
+      }
+    } finally {
+      /* what was sampled before a stop is shown too */
+      workEnd(job);
+      refresh();
+    }
+  }
+
   /* ------------------------------------------------------------- work bar */
 
   /* The engine work the page is waiting for, drawn above the page: what is
@@ -1346,6 +1404,11 @@
       engine.cancel('invert');
       S.toast('The inversion was stopped, and the results on the page are as ' +
         'they were. The Geophysics page can run it again.', 'warn');
+    } else if (key === 'range') {
+      rangeRun += 1;
+      engine.cancel('sampleRange');
+      S.toast('The range of models was stopped; the ranges already sampled are ' +
+        'kept, and the Geophysics page can sample the rest.', 'warn');
     } else if (key === 'pumping') {
       engine.cancel('analysePumping');
       S.toast('The pumping analysis was stopped. The test is still loaded, and ' +
@@ -2302,6 +2365,13 @@
         actions: derived.soundings ? [
           button('Re-run inversion', function () { invertAndShow(false); },
             { variant: 'ghost' }),
+          derived.inversions && derived.inversions.length && !working('range')
+            ? button('Sample the range of models', function () { sampleRanges(); }, {
+              variant: 'ghost',
+              title: 'Sample the models that fit each sounding about as well as ' +
+                'its best fit, for the P10 to P90 of basement, the weathered zone ' +
+                'and the drilling depth; a few seconds a sounding',
+            }) : null,
         ] : null,
       }),
     ];
@@ -2363,7 +2433,8 @@
     derived.inversions.forEach(function (result, i) {
       var interp = derived.interpretations[i];
       var soundingId = interp.sounding_id;
-      var curve = charts.vesCurve(result);
+      var range = rangeFor(result);
+      var curve = charts.vesCurve(result, { fan: range ? range.fan_curves : null });
       /* the depth every figure of this model is drawn to, the report's too */
       var model = charts.layeredModel(result.model, {
         maxDepth: C.modelDepthM(result.model, interp.investigation_depth_m),
@@ -2430,6 +2501,13 @@
           rowClass: function (row) { return row.water_bearing ? 'row-ok' : ''; },
         }),
         el('p', interp.narrative),
+        /* the range beside the best fit, never in place of it */
+        range ? el('div.callout.callout-info', [
+          el('p', el('strong', 'Range of models that fit')),
+          el('p', C.modelRangeText(range).join(' ')),
+          S.table(['', 'P10', 'P50', 'P90'], C.modelRangeRows(range)),
+          el('p.muted', C.modelRangeCaption(range)),
+        ]) : null,
         result.rho_uncertainty_factor ? el('p.muted',
           'The ×/÷ figures are the one-sigma multiplicative uncertainty on each ' +
           'resistivity: a factor near 1 is well resolved, a large one marks the ' +
@@ -6655,10 +6733,13 @@
              * derived.soundings here captioned one sounding's figures with
              * another sounding's name */
             var id = derived.interpretations[i].sounding_id;
+            var sampled = rangeFor(result);
             figures.push({
               soundingId: id,
-              image: await charts.toPng(charts.vesCurve(result, { hover: false })),
-              caption: 'Sounding curve and fitted model for ' + id,
+              image: await charts.toPng(charts.vesCurve(result, { hover: false,
+                fan: sampled ? sampled.fan_curves : null })),
+              caption: 'Sounding curve and fitted model for ' + id +
+                (sampled ? '. ' + C.modelRangeCaption(sampled) : ''),
             });
             /* one depth for every figure of this sounding's model, in both
              * engines: the depth of investigation, or deeper where a fitted
@@ -6736,6 +6817,9 @@
           context.soundings = reported;
           context.inversions = derived.inversions;
           context.interpretations = derived.interpretations;
+          /* the range of each sounding's models, where one was sampled with
+           * the settings in force; null where none was */
+          context.ranges = derived.inversions.map(rangeFor);
           context.figures = figures;
           context.preferredOrder = store.get('ves.preferredOrder');
           /* the ranked table and the suitability map beside it are scored
@@ -7223,6 +7307,7 @@
     renderAutosaveBanner: renderAutosaveBanner,
     storage: storage, continueHere: continueHere,
     hashFor: hashFor, routeFrom: routeFrom,
+    sampleRanges: sampleRanges, rangeFor: rangeFor,
   };
 
   if (typeof document !== 'undefined') {

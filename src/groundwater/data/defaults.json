@@ -64,5 +64,14 @@
     "min_screen_below_swl_m": 5.0,
     "apron_note": "concrete apron with drainage channel and soakaway",
     "fracture_zone_margin_m": 1.0
+  },
+  "ves_range": {
+    "seed": 1,
+    "starts": 8,
+    "chains": 4,
+    "samples": 4000,
+    "burn_in": 500,
+    "base_error_percent": 3.0,
+    "fan_models": 40
   }
 }

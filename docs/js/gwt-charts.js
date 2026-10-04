@@ -586,6 +586,11 @@
   function vesCurve(result, options) {
     var opts = options || {};
     var ab2 = result.ab2, obs = result.rho_obs, calc = result.rho_calc;
+    /* the fan: the responses of a thinned set of the models that fit (the
+     * range of models, PLAN.md step 3.1), at the same spacings */
+    var fan = opts.fan || [];
+    var fanValues = [];
+    fan.forEach(function (curve) { fanValues = fanValues.concat(curve); });
     var f = frame({
       width: opts.width || 720, height: opts.height || 430,
       title: opts.title || ('Sounding curve - ' + (result.model.sounding_id || 'VES')),
@@ -593,9 +598,16 @@
         ? 'a (m)' : 'AB/2 (m)',
       yLabel: 'Apparent resistivity (ohm-m)',
       xLog: true, yLog: true,
-      xDomain: padDomain(ab2, true), yDomain: padDomain(obs.concat(calc), true),
+      xDomain: padDomain(ab2, true),
+      yDomain: padDomain(obs.concat(calc, fanValues), true),
     });
     var p = f.palette;
+
+    fan.forEach(function (curve) {
+      f.plot.appendChild(polyline(curve.map(function (v, i) {
+        return [f.fx(ab2[i]), f.fy(v)];
+      }), { stroke: p.muted, 'stroke-width': 1, 'stroke-opacity': 0.35 }));
+    });
 
     if (calc && calc.length) {
       f.plot.appendChild(polyline(calc.map(function (v, i) {
@@ -612,7 +624,8 @@
     legend(f, [
       { label: 'Measured', kind: 'circle', colour: p.accent },
       { label: 'Model response', kind: 'line', colour: p.secondary },
-    ], { avoid: points });
+    ].concat(fan.length
+      ? [{ label: 'Models that fit', kind: 'line', colour: p.muted }] : []), { avoid: points });
 
     if (opts.hover !== false) {
       addHover(f, [{ label: 'Measured', points: points }], {

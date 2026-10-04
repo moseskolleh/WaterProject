@@ -2,7 +2,8 @@
 
 Parses the transcribed Rokel VES workbook, runs the consistency
 checks, inverts both soundings (and imports the original IPI2Win
-models for comparison), interprets them hydrogeologically, and writes
+models for comparison), interprets them hydrogeologically, samples the
+range of models that fit each one beside its best fit, and writes
 the full geophysical survey report with all figures and tables into a
 standard project folder.
 
@@ -32,6 +33,11 @@ from groundwater.ves import (
     read_ipi2win_models,
 )
 from groundwater.mapping import geoelectric_section_along_traverse
+from groundwater.ves.model_range import (
+    MIN_RESOLVED_SHARE,
+    model_range_text,
+    sample_model_range,
+)
 
 HERE = Path(__file__).parent
 VES_FILE = HERE / "data" / "rokel" / "rokel_ves.xlsx"
@@ -88,6 +94,13 @@ def main(out_root: Path | None = None) -> None:
             f"max drilling depth = {interp.max_drilling_depth_m:.0f} m"
         )
 
+    # ---- the range of models that fit, beside each best fit -----------------
+    ranges = []
+    for sounding, result in zip(soundings, inversions, strict=True):
+        model_range = sample_model_range(sounding, result, project.config)
+        ranges.append(model_range)
+        print(f"\n{sounding.sounding_id} range: " + " ".join(model_range_text(model_range)))
+
     # ---- processed tables for traceability -----------------------------------
     with open(project.processed_path("layered_models.csv"), "w", newline="") as fh:
         writer = csv.writer(fh)
@@ -104,6 +117,28 @@ def main(out_root: Path | None = None) -> None:
                         fmt_num(inv.fit_error_percent, 3),
                     ]
                 )
+    with open(project.processed_path("model_ranges.csv"), "w", newline="") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(["sounding", "quantity", "p10", "p50", "p90"])
+        for model_range in ranges:
+            # a basement band is left out where the report leaves it out:
+            # read off the few models that find one, it is not a range
+            resolved = 1.0 - model_range.basement_unresolved
+            basement = (model_range.basement_m if resolved >= MIN_RESOLVED_SHARE
+                        else None)
+            bands = [("depth to basement (m)", basement),
+                     ("weathered zone thickness (m)", model_range.weathered_m)]
+            bands += [(f"layer {i + 1} resistivity (ohm-m)", b)
+                      for i, b in enumerate(model_range.resistivity)]
+            bands += [(f"base of layer {i + 1} (m)", b)
+                      for i, b in enumerate(model_range.interface_m)]
+            for name, band in bands:
+                writer.writerow([model_range.sounding_id, name] + (
+                    ["", "", ""] if band is None else
+                    [f"{band.p10:.4g}", f"{band.p50:.4g}", f"{band.p90:.4g}"]))
+            writer.writerow([model_range.sounding_id,
+                             "models with no basement in reach (percent)", "",
+                             f"{100 * model_range.basement_unresolved:.1f}", ""])
     rows = drilling_preference_table(interpretations)
     with open(project.processed_path("drilling_preference.csv"), "w", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
@@ -137,6 +172,7 @@ def main(out_root: Path | None = None) -> None:
             flags=flags,
             include_qa_annex=True,
             reference_models=ipi_models,
+            model_ranges=ranges,
         ),
         project.report_path("Rokel_Geophysical_Survey_Report.docx"),
         project.config,
