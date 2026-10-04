@@ -491,7 +491,7 @@ def _range_text_cases() -> list:
     """Every branch of the sentences, on ranges built by hand: the plan's
     own example, basement always, rarely and never in reach, a share under
     1 percent, a dry profile, a capped depth, a better fit found, overlaps
-    and widened errors."""
+    and widened errors, and basement in exactly the share that quotes it."""
     from groundwater.ves.model_range import Band, ModelRange
 
     base = dict(
@@ -514,6 +514,9 @@ def _range_text_cases() -> list:
         {"best_error_percent": 2.0, "n_layers": 4},
         {"overlap_spacings": [10.0, 40.0], "error_scale": 2.5, "chains": 1},
         {"overlap_spacings": [7.5], "base_error_percent": 2.5, "starts": 0},
+        # basement in exactly a tenth of the models, as 400 of 4,000 store it:
+        # the band is quoted at the threshold, not lost to a last bit
+        {"basement_unresolved": 1.0 - 400 / 4000},
     ]
     out = []
     for change in changes:
@@ -529,8 +532,12 @@ def _range_text_cases() -> list:
 # different BLAS build, or OpenBLAS with more threads, rounds differently;
 # on a flat equivalence valley that moves a polished start by a few parts in
 # a million, and every sample of the chain started there moves with it. One
-# thread against four on this machine moved the short runs by 2e-6.
-RANGE_RTOL = {".ves_range.default": 2e-2, ".ves_range": 1e-4}
+# thread against four on this machine moved the short runs by 2e-6. Only the
+# sampler's runs are loosened: the generator's words, its steps, the Latin
+# hypercube and the hand-built sentence cases involve no fit, so they are
+# held to CHECK_RTOL like every other entry.
+RANGE_RTOL = {".ves_range.default": 2e-2, ".ves_range.short": 1e-4,
+              ".ves_range.synthetic": 1e-4}
 
 
 def range_tolerated(path: str, fresh, committed) -> bool:

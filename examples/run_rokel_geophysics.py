@@ -34,8 +34,8 @@ from groundwater.ves import (
 )
 from groundwater.mapping import geoelectric_section_along_traverse
 from groundwater.ves.model_range import (
-    MIN_RESOLVED_SHARE,
     model_range_text,
+    quoted_basement_band,
     sample_model_range,
 )
 
@@ -123,10 +123,7 @@ def main(out_root: Path | None = None) -> None:
         for model_range in ranges:
             # a basement band is left out where the report leaves it out:
             # read off the few models that find one, it is not a range
-            resolved = 1.0 - model_range.basement_unresolved
-            basement = (model_range.basement_m if resolved >= MIN_RESOLVED_SHARE
-                        else None)
-            bands = [("depth to basement (m)", basement),
+            bands = [("depth to basement (m)", quoted_basement_band(model_range)),
                      ("weathered zone thickness (m)", model_range.weathered_m)]
             bands += [(f"layer {i + 1} resistivity (ohm-m)", b)
                       for i, b in enumerate(model_range.resistivity)]

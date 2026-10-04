@@ -328,6 +328,54 @@ await withPage(async (page, base, consoleErrors) => {
   check('range: a range sampled with other settings is not shown as this one',
     ranged.after === 0, String(ranged.after));
 
+  // Cancel stops the sounding being sampled (the worker is stopped with it)
+  // and the ones after it; and a recompute that replaces the inversions
+  // while a range runs stops it rather than sampling around inversions no
+  // longer on show, which used to read the cleared interpretations and throw.
+  const stopped = await page.evaluate(async () => {
+    const app = window.GWT.app, engine = window.GWT.engine;
+    const saved = app.store.get('config');
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    app.store.set('config', Object.assign({}, saved || {}, {
+      ves_range: { samples: 40000, burn_in: 200, starts: 3, chains: 2 } }));
+    let mark = Math.max(0, ...engine.history().map((h) => h.id));
+    const run = app.sampleRanges();
+    for (let i = 0; i < 400 && !app.working('range'); i += 1) await wait(10);
+    await wait(300);
+    const began = performance.now();
+    app.cancelWork('range');
+    await run;
+    const cancelMs = performance.now() - began;
+    await wait(300);
+    const cancelled = engine.history().filter((h) => h.id > mark && h.type === 'sampleRange')
+      .map((h) => h.mode + ':' + h.outcome);
+    const kept = app.derived.inversions.map((inv) => !!app.rangeFor(inv));
+
+    app.store.set('config', Object.assign({}, saved || {}, {
+      ves_range: { samples: 400, burn_in: 100, starts: 2, chains: 2 } }));
+    mark = Math.max(0, ...engine.history().map((h) => h.id));
+    const inversions = app.derived.inversions, interpretations = app.derived.interpretations;
+    let error = null;
+    const raced = app.sampleRanges();
+    /* what a recompute does while it inverts afresh */
+    app.derived.inversions = null;
+    app.derived.interpretations = null;
+    try { await raced; } catch (e) { error = String(e); }
+    const racedRuns = engine.history().filter((h) => h.id > mark && h.type === 'sampleRange')
+      .length;
+    app.derived.inversions = inversions;
+    app.derived.interpretations = interpretations;
+    app.store.set('config', saved);
+    app.render();
+    return { cancelled, cancelMs, kept, working: app.working('range'), error, racedRuns };
+  });
+  check('range: Cancel stops the sampling in the worker, and nothing after it starts',
+    stopped.cancelled.length === 1 && stopped.cancelled[0] === 'worker:cancelled' &&
+    stopped.kept.every((k) => !k) && !stopped.working && stopped.cancelMs < 2000,
+    JSON.stringify(stopped));
+  check('range: a recompute mid-run stops the range rather than throwing',
+    stopped.error === null && stopped.racedRuns === 1, JSON.stringify(stopped));
+
   // Opened from file:// a browser will not start a worker, and a worker can
   // fail to load; the page then runs the same tasks itself. Worker, page and
   // a direct call to the engine have to agree on everything: the numbers, the

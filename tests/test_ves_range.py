@@ -258,6 +258,20 @@ def test_the_report_prints_the_range_beside_the_best_fit(rokel, tmp_path):
             assert line in ranged
 
 
+def test_basement_in_exactly_a_tenth_of_the_models_is_quoted():
+    # 400 of 4,000 models find basement: the share the rule quotes a band at.
+    # It used to be compared as 1 - (1 - 0.1), a last bit under a tenth.
+    from groundwater.ves.model_range import model_range_rows
+
+    r = _range(basement_unresolved=1.0 - 400 / 4000)
+    assert model_range_text(r)[0] == ("Basement between 22 and 34 m (P10 to P90); not "
+                                      "resolved in 90 percent of the models that fit.")
+    assert model_range_rows(r)[0][0] == "Depth to basement (m)"
+    under = _range(basement_unresolved=1.0 - 399 / 4000)
+    assert model_range_text(under)[0].startswith("Basement not resolved in 90 percent")
+    assert model_range_rows(under)[0][0] == "Water-bearing weathered zone (m)"
+
+
 def test_the_table_rows_follow_the_sentences():
     from groundwater.ves.model_range import model_range_rows
 
@@ -271,6 +285,28 @@ def test_the_table_rows_follow_the_sentences():
     # no basement row where the sentences quote no band for it
     rare = model_range_rows(_range(basement_unresolved=0.95))
     assert rare[0][0] == "Water-bearing weathered zone (m)"
+
+
+def test_reference_check_loosens_only_the_sampler_runs():
+    # make_reference --check holds the sampler's runs to parity's tolerance;
+    # the generator, its steps, the hypercube and every other section stay
+    # at CHECK_RTOL, so a drift there is not waved through
+    import importlib.util
+
+    path = Path(__file__).resolve().parent / "webapp" / "make_reference.py"
+    spec = importlib.util.spec_from_file_location("make_reference_for_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    tolerated = module.range_tolerated
+    assert tolerated(".ves_range.short[0].error_scale", 1.00001, 1.0)
+    assert tolerated(".ves_range.synthetic[1].range.weathered_m.p50", 1.00001, 1.0)
+    assert tolerated(".ves_range.default[0].weathered_m.p10", 1.01, 1.0)
+    assert not tolerated(".ves_range.default[0].weathered_m.p10", 1.03, 1.0)
+    for entry in (".ves_range.symmetric[0]", ".ves_range.lhs[2][1]",
+                  ".ves_range.streams.1/0[3]", ".ves_range.text_cases[0].range.acceptance",
+                  ".ves_text.basement", ".ves_ranges.short[0]"):
+        assert not tolerated(entry, 1.00001, 1.0), entry
+    assert not tolerated(".ves_range.short[0].text[0]", "a", "b")
 
 
 def test_the_settings_load_from_a_project_file(tmp_path):

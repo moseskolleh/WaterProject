@@ -86,6 +86,7 @@ __all__ = [
     "model_range_table_caption",
     "model_range_text",
     "percentile",
+    "quoted_basement_band",
     "reading_errors",
     "sample_model_range",
 ]
@@ -256,8 +257,9 @@ def reading_errors(
     """The error of each fitted reading as a log standard deviation.
 
     The base percentage, plus half the log ratio of the readings at an MN
-    overlap where there is one: the two readings there scatter by about
-    that much about their geometric mean, which is what the splice fits.
+    overlap where there is one, added in quadrature as two independent
+    errors are: the two readings there scatter by about that much about
+    their geometric mean, which is what the splice fits.
     Returns the errors and the spacings that carry an overlap.
 
     A Wenner sheet has no MN to change, and a spacing read twice on one is
@@ -569,6 +571,18 @@ def sample_model_range(
 MIN_RESOLVED_SHARE = 0.1
 
 
+def quoted_basement_band(r: ModelRange) -> Band | None:
+    """The depth range for basement the sentences, the table and the
+    examples' CSV quote, or None where they quote none: at least
+    ``MIN_RESOLVED_SHARE`` of the models must find basement. Compared on
+    the unresolved share, as stored: 400 of 4,000 is exactly a tenth, but
+    1 - (1 - 0.1) is a last bit under 0.1, and the band was dropped at the
+    very share the rule says to quote it."""
+    if r.basement_m is None or r.basement_unresolved > 1.0 - MIN_RESOLVED_SHARE:
+        return None
+    return r.basement_m
+
+
 def _share(fraction: float) -> str:
     """A share as a whole percentage, never "0" or "100" for one that is not."""
     percent = 100.0 * fraction
@@ -584,15 +598,16 @@ def model_range_text(r: ModelRange) -> list[str]:
     depth, any better fit the wider search found, and the basis."""
     doi = r.investigation_depth_m
     out = []
-    if r.basement_m is None or 1.0 - r.basement_unresolved < MIN_RESOLVED_SHARE:
+    basement = quoted_basement_band(r)
+    if basement is None:
         out.append(phrase("ves_range.basement_unresolved",
                           share=_share(r.basement_unresolved), doi=doi))
     elif r.basement_unresolved == 0.0:
         out.append(phrase("ves_range.basement_always",
-                          p10=r.basement_m.p10, p90=r.basement_m.p90))
+                          p10=basement.p10, p90=basement.p90))
     else:
-        out.append(phrase("ves_range.basement", p10=r.basement_m.p10,
-                          p90=r.basement_m.p90, share=_share(r.basement_unresolved)))
+        out.append(phrase("ves_range.basement", p10=basement.p10,
+                          p90=basement.p90, share=_share(r.basement_unresolved)))
     if r.weathered_m.p90 < 0.5:
         out.append(phrase("ves_range.weathered_none"))
     else:
@@ -630,8 +645,9 @@ def model_range_rows(r: ModelRange) -> list[list[str]]:
         return [label, fmt_num(band.p10), fmt_num(band.p50), fmt_num(band.p90)]
 
     out = []
-    if r.basement_m is not None and 1.0 - r.basement_unresolved >= MIN_RESOLVED_SHARE:
-        out.append(row(phrase("ves_range.row_basement"), r.basement_m))
+    basement = quoted_basement_band(r)
+    if basement is not None:
+        out.append(row(phrase("ves_range.row_basement"), basement))
     out.append(row(phrase("ves_range.row_weathered"), r.weathered_m))
     out += [row(phrase("ves_range.row_resistivity", layer=i + 1), band)
             for i, band in enumerate(r.resistivity)]

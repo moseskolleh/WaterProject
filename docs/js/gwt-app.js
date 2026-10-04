@@ -1274,6 +1274,7 @@
     var run = ++rangeRun;
     engine.cancel('sampleRange');
     var inversions = derived.inversions || [];
+    var interpretations = derived.interpretations || [];
     var soundings = derived.soundings || [];
     var cfg = config();
     var n = inversions.length;
@@ -1283,8 +1284,13 @@
     render();
     try {
       for (var t = 0; t < n; t++) {
+        /* A recompute while this runs replaces the inversions (or clears
+         * them while it inverts afresh): the rest would be sampled around
+         * inversions no longer on show, and the live lists are no longer
+         * the ones these indices count through. */
+        if (derived.inversions !== inversions) return;
         var inversion = inversions[t];
-        var id = derived.interpretations[t].sounding_id;
+        var id = interpretations[t].sounding_id;
         var sounding = soundings.filter(function (s) { return s.sounding_id === id; })[0];
         if (!sounding) continue;
         var which = id + (n > 1 ? ' (' + (t + 1) + ' of ' + n + ')' : '');

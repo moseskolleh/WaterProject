@@ -1387,7 +1387,8 @@
   }
 
   /** The error of each fitted reading as a log standard deviation: the base
-   * percentage, plus half the log ratio at an MN overlap. A Wenner sheet has
+   * percentage, plus half the log ratio at an MN overlap, added in
+   * quadrature as two independent errors are. A Wenner sheet has
    * no MN to change, and a spacing it reads twice is two readings the fit
    * sees apart, so only a Schlumberger overlap adds to the error.
    * @param {Sounding} sounding
@@ -1726,6 +1727,15 @@
    * the models that fit find one (model_range.MIN_RESOLVED_SHARE). */
   var MIN_RESOLVED_SHARE = 0.1;
 
+  /* Whether the sentences and the table quote a depth range for basement
+   * (model_range.quoted_basement_band). Compared on the unresolved share,
+   * as stored: 400 of 4,000 is exactly a tenth, but 1 - (1 - 0.1) is a last
+   * bit under 0.1, and the band was dropped at the very share the rule says
+   * to quote it. */
+  function quotesBasementBand(r) {
+    return r.basement_m !== null && r.basement_unresolved <= 1.0 - MIN_RESOLVED_SHARE;
+  }
+
   /* A share as a whole percentage, never "0" or "100" for one that is not. */
   function rangeShare(fraction) {
     var percent = 100.0 * fraction;
@@ -1742,7 +1752,7 @@
    */
   function modelRangeText(r) {
     var doi = r.investigation_depth_m, out = [];
-    if (r.basement_m === null || 1.0 - r.basement_unresolved < MIN_RESOLVED_SHARE) {
+    if (!quotesBasementBand(r)) {
       out.push(phrase('ves_range.basement_unresolved',
         { share: rangeShare(r.basement_unresolved), doi: doi }));
     } else if (r.basement_unresolved === 0.0) {
@@ -1800,7 +1810,7 @@
       return [label, fmtNum(band.p10), fmtNum(band.p50), fmtNum(band.p90)];
     }
     var out = [];
-    if (r.basement_m !== null && 1.0 - r.basement_unresolved >= MIN_RESOLVED_SHARE) {
+    if (quotesBasementBand(r)) {
       out.push(row(phrase('ves_range.row_basement'), r.basement_m));
     }
     out.push(row(phrase('ves_range.row_weathered'), r.weathered_m));
