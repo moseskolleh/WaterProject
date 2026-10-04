@@ -1088,6 +1088,16 @@ await withPage(async (page, base, consoleErrors) => {
     const d = parted(kit[key], R.field_kit[key], key);
     check(`field kit: ${key}`, d === null, d);
   }
+  // --- the drilling co-pilot's airlift yield (PLAN.md step 2.3): the figure,
+  // the sentence the sheets print for its basis, and its warnings; a reading
+  // that gives no yield is refused by both ---
+  const airlift = await page.evaluate((cases) => cases.map(([method, options]) => {
+    try { return GWT.core.airliftYield(method, options); } catch (e) { return null; }
+  }), R.airlift.cases);
+  R.airlift.results.forEach((ref, i) => {
+    const d = parted(airlift[i], ref, `airlift[${i}]`);
+    check(`airlift case ${i + 1}: ${R.airlift.cases[i][0]}`, d === null, d);
+  });
   // --- VES ---
   check('ves: sounding count', parsed.ves.length === R.ves.length,
     `js ${parsed.ves.length} vs py ${R.ves.length}`);

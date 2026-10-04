@@ -9,6 +9,7 @@ from groundwater.reporting.completion import (
     build_completion_report,
     CompletionReportInputs,
 )
+from groundwater.text import phrase
 from groundwater.utils import fmt_num
 
 from shared import (
@@ -30,6 +31,8 @@ def render() -> None:
         "A to-scale construction design from the drilling log, following "
         "the configured design rules."
     )
+    # the co-pilot is a browser page; a feature in one app says so in both
+    st.caption(phrase("drilling_copilot.browser_only"))
     path = choose_input(
         "Drilling log (standard template)", "log", ["xlsx"],
         ["dr_timbo/dr_timbo_drilling_log.xlsx"],
