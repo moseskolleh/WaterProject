@@ -36,6 +36,7 @@ import csv
 import dataclasses
 import json
 import math
+import re
 import sys
 import tempfile
 import zlib
@@ -548,6 +549,30 @@ def range_tolerated(path: str, fresh, committed) -> bool:
                     and not isinstance(fresh, bool)
                     and math.isclose(fresh, committed, rel_tol=rtol, abs_tol=1e-12))
     return False
+
+
+# The Papadopulos-Cooper fit's own numbers on a sheet it fits badly sit on a
+# valley floor flat to within the Stehfest inversion's rounding, so another
+# BLAS build or scipy stops the optimiser a few parts in a hundred thousand
+# away (3e-5 relative, Python on the CI runner against this machine). --check
+# holds them to the 1e-3 relative parity.mjs holds the browser to; where the
+# fit is adopted it is held to CHECK_RTOL, as is everything resting on it.
+PC_RTOL = 1e-3
+_PC_PATH = re.compile(r"^\.pumping_spread\.cases\.([^.]+)\.pc\[\d+\]$")
+
+
+def pc_tolerated(path: str, fresh, committed, reference: dict) -> bool:
+    """Whether a difference --check found is a badly fitting large-diameter
+    fit's own number, inside parity's tolerance for it."""
+    match = _PC_PATH.match(path)
+    if not match:
+        return False
+    case = reference.get("pumping_spread", {}).get("cases", {}).get(match.group(1)) or {}
+    if case.get("source") == "papadopulos_cooper":
+        return False
+    return (isinstance(fresh, (int, float)) and isinstance(committed, (int, float))
+            and not isinstance(fresh, bool)
+            and math.isclose(fresh, committed, rel_tol=PC_RTOL, abs_tol=1e-12))
 
 
 def ves_range_reference(soundings, inversions) -> dict:
@@ -2685,10 +2710,12 @@ def main() -> int:
         print(f"{OUT} is missing; run this without --check to create it")
         return 1
     committed = json.loads(OUT.read_text(encoding="utf-8"))
-    differences = [d for d in drifted(fresh, committed) if not range_tolerated(*d)]
+    differences = [d for d in drifted(fresh, committed)
+                   if not range_tolerated(*d) and not pc_tolerated(*d, committed)]
     if not differences:
         print(f"{OUT} agrees with this toolkit to {CHECK_RTOL:g} relative "
-              "(the range of models to RANGE_RTOL)")
+              "(the range of models to RANGE_RTOL, a badly fitting large-diameter "
+              "fit to PC_RTOL)")
         return 0
     print(f"{OUT} disagrees with this toolkit in {len(differences)} place(s):")
     for path, a, b in differences[:20]:

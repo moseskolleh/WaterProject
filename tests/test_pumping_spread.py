@@ -474,3 +474,24 @@ def test_every_source_the_spread_names_is_a_pumping_reference():
     for author in ("Kuensch", "Politis", "Hall, P.", "Davison", "Bourdet",
                    "Stehfest", "Papadopulos", "Renard, P."):
         assert author in cited
+
+
+def test_reference_check_loosens_only_a_badly_fitting_large_diameter_fit():
+    # make_reference --check holds the Papadopulos-Cooper fit's own numbers to
+    # parity's 1e-3 relative only where the fit is not adopted; an adopted fit,
+    # and every other pumping number, stays at CHECK_RTOL
+    import importlib.util
+
+    path = Path(__file__).resolve().parent / "webapp" / "make_reference.py"
+    spec = importlib.util.spec_from_file_location("make_reference_for_pc_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    tolerated = module.pc_tolerated
+    reference = {"pumping_spread": {"cases": {
+        "poor": {"source": "cooper_jacob"}, "adopted": {"source": "papadopulos_cooper"}}}}
+    assert tolerated(".pumping_spread.cases.poor.pc[1]", 1.00003, 1.0, reference)
+    assert not tolerated(".pumping_spread.cases.poor.pc[1]", 1.002, 1.0, reference)
+    assert not tolerated(".pumping_spread.cases.adopted.pc[0]", 1.00003, 1.0, reference)
+    for entry in (".pumping_spread.cases.poor.T", ".pumping_spread.cases.poor.theis[0]",
+                  ".pumping_spread.cases.poor.boot.low", ".pumping_spread.bessel[0][1]"):
+        assert not tolerated(entry, 1.00003, 1.0, reference), entry
