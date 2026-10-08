@@ -2320,7 +2320,8 @@ await withPage(async (page, base, consoleErrors) => {
     const C = GWT.core, D = GWT.data;
     const asInterp = (c) => ({ sounding_id: c.sounding_id, water_zones: c.water_zones,
       layers: c.layers.map((l) => ({ top_m: l.top_m,
-        bottom_m: l.bottom_m === null ? Infinity : l.bottom_m, rho: l.rho })),
+        bottom_m: l.bottom_m === null ? Infinity : l.bottom_m, rho: l.rho,
+        water_bearing: l.water_bearing })),
       fit_error_percent: c.fit_error_percent, site_easting: null, site_northing: null });
     const asDict = (o) => Object.assign({}, o, { text: C.oddsText(o),
       point_text: C.oddsPointText(o), basis_text: C.oddsBasisText(o), rows: C.oddsRows(o),
@@ -2340,6 +2341,11 @@ await withPage(async (page, base, consoleErrors) => {
         c.ground[0], c.ground[1], C.defaultConfig()))),
       wider: asDict(C.successOdds(Object.assign(asInterp(productive.interp),
         { sounding_id: 'wider' }), productive.range, 'B-L', 'pCm', wider)),
+      low_yield: asDict(C.successOdds(Object.assign(asInterp(productive.interp),
+        { sounding_id: 'low_yield' }), productive.range, 'U-M/H', 'Qe',
+      C.withConfig({ odds: { success_yield_m3_per_h: OD.low_yield.rate } }))),
+      ranked_index: C.assessSiting([Object.assign({}, interps[1],
+        { sounding_id: interps[0].sounding_id }), interps[0]]).map((s) => s.index),
       ground: OD.ground.map(([lat, lon]) => C.groundAt({ lat: lat, lon: lon })),
       rokel: interps.map((interp, i) => {
         const site = soundings[i].site;
@@ -2400,6 +2406,19 @@ await withPage(async (page, base, consoleErrors) => {
     const d = oddsWithin(oddsJs.wider, OD.wider, 'wider');
     check('odds: success defined at 3.6 m3/h moves the prior', d === null, d);
   }
+  {
+    // a prior near 1, whose 90th percentile bisects to exactly 1: the band is
+    // held inside (0, 1), where it was NaN carried through the odds
+    const d = oddsWithin(oddsJs.low_yield, OD.low_yield.odds, 'low_yield');
+    check(`odds: success at ${OD.low_yield.rate} m3/h on the coastal sands keeps its band`,
+      d === null && Number.isFinite(oddsJs.low_yield.high) &&
+      !oddsJs.low_yield.text.join(' ').includes('nan'), d || oddsJs.low_yield.text[0]);
+  }
+  // the suitability rows name their point by position, which the pages pair
+  // the odds with: two points can share an id
+  check('odds: each suitability row names its point by position',
+    JSON.stringify(oddsJs.ranked_index) === JSON.stringify(OD.ranked_index),
+    `js ${JSON.stringify(oddsJs.ranked_index)} vs py ${JSON.stringify(OD.ranked_index)}`);
   OD.ground.forEach(([lat, lon, py], i) => {
     check(`odds: the ground under ${lat}, ${lon}`,
       JSON.stringify(oddsJs.ground[i]) === JSON.stringify(py),

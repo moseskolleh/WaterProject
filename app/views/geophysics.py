@@ -206,17 +206,17 @@ def render() -> None:
             )
             suitability = assess_siting(interps)
             # the chance of a working borehole beside the score (PLAN.md
-            # step 3.3), placed as the report places it
+            # step 3.3), placed as the report places it, and paired with its
+            # row by position: two points can share an id
             site = soundings[0].site
-            odds = {o.sounding_id: o for o in survey_odds(
-                interps, ranges, site.utm_zone, site.latlon, app_config())}
+            odds = survey_odds(interps, ranges, site.utm_zone, site.latlon, app_config())
             st.dataframe(
                 [
                     {
                         "Rank": s.rank,
                         "Point": s.sounding_id,
                         "Suitability": f"{s.suitability:.0f}/100",
-                        phrase("odds.col_short"): odds_short(odds[s.sounding_id]),
+                        phrase("odds.col_short"): odds_short(odds[s.index]),
                         "Grade": s.grade,
                         "Why": s.rationale,
                     }
@@ -233,9 +233,9 @@ def render() -> None:
             )
             st.markdown(f"**{phrase('odds.heading')}**")
             st.caption(" ".join([phrase("odds.lead")]
-                                + odds_basis_text(odds[suitability[0].sounding_id])))
+                                + odds_basis_text(odds[suitability[0].index])))
             for s in suitability:
-                o = odds[s.sounding_id]
+                o = odds[s.index]
                 # a bordered box, not an expander: Streamlit does not nest them
                 with st.container(border=True):
                     st.markdown(f"**{s.sounding_id}**: {odds_short(o)}")

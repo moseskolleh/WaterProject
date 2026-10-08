@@ -238,6 +238,58 @@ await withPage(async (page, base, consoleErrors) => {
     (programmeOdds.percent === null || programmeOdds.percent === programmeOdds.rate),
     JSON.stringify(programmeOdds));
 
+  // A sheet copied without renumbering gives two points one id. The pages
+  // looked the odds up by id, so both rows showed the last point's and the
+  // Costing page offered the first point carrying the leader's id; they are
+  // paired by position. Here the second Rokel point takes the first's id and
+  // is listed first, so the leader is the one listed second.
+  const sharedId = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core;
+    const kept = { interps: app.derived.interpretations, invs: app.derived.inversions,
+      soundings: app.derived.soundings };
+    const renamed = Object.assign({}, kept.interps[1],
+      { sounding_id: kept.interps[0].sounding_id });
+    try {
+      app.derived.interpretations = [renamed, kept.interps[0]];
+      app.derived.inversions = [kept.invs[1], kept.invs[0]];
+      app.derived.soundings = [kept.soundings[1], kept.soundings[0]];
+      const odds = app.surveyOdds();
+      const weighted = app.derived.interpretations.map((i) => {
+        const s = C.assessSiting([i], app.config().ves)[0];
+        return s.suitability * s.confidence;
+      });
+      const lead = weighted[1] > weighted[0] ? 1 : 0;
+      await app.goto('ves');
+      const host = document.querySelector('#page-host');
+      const table = Array.from(host.querySelectorAll('table')).find((t) =>
+        Array.from(t.querySelectorAll('th')).some((th) =>
+          th.textContent === 'Chance of a working borehole'));
+      const column = Array.from(table.querySelectorAll('th'))
+        .findIndex((th) => th.textContent === 'Chance of a working borehole');
+      const cells = Array.from(table.querySelectorAll('tbody tr'))
+        .map((tr) => tr.children[column].textContent);
+      const points = Array.from(host.querySelectorAll('.odds-point')).map((p) => p.textContent);
+      await app.goto('costing');
+      const offered = document.querySelector('#page-host .callout').textContent;
+      return { lead, cells, shorts: odds.map((o) => C.oddsShort(o)),
+        words: odds.map((o) => C.oddsPointText(o).join(' ')), points, offered,
+        sentence: C.programmeOffer(odds[lead]) };
+    } finally {
+      app.derived.interpretations = kept.interps;
+      app.derived.inversions = kept.invs;
+      app.derived.soundings = kept.soundings;
+      await app.goto('ves');
+    }
+  });
+  check('odds: two points with one id each show their own odds, in rank order',
+    sharedId.lead === 1 && sharedId.shorts[0] !== sharedId.shorts[1] &&
+    JSON.stringify(sharedId.cells) ===
+      JSON.stringify([sharedId.shorts[1], sharedId.shorts[0]]) &&
+    sharedId.words.every((w) => sharedId.points.some((p) => p.includes(w))),
+    JSON.stringify(sharedId).slice(0, 800));
+  check('odds: the Costing page offers the leader\'s odds, not the first with its id',
+    sharedId.offered.includes(sharedId.sentence), JSON.stringify(sharedId).slice(0, 800));
+
   // --- the engine worker ----------------------------------------------------
   // PLAN.md step 1.2: during an inversion no main-thread task longer than
   // 50 ms, and the page keeps scrolling. The windows are the engine's own

@@ -14836,7 +14836,7 @@
   function assessSiting(interpretations, vesConfig) {
     var cfg = vesConfig || defaultConfig().ves;
     /** @type {Rec[]} */
-    var results = (interpretations || []).map(function (interp) {
+    var results = (interpretations || []).map(function (interp, index) {
       var comp = {
         aquifer_thickness: Math.min(interp.aquifer_thickness_m / THICKNESS_TARGET_M, 1.0),
         resistivity_fit: resistivityFitScore(interp, cfg),
@@ -14857,6 +14857,10 @@
         easting: interp.site_easting, northing: interp.site_northing,
         rank: null,
         confidence: pyRound(interp.confidence === undefined ? 1.0 : interp.confidence, 3),
+        /* where the interpretation stood in the list given: a page pairs the
+         * row with what else it worked out for the point by this, not by
+         * the sounding id, which a sheet copied without renumbering repeats */
+        index: index,
       };
     });
     /* rank on the confidence-weighted score, highest first; ties broken by
@@ -15005,6 +15009,14 @@
   function oddsProbability(odds) { return odds / (1.0 + odds); }
   function oddsOf(p) { return p / (1.0 - p); }
 
+  /* How close to 0 or 1 the prior rate and its percentiles may come: in
+   * doubles the 90th percentile of a Beta with a rate near 1 bisects to
+   * exactly 1, and its odds are then infinite (_RATE_BOUND, _inside). */
+  var ODDS_RATE_BOUND = 1e-6;
+  function oddsInside(p) {
+    return Math.min(Math.max(p, ODDS_RATE_BOUND), 1.0 - ODDS_RATE_BOUND);
+  }
+
   /** The prior table's row for this ground, and the rate it gives:
    * prior_for. The most specific row wins.
    * @param {string|null} bgsCode
@@ -15035,7 +15047,7 @@
         successYieldM3h / 3.6)
       : row.rate;
     /* a Beta prior needs a rate strictly inside (0, 1) */
-    rate = Math.min(Math.max(rate, 1e-6), 1.0 - 1e-6);
+    rate = oddsInside(rate);
     return Object.assign({}, row, { matched: matched, rate: rate });
   }
 
@@ -15045,6 +15057,30 @@
       if ('below' in bands[i] && value < bands[i].below) return bands[i];
     }
     return bands[bands.length - 1];
+  }
+
+  /* The thickness-weighted geometric mean resistivity of the water-bearing
+   * layers inside the water zones, or null: _water_zone_rho. Not
+   * zoneGeomeanRho, which takes every layer inside a zone, so the slice of
+   * dry layer or basement that rounding a zone to whole metres added moved
+   * the mean across a band edge. The logarithms are relative to the first
+   * such layer's resistivity, so a zone of one resistivity reads exactly it. */
+  function waterZoneRho(interp) {
+    var reference = 0.0, acc = 0.0, total = 0.0;
+    interp.water_zones.forEach(function (zone) {
+      var top = zone[0], bottom = zone[1];
+      interp.layers.forEach(function (layer) {
+        if (!layer.water_bearing) return;
+        var lo = Math.max(layer.top_m, top);
+        var hi = Math.min(isFinite(layer.bottom_m) ? layer.bottom_m : bottom, bottom);
+        if (hi > lo) {
+          if (total === 0.0) reference = layer.rho;
+          acc += Math.log(layer.rho / reference) * (hi - lo);
+          total += hi - lo;
+        }
+      });
+    });
+    return total > 0 ? reference * Math.exp(acc / total) : null;
   }
 
   /* [key, band, value, ratio] for the three survey classes: _survey_evidence */
@@ -15068,7 +15104,7 @@
         : (share <= basement.resolved_max_unresolved_share ? 'resolved' : 'partly');
       out.push(['basement', key, share, Number(basement[key].lr)]);
     }
-    var rho = zoneGeomeanRho(interp);
+    var rho = waterZoneRho(interp);
     var resistivity = table.resistivity;
     if (rho === null) {
       out.push(['resistivity', 'none', null, Number(resistivity.none.lr)]);
@@ -15095,8 +15131,10 @@
     var row = priorFor(bgsCode || null, glg || null, rateM3h);
     var p0 = row.rate, n = row.effective_n;
     var alpha = p0 * n, beta = (1.0 - p0) * n;
-    var priorLow = betaQuantile(alpha, beta, 0.1);
-    var priorHigh = betaQuantile(alpha, beta, 0.9);
+    /* held inside (0, 1) as the rate is: a percentile that rounded to
+     * exactly 1 carried through the odds as NaN */
+    var priorLow = oddsInside(betaQuantile(alpha, beta, 0.1));
+    var priorHigh = oddsInside(betaQuantile(alpha, beta, 0.9));
     var priorOdds = oddsOf(p0);
 
     var survey = surveyEvidence(interp, range || null);

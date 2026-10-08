@@ -77,9 +77,12 @@ basement:
       past what the sounding resolved.
 
 # The water-bearing zone's resistivity: the thickness-weighted geometric
-# mean over the best fit's water zones, the same figure the suitability
-# score's resistivity term reads. Low resistivity is clay-rich saprolite
-# (or, near the coast, saline water); high is little-weathered rock.
+# mean of the best fit's water-bearing layers inside its water zones. It
+# leaves out the slice of dry layer or basement that rounding a zone to
+# whole metres takes in, which the suitability score's resistivity term
+# keeps, so the two can differ a little. Low resistivity is clay-rich
+# saprolite (or, near the coast, saline water); high is little-weathered
+# rock.
 resistivity:
   none:
     lr: 0.3

@@ -41,8 +41,8 @@ def _first_point_odds():
     soundings, results, interps = held
     kept = st.session_state.get("ves_ranges")
     ranges = kept[1] if kept is not None and kept[0] is results else [None] * len(results)
-    first = assess_siting(interps)[0].sounding_id
-    i = next(k for k, interp in enumerate(interps) if interp.sounding_id == first)
+    # by position, not id: two points can share an id
+    i = assess_siting(interps)[0].index
     site = soundings[0].site
     return survey_odds([interps[i]], [ranges[i]], site.utm_zone, site.latlon,
                        app_config())[0]

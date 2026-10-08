@@ -1120,9 +1120,9 @@ def _odds_block(rb: ReportBuilder, suit, odds) -> None:
     rb.heading(phrase("odds.heading"), 3)
     rb.paragraph(" ".join([phrase("odds.lead")] + odds_basis_text(odds[0])),
                  align="justify")
-    order = {s.sounding_id: i for i, s in enumerate(suit)}
-    ranked = sorted(odds, key=lambda o: order.get(o.sounding_id, len(order)))
-    for o in ranked:
+    # paired with the ranking by position, not by id: two points can share
+    # an id, and the odds are worked out in the interpretations' order
+    for o in (odds[s.index] for s in suit):
         rb.paragraph(" ".join([phrase("odds.point", sid=o.sounding_id)]
                               + odds_point_text(o)), align="justify")
         rb.table(odds_rows(o), header=odds_header(), caption=odds_table_caption(o),

@@ -6,12 +6,16 @@ needs is the odds, worked out in a way anyone can follow on paper:
 
 1. **The prior**: a success rate for the ground under the point, from
    ``data/success_prior.csv``, looked up by the BGS aquifer class and the
-   USGS geology unit there. The cited figures are the BGS productivity
-   class's yields (O Dochartaigh 2021), which the guide reads as roughly the
-   interquartile range of the yields of boreholes sited and drilled
-   properly. Read as the quartiles of a lognormal spread, they give the
-   share of boreholes at or above the yield that counts as success. A point
-   the table has no class for gets a weak, labelled fallback: an even chance.
+   USGS geology unit there. The cited figures are the yield ranges of the
+   BGS productivity classes on the country maps (O Dochartaigh 2021,
+   Table 3), which the guide takes as the average yields of a borehole
+   sited and developed properly; it calls the ranges of the 2012
+   Africa-wide map these maps develop roughly the interquartile range of
+   such boreholes' yields (Table 4). Reading the country-map ranges as
+   quartiles too is this toolkit's choice: read as the quartiles of a
+   lognormal spread, they give the share of boreholes at or above the
+   yield that counts as success. A point the table has no class for gets
+   a weak, labelled fallback: an even chance.
 2. **The evidence**: a likelihood ratio for each of four things the survey
    says, from ``data/success_evidence.yaml``: the depth to basement the
    range of models quotes (step 3.1), whether basement was resolved, the
@@ -52,7 +56,6 @@ from .._resources import bundled_text
 from ..config import Config
 from ..text import phrase, phrase_table
 from ..ves.model_range import _share, quoted_basement_band
-from .suitability import _zone_geomean_rho
 
 __all__ = [
     "Evidence",
@@ -82,6 +85,12 @@ __all__ = [
 #: lie this many of its standard deviations either side of its median.
 _Z_QUARTILE = 0.6744897501960817
 _PRIOR_BAND = (0.1, 0.9)
+#: How close to 0 or 1 the prior rate and its percentiles may come. A Beta
+#: prior lies strictly inside (0, 1), but in doubles the 90th percentile of
+#: one with a rate near 1 bisects to exactly 1.0 (a rate above about 0.993
+#: at an effective n of 10 does it), and odds of p / (1 - p) are then
+#: infinite.
+_RATE_BOUND = 1e-6
 
 
 # ------------------------------------------------------------------- tables
@@ -217,6 +226,11 @@ def _odds(p: float) -> float:
     return p / (1.0 - p)
 
 
+def _inside(p: float) -> float:
+    """``p`` held off 0 and 1 by :data:`_RATE_BOUND`."""
+    return min(max(p, _RATE_BOUND), 1.0 - _RATE_BOUND)
+
+
 # ----------------------------------------------------------------- the prior
 
 def prior_for(bgs_code: str | None, glg: str | None,
@@ -254,7 +268,7 @@ def prior_for(bgs_code: str | None, glg: str | None,
     else:
         rate = row["rate"]
     # a Beta prior needs a rate strictly inside (0, 1)
-    rate = min(max(rate, 1e-6), 1.0 - 1e-6)
+    rate = _inside(rate)
     return {**row, "matched": matched, "rate": rate}
 
 
@@ -288,6 +302,36 @@ def _band_of(bands: list[dict], value: float) -> dict:
     return bands[-1]
 
 
+def _water_zone_rho(interp) -> float | None:
+    """The thickness-weighted geometric mean resistivity of the water-bearing
+    layers inside the water zones; None where there are none.
+
+    Not :func:`suitability._zone_geomean_rho`, which takes every layer
+    inside a zone. The zones are rounded to whole metres, so that took in
+    the slice of dry layer or basement the rounding added: a zone whose only
+    layer was 200 ohm-m read 307 ohm-m, "resistive", with 0.4 m of 5,000
+    ohm-m basement in it, and a band edge turned that into a step in the
+    odds. The logarithms are taken relative to the first such layer's
+    resistivity, so a zone of one resistivity reads exactly that and not a
+    rounding error either side of an edge (exp(ln 50) is 49.999...).
+    """
+    reference = 0.0
+    acc = 0.0
+    total = 0.0
+    for top, bottom in interp.water_zones:
+        for layer in interp.layers:
+            if not layer.water_bearing:
+                continue
+            lo = max(layer.top_m, top)
+            hi = min(layer.bottom_m if math.isfinite(layer.bottom_m) else bottom, bottom)
+            if hi > lo:
+                if total == 0.0:
+                    reference = layer.rho
+                acc += math.log(layer.rho / reference) * (hi - lo)
+                total += hi - lo
+    return reference * math.exp(acc / total) if total > 0 else None
+
+
 def _survey_evidence(interp, model_range) -> list[tuple[str, str, float | None, float]]:
     """``(key, band, value, ratio)`` for the three survey classes."""
     table = odds_tables()["evidence"]
@@ -311,7 +355,7 @@ def _survey_evidence(interp, model_range) -> list[tuple[str, str, float | None, 
         else:
             key = "partly"
         out.append(("basement", key, share, float(basement[key]["lr"])))
-    rho = _zone_geomean_rho(interp)
+    rho = _water_zone_rho(interp)
     resistivity = table["resistivity"]
     if rho is None:
         out.append(("resistivity", "none", None, float(resistivity["none"]["lr"])))
@@ -366,8 +410,10 @@ def success_odds(interp, model_range, bgs_code: str | None, glg: str | None,
     p0 = row["rate"]
     n = row["effective_n"]
     alpha, beta = p0 * n, (1.0 - p0) * n
-    prior_low = beta_quantile(alpha, beta, _PRIOR_BAND[0])
-    prior_high = beta_quantile(alpha, beta, _PRIOR_BAND[1])
+    # held inside (0, 1) as the rate is: a percentile that rounded to
+    # exactly 1 raised ZeroDivisionError carried through the odds below
+    prior_low = _inside(beta_quantile(alpha, beta, _PRIOR_BAND[0]))
+    prior_high = _inside(beta_quantile(alpha, beta, _PRIOR_BAND[1]))
     prior_odds = _odds(p0)
 
     survey = _survey_evidence(interp, model_range)

@@ -398,8 +398,8 @@ datasets:
           No source separates the geology units within a class, and none is
           claimed to.
       - path: src/groundwater/data/success_evidence.yaml
-        bytes: 5600
-        sha256: ebf3966b5fe222471ac72eede489d8253c447811e03cc98d1af119d59de33e47
+        bytes: 5754
+        sha256: 9ea42c688edb48aa21f5ffd941cfa517569e61a6f3749c468cf47bcb67d51016
         note: >-
           The likelihood ratios and fit weights of the chance of a working
           borehole, each with the reasoning behind it. NO SOURCE IS RECORDED

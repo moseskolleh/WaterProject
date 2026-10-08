@@ -1115,13 +1115,9 @@
         b.heading(C.phrase('odds.heading'), 3);
         b.paragraph([C.phrase('odds.lead')].concat(C.oddsBasisText(odds[0])).join(' '),
           { align: 'justify' });
-        var oddsOrder = {};
-        suit.forEach(function (s, i) { oddsOrder[s.sounding_id] = i; });
-        var rankOf = function (o) {
-          return oddsOrder[o.sounding_id] === undefined ? suit.length
-            : oddsOrder[o.sounding_id];
-        };
-        var oddsRanked = odds.slice().sort(function (a, c) { return rankOf(a) - rankOf(c); });
+        /* paired with the ranking by position, not by id: two points can
+         * share an id, and the odds are in the interpretations' order */
+        var oddsRanked = suit.map(function (s) { return odds[s.index]; }).filter(Boolean);
         oddsRanked.forEach(function (o) {
           b.paragraph([C.phrase('odds.point', { sid: o.sounding_id })]
             .concat(C.oddsPointText(o)).join(' '), { align: 'justify' });

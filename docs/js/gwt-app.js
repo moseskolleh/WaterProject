@@ -2561,12 +2561,11 @@
     ]));
 
     var suitability = C.assessSiting(derived.interpretations, config().ves);
-    /* the chance of a working borehole beside the score (PLAN.md step 3.3) */
-    var odds = {};
-    surveyOdds().forEach(function (o) { odds[o.sounding_id] = o; });
+    /* the chance of a working borehole beside the score (PLAN.md step 3.3),
+     * paired with its row by position: two points can share an id */
+    var odds = surveyOdds();
     suitability = suitability.map(function (s) {
-      return Object.assign({}, s, { odds: odds[s.sounding_id]
-        ? C.oddsShort(odds[s.sounding_id]) : '' });
+      return Object.assign({}, s, { odds: odds[s.index] ? C.oddsShort(odds[s.index]) : '' });
     });
     var best = suitability[0];
     var located = suitability.filter(function (s) {
@@ -2596,10 +2595,10 @@
         rowClass: function (row) { return row.rank === 1 ? 'row-ok' : ''; },
       }),
       el('h3', C.phrase('odds.heading')),
-      el('p.muted', [C.phrase('odds.lead')].concat(odds[best.sounding_id]
-        ? C.oddsBasisText(odds[best.sounding_id]) : []).join(' ')),
+      el('p.muted', [C.phrase('odds.lead')].concat(odds[best.index]
+        ? C.oddsBasisText(odds[best.index]) : []).join(' ')),
       el('div.odds-points', suitability.map(function (s) {
-        var o = odds[s.sounding_id];
+        var o = odds[s.index];
         if (!o) return null;
         return el('div.odds-point', [
           el('p', [el('strong', s.sounding_id + ': '), C.oddsPointText(o).join(' ')]),
@@ -4250,9 +4249,9 @@
      * would change silently. */
     var firstOdds = null;
     if ((derived.interpretations || []).length) {
-      var first = C.assessSiting(derived.interpretations, config().ves)[0].sounding_id;
-      firstOdds = surveyOdds().filter(function (o) { return o.sounding_id === first; })[0] ||
-        null;
+      /* by position, not id: two points can share an id */
+      var first = C.assessSiting(derived.interpretations, config().ves)[0].index;
+      firstOdds = surveyOdds()[first] || null;
     }
     var offeredRate = firstOdds ? C.programmeRate(firstOdds) : null;
     nodes.push(card('Programme of works', [

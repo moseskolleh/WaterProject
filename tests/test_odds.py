@@ -34,9 +34,10 @@ from groundwater.ves.model_range import Band
 
 def _interp(rho=80.0, err=4.0, zones=((5.0, 20.0),), sid="P1"):
     """A point whose water zone, 5 to 20 m, is one layer of ``rho``."""
-    layers = [SimpleNamespace(top_m=0.0, bottom_m=5.0, rho=300.0),
-              SimpleNamespace(top_m=5.0, bottom_m=20.0, rho=rho),
-              SimpleNamespace(top_m=20.0, bottom_m=math.inf, rho=5000.0)]
+    layers = [SimpleNamespace(top_m=0.0, bottom_m=5.0, rho=300.0, water_bearing=False),
+              SimpleNamespace(top_m=5.0, bottom_m=20.0, rho=rho, water_bearing=True),
+              SimpleNamespace(top_m=20.0, bottom_m=math.inf, rho=5000.0,
+                              water_bearing=False)]
     return SimpleNamespace(sounding_id=sid, water_zones=list(zones), layers=layers,
                            fit_error_percent=err, site_easting=None, site_northing=None)
 
@@ -257,6 +258,77 @@ def test_a_basement_band_not_quoted_gives_no_depth_and_counts_as_unresolved():
     assert tenth.evidence[0].band == "deep" and tenth.evidence[1].band == "partly"
 
 
+def test_the_water_zone_resistivity_leaves_out_what_rounding_takes_in():
+    """A zone is rounded to whole metres. 200 ohm-m over 5,000 ohm-m
+    basement, 2.4 or 2.6 m thick, is the zone 6 to 8 m or 6 to 9 m; the
+    second took in 0.4 m of basement, read 307 ohm-m, "resistive", and
+    dropped the chance from 61 to 47 percent."""
+    from groundwater.models import LayeredModel
+    from groundwater.ves import interpret_model
+
+    seen = []
+    for thickness in (2.4, 2.6):
+        model = LayeredModel([300.0, 200.0, 5000.0], [6.0, thickness])
+        model.fit_error_percent = 3.0
+        interp = interpret_model(None, model)
+        o = success_odds(interp, _range(p50=20.0, unresolved=0.0), "B-L", "pCm")
+        seen.append((interp.water_zones, o.evidence[2].band, o.evidence[2].value,
+                     round(o.probability, 12)))
+    assert [z for z, *_ in seen] == [[(6, 8)], [(6, 9)]]
+    assert [rest for _z, *rest in seen] == [["productive", 200.0, seen[0][3]]] * 2
+    # and a dry layer above a zone is left out too: the water-bearing layer
+    # from 8.3 m is the zone 8 to 40 m, which took in 0.3 m of 1,200 ohm-m
+    model = LayeredModel([1200.0, 49.97], [8.3])
+    model.fit_error_percent = 3.0
+    interp = interpret_model(None, model)
+    assert interp.water_zones[0][0] == 8
+    o = success_odds(interp, None, "U-M/H", "Qe")
+    assert (o.evidence[2].band, o.evidence[2].value) == ("clayey", 49.97)
+
+
+@pytest.mark.parametrize("p50,band,under", [(5.0, "shallow", "thin"),
+                                            (15.0, "favourable", "shallow"),
+                                            (35.0, "deep", "favourable")])
+def test_a_depth_on_a_band_edge_takes_the_band_above_it(p50, band, under):
+    # the edges are each band's "below": 5 m is not under 5 m
+    def depth(d):
+        return success_odds(_interp(), _range(p50=d), None, None).evidence[0].band
+
+    assert (depth(p50), depth(p50 - 1e-9)) == (band, under)
+
+
+def test_a_basement_share_on_its_edge_counts_as_resolved():
+    # "resolved" is at most a tenth of the models finding none
+    edge = success_odds(_interp(), _range(unresolved=0.1), None, None)
+    over = success_odds(_interp(), _range(unresolved=0.1 + 1e-12), None, None)
+    assert (edge.evidence[1].band, over.evidence[1].band) == ("resolved", "partly")
+
+
+@pytest.mark.parametrize("err,band,under", [(5.0, "acceptable", "excellent"),
+                                            (10.0, "poor", "acceptable"),
+                                            (20.0, "unreliable", "poor")])
+def test_a_misfit_on_a_band_edge_takes_the_band_above_it(err, band, under):
+    def fit(e):
+        return success_odds(_interp(err=e), None, None, None).evidence[3].band
+
+    assert (fit(err), fit(err - 1e-9)) == (band, under)
+
+
+@pytest.mark.parametrize("rho,band,under", [(20.0, "clayey", "clay"),
+                                            (50.0, "productive", "clayey"),
+                                            (300.0, "resistive", "productive"),
+                                            (800.0, "fresh", "resistive")])
+def test_a_resistivity_on_a_band_edge_takes_the_band_above_it(rho, band, under):
+    """A zone of one layer reads that layer's resistivity exactly: the
+    geometric mean as exp(mean ln) read 50 ohm-m as 49.99999999999999, and
+    so "clayey", where the evidence file says 50 to 300 is productive."""
+    def found(r):
+        return success_odds(_interp(rho=r), None, None, None).evidence[2]
+
+    assert (found(rho).value, found(rho).band) == (rho, band)
+    assert found(rho * (1 - 1e-9)).band == under
+
+
 def test_no_water_zone_and_no_misfit():
     o = success_odds(_interp(zones=(), err=None), None, "B-L", "pCm")
     assert (o.evidence[2].band, o.evidence[2].factor) == ("none", 0.3)
@@ -275,6 +347,35 @@ def test_success_is_defined_in_the_configuration():
     # 1 L/s is above the class's upper quartile, so under a quarter clear it
     assert strict.prior < 0.25 < base.prior
     assert "at least 3.6 m3/h (1.00 L/s)" in odds_text(strict)[1]
+
+
+def test_a_low_success_yield_keeps_the_band_finite(tmp_path):
+    """On the coastal sands a low success yield puts the prior rate near 1,
+    and the 90th percentile of its Beta bisected to exactly 1.0: carried
+    through the odds that was a ZeroDivisionError in Python and "nan" in the
+    browser, from 0.33 m3/h down. The band is held inside (0, 1) as the rate
+    is, so it reads "over 99", not 100 and not nan."""
+    path = tmp_path / "config.yaml"
+    path.write_text("odds:\n  success_yield_m3_per_h: 0.3\n", encoding="utf-8")
+    config = Config.load(path)
+    # a point at the Rokel survey's position, on the coastal sands
+    here = _interp()
+    here.site_easting, here.site_northing = 708958.0, 926355.0
+    from groundwater.siting import survey_odds
+
+    (o,) = survey_odds([here], [_range()], 28, None, config)
+    assert (o.bgs_code, o.glg) == ("U-M/H", "Qe")
+    assert 0.0 < o.prior_low <= o.prior_high < 1.0
+    assert all(math.isfinite(v) and 0.0 < v < 1.0 for v in (o.low, o.probability, o.high))
+    assert "over 99" in odds_headline(o)
+    assert "nan" not in odds_headline(o) and " 100" not in odds_headline(o)
+    # over the range a project might set, on every cited class, both ends
+    for rate in [k / 100 for k in range(1, 100)] + [3.6, 36.0, 360.0]:
+        config.odds.success_yield_m3_per_h = rate
+        for code, glg in (("U-M/H", "Qe"), ("B-L", "pCm"), ("I-L", "Pi"),
+                          ("CSF-L/M", "pCm")):
+            o = success_odds(_interp(), _range(), code, glg, config)
+            assert all(0.0 < v < 1.0 for v in (o.low, o.probability, o.high)), (rate, code)
 
 
 @pytest.mark.parametrize("rate", [0.0, -1.0, float("nan")])
@@ -366,6 +467,48 @@ def test_the_report_prints_the_odds_under_the_score(tmp_path):
     cells = [[c.text for c in row.cells] for t in doc.tables for row in t.rows]
     assert ["Evidence", "What the survey found", "Factor on the odds",
             "Chance after (percent)"] in cells
+
+
+def test_the_report_pairs_each_point_with_its_own_odds_in_rank_order():
+    """Two points with one id (a sheet copied without renumbering): the
+    report ordered the odds by looking each id up in the ranking, so both
+    took the last row's place and printed in the order listed, the weaker
+    point first."""
+    from groundwater.models import LayeredModel
+    from groundwater.reporting.geophysical import _odds_block
+    from groundwater.siting import assess_siting, survey_odds
+    from groundwater.ves import interpret_model
+
+    points = []
+    for thickness in (3.0, 25.0):
+        model = LayeredModel([300.0, 120.0, 5000.0], [6.0, thickness])
+        model.fit_error_percent = 3.0
+        interp = interpret_model(None, model)
+        interp.sounding_id = "VES 1"
+        points.append(interp)
+    # the point listed second is the better, scored a point at a time
+    assert assess_siting(points[1:])[0].weighted > assess_siting(points[:1])[0].weighted
+    suit = assess_siting(points)
+    odds = survey_odds(points, [None, _range(p50=31.0)], None, None)
+    assert odds[0].probability != odds[1].probability
+
+    class Writer:
+        def __init__(self):
+            self.paragraphs = []
+
+        def heading(self, *args, **kwargs):
+            pass
+
+        def table(self, *args, **kwargs):
+            pass
+
+        def paragraph(self, text, **kwargs):
+            self.paragraphs.append(text)
+
+    rb = Writer()
+    _odds_block(rb, suit, odds)
+    assert rb.paragraphs[1:] == [" ".join(["Point VES 1."] + odds_point_text(o))
+                                 for o in (odds[1], odds[0])]
 
 
 def test_the_ground_is_what_the_maps_say():
