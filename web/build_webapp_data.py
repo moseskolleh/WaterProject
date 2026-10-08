@@ -339,6 +339,12 @@ def bundle_texts() -> dict[Path, str]:
     from groundwater.field_kit import field_schedules
 
     payload["field"] = field_schedules()
+    # the prior and the likelihood ratios of the chance of a working
+    # borehole, data/success_prior.csv and success_evidence.yaml, as the
+    # package parses them
+    from groundwater.siting.odds import odds_tables
+
+    payload["odds"] = odds_tables()
 
     geo = {key: read_geojson(name) for key, name in GEOJSON_LAYERS.items()}
 

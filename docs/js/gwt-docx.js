@@ -1106,6 +1106,30 @@
       b.paragraph(C.suitabilityVerdict(suit, vesCfg.ranking_tie_points) +
         (analystOrder ? ' The drilling preference above follows the order the ' +
           'analyst set, not these scores.' : ''), { align: 'justify' });
+      /* The chance of a working borehole at each point (PLAN.md step 3.3),
+       * under the score it stands beside, in the order of the ranking, as
+       * reporting/geophysical.py _odds_block prints it. The page works the
+       * odds out, because it holds the ranges and the site's position. */
+      var odds = context.odds || [];
+      if (odds.length) {
+        b.heading(C.phrase('odds.heading'), 3);
+        b.paragraph([C.phrase('odds.lead')].concat(C.oddsBasisText(odds[0])).join(' '),
+          { align: 'justify' });
+        var oddsOrder = {};
+        suit.forEach(function (s, i) { oddsOrder[s.sounding_id] = i; });
+        var rankOf = function (o) {
+          return oddsOrder[o.sounding_id] === undefined ? suit.length
+            : oddsOrder[o.sounding_id];
+        };
+        var oddsRanked = odds.slice().sort(function (a, c) { return rankOf(a) - rankOf(c); });
+        oddsRanked.forEach(function (o) {
+          b.paragraph([C.phrase('odds.point', { sid: o.sounding_id })]
+            .concat(C.oddsPointText(o)).join(' '), { align: 'justify' });
+          b.table(C.oddsRows(o), { header: C.oddsHeader(),
+            caption: C.oddsTableCaption(o), colWidthsCm: [4.0, 7.0, 2.6, 2.4],
+            fontSize: 8.5 });
+        });
+      }
       /* The drill-target map, where reporting/geophysical.py _suitability_block
        * puts it: under the ranked table, above the subsurface maps. It is
        * written inside this heading rather than beside the call to

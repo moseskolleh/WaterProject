@@ -13,7 +13,17 @@ from groundwater.reporting.geophysical import (
     build_geophysical_report,
     GeophysicalReportInputs,
 )
-from groundwater.siting import assess_siting, suitability_map_points
+from groundwater.siting import (
+    assess_siting,
+    odds_basis_text,
+    odds_header,
+    odds_point_text,
+    odds_rows,
+    odds_short,
+    odds_table_caption,
+    suitability_map_points,
+    survey_odds,
+)
 from groundwater.text import phrase
 from groundwater.ves.interpret import (
     drilling_depth_text,
@@ -195,12 +205,18 @@ def render() -> None:
                 "can be replaced by a fitted model."
             )
             suitability = assess_siting(interps)
+            # the chance of a working borehole beside the score (PLAN.md
+            # step 3.3), placed as the report places it
+            site = soundings[0].site
+            odds = {o.sounding_id: o for o in survey_odds(
+                interps, ranges, site.utm_zone, site.latlon, app_config())}
             st.dataframe(
                 [
                     {
                         "Rank": s.rank,
                         "Point": s.sounding_id,
                         "Suitability": f"{s.suitability:.0f}/100",
+                        phrase("odds.col_short"): odds_short(odds[s.sounding_id]),
                         "Grade": s.grade,
                         "Why": s.rationale,
                     }
@@ -215,6 +231,18 @@ def render() -> None:
                 f"({best.suitability:.0f}/100, {best.grade}).",
                 icon="🎯",
             )
+            st.markdown(f"**{phrase('odds.heading')}**")
+            st.caption(" ".join([phrase("odds.lead")]
+                                + odds_basis_text(odds[suitability[0].sounding_id])))
+            for s in suitability:
+                o = odds[s.sounding_id]
+                # a bordered box, not an expander: Streamlit does not nest them
+                with st.container(border=True):
+                    st.markdown(f"**{s.sounding_id}**: {odds_short(o)}")
+                    st.write(" ".join(odds_point_text(o)))
+                    st.table([dict(zip(odds_header(), row, strict=True))
+                              for row in odds_rows(o)])
+                    st.caption(odds_table_caption(o))
             map_points = suitability_map_points(suitability)
             if map_points:
                 zone = site_from_state().utm_zone or infer_zone_for_sierra_leone(

@@ -851,6 +851,19 @@ await withPage(async (page, base, consoleErrors) => {
     rokelDoc.includes('Suitability (0 to 100)') && rokelDoc.includes('Confidence') &&
     /Point \S+ \(\d\) ranks first \(suitability \d+ out of 100/.test(rokelDoc),
     (rokelDoc.match(/[^\n]*ranks first[^\n]*/g) || []).join(' | ').slice(0, 400));
+  // The chance of a working borehole (PLAN.md step 3.3), under the score it
+  // stands beside, in the engine's words, with each point's breakdown.
+  const oddsWords = await page.evaluate(() => window.GWT.app.surveyOdds()
+    .map((o) => window.GWT.core.oddsText(o)));
+  check('ves: the chance of a working borehole is printed under the scorecard',
+    rokelDoc.includes('Chance of a working borehole') &&
+    rokelDoc.indexOf('Chance of a working borehole') > rokelDoc.indexOf('Suitability (0 to 100)') &&
+    oddsWords.length === soundings.length &&
+    oddsWords.every((lines) => lines.every((line) => rokelDoc.includes(line))) &&
+    (rokelDoc.match(/How the survey moved the chance of a working borehole at point /g) ||
+      []).length === soundings.length &&
+    rokelDoc.includes('What the survey found'),
+    JSON.stringify(oddsWords).slice(0, 600));
   check('ves: the warnings the sheets raised reach the annex',
     rokelDoc.includes('Annex A. Data Verification Notes') &&
     rokelDoc.includes('[WARNING] segment_overlap_discrepancy (A (1)): ') &&
@@ -880,15 +893,21 @@ await withPage(async (page, base, consoleErrors) => {
       const r = app.rangeFor(inv);
       return r ? [C.modelRangeText(r).join(' '), C.modelRangeCaption(r)] : null;
     });
+    /* the odds read the ranges, which count only under these settings */
+    const odds = app.surveyOdds().map((o) => C.oddsText(o));
     app.store.set('config', saved);
-    return words;
+    return { words, odds };
   }, rangeSettings);
+  check('ves: the odds in the report read the sampled ranges',
+    rangeWords.odds.every((lines) => lines.every((line) => rangedDoc.includes(line)) &&
+      !lines.some((line) => line.includes('has not been sampled'))),
+    JSON.stringify(rangeWords.odds).slice(0, 600));
   check('ves: the range of models is printed beside each best fit, with its fan',
-    rangeWords.length === soundings.length && rangeWords.every((w) => w &&
+    rangeWords.words.length === soundings.length && rangeWords.words.every((w) => w &&
       rangedDoc.includes(w[0]) && rangedDoc.includes(w[1])) &&
     !rokelDoc.includes('Metropolis-Hastings') &&
     (rangedDoc.match(/Models tried: /g) || []).length === soundings.length,
-    JSON.stringify(rangeWords).slice(0, 600));
+    JSON.stringify(rangeWords.words).slice(0, 600));
 
   /* Two points the ranking cannot separate, and a Wenner survey: built
    * straight from interpretations, since no bundled survey is either. */

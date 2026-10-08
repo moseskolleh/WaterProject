@@ -68,9 +68,58 @@ def test_ves_flow_with_sample(app):
     shown = " ".join(str(i.value) for i in app.info)
     assert "of the models that fit" in shown and "Metropolis-Hastings" in shown
 
+    # the chance of a working borehole beside the score, reading the range
+    from groundwater.siting import odds_basis_text, odds_point_text, survey_odds
+
+    site = soundings[0].site
+    expected = survey_odds(interps, ranges, site.utm_zone, site.latlon)
+    written = " ".join(str(m.value) for m in app.markdown)
+    for o in expected:
+        assert " ".join(odds_point_text(o)) in written
+    assert "has not been sampled" not in written
+    captions = " ".join(str(c.value) for c in app.caption)
+    assert " ".join(odds_basis_text(expected[0])) in captions
+
     app.button(key="build_geo_report").click()
     app.run()
     assert not app.exception
+
+
+def test_the_programme_offers_the_survey_odds_without_using_them(app):
+    """The typed success rate stays until the odds are chosen with a click."""
+    if "ves_results" not in app.session_state:
+        goto(app, "Geophysics (VES)")
+        app.selectbox(key="sample_ves").select("rokel/rokel_ves.xlsx")
+        app.run()
+        app.button(key="run_ves").click()
+        app.run()
+    goto(app, "Costing & BoQ")
+    assert not app.exception
+    typed = app.number_input(key="cost_prog_success").value
+    offered = " ".join(str(i.value) for i in app.info)
+    assert "the first-ranked point, at about" in offered
+    rate = programme_rate_of(app)
+    assert app.button(key="use_survey_odds").label == f"Use {rate:g} percent"
+    assert app.number_input(key="cost_prog_success").value == typed
+    app.button(key="use_survey_odds").click()
+    app.run()
+    assert not app.exception
+    assert app.number_input(key="cost_prog_success").value == rate
+
+
+def programme_rate_of(app):
+    """The rate the page offers, worked out as the page works it out."""
+    from groundwater.siting import assess_siting, survey_odds
+    from groundwater.siting.odds import programme_rate
+
+    soundings, results, interps = app.session_state["ves_results"]
+    kept = app.session_state.get("ves_ranges", None)
+    ranges = kept[1] if kept is not None and kept[0] is results else [None] * len(results)
+    first = assess_siting(interps)[0].sounding_id
+    i = [k for k, interp in enumerate(interps) if interp.sounding_id == first][0]
+    site = soundings[0].site
+    return programme_rate(survey_odds([interps[i]], [ranges[i]], site.utm_zone,
+                                      site.latlon)[0])
 
 
 def test_pumping_flow_with_sample(app):
