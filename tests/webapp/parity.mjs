@@ -2308,6 +2308,60 @@ await withPage(async (page, base, consoleErrors) => {
     }
   });
 
+  // --- the forward model at high contrast, and the starting models ---
+  // Under a thin resistive top layer the forward model is rho1 plus an
+  // integral that cancels nearly all of it, so an error in the quadrature's
+  // Bessel tables reaches the apparent resistivity multiplied by
+  // rho1 / rho_a: the browser's former tables, good to 5e-9, were 3e-3 out
+  // at 200,000 ohm-m over 3.2. Each forward model the inversion uses is held
+  // to 1e-6 relative over the grid, without waiting for the fuzz suite to
+  // draw such a case. The starting models are arithmetic on the readings and
+  // are held to 1e-12, on soundings whose first spacing was read twice.
+  const VF = R.ves_forward;
+  const forwardJs = await page.evaluate((VF) => {
+    const C = GWT.core;
+    return {
+      models: VF.models.map((m) => ({
+        schlumberger: Array.from(C.forwardSchlumberger(m.rho, m.h, VF.ab2)),
+        finite_mn: Array.from(C.forwardSchlumbergerFiniteMn(m.rho, m.h, VF.ab2, VF.mn)),
+        wenner: Array.from(C.forwardWenner(m.rho, m.h, VF.ab2)),
+      })),
+      starts: VF.starting_models.map((c) => C.startingModels(c.ab2, c.rho, c.n_layers)
+        .map((start) => [start.rho0, start.h0])),
+    };
+  }, VF);
+  const relGap = (a, b) => Math.abs(a - b) / Math.abs(b);
+  for (const kind of ['schlumberger', 'finite_mn', 'wenner']) {
+    for (const rho1 of Array.from(new Set(VF.models.map((m) => m.rho[0])))) {
+      let worst = { gap: 0, where: '' };
+      VF.models.forEach((m, i) => {
+        if (m.rho[0] !== rho1) return;
+        m[kind].forEach((py, k) => {
+          const js = forwardJs.models[i][kind][k];
+          const gap = typeof js === 'number' && isFinite(js) ? relGap(js, py) : Infinity;
+          if (gap > worst.gap) {
+            worst = { gap, where: `h ${m.h[0]} m over ${m.rho[1]} ohm-m, AB/2 ${VF.ab2[k]} m: ` +
+              `js ${js} vs py ${py}` };
+          }
+        });
+      });
+      check(`forward model ${kind}, a top layer of ${rho1} ohm-m: within 1e-6`,
+        worst.gap <= 1e-6, `${worst.gap.toExponential(2)} at ${worst.where}`);
+    }
+  }
+  VF.starting_models.forEach((c, i) => {
+    const js = forwardJs.starts[i];
+    let d = js.length === c.starts.length ? null : `js ${js.length} starts vs py ${c.starts.length}`;
+    c.starts.forEach((start, j) => start.forEach((values, part) => values.forEach((py, k) => {
+      const v = js[j] && js[j][part] ? js[j][part][k] : undefined;
+      if (!d && !(typeof v === 'number' && relGap(v, py) <= 1e-12)) {
+        d = `start ${j} ${part ? 'h0' : 'rho0'}[${k}]: js ${v} vs py ${py}`;
+      }
+    })));
+    check(`starting models, ${c.n_layers} layers, first spacing ${c.ab2[0]} m read twice: ` +
+      'within 1e-12', d === null, d);
+  });
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, {});
 

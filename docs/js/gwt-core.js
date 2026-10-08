@@ -141,63 +141,131 @@
   }
 
   /* --- Bessel J0 and J1 -----------------------------------------------------
-   * Abramowitz & Stegun 9.4 polynomial approximations, |error| < 1e-8 in the
-   * small-argument branch and < 1e-8 relative in the asymptotic branch. The
-   * quadrature only needs the integrand to ~1e-6, and the forward model is
-   * checked against the analytic two-layer image series in the test harness.
+   * Cephes j0 and j1 (Moshier), which scipy carries in xsf (cephes/j0.h and
+   * j1.h) and evaluates as scipy.special.j0 and j1, so the quadrature tables
+   * are built from the same values in both engines: on [0, 30] these agree
+   * with scipy's to 3e-16. The coefficients are written to the shortest
+   * digits that give the same doubles.
+   *
+   * The rational approximations these replace (Numerical Recipes' bessj0 and
+   * bessj1) were good to 5e-9, which is not good enough. The forward model is
+   * the top layer's resistivity plus an integral that, under a thin resistive
+   * top layer, cancels nearly all of it, so an error in the tables reaches
+   * the apparent resistivity multiplied by rho1 / rho_a. The inversion walks
+   * such a layer out to 1e5 ohm-m over a sounding of 3 ohm-m, where the old
+   * tables put the two engines' forward models 0.1 percent apart and each
+   * search stopped somewhere else.
    */
+
+  var SQRT2OPI = 0.7978845608028654;  /* sqrt(2 / pi) */
+  var SQRT1OPI = 0.5641895835477563;  /* sqrt(1 / pi) */
+  var THPIO4 = 2.356194490192345;     /* 3 pi / 4 */
+
+  /* polynomial with coefficients highest first, and the same with a leading 1 */
+  function polevl(x, coef) {
+    var ans = coef[0];
+    for (var i = 1; i < coef.length; i++) ans = ans * x + coef[i];
+    return ans;
+  }
+  function p1evl(x, coef) {
+    var ans = x + coef[0];
+    for (var i = 1; i < coef.length; i++) ans = ans * x + coef[i];
+    return ans;
+  }
+
+  var J0_PP = [0.0007969367292973471, 0.08283523921074408, 1.239533716464143,
+    5.447250030587687, 8.74716500199817, 5.303240382353949,
+    1.0];
+  var J0_PQ = [0.0009244088105588637, 0.08562884743544745, 1.2535274390105895,
+    5.470977403304171, 8.761908832370695, 5.306052882353947,
+    1.0];
+  var J0_QP = [-0.011366383889846916, -1.2825271867050931, -19.553954425773597,
+    -93.20601521237683, -177.68116798048806, -147.07750515495118,
+    -51.41053267665993, -6.050143506007285];
+  var J0_QQ = [64.3178256118178, 856.4300259769806, 3882.4018360540163,
+    7240.467741956525, 5930.727011873169, 2062.0933166032783,
+    242.0057402402914];
+  var J0_DR1 = 5.783185962946784, J0_DR2 = 30.471262343662087;
+  var J0_RP = [-4794432209.782018, 1956174919465.5657, -249248344360967.72,
+    9708622510473064.0];
+  var J0_RQ = [499.563147152651, 173785.4016763747, 48440965.83399621,
+    11185553704.535683, 2112775201154.892, 310518229857422.56,
+    3.1812195594320496e+16, 1.7108629408104315e+18];
 
   /**
    * @param {number} x
    * @returns {number}
    */
   function besselJ0(x) {
-    var ax = Math.abs(x), y, z, xx, p, q;
-    if (ax < 8.0) {
-      y = x * x;
-      p = 57568490574.0 + y * (-13362590354.0 + y * (651619640.7 +
-          y * (-11214424.18 + y * (77392.33017 + y * (-184.9052456)))));
-      q = 57568490411.0 + y * (1029532985.0 + y * (9494680.718 +
-          y * (59272.64853 + y * (267.8532712 + y))));
-      return p / q;
+    var w, z, p, q;
+    if (x < 0) x = -x;
+    if (x <= 5.0) {
+      if (x < 1.0e-5) return 1.0 - x * x / 4.0;
+      z = x * x;
+      p = (z - J0_DR1) * (z - J0_DR2);
+      return p * polevl(z, J0_RP) / p1evl(z, J0_RQ);
     }
-    z = 8.0 / ax;
-    y = z * z;
-    xx = ax - 0.785398164;
-    p = 1.0 + y * (-0.1098628627e-2 + y * (0.2734510407e-4 +
-        y * (-0.2073370639e-5 + y * 0.2093887211e-6)));
-    q = -0.1562499995e-1 + y * (0.1430488765e-3 + y * (-0.6911147651e-5 +
-        y * (0.7621095161e-6 + y * (-0.934935152e-7))));
-    return Math.sqrt(0.636619772 / ax) * (Math.cos(xx) * p - z * Math.sin(xx) * q);
+    w = 5.0 / x;
+    q = 25.0 / (x * x);
+    p = polevl(q, J0_PP) / polevl(q, J0_PQ);
+    q = polevl(q, J0_QP) / p1evl(q, J0_QQ);
+    if (x < 10.0) {
+      var xn = x - Math.PI / 4;
+      p = p * Math.cos(xn) - w * q * Math.sin(xn);
+      return p * SQRT2OPI / Math.sqrt(x);
+    }
+    p = (p + w * q) * Math.cos(x) + (p - w * q) * Math.sin(x);
+    return p * SQRT1OPI / Math.sqrt(x);
   }
+
+  var J1_RP = [-899971225.7055594, 452228297998.19403, -72749424522181.83,
+    3682957328638529.0];
+  var J1_RQ = [620.8364781180543, 256987.25675774884, 83514679.14319493,
+    22151159547.97925, 4749141220799.914, 784369607876235.9,
+    8.952223361846274e+16, 5.322786203326801e+18];
+  var J1_PP = [0.0007621256162081731, 0.07313970569409176, 1.1271960812968493,
+    5.112079511468076, 8.424045901417724, 5.214515986823615,
+    1.0];
+  var J1_PQ = [0.0005713231280725487, 0.06884559087544954, 1.105142326340617,
+    5.073863861286015, 8.399855543276042, 5.209828486823619,
+    1.0];
+  var J1_QP = [0.05108625947501766, 4.982138729512334, 75.82382841325453,
+    366.7796093601508, 710.8563049989261, 597.4896124006136,
+    211.68875710057213, 25.207020585802372];
+  var J1_QQ = [74.23732770356752, 1056.4488603826283, 4986.410583376536,
+    9562.318924047562, 7997.041604473507, 2826.1927851763908,
+    336.0936078106983];
+  var J1_Z1 = 14.681970642123893, J1_Z2 = 49.2184563216946;
 
   /**
    * @param {number} x
    * @returns {number}
    */
   function besselJ1(x) {
-    var ax = Math.abs(x), y, z, xx, p, q, ans;
-    if (ax < 8.0) {
-      y = x * x;
-      p = x * (72362614232.0 + y * (-7895059235.0 + y * (242396853.1 +
-          y * (-2972611.439 + y * (15704.48260 + y * (-30.16036606))))));
-      q = 144725228442.0 + y * (2300535178.0 + y * (18583304.74 +
-          y * (99447.43394 + y * (376.9991397 + y))));
-      return p / q;
+    var w, z, p, q;
+    if (x < 0) return -besselJ1(-x);
+    if (x < 1.4901161193847656e-08) return 0.5 * x;  /* below sqrt(eps) */
+    if (x <= 5.0) {
+      z = x * x;
+      w = polevl(z, J1_RP) / p1evl(z, J1_RQ);
+      return w * x * (z - J1_Z1) * (z - J1_Z2);
     }
-    z = 8.0 / ax;
-    y = z * z;
-    xx = ax - 2.356194491;
-    p = 1.0 + y * (0.183105e-2 + y * (-0.3516396496e-4 +
-        y * (0.2457520174e-5 + y * (-0.240337019e-6))));
-    q = 0.04687499995 + y * (-0.2002690873e-3 + y * (0.8449199096e-5 +
-        y * (-0.88228987e-6 + y * 0.105787412e-6)));
-    ans = Math.sqrt(0.636619772 / ax) * (Math.cos(xx) * p - z * Math.sin(xx) * q);
-    return x < 0.0 ? -ans : ans;
+    w = 5.0 / x;
+    z = w * w;
+    p = polevl(z, J1_PP) / polevl(z, J1_PQ);
+    q = polevl(z, J1_QP) / p1evl(z, J1_QQ);
+    if (x < 10.0) {
+      var xn = x - THPIO4;
+      p = p * Math.cos(xn) - w * q * Math.sin(xn);
+      return p * SQRT2OPI / Math.sqrt(x);
+    }
+    var a = Math.SQRT1_2 * (w * q - p), b = Math.SQRT1_2 * (p + w * q);
+    return (a * Math.cos(x) + b * Math.sin(x)) * SQRT2OPI / Math.sqrt(x);
   }
 
-  /** Zeros of J0 / J1: McMahon's asymptotic expansion, refined by Newton.
-   * Matches scipy.special.jn_zeros to better than 1e-10.
+  /** Zeros of J0 / J1: McMahon's asymptotic expansion, refined by Newton on
+   * the functions above. The first 1200 of each order match
+   * scipy.special.jn_zeros to within 1 ulp.
    * @param {number} order 0 or 1
    * @param {number} count
    * @returns {Float64Array}
@@ -415,7 +483,10 @@
    */
   function interp(x, xp, fp) {
     var n = xp.length;
-    if (x <= xp[0]) return fp[0];
+    /* strictly below: at the first abscissa itself np.interp reads on to the
+     * last point there, so where the first spacing was read twice the
+     * inversion's starting model takes the second reading, as Python's does */
+    if (x < xp[0]) return fp[0];
     if (x >= xp[n - 1]) return fp[n - 1];
     var lo = 0, hi = n - 1;
     while (hi - lo > 1) {

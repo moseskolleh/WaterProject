@@ -77,21 +77,27 @@ def compare(engine: BrowserEngine, case: dict, workdir: Path,
             open_questions: bool = False) -> list:
     """Every place the two engines disagree on ``case``.
 
-    ``open_questions`` leaves out what the open regression cases already
-    record, so a run of new cases does not find them again every night:
+    ``open_questions`` leaves out the fitted numbers of two kinds of model,
+    which can turn on the last bits of either engine's arithmetic:
 
     * the models of an inversion neither engine converged, where each
-      reports where its iteration cap left it
-      (regressions/ves-unconverged-inversion.json).
+      reports where its iteration cap left it.
     * a model with a boundary the Python inversion itself calls poorly
       resolved, its thickness uncertain by a factor of POORLY_RESOLVED_FACTOR
       or more, which the reports already say. Such a model is one of a
-      family that fits about equally well: between two near-equal layers the
-      boundary is wherever each optimiser left it
-      (regressions/ves-poorly-resolved-boundary.json), and with several such
-      boundaries the two searches settle on different members of the family
-      (regressions/ves-equivalent-models.json). Whether each engine
-      inverted at all, and to how many layers, is still compared.
+      family that fits about equally well, and where a search settles on it
+      can move by more than parity's 1e-3: perturbing Python's forward model
+      by 1e-15 moves its own answer for
+      regressions/ves-poorly-resolved-boundary.json by 1.2e-3.
+
+    Whether each engine inverted at all, and to how many layers, is still
+    compared. The open cases these rules were written for (an unconverged
+    inversion, equivalent models, a poorly resolved boundary) stopped
+    diverging once the browser's Bessel tables and its interp were put
+    right. The first two were port defects and are now held to agreeing;
+    the third agrees by luck and is replayed under these rules. What parity
+    should mean for a knife-edge model is for the owner to decide; until
+    then the rules stay as they were.
     """
     from groundwater.ves.interpret import POORLY_RESOLVED_FACTOR
 
@@ -155,7 +161,7 @@ def regression_text(case: dict) -> str:
         return json.dumps(value, ensure_ascii=False)
 
     lines = ["{"]
-    for key in ("note", "open", "first_divergence", "kind", "options"):
+    for key in ("note", "open", "as_generated", "first_divergence", "kind", "options"):
         if key in case:
             lines.append(f" {one(key)}: {one(case[key])},")
     lines.append(' "sheets": [')
@@ -180,9 +186,15 @@ def test_regression(path, engine, workdir):
     rather than a bug, recorded with the question and not yet answered. It
     is held to diverging still, at the path it was found at, so the day one
     engine changes its answer the case says so rather than passing quietly.
+
+    A case carrying ``"as_generated"`` is compared as test_inversions_agree
+    compares a generated inversion, with ``open_questions``: its numbers turn
+    on the last bits of the arithmetic, so holding the engines to agreeing
+    on them, or to diverging, would be luck either way. The key says why,
+    and whose decision it waits on.
     """
     case = json.loads(path.read_text(encoding="utf-8"))
-    found = compare(engine, case, workdir)
+    found = compare(engine, case, workdir, open_questions=bool(case.get("as_generated")))
     if case.get("open"):
         where = case["first_divergence"][0]
         assert any(path_ == where for path_, _, _ in found), (
@@ -224,12 +236,22 @@ def test_engines_agree(kind, engine, workdir):
 def test_inversions_agree(engine, workdir):
     """The inversion of generated soundings, at parity.mjs's model tolerance.
 
-    Soundings that read one resistivity at every spacing are left out: what
-    a layered inversion should say about a uniform half-space is an open
-    question, recorded in regressions/ves-uniform-half-space-boundary.json,
-    and drawing it again every night would say nothing new. For the same
-    reason the two other open questions are left out of the comparison here;
-    see ``compare``.
+    Soundings that read one resistivity at every spacing are left out
+    (``ves_sheet`` gives them a gentle drift). What a layered inversion
+    should report for a uniform half-space is an open question, awaiting
+    the owner's decision: a one-layer model, which interpretation, design
+    and the reports would all have to accept; two layers with the boundary
+    marked unresolved; or a refusal. Today both engines fit two layers of
+    the one resistivity with the boundary wherever each search left it.
+    Perturbing Python's forward model by 1e-15 moves its own boundary by
+    more than parity's 1e-3, and with a thickness factor of 1.0001 the
+    model is not one ``open_questions`` leaves out, so whether the engines
+    agree on it is luck. The sheet that recorded the question,
+    regressions/ves-uniform-half-space-boundary.json, is retired from the
+    replays for that reason until the owner decides.
+
+    The models ``compare`` leaves out with ``open_questions`` are left out
+    here too; see ``compare``.
     """
     strategy = ves_case(varied=True).map(
         lambda case: {**case, "sheets": case["sheets"][:1], "options": {"invert": True}})
