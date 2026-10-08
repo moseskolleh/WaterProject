@@ -43,7 +43,9 @@ ai = ["anthropic>=0.78"]
 # noxfile.py, and build makes the wheel and sdist its release session ships.
 # hypothesis draws the field sheets tests/fuzz puts through both engines, and
 # is pinned for the same reason: the cases a pull request draws are fixed by
-# the seed and by the version that turns the seed into sheets.
+# the seed and by the version that turns the seed into sheets, whose
+# internals tests/fuzz/fuzz_parity.py reaches into to keep the package's own
+# literals out of them.
 # pyright is pinned like ruff, and for the same reason: a new release finds
 # new things. pytest-cov only reports; nothing fails on the number.
 dev = [

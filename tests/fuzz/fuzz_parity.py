@@ -11,9 +11,10 @@ the Python package and hands the same bytes to ``gwt-core.js`` in headless
 Chromium (``engines.py``, ``engine.mjs``); the two answers are compared with
 ``make_reference.py``'s comparison at the tolerances ``parity.mjs`` uses.
 
-A disagreement is shrunk by Hypothesis to the smallest sheet that still shows
-it and written to ``tests/fuzz/regressions/``. Commit it with a note saying
-what it was, and it is replayed on every run from then on.
+A disagreement is written to ``tests/fuzz/regressions/`` and printed in the
+log: on the nightly run shrunk by Hypothesis to the smallest sheet that still
+shows it, on a pull request as drawn. Commit it with a note saying what it
+was, and it is replayed on every run from then on.
 
 The module is not named ``test_*`` so the ordinary pytest run, which has no
 browser, does not collect it; ``nox -s fuzz`` names it explicitly.
@@ -26,11 +27,12 @@ import json
 import os
 import re
 import tempfile
+import zlib
 from datetime import date
 from pathlib import Path
 
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, Phase, given, seed, settings
 
 from engines import BrowserEngine, divergences, python_summary
 from sheets import CASES, ves_case, workbook_bytes
@@ -38,23 +40,48 @@ from sheets import CASES, ves_case, workbook_bytes
 HERE = Path(__file__).resolve().parent
 REGRESSIONS = HERE / "regressions"
 
-# Cases per generator. A pull request runs the same few hundred every time
-# (derandomized, so a red build is never luck); the nightly run draws new
-# ones each night. Inversions cost about a second each in Python, so they get
-# a small share of either budget.
+# Cases per generator. A pull request runs the same few hundred every time,
+# on any machine, until sheets.py or the Hypothesis version changes; the
+# nightly run draws new ones each night. Inversions cost about a second each
+# in Python, so they get a small share of either budget.
 PROFILES = {
-    "pr": {"cases": 150, "inversions": 10, "derandomize": True},
-    "nightly": {"cases": 6000, "inversions": 300, "derandomize": False},
+    "pr": {"cases": 150, "inversions": 10, "fixed": True},
+    "nightly": {"cases": 6000, "inversions": 300, "fixed": False},
 }
 PROFILE = PROFILES[os.environ.get("FUZZ_PROFILE", "pr")]
 CASES_PER_KIND = int(os.environ.get("FUZZ_EXAMPLES", PROFILE["cases"]))
 INVERSIONS = int(os.environ.get("FUZZ_INVERSIONS", PROFILE["inversions"]))
 
+if PROFILE["fixed"]:
+    # Hypothesis also draws, now and then, a literal it found in any module it
+    # takes for local code, which is every module under src/. One constant
+    # added anywhere in the package would then draw a pull request a new
+    # sample, and a red build would be the luck of that draw. The fixed
+    # sample is drawn without them; the nightly run keeps them, since probing
+    # the package's own thresholds is what they are for. This reaches into
+    # Hypothesis's internals, one more reason its version is pinned, and a
+    # release that moves them stops the run here rather than re-rolling it.
+    from hypothesis.internal.conjecture import providers
+    from hypothesis.internal.constants_ast import Constants
+
+    if not (callable(getattr(providers, "_get_local_constants", None))
+            and hasattr(providers, "CONSTANTS_CACHE")):
+        raise RuntimeError("Hypothesis no longer keeps the pool of local constants "
+                           "where fuzz_parity.py empties it; see PROFILES")
+    _NO_CONSTANTS = Constants()
+    providers._get_local_constants = lambda: _NO_CONSTANTS
+    providers.CONSTANTS_CACHE.cache.clear()
+
 
 def _settings(examples: int):
+    # The fixed sample is not shrunk: shrinking stops on a five-minute clock,
+    # so where it stops depends on the machine, and a pull request should
+    # write the case it drew, the same on every run. The nightly run shrinks.
+    phases = ((Phase.explicit, Phase.generate) if PROFILE["fixed"]
+              else settings.default.phases)
     return settings(
-        max_examples=examples, deadline=None, derandomize=PROFILE["derandomize"],
-        database=None, print_blob=True,
+        max_examples=examples, deadline=None, derandomize=PROFILE["fixed"],
+        database=None, print_blob=True, phases=phases,
         suppress_health_check=[HealthCheck.too_slow, HealthCheck.data_too_large,
                                HealthCheck.large_base_example],
     )
@@ -138,7 +165,8 @@ def report(found: list) -> str:
 
 
 def save_regression(case: dict, found: list) -> Path:
-    """Write a shrunk counterexample where the next run replays it."""
+    """Write a counterexample where the next run replays it: shrunk on the
+    nightly run, as drawn on a pull request."""
     where = found[0][0]
     slug = re.sub(r"[^a-z0-9]+", "-", re.sub(r"\[\d+\]", "", where).lower()).strip("-")
     body = json.dumps({"kind": case["kind"], "sheets": case["sheets"],
@@ -204,7 +232,7 @@ def test_regression(path, engine, workdir):
     assert not found, report(found)
 
 
-def _fuzz(engine, workdir, strategy, examples: int, **options) -> None:
+def _fuzz(engine, workdir, name: str, strategy, examples: int, **options) -> None:
     last: dict = {"agreed": 0}
 
     @given(strategy)
@@ -213,9 +241,15 @@ def _fuzz(engine, workdir, strategy, examples: int, **options) -> None:
         found = compare(engine, case, workdir, **options)
         last["agreed"] += not found
         if found:
-            # Hypothesis replays the shrunk case last, so this ends holding it
+            # Hypothesis replays the case it reports last, so this ends holding it
             last["case"], last["found"] = case, found
             raise AssertionError(report(found))
+
+    if PROFILE["fixed"]:
+        # derandomize alone seeds from a hash of agree's source, so a line
+        # added to agree would draw new cases; a seed named for the generator
+        # does not move
+        agree = seed(zlib.crc32(name.encode()))(agree)
 
     try:
         agree()
@@ -224,13 +258,14 @@ def _fuzz(engine, workdir, strategy, examples: int, **options) -> None:
     except AssertionError:
         if "case" in last:
             saved = save_regression(last["case"], last["found"])
-            print(f"\nshrunk counterexample written to {saved.relative_to(HERE.parents[1])}")
+            print(f"\ncounterexample written to {saved.relative_to(HERE.parents[1])}, "
+                  f"which reads:\n{saved.read_text(encoding='utf-8')}")
         raise
 
 
 @pytest.mark.parametrize("kind", sorted(CASES))
 def test_engines_agree(kind, engine, workdir):
-    _fuzz(engine, workdir, CASES[kind](), CASES_PER_KIND)
+    _fuzz(engine, workdir, kind, CASES[kind](), CASES_PER_KIND)
 
 
 def test_inversions_agree(engine, workdir):
@@ -251,8 +286,13 @@ def test_inversions_agree(engine, workdir):
     replays for that reason until the owner decides.
 
     The models ``compare`` leaves out with ``open_questions`` are left out
-    here too; see ``compare``.
+    here too; see ``compare``. On a pull request the ten soundings are the
+    same on every run until sheets.py or the Hypothesis version changes,
+    when ten new ones are drawn. A new sample can land on a knife-edge model
+    those rules do not cover, which is still a question for the owner;
+    replaying the saved case on main tells such a case from a change that
+    broke parity.
     """
     strategy = ves_case(varied=True).map(
         lambda case: {**case, "sheets": case["sheets"][:1], "options": {"invert": True}})
-    _fuzz(engine, workdir, strategy, INVERSIONS, open_questions=True)
+    _fuzz(engine, workdir, "inversions", strategy, INVERSIONS, open_questions=True)

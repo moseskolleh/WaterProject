@@ -299,18 +299,20 @@ jobs:
           fi
 
       # A pull request replays every committed counterexample and then the
-      # same few hundred generated cases each time, so a red build is never
-      # luck; the nightly run draws new ones. 'nightly' is not empty, so the
-      # && || form below picks it on a schedule and 'pr' otherwise.
+      # same few hundred generated cases each time, drawn from a seed per
+      # generator and not from the package's own literals, so they move only
+      # with sheets.py or the Hypothesis version; the nightly run draws new
+      # ones. 'nightly' is not empty, so the && || form below picks it on a
+      # schedule and 'pr' otherwise.
       - name: Fuzz the two engines against each other
         env:
           FUZZ_PROFILE: ${{ github.event_name == 'schedule' && 'nightly' || 'pr' }}
         run: nox -s fuzz
 
-      # A disagreement is shrunk and written under tests/fuzz/regressions;
-      # this is how a counterexample found in CI reaches someone who can
-      # commit it.
-      - name: Keep the shrunk counterexamples
+      # A disagreement is written under tests/fuzz/regressions (shrunk, on
+      # the nightly run) and printed in the log; this is how a counterexample
+      # found in CI reaches someone who can commit it.
+      - name: Keep the counterexamples
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
