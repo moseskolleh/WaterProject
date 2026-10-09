@@ -674,6 +674,35 @@ def ves_forward_reference() -> dict:
             "starting_models": starts}
 
 
+# The Bessel functions and zeros the quadrature tables are built from. The
+# forward grid above would miss a zero gone astray: panels that end a little
+# off the zeros integrate to nearly the same sum, and only the panel the
+# quadrature stops at can move, which shows as a rare knife-edge in a
+# generated inversion rather than on a pull request. So the zeros are held to
+# jn_zeros, and J0 and J1 to scipy at every half unit on [0, 30], across the
+# branches at 5 and 10, and on out to the largest abscissa the tables reach.
+
+BESSEL_X = [0.5 * i for i in range(61)] + [float(x) for x in np.geomspace(31.3, 1.9e5, 25)]
+#: 1-based: the first 50, every 100th of the 1200 the tables start with,
+#: and on to the 60,000 they can grow to
+BESSEL_ZERO_RANKS = (list(range(1, 51)) + list(range(100, 1201, 100))
+                     + [2000, 5000, 10000, 20000, 40000, 60000])
+
+
+def ves_bessel_reference() -> dict:
+    """scipy's J0, J1 and their zeros, where the browser's tables use them."""
+    from scipy.special import j0, j1, jn_zeros
+
+    x = np.array(BESSEL_X)
+    zeros = {order: jn_zeros(order, BESSEL_ZERO_RANKS[-1]) for order in (0, 1)}
+    return {
+        "x": BESSEL_X, "j0": clean(j0(x)), "j1": clean(j1(x)),
+        "zero_ranks": BESSEL_ZERO_RANKS,
+        "zeros0": clean(zeros[0][np.array(BESSEL_ZERO_RANKS) - 1]),
+        "zeros1": clean(zeros[1][np.array(BESSEL_ZERO_RANKS) - 1]),
+    }
+
+
 def build() -> dict:
     out: dict = {}
 
@@ -1717,6 +1746,7 @@ def build() -> dict:
     out["airlift"] = airlift_reference()
     out["pumping_spread"] = pumping_spread_reference()
     out["ves_forward"] = ves_forward_reference()
+    out["ves_bessel"] = ves_bessel_reference()
     return out
 
 

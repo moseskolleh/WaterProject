@@ -141,11 +141,19 @@
   }
 
   /* --- Bessel J0 and J1 -----------------------------------------------------
-   * Cephes j0 and j1 (Moshier), which scipy carries in xsf (cephes/j0.h and
-   * j1.h) and evaluates as scipy.special.j0 and j1, so the quadrature tables
-   * are built from the same values in both engines: on [0, 30] these agree
-   * with scipy's to 3e-16. The coefficients are written to the shortest
-   * digits that give the same doubles.
+   * Cephes j0 and j1 (Moshier) as xsf carries them (cephes/j0.h and j1.h),
+   * which scipy 1.18 and later evaluates as scipy.special.j0 and j1, so the
+   * quadrature tables are built from the same values in both engines: these
+   * agree with scipy 1.18's to 1.1e-16 out to 2e5, the largest abscissa the
+   * tables reach. scipy 1.17 has the same code below x = 10, but above it
+   * takes the asymptotic form at cos(x - pi/4) where xsf now takes cos(x)
+   * and sin(x) apart; against 1.17 these agree to 3e-16 on [0, 30] and to
+   * 1.5e-14 out to 2e5. J1 returns x / 2 below sqrt(eps), as xsf's own
+   * source does and neither release yet does, which moves only results
+   * below 1.5e-8, where the tables never reach: they start at 1e-6.
+   * parity.mjs holds both functions, and their zeros, to scipy. The
+   * coefficients are written to the shortest digits that give the same
+   * doubles.
    *
    * The rational approximations these replace (Numerical Recipes' bessj0 and
    * bessj1) were good to 5e-9, which is not good enough. The forward model is
@@ -264,8 +272,10 @@
   }
 
   /** Zeros of J0 / J1: McMahon's asymptotic expansion, refined by Newton on
-   * the functions above. The first 1200 of each order match
-   * scipy.special.jn_zeros to within 1 ulp.
+   * the functions above. Every one of the 60,000 of each order the tables can
+   * grow to matches scipy.special.jn_zeros to within 1 ulp; they set where
+   * the quadrature's panels end and where it stops, so parity.mjs holds a
+   * sample of them.
    * @param {number} order 0 or 1
    * @param {number} count
    * @returns {Float64Array}
