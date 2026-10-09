@@ -41,9 +41,14 @@ HERE = Path(__file__).resolve().parent
 REGRESSIONS = HERE / "regressions"
 
 # Cases per generator. A pull request runs the same few hundred every time,
-# on any machine, until sheets.py or the Hypothesis version changes; the
-# nightly run draws new ones each night. Inversions cost about a second each
-# in Python, so they get a small share of either budget.
+# on any machine, and draws new ones when sheets.py, the Hypothesis version,
+# a generator's name (its seed) or the number of cases changes, or a value
+# sheets.py computes with the package or scipy: each VES reading comes from
+# groundwater.ves.forward and each drawdown from scipy's exp1, and typed()
+# draws once more for a reading that rounds to a whole number, so a change
+# that carries one reading across a rounding draws every later case anew.
+# The nightly run draws new ones each night. Inversions cost about a second
+# each in Python, so they get a small share of either budget.
 PROFILES = {
     "pr": {"cases": 150, "inversions": 10, "fixed": True},
     "nightly": {"cases": 6000, "inversions": 300, "fixed": False},
@@ -60,17 +65,22 @@ if PROFILE["fixed"]:
     # sample is drawn without them; the nightly run keeps them, since probing
     # the package's own thresholds is what they are for. This reaches into
     # Hypothesis's internals, one more reason its version is pinned, and a
-    # release that moves them stops the run here rather than re-rolling it.
+    # release that moves them stops the run here rather than re-rolling it:
+    # one that renames them, or one that keeps the name but reads the pool
+    # some other way, which the provider's own view of it shows.
     from hypothesis.internal.conjecture import providers
     from hypothesis.internal.constants_ast import Constants
 
+    _MOVED = ("Hypothesis no longer keeps the pool of local constants where "
+              "fuzz_parity.py empties it; see PROFILES")
     if not (callable(getattr(providers, "_get_local_constants", None))
             and hasattr(providers, "CONSTANTS_CACHE")):
-        raise RuntimeError("Hypothesis no longer keeps the pool of local constants "
-                           "where fuzz_parity.py empties it; see PROFILES")
+        raise RuntimeError(_MOVED)
     _NO_CONSTANTS = Constants()
     providers._get_local_constants = lambda: _NO_CONSTANTS
     providers.CONSTANTS_CACHE.cache.clear()
+    if getattr(providers.HypothesisProvider(None), "_local_constants", None) is not _NO_CONSTANTS:
+        raise RuntimeError(_MOVED)
 
 
 def _settings(examples: int):
@@ -107,8 +117,11 @@ def compare(engine: BrowserEngine, case: dict, workdir: Path,
     ``open_questions`` leaves out the fitted numbers of two kinds of model,
     which can turn on the last bits of either engine's arithmetic:
 
-    * the models of an inversion neither engine converged, where each
-      reports where its iteration cap left it.
+    * the models of an inversion neither engine converged. This rule was
+      written for regressions/ves-unconverged-inversion.json, which turned
+      out to be the browser's Bessel tables and now agrees to 1e-10; no
+      recorded case still needs it. It is kept as it was until the owner
+      decides whether an unconverged model should be held to agreeing.
     * a model with a boundary the Python inversion itself calls poorly
       resolved, its thickness uncertain by a factor of POORLY_RESOLVED_FACTOR
       or more, which the reports already say. Such a model is one of a
@@ -216,10 +229,11 @@ def test_regression(path, engine, workdir):
     engine changes its answer the case says so rather than passing quietly.
 
     A case carrying ``"as_generated"`` is compared as test_inversions_agree
-    compares a generated inversion, with ``open_questions``: its numbers turn
-    on the last bits of the arithmetic, so holding the engines to agreeing
-    on them, or to diverging, would be luck either way. The key says why,
-    and whose decision it waits on.
+    compares a generated inversion, with ``open_questions``, which leaves out
+    every fitted number of a model with a poorly resolved boundary. On such
+    a sheet the boundary turns on the last bits of the arithmetic, so holding
+    the engines to agreeing on it, or to diverging, would be luck either way.
+    The key says what is left out, and whose decision it waits on.
     """
     case = json.loads(path.read_text(encoding="utf-8"))
     found = compare(engine, case, workdir, open_questions=bool(case.get("as_generated")))
@@ -282,16 +296,17 @@ def test_inversions_agree(engine, workdir):
     more than parity's 1e-3, and with a thickness factor of 1.0001 the
     model is not one ``open_questions`` leaves out, so whether the engines
     agree on it is luck. The sheet that recorded the question,
-    regressions/ves-uniform-half-space-boundary.json, is retired from the
-    replays for that reason until the owner decides.
+    regressions/ves-uniform-half-space-boundary.json (in the tree at
+    74b123d), is retired from the replays for that reason until the owner
+    decides.
 
     The models ``compare`` leaves out with ``open_questions`` are left out
     here too; see ``compare``. On a pull request the ten soundings are the
-    same on every run until sheets.py or the Hypothesis version changes,
-    when ten new ones are drawn. A new sample can land on a knife-edge model
-    those rules do not cover, which is still a question for the owner;
-    replaying the saved case on main tells such a case from a change that
-    broke parity.
+    same on every run until one of the things PROFILES lists changes, the
+    Python forward model among them, when ten new ones are drawn. A new
+    sample can land on a knife-edge model those rules do not cover, which
+    is still a question for the owner; replaying the saved case on main
+    tells such a case from a change that broke parity.
     """
     strategy = ves_case(varied=True).map(
         lambda case: {**case, "sheets": case["sheets"][:1], "options": {"invert": True}})

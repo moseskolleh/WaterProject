@@ -300,10 +300,12 @@ jobs:
 
       # A pull request replays every committed counterexample and then the
       # same few hundred generated cases each time, drawn from a seed per
-      # generator and not from the package's own literals, so they move only
-      # with sheets.py or the Hypothesis version; the nightly run draws new
-      # ones. 'nightly' is not empty, so the && || form below picks it on a
-      # schedule and 'pr' otherwise.
+      # generator and not from the package's own literals. They move with
+      # sheets.py, the Hypothesis version and the values sheets.py computes,
+      # the Python forward model's among them (PROFILES in
+      # tests/fuzz/fuzz_parity.py lists what moves them); the nightly run
+      # draws new ones. 'nightly' is not empty, so the && || form below picks
+      # it on a schedule and 'pr' otherwise.
       - name: Fuzz the two engines against each other
         env:
           FUZZ_PROFILE: ${{ github.event_name == 'schedule' && 'nightly' || 'pr' }}
