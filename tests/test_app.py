@@ -68,9 +68,110 @@ def test_ves_flow_with_sample(app):
     shown = " ".join(str(i.value) for i in app.info)
     assert "of the models that fit" in shown and "Metropolis-Hastings" in shown
 
+    # the chance of a working borehole beside the score, reading the range
+    from groundwater.siting import odds_basis_text, odds_point_text, survey_odds
+
+    site = soundings[0].site
+    expected = survey_odds(interps, ranges, site.utm_zone, site.latlon)
+    written = " ".join(str(m.value) for m in app.markdown)
+    for o in expected:
+        assert " ".join(odds_point_text(o)) in written
+    assert "has not been sampled" not in written
+    captions = " ".join(str(c.value) for c in app.caption)
+    assert " ".join(odds_basis_text(expected[0])) in captions
+
     app.button(key="build_geo_report").click()
     app.run()
     assert not app.exception
+
+
+def test_the_programme_offers_the_survey_odds_without_using_them(app):
+    """The typed success rate stays until the odds are chosen with a click."""
+    if "ves_results" not in app.session_state:
+        goto(app, "Geophysics (VES)")
+        app.selectbox(key="sample_ves").select("rokel/rokel_ves.xlsx")
+        app.run()
+        app.button(key="run_ves").click()
+        app.run()
+    goto(app, "Costing & BoQ")
+    assert not app.exception
+    typed = app.number_input(key="cost_prog_success").value
+    offered = " ".join(str(i.value) for i in app.info)
+    assert "the first-ranked point, at about" in offered
+    rate = programme_rate_of(app)
+    assert app.button(key="use_survey_odds").label == f"Use {rate:g} percent"
+    assert app.number_input(key="cost_prog_success").value == typed
+    app.button(key="use_survey_odds").click()
+    app.run()
+    assert not app.exception
+    assert app.number_input(key="cost_prog_success").value == rate
+
+
+def programme_rate_of(app):
+    """The rate the page offers, worked out as the page works it out."""
+    from groundwater.siting import assess_siting, survey_odds
+    from groundwater.siting.odds import programme_rate
+
+    soundings, results, interps = app.session_state["ves_results"]
+    kept = app.session_state.get("ves_ranges", None)
+    ranges = kept[1] if kept is not None and kept[0] is results else [None] * len(results)
+    i = assess_siting(interps)[0].index
+    site = soundings[0].site
+    return programme_rate(survey_odds([interps[i]], [ranges[i]], site.utm_zone,
+                                      site.latlon)[0])
+
+
+def test_two_points_with_one_id_each_show_their_own_odds(app):
+    """A sheet copied without renumbering gives two points one id. The pages
+    looked the odds up by id, so both rows showed the last point's odds and
+    the first point's never appeared, and the Costing page offered the first
+    point carrying the leader's id rather than the leader."""
+    import copy
+
+    from groundwater.siting import assess_siting, odds_point_text, odds_short, survey_odds
+    from groundwater.siting.odds import programme_offer
+    from groundwater.text import phrase
+
+    if "ves_results" not in app.session_state:
+        goto(app, "Geophysics (VES)")
+        app.selectbox(key="sample_ves").select("rokel/rokel_ves.xlsx")
+        app.run()
+        app.button(key="run_ves").click()
+        app.run()
+    held = app.session_state["ves_results"]
+    kept = app.session_state.get("ves_ranges", None)
+    soundings, results, interps = held
+    ranges = kept[1] if kept is not None and kept[0] is results else [None] * len(results)
+    # the second point copied over with the first's id, and listed first
+    renamed = copy.copy(interps[1])
+    renamed.sounding_id = interps[0].sounding_id
+    points = [renamed, interps[0]]
+    results2 = [results[1], results[0]]
+    ranges2 = [ranges[1], ranges[0]]
+    site = soundings[1].site
+    expected = survey_odds(points, ranges2, site.utm_zone, site.latlon)
+    assert odds_short(expected[0]) != odds_short(expected[1])
+    # the leader, scored a point at a time: the one listed second
+    lead = max((0, 1), key=lambda k: assess_siting([points[k]])[0].weighted)
+    assert lead == 1
+    try:
+        app.session_state["ves_results"] = ([soundings[1], soundings[0]], results2, points)
+        app.session_state["ves_ranges"] = (results2, ranges2)
+        goto(app, "Geophysics (VES)")
+        table = next(d.value for d in app.dataframe
+                     if phrase("odds.col_short") in d.value.columns)
+        assert table[phrase("odds.col_short")].tolist() == [
+            odds_short(expected[lead]), odds_short(expected[1 - lead])]
+        written = " ".join(str(m.value) for m in app.markdown)
+        for o in expected:
+            assert " ".join(odds_point_text(o)) in written
+        goto(app, "Costing & BoQ")
+        offered = " ".join(str(i.value) for i in app.info)
+        assert programme_offer(expected[lead]) in offered
+    finally:
+        app.session_state["ves_results"] = held
+        if kept is not None:
+            app.session_state["ves_ranges"] = kept
 
 
 def test_pumping_flow_with_sample(app):

@@ -2421,6 +2421,133 @@ await withPage(async (page, base, consoleErrors) => {
     worst.gap <= 1e-15, `${worst.gap.toExponential(2)} at ${worst.where}`);
   }
 
+  // --- the chance of a working borehole (PLAN.md step 3.3) ---
+  // The numerical pieces (the lognormal tail, the incomplete beta function
+  // and its quantile) are written out alike in both engines and held to
+  // 1e-9; every odds, band and factor to 1e-9; every sentence and every row
+  // of the breakdown word for word. The ground under a point is looked up on
+  // the same bundled maps, and the Rokel pair is read with Python's own short
+  // ranges, placed by its own coordinates.
+  const OD = R.odds;
+  const oddsJs = await page.evaluate(async (OD) => {
+    const C = GWT.core, D = GWT.data;
+    const asInterp = (c) => ({ sounding_id: c.sounding_id, water_zones: c.water_zones,
+      layers: c.layers.map((l) => ({ top_m: l.top_m,
+        bottom_m: l.bottom_m === null ? Infinity : l.bottom_m, rho: l.rho,
+        water_bearing: l.water_bearing })),
+      fit_error_percent: c.fit_error_percent, site_easting: null, site_northing: null });
+    const asDict = (o) => Object.assign({}, o, { text: C.oddsText(o),
+      point_text: C.oddsPointText(o), basis_text: C.oddsBasisText(o), rows: C.oddsRows(o),
+      short: C.oddsShort(o), caption: C.oddsTableCaption(o),
+      programme_rate: C.programmeRate(o), programme_offer: C.programmeOffer(o) });
+    const wider = C.withConfig({ odds: { success_yield_m3_per_h: 3.6 } });
+    const productive = OD.cases.filter((c) => c.interp.sounding_id === 'productive' &&
+      c.range && c.range.basement_unresolved < 0.1 && c.range.basement_m.p50 === 22.0)[0];
+    const sheets = await GWT.support.readXlsx(GWT.support.base64ToBytes(D.samples.rokel.files.ves.b64));
+    const soundings = C.readVesSheets(sheets, 'rokel_ves.xlsx');
+    const interps = soundings.map((s) => C.interpretModel(s, C.invertSounding(s).model));
+    return {
+      lognormal: OD.lognormal.map(([q1, q3, t]) => C.lognormalShareAbove(q1, q3, t)),
+      beta: OD.beta.map(([a, b, x]) => [C.regularisedBeta(a, b, x), C.betaQuantile(a, b, x)]),
+      priors: OD.priors.map(([code, glg]) => C.priorFor(code, glg, 1.0)),
+      cases: OD.cases.map((c) => asDict(C.successOdds(asInterp(c.interp), c.range,
+        c.ground[0], c.ground[1], C.defaultConfig()))),
+      wider: asDict(C.successOdds(Object.assign(asInterp(productive.interp),
+        { sounding_id: 'wider' }), productive.range, 'B-L', 'pCm', wider)),
+      low_yield: asDict(C.successOdds(Object.assign(asInterp(productive.interp),
+        { sounding_id: 'low_yield' }), productive.range, 'U-M/H', 'Qe',
+      C.withConfig({ odds: { success_yield_m3_per_h: OD.low_yield.rate } }))),
+      ranked_index: C.assessSiting([Object.assign({}, interps[1],
+        { sounding_id: interps[0].sounding_id }), interps[0]]).map((s) => s.index),
+      ground: OD.ground.map(([lat, lon]) => C.groundAt({ lat: lat, lon: lon })),
+      rokel: interps.map((interp, i) => {
+        const site = soundings[i].site;
+        const latlon = C.pointLatLon(interp, Number(site.utm_zone) || null,
+          C.sitePosition(site));
+        const ground = C.groundAt(latlon);
+        return { latlon: latlon ? [latlon.lat, latlon.lon] : null, ground: ground,
+          odds: asDict(C.successOdds(interp, OD.rokel_ranges[i], ground[0], ground[1],
+            C.defaultConfig())) };
+      }),
+      header: C.oddsHeader(),
+      refused: [0, -1, NaN].map((rate) => {
+        try { C.priorFor('B-L', 'pCm', rate); return false; } catch (e) {
+          return /above zero/.test(e.message);
+        }
+      }),
+    };
+  }, Object.assign({}, OD, { rokel_ranges: R.ves_range.short }));
+  const oddsWithin = (a, b, path, rtol = 1e-9) => {
+    if (typeof b === 'number' && typeof a === 'number') {
+      return close(a, b, rtol) ? null : `${path}: js ${a} vs py ${b}`;
+    }
+    if (Array.isArray(b)) {
+      if (!Array.isArray(a) || a.length !== b.length) return `${path}: lengths differ`;
+      for (let i = 0; i < b.length; i++) {
+        const d = oddsWithin(a[i], b[i], `${path}[${i}]`, rtol);
+        if (d) return d;
+      }
+      return null;
+    }
+    if (b && typeof b === 'object') {
+      if (!a || typeof a !== 'object') return `${path}: js ${JSON.stringify(a)}`;
+      for (const k of Object.keys(b)) {
+        const d = oddsWithin(a[k], b[k], `${path}.${k}`, rtol);
+        if (d) return d;
+      }
+      return null;
+    }
+    return a === b ? null : `${path}: js ${JSON.stringify(a)} vs py ${JSON.stringify(b)}`;
+  };
+  check('odds: the lognormal share above a yield',
+    oddsWithin(oddsJs.lognormal, OD.lognormal.map((r) => r[3]), 'lognormal') === null,
+    oddsWithin(oddsJs.lognormal, OD.lognormal.map((r) => r[3]), 'lognormal'));
+  check('odds: the incomplete beta function and its quantile',
+    oddsWithin(oddsJs.beta, OD.beta.map((r) => [r[3], r[4]]), 'beta') === null,
+    oddsWithin(oddsJs.beta, OD.beta.map((r) => [r[3], r[4]]), 'beta'));
+  OD.priors.forEach(([code, glg, py], i) => {
+    const d = oddsWithin(oddsJs.priors[i], py, `prior ${code}/${glg}`);
+    check(`odds: the prior row and rate for ${code} on ${glg}`, d === null, d);
+  });
+  OD.cases.forEach((c, i) => {
+    const name = `${c.interp.sounding_id} / ${c.range ? JSON.stringify(c.range) : 'no range'}` +
+      ` / ${c.ground.join(' on ')}`;
+    const d = oddsWithin(oddsJs.cases[i], c.odds, name);
+    check(`odds ${i}: ${name}`, d === null, d);
+  });
+  {
+    const d = oddsWithin(oddsJs.wider, OD.wider, 'wider');
+    check('odds: success defined at 3.6 m3/h moves the prior', d === null, d);
+  }
+  {
+    // a prior near 1, whose 90th percentile bisects to exactly 1: the band is
+    // held inside (0, 1), where it was NaN carried through the odds
+    const d = oddsWithin(oddsJs.low_yield, OD.low_yield.odds, 'low_yield');
+    check(`odds: success at ${OD.low_yield.rate} m3/h on the coastal sands keeps its band`,
+      d === null && Number.isFinite(oddsJs.low_yield.high) &&
+      !oddsJs.low_yield.text.join(' ').includes('nan'), d || oddsJs.low_yield.text[0]);
+  }
+  // the suitability rows name their point by position, which the pages pair
+  // the odds with: two points can share an id
+  check('odds: each suitability row names its point by position',
+    JSON.stringify(oddsJs.ranked_index) === JSON.stringify(OD.ranked_index),
+    `js ${JSON.stringify(oddsJs.ranked_index)} vs py ${JSON.stringify(OD.ranked_index)}`);
+  OD.ground.forEach(([lat, lon, py], i) => {
+    check(`odds: the ground under ${lat}, ${lon}`,
+      JSON.stringify(oddsJs.ground[i]) === JSON.stringify(py),
+      `js ${JSON.stringify(oddsJs.ground[i])} vs py ${JSON.stringify(py)}`);
+  });
+  // the Rokel interpretations are each engine's own inversion, which agree
+  // to parity's model tolerance (a few parts in 1e7 here), not to the bit
+  OD.rokel.forEach((py, i) => {
+    const d = oddsWithin(oddsJs.rokel[i], py, `rokel[${i}]`, 1e-6);
+    check(`odds: Rokel ${py.odds.sounding_id}, placed by its coordinates`, d === null, d);
+  });
+  check('odds: a success yield of nothing is refused, as Python refuses it',
+    oddsJs.refused.every(Boolean), JSON.stringify(oddsJs.refused));
+  check('odds: the breakdown header', JSON.stringify(oddsJs.header) === JSON.stringify(OD.header),
+    JSON.stringify(oddsJs.header));
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, {});
 

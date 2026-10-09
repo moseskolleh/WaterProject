@@ -384,6 +384,27 @@ datasets:
           source. NO SOURCE IS RECORDED for these distances: they are common
           field practice as written down here, not a cited standard, and a
           project should replace them with its regulator's figures.
+      - path: src/groundwater/data/success_prior.csv
+        bytes: 2209
+        sha256: 57cb29da0321bdf2f4fe51ada428f57e37432e291d0d3426f4fe9ffd23e1a387
+        note: >-
+          The prior of the chance of a working borehole (PLAN.md step 3.3),
+          by BGS aquifer class and USGS geology unit. The yields in it are
+          cited: the BGS productivity classes (O Dochartaigh 2021, BGS Open
+          Report OR/21/063, Tables 1, 3 and 4). Reading a class's range as
+          the quartiles of a lognormal spread, the effective sample size of
+          10, and the even-chance fallback held as 2 boreholes are this
+          toolkit's choices, marked provisional and fallback in the file.
+          No source separates the geology units within a class, and none is
+          claimed to.
+      - path: src/groundwater/data/success_evidence.yaml
+        bytes: 5754
+        sha256: 9ea42c688edb48aa21f5ffd941cfa517569e61a6f3749c468cf47bcb67d51016
+        note: >-
+          The likelihood ratios and fit weights of the chance of a working
+          borehole, each with the reasoning behind it. NO SOURCE IS RECORDED
+          for these numbers: they are provisional judgments, for a
+          hydrogeologist to confirm and for drilled outcomes to calibrate.
 
   - id: chiefdom_name_crosswalk
     name: Chiefdom name crosswalk - boundary layer to census spelling

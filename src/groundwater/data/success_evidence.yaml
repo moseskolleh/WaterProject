@@ -1,0 +1,148 @@
+# The chance of a working borehole (PLAN.md step 3.3): how far each piece of
+# survey evidence moves the prior in success_prior.csv. Both engines read
+# this file, through groundwater.siting.odds and GWT.data.odds.
+#
+# Every number here is a provisional choice, not a published figure. No
+# source this repository holds gives likelihood ratios for VES evidence in
+# Sierra Leone, and none was invented to look like one: each value is a
+# judgment, with the reasoning beside it, for a hydrogeologist to confirm or
+# replace and for step 5.1 to calibrate against drilled outcomes.
+#
+# A likelihood ratio says how much more often the evidence is seen at a site
+# that turns out a success than at one that does not. 1 moves nothing; 2
+# doubles the odds; 0.5 halves them. The posterior odds are the prior odds
+# times every ratio, so the breakdown a report prints multiplies back to the
+# answer.
+
+# Named on every report that prints the odds (PLAN.md rule 4: every report
+# names the calibration it used).
+calibration: >-
+  the toolkit's provisional default from PLAN.md step 3.3, adopted by no
+  named person and not calibrated against drilled outcomes
+
+# The depth to basement, as the P50 of the band the range of models quotes
+# (groundwater.ves.model_range.quoted_basement_band). In basement terrain
+# the weathered zone (regolith) is where most of the water is stored, so a
+# thin one stores little and a thick one more. The edges follow the
+# existing suitability score's overburden rule: under 5 m too thin, 5 to 35 m
+# favourable, deeper still drillable. Where no band is quoted, or no range
+# was sampled, this ratio is 1.
+regolith:
+  - key: thin
+    below: 5.0
+    lr: 0.4
+    reason: >-
+      Under 5 m of weathered rock stores little water; a borehole there
+      depends on a fracture being struck.
+  - key: shallow
+    below: 15.0
+    lr: 0.8
+    reason: >-
+      5 to 15 m stores some water, less than the profile a basement
+      borehole is usually sited on.
+  - key: favourable
+    below: 35.0
+    lr: 1.5
+    reason: >-
+      15 to 35 m is the weathered profile basement boreholes are usually
+      sited on: storage above, the fractured contact within reach.
+  - key: deep
+    lr: 1.2
+    reason: >-
+      Over 35 m stores plenty but can be clay-rich, and the contact is
+      deeper to drill, so it is weighted below the favourable band.
+
+# Whether basement was resolved, from the share of the sampled models that
+# find none within the depth of investigation. "unresolved" is exactly where
+# the range quotes no basement band (model_range.MIN_RESOLVED_SHARE).
+# A basement the sounding never reached is mostly a statement about the
+# survey, not the ground, so the ratios are close to 1: they allow for a
+# drilling depth that is a minimum and a target that may lie past it.
+basement:
+  resolved_max_unresolved_share: 0.1
+  resolved:
+    lr: 1.0
+    reason: >-
+      Basement found in at least 90 percent of the models: the drilling
+      depth reaches the contact.
+  partly:
+    lr: 0.9
+    reason: >-
+      Basement found in some of the models only: the contact may lie past
+      the drilling depth.
+  unresolved:
+    lr: 0.8
+    reason: >-
+      Basement found in under a tenth of the models: the target may lie
+      past what the sounding resolved.
+
+# The water-bearing zone's resistivity: the thickness-weighted geometric
+# mean of the best fit's water-bearing layers inside its water zones. It
+# leaves out the slice of dry layer or basement that rounding a zone to
+# whole metres takes in, which the suitability score's resistivity term
+# keeps, so the two can differ a little. Low resistivity is clay-rich
+# saprolite (or, near the coast, saline water); high is little-weathered
+# rock.
+resistivity:
+  none:
+    lr: 0.3
+    reason: >-
+      No water-bearing zone within the depth the sounding resolves.
+  bands:
+    - key: clay
+      below: 20.0
+      lr: 0.6
+      reason: >-
+        Under 20 ohm-m reads as clay-rich saprolite or saline water: low
+        permeability or unusable water.
+    - key: clayey
+      below: 50.0
+      lr: 0.9
+      reason: >-
+        20 to 50 ohm-m is weathered rock with much clay; it stores water but
+        yields it slowly.
+    - key: productive
+      below: 300.0
+      lr: 1.4
+      reason: >-
+        50 to 300 ohm-m is the sandy, fractured weathered zone basement
+        boreholes are usually completed in.
+    - key: resistive
+      below: 800.0
+      lr: 0.8
+      reason: >-
+        300 to 800 ohm-m is weathered or fractured but tighter rock.
+    - key: fresh
+      lr: 0.5
+      reason: >-
+        Over 800 ohm-m is little-weathered rock; water only in fractures.
+
+# The confidence of the fit. A poor fit is not evidence that the ground is
+# dry; it is a reason to trust the other evidence less. So it does not bring
+# a ratio of its own: it raises the product of the three survey ratios to a
+# power, its weight, which draws the survey evidence back towards the prior.
+# Its factor in the breakdown is that product to the power (weight - 1), so
+# the factors still multiply to the posterior odds. The edges are the model
+# fit (ERR) bands both apps already print: under 5 percent excellent, under
+# 10 acceptable, and over 20 the configuration's unreliable fit.
+fit:
+  - key: excellent
+    below: 5.0
+    weight: 1.0
+    reason: >-
+      Under 5 percent: the layer depths are well constrained; the survey
+      evidence is taken in full.
+  - key: acceptable
+    below: 10.0
+    weight: 0.8
+    reason: >-
+      5 to 10 percent: acceptable for siting.
+  - key: poor
+    below: 20.0
+    weight: 0.6
+    reason: >-
+      10 to 20 percent: the depths are indicative.
+  - key: unreliable
+    weight: 0.3
+    reason: >-
+      Over 20 percent: the model hardly describes the readings.
