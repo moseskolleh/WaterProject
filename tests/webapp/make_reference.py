@@ -619,7 +619,8 @@ def ves_range_reference(soundings, inversions) -> dict:
 # over 3.2 to 40 ohm-m.
 # The starting models are held to 1e-12 on soundings whose first spacing
 # was read twice, where np.interp at the first abscissa reads the second
-# reading and the browser's interp used to read the first.
+# reading and the browser's interp used to read the first. interp itself is
+# held to np.interp exactly, at its edges and inside the range.
 
 FORWARD_AB2 = [1.0, 1.5, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0, 25.0, 40.0, 70.0, 100.0]
 FORWARD_MN = [0.4] * 4 + [1.0] * 4 + [4.0] * 4
@@ -671,7 +672,31 @@ def ves_forward_reference() -> dict:
                     np.array(readings), np.array(rho_app), n)],
             })
     return {"ab2": FORWARD_AB2, "mn": FORWARD_MN, "models": models,
-            "starting_models": starts}
+            "starting_models": starts, "interp": interp_reference()}
+
+
+#: (xp, fp) for np.interp at its edges: the first abscissa, the last, or one
+#: inside read twice, a single point, and every point the same
+INTERP_EDGES = [
+    ([0.0, 0.0, 1.0], [10.0, 20.0, 30.0]), ([0.0, 1.0, 1.0], [10.0, 20.0, 30.0]),
+    ([0.0, 1.0, 1.0, 2.0], [10.0, 20.0, 30.0, 40.0]), ([2.0], [7.0]), ([2.0, 2.0], [7.0, 9.0]),
+]
+
+
+def interp_reference() -> list:
+    """np.interp at its edges, NaN included, and across the log readings of
+    the starting-model soundings, where only numpy's order of operations,
+    the slope first, gives numpy's last bit; parity.mjs holds interp to these
+    exactly."""
+    probes = [-1.0, 0.0, 0.5, 1.0, 1.5, 2.0, 3.0, math.nan]
+    cases = [{"x": clean(probes), "xp": xp, "fp": fp,
+              "value": clean(np.interp(probes, xp, fp))} for xp, fp in INTERP_EDGES]
+    for readings, rho_app in STARTING_MODEL_CASES:
+        xp, fp = np.log(readings), np.log(rho_app)
+        x = np.log(np.geomspace(readings[0], readings[-1], 201))
+        cases.append({"x": clean(x), "xp": clean(xp), "fp": clean(fp),
+                      "value": clean(np.interp(x, xp, fp))})
+    return cases
 
 
 # The Bessel functions and zeros the quadrature tables are built from. The

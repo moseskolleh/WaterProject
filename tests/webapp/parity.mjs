@@ -2361,6 +2361,21 @@ await withPage(async (page, base, consoleErrors) => {
     check(`starting models, ${c.n_layers} layers, first spacing ${c.ab2[0]} m read twice: ` +
       'within 1e-12', d === null, d);
   });
+  // interp to np.interp bit for bit: the edges (a repeated abscissa, one
+  // point, NaN) and the interior, where only numpy's order of operations
+  // gives numpy's last bit. null in the reference is NaN.
+  const interpJs = await page.evaluate((cases) => cases.map((c) => c.x.map((x) =>
+    GWT.core.interp(x === null ? NaN : x, c.xp, c.fp))), VF.interp);
+  VF.interp.forEach((c, i) => {
+    let d = null;
+    c.value.forEach((py, k) => {
+      const js = interpJs[i][k];
+      const same = py === null ? Number.isNaN(js) : js === py;
+      if (!d && !same) d = `x ${c.x[k]}: js ${js} vs py ${py}`;
+    });
+    check(`interp on ${c.xp.length} abscissae from ${c.xp[0]}, ${c.x.length} points: ` +
+      'as np.interp', d === null, d);
+  });
 
   // --- the Bessel functions and zeros the quadrature tables are built from ---
   // A zero gone astray barely moves the forward grid above (the panels still

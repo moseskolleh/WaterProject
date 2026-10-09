@@ -493,6 +493,10 @@
    */
   function interp(x, xp, fp) {
     var n = xp.length;
+    /* NaN stays NaN, as in numpy, which gives a lone point's value for any x
+     * at all; without this a NaN at a repeated first abscissa fell through
+     * to fp[0] */
+    if (Number.isNaN(x) && n > 1) return x;
     /* strictly below: at the first abscissa itself np.interp reads on to the
      * last point there, so where the first spacing was read twice the
      * inversion's starting model takes the second reading, as Python's does */
@@ -505,7 +509,8 @@
     }
     var span = xp[hi] - xp[lo];
     if (span === 0) return fp[lo];
-    return fp[lo] + (fp[hi] - fp[lo]) * (x - xp[lo]) / span;
+    /* numpy's order of operations, slope first, so the last bit is numpy's */
+    return (fp[hi] - fp[lo]) / span * (x - xp[lo]) + fp[lo];
   }
 
   /**
