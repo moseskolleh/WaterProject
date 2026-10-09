@@ -605,6 +605,129 @@ def ves_range_reference(soundings, inversions) -> dict:
     }
 
 
+# ------------------------------------ the forward model at high contrast
+#
+# The inversion of a near-uniform sounding with one high reading can walk a
+# thin top layer out to 1e5 ohm-m or more. There the forward model is the
+# top layer's resistivity plus an integral that cancels nearly all of it, so
+# an error in the quadrature's Bessel tables reaches the apparent
+# resistivity multiplied by rho1 / rho_a. The browser's former tables, good
+# to 5e-9, put the engines 0.1 percent apart there, and the fuzz suite's
+# inversions met it only when a draw happened to land on such a sounding.
+# This grid holds each forward model the inversion uses to 1e-6 on every
+# pull request: two layers, the top 0.2 to 2 m thick at 4 to 200,000 ohm-m,
+# over 3.2 to 40 ohm-m.
+# The starting models are held to 1e-12 on soundings whose first spacing
+# was read twice, where np.interp at the first abscissa reads the second
+# reading and the browser's interp used to read the first. interp itself is
+# held to np.interp exactly, at its edges and inside the range.
+
+FORWARD_AB2 = [1.0, 1.5, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0, 25.0, 40.0, 70.0, 100.0]
+FORWARD_MN = [0.4] * 4 + [1.0] * 4 + [4.0] * 4
+FORWARD_RHO1 = [4.0, 1e2, 1e3, 1e4, 1e5, 2e5]
+FORWARD_H1 = [0.2, 0.25, 0.5, 2.0]
+FORWARD_RHO2 = [3.2, 5.0, 40.0]
+
+#: inversion_readings of regressions/ves-thin-resistive-top-layer.json and
+#: ves-equivalent-models.json: sorted by spacing, a repeat in sheet order
+STARTING_MODEL_CASES = [
+    ([3.0, 3.0, 4.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0, 12.0, 12.0, 15.0, 20.0, 20.0,
+      25.0, 25.0, 30.0, 40.0, 50.0, 60.0, 60.0, 70.0, 80.0, 80.0],
+     [40.6, 40.0, 12.0, 12.0, 7.3, 6.3, 6.1, 9.7, 6.0, 6.0, 6.1, 5.9, 5.8, 5.8,
+      5.9, 5.9, 5.8, 5.9, 5.9, 5.9, 5.9, 6.0, 5.7, 6.0]),
+    ([4.0, 4.0, 5.0, 6.0, 6.0, 7.0, 7.0, 8.0, 10.0, 12.0, 12.0, 15.0, 20.0, 25.0,
+      30.0, 30.0, 40.0],
+     [48.2, 47.9, 22.1, 42.6, 42.1, 41.7, 41.7, 41.4, 40.6, 40.5, 40.7, 40.3, 39.9,
+      40.2, 39.9, 40.1, 40.2]),
+]
+
+
+def ves_forward_reference() -> dict:
+    """Python's forward models on the contrast grid, and its starting models."""
+    from groundwater.ves.forward import (
+        forward_schlumberger,
+        forward_schlumberger_finite_mn,
+        forward_wenner,
+    )
+    from groundwater.ves.inversion import _starting_models
+
+    ab2, mn = np.array(FORWARD_AB2), np.array(FORWARD_MN)
+    models = []
+    for rho1 in FORWARD_RHO1:
+        for h1 in FORWARD_H1:
+            for rho2 in FORWARD_RHO2:
+                model = (np.array([rho1, rho2]), np.array([h1]))
+                models.append({
+                    "rho": [rho1, rho2], "h": [h1],
+                    "schlumberger": clean(forward_schlumberger(model, ab2)),
+                    "finite_mn": clean(forward_schlumberger_finite_mn(model, ab2, mn)),
+                    "wenner": clean(forward_wenner(model, ab2)),
+                })
+    starts = []
+    for readings, rho_app in STARTING_MODEL_CASES:
+        for n in (2, 3, 4):
+            starts.append({
+                "ab2": readings, "rho": rho_app, "n_layers": n,
+                "starts": [[clean(rho0), clean(h0)] for rho0, h0 in _starting_models(
+                    np.array(readings), np.array(rho_app), n)],
+            })
+    return {"ab2": FORWARD_AB2, "mn": FORWARD_MN, "models": models,
+            "starting_models": starts, "interp": interp_reference()}
+
+
+#: (xp, fp) for np.interp at its edges: the first abscissa, the last, or one
+#: inside read twice, a single point, and every point the same
+INTERP_EDGES = [
+    ([0.0, 0.0, 1.0], [10.0, 20.0, 30.0]), ([0.0, 1.0, 1.0], [10.0, 20.0, 30.0]),
+    ([0.0, 1.0, 1.0, 2.0], [10.0, 20.0, 30.0, 40.0]), ([2.0], [7.0]), ([2.0, 2.0], [7.0, 9.0]),
+]
+
+
+def interp_reference() -> list:
+    """np.interp at its edges, NaN included, and across the log readings of
+    the starting-model soundings, where only numpy's order of operations,
+    the slope first, gives numpy's last bit; parity.mjs holds interp to these
+    exactly."""
+    probes = [-1.0, 0.0, 0.5, 1.0, 1.5, 2.0, 3.0, math.nan]
+    cases = [{"x": clean(probes), "xp": xp, "fp": fp,
+              "value": clean(np.interp(probes, xp, fp))} for xp, fp in INTERP_EDGES]
+    for readings, rho_app in STARTING_MODEL_CASES:
+        xp, fp = np.log(readings), np.log(rho_app)
+        x = np.log(np.geomspace(readings[0], readings[-1], 201))
+        cases.append({"x": clean(x), "xp": clean(xp), "fp": clean(fp),
+                      "value": clean(np.interp(x, xp, fp))})
+    return cases
+
+
+# The Bessel functions and zeros the quadrature tables are built from. The
+# forward grid above would miss a zero gone astray: panels that end a little
+# off the zeros integrate to nearly the same sum, and only the panel the
+# quadrature stops at can move, which shows as a rare knife-edge in a
+# generated inversion rather than on a pull request. So the zeros are held to
+# jn_zeros, and J0 and J1 to scipy at every half unit on [0, 30], across the
+# branches at 5 and 10, and on out to the largest abscissa the tables reach.
+
+BESSEL_X = [0.5 * i for i in range(61)] + [float(x) for x in np.geomspace(31.3, 1.9e5, 25)]
+#: 1-based: the first 50, every 100th of the 1200 the tables start with,
+#: and on to the 60,000 they can grow to
+BESSEL_ZERO_RANKS = (list(range(1, 51)) + list(range(100, 1201, 100))
+                     + [2000, 5000, 10000, 20000, 40000, 60000])
+
+
+def ves_bessel_reference() -> dict:
+    """scipy's J0, J1 and their zeros, where the browser's tables use them."""
+    from scipy.special import j0, j1, jn_zeros
+
+    x = np.array(BESSEL_X)
+    zeros = {order: jn_zeros(order, BESSEL_ZERO_RANKS[-1]) for order in (0, 1)}
+    return {
+        "x": BESSEL_X, "j0": clean(j0(x)), "j1": clean(j1(x)),
+        "zero_ranks": BESSEL_ZERO_RANKS,
+        "zeros0": clean(zeros[0][np.array(BESSEL_ZERO_RANKS) - 1]),
+        "zeros1": clean(zeros[1][np.array(BESSEL_ZERO_RANKS) - 1]),
+    }
+
+
 def build() -> dict:
     out: dict = {}
 
@@ -1647,6 +1770,8 @@ def build() -> dict:
     out["field_kit"] = field_kit_reference()
     out["airlift"] = airlift_reference()
     out["pumping_spread"] = pumping_spread_reference()
+    out["ves_forward"] = ves_forward_reference()
+    out["ves_bessel"] = ves_bessel_reference()
     return out
 
 

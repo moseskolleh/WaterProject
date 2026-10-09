@@ -1,0 +1,25 @@
+{
+ "note": "Found by CI's fuzz job on main at 74b123d, which shrank its failing inversion to this sheet and wrote it as ves-inversions-err-578342b9.json. A Schlumberger sounding of 3.2 ohm-m with readings of 3.5 and 5.1 ohm-m at the first spacing. Both engines start from the same models and walk a thin top layer from a few ohm-m out to tens of thousands. The browser built its quadrature tables from Numerical Recipes' J0 and J1, good to 5e-9. Under a thin resistive top layer the forward model is the top layer's resistivity plus an integral that cancels nearly all of it, so that error reached the apparent resistivity multiplied by rho1 / rho_a: 1.5e-4 at 10,000 ohm-m and 1.5e-3 at 100,000 over a few ohm-m (reference.json's ves_forward grid). The browser's search stopped at 63,181 ohm-m over 0.200 m with a 0.800 percent fit, Python's at 46,841 ohm-m over 0.204 m with 0.591. The browser now builds its tables from Cephes j0 and j1, as scipy does, and stops where Python does. Perturbing Python's forward model by 1e-15 to 1e-10 in four shapes (a cosine and a sine in the log of the spacing, a ramp in it, and a uniform scaling) moves its own answer by at most 1.8e-5, inside parity's 1e-3.",
+ "first_divergence": ["inversions[0].err", 0.8001121010096537, 0.5908324215448086],
+ "kind": "ves",
+ "options": {"invert": true},
+ "sheets": [
+  {"name": "VES 1", "rows": [
+   ["SCHLUMBERGER ARRAY VES FIELD DATA", null, null, null],
+   ["Community", "Rokel", "District", "Port Loko"],
+   ["Sounding Number", "VES 1", "Array", "Schlumberger"],
+   ["Instrument", "Syscal Junior", null, null],
+   [null, null, null, null],
+   ["No.", "AB/2 (m)", "MN (m)", "Apparent Resistivity (ohm-m)"],
+   [1, 2.0, 0.2, 3.5],
+   [2, 2.0, 0.4, 5.1],
+   [3, 2.5, 0.4, 3.2],
+   [4, 2.5, 0.8, 3.2],
+   [5, 3.0, 0.8, 3.2],
+   [6, 3.0, 1.5, 3.2],
+   [7, 4.0, 1.5, 3.2],
+   [8, 5.0, 1.5, 3.2],
+   [9, 6.0, 1.5, 3.2]
+  ]}
+ ]
+}
