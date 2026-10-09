@@ -2308,6 +2308,119 @@ await withPage(async (page, base, consoleErrors) => {
     }
   });
 
+  // --- the forward model at high contrast, and the starting models ---
+  // Under a thin resistive top layer the forward model is rho1 plus an
+  // integral that cancels nearly all of it, so an error in the quadrature's
+  // Bessel tables reaches the apparent resistivity multiplied by
+  // rho1 / rho_a: the browser's former tables, good to 5e-9, were 3e-3 out
+  // at 200,000 ohm-m over 3.2. Each forward model the inversion uses is held
+  // to 1e-6 relative over the grid, without waiting for the fuzz suite to
+  // draw such a case. The starting models are arithmetic on the readings and
+  // are held to 1e-12, on soundings whose first spacing was read twice.
+  const VF = R.ves_forward;
+  const forwardJs = await page.evaluate((VF) => {
+    const C = GWT.core;
+    return {
+      models: VF.models.map((m) => ({
+        schlumberger: Array.from(C.forwardSchlumberger(m.rho, m.h, VF.ab2)),
+        finite_mn: Array.from(C.forwardSchlumbergerFiniteMn(m.rho, m.h, VF.ab2, VF.mn)),
+        wenner: Array.from(C.forwardWenner(m.rho, m.h, VF.ab2)),
+      })),
+      starts: VF.starting_models.map((c) => C.startingModels(c.ab2, c.rho, c.n_layers)
+        .map((start) => [start.rho0, start.h0])),
+    };
+  }, VF);
+  const relGap = (a, b) => Math.abs(a - b) / Math.abs(b);
+  for (const kind of ['schlumberger', 'finite_mn', 'wenner']) {
+    for (const rho1 of Array.from(new Set(VF.models.map((m) => m.rho[0])))) {
+      let worst = { gap: 0, where: '' };
+      VF.models.forEach((m, i) => {
+        if (m.rho[0] !== rho1) return;
+        m[kind].forEach((py, k) => {
+          const js = forwardJs.models[i][kind][k];
+          const gap = typeof js === 'number' && isFinite(js) ? relGap(js, py) : Infinity;
+          if (gap > worst.gap) {
+            worst = { gap, where: `h ${m.h[0]} m over ${m.rho[1]} ohm-m, AB/2 ${VF.ab2[k]} m: ` +
+              `js ${js} vs py ${py}` };
+          }
+        });
+      });
+      check(`forward model ${kind}, a top layer of ${rho1} ohm-m: within 1e-6`,
+        worst.gap <= 1e-6, `${worst.gap.toExponential(2)} at ${worst.where}`);
+    }
+  }
+  VF.starting_models.forEach((c, i) => {
+    const js = forwardJs.starts[i];
+    let d = js.length === c.starts.length ? null : `js ${js.length} starts vs py ${c.starts.length}`;
+    c.starts.forEach((start, j) => start.forEach((values, part) => values.forEach((py, k) => {
+      const v = js[j] && js[j][part] ? js[j][part][k] : undefined;
+      if (!d && !(typeof v === 'number' && relGap(v, py) <= 1e-12)) {
+        d = `start ${j} ${part ? 'h0' : 'rho0'}[${k}]: js ${v} vs py ${py}`;
+      }
+    })));
+    check(`starting models, ${c.n_layers} layers, first spacing ${c.ab2[0]} m read twice: ` +
+      'within 1e-12', d === null, d);
+  });
+  // interp to np.interp bit for bit: the edges (a repeated abscissa, one
+  // point, NaN) and the interior, where only numpy's order of operations
+  // gives numpy's last bit. null in the reference is NaN.
+  const interpJs = await page.evaluate((cases) => cases.map((c) => c.x.map((x) =>
+    GWT.core.interp(x === null ? NaN : x, c.xp, c.fp))), VF.interp);
+  VF.interp.forEach((c, i) => {
+    let d = null;
+    c.value.forEach((py, k) => {
+      const js = interpJs[i][k];
+      const same = py === null ? Number.isNaN(js) : js === py;
+      if (!d && !same) d = `x ${c.x[k]}: js ${js} vs py ${py}`;
+    });
+    check(`interp on ${c.xp.length} abscissae from ${c.xp[0]}, ${c.x.length} points: ` +
+      'as np.interp', d === null, d);
+  });
+
+  // --- the Bessel functions and zeros the quadrature tables are built from ---
+  // A zero gone astray barely moves the forward grid above (the panels still
+  // integrate to nearly the same sum); it moves only where the quadrature
+  // stops, which no fixed sounding need show. So the zeros are held to
+  // jn_zeros to a few ulp, and J0 and J1 to scipy: to 1e-15 on [0, 30], and
+  // beyond, where scipy 1.17 takes the asymptotic form at cos(x - pi/4) and
+  // the port, as 1.18 does, at cos(x) and sin(x), to 2e-14. The former
+  // rational approximations were 5e-9 out.
+  const VB = R.ves_bessel;
+  const besselJs = await page.evaluate((VB) => {
+    const C = GWT.core, last = VB.zero_ranks[VB.zero_ranks.length - 1];
+    const z0 = C.besselZeros(0, last), z1 = C.besselZeros(1, last);
+    return {
+      j0: VB.x.map((x) => C.besselJ0(x)), j1: VB.x.map((x) => C.besselJ1(x)),
+      zeros0: VB.zero_ranks.map((r) => z0[r - 1]), zeros1: VB.zero_ranks.map((r) => z1[r - 1]),
+    };
+  }, VB);
+  const besselSpans = [['on [0, 30]', (x) => x <= 30, 1e-15],
+    [`from 30 to ${Math.round(VB.x[VB.x.length - 1])}`, (x) => x > 30, 2e-14]];
+  for (const name of ['j0', 'j1']) {
+    for (const [span, inRange, tol] of besselSpans) {
+      let worst = { gap: 0, where: '' };
+      VB.x.forEach((x, i) => {
+        if (!inRange(x)) return;
+        const js = besselJs[name][i], py = VB[name][i];
+        const gap = typeof js === 'number' && isFinite(js) ? Math.abs(js - py) : Infinity;
+        if (gap > worst.gap) worst = { gap, where: `x ${x}: js ${js} vs py ${py}` };
+      });
+      check(`Bessel ${name.toUpperCase()} ${span}: within ${tol}`, worst.gap <= tol,
+        `${worst.gap.toExponential(2)} at ${worst.where}`);
+    }
+  }
+  for (const order of [0, 1]) {
+    let worst = { gap: 0, where: '' };
+    VB.zero_ranks.forEach((rank, i) => {
+      const js = besselJs[`zeros${order}`][i], py = VB[`zeros${order}`][i];
+      const gap = typeof js === 'number' && isFinite(js) ? relGap(js, py) : Infinity;
+      if (gap > worst.gap) worst = { gap, where: `zero ${rank}: js ${js} vs py ${py}` };
+    });
+    check(`Bessel J${order} zeros, ${VB.zero_ranks.length} of the first ` +
+      `${VB.zero_ranks[VB.zero_ranks.length - 1]}: within 1e-15 relative`,
+    worst.gap <= 1e-15, `${worst.gap.toExponential(2)} at ${worst.where}`);
+  }
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, {});
 
