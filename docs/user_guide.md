@@ -499,6 +499,42 @@ settings are under `ves_range` in the project's configuration, and the
 error each reading is given (3 percent, plus the measured disagreement
 at each MN overlap) is provisional.
 
+Beside the drill-target suitability score, both apps' Geophysics pages
+and both geophysical reports give each point **the chance of a working
+borehole**: "About 61 percent (between 39 and 78) that a borehole here
+yields enough for a handpump through the dry season. Provisional prior."
+It is worked out in a way that can be checked on paper:
+
+- **The prior** is a success rate for the ground under the point: the
+  BGS aquifer class and the USGS geology unit there, looked up on the
+  bundled maps at the point's own coordinates, or the site's if the
+  point has none. The table, `success_prior.csv`, gives each class's
+  yields from the BGS atlas user guide (O Dochartaigh 2021); read as
+  the quartiles of a lognormal spread, they say what share of boreholes
+  reach the yield that counts as success. A point with no class (no
+  position, or open water on the map) gets an even chance, labelled a
+  placeholder.
+- **"Success"** is a yield of at least 1 m3/h at the dry-season level,
+  the handpump design rate. It is `odds.success_yield_m3_per_h` in the
+  project's configuration, and changing it changes the prior.
+- **The evidence** multiplies the odds: a factor for the depth to
+  basement and for whether basement was resolved (both from the range
+  of models, so both are left out, at a factor of 1, until the range is
+  sampled), and one for the resistivity of the water-bearing zone. A
+  poor fit does not make the ground drier; it draws those three factors
+  back towards 1. The factors and their reasons are in
+  `success_evidence.yaml`.
+- **The band** is the prior's own uncertainty, a Beta distribution as
+  firm as 10 boreholes for a cited class and 2 for the placeholder,
+  carried through the same factors.
+
+A table under each point shows what each piece of evidence was, the
+factor it multiplied the odds by and the chance after it, so the factors
+multiply back to the answer. Every number in both files is provisional
+until a hydrogeologist confirms it and drilled outcomes calibrate it, and
+the reports say so. The suitability score stays beside the odds for
+comparison.
+
 **Overview** opens first and is the project dashboard: the lifecycle
 strip across the top shows how far the borehole has got (Sited →
 Drilled → Tested → Assessed → Handover), and the cards below summarise
@@ -551,6 +587,12 @@ contract price, and every rule of thumb applied is listed under
   automatically.
 - Download the bill of quantities (`.xlsx`, with live formulas the
   contractor can edit) or the full cost estimate report (`.docx`).
+- The programme estimate uses the siting success rate typed for it.
+  Once soundings are inverted, the page offers the chance of a working
+  borehole at the survey's first-ranked point beside it, with a **Use
+  N percent** button; the estimate changes only when that is pressed.
+  The odds are one point on one survey's ground, and a programme across
+  other ground has other odds.
 
 ## 8. Supervision
 

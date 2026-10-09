@@ -14,6 +14,9 @@ from groundwater.costing import (
     write_boq_workbook,
 )
 from groundwater.reporting.costing import build_cost_report, CostReportInputs
+from groundwater.siting import assess_siting, survey_odds
+from groundwater.siting.odds import programme_offer, programme_rate
+from groundwater.text import phrase
 
 from shared import (
     app_config,
@@ -27,6 +30,27 @@ from shared import (
     site_from_state,
     workdir,
 )
+
+def _first_point_odds():
+    """The chance of a working borehole at the survey's first-ranked point,
+    or None before a survey is inverted. Read with the range sampled around
+    these very inversions, as the Geophysics page reads it."""
+    held = st.session_state.get("ves_results")
+    if not held or not held[2]:
+        return None
+    soundings, results, interps = held
+    kept = st.session_state.get("ves_ranges")
+    ranges = kept[1] if kept is not None and kept[0] is results else [None] * len(results)
+    # by position, not id: two points can share an id
+    i = assess_siting(interps)[0].index
+    site = soundings[0].site
+    return survey_odds([interps[i]], [ranges[i]], site.utm_zone, site.latlon,
+                       app_config())[0]
+
+
+def _use_rate(rate: float) -> None:
+    st.session_state["cost_prog_success"] = rate
+
 
 def render() -> None:
     st.header("Borehole costing")
@@ -271,6 +295,15 @@ def render() -> None:
             "packaging rules. Uses the single borehole inputs and rates "
             "above."
         )
+        # The survey's odds are offered beside the typed rate, never put in
+        # its place without a click: a programme estimate that moved because
+        # a sounding was inverted on another page would change silently.
+        offered = _first_point_odds()
+        if offered is not None:
+            rate = programme_rate(offered)
+            st.info(programme_offer(offered))
+            st.button(phrase("odds.programme_use", p=rate), key="use_survey_odds",
+                      on_click=_use_rate, args=(rate,))
         p1, p2, p3 = st.columns(3)
         n_wells = p1.number_input("Successful boreholes required", 1, 500, 10,
                                   key="cost_prog_n")

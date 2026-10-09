@@ -1315,6 +1315,17 @@
     }
   }
 
+  /* The chance of a working borehole at every point (PLAN.md step 3.3), with
+   * the range sampled around each inversion where there is one, placed as
+   * the report places it: the point's own position, else the site's. The
+   * map layers it reads are loaded with every working page and report. */
+  function surveyOdds() {
+    var site = store.get('site') || {};
+    return C.surveyOdds(derived.interpretations || [],
+      (derived.inversions || []).map(rangeFor), Number(site.utm_zone) || null,
+      C.sitePosition(site), config());
+  }
+
   /* ------------------------------------------------------------- work bar */
 
   /* The engine work the page is waiting for, drawn above the page: what is
@@ -2550,6 +2561,12 @@
     ]));
 
     var suitability = C.assessSiting(derived.interpretations, config().ves);
+    /* the chance of a working borehole beside the score (PLAN.md step 3.3),
+     * paired with its row by position: two points can share an id */
+    var odds = surveyOdds();
+    suitability = suitability.map(function (s) {
+      return Object.assign({}, s, { odds: odds[s.index] ? C.oddsShort(odds[s.index]) : '' });
+    });
     var best = suitability[0];
     var located = suitability.filter(function (s) {
       return s.easting && s.northing;
@@ -2571,11 +2588,24 @@
         { key: 'sounding_id', label: 'Point' },
         { key: 'suitability', label: 'Suitability', align: 'right',
           format: function (v) { return v.toFixed(0) + '/100'; } },
+        { key: 'odds', label: C.phrase('odds.col_short') },
         { key: 'grade', label: 'Grade' },
         { key: 'rationale', label: 'Why' },
       ], suitability, {
         rowClass: function (row) { return row.rank === 1 ? 'row-ok' : ''; },
       }),
+      el('h3', C.phrase('odds.heading')),
+      el('p.muted', [C.phrase('odds.lead')].concat(odds[best.index]
+        ? C.oddsBasisText(odds[best.index]) : []).join(' ')),
+      el('div.odds-points', suitability.map(function (s) {
+        var o = odds[s.index];
+        if (!o) return null;
+        return el('div.odds-point', [
+          el('p', [el('strong', s.sounding_id + ': '), C.oddsPointText(o).join(' ')]),
+          S.table(C.oddsHeader(), C.oddsRows(o)),
+          el('p.muted', C.oddsTableCaption(o)),
+        ]);
+      }).filter(Boolean)),
       located.length ? charts.figure(charts.siteMap({
         context: (mapLayers().chiefdomBoundaries || {}).features || [],
         points: located.map(function (s) {
@@ -4213,7 +4243,24 @@
       })),
     ]));
 
+    /* The survey's odds at its first-ranked point are offered beside the
+     * typed rate, never put in its place without a click: a programme
+     * estimate that moved because a sounding was inverted on another page
+     * would change silently. */
+    var firstOdds = null;
+    if ((derived.interpretations || []).length) {
+      /* by position, not id: two points can share an id */
+      var first = C.assessSiting(derived.interpretations, config().ves)[0].index;
+      firstOdds = surveyOdds()[first] || null;
+    }
+    var offeredRate = firstOdds ? C.programmeRate(firstOdds) : null;
     nodes.push(card('Programme of works', [
+      firstOdds ? el('div.callout', [
+        el('p', C.programmeOffer(firstOdds)),
+        button(C.phrase('odds.programme_use', { p: offeredRate }), function () {
+          bindCost('success_rate')(offeredRate);
+        }, { variant: 'ghost' }),
+      ]) : null,
       el('div.field-row', [
         field('Successful boreholes required',
           S.numberInput(costing.programme_n, bindCost('programme_n'))),
@@ -6859,6 +6906,9 @@
            * table calling one peg first and a star on another, under one
            * heading */
           context.ves = cfg.ves;
+          /* the chance of a working borehole at each point, which the
+           * report prints under the suitability score */
+          context.odds = surveyOdds();
           builder = await docx.geophysicalReport(context);
 
         } else if (kind === 'completion') {
@@ -7345,7 +7395,7 @@
     renderAutosaveBanner: renderAutosaveBanner,
     storage: storage, continueHere: continueHere,
     hashFor: hashFor, routeFrom: routeFrom,
-    sampleRanges: sampleRanges, rangeFor: rangeFor,
+    sampleRanges: sampleRanges, rangeFor: rangeFor, surveyOdds: surveyOdds,
   };
 
   if (typeof document !== 'undefined') {

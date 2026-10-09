@@ -180,6 +180,116 @@ await withPage(async (page, base, consoleErrors) => {
   const vesSvgs = await page.evaluate(() => document.querySelectorAll('#page-host svg').length);
   check('ves page draws curves', vesSvgs >= 2, `found ${vesSvgs}`);
 
+  // The chance of a working borehole (PLAN.md step 3.3) sits beside the
+  // suitability score: a column of the table, and each point's sentences and
+  // breakdown, the engine's words. With no range sampled yet the page says
+  // the depth and basement evidence are left out.
+  const oddsPage = await page.evaluate(() => {
+    const app = window.GWT.app, C = window.GWT.core;
+    const host = document.querySelector('#page-host');
+    const heads = Array.from(host.querySelectorAll('th')).map((th) => th.textContent);
+    const points = Array.from(host.querySelectorAll('.odds-point')).map((p) => p.textContent);
+    const odds = app.surveyOdds();
+    return { heads, points, words: odds.map((o) => C.oddsPointText(o).join(' ')),
+      basis: C.oddsBasisText(odds[0]).join(' '),
+      shorts: odds.map((o) => C.oddsShort(o)), cells: host.textContent,
+      n: app.derived.interpretations.length };
+  });
+  check('odds: the VES page shows the chance beside the suitability score',
+    oddsPage.heads.includes('Chance of a working borehole') &&
+    oddsPage.shorts.every((t) => oddsPage.cells.includes(t)), JSON.stringify(oddsPage.shorts));
+  check('odds: each point\'s sentences and breakdown, in the engine\'s words',
+    oddsPage.points.length === oddsPage.n &&
+    oddsPage.words.every((w) => oddsPage.points.some((p) => p.includes(w))) &&
+    oddsPage.points.every((p) => p.includes('has not been sampled') &&
+      p.includes('Chance after (percent)')) && oddsPage.cells.includes(oddsPage.basis),
+    JSON.stringify(oddsPage.points).slice(0, 800));
+
+  // The programme estimate keeps the rate typed for it; the survey's odds at
+  // its first-ranked point are offered beside it and used only on a click.
+  const programmeOdds = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core;
+    const before = app.store.get('costing.success_rate');
+    await app.goto('costing');
+    const button = Array.from(document.querySelectorAll('#page-host button'))
+      .find((b) => /^Use \d+ percent$/.test(b.textContent));
+    const offered = document.querySelector('#page-host .callout').textContent;
+    const first = C.assessSiting(app.derived.interpretations, app.config().ves)[0];
+    const odds = app.surveyOdds().find((o) => o.sounding_id === first.sounding_id);
+    const untouched = app.store.get('costing.success_rate');
+    const attemptsBefore = app.derived.programme ? app.derived.programme.n_attempted : null;
+    button.click();
+    await new Promise((r) => setTimeout(r, 100));
+    const used = app.store.get('costing.success_rate');
+    const programme = app.derived.programme;
+    app.store.set('costing.success_rate', before);
+    await app.goto('ves');
+    return { before, untouched, used, rate: C.programmeRate(odds), label: button.textContent,
+      offered, sentence: C.programmeOffer(odds), attemptsBefore,
+      percent: programme ? programme.success_rate_percent : null };
+  });
+  check('odds: the programme estimate keeps its typed rate until the odds are chosen',
+    programmeOdds.untouched === programmeOdds.before &&
+    programmeOdds.offered.includes(programmeOdds.sentence) &&
+    programmeOdds.label === `Use ${programmeOdds.rate} percent`,
+    JSON.stringify(programmeOdds));
+  check('odds: choosing them sets the programme\'s success rate',
+    programmeOdds.used === programmeOdds.rate &&
+    (programmeOdds.percent === null || programmeOdds.percent === programmeOdds.rate),
+    JSON.stringify(programmeOdds));
+
+  // A sheet copied without renumbering gives two points one id. The pages
+  // looked the odds up by id, so both rows showed the last point's and the
+  // Costing page offered the first point carrying the leader's id; they are
+  // paired by position. Here the second Rokel point takes the first's id and
+  // is listed first, so the leader is the one listed second.
+  const sharedId = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core;
+    const kept = { interps: app.derived.interpretations, invs: app.derived.inversions,
+      soundings: app.derived.soundings };
+    const renamed = Object.assign({}, kept.interps[1],
+      { sounding_id: kept.interps[0].sounding_id });
+    try {
+      app.derived.interpretations = [renamed, kept.interps[0]];
+      app.derived.inversions = [kept.invs[1], kept.invs[0]];
+      app.derived.soundings = [kept.soundings[1], kept.soundings[0]];
+      const odds = app.surveyOdds();
+      const weighted = app.derived.interpretations.map((i) => {
+        const s = C.assessSiting([i], app.config().ves)[0];
+        return s.suitability * s.confidence;
+      });
+      const lead = weighted[1] > weighted[0] ? 1 : 0;
+      await app.goto('ves');
+      const host = document.querySelector('#page-host');
+      const table = Array.from(host.querySelectorAll('table')).find((t) =>
+        Array.from(t.querySelectorAll('th')).some((th) =>
+          th.textContent === 'Chance of a working borehole'));
+      const column = Array.from(table.querySelectorAll('th'))
+        .findIndex((th) => th.textContent === 'Chance of a working borehole');
+      const cells = Array.from(table.querySelectorAll('tbody tr'))
+        .map((tr) => tr.children[column].textContent);
+      const points = Array.from(host.querySelectorAll('.odds-point')).map((p) => p.textContent);
+      await app.goto('costing');
+      const offered = document.querySelector('#page-host .callout').textContent;
+      return { lead, cells, shorts: odds.map((o) => C.oddsShort(o)),
+        words: odds.map((o) => C.oddsPointText(o).join(' ')), points, offered,
+        sentence: C.programmeOffer(odds[lead]) };
+    } finally {
+      app.derived.interpretations = kept.interps;
+      app.derived.inversions = kept.invs;
+      app.derived.soundings = kept.soundings;
+      await app.goto('ves');
+    }
+  });
+  check('odds: two points with one id each show their own odds, in rank order',
+    sharedId.lead === 1 && sharedId.shorts[0] !== sharedId.shorts[1] &&
+    JSON.stringify(sharedId.cells) ===
+      JSON.stringify([sharedId.shorts[1], sharedId.shorts[0]]) &&
+    sharedId.words.every((w) => sharedId.points.some((p) => p.includes(w))),
+    JSON.stringify(sharedId).slice(0, 800));
+  check('odds: the Costing page offers the leader\'s odds, not the first with its id',
+    sharedId.offered.includes(sharedId.sentence), JSON.stringify(sharedId).slice(0, 800));
+
   // --- the engine worker ----------------------------------------------------
   // PLAN.md step 1.2: during an inversion no main-thread task longer than
   // 50 ms, and the page keeps scrolling. The windows are the engine's own
@@ -304,13 +414,23 @@ await withPage(async (page, base, consoleErrors) => {
     const sounding = app.derived.soundings.find((s) => s.sounding_id === id);
     const direct = C.modelRangeText(C.sampleModelRange(sounding, inversions[1],
       app.config())).join(' ');
+    /* the odds read the sampled ranges: the depth and basement evidence */
+    const oddsSampled = Array.from(document.querySelectorAll('#page-host .odds-point'))
+      .map((p) => p.textContent);
+    const oddsWords = app.surveyOdds().map((o) => C.oddsPointText(o).join(' '));
     app.store.set('config', saved);
     app.render();
     const after = Array.from(document.querySelectorAll('#page-host .callout-info'))
       .filter((c) => c.textContent.includes('Range of models that fit')).length;
     return { fill, shown, modes: runs.map((h) => h.mode + ':' + h.outcome), callouts,
-      legends, direct, after, n: inversions.length };
+      legends, direct, after, n: inversions.length, oddsSampled, oddsWords };
   });
+  check('odds: a sampled range brings in the depth and basement evidence',
+    ranged.oddsSampled.length === ranged.n &&
+    ranged.oddsSampled.every((p) => !p.includes('has not been sampled') &&
+      !p.includes('range not sampled')) &&
+    ranged.oddsWords.every((w) => ranged.oddsSampled.some((p) => p.includes(w))),
+    JSON.stringify(ranged.oddsSampled).slice(0, 800));
   check('range: sampled in the worker, a sounding at a time',
     ranged.modes.length === ranged.n && ranged.modes.every((m) => m === 'worker:done'),
     JSON.stringify(ranged.modes));

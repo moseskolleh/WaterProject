@@ -1,0 +1,12 @@
+bgs_code,glg,yield_q1_l_per_s,yield_q3_l_per_s,rate,effective_n,status,basis
+B-L,pCm,0.1,0.5,,10,provisional,"BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Table 3), which the guide describes, for the Africa-wide productivity map these maps develop, as roughly the interquartile range of the yields of boreholes sited and drilled using appropriate techniques (Table 4). No cited source separates the Precambrian unit within the class, so the class's yields apply"
+B-L,*,0.1,0.5,,10,provisional,"BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Tables 3 and 4)"
+I-L,Pi,0.1,0.5,,10,provisional,"BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Tables 3 and 4). No cited source separates the Freetown Complex unit within the class, so the class's yields apply"
+I-L,Mi,0.1,0.5,,10,provisional,"BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Tables 3 and 4). No cited source separates the dolerite unit within the class, so the class's yields apply"
+I-L,*,0.1,0.5,,10,provisional,"BGS Low productivity, 0.1 to 0.5 L/s (O Dochartaigh 2021, Tables 3 and 4)"
+CSF-L/M,pCm,0.1,5,,10,provisional,"BGS Low to Moderate productivity, read as the span from Low (0.1 L/s) to Moderate (5 L/s) as the guide's other spanning codes are (O Dochartaigh 2021, Tables 1 and 3). No cited source separates the Precambrian unit within the class, so the class's yields apply"
+CSF-L/M,*,0.1,5,,10,provisional,"BGS Low to Moderate productivity, read as the span 0.1 to 5 L/s (O Dochartaigh 2021, Tables 1 and 3)"
+U-M/H,Qe,2,20,,10,provisional,"BGS Moderate to High productivity, the span 2 to 20 L/s (O Dochartaigh 2021, Tables 3 and 4). No cited source separates the Holocene unit within the class, so the class's yields apply. The yields say nothing of salinity near the coast"
+U-M/H,*,2,20,,10,provisional,"BGS Moderate to High productivity, the span 2 to 20 L/s (O Dochartaigh 2021, Tables 3 and 4)"
+n/a,*,,,0.5,2,fallback,"the BGS map shows surface water here, so it gives no aquifer class for the point; no cited rate applies, so it is an even chance"
+*,*,,,0.5,2,fallback,"no BGS aquifer class for the point (no position, or outside the map); no cited rate applies, so it is an even chance"

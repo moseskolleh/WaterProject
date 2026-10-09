@@ -1,0 +1,142 @@
+# The chance of a working borehole (PLAN.md step 3.3): the odds at each VES
+# point, their breakdown and their basis, in the words both engines write.
+# The Python geophysical report and the Streamlit Geophysics and Costing
+# pages read them through groundwater.siting.odds; the browser's pages and
+# report through C.oddsText and C.oddsRows. The numbers behind them are in
+# data/success_prior.csv and data/success_evidence.yaml.
+
+# The heading and the paragraph that open the odds, in the reports and on
+# the Geophysics pages, under the suitability score.
+heading: Chance of a working borehole
+
+lead: >-
+  Beside the suitability score, each point is given the chance that a
+  borehole there yields enough for a handpump through the dry season: a
+  prior for the ground under it, from published yields, multiplied by a
+  factor for each thing the survey found. The table under each point shows
+  how far each factor moved it. Every figure here is provisional.
+
+point: "Point {sid}."
+
+# The odds in a table cell, beside the suitability score on the pages.
+short: "{p} percent ({low} to {high})"
+
+col_short: Chance of a working borehole
+
+headline: >-
+  About {p} percent (between {low} and {high}) that a borehole here yields
+  enough for a handpump through the dry season. {status}
+
+status_provisional: Provisional prior.
+
+status_fallback: Placeholder prior, with no cited rate behind it.
+
+definition: >-
+  Success means a yield of at least {rate:num} m3/h ({ls:.2f} L/s) at the
+  dry-season water level, the handpump design rate in the configuration.
+
+prior_combination: >-
+  The prior is {p} percent (between {low} and {high}), for {ground}: {basis}.
+  Read as the quartiles of a lognormal spread, {q1:num} and {q3:num} L/s put
+  {p} percent of boreholes at or above {ls:.2f} L/s. It is held as firmly as
+  {n:g} boreholes would hold it, and has not been calibrated against
+  boreholes drilled here.
+
+prior_class: >-
+  The prior is {p} percent (between {low} and {high}), for {ground}, which
+  the prior table does not list on its own, so the class's row applies:
+  {basis}. Read as the quartiles of a lognormal spread, {q1:num} and {q3:num}
+  L/s put {p} percent of boreholes at or above {ls:.2f} L/s. It is held as
+  firmly as {n:g} boreholes would hold it, and has not been calibrated
+  against boreholes drilled here.
+
+prior_fallback: >-
+  The prior is {p} percent (between {low} and {high}), a placeholder held as
+  weakly as {n:g} boreholes would hold it: {basis}.
+
+ground: the BGS class {code} on the USGS unit {glg}
+
+ground_no_unit: the BGS class {code}, with no USGS unit under the point
+
+ground_none: no BGS class under the point
+
+not_sampled: >-
+  The range of models has not been sampled at {sid}, so the depth to basement
+  and whether it was resolved are left out (a factor of 1 each); sample the
+  range to use them.
+
+basis: >-
+  Basis: the prior from success_prior.csv and the likelihood ratios from
+  success_evidence.yaml; calibration: {calibration}. The band is the 10th to 90th
+  percentile of a Beta prior with the table's effective sample size, carried
+  through the same factors; the factors themselves are provisional choices.
+  The suitability score is kept beside these odds for comparison.
+
+# The breakdown table under each point's sentences.
+col_evidence: Evidence
+
+col_found: What the survey found
+
+col_factor: Factor on the odds
+
+col_after: Chance after (percent)
+
+# The first column, by the evidence's key.
+rows:
+  prior: Prior
+  regolith: Depth to basement (P50)
+  basement: Basement resolved
+  resistivity: Water-zone resistivity
+  fit: Confidence of the fit
+
+found_regolith: "{depth:.0f} m: {band}"
+
+found_basement: "no basement in {share} percent of the models: {band}"
+
+found_resistivity: "{rho:.0f} ohm-m: {band}"
+
+found_fit: "{err:.1f} percent: {band}, the survey evidence weighted {weight:g}"
+
+# The second column where the evidence was not there to read, by the
+# evidence's key and why.
+found_missing:
+  regolith_not_sampled: range not sampled
+  regolith_not_quoted: no depth quoted, too few models find basement
+  basement_not_sampled: range not sampled
+  resistivity_none: no water-bearing zone in reach
+  fit_unknown: misfit not known, the survey evidence taken in full
+
+# The bands of success_evidence.yaml, by their keys there.
+bands:
+  thin: thin
+  shallow: shallow
+  favourable: favourable
+  deep: deep
+  resolved: resolved
+  partly: partly resolved
+  unresolved: not resolved
+  clay: clay-rich or saline
+  clayey: clayey
+  productive: productive weathered zone
+  resistive: resistive
+  fresh: little-weathered rock
+  excellent: excellent
+  acceptable: acceptable
+  poor: poor
+  unreliable: unreliable
+
+table_caption: >-
+  How the survey moved the chance of a working borehole at point {sid}. Each
+  factor multiplies the odds; together they multiply the prior odds to the
+  odds the headline gives.
+
+# The Costing pages: the odds offered beside the success rate typed for a
+# programme, never put in its place without a click.
+programme_offer: >-
+  The survey puts the chance of a working borehole at {sid}, the
+  first-ranked point, at about {p} percent (between {low} and {high}). That
+  is one point on one survey's ground; a programme across other ground has
+  other odds. The estimate uses the rate typed here until you choose to use
+  this one.
+
+programme_use: Use {p:g} percent
