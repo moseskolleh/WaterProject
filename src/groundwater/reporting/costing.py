@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config import Config
+from ..decisions import cost_decision
 from ..costing.distribution import (
     CostDistribution,
     ProgrammeDistribution,
@@ -203,6 +204,10 @@ def build_cost_report(
 
     # ---- 4 summary -------------------------------------------------------
     rb.heading("4. Cost Summary", 1)
+    # the cost as a decision number, with its band where the distribution
+    # was sampled and the reason where it was not (PLAN.md step 3.6); this
+    # report has no executive summary, so it heads the summary instead
+    rb.decision_numbers([cost_decision(inputs.distribution, estimate)])
     rb.table(
         [list(row) for row in estimate.summary_rows()],
         header=["Item", "USD", "SLE"],

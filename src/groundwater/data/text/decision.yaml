@@ -1,0 +1,118 @@
+# One way of reporting uncertainty (PLAN.md step 3.6): the few numbers a
+# report asks a decision on - the drilling depth, the yield, the pump
+# setting, the chance of a working borehole and the cost - each printed as
+# its value, its band and what the band rests on, in one form. Both engines
+# write these lines: groundwater/decisions.py and the "decision numbers"
+# section of gwt-core.js. The readiness gate reads the same numbers and
+# holds a report back where one of them has no band. The template rules are
+# in src/groundwater/text.py; CONTRIBUTING.md says how to add an entry.
+
+# The label over the lines in a report's executive summary.
+heading: "Decision numbers:"
+
+# Every decision number, whatever it is. {band} is one of the band entries
+# below, or no_band where there is none; {status} is a word from status.
+line: "{name}: {value} ({band}); basis: {basis}; {status}."
+
+no_band: "no band: {reason}"
+
+# Whether what the band rests on has been checked against boreholes drilled
+# here. Nothing in the toolkit has been yet.
+status:
+  provisional: provisional
+  calibrated: calibrated
+
+# The readiness gate's requirement, as its detail says it.
+gate_met: "Each decision number carries a band: {names}."
+gate_missing: "{name} has no band: {reason}."
+gate_none: >-
+  No decision number has been worked out for this report yet, so none needs
+  a band.
+
+# The drilling depth's band on a model figure, as its caption says it. The
+# cost figures say theirs in cost_range.yaml.
+figure_depth_band: >-
+  The shaded band on the model is the P10 to P90 of the depth the models
+  that fit would be drilled to, before it is rounded up to the drilling
+  step.
+
+# The drilling depth at the point the survey recommends, at both of two it
+# cannot separate (step 3.1).
+depth_name: Drilling depth at {sid}
+depth_band: "P10 to P90 of the models that fit, {low:g} to {high:g} m"
+# Rounded up and cut back to the depth of investigation, the two ends can be
+# the same depth, which "40 to 40 m" would put oddly.
+depth_band_flat: "P10 and P90 of the models that fit, both {low:g} m"
+depth_basis: >-
+  the best fit's interpretation, with the band from the drilling depth of
+  each of {samples:g} models sampled around it, rounded up to {step:g} m and
+  cut back to the {doi:.0f} m the sounding resolves
+depth_basis_alone: the best fit's interpretation
+depth_not_sampled: the range of models has not been sampled at {sid}
+
+# The safe yield (step 3.2).
+yield_name: Safe yield
+yield_value: "{x:num} m3/h"
+yield_band: "P10 to P90 of the transmissivity, {low:num} to {high:num} m3/h"
+yield_band_open: "P10 to P90 of the transmissivity, {low:num} m3/h or more"
+yield_basis: >-
+  a block bootstrap of the {method} residuals, with the yield projected at
+  each end of the transmissivity band it gives and the {reserve:g} m
+  dry-season reserve taken; the band is the least the spread can be
+yield_basis_alone: >-
+  the {method} transmissivity, with the {reserve:g} m dry-season reserve
+  taken
+yield_no_spread: the spread of this test has not been worked out
+yield_no_low: no yield is projected at the low end of the transmissivity band
+
+# The pump setting (step 3.2).
+pump_name: Pump intake below the top of the casing
+pump_value: "{x:num} m"
+pump_band: >-
+  over a {decline_low:g} to {decline_high:g} m dry-season decline, {low:num}
+  to {high:num} m
+pump_basis: >-
+  the yield recommendation's setting at the adopted transmissivity, which
+  the transmissivity band does not move
+pump_no_spread: the spread of this test has not been worked out
+# Where the report's intake is not the recommendation's: the design has set
+# it in plain casing, or the seasonal projection deeper. The band is still
+# the recommendation's, and says so where it is printed: the intake can lie
+# outside it, and a bare "54 m (... 51 to 52 m)" read as the value outside
+# its own band.
+pump_band_moved: >-
+  the recommendation's setting over a {decline_low:g} to {decline_high:g} m
+  dry-season decline, {low:num} to {high:num} m
+pump_basis_moved: >-
+  the yield recommendation's setting at the adopted transmissivity,
+  {rec:num} m, which the transmissivity band does not move, set instead
+  {where}
+pump_moved:
+  design: in plain casing clear of the screens by the design
+  seasonal: deeper, for the drought-year low the seasonal projection gives
+
+# The chance of a working borehole at the same point, or points
+# (step 3.3).
+odds_name: Chance of a working borehole at {sid}
+odds_value: "{p} percent"
+odds_band: >-
+  P10 to P90 of the prior carried through the survey's factors, {low} to
+  {high} percent
+odds_basis: >-
+  the prior from success_prior.csv, held as firmly as {n:g} boreholes, and
+  the likelihood ratios from success_evidence.yaml
+
+# The cost of a completed borehole (step 3.4).
+cost_name: Cost of a completed borehole
+cost_value: "US$ {p50} at P50"
+cost_band: >-
+  P10 to P90 of {n} sampled {count:plural:borehole|boreholes}, US$ {low} to
+  {high}, with US$ {p80} at P80
+cost_basis: >-
+  a triangle on every rate in borehole_cost_items.csv{depth}; the bill of
+  quantities, the contract document, prices it at US$ {boq}
+cost_depth_drawn: ", with the depth drawn from the range of models at {sid}"
+cost_depth_fixed: ", with the depth held at {depth:g} m"
+cost_value_boq: "US$ {boq} in the bill of quantities"
+cost_basis_boq: the likely rate of every item in borehole_cost_items.csv
+cost_not_sampled: the cost distribution has not been sampled

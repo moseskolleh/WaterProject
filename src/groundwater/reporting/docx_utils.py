@@ -301,14 +301,16 @@ class ReportBuilder:
             settings.insert_element_before(update, *_SETTINGS_AFTER_UPDATE_FIELDS)
 
     def executive_summary(
-        self, paragraphs: list[str], key_findings: list[str] | None = None
+        self, paragraphs: list[str], key_findings: list[str] | None = None,
+        decisions: list | None = None,
     ) -> None:
         """A short verdict block placed at the very top of a report.
 
         Composed from figures the report already computes, so a ministry
         engineer or programme manager gets the yield, water safety and the
         single next action before any detail. ``key_findings`` renders as a
-        tight bullet list under a bold label.
+        tight bullet list under a bold label, and ``decisions`` (PLAN.md step
+        3.6) as :meth:`decision_numbers` writes them.
         """
         self.heading("Executive Summary", level=1, numbered=False)
         readiness = getattr(self, "_readiness", None)
@@ -335,7 +337,20 @@ class ReportBuilder:
         if key_findings:
             self.paragraph("Key findings:", bold=True)
             self.bullets([k for k in key_findings if k])
+        self.decision_numbers(decisions)
         self.page_break()
+
+    def decision_numbers(self, decisions: list | None) -> None:
+        """The decision numbers (:mod:`groundwater.decisions`), each with its
+        band and its basis in the one form every report prints, under a bold
+        label; nothing where there are none."""
+        if not decisions:
+            return
+        from ..decisions import decision_text
+        from ..text import phrase
+
+        self.paragraph(phrase("decision.heading"), bold=True)
+        self.bullets([decision_text(d) for d in decisions])
 
     def heading(self, text: str, level: int = 1, numbered: bool = True) -> None:
         self.doc.add_heading(_clean(text), level=level)

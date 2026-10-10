@@ -622,7 +622,7 @@ def _overrides_for(report: str) -> dict:
     return st.session_state.get(f"_override_{report}") or {}
 
 
-def report_gate(report: str, scope: str = ""):
+def report_gate(report: str, scope: str = "", decided: dict | None = None):
     """Show what this report can and cannot stand behind, and return it.
 
     Deliberately never disables the button. An analyst who needs an interim
@@ -634,9 +634,15 @@ def report_gate(report: str, scope: str = ""):
     ``scope`` distinguishes two gates for the same report kind on one run -
     the widget keys have to differ, while the recorded override does not:
     an override of the costing evidence is an override wherever it is shown.
+
+    ``decided`` is what the report's decision numbers are read from where
+    the session does not hold it under the gate's keys (PLAN.md step 3.6):
+    the ranked interpretations, their ranges and odds for the geophysical
+    report, the cost distribution for the cost report.
     """
     keyed = f"{report}_{scope}" if scope else report
-    readiness = assess_readiness(_project_state(), report, _overrides_for(report))
+    state = {**_project_state(), **(decided or {})}
+    readiness = assess_readiness(state, report, _overrides_for(report))
     if readiness.state == "ready":
         st.success("Ready to certify: " + readiness.summary)
     else:

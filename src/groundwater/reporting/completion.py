@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..config import Config
+from ..decisions import pump_decision, yield_decision
 from ..design.designer import BoreholeDesign
 from ..design.drawing import draw_borehole_design
 from ..hydraulics.analysis import PumpingTestAnalysis
@@ -87,6 +88,16 @@ def _pump_intake(inputs: CompletionReportInputs):
     return yr.pump_installation_depth_m if yr else None
 
 
+def _decisions(inputs: CompletionReportInputs, config: Config) -> list:
+    """The safe yield and the pump intake this report prints, each with its
+    band (PLAN.md step 3.6); the intake is the design's where it has one."""
+    analysis = inputs.pumping
+    if analysis is None:
+        return []
+    return [d for d in (yield_decision(analysis, config.pumping),
+                        pump_decision(analysis, _pump_intake(inputs), "design")) if d]
+
+
 def _executive_summary(inputs: CompletionReportInputs) -> tuple[list[str], list[str]]:
     """Compose the completion executive summary from the drilling and test data."""
     log = inputs.log
@@ -134,11 +145,8 @@ def _executive_summary(inputs: CompletionReportInputs) -> tuple[list[str], list[
             f"Borehole depth: {fmt_num(log.total_depth_m)} m"
             + (f", {status}." if status else ".")
         )
-    if yr is not None and yr.safe_yield_m3_per_h:
-        key.append(
-            f"Safe yield: {fmt_num(yr.safe_yield_m3_per_h)} m3/h"
-            + (" (indicative)" if yr.is_indicative else "") + "."
-        )
+    # the safe yield and the pump intake are the decision numbers under these
+    # findings, each with its band (PLAN.md step 3.6)
     if quality is not None:
         key.append("Water safety: " + SUITABILITY_PHRASE[quality.verdict_state])
     return [" ".join(bits)], key
@@ -249,7 +257,7 @@ def build_completion_report(
 
     # ---- executive summary ---------------------------------------------------
     exec_paras, exec_key = _executive_summary(inputs)
-    rb.executive_summary(exec_paras, exec_key)
+    rb.executive_summary(exec_paras, exec_key, _decisions(inputs, config))
 
     # ---- introduction --------------------------------------------------------
     rb.heading("1. Introduction", 1)

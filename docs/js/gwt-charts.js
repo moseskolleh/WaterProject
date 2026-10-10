@@ -652,15 +652,50 @@
     var rho = model.resistivities, h = model.thicknesses;
     var bottom = h.reduce(function (a, v) { return a + v; }, 0);
     var maxDepth = opts.maxDepth || Math.max(bottom * 1.35, bottom + 8, 20);
+    /* the fan: a thinned set of the models that fit (the range of models,
+     * PLAN.md step 3.1), as [resistivities, thicknesses], drawn grey under
+     * the best fit as ves/plots.py draws them on its model panel */
+    var fan = opts.fan || [];
+    var fanRho = [];
+    fan.forEach(function (m) { fanRho = fanRho.concat(m[0]); });
     var f = frame({
       width: opts.width || 340, height: opts.height || 430,
       margin: { top: 30, right: 22, bottom: 56, left: 56 },
       title: opts.title || 'Layered model',
       xLabel: 'Resistivity (\u03A9\u00B7m)', yLabel: 'Depth (m)',
       xLog: true, yDown: true,
-      xDomain: padDomain(rho, true, 0.12), yDomain: [0, maxDepth],
+      xDomain: padDomain(rho.concat(fanRho), true, 0.12), yDomain: [0, maxDepth],
     });
     var p = f.palette;
+
+    /* the drilling depth's band (PLAN.md step 3.6): the P10 to P90 of the
+     * depth each model that fits would be drilled to, shaded across the
+     * panel, as ves/plots.py shades it */
+    var band = opts.drillBand;
+    if (band && band[1] >= band[0]) {
+      var top = Math.min(band[0], maxDepth), base = Math.min(band[1], maxDepth);
+      f.plot.appendChild(svgEl('rect', {
+        x: f.margin.left, y: f.fy(top), width: f.plotW,
+        height: Math.max(f.fy(base) - f.fy(top), 1.5),
+        fill: p.accent, 'fill-opacity': 0.14,
+      }));
+      f.plot.appendChild(svgEl('text', {
+        x: f.margin.left + 4, y: f.fy(top) - 3, 'font-size': 9, fill: p.inkSoft,
+        stroke: p.surface, 'stroke-width': 2.4, 'paint-order': 'stroke',
+        text: 'drilling depth, P10 to P90',
+      }));
+    }
+    fan.forEach(function (m) {
+      var fanPts = [], z = 0;
+      m[0].forEach(function (r, i) {
+        var below = i < m[1].length ? z + m[1][i] : maxDepth;
+        fanPts.push([f.fx(r), f.fy(Math.min(z, maxDepth))]);
+        fanPts.push([f.fx(r), f.fy(Math.min(below, maxDepth))]);
+        z = below;
+      });
+      f.plot.appendChild(polyline(fanPts, { stroke: p.muted, 'stroke-width': 1,
+        'stroke-opacity': 0.35 }));
+    });
 
     var pts = [], depth = 0;
     rho.forEach(function (r, i) {
@@ -2397,6 +2432,14 @@
     });
     var p = f.palette;
     var steps = curve.length - 1;
+    /* the P10 to P90 of the sample shaded behind the curve: the band the
+     * cost's decision number quotes (PLAN.md step 3.6) */
+    var tenth = Math.floor(steps / 10);
+    f.plot.appendChild(svgEl('rect', {
+      x: f.fx(curve[tenth]), y: f.fy(100),
+      width: Math.max(f.fx(curve[steps - tenth]) - f.fx(curve[tenth]), 1),
+      height: f.fy(0) - f.fy(100), fill: p.accent, 'fill-opacity': 0.12,
+    }));
     var d = curve.map(function (x, k) {
       return (k ? 'L' : 'M') + f.fx(x).toFixed(1) + ' ' + f.fy(100 * k / steps).toFixed(1);
     }).join('');

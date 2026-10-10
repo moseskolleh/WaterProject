@@ -324,7 +324,10 @@ def render() -> None:
         st.caption(
             "The report cover uses the site details from the sidebar."
         )
-        _cost_gate = report_gate("costing", scope="estimate")
+        # the gate reads the cost's band from the distribution the report
+        # prints it from (PLAN.md step 3.6)
+        _cost_gate = report_gate("costing", scope="estimate",
+                                 decided={"cost_distribution": (kept_spread or (None,))[0]})
         dl1, dl2 = st.columns(2)
         with dl1:
             offer_download(boq_path, "Download bill of quantities (.xlsx)")

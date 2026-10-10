@@ -125,6 +125,11 @@ def plot_cost_distribution(
     shares = [100.0 * k / steps for k in range(steps + 1)]
     with figure_context(style):
         fig, ax = plt.subplots(figsize=(style.figure_width_in, 3.0))
+        # the P10 to P90 of the sample shaded behind the curve: the band the
+        # cost's decision number quotes (PLAN.md step 3.6)
+        tenth = steps // 10
+        ax.axvspan(curve[tenth], curve[steps - tenth], color=style.accent_color,
+                   alpha=0.12, lw=0)
         ax.plot(curve, shares, color=style.accent_color, linewidth=1.8)
         for q, label in ((50, "P50"), (80, "P80")):
             x = curve[round(q * steps / 100)]
