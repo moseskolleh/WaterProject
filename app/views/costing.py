@@ -37,7 +37,9 @@ from shared import (
     offer_download,
     report_gate,
     show_flags,
+    show_measurements,
     site_from_state,
+    survey_measurements,
     workdir,
 )
 
@@ -309,10 +311,15 @@ def render() -> None:
         # sampled with the estimate, so there is one whenever there is an
         # estimate made on this page or in the guided start
         kept_spread = cost_spread_for(estimate)
+        measurements = None
         if kept_spread is not None:
             spread, spread_chart = kept_spread
             _show_spread(cost_range_text(spread), cost_range_rows(spread), spread_chart,
                          phrase("cost_range.figure_caption"))
+            # what one more measurement is worth, beside the odds and the
+            # costs it is worked out from (PLAN.md step 3.5)
+            measurements = survey_measurements(spread)
+            show_measurements(measurements)
 
         st.caption(
             "The report cover uses the site details from the sidebar."
@@ -335,6 +342,7 @@ def render() -> None:
                                    or (None,))[0],
                         distribution=(kept_spread or (None,))[0],
                         programme_distribution=_programme_spread()[0],
+                        measurements=measurements,
                     ),
                     workdir() / "Cost_Estimate_Report.docx",
                     app_config(),

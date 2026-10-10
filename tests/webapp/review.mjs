@@ -748,6 +748,22 @@ await withPage(async (page, base, consoleErrors) => {
       'they have no depth to bedrock') &&
     !/Depth to bedrock map:[^\n]*Record the GPS position/.test(notDrawn),
     notDrawn.slice(0, 900));
+  // What one more measurement is worth (PLAN.md step 3.5) follows the odds,
+  // priced from the cost distribution the Costing page would show, in the
+  // engine's words, or, with no cost estimated, says it waits for one.
+  const valueWords = await page.evaluate(() => {
+    const app = window.GWT.app, C = window.GWT.core;
+    const spreads = app.costSpreads();
+    return { heading: C.phrase('measurement.heading'), noCost: C.phrase('measurement.no_cost'),
+      text: spreads ? app.surveyMeasurements(spreads.single)
+        .map((v) => C.measurementText(v).join(' ')) : null };
+  });
+  check('geophysical: what one more measurement is worth follows the odds',
+    rokelReport.indexOf(valueWords.heading) > rokelReport.indexOf('Chance of a working borehole') &&
+    rokelReport.indexOf('Chance of a working borehole') > 0 &&
+    (valueWords.text === null ? rokelReport.includes(valueWords.noCost)
+      : valueWords.text.length === 2 && valueWords.text.every((t) => rokelReport.includes(t))),
+    JSON.stringify(valueWords).slice(0, 600));
 
   const broken = await page.evaluate(async () => {
     const C = window.GWT.core;

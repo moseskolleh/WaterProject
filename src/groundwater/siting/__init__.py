@@ -5,7 +5,9 @@ a single, ranked "where should I drill?" answer: a transparent 0-100
 suitability score per candidate VES point, a grade, a plain-language
 rationale, and a drill-target map; and, beside it, the chance that a
 borehole at each point yields enough for a handpump (``odds``, PLAN.md
-step 3.3), worked out from a cited prior and the survey's evidence.
+step 3.3), worked out from a cited prior and the survey's evidence; and
+what one more measurement there is worth to the choice of where to drill
+(``measurement``, step 3.5).
 
 The score is a transparent weighted scorecard over features that a siting
 hydrogeologist already weighs in crystalline basement terrain, so a water
@@ -14,6 +16,7 @@ starting point: as a programme accumulates its own (VES features ->
 drilling outcome) pairs, the weights can be replaced by a fitted model.
 """
 
+from .measurement import MeasurementValue, measurement_text, measurement_values
 from .odds import (
     SuccessOdds,
     odds_basis_text,
@@ -38,10 +41,13 @@ from .suitability import (
 )
 
 __all__ = [
+    "MeasurementValue",
     "SitingSuitability",
     "SuccessOdds",
     "SuitabilityComponents",
     "assess_siting",
+    "measurement_text",
+    "measurement_values",
     "odds_basis_text",
     "odds_header",
     "odds_headline",

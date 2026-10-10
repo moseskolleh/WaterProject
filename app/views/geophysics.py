@@ -41,6 +41,7 @@ from shared import (
     app_config,
     _band,
     choose_input,
+    cost_spread_for,
     figure,
     _next_step,
     offer_download,
@@ -49,10 +50,21 @@ from shared import (
     report_gate,
     run_ves_inversion,
     show_flags,
+    show_measurements,
     site_from_state,
+    survey_measurements,
     workdir,
     _working,
 )
+
+
+def _cost_distribution():
+    """The cost distribution sampled with the cost estimate, or None before
+    the cost has been estimated. It is the one the Costing page shows, drawn
+    again there if the survey has changed since."""
+    estimate = st.session_state.get("cost_estimate")
+    kept = cost_spread_for(estimate) if estimate is not None else None
+    return kept[0] if kept is not None else None
 
 
 def _ranges_for(results) -> list:
@@ -243,6 +255,15 @@ def render() -> None:
                     st.table([dict(zip(odds_header(), row, strict=True))
                               for row in odds_rows(o)])
                     st.caption(odds_table_caption(o))
+            # what one more measurement at the first-ranked point is worth
+            # (PLAN.md step 3.5), once the cost has been estimated
+            spread = _cost_distribution()
+            if spread is None:
+                st.markdown(f"**{phrase('measurement.heading')}**")
+                st.caption(" ".join([phrase("measurement.lead"),
+                                     phrase("measurement.no_cost")]))
+            else:
+                show_measurements(survey_measurements(spread), nested=True)
             map_points = suitability_map_points(suitability)
             if map_points:
                 zone = site_from_state().utm_zone or infer_zone_for_sierra_leone(
@@ -271,6 +292,7 @@ def render() -> None:
                     include_qa_annex=True,
                     readiness=_geo_gate,
                     model_ranges=ranges,
+                    cost_distribution=_cost_distribution(),
                 ),
                 workdir() / "Geophysical_Survey_Report.docx",
                 app_config(),

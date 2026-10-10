@@ -143,6 +143,23 @@ def test_the_cost_distribution_draws_from_the_survey(app):
         spread.mean + spread.dry_mean * ((1.0 - odds.probability) / odds.probability))
     shown = " ".join(str(m.value) for m in app.markdown)
     assert all(t in shown for t in cost_range_text(spread)[1:])
+    # what one more measurement is worth, beside it (PLAN.md step 3.5):
+    # priced from this distribution, at the first-ranked point, against the
+    # other point
+    from groundwater.siting import measurement_values
+    from groundwater.siting.measurement import measurement_summary
+
+    every = survey_odds(interps, ranges, site.utm_zone, site.latlon)
+    values = measurement_values(every, [s.index for s in assess_siting(interps)],
+                                spread.mean, spread.dry_mean)
+    assert [v.sounding_id for v in values] == [interps[i].sounding_id] * 2
+    assert all(v.alternative_id == interps[1 - i].sounding_id for v in values)
+    assert all(f"**{measurement_summary(v)}**" in shown for v in values)
+    # and the Geophysics page prices it too, now there is a cost
+    goto(app, "Geophysics (VES)")
+    assert not app.exception
+    shown = " ".join(str(m.value) for m in app.markdown)
+    assert all(f"**{measurement_summary(v)}**" in shown for v in values)
 
 
 def programme_rate_of(app):
@@ -292,6 +309,10 @@ def test_costing_flow(app):
     assert spread.boq_usd == pytest.approx(estimate.price_with_vat_usd)
     from groundwater.text import phrase
     assert phrase("cost_range.which_is_which") in [str(i.value) for i in app.info]
+    # with no survey interpreted, the value of one more measurement says
+    # there are no odds to improve
+    if "ves_results" not in app.session_state:
+        assert phrase("measurement.no_survey") in [str(i.value) for i in app.info]
     app.button(key="build_cost_report").click()
     app.run()
     assert not app.exception

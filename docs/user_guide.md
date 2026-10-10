@@ -628,6 +628,48 @@ provisional choices, with their reasons in
 its spread in proportion. The same seed gives the same figures in both
 apps.
 
+### The value of one more measurement
+
+Under the distribution, "The value of one more measurement" says what
+a second sounding beside the survey's first-ranked point, or a
+profiling line through it, is worth to the choice of where to drill,
+and what it costs, in the form "A second sounding beside *point* is
+worth up to US$ *value* to this decision and costs about US$ *cost*."
+The Geophysics page
+and the geophysical report print it under the chance of a working
+borehole once the cost has been estimated, and the cost estimate
+report in section 4.2.
+
+The choice is between drilling at the first-ranked point and going to
+the alternative: the other surveyed point with the best odds or, on a
+survey of one point, an unsurveyed site on the same ground at the prior.
+Going to the alternative is taken to cost its expected cost per working
+borehole, from the distribution's mean completed borehole and mean dry
+attempt; drilling at the point first costs the completed borehole if
+it works, and the dry attempt and then the alternative if it does not.
+The cheaper choice is the one with the better odds.
+
+The measurement could read any band of the evidence the odds use (the
+depth to basement and whether basement was resolved, for a sounding
+whose range has been sampled, and the water-zone resistivity), each
+with the factor on the odds `success_evidence.yaml` gives it, weighted
+by the point's own fit. The factors do not say how often each band is
+seen, so the bands are spread among dry boreholes as evenly as the
+factors allow, and among working ones by the factors; a table under
+the sentences gives every band, its two shares and the chance of
+reading it now. For each combination of bands the chance at the point
+is worked out again and the choice taken again; the value is the
+expected cost of the best choice now less the expected cost of the best
+choice after the reading. It is never negative, it is zero when no
+reading can change the choice, and the page says so, and it is never
+more than the value of knowing for certain whether the point would
+work, which is printed beside it. The new reading is taken as
+independent of the ones already made, given whether a borehole at the
+point would work; a sounding beside the first reads much of the same
+ground, so the value is an upper bound. The costs of a sounding
+(US$ 100) and a profiling line (US$ 150) are provisional figures in
+`src/groundwater/data/field.yaml` with no recorded source.
+
 ## 8. Supervision
 
 In the browser app: [`#/supervision`](index.html#/supervision).

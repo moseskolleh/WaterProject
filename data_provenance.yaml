@@ -418,6 +418,17 @@ datasets:
           borehole, each with the reasoning behind it. NO SOURCE IS RECORDED
           for these numbers: they are provisional judgments, for a
           hydrogeologist to confirm and for drilled outcomes to calibrate.
+      - path: src/groundwater/data/field.yaml
+        bytes: 5323
+        sha256: 9f3866fc92257c4002ae987af99e4062aa40a5c8e2ad2f820846ca5b4f759387
+        note: >-
+          The schedules and field rules the co-pilots and the field kit work
+          to, which are field practice as written down here, and the cost of
+          one more sounding and of a profiling line that the value of one
+          more measurement is priced against (PLAN.md step 3.5). NO SOURCE IS
+          RECORDED for those two costs: they are provisional choices, read as
+          a share of the siting survey's lump sum in the cost catalogue, for
+          an engineer with a survey contractor's rates to confirm or replace.
 
   - id: chiefdom_name_crosswalk
     name: Chiefdom name crosswalk - boundary layer to census spelling
