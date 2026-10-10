@@ -59,6 +59,37 @@ def _show_spread(text: list[str], rows: list[list[str]], chart, caption: str) ->
     st.image(str(chart), caption=caption)
 
 
+def _sample_programme_spread(per_well, n_wells: int, kwargs: dict, depth):
+    """The programme's planning figure and its curve, drawn at ``depth``."""
+    spread = sample_programme_cost(per_well, n_wells, depth=depth, config=app_config(),
+                                   **kwargs)
+    marks = phrase_table("cost_range.marks")
+    path = workdir() / "programme_distribution.png"
+    plot_cost_distribution(
+        spread.curve, [(marks["estimate"], spread.estimate_usd),
+                       (marks["budget"], spread.budget_usd)],
+        path, app_config().style, title=marks["programme_title"])
+    return spread, path
+
+
+def _programme_spread():
+    """The programme's planning figure and its curve, or (None, None) before
+    a programme is estimated. A range sampled, or a survey inverted, since
+    the programme was estimated changes the depth it is drawn at, so it is
+    sampled again at the depth the borehole's figure now uses rather than
+    shown stale beside it."""
+    kept = st.session_state.get("programme_estimate")
+    if kept is None:
+        return None, None
+    programme, gantt_path, spread, path, (per_well, n_wells, kwargs, depth) = kept
+    now = cost_spread_inputs()["depth"]
+    if now != depth:
+        spread, path = _sample_programme_spread(per_well, n_wells, kwargs, now)
+        st.session_state.programme_estimate = (programme, gantt_path, spread, path,
+                                               (per_well, n_wells, kwargs, now))
+    return spread, path
+
+
 def _use_rate(rate: float) -> None:
     st.session_state["cost_prog_success"] = rate
 
@@ -303,8 +334,7 @@ def render() -> None:
                         programme=(st.session_state.get("programme_estimate")
                                    or (None,))[0],
                         distribution=(kept_spread or (None,))[0],
-                        programme_distribution=(
-                            st.session_state.get("programme_estimate") or (None,) * 4)[2],
+                        programme_distribution=_programme_spread()[0],
                     ),
                     workdir() / "Cost_Estimate_Report.docx",
                     app_config(),
@@ -361,26 +391,19 @@ def render() -> None:
             plot_programme_gantt(programme, gantt_path, app_config().style)
             # the planning figure for the package, drawn at the same depth
             # as the single borehole's and at the rate typed for it
-            spread_inputs = cost_spread_inputs()
-            programme_spread = sample_programme_cost(
-                per_well, int(n_wells), rates=rates, inter_site_distance_km=inter_km,
-                success_rate_percent=prog_success, depth=spread_inputs["depth"],
-                overheads_percent=overheads_pct, margin_percent=margin_pct,
-                contingency_percent=contingency_pct, vat_percent=vat_pct,
-                config=app_config(),
-            )
-            marks = phrase_table("cost_range.marks")
-            spread_path = workdir() / "programme_distribution.png"
-            plot_cost_distribution(
-                programme_spread.curve,
-                [(marks["estimate"], programme_spread.estimate_usd),
-                 (marks["budget"], programme_spread.budget_usd)],
-                spread_path, app_config().style, title=marks["programme_title"])
-            st.session_state.programme_estimate = (programme, gantt_path,
-                                                   programme_spread, spread_path)
+            kwargs = dict(rates=rates, inter_site_distance_km=inter_km,
+                          success_rate_percent=prog_success,
+                          overheads_percent=overheads_pct, margin_percent=margin_pct,
+                          contingency_percent=contingency_pct, vat_percent=vat_pct)
+            depth_now = cost_spread_inputs()["depth"]
+            programme_spread, spread_path = _sample_programme_spread(
+                per_well, int(n_wells), kwargs, depth_now)
+            st.session_state.programme_estimate = (
+                programme, gantt_path, programme_spread, spread_path,
+                (per_well, int(n_wells), kwargs, depth_now))
         if "programme_estimate" in st.session_state:
-            programme, gantt_path, programme_spread, spread_path = (
-                st.session_state.programme_estimate)
+            programme, gantt_path = st.session_state.programme_estimate[:2]
+            programme_spread, spread_path = _programme_spread()
             g1, g2, g3 = st.columns(3)
             g1.metric("Attempts planned", programme.n_attempted)
             g2.metric("Contract price",

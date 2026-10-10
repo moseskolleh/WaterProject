@@ -2554,9 +2554,9 @@ await withPage(async (page, base, consoleErrors) => {
   // The cost as a distribution (PLAN.md step 3.4). Every number is drawn
   // from the range of models' generator and worked out with sums, products,
   // quotients and square roots, which both engines round alike, so a short
-  // run is held to the bit and a run at the default sample count to 1e-9
-  // (it too agrees to the bit on this machine). The words and rows are
-  // compared word for word.
+  // run and a run at the default sample count are both held to the bit: a
+  // tolerance, even 1e-9, let a VAT worked out in another order through on
+  // the default run. The words and rows are compared word for word.
   const CR = R.cost_range;
   const costJs = await page.evaluate((CR) => {
     const C = GWT.core;
@@ -2669,12 +2669,12 @@ await withPage(async (page, base, consoleErrors) => {
     check(`cost range, programme ${name}: a short run to the bit`, d === null, d);
   });
   Object.keys(CR.default).forEach((name) => {
-    const d = costWithin(costJs.defaults[name], CR.default[name], name, 1e-9);
-    check(`cost range ${name}: the default run to 1e-9`, d === null, d);
+    const d = costWithin(costJs.defaults[name], CR.default[name], name, 0);
+    check(`cost range ${name}: the default run to the bit`, d === null, d);
   });
   Object.keys(CR.programme_default).forEach((name) => {
-    const d = costWithin(costJs.programmeDefault[name], CR.programme_default[name], name, 1e-9);
-    check(`cost range, programme ${name}: the default run to 1e-9`, d === null, d);
+    const d = costWithin(costJs.programmeDefault[name], CR.programme_default[name], name, 0);
+    check(`cost range, programme ${name}: the default run to the bit`, d === null, d);
   });
   check('cost range: a chance of success outside (0, 1] is refused, as Python refuses it',
     costJs.refused === 3, `refused ${costJs.refused} of 3`);

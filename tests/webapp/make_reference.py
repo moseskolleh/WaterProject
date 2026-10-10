@@ -918,8 +918,7 @@ def odds_reference(rokel_interps, rokel_sites, short_ranges) -> dict:
 #
 # Every number the distribution draws is sums, products, quotients and square
 # roots of the range of models' generator, so the two engines agree to the
-# bit and parity.mjs compares short runs exactly. The default runs are
-# compared to 1e-9, which they also meet exactly on this machine. The depth
+# bit and parity.mjs compares short runs and default runs exactly. The depth
 # is drawn from hand-built quantiles shaped like Rokel A's range rather than
 # from the range itself: the range's own short run moves by a few parts in a
 # million with the BLAS build (RANGE_RTOL), which would move a drawn depth
@@ -949,7 +948,8 @@ COST_CASES = {
     "flat catalogue": dict(
         inputs={"total_depth_m": 48.0, "mobilisation_distance_km": 120.0}, flat=True),
     "one sample": dict(inputs={"total_depth_m": 30.0}, samples=1, p=0.7, sid="B"),
-    "no water found": dict(inputs={"total_depth_m": 30.0}, samples=5, p=1e-9, sid="C"),
+    "long odds, few samples": dict(inputs={"total_depth_m": 30.0}, samples=5, p=0.02,
+                                   sid="C"),
 }
 
 COST_PROGRAMMES = {

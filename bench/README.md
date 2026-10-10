@@ -214,28 +214,35 @@ that on a field laptop, which the worker and its progress bar carry.
 PLAN.md step 3.4 asks for the default sample count to be set from a
 measured timing. On 10 October 2026, on this repository's 4-CPU machine
 (load average 0.6), a 40 m borehole 100 km from the base with its depth
-drawn from 26 to 40 m and a 60 percent chance of water was sampled with
-ten seeds at each count, one numpy thread. The spread of each figure
-across the seeds, as a share of its mean, and the median of three runs:
+drawn from the Rokel-shaped quantiles the parity reference uses (24 to
+41 m) and a 60 percent chance of water was sampled with ten seeds at
+each count, one numpy thread. The spread of each figure across the
+seeds (greatest less least, as a share of their mean), and the median
+of three runs:
 
 | samples | one borehole | programme of ten | P50 | P80 | per working borehole | programme P80 |
 |---|---|---|---|---|---|---|
-| 2,000 | 43 ms | 44 ms | 0.45% | 0.43% | 2.2% | 1.2% |
-| 5,000 | 96 ms | 102 ms | 0.25% | 0.21% | 1.4% | 0.73% |
-| 10,000 | 202 ms | 207 ms | 0.21% | 0.13% | 1.4% | 0.77% |
-| 20,000 | 397 ms | 454 ms | 0.09% | 0.11% | 0.90% | 0.33% |
-| 40,000 | 859 ms | 865 ms | 0.07% | 0.05% | 0.59% | 0.24% |
+| 2,000 | 39 ms | 42 ms | 0.41% | 0.53% | 0.38% | 1.31% |
+| 5,000 | 100 ms | 108 ms | 0.20% | 0.24% | 0.21% | 0.64% |
+| 10,000 | 222 ms | 211 ms | 0.21% | 0.17% | 0.15% | 0.70% |
+| 20,000 | 405 ms | 442 ms | 0.11% | 0.11% | 0.07% | 0.41% |
+| 40,000 | 845 ms | 905 ms | 0.07% | 0.04% | 0.06% | 0.24% |
 
 P50 and P80 settle by a few thousand samples. The expected cost per
-working borehole is the noisy one, because it divides by the number of
-sampled attempts that found water, and so is the programme's P80, which
-turns on how many dry attempts were drawn. At 20,000 every figure moves
-by under 1 percent from one seed to the next, for about 0.4 s in Python
-each time an estimate is made; doubling it buys a few tenths of a percent
-for twice the wait. In the browser engine, headless Chromium, the same
-20,000 took 33 ms and 25 ms (median of five), and 129 ms and 106 ms with
-the CPU slowed four times. `run.py --only cost` times the default on the
-Dr Timbo design (`cost/*` above).
+working borehole is worked out from the mean completed borehole and the
+mean dry attempt, so it is as steady as they are. It was first taken as
+all that the sampled attempts spent over the ones that found water,
+which moved by 0.9 percent from seed to seed here at 20,000 samples,
+1.5 percent at a 30 percent chance and 6.7 percent at 5 percent, where
+it also came out 1.7 percent low. The noisy figure is the programme's
+P80, which turns on how many dry attempts were drawn. At 20,000 every
+figure moves by under half a percent from one seed to the next, for
+about 0.4 s in Python each time an estimate is made; doubling it buys a
+few hundredths of a percent for twice the wait. In the browser engine,
+headless Chromium, the same 20,000 took 33 ms and 25 ms (median of
+five), and 90 to 103 ms and 113 to 119 ms with the CPU slowed four
+times, over two runs. `run.py --only cost` times the default on the Dr
+Timbo design (`cost/*` above).
 
 ## The committed baseline
 

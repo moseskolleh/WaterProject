@@ -27,6 +27,7 @@ from groundwater.costing import (
 from groundwater.costing.distribution import (
     DepthSpread,
     _at_depth,
+    _Rates,
     cost_range_rows,
     cost_range_text,
     depth_spread,
@@ -178,6 +179,27 @@ def test_a_triangle_of_no_width_is_its_likely_value_whatever_the_draw():
     assert {triangle_quantile(3.0, 3.0, 3.0, u) for u in (1e-9, 0.5, 1 - 1e-9)} == {3.0}
 
 
+def test_rates_in_one_group_move_together_and_groups_apart():
+    """Both fuel lines sit at one point of their own triangles in every
+    draw, and the fuel and the casing do not."""
+    rates = load_rates()
+    at = {r.code: i for i, r in enumerate(rates)}
+    draws = _Rates(rates)
+    rng = Stream(11, 0)
+
+    def point(code, value):
+        lo, mode, hi = rates[at[code]].triangle()
+        return triangle_cdf(lo, mode, hi, value)
+
+    apart = 0
+    for _ in range(200):
+        drawn = draws.draw(rng)
+        fuel = point("DRL1", drawn[at["DRL1"]])
+        assert point("DRL2", drawn[at["DRL2"]]) == pytest.approx(fuel, abs=1e-9)
+        apart += abs(point("CAS1", drawn[at["CAS1"]]) - fuel) > 1e-6
+    assert apart > 190 and draws.groups == 13
+
+
 def test_the_dry_attempts_follow_the_negative_binomial():
     """The table's running weights, normalised, are the distribution function
     of C(n+k-1, k) p^n (1-p)^k, and it keeps all but a negligible tail."""
@@ -213,14 +235,13 @@ def test_a_flat_catalogue_gives_the_bill_of_quantities():
     for figure in (d.p50, d.p80, d.mean, d.expected_per_working, d.curve[0], d.curve[-1]):
         assert figure == pytest.approx(boq.price_with_vat_usd, rel=1e-12)
     assert d.boq_usd == boq.price_with_vat_usd and d.budget_usd == boq.budget_usd
-    assert d.boq_share == 1.0 and d.successes == 300
+    assert d.boq_share == 1.0
 
 
 def test_odds_of_one_make_the_cost_per_working_borehole_the_mean():
     inputs = CostingInputs(total_depth_m=40.0, mobilisation_distance_km=80.0)
     d = sample_cost(inputs, samples=2000, success_probability=1.0, odds_source="VES 1")
-    assert d.successes == 2000
-    assert d.expected_per_working == d.mean
+    assert d.expected_per_working == d.mean and d.dry_mean > 0
     assert d.p80 > d.p50
 
 
@@ -237,10 +258,10 @@ def test_a_flat_programme_at_certain_success_is_the_programme_estimate():
 
 
 def test_a_dry_attempt_pays_for_siting_set_up_and_drilling_but_not_the_journey():
-    """Flat rates and a chance of exactly a half: every completed borehole
-    costs the bill of quantities, every dry one the siting, mobilisation and
+    """Flat rates and a chance of a quarter: every completed borehole costs
+    the bill of quantities, every dry one the siting, mobilisation and
     drilling lines less the kilometres, and the expected cost per working
-    borehole is the spend over the boreholes found."""
+    borehole is the one plus three of the other."""
     inputs = CostingInputs(total_depth_m=40.0, mobilisation_distance_km=100.0)
     rates = flat(load_rates())
     boq = estimate_borehole_cost(inputs, rates, **PCT)
@@ -248,12 +269,10 @@ def test_a_dry_attempt_pays_for_siting_set_up_and_drilling_but_not_the_journey()
                      if i.stage in ("Siting", "Mobilisation", "Drilling")
                      and i.code != "MOB1")
     dry = dry_direct * 1.15 * 1.2
-    d = sample_cost(inputs, rates, success_probability=0.5, odds_source="P", samples=4000,
+    d = sample_cost(inputs, rates, success_probability=0.25, odds_source="P", samples=40,
                     **PCT)
-    found = d.successes
-    assert d.expected_per_working == pytest.approx(
-        (found * boq.price_with_vat_usd + (4000 - found) * dry) / found, rel=1e-9)
-    assert 0.47 < found / 4000 < 0.53
+    assert d.dry_mean == pytest.approx(dry, rel=1e-12)
+    assert d.expected_per_working == pytest.approx(boq.price_with_vat_usd + 3 * dry, rel=1e-12)
 
 
 def test_the_depth_moves_the_lengths_with_it():
@@ -265,6 +284,7 @@ def test_the_depth_moves_the_lengths_with_it():
     deeper = _at_depth(designed, base, 50.0)
     assert (deeper.casing_m, deeper.gravel_interval_m, deeper.overburden_m) == (41.5, 38.0, 18.0)
     assert deeper.crew_days == math.ceil(50 / 25) + 4 and deeper.cement_bags == 6
+    assert _at_depth(designed, base, 80.0).crew_days == math.ceil(80 / 25) + 4 != base.crew_days
     shallow = _at_depth(designed, base, 12.0)
     assert (shallow.overburden_m, shallow.bedrock_m) == (12.0, 0.0)
     unpacked = replace(designed, gravel_interval_m=0.0)
@@ -328,7 +348,8 @@ def test_the_sampled_percentiles_match_the_analytic_ones_on_one_triangle():
 def test_the_sampled_cost_per_working_borehole_matches_its_closed_form():
     """A completed line from one triangle and a dry-hole line from another,
     at a 40 percent chance: the expected cost per working borehole is
-    E[completed] + E[dry] x (1 - p) / p, quasi-exactly."""
+    E[completed] + E[dry] x (1 - p) / p, within the sampling error of the
+    means alone."""
     rates = (one_line(100.0, 150.0, 300.0, stage="Casing")
              + [RateItem("D1", "Drilling", "fuel", "drilling", "m", "per_m_drilled", 10.0,
                          min_usd=8.0, max_usd=16.0)])
@@ -338,7 +359,21 @@ def test_the_sampled_cost_per_working_borehole_matches_its_closed_form():
     completed = (100 + 150 + 300) / 3.0 + 40.0 * (8 + 10 + 16) / 3.0
     dry = 40.0 * (8 + 10 + 16) / 3.0
     assert d.mean == pytest.approx(completed, rel=0.01)
-    assert d.expected_per_working == pytest.approx(completed + dry * (1 - p) / p, rel=0.02)
+    assert d.dry_mean == pytest.approx(dry, rel=0.005)
+    assert d.expected_per_working == pytest.approx(completed + dry * (1 - p) / p, rel=0.005)
+
+
+def test_the_cost_per_working_borehole_holds_still_at_long_odds():
+    """At a 5 percent chance the figure is nineteen dry attempts for every
+    working borehole, and still moves by well under 1 percent from one seed
+    to the next: dividing what the sampled attempts spent by the ones that
+    found water moved it by several percent and pulled it low."""
+    inputs = CostingInputs(total_depth_m=40.0, mobilisation_distance_km=100.0)
+    figures = [sample_cost(inputs, success_probability=0.05, odds_source="P", seed=s,
+                           samples=5000).expected_per_working for s in range(1, 6)]
+    assert (max(figures) - min(figures)) / min(figures) < 0.005
+    d = sample_cost(inputs, success_probability=0.05, odds_source="P", samples=5000)
+    assert d.expected_per_working == d.mean + d.dry_mean * (0.95 / 0.05)
 
 
 def test_the_programme_percentiles_match_the_geometric_count_of_dry_holes():
@@ -402,12 +437,16 @@ def test_the_sentences_say_which_figure_is_which_and_what_was_left_out():
     assert [r[2] for r in rows[:2]] == ["50", "80"] and len(rows) == 6
 
 
-def test_no_working_borehole_among_the_draws_is_said_rather_than_divided_by():
+def test_a_long_chance_still_gives_a_cost_per_working_borehole():
+    """However few the samples and long the odds, the figure is the
+    completed borehole plus the dry attempts expected before it, said with
+    the mean dry attempt."""
     d = sample_cost(CostingInputs(total_depth_m=40.0), samples=5,
-                    success_probability=1e-9, odds_source="VES 9")
-    assert d.expected_per_working is None
-    assert any("none of the 5 sampled attempts" in t for t in cost_range_text(d))
-    assert len(cost_range_rows(d)) == 5
+                    success_probability=1e-3, odds_source="VES 9")
+    assert d.expected_per_working == pytest.approx(d.mean + 999 * d.dry_mean, rel=1e-12)
+    text = " ".join(cost_range_text(d))
+    assert f"US$ {d.dry_mean:,.0f}, for each of the dry attempts" in text
+    assert len(cost_range_rows(d)) == 6
 
 
 def test_the_programme_sentences():

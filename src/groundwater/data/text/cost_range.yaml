@@ -31,15 +31,11 @@ price_basis: >-
 
 working: >-
   Allowing for dry holes at the chance of a working borehole at {sid}, about
-  {p} percent, the expected cost per working borehole is US$ {expected}. A
-  dry attempt pays for siting, set-up and drilling, as in the programme
-  estimate, but not the journey from the base, which the rig has made
-  already.
-
-working_none: >-
-  At the chance of a working borehole at {sid}, about {p} percent, none of
-  the {n} sampled attempts found water, so no cost per working borehole can
-  be given.
+  {p} percent, the expected cost per working borehole is US$ {expected}: the
+  mean completed borehole, and the mean dry attempt, US$ {dry}, for each of
+  the dry attempts expected before a working one. A dry attempt pays for
+  siting, set-up and drilling, as in the programme estimate, but not the
+  journey from the base, which the rig has made already.
 
 working_no_odds: >-
   No survey has been interpreted, so no dry hole is drawn, and the expected

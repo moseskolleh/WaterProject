@@ -32412,8 +32412,8 @@
       "p50": 8332.251355838533,
       "p80": 8523.000017734648,
       "mean": 8324.352860849282,
-      "expected_per_working": 10659.154658739482,
-      "successes": 180,
+      "expected_per_working": 10660.613034431733,
+      "dry_mean": 3504.390260373677,
       "boq_usd": 7829.021028752363,
       "budget_usd": 8611.9231316276,
       "boq_share": 0.01,
@@ -32531,7 +32531,7 @@
       "The bill of quantities is the contract document: it prices one borehole at the likely rate of every item, and it is what a contractor prices and is paid against. The distribution is the planning figure: what a borehole is likely to cost once the spread of every rate, the drilling depth and the chance of a dry hole are allowed for. Budget from the planning figure; contract on the bill of quantities.",
       "A completed borehole costs US$ 8,332 at P50 and US$ 8,523 at P80, over 300 sampled boreholes. The bill of quantities prices it at US$ 7,829, at or above the cost of 1 percent of them.",
       "Each figure is the contract price with any VAT, before contingency, worked out from the direct cost with the same overheads (15 percent) and margin (20 percent) as the bill of quantities; the spread takes the place of the contingency. With its 10 percent contingency the planning budget, US$ 8,612, covers 88 percent of the sampled boreholes.",
-      "Allowing for dry holes at the chance of a working borehole at VES 1, about 60 percent, the expected cost per working borehole is US$ 10,659. A dry attempt pays for siting, set-up and drilling, as in the programme estimate, but not the journey from the base, which the rig has made already.",
+      "Allowing for dry holes at the chance of a working borehole at VES 1, about 60 percent, the expected cost per working borehole is US$ 10,661: the mean completed borehole, and the mean dry attempt, US$ 3,504, for each of the dry attempts expected before a working one. A dry attempt pays for siting, set-up and drilling, as in the programme estimate, but not the journey from the base, which the rig has made already.",
       "The range of models has not been sampled, so the depth is held at 40 m and its spread is left out; sample the range of models to draw the depth from it.",
       "Basis: each unit rate is drawn from a triangle between its minimum, likely and maximum in borehole_cost_items.csv. The rates in one group of borehole_cost_spread.yaml share a cause and are drawn together; the groups are drawn independently, so a cause shared across groups, such as the exchange rate, is spread less than it should be. The minimum and maximum are provisional choices, each with its reason in borehole_cost_spread.yaml, and none has a recorded source. Seed 1."
      ],
@@ -32553,7 +32553,7 @@
       ],
       [
        "Expected per working borehole",
-       "10,659",
+       "10,661",
        ""
       ],
       [
@@ -32600,8 +32600,8 @@
       "p50": 8831.002993876864,
       "p80": 9160.911740925783,
       "mean": 8852.177264899652,
-      "expected_per_working": 12754.272780021356,
-      "successes": 148,
+      "expected_per_working": 13490.910501777267,
+      "dry_mean": 3795.3271938089583,
       "boq_usd": 8545.416535742608,
       "budget_usd": 9399.958189316869,
       "boq_share": 0.17666666666666667,
@@ -32719,7 +32719,7 @@
       "The bill of quantities is the contract document: it prices one borehole at the likely rate of every item, and it is what a contractor prices and is paid against. The distribution is the planning figure: what a borehole is likely to cost once the spread of every rate, the drilling depth and the chance of a dry hole are allowed for. Budget from the planning figure; contract on the bill of quantities.",
       "A completed borehole costs US$ 8,831 at P50 and US$ 9,161 at P80, over 300 sampled boreholes. The bill of quantities prices it at US$ 8,545, at or above the cost of 18 percent of them.",
       "Each figure is the contract price with any VAT, before contingency, worked out from the direct cost with the same overheads (15 percent) and margin (20 percent) as the bill of quantities; the spread takes the place of the contingency. With its 10 percent contingency the planning budget, US$ 9,400, covers 93 percent of the sampled boreholes.",
-      "Allowing for dry holes at the chance of a working borehole at A (1), about 45 percent, the expected cost per working borehole is US$ 12,754. A dry attempt pays for siting, set-up and drilling, as in the programme estimate, but not the journey from the base, which the rig has made already.",
+      "Allowing for dry holes at the chance of a working borehole at A (1), about 45 percent, the expected cost per working borehole is US$ 13,491: the mean completed borehole, and the mean dry attempt, US$ 3,795, for each of the dry attempts expected before a working one. A dry attempt pays for siting, set-up and drilling, as in the programme estimate, but not the journey from the base, which the rig has made already.",
       "The drilling depth is drawn from the range of models at Rokel-shaped: 27 to 38.1 m (P10 to P90), against 36 m in the bill of quantities. The casing and the gravel pack are lengthened or shortened with it, and the rules of thumb for the overburden and the crew time are applied again at each depth.",
       "Basis: each unit rate is drawn from a triangle between its minimum, likely and maximum in borehole_cost_items.csv. The rates in one group of borehole_cost_spread.yaml share a cause and are drawn together; the groups are drawn independently, so a cause shared across groups, such as the exchange rate, is spread less than it should be. The minimum and maximum are provisional choices, each with its reason in borehole_cost_spread.yaml, and none has a recorded source. Seed 1."
      ],
@@ -32741,7 +32741,7 @@
       ],
       [
        "Expected per working borehole",
-       "12,754",
+       "13,491",
        ""
       ],
       [
@@ -32803,7 +32803,7 @@
       "p80": 5373.726224712448,
       "mean": 5170.567988644474,
       "expected_per_working": 5170.567988644474,
-      "successes": 300,
+      "dry_mean": 2843.759832437749,
       "boq_usd": 5837.7,
       "budget_usd": 5837.7,
       "boq_share": 0.9966666666666667,
@@ -32981,7 +32981,7 @@
       "p80": 8287.93335795312,
       "mean": 8287.933357953098,
       "expected_per_working": 8287.933357953098,
-      "successes": 300,
+      "dry_mean": 3507.959999999986,
       "boq_usd": 8287.93335795312,
       "budget_usd": 9116.726693748431,
       "boq_share": 1.0,
@@ -33159,8 +33159,8 @@
       "p50": 7100.270500666223,
       "p80": 7100.270500666223,
       "mean": 7100.270500666223,
-      "expected_per_working": null,
-      "successes": 0,
+      "expected_per_working": 8527.29822767188,
+      "dry_mean": 3329.7313630131976,
       "boq_usd": 6737.880617251419,
       "budget_usd": 7411.668678976561,
       "boq_share": 0.0,
@@ -33278,7 +33278,7 @@
       "The bill of quantities is the contract document: it prices one borehole at the likely rate of every item, and it is what a contractor prices and is paid against. The distribution is the planning figure: what a borehole is likely to cost once the spread of every rate, the drilling depth and the chance of a dry hole are allowed for. Budget from the planning figure; contract on the bill of quantities.",
       "A completed borehole costs US$ 7,100 at P50 and US$ 7,100 at P80, over 1 sampled boreholes. The bill of quantities prices it at US$ 6,738, at or above the cost of 0 percent of them.",
       "Each figure is the contract price with any VAT, before contingency, worked out from the direct cost with the same overheads (15 percent) and margin (20 percent) as the bill of quantities; the spread takes the place of the contingency. With its 10 percent contingency the planning budget, US$ 7,412, covers 100 percent of the sampled boreholes.",
-      "At the chance of a working borehole at B, about 70 percent, none of the 1 sampled attempts found water, so no cost per working borehole can be given.",
+      "Allowing for dry holes at the chance of a working borehole at B, about 70 percent, the expected cost per working borehole is US$ 8,527: the mean completed borehole, and the mean dry attempt, US$ 3,330, for each of the dry attempts expected before a working one. A dry attempt pays for siting, set-up and drilling, as in the programme estimate, but not the journey from the base, which the rig has made already.",
       "The range of models has not been sampled, so the depth is held at 30 m and its spread is left out; sample the range of models to draw the depth from it.",
       "Basis: each unit rate is drawn from a triangle between its minimum, likely and maximum in borehole_cost_items.csv. The rates in one group of borehole_cost_spread.yaml share a cause and are drawn together; the groups are drawn independently, so a cause shared across groups, such as the exchange rate, is spread less than it should be. The minimum and maximum are provisional choices, each with its reason in borehole_cost_spread.yaml, and none has a recorded source. Seed 1."
      ],
@@ -33299,6 +33299,11 @@
        "100"
       ],
       [
+       "Expected per working borehole",
+       "8,527",
+       ""
+      ],
+      [
        "Bill of quantities (contract price with any VAT)",
        "6,738",
        "0"
@@ -33311,13 +33316,13 @@
      ]
     }
    },
-   "no water found": {
+   "long odds, few samples": {
     "spec": {
      "inputs": {
       "total_depth_m": 30.0
      },
      "samples": 5,
-     "p": 1e-09,
+     "p": 0.02,
      "sid": "C"
     },
     "short": {
@@ -33328,13 +33333,13 @@
       "depth_source": null,
       "depth_p10_m": 30.0,
       "depth_p90_m": 30.0,
-      "success_probability": 1e-09,
+      "success_probability": 0.02,
       "odds_source": "C",
       "p50": 7100.270500666223,
       "p80": 7178.770693059338,
       "mean": 7007.19555200065,
-      "expected_per_working": null,
-      "successes": 0,
+      "expected_per_working": 164075.9434394077,
+      "dry_mean": 3205.4846507634093,
       "boq_usd": 6737.880617251419,
       "budget_usd": 7411.668678976561,
       "boq_share": 0.0,
@@ -33452,7 +33457,7 @@
       "The bill of quantities is the contract document: it prices one borehole at the likely rate of every item, and it is what a contractor prices and is paid against. The distribution is the planning figure: what a borehole is likely to cost once the spread of every rate, the drilling depth and the chance of a dry hole are allowed for. Budget from the planning figure; contract on the bill of quantities.",
       "A completed borehole costs US$ 7,100 at P50 and US$ 7,179 at P80, over 5 sampled boreholes. The bill of quantities prices it at US$ 6,738, at or above the cost of 0 percent of them.",
       "Each figure is the contract price with any VAT, before contingency, worked out from the direct cost with the same overheads (15 percent) and margin (20 percent) as the bill of quantities; the spread takes the place of the contingency. With its 10 percent contingency the planning budget, US$ 7,412, covers 100 percent of the sampled boreholes.",
-      "At the chance of a working borehole at C, about under 1 percent, none of the 5 sampled attempts found water, so no cost per working borehole can be given.",
+      "Allowing for dry holes at the chance of a working borehole at C, about 2 percent, the expected cost per working borehole is US$ 164,076: the mean completed borehole, and the mean dry attempt, US$ 3,205, for each of the dry attempts expected before a working one. A dry attempt pays for siting, set-up and drilling, as in the programme estimate, but not the journey from the base, which the rig has made already.",
       "The range of models has not been sampled, so the depth is held at 30 m and its spread is left out; sample the range of models to draw the depth from it.",
       "Basis: each unit rate is drawn from a triangle between its minimum, likely and maximum in borehole_cost_items.csv. The rates in one group of borehole_cost_spread.yaml share a cause and are drawn together; the groups are drawn independently, so a cause shared across groups, such as the exchange rate, is spread less than it should be. The minimum and maximum are provisional choices, each with its reason in borehole_cost_spread.yaml, and none has a recorded source. Seed 1."
      ],
@@ -33471,6 +33476,11 @@
        "Completed borehole, mean",
        "7,007",
        "40"
+      ],
+      [
+       "Expected per working borehole",
+       "164,076",
+       ""
       ],
       [
        "Bill of quantities (contract price with any VAT)",
@@ -33500,8 +33510,8 @@
      "p50": 8313.01427228743,
      "p80": 8521.853001468393,
      "mean": 8319.865407755777,
-     "expected_per_working": 10624.741530268266,
-     "successes": 12067,
+     "expected_per_working": 10656.384095383013,
+     "dry_mean": 3504.7780314408546,
      "boq_usd": 7829.021028752363,
      "budget_usd": 8611.9231316276,
      "boq_share": 0.01495,
@@ -33619,7 +33629,7 @@
      "The bill of quantities is the contract document: it prices one borehole at the likely rate of every item, and it is what a contractor prices and is paid against. The distribution is the planning figure: what a borehole is likely to cost once the spread of every rate, the drilling depth and the chance of a dry hole are allowed for. Budget from the planning figure; contract on the bill of quantities.",
      "A completed borehole costs US$ 8,313 at P50 and US$ 8,522 at P80, over 20,000 sampled boreholes. The bill of quantities prices it at US$ 7,829, at or above the cost of 1 percent of them.",
      "Each figure is the contract price with any VAT, before contingency, worked out from the direct cost with the same overheads (15 percent) and margin (20 percent) as the bill of quantities; the spread takes the place of the contingency. With its 10 percent contingency the planning budget, US$ 8,612, covers 89 percent of the sampled boreholes.",
-     "Allowing for dry holes at the chance of a working borehole at VES 1, about 60 percent, the expected cost per working borehole is US$ 10,625. A dry attempt pays for siting, set-up and drilling, as in the programme estimate, but not the journey from the base, which the rig has made already.",
+     "Allowing for dry holes at the chance of a working borehole at VES 1, about 60 percent, the expected cost per working borehole is US$ 10,656: the mean completed borehole, and the mean dry attempt, US$ 3,505, for each of the dry attempts expected before a working one. A dry attempt pays for siting, set-up and drilling, as in the programme estimate, but not the journey from the base, which the rig has made already.",
      "The range of models has not been sampled, so the depth is held at 40 m and its spread is left out; sample the range of models to draw the depth from it.",
      "Basis: each unit rate is drawn from a triangle between its minimum, likely and maximum in borehole_cost_items.csv. The rates in one group of borehole_cost_spread.yaml share a cause and are drawn together; the groups are drawn independently, so a cause shared across groups, such as the exchange rate, is spread less than it should be. The minimum and maximum are provisional choices, each with its reason in borehole_cost_spread.yaml, and none has a recorded source. Seed 1."
     ],
@@ -33641,7 +33651,7 @@
      ],
      [
       "Expected per working borehole",
-      "10,625",
+      "10,656",
       ""
      ],
      [
@@ -33669,8 +33679,8 @@
      "p50": 8835.574015409744,
      "p80": 9133.407850426065,
      "mean": 8838.12321829896,
-     "expected_per_working": 13440.833189009754,
-     "successes": 9027,
+     "expected_per_working": 13466.796913391443,
+     "dry_mean": 3787.096659621122,
      "boq_usd": 8545.416535742608,
      "budget_usd": 9399.958189316869,
      "boq_share": 0.19695,
@@ -33788,7 +33798,7 @@
      "The bill of quantities is the contract document: it prices one borehole at the likely rate of every item, and it is what a contractor prices and is paid against. The distribution is the planning figure: what a borehole is likely to cost once the spread of every rate, the drilling depth and the chance of a dry hole are allowed for. Budget from the planning figure; contract on the bill of quantities.",
      "A completed borehole costs US$ 8,836 at P50 and US$ 9,133 at P80, over 20,000 sampled boreholes. The bill of quantities prices it at US$ 8,545, at or above the cost of 20 percent of them.",
      "Each figure is the contract price with any VAT, before contingency, worked out from the direct cost with the same overheads (15 percent) and margin (20 percent) as the bill of quantities; the spread takes the place of the contingency. With its 10 percent contingency the planning budget, US$ 9,400, covers 94 percent of the sampled boreholes.",
-     "Allowing for dry holes at the chance of a working borehole at A (1), about 45 percent, the expected cost per working borehole is US$ 13,441. A dry attempt pays for siting, set-up and drilling, as in the programme estimate, but not the journey from the base, which the rig has made already.",
+     "Allowing for dry holes at the chance of a working borehole at A (1), about 45 percent, the expected cost per working borehole is US$ 13,467: the mean completed borehole, and the mean dry attempt, US$ 3,787, for each of the dry attempts expected before a working one. A dry attempt pays for siting, set-up and drilling, as in the programme estimate, but not the journey from the base, which the rig has made already.",
      "The drilling depth is drawn from the range of models at Rokel-shaped: 27 to 39 m (P10 to P90), against 36 m in the bill of quantities. The casing and the gravel pack are lengthened or shortened with it, and the rules of thumb for the overburden and the crew time are applied again at each depth.",
      "Basis: each unit rate is drawn from a triangle between its minimum, likely and maximum in borehole_cost_items.csv. The rates in one group of borehole_cost_spread.yaml share a cause and are drawn together; the groups are drawn independently, so a cause shared across groups, such as the exchange rate, is spread less than it should be. The minimum and maximum are provisional choices, each with its reason in borehole_cost_spread.yaml, and none has a recorded source. Seed 1."
     ],
@@ -33810,7 +33820,7 @@
      ],
      [
       "Expected per working borehole",
-      "13,441",
+      "13,467",
       ""
      ],
      [

@@ -608,10 +608,11 @@ reports:
   sampled boreholes cost less than the P50 and four in five less than
   the P80. Each is the contract price with any VAT, before contingency.
   Budget from these.
-- **The expected cost per working borehole**: what is spent over every
-  attempt, dry ones included, divided by the attempts that found water.
-  The chance of water is the survey's at its first-ranked point; with no
-  survey, no dry hole is drawn.
+- **The expected cost per working borehole**: the mean completed
+  borehole, plus the mean dry attempt for each of the dry attempts
+  expected before a working one ((1 - p) / p of them at a chance p of
+  water). The chance of water is the survey's at its first-ranked point;
+  with no survey, no dry hole is allowed for.
 - Where the bill of quantities and the planning budget (with its
   contingency) fall among the sampled boreholes.
 

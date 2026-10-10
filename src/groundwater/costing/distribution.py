@@ -22,16 +22,21 @@ samples them:
    overburden, the crew days) is worked out again at the drawn depth. Where
    no range has been sampled the depth is held at the estimate's, and the
    text says the depth's spread is left out.
-3. **Dry holes**: each sampled attempt finds water with the chance of a
-   working borehole at that point (step 3.3), as a probability. A dry
+3. **Dry holes**: an attempt finds water with the chance of a working
+   borehole at that point (step 3.3), as a probability ``p``. A dry
    attempt pays for siting, set-up and drilling, as the programme estimate
    counts one, but not the journey from the base.
 
 Each sampled borehole is priced as the bill of quantities is: the same
 overheads, margin and VAT on its direct cost. Its P50 and P80 are the
-planning figure for a completed borehole, and all the money spent over the
-sampled attempts divided by the ones that found water is the expected cost
-per working borehole. A programme (``programme.py``) is sampled whole: its
+planning figure for a completed borehole. The expected cost per working
+borehole is the mean completed borehole plus the mean dry attempt for each
+of the (1 - p) / p dry attempts expected before a working one, both means
+over every sampled borehole. Drawing each attempt's outcome and dividing
+all that was spent by the attempts that found water estimates the same
+figure, but its noise grows as p falls (several percent from one seed to
+the next at 15 percent), it is biased low at long odds, and it has no
+answer where no sampled attempt found water. A programme (``programme.py``) is sampled whole: its
 rates and depth drawn once, as one contract prices every borehole in it, and
 its dry attempts drawn one by one until it has the boreholes it needs.
 
@@ -99,7 +104,8 @@ def _share(fraction: float) -> str:
 
 
 # One stream of the generator for each kind of draw, so the rates a borehole
-# is given do not depend on whether its depth or its outcome was drawn.
+# is given do not depend on whether its depth was drawn. The outcome stream
+# is the programme's count of dry attempts.
 _RATES, _DEPTH, _OUTCOME = 0, 1, 2
 
 #: The cumulative curve the figures draw: the cost at every percent.
@@ -281,18 +287,19 @@ class CostDistribution:
     #: P10 and P90 of the depths drawn
     depth_p10_m: float
     depth_p90_m: float
-    #: the chance each attempt found water, and the point it is the odds of
-    #: (None where no odds were given and none was drawn dry)
+    #: the chance each attempt finds water, and the point it is the odds of
+    #: (None where no odds were given and none is dry)
     success_probability: float
     odds_source: str | None
     #: the contract price with any VAT of a completed borehole
     p50: float
     p80: float
     mean: float
-    #: all spent over the sampled attempts, over the ones that found water;
-    #: None where none did
-    expected_per_working: float | None
-    successes: int
+    #: the mean completed borehole plus the mean dry attempt for each of
+    #: the (1 - p) / p dry attempts expected before a working one
+    expected_per_working: float
+    #: the contract price with any VAT of a dry attempt, on average
+    dry_mean: float
     #: the bill of quantities' own figures, and the share of the sampled
     #: boreholes at or under each
     boq_usd: float
@@ -343,13 +350,11 @@ def sample_cost(
     draws = _Rates(rates)
     dry_line = [r.stage in _DRY_STAGES and r.quantity_basis != _JOURNEY for r in rates]
 
-    rate_rng, depth_rng, outcome_rng = (_ves().Stream(seed, s)
-                                        for s in (_RATES, _DEPTH, _OUTCOME))
+    rate_rng, depth_rng = (_ves().Stream(seed, s) for s in (_RATES, _DEPTH))
     base_depth = quantities.base.total_depth_m
     costs: list[float] = []
     depths: list[float] = []
-    spent = 0.0
-    found = 0
+    dry_total = 0.0
     for _ in range(n):
         drawn = draws.draw(rate_rng)
         d = depth.draw(depth_rng.uniform()) if depth is not None else base_depth
@@ -362,16 +367,13 @@ def sample_cost(
             direct += amount
             if dry_line[j]:
                 dry += amount
-        cost = _price(direct, overheads_percent, margin_percent, vat_percent)
-        costs.append(cost)
+        costs.append(_price(direct, overheads_percent, margin_percent, vat_percent))
         depths.append(d)
-        if outcome_rng.uniform() < success_probability:
-            found += 1
-            spent += cost
-        else:
-            spent += _price(dry, overheads_percent, margin_percent, vat_percent)
+        dry_total += _price(dry, overheads_percent, margin_percent, vat_percent)
 
     mean = _mean(costs)
+    dry_mean = dry_total / n
+    p = success_probability
     ordered = sorted(costs)
     depths.sort()
     return CostDistribution(
@@ -381,8 +383,8 @@ def sample_cost(
         depth_p10_m=percentile(depths, 0.1), depth_p90_m=percentile(depths, 0.9),
         success_probability=float(success_probability), odds_source=odds_source,
         p50=percentile(ordered, 0.5), p80=percentile(ordered, 0.8), mean=mean,
-        expected_per_working=spent / found if found else None,
-        successes=found,
+        expected_per_working=mean + dry_mean * ((1.0 - p) / p),
+        dry_mean=dry_mean,
         boq_usd=boq.price_with_vat_usd, budget_usd=boq.budget_usd,
         boq_share=_share_at_or_under(ordered, boq.price_with_vat_usd),
         budget_share=_share_at_or_under(ordered, boq.budget_usd),
@@ -589,13 +591,10 @@ def cost_range_text(d: CostDistribution) -> list[str]:
     ]
     if d.odds_source is None:
         out.append(phrase("cost_range.working_no_odds", mean=_usd(d.mean)))
-    elif d.expected_per_working is None:
-        out.append(phrase("cost_range.working_none", sid=d.odds_source,
-                          p=_share(d.success_probability), n=f"{d.samples:,}"))
     else:
         out.append(phrase("cost_range.working", sid=d.odds_source,
                           p=_share(d.success_probability),
-                          expected=_usd(d.expected_per_working)))
+                          expected=_usd(d.expected_per_working), dry=_usd(d.dry_mean)))
     if d.depth_source is None:
         out.append(phrase("cost_range.depth_fixed", depth=d.depth_m))
     else:
@@ -616,9 +615,8 @@ def cost_range_rows(d: CostDistribution) -> list[list[str]]:
     labels = phrase_table("cost_range.rows")
     rows = [[labels["p50"], _usd(d.p50), _share(0.5)],
             [labels["p80"], _usd(d.p80), _share(0.8)],
-            [labels["mean"], _usd(d.mean), _share(d.mean_share)]]
-    if d.expected_per_working is not None:
-        rows.append([labels["expected"], _usd(d.expected_per_working), ""])
+            [labels["mean"], _usd(d.mean), _share(d.mean_share)],
+            [labels["expected"], _usd(d.expected_per_working), ""]]
     rows.append([labels["boq"], _usd(d.boq_usd), _share(d.boq_share)])
     rows.append([labels["budget"], _usd(d.budget_usd), _share(d.budget_share)])
     return rows

@@ -15521,7 +15521,9 @@
    * minimum, likely and maximum (one draw for each spread group, so rates
    * that share a cause move together), the depth from the range of models
    * at the first-ranked point, and dry holes at the chance of a working
-   * borehole there. The draws come from the range of models' generator and
+   * borehole there, p: the expected cost per working borehole is the mean
+   * completed borehole plus the mean dry attempt for each of the (1 - p) / p
+   * dry attempts expected before a working one. The draws come from the range of models' generator and
    * the arithmetic is sums, products, quotients and square roots, which
    * both engines round alike, so the two distributions agree to the bit;
    * every sum is a loop in the same order as Python's.
@@ -15715,9 +15717,8 @@
     var depth = opts.depth || null;
     var rateRng = rangeStream(settings.seed, COST_RATES);
     var depthRng = rangeStream(settings.seed, COST_DEPTH);
-    var outcomeRng = rangeStream(settings.seed, COST_OUTCOME);
     var baseDepth = quantities.base.total_depth_m;
-    var costs = [], depths = [], spent = 0.0, found = 0;
+    var costs = [], depths = [], dryTotal = 0.0;
     for (var i = 0; i < settings.n; i++) {
       var drawn = draw(rateRng);
       var d = depth ? depthDraw(depth, depthRng.uniform()) : baseDepth;
@@ -15729,17 +15730,12 @@
         direct += amount;
         if (dryLine[j]) dry += amount;
       }
-      var cost = costPrice(direct, pct.overheads_percent, pct.margin_percent, pct.vat_percent);
-      costs.push(cost);
+      costs.push(costPrice(direct, pct.overheads_percent, pct.margin_percent, pct.vat_percent));
       depths.push(d);
-      if (outcomeRng.uniform() < p) {
-        found += 1;
-        spent += cost;
-      } else {
-        spent += costPrice(dry, pct.overheads_percent, pct.margin_percent, pct.vat_percent);
-      }
+      dryTotal += costPrice(dry, pct.overheads_percent, pct.margin_percent, pct.vat_percent);
     }
     var mean = costMean(costs);
+    var dryMean = dryTotal / settings.n;
     var ordered = costs.slice().sort(function (a, b) { return a - b; });
     depths.sort(function (a, b) { return a - b; });
     return Object.assign({
@@ -15750,8 +15746,8 @@
       success_probability: p,
       odds_source: opts.oddsSource === undefined ? null : opts.oddsSource,
       p50: rangePercentile(ordered, 0.5), p80: rangePercentile(ordered, 0.8), mean: mean,
-      expected_per_working: found ? spent / found : null,
-      successes: found,
+      expected_per_working: mean + dryMean * ((1.0 - p) / p),
+      dry_mean: dryMean,
       boq_usd: boq.price_with_vat_usd, budget_usd: boq.budget_usd,
       boq_share: costShareAtOrUnder(ordered, boq.price_with_vat_usd),
       budget_share: costShareAtOrUnder(ordered, boq.budget_usd),
@@ -15905,12 +15901,10 @@
     ];
     if (d.odds_source === null) {
       out.push(phrase('cost_range.working_no_odds', { mean: costUsd(d.mean) }));
-    } else if (d.expected_per_working === null) {
-      out.push(phrase('cost_range.working_none', { sid: d.odds_source,
-        p: rangeShare(d.success_probability), n: costUsd(d.samples) }));
     } else {
       out.push(phrase('cost_range.working', { sid: d.odds_source,
-        p: rangeShare(d.success_probability), expected: costUsd(d.expected_per_working) }));
+        p: rangeShare(d.success_probability), expected: costUsd(d.expected_per_working),
+        dry: costUsd(d.dry_mean) }));
     }
     if (d.depth_source === null) {
       out.push(phrase('cost_range.depth_fixed', { depth: d.depth_m }));
@@ -15937,10 +15931,8 @@
       [String(labels.p50), costUsd(d.p50), rangeShare(0.5)],
       [String(labels.p80), costUsd(d.p80), rangeShare(0.8)],
       [String(labels.mean), costUsd(d.mean), rangeShare(d.mean_share)],
+      [String(labels.expected), costUsd(d.expected_per_working), ''],
     ];
-    if (d.expected_per_working !== null) {
-      rows.push([String(labels.expected), costUsd(d.expected_per_working), '']);
-    }
     rows.push([String(labels.boq), costUsd(d.boq_usd), rangeShare(d.boq_share)]);
     rows.push([String(labels.budget), costUsd(d.budget_usd), rangeShare(d.budget_share)]);
     return rows;
