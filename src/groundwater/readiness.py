@@ -32,7 +32,7 @@ analysis it is supposed to describe.
 
 from __future__ import annotations
 
-from .utils import plural, plural_noun
+from .utils import and_join, plural, plural_noun
 
 import csv
 import io
@@ -524,6 +524,33 @@ def _photo_evidence(state: dict) -> tuple[str, str]:
     return "met", phrase("evidence.photos_present", n=len(wanted)) + " " + caveat
 
 
+def _decision_bands(state: dict, report: str) -> tuple[str, str]:
+    """Every decision number the report prints carries a band (PLAN.md step
+    3.6), as every borehole carries a GPS fix.
+
+    The numbers are the ones :func:`groundwater.decisions.decision_numbers`
+    gives this kind of report, from the results the project holds: the
+    drilling depth and the odds at the point recommended (at both of a
+    tie), the yield and the pump setting, the cost. A number with no band
+    is not wrong, but the reader cannot tell how far to trust it, which is
+    the same as not knowing it to the standard a decision needs. One with
+    nothing to work it out from is not counted here; the requirements
+    beside this one already say the test, the survey or the estimate is
+    missing.
+    """
+    from .decisions import decision_numbers
+    from .text import phrase
+
+    numbers = decision_numbers(state, report)
+    if not numbers:
+        return "not_applicable", phrase("decision.gate_none")
+    missing = [d for d in numbers if not d.has_band]
+    if missing:
+        return "unmet", " ".join(
+            phrase("decision.gate_missing", name=d.name, reason=d.reason) for d in missing)
+    return "met", phrase("decision.gate_met", names=and_join([d.name for d in numbers]))
+
+
 def _field_data(state: dict) -> tuple[str, str]:
     """The report describes this borehole, not a worked example.
 
@@ -620,25 +647,35 @@ REQUIREMENTS: dict[str, tuple[str, Any]] = {
     "design_derived": ("Borehole design", _design_derived),
     "cost_basis": ("Cost estimate", _cost_basis),
     "photo_evidence": ("Photo evidence", _photo_evidence),
+    "decision_bands": ("Decision bands", _decision_bands),
     "no_errors": ("No fatal data problems", _no_errors),
 }
+
+#: The checks that read which report they are for as well as the project:
+#: which numbers a report asks a decision on depends on the report.
+_BY_REPORT = frozenset({"decision_bands"})
 
 #: What each report has to be able to stand behind. A pumping report makes
 #: no claim about water quality, so an unassessed sample does not hold it
 #: back; a handover report tells a village the water is safe to drink, so it
 #: needs everything.
 REPORTS: dict[str, tuple[str, ...]] = {
+    # The four reports that ask a decision on a number with a spread - how
+    # deep to drill and how likely it is to work, what to pump and where to
+    # set the pump, what to budget - need its band, as they need a position
+    # (PLAN.md step 3.6). groundwater.decisions.REPORT_DECISIONS says which
+    # numbers each one prints.
     "completion": (
         "field_data",
         "site_located", "borehole_logged", "readings_usable",
         "pumping_measured", "yield_established", "water_quality_panel",
-        "water_quality_evaluable", "design_derived", "no_errors",
+        "water_quality_evaluable", "design_derived", "decision_bands", "no_errors",
     ),
     "handover": (
         "field_data",
         "site_located", "borehole_logged", "pumping_measured",
         "yield_established", "water_quality_panel", "water_quality_evaluable",
-        "no_errors",
+        "decision_bands", "no_errors",
     ),
     "quality": (
         "field_data",
@@ -648,12 +685,12 @@ REPORTS: dict[str, tuple[str, ...]] = {
     "pumping": (
         "field_data",
         "site_located", "readings_usable", "pumping_measured",
-        "yield_established", "no_errors",
+        "yield_established", "decision_bands", "no_errors",
     ),
-    "geophysical": ("field_data", "site_located"),
+    "geophysical": ("field_data", "site_located", "decision_bands"),
     # An estimate is priced before anything is drilled, so it is judged on
     # its own inputs, not on a log and an as-built design it cannot have.
-    "costing": ("field_data", "site_located", "cost_basis", "no_errors"),
+    "costing": ("field_data", "site_located", "cost_basis", "decision_bands", "no_errors"),
     # A supervision record vouches that the critical steps were done, and for
     # the ones the checklist says need it, a photograph is the evidence.
     "supervision": ("field_data", "site_located", "photo_evidence"),
@@ -683,7 +720,10 @@ def assess_readiness(
     ``cost_estimate`` - so the app can pass its session straight in and a
     test can pass a dict. ``supervision`` is ``{"responses": {item id:
     answer}, "evidence": {item id: photograph}}`` (and optionally
-    ``"items"``, the checklist when it is not the bundled one).
+    ``"items"``, the checklist when it is not the bundled one). The
+    decision numbers are read from ``interpretations`` (ranked), with
+    ``model_ranges`` and ``odds`` in lockstep, ``pump_analysis``,
+    ``cost_distribution`` and ``cost_estimate``.
 
     ``overrides`` maps a requirement key to ``{"reason": ..., "by": ...}``
     (a bare string is taken as the reason). An override is recorded on the
@@ -691,13 +731,16 @@ def assess_readiness(
     certifiable - only issuable.
     """
     overrides = overrides or {}
-    keys = REPORTS.get(report, REPORTS["completion"])
+    # a report with no entry is held to the completion set, and its decision
+    # numbers are the completion report's
+    kind = report if report in REPORTS else "completion"
+    keys = REPORTS[kind]
     requirements: list[Requirement] = []
 
     for key in keys:
         title, check = REQUIREMENTS[key]
         try:
-            found, detail = check(state)
+            found, detail = check(state, kind) if key in _BY_REPORT else check(state)
         except Exception as exc:  # noqa: BLE001 - a broken check is not a pass
             found, detail = "unmet", (
                 f"The {title.lower()} check could not run: "

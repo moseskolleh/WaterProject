@@ -17,6 +17,7 @@ from pathlib import Path
 
 
 from ..config import Config
+from ..decisions import pump_decision, yield_decision
 from ..hydraulics.analysis import (
     LEVEL_FLAGS,
     METHOD_LABELS,
@@ -100,9 +101,8 @@ def _executive_summary(analysis: PumpingTestAnalysis,
             f"Transmissivity: {fmt_num(t)} m2/day"
             + (f" ({METHOD_LABELS[analysis.transmissivity_source]})"
                if analysis.transmissivity_source else "") + "." if t else "",
-            f"Recommended safe yield: {yr.yield_range_text}"
-            + (" (indicative)" if yr.is_indicative else "") + ".",
-            f"Pump installation depth: {fmt_num(depth)} m.",
+            # the safe yield and the pump intake are the decision numbers
+            # under these findings, each with its band (PLAN.md step 3.6)
             (f"Confidence: indicative - {yr.confidence_reasons[0]}."
              if yr.is_indicative else "Confidence: established."),
             "Operate within the recommended rate and monitor the pumping level.",
@@ -184,8 +184,10 @@ def build_pumping_report(
     # ---- executive summary ------------------------------------------------
     seasonal = inputs.seasonal
     exec_paras, exec_key = _executive_summary(analysis, seasonal)
-    rb.executive_summary(exec_paras, exec_key)
     pump_depth, pump_depth_why = pump_intake_depth(analysis, seasonal)
+    decisions = [d for d in (yield_decision(analysis, config.pumping),
+                             pump_decision(analysis, pump_depth, "seasonal")) if d]
+    rb.executive_summary(exec_paras, exec_key, decisions)
 
     # ---- 1 test details ---------------------------------------------------
     rb.heading("1. Test Details", 1)

@@ -312,7 +312,15 @@ def test_the_costing_and_supervision_reports_are_stamped_too(tmp_path):
     # log or an as-built design, only to a position and its own basis
     assert "Cost estimate" in cost_text and "Drilling log" not in cost_text
     located = SiteMetadata(community="Nowhere", easting=778000.0, northing=946000.0, utm_zone=28)
-    assert assess_readiness({"site": located, "cost_estimate": estimate}, "costing").is_certifiable
+    # the cost is a decision number, so the estimate alone, with no
+    # distribution to band it, is not enough (PLAN.md step 3.6)
+    unbanded = assess_readiness({"site": located, "cost_estimate": estimate}, "costing")
+    assert [r.key for r in unbanded.unmet] == ["decision_bands"]
+    from groundwater.costing.distribution import sample_cost
+
+    spread = sample_cost(CostingInputs(total_depth_m=45.0), samples=200)
+    assert assess_readiness({"site": located, "cost_estimate": estimate,
+                             "cost_distribution": spread}, "costing").is_certifiable
     assert not assess_readiness({"site": located}, "costing").is_certifiable
 
     items = load_checklists()

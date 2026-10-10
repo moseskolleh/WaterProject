@@ -198,6 +198,20 @@ def plot_sounding_curve(
             depth_max = model_depth_m(model, doi)
             _mark_investigation_depth(axm, doi, depth_max)
             if model_range is not None:
+                from .model_range import drilling_depth_band
+
+                # the drilling depth's band (PLAN.md step 3.6), shaded across
+                # the panel; where every model is cut back to the depth of
+                # investigation it has no height, and is drawn as a line. The
+                # caption names it: a label would sit under the legend the
+                # reference model puts in the lower corner.
+                band = drilling_depth_band(model_range)
+                if band is not None:
+                    top, base = (min(v, depth_max) for v in band)
+                    if base - top > 0.005 * depth_max:
+                        axm.axhspan(top, base, color=style.accent_color, alpha=0.14, lw=0)
+                    else:
+                        axm.axhline(top, color=style.accent_color, alpha=0.5, lw=2.0)
                 for rho_k, h_k in model_range.fan:
                     z_k, r_k = _model_step(LayeredModel(rho_k, h_k), depth_max)
                     axm.plot(r_k, z_k, color="#999999", lw=0.6, alpha=0.4)

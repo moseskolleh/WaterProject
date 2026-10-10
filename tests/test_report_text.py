@@ -326,6 +326,13 @@ def test_a_tie_is_carried_through_the_whole_report(tmp_path):
     assert "is recommended as the preferred drilling location" not in text
     assert "Points VES 2 and VES 1 cannot be told apart on geophysical grounds" in text
     assert "Drilling points the survey cannot separate: VES 2 and VES 1." in text
+    # either may be drilled, so the depth at each is a decision number (PLAN.md
+    # step 3.6), the first-ranked first, and not a bare key finding as well
+    start = text.index("Executive Summary")
+    summary = text[start:text.index("1. Introduction", start)]
+    assert 0 < summary.index("Drilling depth at VES 2: ") < summary.index(
+        "Drilling depth at VES 1: ")
+    assert "Recommended drilling depth:" not in summary
     assert "is selected as the preferred point" not in text
     assert "Points VES 2 and VES 1 cannot be separated by the results" in text
     assert "Drilling should be carried out at point VES 2 or point VES 1" in text

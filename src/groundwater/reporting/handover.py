@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..config import Config
+from ..decisions import pump_decision, yield_decision
 from ..design.designer import BoreholeDesign
 from ..design.drawing import draw_borehole_design
 from ..hydraulics.analysis import PumpingTestAnalysis
@@ -190,7 +191,7 @@ def build_handover_report(
 
     # ---- executive summary ----------------------------------------------------
     exec_paras, exec_key = _executive_summary(inputs)
-    rb.executive_summary(exec_paras, exec_key)
+    rb.executive_summary(exec_paras, exec_key, _decisions(inputs, config))
 
     # ---- 1 project summary ----------------------------------------------------
     rb.heading("1. Project Summary", 1)
@@ -402,6 +403,19 @@ def build_handover_report(
     return rb.save(out_path)
 
 
+def _decisions(inputs: HandoverReportInputs, config: Config) -> list:
+    """The safe yield and the pump intake this report prints, each with its
+    band (PLAN.md step 3.6); the intake is the design's where it has one,
+    as the summary table's is."""
+    analysis = inputs.pumping
+    if analysis is None:
+        return []
+    design = inputs.design
+    intake = design.pump_intake_m if design is not None and design.pump_intake_m else None
+    return [d for d in (yield_decision(analysis, config.pumping),
+                        pump_decision(analysis, intake, "design")) if d]
+
+
 def _executive_summary(inputs: HandoverReportInputs) -> tuple[list[str], list[str]]:
     """Compose the handover executive summary from the assembled results."""
     site = inputs.site
@@ -440,11 +454,8 @@ def _executive_summary(inputs: HandoverReportInputs) -> tuple[list[str], list[st
             f"Borehole depth: {fmt_num(log.total_depth_m)} m"
             + (f", {log.status}." if log.status else ".")
         )
-    if yr is not None and yr.safe_yield_m3_per_h:
-        key.append(
-            f"Safe yield: {fmt_num(yr.safe_yield_m3_per_h)} m3/h"
-            + (" (indicative)" if yr.is_indicative else "") + "."
-        )
+    # the safe yield and the pump intake are the decision numbers under these
+    # findings, each with its band (PLAN.md step 3.6)
     if quality is not None:
         key.append("Water safety: " + SUITABILITY_PHRASE[quality.verdict_state])
     key.append(

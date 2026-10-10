@@ -758,6 +758,28 @@ await withPage(async (page, base, consoleErrors) => {
       text: spreads ? app.surveyMeasurements(spreads.single)
         .map((v) => C.measurementText(v).join(' ')) : null };
   });
+  // The decision numbers (PLAN.md step 3.6): the drilling depth and the odds
+  // at the first-ranked point, in the one form, in the summary. No range is
+  // sampled yet, so the depth says why it has no band and the gate holds
+  // the report back on it.
+  const unbanded = await page.evaluate(() => {
+    const app = window.GWT.app, C = window.GWT.core;
+    const lines = C.decisionNumbers({ interpretations: app.derived.interpretations,
+      model_ranges: app.derived.inversions.map(app.rangeFor), odds: app.surveyOdds() },
+    'geophysical').map(C.decisionText);
+    const gate = app.reportReadiness('geophysical').requirements
+      .filter((r) => r.key === 'decision_bands')[0];
+    return { lines, heading: C.phrase('decision.heading'), gate };
+  });
+  check('geophysical: the summary prints the depth and the odds as decision numbers',
+    unbanded.lines.length === 2 && unbanded.lines.every((l) => rokelReport.includes(l)) &&
+    rokelReport.indexOf(unbanded.heading) < rokelReport.indexOf('1. Introduction') &&
+    unbanded.lines[0].includes('(no band: the range of models has not been sampled at'),
+    JSON.stringify(unbanded).slice(0, 700));
+  check('geophysical: the gate holds a drilling depth with no band',
+    unbanded.gate && unbanded.gate.state === 'unmet' &&
+    rokelReport.includes('Decision bands: ' + unbanded.gate.detail),
+    JSON.stringify(unbanded.gate));
   check('geophysical: what one more measurement is worth follows the odds',
     rokelReport.indexOf(valueWords.heading) > rokelReport.indexOf('Chance of a working borehole') &&
     rokelReport.indexOf('Chance of a working borehole') > 0 &&
@@ -872,8 +894,10 @@ await withPage(async (page, base, consoleErrors) => {
   const oddsWords = await page.evaluate(() => window.GWT.app.surveyOdds()
     .map((o) => window.GWT.core.oddsText(o)));
   check('ves: the chance of a working borehole is printed under the scorecard',
-    rokelDoc.includes('Chance of a working borehole') &&
-    rokelDoc.indexOf('Chance of a working borehole') > rokelDoc.indexOf('Suitability (0 to 100)') &&
+    /* after the scorecard: the summary names it first now, as a decision
+     * number (PLAN.md step 3.6) */
+    rokelDoc.indexOf('Chance of a working borehole',
+      rokelDoc.indexOf('Suitability (0 to 100)')) > 0 &&
     oddsWords.length === soundings.length &&
     oddsWords.every((lines) => lines.every((line) => rokelDoc.includes(line))) &&
     (rokelDoc.match(/How the survey moved the chance of a working borehole at point /g) ||
@@ -911,9 +935,21 @@ await withPage(async (page, base, consoleErrors) => {
     });
     /* the odds read the ranges, which count only under these settings */
     const odds = app.surveyOdds().map((o) => C.oddsText(o));
+    /* and so do the decision numbers, and the gate over them (step 3.6) */
+    const decisions = C.decisionNumbers({ interpretations: app.derived.interpretations,
+      model_ranges: app.derived.inversions.map(app.rangeFor), odds: app.surveyOdds() },
+    'geophysical').map(C.decisionText);
+    const gate = app.reportReadiness('geophysical').requirements
+      .filter((r) => r.key === 'decision_bands')[0].state;
     app.store.set('config', saved);
-    return { words, odds };
+    return { words, odds, decisions, gate };
   }, rangeSettings);
+  check('ves: with the range sampled the drilling depth is banded and the gate passes it',
+    rangeWords.decisions.length === 2 &&
+    rangeWords.decisions.every((l) => rangedDoc.includes(l) && !l.includes('no band')) &&
+    rangeWords.decisions[0].includes('of the models that fit') && rangeWords.gate === 'met' &&
+    !rangedDoc.includes('Decision bands: '),
+    JSON.stringify(rangeWords.decisions).slice(0, 700) + ' ' + rangeWords.gate);
   check('ves: the odds in the report read the sampled ranges',
     rangeWords.odds.every((lines) => lines.every((line) => rangedDoc.includes(line)) &&
       !lines.some((line) => line.includes('has not been sampled'))),
@@ -958,8 +994,39 @@ await withPage(async (page, base, consoleErrors) => {
     tieDoc.includes('VES 2 is ahead by 2.8 points, within the 3-point margin') &&
     (tieDoc.match(/^=1st$/gm) || []).length === 2 && !tieDoc.includes('by name only') &&
     tieDoc.includes('Of these the 3-layer model is the simplest that reaches the 10 ' +
-      'percent target.'),
+      'percent target.') &&
+    /* either point may be drilled, so the depth at both is a decision
+     * number with its band (or why it has none), not a bare key finding */
+    tieDoc.includes('Drilling depth at VES 2: ') && tieDoc.includes('Drilling depth at VES 1: ') &&
+    tieDoc.indexOf('Drilling depth at VES 2: ') < tieDoc.indexOf('Drilling depth at VES 1: ') &&
+    tieDoc.indexOf('Recommended drilling depth: ') >
+      tieDoc.indexOf('1. Introduction', tieDoc.indexOf('Executive Summary')),
     tieDoc.slice(tieDoc.indexOf('5. Conclusions'), tieDoc.indexOf('5. Conclusions') + 400));
+  /* The browser's model figure draws the fan of models and shades the
+   * drilling depth's band (PLAN.md step 3.6), as ves/plots.py does: the model
+   * here has its interfaces at the band's two ends, so the shading's edges
+   * can be read against the dashed lines the figure draws at them. */
+  const modelFigure = await page.evaluate(() => {
+    const C = window.GWT.core, charts = window.GWT.charts;
+    const svg = charts.layeredModel(C.layeredModel([800, 60, 4000], [26.1, 12.1]), {
+      maxDepth: 50, fan: [[[700, 50, 3000], [25, 12]], [[900, 70, 5000], [27, 13]]],
+      drillBand: [26.1, 38.2] });
+    const rects = Array.from(svg.querySelectorAll('rect'))
+      .filter((r) => r.getAttribute('fill-opacity') === '0.14');
+    const dashed = Array.from(svg.querySelectorAll('line'))
+      .filter((l) => l.getAttribute('stroke-dasharray') === '4 3')
+      .map((l) => Number(l.getAttribute('y1')));
+    const fan = Array.from(svg.querySelectorAll('path'))
+      .filter((p) => p.getAttribute('stroke-opacity') === '0.35').length;
+    const band = rects.map((r) => [Number(r.getAttribute('y')),
+      Number(r.getAttribute('y')) + Number(r.getAttribute('height'))]);
+    return { band, dashed, fan };
+  });
+  check('ves: the model figure draws the fan and shades the drilling depth\'s band',
+    modelFigure.fan === 2 && modelFigure.band.length === 1 && modelFigure.dashed.length === 2 &&
+    Math.abs(modelFigure.band[0][0] - modelFigure.dashed[0]) < 0.01 &&
+    Math.abs(modelFigure.band[0][1] - modelFigure.dashed[1]) < 0.01,
+    JSON.stringify(modelFigure));
   check('ves: a Wenner survey is described as one',
     wennerDoc.includes('recorded with the Wenner electrode configuration') &&
     wennerDoc.includes('with a expanded to 80 m (AB/2 of 120 m)') &&

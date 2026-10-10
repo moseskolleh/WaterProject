@@ -33,7 +33,7 @@ depth_spine
 
 Modules
 -------
-readiness, seasonal, planning, procurement, registry, qr, coverage,
+readiness, decisions, seasonal, planning, procurement, registry, qr, coverage,
 waterpoints, portfolio, recompute, project, project_io, units, geo, config,
 models, utils.
 """

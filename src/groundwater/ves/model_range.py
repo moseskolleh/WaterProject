@@ -676,3 +676,22 @@ def model_range_table_caption(r: ModelRange) -> str:
 def model_range_caption(r: ModelRange) -> str:
     """The sentence a figure with the fan adds to its caption."""
     return phrase("ves_range.caption", count=len(r.fan))
+
+
+def drilling_depth_band(r: ModelRange) -> tuple[float, float] | None:
+    """P10 and P90 of the depth each kept model would be drilled to, cut
+    back to the depth of investigation but not rounded, as the figures
+    shade it (PLAN.md step 3.6); None for a range sampled before it kept
+    those depths. The quantiles are at every twentieth, so these are two of
+    them, not an interpolation between."""
+    q = r.drilling_depth_quantiles_m
+    if not q:
+        return None
+    last = len(q) - 1
+    return float(q[last // 10]), float(q[last - last // 10])
+
+
+def drilling_band_caption() -> str:
+    """The sentence a model panel with the drilling depth's band adds to its
+    caption."""
+    return phrase("decision.figure_depth_band")

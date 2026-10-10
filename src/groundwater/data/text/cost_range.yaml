@@ -116,11 +116,13 @@ programme_table_caption: >-
 
 figure_caption: >-
   The share of sampled boreholes at or under each cost, with the bill of
-  quantities and the planning budget marked.
+  quantities and the planning budget marked and the P10 to P90 of the sample
+  shaded.
 
 programme_figure_caption: >-
   The share of sampled programmes at or under each cost, with the programme
-  estimate and its planning budget marked.
+  estimate and its planning budget marked and the P10 to P90 of the sample
+  shaded.
 
 # The lines drawn on the figures.
 marks:
