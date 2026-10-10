@@ -24,6 +24,8 @@ _STYLE, _VES, _PUMPING, _DESIGN = (
     _DEFAULTS["style"], _DEFAULTS["ves"], _DEFAULTS["pumping"], _DEFAULTS["design"],
 )
 _RANGE = _DEFAULTS["ves_range"]
+_ODDS = _DEFAULTS["odds"]
+_COSTS = _DEFAULTS["cost_range"]
 
 
 # ---------------------------------------------------------------------------
@@ -244,6 +246,37 @@ class VESRangeConfig:
 
 
 # ---------------------------------------------------------------------------
+# The chance of a working borehole (PLAN.md step 3.3, siting/odds.py)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class OddsConfig:
+    # What "success" means: a yield of at least this at the dry-season water
+    # level, the handpump design rate. 1 m3/h (0.28 L/s) is the minimum the
+    # RWSN procurement guide accepts from a handpump borehole over its
+    # pumping test (Adekile 2014, section 7.7.1), and the supervisors' guide
+    # puts a handpump's demand at about 0.3 L/s (Adekile 2014). The priors in
+    # success_prior.csv are worked out at this rate, so changing it moves
+    # them too.
+    success_yield_m3_per_h: float = _ODDS["success_yield_m3_per_h"]
+
+
+# ---------------------------------------------------------------------------
+# The cost as a distribution (PLAN.md step 3.4, costing/distribution.py)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class CostRangeConfig:
+    # The draws come from this seed, through the generator the range of
+    # models uses, which both engines implement to the bit, so one estimate
+    # gives one distribution in either app.
+    seed: int = _COSTS["seed"]
+    # Boreholes (or programmes) sampled. bench/README.md says what that
+    # costs and why this number.
+    samples: int = _COSTS["samples"]
+
+
+# ---------------------------------------------------------------------------
 # Top level configuration
 # ---------------------------------------------------------------------------
 
@@ -274,6 +307,8 @@ class Config:
     pumping: PumpingConfig = field(default_factory=PumpingConfig)
     design: DesignRules = field(default_factory=DesignRules)
     ves_range: VESRangeConfig = field(default_factory=VESRangeConfig)
+    odds: OddsConfig = field(default_factory=OddsConfig)
+    cost_range: CostRangeConfig = field(default_factory=CostRangeConfig)
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> Config:
@@ -292,6 +327,8 @@ class Config:
             ("pumping", cfg.pumping),
             ("design", cfg.design),
             ("ves_range", cfg.ves_range),
+            ("odds", cfg.odds),
+            ("cost_range", cfg.cost_range),
         ):
             overrides = data.get(section_name, {}) or {}
             for key, value in overrides.items():
@@ -306,10 +343,12 @@ class Config:
                     continue
                 setattr(section, key, _coerce_like(getattr(section, key), value, key))
         for key in data:
-            if key not in ("style", "ves", "pumping", "design", "ves_range"):
+            if key not in ("style", "ves", "pumping", "design", "ves_range", "odds",
+                           "cost_range"):
                 warnings.warn(
                     f"{path.name}: unknown section '{key}' is ignored "
-                    "(expected style, ves, pumping, design or ves_range)",
+                    "(expected style, ves, pumping, design, ves_range, odds or "
+                    "cost_range)",
                     stacklevel=2,
                 )
         return cfg

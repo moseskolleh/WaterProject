@@ -748,6 +748,22 @@ await withPage(async (page, base, consoleErrors) => {
       'they have no depth to bedrock') &&
     !/Depth to bedrock map:[^\n]*Record the GPS position/.test(notDrawn),
     notDrawn.slice(0, 900));
+  // What one more measurement is worth (PLAN.md step 3.5) follows the odds,
+  // priced from the cost distribution the Costing page would show, in the
+  // engine's words, or, with no cost estimated, says it waits for one.
+  const valueWords = await page.evaluate(() => {
+    const app = window.GWT.app, C = window.GWT.core;
+    const spreads = app.costSpreads();
+    return { heading: C.phrase('measurement.heading'), noCost: C.phrase('measurement.no_cost'),
+      text: spreads ? app.surveyMeasurements(spreads.single)
+        .map((v) => C.measurementText(v).join(' ')) : null };
+  });
+  check('geophysical: what one more measurement is worth follows the odds',
+    rokelReport.indexOf(valueWords.heading) > rokelReport.indexOf('Chance of a working borehole') &&
+    rokelReport.indexOf('Chance of a working borehole') > 0 &&
+    (valueWords.text === null ? rokelReport.includes(valueWords.noCost)
+      : valueWords.text.length === 2 && valueWords.text.every((t) => rokelReport.includes(t))),
+    JSON.stringify(valueWords).slice(0, 600));
 
   const broken = await page.evaluate(async () => {
     const C = window.GWT.core;
@@ -851,6 +867,19 @@ await withPage(async (page, base, consoleErrors) => {
     rokelDoc.includes('Suitability (0 to 100)') && rokelDoc.includes('Confidence') &&
     /Point \S+ \(\d\) ranks first \(suitability \d+ out of 100/.test(rokelDoc),
     (rokelDoc.match(/[^\n]*ranks first[^\n]*/g) || []).join(' | ').slice(0, 400));
+  // The chance of a working borehole (PLAN.md step 3.3), under the score it
+  // stands beside, in the engine's words, with each point's breakdown.
+  const oddsWords = await page.evaluate(() => window.GWT.app.surveyOdds()
+    .map((o) => window.GWT.core.oddsText(o)));
+  check('ves: the chance of a working borehole is printed under the scorecard',
+    rokelDoc.includes('Chance of a working borehole') &&
+    rokelDoc.indexOf('Chance of a working borehole') > rokelDoc.indexOf('Suitability (0 to 100)') &&
+    oddsWords.length === soundings.length &&
+    oddsWords.every((lines) => lines.every((line) => rokelDoc.includes(line))) &&
+    (rokelDoc.match(/How the survey moved the chance of a working borehole at point /g) ||
+      []).length === soundings.length &&
+    rokelDoc.includes('What the survey found'),
+    JSON.stringify(oddsWords).slice(0, 600));
   check('ves: the warnings the sheets raised reach the annex',
     rokelDoc.includes('Annex A. Data Verification Notes') &&
     rokelDoc.includes('[WARNING] segment_overlap_discrepancy (A (1)): ') &&
@@ -880,15 +909,21 @@ await withPage(async (page, base, consoleErrors) => {
       const r = app.rangeFor(inv);
       return r ? [C.modelRangeText(r).join(' '), C.modelRangeCaption(r)] : null;
     });
+    /* the odds read the ranges, which count only under these settings */
+    const odds = app.surveyOdds().map((o) => C.oddsText(o));
     app.store.set('config', saved);
-    return words;
+    return { words, odds };
   }, rangeSettings);
+  check('ves: the odds in the report read the sampled ranges',
+    rangeWords.odds.every((lines) => lines.every((line) => rangedDoc.includes(line)) &&
+      !lines.some((line) => line.includes('has not been sampled'))),
+    JSON.stringify(rangeWords.odds).slice(0, 600));
   check('ves: the range of models is printed beside each best fit, with its fan',
-    rangeWords.length === soundings.length && rangeWords.every((w) => w &&
+    rangeWords.words.length === soundings.length && rangeWords.words.every((w) => w &&
       rangedDoc.includes(w[0]) && rangedDoc.includes(w[1])) &&
     !rokelDoc.includes('Metropolis-Hastings') &&
     (rangedDoc.match(/Models tried: /g) || []).length === soundings.length,
-    JSON.stringify(rangeWords).slice(0, 600));
+    JSON.stringify(rangeWords.words).slice(0, 600));
 
   /* Two points the ranking cannot separate, and a Wenner survey: built
    * straight from interpretations, since no bundled survey is either. */

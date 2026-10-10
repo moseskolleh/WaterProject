@@ -84,5 +84,12 @@
     "burn_in": 500,
     "base_error_percent": 3.0,
     "fan_models": 40
+  },
+  "odds": {
+    "success_yield_m3_per_h": 1.0
+  },
+  "cost_range": {
+    "seed": 1,
+    "samples": 20000
   }
 }

@@ -499,6 +499,42 @@ settings are under `ves_range` in the project's configuration, and the
 error each reading is given (3 percent, plus the measured disagreement
 at each MN overlap) is provisional.
 
+Beside the drill-target suitability score, both apps' Geophysics pages
+and both geophysical reports give each point **the chance of a working
+borehole**: "About 61 percent (between 39 and 78) that a borehole here
+yields enough for a handpump through the dry season. Provisional prior."
+It is worked out in a way that can be checked on paper:
+
+- **The prior** is a success rate for the ground under the point: the
+  BGS aquifer class and the USGS geology unit there, looked up on the
+  bundled maps at the point's own coordinates, or the site's if the
+  point has none. The table, `success_prior.csv`, gives each class's
+  yields from the BGS atlas user guide (O Dochartaigh 2021); read as
+  the quartiles of a lognormal spread, they say what share of boreholes
+  reach the yield that counts as success. A point with no class (no
+  position, or open water on the map) gets an even chance, labelled a
+  placeholder.
+- **"Success"** is a yield of at least 1 m3/h at the dry-season level,
+  the handpump design rate. It is `odds.success_yield_m3_per_h` in the
+  project's configuration, and changing it changes the prior.
+- **The evidence** multiplies the odds: a factor for the depth to
+  basement and for whether basement was resolved (both from the range
+  of models, so both are left out, at a factor of 1, until the range is
+  sampled), and one for the resistivity of the water-bearing zone. A
+  poor fit does not make the ground drier; it draws those three factors
+  back towards 1. The factors and their reasons are in
+  `success_evidence.yaml`.
+- **The band** is the prior's own uncertainty, a Beta distribution as
+  firm as 10 boreholes for a cited class and 2 for the placeholder,
+  carried through the same factors.
+
+A table under each point shows what each piece of evidence was, the
+factor it multiplied the odds by and the chance after it, so the factors
+multiply back to the answer. Every number in both files is provisional
+until a hydrogeologist confirms it and drilled outcomes calibrate it, and
+the reports say so. The suitability score stays beside the odds for
+comparison.
+
 **Overview** opens first and is the project dashboard: the lifecycle
 strip across the top shows how far the borehole has got (Sited →
 Drilled → Tested → Assessed → Handover), and the cards below summarise
@@ -551,6 +587,90 @@ contract price, and every rule of thumb applied is listed under
   automatically.
 - Download the bill of quantities (`.xlsx`, with live formulas the
   contractor can edit) or the full cost estimate report (`.docx`).
+- The programme estimate uses the siting success rate typed for it.
+  Once soundings are inverted, the page offers the chance of a working
+  borehole at the survey's first-ranked point beside it, with a **Use
+  N percent** button; the estimate changes only when that is pressed.
+  The odds are one point on one survey's ground, and a programme across
+  other ground has other odds.
+
+### The cost as a distribution
+
+Under the summary, "The cost as a distribution" gives the planning
+figure beside the bill of quantities. The bill of quantities stays the
+contract document: it prices every item at its likely rate and is what
+a contractor is paid against. The distribution samples 20,000 boreholes
+(`cost_range.samples` in the configuration), each with every rate drawn
+between the minimum and maximum the rate catalogue gives it, and
+reports:
+
+- **P50 and P80** of the cost of a completed borehole: half of the
+  sampled boreholes cost less than the P50 and four in five less than
+  the P80. Each is the contract price with any VAT, before contingency.
+  Budget from these.
+- **The expected cost per working borehole**: the mean completed
+  borehole, plus the mean dry attempt for each of the dry attempts
+  expected before a working one ((1 - p) / p of them at a chance p of
+  water). The chance of water is the survey's at its first-ranked point;
+  with no survey, no dry hole is allowed for.
+- Where the bill of quantities and the planning budget (with its
+  contingency) fall among the sampled boreholes.
+
+The depth is drawn from the range of models at the first-ranked point
+once the range has been sampled on the Geophysics page; until then it
+is held at the depth typed or designed, and the page says so. The
+programme estimate is sampled the same way, at its own success rate,
+with each sampled programme's rates and depth drawn once for the whole
+package. Both appear in the cost estimate report, section 4.1 and the
+programme section. The minimum and maximum of each rate are
+provisional choices, with their reasons in
+`src/groundwater/data/borehole_cost_spread.yaml`; an edited rate keeps
+its spread in proportion. The same seed gives the same figures in both
+apps.
+
+### The value of one more measurement
+
+Under the distribution, "The value of one more measurement" says what
+a second sounding beside the survey's first-ranked point, or a
+profiling line through it, is worth to the choice of where to drill,
+and what it costs, in the form "A second sounding beside *point* is
+worth up to US$ *value* to this decision and costs about US$ *cost*."
+The Geophysics page
+and the geophysical report print it under the chance of a working
+borehole once the cost has been estimated, and the cost estimate
+report in section 4.2.
+
+The choice is between drilling at the first-ranked point and going to
+the alternative: the other surveyed point with the best odds or, on a
+survey of one point, an unsurveyed site on the same ground at the prior.
+Going to the alternative is taken to cost its expected cost per working
+borehole, from the distribution's mean completed borehole and mean dry
+attempt; drilling at the point first costs the completed borehole if
+it works, and the dry attempt and then the alternative if it does not.
+The cheaper choice is the one with the better odds.
+
+The measurement could read any band of the evidence the odds use (the
+depth to basement and whether basement was resolved, for a sounding
+whose range has been sampled, and the water-zone resistivity), each
+with the factor on the odds `success_evidence.yaml` gives it, weighted
+by the point's own fit. The factors do not say how often each band is
+seen, so the bands are spread among dry boreholes as evenly as the
+factors allow, and among working ones by the factors. That spread is a
+choice, not a bound: another the factors allow can put the value higher
+or lower, so the page says so. A table under
+the sentences gives every band, its two shares and the chance of
+reading it now. For each combination of bands the chance at the point
+is worked out again and the choice taken again; the value is the
+expected cost of the best choice now less the expected cost of the best
+choice after the reading. It is never negative, it is zero when no
+reading can change the choice, and the page says so, and it is never
+more than the value of knowing for certain whether the point would
+work, which is printed beside it. The new reading is taken as
+independent of the ones already made, given whether a borehole at the
+point would work; a sounding beside the first reads much of the same
+ground, so on that count the value overstates what it adds. The costs of a sounding
+(US$ 100) and a profiling line (US$ 150) are provisional figures in
+`src/groundwater/data/field.yaml` with no recorded source.
 
 ## 8. Supervision
 

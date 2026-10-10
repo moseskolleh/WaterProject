@@ -2137,6 +2137,9 @@ await withPage(async (page, base, consoleErrors) => {
     check(`${name}: unresolved basement within 2 points`,
       Math.abs(js.basement_unresolved - py.basement_unresolved) <= 0.02,
       `js ${js.basement_unresolved} vs py ${py.basement_unresolved}`);
+    check(`${name}: the drilling depths the costing draws from within 2 percent`,
+      within(2e-2)(js.drilling_depth_quantiles_m, py.drilling_depth_quantiles_m),
+      `js ${js.drilling_depth_quantiles_m}\n     py ${py.drilling_depth_quantiles_m}`);
     check(`${name}: drilling depth within one rounding step`,
       Math.abs(js.drilling_depth_m - py.drilling_depth_m) <= 5.0 &&
       js.drilling_depth_capped === py.drilling_depth_capped,
@@ -2420,6 +2423,323 @@ await withPage(async (page, base, consoleErrors) => {
       `${VB.zero_ranks[VB.zero_ranks.length - 1]}: within 1e-15 relative`,
     worst.gap <= 1e-15, `${worst.gap.toExponential(2)} at ${worst.where}`);
   }
+
+  // --- the chance of a working borehole (PLAN.md step 3.3) ---
+  // The numerical pieces (the lognormal tail, the incomplete beta function
+  // and its quantile) are written out alike in both engines and held to
+  // 1e-9; every odds, band and factor to 1e-9; every sentence and every row
+  // of the breakdown word for word. The ground under a point is looked up on
+  // the same bundled maps, and the Rokel pair is read with Python's own short
+  // ranges, placed by its own coordinates.
+  const OD = R.odds;
+  const oddsJs = await page.evaluate(async (OD) => {
+    const C = GWT.core, D = GWT.data;
+    const asInterp = (c) => ({ sounding_id: c.sounding_id, water_zones: c.water_zones,
+      layers: c.layers.map((l) => ({ top_m: l.top_m,
+        bottom_m: l.bottom_m === null ? Infinity : l.bottom_m, rho: l.rho,
+        water_bearing: l.water_bearing })),
+      fit_error_percent: c.fit_error_percent, site_easting: null, site_northing: null });
+    const asDict = (o) => Object.assign({}, o, { text: C.oddsText(o),
+      point_text: C.oddsPointText(o), basis_text: C.oddsBasisText(o), rows: C.oddsRows(o),
+      short: C.oddsShort(o), caption: C.oddsTableCaption(o),
+      programme_rate: C.programmeRate(o), programme_offer: C.programmeOffer(o) });
+    const wider = C.withConfig({ odds: { success_yield_m3_per_h: 3.6 } });
+    const productive = OD.cases.filter((c) => c.interp.sounding_id === 'productive' &&
+      c.range && c.range.basement_unresolved < 0.1 && c.range.basement_m.p50 === 22.0)[0];
+    const sheets = await GWT.support.readXlsx(GWT.support.base64ToBytes(D.samples.rokel.files.ves.b64));
+    const soundings = C.readVesSheets(sheets, 'rokel_ves.xlsx');
+    const interps = soundings.map((s) => C.interpretModel(s, C.invertSounding(s).model));
+    return {
+      lognormal: OD.lognormal.map(([q1, q3, t]) => C.lognormalShareAbove(q1, q3, t)),
+      beta: OD.beta.map(([a, b, x]) => [C.regularisedBeta(a, b, x), C.betaQuantile(a, b, x)]),
+      priors: OD.priors.map(([code, glg]) => C.priorFor(code, glg, 1.0)),
+      cases: OD.cases.map((c) => asDict(C.successOdds(asInterp(c.interp), c.range,
+        c.ground[0], c.ground[1], C.defaultConfig()))),
+      wider: asDict(C.successOdds(Object.assign(asInterp(productive.interp),
+        { sounding_id: 'wider' }), productive.range, 'B-L', 'pCm', wider)),
+      low_yield: asDict(C.successOdds(Object.assign(asInterp(productive.interp),
+        { sounding_id: 'low_yield' }), productive.range, 'U-M/H', 'Qe',
+      C.withConfig({ odds: { success_yield_m3_per_h: OD.low_yield.rate } }))),
+      ranked_index: C.assessSiting([Object.assign({}, interps[1],
+        { sounding_id: interps[0].sounding_id }), interps[0]]).map((s) => s.index),
+      ground: OD.ground.map(([lat, lon]) => C.groundAt({ lat: lat, lon: lon })),
+      rokel: interps.map((interp, i) => {
+        const site = soundings[i].site;
+        const latlon = C.pointLatLon(interp, Number(site.utm_zone) || null,
+          C.sitePosition(site));
+        const ground = C.groundAt(latlon);
+        return { latlon: latlon ? [latlon.lat, latlon.lon] : null, ground: ground,
+          odds: asDict(C.successOdds(interp, OD.rokel_ranges[i], ground[0], ground[1],
+            C.defaultConfig())) };
+      }),
+      header: C.oddsHeader(),
+      refused: [0, -1, NaN].map((rate) => {
+        try { C.priorFor('B-L', 'pCm', rate); return false; } catch (e) {
+          return /above zero/.test(e.message);
+        }
+      }),
+    };
+  }, Object.assign({}, OD, { rokel_ranges: R.ves_range.short }));
+  const oddsWithin = (a, b, path, rtol = 1e-9) => {
+    if (typeof b === 'number' && typeof a === 'number') {
+      return close(a, b, rtol) ? null : `${path}: js ${a} vs py ${b}`;
+    }
+    if (Array.isArray(b)) {
+      if (!Array.isArray(a) || a.length !== b.length) return `${path}: lengths differ`;
+      for (let i = 0; i < b.length; i++) {
+        const d = oddsWithin(a[i], b[i], `${path}[${i}]`, rtol);
+        if (d) return d;
+      }
+      return null;
+    }
+    if (b && typeof b === 'object') {
+      if (!a || typeof a !== 'object') return `${path}: js ${JSON.stringify(a)}`;
+      for (const k of Object.keys(b)) {
+        const d = oddsWithin(a[k], b[k], `${path}.${k}`, rtol);
+        if (d) return d;
+      }
+      return null;
+    }
+    return a === b ? null : `${path}: js ${JSON.stringify(a)} vs py ${JSON.stringify(b)}`;
+  };
+  check('odds: the lognormal share above a yield',
+    oddsWithin(oddsJs.lognormal, OD.lognormal.map((r) => r[3]), 'lognormal') === null,
+    oddsWithin(oddsJs.lognormal, OD.lognormal.map((r) => r[3]), 'lognormal'));
+  check('odds: the incomplete beta function and its quantile',
+    oddsWithin(oddsJs.beta, OD.beta.map((r) => [r[3], r[4]]), 'beta') === null,
+    oddsWithin(oddsJs.beta, OD.beta.map((r) => [r[3], r[4]]), 'beta'));
+  OD.priors.forEach(([code, glg, py], i) => {
+    const d = oddsWithin(oddsJs.priors[i], py, `prior ${code}/${glg}`);
+    check(`odds: the prior row and rate for ${code} on ${glg}`, d === null, d);
+  });
+  OD.cases.forEach((c, i) => {
+    const name = `${c.interp.sounding_id} / ${c.range ? JSON.stringify(c.range) : 'no range'}` +
+      ` / ${c.ground.join(' on ')}`;
+    const d = oddsWithin(oddsJs.cases[i], c.odds, name);
+    check(`odds ${i}: ${name}`, d === null, d);
+  });
+  {
+    const d = oddsWithin(oddsJs.wider, OD.wider, 'wider');
+    check('odds: success defined at 3.6 m3/h moves the prior', d === null, d);
+  }
+  {
+    // a prior near 1, whose 90th percentile bisects to exactly 1: the band is
+    // held inside (0, 1), where it was NaN carried through the odds
+    const d = oddsWithin(oddsJs.low_yield, OD.low_yield.odds, 'low_yield');
+    check(`odds: success at ${OD.low_yield.rate} m3/h on the coastal sands keeps its band`,
+      d === null && Number.isFinite(oddsJs.low_yield.high) &&
+      !oddsJs.low_yield.text.join(' ').includes('nan'), d || oddsJs.low_yield.text[0]);
+  }
+  // the suitability rows name their point by position, which the pages pair
+  // the odds with: two points can share an id
+  check('odds: each suitability row names its point by position',
+    JSON.stringify(oddsJs.ranked_index) === JSON.stringify(OD.ranked_index),
+    `js ${JSON.stringify(oddsJs.ranked_index)} vs py ${JSON.stringify(OD.ranked_index)}`);
+  OD.ground.forEach(([lat, lon, py], i) => {
+    check(`odds: the ground under ${lat}, ${lon}`,
+      JSON.stringify(oddsJs.ground[i]) === JSON.stringify(py),
+      `js ${JSON.stringify(oddsJs.ground[i])} vs py ${JSON.stringify(py)}`);
+  });
+  // the Rokel interpretations are each engine's own inversion, which agree
+  // to parity's model tolerance (a few parts in 1e7 here), not to the bit
+  OD.rokel.forEach((py, i) => {
+    const d = oddsWithin(oddsJs.rokel[i], py, `rokel[${i}]`, 1e-6);
+    check(`odds: Rokel ${py.odds.sounding_id}, placed by its coordinates`, d === null, d);
+  });
+  check('odds: a success yield of nothing is refused, as Python refuses it',
+    oddsJs.refused.every(Boolean), JSON.stringify(oddsJs.refused));
+  check('odds: the breakdown header', JSON.stringify(oddsJs.header) === JSON.stringify(OD.header),
+    JSON.stringify(oddsJs.header));
+
+  // The cost as a distribution (PLAN.md step 3.4). Every number is drawn
+  // from the range of models' generator and worked out with sums, products,
+  // quotients and square roots, which both engines round alike, so a short
+  // run and a run at the default sample count are both held to the bit: a
+  // tolerance, even 1e-9, let a VAT worked out in another order through on
+  // the default run. The words and rows are compared word for word.
+  const CR = R.cost_range;
+  const costJs = await page.evaluate((CR) => {
+    const C = GWT.core;
+    const flat = (rates) => rates.map((r) => Object.assign({}, r,
+      { min_usd: r.unit_cost_usd, max_usd: r.unit_cost_usd }));
+    const ratesFor = (spec) => {
+      let rates = C.loadRates();
+      if (spec.flat) rates = flat(rates);
+      const edits = new Map(spec.edits || []);
+      return rates.map((r) => (edits.has(r.code) ? C.rateWithLikely(r, edits.get(r.code)) : r));
+    };
+    const depthFor = (spec) => (spec.depth ? CR.depth : null);
+    const single = (spec, samples) => {
+      const d = C.sampleCost(C.costingInputs(spec.inputs), ratesFor(spec),
+        Object.assign({}, spec.pct || {}, { depth: depthFor(spec),
+          successProbability: spec.p === undefined ? 1.0 : spec.p,
+          oddsSource: spec.sid === undefined ? null : spec.sid, samples }));
+      return { dist: d, text: C.costRangeText(d), rows: C.costRangeRows(d) };
+    };
+    const programme = (spec, samples) => {
+      const d = C.sampleProgrammeCost(C.costingInputs(spec.inputs), spec.n,
+        Object.assign({}, spec.pct || {}, { rates: ratesFor(spec),
+          successRatePercent: spec.rate,
+          interSiteDistanceKm: spec.km === undefined ? 15.0 : spec.km,
+          depth: depthFor(spec), samples }));
+      return { dist: d, text: C.programmeRangeText(d), rows: C.programmeRangeRows(d) };
+    };
+    const shortOf = (spec) => (spec.samples === undefined ? CR.short_samples : spec.samples);
+    const cases = {}, programmes = {}, defaults = {};
+    Object.keys(CR.cases).forEach((k) => { cases[k] = single(CR.cases[k].spec, shortOf(CR.cases[k].spec)); });
+    Object.keys(CR.programmes).forEach((k) => {
+      programmes[k] = programme(CR.programmes[k].spec, shortOf(CR.programmes[k].spec));
+    });
+    Object.keys(CR.default).forEach((k) => { defaults[k] = single(CR.cases[k].spec); });
+    const programmeDefault = {};
+    Object.keys(CR.programme_default).forEach((k) => {
+      programmeDefault[k] = programme(CR.programmes[k].spec);
+    });
+    let refused = 0;
+    [0, -0.1, 1.5].forEach((p) => {
+      try { C.sampleCost(C.costingInputs({ total_depth_m: 30 }), null, { successProbability: p }); }
+      catch (e) { refused += 1; }
+    });
+    return {
+      rates: C.loadRates().map((r) => [r.code].concat(C.rateTriangle(r), [r.spread_group])),
+      edits: CR.edits.map((e) => {
+        const rate = C.loadRates().find((r) => r.code === e[0]);
+        return [e[0], e[1], C.rateTriangle(C.rateWithLikely(rate, e[1]))];
+      }),
+      triangles: CR.triangles.map((t) => t.slice(0, 4).concat([C.triangleQuantile(t[0], t[1], t[2], t[3])])),
+      failures: CR.failures.map((f) => {
+        const table = C.failuresTable(f[0], f[1]);
+        const running = table[1];
+        return [f[0], f[1], table[0], running.length, running[running.length - 1],
+          running[Math.floor(running.length / 2)]];
+      }),
+      depth_draws: CR.depth_draws.map((d) => [d[0], C.depthDraw(CR.depth, d[0])]),
+      spreads: CR.rokel_ranges.map((r) => C.depthSpread(r, C.defaultConfig())),
+      header: C.costRangeHeader(),
+      cases, programmes, defaults, programmeDefault, refused,
+    };
+  }, Object.assign({}, CR, { rokel_ranges: R.ves_range.short }));
+  // numbers to rtol (0 is to the bit), everything else exactly; the first
+  // difference is named
+  const costWithin = (a, b, path, rtol) => {
+    if (typeof b === 'number') {
+      const ok = typeof a === 'number' &&
+        (rtol === 0 ? Object.is(a, b) : Math.abs(a - b) <= rtol * Math.max(1, Math.abs(b)));
+      return ok ? null : `${path}: js ${a} vs py ${b}`;
+    }
+    if (Array.isArray(b)) {
+      if (!Array.isArray(a) || a.length !== b.length) return `${path}: length`;
+      for (let i = 0; i < b.length; i++) {
+        const d = costWithin(a[i], b[i], `${path}[${i}]`, rtol);
+        if (d) return d;
+      }
+      return null;
+    }
+    if (b && typeof b === 'object') {
+      if (!a || typeof a !== 'object') return `${path}: missing`;
+      for (const k of Object.keys(b)) {
+        const d = costWithin(a[k], b[k], `${path}.${k}`, rtol);
+        if (d) return d;
+      }
+      return null;
+    }
+    return a === b ? null : `${path}: js ${JSON.stringify(a)} vs py ${JSON.stringify(b)}`;
+  };
+  [['the catalogue\'s triangles and groups', costJs.rates, CR.rates],
+    ['an edited rate keeps its relative spread', costJs.edits, CR.edits],
+    ['the triangle\'s inverse', costJs.triangles, CR.triangles],
+    ['the table of dry attempts', costJs.failures, CR.failures],
+    ['a depth drawn between the quantiles', costJs.depth_draws, CR.depth_draws],
+    ['the table header', costJs.header, CR.header],
+  ].forEach(([name, js, py]) => {
+    const d = costWithin(js, py, name, 0);
+    check(`cost range: ${name}, to the bit`, d === null, d);
+  });
+  {
+    const d = costWithin(costJs.spreads, CR.spreads, 'spreads', 1e-4);
+    check('cost range: the depth each Rokel range hands the costing', d === null, d);
+  }
+  Object.keys(CR.cases).forEach((name) => {
+    const d = costWithin(costJs.cases[name], CR.cases[name].short, name, 0);
+    check(`cost range ${name}: a short run to the bit, every sentence word for word`,
+      d === null, d);
+  });
+  Object.keys(CR.programmes).forEach((name) => {
+    const d = costWithin(costJs.programmes[name], CR.programmes[name].short, name, 0);
+    check(`cost range, programme ${name}: a short run to the bit`, d === null, d);
+  });
+  Object.keys(CR.default).forEach((name) => {
+    const d = costWithin(costJs.defaults[name], CR.default[name], name, 0);
+    check(`cost range ${name}: the default run to the bit`, d === null, d);
+  });
+  Object.keys(CR.programme_default).forEach((name) => {
+    const d = costWithin(costJs.programmeDefault[name], CR.programme_default[name], name, 0);
+    check(`cost range, programme ${name}: the default run to the bit`, d === null, d);
+  });
+  check('cost range: a chance of success outside (0, 1] is refused, as Python refuses it',
+    costJs.refused === 3, `refused ${costJs.refused} of 3`);
+
+  // The value of one more measurement (PLAN.md step 3.5). Both engines are
+  // given the same odds, the odds section's own dicts, so this holds the
+  // preposterior analysis alone: the even spread's bisection, the readings,
+  // the decision before and after, the value and every sentence and row. The
+  // spread goes through exp and pow, which the two engines' libraries may
+  // round a last bit apart, so numbers are held to 1e-9 and words exactly.
+  const VM = R.measurement;
+  const valueJs = await page.evaluate((VM) => {
+    const C = GWT.core;
+    const asDict = (v) => Object.assign({}, v, { summary: C.measurementSummary(v),
+      text: C.measurementText(v), basis: C.measurementBasis(v),
+      reading_rows: C.measurementReadingRows(v),
+      decision_header: C.measurementDecisionHeader(v),
+      decision_rows: C.measurementDecisionRows(v),
+      readings_caption: C.measurementReadingsCaption(v) });
+    let refused = 0;
+    [[1.0, 0.5, 5000, 2000], [0.5, 0.0, 5000, 2000], [0.5, 0.5, 5000, 0]].forEach((a) => {
+      try { C.preposterior(a[0], a[1], a[2], a[3], []); } catch (e) { refused += 1; }
+    });
+    try { C.measurementCostUsd('borehole'); } catch (e) { refused += 1; }
+    return {
+      spreads: VM.spreads.map(([ratios]) => {
+        const e = C.evenSpread(ratios);
+        return [ratios, e === null ? null : [e.dry, e.wet]];
+      }),
+      preposterior: VM.preposterior.map(([p, q, c, d, classes]) =>
+        [p, q, c, d, classes, C.preposterior(p, q, c, d, classes)]),
+      surveys: VM.surveys.map((s) => ({ odds: s.odds, ranking: s.ranking,
+        values: C.measurementValues(s.odds, s.ranking, VM.costs[0], VM.costs[1]).map(asDict) })),
+      reading_header: C.measurementReadingHeader(),
+      decision_caption: C.measurementDecisionCaption(),
+      costs: [C.measurementCostUsd('sounding'), C.measurementCostUsd('profiling')],
+      refused,
+    };
+  }, VM);
+  {
+    const d = oddsWithin(valueJs.spreads, VM.spreads, 'spreads');
+    check(`measurement: the even spread of ${VM.spreads.length} sets of ratios, to 1e-9`,
+      d === null, d);
+  }
+  {
+    const d = oddsWithin(valueJs.preposterior, VM.preposterior, 'preposterior');
+    check('measurement: the worked example, both sides, a tie, the extremes and no readings',
+      d === null, d);
+  }
+  VM.surveys.forEach((s, i) => {
+    const name = s.odds.map((o) => o.sounding_id).join(' against ') +
+      (s.odds.length === 1 ? ' alone' : '') + ` (ranked ${s.ranking.join(', ')})`;
+    const d = oddsWithin(valueJs.surveys[i], s, `survey ${i}`);
+    check(`measurement ${i}: ${name}, every figure to 1e-9 and every sentence word for word`,
+      d === null, d);
+  });
+  check('measurement: the readings header and the decision caption',
+    JSON.stringify([valueJs.reading_header, valueJs.decision_caption]) ===
+      JSON.stringify([VM.reading_header, VM.decision_caption]),
+    JSON.stringify(valueJs.reading_header));
+  check('measurement: impossible chances, costs and kinds are refused, as Python refuses them',
+    valueJs.refused === 4, `refused ${valueJs.refused} of 4`);
+  check('measurement: the costs of a sounding and a profiling line, from field.yaml',
+    JSON.stringify(valueJs.costs) === JSON.stringify(VM.surveys[0].values.map((v) => v.cost_usd)),
+    JSON.stringify(valueJs.costs));
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, {});

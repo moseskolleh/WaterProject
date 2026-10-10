@@ -13,11 +13,32 @@ from pathlib import Path
 from typing import Any
 
 from ..config import Config
+from ..costing.distribution import (
+    CostDistribution,
+    ProgrammeDistribution,
+    cost_range_header,
+    cost_range_rows,
+    cost_range_text,
+    programme_range_rows,
+    programme_range_text,
+)
 from ..costing.model import CostEstimate
-from ..costing.plots import plot_cost_breakdown
+from ..costing.plots import plot_cost_breakdown, plot_cost_distribution
 from ..costing.plots import plot_programme_gantt
 from ..costing.programme import ProgrammeEstimate
 from ..models import SiteMetadata
+from ..siting.measurement import (
+    MeasurementValue,
+    measurement_basis,
+    measurement_decision_caption,
+    measurement_decision_header,
+    measurement_decision_rows,
+    measurement_reading_header,
+    measurement_reading_rows,
+    measurement_readings_caption,
+    measurement_text,
+)
+from ..text import phrase, phrase_table
 from ..utils import fmt_num
 from .citations import GLOSSARY, references_for
 from .context import _figures_dir, add_area_section
@@ -42,6 +63,40 @@ class CostReportInputs:
     #: :func:`groundwater.readiness.assess_readiness`. When it is not
     #: certifiable the cover carries a PROVISIONAL stamp listing why.
     readiness: Any = None
+    #: The planning figure beside the bill of quantities (PLAN.md step 3.4):
+    #: :func:`groundwater.costing.sample_cost` on the same inputs, and
+    #: :func:`groundwater.costing.sample_programme_cost` on the programme's.
+    #: Each is printed where it is given.
+    distribution: CostDistribution | None = None
+    programme_distribution: ProgrammeDistribution | None = None
+    #: What one more measurement at the survey's first-ranked point is worth
+    #: (PLAN.md step 3.5), priced with ``distribution``:
+    #: :func:`groundwater.siting.measurement.measurement_values`. Printed
+    #: after the planning figure where both are given; an empty list says
+    #: there is no survey to price one for.
+    measurements: list[MeasurementValue] | None = None
+
+
+def measurement_block(rb: ReportBuilder, values: list[MeasurementValue]) -> None:
+    """What one more measurement is worth, under a heading the caller gives:
+    the lead, each measurement's sentences and its decision table, what a
+    measurement could read, and the basis once. The geophysical report and
+    the browser's reports (gwt-docx.js) print the same."""
+    rb.paragraph(phrase("measurement.lead"), align="justify")
+    if not values:
+        rb.paragraph(phrase("measurement.no_survey"), align="justify")
+        return
+    for v in values:
+        rb.paragraph(" ".join(measurement_text(v)), align="justify")
+        rb.table(measurement_decision_rows(v), header=measurement_decision_header(v),
+                 caption=measurement_decision_caption(),
+                 col_widths_cm=[4.6, 2.0, 2.4, 4.0, 3.0], font_size_pt=8.5)
+    # every measurement reads its bands at the same chances, and a sounding
+    # reads every band a profiling line does, so its table covers both
+    rb.table(measurement_reading_rows(values[0]), header=measurement_reading_header(),
+             caption=measurement_readings_caption(values[0]),
+             col_widths_cm=[3.0, 5.4, 1.8, 2.2, 2.0, 2.0], font_size_pt=8.5)
+    rb.paragraph(measurement_basis(values[0]), align="justify")
 
 
 def build_cost_report(
@@ -160,6 +215,23 @@ def build_cost_report(
     plot_cost_breakdown(estimate, fig_path, config.style)
     rb.figure(fig_path, "Direct works cost by stage and by resource category.")
 
+    marks = phrase_table("cost_range.marks")
+    spread = inputs.distribution
+    if spread is not None:
+        rb.heading("4.1 " + phrase("cost_range.heading"), 2)
+        for text in cost_range_text(spread):
+            rb.paragraph(text, align="justify")
+        rb.table(cost_range_rows(spread), header=cost_range_header(),
+                 caption=phrase("cost_range.table_caption"))
+        curve_path = figures / "cost_distribution.png"
+        plot_cost_distribution(
+            spread.curve, [(marks["boq"], spread.boq_usd), (marks["budget"], spread.budget_usd)],
+            curve_path, config.style, title=marks["title"])
+        rb.figure(curve_path, phrase("cost_range.figure_caption"))
+        if inputs.measurements is not None:
+            rb.heading("4.2 " + phrase("measurement.heading"), 2)
+            measurement_block(rb, inputs.measurements)
+
     # ---- 5 programme ------------------------------------------------------
     section = 5
     if inputs.programme is not None:
@@ -186,6 +258,19 @@ def build_cost_report(
         if programme.assumptions:
             rb.paragraph("Assumptions:", bold=True)
             rb.bullets([str(a) for a in programme.assumptions])
+        spread = inputs.programme_distribution
+        if spread is not None:
+            rb.heading(f"{section}.1 " + phrase("cost_range.heading"), 2)
+            for text in [phrase("cost_range.which_is_which")] + programme_range_text(spread):
+                rb.paragraph(text, align="justify")
+            rb.table(programme_range_rows(spread), header=cost_range_header(),
+                     caption=phrase("cost_range.programme_table_caption"))
+            curve_path = figures / "programme_distribution.png"
+            plot_cost_distribution(
+                spread.curve,
+                [(marks["estimate"], spread.estimate_usd), (marks["budget"], spread.budget_usd)],
+                curve_path, config.style, title=marks["programme_title"])
+            rb.figure(curve_path, phrase("cost_range.programme_figure_caption"))
         section += 1
 
     # ---- notes ------------------------------------------------------------
@@ -195,7 +280,10 @@ def build_cost_report(
         "supplier and contractor quotations before award."),
         ("The estimate covers one production borehole; failed or abandoned "
         "holes, standby time and exceptional ground conditions are not "
-        "included and should be covered by the contract conditions."),
+        "included and should be covered by the contract conditions."
+        + (" The planning figure in section 4.1 allows for dry holes at the "
+           "survey's odds." if inputs.distribution is not None
+           and inputs.distribution.odds_source is not None else "")),
         ("Land access, community mobilisation and post-construction "
         "monitoring are excluded."),
     ]

@@ -106,7 +106,8 @@
   function withConfig(overrides) {
     var cfg = defaultConfig();
     if (!overrides) return cfg;
-    ['style', 'ves', 'pumping', 'design', 'ves_range'].forEach(function (section) {
+    ['style', 'ves', 'pumping', 'design', 'ves_range', 'odds', 'cost_range']
+      .forEach(function (section) {
       var over = overrides[section];
       if (!over) return;
       Object.keys(over).forEach(function (key) {
@@ -1560,6 +1561,9 @@
   }
 
   var RANGE_WINDOW = 50;  /* burn-in steps between two adjustments of the step */
+  /* the drilling depth is kept at this many equal steps of probability, for
+   * the cost distribution to draw from (model_range.DEPTH_QUANTILES) */
+  var DEPTH_QUANTILES = 20;
   var RANGE_JACOBIAN_STEP = 1e-4;  /* inversion.py JACOBIAN_STEP, the inversion's own */
 
   /** The range of models that fit a sounding about as well as its inversion.
@@ -1761,6 +1765,11 @@
     var p90 = rangePercentile(deepest, 0.9);
     var stepM = ves.round_drilling_depth_to_m;
     var drill = Math.min(Math.ceil(Math.min(p90, investigation) / stepM) * stepM, investigation);
+    var reach = deepest.map(function (d) { return Math.min(d, investigation); });
+    var depthQuantiles = [];
+    for (k = 0; k <= DEPTH_QUANTILES; k++) {
+      depthQuantiles.push(rangePercentile(reach, k / DEPTH_QUANTILES));
+    }
     var fanCount = Math.min(Math.max(Math.trunc(opts.fan_models), 0), total);
     var fanAt = [];
     for (k = 0; k < fanCount; k++) fanAt.push(Math.floor(k * total / fanCount));
@@ -1806,6 +1815,7 @@
       fan_curves: fanAt.map(function (at) { return kept[at][1].slice(); }),
       start_points: startPoints,
       start_errors: startErrors,
+      drilling_depth_quantiles_m: depthQuantiles,
     };
   }
 
@@ -9101,11 +9111,19 @@
   var DEFAULT_EXCHANGE_RATE_SLE_PER_USD = 23.0;
   var DRY_STAGES = ['Siting', 'Mobilisation', 'Drilling'];
 
-  /** @param {Rec[]|null} [rows] the bundled rates when not given */
+  /** The rate catalogue: load_rates. min_usd and max_usd are the ends of
+   * the triangle the cost distribution draws the rate from, unit_cost_usd
+   * its likely value; a blank one is the likely value itself, and a pair
+   * that does not bracket it is refused, naming the row.
+   * @param {Rec[]|null} [rows] the bundled rates when not given */
   function loadRates(rows) {
     var source = rows || (GWT.data && GWT.data.costItems) || [];
     return source.map(function (row) {
-      return {
+      function bound(key) {
+        var text = String(row[key] === undefined || row[key] === null ? '' : row[key]).trim();
+        return text ? Number(text) : null;
+      }
+      var rate = {
         code: String(row.code || '').trim(),
         stage: String(row.stage || '').trim(),
         category: String(row.category || '').trim().toLowerCase(),
@@ -9114,9 +9132,58 @@
         quantity_basis: String(row.quantity_basis || '').trim(),
         unit_cost_usd: Number(row.unit_cost_usd),
         note: String(row.note || '').trim(),
+        min_usd: bound('min_usd'),
+        max_usd: bound('max_usd'),
+        spread_group: String(row.spread_group || '').trim(),
       };
+      var t = rateTriangle(rate);
+      if (!(t[0] <= t[1] && t[1] <= t[2])) {
+        throw new Error('rate ' + rate.code + ': the minimum ' + formatG(t[0]) +
+          ' and maximum ' + formatG(t[2]) + ' must bracket the likely rate ' + formatG(t[1]));
+      }
+      return rate;
     });
   }
+
+  /** A rate's [minimum, likely, maximum]: RateItem.triangle.
+   * @param {Rec} rate
+   * @returns {number[]} */
+  function rateTriangle(rate) {
+    var likely = rate.unit_cost_usd;
+    return [rate.min_usd === null || rate.min_usd === undefined ? likely : rate.min_usd,
+      likely, rate.max_usd === null || rate.max_usd === undefined ? likely : rate.max_usd];
+  }
+
+  /** The rate with its likely value edited and its minimum and maximum
+   * scaled by the same factor, so it keeps its relative spread:
+   * RateItem.with_likely. A rate that was zero takes no spread.
+   * @param {Rec} rate
+   * @param {number} value
+   * @returns {Rec} */
+  function rateWithLikely(rate, value) {
+    var t = rateTriangle(rate);
+    var v = Number(value);
+    if (t[1] === v) return Object.assign({}, rate);
+    if (t[1] === 0) return Object.assign({}, rate, { unit_cost_usd: v, min_usd: v, max_usd: v });
+    var factor = v / t[1];
+    return Object.assign({}, rate, { unit_cost_usd: v, min_usd: t[0] * factor,
+      max_usd: t[2] * factor });
+  }
+
+  /* The rules of thumb that fill a quantity nobody supplied, as functions of
+   * the depth (default_overburden_m and the rest in costing/model.py): the
+   * cost distribution applies them again at every depth it draws. */
+  /** @param {number} depthM */
+  function defaultOverburdenM(depthM) { return Math.min(30.0, 0.5 * depthM); }
+  /**
+   * @param {number} depthM
+   * @param {number} screenM
+   */
+  function defaultCasingM(depthM, screenM) { return Math.max(0.0, depthM + 0.5 - screenM); }
+  /** @param {number} depthM */
+  function defaultGravelIntervalM(depthM) { return Math.max(0.0, depthM - 15.0); }
+  /** @param {number} depthM */
+  function defaultCrewDays(depthM) { return Math.ceil(depthM / 25.0) + 4; }
 
   /** Volume of the borehole/casing annulus; the allowance covers washout and
    * placement losses (1.3 is common for gravel pack ordering).
@@ -9164,7 +9231,7 @@
     var r = Object.assign({}, inputs);
     var assumptions = [];
     if (r.overburden_m === null || r.overburden_m === undefined) {
-      r.overburden_m = Math.min(30.0, 0.5 * r.total_depth_m);
+      r.overburden_m = defaultOverburdenM(r.total_depth_m);
       assumptions.push('Overburden thickness assumed ' + fmtNum(r.overburden_m) +
         ' m (half the total depth, at most 30 m); supply the real split from ' +
         'the drilling log or the VES interpretation.');
@@ -9175,12 +9242,12 @@
       assumptions.push('Screen length assumed 9 m (design default).');
     }
     if (r.casing_m === null || r.casing_m === undefined) {
-      r.casing_m = Math.max(0.0, r.total_depth_m + 0.5 - r.screen_m);
+      r.casing_m = defaultCasingM(r.total_depth_m, r.screen_m);
       assumptions.push('Plain casing length taken as ' + fmtNum(r.casing_m) +
         ' m (total depth plus 0.5 m stick-up minus the screen length).');
     }
     if (r.gravel_interval_m === null || r.gravel_interval_m === undefined) {
-      r.gravel_interval_m = Math.max(0.0, r.total_depth_m - 15.0);
+      r.gravel_interval_m = defaultGravelIntervalM(r.total_depth_m);
       assumptions.push('Gravel packed interval assumed ' +
         fmtNum(r.gravel_interval_m) + ' m (from 15 m below ground to the ' +
         'bottom of the borehole).');
@@ -9195,7 +9262,7 @@
         'metre of annulus).');
     }
     if (r.crew_days === null || r.crew_days === undefined) {
-      r.crew_days = Math.ceil(r.total_depth_m / 25.0) + 4;
+      r.crew_days = defaultCrewDays(r.total_depth_m);
       assumptions.push('Crew time assumed ' + fmtNum(r.crew_days) + ' days on ' +
         'site (drilling at 25 m per day plus four days for moving, set up, ' +
         'development, testing and completion).');
@@ -9238,7 +9305,15 @@
   }
 
   function quantityFor(basis, inputs) {
-    var table = {
+    var table = quantityTable(inputs);
+    return basis in table ? table[basis] : null;
+  }
+
+  /** The quantity of every basis the estimate knows: _quantity_table.
+   * @param {Rec} inputs resolved
+   * @returns {Object<string, number>} */
+  function quantityTable(inputs) {
+    return {
       lump_sum: 1.0,
       per_km_round_trip: 2.0 * inputs.mobilisation_distance_km,
       per_crew_day: inputs.crew_days || 0.0,
@@ -9254,7 +9329,6 @@
       per_sample: Number(inputs.wq_samples),
       per_handpump: Number(inputs.handpumps),
     };
-    return basis in table ? table[basis] : null;
   }
 
   /** Percentage defaults follow the RWSN costing and pricing guidance:
@@ -9935,7 +10009,8 @@
     },
     STAGES: STAGES, RESOURCE_CATEGORIES: RESOURCE_CATEGORIES,
     DEFAULT_EXCHANGE_RATE_SLE_PER_USD: DEFAULT_EXCHANGE_RATE_SLE_PER_USD,
-    loadRates: loadRates, annulusVolumeM3: annulusVolumeM3,
+    loadRates: loadRates, rateTriangle: rateTriangle, rateWithLikely: rateWithLikely,
+    annulusVolumeM3: annulusVolumeM3,
     costingInputs: costingInputs, resolveCostingInputs: resolveCostingInputs,
     inputsFromDesign: inputsFromDesign, estimateBoreholeCost: estimateBoreholeCost,
     estimateProgrammeCost: estimateProgrammeCost,
@@ -14922,7 +14997,7 @@
   function assessSiting(interpretations, vesConfig) {
     var cfg = vesConfig || defaultConfig().ves;
     /** @type {Rec[]} */
-    var results = (interpretations || []).map(function (interp) {
+    var results = (interpretations || []).map(function (interp, index) {
       var comp = {
         aquifer_thickness: Math.min(interp.aquifer_thickness_m / THICKNESS_TARGET_M, 1.0),
         resistivity_fit: resistivityFitScore(interp, cfg),
@@ -14943,6 +15018,10 @@
         easting: interp.site_easting, northing: interp.site_northing,
         rank: null,
         confidence: pyRound(interp.confidence === undefined ? 1.0 : interp.confidence, 3),
+        /* where the interpretation stood in the list given: a page pairs the
+         * row with what else it worked out for the point by this, not by
+         * the sounding id, which a sheet copied without renumbering repeats */
+        index: index,
       };
     });
     /* rank on the confidence-weighted score, highest first; ties broken by
@@ -14960,6 +15039,1379 @@
     suitabilityGrade: suitabilityGrade, zoneGeomeanRho: zoneGeomeanRho,
     rankingTie: rankingTie, tiedLeaders: tiedLeaders,
     suitabilityVerdict: suitabilityVerdict,
+  });
+
+  /* ===================================================================== odds
+   * siting/odds.py (PLAN.md step 3.3): the chance that a borehole at a VES
+   * point yields enough for a handpump through the dry season. A prior from
+   * the ground under the point (data/success_prior.csv), times a likelihood
+   * ratio for each of three things the survey says, the three weighted by
+   * the confidence of the fit (data/success_evidence.yaml); the band is the
+   * prior's Beta distribution carried through the same factors. Both
+   * engines read the two files as the package parses them (GWT.data.odds),
+   * and the numerical pieces are written out alike in both. */
+
+  /** data/success_prior.csv and data/success_evidence.yaml, shared: read,
+   * never changed.
+   * @returns {Rec} */
+  function oddsTables() {
+    var odds = (GWT.data || {}).odds;
+    if (!odds) {
+      throw new Error('gwt-data.js is not loaded, or is stale: it carries the ' +
+        'prior and the likelihood ratios (src/groundwater/data/success_*)');
+    }
+    return odds;
+  }
+
+  /* the quantile of the standard normal at 0.75 */
+  var Z_QUARTILE = 0.6744897501960817;
+
+  /** The complementary error function, by Abramowitz and Stegun 7.1.26:
+   * _erfc in siting/odds.py.
+   * @param {number} x
+   * @returns {number} */
+  function oddsErfc(x) {
+    var z = Math.abs(x);
+    var t = 1.0 / (1.0 + 0.3275911 * z);
+    var poly = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 +
+      t * (-1.453152027 + t * 1.061405429))));
+    var tail = poly * Math.exp(-z * z);
+    return x >= 0.0 ? tail : 2.0 - tail;
+  }
+
+  /** The share of a lognormal spread with quartiles q1 and q3 at or above
+   * threshold: lognormal_share_above.
+   * @param {number} q1
+   * @param {number} q3
+   * @param {number} threshold
+   * @returns {number} */
+  function lognormalShareAbove(q1, q3, threshold) {
+    var mu = 0.5 * (Math.log(q1) + Math.log(q3));
+    var sigma = (Math.log(q3) - Math.log(q1)) / (2.0 * Z_QUARTILE);
+    var z = (Math.log(threshold) - mu) / sigma;
+    return 0.5 * oddsErfc(z / Math.sqrt(2.0));
+  }
+
+  var LANCZOS = [0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+    771.32342877765313, -176.61502916214059, 12.507343278686905,
+    -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+
+  /** ln Gamma(x) for x > 0, by Lanczos's series: _log_gamma.
+   * @param {number} x
+   * @returns {number} */
+  function logGamma(x) {
+    if (x < 0.5) {
+      return Math.log(Math.PI / Math.abs(Math.sin(Math.PI * x))) - logGamma(1.0 - x);
+    }
+    x -= 1.0;
+    var a = LANCZOS[0];
+    var t = x + 7.5;
+    for (var i = 1; i < 9; i++) a += LANCZOS[i] / (x + i);
+    return 0.5 * Math.log(2.0 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+  }
+
+  /* the incomplete beta function's continued fraction, by the modified
+   * Lentz method (DLMF 8.17.22): _beta_fraction */
+  function betaFraction(a, b, x) {
+    var tiny = 1e-300;
+    var qab = a + b, qap = a + 1.0, qam = a - 1.0;
+    var c = 1.0;
+    var d = 1.0 - qab * x / qap;
+    d = 1.0 / (Math.abs(d) >= tiny ? d : tiny);
+    var h = d;
+    for (var m = 1; m <= 300; m++) {
+      var m2 = 2 * m;
+      var aa = m * (b - m) * x / ((qam + m2) * (a + m2));
+      d = 1.0 + aa * d;
+      d = 1.0 / (Math.abs(d) >= tiny ? d : tiny);
+      c = 1.0 + aa / c;
+      c = Math.abs(c) >= tiny ? c : tiny;
+      h *= d * c;
+      aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
+      d = 1.0 + aa * d;
+      d = 1.0 / (Math.abs(d) >= tiny ? d : tiny);
+      c = 1.0 + aa / c;
+      c = Math.abs(c) >= tiny ? c : tiny;
+      var step = d * c;
+      h *= step;
+      if (Math.abs(step - 1.0) < 1e-15) break;
+    }
+    return h;
+  }
+
+  /** I_x(a, b), the distribution function of a Beta(a, b): regularised_beta.
+   * @param {number} a
+   * @param {number} b
+   * @param {number} x
+   * @returns {number} */
+  function regularisedBeta(a, b, x) {
+    if (x <= 0.0) return 0.0;
+    if (x >= 1.0) return 1.0;
+    var front = Math.exp(logGamma(a + b) - logGamma(a) - logGamma(b) +
+      a * Math.log(x) + b * Math.log(1.0 - x));
+    if (x < (a + 1.0) / (a + b + 2.0)) return front * betaFraction(a, b, x) / a;
+    return 1.0 - front * betaFraction(b, a, 1.0 - x) / b;
+  }
+
+  /** The q quantile of a Beta(a, b), by a hundred halvings: beta_quantile.
+   * @param {number} a
+   * @param {number} b
+   * @param {number} q
+   * @returns {number} */
+  function betaQuantile(a, b, q) {
+    var lo = 0.0, hi = 1.0;
+    for (var i = 0; i < 100; i++) {
+      var mid = 0.5 * (lo + hi);
+      if (regularisedBeta(a, b, mid) < q) lo = mid; else hi = mid;
+    }
+    return 0.5 * (lo + hi);
+  }
+
+  function oddsProbability(odds) { return odds / (1.0 + odds); }
+  function oddsOf(p) { return p / (1.0 - p); }
+
+  /* How close to 0 or 1 the prior rate and its percentiles may come: in
+   * doubles the 90th percentile of a Beta with a rate near 1 bisects to
+   * exactly 1, and its odds are then infinite (_RATE_BOUND, _inside). */
+  var ODDS_RATE_BOUND = 1e-6;
+  function oddsInside(p) {
+    return Math.min(Math.max(p, ODDS_RATE_BOUND), 1.0 - ODDS_RATE_BOUND);
+  }
+
+  /** The prior table's row for this ground, and the rate it gives:
+   * prior_for. The most specific row wins.
+   * @param {string|null} bgsCode
+   * @param {string|null} glg
+   * @param {number} successYieldM3h
+   * @returns {Rec} */
+  function priorFor(bgsCode, glg, successYieldM3h) {
+    if (!(successYieldM3h > 0.0)) {
+      throw new Error('odds.success_yield_m3_per_h must be above zero, not ' +
+        String(successYieldM3h));
+    }
+    var rows = oddsTables().prior;
+    function find(code, unit) {
+      for (var i = 0; i < rows.length; i++) {
+        if (rows[i].bgs_code === code && rows[i].glg === unit) return rows[i];
+      }
+      return null;
+    }
+    var row = null, matched = 'fallback';
+    if (bgsCode) {
+      if (glg) { row = find(bgsCode, glg); matched = 'combination'; }
+      if (!row) { row = find(bgsCode, '*'); matched = 'class'; }
+    }
+    if (!row) { row = find('*', '*'); matched = 'fallback'; }
+    if (row.status === 'fallback') matched = 'fallback';
+    var rate = row.yield_q1_l_per_s !== null
+      ? lognormalShareAbove(row.yield_q1_l_per_s, row.yield_q3_l_per_s,
+        successYieldM3h / 3.6)
+      : row.rate;
+    /* a Beta prior needs a rate strictly inside (0, 1) */
+    rate = oddsInside(rate);
+    return Object.assign({}, row, { matched: matched, rate: rate });
+  }
+
+  /* the first band whose `below` is above value, else the last */
+  function oddsBandOf(bands, value) {
+    for (var i = 0; i < bands.length; i++) {
+      if ('below' in bands[i] && value < bands[i].below) return bands[i];
+    }
+    return bands[bands.length - 1];
+  }
+
+  /* The thickness-weighted geometric mean resistivity of the water-bearing
+   * layers inside the water zones, or null: _water_zone_rho. Not
+   * zoneGeomeanRho, which takes every layer inside a zone, so the slice of
+   * dry layer or basement that rounding a zone to whole metres added moved
+   * the mean across a band edge. The logarithms are relative to the first
+   * such layer's resistivity, so a zone of one resistivity reads exactly it. */
+  function waterZoneRho(interp) {
+    var reference = 0.0, acc = 0.0, total = 0.0;
+    interp.water_zones.forEach(function (zone) {
+      var top = zone[0], bottom = zone[1];
+      interp.layers.forEach(function (layer) {
+        if (!layer.water_bearing) return;
+        var lo = Math.max(layer.top_m, top);
+        var hi = Math.min(isFinite(layer.bottom_m) ? layer.bottom_m : bottom, bottom);
+        if (hi > lo) {
+          if (total === 0.0) reference = layer.rho;
+          acc += Math.log(layer.rho / reference) * (hi - lo);
+          total += hi - lo;
+        }
+      });
+    });
+    return total > 0 ? reference * Math.exp(acc / total) : null;
+  }
+
+  /* [key, band, value, ratio] for the three survey classes: _survey_evidence */
+  function surveyEvidence(interp, range) {
+    var table = oddsTables().evidence;
+    var out = [];
+    if (!range) {
+      out.push(['regolith', 'not_sampled', null, 1.0]);
+      out.push(['basement', 'not_sampled', null, 1.0]);
+    } else {
+      var quoted = quotesBasementBand(range);
+      if (!quoted) {
+        out.push(['regolith', 'not_quoted', null, 1.0]);
+      } else {
+        var hit = oddsBandOf(table.regolith, range.basement_m.p50);
+        out.push(['regolith', hit.key, range.basement_m.p50, Number(hit.lr)]);
+      }
+      var share = range.basement_unresolved;
+      var basement = table.basement;
+      var key = !quoted ? 'unresolved'
+        : (share <= basement.resolved_max_unresolved_share ? 'resolved' : 'partly');
+      out.push(['basement', key, share, Number(basement[key].lr)]);
+    }
+    var rho = waterZoneRho(interp);
+    var resistivity = table.resistivity;
+    if (rho === null) {
+      out.push(['resistivity', 'none', null, Number(resistivity.none.lr)]);
+    } else {
+      var band = oddsBandOf(resistivity.bands, rho);
+      out.push(['resistivity', band.key, rho, Number(band.lr)]);
+    }
+    return out;
+  }
+
+  /** The chance that a borehole at this point succeeds, with its breakdown:
+   * success_odds. range is the point's sampled range of models, or null;
+   * bgsCode and glg the BGS class and USGS unit under it, or null.
+   * @param {Interpretation} interp
+   * @param {Rec|null} range
+   * @param {string|null} bgsCode
+   * @param {string|null} glg
+   * @param {Config} [config]
+   * @returns {Rec} */
+  function successOdds(interp, range, bgsCode, glg, config) {
+    var cfg = config || defaultConfig();
+    var tables = oddsTables();
+    var rateM3h = Number(cfg.odds.success_yield_m3_per_h);
+    var row = priorFor(bgsCode || null, glg || null, rateM3h);
+    var p0 = row.rate, n = row.effective_n;
+    var alpha = p0 * n, beta = (1.0 - p0) * n;
+    /* held inside (0, 1) as the rate is: a percentile that rounded to
+     * exactly 1 carried through the odds as NaN */
+    var priorLow = oddsInside(betaQuantile(alpha, beta, 0.1));
+    var priorHigh = oddsInside(betaQuantile(alpha, beta, 0.9));
+    var priorOdds = oddsOf(p0);
+
+    var survey = surveyEvidence(interp, range || null);
+    var err = interp.fit_error_percent;
+    var fitKey, weight;
+    if (err === null || err === undefined || !isFinite(err)) {
+      fitKey = 'unknown'; weight = 1.0; err = null;
+    } else {
+      var hit = oddsBandOf(tables.evidence.fit, err);
+      fitKey = hit.key; weight = Number(hit.weight);
+    }
+    var product = 1.0;
+    survey.forEach(function (s) { product *= s[3]; });
+    var fitFactor = Math.pow(product, weight - 1.0);
+
+    var evidence = [];
+    var odds = priorOdds;
+    survey.forEach(function (s) {
+      odds *= s[3];
+      evidence.push({ key: s[0], band: s[1], value: s[2], factor: s[3],
+        after: oddsProbability(odds), weight: null });
+    });
+    odds *= fitFactor;
+    evidence.push({ key: 'fit', band: fitKey, value: err, factor: fitFactor,
+      after: oddsProbability(odds), weight: weight });
+    var total = product * fitFactor;
+    function carried(p) { return oddsProbability(oddsOf(p) * total); }
+    return {
+      sounding_id: interp.sounding_id,
+      success_yield_m3_per_h: rateM3h,
+      bgs_code: bgsCode || null, glg: glg || null,
+      matched: row.matched, status: row.status, basis: row.basis,
+      yield_q1_l_per_s: row.yield_q1_l_per_s, yield_q3_l_per_s: row.yield_q3_l_per_s,
+      effective_n: n,
+      prior: p0, prior_low: priorLow, prior_high: priorHigh, prior_odds: priorOdds,
+      evidence: evidence,
+      posterior_odds: odds,
+      probability: oddsProbability(odds),
+      low: carried(priorLow), high: carried(priorHigh),
+      range_sampled: !!range,
+      calibration: String(tables.evidence.calibration).split(/\s+/)
+        .filter(Boolean).join(' '),
+    };
+  }
+
+  /** Where the point is: its own easting and northing in zone (or the zone
+   * its easting implies), else fallback, the site's position: point_latlon.
+   * @param {Interpretation} interp
+   * @param {number|null} zone
+   * @param {{lat: number, lon: number}|null} fallback
+   * @returns {{lat: number, lon: number}|null} */
+  function pointLatLon(interp, zone, fallback) {
+    var e = interp.site_easting, n = interp.site_northing;
+    if (isFiniteNum(e) && isFiniteNum(n)) {
+      return utmToGeographic(e, n, zone || inferZoneForSierraLeone(e));
+    }
+    return fallback || null;
+  }
+
+  /** The BGS aquifer class and USGS geology unit under a position:
+   * ground_at. [null, null] where there is no position.
+   * @param {{lat: number, lon: number}|null} latlon
+   * @returns {Array<string|null>} */
+  function groundAt(latlon) {
+    if (!latlon) return [null, null];
+    var aquifer = aquiferUnitAt(latlon.lat, latlon.lon);
+    var unit = geologyUnitAt(latlon.lat, latlon.lon);
+    return [aquifer ? String((aquifer.properties || {}).code || '') || null : null,
+      unit ? String((unit.properties || {}).glg || '') || null : null];
+  }
+
+  /** The odds at every point of a survey, in the order given: survey_odds.
+   * @param {Interpretation[]} interpretations
+   * @param {Array<Rec|null>|null} ranges in lockstep, null where none was sampled
+   * @param {number|null} zone the site's UTM zone, if it names one
+   * @param {{lat: number, lon: number}|null} fallbackLatLon the site's position
+   * @param {Config} [config]
+   * @returns {Rec[]} */
+  function surveyOdds(interpretations, ranges, zone, fallbackLatLon, config) {
+    return (interpretations || []).map(function (interp, i) {
+      var ground = groundAt(pointLatLon(interp, zone, fallbackLatLon));
+      return successOdds(interp, (ranges || [])[i] || null, ground[0], ground[1], config);
+    });
+  }
+
+  /** The plan's sentence: odds_headline.
+   * @param {Rec} o what successOdds returns
+   * @returns {string} */
+  function oddsHeadline(o) {
+    var status = phrase(o.matched === 'fallback' ? 'odds.status_fallback'
+      : 'odds.status_provisional');
+    return phrase('odds.headline', { p: rangeShare(o.probability),
+      low: rangeShare(o.low), high: rangeShare(o.high), status: status });
+  }
+
+  function oddsGround(o) {
+    if (o.glg) return phrase('odds.ground', { code: o.bgs_code, glg: o.glg });
+    return phrase('odds.ground_no_unit', { code: o.bgs_code });
+  }
+
+  /** What is particular to the point: the headline, its prior, and what was
+   * left out: odds_point_text.
+   * @param {Rec} o what successOdds returns
+   * @returns {string[]} */
+  function oddsPointText(o) {
+    var out = [oddsHeadline(o)];
+    var prior = { p: rangeShare(o.prior), low: rangeShare(o.prior_low),
+      high: rangeShare(o.prior_high), n: o.effective_n, basis: o.basis };
+    if (o.matched === 'fallback') {
+      out.push(phrase('odds.prior_fallback', prior));
+    } else {
+      out.push(phrase(o.matched === 'combination' ? 'odds.prior_combination'
+        : 'odds.prior_class', Object.assign({ ground: oddsGround(o),
+        q1: o.yield_q1_l_per_s, q3: o.yield_q3_l_per_s,
+        ls: o.success_yield_m3_per_h / 3.6 }, prior)));
+    }
+    if (!o.range_sampled) out.push(phrase('odds.not_sampled', { sid: o.sounding_id }));
+    return out;
+  }
+
+  /** What success means and what the odds rest on, the same at every point
+   * of a survey: odds_basis_text.
+   * @param {Rec} o what successOdds returns
+   * @returns {string[]} */
+  function oddsBasisText(o) {
+    return [phrase('odds.definition', { rate: o.success_yield_m3_per_h,
+      ls: o.success_yield_m3_per_h / 3.6 }),
+    phrase('odds.basis', { calibration: o.calibration })];
+  }
+
+  /** The odds in sentences: odds_text.
+   * @param {Rec} o what successOdds returns
+   * @returns {string[]} */
+  function oddsText(o) {
+    var point = oddsPointText(o), basis = oddsBasisText(o);
+    return point.slice(0, 1).concat(basis.slice(0, 1), point.slice(1), basis.slice(1));
+  }
+
+  /* what the survey found, for the breakdown's second column: _found */
+  function oddsFound(e) {
+    var missing = phraseTable('odds.found_missing');
+    var id = e.key + '_' + e.band;
+    if (Object.prototype.hasOwnProperty.call(missing, id)) return String(missing[id]);
+    var band = String(phraseTable('odds.bands')[e.band]);
+    if (e.key === 'regolith') return phrase('odds.found_regolith', { depth: e.value, band: band });
+    if (e.key === 'basement') {
+      return phrase('odds.found_basement', { share: rangeShare(e.value), band: band });
+    }
+    if (e.key === 'resistivity') {
+      return phrase('odds.found_resistivity', { rho: e.value, band: band });
+    }
+    return phrase('odds.found_fit', { err: e.value, band: band, weight: e.weight });
+  }
+
+  /** The breakdown table's header: odds_header.
+   * @returns {string[]} */
+  function oddsHeader() {
+    return [phrase('odds.col_evidence'), phrase('odds.col_found'),
+      phrase('odds.col_factor'), phrase('odds.col_after')];
+  }
+
+  /** The breakdown: the prior, then each piece of evidence with its factor
+   * and the chance after it: odds_rows.
+   * @param {Rec} o what successOdds returns
+   * @returns {string[][]} */
+  function oddsRows(o) {
+    var labels = phraseTable('odds.rows');
+    var rows = [[String(labels.prior), o.bgs_code ? oddsGround(o)
+      : phrase('odds.ground_none'), '', rangeShare(o.prior)]];
+    o.evidence.forEach(function (/** @type {Rec} */ e) {
+      rows.push([String(labels[e.key]), oddsFound(e), pyFixed(e.factor, 2),
+        rangeShare(e.after)]);
+    });
+    return rows;
+  }
+
+  /** The odds in a table cell: odds_short.
+   * @param {Rec} o what successOdds returns
+   * @returns {string} */
+  function oddsShort(o) {
+    return phrase('odds.short', { p: rangeShare(o.probability), low: rangeShare(o.low),
+      high: rangeShare(o.high) });
+  }
+
+  /** odds_table_caption.
+   * @param {Rec} o what successOdds returns
+   * @returns {string} */
+  function oddsTableCaption(o) {
+    return phrase('odds.table_caption', { sid: o.sounding_id });
+  }
+
+  /** The odds as a programme's success rate in percent, 1 to 99:
+   * programme_rate.
+   * @param {Rec} o what successOdds returns
+   * @returns {number} */
+  function programmeRate(o) {
+    return Math.min(Math.max(pyRound(100.0 * o.probability, 0), 1), 99);
+  }
+
+  /** The sentence the Costing pages offer the odds with: programme_offer.
+   * @param {Rec} o what successOdds returns
+   * @returns {string} */
+  function programmeOffer(o) {
+    return phrase('odds.programme_offer', { sid: o.sounding_id,
+      p: rangeShare(o.probability), low: rangeShare(o.low), high: rangeShare(o.high) });
+  }
+
+  Object.assign(C, {
+    programmeRate: programmeRate, programmeOffer: programmeOffer,
+    oddsTables: oddsTables, lognormalShareAbove: lognormalShareAbove,
+    regularisedBeta: regularisedBeta, betaQuantile: betaQuantile,
+    priorFor: priorFor, successOdds: successOdds, pointLatLon: pointLatLon,
+    groundAt: groundAt, surveyOdds: surveyOdds, oddsHeadline: oddsHeadline,
+    oddsText: oddsText, oddsHeader: oddsHeader, oddsRows: oddsRows,
+    oddsTableCaption: oddsTableCaption, oddsShort: oddsShort,
+    oddsPointText: oddsPointText, oddsBasisText: oddsBasisText,
+  });
+
+  /* ====================================================== cost as a range
+   * groundwater/costing/distribution.py (PLAN.md step 3.4). The bill of
+   * quantities stays the contract document; this samples the planning
+   * figure beside it: every unit rate drawn from the triangle between its
+   * minimum, likely and maximum (one draw for each spread group, so rates
+   * that share a cause move together), the depth from the range of models
+   * at the first-ranked point, and dry holes at the chance of a working
+   * borehole there, p: the expected cost per working borehole is the mean
+   * completed borehole plus the mean dry attempt for each of the (1 - p) / p
+   * dry attempts expected before a working one. The draws come from the range of models' generator and
+   * the arithmetic is sums, products, quotients and square roots, which
+   * both engines round alike, so the two distributions agree to the bit;
+   * every sum is a loop in the same order as Python's.
+   */
+
+  var COST_RATES = 0, COST_DEPTH = 1, COST_OUTCOME = 2;
+  var COST_CURVE_STEPS = 100;
+  /* a dry attempt does not pay this basis: the rig has made the journey */
+  var COST_JOURNEY = 'per_km_round_trip';
+
+  /** The triangle's inverse distribution function: triangle_quantile.
+   * @param {number} lo
+   * @param {number} mode
+   * @param {number} hi
+   * @param {number} u
+   * @returns {number} */
+  function triangleQuantile(lo, mode, hi, u) {
+    if (hi <= lo) return mode;
+    var width = hi - lo;
+    if (u < (mode - lo) / width) return lo + Math.sqrt(u * width * (mode - lo));
+    return hi - Math.sqrt((1.0 - u) * width * (hi - mode));
+  }
+
+  /** The depth to draw from a sampled range of models, or null: depth_spread.
+   * @param {Rec|null} range what sampleModelRange returns
+   * @param {Config} [config]
+   * @returns {Rec|null} */
+  function depthSpread(range, config) {
+    if (!range || !range.drilling_depth_quantiles_m || !range.drilling_depth_quantiles_m.length) {
+      return null;
+    }
+    var cfg = config || defaultConfig();
+    return {
+      sounding_id: range.sounding_id,
+      quantiles_m: range.drilling_depth_quantiles_m.slice(),
+      step_m: cfg.ves.round_drilling_depth_to_m,
+      cap_m: range.investigation_depth_m,
+    };
+  }
+
+  /** The depth with probability u at or below it: DepthSpread.draw.
+   * @param {Rec} spread what depthSpread returns
+   * @param {number} u
+   * @returns {number} */
+  function depthDraw(spread, u) {
+    var q = spread.quantiles_m;
+    var pos = u * (q.length - 1);
+    var k = Math.floor(pos);
+    var x = k + 1 >= q.length ? q[q.length - 1] : q[k] + (q[k + 1] - q[k]) * (pos - k);
+    return Math.min(Math.ceil(x / spread.step_m) * spread.step_m, spread.cap_m);
+  }
+
+  function costGiven(v) { return v !== null && v !== undefined; }
+
+  /* The quantities of base (given resolved) for a borehole drilled to depth
+   * instead: _at_depth. A length supplied moves with the depth, a length left
+   * to a rule of thumb is worked out again, and a gravel pack the design
+   * leaves out stays out. */
+  function costAtDepth(given, base, depth) {
+    if (depth === base.total_depth_m) return base;
+    var shift = depth - base.total_depth_m;
+    var over = costGiven(given.overburden_m) ? given.overburden_m : defaultOverburdenM(depth);
+    var casing = costGiven(given.casing_m) ? Math.max(0.0, given.casing_m + shift)
+      : defaultCasingM(depth, base.screen_m || 0.0);
+    var gravel;
+    if (!costGiven(given.gravel_interval_m)) gravel = defaultGravelIntervalM(depth);
+    else if (given.gravel_interval_m === 0) gravel = 0.0;
+    else gravel = Math.max(0.0, given.gravel_interval_m + shift);
+    var r = Object.assign({}, base, {
+      total_depth_m: depth, overburden_m: Math.min(over, depth), casing_m: casing,
+      gravel_interval_m: gravel,
+      crew_days: costGiven(given.crew_days) ? given.crew_days : defaultCrewDays(depth),
+    });
+    r.bedrock_m = Math.max(0.0, r.total_depth_m - (r.overburden_m || 0.0));
+    r.gravel_pack_m3 = annulusVolumeM3(r.borehole_diameter_in, r.casing_diameter_in,
+      r.gravel_interval_m || 0.0, 1.3);
+    return r;
+  }
+
+  /* Each rate's quantity at a depth, or null for a basis the estimate skips;
+   * a drawn depth falls on a whole drilling step, so few are worked out. */
+  function costQuantities(given, rates) {
+    var base = resolveCostingInputs(given).inputs;
+    var cache = new Map();
+    return {
+      base: base,
+      at: function (/** @type {number} */ depth) {
+        var hit = cache.get(depth);
+        if (!hit) {
+          var table = quantityTable(costAtDepth(given, base, depth));
+          hit = rates.map(function (r) {
+            return r.quantity_basis in table ? table[r.quantity_basis] : null;
+          });
+          cache.set(depth, hit);
+        }
+        return hit;
+      },
+    };
+  }
+
+  /* One uniform for each spread group, in the order the groups first appear,
+   * and each rate read from its own triangle at its group's: _Rates. */
+  function costRateDraws(rates) {
+    var triangles = rates.map(rateTriangle);
+    var order = new Map();
+    var group = rates.map(function (r) {
+      var key = r.spread_group || '\u0000' + r.code;
+      if (!order.has(key)) order.set(key, order.size);
+      return order.get(key);
+    });
+    var groups = order.size;
+    return function (/** @type {Rec} */ rng) {
+      var us = [];
+      for (var i = 0; i < groups; i++) us.push(rng.uniform());
+      return triangles.map(function (t, j) { return triangleQuantile(t[0], t[1], t[2], us[group[j]]); });
+    };
+  }
+
+  /* the contract price with any VAT, in the order CostEstimate works it out */
+  function costPrice(direct, overheads, margin, vat) {
+    var total = direct + direct * overheads / 100.0;
+    var price = total + total * margin / 100.0;
+    return price + price * vat / 100.0;
+  }
+
+  function costShareAtOrUnder(sorted, value) {
+    var limit = value + Math.abs(value) * 1e-12;
+    var lo = 0, hi = sorted.length;
+    while (lo < hi) {
+      var mid = Math.floor((lo + hi) / 2);
+      if (sorted[mid] <= limit) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo / sorted.length;
+  }
+
+  function costCurve(sorted) {
+    var out = [];
+    for (var k = 0; k <= COST_CURVE_STEPS; k++) out.push(rangePercentile(sorted, k / COST_CURVE_STEPS));
+    return out;
+  }
+
+  function costMean(values) {
+    var total = 0.0;
+    for (var i = 0; i < values.length; i++) total += values[i];
+    return total / values.length;
+  }
+
+  function costSettings(opts) {
+    var cfg = opts.config || defaultConfig();
+    var n = Math.trunc(opts.samples === undefined || opts.samples === null
+      ? cfg.cost_range.samples : opts.samples);
+    if (!(n >= 1)) throw new Error('the cost distribution needs at least one sample');
+    var seed = Math.trunc(opts.seed === undefined || opts.seed === null
+      ? cfg.cost_range.seed : opts.seed);
+    return { n: n, seed: seed };
+  }
+
+  function costPct(opts) {
+    return {
+      overheads_percent: opts.overheadsPercent === undefined ? 15.0 : opts.overheadsPercent,
+      margin_percent: opts.marginPercent === undefined ? 20.0 : opts.marginPercent,
+      contingency_percent: opts.contingencyPercent === undefined ? 10.0 : opts.contingencyPercent,
+      vat_percent: opts.vatPercent === undefined ? 0.0 : opts.vatPercent,
+    };
+  }
+
+  /** Sample the cost of one borehole: sample_cost. Options as
+   * estimateBoreholeCost takes them, plus depth (what depthSpread returns),
+   * successProbability (0 to 1], oddsSource, config, samples and seed.
+   * @param {Rec} inputs what costingInputs returns
+   * @param {Rec[]|null} [rates]
+   * @param {Rec} [options]
+   * @returns {Rec} */
+  function sampleCost(inputs, rates, options) {
+    var opts = options || {};
+    var p = opts.successProbability === undefined ? 1.0 : opts.successProbability;
+    if (!(p > 0.0 && p <= 1.0)) throw new Error('the chance of success must be in (0, 1]');
+    var settings = costSettings(opts);
+    var catalogue = rates || loadRates();
+    var pct = costPct(opts);
+    var boq = estimateBoreholeCost(inputs, catalogue, {
+      overheadsPercent: pct.overheads_percent, marginPercent: pct.margin_percent,
+      contingencyPercent: pct.contingency_percent, vatPercent: pct.vat_percent,
+    });
+    var quantities = costQuantities(inputs, catalogue);
+    var draw = costRateDraws(catalogue);
+    var dryLine = catalogue.map(function (r) {
+      return DRY_STAGES.indexOf(r.stage) >= 0 && r.quantity_basis !== COST_JOURNEY;
+    });
+    var depth = opts.depth || null;
+    var rateRng = rangeStream(settings.seed, COST_RATES);
+    var depthRng = rangeStream(settings.seed, COST_DEPTH);
+    var baseDepth = quantities.base.total_depth_m;
+    var costs = [], depths = [], dryTotal = 0.0;
+    for (var i = 0; i < settings.n; i++) {
+      var drawn = draw(rateRng);
+      var d = depth ? depthDraw(depth, depthRng.uniform()) : baseDepth;
+      var qs = quantities.at(d);
+      var direct = 0.0, dry = 0.0;
+      for (var j = 0; j < qs.length; j++) {
+        if (qs[j] === null) continue;
+        var amount = qs[j] * drawn[j];
+        direct += amount;
+        if (dryLine[j]) dry += amount;
+      }
+      costs.push(costPrice(direct, pct.overheads_percent, pct.margin_percent, pct.vat_percent));
+      depths.push(d);
+      dryTotal += costPrice(dry, pct.overheads_percent, pct.margin_percent, pct.vat_percent);
+    }
+    var mean = costMean(costs);
+    var dryMean = dryTotal / settings.n;
+    var ordered = costs.slice().sort(function (a, b) { return a - b; });
+    depths.sort(function (a, b) { return a - b; });
+    return Object.assign({
+      samples: settings.n, seed: settings.seed,
+      depth_m: baseDepth,
+      depth_source: depth ? depth.sounding_id : null,
+      depth_p10_m: rangePercentile(depths, 0.1), depth_p90_m: rangePercentile(depths, 0.9),
+      success_probability: p,
+      odds_source: opts.oddsSource === undefined ? null : opts.oddsSource,
+      p50: rangePercentile(ordered, 0.5), p80: rangePercentile(ordered, 0.8), mean: mean,
+      expected_per_working: mean + dryMean * ((1.0 - p) / p),
+      dry_mean: dryMean,
+      boq_usd: boq.price_with_vat_usd, budget_usd: boq.budget_usd,
+      boq_share: costShareAtOrUnder(ordered, boq.price_with_vat_usd),
+      budget_share: costShareAtOrUnder(ordered, boq.budget_usd),
+    }, pct, {
+      mean_share: costShareAtOrUnder(ordered, mean),
+      curve: costCurve(ordered),
+    });
+  }
+
+  /** The dry attempts a programme of n working boreholes makes at a chance p
+   * of success each, as [the least count kept, the running weights from it]:
+   * failures_table, the negative binomial worked outwards from its mode by
+   * the ratio of one term to the next.
+   * @param {number} n
+   * @param {number} p
+   * @returns {Array<number|number[]>} */
+  function failuresTable(n, p) {
+    if (p >= 1.0) return [0, [1.0]];
+    var q = 1.0 - p;
+    var mode = n > 1 ? Math.floor((n - 1) * q / p) : 0;
+    var below = [];
+    var w = 1.0, k = mode;
+    while (k > 0) {
+      w = w * k / ((n + k - 1) * q);
+      if (w < 1e-17) break;
+      below.push(w);
+      k -= 1;
+    }
+    var weights = below.slice().reverse().concat([1.0]);
+    w = 1.0; k = mode;
+    for (;;) {
+      w = w * (n + k) * q / (k + 1);
+      if (w < 1e-17) break;
+      weights.push(w);
+      k += 1;
+    }
+    var running = [], total = 0.0;
+    for (var i = 0; i < weights.length; i++) {
+      total += weights[i];
+      running.push(total);
+    }
+    return [mode - below.length, running];
+  }
+
+  function drawFailures(first, running, u) {
+    var target = u * running[running.length - 1];
+    var lo = 0, hi = running.length - 1;
+    while (lo < hi) {
+      var mid = Math.floor((lo + hi) / 2);
+      if (running[mid] >= target) hi = mid;
+      else lo = mid + 1;
+    }
+    return first + lo;
+  }
+
+  /** Sample the cost of a programme: sample_programme_cost. Options as
+   * estimateProgrammeCost takes them, plus depth, config, samples and seed.
+   * @param {Rec} perWell what costingInputs returns
+   * @param {number} nBoreholes
+   * @param {Rec} [options]
+   * @returns {Rec} */
+  function sampleProgrammeCost(perWell, nBoreholes, options) {
+    var opts = options || {};
+    var catalogue = opts.rates || loadRates();
+    var estimate = estimateProgrammeCost(perWell, nBoreholes, Object.assign({}, opts,
+      { rates: catalogue }));
+    var settings = costSettings(opts);
+    var pct = costPct(opts);
+    var successRate = opts.successRatePercent === undefined ? 100.0 : opts.successRatePercent;
+    var interSiteKm = opts.interSiteDistanceKm === undefined ? 15.0 : opts.interSiteDistanceKm;
+    var wellInputs = Object.assign({}, perWell, { mobilisation_distance_km: 0.0 });
+    var quantities = costQuantities(wellInputs, catalogue);
+    var draw = costRateDraws(catalogue);
+    var dryLine = catalogue.map(function (r) { return DRY_STAGES.indexOf(r.stage) >= 0; });
+    var journey = catalogue.map(function (r) { return r.quantity_basis === COST_JOURNEY; });
+    var table = failuresTable(nBoreholes, successRate / 100.0);
+    var first = /** @type {number} */ (table[0]);
+    var running = /** @type {number[]} */ (table[1]);
+    var depth = opts.depth || null;
+    var rateRng = rangeStream(settings.seed, COST_RATES);
+    var depthRng = rangeStream(settings.seed, COST_DEPTH);
+    var outcomeRng = rangeStream(settings.seed, COST_OUTCOME);
+    var baseDepth = quantities.base.total_depth_m;
+    var baseKm = 2.0 * perWell.mobilisation_distance_km;
+    var totals = [], attempts = [];
+    for (var i = 0; i < settings.n; i++) {
+      var drawn = draw(rateRng);
+      var d = depth ? depthDraw(depth, depthRng.uniform()) : baseDepth;
+      var failures = drawFailures(first, running, outcomeRng.uniform());
+      var qs = quantities.at(d);
+      var well = 0.0, dry = 0.0, kmRate = 0.0;
+      for (var j = 0; j < qs.length; j++) {
+        if (journey[j]) kmRate += drawn[j];
+        if (qs[j] === null) continue;
+        var amount = qs[j] * drawn[j];
+        well += amount;
+        if (dryLine[j]) dry += amount;
+      }
+      var tried = nBoreholes + failures;
+      var transport = kmRate * (baseKm + Math.max(0, tried - 1) * interSiteKm);
+      var direct = nBoreholes * well + failures * dry + transport;
+      var total = direct * (1 + pct.overheads_percent / 100.0);
+      var price = total * (1 + pct.margin_percent / 100.0);
+      totals.push(price * (1 + pct.vat_percent / 100.0));
+      attempts.push(tried);
+    }
+    var mean = costMean(totals);
+    var ordered = totals.slice().sort(function (a, b) { return a - b; });
+    attempts.sort(function (a, b) { return a - b; });
+    return {
+      n_boreholes: nBoreholes, samples: settings.n, seed: settings.seed,
+      success_rate_percent: successRate,
+      depth_source: depth ? depth.sounding_id : null,
+      p50: rangePercentile(ordered, 0.5), p80: rangePercentile(ordered, 0.8), mean: mean,
+      per_working_expected: mean / nBoreholes,
+      per_working_p80: rangePercentile(ordered, 0.8) / nBoreholes,
+      attempts_p50: Math.ceil(rangePercentile(attempts, 0.5)),
+      attempts_p80: Math.ceil(rangePercentile(attempts, 0.8)),
+      attempts_planned: estimate.n_attempted,
+      estimate_usd: estimate.price_with_vat_usd, budget_usd: estimate.budget_usd,
+      estimate_share: costShareAtOrUnder(ordered, estimate.price_with_vat_usd),
+      budget_share: costShareAtOrUnder(ordered, estimate.budget_usd),
+      contingency_percent: pct.contingency_percent,
+      mean_share: costShareAtOrUnder(ordered, mean),
+      curve: costCurve(ordered),
+    };
+  }
+
+  /** US dollars to the dollar with thousands separated, as Python's
+   * f"{x:,.0f}" writes them: half to even on the exact value.
+   * @param {number} value
+   * @returns {string} */
+  function costUsd(value) {
+    var text = pyFixed(value, 0);
+    var sign = text.charAt(0) === '-' ? '-' : '';
+    var digits = sign ? text.slice(1) : text;
+    return sign + digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  /** The distribution in sentences: cost_range_text.
+   * @param {Rec} d what sampleCost returns
+   * @returns {string[]} */
+  function costRangeText(d) {
+    var out = [
+      phrase('cost_range.which_is_which'),
+      phrase('cost_range.headline', { p50: costUsd(d.p50), p80: costUsd(d.p80),
+        n: costUsd(d.samples), boq: costUsd(d.boq_usd), boq_share: rangeShare(d.boq_share) }),
+      phrase('cost_range.price_basis', { overheads: d.overheads_percent,
+        margin: d.margin_percent, contingency: d.contingency_percent,
+        budget: costUsd(d.budget_usd), budget_share: rangeShare(d.budget_share) }),
+    ];
+    if (d.odds_source === null) {
+      out.push(phrase('cost_range.working_no_odds', { mean: costUsd(d.mean) }));
+    } else {
+      out.push(phrase('cost_range.working', { sid: d.odds_source,
+        p: rangeShare(d.success_probability), expected: costUsd(d.expected_per_working),
+        dry: costUsd(d.dry_mean) }));
+    }
+    if (d.depth_source === null) {
+      out.push(phrase('cost_range.depth_fixed', { depth: d.depth_m }));
+    } else {
+      out.push(phrase('cost_range.depth_range', { sid: d.depth_source, p10: d.depth_p10_m,
+        p90: d.depth_p90_m, depth: d.depth_m }));
+    }
+    out.push(phrase('cost_range.basis', { seed: d.seed }));
+    return out;
+  }
+
+  /** @returns {string[]} */
+  function costRangeHeader() {
+    return [phrase('cost_range.col_item'), phrase('cost_range.col_usd'),
+      phrase('cost_range.col_share')];
+  }
+
+  /** The planning figure beside the bill of quantities: cost_range_rows.
+   * @param {Rec} d what sampleCost returns
+   * @returns {string[][]} */
+  function costRangeRows(d) {
+    var labels = phraseTable('cost_range.rows');
+    var rows = [
+      [String(labels.p50), costUsd(d.p50), rangeShare(0.5)],
+      [String(labels.p80), costUsd(d.p80), rangeShare(0.8)],
+      [String(labels.mean), costUsd(d.mean), rangeShare(d.mean_share)],
+      [String(labels.expected), costUsd(d.expected_per_working), ''],
+    ];
+    rows.push([String(labels.boq), costUsd(d.boq_usd), rangeShare(d.boq_share)]);
+    rows.push([String(labels.budget), costUsd(d.budget_usd), rangeShare(d.budget_share)]);
+    return rows;
+  }
+
+  /** programme_range_text.
+   * @param {Rec} d what sampleProgrammeCost returns
+   * @returns {string[]} */
+  function programmeRangeText(d) {
+    return [
+      phrase('cost_range.programme_headline', { wells: d.n_boreholes, p50: costUsd(d.p50),
+        p80: costUsd(d.p80), n: costUsd(d.samples), estimate: costUsd(d.estimate_usd),
+        estimate_share: rangeShare(d.estimate_share), contingency: d.contingency_percent,
+        budget: costUsd(d.budget_usd), budget_share: rangeShare(d.budget_share) }),
+      phrase('cost_range.programme_working', { expected: costUsd(d.per_working_expected),
+        p80_each: costUsd(d.per_working_p80), rate: d.success_rate_percent,
+        a50: d.attempts_p50, a80: d.attempts_p80, planned: d.attempts_planned }),
+      phrase('cost_range.programme_basis'),
+    ];
+  }
+
+  /** programme_range_rows.
+   * @param {Rec} d what sampleProgrammeCost returns
+   * @returns {string[][]} */
+  function programmeRangeRows(d) {
+    var labels = phraseTable('cost_range.programme_rows');
+    return [
+      [String(labels.p50), costUsd(d.p50), rangeShare(0.5)],
+      [String(labels.p80), costUsd(d.p80), rangeShare(0.8)],
+      [String(labels.mean), costUsd(d.mean), rangeShare(d.mean_share)],
+      [String(labels.expected), costUsd(d.per_working_expected), ''],
+      [String(labels.p80_each), costUsd(d.per_working_p80), ''],
+      [String(labels.estimate), costUsd(d.estimate_usd), rangeShare(d.estimate_share)],
+      [String(labels.budget), costUsd(d.budget_usd), rangeShare(d.budget_share)],
+    ];
+  }
+
+  Object.assign(C, {
+    triangleQuantile: triangleQuantile, depthSpread: depthSpread, depthDraw: depthDraw,
+    sampleCost: sampleCost, failuresTable: failuresTable,
+    sampleProgrammeCost: sampleProgrammeCost, costUsd: costUsd,
+    costRangeText: costRangeText, costRangeHeader: costRangeHeader,
+    costRangeRows: costRangeRows, programmeRangeText: programmeRangeText,
+    programmeRangeRows: programmeRangeRows,
+  });
+
+  /* ================================================ one more measurement
+   * groundwater/siting/measurement.py (PLAN.md step 3.5): what a second
+   * sounding beside the first-ranked point, or a profiling line through it,
+   * is worth to the choice of where to drill, as a preposterior analysis
+   * anyone can follow on paper. The choice is the point or the alternative
+   * (the other surveyed point with the best odds, or an unsurveyed site on
+   * the same ground at the prior); what a measurement could read are the
+   * bands of success_evidence.yaml, spread among working and dry boreholes
+   * as evenly as their ratios allow; the value (EVSI) is the cost of the
+   * best choice now less the expected cost of the best choice after it.
+   * The module's docstring says each step and why.
+   */
+
+  /* the measurements priced, in the order the pages and reports give them */
+  var MEASUREMENT_KINDS = ['sounding', 'profiling'];
+  /* how far the tilt of the even spread is searched either way: _TILT */
+  var MEASUREMENT_TILT = 1.0e4;
+
+  /** How often each band is seen among dry boreholes and among working
+   * ones, from the bands' likelihood ratios alone: the most even spread
+   * whose ratios average 1, by the bisection even_spread takes. Null where
+   * the ratios are all on one side of 1.
+   * @param {number[]} ratios
+   * @returns {?{dry: number[], wet: number[]}} */
+  function evenSpread(ratios) {
+    var lo = Math.min.apply(null, ratios), hi = Math.max.apply(null, ratios);
+    if (!(lo < 1.0 && 1.0 < hi)) return null;
+    /** @param {number} t */
+    function weights(t) {
+      var top = t >= 0.0 ? -t * (lo - 1.0) : -t * (hi - 1.0);
+      var w = ratios.map(function (r) { return Math.exp(-t * (r - 1.0) - top); });
+      var total = 0.0, weighted = 0.0;
+      for (var i = 0; i < w.length; i++) {
+        total += w[i];
+        weighted += w[i] * ratios[i];
+      }
+      return { w: w, total: total, weighted: weighted };
+    }
+    var a = -MEASUREMENT_TILT, b = MEASUREMENT_TILT;
+    for (var k = 0; k < 200; k++) {
+      var mid = 0.5 * (a + b);
+      var at = weights(mid);
+      if (at.weighted > at.total) a = mid; else b = mid;
+    }
+    var end = weights(0.5 * (a + b));
+    return {
+      dry: end.w.map(function (wi) { return wi / end.total; }),
+      wet: end.w.map(function (wi, i) { return wi * ratios[i] / end.weighted; }),
+    };
+  }
+
+  /** The expected cost of a working borehole at a chance q an attempt:
+   * step 3.4's expected cost per working borehole.
+   * @param {number} completed @param {number} dry @param {number} q */
+  function measurementAlternativeUsd(completed, dry, q) {
+    return completed + dry * ((1.0 - q) / q);
+  }
+
+  /** Drilling at the point first, and then the alternative if it is dry.
+   * @param {number} p @param {number} completed @param {number} dry
+   * @param {number} alternative */
+  function measurementDrillHereUsd(p, completed, dry, alternative) {
+    return p * completed + (1.0 - p) * (dry + alternative);
+  }
+
+  /** The decision before and after a measurement: preposterior. classes is
+   * a list of classes, each a list of [factor, ifSuccess, ifDry].
+   * @param {number} p @param {number} q
+   * @param {number} completedUsd @param {number} dryUsd
+   * @param {number[][][]} classes
+   * @returns {Rec} */
+  function preposterior(p, q, completedUsd, dryUsd, classes) {
+    if (!(p > 0.0 && p < 1.0 && q > 0.0 && q < 1.0)) {
+      throw new Error('the chances at the point and the alternative must be in (0, 1)');
+    }
+    if (!(completedUsd > 0.0 && dryUsd > 0.0)) {
+      throw new Error('the completed borehole and the dry attempt must cost more than 0');
+    }
+    var move = measurementAlternativeUsd(completedUsd, dryUsd, q);
+    var here = measurementDrillHereUsd(p, completedUsd, dryUsd, move);
+    /* a tie keeps the first-ranked point */
+    var stayHere = here <= move;
+    var now = stayHere ? here : move;
+
+    /* every combination of one band from each class, the first outermost */
+    /** @type {number[][]} */
+    var combined = [[1.0, 1.0]];
+    classes.forEach(function (bands) {
+      /** @type {number[][]} */
+      var next = [];
+      combined.forEach(function (c) {
+        bands.forEach(function (band) { next.push([c[0] * band[1], c[1] * band[2]]); });
+      });
+      combined = next;
+    });
+
+    var value = 0.0;
+    var change = [0.0, 0.0];
+    combined.forEach(function (c) {
+      var s = c[0], f = c[1];
+      var chance = p * s + (1.0 - p) * f;
+      if (chance <= 0.0) return;
+      var after = p * s / chance;
+      var costHere = measurementDrillHereUsd(after, completedUsd, dryUsd, move);
+      var saving = stayHere ? costHere - move : move - costHere;
+      if (saving > 0.0) {
+        value += chance * saving;
+        change[0] += chance;
+        change[1] += chance * after;
+      }
+    });
+    /* the readings that keep the choice are the rest: a choice nothing
+     * changes is kept on a chance of exactly 1 at exactly p */
+    var keepChance = Math.max(0.0, 1.0 - change[0]);
+    var keepP = keepChance > 0.0
+      ? Math.min(Math.max((p - change[1]) / keepChance, 0.0), 1.0) : 0.0;
+    var changeP = change[0] > 0.0 ? change[1] / change[0] : 0.0;
+    var keepUsd, changeUsd;
+    if (stayHere) {
+      keepUsd = keepChance ? measurementDrillHereUsd(keepP, completedUsd, dryUsd, move) : 0.0;
+      changeUsd = change[0] ? move : 0.0;
+    } else {
+      keepUsd = keepChance ? move : 0.0;
+      changeUsd = change[0]
+        ? measurementDrillHereUsd(changeP, completedUsd, dryUsd, move) : 0.0;
+    }
+    var perfect = now - (p * completedUsd + (1.0 - p) * move);
+    return {
+      alternative_usd: move, drill_here_usd: here,
+      decision_now: stayHere ? 'here' : 'move', now_usd: now,
+      threshold: (q / (1.0 - q)) / (p / (1.0 - p)),
+      keep_chance: keepChance, keep_probability: keepP, keep_usd: keepUsd,
+      change_chance: change[0], change_probability: changeP, change_usd: changeUsd,
+      after_usd: now - value, value_usd: value, perfect_usd: perfect,
+    };
+  }
+
+  /** What one more measurement of kind costs, from data/field.yaml:
+   * measurement_cost_usd.
+   * @param {string} kind
+   * @returns {number} */
+  function measurementCostUsd(kind) {
+    var costs = fieldSchedules().one_more_measurement;
+    if (kind === 'sounding') return Number(costs.sounding_usd);
+    if (kind === 'profiling') return Number(costs.profiling_line_usd);
+    throw new Error('no measurement of kind ' + kind);
+  }
+
+  /** The classes of evidence a measurement reads: _classes.
+   * @param {string} kind @param {boolean} rangeSampled
+   * @returns {Array<[string, Array<[string[], number]>]>} */
+  function measurementClasses(kind, rangeSampled) {
+    var table = oddsTables().evidence;
+    /** @type {Array<[string, Array<[string[], number]>]>} */
+    var out = [];
+    if (kind === 'sounding' && rangeSampled) {
+      var basement = table.basement;
+      /** @type {Array<[string[], number]>} */
+      var depth = [];
+      table.regolith.forEach(function (/** @type {Rec} */ band) {
+        ['resolved', 'partly'].forEach(function (key) {
+          depth.push([[band.key, key], Number(band.lr) * Number(basement[key].lr)]);
+        });
+      });
+      /* where no basement is quoted, the depth brings no ratio of its own */
+      depth.push([['not_quoted', 'unresolved'], Number(basement.unresolved.lr)]);
+      out.push(['depth', depth]);
+    }
+    var resistivity = table.resistivity;
+    /** @type {Array<[string[], number]>} */
+    var rho = [[['none'], Number(resistivity.none.lr)]];
+    resistivity.bands.forEach(function (/** @type {Rec} */ band) {
+      rho.push([[band.key], Number(band.lr)]);
+    });
+    out.push(['resistivity', rho]);
+    return out;
+  }
+
+  /** @param {Rec} o @returns {number} */
+  function measurementFitWeight(o) {
+    for (var i = 0; i < o.evidence.length; i++) {
+      var e = o.evidence[i];
+      if (e.key === 'fit' && e.weight !== null && e.weight !== undefined) {
+        return Number(e.weight);
+      }
+    }
+    return 1.0;
+  }
+
+  /** What one more measurement of kind at the point o is worth to the
+   * choice between drilling there and at alternative (null for an
+   * unsurveyed site on the same ground): measurement_value.
+   * @param {Rec} o what successOdds returns
+   * @param {?Rec} alternative
+   * @param {number} completedUsd the cost distribution's mean
+   * @param {number} dryUsd its mean dry attempt
+   * @param {string} [kind]
+   * @returns {Rec} */
+  function measurementValue(o, alternative, completedUsd, dryUsd, kind) {
+    var which = kind || 'sounding';
+    var cost = measurementCostUsd(which);
+    var weight = measurementFitWeight(o);
+    var p = o.probability;
+    var q = alternative ? alternative.probability : o.prior;
+    /** @type {Rec[]} */
+    var readings = [];
+    /** @type {number[][][]} */
+    var classes = [];
+    measurementClasses(which, o.range_sampled).forEach(function (cls) {
+      var evidence = cls[0], bands = cls[1];
+      var factors = bands.map(function (b) { return Math.pow(b[1], weight); });
+      var spread = evenSpread(factors);
+      /* nothing it reads can move the odds: one reading, a factor of 1 */
+      if (spread === null) return;
+      var wet = spread.wet, dry = spread.dry;
+      classes.push(factors.map(function (f, i) { return [f, wet[i], dry[i]]; }));
+      bands.forEach(function (b, i) {
+        readings.push({ evidence: evidence, bands: b[0], factor: factors[i],
+          if_success: wet[i], if_dry: dry[i], chance: p * wet[i] + (1.0 - p) * dry[i] });
+      });
+    });
+    var worked = preposterior(p, q, completedUsd, dryUsd, classes);
+    return Object.assign({
+      kind: which, cost_usd: cost, sounding_id: o.sounding_id,
+      alternative_id: alternative ? alternative.sounding_id : null,
+      probability: p, alternative_probability: q, weight: weight,
+      range_sampled: o.range_sampled,
+      completed_usd: Number(completedUsd), dry_usd: Number(dryUsd),
+    }, worked, { readings: readings });
+  }
+
+  /** Every measurement at the survey's first-ranked point: measurement_values.
+   * odds is in the interpretations' order and ranking their positions in
+   * the order of the ranking. Empty where there is no survey.
+   * @param {Rec[]} odds @param {number[]} ranking
+   * @param {number} completedUsd @param {number} dryUsd
+   * @returns {Rec[]} */
+  function measurementValues(odds, ranking, completedUsd, dryUsd) {
+    if (!odds || !odds.length || !ranking || !ranking.length) return [];
+    var first = odds[ranking[0]];
+    /** @type {?Rec} */
+    var alternative = null;
+    ranking.slice(1).forEach(function (i) {
+      if (alternative === null || odds[i].probability > alternative.probability) {
+        alternative = odds[i];
+      }
+    });
+    return MEASUREMENT_KINDS.map(function (kind) {
+      return measurementValue(first, alternative, completedUsd, dryUsd, kind);
+    });
+  }
+
+  /** @param {Rec} v @returns {string} */
+  function measurementWhat(v) {
+    return phrase(v.kind === 'sounding' ? 'measurement.what_sounding'
+      : 'measurement.what_profiling', { sid: v.sounding_id });
+  }
+
+  /** @param {Rec} v @returns {string} */
+  function measurementAlternative(v) {
+    if (v.alternative_id === null) return phrase('measurement.alternative_unsurveyed');
+    return phrase('measurement.alternative_point', { sid: v.alternative_id });
+  }
+
+  /** The choice, as a sentence names it.
+   * @param {Rec} v @param {boolean} here @returns {string} */
+  function measurementDecision(v, here) {
+    if (here) return phrase('measurement.decision_here', { sid: v.sounding_id });
+    return phrase('measurement.decision_move', { alternative: measurementAlternative(v) });
+  }
+
+  /** The choice, as the decision table names it.
+   * @param {Rec} v @param {boolean} here @returns {string} */
+  function measurementCell(v, here) {
+    if (here) return phrase('measurement.cell_here', { sid: v.sounding_id });
+    return phrase('measurement.cell_move', { alternative: measurementAlternative(v) });
+  }
+
+  /** The plan's sentence: measurement_summary.
+   * @param {Rec} v what measurementValue returns
+   * @returns {string} */
+  function measurementSummary(v) {
+    if (v.change_chance === 0.0) {
+      return phrase('measurement.zero', { what: measurementWhat(v), sid: v.sounding_id,
+        cost: costUsd(v.cost_usd) });
+    }
+    var verdict = phrase(v.value_usd > v.cost_usd ? 'measurement.verdict_worth'
+      : 'measurement.verdict_not_worth');
+    return phrase('measurement.headline', { what: measurementWhat(v),
+      value: costUsd(v.value_usd), cost: costUsd(v.cost_usd), verdict: verdict });
+  }
+
+  /** The value in sentences: measurement_text.
+   * @param {Rec} v what measurementValue returns
+   * @returns {string[]} */
+  function measurementText(v) {
+    var out = [measurementSummary(v)];
+    out.push(phrase(v.decision_now === 'here' ? 'measurement.now_here'
+      : 'measurement.now_move', { sid: v.sounding_id, p: rangeShare(v.probability),
+      alternative: measurementAlternative(v), q: rangeShare(v.alternative_probability),
+      here: costUsd(v.drill_here_usd), move: costUsd(v.alternative_usd) }));
+    if (v.change_chance > 0.0) {
+      out.push(phrase(v.decision_now === 'here' ? 'measurement.change_below'
+        : 'measurement.change_above', { threshold: v.threshold,
+        chance: rangeShare(v.change_chance),
+        decision: measurementDecision(v, v.decision_now !== 'here'),
+        after: costUsd(v.after_usd), now: costUsd(v.now_usd) }));
+    }
+    out.push(phrase('measurement.perfect', { sid: v.sounding_id,
+      perfect: costUsd(v.perfect_usd) }));
+    if (v.kind === 'sounding' && !v.range_sampled) {
+      out.push(phrase('measurement.not_sampled', { sid: v.sounding_id }));
+    }
+    return out;
+  }
+
+  /** What every figure rests on: measurement_basis.
+   * @param {Rec} v what measurementValue returns
+   * @returns {string} */
+  function measurementBasis(v) {
+    return phrase('measurement.basis', { completed: costUsd(v.completed_usd),
+      dry: costUsd(v.dry_usd), weight: v.weight });
+  }
+
+  /** @returns {string[]} */
+  function measurementReadingHeader() {
+    return [phrase('measurement.col_evidence'), phrase('measurement.col_reading'),
+      phrase('measurement.col_factor'), phrase('measurement.col_success'),
+      phrase('measurement.col_dry'), phrase('measurement.col_chance')];
+  }
+
+  /** The lower and upper edge of the band key in a banded list: _edges.
+   * @param {Rec[]} bands @param {string} key
+   * @returns {Array<?number>} */
+  function measurementEdges(bands, key) {
+    /** @type {?number} */
+    var lower = null;
+    for (var i = 0; i < bands.length; i++) {
+      var band = bands[i];
+      var upper = band.below === undefined || band.below === null ? null : Number(band.below);
+      if (band.key === key) return [lower, upper];
+      if (upper !== null) lower = upper;
+    }
+    throw new Error('no band ' + key);
+  }
+
+  /** @param {Rec[]} bands @param {string} key @param {string} unit */
+  function measurementSpan(bands, key, unit) {
+    var edges = measurementEdges(bands, key);
+    if (edges[0] === null) return phrase('measurement.span_under', { hi: edges[1], unit: unit });
+    if (edges[1] === null) return phrase('measurement.span_over', { lo: edges[0], unit: unit });
+    return phrase('measurement.span_between', { lo: edges[0], hi: edges[1], unit: unit });
+  }
+
+  /** @param {Rec} r a reading @returns {string} */
+  function measurementReadingLabel(r) {
+    var table = oddsTables().evidence;
+    var names = phraseTable('odds.bands');
+    if (r.evidence === 'depth') {
+      if (r.bands[0] === 'not_quoted') return phrase('measurement.reading_unresolved');
+      return phrase('measurement.reading_depth', {
+        span: measurementSpan(table.regolith, r.bands[0], 'm'),
+        band: String(names[r.bands[0]]), basement: String(names[r.bands[1]]) });
+    }
+    if (r.bands[0] === 'none') return phrase('measurement.reading_no_zone');
+    return phrase('measurement.reading_resistivity', {
+      span: measurementSpan(table.resistivity.bands, r.bands[0], 'ohm-m'),
+      band: String(names[r.bands[0]]) });
+  }
+
+  /** Every band the measurement could read: measurement_reading_rows.
+   * @param {Rec} v what measurementValue returns
+   * @returns {string[][]} */
+  function measurementReadingRows(v) {
+    var labels = phraseTable('measurement.evidence');
+    return v.readings.map(function (/** @type {Rec} */ r) {
+      return [String(labels[r.evidence]), measurementReadingLabel(r), pyFixed(r.factor, 2),
+        rangeShare(r.if_success), rangeShare(r.if_dry), rangeShare(r.chance)];
+    });
+  }
+
+  /** @param {Rec} v @returns {string[]} */
+  function measurementDecisionHeader(v) {
+    return ['', phrase('measurement.col_case_chance'),
+      phrase('measurement.col_after', { sid: v.sounding_id }),
+      phrase('measurement.col_decision'), phrase('measurement.col_usd')];
+  }
+
+  /** The choice without the measurement and with it:
+   * measurement_decision_rows.
+   * @param {Rec} v what measurementValue returns
+   * @returns {string[][]} */
+  function measurementDecisionRows(v) {
+    var labels = phraseTable('measurement.rows');
+    var here = v.decision_now === 'here';
+    var rows = [[String(labels.now), '', rangeShare(v.probability), measurementCell(v, here),
+      costUsd(v.now_usd)]];
+    if (v.keep_chance > 0.0) {
+      rows.push([String(labels.keep), rangeShare(v.keep_chance),
+        rangeShare(v.keep_probability), measurementCell(v, here), costUsd(v.keep_usd)]);
+    }
+    if (v.change_chance > 0.0) {
+      rows.push([String(labels.change), rangeShare(v.change_chance),
+        rangeShare(v.change_probability), measurementCell(v, !here),
+        costUsd(v.change_usd)]);
+    }
+    rows.push([String(labels.after), '', '', '', costUsd(v.after_usd)]);
+    rows.push([String(labels.value), '', '', '', costUsd(v.value_usd)]);
+    rows.push([String(labels.perfect), '', '', '', costUsd(v.perfect_usd)]);
+    return rows;
+  }
+
+  /** @param {Rec} v @returns {string} */
+  function measurementReadingsCaption(v) {
+    return phrase('measurement.readings_caption', { sid: v.sounding_id });
+  }
+
+  /** @returns {string} */
+  function measurementDecisionCaption() {
+    return phrase('measurement.decision_caption');
+  }
+
+  Object.assign(C, {
+    MEASUREMENT_KINDS: MEASUREMENT_KINDS, evenSpread: evenSpread,
+    preposterior: preposterior, measurementCostUsd: measurementCostUsd,
+    measurementValue: measurementValue, measurementValues: measurementValues,
+    measurementSummary: measurementSummary, measurementText: measurementText,
+    measurementBasis: measurementBasis, measurementReadingHeader: measurementReadingHeader,
+    measurementReadingRows: measurementReadingRows,
+    measurementDecisionHeader: measurementDecisionHeader,
+    measurementDecisionRows: measurementDecisionRows,
+    measurementReadingsCaption: measurementReadingsCaption,
+    measurementDecisionCaption: measurementDecisionCaption,
   });
 
   /* ================================================================ portfolio

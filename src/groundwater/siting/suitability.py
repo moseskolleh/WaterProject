@@ -62,6 +62,11 @@ class SitingSuitability:
     #: whose curve was fitted to 27 percent does not outrank one fitted to
     #: 13 percent on a few ohm-m of half-space resistivity.
     confidence: float = 1.0
+    #: where the interpretation stood in the list assess_siting was given.
+    #: A page pairs the row with what else it worked out for that point by
+    #: this, not by the sounding id: a sheet copied without renumbering gives
+    #: two points one id.
+    index: int | None = None
 
     @property
     def weighted(self) -> float:
@@ -265,7 +270,7 @@ def assess_siting(
     """
     config = config or VESConfig()
     results: list[SitingSuitability] = []
-    for interp in interpretations:
+    for index, interp in enumerate(interpretations):
         comp = SuitabilityComponents(
             aquifer_thickness=_thickness_score(interp),
             resistivity_fit=_resistivity_fit_score(interp, config),
@@ -288,6 +293,7 @@ def assess_siting(
                 easting=interp.site_easting,
                 northing=interp.site_northing,
                 confidence=round(float(getattr(interp, "confidence", 1.0)), 3),
+                index=index,
             )
         )
     # rank on the confidence-weighted score, highest first; ties broken by

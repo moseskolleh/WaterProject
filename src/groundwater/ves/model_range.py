@@ -247,6 +247,11 @@ class ModelRange:
     #: misfit of each polished start
     start_points: list[list[float]] = field(default_factory=list)
     start_errors: list[float] = field(default_factory=list)
+    #: the depth each kept model would be drilled to, cut back to the depth
+    #: of investigation but not yet rounded, at every twentieth of the way
+    #: from its least to its greatest: what the cost distribution draws the
+    #: depth from (PLAN.md step 3.4)
+    drilling_depth_quantiles_m: list[float] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------- the model
@@ -346,6 +351,11 @@ def _cholesky_inverse_t(H: list[list[float]]) -> list[list[float]]:
             M[i][c] = s / L[i][i]
     return M
 
+
+#: The drilling depth is kept at this many equal steps of probability, for the
+#: cost distribution to draw from; twenty steps of 5 percent follow the
+#: models' spread closely, and a range kept in a project stays small.
+DEPTH_QUANTILES = 20
 
 _WINDOW = 50  # burn-in steps between two adjustments of the step size
 
@@ -528,6 +538,7 @@ def sample_model_range(
     step_m = ves.round_drilling_depth_to_m
     drill = math.ceil(min(p90, investigation) / step_m) * step_m
     drill = min(drill, investigation)
+    reach = [min(d, investigation) for d in deepest]  # still in order
     fan_count = min(max(int(opts.fan_models), 0), total)
     fan_at = [(k * total) // fan_count for k in range(fan_count)]
     progress("done")
@@ -560,6 +571,8 @@ def sample_model_range(
         fan_curves=[[float(v) for v in kept[k][1]] for k in fan_at],
         start_points=start_points,
         start_errors=start_errors,
+        drilling_depth_quantiles_m=[percentile(reach, k / DEPTH_QUANTILES)
+                                    for k in range(DEPTH_QUANTILES + 1)],
     )
 
 

@@ -68,9 +68,165 @@ def test_ves_flow_with_sample(app):
     shown = " ".join(str(i.value) for i in app.info)
     assert "of the models that fit" in shown and "Metropolis-Hastings" in shown
 
+    # the chance of a working borehole beside the score, reading the range
+    from groundwater.siting import odds_basis_text, odds_point_text, survey_odds
+
+    site = soundings[0].site
+    expected = survey_odds(interps, ranges, site.utm_zone, site.latlon)
+    written = " ".join(str(m.value) for m in app.markdown)
+    for o in expected:
+        assert " ".join(odds_point_text(o)) in written
+    assert "has not been sampled" not in written
+    captions = " ".join(str(c.value) for c in app.caption)
+    assert " ".join(odds_basis_text(expected[0])) in captions
+
     app.button(key="build_geo_report").click()
     app.run()
     assert not app.exception
+
+
+def test_the_programme_offers_the_survey_odds_without_using_them(app):
+    """The typed success rate stays until the odds are chosen with a click."""
+    if "ves_results" not in app.session_state:
+        goto(app, "Geophysics (VES)")
+        app.selectbox(key="sample_ves").select("rokel/rokel_ves.xlsx")
+        app.run()
+        app.button(key="run_ves").click()
+        app.run()
+    goto(app, "Costing & BoQ")
+    assert not app.exception
+    typed = app.number_input(key="cost_prog_success").value
+    offered = " ".join(str(i.value) for i in app.info)
+    assert "the first-ranked point, at about" in offered
+    rate = programme_rate_of(app)
+    assert app.button(key="use_survey_odds").label == f"Use {rate:g} percent"
+    assert app.number_input(key="cost_prog_success").value == typed
+    app.button(key="use_survey_odds").click()
+    app.run()
+    assert not app.exception
+    assert app.number_input(key="cost_prog_success").value == rate
+
+
+def test_the_cost_distribution_draws_from_the_survey(app):
+    """With the survey inverted and its range sampled, the planning figure
+    draws the depth from the first-ranked point's range and dry holes at its
+    odds, and says so on the page (PLAN.md step 3.4)."""
+    from groundwater.costing.distribution import cost_range_text
+    from groundwater.siting import assess_siting, survey_odds
+
+    if "ves_results" not in app.session_state:
+        goto(app, "Geophysics (VES)")
+        app.selectbox(key="sample_ves").select("rokel/rokel_ves.xlsx")
+        app.run()
+        app.button(key="run_ves").click()
+        app.run()
+    soundings, results, interps = app.session_state["ves_results"]
+    kept = app.session_state.get("ves_ranges")
+    if kept is None or kept[0] is not results:
+        goto(app, "Geophysics (VES)")
+        app.button(key="ves_range").click()
+        app.run()
+    ranges = app.session_state["ves_ranges"][1]
+    goto(app, "Costing & BoQ")
+    app.button(key="run_cost").click()
+    app.run()
+    assert not app.exception
+    spread = app.session_state["cost_spread"][1]
+    i = assess_siting(interps)[0].index
+    site = soundings[0].site
+    odds = survey_odds([interps[i]], [ranges[i]], site.utm_zone, site.latlon)[0]
+    assert spread.odds_source == interps[i].sounding_id
+    assert spread.success_probability == odds.probability
+    assert spread.depth_source == ranges[i].sounding_id
+    assert spread.depth_p10_m <= spread.depth_p90_m <= ranges[i].investigation_depth_m
+    assert spread.expected_per_working == (
+        spread.mean + spread.dry_mean * ((1.0 - odds.probability) / odds.probability))
+    shown = " ".join(str(m.value) for m in app.markdown)
+    assert all(t in shown for t in cost_range_text(spread)[1:])
+    # what one more measurement is worth, beside it (PLAN.md step 3.5):
+    # priced from this distribution, at the first-ranked point, against the
+    # other point
+    from groundwater.siting import measurement_values
+    from groundwater.siting.measurement import measurement_summary
+
+    every = survey_odds(interps, ranges, site.utm_zone, site.latlon)
+    values = measurement_values(every, [s.index for s in assess_siting(interps)],
+                                spread.mean, spread.dry_mean)
+    assert [v.sounding_id for v in values] == [interps[i].sounding_id] * 2
+    assert all(v.alternative_id == interps[1 - i].sounding_id for v in values)
+    assert all(f"**{measurement_summary(v)}**" in shown for v in values)
+    # and the Geophysics page prices it too, now there is a cost
+    goto(app, "Geophysics (VES)")
+    assert not app.exception
+    shown = " ".join(str(m.value) for m in app.markdown)
+    assert all(f"**{measurement_summary(v)}**" in shown for v in values)
+
+
+def programme_rate_of(app):
+    """The rate the page offers, worked out as the page works it out."""
+    from groundwater.siting import assess_siting, survey_odds
+    from groundwater.siting.odds import programme_rate
+
+    soundings, results, interps = app.session_state["ves_results"]
+    kept = app.session_state.get("ves_ranges", None)
+    ranges = kept[1] if kept is not None and kept[0] is results else [None] * len(results)
+    i = assess_siting(interps)[0].index
+    site = soundings[0].site
+    return programme_rate(survey_odds([interps[i]], [ranges[i]], site.utm_zone,
+                                      site.latlon)[0])
+
+
+def test_two_points_with_one_id_each_show_their_own_odds(app):
+    """A sheet copied without renumbering gives two points one id. The pages
+    looked the odds up by id, so both rows showed the last point's odds and
+    the first point's never appeared, and the Costing page offered the first
+    point carrying the leader's id rather than the leader."""
+    import copy
+
+    from groundwater.siting import assess_siting, odds_point_text, odds_short, survey_odds
+    from groundwater.siting.odds import programme_offer
+    from groundwater.text import phrase
+
+    if "ves_results" not in app.session_state:
+        goto(app, "Geophysics (VES)")
+        app.selectbox(key="sample_ves").select("rokel/rokel_ves.xlsx")
+        app.run()
+        app.button(key="run_ves").click()
+        app.run()
+    held = app.session_state["ves_results"]
+    kept = app.session_state.get("ves_ranges", None)
+    soundings, results, interps = held
+    ranges = kept[1] if kept is not None and kept[0] is results else [None] * len(results)
+    # the second point copied over with the first's id, and listed first
+    renamed = copy.copy(interps[1])
+    renamed.sounding_id = interps[0].sounding_id
+    points = [renamed, interps[0]]
+    results2 = [results[1], results[0]]
+    ranges2 = [ranges[1], ranges[0]]
+    site = soundings[1].site
+    expected = survey_odds(points, ranges2, site.utm_zone, site.latlon)
+    assert odds_short(expected[0]) != odds_short(expected[1])
+    # the leader, scored a point at a time: the one listed second
+    lead = max((0, 1), key=lambda k: assess_siting([points[k]])[0].weighted)
+    assert lead == 1
+    try:
+        app.session_state["ves_results"] = ([soundings[1], soundings[0]], results2, points)
+        app.session_state["ves_ranges"] = (results2, ranges2)
+        goto(app, "Geophysics (VES)")
+        table = next(d.value for d in app.dataframe
+                     if phrase("odds.col_short") in d.value.columns)
+        assert table[phrase("odds.col_short")].tolist() == [
+            odds_short(expected[lead]), odds_short(expected[1 - lead])]
+        written = " ".join(str(m.value) for m in app.markdown)
+        for o in expected:
+            assert " ".join(odds_point_text(o)) in written
+        goto(app, "Costing & BoQ")
+        offered = " ".join(str(i.value) for i in app.info)
+        assert programme_offer(expected[lead]) in offered
+    finally:
+        app.session_state["ves_results"] = held
+        if kept is not None:
+            app.session_state["ves_ranges"] = kept
 
 
 def test_pumping_flow_with_sample(app):
@@ -146,6 +302,17 @@ def test_costing_flow(app):
     estimate = app.session_state["cost_estimate"]
     assert estimate.direct_cost_usd > 0
     assert estimate.items
+    # the planning figure is sampled with the estimate and shown beside it,
+    # saying which figure is the contract document
+    kept, spread, chart = app.session_state["cost_spread"][:3]
+    assert kept is estimate and chart.exists()
+    assert spread.boq_usd == pytest.approx(estimate.price_with_vat_usd)
+    from groundwater.text import phrase
+    assert phrase("cost_range.which_is_which") in [str(i.value) for i in app.info]
+    # with no survey interpreted, the value of one more measurement says
+    # there are no odds to improve
+    if "ves_results" not in app.session_state:
+        assert phrase("measurement.no_survey") in [str(i.value) for i in app.info]
     app.button(key="build_cost_report").click()
     app.run()
     assert not app.exception
@@ -209,9 +376,46 @@ def test_programme_flow(app):
     app.button(key="run_programme").click()
     app.run()
     assert not app.exception
-    programme, gantt_path = app.session_state["programme_estimate"]
+    programme, gantt_path, spread, spread_path = app.session_state["programme_estimate"][:4]
     assert programme.n_attempted >= programme.n_successful
     assert gantt_path.exists()
+    assert spread.estimate_usd == pytest.approx(programme.price_with_vat_usd)
+    assert spread.n_boreholes == programme.n_successful and spread_path.exists()
+
+
+def test_the_programme_figure_follows_the_range_as_the_borehole_figure_does(app):
+    """A range sampled, or dropped, after the programme was estimated moves
+    the depth the borehole's planning figure is drawn at; the programme's is
+    drawn again at the same depth rather than left at the old one."""
+    if "ves_results" not in app.session_state:
+        goto(app, "Geophysics (VES)")
+        app.selectbox(key="sample_ves").select("rokel/rokel_ves.xlsx")
+        app.run()
+        app.button(key="run_ves").click()
+        app.run()
+    results = app.session_state["ves_results"][1]
+    kept = app.session_state.get("ves_ranges")
+    if kept is None or kept[0] is not results:
+        goto(app, "Geophysics (VES)")
+        app.button(key="ves_range").click()
+        app.run()
+    ranges = app.session_state["ves_ranges"]
+    goto(app, "Costing & BoQ")
+    app.button(key="run_programme").click()
+    app.run()
+    assert not app.exception
+    drawn = app.session_state["programme_estimate"][2]
+    assert drawn.depth_source is not None
+    try:
+        del app.session_state["ves_ranges"]
+        app.run()
+        assert not app.exception
+        held = app.session_state["programme_estimate"][2]
+        assert held.depth_source is None and held is not drawn
+    finally:
+        app.session_state["ves_ranges"] = ranges
+    app.run()
+    assert app.session_state["programme_estimate"][2].depth_source == drawn.depth_source
 
 
 def test_handover_flow(app):

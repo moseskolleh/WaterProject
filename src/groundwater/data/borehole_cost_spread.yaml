@@ -1,0 +1,136 @@
+# The spread of each unit rate in borehole_cost_items.csv (PLAN.md step 3.4).
+#
+# The catalogue's unit_cost_usd is the likely rate: the one the bill of
+# quantities prices, unchanged. Its min_usd and max_usd columns are the ends
+# of a triangle the cost distribution draws each rate from, and they are
+# worked out from the shares below: min = likely x (1 - below) and
+# max = likely x (1 + above), to the cent, and its spread_group column names
+# the group here. tests/test_cost_range.py holds the two files to each other.
+#
+# The rates in one group share a cause, and the distribution draws them
+# together: one draw places every rate in the group at the same point of its
+# own triangle. Different groups are drawn independently. Drawing all
+# twenty-three apart would let a dear fuel line cancel a cheap one, which
+# the pump price does not do.
+#
+# NO SOURCE IS RECORDED for any of these spreads. Each is a provisional
+# choice, made with the reason written beside it, for an engineer with
+# current Sierra Leone quotations to confirm or replace. Most are wider
+# above the likely rate than below it, because in drilling an item more
+# often costs more than its quote than less: that is a judgment, not a
+# measurement, and it is what makes the planning figure come out above the
+# bill of quantities.
+
+status: provisional
+
+groups:
+  - key: siting
+    codes: [SIT1]
+    below: 0.25
+    above: 0.25
+    basis: >-
+      A survey's scope (how many soundings before a point is found) and the
+      consultant's transport vary both ways; the lump sum is usually agreed
+      before the survey, which keeps it within a quarter either side.
+
+  - key: transport
+    codes: [MOB1]
+    below: 0.10
+    above: 0.60
+    basis: >-
+      The rate per kilometre is a vehicle running cost on the road distance
+      typed. Rainy-season roads, detours round a bridge that cannot take the
+      rig and the price of diesel all push it up; little pushes it down.
+
+  - key: rig_charge
+    codes: [MOB2]
+    below: 0.10
+    above: 0.10
+    basis: >-
+      Depreciation is an accounting charge set by the rig's price and life,
+      which the contractor knows; a tenth either side covers a different rig
+      or a different assumed life.
+
+  - key: crew
+    codes: [MOB3]
+    below: 0.10
+    above: 0.25
+    basis: >-
+      Day wages are agreed in advance, but standby, overtime and an extra
+      hand on difficult ground are paid on top.
+
+  - key: site_establishment
+    codes: [MOB4]
+    below: 0.20
+    above: 1.00
+    basis: >-
+      Clearing an access track and setting up camp can take an afternoon or
+      several days, depending on the site; up to double the lump sum.
+
+  - key: fuel
+    codes: [DRL1, DRL2]
+    below: 0.15
+    above: 0.40
+    basis: >-
+      Fuel per metre moves with the pump price and with how hard the ground
+      drills: harder rock or a stuck string burns more, and nothing burns
+      much less than a smooth hole.
+
+  - key: drilling_consumables
+    codes: [DRL3, DRL4]
+    below: 0.20
+    above: 0.60
+    basis: >-
+      Bit wear depends on how abrasive the rock is, which is not known before
+      drilling, and fluid use on losses into fractured or open ground; a lost
+      bit or heavy losses cost well over the allowance.
+
+  - key: manufactured_materials
+    codes: [CAS1, CAS2, CAS4, CAS5, PMP1]
+    below: 0.10
+    above: 0.20
+    basis: >-
+      Casing, screen, cement, fittings and the handpump are bought items that
+      can be quoted before the contract; imported ones move with the exchange
+      rate and with supply, mostly upward.
+
+  - key: gravel
+    codes: [CAS3]
+    below: 0.20
+    above: 0.50
+    basis: >-
+      Well-sorted siliceous gravel of the right grading is scarce in much of
+      the country and is often hauled a long way, or sieved on site.
+
+  - key: development
+    codes: [DEV1, DEV2]
+    below: 0.20
+    above: 1.00
+    basis: >-
+      Development runs until the discharge is clear, which can take twice
+      the hours priced. The bill of quantities fixes the hours, so the spread
+      of the rate per hour carries that spread of the hours as well.
+
+  - key: test_pumping
+    codes: [TST1, TST2]
+    below: 0.10
+    above: 0.25
+    basis: >-
+      Equipment and crew hire by the hour, at rates agreed in advance; a
+      generator breakdown or a restarted test is paid on top.
+
+  - key: water_quality
+    codes: [WQL1, WQL2]
+    below: 0.10
+    above: 0.25
+    basis: >-
+      Laboratory prices are quoted, but a resample or a courier to a distant
+      laboratory adds to them.
+
+  - key: wellhead
+    codes: [WHD1, WHD2]
+    below: 0.15
+    above: 0.30
+    basis: >-
+      The apron, drainage and soakaway are built from local materials and
+      labour whose price and haulage vary from site to site.

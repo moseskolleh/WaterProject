@@ -1,0 +1,131 @@
+# The cost as a distribution (PLAN.md step 3.4): the planning figure beside
+# the bill of quantities, in the words both engines write. The Python cost
+# report and the Streamlit Costing page read them through
+# groundwater.costing.distribution; the browser's page and report through
+# C.costRangeText and C.costRangeRows. The spreads behind them are in
+# data/borehole_cost_items.csv and data/borehole_cost_spread.yaml.
+
+heading: The cost as a distribution
+
+# Which figure is which. Printed first, wherever the distribution is.
+which_is_which: >-
+  The bill of quantities is the contract document: it prices one borehole at
+  the likely rate of every item, and it is what a contractor prices and is
+  paid against. The distribution is the planning figure: what a borehole is
+  likely to cost once the spread of every rate, the drilling depth and the
+  chance of a dry hole are allowed for. Budget from the planning figure;
+  contract on the bill of quantities.
+
+headline: >-
+  A completed borehole costs US$ {p50} at P50 and US$ {p80} at P80, over
+  {n} sampled boreholes. The bill of quantities prices it at US$ {boq}, at
+  or above the cost of {boq_share} percent of them.
+
+price_basis: >-
+  Each figure is the contract price with any VAT, before contingency, worked
+  out from the direct cost with the same overheads ({overheads:g} percent)
+  and margin ({margin:g} percent) as the bill of quantities; the spread takes
+  the place of the contingency. With its {contingency:g} percent contingency
+  the planning budget, US$ {budget}, covers {budget_share} percent of the
+  sampled boreholes.
+
+working: >-
+  Allowing for dry holes at the chance of a working borehole at {sid}, about
+  {p} percent, the expected cost per working borehole is US$ {expected}: the
+  mean completed borehole, and the mean dry attempt, US$ {dry}, for each of
+  the dry attempts expected before a working one. A dry attempt pays for
+  siting, set-up and drilling, as in the programme estimate, but not the
+  journey from the base, which the rig has made already.
+
+working_no_odds: >-
+  No survey has been interpreted, so no dry hole is drawn, and the expected
+  cost per working borehole is the mean, US$ {mean}; interpret the survey to
+  allow for dry holes at its odds.
+
+depth_range: >-
+  The drilling depth is drawn from the range of models at {sid}: {p10:g} to
+  {p90:g} m (P10 to P90), against {depth:g} m in the bill of quantities. The
+  casing and the gravel pack are lengthened or shortened with it, and the
+  rules of thumb for the overburden and the crew time are applied again at
+  each depth.
+
+depth_fixed: >-
+  The range of models has not been sampled, so the depth is held at {depth:g}
+  m and its spread is left out; sample the range of models to draw the depth
+  from it.
+
+basis: >-
+  Basis: each unit rate is drawn from a triangle between its minimum, likely
+  and maximum in borehole_cost_items.csv. The rates in one group of
+  borehole_cost_spread.yaml share a cause and are drawn together; the groups
+  are drawn independently, so a cause shared across groups, such as the
+  exchange rate, is spread less than it should be. The minimum and maximum
+  are provisional choices, each with its reason in borehole_cost_spread.yaml,
+  and none has a recorded source. Seed {seed:g}.
+
+# The programme of works (programme.py), drawn the same way.
+programme_headline: >-
+  The programme of {wells:g} working {wells:plural:borehole|boreholes} costs US$
+  {p50} at P50 and US$ {p80} at P80, over {n} sampled programmes. The
+  programme estimate prices it at US$ {estimate}, at or above {estimate_share}
+  percent of them, and with its {contingency:g} percent contingency at US$
+  {budget}, at or above {budget_share} percent.
+
+programme_working: >-
+  The expected cost per working borehole is US$ {expected}, and US$ {p80_each}
+  at P80. At {rate:g} percent success the package takes {a50:g}
+  {a50:plural:attempt|attempts} at P50 and {a80:g} at P80; the estimate plans
+  {planned:g}.
+
+programme_basis: >-
+  Each sampled programme draws its rates and its depth once, as one contract
+  prices every borehole in it, which spreads the total more than boreholes
+  drawn apart would; its dry attempts are drawn one by one at the success
+  rate, each paying for siting, set-up and drilling and a move between sites.
+
+# The tables.
+col_item: Planning figure
+
+col_usd: US$
+
+col_share: Sampled at or under it
+
+rows:
+  p50: Completed borehole, P50
+  p80: Completed borehole, P80
+  mean: Completed borehole, mean
+  expected: Expected per working borehole
+  boq: Bill of quantities (contract price with any VAT)
+  budget: Planning budget, with contingency
+
+programme_rows:
+  p50: Programme, P50
+  p80: Programme, P80
+  mean: Programme, mean
+  expected: Expected per working borehole
+  p80_each: Per working borehole, P80
+  estimate: Programme estimate (contract price with any VAT)
+  budget: Planning budget, with contingency
+
+table_caption: >-
+  The planning figure beside the bill of quantities: percentiles of the
+  sampled boreholes.
+
+programme_table_caption: >-
+  The planning figure for the programme beside the programme estimate.
+
+figure_caption: >-
+  The share of sampled boreholes at or under each cost, with the bill of
+  quantities and the planning budget marked.
+
+programme_figure_caption: >-
+  The share of sampled programmes at or under each cost, with the programme
+  estimate and its planning budget marked.
+
+# The lines drawn on the figures.
+marks:
+  boq: Bill of quantities
+  estimate: Programme estimate
+  budget: Planning budget
+  title: Cost of a completed borehole
+  programme_title: Cost of the programme

@@ -40,15 +40,23 @@ from ..mapping import (
     unplaced_text,
 )
 from ..models import DataFlag, LayeredModel, VESSounding
+from ..siting.measurement import measurement_values
 from ..siting import (
     assess_siting,
+    odds_basis_text,
+    odds_header,
+    odds_point_text,
+    odds_rows,
+    odds_table_caption,
     ranking_tie,
     suitability_map_points,
     suitability_verdict,
+    survey_odds,
     tied_leaders,
 )
 from ..mapping.lithology import region_of
 from ..utils import and_join, fmt_num, plural, plural_noun, safe_slug, utm_text
+from ..text import phrase
 from ..ves.classify import classify_curve
 from ..ves.interpret import (
     SiteInterpretation,
@@ -144,6 +152,12 @@ class GeophysicalReportInputs:
     #: :func:`groundwater.readiness.assess_readiness`. When it is not
     #: certifiable the cover carries a PROVISIONAL stamp listing why.
     readiness: Any = None
+    #: The cost distribution (:func:`groundwater.costing.sample_cost`) of a
+    #: borehole at the first-ranked point, where the cost has been estimated.
+    #: What one more measurement is worth (PLAN.md step 3.5) is priced from
+    #: its mean completed borehole and mean dry attempt; without it the
+    #: report says the value waits for a cost estimate.
+    cost_distribution: Any = None
 
 
 def _geology_for(site, override: str) -> str:
@@ -488,8 +502,12 @@ def build_geophysical_report(
     )
 
     # ---- drill-target suitability --------------------------------------------
+    # the chance of a working borehole at each point (PLAN.md step 3.3),
+    # printed under the score it stands beside
+    odds = survey_odds(inputs.interpretations, inputs.model_ranges, site.utm_zone,
+                       site.latlon, config)
     _suitability_block(rb, inputs, site, config.ves, suit=suit, tie=tie,
-                       profile_refusal=profile_refusal)
+                       profile_refusal=profile_refusal, odds=odds)
 
     # ---- 5 conclusions and recommendations -------------------------------------
     rb.heading("5. Conclusions and Recommendations", 1)
@@ -1033,8 +1051,13 @@ def _reference_model_block(rb, sid, inversion, reference_model, label,
 
 def _suitability_block(rb: ReportBuilder, inputs, site,
                        config: VESConfig | None = None, suit=None,
-                       tie: str | None = None, profile_refusal: str = "") -> None:
+                       tie: str | None = None, profile_refusal: str = "",
+                       odds=None) -> None:
     """Ranked drill-target suitability scorecard, map and recommendation.
+
+    ``odds`` is the chance of a working borehole at each point
+    (:func:`groundwater.siting.odds.survey_odds`), printed under the
+    verdict, point by point in the order of the ranking.
 
     ``suit`` and ``tie`` are the report's one scorecard and tie sentence;
     ``profile_refusal`` is why the ground profile was not drawn, for the
@@ -1076,6 +1099,9 @@ def _suitability_block(rb: ReportBuilder, inputs, site,
         tie = ranking_tie(suit, within_points=config.ranking_tie_points)
     rb.paragraph(suitability_verdict(suit, within_points=config.ranking_tie_points),
                  align="justify")
+    if odds:
+        _odds_block(rb, suit, odds)
+        _measurement_section(rb, suit, odds, inputs.cost_distribution)
     # every point in one zone, the one the rest of the survey's figures are
     # drawn in, and the tie and the order the text above was written from
     zone = site.utm_zone or survey_zone(inputs.interpretations)
@@ -1093,6 +1119,37 @@ def _suitability_block(rb: ReportBuilder, inputs, site,
 
     _add_subsurface_figures(rb, inputs.soundings, inputs.interpretations,
                             inputs, site, profile_refusal=profile_refusal)
+
+
+def _odds_block(rb: ReportBuilder, suit, odds) -> None:
+    """The chance of a working borehole at each point, in the order of the
+    ranking: its sentences, then the breakdown of how each piece of evidence
+    moved it. The browser report (gwt-docx.js) prints the same."""
+    rb.heading(phrase("odds.heading"), 3)
+    rb.paragraph(" ".join([phrase("odds.lead")] + odds_basis_text(odds[0])),
+                 align="justify")
+    # paired with the ranking by position, not by id: two points can share
+    # an id, and the odds are worked out in the interpretations' order
+    for o in (odds[s.index] for s in suit):
+        rb.paragraph(" ".join([phrase("odds.point", sid=o.sounding_id)]
+                              + odds_point_text(o)), align="justify")
+        rb.table(odds_rows(o), header=odds_header(), caption=odds_table_caption(o),
+                 col_widths_cm=[4.0, 7.0, 2.6, 2.4], font_size_pt=8.5)
+
+
+def _measurement_section(rb: ReportBuilder, suit, odds, distribution) -> None:
+    """What one more measurement at the first-ranked point is worth (PLAN.md
+    step 3.5), under the odds it would improve, priced from the cost
+    distribution where there is one."""
+    from .costing import measurement_block
+
+    rb.heading(phrase("measurement.heading"), 3)
+    if distribution is None:
+        rb.paragraph(" ".join([phrase("measurement.lead"), phrase("measurement.no_cost")]),
+                     align="justify")
+        return
+    measurement_block(rb, measurement_values(odds, [s.index for s in suit],
+                                             distribution.mean, distribution.dry_mean))
 
 
 def _suitability_caption(state: dict) -> str:

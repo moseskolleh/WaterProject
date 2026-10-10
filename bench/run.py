@@ -87,8 +87,8 @@ for _name in BLAS_THREADS:
 #: The output's own layout number; ``--from`` refuses a file in another.
 SCHEMA = 1
 TOOL = "bench/run.py"
-GROUPS = ("import", "forward", "inversion", "range", "pumping", "reports", "recompute",
-          "streamlit")
+GROUPS = ("import", "forward", "inversion", "range", "cost", "pumping", "reports",
+          "recompute", "streamlit")
 MIN_SAMPLE_S = 0.2
 
 
@@ -339,6 +339,42 @@ def _range_measures() -> list[Measure]:
         out.append(Measure("range", f"rokel sounding {'AB'[index]}, default settings",
                            setup))
     return out
+
+
+def _cost_measures() -> list[Measure]:
+    # The cost as a distribution (PLAN.md step 3.4) at the default sample
+    # count, on the Dr Timbo design's bill of quantities, the depth drawn
+    # from Rokel A's range at the default settings (sampled beforehand) and
+    # dry holes at a 60 percent chance; the programme is ten boreholes at 60
+    # percent with the same depth.
+    def spread():
+        def build():
+            from groundwater.costing import depth_spread
+            from groundwater.ves.model_range import sample_model_range
+            path = DATA / "rokel" / "rokel_ves.xlsx"
+            r = sample_model_range(INPUTS.soundings(path)[0], INPUTS.inversion(path, 0),
+                                   INPUTS.config)
+            return depth_spread(r, INPUTS.config)
+        return INPUTS._get("rokel_a_depth", build)
+
+    def inputs():
+        from groundwater.costing import inputs_from_design
+        return inputs_from_design(INPUTS.timbo()["design"], mobilisation_distance_km=100.0)
+
+    def single(_tmp):
+        from groundwater.costing import sample_cost
+        given, depth = inputs(), spread()
+        return lambda: sample_cost(given, depth=depth, success_probability=0.6,
+                                   odds_source="A", config=INPUTS.config)
+
+    def programme(_tmp):
+        from groundwater.costing import sample_programme_cost
+        given, depth = inputs(), spread()
+        return lambda: sample_programme_cost(given, 10, success_rate_percent=60.0,
+                                             depth=depth, config=INPUTS.config)
+
+    return [Measure("cost", "dr_timbo bill of quantities, depth from rokel A", single),
+            Measure("cost", "programme of ten, depth from rokel A", programme)]
 
 
 def _pumping_measures() -> list[Measure]:
@@ -632,6 +668,7 @@ def _streamlit_measures() -> list[Measure]:
 def all_measures(groups) -> list[Measure]:
     builders = {"import": _import_measures, "forward": _forward_measures,
                 "inversion": _inversion_measures, "range": _range_measures,
+                "cost": _cost_measures,
                 "pumping": _pumping_measures,
                 "reports": _report_measures, "recompute": _recompute_measures,
                 "streamlit": _streamlit_measures}

@@ -13,7 +13,17 @@ from groundwater.reporting.geophysical import (
     build_geophysical_report,
     GeophysicalReportInputs,
 )
-from groundwater.siting import assess_siting, suitability_map_points
+from groundwater.siting import (
+    assess_siting,
+    odds_basis_text,
+    odds_header,
+    odds_point_text,
+    odds_rows,
+    odds_short,
+    odds_table_caption,
+    suitability_map_points,
+    survey_odds,
+)
 from groundwater.text import phrase
 from groundwater.ves.interpret import (
     drilling_depth_text,
@@ -31,6 +41,7 @@ from shared import (
     app_config,
     _band,
     choose_input,
+    cost_spread_for,
     figure,
     _next_step,
     offer_download,
@@ -39,10 +50,21 @@ from shared import (
     report_gate,
     run_ves_inversion,
     show_flags,
+    show_measurements,
     site_from_state,
+    survey_measurements,
     workdir,
     _working,
 )
+
+
+def _cost_distribution():
+    """The cost distribution sampled with the cost estimate, or None before
+    the cost has been estimated. It is the one the Costing page shows, drawn
+    again there if the survey has changed since."""
+    estimate = st.session_state.get("cost_estimate")
+    kept = cost_spread_for(estimate) if estimate is not None else None
+    return kept[0] if kept is not None else None
 
 
 def _ranges_for(results) -> list:
@@ -195,12 +217,18 @@ def render() -> None:
                 "can be replaced by a fitted model."
             )
             suitability = assess_siting(interps)
+            # the chance of a working borehole beside the score (PLAN.md
+            # step 3.3), placed as the report places it, and paired with its
+            # row by position: two points can share an id
+            site = soundings[0].site
+            odds = survey_odds(interps, ranges, site.utm_zone, site.latlon, app_config())
             st.dataframe(
                 [
                     {
                         "Rank": s.rank,
                         "Point": s.sounding_id,
                         "Suitability": f"{s.suitability:.0f}/100",
+                        phrase("odds.col_short"): odds_short(odds[s.index]),
                         "Grade": s.grade,
                         "Why": s.rationale,
                     }
@@ -215,6 +243,27 @@ def render() -> None:
                 f"({best.suitability:.0f}/100, {best.grade}).",
                 icon="🎯",
             )
+            st.markdown(f"**{phrase('odds.heading')}**")
+            st.caption(" ".join([phrase("odds.lead")]
+                                + odds_basis_text(odds[suitability[0].index])))
+            for s in suitability:
+                o = odds[s.index]
+                # a bordered box, not an expander: Streamlit does not nest them
+                with st.container(border=True):
+                    st.markdown(f"**{s.sounding_id}**: {odds_short(o)}")
+                    st.write(" ".join(odds_point_text(o)))
+                    st.table([dict(zip(odds_header(), row, strict=True))
+                              for row in odds_rows(o)])
+                    st.caption(odds_table_caption(o))
+            # what one more measurement at the first-ranked point is worth
+            # (PLAN.md step 3.5), once the cost has been estimated
+            spread = _cost_distribution()
+            if spread is None:
+                st.markdown(f"**{phrase('measurement.heading')}**")
+                st.caption(" ".join([phrase("measurement.lead"),
+                                     phrase("measurement.no_cost")]))
+            else:
+                show_measurements(survey_measurements(spread), nested=True)
             map_points = suitability_map_points(suitability)
             if map_points:
                 zone = site_from_state().utm_zone or infer_zone_for_sierra_leone(
@@ -243,6 +292,7 @@ def render() -> None:
                     include_qa_annex=True,
                     readiness=_geo_gate,
                     model_ranges=ranges,
+                    cost_distribution=_cost_distribution(),
                 ),
                 workdir() / "Geophysical_Survey_Report.docx",
                 app_config(),

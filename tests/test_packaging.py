@@ -113,6 +113,11 @@ def test_the_wheel_carries_the_bundled_data_tables(wheel):
         "groundwater/data/defaults.json",
         # the co-pilots' and the field kit's schedules
         "groundwater/data/field.yaml",
+        # the prior and the likelihood ratios of the chance of success
+        "groundwater/data/success_prior.csv",
+        "groundwater/data/success_evidence.yaml",
+        # the written basis of the cost catalogue's spread
+        "groundwater/data/borehole_cost_spread.yaml",
     ):
         assert expected in names
     # the words the reports print, which the package reads at import

@@ -285,6 +285,8 @@
     /* why a test that is loaded has no analysis: stopped, or what it said */
     analysisNote: null,
     design: null, estimate: null, programme: null,
+    /* the estimate's inputs and rates, which the cost distribution samples */
+    costInputs: null, costRates: null,
     /* brought in by hand rather than computed from the sources: an area
      * inventory, other projects' summaries, an extracted scan */
     waterPoints: null, waterPointsSource: null, waterPointsCapped: false,
@@ -746,8 +748,10 @@
     var overrides = store.get('costing.rateOverrides') || {};
     return C.loadRates().map(function (rate) {
       var override = overrides[rate.code];
+      /* an edited rate keeps its relative spread, so the cost distribution
+       * is drawn around the rate typed */
       return override === undefined || override === null || override === ''
-        ? rate : Object.assign({}, rate, { unit_cost_usd: Number(override) });
+        ? rate : C.rateWithLikely(rate, Number(override));
     });
   }
 
@@ -762,6 +766,7 @@
 
   function rebuildCosting() {
     derived.estimate = null; derived.programme = null;
+    derived.costInputs = null; derived.costRates = null;
     var costing = store.get('costing');
     var inputs;
     if (derived.design) {
@@ -789,6 +794,8 @@
     var rates = costingRates();
     try {
       derived.estimate = C.estimateBoreholeCost(inputs, rates, costingOptions());
+      /* what the cost distribution samples from, beside the estimate */
+      derived.costInputs = inputs; derived.costRates = rates;
       if (costing.programme_n > 1) {
         derived.programme = C.estimateProgrammeCost(inputs, costing.programme_n,
           Object.assign({
@@ -1313,6 +1320,124 @@
       workEnd(job);
       refresh();
     }
+  }
+
+  /* The chance of a working borehole at every point (PLAN.md step 3.3), with
+   * the range sampled around each inversion where there is one, placed as
+   * the report places it: the point's own position, else the site's. The
+   * map layers it reads are loaded with every working page and report. */
+  function surveyOdds() {
+    var site = store.get('site') || {};
+    return C.surveyOdds(derived.interpretations || [],
+      (derived.inversions || []).map(rangeFor), Number(site.utm_zone) || null,
+      C.sitePosition(site), config());
+  }
+
+  /* The survey's first-ranked point as the costing reads it: its odds and
+   * its sampled range (null where none). By position, not id: two points can
+   * share an id. */
+  function firstPointSurvey() {
+    if (!(derived.interpretations || []).length) return { odds: null, range: null };
+    var first = C.assessSiting(derived.interpretations, config().ves)[0].index;
+    return { odds: surveyOdds()[first] || null,
+      range: rangeFor((derived.inversions || [])[first]) };
+  }
+
+  /* The planning figure beside the bill of quantities (PLAN.md step 3.4):
+   * the estimate's own inputs sampled, the depth drawn from the range at the
+   * survey's first-ranked point and dry holes at its odds, and the programme
+   * the same way at its typed rate. Kept with the estimate it belongs to and
+   * sampled again only when the range, the odds or the programme change, so
+   * a page drawn again does not sample it again. */
+  var costSpreadsHeld = new WeakMap();
+
+  function costSpreads() {
+    var estimate = derived.estimate;
+    if (!estimate || !derived.costInputs) return null;
+    var survey = firstPointSurvey();
+    var p = survey.odds ? survey.odds.probability : null;
+    var held = costSpreadsHeld.get(estimate);
+    if (held && held.range === survey.range && held.p === p &&
+        held.programmeEstimate === derived.programme) {
+      return held;
+    }
+    var cfg = config();
+    var depth = C.depthSpread(survey.range, cfg);
+    var costing = store.get('costing');
+    held = {
+      range: survey.range, p: p, programmeEstimate: derived.programme,
+      single: C.sampleCost(derived.costInputs, derived.costRates,
+        Object.assign({}, costingOptions(), {
+          depth: depth, successProbability: p === null ? 1.0 : p,
+          oddsSource: survey.odds ? survey.odds.sounding_id : null, config: cfg,
+        })),
+      programme: derived.programme ? C.sampleProgrammeCost(derived.costInputs,
+        costing.programme_n, Object.assign({}, costingOptions(), {
+          rates: derived.costRates, successRatePercent: costing.success_rate,
+          interSiteDistanceKm: costing.inter_site_km, depth: depth, config: cfg,
+        })) : null,
+    };
+    costSpreadsHeld.set(estimate, held);
+    return held;
+  }
+
+  /* What one more measurement at the survey's first-ranked point is worth
+   * (PLAN.md step 3.5), priced from the cost distribution spread: one for
+   * each kind, or none before a survey is inverted. The odds are every
+   * point's, so the alternative to the first-ranked point is one of the
+   * others. */
+  function surveyMeasurements(spread) {
+    if (!(derived.interpretations || []).length) return [];
+    var ranking = C.assessSiting(derived.interpretations, config().ves)
+      .map(function (s) { return s.index; });
+    return C.measurementValues(surveyOdds(), ranking, spread.mean, spread.dry_mean);
+  }
+
+  /* What one more measurement is worth, on a page: the plan's sentence for
+   * each kind, then its other sentences and decision table, what a
+   * measurement could read, and the basis, as the reports print them. */
+  function measurementNodes(values) {
+    var nodes = [el('p.muted', C.phrase('measurement.lead'))];
+    if (!values.length) return nodes.concat([el('p', C.phrase('measurement.no_survey'))]);
+    values.forEach(function (v) {
+      var text = C.measurementText(v);
+      nodes.push(el('div.measurement', [
+        el('p', el('strong', text[0])),
+        el('p', text.slice(1).join(' ')),
+        S.table(C.measurementDecisionHeader(v), C.measurementDecisionRows(v)),
+        el('p.muted', C.measurementDecisionCaption()),
+      ]));
+    });
+    nodes.push(el('details', [
+      el('summary', C.measurementReadingsCaption(values[0])),
+      S.table(C.measurementReadingHeader(), C.measurementReadingRows(values[0])),
+    ]));
+    nodes.push(el('p.muted', C.measurementBasis(values[0])));
+    return nodes;
+  }
+
+  /* [label, usd] pairs the distribution figures mark */
+  function costMarks(spread, programme) {
+    var marks = C.phraseTable('cost_range.marks');
+    return programme
+      ? [[marks.estimate, spread.estimate_usd], [marks.budget, spread.budget_usd]]
+      : [[marks.boq, spread.boq_usd], [marks.budget, spread.budget_usd]];
+  }
+
+  /* The planning figure on the page: which figure is which first, then the
+   * sentences, the table and the curve. */
+  function costSpreadNodes(text, rows, chart, caption, filename) {
+    var header = C.costRangeHeader();
+    return [
+      el('div.callout', el('p', text[0])),
+    ].concat(text.slice(1).map(function (t) { return el('p', t); })).concat([
+      S.table([
+        { key: 'item', label: header[0] },
+        { key: 'usd', label: header[1], align: 'right' },
+        { key: 'share', label: header[2], align: 'right' },
+      ], rows.map(function (r) { return { item: r[0], usd: r[1], share: r[2] }; })),
+      charts.figure(chart, caption, { filename: filename }),
+    ]);
   }
 
   /* ------------------------------------------------------------- work bar */
@@ -2550,6 +2675,12 @@
     ]));
 
     var suitability = C.assessSiting(derived.interpretations, config().ves);
+    /* the chance of a working borehole beside the score (PLAN.md step 3.3),
+     * paired with its row by position: two points can share an id */
+    var odds = surveyOdds();
+    suitability = suitability.map(function (s) {
+      return Object.assign({}, s, { odds: odds[s.index] ? C.oddsShort(odds[s.index]) : '' });
+    });
     var best = suitability[0];
     var located = suitability.filter(function (s) {
       return s.easting && s.northing;
@@ -2571,11 +2702,33 @@
         { key: 'sounding_id', label: 'Point' },
         { key: 'suitability', label: 'Suitability', align: 'right',
           format: function (v) { return v.toFixed(0) + '/100'; } },
+        { key: 'odds', label: C.phrase('odds.col_short') },
         { key: 'grade', label: 'Grade' },
         { key: 'rationale', label: 'Why' },
       ], suitability, {
         rowClass: function (row) { return row.rank === 1 ? 'row-ok' : ''; },
       }),
+      el('h3', C.phrase('odds.heading')),
+      el('p.muted', [C.phrase('odds.lead')].concat(odds[best.index]
+        ? C.oddsBasisText(odds[best.index]) : []).join(' ')),
+      el('div.odds-points', suitability.map(function (s) {
+        var o = odds[s.index];
+        if (!o) return null;
+        return el('div.odds-point', [
+          el('p', [el('strong', s.sounding_id + ': '), C.oddsPointText(o).join(' ')]),
+          S.table(C.oddsHeader(), C.oddsRows(o)),
+          el('p.muted', C.oddsTableCaption(o)),
+        ]);
+      }).filter(Boolean)),
+      /* what one more measurement at the first-ranked point is worth
+       * (PLAN.md step 3.5), once the cost has been estimated */
+      el('h3', C.phrase('measurement.heading')),
+      el('div.measurements', (function () {
+        var costed = costSpreads();
+        return costed ? measurementNodes(surveyMeasurements(costed.single))
+          : [el('p.muted', [C.phrase('measurement.lead'),
+            C.phrase('measurement.no_cost')].join(' '))];
+      })()),
       located.length ? charts.figure(charts.siteMap({
         context: (mapLayers().chiefdomBoundaries || {}).features || [],
         points: located.map(function (s) {
@@ -4156,6 +4309,19 @@
       })) : null,
     ]));
 
+    var spreads = costSpreads();
+    if (spreads) {
+      nodes.push(card(C.phrase('cost_range.heading'), costSpreadNodes(
+        C.costRangeText(spreads.single), C.costRangeRows(spreads.single),
+        charts.costDistribution(spreads.single.curve, costMarks(spreads.single, false),
+          { title: C.phraseTable('cost_range.marks').title }),
+        C.phrase('cost_range.figure_caption'), 'cost_distribution')));
+      /* what one more measurement is worth, beside the odds and the costs
+       * it is worked out from (PLAN.md step 3.5) */
+      nodes.push(card(C.phrase('measurement.heading'),
+        measurementNodes(surveyMeasurements(spreads.single))));
+    }
+
     nodes.push(card('Bill of quantities', [
       S.table([
         { key: 'Code', label: 'Code' }, { key: 'Stage', label: 'Stage' },
@@ -4191,17 +4357,24 @@
       ]),
     ]));
 
+    var workingRates = costingRates();
     nodes.push(card('Unit rates', [
       el('p.muted', 'The bundled rates are indicative and must be confirmed ' +
         'against current local prices before the estimate is used in a tender. ' +
-        'Edit any rate here; blank restores the catalogue value.'),
+        'Edit any rate here; blank restores the catalogue value. The minimum and ' +
+        'maximum are what the cost distribution draws the rate between, and move ' +
+        'in proportion with an edited rate.'),
       S.table([
         { key: 'code', label: 'Code' }, { key: 'stage', label: 'Stage' },
         { key: 'item', label: 'Item' }, { key: 'unit', label: 'Unit' },
         { key: 'rate', label: 'Rate (US$)', align: 'right' },
-      ], C.loadRates().map(function (rate) {
+        { key: 'min', label: 'Min (US$)', align: 'right' },
+        { key: 'max', label: 'Max (US$)', align: 'right' },
+      ], C.loadRates().map(function (rate, i) {
+        var working = C.rateTriangle(workingRates[i]);
         return {
           code: rate.code, stage: rate.stage, item: rate.item, unit: rate.unit,
+          min: S.thousands(working[0], 2), max: S.thousands(working[2], 2),
           rate: S.numberInput(
             (costing.rateOverrides || {})[rate.code] !== undefined
               ? costing.rateOverrides[rate.code] : rate.unit_cost_usd,
@@ -4213,7 +4386,24 @@
       })),
     ]));
 
+    /* The survey's odds at its first-ranked point are offered beside the
+     * typed rate, never put in its place without a click: a programme
+     * estimate that moved because a sounding was inverted on another page
+     * would change silently. */
+    var firstOdds = null;
+    if ((derived.interpretations || []).length) {
+      /* by position, not id: two points can share an id */
+      var first = C.assessSiting(derived.interpretations, config().ves)[0].index;
+      firstOdds = surveyOdds()[first] || null;
+    }
+    var offeredRate = firstOdds ? C.programmeRate(firstOdds) : null;
     nodes.push(card('Programme of works', [
+      firstOdds ? el('div.callout', [
+        el('p', C.programmeOffer(firstOdds)),
+        button(C.phrase('odds.programme_use', { p: offeredRate }), function () {
+          bindCost('success_rate')(offeredRate);
+        }, { variant: 'ghost' }),
+      ]) : null,
       el('div.field-row', [
         field('Successful boreholes required',
           S.numberInput(costing.programme_n, bindCost('programme_n'))),
@@ -4238,7 +4428,15 @@
         el('ul', derived.programme.assumptions.map(function (t) {
           return el('li.muted', t);
         })),
-      ]) : el('p.muted', 'Set more than one borehole to see the package estimate.'),
+      ].concat(spreads && spreads.programme ? [el('h3', C.phrase('cost_range.heading'))]
+        .concat(costSpreadNodes(
+          [C.phrase('cost_range.which_is_which')].concat(
+            C.programmeRangeText(spreads.programme)),
+          C.programmeRangeRows(spreads.programme),
+          charts.costDistribution(spreads.programme.curve, costMarks(spreads.programme, true),
+            { title: C.phraseTable('cost_range.marks').programme_title }),
+          C.phrase('cost_range.programme_figure_caption'), 'programme_distribution'))
+        : [])) : el('p.muted', 'Set more than one borehole to see the package estimate.'),
     ]));
 
     nodes.push(reportCard('Cost estimate report', 'costing',
@@ -6859,6 +7057,13 @@
            * table calling one peg first and a star on another, under one
            * heading */
           context.ves = cfg.ves;
+          /* the chance of a working borehole at each point, which the
+           * report prints under the suitability score */
+          context.odds = surveyOdds();
+          /* the cost distribution, where the cost has been estimated, which
+           * prices one more measurement under the odds (PLAN.md step 3.5) */
+          var costed = costSpreads();
+          context.costDistribution = costed ? costed.single : null;
           builder = await docx.geophysicalReport(context);
 
         } else if (kind === 'completion') {
@@ -6952,6 +7157,27 @@
               image: await charts.toPng(charts.programmeGantt(derived.programme)),
               caption: 'Indicative programme of works',
             });
+          }
+          /* the planning figure beside the bill of quantities (step 3.4) */
+          var spreads = costSpreads();
+          var marks = C.phraseTable('cost_range.marks');
+          if (spreads) {
+            context.distribution = spreads.single;
+            /* what one more measurement is worth, priced with it (step 3.5) */
+            context.measurements = surveyMeasurements(spreads.single);
+            context.distributionFigure = {
+              image: await charts.toPng(charts.costDistribution(spreads.single.curve,
+                costMarks(spreads.single, false), { title: marks.title })),
+              caption: C.phrase('cost_range.figure_caption'),
+            };
+            if (spreads.programme) {
+              context.programmeDistribution = spreads.programme;
+              context.programmeDistributionFigure = {
+                image: await charts.toPng(charts.costDistribution(spreads.programme.curve,
+                  costMarks(spreads.programme, true), { title: marks.programme_title })),
+                caption: C.phrase('cost_range.programme_figure_caption'),
+              };
+            }
           }
           context.estimate = derived.estimate;
           context.programme = derived.programme;
@@ -7345,7 +7571,8 @@
     renderAutosaveBanner: renderAutosaveBanner,
     storage: storage, continueHere: continueHere,
     hashFor: hashFor, routeFrom: routeFrom,
-    sampleRanges: sampleRanges, rangeFor: rangeFor,
+    sampleRanges: sampleRanges, rangeFor: rangeFor, surveyOdds: surveyOdds,
+    costSpreads: costSpreads, surveyMeasurements: surveyMeasurements,
   };
 
   if (typeof document !== 'undefined') {

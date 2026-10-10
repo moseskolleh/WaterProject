@@ -291,12 +291,16 @@ datasets:
       a tender.
     files:
       - path: src/groundwater/data/borehole_cost_items.csv
-        bytes: 3253
-        sha256: bd74954d96877a643b9d4cf89121f5c296ad133dbd81b056e3132afc0b1087f7
+        bytes: 3882
+        sha256: a03f407840af07b5089337e1718fc2ba031184ed1680dcd73bf0c7dc762eb77e
         note: >-
           Unit rates and quantity bases for a borehole bill of quantities,
           built from the costing guide's worked example. Example figures,
-          not quoted Sierra Leone rates.
+          not quoted Sierra Leone rates. The min_usd, max_usd and
+          spread_group columns (PLAN.md step 3.4) are not from the guides:
+          they are this toolkit's provisional spread around each rate,
+          worked out from borehole_cost_spread.yaml, which records the
+          reason for each and that no source is recorded for any.
       - path: src/groundwater/data/supervision_checklists.csv
         bytes: 14751
         sha256: a763253bc3cc339a91ad3e0148110c60cab0363c04712926713931f9ce10d11f
@@ -384,6 +388,47 @@ datasets:
           source. NO SOURCE IS RECORDED for these distances: they are common
           field practice as written down here, not a cited standard, and a
           project should replace them with its regulator's figures.
+      - path: src/groundwater/data/success_prior.csv
+        bytes: 2209
+        sha256: 57cb29da0321bdf2f4fe51ada428f57e37432e291d0d3426f4fe9ffd23e1a387
+        note: >-
+          The prior of the chance of a working borehole (PLAN.md step 3.3),
+          by BGS aquifer class and USGS geology unit. The yields in it are
+          cited: the BGS productivity classes (O Dochartaigh 2021, BGS Open
+          Report OR/21/063, Tables 1, 3 and 4). Reading a class's range as
+          the quartiles of a lognormal spread, the effective sample size of
+          10, and the even-chance fallback held as 2 boreholes are this
+          toolkit's choices, marked provisional and fallback in the file.
+          No source separates the geology units within a class, and none is
+          claimed to.
+      - path: src/groundwater/data/borehole_cost_spread.yaml
+        bytes: 4759
+        sha256: 89a3daa4e581a7ae29aae7a2914ab6e1061e764aae8342b8b3401c4501af4589
+        note: >-
+          How far each unit rate of the cost catalogue may fall below or rise
+          above its likely value, by group of rates that share a cause, each
+          with the reasoning behind it (PLAN.md step 3.4). NO SOURCE IS
+          RECORDED for these spreads: they are provisional choices, for an
+          engineer with current quotations to confirm or replace.
+      - path: src/groundwater/data/success_evidence.yaml
+        bytes: 5754
+        sha256: 9ea42c688edb48aa21f5ffd941cfa517569e61a6f3749c468cf47bcb67d51016
+        note: >-
+          The likelihood ratios and fit weights of the chance of a working
+          borehole, each with the reasoning behind it. NO SOURCE IS RECORDED
+          for these numbers: they are provisional judgments, for a
+          hydrogeologist to confirm and for drilled outcomes to calibrate.
+      - path: src/groundwater/data/field.yaml
+        bytes: 5323
+        sha256: 9f3866fc92257c4002ae987af99e4062aa40a5c8e2ad2f820846ca5b4f759387
+        note: >-
+          The schedules and field rules the co-pilots and the field kit work
+          to, which are field practice as written down here, and the cost of
+          one more sounding and of a profiling line that the value of one
+          more measurement is priced against (PLAN.md step 3.5). NO SOURCE IS
+          RECORDED for those two costs: they are provisional choices, read as
+          a share of the siting survey's lump sum in the cost catalogue, for
+          an engineer with a survey contractor's rates to confirm or replace.
 
   - id: chiefdom_name_crosswalk
     name: Chiefdom name crosswalk - boundary layer to census spelling

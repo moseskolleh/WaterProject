@@ -802,6 +802,30 @@
 
   /* --- 1. geophysical survey ------------------------------------------------- */
 
+  /* What one more measurement is worth (PLAN.md step 3.5), under a heading
+   * the caller gives, as reporting/costing.py measurement_block prints it:
+   * the lead, each measurement's sentences and its decision table, what a
+   * measurement could read, and the basis once. */
+  function measurementBlock(b, values) {
+    b.paragraph(C.phrase('measurement.lead'), { align: 'justify' });
+    if (!values.length) {
+      b.paragraph(C.phrase('measurement.no_survey'), { align: 'justify' });
+      return;
+    }
+    values.forEach(function (v) {
+      b.paragraph(C.measurementText(v).join(' '), { align: 'justify' });
+      b.table(C.measurementDecisionRows(v), { header: C.measurementDecisionHeader(v),
+        caption: C.measurementDecisionCaption(), colWidthsCm: [4.6, 2.0, 2.4, 4.0, 3.0],
+        fontSize: 8.5 });
+    });
+    /* every measurement reads its bands at the same chances, and a sounding
+     * reads every band a profiling line does, so its table covers both */
+    b.table(C.measurementReadingRows(values[0]), { header: C.measurementReadingHeader(),
+      caption: C.measurementReadingsCaption(values[0]),
+      colWidthsCm: [3.0, 5.4, 1.8, 2.2, 2.0, 2.0], fontSize: 8.5 });
+    b.paragraph(C.measurementBasis(values[0]), { align: 'justify' });
+  }
+
   async function geophysicalReport(context) {
     var b = new ReportBuilder({ style: context.style, title: 'Geophysical Survey Report' });
     var site = context.site || {};
@@ -1106,6 +1130,38 @@
       b.paragraph(C.suitabilityVerdict(suit, vesCfg.ranking_tie_points) +
         (analystOrder ? ' The drilling preference above follows the order the ' +
           'analyst set, not these scores.' : ''), { align: 'justify' });
+      /* The chance of a working borehole at each point (PLAN.md step 3.3),
+       * under the score it stands beside, in the order of the ranking, as
+       * reporting/geophysical.py _odds_block prints it. The page works the
+       * odds out, because it holds the ranges and the site's position. */
+      var odds = context.odds || [];
+      if (odds.length) {
+        b.heading(C.phrase('odds.heading'), 3);
+        b.paragraph([C.phrase('odds.lead')].concat(C.oddsBasisText(odds[0])).join(' '),
+          { align: 'justify' });
+        /* paired with the ranking by position, not by id: two points can
+         * share an id, and the odds are in the interpretations' order */
+        var oddsRanked = suit.map(function (s) { return odds[s.index]; }).filter(Boolean);
+        oddsRanked.forEach(function (o) {
+          b.paragraph([C.phrase('odds.point', { sid: o.sounding_id })]
+            .concat(C.oddsPointText(o)).join(' '), { align: 'justify' });
+          b.table(C.oddsRows(o), { header: C.oddsHeader(),
+            caption: C.oddsTableCaption(o), colWidthsCm: [4.0, 7.0, 2.6, 2.4],
+            fontSize: 8.5 });
+        });
+        /* what one more measurement at the first-ranked point is worth
+         * (PLAN.md step 3.5), priced from the cost distribution where the
+         * cost has been estimated, as _measurement_section prints it */
+        b.heading(C.phrase('measurement.heading'), 3);
+        var costed = context.costDistribution;
+        if (!costed) {
+          b.paragraph([C.phrase('measurement.lead'), C.phrase('measurement.no_cost')].join(' '),
+            { align: 'justify' });
+        } else {
+          measurementBlock(b, C.measurementValues(odds,
+            suit.map(function (s) { return s.index; }), costed.mean, costed.dry_mean));
+        }
+      }
       /* The drill-target map, where reporting/geophysical.py _suitability_block
        * puts it: under the ranked table, above the subsurface maps. It is
        * written inside this heading rather than beside the call to
@@ -2261,6 +2317,23 @@
     });
     figures.forEach(function (f) { b.figure(f.image, f.caption, f.widthCm || 15); });
 
+    /* The planning figure beside the bill of quantities (PLAN.md step 3.4),
+     * in the words the Python report prints. */
+    var spread = context.distribution;
+    if (spread) {
+      b.heading('4.1 ' + C.phrase('cost_range.heading'), 2);
+      C.costRangeText(spread).forEach(function (t) { b.paragraph(t, { align: 'justify' }); });
+      b.table(C.costRangeRows(spread), { header: C.costRangeHeader(),
+        caption: C.phrase('cost_range.table_caption'), colWidthsCm: [8.6, 3.5, 3.5] });
+      if (context.distributionFigure) {
+        b.figure(context.distributionFigure.image, context.distributionFigure.caption, 15);
+      }
+      if (context.measurements) {
+        b.heading('4.2 ' + C.phrase('measurement.heading'), 2);
+        measurementBlock(b, context.measurements);
+      }
+    }
+
     /* The package roll-up. A programme is budgeted per successful borehole,
      * and the figure that has to be budgeted for carries the dry attempts -
      * which the app could compute and no document it wrote ever said. */
@@ -2284,6 +2357,19 @@
         b.paragraph('Assumptions:', { bold: true });
         b.bullets(programme.assumptions);
       }
+      var programmeSpread = context.programmeDistribution;
+      if (programmeSpread) {
+        b.heading(section + '.1 ' + C.phrase('cost_range.heading'), 2);
+        [C.phrase('cost_range.which_is_which')].concat(C.programmeRangeText(programmeSpread))
+          .forEach(function (t) { b.paragraph(t, { align: 'justify' }); });
+        b.table(C.programmeRangeRows(programmeSpread), { header: C.costRangeHeader(),
+          caption: C.phrase('cost_range.programme_table_caption'),
+          colWidthsCm: [8.6, 3.5, 3.5] });
+        if (context.programmeDistributionFigure) {
+          b.figure(context.programmeDistributionFigure.image,
+            context.programmeDistributionFigure.caption, 15);
+        }
+      }
       section += 1;
     }
 
@@ -2295,7 +2381,11 @@
         estimate.exchange_rate_sle_per_usd + ' SLE per US dollar.',
       'The estimate excludes the client\'s own supervision, land acquisition, ' +
         'community mobilisation and value added tax unless stated.',
-      'A dry hole is not costed here; use the programme estimate to carry the ' +
+      spread && spread.odds_source !== null
+        ? 'A dry hole is not costed in the bill of quantities; the planning figure ' +
+          'in section 4.1 allows for dry holes at the survey\'s odds, and the ' +
+          'programme estimate carries the expected dry attempts across a package.'
+        : 'A dry hole is not costed here; use the programme estimate to carry the ' +
         'expected dry attempts across a package of boreholes.',
     ].concat(context.notes || []));
 

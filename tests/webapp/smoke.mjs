@@ -180,6 +180,163 @@ await withPage(async (page, base, consoleErrors) => {
   const vesSvgs = await page.evaluate(() => document.querySelectorAll('#page-host svg').length);
   check('ves page draws curves', vesSvgs >= 2, `found ${vesSvgs}`);
 
+  // The chance of a working borehole (PLAN.md step 3.3) sits beside the
+  // suitability score: a column of the table, and each point's sentences and
+  // breakdown, the engine's words. With no range sampled yet the page says
+  // the depth and basement evidence are left out.
+  const oddsPage = await page.evaluate(() => {
+    const app = window.GWT.app, C = window.GWT.core;
+    const host = document.querySelector('#page-host');
+    const heads = Array.from(host.querySelectorAll('th')).map((th) => th.textContent);
+    const points = Array.from(host.querySelectorAll('.odds-point')).map((p) => p.textContent);
+    const odds = app.surveyOdds();
+    return { heads, points, words: odds.map((o) => C.oddsPointText(o).join(' ')),
+      basis: C.oddsBasisText(odds[0]).join(' '),
+      shorts: odds.map((o) => C.oddsShort(o)), cells: host.textContent,
+      n: app.derived.interpretations.length };
+  });
+  check('odds: the VES page shows the chance beside the suitability score',
+    oddsPage.heads.includes('Chance of a working borehole') &&
+    oddsPage.shorts.every((t) => oddsPage.cells.includes(t)), JSON.stringify(oddsPage.shorts));
+  check('odds: each point\'s sentences and breakdown, in the engine\'s words',
+    oddsPage.points.length === oddsPage.n &&
+    oddsPage.words.every((w) => oddsPage.points.some((p) => p.includes(w))) &&
+    oddsPage.points.every((p) => p.includes('has not been sampled') &&
+      p.includes('Chance after (percent)')) && oddsPage.cells.includes(oddsPage.basis),
+    JSON.stringify(oddsPage.points).slice(0, 800));
+
+  // The programme estimate keeps the rate typed for it; the survey's odds at
+  // its first-ranked point are offered beside it and used only on a click.
+  const programmeOdds = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core;
+    const before = app.store.get('costing.success_rate');
+    await app.goto('costing');
+    const button = Array.from(document.querySelectorAll('#page-host button'))
+      .find((b) => /^Use \d+ percent$/.test(b.textContent));
+    // the callout the button sits in: the page has others, the cost
+    // distribution's among them
+    const offered = button.closest('.callout').textContent;
+    const first = C.assessSiting(app.derived.interpretations, app.config().ves)[0];
+    const odds = app.surveyOdds().find((o) => o.sounding_id === first.sounding_id);
+    const untouched = app.store.get('costing.success_rate');
+    const attemptsBefore = app.derived.programme ? app.derived.programme.n_attempted : null;
+    button.click();
+    await new Promise((r) => setTimeout(r, 100));
+    const used = app.store.get('costing.success_rate');
+    const programme = app.derived.programme;
+    app.store.set('costing.success_rate', before);
+    await app.goto('ves');
+    return { before, untouched, used, rate: C.programmeRate(odds), label: button.textContent,
+      offered, sentence: C.programmeOffer(odds), attemptsBefore,
+      percent: programme ? programme.success_rate_percent : null };
+  });
+  check('odds: the programme estimate keeps its typed rate until the odds are chosen',
+    programmeOdds.untouched === programmeOdds.before &&
+    programmeOdds.offered.includes(programmeOdds.sentence) &&
+    programmeOdds.label === `Use ${programmeOdds.rate} percent`,
+    JSON.stringify(programmeOdds));
+  check('odds: choosing them sets the programme\'s success rate',
+    programmeOdds.used === programmeOdds.rate &&
+    (programmeOdds.percent === null || programmeOdds.percent === programmeOdds.rate),
+    JSON.stringify(programmeOdds));
+
+  // A sheet copied without renumbering gives two points one id. The pages
+  // looked the odds up by id, so both rows showed the last point's and the
+  // Costing page offered the first point carrying the leader's id; they are
+  // paired by position. Here the second Rokel point takes the first's id and
+  // is listed first, so the leader is the one listed second.
+  const sharedId = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core;
+    const kept = { interps: app.derived.interpretations, invs: app.derived.inversions,
+      soundings: app.derived.soundings };
+    const renamed = Object.assign({}, kept.interps[1],
+      { sounding_id: kept.interps[0].sounding_id });
+    try {
+      app.derived.interpretations = [renamed, kept.interps[0]];
+      app.derived.inversions = [kept.invs[1], kept.invs[0]];
+      app.derived.soundings = [kept.soundings[1], kept.soundings[0]];
+      const odds = app.surveyOdds();
+      const weighted = app.derived.interpretations.map((i) => {
+        const s = C.assessSiting([i], app.config().ves)[0];
+        return s.suitability * s.confidence;
+      });
+      const lead = weighted[1] > weighted[0] ? 1 : 0;
+      await app.goto('ves');
+      const host = document.querySelector('#page-host');
+      const table = Array.from(host.querySelectorAll('table')).find((t) =>
+        Array.from(t.querySelectorAll('th')).some((th) =>
+          th.textContent === 'Chance of a working borehole'));
+      const column = Array.from(table.querySelectorAll('th'))
+        .findIndex((th) => th.textContent === 'Chance of a working borehole');
+      const cells = Array.from(table.querySelectorAll('tbody tr'))
+        .map((tr) => tr.children[column].textContent);
+      const points = Array.from(host.querySelectorAll('.odds-point')).map((p) => p.textContent);
+      await app.goto('costing');
+      const offered = Array.from(document.querySelectorAll('#page-host .callout'))
+        .find((c) => /Use \d+ percent/.test(c.textContent)).textContent;
+      return { lead, cells, shorts: odds.map((o) => C.oddsShort(o)),
+        words: odds.map((o) => C.oddsPointText(o).join(' ')), points, offered,
+        sentence: C.programmeOffer(odds[lead]) };
+    } finally {
+      app.derived.interpretations = kept.interps;
+      app.derived.inversions = kept.invs;
+      app.derived.soundings = kept.soundings;
+      await app.goto('ves');
+    }
+  });
+  check('odds: two points with one id each show their own odds, in rank order',
+    sharedId.lead === 1 && sharedId.shorts[0] !== sharedId.shorts[1] &&
+    JSON.stringify(sharedId.cells) ===
+      JSON.stringify([sharedId.shorts[1], sharedId.shorts[0]]) &&
+    sharedId.words.every((w) => sharedId.points.some((p) => p.includes(w))),
+    JSON.stringify(sharedId).slice(0, 800));
+  check('odds: the Costing page offers the leader\'s odds, not the first with its id',
+    sharedId.offered.includes(sharedId.sentence), JSON.stringify(sharedId).slice(0, 800));
+
+  // The value of one more measurement (PLAN.md step 3.5): beside the odds
+  // and the costs on the Costing page, under the odds on the VES page, and
+  // in the cost and geophysical reports, priced from the same distribution
+  // at the survey's first-ranked point against the other point.
+  const valuePage = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, docx = window.GWT.docx;
+    await app.goto('costing');
+    const spreads = app.costSpreads();
+    if (!spreads) return { spreads: null };
+    const values = app.surveyMeasurements(spreads.single);
+    const cards = Array.from(document.querySelectorAll('#page-host .card'));
+    const card = cards.find((c) => (c.querySelector('h2, h3') || {}).textContent ===
+      C.phrase('measurement.heading'));
+    const words = values.map((v) => C.measurementText(v).join(' '));
+    const costing = card ? card.textContent : '';
+    const context = { style: app.config().style, site: app.store.get('site'),
+      estimate: app.derived.estimate, figures: [], distribution: spreads.single,
+      measurements: values };
+    // read once the reader of a document's text is set up, further down
+    window.__valueReport = { bytes: await (await docx.costingReport(context)).build(),
+      words, heading: '4.2 ' + C.phrase('measurement.heading') };
+    await app.goto('ves');
+    const ves = document.querySelector('#page-host').textContent;
+    const first = C.assessSiting(app.derived.interpretations, app.config().ves)[0];
+    return {
+      card: !!card, n: values.length, first: first.sounding_id,
+      ids: values.map((v) => v.sounding_id), alternatives: values.map((v) => v.alternative_id),
+      summaries: values.map((v) => C.measurementSummary(v)),
+      costing: values.every((v) => costing.includes(C.measurementSummary(v))) &&
+        costing.includes(C.measurementBasis(values[0])) &&
+        costing.includes(C.measurementReadingsCaption(values[0])),
+      ves: values.every((v) => ves.includes(C.measurementSummary(v))),
+    };
+  });
+  check('measurement: the Costing page prices a sounding and a profiling line at the ' +
+    'first-ranked point', valuePage.card && valuePage.n === 2 &&
+    valuePage.ids.every((id) => id === valuePage.first) &&
+    valuePage.alternatives.every((id) => id !== null && id !== valuePage.first),
+  JSON.stringify(valuePage).slice(0, 600));
+  check('measurement: the Costing page prints the engine\'s sentences and tables',
+    valuePage.costing, JSON.stringify(valuePage.summaries));
+  check('measurement: the VES page prints it under the odds once the cost is estimated',
+    valuePage.ves, JSON.stringify(valuePage.summaries));
+
   // --- the engine worker ----------------------------------------------------
   // PLAN.md step 1.2: during an inversion no main-thread task longer than
   // 50 ms, and the page keeps scrolling. The windows are the engine's own
@@ -304,13 +461,23 @@ await withPage(async (page, base, consoleErrors) => {
     const sounding = app.derived.soundings.find((s) => s.sounding_id === id);
     const direct = C.modelRangeText(C.sampleModelRange(sounding, inversions[1],
       app.config())).join(' ');
+    /* the odds read the sampled ranges: the depth and basement evidence */
+    const oddsSampled = Array.from(document.querySelectorAll('#page-host .odds-point'))
+      .map((p) => p.textContent);
+    const oddsWords = app.surveyOdds().map((o) => C.oddsPointText(o).join(' '));
     app.store.set('config', saved);
     app.render();
     const after = Array.from(document.querySelectorAll('#page-host .callout-info'))
       .filter((c) => c.textContent.includes('Range of models that fit')).length;
     return { fill, shown, modes: runs.map((h) => h.mode + ':' + h.outcome), callouts,
-      legends, direct, after, n: inversions.length };
+      legends, direct, after, n: inversions.length, oddsSampled, oddsWords };
   });
+  check('odds: a sampled range brings in the depth and basement evidence',
+    ranged.oddsSampled.length === ranged.n &&
+    ranged.oddsSampled.every((p) => !p.includes('has not been sampled') &&
+      !p.includes('range not sampled')) &&
+    ranged.oddsWords.every((w) => ranged.oddsSampled.some((p) => p.includes(w))),
+    JSON.stringify(ranged.oddsSampled).slice(0, 800));
   check('range: sampled in the worker, a sounding at a time',
     ranged.modes.length === ranged.n && ranged.modes.every((m) => m === 'worker:done'),
     JSON.stringify(ranged.modes));
@@ -1065,6 +1232,73 @@ await withPage(async (page, base, consoleErrors) => {
         `missing: ${missing.join(', ')} (${content.len} chars of text)`);
     }
   }
+
+  // The cost as a distribution (PLAN.md step 3.4): the Costing page shows
+  // the planning figure beside the bill of quantities, says which is the
+  // contract document, draws the curve, and does the same for a programme;
+  // the cost report prints it, from the same sampled distribution.
+  const spreadPage = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, docx = window.GWT.docx;
+    const before = app.store.get('costing.programme_n');
+    await app.goto('costing');
+    // typed into the page, as a user sets it: the estimate is rebuilt
+    const setWells = async (n) => {
+      const input = Array.from(document.querySelectorAll('#page-host label.field'))
+        .find((f) => f.querySelector('.field-label').textContent ===
+          'Successful boreholes required').querySelector('input');
+      input.value = String(n);
+      input.dispatchEvent(new Event('change'));
+      await new Promise((r) => setTimeout(r, 50));
+    };
+    await setWells(4);
+    try {
+      const spreads = app.costSpreads();
+      const cards = Array.from(document.querySelectorAll('#page-host .card'));
+      const card = cards.find((c) => (c.querySelector('h2, h3') || {}).textContent ===
+        C.phrase('cost_range.heading'));
+      const host = document.querySelector('#page-host').textContent;
+      const context = { style: app.config().style, site: app.store.get('site'),
+        estimate: app.derived.estimate, programme: app.derived.programme, figures: [],
+        distribution: spreads.single, programmeDistribution: spreads.programme };
+      const text = await window.__docText(await (await docx.costingReport(context)).build());
+      return {
+        card: !!card, svg: card ? card.querySelectorAll('svg').length : 0,
+        first: card ? card.querySelector('.callout').textContent : '',
+        which: C.phrase('cost_range.which_is_which'),
+        single: C.costRangeText(spreads.single).every((t) => host.includes(t)),
+        programme: !!spreads.programme &&
+          C.programmeRangeText(spreads.programme).every((t) => host.includes(t)),
+        again: app.costSpreads() === spreads,
+        boq: spreads.single.boq_usd === app.derived.estimate.price_with_vat_usd,
+        report: C.costRangeText(spreads.single).every((t) => text.includes(t)) &&
+          C.programmeRangeText(spreads.programme).every((t) => text.includes(t)) &&
+          text.includes('4.1 ' + C.phrase('cost_range.heading')),
+      };
+    } finally {
+      await setWells(before);
+    }
+  });
+  check('cost range: the Costing page says which figure is the contract document',
+    spreadPage.card && spreadPage.first === spreadPage.which && spreadPage.svg === 1,
+    JSON.stringify(spreadPage).slice(0, 600));
+  check('cost range: the page prints the engine\'s sentences for a borehole and a programme',
+    spreadPage.single && spreadPage.programme && spreadPage.boq,
+    JSON.stringify(spreadPage).slice(0, 600));
+  check('cost range: a page drawn again does not sample again', spreadPage.again,
+    JSON.stringify(spreadPage).slice(0, 600));
+  check('cost range: the cost report prints the same distribution', spreadPage.report,
+    JSON.stringify(spreadPage).slice(0, 600));
+  // the cost report built beside the Rokel survey, further up, prints what
+  // one more measurement is worth in its section 4.2 (PLAN.md step 3.5)
+  const valueReport = await page.evaluate(async () => {
+    const kept = window.__valueReport;
+    if (!kept) return { built: false };
+    const text = await window.__docText(kept.bytes);
+    return { built: true, heading: text.includes(kept.heading),
+      words: kept.words.every((w) => text.includes(w)) };
+  });
+  check('measurement: the cost report prints it in section 4.2',
+    valueReport.built && valueReport.heading && valueReport.words, JSON.stringify(valueReport));
 
   // a report with a real rasterised figure, to exercise the image path
   const withFigure = await page.evaluate(async () => {
