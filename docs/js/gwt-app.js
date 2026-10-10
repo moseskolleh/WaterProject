@@ -285,6 +285,8 @@
     /* why a test that is loaded has no analysis: stopped, or what it said */
     analysisNote: null,
     design: null, estimate: null, programme: null,
+    /* the estimate's inputs and rates, which the cost distribution samples */
+    costInputs: null, costRates: null,
     /* brought in by hand rather than computed from the sources: an area
      * inventory, other projects' summaries, an extracted scan */
     waterPoints: null, waterPointsSource: null, waterPointsCapped: false,
@@ -746,8 +748,10 @@
     var overrides = store.get('costing.rateOverrides') || {};
     return C.loadRates().map(function (rate) {
       var override = overrides[rate.code];
+      /* an edited rate keeps its relative spread, so the cost distribution
+       * is drawn around the rate typed */
       return override === undefined || override === null || override === ''
-        ? rate : Object.assign({}, rate, { unit_cost_usd: Number(override) });
+        ? rate : C.rateWithLikely(rate, Number(override));
     });
   }
 
@@ -762,6 +766,7 @@
 
   function rebuildCosting() {
     derived.estimate = null; derived.programme = null;
+    derived.costInputs = null; derived.costRates = null;
     var costing = store.get('costing');
     var inputs;
     if (derived.design) {
@@ -789,6 +794,8 @@
     var rates = costingRates();
     try {
       derived.estimate = C.estimateBoreholeCost(inputs, rates, costingOptions());
+      /* what the cost distribution samples from, beside the estimate */
+      derived.costInputs = inputs; derived.costRates = rates;
       if (costing.programme_n > 1) {
         derived.programme = C.estimateProgrammeCost(inputs, costing.programme_n,
           Object.assign({
@@ -1324,6 +1331,78 @@
     return C.surveyOdds(derived.interpretations || [],
       (derived.inversions || []).map(rangeFor), Number(site.utm_zone) || null,
       C.sitePosition(site), config());
+  }
+
+  /* The survey's first-ranked point as the costing reads it: its odds and
+   * its sampled range (null where none). By position, not id: two points can
+   * share an id. */
+  function firstPointSurvey() {
+    if (!(derived.interpretations || []).length) return { odds: null, range: null };
+    var first = C.assessSiting(derived.interpretations, config().ves)[0].index;
+    return { odds: surveyOdds()[first] || null,
+      range: rangeFor((derived.inversions || [])[first]) };
+  }
+
+  /* The planning figure beside the bill of quantities (PLAN.md step 3.4):
+   * the estimate's own inputs sampled, the depth drawn from the range at the
+   * survey's first-ranked point and dry holes at its odds, and the programme
+   * the same way at its typed rate. Kept with the estimate it belongs to and
+   * sampled again only when the range, the odds or the programme change, so
+   * a page drawn again does not sample it again. */
+  var costSpreadsHeld = new WeakMap();
+
+  function costSpreads() {
+    var estimate = derived.estimate;
+    if (!estimate || !derived.costInputs) return null;
+    var survey = firstPointSurvey();
+    var p = survey.odds ? survey.odds.probability : null;
+    var held = costSpreadsHeld.get(estimate);
+    if (held && held.range === survey.range && held.p === p &&
+        held.programmeEstimate === derived.programme) {
+      return held;
+    }
+    var cfg = config();
+    var depth = C.depthSpread(survey.range, cfg);
+    var costing = store.get('costing');
+    held = {
+      range: survey.range, p: p, programmeEstimate: derived.programme,
+      single: C.sampleCost(derived.costInputs, derived.costRates,
+        Object.assign({}, costingOptions(), {
+          depth: depth, successProbability: p === null ? 1.0 : p,
+          oddsSource: survey.odds ? survey.odds.sounding_id : null, config: cfg,
+        })),
+      programme: derived.programme ? C.sampleProgrammeCost(derived.costInputs,
+        costing.programme_n, Object.assign({}, costingOptions(), {
+          rates: derived.costRates, successRatePercent: costing.success_rate,
+          interSiteDistanceKm: costing.inter_site_km, depth: depth, config: cfg,
+        })) : null,
+    };
+    costSpreadsHeld.set(estimate, held);
+    return held;
+  }
+
+  /* [label, usd] pairs the distribution figures mark */
+  function costMarks(spread, programme) {
+    var marks = C.phraseTable('cost_range.marks');
+    return programme
+      ? [[marks.estimate, spread.estimate_usd], [marks.budget, spread.budget_usd]]
+      : [[marks.boq, spread.boq_usd], [marks.budget, spread.budget_usd]];
+  }
+
+  /* The planning figure on the page: which figure is which first, then the
+   * sentences, the table and the curve. */
+  function costSpreadNodes(text, rows, chart, caption, filename) {
+    var header = C.costRangeHeader();
+    return [
+      el('div.callout', el('p', text[0])),
+    ].concat(text.slice(1).map(function (t) { return el('p', t); })).concat([
+      S.table([
+        { key: 'item', label: header[0] },
+        { key: 'usd', label: header[1], align: 'right' },
+        { key: 'share', label: header[2], align: 'right' },
+      ], rows.map(function (r) { return { item: r[0], usd: r[1], share: r[2] }; })),
+      charts.figure(chart, caption, { filename: filename }),
+    ]);
   }
 
   /* ------------------------------------------------------------- work bar */
@@ -4186,6 +4265,15 @@
       })) : null,
     ]));
 
+    var spreads = costSpreads();
+    if (spreads) {
+      nodes.push(card(C.phrase('cost_range.heading'), costSpreadNodes(
+        C.costRangeText(spreads.single), C.costRangeRows(spreads.single),
+        charts.costDistribution(spreads.single.curve, costMarks(spreads.single, false),
+          { title: C.phraseTable('cost_range.marks').title }),
+        C.phrase('cost_range.figure_caption'), 'cost_distribution')));
+    }
+
     nodes.push(card('Bill of quantities', [
       S.table([
         { key: 'Code', label: 'Code' }, { key: 'Stage', label: 'Stage' },
@@ -4221,17 +4309,24 @@
       ]),
     ]));
 
+    var workingRates = costingRates();
     nodes.push(card('Unit rates', [
       el('p.muted', 'The bundled rates are indicative and must be confirmed ' +
         'against current local prices before the estimate is used in a tender. ' +
-        'Edit any rate here; blank restores the catalogue value.'),
+        'Edit any rate here; blank restores the catalogue value. The minimum and ' +
+        'maximum are what the cost distribution draws the rate between, and move ' +
+        'in proportion with an edited rate.'),
       S.table([
         { key: 'code', label: 'Code' }, { key: 'stage', label: 'Stage' },
         { key: 'item', label: 'Item' }, { key: 'unit', label: 'Unit' },
         { key: 'rate', label: 'Rate (US$)', align: 'right' },
-      ], C.loadRates().map(function (rate) {
+        { key: 'min', label: 'Min (US$)', align: 'right' },
+        { key: 'max', label: 'Max (US$)', align: 'right' },
+      ], C.loadRates().map(function (rate, i) {
+        var working = C.rateTriangle(workingRates[i]);
         return {
           code: rate.code, stage: rate.stage, item: rate.item, unit: rate.unit,
+          min: S.thousands(working[0], 2), max: S.thousands(working[2], 2),
           rate: S.numberInput(
             (costing.rateOverrides || {})[rate.code] !== undefined
               ? costing.rateOverrides[rate.code] : rate.unit_cost_usd,
@@ -4285,7 +4380,15 @@
         el('ul', derived.programme.assumptions.map(function (t) {
           return el('li.muted', t);
         })),
-      ]) : el('p.muted', 'Set more than one borehole to see the package estimate.'),
+      ].concat(spreads && spreads.programme ? [el('h3', C.phrase('cost_range.heading'))]
+        .concat(costSpreadNodes(
+          [C.phrase('cost_range.which_is_which')].concat(
+            C.programmeRangeText(spreads.programme)),
+          C.programmeRangeRows(spreads.programme),
+          charts.costDistribution(spreads.programme.curve, costMarks(spreads.programme, true),
+            { title: C.phraseTable('cost_range.marks').programme_title }),
+          C.phrase('cost_range.programme_figure_caption'), 'programme_distribution'))
+        : [])) : el('p.muted', 'Set more than one borehole to see the package estimate.'),
     ]));
 
     nodes.push(reportCard('Cost estimate report', 'costing',
@@ -7003,6 +7106,25 @@
               caption: 'Indicative programme of works',
             });
           }
+          /* the planning figure beside the bill of quantities (step 3.4) */
+          var spreads = costSpreads();
+          var marks = C.phraseTable('cost_range.marks');
+          if (spreads) {
+            context.distribution = spreads.single;
+            context.distributionFigure = {
+              image: await charts.toPng(charts.costDistribution(spreads.single.curve,
+                costMarks(spreads.single, false), { title: marks.title })),
+              caption: C.phrase('cost_range.figure_caption'),
+            };
+            if (spreads.programme) {
+              context.programmeDistribution = spreads.programme;
+              context.programmeDistributionFigure = {
+                image: await charts.toPng(charts.costDistribution(spreads.programme.curve,
+                  costMarks(spreads.programme, true), { title: marks.programme_title })),
+                caption: C.phrase('cost_range.programme_figure_caption'),
+              };
+            }
+          }
           context.estimate = derived.estimate;
           context.programme = derived.programme;
           context.figures = figures;
@@ -7396,6 +7518,7 @@
     storage: storage, continueHere: continueHere,
     hashFor: hashFor, routeFrom: routeFrom,
     sampleRanges: sampleRanges, rangeFor: rangeFor, surveyOdds: surveyOdds,
+    costSpreads: costSpreads,
   };
 
   if (typeof document !== 'undefined') {

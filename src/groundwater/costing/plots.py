@@ -103,3 +103,49 @@ def plot_programme_gantt(
         )
         fig.tight_layout()
     return save_figure(fig, path, style)
+
+
+def plot_cost_distribution(
+    curve: list[float],
+    marks: list[tuple[str, float]],
+    path: str | Path,
+    style: HouseStyle | None = None,
+    *,
+    title: str = "",
+) -> Path:
+    """The share of the sampled costs at or under each cost, from the
+    distribution's curve (the cost at every percent), with P50 and P80 and
+    the deterministic figures in ``marks`` drawn on it as labelled lines.
+
+    A cumulative curve rather than a histogram: P50 and P80 are read
+    straight off it, and so is how much of the spread a budget covers.
+    """
+    style = style or HouseStyle()
+    steps = len(curve) - 1
+    shares = [100.0 * k / steps for k in range(steps + 1)]
+    with figure_context(style):
+        fig, ax = plt.subplots(figsize=(style.figure_width_in, 3.0))
+        ax.plot(curve, shares, color=style.accent_color, linewidth=1.8)
+        for q, label in ((50, "P50"), (80, "P80")):
+            x = curve[round(q * steps / 100)]
+            ax.plot([curve[0], x], [q, q], color=style.neutral_color, linewidth=0.8,
+                    linestyle=":")
+            ax.plot([x, x], [0, q], color=style.neutral_color, linewidth=0.8, linestyle=":")
+            ax.annotate(f"{label} {x:,.0f}", (x, q), xytext=(4, -10),
+                        textcoords="offset points", fontsize=8, color=style.neutral_color)
+        for i, (label, x) in enumerate(marks):
+            ax.axvline(x, color=style.secondary_color, linewidth=1.0,
+                       linestyle="--" if i else "-")
+            ax.annotate(f"{label} {x:,.0f}", (x, 100), xytext=(4, -12 - 11 * i),
+                        textcoords="offset points", fontsize=8,
+                        color=style.secondary_color)
+        ax.set_ylim(0, 100)
+        xs = list(curve) + [x for _label, x in marks]
+        pad = 0.04 * (max(xs) - min(xs) or abs(max(xs)) or 1.0)
+        ax.set_xlim(min(xs) - pad, max(xs) + pad)
+        ax.set_xlabel("USD (contract price with any VAT)")
+        ax.set_ylabel("Sampled at or under (%)")
+        if title:
+            ax.set_title(title)
+        fig.tight_layout()
+    return save_figure(fig, path, style)

@@ -9,19 +9,29 @@ from groundwater.costing import (
     estimate_programme_cost,
     inputs_from_design,
     plot_cost_breakdown,
+    plot_cost_distribution,
     plot_programme_gantt,
-    RateItem,
+    sample_programme_cost,
     write_boq_workbook,
 )
+from groundwater.costing.distribution import (
+    cost_range_header,
+    cost_range_rows,
+    cost_range_text,
+    programme_range_rows,
+    programme_range_text,
+)
 from groundwater.reporting.costing import build_cost_report, CostReportInputs
-from groundwater.siting import assess_siting, survey_odds
 from groundwater.siting.odds import programme_offer, programme_rate
-from groundwater.text import phrase
+from groundwater.text import phrase, phrase_table
 
 from shared import (
     app_config,
     cached_rates,
     compute_cost_estimate,
+    cost_spread_for,
+    cost_spread_inputs,
+    first_point_survey,
     _manual_costing_rules,
     _next_step,
     offer_download,
@@ -33,19 +43,20 @@ from shared import (
 
 def _first_point_odds():
     """The chance of a working borehole at the survey's first-ranked point,
-    or None before a survey is inverted. Read with the range sampled around
-    these very inversions, as the Geophysics page reads it."""
-    held = st.session_state.get("ves_results")
-    if not held or not held[2]:
-        return None
-    soundings, results, interps = held
-    kept = st.session_state.get("ves_ranges")
-    ranges = kept[1] if kept is not None and kept[0] is results else [None] * len(results)
-    # by position, not id: two points can share an id
-    i = assess_siting(interps)[0].index
-    site = soundings[0].site
-    return survey_odds([interps[i]], [ranges[i]], site.utm_zone, site.latlon,
-                       app_config())[0]
+    or None before a survey is inverted."""
+    return first_point_survey()[0]
+
+
+def _show_spread(text: list[str], rows: list[list[str]], chart, caption: str) -> None:
+    """The planning figure: which figure is which, then the sentences, the
+    table and the curve (PLAN.md step 3.4)."""
+    st.subheader(phrase("cost_range.heading"))
+    st.info(text[0])
+    for line in text[1:]:
+        st.markdown(line)
+    header = cost_range_header()
+    st.table([dict(zip(header, row, strict=True)) for row in rows])
+    st.image(str(chart), caption=caption)
 
 
 def _use_rate(rate: float) -> None:
@@ -133,22 +144,28 @@ def render() -> None:
         )
         base_rates = cached_rates()
         overrides = st.session_state.get("rates_overrides", {})
+        # the minimum and maximum the distribution draws from, kept in
+        # proportion to the rate as it is edited (read-only here)
+        working = [r.with_likely(float(overrides.get(r.code, r.unit_cost_usd)))
+                   for r in base_rates]
         rate_rows = [
             {
                 "Code": r.code,
                 "Stage": r.stage,
                 "Item": r.item,
                 "Unit": r.unit,
-                "Rate (USD)": float(overrides.get(r.code, r.unit_cost_usd)),
+                "Rate (USD)": r.unit_cost_usd,
+                "Min (USD)": round(r.triangle()[0], 2),
+                "Max (USD)": round(r.triangle()[2], 2),
             }
-            for r in base_rates
+            for r in working
         ]
         try:
             edited = st.data_editor(
                 rate_rows,
                 key="rates_editor",
                 hide_index=True,
-                disabled=["Code", "Stage", "Item", "Unit"],
+                disabled=["Code", "Stage", "Item", "Unit", "Min (USD)", "Max (USD)"],
                 width="stretch",
             )
         except Exception:  # noqa: BLE001 - read-only fallback, said out loud
@@ -161,16 +178,13 @@ def render() -> None:
             edited = rate_rows
         edited_by_code = {row["Code"]: row for row in edited}
         rates = [
-            RateItem(
-                code=r.code, stage=r.stage, category=r.category, item=r.item,
-                unit=r.unit, quantity_basis=r.quantity_basis,
-                unit_cost_usd=float(
-                    edited_by_code.get(r.code, {}).get(
-                        "Rate (USD)", overrides.get(r.code, r.unit_cost_usd)
-                    )
-                ),
-                note=r.note,
-            )
+            # an edited rate keeps its relative spread, so the distribution is
+            # drawn around the rate typed here
+            r.with_likely(float(
+                edited_by_code.get(r.code, {}).get(
+                    "Rate (USD)", overrides.get(r.code, r.unit_cost_usd)
+                )
+            ))
             for r in base_rates
         ]
         # remember the working rates so the project file carries them
@@ -261,6 +275,14 @@ def render() -> None:
                 for assumption in estimate.assumptions:
                     st.markdown(f"- {assumption}")
 
+        # sampled with the estimate, so there is one whenever there is an
+        # estimate made on this page or in the guided start
+        kept_spread = cost_spread_for(estimate)
+        if kept_spread is not None:
+            spread, spread_chart = kept_spread
+            _show_spread(cost_range_text(spread), cost_range_rows(spread), spread_chart,
+                         phrase("cost_range.figure_caption"))
+
         st.caption(
             "The report cover uses the site details from the sidebar."
         )
@@ -280,6 +302,9 @@ def render() -> None:
                         # it is the number a programme is budgeted against
                         programme=(st.session_state.get("programme_estimate")
                                    or (None,))[0],
+                        distribution=(kept_spread or (None,))[0],
+                        programme_distribution=(
+                            st.session_state.get("programme_estimate") or (None,) * 4)[2],
                     ),
                     workdir() / "Cost_Estimate_Report.docx",
                     app_config(),
@@ -334,9 +359,28 @@ def render() -> None:
             )
             gantt_path = workdir() / "programme_gantt.png"
             plot_programme_gantt(programme, gantt_path, app_config().style)
-            st.session_state.programme_estimate = (programme, gantt_path)
+            # the planning figure for the package, drawn at the same depth
+            # as the single borehole's and at the rate typed for it
+            spread_inputs = cost_spread_inputs()
+            programme_spread = sample_programme_cost(
+                per_well, int(n_wells), rates=rates, inter_site_distance_km=inter_km,
+                success_rate_percent=prog_success, depth=spread_inputs["depth"],
+                overheads_percent=overheads_pct, margin_percent=margin_pct,
+                contingency_percent=contingency_pct, vat_percent=vat_pct,
+                config=app_config(),
+            )
+            marks = phrase_table("cost_range.marks")
+            spread_path = workdir() / "programme_distribution.png"
+            plot_cost_distribution(
+                programme_spread.curve,
+                [(marks["estimate"], programme_spread.estimate_usd),
+                 (marks["budget"], programme_spread.budget_usd)],
+                spread_path, app_config().style, title=marks["programme_title"])
+            st.session_state.programme_estimate = (programme, gantt_path,
+                                                   programme_spread, spread_path)
         if "programme_estimate" in st.session_state:
-            programme, gantt_path = st.session_state.programme_estimate
+            programme, gantt_path, programme_spread, spread_path = (
+                st.session_state.programme_estimate)
             g1, g2, g3 = st.columns(3)
             g1.metric("Attempts planned", programme.n_attempted)
             g2.metric("Contract price",
@@ -353,6 +397,10 @@ def render() -> None:
             with st.expander("Programme assumptions"):
                 for assumption in programme.assumptions:
                     st.markdown(f"- {assumption}")
+            _show_spread([phrase("cost_range.which_is_which")]
+                         + programme_range_text(programme_spread),
+                         programme_range_rows(programme_spread), spread_path,
+                         phrase("cost_range.programme_figure_caption"))
 
     _next_step("Start supervision →", "Supervision",
                "Budget agreed. Work the checklists as the rig arrives.")

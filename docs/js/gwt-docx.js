@@ -2281,6 +2281,19 @@
     });
     figures.forEach(function (f) { b.figure(f.image, f.caption, f.widthCm || 15); });
 
+    /* The planning figure beside the bill of quantities (PLAN.md step 3.4),
+     * in the words the Python report prints. */
+    var spread = context.distribution;
+    if (spread) {
+      b.heading('4.1 ' + C.phrase('cost_range.heading'), 2);
+      C.costRangeText(spread).forEach(function (t) { b.paragraph(t, { align: 'justify' }); });
+      b.table(C.costRangeRows(spread), { header: C.costRangeHeader(),
+        caption: C.phrase('cost_range.table_caption'), colWidthsCm: [8.6, 3.5, 3.5] });
+      if (context.distributionFigure) {
+        b.figure(context.distributionFigure.image, context.distributionFigure.caption, 15);
+      }
+    }
+
     /* The package roll-up. A programme is budgeted per successful borehole,
      * and the figure that has to be budgeted for carries the dry attempts -
      * which the app could compute and no document it wrote ever said. */
@@ -2304,6 +2317,19 @@
         b.paragraph('Assumptions:', { bold: true });
         b.bullets(programme.assumptions);
       }
+      var programmeSpread = context.programmeDistribution;
+      if (programmeSpread) {
+        b.heading(section + '.1 ' + C.phrase('cost_range.heading'), 2);
+        [C.phrase('cost_range.which_is_which')].concat(C.programmeRangeText(programmeSpread))
+          .forEach(function (t) { b.paragraph(t, { align: 'justify' }); });
+        b.table(C.programmeRangeRows(programmeSpread), { header: C.costRangeHeader(),
+          caption: C.phrase('cost_range.programme_table_caption'),
+          colWidthsCm: [8.6, 3.5, 3.5] });
+        if (context.programmeDistributionFigure) {
+          b.figure(context.programmeDistributionFigure.image,
+            context.programmeDistributionFigure.caption, 15);
+        }
+      }
       section += 1;
     }
 
@@ -2315,7 +2341,11 @@
         estimate.exchange_rate_sle_per_usd + ' SLE per US dollar.',
       'The estimate excludes the client\'s own supervision, land acquisition, ' +
         'community mobilisation and value added tax unless stated.',
-      'A dry hole is not costed here; use the programme estimate to carry the ' +
+      spread && spread.odds_source !== null
+        ? 'A dry hole is not costed in the bill of quantities; the planning figure ' +
+          'in section 4.1 allows for dry holes at the survey\'s odds, and the ' +
+          'programme estimate carries the expected dry attempts across a package.'
+        : 'A dry hole is not costed here; use the programme estimate to carry the ' +
         'expected dry attempts across a package of boreholes.',
     ].concat(context.notes || []));
 

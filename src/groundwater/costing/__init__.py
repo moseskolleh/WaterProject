@@ -34,6 +34,14 @@ from .enterprise import (
     running_cost_rock_per_m,
 )
 from .programme import ProgrammeEstimate, estimate_programme_cost
+from .distribution import (
+    CostDistribution,
+    DepthSpread,
+    ProgrammeDistribution,
+    depth_spread,
+    sample_cost,
+    sample_programme_cost,
+)
 
 __all__ = [
     "DEFAULT_EXCHANGE_RATE_SLE_PER_USD",
@@ -49,9 +57,16 @@ __all__ = [
     "inputs_from_design",
     "load_rates",
     "plot_cost_breakdown",
+    "plot_cost_distribution",
     "plot_programme_gantt",
     "ProgrammeEstimate",
     "estimate_programme_cost",
+    "CostDistribution",
+    "DepthSpread",
+    "ProgrammeDistribution",
+    "depth_spread",
+    "sample_cost",
+    "sample_programme_cost",
     "write_boq_workbook",
     "DRAG_BIT",
     "DRILL_STRING",
@@ -70,6 +85,7 @@ __all__ = [
 # analysis half of this package does not need. See groundwater._lazy.
 _LAZY = {
     "plot_cost_breakdown": ".plots",
+    "plot_cost_distribution": ".plots",
     "plot_programme_gantt": ".plots",
     "write_boq_workbook": ".export",
 }
@@ -80,6 +96,7 @@ _LAZY_MODULES = (
     "model",
     "enterprise",
     "programme",
+    "distribution",
     "plots",
     "export",
 )

@@ -17,9 +17,12 @@ import groundwater.ves as _ves
 from groundwater.config import Config
 from groundwater.costing import (
     CostingInputs,
+    depth_spread,
     estimate_borehole_cost,
     load_rates,
     plot_cost_breakdown,
+    plot_cost_distribution,
+    sample_cost,
     write_boq_workbook,
 )
 from groundwater.coverage import (
@@ -52,6 +55,7 @@ from groundwater.project_io import (
 from groundwater.readiness import assess_readiness
 from groundwater.seasonal import month_of, seasonal_yield
 from groundwater.supervision import load_checklists, load_separation_distances
+from groundwater.text import phrase_table
 from groundwater.ves.cache import cache_entry, inversion_key
 from groundwater.ves.interpret import rank_interpretations
 
@@ -802,7 +806,7 @@ def _load_project() -> None:
         st.session_state.pop(stale, None)
     for result_key in (
         "ves_results", "ves_ranges", "pump_analysis", "wq_assessment", "borehole_design",
-        "drilling_log", "cost_estimate", "cost_artifacts",
+        "drilling_log", "cost_estimate", "cost_artifacts", "cost_spread",
         "wp_result", "handover_built", "_design_follows_page",
         # cleared too, so a project with no sources at all cannot inherit the
         # previous project's rebuild banner
@@ -1233,8 +1237,41 @@ def _manual_costing_rules() -> dict:
         "sanitary_seal_m": rules.sanitary_seal_depth_m,
     }
 
+def first_point_survey():
+    """The survey's first-ranked point as the costing reads it: its chance of
+    a working borehole and its sampled range of models (the range None where
+    none was sampled around these very inversions), or (None, None) before a
+    survey is inverted. Read as the Geophysics page reads them."""
+    from groundwater.siting import assess_siting, survey_odds
+
+    held = st.session_state.get("ves_results")
+    if not held or not held[2]:
+        return None, None
+    soundings, results, interps = held
+    kept = st.session_state.get("ves_ranges")
+    ranges = kept[1] if kept is not None and kept[0] is results else [None] * len(results)
+    # by position, not id: two points can share an id
+    i = assess_siting(interps)[0].index
+    site = soundings[0].site
+    odds = survey_odds([interps[i]], [ranges[i]], site.utm_zone, site.latlon, app_config())[0]
+    return odds, ranges[i]
+
+
+def cost_spread_inputs() -> dict:
+    """What the cost distribution draws the depth and the dry holes from: the
+    first-ranked point's range and odds, where the survey has them."""
+    odds, model_range = first_point_survey()
+    return {
+        "depth": depth_spread(model_range, app_config()),
+        "success_probability": odds.probability if odds is not None else 1.0,
+        "odds_source": odds.sounding_id if odds is not None else None,
+    }
+
+
 def compute_cost_estimate(inputs: CostingInputs, rates, **kwargs) -> None:
-    """Estimate and build the shared artifacts (chart and BoQ workbook)."""
+    """Estimate and build the shared artifacts (chart and BoQ workbook), and
+    sample the planning figure beside it (PLAN.md step 3.4), kept with the
+    estimate it belongs to."""
     estimate = estimate_borehole_cost(inputs, rates, **kwargs)
     st.session_state.cost_estimate = estimate
     chart_path = workdir() / "cost_breakdown.png"
@@ -1242,6 +1279,35 @@ def compute_cost_estimate(inputs: CostingInputs, rates, **kwargs) -> None:
     boq_path = workdir() / "Bill_of_Quantities.xlsx"
     write_boq_workbook(estimate, boq_path)
     st.session_state.cost_artifacts = (chart_path, boq_path)
+    pct = {k: v for k, v in kwargs.items() if k != "exchange_rate_sle_per_usd"}
+    _sample_cost_spread(estimate, inputs, rates, pct, cost_spread_inputs())
+
+
+def _sample_cost_spread(estimate, inputs, rates, pct: dict, survey: dict) -> None:
+    spread = sample_cost(inputs, rates, config=app_config(), **survey, **pct)
+    spread_path = workdir() / "cost_distribution.png"
+    marks = phrase_table("cost_range.marks")
+    plot_cost_distribution(
+        spread.curve, [(marks["boq"], spread.boq_usd), (marks["budget"], spread.budget_usd)],
+        spread_path, app_config().style, title=marks["title"])
+    st.session_state.cost_spread = (estimate, spread, spread_path, inputs, rates, pct, survey)
+
+
+def cost_spread_for(estimate):
+    """The distribution sampled with ``estimate`` and its figure, or None
+    where the estimate was made without one (or another has replaced it).
+    A range sampled, or a survey inverted, since the estimate was made
+    changes what the depth and the dry holes are drawn from, so the
+    distribution is sampled again with them rather than shown stale."""
+    kept = st.session_state.get("cost_spread")
+    if kept is None or kept[0] is not estimate:
+        return None
+    _estimate, spread, path, inputs, rates, pct, survey = kept
+    now = cost_spread_inputs()
+    if now != survey:
+        _sample_cost_spread(estimate, inputs, rates, pct, now)
+        spread, path = st.session_state.cost_spread[1:3]
+    return spread, path
 
 
 # ---------------------------------------------------------------------------

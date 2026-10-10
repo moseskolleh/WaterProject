@@ -107,6 +107,43 @@ def test_the_programme_offers_the_survey_odds_without_using_them(app):
     assert app.number_input(key="cost_prog_success").value == rate
 
 
+def test_the_cost_distribution_draws_from_the_survey(app):
+    """With the survey inverted and its range sampled, the planning figure
+    draws the depth from the first-ranked point's range and dry holes at its
+    odds, and says so on the page (PLAN.md step 3.4)."""
+    from groundwater.costing.distribution import cost_range_text
+    from groundwater.siting import assess_siting, survey_odds
+
+    if "ves_results" not in app.session_state:
+        goto(app, "Geophysics (VES)")
+        app.selectbox(key="sample_ves").select("rokel/rokel_ves.xlsx")
+        app.run()
+        app.button(key="run_ves").click()
+        app.run()
+    soundings, results, interps = app.session_state["ves_results"]
+    kept = app.session_state.get("ves_ranges")
+    if kept is None or kept[0] is not results:
+        goto(app, "Geophysics (VES)")
+        app.button(key="ves_range").click()
+        app.run()
+    ranges = app.session_state["ves_ranges"][1]
+    goto(app, "Costing & BoQ")
+    app.button(key="run_cost").click()
+    app.run()
+    assert not app.exception
+    spread = app.session_state["cost_spread"][1]
+    i = assess_siting(interps)[0].index
+    site = soundings[0].site
+    odds = survey_odds([interps[i]], [ranges[i]], site.utm_zone, site.latlon)[0]
+    assert spread.odds_source == interps[i].sounding_id
+    assert spread.success_probability == odds.probability
+    assert spread.depth_source == ranges[i].sounding_id
+    assert spread.depth_p10_m <= spread.depth_p90_m <= ranges[i].investigation_depth_m
+    assert 0 < spread.successes < spread.samples
+    shown = " ".join(str(m.value) for m in app.markdown)
+    assert all(t in shown for t in cost_range_text(spread)[1:])
+
+
 def programme_rate_of(app):
     """The rate the page offers, worked out as the page works it out."""
     from groundwater.siting import assess_siting, survey_odds
@@ -247,6 +284,13 @@ def test_costing_flow(app):
     estimate = app.session_state["cost_estimate"]
     assert estimate.direct_cost_usd > 0
     assert estimate.items
+    # the planning figure is sampled with the estimate and shown beside it,
+    # saying which figure is the contract document
+    kept, spread, chart = app.session_state["cost_spread"][:3]
+    assert kept is estimate and chart.exists()
+    assert spread.boq_usd == pytest.approx(estimate.price_with_vat_usd)
+    from groundwater.text import phrase
+    assert phrase("cost_range.which_is_which") in [str(i.value) for i in app.info]
     app.button(key="build_cost_report").click()
     app.run()
     assert not app.exception
@@ -310,9 +354,11 @@ def test_programme_flow(app):
     app.button(key="run_programme").click()
     app.run()
     assert not app.exception
-    programme, gantt_path = app.session_state["programme_estimate"]
+    programme, gantt_path, spread, spread_path = app.session_state["programme_estimate"]
     assert programme.n_attempted >= programme.n_successful
     assert gantt_path.exists()
+    assert spread.estimate_usd == pytest.approx(programme.price_with_vat_usd)
+    assert spread.n_boreholes == programme.n_successful and spread_path.exists()
 
 
 def test_handover_flow(app):

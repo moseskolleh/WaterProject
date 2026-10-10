@@ -13,11 +13,21 @@ from pathlib import Path
 from typing import Any
 
 from ..config import Config
+from ..costing.distribution import (
+    CostDistribution,
+    ProgrammeDistribution,
+    cost_range_header,
+    cost_range_rows,
+    cost_range_text,
+    programme_range_rows,
+    programme_range_text,
+)
 from ..costing.model import CostEstimate
-from ..costing.plots import plot_cost_breakdown
+from ..costing.plots import plot_cost_breakdown, plot_cost_distribution
 from ..costing.plots import plot_programme_gantt
 from ..costing.programme import ProgrammeEstimate
 from ..models import SiteMetadata
+from ..text import phrase, phrase_table
 from ..utils import fmt_num
 from .citations import GLOSSARY, references_for
 from .context import _figures_dir, add_area_section
@@ -42,6 +52,12 @@ class CostReportInputs:
     #: :func:`groundwater.readiness.assess_readiness`. When it is not
     #: certifiable the cover carries a PROVISIONAL stamp listing why.
     readiness: Any = None
+    #: The planning figure beside the bill of quantities (PLAN.md step 3.4):
+    #: :func:`groundwater.costing.sample_cost` on the same inputs, and
+    #: :func:`groundwater.costing.sample_programme_cost` on the programme's.
+    #: Each is printed where it is given.
+    distribution: CostDistribution | None = None
+    programme_distribution: ProgrammeDistribution | None = None
 
 
 def build_cost_report(
@@ -160,6 +176,20 @@ def build_cost_report(
     plot_cost_breakdown(estimate, fig_path, config.style)
     rb.figure(fig_path, "Direct works cost by stage and by resource category.")
 
+    marks = phrase_table("cost_range.marks")
+    spread = inputs.distribution
+    if spread is not None:
+        rb.heading("4.1 " + phrase("cost_range.heading"), 2)
+        for text in cost_range_text(spread):
+            rb.paragraph(text, align="justify")
+        rb.table(cost_range_rows(spread), header=cost_range_header(),
+                 caption=phrase("cost_range.table_caption"))
+        curve_path = figures / "cost_distribution.png"
+        plot_cost_distribution(
+            spread.curve, [(marks["boq"], spread.boq_usd), (marks["budget"], spread.budget_usd)],
+            curve_path, config.style, title=marks["title"])
+        rb.figure(curve_path, phrase("cost_range.figure_caption"))
+
     # ---- 5 programme ------------------------------------------------------
     section = 5
     if inputs.programme is not None:
@@ -186,6 +216,19 @@ def build_cost_report(
         if programme.assumptions:
             rb.paragraph("Assumptions:", bold=True)
             rb.bullets([str(a) for a in programme.assumptions])
+        spread = inputs.programme_distribution
+        if spread is not None:
+            rb.heading(f"{section}.1 " + phrase("cost_range.heading"), 2)
+            for text in [phrase("cost_range.which_is_which")] + programme_range_text(spread):
+                rb.paragraph(text, align="justify")
+            rb.table(programme_range_rows(spread), header=cost_range_header(),
+                     caption=phrase("cost_range.programme_table_caption"))
+            curve_path = figures / "programme_distribution.png"
+            plot_cost_distribution(
+                spread.curve,
+                [(marks["estimate"], spread.estimate_usd), (marks["budget"], spread.budget_usd)],
+                curve_path, config.style, title=marks["programme_title"])
+            rb.figure(curve_path, phrase("cost_range.programme_figure_caption"))
         section += 1
 
     # ---- notes ------------------------------------------------------------
@@ -195,7 +238,10 @@ def build_cost_report(
         "supplier and contractor quotations before award."),
         ("The estimate covers one production borehole; failed or abandoned "
         "holes, standby time and exceptional ground conditions are not "
-        "included and should be covered by the contract conditions."),
+        "included and should be covered by the contract conditions."
+        + (" The planning figure in section 4.1 allows for dry holes at the "
+           "survey's odds." if inputs.distribution is not None
+           and inputs.distribution.odds_source is not None else "")),
         ("Land access, community mobilisation and post-construction "
         "monitoring are excluded."),
     ]

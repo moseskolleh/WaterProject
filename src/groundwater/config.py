@@ -25,6 +25,7 @@ _STYLE, _VES, _PUMPING, _DESIGN = (
 )
 _RANGE = _DEFAULTS["ves_range"]
 _ODDS = _DEFAULTS["odds"]
+_COSTS = _DEFAULTS["cost_range"]
 
 
 # ---------------------------------------------------------------------------
@@ -261,6 +262,21 @@ class OddsConfig:
 
 
 # ---------------------------------------------------------------------------
+# The cost as a distribution (PLAN.md step 3.4, costing/distribution.py)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class CostRangeConfig:
+    # The draws come from this seed, through the generator the range of
+    # models uses, which both engines implement to the bit, so one estimate
+    # gives one distribution in either app.
+    seed: int = _COSTS["seed"]
+    # Boreholes (or programmes) sampled. bench/README.md says what that
+    # costs and why this number.
+    samples: int = _COSTS["samples"]
+
+
+# ---------------------------------------------------------------------------
 # Top level configuration
 # ---------------------------------------------------------------------------
 
@@ -292,6 +308,7 @@ class Config:
     design: DesignRules = field(default_factory=DesignRules)
     ves_range: VESRangeConfig = field(default_factory=VESRangeConfig)
     odds: OddsConfig = field(default_factory=OddsConfig)
+    cost_range: CostRangeConfig = field(default_factory=CostRangeConfig)
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> Config:
@@ -311,6 +328,7 @@ class Config:
             ("design", cfg.design),
             ("ves_range", cfg.ves_range),
             ("odds", cfg.odds),
+            ("cost_range", cfg.cost_range),
         ):
             overrides = data.get(section_name, {}) or {}
             for key, value in overrides.items():
@@ -325,10 +343,12 @@ class Config:
                     continue
                 setattr(section, key, _coerce_like(getattr(section, key), value, key))
         for key in data:
-            if key not in ("style", "ves", "pumping", "design", "ves_range", "odds"):
+            if key not in ("style", "ves", "pumping", "design", "ves_range", "odds",
+                           "cost_range"):
                 warnings.warn(
                     f"{path.name}: unknown section '{key}' is ignored "
-                    "(expected style, ves, pumping, design, ves_range or odds)",
+                    "(expected style, ves, pumping, design, ves_range, odds or "
+                    "cost_range)",
                     stacklevel=2,
                 )
         return cfg

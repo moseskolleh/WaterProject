@@ -213,7 +213,9 @@ await withPage(async (page, base, consoleErrors) => {
     await app.goto('costing');
     const button = Array.from(document.querySelectorAll('#page-host button'))
       .find((b) => /^Use \d+ percent$/.test(b.textContent));
-    const offered = document.querySelector('#page-host .callout').textContent;
+    // the callout the button sits in: the page has others, the cost
+    // distribution's among them
+    const offered = button.closest('.callout').textContent;
     const first = C.assessSiting(app.derived.interpretations, app.config().ves)[0];
     const odds = app.surveyOdds().find((o) => o.sounding_id === first.sounding_id);
     const untouched = app.store.get('costing.success_rate');
@@ -270,7 +272,8 @@ await withPage(async (page, base, consoleErrors) => {
         .map((tr) => tr.children[column].textContent);
       const points = Array.from(host.querySelectorAll('.odds-point')).map((p) => p.textContent);
       await app.goto('costing');
-      const offered = document.querySelector('#page-host .callout').textContent;
+      const offered = Array.from(document.querySelectorAll('#page-host .callout'))
+        .find((c) => /Use \d+ percent/.test(c.textContent)).textContent;
       return { lead, cells, shorts: odds.map((o) => C.oddsShort(o)),
         words: odds.map((o) => C.oddsPointText(o).join(' ')), points, offered,
         sentence: C.programmeOffer(odds[lead]) };
@@ -1185,6 +1188,62 @@ await withPage(async (page, base, consoleErrors) => {
         `missing: ${missing.join(', ')} (${content.len} chars of text)`);
     }
   }
+
+  // The cost as a distribution (PLAN.md step 3.4): the Costing page shows
+  // the planning figure beside the bill of quantities, says which is the
+  // contract document, draws the curve, and does the same for a programme;
+  // the cost report prints it, from the same sampled distribution.
+  const spreadPage = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, docx = window.GWT.docx;
+    const before = app.store.get('costing.programme_n');
+    await app.goto('costing');
+    // typed into the page, as a user sets it: the estimate is rebuilt
+    const setWells = async (n) => {
+      const input = Array.from(document.querySelectorAll('#page-host label.field'))
+        .find((f) => f.querySelector('.field-label').textContent ===
+          'Successful boreholes required').querySelector('input');
+      input.value = String(n);
+      input.dispatchEvent(new Event('change'));
+      await new Promise((r) => setTimeout(r, 50));
+    };
+    await setWells(4);
+    try {
+      const spreads = app.costSpreads();
+      const cards = Array.from(document.querySelectorAll('#page-host .card'));
+      const card = cards.find((c) => (c.querySelector('h2, h3') || {}).textContent ===
+        C.phrase('cost_range.heading'));
+      const host = document.querySelector('#page-host').textContent;
+      const context = { style: app.config().style, site: app.store.get('site'),
+        estimate: app.derived.estimate, programme: app.derived.programme, figures: [],
+        distribution: spreads.single, programmeDistribution: spreads.programme };
+      const text = await window.__docText(await (await docx.costingReport(context)).build());
+      return {
+        card: !!card, svg: card ? card.querySelectorAll('svg').length : 0,
+        first: card ? card.querySelector('.callout').textContent : '',
+        which: C.phrase('cost_range.which_is_which'),
+        single: C.costRangeText(spreads.single).every((t) => host.includes(t)),
+        programme: !!spreads.programme &&
+          C.programmeRangeText(spreads.programme).every((t) => host.includes(t)),
+        again: app.costSpreads() === spreads,
+        boq: spreads.single.boq_usd === app.derived.estimate.price_with_vat_usd,
+        report: C.costRangeText(spreads.single).every((t) => text.includes(t)) &&
+          C.programmeRangeText(spreads.programme).every((t) => text.includes(t)) &&
+          text.includes('4.1 ' + C.phrase('cost_range.heading')),
+      };
+    } finally {
+      await setWells(before);
+    }
+  });
+  check('cost range: the Costing page says which figure is the contract document',
+    spreadPage.card && spreadPage.first === spreadPage.which && spreadPage.svg === 1,
+    JSON.stringify(spreadPage).slice(0, 600));
+  check('cost range: the page prints the engine\'s sentences for a borehole and a programme',
+    spreadPage.single && spreadPage.programme && spreadPage.boq,
+    JSON.stringify(spreadPage).slice(0, 600));
+  check('cost range: a page drawn again does not sample again', spreadPage.again,
+    JSON.stringify(spreadPage).slice(0, 600));
+  check('cost range: the cost report prints the same distribution', spreadPage.report,
+    JSON.stringify(spreadPage).slice(0, 600));
 
   // a report with a real rasterised figure, to exercise the image path
   const withFigure = await page.evaluate(async () => {

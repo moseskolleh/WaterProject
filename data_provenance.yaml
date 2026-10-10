@@ -291,12 +291,16 @@ datasets:
       a tender.
     files:
       - path: src/groundwater/data/borehole_cost_items.csv
-        bytes: 3253
-        sha256: bd74954d96877a643b9d4cf89121f5c296ad133dbd81b056e3132afc0b1087f7
+        bytes: 3882
+        sha256: a03f407840af07b5089337e1718fc2ba031184ed1680dcd73bf0c7dc762eb77e
         note: >-
           Unit rates and quantity bases for a borehole bill of quantities,
           built from the costing guide's worked example. Example figures,
-          not quoted Sierra Leone rates.
+          not quoted Sierra Leone rates. The min_usd, max_usd and
+          spread_group columns (PLAN.md step 3.4) are not from the guides:
+          they are this toolkit's provisional spread around each rate,
+          worked out from borehole_cost_spread.yaml, which records the
+          reason for each and that no source is recorded for any.
       - path: src/groundwater/data/supervision_checklists.csv
         bytes: 14751
         sha256: a763253bc3cc339a91ad3e0148110c60cab0363c04712926713931f9ce10d11f
@@ -397,6 +401,15 @@ datasets:
           toolkit's choices, marked provisional and fallback in the file.
           No source separates the geology units within a class, and none is
           claimed to.
+      - path: src/groundwater/data/borehole_cost_spread.yaml
+        bytes: 4759
+        sha256: 89a3daa4e581a7ae29aae7a2914ab6e1061e764aae8342b8b3401c4501af4589
+        note: >-
+          How far each unit rate of the cost catalogue may fall below or rise
+          above its likely value, by group of rates that share a cause, each
+          with the reasoning behind it (PLAN.md step 3.4). NO SOURCE IS
+          RECORDED for these spreads: they are provisional choices, for an
+          engineer with current quotations to confirm or replace.
       - path: src/groundwater/data/success_evidence.yaml
         bytes: 5754
         sha256: 9ea42c688edb48aa21f5ffd941cfa517569e61a6f3749c468cf47bcb67d51016
