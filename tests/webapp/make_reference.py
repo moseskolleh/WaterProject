@@ -551,7 +551,9 @@ def _range_text_cases() -> list:
 # hypercube and the hand-built sentence cases involve no fit, so they are
 # held to CHECK_RTOL like every other entry.
 RANGE_RTOL = {".ves_range.default": 2e-2, ".ves_range.short": 1e-4,
-              ".ves_range.synthetic": 1e-4}
+              ".ves_range.synthetic": 1e-4,
+              # the depth the costing reads off those short runs
+              ".cost_range.spreads": 1e-4}
 
 
 def range_tolerated(path: str, fresh, committed) -> bool:
@@ -912,6 +914,147 @@ def odds_reference(rokel_interps, rokel_sites, short_ranges) -> dict:
         "header": odds_header(),
     }
 
+# ------------------------------------------- the cost as a distribution (3.4)
+#
+# Every number the distribution draws is sums, products, quotients and square
+# roots of the range of models' generator, so the two engines agree to the
+# bit and parity.mjs compares short runs and default runs exactly. The depth
+# is drawn from hand-built quantiles shaped like Rokel A's range rather than
+# from the range itself: the range's own short run moves by a few parts in a
+# million with the BLAS build (RANGE_RTOL), which would move a drawn depth
+# across a whole metre now and then and --check with it. The range's
+# quantiles are compared on their own, in the ves_range section.
+
+COST_DEPTH = {"sounding_id": "Rokel-shaped", "step_m": 1.0, "cap_m": 41.0,
+              "quantiles_m": [24.0, 25.2, 26.1, 26.9, 27.6, 28.2, 28.9, 29.5, 30.0, 30.6,
+                              31.2, 31.9, 32.5, 33.2, 34.0, 34.9, 35.8, 36.9, 38.2, 40.1,
+                              44.6]}
+
+COST_CASES = {
+    "manual, odds, no range": dict(
+        inputs={"total_depth_m": 40.0, "mobilisation_distance_km": 100.0},
+        p=0.6, sid="VES 1"),
+    "design lengths, depth drawn, VAT": dict(
+        inputs={"total_depth_m": 36.0, "casing_m": 27.5, "screen_m": 9.0,
+                "gravel_interval_m": 24.0, "overburden_m": 18.0, "cement_bags": 6.0,
+                "mobilisation_distance_km": 60.0},
+        depth=True, p=0.45, sid="A (1)", pct={"vatPercent": 15.0}),
+    "no gravel pack, edited rates, no odds": dict(
+        inputs={"total_depth_m": 52.0, "casing_m": 43.5, "screen_m": 9.0,
+                "gravel_interval_m": 0.0, "mobilisation_distance_km": 25.0,
+                "handpumps": 0, "wq_samples": 2},
+        depth=True, edits=[["MOB1", 3.0], ["CAS3", 0.0], ["DRL2", 22.0]],
+        pct={"overheadsPercent": 10.0, "marginPercent": 0.0, "contingencyPercent": 0.0}),
+    "flat catalogue": dict(
+        inputs={"total_depth_m": 48.0, "mobilisation_distance_km": 120.0}, flat=True),
+    "one sample": dict(inputs={"total_depth_m": 30.0}, samples=1, p=0.7, sid="B"),
+    "long odds, few samples": dict(inputs={"total_depth_m": 30.0}, samples=5, p=0.02,
+                                   sid="C"),
+}
+
+COST_PROGRAMMES = {
+    "ten at 60 percent": dict(
+        inputs={"total_depth_m": 40.0, "mobilisation_distance_km": 100.0}, n=10, rate=60.0),
+    "21 at 35 percent, depth drawn, VAT": dict(
+        inputs={"total_depth_m": 36.0, "casing_m": 27.5, "screen_m": 9.0,
+                "gravel_interval_m": 24.0, "mobilisation_distance_km": 80.0},
+        n=21, rate=35.0, km=22.0, depth=True, pct={"vatPercent": 15.0}),
+    "one, certain, flat": dict(inputs={"total_depth_m": 45.0, "mobilisation_distance_km": 150.0},
+                               n=1, rate=100.0, flat=True),
+    "500 at 5 percent": dict(inputs={"total_depth_m": 40.0}, n=500, rate=5.0, samples=40),
+}
+
+COST_SHORT = 300
+
+
+def _cost_rates(spec):
+    from groundwater.costing import load_rates
+
+    rates = load_rates()
+    if spec.get("flat"):
+        rates = [dataclasses.replace(r, min_usd=r.unit_cost_usd, max_usd=r.unit_cost_usd)
+                 for r in rates]
+    edits = dict(spec.get("edits", []))
+    return [r.with_likely(edits[r.code]) if r.code in edits else r for r in rates]
+
+
+def _cost_pct(spec) -> dict:
+    names = {"overheadsPercent": "overheads_percent", "marginPercent": "margin_percent",
+             "contingencyPercent": "contingency_percent", "vatPercent": "vat_percent"}
+    return {names[k]: v for k, v in spec.get("pct", {}).items()}
+
+
+def _cost_depth(spec):
+    from groundwater.costing import DepthSpread
+
+    return DepthSpread(**COST_DEPTH) if spec.get("depth") else None
+
+
+def cost_range_reference(short_ranges) -> dict:
+    from groundwater.costing import CostingInputs, depth_spread, load_rates
+    from groundwater.costing.distribution import (
+        cost_range_header, cost_range_rows, cost_range_text, failures_table,
+        programme_range_rows, programme_range_text, sample_cost, sample_programme_cost,
+        triangle_quantile,
+    )
+
+    def single(spec, samples):
+        d = sample_cost(CostingInputs(**spec["inputs"]), _cost_rates(spec),
+                        depth=_cost_depth(spec), success_probability=spec.get("p", 1.0),
+                        odds_source=spec.get("sid"), samples=samples, **_cost_pct(spec))
+        return {"dist": clean(dataclasses.asdict(d)), "text": cost_range_text(d),
+                "rows": cost_range_rows(d)}
+
+    def programme(spec, samples):
+        d = sample_programme_cost(
+            CostingInputs(**spec["inputs"]), spec["n"], rates=_cost_rates(spec),
+            success_rate_percent=spec["rate"], inter_site_distance_km=spec.get("km", 15.0),
+            depth=_cost_depth(spec), samples=samples, **_cost_pct(spec))
+        return {"dist": clean(dataclasses.asdict(d)), "text": programme_range_text(d),
+                "rows": programme_range_rows(d)}
+
+    rng = Stream(5, 9)
+    triangles = []
+    for lo, mode, hi in ((100.0, 150.0, 300.0), (2.25, 2.5, 4.0), (0.0, 0.0, 1.0),
+                         (5.0, 9.0, 9.0), (3.0, 3.0, 3.0)):
+        for _ in range(4):
+            u = rng.uniform()
+            triangles.append([lo, mode, hi, u, triangle_quantile(lo, mode, hi, u)])
+    tables = []
+    for n, p in ((1, 0.4), (3, 0.3), (10, 0.75), (21, 0.35), (500, 0.05), (4, 1.0)):
+        first, running = failures_table(n, p)
+        tables.append([n, p, first, len(running), running[-1], running[len(running) // 2]])
+    # the depth a range hands the costing, from the range's own short run
+    spreads = [clean(dataclasses.asdict(depth_spread(SimpleNamespace(
+        sounding_id=r["sounding_id"], investigation_depth_m=r["investigation_depth_m"],
+        drilling_depth_quantiles_m=r["drilling_depth_quantiles_m"]), Config())))
+        for r in short_ranges]
+    edits = []
+    for code, value in (["MOB1", 3.0], ["CAS3", 0.0], ["DRL2", 22.0]):
+        rate = next(r for r in load_rates() if r.code == code)
+        edits.append([code, value, list(rate.with_likely(value).triangle())])
+    return {
+        "short_samples": COST_SHORT,
+        "rates": [[r.code, *r.triangle(), r.spread_group] for r in load_rates()],
+        "edits": edits,
+        "triangles": triangles,
+        "failures": tables,
+        "depth": COST_DEPTH,
+        "depth_draws": [[u, _cost_depth({"depth": True}).draw(u)]
+                        for u in (1e-9, 0.03, 0.25, 0.5, 0.77, 0.95, 0.999, 1 - 1e-9)],
+        "spreads": spreads,
+        "header": cost_range_header(),
+        "cases": {name: dict(spec=spec, short=single(spec, spec.get("samples", COST_SHORT)))
+                  for name, spec in COST_CASES.items()},
+        "default": {name: single(COST_CASES[name], None)
+                    for name in ("manual, odds, no range", "design lengths, depth drawn, VAT")},
+        "programmes": {name: dict(spec=spec,
+                                  short=programme(spec, spec.get("samples", COST_SHORT)))
+                       for name, spec in COST_PROGRAMMES.items()},
+        "programme_default": {"ten at 60 percent": programme(
+            COST_PROGRAMMES["ten at 60 percent"], None)},
+    }
+
 
 def build() -> dict:
     out: dict = {}
@@ -1263,6 +1406,7 @@ def build() -> dict:
         [_odds_range(None if r["basement_m"] is None else
                      (r["basement_m"]["p10"], r["basement_m"]["p50"], r["basement_m"]["p90"]),
                      r["basement_unresolved"]) for r in out["ves_range"]["short"]])
+    out["cost_range"] = cost_range_reference(out["ves_range"]["short"])
 
     # A siting survey with no borehole yet: the design comes from the
     # interpretation alone. The degenerate half-space used to make this an

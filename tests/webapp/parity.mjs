@@ -2137,6 +2137,9 @@ await withPage(async (page, base, consoleErrors) => {
     check(`${name}: unresolved basement within 2 points`,
       Math.abs(js.basement_unresolved - py.basement_unresolved) <= 0.02,
       `js ${js.basement_unresolved} vs py ${py.basement_unresolved}`);
+    check(`${name}: the drilling depths the costing draws from within 2 percent`,
+      within(2e-2)(js.drilling_depth_quantiles_m, py.drilling_depth_quantiles_m),
+      `js ${js.drilling_depth_quantiles_m}\n     py ${py.drilling_depth_quantiles_m}`);
     check(`${name}: drilling depth within one rounding step`,
       Math.abs(js.drilling_depth_m - py.drilling_depth_m) <= 5.0 &&
       js.drilling_depth_capped === py.drilling_depth_capped,
@@ -2547,6 +2550,134 @@ await withPage(async (page, base, consoleErrors) => {
     oddsJs.refused.every(Boolean), JSON.stringify(oddsJs.refused));
   check('odds: the breakdown header', JSON.stringify(oddsJs.header) === JSON.stringify(OD.header),
     JSON.stringify(oddsJs.header));
+
+  // The cost as a distribution (PLAN.md step 3.4). Every number is drawn
+  // from the range of models' generator and worked out with sums, products,
+  // quotients and square roots, which both engines round alike, so a short
+  // run and a run at the default sample count are both held to the bit: a
+  // tolerance, even 1e-9, let a VAT worked out in another order through on
+  // the default run. The words and rows are compared word for word.
+  const CR = R.cost_range;
+  const costJs = await page.evaluate((CR) => {
+    const C = GWT.core;
+    const flat = (rates) => rates.map((r) => Object.assign({}, r,
+      { min_usd: r.unit_cost_usd, max_usd: r.unit_cost_usd }));
+    const ratesFor = (spec) => {
+      let rates = C.loadRates();
+      if (spec.flat) rates = flat(rates);
+      const edits = new Map(spec.edits || []);
+      return rates.map((r) => (edits.has(r.code) ? C.rateWithLikely(r, edits.get(r.code)) : r));
+    };
+    const depthFor = (spec) => (spec.depth ? CR.depth : null);
+    const single = (spec, samples) => {
+      const d = C.sampleCost(C.costingInputs(spec.inputs), ratesFor(spec),
+        Object.assign({}, spec.pct || {}, { depth: depthFor(spec),
+          successProbability: spec.p === undefined ? 1.0 : spec.p,
+          oddsSource: spec.sid === undefined ? null : spec.sid, samples }));
+      return { dist: d, text: C.costRangeText(d), rows: C.costRangeRows(d) };
+    };
+    const programme = (spec, samples) => {
+      const d = C.sampleProgrammeCost(C.costingInputs(spec.inputs), spec.n,
+        Object.assign({}, spec.pct || {}, { rates: ratesFor(spec),
+          successRatePercent: spec.rate,
+          interSiteDistanceKm: spec.km === undefined ? 15.0 : spec.km,
+          depth: depthFor(spec), samples }));
+      return { dist: d, text: C.programmeRangeText(d), rows: C.programmeRangeRows(d) };
+    };
+    const shortOf = (spec) => (spec.samples === undefined ? CR.short_samples : spec.samples);
+    const cases = {}, programmes = {}, defaults = {};
+    Object.keys(CR.cases).forEach((k) => { cases[k] = single(CR.cases[k].spec, shortOf(CR.cases[k].spec)); });
+    Object.keys(CR.programmes).forEach((k) => {
+      programmes[k] = programme(CR.programmes[k].spec, shortOf(CR.programmes[k].spec));
+    });
+    Object.keys(CR.default).forEach((k) => { defaults[k] = single(CR.cases[k].spec); });
+    const programmeDefault = {};
+    Object.keys(CR.programme_default).forEach((k) => {
+      programmeDefault[k] = programme(CR.programmes[k].spec);
+    });
+    let refused = 0;
+    [0, -0.1, 1.5].forEach((p) => {
+      try { C.sampleCost(C.costingInputs({ total_depth_m: 30 }), null, { successProbability: p }); }
+      catch (e) { refused += 1; }
+    });
+    return {
+      rates: C.loadRates().map((r) => [r.code].concat(C.rateTriangle(r), [r.spread_group])),
+      edits: CR.edits.map((e) => {
+        const rate = C.loadRates().find((r) => r.code === e[0]);
+        return [e[0], e[1], C.rateTriangle(C.rateWithLikely(rate, e[1]))];
+      }),
+      triangles: CR.triangles.map((t) => t.slice(0, 4).concat([C.triangleQuantile(t[0], t[1], t[2], t[3])])),
+      failures: CR.failures.map((f) => {
+        const table = C.failuresTable(f[0], f[1]);
+        const running = table[1];
+        return [f[0], f[1], table[0], running.length, running[running.length - 1],
+          running[Math.floor(running.length / 2)]];
+      }),
+      depth_draws: CR.depth_draws.map((d) => [d[0], C.depthDraw(CR.depth, d[0])]),
+      spreads: CR.rokel_ranges.map((r) => C.depthSpread(r, C.defaultConfig())),
+      header: C.costRangeHeader(),
+      cases, programmes, defaults, programmeDefault, refused,
+    };
+  }, Object.assign({}, CR, { rokel_ranges: R.ves_range.short }));
+  // numbers to rtol (0 is to the bit), everything else exactly; the first
+  // difference is named
+  const costWithin = (a, b, path, rtol) => {
+    if (typeof b === 'number') {
+      const ok = typeof a === 'number' &&
+        (rtol === 0 ? Object.is(a, b) : Math.abs(a - b) <= rtol * Math.max(1, Math.abs(b)));
+      return ok ? null : `${path}: js ${a} vs py ${b}`;
+    }
+    if (Array.isArray(b)) {
+      if (!Array.isArray(a) || a.length !== b.length) return `${path}: length`;
+      for (let i = 0; i < b.length; i++) {
+        const d = costWithin(a[i], b[i], `${path}[${i}]`, rtol);
+        if (d) return d;
+      }
+      return null;
+    }
+    if (b && typeof b === 'object') {
+      if (!a || typeof a !== 'object') return `${path}: missing`;
+      for (const k of Object.keys(b)) {
+        const d = costWithin(a[k], b[k], `${path}.${k}`, rtol);
+        if (d) return d;
+      }
+      return null;
+    }
+    return a === b ? null : `${path}: js ${JSON.stringify(a)} vs py ${JSON.stringify(b)}`;
+  };
+  [['the catalogue\'s triangles and groups', costJs.rates, CR.rates],
+    ['an edited rate keeps its relative spread', costJs.edits, CR.edits],
+    ['the triangle\'s inverse', costJs.triangles, CR.triangles],
+    ['the table of dry attempts', costJs.failures, CR.failures],
+    ['a depth drawn between the quantiles', costJs.depth_draws, CR.depth_draws],
+    ['the table header', costJs.header, CR.header],
+  ].forEach(([name, js, py]) => {
+    const d = costWithin(js, py, name, 0);
+    check(`cost range: ${name}, to the bit`, d === null, d);
+  });
+  {
+    const d = costWithin(costJs.spreads, CR.spreads, 'spreads', 1e-4);
+    check('cost range: the depth each Rokel range hands the costing', d === null, d);
+  }
+  Object.keys(CR.cases).forEach((name) => {
+    const d = costWithin(costJs.cases[name], CR.cases[name].short, name, 0);
+    check(`cost range ${name}: a short run to the bit, every sentence word for word`,
+      d === null, d);
+  });
+  Object.keys(CR.programmes).forEach((name) => {
+    const d = costWithin(costJs.programmes[name], CR.programmes[name].short, name, 0);
+    check(`cost range, programme ${name}: a short run to the bit`, d === null, d);
+  });
+  Object.keys(CR.default).forEach((name) => {
+    const d = costWithin(costJs.defaults[name], CR.default[name], name, 0);
+    check(`cost range ${name}: the default run to the bit`, d === null, d);
+  });
+  Object.keys(CR.programme_default).forEach((name) => {
+    const d = costWithin(costJs.programmeDefault[name], CR.programme_default[name], name, 0);
+    check(`cost range, programme ${name}: the default run to the bit`, d === null, d);
+  });
+  check('cost range: a chance of success outside (0, 1] is refused, as Python refuses it',
+    costJs.refused === 3, `refused ${costJs.refused} of 3`);
 
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, {});

@@ -2376,6 +2376,59 @@
     return svg;
   }
 
+  /* The cost as a distribution (PLAN.md step 3.4): the share of the sampled
+   * costs at or under each cost, from the distribution's curve (the cost at
+   * every percent), with P50 and P80 read off it and the deterministic
+   * figures in `marks` ([label, usd] pairs) drawn as lines across it. The
+   * same figure as costing/plots.py plot_cost_distribution. A cumulative
+   * curve rather than a histogram, because P50, P80 and how much of the
+   * spread a budget covers are read straight off it. */
+  function costDistribution(curve, marks, options) {
+    var opts = options || {};
+    var xs = curve.concat(marks.map(function (m) { return m[1]; }));
+    var lo = Math.min.apply(null, xs), hi = Math.max.apply(null, xs);
+    var pad = 0.04 * ((hi - lo) || Math.abs(hi) || 1);
+    var f = frame({
+      width: opts.width || 720, height: opts.height || 340,
+      margin: { top: 34, right: 26, bottom: 52, left: 66 },
+      xDomain: [lo - pad, hi + pad], yDomain: [0, 100],
+      title: opts.title || '',
+      xLabel: 'US$ (contract price with any VAT)', yLabel: 'Sampled at or under (%)',
+    });
+    var p = f.palette;
+    var steps = curve.length - 1;
+    var d = curve.map(function (x, k) {
+      return (k ? 'L' : 'M') + f.fx(x).toFixed(1) + ' ' + f.fy(100 * k / steps).toFixed(1);
+    }).join('');
+    f.plot.appendChild(svgEl('path', { d: d, fill: 'none', stroke: p.accent,
+      'stroke-width': 2 }));
+    [50, 80].forEach(function (q) {
+      var x = curve[Math.round(q * steps / 100)];
+      f.plot.appendChild(svgEl('path', {
+        d: 'M' + f.fx(curve[0]) + ' ' + f.fy(q) + 'H' + f.fx(x) + 'V' + f.fy(0),
+        fill: 'none', stroke: p.neutral, 'stroke-width': 0.9, 'stroke-dasharray': '2 3',
+      }));
+      f.plot.appendChild(svgEl('text', {
+        x: f.fx(x) + 5, y: f.fy(q) + 13, 'font-size': 10.5, fill: p.neutral,
+        text: 'P' + q + ' ' + S.thousands(x, 0),
+      }));
+    });
+    marks.forEach(function (mark, i) {
+      var x = f.fx(mark[1]);
+      f.plot.appendChild(svgEl('line', { x1: x, y1: f.fy(0), x2: x, y2: f.fy(100),
+        stroke: p.secondary, 'stroke-width': 1.2,
+        'stroke-dasharray': i ? '5 3' : null }));
+      var label = mark[0] + ' ' + S.thousands(mark[1], 0);
+      var right = x + 5 + textWidth(label, 10.5) > f.margin.left + f.plotW;
+      f.plot.appendChild(svgEl('text', {
+        x: right ? x - 5 : x + 5, y: f.fy(100) + 13 + 13 * i,
+        'text-anchor': right ? 'end' : 'start', 'font-size': 10.5, fill: p.secondary,
+        text: label,
+      }));
+    });
+    return f.svg;
+  }
+
   /* A 2px surface gap between adjacent fills keeps segments countable. */
   function roundedBar(x, y, w, h, r) {
     var rad = Math.min(r, w, h / 2);
@@ -5816,6 +5869,7 @@
     lithologyColour: lithologyColour,
     depthSpine: depthSpine, guidelineSpine: guidelineSpine,
     costBreakdown: costBreakdown, programmeGantt: programmeGantt,
+    costDistribution: costDistribution,
     choropleth: choropleth, siteMap: siteMap, thematicMap: thematicMap,
     studyAreaMap: studyAreaMap, studyAreaRadiusKm: studyAreaRadiusKm,
     chiefdomLabel: chiefdomLabel, relativeLuminance: relativeLuminance,

@@ -34,7 +34,8 @@ python bench/run.py --from py.json --from web.json --out bench/baseline.json \
 ```
 
 `--only GROUP` (repeatable) is one of `import`, `forward`,
-`inversion`, `range`, `pumping`, `reports`, `recompute`, `streamlit`.
+`inversion`, `range`, `cost`, `pumping`, `reports`, `recompute`,
+`streamlit`.
 `--quick` takes 2 samples per measure instead of 5 (`web.mjs --quick`:
 1 run instead of 3), which is enough to see that something moved and
 not enough to quote.
@@ -84,6 +85,11 @@ against 3.5 s (IQR 0.45 to 0.67 s) with four, in alternating runs of
   made beforehand: 8 Latin hypercube starts polished by the inversion's
   fit, then 4 chains of 500 burn-in steps and 4,000 kept samples between
   them, each step one forward call.
+- `cost/*` - `sample_cost` and `sample_programme_cost` (PLAN.md step
+  3.4) at the default sample count, on the Dr Timbo design's bill of
+  quantities 100 km from the base, the depth drawn from Rokel A's range
+  at the default settings (sampled beforehand) and dry holes at a 60
+  percent chance; the programme is ten boreholes at 60 percent.
 - `pumping/*` - `analyse_pumping_test` on each sample test: Kuntolo as
   recorded (no discharges, so no transmissivity), Kuntolo with the
   illustrative discharges `run_kuntolo_step_test.py` carries in its
@@ -202,6 +208,41 @@ equivalent models, not too few samples in each, and doubling the count
 doubles the wait without narrowing it. So the default is 4,000, with
 500 burn-in steps a chain: about 5 s a sounding here, and a few times
 that on a field laptop, which the worker and its progress bar carry.
+
+## The cost distribution: why 20,000 samples
+
+PLAN.md step 3.4 asks for the default sample count to be set from a
+measured timing. On 10 October 2026, on this repository's 4-CPU machine
+(load average 0.6), a 40 m borehole 100 km from the base with its depth
+drawn from the Rokel-shaped quantiles the parity reference uses (24 to
+41 m) and a 60 percent chance of water was sampled with ten seeds at
+each count, one numpy thread. The spread of each figure across the
+seeds (greatest less least, as a share of their mean), and the median
+of three runs:
+
+| samples | one borehole | programme of ten | P50 | P80 | per working borehole | programme P80 |
+|---|---|---|---|---|---|---|
+| 2,000 | 39 ms | 42 ms | 0.41% | 0.53% | 0.38% | 1.31% |
+| 5,000 | 100 ms | 108 ms | 0.20% | 0.24% | 0.21% | 0.64% |
+| 10,000 | 222 ms | 211 ms | 0.21% | 0.17% | 0.15% | 0.70% |
+| 20,000 | 405 ms | 442 ms | 0.11% | 0.11% | 0.07% | 0.41% |
+| 40,000 | 845 ms | 905 ms | 0.07% | 0.04% | 0.06% | 0.24% |
+
+P50 and P80 settle by a few thousand samples. The expected cost per
+working borehole is worked out from the mean completed borehole and the
+mean dry attempt, so it is as steady as they are. It was first taken as
+all that the sampled attempts spent over the ones that found water,
+which moved by 0.9 percent from seed to seed here at 20,000 samples,
+1.5 percent at a 30 percent chance and 6.7 percent at 5 percent, where
+it also came out 1.7 percent low. The noisy figure is the programme's
+P80, which turns on how many dry attempts were drawn. At 20,000 every
+figure moves by under half a percent from one seed to the next, for
+about 0.4 s in Python each time an estimate is made; doubling it buys a
+few hundredths of a percent for twice the wait. In the browser engine,
+headless Chromium, the same 20,000 took 33 ms and 25 ms (median of
+five), and 90 to 103 ms and 113 to 119 ms with the CPU slowed four
+times, over two runs. `run.py --only cost` times the default on the Dr
+Timbo design (`cost/*` above).
 
 ## The committed baseline
 

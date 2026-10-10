@@ -594,6 +594,40 @@ contract price, and every rule of thumb applied is listed under
   The odds are one point on one survey's ground, and a programme across
   other ground has other odds.
 
+### The cost as a distribution
+
+Under the summary, "The cost as a distribution" gives the planning
+figure beside the bill of quantities. The bill of quantities stays the
+contract document: it prices every item at its likely rate and is what
+a contractor is paid against. The distribution samples 20,000 boreholes
+(`cost_range.samples` in the configuration), each with every rate drawn
+between the minimum and maximum the rate catalogue gives it, and
+reports:
+
+- **P50 and P80** of the cost of a completed borehole: half of the
+  sampled boreholes cost less than the P50 and four in five less than
+  the P80. Each is the contract price with any VAT, before contingency.
+  Budget from these.
+- **The expected cost per working borehole**: the mean completed
+  borehole, plus the mean dry attempt for each of the dry attempts
+  expected before a working one ((1 - p) / p of them at a chance p of
+  water). The chance of water is the survey's at its first-ranked point;
+  with no survey, no dry hole is allowed for.
+- Where the bill of quantities and the planning budget (with its
+  contingency) fall among the sampled boreholes.
+
+The depth is drawn from the range of models at the first-ranked point
+once the range has been sampled on the Geophysics page; until then it
+is held at the depth typed or designed, and the page says so. The
+programme estimate is sampled the same way, at its own success rate,
+with each sampled programme's rates and depth drawn once for the whole
+package. Both appear in the cost estimate report, section 4.1 and the
+programme section. The minimum and maximum of each rate are
+provisional choices, with their reasons in
+`src/groundwater/data/borehole_cost_spread.yaml`; an edited rate keeps
+its spread in proportion. The same seed gives the same figures in both
+apps.
+
 ## 8. Supervision
 
 In the browser app: [`#/supervision`](index.html#/supervision).

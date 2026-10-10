@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import csv
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from .._resources import bundled_text
@@ -70,25 +70,73 @@ class RateItem:
     quantity_basis: str
     unit_cost_usd: float
     note: str = ""
+    #: The ends of the triangle the cost distribution draws this rate from
+    #: (PLAN.md step 3.4); ``unit_cost_usd`` is its likely value, the one the
+    #: bill of quantities prices. None is the likely value itself, so a
+    #: catalogue written before the spread was added prices without one.
+    min_usd: float | None = None
+    max_usd: float | None = None
+    #: Rates in one group of ``borehole_cost_spread.yaml`` move together in
+    #: the distribution: they share a cause (the pump price, a scarce
+    #: material), so one draw places all of them. Blank is a group of its own.
+    spread_group: str = ""
+
+    def triangle(self) -> tuple[float, float, float]:
+        """The rate's (minimum, likely, maximum)."""
+        lo = self.unit_cost_usd if self.min_usd is None else self.min_usd
+        hi = self.unit_cost_usd if self.max_usd is None else self.max_usd
+        return lo, self.unit_cost_usd, hi
+
+    def with_likely(self, value: float) -> RateItem:
+        """This rate with its likely value edited, and its minimum and maximum
+        scaled by the same factor, so an edited rate keeps its relative spread
+        and its triangle stays around it. A rate whose likely value was zero
+        has no spread to scale, and takes none."""
+        value = float(value)
+        lo, likely, hi = self.triangle()
+        if likely == value:
+            return replace(self)
+        if likely == 0.0:
+            return replace(self, unit_cost_usd=value, min_usd=value, max_usd=value)
+        factor = value / likely
+        return replace(self, unit_cost_usd=value, min_usd=lo * factor, max_usd=hi * factor)
 
 
 def load_rates(path: str | Path | None = None) -> list[RateItem]:
-    """Load the unit rate catalogue (bundled CSV unless a path is given)."""
+    """Load the unit rate catalogue (bundled CSV unless a path is given).
+
+    ``min_usd`` and ``max_usd`` may be missing, or blank, in a catalogue of
+    one's own; the rate then has no spread. A minimum above the likely rate,
+    or a maximum below it, is refused, naming the row.
+    """
     text = bundled_text("borehole_cost_items.csv", path)
     rates: list[RateItem] = []
+
+    def bound(row, key):
+        value = (row.get(key) or "").strip()
+        return float(value) if value else None
+
     for row in csv.DictReader(text.splitlines()):
-        rates.append(
-            RateItem(
-                code=row["code"].strip(),
-                stage=row["stage"].strip(),
-                category=row["category"].strip().lower(),
-                item=row["item"].strip(),
-                unit=row["unit"].strip(),
-                quantity_basis=row["quantity_basis"].strip(),
-                unit_cost_usd=float(row["unit_cost_usd"]),
-                note=(row.get("note") or "").strip(),
-            )
+        rate = RateItem(
+            code=row["code"].strip(),
+            stage=row["stage"].strip(),
+            category=row["category"].strip().lower(),
+            item=row["item"].strip(),
+            unit=row["unit"].strip(),
+            quantity_basis=row["quantity_basis"].strip(),
+            unit_cost_usd=float(row["unit_cost_usd"]),
+            note=(row.get("note") or "").strip(),
+            min_usd=bound(row, "min_usd"),
+            max_usd=bound(row, "max_usd"),
+            spread_group=(row.get("spread_group") or "").strip(),
         )
+        lo, likely, hi = rate.triangle()
+        if not lo <= likely <= hi:
+            raise ValueError(
+                f"rate {rate.code}: the minimum {lo:g} and maximum {hi:g} must "
+                f"bracket the likely rate {likely:g}"
+            )
+        rates.append(rate)
     return rates
 
 
@@ -129,7 +177,7 @@ class CostingInputs:
         r = CostingInputs(**self.__dict__)
         assumptions: list[str] = []
         if r.overburden_m is None:
-            r.overburden_m = min(30.0, 0.5 * r.total_depth_m)
+            r.overburden_m = default_overburden_m(r.total_depth_m)
             assumptions.append(
                 f"Overburden thickness assumed {fmt_num(r.overburden_m)} m "
                 "(half the total depth, at most 30 m); supply the real "
@@ -140,13 +188,13 @@ class CostingInputs:
             r.screen_m = 9.0
             assumptions.append("Screen length assumed 9 m (design default).")
         if r.casing_m is None:
-            r.casing_m = max(0.0, r.total_depth_m + 0.5 - r.screen_m)
+            r.casing_m = default_casing_m(r.total_depth_m, r.screen_m)
             assumptions.append(
                 f"Plain casing length taken as {fmt_num(r.casing_m)} m "
                 "(total depth plus 0.5 m stick-up minus the screen length)."
             )
         if r.gravel_interval_m is None:
-            r.gravel_interval_m = max(0.0, r.total_depth_m - 15.0)
+            r.gravel_interval_m = default_gravel_interval_m(r.total_depth_m)
             assumptions.append(
                 f"Gravel packed interval assumed {fmt_num(r.gravel_interval_m)} m "
                 "(from 15 m below ground to the bottom of the borehole)."
@@ -164,7 +212,7 @@ class CostingInputs:
                 "of annulus)."
             )
         if r.crew_days is None:
-            r.crew_days = math.ceil(r.total_depth_m / 25.0) + 4
+            r.crew_days = default_crew_days(r.total_depth_m)
             assumptions.append(
                 f"Crew time assumed {fmt_num(r.crew_days)} days on site "
                 "(drilling at 25 m per day plus four days for moving, "
@@ -183,6 +231,31 @@ class CostingInputs:
         return annulus_volume_m3(
             self.borehole_diameter_in, self.casing_diameter_in, interval, allowance=1.3
         )
+
+
+# The rules of thumb that fill a quantity nobody supplied, as functions of
+# the depth: the cost distribution (costing/distribution.py) applies them
+# again at every depth it draws, so they are written once, here.
+
+def default_overburden_m(depth_m: float) -> float:
+    """Half the total depth, at most 30 m."""
+    return min(30.0, 0.5 * depth_m)
+
+
+def default_casing_m(depth_m: float, screen_m: float) -> float:
+    """The total depth plus 0.5 m of stick-up, less the screen."""
+    return max(0.0, depth_m + 0.5 - screen_m)
+
+
+def default_gravel_interval_m(depth_m: float) -> float:
+    """From 15 m below ground to the bottom of the borehole."""
+    return max(0.0, depth_m - 15.0)
+
+
+def default_crew_days(depth_m: float) -> int:
+    """Drilling at 25 m a day, plus four days for moving, set-up,
+    development, testing and completion."""
+    return math.ceil(depth_m / 25.0) + 4
 
 
 def cement_bags_for_seal(
@@ -413,7 +486,13 @@ class CostEstimate:
 
 def _quantity(basis: str, inputs: CostingInputs) -> float | None:
     """Quantity for a rate item, or None when the basis is unknown."""
-    table = {
+    return _quantity_table(inputs).get(basis)
+
+
+def _quantity_table(inputs: CostingInputs) -> dict[str, float]:
+    """The quantity of every basis the estimate knows, for ``inputs``
+    resolved."""
+    return {
         "lump_sum": 1.0,
         "per_km_round_trip": 2.0 * inputs.mobilisation_distance_km,
         "per_crew_day": inputs.crew_days or 0.0,
@@ -429,7 +508,6 @@ def _quantity(basis: str, inputs: CostingInputs) -> float | None:
         "per_sample": float(inputs.wq_samples),
         "per_handpump": float(inputs.handpumps),
     }
-    return table.get(basis)
 
 
 def estimate_borehole_cost(
