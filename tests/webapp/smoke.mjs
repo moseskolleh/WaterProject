@@ -293,6 +293,50 @@ await withPage(async (page, base, consoleErrors) => {
   check('odds: the Costing page offers the leader\'s odds, not the first with its id',
     sharedId.offered.includes(sharedId.sentence), JSON.stringify(sharedId).slice(0, 800));
 
+  // The value of one more measurement (PLAN.md step 3.5): beside the odds
+  // and the costs on the Costing page, under the odds on the VES page, and
+  // in the cost and geophysical reports, priced from the same distribution
+  // at the survey's first-ranked point against the other point.
+  const valuePage = await page.evaluate(async () => {
+    const app = window.GWT.app, C = window.GWT.core, docx = window.GWT.docx;
+    await app.goto('costing');
+    const spreads = app.costSpreads();
+    if (!spreads) return { spreads: null };
+    const values = app.surveyMeasurements(spreads.single);
+    const cards = Array.from(document.querySelectorAll('#page-host .card'));
+    const card = cards.find((c) => (c.querySelector('h2, h3') || {}).textContent ===
+      C.phrase('measurement.heading'));
+    const words = values.map((v) => C.measurementText(v).join(' '));
+    const costing = card ? card.textContent : '';
+    const context = { style: app.config().style, site: app.store.get('site'),
+      estimate: app.derived.estimate, figures: [], distribution: spreads.single,
+      measurements: values };
+    // read once the reader of a document's text is set up, further down
+    window.__valueReport = { bytes: await (await docx.costingReport(context)).build(),
+      words, heading: '4.2 ' + C.phrase('measurement.heading') };
+    await app.goto('ves');
+    const ves = document.querySelector('#page-host').textContent;
+    const first = C.assessSiting(app.derived.interpretations, app.config().ves)[0];
+    return {
+      card: !!card, n: values.length, first: first.sounding_id,
+      ids: values.map((v) => v.sounding_id), alternatives: values.map((v) => v.alternative_id),
+      summaries: values.map((v) => C.measurementSummary(v)),
+      costing: values.every((v) => costing.includes(C.measurementSummary(v))) &&
+        costing.includes(C.measurementBasis(values[0])) &&
+        costing.includes(C.measurementReadingsCaption(values[0])),
+      ves: values.every((v) => ves.includes(C.measurementSummary(v))),
+    };
+  });
+  check('measurement: the Costing page prices a sounding and a profiling line at the ' +
+    'first-ranked point', valuePage.card && valuePage.n === 2 &&
+    valuePage.ids.every((id) => id === valuePage.first) &&
+    valuePage.alternatives.every((id) => id !== null && id !== valuePage.first),
+  JSON.stringify(valuePage).slice(0, 600));
+  check('measurement: the Costing page prints the engine\'s sentences and tables',
+    valuePage.costing, JSON.stringify(valuePage.summaries));
+  check('measurement: the VES page prints it under the odds once the cost is estimated',
+    valuePage.ves, JSON.stringify(valuePage.summaries));
+
   // --- the engine worker ----------------------------------------------------
   // PLAN.md step 1.2: during an inversion no main-thread task longer than
   // 50 ms, and the page keeps scrolling. The windows are the engine's own
@@ -1244,6 +1288,17 @@ await withPage(async (page, base, consoleErrors) => {
     JSON.stringify(spreadPage).slice(0, 600));
   check('cost range: the cost report prints the same distribution', spreadPage.report,
     JSON.stringify(spreadPage).slice(0, 600));
+  // the cost report built beside the Rokel survey, further up, prints what
+  // one more measurement is worth in its section 4.2 (PLAN.md step 3.5)
+  const valueReport = await page.evaluate(async () => {
+    const kept = window.__valueReport;
+    if (!kept) return { built: false };
+    const text = await window.__docText(kept.bytes);
+    return { built: true, heading: text.includes(kept.heading),
+      words: kept.words.every((w) => text.includes(w)) };
+  });
+  check('measurement: the cost report prints it in section 4.2',
+    valueReport.built && valueReport.heading && valueReport.words, JSON.stringify(valueReport));
 
   // a report with a real rasterised figure, to exercise the image path
   const withFigure = await page.evaluate(async () => {

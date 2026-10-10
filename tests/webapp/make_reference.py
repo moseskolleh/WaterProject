@@ -1056,6 +1056,87 @@ def cost_range_reference(short_ranges) -> dict:
     }
 
 
+# ------------------------------------- the value of one more measurement (3.5)
+#
+# Each case feeds both engines the same odds, the dicts the odds section
+# above holds, so what is compared is the preposterior analysis alone: the
+# even spread's bisection, the readings, the decision and its words. The
+# costs are the default cost distributions' own means. The worked example of
+# tests/test_measurement.py, the extremes and the cases where nothing can
+# change the decision are among them.
+
+def _odds_object(d: dict):
+    """What measurement_value reads of a SuccessOdds, from its dict."""
+    return SimpleNamespace(**{**d, "evidence": [SimpleNamespace(**e) for e in d["evidence"]]})
+
+
+def _measurement_dict(v) -> dict:
+    from groundwater.siting.measurement import (
+        measurement_basis, measurement_decision_header, measurement_decision_rows,
+        measurement_reading_rows, measurement_readings_caption, measurement_summary,
+        measurement_text,
+    )
+
+    out = clean(dataclasses.asdict(v))
+    out["summary"] = measurement_summary(v)
+    out["text"] = measurement_text(v)
+    out["basis"] = measurement_basis(v)
+    out["reading_rows"] = measurement_reading_rows(v)
+    out["decision_header"] = measurement_decision_header(v)
+    out["decision_rows"] = measurement_decision_rows(v)
+    out["readings_caption"] = measurement_readings_caption(v)
+    return out
+
+
+def measurement_reference(odds: dict, cost_range: dict) -> dict:
+    from groundwater.siting.measurement import (
+        _classes, even_spread, measurement_decision_caption, measurement_reading_header,
+        measurement_values, preposterior,
+    )
+
+    spreads = []
+    for kind, sampled in (("sounding", True), ("profiling", False)):
+        for _evidence, bands in _classes(kind, sampled):
+            for weight in (1.0, 0.8, 0.6, 0.3):
+                spreads.append([r ** weight for _names, r in bands])
+    spreads += [[2.0, 0.5], [0.5, 2.0, 2.0, 2.0, 2.0, 2.0], [1.0, 0.9, 0.8], [1.0, 1.0],
+                [1.2, 1.5], [0.01, 1.0001], [0.9999, 50.0]]
+    example = [[[2.0, 2 / 3, 1 / 3], [0.5, 1 / 3, 2 / 3]]]
+    prepost = [[p, q, c, d, example, preposterior(p, q, c, d, example)]
+               for p, q, c, d in ((0.6, 0.5, 5000.0, 2000.0), (0.4, 0.5, 5000.0, 2000.0),
+                                  (0.5, 0.5, 5000.0, 2000.0), (1e-6, 1 - 1e-6, 4000.0, 3000.0),
+                                  (1 - 1e-6, 1e-6, 4000.0, 3000.0))]
+    prepost.append([0.6, 0.5, 5000.0, 2000.0, [], preposterior(0.6, 0.5, 5000.0, 2000.0, [])])
+
+    dist = cost_range["default"]["manual, odds, no range"]["dist"]
+    completed, dry = dist["mean"], dist["dry_mean"]
+    cases = odds["cases"]
+    surveys = []
+    # every tenth point of the odds section (each kind of point, range and
+    # ground among them), against the next one and alone
+    for i in range(0, len(cases), 10):
+        pair = [cases[i]["odds"], cases[(i + 1) % len(cases)]["odds"]]
+        surveys.append({"odds": pair, "ranking": [0, 1]})
+        surveys.append({"odds": pair[:1], "ranking": [0]})
+    # ranked the other way, and three points, the best odds not second
+    surveys.append({"odds": [cases[0]["odds"], cases[3]["odds"], cases[6]["odds"]],
+                    "ranking": [2, 0, 1]})
+    # a prior near 1 on the coastal sands
+    surveys.append({"odds": [odds["low_yield"]["odds"]], "ranking": [0]})
+    for survey in surveys:
+        objects = [_odds_object(o) for o in survey["odds"]]
+        survey["values"] = [_measurement_dict(v) for v in
+                            measurement_values(objects, survey["ranking"], completed, dry)]
+    return {
+        "costs": [completed, dry],
+        "spreads": [[r, None if (e := even_spread(r)) is None else list(e)] for r in spreads],
+        "preposterior": prepost,
+        "surveys": surveys,
+        "reading_header": measurement_reading_header(),
+        "decision_caption": measurement_decision_caption(),
+    }
+
+
 def build() -> dict:
     out: dict = {}
 
@@ -1407,6 +1488,7 @@ def build() -> dict:
                      (r["basement_m"]["p10"], r["basement_m"]["p50"], r["basement_m"]["p90"]),
                      r["basement_unresolved"]) for r in out["ves_range"]["short"]])
     out["cost_range"] = cost_range_reference(out["ves_range"]["short"])
+    out["measurement"] = measurement_reference(out["odds"], out["cost_range"])
 
     # A siting survey with no borehole yet: the design comes from the
     # interpretation alone. The degenerate half-space used to make this an

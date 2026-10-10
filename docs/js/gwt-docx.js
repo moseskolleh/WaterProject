@@ -802,6 +802,30 @@
 
   /* --- 1. geophysical survey ------------------------------------------------- */
 
+  /* What one more measurement is worth (PLAN.md step 3.5), under a heading
+   * the caller gives, as reporting/costing.py measurement_block prints it:
+   * the lead, each measurement's sentences and its decision table, what a
+   * measurement could read, and the basis once. */
+  function measurementBlock(b, values) {
+    b.paragraph(C.phrase('measurement.lead'), { align: 'justify' });
+    if (!values.length) {
+      b.paragraph(C.phrase('measurement.no_survey'), { align: 'justify' });
+      return;
+    }
+    values.forEach(function (v) {
+      b.paragraph(C.measurementText(v).join(' '), { align: 'justify' });
+      b.table(C.measurementDecisionRows(v), { header: C.measurementDecisionHeader(v),
+        caption: C.measurementDecisionCaption(), colWidthsCm: [4.6, 2.0, 2.4, 4.0, 3.0],
+        fontSize: 8.5 });
+    });
+    /* every measurement reads its bands at the same chances, and a sounding
+     * reads every band a profiling line does, so its table covers both */
+    b.table(C.measurementReadingRows(values[0]), { header: C.measurementReadingHeader(),
+      caption: C.measurementReadingsCaption(values[0]),
+      colWidthsCm: [3.0, 5.4, 1.8, 2.2, 2.0, 2.0], fontSize: 8.5 });
+    b.paragraph(C.measurementBasis(values[0]), { align: 'justify' });
+  }
+
   async function geophysicalReport(context) {
     var b = new ReportBuilder({ style: context.style, title: 'Geophysical Survey Report' });
     var site = context.site || {};
@@ -1125,6 +1149,18 @@
             caption: C.oddsTableCaption(o), colWidthsCm: [4.0, 7.0, 2.6, 2.4],
             fontSize: 8.5 });
         });
+        /* what one more measurement at the first-ranked point is worth
+         * (PLAN.md step 3.5), priced from the cost distribution where the
+         * cost has been estimated, as _measurement_section prints it */
+        b.heading(C.phrase('measurement.heading'), 3);
+        var costed = context.costDistribution;
+        if (!costed) {
+          b.paragraph([C.phrase('measurement.lead'), C.phrase('measurement.no_cost')].join(' '),
+            { align: 'justify' });
+        } else {
+          measurementBlock(b, C.measurementValues(odds,
+            suit.map(function (s) { return s.index; }), costed.mean, costed.dry_mean));
+        }
       }
       /* The drill-target map, where reporting/geophysical.py _suitability_block
        * puts it: under the ranked table, above the subsurface maps. It is
@@ -2291,6 +2327,10 @@
         caption: C.phrase('cost_range.table_caption'), colWidthsCm: [8.6, 3.5, 3.5] });
       if (context.distributionFigure) {
         b.figure(context.distributionFigure.image, context.distributionFigure.caption, 15);
+      }
+      if (context.measurements) {
+        b.heading('4.2 ' + C.phrase('measurement.heading'), 2);
+        measurementBlock(b, context.measurements);
       }
     }
 

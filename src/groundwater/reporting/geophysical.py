@@ -40,6 +40,7 @@ from ..mapping import (
     unplaced_text,
 )
 from ..models import DataFlag, LayeredModel, VESSounding
+from ..siting.measurement import measurement_values
 from ..siting import (
     assess_siting,
     odds_basis_text,
@@ -151,6 +152,12 @@ class GeophysicalReportInputs:
     #: :func:`groundwater.readiness.assess_readiness`. When it is not
     #: certifiable the cover carries a PROVISIONAL stamp listing why.
     readiness: Any = None
+    #: The cost distribution (:func:`groundwater.costing.sample_cost`) of a
+    #: borehole at the first-ranked point, where the cost has been estimated.
+    #: What one more measurement is worth (PLAN.md step 3.5) is priced from
+    #: its mean completed borehole and mean dry attempt; without it the
+    #: report says the value waits for a cost estimate.
+    cost_distribution: Any = None
 
 
 def _geology_for(site, override: str) -> str:
@@ -1094,6 +1101,7 @@ def _suitability_block(rb: ReportBuilder, inputs, site,
                  align="justify")
     if odds:
         _odds_block(rb, suit, odds)
+        _measurement_section(rb, suit, odds, inputs.cost_distribution)
     # every point in one zone, the one the rest of the survey's figures are
     # drawn in, and the tie and the order the text above was written from
     zone = site.utm_zone or survey_zone(inputs.interpretations)
@@ -1127,6 +1135,21 @@ def _odds_block(rb: ReportBuilder, suit, odds) -> None:
                               + odds_point_text(o)), align="justify")
         rb.table(odds_rows(o), header=odds_header(), caption=odds_table_caption(o),
                  col_widths_cm=[4.0, 7.0, 2.6, 2.4], font_size_pt=8.5)
+
+
+def _measurement_section(rb: ReportBuilder, suit, odds, distribution) -> None:
+    """What one more measurement at the first-ranked point is worth (PLAN.md
+    step 3.5), under the odds it would improve, priced from the cost
+    distribution where there is one."""
+    from .costing import measurement_block
+
+    rb.heading(phrase("measurement.heading"), 3)
+    if distribution is None:
+        rb.paragraph(" ".join([phrase("measurement.lead"), phrase("measurement.no_cost")]),
+                     align="justify")
+        return
+    measurement_block(rb, measurement_values(odds, [s.index for s in suit],
+                                             distribution.mean, distribution.dry_mean))
 
 
 def _suitability_caption(state: dict) -> str:

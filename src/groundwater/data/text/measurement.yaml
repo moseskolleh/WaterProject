@@ -1,0 +1,173 @@
+# The value of one more measurement (PLAN.md step 3.5): what a second
+# sounding or a profiling line is worth to the choice of where to drill, in
+# the words both engines write. The Python cost and geophysical reports and
+# the Streamlit Costing and Geophysics pages read them through
+# groundwater.siting.measurement; the browser's pages and reports through
+# C.measurementText and the tables beside it. The cost of each measurement is
+# in data/field.yaml and the likelihood ratios in data/success_evidence.yaml.
+
+heading: The value of one more measurement
+
+lead: >-
+  Before the rig is called, one more sounding beside the first-ranked point,
+  or a profiling line through it, can change where to drill. Each is worth
+  what it is expected to save that decision, over everything it might read:
+  the expected cost of the best choice now, less the expected cost of the
+  best choice once its reading is known.
+
+# Where the value cannot be worked out.
+no_survey: >-
+  No survey has been interpreted, so there are no odds for one more
+  measurement to improve.
+
+no_cost: >-
+  The value of one more measurement is worked out once the cost of a
+  borehole has been estimated, because it depends on what a dry attempt
+  costs.
+
+what_sounding: A second sounding beside {sid}
+
+what_profiling: A profiling line through {sid}
+
+# The plan's sentence.
+headline: >-
+  {what} is worth up to US$ {value} to this decision and costs about US$
+  {cost}. {verdict}
+
+verdict_worth: It is worth more than it costs.
+
+verdict_not_worth: It costs more than it is worth to this decision.
+
+zero: >-
+  {what} cannot change this decision: nothing it could read moves the chance
+  at {sid} past the alternative's, so it is worth nothing to it. It costs
+  about US$ {cost}.
+
+alternative_point: point {sid}
+
+alternative_unsurveyed: an unsurveyed site on the same ground
+
+now_here: >-
+  Without it, drilling at {sid} first is the cheaper choice: the chance of a
+  working borehole there is about {p} percent, against {q} at {alternative}.
+  Drilling at {sid}, and going to {alternative} if it is dry, is expected to
+  cost US$ {here} for a working borehole; going to {alternative} straight
+  away, US$ {move}.
+
+now_move: >-
+  Without it, going to {alternative} is the cheaper choice: the chance of a
+  working borehole there is about {q} percent, against {p} at {sid}. Going
+  there straight away is expected to cost US$ {move} for a working borehole;
+  drilling at {sid} first, and going to {alternative} if it is dry, US$
+  {here}.
+
+decision_here: drilling at {sid}
+
+decision_move: going to {alternative}
+
+change_below: >-
+  The choice changes, to {decision}, on the readings whose factors multiply
+  to less than {threshold:.2f}, which the measurement reads with a chance of
+  about {chance} percent. Taking the cheaper choice on each reading, the
+  expected cost falls from US$ {now} to US$ {after}.
+
+change_above: >-
+  The choice changes, to {decision}, on the readings whose factors multiply
+  to more than {threshold:.2f}, which the measurement reads with a chance of
+  about {chance} percent. Taking the cheaper choice on each reading, the
+  expected cost falls from US$ {now} to US$ {after}.
+
+perfect: >-
+  Knowing for certain whether a borehole at {sid} would work would be worth
+  US$ {perfect} to this decision; no measurement can be worth more.
+
+not_sampled: >-
+  The range of models has not been sampled at {sid}, so a second sounding is
+  read, as this one was, for its water-zone resistivity alone, and is worth
+  what a profiling line is; sample the range to count its depth to basement
+  too.
+
+basis: >-
+  Basis: a working borehole is needed, so the choice is where to drill, not
+  whether. The alternative is the other surveyed point with the best odds,
+  or on a survey of one point an unsurveyed site on the same ground at the
+  prior. Going to it is taken to cost its expected cost per working
+  borehole, from the cost distribution's mean completed borehole (US$
+  {completed}) and mean dry attempt (US$ {dry}); drilling at the point first
+  costs the completed borehole if it works, and the dry attempt and then the
+  alternative if it does not. Both places are taken to cost the same to
+  drill. What a measurement could read are the bands of
+  success_evidence.yaml, its likelihood ratios raised to the weight of the
+  point's fit ({weight:g}). The ratios do not say how often each band is
+  seen, so the bands are spread among dry boreholes as evenly as the ratios
+  allow, and among working ones by the ratios; other spreads the ratios
+  allow give other values, larger or smaller, so the even spread is a
+  choice and not a bound. The readings are taken as
+  independent of each other and of the readings already made, given whether
+  a borehole at the point would work; a sounding beside the first reads
+  much of the same ground, so this overstates what it adds. The cost of each
+  measurement is a provisional figure in field.yaml with no recorded source,
+  and the likelihood ratios are provisional too.
+
+# The readings table: every band the measurement could read.
+col_evidence: Evidence
+
+col_reading: What it could read
+
+col_factor: Factor on the odds
+
+col_success: Among working boreholes (percent)
+
+col_dry: Among dry holes (percent)
+
+col_chance: Chance of reading it here (percent)
+
+evidence:
+  depth: Depth to basement
+  resistivity: Water-zone resistivity
+
+reading_depth: "{span}, {band}; basement {basement}"
+
+reading_unresolved: basement not resolved, no depth quoted
+
+reading_no_zone: no water-bearing zone in reach
+
+reading_resistivity: "{span}: {band}"
+
+span_under: under {hi:g} {unit}
+
+span_between: "{lo:g} to {hi:g} {unit}"
+
+span_over: over {lo:g} {unit}
+
+readings_caption: >-
+  What the measurement could read at {sid}: each band's factor on the odds
+  there, how often it is taken to be seen among working and among dry
+  boreholes, and the chance of reading it there now.
+
+# The decision table: the choice without the measurement and with it.
+col_case_chance: Chance (percent)
+
+col_after: Chance at {sid} after (percent)
+
+col_decision: Choice
+
+col_usd: Expected cost of a working borehole (US$)
+
+cell_here: Drill at {sid}
+
+cell_move: Go to {alternative}
+
+rows:
+  now: Without the measurement
+  keep: Readings that keep the choice
+  change: Readings that change it
+  after: With the measurement, on average
+  value: Value of the measurement (the difference)
+  perfect: Value of knowing for certain
+
+decision_caption: >-
+  The choice without the measurement and with it. The chances of the readings that
+  keep the choice and of those that change it add to 100 percent, their
+  expected costs weighted by those chances add to the cost with the
+  measurement, and the value is what that saves on the cost without it.

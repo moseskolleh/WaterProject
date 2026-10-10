@@ -89,9 +89,12 @@ def test_no_browser_script_types_out_a_schedule():
 
 def test_the_browser_bundle_carries_the_file_as_python_reads_it():
     text = (JS / "gwt-data.js").read_text(encoding="utf-8")
-    match = re.search(r'"field":\s*(\{.*?"disinfection_card":\s*\{[^}]*\}\s*\})', text)
+    # decoded from where it starts to where its object ends, rather than
+    # matched up to a key assumed to come last, which a new section moved
+    match = re.search(r'"field":\s*(?=\{)', text)
     assert match, "gwt-data.js carries no field schedules; run python web/build_webapp_data.py"
-    assert json.loads(match.group(1)) == field_schedules()
+    carried, _end = json.JSONDecoder().raw_decode(text, match.end())
+    assert carried == field_schedules()
 
 
 def test_the_storage_time_is_the_engine_s_at_the_cautious_floor():

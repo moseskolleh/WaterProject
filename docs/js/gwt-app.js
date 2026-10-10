@@ -1381,6 +1381,41 @@
     return held;
   }
 
+  /* What one more measurement at the survey's first-ranked point is worth
+   * (PLAN.md step 3.5), priced from the cost distribution spread: one for
+   * each kind, or none before a survey is inverted. The odds are every
+   * point's, so the alternative to the first-ranked point is one of the
+   * others. */
+  function surveyMeasurements(spread) {
+    if (!(derived.interpretations || []).length) return [];
+    var ranking = C.assessSiting(derived.interpretations, config().ves)
+      .map(function (s) { return s.index; });
+    return C.measurementValues(surveyOdds(), ranking, spread.mean, spread.dry_mean);
+  }
+
+  /* What one more measurement is worth, on a page: the plan's sentence for
+   * each kind, then its other sentences and decision table, what a
+   * measurement could read, and the basis, as the reports print them. */
+  function measurementNodes(values) {
+    var nodes = [el('p.muted', C.phrase('measurement.lead'))];
+    if (!values.length) return nodes.concat([el('p', C.phrase('measurement.no_survey'))]);
+    values.forEach(function (v) {
+      var text = C.measurementText(v);
+      nodes.push(el('div.measurement', [
+        el('p', el('strong', text[0])),
+        el('p', text.slice(1).join(' ')),
+        S.table(C.measurementDecisionHeader(v), C.measurementDecisionRows(v)),
+        el('p.muted', C.measurementDecisionCaption()),
+      ]));
+    });
+    nodes.push(el('details', [
+      el('summary', C.measurementReadingsCaption(values[0])),
+      S.table(C.measurementReadingHeader(), C.measurementReadingRows(values[0])),
+    ]));
+    nodes.push(el('p.muted', C.measurementBasis(values[0])));
+    return nodes;
+  }
+
   /* [label, usd] pairs the distribution figures mark */
   function costMarks(spread, programme) {
     var marks = C.phraseTable('cost_range.marks');
@@ -2685,6 +2720,15 @@
           el('p.muted', C.oddsTableCaption(o)),
         ]);
       }).filter(Boolean)),
+      /* what one more measurement at the first-ranked point is worth
+       * (PLAN.md step 3.5), once the cost has been estimated */
+      el('h3', C.phrase('measurement.heading')),
+      el('div.measurements', (function () {
+        var costed = costSpreads();
+        return costed ? measurementNodes(surveyMeasurements(costed.single))
+          : [el('p.muted', [C.phrase('measurement.lead'),
+            C.phrase('measurement.no_cost')].join(' '))];
+      })()),
       located.length ? charts.figure(charts.siteMap({
         context: (mapLayers().chiefdomBoundaries || {}).features || [],
         points: located.map(function (s) {
@@ -4272,6 +4316,10 @@
         charts.costDistribution(spreads.single.curve, costMarks(spreads.single, false),
           { title: C.phraseTable('cost_range.marks').title }),
         C.phrase('cost_range.figure_caption'), 'cost_distribution')));
+      /* what one more measurement is worth, beside the odds and the costs
+       * it is worked out from (PLAN.md step 3.5) */
+      nodes.push(card(C.phrase('measurement.heading'),
+        measurementNodes(surveyMeasurements(spreads.single))));
     }
 
     nodes.push(card('Bill of quantities', [
@@ -7012,6 +7060,10 @@
           /* the chance of a working borehole at each point, which the
            * report prints under the suitability score */
           context.odds = surveyOdds();
+          /* the cost distribution, where the cost has been estimated, which
+           * prices one more measurement under the odds (PLAN.md step 3.5) */
+          var costed = costSpreads();
+          context.costDistribution = costed ? costed.single : null;
           builder = await docx.geophysicalReport(context);
 
         } else if (kind === 'completion') {
@@ -7111,6 +7163,8 @@
           var marks = C.phraseTable('cost_range.marks');
           if (spreads) {
             context.distribution = spreads.single;
+            /* what one more measurement is worth, priced with it (step 3.5) */
+            context.measurements = surveyMeasurements(spreads.single);
             context.distributionFigure = {
               image: await charts.toPng(charts.costDistribution(spreads.single.curve,
                 costMarks(spreads.single, false), { title: marks.title })),
@@ -7518,7 +7572,7 @@
     storage: storage, continueHere: continueHere,
     hashFor: hashFor, routeFrom: routeFrom,
     sampleRanges: sampleRanges, rangeFor: rangeFor, surveyOdds: surveyOdds,
-    costSpreads: costSpreads,
+    costSpreads: costSpreads, surveyMeasurements: surveyMeasurements,
   };
 
   if (typeof document !== 'undefined') {

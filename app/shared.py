@@ -1257,6 +1257,69 @@ def first_point_survey():
     return odds, ranges[i]
 
 
+def survey_measurements(spread):
+    """What one more measurement at the survey's first-ranked point is worth
+    (PLAN.md step 3.5), priced from the cost distribution ``spread``: one
+    for each kind, or an empty list before a survey is inverted. The odds
+    are read as first_point_survey reads them, at every point, so the
+    alternative to the first-ranked point is one of the others."""
+    from groundwater.siting import assess_siting, measurement_values, survey_odds
+
+    held = st.session_state.get("ves_results")
+    if not held or not held[2]:
+        return []
+    soundings, results, interps = held
+    kept = st.session_state.get("ves_ranges")
+    ranges = kept[1] if kept is not None and kept[0] is results else [None] * len(results)
+    site = soundings[0].site
+    odds = survey_odds(interps, ranges, site.utm_zone, site.latlon, app_config())
+    ranking = [s.index for s in assess_siting(interps)]
+    return measurement_values(odds, ranking, spread.mean, spread.dry_mean)
+
+
+def show_measurements(values, nested: bool = False) -> None:
+    """What one more measurement is worth, on a page: the plan's sentence for
+    each kind, then the rest of its sentences and its decision table, what a
+    measurement could read, and the basis. The reports print the same.
+    ``nested`` is for a page that shows it inside an expander already, which
+    Streamlit does not nest: the readings go in a bordered box instead."""
+    from groundwater.siting.measurement import (
+        measurement_basis,
+        measurement_decision_caption,
+        measurement_decision_header,
+        measurement_decision_rows,
+        measurement_reading_header,
+        measurement_reading_rows,
+        measurement_readings_caption,
+        measurement_text,
+    )
+    from groundwater.text import phrase
+
+    if nested:
+        st.markdown(f"**{phrase('measurement.heading')}**")
+    else:
+        st.subheader(phrase("measurement.heading"))
+    st.caption(phrase("measurement.lead"))
+    if not values:
+        st.info(phrase("measurement.no_survey"))
+        return
+    for v in values:
+        text = measurement_text(v)
+        with st.container(border=True):
+            st.markdown(f"**{text[0]}**")
+            st.write(" ".join(text[1:]))
+            st.table([dict(zip(measurement_decision_header(v), row, strict=True))
+                      for row in measurement_decision_rows(v)])
+            st.caption(measurement_decision_caption())
+    with (st.container(border=True) if nested
+          else st.expander(measurement_readings_caption(values[0]))):
+        st.table([dict(zip(measurement_reading_header(), row, strict=True))
+                  for row in measurement_reading_rows(values[0])])
+        if nested:
+            st.caption(measurement_readings_caption(values[0]))
+    st.caption(measurement_basis(values[0]))
+
+
 def cost_spread_inputs() -> dict:
     """What the cost distribution draws the depth and the dry holes from: the
     first-ranked point's range and odds, where the survey has them."""

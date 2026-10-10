@@ -2679,6 +2679,68 @@ await withPage(async (page, base, consoleErrors) => {
   check('cost range: a chance of success outside (0, 1] is refused, as Python refuses it',
     costJs.refused === 3, `refused ${costJs.refused} of 3`);
 
+  // The value of one more measurement (PLAN.md step 3.5). Both engines are
+  // given the same odds, the odds section's own dicts, so this holds the
+  // preposterior analysis alone: the even spread's bisection, the readings,
+  // the decision before and after, the value and every sentence and row. The
+  // spread goes through exp and pow, which the two engines' libraries may
+  // round a last bit apart, so numbers are held to 1e-9 and words exactly.
+  const VM = R.measurement;
+  const valueJs = await page.evaluate((VM) => {
+    const C = GWT.core;
+    const asDict = (v) => Object.assign({}, v, { summary: C.measurementSummary(v),
+      text: C.measurementText(v), basis: C.measurementBasis(v),
+      reading_rows: C.measurementReadingRows(v),
+      decision_header: C.measurementDecisionHeader(v),
+      decision_rows: C.measurementDecisionRows(v),
+      readings_caption: C.measurementReadingsCaption(v) });
+    let refused = 0;
+    [[1.0, 0.5, 5000, 2000], [0.5, 0.0, 5000, 2000], [0.5, 0.5, 5000, 0]].forEach((a) => {
+      try { C.preposterior(a[0], a[1], a[2], a[3], []); } catch (e) { refused += 1; }
+    });
+    try { C.measurementCostUsd('borehole'); } catch (e) { refused += 1; }
+    return {
+      spreads: VM.spreads.map(([ratios]) => {
+        const e = C.evenSpread(ratios);
+        return [ratios, e === null ? null : [e.dry, e.wet]];
+      }),
+      preposterior: VM.preposterior.map(([p, q, c, d, classes]) =>
+        [p, q, c, d, classes, C.preposterior(p, q, c, d, classes)]),
+      surveys: VM.surveys.map((s) => ({ odds: s.odds, ranking: s.ranking,
+        values: C.measurementValues(s.odds, s.ranking, VM.costs[0], VM.costs[1]).map(asDict) })),
+      reading_header: C.measurementReadingHeader(),
+      decision_caption: C.measurementDecisionCaption(),
+      costs: [C.measurementCostUsd('sounding'), C.measurementCostUsd('profiling')],
+      refused,
+    };
+  }, VM);
+  {
+    const d = oddsWithin(valueJs.spreads, VM.spreads, 'spreads');
+    check(`measurement: the even spread of ${VM.spreads.length} sets of ratios, to 1e-9`,
+      d === null, d);
+  }
+  {
+    const d = oddsWithin(valueJs.preposterior, VM.preposterior, 'preposterior');
+    check('measurement: the worked example, both sides, a tie, the extremes and no readings',
+      d === null, d);
+  }
+  VM.surveys.forEach((s, i) => {
+    const name = s.odds.map((o) => o.sounding_id).join(' against ') +
+      (s.odds.length === 1 ? ' alone' : '') + ` (ranked ${s.ranking.join(', ')})`;
+    const d = oddsWithin(valueJs.surveys[i], s, `survey ${i}`);
+    check(`measurement ${i}: ${name}, every figure to 1e-9 and every sentence word for word`,
+      d === null, d);
+  });
+  check('measurement: the readings header and the decision caption',
+    JSON.stringify([valueJs.reading_header, valueJs.decision_caption]) ===
+      JSON.stringify([VM.reading_header, VM.decision_caption]),
+    JSON.stringify(valueJs.reading_header));
+  check('measurement: impossible chances, costs and kinds are refused, as Python refuses them',
+    valueJs.refused === 4, `refused ${valueJs.refused} of 4`);
+  check('measurement: the costs of a sounding and a profiling line, from field.yaml',
+    JSON.stringify(valueJs.costs) === JSON.stringify(VM.surveys[0].values.map((v) => v.cost_usd)),
+    JSON.stringify(valueJs.costs));
+
   check('no console errors', consoleErrors.length === 0, consoleErrors.join('\n     '));
 }, {});
 
