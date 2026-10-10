@@ -100,7 +100,9 @@ basis: >-
   success_evidence.yaml, its likelihood ratios raised to the weight of the
   point's fit ({weight:g}). The ratios do not say how often each band is
   seen, so the bands are spread among dry boreholes as evenly as the ratios
-  allow, and among working ones by the ratios. The readings are taken as
+  allow, and among working ones by the ratios; other spreads the ratios
+  allow give other values, larger or smaller, so the even spread is a
+  choice and not a bound. The readings are taken as
   independent of each other and of the readings already made, given whether
   a borehole at the point would work; a sounding beside the first reads
   much of the same ground, so this overstates what it adds. The cost of each

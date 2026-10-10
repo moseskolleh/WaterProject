@@ -29,7 +29,8 @@ works that out as a preposterior analysis anyone can follow on paper:
    often either is seen. That is taken as the spread among dry boreholes
    that is as even as the ratios allow (the largest entropy whose ratios
    still average 1 over it), and the spread among working ones as that
-   times the ratios. The readings of different classes are taken as
+   times the ratios. That is a choice, not a bound: another spread the
+   ratios allow can make the measurement worth more or less. The readings of different classes are taken as
    independent of each other, and of the readings already made, given
    whether a borehole at the point would work. The ratios are raised to the
    weight of the point's own fit, as the point's own evidence was.

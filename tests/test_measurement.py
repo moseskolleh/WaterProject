@@ -159,6 +159,51 @@ def test_the_fit_weight_tempers_the_readings(two_ratios):
     assert v.value_usd < 400 / 3
 
 
+def test_a_tie_keeps_the_first_ranked_point():
+    """At p = q = 0.5 the two choices cost the same, 7,000 each, and the tie
+    keeps the first-ranked point. The reading "0.5" takes it to 1/3, so the
+    choice changes on it and saves 2000 / 0.5 x (0.5 - 1/3) = 666.67, half
+    the time: 333.33."""
+    v = preposterior(0.5, 0.5, 5000.0, 2000.0, TWO_READINGS)
+    assert v["drill_here_usd"] == v["alternative_usd"] == 7000.0
+    assert v["decision_now"] == "here"
+    assert v["change_chance"] == pytest.approx(0.5)
+    assert v["change_probability"] == pytest.approx(1 / 3)
+    assert v["value_usd"] == pytest.approx(1000 / 3)
+    # and two points at the same odds: the first-ranked one is drilled first
+    values = measurement_values([_point(0.5, sid="A"), _point(0.5, sid="B")], [0, 1],
+                                5000.0, 2000.0)
+    assert {v.decision_now for v in values} == {"here"}
+    assert "Without it, drilling at A first is the cheaper choice" in \
+        measurement_text(values[0])[1]
+
+
+def test_the_even_spread_is_a_choice_not_a_bound():
+    """Other spreads the ratios allow give other values, larger and smaller,
+    so the page calls the even spread a choice and not a bound. With the
+    profiling line's ratios (0.3 to 1.4), all the dry boreholes on the two
+    extremes (4/11 at 0.3, 7/11 at 1.4, which average 1) read the most; all
+    on 0.9 and 1.4 (4/5 and 1/5) read less than the even spread."""
+    ratios = [r for _names, r in measurement_module._classes("profiling", False)[0][1]]
+    assert (min(ratios), max(ratios)) == (0.3, 1.4)
+
+    def value(dry):
+        assert math.fsum(dry) == pytest.approx(1.0)
+        assert math.fsum(f * r for f, r in zip(dry, ratios, strict=True)) == \
+            pytest.approx(1.0)
+        wet = [f * r for f, r in zip(dry, ratios, strict=True)]
+        return preposterior(0.6, 0.55, 8000.0, 3500.0,
+                            [list(zip(ratios, wet, dry, strict=True))])["value_usd"]
+
+    dry, _wet = even_spread(ratios)
+    even = value(dry)
+    extremes = [4 / 11 if r == 0.3 else 7 / 11 if r == 1.4 else 0.0 for r in ratios]
+    middle = [0.8 if r == 0.9 else 0.2 if r == 1.4 else 0.0 for r in ratios]
+    assert value(extremes) > even > value(middle)
+    assert "the even spread is a choice and not a bound" in \
+        " ".join(phrase("measurement.basis", completed="1", dry="1", weight=1.0).split())
+
+
 # ---------------------------------------------------------- properties
 
 def _random_classes(rng, sampled):

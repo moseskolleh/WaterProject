@@ -655,7 +655,9 @@ whose range has been sampled, and the water-zone resistivity), each
 with the factor on the odds `success_evidence.yaml` gives it, weighted
 by the point's own fit. The factors do not say how often each band is
 seen, so the bands are spread among dry boreholes as evenly as the
-factors allow, and among working ones by the factors; a table under
+factors allow, and among working ones by the factors. That spread is a
+choice, not a bound: another the factors allow can put the value higher
+or lower, so the page says so. A table under
 the sentences gives every band, its two shares and the chance of
 reading it now. For each combination of bands the chance at the point
 is worked out again and the choice taken again; the value is the
@@ -666,7 +668,7 @@ more than the value of knowing for certain whether the point would
 work, which is printed beside it. The new reading is taken as
 independent of the ones already made, given whether a borehole at the
 point would work; a sounding beside the first reads much of the same
-ground, so the value is an upper bound. The costs of a sounding
+ground, so on that count the value overstates what it adds. The costs of a sounding
 (US$ 100) and a profiling line (US$ 150) are provisional figures in
 `src/groundwater/data/field.yaml` with no recorded source.
 
